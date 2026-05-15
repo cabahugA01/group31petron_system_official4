@@ -223,6 +223,7 @@ function handle_get_requests($pdo, $me, $role, $station_id) {
 
     $sql = "
         SELECT sr.*,
+               COALESCE(sr.purchase_request_id, '') AS purchase_request_id,
                u.name  AS staff_name,
                m.name  AS manager_name,
                s.name  AS station_name
@@ -242,9 +243,9 @@ function handle_get_requests($pdo, $me, $role, $station_id) {
 function handle_approve($pdo, $me, $role, $station_id) {
     $input = json_decode(file_get_contents('php://input'), true) ?: $_POST;
 
-    $request_id       = (int)($input['request_id'] ?? 0);
+    $request_id        = (int)($input['request_id'] ?? 0);
     $approved_quantity = (int)($input['approved_quantity'] ?? 0);
-    $manager_notes    = trim($input['manager_notes'] ?? '');
+    $manager_notes     = trim($input['manager_notes'] ?? '');
 
     if ($request_id <= 0 || $approved_quantity <= 0) {
         echo json_encode(['success' => false, 'message' => 'Request ID and approved quantity are required']); return;
@@ -271,58 +272,81 @@ function handle_approve($pdo, $me, $role, $station_id) {
 
     $pdo->beginTransaction();
     try {
-        // Update request → Approved
+        // Generate Purchase Request ID: PR-YYYYMMDD-XXXX
+        $pr_id = 'PR-' . date('Ymd') . '-' . str_pad($request_id, 4, '0', STR_PAD_LEFT);
+
+        // Ensure purchase_request_id column exists (add if missing)
+        try {
+            $pdo->exec("ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS purchase_request_id VARCHAR(50) NULL DEFAULT NULL");
+        } catch (Exception $ignored) {}
+
+        // Update request → Forwarded to Admin
         $pdo->prepare("
             UPDATE stock_requests
-            SET status            = 'Approved',
-                approved_quantity = ?,
-                manager_id        = ?,
-                manager_notes     = ?,
-                processed_at      = NOW(),
-                updated_at        = NOW()
+            SET status               = 'Forwarded to Admin',
+                approved_quantity    = ?,
+                manager_id           = ?,
+                manager_notes        = ?,
+                purchase_request_id  = ?,
+                processed_at         = NOW(),
+                updated_at           = NOW()
             WHERE id = ?
-        ")->execute([$approved_quantity, $me['id'], $manager_notes, $request_id]);
+        ")->execute([$approved_quantity, $me['id'], $manager_notes, $pr_id, $request_id]);
 
-        // Auto-generate PO
+        // Auto-generate PO with status 'Pending Admin Validation'
         $po_number    = 'PO-' . date('Ymd') . '-SR' . str_pad($request_id, 4, '0', STR_PAD_LEFT);
         $ip_stmt      = $pdo->prepare("SELECT unit_price FROM inventory_products WHERE id = ?");
         $ip_stmt->execute([$req['item_id']]);
         $unit_price   = (float)($ip_stmt->fetchColumn() ?: 0);
         $total_amount = round($unit_price * $approved_quantity, 2);
-        $po_remarks   = "Auto-generated from Stock Request #{$request_id}. Manager: {$me['name']}.";
+        $po_remarks   = "Auto-generated from Stock Request #{$request_id}. Purchase Request: {$pr_id}. Manager: {$me['name']}.";
         if ($manager_notes) $po_remarks .= " Notes: {$manager_notes}";
 
-        $pdo->prepare("
-            INSERT INTO purchase_orders
-                (request_id, product_name, quantity, unit_price, total_amount,
-                 type, po_number, station_id, created_by, status, remarks,
-                 created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, 'merch', ?, ?, ?, 'Pending Admin Validation', ?, NOW(), NOW())
-        ")->execute([
-            $request_id, $req['item_name'], $approved_quantity, $unit_price, $total_amount,
-            $po_number, $req['station_id'], $me['id'], $po_remarks
-        ]);
+        // Check if PO already exists for this request
+        $existing = $pdo->prepare("SELECT id FROM purchase_orders WHERE request_id = ?");
+        $existing->execute([$request_id]);
+        if (!$existing->fetch()) {
+            $pdo->prepare("
+                INSERT INTO purchase_orders
+                    (request_id, product_name, quantity, unit_price, total_amount,
+                     type, po_number, station_id, created_by, status, remarks,
+                     created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, 'merch', ?, ?, ?, 'Pending Admin Validation', ?, NOW(), NOW())
+            ")->execute([
+                $request_id, $req['item_name'], $approved_quantity, $unit_price, $total_amount,
+                $po_number, $req['station_id'], $me['id'], $po_remarks
+            ]);
+        } else {
+            // Update existing PO
+            $pdo->prepare("
+                UPDATE purchase_orders
+                SET quantity = ?, unit_price = ?, total_amount = ?,
+                    status = 'Pending Admin Validation', remarks = ?, updated_at = NOW()
+                WHERE request_id = ?
+            ")->execute([$approved_quantity, $unit_price, $total_amount, $po_remarks, $request_id]);
+        }
 
         // Audit trail
-        $audit_note = "Approved: {$req['requested_quantity']} → {$approved_quantity} units. PO: {$po_number}. Manager: {$me['name']}.";
+        $audit_note = "Manager approved: qty={$approved_quantity}. Purchase Request ID: {$pr_id}. PO: {$po_number}. Status → Forwarded to Admin. Manager: {$me['name']}.";
         if ($manager_notes) $audit_note .= " Remarks: {$manager_notes}";
         $pdo->prepare("
             INSERT INTO stock_request_audit
                 (stock_request_id, action_type, performed_by, performed_by_role,
                  old_status, new_status, notes)
-            VALUES (?, 'Approved', ?, ?, 'Pending', 'Approved', ?)
+            VALUES (?, 'Forwarded to Admin', ?, ?, 'Pending', 'Forwarded to Admin', ?)
         ")->execute([$request_id, $me['id'], $role, $audit_note]);
 
         if (function_exists('log_activity')) {
-            log_activity($pdo, $me['id'], 'Approve Stock Request',
-                "Request #{$request_id} | {$req['item_name']} | Qty: {$approved_quantity} | PO: {$po_number} | By: {$me['name']}");
+            log_activity($pdo, $me['id'], 'Forward Purchase Request',
+                "Request #{$request_id} | {$req['item_name']} | Qty: {$approved_quantity} | PR: {$pr_id} | PO: {$po_number} | By: {$me['name']}");
         }
 
         $pdo->commit();
         echo json_encode([
-            'success'   => true,
-            'message'   => "Request approved. PO {$po_number} generated.",
-            'po_number' => $po_number
+            'success'              => true,
+            'message'              => "Request approved and forwarded to Admin. Purchase Request ID: {$pr_id}",
+            'po_number'            => $po_number,
+            'purchase_request_id'  => $pr_id
         ]);
     } catch (Exception $e) {
         $pdo->rollBack();

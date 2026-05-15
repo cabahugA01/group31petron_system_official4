@@ -1515,6 +1515,20 @@ require_once __DIR__ . '/rbac_menu.php';
           $vcount = (int)$s->fetchColumn();
           $fuel_sub_badges['fuel_variance_report'] = $vcount;
           $fuel_sub_badges['fuel_reconciliation']  = $vcount; // legacy compat
+
+          // Pending merchandise stock requests (Inventory > Stock Requests)
+          try {
+              $s = $pdo->prepare("SELECT COUNT(*) FROM stock_requests WHERE station_id=? AND status='Pending'");
+              $s->execute([$myStationId]);
+              $fuel_sub_badges['mgr_inv_requests'] = (int)$s->fetchColumn();
+          } catch (Exception $ignored) {}
+
+          // Pending fuel stock requests
+          try {
+              $s = $pdo->prepare("SELECT COUNT(*) FROM fuel_stock_requests WHERE station_id=? AND status='Pending'");
+              $s->execute([$myStationId]);
+              $fuel_sub_badges['mgr_inv_requests'] = ($fuel_sub_badges['mgr_inv_requests'] ?? 0) + (int)$s->fetchColumn();
+          } catch (Exception $ignored) {}
       } catch (Exception $e) { /* silent */ }
   }
 

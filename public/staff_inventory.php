@@ -36,23 +36,24 @@ try {
     $stmt->execute([$station_id]);
     $fuel_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Merchandise inventory
+    // Merchandise inventory — use station_inventory for per-station stock levels
     $stmt = $pdo->prepare("
-        SELECT id, product_name AS name, category AS category_name,
-               unit_price AS price, unit_cost AS cost,
-               unit_price, sku, stock AS stock_level,
-               10 AS reorder_level, null AS inventory_id
-        FROM inventory_products
-        WHERE category NOT IN ('Fuel')
-        ORDER BY category, product_name
+        SELECT ip.id,
+               ip.product_name AS name,
+               ip.category     AS category_name,
+               ip.unit_price   AS price,
+               ip.unit_cost    AS cost,
+               ip.sku,
+               COALESCE(si.stock_level, ip.stock, 0) AS stock_level,
+               COALESCE(si.reorder_level, 10)        AS reorder_level
+        FROM inventory_products ip
+        LEFT JOIN station_inventory si
+               ON si.product_id = ip.id AND si.station_id = ?
+        WHERE ip.category NOT IN ('Fuel')
+        ORDER BY ip.category, ip.product_name
     ");
-    $stmt->execute();
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $p) {
-        $sl  = (int)($p['stock_level'] ?? 0);
-        $oos = false;
-        if ($sl <= 0) { $sl = rand(15, 50); $oos = true; }
-        $merch_inventory[] = array_merge($p, ['stock_level' => $sl, 'was_out_of_stock' => $oos]);
-    }
+    $stmt->execute([$station_id]);
+    $merch_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // Stock requests (this staff member only)
     $stmt = $pdo->prepare("
