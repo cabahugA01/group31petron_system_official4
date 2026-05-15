@@ -137,16 +137,78 @@ if ($search_filter !== '') {
 
 $job_orders = [];
 try {
-    $r = $pdo->prepare("SELECT j.id, j.customer_name, j.service_type, j.service_description,
-        j.status, j.validation_status, j.estimated_cost, j.notes, j.created_at,
-        COALESCE(c.name, j.customer_name, 'Walk-in') AS cust, u.name AS staff_name
+    // ── Part 1: native job_orders rows ───────────────────────────────────────
+    $jo_where_sql = implode(' AND ', $where);
+    $part1 = "
+        SELECT j.id, j.customer_name, j.service_type, j.service_description,
+            j.status, j.validation_status, j.estimated_cost, j.notes, j.created_at,
+            COALESCE(c.name, j.customer_name, 'Walk-in') AS cust, u.name AS staff_name,
+            'job_orders' AS _source
         FROM job_orders j
         LEFT JOIN customers c ON c.id = j.customer_id
         LEFT JOIN users u ON u.id = COALESCE(j.created_by, j.user_id)
-        WHERE ".implode(' AND ',$where)."
-        ORDER BY CASE WHEN j.status='Pending Validation' OR j.validation_status='Pending Validation' THEN 0 ELSE 1 END, j.created_at DESC
-        LIMIT 100");
-    $r->execute($params);
+        WHERE {$jo_where_sql}
+    ";
+
+    // ── Part 2: merchandise_transactions with job_order/combined type ─────────
+    $part2 = '';
+    $mt_params2 = [];
+    try {
+        $mt_cols2 = [];
+        foreach ($pdo->query("SHOW COLUMNS FROM merchandise_transactions")->fetchAll(PDO::FETCH_ASSOC) as $c)
+            $mt_cols2[strtolower($c['Field'])] = true;
+        $mt_has2 = fn($col) => isset($mt_cols2[strtolower($col)]);
+
+        if ($mt_has2('transaction_type') && $mt_has2('job_order_service')) {
+            $mt2_where = ["mt2.station_id = ?", "mt2.transaction_type IN ('job_order','combined')"];
+            $mt_params2 = [$station_id];
+
+            if ($status_filter !== '') {
+                $mt2_where[] = "(mt2.validation_status = ? OR mt2.validation_status = ?)";
+                $mt_params2[] = $status_filter; $mt_params2[] = $status_filter;
+            }
+            if ($search_filter !== '') {
+                $mt2_where[] = "(mt2.customer_name LIKE ? OR mt2.job_order_service LIKE ?)";
+                $s2 = '%'.$search_filter.'%';
+                $mt_params2[] = $s2; $mt_params2[] = $s2;
+            }
+
+            $mt2_date = $mt_has2('transaction_date')
+                ? "CASE WHEN mt2.transaction_date > '2000-01-01' THEN mt2.transaction_date ELSE mt2.created_at END"
+                : "mt2.created_at";
+
+            $part2 = "
+            UNION ALL
+            SELECT
+                mt2.id,
+                COALESCE(NULLIF(TRIM(mt2.customer_name),''),'Walk-in'),
+                COALESCE(mt2.job_order_service,'Service'),
+                '',
+                COALESCE(mt2.validation_status,'Pending Validation'),
+                COALESCE(mt2.validation_status,'Pending Validation'),
+                mt2.total_amount,
+                '',
+                {$mt2_date},
+                COALESCE(NULLIF(TRIM(mt2.customer_name),''),'Walk-in'),
+                u2.name,
+                'merchandise_transactions'
+            FROM merchandise_transactions mt2
+            LEFT JOIN users u2 ON u2.id = mt2.staff_id
+            WHERE " . implode(' AND ', $mt2_where);
+        }
+    } catch (Exception $e2) { /* merchandise_transactions may not exist */ }
+
+    $full_sql = "
+        SELECT * FROM (
+            {$part1}
+            {$part2}
+        ) combined_jo
+        ORDER BY CASE WHEN status='Pending Validation' OR validation_status='Pending Validation' THEN 0 ELSE 1 END, created_at DESC
+        LIMIT 100
+    ";
+
+    $r = $pdo->prepare($full_sql);
+    $r->execute(array_merge($params, $mt_params2));
     $job_orders = $r->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
