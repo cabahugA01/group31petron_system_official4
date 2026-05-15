@@ -1,0 +1,181 @@
+<?php
+/**
+ * job_order_operations.php
+ * AJAX endpoint for manager_job_review.php
+ * Handles: get_job_details, update_job_status
+ */
+require_once __DIR__ . '/../backend/lib.php';
+require_once __DIR__ . '/../public/db_connect.php';
+require_login();
+
+header('Content-Type: application/json');
+
+$u          = current_user();
+$role       = role_key($u['role'] ?? '');
+$station_id = (int) user_station_id();
+
+if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
+    echo json_encode(['success' => false, 'message' => 'Access denied.']);
+    exit;
+}
+
+$action = trim($_POST['action'] ?? '');
+
+// ── GET JOB DETAILS ───────────────────────────────────────────────────────────
+if ($action === 'get_job_details') {
+    $job_id = (int)($_POST['job_id'] ?? 0);
+    if ($job_id <= 0) {
+        echo json_encode(['success' => false, 'message' => 'Invalid job ID.']);
+        exit;
+    }
+
+    try {
+        // Detect available columns
+        $jo_cols = [];
+        foreach ($pdo->query("SHOW COLUMNS FROM job_orders")->fetchAll(PDO::FETCH_ASSOC) as $c)
+            $jo_cols[strtolower($c['Field'])] = true;
+        $jo_has = fn($col) => isset($jo_cols[strtolower($col)]);
+
+        $job_order_num_col = $jo_has('job_order_id')     ? 'jo.job_order_id'
+                           : ($jo_has('job_order_number') ? 'jo.job_order_number' : 'jo.id');
+        $total_cost_col    = $jo_has('total_cost')        ? 'jo.total_cost'
+                           : ($jo_has('estimated_cost')   ? 'jo.estimated_cost'   : '0');
+        $notes_col         = $jo_has('additional_notes')  ? 'jo.additional_notes'
+                           : ($jo_has('notes')             ? 'jo.notes'            : "''");
+        $started_col       = $jo_has('started_at')        ? 'jo.started_at'        : 'jo.created_at';
+        $completed_col     = $jo_has('completed_at')      ? 'jo.completed_at'      : 'jo.updated_at';
+
+        $stmt = $pdo->prepare("
+            SELECT jo.*,
+                   {$job_order_num_col}  AS job_order_number,
+                   {$total_cost_col}     AS total_cost_display,
+                   {$notes_col}          AS notes_display,
+                   {$started_col}        AS started_at_display,
+                   {$completed_col}      AS completed_at_display,
+                   COALESCE(c.name, jo.customer_name, 'Walk-in')  AS customer_name,
+                   c.phone                                         AS customer_phone,
+                   COALESCE(m.full_name, u_mech.name, 'Unassigned') AS technician_name,
+                   COALESCE(sc.service_name, jo.service_type, 'N/A') AS service_name,
+                   COALESCE(sc.service_price, 0)                  AS fixed_labor_rate,
+                   COALESCE(u_cb.name, u_cb.username, 'Unknown')  AS created_by_name
+            FROM job_orders jo
+            LEFT JOIN customers c         ON c.id  = jo.customer_id
+            LEFT JOIN mechanics m         ON m.id  = jo.assigned_mechanic_id
+            LEFT JOIN users u_mech        ON u_mech.id = jo.assigned_mechanic_id
+            LEFT JOIN job_order_service_types sc ON sc.service_key = jo.service_type
+            LEFT JOIN users u_cb          ON u_cb.id = jo.created_by
+            WHERE jo.id = ? AND jo.station_id = ?
+        ");
+        $stmt->execute([$job_id, $station_id]);
+        $job = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$job) {
+            echo json_encode(['success' => false, 'message' => 'Job order not found.']);
+            exit;
+        }
+
+        // Fetch parts used
+        $parts_used = [];
+        try {
+            // Try job_order_parts table first
+            $p = $pdo->prepare("
+                SELECT jop.*, ip.product_name, ip.unit_price AS unit_cost
+                FROM job_order_parts jop
+                LEFT JOIN inventory_products ip ON ip.id = jop.product_id
+                WHERE jop.job_order_id = ?
+            ");
+            $p->execute([$job_id]);
+            $parts_used = $p->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            // Fallback: parse required_parts JSON
+            $raw = $job['required_parts'] ?? '';
+            if (!empty($raw)) {
+                $decoded = json_decode($raw, true);
+                if (is_array($decoded)) {
+                    foreach ($decoded as $part) {
+                        $parts_used[] = [
+                            'product_name'  => is_array($part) ? ($part['name'] ?? $part['part_name'] ?? 'Part') : $part,
+                            'quantity_used' => is_array($part) ? ($part['quantity'] ?? 1) : 1,
+                            'unit_cost'     => is_array($part) ? ($part['price'] ?? $part['unit_price'] ?? 0) : 0,
+                            'total_cost'    => is_array($part) ? ($part['total'] ?? ($part['price'] ?? 0) * ($part['quantity'] ?? 1)) : 0,
+                        ];
+                    }
+                }
+            }
+        }
+
+        $total_parts_cost = array_sum(array_column($parts_used, 'total_cost'));
+
+        $job['parts_used']       = $parts_used;
+        $job['total_parts_cost'] = $total_parts_cost;
+        $job['job_order_number'] = $job['job_order_number'] ?? ('#' . $job['id']);
+        $job['completed_at']     = $job['completed_at_display'] ?? $job['updated_at'] ?? null;
+        $job['notes']            = $job['notes_display'] ?? '';
+        $job['fixed_labor_rate'] = $job['fixed_labor_rate'] ?? $job['total_cost_display'] ?? 0;
+
+        echo json_encode(['success' => true, 'data' => $job]);
+
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'message' => 'Database error: ' . $e->getMessage()]);
+    }
+    exit;
+}
+
+// ── UPDATE JOB STATUS ─────────────────────────────────────────────────────────
+if ($action === 'update_job_status') {
+    $job_id    = (int)($_POST['job_id']    ?? 0);
+    $new_status = trim($_POST['new_status'] ?? '');
+    $notes      = trim($_POST['notes']      ?? '');
+
+    if ($job_id <= 0 || !in_array($new_status, ['Reviewed', 'Rejected', 'Completed'])) {
+        echo json_encode(['success' => false, 'message' => 'Invalid parameters.']);
+        exit;
+    }
+
+    try {
+        $pdo->beginTransaction();
+
+        // Detect columns
+        $jo_cols = [];
+        foreach ($pdo->query("SHOW COLUMNS FROM job_orders")->fetchAll(PDO::FETCH_ASSOC) as $c)
+            $jo_cols[strtolower($c['Field'])] = true;
+        $jo_has = fn($col) => isset($jo_cols[strtolower($col)]);
+
+        $set_parts = ["status = ?"];
+        $set_vals  = [$new_status];
+
+        if ($jo_has('reviewed_by'))  { $set_parts[] = "reviewed_by = ?";  $set_vals[] = $u['id']; }
+        if ($jo_has('reviewed_at'))  { $set_parts[] = "reviewed_at = NOW()"; }
+        if ($jo_has('updated_at'))   { $set_parts[] = "updated_at = NOW()"; }
+        if ($notes !== '') {
+            if ($jo_has('additional_notes')) { $set_parts[] = "additional_notes = ?"; $set_vals[] = $notes; }
+            elseif ($jo_has('notes'))        { $set_parts[] = "notes = ?";            $set_vals[] = $notes; }
+        }
+
+        $set_vals[] = $job_id;
+        $set_vals[] = $station_id;
+
+        $pdo->prepare("UPDATE job_orders SET " . implode(', ', $set_parts) . " WHERE id = ? AND station_id = ?")
+            ->execute($set_vals);
+
+        // Audit trail
+        try {
+            $pdo->prepare("INSERT INTO audit_trail (transaction_id, manager_id, action_type, new_value, station_id) VALUES (?, ?, ?, ?, ?)")
+                ->execute([$job_id, $u['id'], 'JO_' . strtoupper($new_status), $notes, $station_id]);
+        } catch (Exception $ae) { /* silent */ }
+
+        try {
+            log_activity($pdo, $u['id'], 'JO_REVIEW', "Job Order #{$job_id} marked as {$new_status} by {$u['name']}.");
+        } catch (Exception $le) { /* silent */ }
+
+        $pdo->commit();
+        echo json_encode(['success' => true, 'message' => "Job order marked as {$new_status}."]);
+
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        echo json_encode(['success' => false, 'message' => 'Database error: ' . $e->getMessage()]);
+    }
+    exit;
+}
+
+echo json_encode(['success' => false, 'message' => 'Unknown action.']);

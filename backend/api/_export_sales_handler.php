@@ -1,0 +1,470 @@
+<?php
+/**
+ * Combined Sales Export Handler
+ * Included by manager_reports_api.php for the 'export_sales' action.
+ * Produces a single file (CSV or PDF) with both Fuel and Merchandise sections.
+ *
+ * Expects: $pdo, $station_id, $date_from, $date_to, $_GET['format']
+ */
+
+$export_format = $_GET['format'] ?? 'csv';   // 'csv' | 'pdf'
+
+// ── Fuel data ────────────────────────────────────────────────────────────────
+$has_vt = false;
+try { $pdo->query("SELECT 1 FROM fuel_variance_reports LIMIT 1"); $has_vt = true; } catch (Exception $e) {}
+
+if ($has_vt) {
+    $fstmt = $pdo->prepare("
+        SELECT DATE(ft.transaction_date)              AS sale_date,
+               ft.fuel_type,
+               COUNT(ft.transaction_id)               AS txn_count,
+               COALESCE(SUM(ft.liters_sold),0)        AS total_liters,
+               COALESCE(SUM(ft.total_amount),0)       AS total_revenue,
+               COALESCE(AVG(fvr.variance_liters),0)   AS avg_variance_liters
+        FROM fuel_transactions ft
+        LEFT JOIN fuel_variance_reports fvr
+            ON  fvr.station_id = ft.station_id
+            AND DATE(fvr.report_date) = DATE(ft.transaction_date)
+            AND LOWER(TRIM(fvr.fuel_type)) = LOWER(TRIM(ft.fuel_type))
+        WHERE ft.station_id = ?
+          AND ft.status IN ('approved','Approved','validated','Validated','completed','Completed')
+          AND DATE(ft.transaction_date) BETWEEN ? AND ?
+        GROUP BY DATE(ft.transaction_date), ft.fuel_type
+        ORDER BY sale_date DESC, ft.fuel_type
+    ");
+} else {
+    $fstmt = $pdo->prepare("
+        SELECT DATE(ft.transaction_date)              AS sale_date,
+               ft.fuel_type,
+               COUNT(ft.transaction_id)               AS txn_count,
+               COALESCE(SUM(ft.liters_sold),0)        AS total_liters,
+               COALESCE(SUM(ft.total_amount),0)       AS total_revenue,
+               0                                      AS avg_variance_liters
+        FROM fuel_transactions ft
+        WHERE ft.station_id = ?
+          AND ft.status IN ('approved','Approved','validated','Validated','completed','Completed')
+          AND DATE(ft.transaction_date) BETWEEN ? AND ?
+        GROUP BY DATE(ft.transaction_date), ft.fuel_type
+        ORDER BY sale_date DESC, ft.fuel_type
+    ");
+}
+$fstmt->execute([$station_id, $date_from, $date_to]);
+$fuel_rows = $fstmt->fetchAll(PDO::FETCH_ASSOC);
+
+// ── Merchandise data ─────────────────────────────────────────────────────────
+$merch_date_expr = "CASE WHEN mt.transaction_date > '2000-01-01' THEN DATE(mt.transaction_date) ELSE DATE(mt.created_at) END";
+$mstmt = $pdo->prepare("
+    SELECT ($merch_date_expr) AS sale_date,
+           COUNT(mt.id)               AS txn_count,
+           COALESCE(SUM(mt.total_amount),0) AS total_revenue,
+           COALESCE(SUM(CASE WHEN si.id IS NOT NULL THEN si.quantity ELSE 0 END), 0) AS total_quantity,
+           COALESCE(SUM(CASE WHEN LOWER(mt.payment_method) IN ('cash') THEN mt.total_amount ELSE 0 END),0) AS pay_cash,
+           COALESCE(SUM(CASE WHEN LOWER(mt.payment_method) IN ('credit card','card','debit card') THEN mt.total_amount ELSE 0 END),0) AS pay_card,
+           COALESCE(SUM(CASE WHEN LOWER(mt.payment_method) IN ('gcash','maya','paymaya','e-wallet','ewallet') THEN mt.total_amount ELSE 0 END),0) AS pay_ewallet,
+           COALESCE(SUM(CASE WHEN LOWER(mt.payment_method) IN ('e-fuel card','fuel card','efuel') THEN mt.total_amount ELSE 0 END),0) AS pay_efuel,
+           COALESCE(SUM(CASE WHEN LOWER(mt.payment_method) IN ('account receivable','credit','utang') THEN mt.total_amount ELSE 0 END),0) AS pay_credit
+    FROM merchandise_transactions mt
+    LEFT JOIN sale_items si ON si.sale_id = mt.id
+    WHERE mt.station_id = ?
+      AND ($merch_date_expr) BETWEEN ? AND ?
+      AND LOWER(COALESCE(mt.validation_status,'')) NOT IN ('rejected','cancelled')
+    GROUP BY ($merch_date_expr)
+    ORDER BY sale_date DESC
+");
+$mstmt->execute([$station_id, $date_from, $date_to]);
+$merch_rows = $mstmt->fetchAll(PDO::FETCH_ASSOC);
+
+// ── Daily Summary data ─────────────────────────────────────────────────────
+$fuel_status_clause = "LOWER(TRIM(ft.status)) IN (
+    'verified','adjusted','complete','completed',
+    'approved','validated','verified sale'
+)";
+
+if ($has_vt) {
+    $sstmt = $pdo->prepare("
+        SELECT
+            d.sale_date,
+            COALESCE(f.fuel_liters, 0) AS total_fuel_liters,
+            COALESCE(f.fuel_rev, 0) AS fuel_revenue,
+            COALESCE(m.merch_rev, 0) AS merch_revenue,
+            COALESCE(f.fuel_rev, 0) + COALESCE(m.merch_rev, 0) AS total_revenue,
+            COALESCE(f.avg_variance, 0) AS fuel_variance
+        FROM (
+            SELECT DISTINCT DATE(ft.transaction_date) AS sale_date
+            FROM fuel_transactions ft
+            WHERE ft.station_id = ? AND DATE(ft.transaction_date) BETWEEN ? AND ?
+                AND $fuel_status_clause
+            UNION
+            SELECT DISTINCT ($merch_date_expr)
+            FROM merchandise_transactions mt
+            WHERE mt.station_id = ? AND ($merch_date_expr) BETWEEN ? AND ?
+                AND LOWER(TRIM(COALESCE(mt.validation_status,''))) NOT IN ('rejected','cancelled')
+        ) d
+        LEFT JOIN (
+            SELECT 
+                DATE(ft.transaction_date) AS sd,
+                COALESCE(SUM(ft.liters_sold), 0) AS fuel_liters,
+                COALESCE(SUM(ft.total_amount), 0) AS fuel_rev,
+                COALESCE(AVG(fvr.variance_liters), 0) AS avg_variance
+            FROM fuel_transactions ft
+            LEFT JOIN fuel_variance_reports fvr
+                ON fvr.station_id = ft.station_id
+                AND DATE(fvr.report_date) = DATE(ft.transaction_date)
+                AND LOWER(TRIM(fvr.fuel_type)) = LOWER(TRIM(ft.fuel_type))
+            WHERE ft.station_id = ?
+                AND $fuel_status_clause
+                AND DATE(ft.transaction_date) BETWEEN ? AND ?
+            GROUP BY DATE(ft.transaction_date)
+        ) f ON f.sd = d.sale_date
+        LEFT JOIN (
+            SELECT 
+                ($merch_date_expr) AS sd,
+                COALESCE(SUM(total_amount), 0) AS merch_rev
+            FROM merchandise_transactions
+            WHERE station_id = ?
+                AND ($merch_date_expr) BETWEEN ? AND ?
+                AND LOWER(COALESCE(validation_status,'')) NOT IN ('rejected','cancelled')
+            GROUP BY ($merch_date_expr)
+        ) m ON m.sd = d.sale_date
+        ORDER BY d.sale_date DESC
+    ");
+    $sstmt->execute([
+        $station_id, $date_from, $date_to,
+        $station_id, $date_from, $date_to,
+        $station_id, $date_from, $date_to,
+        $station_id, $date_from, $date_to
+    ]);
+} else {
+    $sstmt = $pdo->prepare("
+        SELECT
+            d.sale_date,
+            COALESCE(f.fuel_liters, 0) AS total_fuel_liters,
+            COALESCE(f.fuel_rev, 0) AS fuel_revenue,
+            COALESCE(m.merch_rev, 0) AS merch_revenue,
+            COALESCE(f.fuel_rev, 0) + COALESCE(m.merch_rev, 0) AS total_revenue,
+            0 AS fuel_variance
+        FROM (
+            SELECT DISTINCT DATE(ft.transaction_date) AS sale_date
+            FROM fuel_transactions ft
+            WHERE ft.station_id = ? AND DATE(ft.transaction_date) BETWEEN ? AND ?
+                AND $fuel_status_clause
+            UNION
+            SELECT DISTINCT ($merch_date_expr)
+            FROM merchandise_transactions mt
+            WHERE mt.station_id = ? AND ($merch_date_expr) BETWEEN ? AND ?
+                AND LOWER(COALESCE(mt.validation_status,'')) NOT IN ('rejected','cancelled')
+        ) d
+        LEFT JOIN (
+            SELECT 
+                DATE(ft.transaction_date) AS sd,
+                COALESCE(SUM(ft.liters_sold), 0) AS fuel_liters,
+                COALESCE(SUM(ft.total_amount), 0) AS fuel_rev
+            FROM fuel_transactions ft
+            WHERE ft.station_id = ?
+                AND $fuel_status_clause
+                AND DATE(ft.transaction_date) BETWEEN ? AND ?
+            GROUP BY DATE(ft.transaction_date)
+        ) f ON f.sd = d.sale_date
+        LEFT JOIN (
+            SELECT 
+                ($merch_date_expr) AS sd,
+                COALESCE(SUM(total_amount), 0) AS merch_rev
+            FROM merchandise_transactions
+            WHERE station_id = ?
+                AND ($merch_date_expr) BETWEEN ? AND ?
+                AND LOWER(COALESCE(validation_status,'')) NOT IN ('rejected','cancelled')
+            GROUP BY ($merch_date_expr)
+        ) m ON m.sd = d.sale_date
+        ORDER BY d.sale_date DESC
+    ");
+    $sstmt->execute([
+        $station_id, $date_from, $date_to,
+        $station_id, $date_from, $date_to,
+        $station_id, $date_from, $date_to,
+        $station_id, $date_from, $date_to
+    ]);
+}
+$summary_rows = $sstmt->fetchAll(PDO::FETCH_ASSOC);
+
+// ── Station name ─────────────────────────────────────────────────────────────
+$station_name = 'Station #' . $station_id;
+try {
+    $sn = $pdo->prepare("SELECT name FROM stations WHERE id = ? LIMIT 1");
+    $sn->execute([$station_id]);
+    $station_name = $sn->fetchColumn() ?: $station_name;
+} catch (Exception $e) {}
+
+$filename = 'sales_report_' . $date_from . '_to_' . $date_to;
+
+// ════════════════════════════════════════════════════════════════════════════
+// CSV / EXCEL
+// ════════════════════════════════════════════════════════════════════════════
+if ($export_format === 'csv') {
+    header('Content-Type: text/csv; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '.csv"');
+    header('Cache-Control: no-cache, no-store, must-revalidate');
+    $out = fopen('php://output', 'w');
+    fputs($out, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel opens correctly
+
+    // ── Report header ────────────────────────────────────────────────────────
+    fputcsv($out, ['Sales Report']);
+    fputcsv($out, ['Station:', $station_name]);
+    fputcsv($out, ['Date Range:', $date_from . ' to ' . $date_to]);
+    fputcsv($out, ['Generated:', date('Y-m-d H:i:s')]);
+    fputcsv($out, []);
+
+    // ── Section 1: Fuel Sales ────────────────────────────────────────────────
+    fputcsv($out, ['FUEL SALES — Liters & Revenue Reconciliation']);
+    fputcsv($out, ['Date', 'Fuel Type', 'Transactions', 'Liters Sold', 'Revenue (PHP)', 'Variance (L)']);
+    if ($fuel_rows) {
+        foreach ($fuel_rows as $r) {
+            fputcsv($out, [
+                $r['sale_date'],
+                $r['fuel_type'],
+                $r['txn_count'],
+                number_format((float)$r['total_liters'], 2),
+                number_format((float)$r['total_revenue'], 2),
+                number_format((float)$r['avg_variance_liters'], 2),
+            ]);
+        }
+        fputcsv($out, [
+            'TOTAL', '',
+            array_sum(array_column($fuel_rows, 'txn_count')),
+            number_format(array_sum(array_column($fuel_rows, 'total_liters')), 2),
+            number_format(array_sum(array_column($fuel_rows, 'total_revenue')), 2),
+            '',
+        ]);
+    } else {
+        fputcsv($out, ['No fuel sales data for this period.']);
+    }
+    fputcsv($out, []);
+
+    // ── Section 2: Merchandise Sales ─────────────────────────────────────────
+    fputcsv($out, ['MERCHANDISE SALES — Payment Breakdown']);
+    fputcsv($out, ['Date', 'Product', 'Transactions', 'Quantity Sold', 'Revenue (PHP)', 'Cash', 'Card', 'E‑Wallet', 'E‑Fuel Card', 'Credit']);
+    if ($merch_rows) {
+        foreach ($merch_rows as $r) {
+            fputcsv($out, [
+                $r['sale_date'],
+                'All Products',
+                $r['txn_count'],
+                number_format((int)$r['total_quantity']),
+                number_format((float)$r['total_revenue'], 2),
+                number_format((float)$r['pay_cash'],    2),
+                number_format((float)$r['pay_card'],    2),
+                number_format((float)$r['pay_ewallet'], 2),
+                number_format((float)$r['pay_efuel'],   2),
+                number_format((float)$r['pay_credit'],  2),
+            ]);
+        }
+        fputcsv($out, [
+            'TOTAL', '',
+            array_sum(array_column($merch_rows, 'txn_count')),
+            number_format(array_sum(array_column($merch_rows, 'total_quantity'))),
+            number_format(array_sum(array_column($merch_rows, 'total_revenue')), 2),
+            number_format(array_sum(array_column($merch_rows, 'pay_cash')),    2),
+            number_format(array_sum(array_column($merch_rows, 'pay_card')),    2),
+            number_format(array_sum(array_column($merch_rows, 'pay_ewallet')), 2),
+            number_format(array_sum(array_column($merch_rows, 'pay_efuel')),   2),
+            number_format(array_sum(array_column($merch_rows, 'pay_credit')),  2),
+        ]);
+    } else {
+        fputcsv($out, ['No merchandise sales data for this period.']);
+    }
+    fputcsv($out, []);
+
+    // ── Section 3: Daily Summary ─────────────────────────────────────────────
+    fputcsv($out, ['DAILY SUMMARY — Consolidated Daily Snapshot']);
+    fputcsv($out, ['Date', 'Total Fuel Liters Sold', 'Total Fuel Revenue', 'Total Merchandise Revenue', 'Combined Daily Revenue', 'Variance Alerts']);
+    if ($summary_rows) {
+        foreach ($summary_rows as $r) {
+            $variance_alert = (float)$r['fuel_variance'] !== 0 
+                ? 'Variance: ' . number_format((float)$r['fuel_variance'], 2) . 'L'
+                : 'No variance';
+            
+            fputcsv($out, [
+                $r['sale_date'],
+                number_format((float)$r['total_fuel_liters'], 2) . ' L',
+                number_format((float)$r['fuel_revenue'], 2),
+                number_format((float)$r['merch_revenue'], 2),
+                number_format((float)$r['total_revenue'], 2),
+                $variance_alert,
+            ]);
+        }
+        fputcsv($out, [
+            'TOTAL',
+            number_format(array_sum(array_column($summary_rows, 'total_fuel_liters')), 2) . ' L',
+            number_format(array_sum(array_column($summary_rows, 'fuel_revenue')), 2),
+            number_format(array_sum(array_column($summary_rows, 'merch_revenue')), 2),
+            number_format(array_sum(array_column($summary_rows, 'total_revenue')), 2),
+            '',
+        ]);
+    } else {
+        fputcsv($out, ['No daily summary data for this period.']);
+    }
+
+    fclose($out);
+    exit;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// PDF (print-ready HTML opened in browser)
+// ════════════════════════════════════════════════════════════════════════════
+header('Content-Type: text/html; charset=UTF-8');
+header('Cache-Control: no-cache, no-store, must-revalidate');
+
+// Build fuel tbody
+$fuel_tbody = '';
+foreach ($fuel_rows as $r) {
+    $v  = (float)$r['avg_variance_liters'];
+    $vc = $v > 0 ? '#dc2626' : ($v < 0 ? '#d97706' : '#16a34a');
+    $vl = ($v > 0 ? '+' : '') . number_format($v, 2) . ' L';
+    $fuel_tbody .= '<tr>
+        <td>' . htmlspecialchars($r['sale_date']) . '</td>
+        <td><strong>' . htmlspecialchars($r['fuel_type']) . '</strong></td>
+        <td class="tr">' . number_format((int)$r['txn_count']) . '</td>
+        <td class="tr">' . number_format((float)$r['total_liters'], 2) . ' L</td>
+        <td class="tr"><strong>&#8369;' . number_format((float)$r['total_revenue'], 2) . '</strong></td>
+        <td class="tr" style="color:' . $vc . ';font-weight:600">' . $vl . '</td>
+    </tr>';
+}
+$fuel_tfoot = '';
+if ($fuel_rows) {
+    $fuel_tfoot = '<tfoot><tr>
+        <td colspan="2"><strong>TOTAL</strong></td>
+        <td class="tr"><strong>' . number_format(array_sum(array_column($fuel_rows,'txn_count'))) . '</strong></td>
+        <td class="tr"><strong>' . number_format(array_sum(array_column($fuel_rows,'total_liters')),2) . ' L</strong></td>
+        <td class="tr"><strong>&#8369;' . number_format(array_sum(array_column($fuel_rows,'total_revenue')),2) . '</strong></td>
+        <td></td>
+    </tr></tfoot>';
+}
+
+// Build merch tbody
+$merch_tbody = '';
+foreach ($merch_rows as $r) {
+    $merch_tbody .= '<tr>
+        <td>' . htmlspecialchars($r['sale_date']) . '</td>
+        <td><strong>All Products</strong></td>
+        <td class="tr">' . number_format((int)$r['txn_count']) . '</td>
+        <td class="tr">' . number_format((int)$r['total_quantity']) . '</td>
+        <td class="tr"><strong>&#8369;' . number_format((float)$r['total_revenue'],2) . '</strong></td>
+        <td class="tr">&#8369;' . number_format((float)$r['pay_cash'],2)    . '</td>
+        <td class="tr">&#8369;' . number_format((float)$r['pay_card'],2)    . '</td>
+        <td class="tr">&#8369;' . number_format((float)$r['pay_ewallet'],2) . '</td>
+        <td class="tr">&#8369;' . number_format((float)$r['pay_efuel'],2)   . '</td>
+        <td class="tr">&#8369;' . number_format((float)$r['pay_credit'],2)  . '</td>
+    </tr>';
+}
+$merch_tfoot = '';
+if ($merch_rows) {
+    $merch_tfoot = '<tfoot><tr>
+        <td colspan="2"><strong>TOTAL</strong></td>
+        <td class="tr"><strong>' . number_format(array_sum(array_column($merch_rows,'txn_count'))) . '</strong></td>
+        <td class="tr"><strong>' . number_format(array_sum(array_column($merch_rows,'total_quantity'))) . '</strong></td>
+        <td class="tr"><strong>&#8369;' . number_format(array_sum(array_column($merch_rows,'total_revenue')),2) . '</strong></td>
+        <td class="tr"><strong>&#8369;' . number_format(array_sum(array_column($merch_rows,'pay_cash')),2)    . '</strong></td>
+        <td class="tr"><strong>&#8369;' . number_format(array_sum(array_column($merch_rows,'pay_card')),2)    . '</strong></td>
+        <td class="tr"><strong>&#8369;' . number_format(array_sum(array_column($merch_rows,'pay_ewallet')),2) . '</strong></td>
+        <td class="tr"><strong>&#8369;' . number_format(array_sum(array_column($merch_rows,'pay_efuel')),2)   . '</strong></td>
+        <td class="tr"><strong>&#8369;' . number_format(array_sum(array_column($merch_rows,'pay_credit')),2)  . '</strong></td>
+    </tr></tfoot>';
+}
+
+// Build summary tbody
+$summary_tbody = '';
+foreach ($summary_rows as $r) {
+    $variance_alert = (float)$r['fuel_variance'] !== 0 
+        ? '<span style="color:#dc2626;font-weight:600;">Variance: ' . number_format((float)$r['fuel_variance'], 2) . 'L</span>'
+        : '<span style="color:#16a34a;">No variance</span>';
+    
+    $summary_tbody .= '<tr>
+        <td><strong>' . htmlspecialchars($r['sale_date']) . '</strong></td>
+        <td class="tr">' . number_format((float)$r['total_fuel_liters'], 2) . ' L</td>
+        <td class="tr"><strong>&#8369;' . number_format((float)$r['fuel_revenue'],2) . '</strong></td>
+        <td class="tr"><strong>&#8369;' . number_format((float)$r['merch_revenue'],2) . '</strong></td>
+        <td class="tr" style="color:#002F6C;font-weight:700;">&#8369;' . number_format((float)$r['total_revenue'],2) . '</td>
+        <td>' . $variance_alert . '</td>
+    </tr>';
+}
+$summary_tfoot = '';
+if ($summary_rows) {
+    $summary_tfoot = '<tfoot><tr>
+        <td><strong>TOTAL</strong></td>
+        <td class="tr"><strong>' . number_format(array_sum(array_column($summary_rows,'total_fuel_liters')),2) . ' L</strong></td>
+        <td class="tr"><strong>&#8369;' . number_format(array_sum(array_column($summary_rows,'fuel_revenue')),2) . '</strong></td>
+        <td class="tr"><strong>&#8369;' . number_format(array_sum(array_column($summary_rows,'merch_revenue')),2) . '</strong></td>
+        <td class="tr" style="color:#002F6C;font-weight:700;">&#8369;' . number_format(array_sum(array_column($summary_rows,'total_revenue')),2) . '</td>
+        <td></td>
+    </tr></tfoot>';
+}
+
+echo '<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sales Report</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;font-size:12px;color:#1e293b;padding:24px}
+  .hdr{margin-bottom:20px;border-bottom:3px solid #002F6C;padding-bottom:12px}
+  .hdr h1{font-size:20px;color:#002F6C;margin-bottom:4px}
+  .hdr p{font-size:11px;color:#64748b;margin-top:3px}
+  .sec{font-size:13px;font-weight:700;color:#002F6C;margin:22px 0 8px;padding:6px 10px;background:#f1f5f9;border-left:4px solid #002F6C}
+  table{width:100%;border-collapse:collapse;margin-bottom:6px}
+  th{background:#002F6C;color:#fff;padding:7px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap}
+  td{padding:6px 10px;border-bottom:1px solid #e2e8f0;font-size:11px}
+  tr:nth-child(even) td{background:#f8fafc}
+  tfoot td{background:#f1f5f9;border-top:2px solid #002F6C}
+  .tr{text-align:right}
+  .nodata{color:#94a3b8;font-style:italic;padding:10px 0}
+  .pbtn{margin-bottom:16px}
+  .pbtn button{background:#002F6C;color:#fff;border:none;padding:8px 20px;border-radius:6px;font-size:13px;cursor:pointer}
+  @media print{.pbtn{display:none}body{padding:0}}
+</style>
+</head>
+<body>
+<div class="pbtn"><button onclick="window.print()">&#128438; Print / Save as PDF</button></div>
+<div class="hdr">
+  <h1>Sales Report</h1>
+  <p><strong>Station:</strong> ' . htmlspecialchars($station_name) . '</p>
+  <p><strong>Date Range:</strong> ' . htmlspecialchars($date_from) . ' &nbsp;&mdash;&nbsp; ' . htmlspecialchars($date_to) . '</p>
+  <p><strong>Generated:</strong> ' . date('F j, Y  H:i:s') . '</p>
+</div>
+
+<div class="sec">&#9981; Fuel Sales &mdash; Liters &amp; Revenue Reconciliation</div>
+' . ($fuel_rows
+    ? '<table>
+  <thead><tr>
+    <th>Date</th><th>Fuel Type</th><th class="tr">Transactions</th>
+    <th class="tr">Liters Sold</th><th class="tr">Revenue</th><th class="tr">Variance (L)</th>
+  </tr></thead>
+  <tbody>' . $fuel_tbody . '</tbody>' . $fuel_tfoot . '
+</table>'
+    : '<p class="nodata">No fuel sales data for this period.</p>') . '
+
+<div class="sec">&#128717; Merchandise Sales &mdash; Payment Breakdown</div>
+' . ($merch_rows
+    ? '<table>
+  <thead><tr>
+    <th>Date</th><th>Product</th><th class="tr">Transactions</th><th class="tr">Quantity Sold</th>
+    <th class="tr">Total Revenue</th><th class="tr">Cash</th><th class="tr">Card</th>
+    <th class="tr">E‑Wallet</th><th class="tr">E‑Fuel Card</th><th class="tr">Credit</th>
+  </tr></thead>
+  <tbody>' . $merch_tbody . '</tbody>' . $merch_tfoot . '
+</table>'
+    : '<p class="nodata">No merchandise sales data for this period.</p>') . '
+
+<div class="sec">&#128197; Daily Summary &mdash; Consolidated Daily Snapshot</div>
+' . ($summary_rows
+    ? '<table>
+  <thead><tr>
+    <th>Date</th><th class="tr">Total Fuel Liters Sold</th><th class="tr">Total Fuel Revenue</th>
+    <th class="tr">Total Merchandise Revenue</th><th class="tr">Combined Daily Revenue</th><th>Variance Alerts</th>
+  </tr></thead>
+  <tbody>' . $summary_tbody . '</tbody>' . $summary_tfoot . '
+</table>'
+    : '<p class="nodata">No daily summary data for this period.</p>') . '
+
+</body>
+</html>';
+exit;

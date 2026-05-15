@@ -1,0 +1,803 @@
+<?php
+require_once __DIR__ . '/../backend/lib.php';
+require_once __DIR__ . '/../public/db_connect.php';
+require_login();
+
+$u = current_user();
+$role = role_key($u['role'] ?? 'staff');
+$station_id = user_station_id();
+
+// Only managers can access this page
+if ($role !== 'manager') {
+    header('Location: dashboard.php');
+    exit;
+}
+
+// Get completed jobs pending review
+$pending_review = [];
+try {
+    $stmt = $pdo->prepare("
+        SELECT jo.*, 
+               c.name as customer_name,
+               c.phone as customer_phone,
+               t.full_name as technician_name,
+               sc.name as service_name,
+               sc.fixed_labor_rate,
+               sc.estimated_time_minutes,
+               u.name as created_by_name,
+               TIMESTAMPDIFF(MINUTE, jo.started_at, jo.completed_at) as actual_duration_minutes
+        FROM job_orders jo
+        LEFT JOIN customers c ON c.id = jo.customer_id
+        LEFT JOIN technicians t ON t.id = jo.assigned_technician_id
+        LEFT JOIN mechanics m ON m.id = jo.assigned_mechanic_id
+        LEFT JOIN service_categories sc ON sc.id = jo.service_category_id
+        LEFT JOIN users u ON u.id = jo.assigned_by
+        WHERE jo.station_id = ? 
+          AND jo.status = 'Completed'
+          AND jo.reviewed_by IS NULL
+        ORDER BY jo.completed_at DESC
+    ");
+    $stmt->execute([$station_id]);
+    $pending_review = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    $pending_review = [];
+}
+
+// Get recently reviewed jobs
+$recently_reviewed = [];
+try {
+    $stmt = $pdo->prepare("
+        SELECT jo.*, 
+               c.name as customer_name,
+               t.full_name as technician_name,
+               sc.name as service_name,
+               sc.fixed_labor_rate,
+               reviewer.name as reviewed_by_name,
+               jo.reviewed_at
+        FROM job_orders jo
+        LEFT JOIN customers c ON c.id = jo.customer_id
+        LEFT JOIN technicians t ON t.id = jo.assigned_technician_id
+        LEFT JOIN mechanics m ON m.id = jo.assigned_mechanic_id
+        LEFT JOIN service_categories sc ON sc.id = jo.service_category_id
+        LEFT JOIN users reviewer ON reviewer.id = jo.reviewed_by
+        WHERE jo.station_id = ? 
+          AND jo.status = 'Completed'
+          AND jo.reviewed_by IS NOT NULL
+          AND DATE(jo.reviewed_at) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+        ORDER BY jo.reviewed_at DESC
+        LIMIT 20
+    ");
+    $stmt->execute([$station_id]);
+    $recently_reviewed = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    $recently_reviewed = [];
+}
+
+include __DIR__ . '/../partials/header.php';
+?>
+
+<style>
+.manager-review {
+    padding: 20px;
+    background: var(--bg);
+    min-height: calc(100vh - 110px);
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+    padding: 20px;
+    background: var(--card);
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+.page-title {
+    font-size: 28px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.stat-card {
+    background: var(--card);
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    text-align: center;
+}
+
+.stat-number {
+    font-size: 36px;
+    font-weight: 700;
+    color: var(--blue);
+    margin-bottom: 8px;
+}
+
+.stat-label {
+    color: var(--muted);
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.review-section {
+    background: var(--card);
+    border-radius: 12px;
+    padding: 30px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    margin-bottom: 30px;
+}
+
+.section-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.job-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 15px;
+    transition: all 0.3s ease;
+}
+
+.job-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+.job-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 15px;
+}
+
+.job-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 5px;
+}
+
+.job-meta {
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.job-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.job-detail {
+    font-size: 14px;
+}
+
+.job-detail-label {
+    font-weight: 600;
+    color: var(--muted);
+    display: block;
+    margin-bottom: 3px;
+}
+
+.job-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.btn-primary {
+    background: var(--blue);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #003366;
+}
+
+.btn-success {
+    background: #28A745;
+    color: white;
+}
+
+.btn-success:hover {
+    background: #218838;
+}
+
+.btn-danger {
+    background: #DC3545;
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #C82333;
+}
+
+.btn-warning {
+    background: #FFC107;
+    color: #212529;
+}
+
+.btn-warning:hover {
+    background: #E0A800;
+}
+
+.btn-secondary {
+    background: var(--muted);
+    color: var(--text);
+}
+
+.btn-secondary:hover {
+    background: #6c757d;
+}
+
+.status-badge {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.status-completed {
+    background: #D4EDDA;
+    color: #155724;
+}
+
+.status-reviewed {
+    background: #D1ECF1;
+    color: #0C5460;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 40px;
+    color: var(--muted);
+}
+
+.empty-state-icon {
+    font-size: 48px;
+    margin-bottom: 15px;
+    opacity: 0.5;
+}
+
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+}
+
+.modal-content {
+    background-color: var(--card);
+    margin: 2% auto;
+    padding: 0;
+    border-radius: 12px;
+    width: 95%;
+    max-width: 900px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+.modal-header {
+    padding: 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    background: var(--card);
+    z-index: 10;
+}
+
+.modal-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: var(--muted);
+}
+
+.modal-body {
+    padding: 20px;
+}
+
+.modal-footer {
+    padding: 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    position: sticky;
+    bottom: 0;
+    background: var(--card);
+}
+
+.cost-breakdown {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.cost-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.cost-row:last-child {
+    border-bottom: none;
+    font-weight: 700;
+    font-size: 16px;
+    color: var(--blue);
+    padding-top: 15px;
+    border-top: 2px solid var(--border);
+}
+
+.cost-label {
+    font-weight: 500;
+}
+
+.cost-value {
+    font-weight: 600;
+    color: var(--text);
+}
+
+.parts-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+    background: var(--bg);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.parts-table th {
+    background: var(--border);
+    color: var(--text);
+    font-weight: 600;
+    text-align: left;
+    padding: 12px;
+}
+
+.parts-table td {
+    padding: 12px;
+    border-bottom: 1px solid var(--line);
+}
+
+.parts-table tr:hover {
+    background: rgba(0, 47, 108, 0.05);
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-label {
+    display: block;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 8px;
+}
+
+.form-textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 14px;
+    background: var(--bg);
+    color: var(--text);
+    resize: vertical;
+    min-height: 80px;
+}
+
+.alert {
+    padding: 15px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+}
+
+.alert-warning {
+    background: #FFF3CD;
+    border: 1px solid #FFEAA7;
+    color: #856404;
+}
+
+.alert-info {
+    background: #D1ECF1;
+    border: 1px solid #BEE5EB;
+    color: #0C5460;
+}
+</style>
+
+<div class="manager-review">
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">📋 Job Review Dashboard</h1>
+            <p style="color: var(--muted); margin-top: 5px;">Review completed jobs and approve final billing</p>
+        </div>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-number"><?php echo count($pending_review); ?></div>
+            <div class="stat-label">Pending Review</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number"><?php echo count($recently_reviewed); ?></div>
+            <div class="stat-label">Reviewed This Week</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">
+                <?php 
+                $total_value = array_sum(array_merge(
+                    array_column($pending_review, 'fixed_labor_rate'),
+                    array_column($recently_reviewed, 'fixed_labor_rate')
+                ));
+                echo '₱' . number_format($total_value, 2);
+                ?>
+            </div>
+            <div class="stat-label">Total Labor Value</div>
+        </div>
+    </div>
+
+    <div class="review-section">
+        <h3 class="section-title">
+            ⏳ Pending Review
+            <?php if (count($pending_review) > 0): ?>
+                <span style="background: #DC3545; color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px;">
+                    <?php echo count($pending_review); ?> jobs
+                </span>
+            <?php endif; ?>
+        </h3>
+        
+        <?php if (empty($pending_review)): ?>
+            <div class="empty-state">
+                <div class="empty-state-icon">✅</div>
+                <div class="empty-state-title">All caught up!</div>
+                <div class="empty-state-text">No jobs pending review at the moment.</div>
+            </div>
+        <?php else: ?>
+            <?php foreach ($pending_review as $job): ?>
+                <div class="job-card">
+                    <div class="job-header">
+                        <div>
+                            <div class="job-title"><?php echo htmlspecialchars($job['job_order_number']); ?></div>
+                            <div class="job-meta">
+                                Customer: <?php echo htmlspecialchars($job['customer_name'] ?? 'Walk-in'); ?>
+                                • 
+                                Technician: <?php echo htmlspecialchars($job['technician_name'] ?? 'Not assigned'); ?>
+                                • 
+                                Completed: <?php echo date('M j, Y H:i', strtotime($job['completed_at'])); ?>
+                            </div>
+                        </div>
+                        <span class="status-badge status-completed">Completed</span>
+                    </div>
+                    
+                    <div class="job-details">
+                        <div class="job-detail">
+                            <span class="job-detail-label">Service:</span>
+                            <?php echo htmlspecialchars($job['service_name']); ?>
+                        </div>
+                        <div class="job-detail">
+                            <span class="job-detail-label">Fixed Labor Rate:</span>
+                            ₱<?php echo number_format($job['fixed_labor_rate'] ?? 0, 2); ?>
+                        </div>
+                        <div class="job-detail">
+                            <span class="job-detail-label">Est. Time:</span>
+                            <?php echo $job['estimated_time_minutes'] ?? 60; ?> mins
+                        </div>
+                        <div class="job-detail">
+                            <span class="job-detail-label">Actual Time:</span>
+                            <?php echo $job['actual_duration_minutes'] ?? 'N/A'; ?> mins
+                        </div>
+                    </div>
+                    
+                    <div class="job-actions">
+                        <button class="btn btn-primary" onclick="reviewJob(<?php echo $job['id']; ?>)">
+                            👁️ Review & Approve
+                        </button>
+                        <button class="btn btn-secondary" onclick="viewJobDetails(<?php echo $job['id']; ?>)">
+                            📄 View Details
+                        </button>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
+    </div>
+
+    <div class="review-section">
+        <h3 class="section-title">
+            ✅ Recently Reviewed
+        </h3>
+        
+        <?php if (empty($recently_reviewed)): ?>
+            <div class="empty-state">
+                <div class="empty-state-icon">📅</div>
+                <div class="empty-state-title">No recent reviews</div>
+                <div class="empty-state-text">Jobs reviewed in the last 7 days will appear here.</div>
+            </div>
+        <?php else: ?>
+            <?php foreach ($recently_reviewed as $job): ?>
+                <div class="job-card">
+                    <div class="job-header">
+                        <div>
+                            <div class="job-title"><?php echo htmlspecialchars($job['job_order_number']); ?></div>
+                            <div class="job-meta">
+                                Customer: <?php echo htmlspecialchars($job['customer_name'] ?? 'Walk-in'); ?>
+                                • 
+                                Reviewed by: <?php echo htmlspecialchars($job['reviewed_by_name']); ?>
+                            </div>
+                        </div>
+                        <span class="status-badge status-reviewed">Reviewed</span>
+                    </div>
+                    
+                    <div class="job-details">
+                        <div class="job-detail">
+                            <span class="job-detail-label">Service:</span>
+                            <?php echo htmlspecialchars($job['service_name']); ?>
+                        </div>
+                        <div class="job-detail">
+                            <span class="job-detail-label">Fixed Labor Rate:</span>
+                            ₱<?php echo number_format($job['fixed_labor_rate'] ?? 0, 2); ?>
+                        </div>
+                        <div class="job-detail">
+                            <span class="job-detail-label">Reviewed:</span>
+                            <?php echo date('M j, Y H:i', strtotime($job['reviewed_at'])); ?>
+                        </div>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
+    </div>
+</div>
+
+<!-- Job Review Modal -->
+<div id="reviewModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">📋 Review Job Order</h3>
+            <button class="modal-close" onclick="closeModal('reviewModal')">&times;</button>
+        </div>
+        <div class="modal-body" id="reviewModalBody">
+            <!-- Content will be loaded dynamically -->
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-danger" onclick="rejectJob()">❌ Reject</button>
+            <button type="button" class="btn btn-success" onclick="approveJob()">✅ Approve</button>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentJobId = null;
+let currentJobData = null;
+
+function reviewJob(jobId) {
+    currentJobId = jobId;
+    
+    // Fetch job details with parts
+    fetch(`job_order_operations.php`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: `action=get_job_details&job_id=${jobId}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            currentJobData = data.data;
+            displayJobReview(data.data);
+            document.getElementById('reviewModal').style.display = 'block';
+        } else {
+            alert('Error loading job details: ' + data.message);
+        }
+    });
+}
+
+function displayJobReview(job) {
+    const modalBody = document.getElementById('reviewModalBody');
+    
+    // Calculate totals
+    const laborCost = parseFloat(job.fixed_labor_rate || 0);
+    const partsCost = parseFloat(job.total_parts_cost || 0);
+    const subtotal = laborCost + partsCost;
+    const tax = subtotal * 0.12;
+    const total = subtotal + tax;
+    
+    modalBody.innerHTML = `
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div>
+                <h4>Job Information</h4>
+                <div style="background: var(--bg); padding: 15px; border-radius: 6px; margin-bottom: 15px;">
+                    <div><strong>Job Order:</strong> ${job.job_order_number}</div>
+                    <div><strong>Customer:</strong> ${job.customer_name || 'Walk-in'}</div>
+                    <div><strong>Technician:</strong> ${job.technician_name || 'Not assigned'}</div>
+                    <div><strong>Service:</strong> ${job.service_name}</div>
+                    <div><strong>Completed:</strong> ${new Date(job.completed_at).toLocaleString()}</div>
+                </div>
+                
+                <h4>Work Notes</h4>
+                <div style="background: var(--bg); padding: 15px; border-radius: 6px;">
+                    ${job.notes || '<em>No work notes provided</em>'}
+                </div>
+            </div>
+            
+            <div>
+                <h4>Cost Breakdown</h4>
+                <div class="cost-breakdown">
+                    <div class="cost-row">
+                        <span class="cost-label">Labor (Fixed Rate):</span>
+                        <span class="cost-value">₱${laborCost.toFixed(2)}</span>
+                    </div>
+                    <div class="cost-row">
+                        <span class="cost-label">Parts Used:</span>
+                        <span class="cost-value">₱${partsCost.toFixed(2)}</span>
+                    </div>
+                    <div class="cost-row">
+                        <span class="cost-label">Subtotal:</span>
+                        <span class="cost-value">₱${subtotal.toFixed(2)}</span>
+                    </div>
+                    <div class="cost-row">
+                        <span class="cost-label">Tax (12%):</span>
+                        <span class="cost-value">₱${tax.toFixed(2)}</span>
+                    </div>
+                    <div class="cost-row">
+                        <span class="cost-label">Total Amount:</span>
+                        <span class="cost-value">₱${total.toFixed(2)}</span>
+                    </div>
+                </div>
+                
+                <div class="alert alert-info">
+                    <strong>Fixed Rate Labor:</strong> Labor cost is fixed at ₱${laborCost.toFixed(2)} regardless of actual time spent.
+                </div>
+            </div>
+        </div>
+        
+        ${job.parts_used && job.parts_used.length > 0 ? `
+            <h4 style="margin-top: 20px;">Parts Used</h4>
+            <table class="parts-table">
+                <thead>
+                    <tr>
+                        <th>Part Name</th>
+                        <th>Quantity</th>
+                        <th>Unit Cost</th>
+                        <th>Total Cost</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${job.parts_used.map(part => `
+                        <tr>
+                            <td>${part.product_name || part.part_name || 'Unknown'}</td>
+                            <td>${part.quantity_used}</td>
+                            <td>₱${parseFloat(part.unit_cost).toFixed(2)}</td>
+                            <td>₱${parseFloat(part.total_cost).toFixed(2)}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        ` : '<div class="alert alert-warning">No parts were recorded for this job.</div>'}
+        
+        <div class="form-group">
+            <label class="form-label">Review Notes</label>
+            <textarea class="form-textarea" id="reviewNotes" placeholder="Add any notes about this review..."></textarea>
+        </div>
+    `;
+}
+
+function approveJob() {
+    if (!confirm('Approve this job order? This will finalize the billing and make it ready for payment processing.')) {
+        return;
+    }
+    
+    const notes = document.getElementById('reviewNotes').value;
+    
+    fetch('job_order_operations.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: `action=update_job_status&job_id=${currentJobId}&new_status=Reviewed&notes=${encodeURIComponent(notes)}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Job order approved successfully!');
+            closeModal('reviewModal');
+            location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    });
+}
+
+function rejectJob() {
+    const reason = prompt('Please provide a reason for rejection:');
+    if (!reason) {
+        return;
+    }
+    
+    const notes = document.getElementById('reviewNotes').value;
+    const fullNotes = `REJECTED: ${reason}\n${notes}`;
+    
+    fetch('job_order_operations.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: `action=update_job_status&job_id=${currentJobId}&new_status=Rejected&notes=${encodeURIComponent(fullNotes)}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Job order rejected and returned to staff.');
+            closeModal('reviewModal');
+            location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    });
+}
+
+function viewJobDetails(jobId) {
+    window.open(`job_order_detail.php?id=${jobId}`, '_blank');
+}
+
+function closeModal(modalId) {
+    document.getElementById(modalId).style.display = 'none';
+}
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    if (event.target.classList.contains('modal')) {
+        event.target.style.display = 'none';
+    }
+}
+</script>
+
+<?php include __DIR__ . '/../partials/footer.php'; ?>

@@ -1,0 +1,359 @@
+<?php
+require_once __DIR__ . '/lib.php';
+require_once __DIR__ . '/../public/db_connect.php';
+
+require_login();
+
+$me = current_user();
+$station_id = user_station_id();
+$role = role_key($me['role'] ?? '');
+
+if (!in_array($role, ['staff', 'cashier', 'pump_attendant'], true)) {
+    $_SESSION['error'] = 'Access denied. Staff role required.';
+    header('Location: ../public/staff_transactions.php');
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    $_SESSION['error'] = 'Invalid request method.';
+    header('Location: ../public/staff_transactions.php');
+    exit;
+}
+
+foreach (['fuel_type', 'present_reading'] as $field) {
+    if (!isset($_POST[$field]) || $_POST[$field] === '') {
+        $_SESSION['error'] = 'Missing required field: ' . $field;
+        header('Location: ../public/staff_transactions.php');
+        exit;
+    }
+}
+
+// Database-driven pump assignment
+$fuel_type = strtolower(trim($_POST['fuel_type'] ?? ''));
+
+// Get pump assignment from database configuration
+$stmt = $pdo->prepare("
+    SELECT pump_number 
+    FROM pump_configuration 
+    WHERE station_id = ? 
+      AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+      AND pump_status = 'active'
+    LIMIT 1
+");
+$stmt->execute([$station_id, $_POST['fuel_type']]);
+$pump_assignment = $stmt->fetch(PDO::FETCH_ASSOC);
+
+if ($pump_assignment) {
+    $pump_id = $pump_assignment['pump_number'];
+} else {
+    // Auto-create pump assignment if not exists (database-driven)
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) as pump_count
+        FROM pump_configuration 
+        WHERE station_id = ?
+    ");
+    $stmt->execute([$station_id]);
+    $pump_count = $stmt->fetch()['pump_count'];
+    
+    $pump_id = (string)($pump_count + 1);
+    
+    // Insert new pump configuration
+    $stmt = $pdo->prepare("
+        INSERT INTO pump_configuration (station_id, pump_number, fuel_type, pump_status)
+        VALUES (?, ?, ?, 'active')
+    ");
+    $stmt->execute([$station_id, $pump_id, $_POST['fuel_type']]);
+}
+
+function get_database_driven_shift_period(PDO $pdo): string {
+    $current_hour = (int)date('G');
+    
+    $stmt = $pdo->prepare("
+        SELECT shift_name
+        FROM shift_period_config 
+        WHERE is_active = TRUE
+          AND (
+              (start_hour <= end_hour AND ? BETWEEN start_hour AND end_hour)
+              OR (start_hour > end_hour AND (? >= start_hour OR ? <= end_hour))
+          )
+        ORDER BY sort_order
+        LIMIT 1
+    ");
+    $stmt->execute([$current_hour, $current_hour, $current_hour]);
+    $shift = $stmt->fetchColumn();
+    
+    if (!$shift) {
+        // Default to first shift if no match found
+        $stmt = $pdo->prepare("
+            SELECT shift_name
+            FROM shift_period_config 
+            WHERE is_active = TRUE
+            ORDER BY sort_order
+            LIMIT 1
+        ");
+        $stmt->execute();
+        $shift = $stmt->fetchColumn() ?: 'General';
+    }
+    
+    return $shift;
+}
+
+function table_exists(PDO $pdo, string $tableName): bool {
+    $stmt = $pdo->prepare('SHOW TABLES LIKE ?');
+    $stmt->execute([$tableName]);
+    return (bool)$stmt->fetchColumn();
+}
+
+function ensure_fuel_transaction_audit_table(PDO $pdo): void {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS fuel_transaction_audit (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        transaction_id VARCHAR(64) NOT NULL,
+        station_id INT NOT NULL,
+        fuel_type VARCHAR(100) NOT NULL,
+        previous_reading DECIMAL(10,2) NOT NULL,
+        present_reading DECIMAL(10,2) NOT NULL,
+        calibration DECIMAL(10,2) NOT NULL,
+        price_per_liter DECIMAL(10,2) NOT NULL,
+        liters_sold DECIMAL(10,2) NOT NULL,
+        total_amount DECIMAL(12,2) NOT NULL,
+        variance_liters DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+        variance_percent DECIMAL(8,2) NOT NULL DEFAULT 0.00,
+        staff_id INT NOT NULL,
+        staff_name VARCHAR(100) NOT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'pending',
+        action VARCHAR(100) NOT NULL,
+        timestamp DATETIME NOT NULL,
+        audit_data LONGTEXT NULL,
+        deleted_at DATETIME NULL,
+        deleted_by INT NULL,
+        INDEX idx_fuel_transaction_audit_txn (transaction_id),
+        INDEX idx_fuel_transaction_audit_station (station_id, timestamp),
+        INDEX idx_fuel_transaction_audit_staff (staff_id, timestamp)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
+function posted_decimal(string $field, ?float $fallback = null): float {
+    if (!array_key_exists($field, $_POST)) {
+        return $fallback ?? 0.0;
+    }
+
+    $raw = trim((string)$_POST[$field]);
+    if ($raw === '') {
+        return $fallback ?? 0.0;
+    }
+
+    if (!is_numeric($raw)) {
+        throw new Exception('Invalid numeric value for ' . $field . '.');
+    }
+
+    return (float)$raw;
+}
+
+try {
+    ensure_fuel_transaction_audit_table($pdo);
+    $pdo->beginTransaction();
+
+    $stmt = $pdo->prepare("
+        SELECT
+            fi.fuel_type,
+            COALESCE(last_tx.present_reading, 0) AS fallback_previous_reading,
+            COALESCE(fi.current_level, 0) AS current_level,
+            COALESCE(fi.latest_calibration, 0) AS default_calibration,
+            COALESCE(fi.price_per_liter, si.price, si.cost, ip.unit_cost, 0) AS default_price_per_liter
+        FROM fuel_inventory fi
+        LEFT JOIN (
+            SELECT ft.station_id, ft.fuel_type, ft.present_reading
+            FROM fuel_transactions ft
+            INNER JOIN (
+                SELECT station_id, fuel_type, MAX(transaction_date) AS latest_transaction_date
+                FROM fuel_transactions
+                GROUP BY station_id, fuel_type
+            ) latest
+                ON latest.station_id = ft.station_id
+               AND latest.fuel_type = ft.fuel_type
+               AND latest.latest_transaction_date = ft.transaction_date
+        ) last_tx
+            ON last_tx.station_id = fi.station_id
+           AND LOWER(TRIM(last_tx.fuel_type)) = LOWER(TRIM(fi.fuel_type))
+        LEFT JOIN inventory_products ip
+            ON LOWER(TRIM(ip.product_name)) = LOWER(TRIM(fi.fuel_type))
+           AND ip.category = 'Fuel'
+        LEFT JOIN station_inventory si
+            ON si.station_id = fi.station_id
+           AND si.product_id = ip.id
+        WHERE fi.station_id = ?
+          AND LOWER(TRIM(fi.fuel_type)) = LOWER(TRIM(?))
+        LIMIT 1
+    ");
+    $stmt->execute([$station_id, $_POST['fuel_type']]);
+    $fuel_data = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$fuel_data) {
+        throw new Exception('Invalid fuel type selected.');
+    }
+
+    $fuel_type = (string)$fuel_data['fuel_type'];
+    $previous_reading = posted_decimal('previous_reading', (float)$fuel_data['fallback_previous_reading']);
+    $current_level = (float)$fuel_data['current_level'];
+    $calibration = posted_decimal('calibration', (float)$fuel_data['default_calibration']);
+    $price_per_liter = posted_decimal('price_per_liter', (float)$fuel_data['default_price_per_liter']);
+    $present_reading = posted_decimal('present_reading');
+
+    if ($present_reading <= 0) {
+        throw new Exception('Present reading must be greater than 0.');
+    }
+
+    $minimum_present_reading = $previous_reading + $calibration;
+    if ($present_reading <= $minimum_present_reading) {
+        throw new Exception(
+            'Present reading must be greater than previous reading plus calibration (' .
+            number_format($minimum_present_reading, 2) . ').'
+        );
+    }
+
+    $liters_sold = round($present_reading - $previous_reading - $calibration, 2);
+    $total_amount = round($liters_sold * $price_per_liter, 2);
+
+    if ($liters_sold <= 0) {
+        throw new Exception('Invalid computation: liters sold must be greater than 0.');
+    }
+    if ($liters_sold > $current_level) {
+        throw new Exception('Variance alert: Liters sold (' . number_format($liters_sold, 2) . ' L) exceeds available stock (' . number_format($current_level, 2) . ' L). Available stock after transaction: ' . number_format(($current_level - $liters_sold), 2) . ' L');
+    }
+
+    $transaction_id = 'FUELREC_' . date('YmdHis') . '_' . $station_id . '_' . ($me['id'] ?? 0);
+    $shift_period = get_database_driven_shift_period($pdo);
+    $timestamp = date('Y-m-d H:i:s');
+
+    $stmt = $pdo->prepare("
+        INSERT INTO fuel_transactions (
+            transaction_id, station_id, pump_id, fuel_type, present_reading, previous_reading,
+            calibration, price_per_liter, liters_sold, total_amount,
+            shift_period, staff_id, transaction_date, status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ");
+    $stmt->execute([
+        $transaction_id,
+        $station_id,
+        $pump_id,
+        $fuel_type,
+        $present_reading,
+        $previous_reading,
+        $calibration,
+        $price_per_liter,
+        $liters_sold,
+        $total_amount,
+        $shift_period,
+        $me['id'],
+        $timestamp,
+        'pending'
+    ]);
+
+    $stmt = $pdo->prepare("
+        UPDATE fuel_inventory
+        SET current_level = current_level - ?,
+            last_updated = NOW()
+        WHERE station_id = ?
+          AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+    ");
+    $stmt->execute([$liters_sold, $station_id, $fuel_type]);
+
+    $stmt = $pdo->prepare("SELECT COALESCE(current_level, 0) FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) LIMIT 1");
+    $stmt->execute([$station_id, $fuel_type]);
+    $actual_stock = (float)$stmt->fetchColumn();
+
+    $expected_stock = round($current_level - $liters_sold, 2);
+    $variance_liters = round($actual_stock - $expected_stock, 2);
+    $variance_percent = $expected_stock > 0 ? round(($variance_liters / $expected_stock) * 100, 2) : 0.00;
+
+    if (table_exists($pdo, 'fuel_variance_reports') && abs($variance_liters) > 0.01) {
+        $stmt = $pdo->prepare("
+            INSERT INTO fuel_variance_reports (
+                station_id, report_date, fuel_type, expected_stock, actual_stock,
+                variance_liters, variance_percent, reason, status
+            ) VALUES (?, CURDATE(), ?, ?, ?, ?, ?, ?, 'Open')
+        ");
+        $stmt->execute([
+            $station_id,
+            $fuel_type,
+            $expected_stock,
+            $actual_stock,
+            $variance_liters,
+            $variance_percent,
+            'Auto-flagged during fuel transaction reconciliation entry'
+        ]);
+    }
+
+    $audit_data = [
+        'transaction_id' => $transaction_id,
+        'station_id' => $station_id,
+        'pump_id' => $pump_id,
+        'fuel_type' => $fuel_type,
+        'previous_reading' => $previous_reading,
+        'present_reading' => $present_reading,
+        'calibration' => $calibration,
+        'price_per_liter' => $price_per_liter,
+        'liters_sold' => $liters_sold,
+        'total_amount' => $total_amount,
+        'payment_type' => $_POST['payment_type'],
+        'expected_stock' => $expected_stock,
+        'actual_stock' => $actual_stock,
+        'variance_liters' => $variance_liters,
+        'variance_percent' => $variance_percent,
+        'staff_id' => $me['id'] ?? 0,
+        'staff_name' => $me['name'] ?? $me['username'] ?? 'Unknown',
+        'timestamp' => $timestamp,
+        'status' => 'pending',
+        'action' => 'created',
+    ];
+
+    $stmt = $pdo->prepare("
+        INSERT INTO fuel_transaction_audit (
+            transaction_id, station_id, fuel_type, previous_reading, present_reading,
+            calibration, price_per_liter, liters_sold, total_amount,
+            variance_liters, variance_percent, staff_id, staff_name,
+            status, action, timestamp, audit_data
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ");
+    $stmt->execute([
+        $transaction_id,
+        $station_id,
+        $fuel_type,
+        $previous_reading,
+        $present_reading,
+        $calibration,
+        $price_per_liter,
+        $liters_sold,
+        $total_amount,
+        $variance_liters,
+        $variance_percent,
+        $me['id'],
+        $me['name'] ?? $me['username'] ?? 'Unknown',
+        'pending',
+        'created',
+        $timestamp,
+        json_encode($audit_data),
+    ]);
+
+    if (function_exists('log_activity')) {
+        log_activity(
+            $pdo,
+            $me['id'],
+            'Fuel Reconciliation Entry',
+            'Submitted fuel reconciliation entry ' . $transaction_id . ' for ' . $fuel_type . ' (' . number_format($liters_sold, 2) . 'L, status pending validation)'
+        );
+    }
+
+    $pdo->commit();
+
+    $_SESSION['success'] = 'Fuel reconciliation entry submitted! Ref: ' . $transaction_id . ' | Pump: #' . $pump_id . ' | Fuel: ' . $fuel_type . ' | Liters Sold: ' . number_format($liters_sold, 2) . ' | Status: Pending validation';
+} catch (Throwable $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    $_SESSION['error'] = 'Error processing fuel reconciliation entry: ' . $e->getMessage();
+}
+
+header('Location: ../public/staff_transactions.php#fuel');
+exit;
+?>

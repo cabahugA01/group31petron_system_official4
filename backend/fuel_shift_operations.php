@@ -1,0 +1,268 @@
+<?php
+/**
+ * FUEL SHIFT OPERATIONS
+ * 
+ * Handles shift-end processing for fuel pump readings:
+ * 1. Approve all pending readings for a shift
+ * 2. Automatically deduct sales from fuel_inventory
+ * 3. Create immutable audit trail
+ */
+
+// Include the fuel audit logging module
+require_once __DIR__ . '/fuel_audit_logging.php';
+
+class FuelShiftOperations {
+    private $pdo;
+    private $user;
+    
+    public function __construct($pdo, $user) {
+        $this->pdo = $pdo;
+        $this->user = $user;
+    }
+    
+    /**
+     * Process all pump readings for shift-end
+     * Approves all pending readings and updates fuel_inventory stock
+     * 
+     * Flow:
+     * - Get all pending readings for today/station/shift
+     * - For each reading: calculate sales_liters and deduct from fuel_inventory
+     * - Mark reading as Approved
+     * - Log to fuel_inventory_logs
+     * - Return summary
+     */
+    public function process_shift_end($station_id, $shift, $manager_id) {
+        try {
+            // Validate inputs
+            if (!in_array($shift, ['first', 'second', 'second'])) {
+                return [
+                    'success' => false,
+                    'message' => '✗ Invalid shift: ' . $shift
+                ];
+            }
+            
+            // Fetch all pending readings for this shift
+            $stmt = $this->pdo->prepare("
+                SELECT 
+                    fdr.*,
+                    fp.fuel_type_id,
+                    p.id as product_id,
+                    p.name as fuel_name,
+                    fi.stock_level
+                FROM fuel_daily_readings fdr
+                JOIN fuel_pumps fp ON fdr.fuel_station_id = fp.id
+                JOIN products p ON fp.fuel_type_id = p.id
+                LEFT JOIN fuel_inventory fi ON fi.station_id = ? AND fi.product_id = p.id
+                WHERE fdr.station_id = ? 
+                AND fdr.shift = ? 
+                AND DATE(fdr.reading_date) = CURDATE()
+                AND fdr.status = 'Pending'
+                ORDER BY fp.pump_number
+            ");
+            
+            $stmt->execute([$station_id, $station_id, $shift]);
+            $readings = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            if (empty($readings)) {
+                return [
+                    'success' => true,
+                    'message' => '℃ No pending readings for this shift',
+                    'readings_processed' => 0,
+                    'total_liters_deducted' => 0,
+                    'summary' => []
+                ];
+            }
+            
+            // BEGIN TRANSACTION - all or nothing
+            $this->pdo->beginTransaction();
+            
+            try {
+                $total_liters_deducted = 0;
+                $summary = [];
+                
+                foreach ($readings as $reading) {
+                    // Calculate sales liters
+                    $sales_liters = $reading['current_reading'] - $reading['previous_reading'];
+                    
+                    if ($sales_liters < 0) {
+                        throw new Exception(
+                            "Invalid reading for pump {$reading['pump_number']}: " .
+                            "current ({$reading['current_reading']}) cannot be less than previous ({$reading['previous_reading']})"
+                        );
+                    }
+                    
+                    if ($sales_liters > 0) {
+                         // Check if fuel_inventory exists
+                         if (!$reading['product_id']) {
+                             throw new Exception("Fuel product not found for pump {$reading['pump_number']}");
+                         }
+                         
+                         $quantity_before = $reading['stock_level'] ?? 0;
+                           
+                           // UPDATE fuel_inventory - DEDUCT sales liters
+                           $stmt = $this->pdo->prepare("
+                               UPDATE fuel_inventory 
+                               SET stock_level = stock_level - ?
+                               WHERE station_id = ? AND product_id = ?
+                           ");
+                           
+                           $stmt->execute([
+                               $sales_liters,
+                               $station_id,
+                               $reading['product_id']
+                           ]);
+                           
+                           // Get new stock level
+                           $stmt = $this->pdo->prepare("
+                               SELECT stock_level FROM fuel_inventory 
+                               WHERE station_id = ? AND product_id = ?
+                           ");
+                           $stmt->execute([$station_id, $reading['product_id']]);
+                           $updated = $stmt->fetch(PDO::FETCH_ASSOC);
+                           $quantity_after = $updated['stock_level'] ?? 0;
+                           
+                           // Log to fuel_inventory_logs via audit logging module
+                           log_fuel_inventory_action(
+                               $this->pdo,
+                               $manager_id,
+                               'reading_approved',
+                               'fuel_daily_reading',
+                               $reading['id'],
+                               $station_id,
+                               $reading['product_id'],
+                               [
+                                   'pump_number' => $reading['pump_number'],
+                                   'fuel_type' => $reading['fuel_name'],
+                                   'sales_liters' => $sales_liters,
+                                   'shift' => $reading['shift'],
+                                   'quantity_before' => $quantity_before,
+                                   'quantity_after' => $quantity_after,
+                                   'quantity_change' => -$sales_liters,
+                                   'status' => 'Approved'
+                               ]
+                           );
+                           
+                           $total_liters_deducted += $sales_liters;
+                           
+                           $summary[] = [
+                               'pump_number' => $reading['pump_number'],
+                               'fuel_type' => $reading['fuel_name'],
+                               'sales_liters' => $sales_liters,
+                               'stock_before' => $quantity_before,
+                               'stock_after' => $quantity_after
+                           ];
+                    }
+                    
+                    // Mark reading as Approved
+                    $stmt = $this->pdo->prepare("
+                        UPDATE fuel_daily_readings 
+                        SET status = 'Approved', 
+                            approved_by = ?,
+                            approved_at = NOW()
+                        WHERE id = ?
+                    ");
+                    
+                    $stmt->execute([$manager_id, $reading['id']]);
+                }
+                
+                // Commit transaction
+                $this->pdo->commit();
+                
+                // Log summary to activity logs
+                log_activity(
+                    $this->pdo,
+                    $manager_id,
+                    'Shift End Processed',
+                    "Processed {$shift} shift ({$station_id}): Approved " . count($readings) . 
+                    " readings, deducted {$total_liters_deducted}L from inventory",
+                    'fuel_management'
+                );
+                
+                return [
+                    'success' => true,
+                    'message' => "✓ Shift processing complete. Deducted {$total_liters_deducted}L",
+                    'readings_processed' => count($readings),
+                    'total_liters_deducted' => $total_liters_deducted,
+                    'summary' => $summary
+                ];
+                
+            } catch (Exception $e) {
+                $this->pdo->rollBack();
+                throw $e;
+            }
+            
+        } catch (Exception $e) {
+            return [
+                'success' => false,
+                'message' => "✗ Error processing shift: " . $e->getMessage()
+            ];
+        }
+    }
+    
+    /**
+     * Get pending readings for a shift (for shift-end review)
+     */
+    public function get_pending_readings($station_id, $shift) {
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT 
+                    fdr.*,
+                    fp.pump_number,
+                    ft.name as fuel_type,
+                    u.name as recorded_by_name
+                FROM fuel_daily_readings fdr
+                JOIN fuel_pumps fp ON fdr.fuel_station_id = fp.id
+                JOIN fuel_types ft ON fp.fuel_type_id = ft.id
+                LEFT JOIN users u ON fdr.user_id = u.id
+                WHERE fdr.station_id = ? 
+                AND fdr.shift = ? 
+                AND DATE(fdr.reading_date) = CURDATE()
+                AND fdr.status = 'Pending'
+                ORDER BY fp.pump_number
+            ");
+            
+            $stmt->execute([$station_id, $shift]);
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            return [];
+        }
+    }
+    
+    /**
+     * Get approved readings for a shift (for shift summary)
+     */
+    public function get_shift_summary($station_id, $shift, $date = null) {
+        if (!$date) $date = date('Y-m-d');
+        
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT 
+                    fdr.*,
+                    fp.pump_number,
+                    ft.name as fuel_type,
+                    u_recorded.name as recorded_by_name,
+                    u_approved.name as approved_by_name,
+                    (SELECT SUM(quantity_change) 
+                     FROM fuel_inventory_logs 
+                     WHERE reference_type = 'fuel_daily_reading' 
+                     AND reference_id = fdr.id) as total_stock_change
+                FROM fuel_daily_readings fdr
+                JOIN fuel_pumps fp ON fdr.fuel_station_id = fp.id
+                JOIN fuel_types ft ON fp.fuel_type_id = ft.id
+                LEFT JOIN users u_recorded ON fdr.user_id = u_recorded.id
+                LEFT JOIN users u_approved ON fdr.approved_by = u_approved.id
+                WHERE fdr.station_id = ? 
+                AND fdr.shift = ? 
+                AND DATE(fdr.reading_date) = ?
+                AND fdr.status = 'Approved'
+                ORDER BY fp.pump_number
+            ");
+            
+            $stmt->execute([$station_id, $shift, $date]);
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            return [];
+        }
+    }
+}
+?>

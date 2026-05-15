@@ -1,0 +1,338 @@
+﻿<?php
+// View Tables Tab - Dynamic table listing with search/filter
+global $pdo, $config;
+
+$tablesByCategory = [];
+$tableInfoMap = [];
+
+$allTables = array_column($config['tables'] ?? [], 'table_name');
+if (!empty($allTables)) {
+    $placeholders = implode(',', array_fill(0, count($allTables), '?'));
+    try {
+        $stmt = $pdo->prepare("SELECT TABLE_NAME AS table_name, TABLE_COMMENT AS description, TABLE_ROWS AS estimated_rows FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ($placeholders)");
+        $stmt->execute($allTables);
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $tableInfoMap[$row['table_name']] = [
+                'description' => $row['description'],
+                'estimated_rows' => $row['estimated_rows'] ?? 0
+            ];
+        }
+    } catch (Exception $e) {
+        error_log('Failed to load table info: ' . $e->getMessage());
+    }
+}
+
+foreach ($config['tables'] as $table) {
+    $category = trim($table['category'] ?: 'general');
+    $tableName = $table['table_name'];
+
+    $description = $table['description'] ?: ($tableInfoMap[$tableName]['description'] ?? 'No description available');
+    $estimatedRows = $tableInfoMap[$tableName]['estimated_rows'] ?? 0;
+
+    $keyColumns = [];
+    try {
+        $stmt = $pdo->prepare("DESCRIBE `{$tableName}`");
+        $stmt->execute();
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $keyColumns[] = $row['Field'];
+            if (count($keyColumns) >= 5) {
+                break;
+            }
+        }
+    } catch (Exception $e) {
+        $keyColumns = [];
+    }
+
+    $tablesByCategory[$category][] = [
+        'table_name' => $tableName,
+        'display_name' => $table['display_name'] ?: $tableName,
+        'description' => $description,
+        'estimated_rows' => $estimatedRows,
+        'key_columns' => $keyColumns
+    ];
+}
+?>
+
+<div class="search-filter-bar">
+    <input type="text" class="search-input" id="tableSearch" placeholder="Search tables...">
+    <select class="filter-select" id="categoryFilter">
+        <option value="">All Categories</option>
+        <?php foreach (array_keys($tablesByCategory) as $category): ?>
+            <option value="<?php echo htmlspecialchars($category); ?>"><?php echo htmlspecialchars(ucfirst($category)); ?></option>
+        <?php endforeach; ?>
+    </select>
+    <button class="btn-search" onclick="filterTables()">Search</button>
+</div>
+
+<?php if (empty($tablesByCategory)): ?>
+    <div class="alert alert-warning" style="margin-top: 20px;">
+        <i class="fas fa-exclamation-triangle"></i>
+        No configured tables were found. Make sure database management settings are initialized.
+    </div>
+<?php endif; ?>
+
+<?php foreach ($tablesByCategory as $category => $tables): ?>
+    <div class="table-category" data-category="<?php echo htmlspecialchars($category); ?>">
+        <h3><i class="fas fa-folder"></i> <?php echo htmlspecialchars(ucfirst($category)); ?></h3>
+        <div class="table-grid">
+            <?php foreach ($tables as $table): ?>
+                <div class="table-card" onclick="loadTableData('<?php echo htmlspecialchars($table['table_name']); ?>', '<?php echo htmlspecialchars($category); ?>')">
+                    <h4><i class="fas fa-table"></i> <?php echo htmlspecialchars($table['display_name']); ?></h4>
+                    <p><?php echo htmlspecialchars($table['description']); ?></p>
+                    <div class="table-columns">
+                        <strong>Key Columns:</strong>
+                        <div class="column-list">
+                            <?php foreach ($table['key_columns'] as $column): ?>
+                                <span class="column-tag"><?php echo htmlspecialchars($column); ?></span>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                    <div class="table-meta">
+                        <span class="table-info">
+                            <i class="fas fa-search" title="Searchable"></i>
+                            <i class="fas fa-filter" title="Filterable"></i>
+                            <i class="fas fa-download" title="Exportable"></i>
+                            <span class="table-rows" title="Estimated rows">
+                                <i class="fas fa-database"></i>
+                                <?php echo number_format($table['estimated_rows'] ?? 0); ?> rows
+                            </span>
+                        </span>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+<?php endforeach; ?>
+
+<div id="tableDataContainer" style="display: none;">
+    <h3 id="tableDataTitle"></h3>
+    <div id="tableDataContent"></div>
+</div>
+
+<script>
+function filterTables() {
+    const searchTerm = document.getElementById('tableSearch').value.toLowerCase();
+    const categoryFilter = document.getElementById('categoryFilter').value;
+
+    document.querySelectorAll('.table-category').forEach(category => {
+        const categoryName = category.dataset.category;
+        const shouldShowCategory = (!categoryFilter || categoryName === categoryFilter);
+
+        let hasVisibleTables = false;
+        category.querySelectorAll('.table-card').forEach(card => {
+            const tableName = card.textContent.toLowerCase();
+            const shouldShowTable = shouldShowCategory && (!searchTerm || tableName.includes(searchTerm));
+            card.style.display = shouldShowTable ? 'block' : 'none';
+            if (shouldShowTable) hasVisibleTables = true;
+        });
+
+        category.style.display = hasVisibleTables ? 'block' : 'none';
+    });
+}
+
+function loadTableData(tableName, category) {
+    const container = document.getElementById('tableDataContainer');
+    const title = document.getElementById('tableDataTitle');
+    const content = document.getElementById('tableDataContent');
+
+    container.style.display = 'block';
+    title.innerHTML = `<i class="fas fa-table"></i> ${tableName} - Loading...`;
+    content.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i> Loading table data...</div>';
+
+    fetch(`../backend/api/database_tables.php?action=view&table=${encodeURIComponent(tableName)}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayTableData(tableName, data.data);
+            } else {
+                content.innerHTML = `<div class="alert alert-danger">Error: ${data.message}</div>`;
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            content.innerHTML = `<div class="alert alert-danger">Error loading table data: ${error.message}</div>`;
+        });
+}
+
+function displayTableData(tableName, data) {
+    const container = document.getElementById('tableDataContainer');
+    const title = document.getElementById('tableDataTitle');
+    const content = document.getElementById('tableDataContent');
+
+    title.innerHTML = `<i class="fas fa-table"></i> ${tableName} (${data.total_count || 0} records)`;
+
+    if (data.columns && data.rows) {
+        let html = `
+            <div class="table-search-bar" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px;">
+                    <input type="text" id="tableDataSearch" placeholder="Search records..." style="padding: 8px; border: 1px solid #ced4da; border-radius: 4px; flex: 1; min-width: 200px;">
+                    <button onclick="searchTableData()" class="btn-search">Search</button>
+                    <button onclick="exportTableData('${tableName}')" class="btn-execute"><i class="fas fa-download"></i> Export CSV</button>
+                    <button onclick="exportTableData('${tableName}', 'json')" class="btn-execute"><i class="fas fa-file-code"></i> Export JSON</button>
+                </div>
+                <div style="display: flex; gap: 15px; align-items: center; font-size: 12px; color: #6c757d;">
+                    <span><i class="fas fa-columns"></i> ${data.columns.length} columns</span>
+                    <span><i class="fas fa-database"></i> ${data.total_count} total records</span>
+                    <span><i class="fas fa-eye"></i> Showing ${data.rows.length} records</span>
+                </div>
+            </div>
+        `;
+
+        html += '<div class="table-responsive"><table class="table table-striped table-bordered table-hover"><thead class="thead-dark"><tr>';
+        data.columns.forEach(col => {
+            html += `<th style="white-space: nowrap; font-weight: 600;">${col}</th>`;
+        });
+        html += '</tr></thead><tbody>';
+
+        data.rows.forEach(row => {
+            html += '<tr>';
+            Object.values(row).forEach(cell => {
+                let value = cell;
+                if (cell === null) {
+                    value = '<em style="color: #999; font-style: italic;">null</em>';
+                } else if (cell === '') {
+                    value = '<em style="color: #999; font-style: italic;">empty</em>';
+                } else if (typeof cell === 'string' && cell.length > 100) {
+                    const escaped = cell.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    value = `<span title="${escaped}">${escaped.substring(0, 100)}...</span>`;
+                } else {
+                    value = String(cell).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                }
+                html += `<td style="vertical-align: middle; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px;">${value}</td>`;
+            });
+            html += '</tr>';
+        });
+
+        html += '</tbody></table></div>';
+
+        if (data.total_count > (data.limit || 50)) {
+            const totalPages = Math.ceil(data.total_count / (data.limit || 50));
+            const currentPage = data.page || 1;
+            html += `
+                <div class="pagination" style="margin-top: 20px; display: flex; justify-content: center; align-items: center; gap: 10px;">
+                    <button onclick="changePage(${currentPage - 1})" class="btn-search" ${currentPage <= 1 ? 'disabled' : ''}>
+                        <i class="fas fa-chevron-left"></i> Previous
+                    </button>
+                    <span style="padding: 8px 16px; background: #f8f9fa; border-radius: 4px; font-weight: 500;">Page ${currentPage} of ${totalPages} (${data.total_count} total records)</span>
+                    <button onclick="changePage(${currentPage + 1})" class="btn-search" ${currentPage >= totalPages ? 'disabled' : ''}>
+                        Next <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            `;
+        }
+
+        html += `
+            <div class="alert alert-info" style="margin-top: 20px;">
+                <i class="fas fa-info-circle"></i> <strong>Transparency View:</strong> This is a read-only view for audit purposes. No modifications can be made to this data.
+            </div>
+        `;
+
+        content.innerHTML = html;
+    } else {
+        content.innerHTML = '<div class="alert alert-info"><i class="fas fa-info-circle"></i> No data available in this table.</div>';
+    }
+
+    container.style.display = 'block';
+    container.scrollIntoView({ behavior: 'smooth' });
+}
+
+function searchTableData() {
+    const tableName = document.getElementById('tableDataTitle').textContent.replace(/.*\s+-\s+/, '').replace(/\s+\(.*$/, '');
+    const searchTerm = document.getElementById('tableDataSearch').value;
+    let url = `../backend/api/database_tables.php?action=view&table=${encodeURIComponent(tableName)}`;
+    if (searchTerm) {
+        url += `&search=${encodeURIComponent(searchTerm)}`;
+    }
+
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayTableData(tableName, data.data);
+            } else {
+                document.getElementById('tableDataContent').innerHTML = `<div class="alert alert-danger">Search error: ${data.message}</div>`;
+            }
+        })
+        .catch(error => {
+            console.error('Search error:', error);
+            document.getElementById('tableDataContent').innerHTML = `<div class="alert alert-danger">Search error: ${error.message}</div>`;
+        });
+}
+
+function changePage(page) {
+    const tableName = document.getElementById('tableDataTitle').textContent.replace(/.*\s+-\s+/, '').replace(/\s+\(.*$/, '');
+    const searchTerm = document.getElementById('tableDataSearch').value;
+    let url = `../backend/api/database_tables.php?action=view&table=${encodeURIComponent(tableName)}&page=${page}`;
+    if (searchTerm) {
+        url += `&search=${encodeURIComponent(searchTerm)}`;
+    }
+
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayTableData(tableName, data.data);
+            }
+        })
+        .catch(error => {
+            console.error('Page change error:', error);
+        });
+}
+
+function exportTableData(tableName, format = 'csv') {
+    if (!format || !['csv', 'json'].includes(format.toLowerCase())) {
+        format = prompt('Export format (csv/json):', 'csv');
+        if (!format || !['csv', 'json'].includes(format.toLowerCase())) {
+            return;
+        }
+    }
+
+    window.open(`../backend/api/database_tables.php?action=export&table=${encodeURIComponent(tableName)}&format=${encodeURIComponent(format)}`, '_blank');
+}
+</script>
+
+<style>
+.table-columns {
+    margin: 10px 0;
+    font-size: 12px;
+}
+
+.table-columns strong {
+    color: #495057;
+    display: block;
+    margin-bottom: 5px;
+}
+
+.column-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.column-tag {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+    display: inline-block;
+}
+
+.table-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.table-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.table-rows {
+    background: #f8f9fa;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    color: #6c757d;
+}
+</style>

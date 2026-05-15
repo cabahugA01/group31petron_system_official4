@@ -1,0 +1,478 @@
+﻿<?php
+$page_id = 'pending_validation';
+require_once __DIR__ . '/../backend/lib.php';
+require_once __DIR__ . '/../public/db_connect.php';
+require_login();
+
+$me = current_user();
+$station_id = user_station_id();
+$role = role_key($me['role'] ?? '');
+
+$allowed_roles = ['manager', 'admin', 'superadmin'];
+if (!in_array($role, $allowed_roles)) {
+    $_SESSION['error'] = 'Access denied. Manager access required for Transactions Oversight.';
+    header('Location: dashboard.php');
+    exit;
+}
+
+// Handle transaction actions
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? '';
+
+    if ($action === 'approve_transaction') {
+        $transaction_id = $_POST['transaction_id'] ?? '';
+        $transaction_type = $_POST['transaction_type'] ?? '';
+        try {
+            $updated = false;
+            if ($transaction_type === 'fuel') {
+                if (!$station_id) {
+                    $stmt = $pdo->prepare("SELECT station_id FROM fuel_transactions WHERE transaction_id = ?");
+                    $stmt->execute([$transaction_id]);
+                    $station_id = $stmt->fetchColumn();
+                }
+                $stmt = $pdo->prepare("UPDATE fuel_transactions SET status = 'Verified', manager_id = ?, action = 'Approve' WHERE transaction_id = ? AND station_id = ?");
+                $stmt->execute([$me['id'], $transaction_id, $station_id]);
+                $updated = $stmt->rowCount() > 0;
+            } else {
+                if (!$station_id) {
+                    $stmt = $pdo->prepare("SELECT station_id FROM merchandise_transactions WHERE id = ?");
+                    $stmt->execute([$transaction_id]);
+                    $station_id = $stmt->fetchColumn();
+                }
+                $stmt = $pdo->prepare("UPDATE merchandise_transactions SET validation_status = 'Verified', validated_by = ?, validated_at = NOW() WHERE id = ? AND station_id = ?");
+                $stmt->execute([$me['id'], $transaction_id, $station_id]);
+                $updated = $stmt->rowCount() > 0;
+            }
+            if ($updated) {
+                try {
+                    $stmt = $pdo->prepare("INSERT INTO audit_trail (transaction_id, manager_id, action_type, station_id) VALUES (?, ?, 'Approve', ?)");
+                    $stmt->execute([$transaction_id, $me['id'], $station_id]);
+                } catch(Exception $ae) {}
+                $_SESSION['success'] = 'Transaction approved/verified successfully';
+            } else {
+                $_SESSION['error'] = 'Transaction not found or already processed';
+            }
+        } catch (Exception $e) {
+            $_SESSION['error'] = 'Error approving transaction: ' . $e->getMessage();
+        }
+        header('Location: transactions_pending.php');
+        exit;
+    }
+
+    if ($action === 'reject_transaction') {
+        $transaction_id = $_POST['transaction_id'] ?? '';
+        $transaction_type = $_POST['transaction_type'] ?? '';
+        $reason = $_POST['reason'] ?? '';
+        try {
+            $updated = false;
+            if ($transaction_type === 'fuel') {
+                if (!$station_id) {
+                    $stmt = $pdo->prepare("SELECT station_id FROM fuel_transactions WHERE transaction_id = ?");
+                    $stmt->execute([$transaction_id]);
+                    $station_id = $stmt->fetchColumn();
+                }
+                $stmt = $pdo->prepare("UPDATE fuel_transactions SET status = 'Rejected', manager_id = ?, action = 'Reject', reason = ? WHERE transaction_id = ? AND station_id = ?");
+                $stmt->execute([$me['id'], $reason, $transaction_id, $station_id]);
+                $updated = $stmt->rowCount() > 0;
+            } else {
+                if (!$station_id) {
+                    $stmt = $pdo->prepare("SELECT station_id FROM merchandise_transactions WHERE id = ?");
+                    $stmt->execute([$transaction_id]);
+                    $station_id = $stmt->fetchColumn();
+                }
+                $stmt = $pdo->prepare("UPDATE merchandise_transactions SET validation_status = 'Rejected', validated_by = ?, validated_at = NOW(), rejection_reason = ? WHERE id = ? AND station_id = ?");
+                $stmt->execute([$me['id'], $reason, $transaction_id, $station_id]);
+                $updated = $stmt->rowCount() > 0;
+            }
+            if ($updated) {
+                try {
+                    $stmt = $pdo->prepare("INSERT INTO audit_trail (transaction_id, manager_id, action_type, new_value, station_id) VALUES (?, ?, 'Reject', ?, ?)");
+                    $stmt->execute([$transaction_id, $me['id'], $reason, $station_id]);
+                } catch(Exception $ae) {}
+                $_SESSION['success'] = 'Transaction rejected successfully';
+            } else {
+                $_SESSION['error'] = 'Transaction not found or already processed';
+            }
+        } catch (Exception $e) {
+            $_SESSION['error'] = 'Error rejecting transaction: ' . $e->getMessage();
+        }
+        header('Location: transactions_pending.php');
+        exit;
+    }
+
+    if ($action === 'adjust_transaction') {
+        $transaction_id = $_POST['transaction_id'] ?? '';
+        $transaction_type = $_POST['transaction_type'] ?? '';
+        $new_value = $_POST['new_value'] ?? '';
+        $remarks = $_POST['remarks'] ?? '';
+        try {
+            $updated = false;
+            $old_amount = 0;
+            if ($transaction_type === 'fuel') {
+                if (!$station_id) {
+                    $stmt = $pdo->prepare("SELECT station_id FROM fuel_transactions WHERE transaction_id = ?");
+                    $stmt->execute([$transaction_id]);
+                    $station_id = $stmt->fetchColumn();
+                }
+                $stmt = $pdo->prepare("SELECT total_amount FROM fuel_transactions WHERE transaction_id = ? AND station_id = ?");
+                $stmt->execute([$transaction_id, $station_id]);
+                $old_amount = $stmt->fetchColumn();
+                $stmt = $pdo->prepare("UPDATE fuel_transactions SET status = 'Adjusted', total_amount = ?, notes = ?, manager_id = ? WHERE transaction_id = ? AND station_id = ?");
+                $stmt->execute([$new_value, $remarks, $me['id'], $transaction_id, $station_id]);
+                $updated = $stmt->rowCount() > 0;
+            } else {
+                if (!$station_id) {
+                    $stmt = $pdo->prepare("SELECT station_id FROM merchandise_transactions WHERE id = ?");
+                    $stmt->execute([$transaction_id]);
+                    $station_id = $stmt->fetchColumn();
+                }
+                $stmt = $pdo->prepare("SELECT total_amount FROM merchandise_transactions WHERE id = ? AND station_id = ?");
+                $stmt->execute([$transaction_id, $station_id]);
+                $old_amount = $stmt->fetchColumn();
+                $stmt = $pdo->prepare("UPDATE merchandise_transactions SET validation_status = 'Adjusted', total_amount = ?, adjustment_reason = ?, validated_by = ?, validated_at = NOW() WHERE id = ? AND station_id = ?");
+                $stmt->execute([$new_value, $remarks, $me['id'], $transaction_id, $station_id]);
+                $updated = $stmt->rowCount() > 0;
+            }
+            if ($updated) {
+                try {
+                    $old_val = json_encode(['total_amount' => $old_amount]);
+                    $new_val = json_encode(['total_amount' => $new_value, 'remarks' => $remarks]);
+                    $stmt = $pdo->prepare("INSERT INTO audit_trail (transaction_id, manager_id, action_type, old_value, new_value, station_id) VALUES (?, ?, 'Adjust', ?, ?, ?)");
+                    $stmt->execute([$transaction_id, $me['id'], $old_val, $new_val, $station_id]);
+                } catch(Exception $ae) {}
+                $_SESSION['success'] = 'Transaction adjusted successfully';
+            } else {
+                $_SESSION['error'] = 'Transaction not found or already processed';
+            }
+        } catch (Exception $e) {
+            $_SESSION['error'] = 'Error adjusting transaction: ' . $e->getMessage();
+        }
+        header('Location: transactions_pending.php');
+        exit;
+    }
+}
+
+// Get pending transactions
+$pending_transactions = [];
+try {
+    $fuel_sql = "
+        SELECT
+            ft.transaction_id,
+            'Fuel' as category,
+            ft.fuel_type as product_name,
+            ft.total_amount,
+            ft.liters_sold as quantity,
+            ft.price_per_liter as unit_price,
+            ft.created_at,
+            u.name as staff_name,
+            ft.status,
+            'fuel' as transaction_type
+        FROM fuel_transactions ft
+        LEFT JOIN users u ON ft.staff_id = u.id
+        WHERE ft.station_id = ? AND ft.status IN ('Pending','Pending Validation','pending','pending validation')
+    ";
+    $merch_sql = "
+        SELECT
+            mt.id as transaction_id,
+            COALESCE(mti.category, 'Merchandise') as category,
+            COALESCE(mti.product_name, 'Unknown Product') as product_name,
+            mt.total_amount,
+            COALESCE(mti.quantity, 0) as quantity,
+            COALESCE(mti.unit_price, 0.00) AS unit_price,
+            mt.created_at,
+            u.name as staff_name,
+            mt.validation_status as status,
+            'merchandise' as transaction_type
+        FROM merchandise_transactions mt
+        LEFT JOIN users u ON mt.staff_id = u.id
+        LEFT JOIN merchandise_transaction_items mti ON mt.id = mti.transaction_id
+        WHERE mt.station_id = ? AND mt.validation_status IN ('Pending','Pending Validation','pending','pending validation')
+    ";
+    $combined_sql = "($fuel_sql) UNION ALL ($merch_sql) ORDER BY created_at DESC";
+    $stmt = $pdo->prepare($combined_sql);
+    $stmt->execute([$station_id, $station_id]);
+    $pending_transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    $pending_transactions = [];
+}
+
+include __DIR__ . '/../partials/header.php';
+?>
+
+<div class="page-head">
+    <div>
+        <h1 class="h1"><i class="fas fa-clock"></i> Pending Validation</h1>
+        <div class="sub">Transactions awaiting manager approval and validation</div>
+    </div>
+    <div class="actions">
+        <button onclick="location.reload()" class="btn-secondary"><i class="fas fa-sync"></i> Refresh</button>
+        <a href="transactions.php" class="btn-primary"><i class="fas fa-arrow-left"></i> Back to Transactions</a>
+    </div>
+</div>
+
+<?php if (isset($_SESSION['success'])): ?>
+<div style="background:#d4edda;color:#155724;padding:12px 16px;border-radius:8px;margin-bottom:16px;">
+    <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($_SESSION['success']); unset($_SESSION['success']); ?>
+</div>
+<?php endif; ?>
+<?php if (isset($_SESSION['error'])): ?>
+<div style="background:#f8d7da;color:#721c24;padding:12px 16px;border-radius:8px;margin-bottom:16px;">
+    <i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($_SESSION['error']); unset($_SESSION['error']); ?>
+</div>
+<?php endif; ?>
+
+<div class="card" style="padding:20px;margin-bottom:20px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+        <h3 style="margin:0;"><i class="fas fa-clock" style="color:#ffc107;"></i> Pending Validation Summary</h3>
+        <div style="text-align:center;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px 24px;">
+            <span style="font-size:36px;font-weight:700;color:#856404;display:block;"><?php echo count($pending_transactions); ?></span>
+            <span style="font-size:14px;color:#856404;font-weight:600;"><?php echo count($pending_transactions) == 1 ? 'Transaction' : 'Transactions'; ?> Pending Validation</span>
+        </div>
+    </div>
+</div>
+
+<div class="card" style="padding:0;">
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Transaction ID</th>
+                    <th>Staff</th>
+                    <th>Type</th>
+                    <th>Product</th>
+                    <th>Quantity</th>
+                    <th>Unit Price</th>
+                    <th>Total Amount</th>
+                    <th>Date/Time</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach($pending_transactions as $t): ?>
+                <?php
+                    $isFuel = ($t['transaction_type'] === 'fuel');
+                    $txnIdJs = addslashes($t['transaction_id']);
+                    $txnTypeJs = $t['transaction_type'];
+                    $productJs = addslashes($t['product_name']);
+                    $totalJs = number_format($t['total_amount'], 2);
+                    $dateJs = addslashes(date('M d, Y H:i', strtotime($t['created_at'])));
+                    $staffJs = addslashes($t['staff_name']);
+                    $qtyJs = number_format($t['quantity'], 2);
+                    $unitJs = number_format($t['unit_price'], 2);
+                ?>
+                <tr>
+                    <td>#<?php echo htmlspecialchars($t['transaction_id']); ?></td>
+                    <td><?php echo htmlspecialchars($t['staff_name']); ?></td>
+                    <td>
+                        <span class="badge" style="background:<?php echo $isFuel ? '#dc3545' : '#007bff'; ?>;color:white;padding:4px 8px;border-radius:4px;font-weight:600;">
+                            <?php echo $isFuel ? 'Fuel' : 'Merchandise'; ?>
+                        </span>
+                    </td>
+                    <td><?php echo htmlspecialchars($t['product_name']); ?></td>
+                    <td><?php echo number_format($t['quantity'], 2); ?><?php echo $isFuel ? ' L' : ''; ?></td>
+                    <td>&#8369;<?php echo number_format($t['unit_price'], 2); ?></td>
+                    <td style="font-weight:bold;">&#8369;<?php echo number_format($t['total_amount'], 2); ?></td>
+                    <td><?php echo date('M d, H:i', strtotime($t['created_at'])); ?></td>
+                    <td>
+                        <div style="display:flex;flex-wrap:wrap;gap:4px;">
+                            <button class="btn-action btn-view" onclick="viewDetails('<?php echo $txnIdJs; ?>','<?php echo $txnTypeJs; ?>','<?php echo $productJs; ?>','<?php echo $qtyJs; ?>','<?php echo $unitJs; ?>','<?php echo $totalJs; ?>','<?php echo $staffJs; ?>','<?php echo $dateJs; ?>')">
+                                <i class="fas fa-search"></i> View
+                            </button>
+                            <form method="POST" style="display:inline;" onsubmit="return confirm('Approve this transaction?');">
+                                <input type="hidden" name="action" value="approve_transaction">
+                                <input type="hidden" name="transaction_id" value="<?php echo htmlspecialchars($t['transaction_id']); ?>">
+                                <input type="hidden" name="transaction_type" value="<?php echo $txnTypeJs; ?>">
+                                <button type="submit" class="btn-action btn-approve"><i class="fas fa-check"></i> Approve</button>
+                            </form>
+                            <button class="btn-action btn-reject" onclick="openRejectModal('<?php echo $txnIdJs; ?>','<?php echo $txnTypeJs; ?>')">
+                                <i class="fas fa-times"></i> Reject
+                            </button>
+                            <button class="btn-action btn-adjust" onclick="openAdjustModal('<?php echo $txnIdJs; ?>','<?php echo $txnTypeJs; ?>','<?php echo $totalJs; ?>')">
+                                <i class="fas fa-edit"></i> Adjust
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+                <?php if(empty($pending_transactions)): ?>
+                <tr><td colspan="9" style="text-align:center;padding:40px;color:#666;">
+                    <i class="fas fa-check-circle" style="font-size:40px;display:block;margin-bottom:10px;color:#28a745;"></i>
+                    No pending transactions found.<br>
+                    <small>All transactions have been processed and validated.</small>
+                </td></tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- View Details Modal -->
+<div id="viewDetailsModal" class="txn-modal" onclick="if(event.target===this)closeViewModal()">
+    <div class="txn-modal-content">
+        <div class="txn-modal-header">
+            <h3><i class="fas fa-search"></i> Transaction Details</h3>
+            <button class="txn-close" onclick="closeViewModal()">&times;</button>
+        </div>
+        <div class="txn-modal-body">
+            <div class="detail-grid">
+                <div class="detail-item"><span class="detail-label">Transaction ID</span><span class="detail-value" id="vd_id"></span></div>
+                <div class="detail-item"><span class="detail-label">Type</span><span class="detail-value" id="vd_type"></span></div>
+                <div class="detail-item"><span class="detail-label">Staff</span><span class="detail-value" id="vd_staff"></span></div>
+                <div class="detail-item"><span class="detail-label">Product</span><span class="detail-value" id="vd_product"></span></div>
+                <div class="detail-item"><span class="detail-label">Quantity</span><span class="detail-value" id="vd_qty"></span></div>
+                <div class="detail-item"><span class="detail-label">Unit Price</span><span class="detail-value" id="vd_unit"></span></div>
+                <div class="detail-item"><span class="detail-label">Total Amount</span><span class="detail-value" id="vd_total" style="font-weight:bold;font-size:16px;"></span></div>
+                <div class="detail-item"><span class="detail-label">Date/Time</span><span class="detail-value" id="vd_date"></span></div>
+            </div>
+        </div>
+        <div class="txn-modal-footer">
+            <button class="btn-secondary" onclick="closeViewModal()"><i class="fas fa-times"></i> Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Reject Modal -->
+<div id="rejectModal" class="txn-modal" onclick="if(event.target===this)closeRejectModal()">
+    <div class="txn-modal-content" style="max-width:480px;">
+        <div class="txn-modal-header" style="background:#dc3545;border-color:#dc3545;">
+            <h3><i class="fas fa-times-circle"></i> Reject Transaction</h3>
+            <button class="txn-close" onclick="closeRejectModal()">&times;</button>
+        </div>
+        <form method="POST" onsubmit="return validateReject()">
+            <div class="txn-modal-body">
+                <input type="hidden" name="action" value="reject_transaction">
+                <input type="hidden" id="reject_txn_id" name="transaction_id">
+                <input type="hidden" id="reject_txn_type" name="transaction_type">
+                <div class="form-group">
+                    <label class="form-label">Rejection Reason <span style="color:red;">*</span></label>
+                    <textarea id="reject_reason" name="reason" class="form-control" rows="4" placeholder="Enter reason for rejection..." required></textarea>
+                </div>
+            </div>
+            <div class="txn-modal-footer">
+                <button type="submit" class="btn-danger"><i class="fas fa-times"></i> Confirm Reject</button>
+                <button type="button" class="btn-secondary" onclick="closeRejectModal()">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Adjust Modal -->
+<div id="adjustModal" class="txn-modal" onclick="if(event.target===this)closeAdjustModal()">
+    <div class="txn-modal-content" style="max-width:500px;">
+        <div class="txn-modal-header" style="background:#fd7e14;border-color:#fd7e14;">
+            <h3><i class="fas fa-edit"></i> Adjust Transaction</h3>
+            <button class="txn-close" onclick="closeAdjustModal()">&times;</button>
+        </div>
+        <form method="POST" onsubmit="return validateAdjust()">
+            <div class="txn-modal-body">
+                <input type="hidden" name="action" value="adjust_transaction">
+                <input type="hidden" id="adjust_txn_id" name="transaction_id">
+                <input type="hidden" id="adjust_txn_type" name="transaction_type">
+                <div class="form-group">
+                    <label class="form-label">Current Total Amount</label>
+                    <input type="text" id="adjust_old_value" class="form-control" readonly style="background:#f8f9fa;">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">New Total Amount <span style="color:red;">*</span></label>
+                    <input type="number" id="adjust_new_value" name="new_value" class="form-control" step="0.01" min="0" placeholder="Enter corrected amount..." required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Remarks <span style="color:red;">*</span></label>
+                    <textarea id="adjust_remarks" name="remarks" class="form-control" rows="3" placeholder="Enter reason for adjustment..." required></textarea>
+                </div>
+            </div>
+            <div class="txn-modal-footer">
+                <button type="submit" class="btn-warning"><i class="fas fa-save"></i> Save Adjustment</button>
+                <button type="button" class="btn-secondary" onclick="closeAdjustModal()">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function viewDetails(id, type, product, qty, unit, total, staff, date) {
+    document.getElementById('vd_id').textContent = '#' + id;
+    document.getElementById('vd_type').textContent = type.charAt(0).toUpperCase() + type.slice(1);
+    document.getElementById('vd_staff').textContent = staff;
+    document.getElementById('vd_product').textContent = product;
+    document.getElementById('vd_qty').textContent = qty + (type === 'fuel' ? ' L' : '');
+    document.getElementById('vd_unit').textContent = '\u20B1' + unit;
+    document.getElementById('vd_total').textContent = '\u20B1' + total;
+    document.getElementById('vd_date').textContent = date;
+    document.getElementById('viewDetailsModal').style.display = 'flex';
+}
+function closeViewModal() { document.getElementById('viewDetailsModal').style.display = 'none'; }
+
+function openRejectModal(id, type) {
+    document.getElementById('reject_txn_id').value = id;
+    document.getElementById('reject_txn_type').value = type;
+    document.getElementById('reject_reason').value = '';
+    document.getElementById('rejectModal').style.display = 'flex';
+    setTimeout(() => document.getElementById('reject_reason').focus(), 100);
+}
+function closeRejectModal() { document.getElementById('rejectModal').style.display = 'none'; }
+function validateReject() {
+    if (!document.getElementById('reject_reason').value.trim()) {
+        alert('Please enter a rejection reason.');
+        return false;
+    }
+    return confirm('Are you sure you want to reject this transaction?');
+}
+
+function openAdjustModal(id, type, currentTotal) {
+    document.getElementById('adjust_txn_id').value = id;
+    document.getElementById('adjust_txn_type').value = type;
+    document.getElementById('adjust_old_value').value = '\u20B1' + currentTotal;
+    document.getElementById('adjust_new_value').value = '';
+    document.getElementById('adjust_remarks').value = '';
+    document.getElementById('adjustModal').style.display = 'flex';
+    setTimeout(() => document.getElementById('adjust_new_value').focus(), 100);
+}
+function closeAdjustModal() { document.getElementById('adjustModal').style.display = 'none'; }
+function validateAdjust() {
+    const newVal = document.getElementById('adjust_new_value').value;
+    const remarks = document.getElementById('adjust_remarks').value.trim();
+    if (!newVal || parseFloat(newVal) < 0) {
+        alert('Please enter a valid new amount.');
+        return false;
+    }
+    if (!remarks) {
+        alert('Please enter remarks for the adjustment.');
+        return false;
+    }
+    return confirm('Are you sure you want to adjust this transaction?');
+}
+</script>
+
+<style>
+.txn-modal { display:none; position:fixed; z-index:1050; inset:0; background:rgba(0,0,0,0.55); align-items:center; justify-content:center; }
+.txn-modal-content { background:#fff; border-radius:12px; width:90%; max-width:640px; box-shadow:0 8px 32px rgba(0,0,0,0.2); overflow:hidden; }
+.txn-modal-header { display:flex; justify-content:space-between; align-items:center; padding:18px 24px; background:#0056b3; color:white; }
+.txn-modal-header h3 { margin:0; font-size:17px; }
+.txn-close { background:none; border:none; color:white; font-size:26px; cursor:pointer; line-height:1; }
+.txn-close:hover { color:#ddd; }
+.txn-modal-body { padding:24px; }
+.txn-modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:16px 24px; background:#f8f9fa; border-top:1px solid #dee2e6; }
+.detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.detail-item { background:#f8f9fa; padding:12px; border-radius:8px; border:1px solid #e9ecef; }
+.detail-label { display:block; font-size:11px; font-weight:700; color:#6c757d; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px; }
+.detail-value { display:block; font-size:14px; color:#212529; }
+.form-group { margin-bottom:16px; }
+.form-label { display:block; font-weight:600; color:#495057; margin-bottom:6px; }
+.form-control { width:100%; padding:10px 12px; border:1px solid #ced4da; border-radius:6px; font-size:14px; box-sizing:border-box; }
+.form-control:focus { outline:none; border-color:#0056b3; box-shadow:0 0 0 2px rgba(0,86,179,0.2); }
+.btn-action { padding:5px 10px; border:none; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap; }
+.btn-view { background:#0056b3; color:white; }
+.btn-approve { background:#28a745; color:white; }
+.btn-reject { background:#dc3545; color:white; }
+.btn-adjust { background:#fd7e14; color:white; }
+.btn-danger { padding:10px 20px; background:#dc3545; color:white; border:none; border-radius:6px; font-size:14px; font-weight:600; cursor:pointer; }
+.btn-warning { padding:10px 20px; background:#fd7e14; color:white; border:none; border-radius:6px; font-size:14px; font-weight:600; cursor:pointer; }
+.btn-secondary { padding:10px 20px; background:#6c757d; color:white; border:none; border-radius:6px; font-size:14px; font-weight:600; cursor:pointer; }
+.table-wrap{overflow-x:auto;}
+.table{width:100%;border-collapse:collapse;font-size:13px;}
+.table th,.table td{padding:8px 12px;border-bottom:1px solid #eef1f4;text-align:center;}
+.table th{font-weight:700;background:#f8f9fa;color:#2c3e50;}
+</style>
+
+<?php include __DIR__ . '/../partials/footer.php'; ?>

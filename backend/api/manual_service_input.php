@@ -1,0 +1,174 @@
+<?php
+// API for manual "Other" service type input
+require_once "../db_connect.php";
+
+header("Content-Type: application/json");
+header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE");
+header("Access-Control-Allow-Headers: Content-Type, Authorization");
+
+session_start();
+
+// Check if user is logged in
+if (!isset($_SESSION["user_id"])) {
+    echo json_encode(["success" => false, "error" => "Unauthorized"]);
+    exit;
+}
+
+$method = $_SERVER["REQUEST_METHOD"];
+$action = $_GET["action"] ?? "";
+
+try {
+    global $pdo;
+    
+    switch ($method) {
+        case "POST":
+            if ($action === "save_manual_service") {
+                // Save manual service type and parts
+                $data = json_decode(file_get_contents("php://input"), true);
+                
+                $jobOrderId = $data["job_order_id"] ?? 0;
+                $serviceTypeName = $data["service_type_name"] ?? "";
+                $parts = $data["parts"] ?? [];
+                $userId = $_SESSION["user_id"];
+                
+                if (empty($jobOrderId) || empty($serviceTypeName)) {
+                    echo json_encode(["success" => false, "error" => "Missing required fields"]);
+                    exit;
+                }
+                
+                // Start transaction
+                $pdo->beginTransaction();
+                
+                try {
+                    // Insert manual service type
+                    $stmt = $pdo->prepare("
+                        INSERT INTO manual_service_types 
+                        (job_order_id, service_type_name, is_manual_input, created_by) 
+                        VALUES (?, ?, TRUE, ?)
+                    ");
+                    $stmt->execute([$jobOrderId, $serviceTypeName, $userId]);
+                    $manualServiceId = $pdo->lastInsertId();
+                    
+                    // Insert parts
+                    foreach ($parts as $part) {
+                        $partName = $part["part_name"] ?? "";
+                        $partCategory = $part["part_category"] ?? "Other";
+                        $isFromMerchandise = $part["is_from_merchandise"] ?? false;
+                        $merchandiseProductId = $part["merchandise_product_id"] ?? null;
+                        $quantity = $part["quantity"] ?? 1;
+                        $remarks = $part["remarks"] ?? "";
+                        
+                        $stmt = $pdo->prepare("
+                            INSERT INTO manual_service_parts 
+                            (manual_service_id, part_name, part_category, is_from_merchandise, merchandise_product_id, quantity, remarks) 
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ");
+                        $stmt->execute([$manualServiceId, $partName, $partCategory, $isFromMerchandise, $merchandiseProductId, $quantity, $remarks]);
+                    }
+                    
+                    // Update job_orders table
+                    $stmt = $pdo->prepare("UPDATE job_orders SET has_manual_input = TRUE WHERE id = ?");
+                    $stmt->execute([$jobOrderId]);
+                    
+                    // Log to audit trail
+                    $stmt = $pdo->prepare("
+                        INSERT INTO audit_log 
+                        (user_id, action, details, ip_address, user_agent) 
+                        VALUES (?, ?, ?, ?, ?)
+                    ");
+                    $stmt->execute([
+                        $userId,
+                        "MANUAL_SERVICE_INPUT",
+                        "Manual service type and parts encoded: $serviceTypeName with " . count($parts) . " parts",
+                        $_SERVER["REMOTE_ADDR"] ?? "",
+                        $_SERVER["HTTP_USER_AGENT"] ?? ""
+                    ]);
+                    
+                    $pdo->commit();
+                    
+                    echo json_encode([
+                        "success" => true,
+                        "message" => "Manual service type and parts saved successfully",
+                        "manual_service_id" => $manualServiceId
+                    ]);
+                    
+                } catch (Exception $e) {
+                    $pdo->rollback();
+                    throw $e;
+                }
+                
+            } elseif ($action === "get_merchandise_products") {
+                // Get merchandise products for selection
+                $stmt = $pdo->query("
+                    SELECT id, product_name, category, unit_cost 
+                    FROM inventory_products 
+                    ORDER BY category, product_name
+                ");
+                $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                // Group by category
+                $groupedProducts = [];
+                foreach ($products as $product) {
+                    $category = $product["category"];
+                    if (!isset($groupedProducts[$category])) {
+                        $groupedProducts[$category] = [];
+                    }
+                    $groupedProducts[$category][] = $product;
+                }
+                
+                echo json_encode([
+                    "success" => true,
+                    "data" => $groupedProducts
+                ]);
+            }
+            break;
+            
+        case "GET":
+            if ($action === "get_manual_services") {
+                // Get manual services for a job order
+                $jobOrderId = $_GET["job_order_id"] ?? 0;
+                
+                if (empty($jobOrderId)) {
+                    echo json_encode(["success" => false, "error" => "Missing job order ID"]);
+                    exit;
+                }
+                
+                $stmt = $pdo->prepare("
+                    SELECT mst.*, u.username as created_by_username
+                    FROM manual_service_types mst
+                    LEFT JOIN users u ON mst.created_by = u.id
+                    WHERE mst.job_order_id = ?
+                    ORDER BY mst.created_at
+                ");
+                $stmt->execute([$jobOrderId]);
+                $services = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                // Get parts for each service
+                foreach ($services as &$service) {
+                    $stmt = $pdo->prepare("
+                        SELECT msp.*, ip.product_name as merchandise_product_name
+                        FROM manual_service_parts msp
+                        LEFT JOIN inventory_products ip ON msp.merchandise_product_id = ip.id
+                        WHERE msp.manual_service_id = ?
+                        ORDER BY msp.id
+                    ");
+                    $stmt->execute([$service["id"]]);
+                    $service["parts"] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                }
+                
+                echo json_encode([
+                    "success" => true,
+                    "data" => $services
+                ]);
+            }
+            break;
+            
+        default:
+            echo json_encode(["success" => false, "error" => "Method not allowed"]);
+    }
+    
+} catch (Exception $e) {
+    echo json_encode(["success" => false, "error" => $e->getMessage()]);
+}
+?>

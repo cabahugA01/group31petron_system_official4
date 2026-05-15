@@ -1,0 +1,260 @@
+<?php
+// Shift Transaction Binding Library
+// Automatically binds transactions to staff's active shift
+
+require_once __DIR__ . '/lib.php';
+
+class ShiftTransactionBinding {
+    private $pdo;
+    
+    public function __construct() {
+        $this->pdo = get_db();
+    }
+    
+    /**
+     * Bind transaction to staff's active shift
+     * @param int $staff_id Staff ID
+     * @param string $transaction_id Transaction ID
+     * @param string $transaction_type Transaction type (fuel, merchandise, credit)
+     * @return array Result with success status and shift info
+     */
+    public function bindTransaction($staff_id, $transaction_id, $transaction_type) {
+        try {
+            // Check if staff has active session
+            $stmt = $this->pdo->prepare("
+                SELECT * FROM active_staff_sessions 
+                WHERE staff_id = ?
+            ");
+            $stmt->execute([$staff_id]);
+            $session = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$session) {
+                return [
+                    'success' => false,
+                    'error' => 'No active shift session found for staff',
+                    'shift_info' => null
+                ];
+            }
+            
+            // Check if transaction already bound
+            $stmt = $this->pdo->prepare("
+                SELECT id FROM transaction_shift_binding 
+                WHERE transaction_id = ? AND transaction_type = ?
+            ");
+            $stmt->execute([$transaction_id, $transaction_type]);
+            if ($stmt->fetch()) {
+                return [
+                    'success' => false,
+                    'error' => 'Transaction already bound to a shift',
+                    'shift_info' => $session
+                ];
+            }
+            
+            // Bind transaction to shift
+            $stmt = $this->pdo->prepare("
+                INSERT INTO transaction_shift_binding 
+                (transaction_id, transaction_type, staff_id, shift_record_id, shift_period_id, transaction_time)
+                VALUES (?, ?, ?, ?, ?, NOW())
+            ");
+            $stmt->execute([
+                $transaction_id,
+                $transaction_type,
+                $staff_id,
+                $session['shift_record_id'],
+                $session['shift_period_id']
+            ]);
+            
+            // Get shift period details
+            $stmt = $this->pdo->prepare("SELECT * FROM shift_periods WHERE id = ?");
+            $stmt->execute([$session['shift_period_id']]);
+            $shift_period = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            return [
+                'success' => true,
+                'shift_record_id' => $session['shift_record_id'],
+                'shift_period_id' => $session['shift_period_id'],
+                'shift_name' => $shift_period['name'],
+                'shift_period' => $shift_period['start_time'] . ' - ' . $shift_period['end_time'],
+                'clock_in_time' => $session['clock_in_time'],
+                'message' => "Transaction bound to {$shift_period['name']}"
+            ];
+            
+        } catch (Exception $e) {
+            return [
+                'success' => false,
+                'error' => 'Database error: ' . $e->getMessage(),
+                'shift_info' => null
+            ];
+        }
+    }
+    
+    /**
+     * Get staff's current active shift info
+     * @param int $staff_id Staff ID
+     * @return array Shift info or null if no active session
+     */
+    public function getActiveShift($staff_id) {
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT ass.*, sp.name as shift_name, sp.start_time, sp.end_time,
+                       u.username, u.full_name, s.station_name
+                FROM active_staff_sessions ass
+                JOIN shift_periods sp ON ass.shift_period_id = sp.id
+                JOIN users u ON ass.staff_id = u.id
+                JOIN stations s ON ass.station_id = s.id
+                WHERE ass.staff_id = ?
+            ");
+            $stmt->execute([$staff_id]);
+            return $stmt->fetch(PDO::FETCH_ASSOC);
+            
+        } catch (Exception $e) {
+            error_log("Error getting active shift: " . $e->getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Get shift statistics for a staff member
+     * @param int $staff_id Staff ID
+     * @param string $date Date (Y-m-d format)
+     * @return array Shift statistics
+     */
+    public function getShiftStats($staff_id, $date = null) {
+        try {
+            $date = $date ?: date('Y-m-d');
+            
+            $stmt = $this->pdo->prepare("
+                SELECT 
+                    ssr.*,
+                    sp.name as shift_name,
+                    COUNT(tsb.id) as total_transactions,
+                    SUM(CASE WHEN tsb.transaction_type = 'fuel' THEN 1 ELSE 0 END) as fuel_transactions,
+                    SUM(CASE WHEN tsb.transaction_type = 'merchandise' THEN 1 ELSE 0 END) as merchandise_transactions,
+                    SUM(CASE WHEN tsb.transaction_type = 'credit' THEN 1 ELSE 0 END) as credit_transactions
+                FROM staff_shift_records ssr
+                JOIN shift_periods sp ON ssr.shift_period_id = sp.id
+                LEFT JOIN transaction_shift_binding tsb ON ssr.id = tsb.shift_record_id
+                WHERE ssr.staff_id = ? AND ssr.shift_date = ?
+                GROUP BY ssr.id
+                ORDER BY ssr.clock_in_time DESC
+            ");
+            $stmt->execute([$staff_id, $date]);
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+        } catch (Exception $e) {
+            error_log("Error getting shift stats: " . $e->getMessage());
+            return [];
+        }
+    }
+    
+    /**
+     * Check if staff is currently on shift
+     * @param int $staff_id Staff ID
+     * @return boolean True if on shift
+     */
+    public function isStaffOnShift($staff_id) {
+        try {
+            $stmt = $this->pdo->prepare("SELECT id FROM active_staff_sessions WHERE staff_id = ?");
+            $stmt->execute([$staff_id]);
+            return $stmt->fetch() !== false;
+            
+        } catch (Exception $e) {
+            error_log("Error checking staff shift status: " . $e->getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Get all transactions for a specific shift
+     * @param int $shift_record_id Shift record ID
+     * @return array Transactions bound to this shift
+     */
+    public function getShiftTransactions($shift_record_id) {
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT tsb.*, u.username, u.full_name
+                FROM transaction_shift_binding tsb
+                JOIN users u ON tsb.staff_id = u.id
+                WHERE tsb.shift_record_id = ?
+                ORDER BY tsb.transaction_time DESC
+            ");
+            $stmt->execute([$shift_record_id]);
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+        } catch (Exception $e) {
+            error_log("Error getting shift transactions: " . $e->getMessage());
+            return [];
+        }
+    }
+    
+    /**
+     * Auto-bind transaction to shift (called during transaction processing)
+     * This should be called whenever a transaction is created
+     * @param int $staff_id Staff ID
+     * @param string $transaction_id Transaction ID
+     * @param string $transaction_type Transaction type
+     * @return void
+     */
+    public function autoBindTransaction($staff_id, $transaction_id, $transaction_type) {
+        $result = $this->bindTransaction($staff_id, $transaction_id, $transaction_type);
+        
+        if ($result['success']) {
+            // Log the binding
+            $this->logShiftBinding($staff_id, $transaction_id, $transaction_type, $result['shift_record_id']);
+        } else {
+            // Log the error
+            error_log("Failed to bind transaction {$transaction_id} to shift: " . $result['error']);
+        }
+        
+        return $result;
+    }
+    
+    /**
+     * Log shift transaction binding
+     * @param int $staff_id Staff ID
+     * @param string $transaction_id Transaction ID
+     * @param string $transaction_type Transaction type
+     * @param int $shift_record_id Shift record ID
+     */
+    private function logShiftBinding($staff_id, $transaction_id, $transaction_type, $shift_record_id) {
+        try {
+            $stmt = $this->pdo->prepare("
+                INSERT INTO audit_log (action, user_id, station_id, details, created_at)
+                VALUES (?, ?, ?, ?, NOW())
+            ");
+            
+            $station_id = user_station_id() ?? 0;
+            $details = "Transaction {$transaction_id} ({$transaction_type}) bound to shift record {$shift_record_id}";
+            
+            $stmt->execute(['TRANSACTION_SHIFT_BINDING', $staff_id, $station_id, $details]);
+            
+        } catch (Exception $e) {
+            error_log("Failed to log shift binding: " . $e->getMessage());
+        }
+    }
+}
+
+// Helper function to get shift binding instance
+function getShiftBinding() {
+    static $instance = null;
+    if ($instance === null) {
+        $instance = new ShiftTransactionBinding();
+    }
+    return $instance;
+}
+
+// Helper function to auto-bind transaction (for easy use in transaction processing)
+function bindTransactionToShift($staff_id, $transaction_id, $transaction_type) {
+    return getShiftBinding()->autoBindTransaction($staff_id, $transaction_id, $transaction_type);
+}
+
+// Helper function to check if staff is on shift
+function isStaffOnShift($staff_id) {
+    return getShiftBinding()->isStaffOnShift($staff_id);
+}
+
+// Helper function to get active shift info
+function getActiveShiftInfo($staff_id) {
+    return getShiftBinding()->getActiveShift($staff_id);
+}
+?>

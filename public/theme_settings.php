@@ -1,0 +1,704 @@
+<?php
+$page_id = 'theme_settings';
+require_once __DIR__ . '/../backend/lib.php';
+require_once __DIR__ . '/db_connect.php';
+require_login();
+
+// Only allow SuperAdmin access
+$me = current_user();
+$my_role = role_key($me['role'] ?? 'staff');
+
+if ($my_role !== 'superadmin') {
+    header("Location: dashboard.php");
+    exit;
+}
+
+$msg = '';
+$success = '';
+
+// Handle form submissions
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (isset($_POST['action'])) {
+        switch ($_POST['action']) {
+            case 'update_logo':
+                if (isset($_FILES['logo']) && $_FILES['logo']['error'] === UPLOAD_ERR_OK) {
+                    $allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/svg+xml'];
+                    $maxSize = 2 * 1024 * 1024; // 2MB
+                    
+                    if (in_array($_FILES['logo']['type'], $allowedTypes) && $_FILES['logo']['size'] <= $maxSize) {
+                        $uploadDir = __DIR__ . '/../assets/img/';
+                        $filename = 'theme_logo_' . time() . '.' . pathinfo($_FILES['logo']['name'], PATHINFO_EXTENSION);
+                        
+                        if (move_uploaded_file($_FILES['logo']['tmp_name'], $uploadDir . $filename)) {
+                            // Update theme config
+                            updateThemeConfig('system_logo', $filename);
+                            $success = "Logo updated successfully!";
+                            log_activity($pdo, $me['id'], 'Theme Settings', "Updated system logo to {$filename}");
+                        } else {
+                            $msg = "Failed to upload logo.";
+                        }
+                    } else {
+                        $msg = "Invalid file type or size. Please upload PNG, JPG, GIF, or SVG (max 2MB).";
+                    }
+                } else {
+                    $msg = "Please select a logo file to upload.";
+                }
+                break;
+                
+            case 'update_theme':
+                $themeSettings = [
+                    'theme_mode' => $_POST['theme_mode'] ?? 'light',
+                    'primary_color' => $_POST['primary_color'] ?? '#3b82f6',
+                    'secondary_color' => $_POST['secondary_color'] ?? '#6b7280',
+                    'accent_color' => $_POST['accent_color'] ?? '#10b981',
+                    'text_size' => $_POST['text_size'] ?? 'medium',
+                    'font_family' => $_POST['font_family'] ?? 'default',
+                    'sidebar_position' => $_POST['sidebar_position'] ?? 'left',
+                    'sidebar_state' => $_POST['sidebar_state'] ?? 'expanded',
+                    'theme_preset' => $_POST['theme_preset'] ?? 'default'
+                ];
+                
+                foreach ($themeSettings as $key => $value) {
+                    updateThemeConfig($key, $value);
+                }
+                
+                $success = "Theme settings updated successfully!";
+                log_activity($pdo, $me['id'], 'Theme Settings', "Updated theme configuration");
+                break;
+                
+            case 'apply_preset':
+                $preset = $_POST['preset'] ?? 'default';
+                applyThemePreset($preset);
+                $success = "Theme preset '{$preset}' applied successfully!";
+                log_activity($pdo, $me['id'], 'Theme Settings', "Applied theme preset: {$preset}");
+                break;
+        }
+    }
+}
+
+// Get current theme settings
+$themeConfig = getThemeConfig();
+
+include __DIR__ . '/../partials/header.php';
+?>
+
+<div class="page-head">
+    <div>
+        <h1 class="h1">THEME SETTINGS</h1>
+        <div class="sub">PROFESSIONAL THEME CONFIGURATION AND APPEARANCE MANAGEMENT - SUPERADMIN/DEVELOPER</div>
+    </div>
+</div>
+
+<?php if($msg): ?>
+<div class="card" style="padding:15px; margin-bottom:20px; background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb;">
+    <?php echo $msg; ?>
+</div>
+<?php endif; ?>
+
+<?php if($success): ?>
+<div class="card" style="padding:15px; margin-bottom:20px; background: #d4edda; color: #155724; border: 1px solid #c3e6cb;">
+    <?php echo $success; ?>
+</div>
+<?php endif; ?>
+
+<!-- Theme Presets -->
+<div class="card">
+    <div class="card-header">
+        <h3>Theme Presets</h3>
+    </div>
+    <div class="card-body">
+        <div class="preset-grid">
+            <div class="preset-card" data-preset="default">
+                <div class="preset-preview default-preview">
+                    <div class="preview-header"></div>
+                    <div class="preview-sidebar"></div>
+                    <div class="preview-content"></div>
+                </div>
+                <h4>Default</h4>
+                <p>Clean and professional look</p>
+                <button class="btn btn-primary" onclick="applyPreset('default')">Apply</button>
+            </div>
+            
+            <div class="preset-card" data-preset="corporate">
+                <div class="preset-preview corporate-preview">
+                    <div class="preview-header"></div>
+                    <div class="preview-sidebar"></div>
+                    <div class="preview-content"></div>
+                </div>
+                <h4>Corporate</h4>
+                <p>Business-oriented design</p>
+                <button class="btn btn-primary" onclick="applyPreset('corporate')">Apply</button>
+            </div>
+            
+            <div class="preset-card" data-preset="minimalist">
+                <div class="preset-preview minimalist-preview">
+                    <div class="preview-header"></div>
+                    <div class="preview-sidebar"></div>
+                    <div class="preview-content"></div>
+                </div>
+                <h4>Minimalist</h4>
+                <p>Simple and clean interface</p>
+                <button class="btn btn-primary" onclick="applyPreset('minimalist')">Apply</button>
+            </div>
+            
+            <div class="preset-card" data-preset="high-contrast">
+                <div class="preset-preview high-contrast-preview">
+                    <div class="preview-header"></div>
+                    <div class="preview-sidebar"></div>
+                    <div class="preview-content"></div>
+                </div>
+                <h4>High Contrast</h4>
+                <p>Enhanced accessibility</p>
+                <button class="btn btn-primary" onclick="applyPreset('high-contrast')">Apply</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Logo Management -->
+<div class="card">
+    <div class="card-header">
+        <h3>System Logo</h3>
+    </div>
+    <div class="card-body">
+        <div class="logo-section">
+            <div class="current-logo">
+                <h4>Current Logo</h4>
+                <div class="logo-preview">
+                    <?php 
+                    $currentLogo = $themeConfig['system_logo'] ?? 'Petron Logo.png';
+                    echo '<img src="../assets/img/' . htmlspecialchars($currentLogo) . '" alt="System Logo" style="max-width: 200px; max-height: 80px;">';
+                    ?>
+                </div>
+            </div>
+            
+            <div class="logo-upload">
+                <h4>Upload New Logo</h4>
+                <form method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="action" value="update_logo">
+                    
+                    <div class="form-group">
+                        <label for="logo">Select Logo File</label>
+                        <input type="file" id="logo" name="logo" accept="image/*" required>
+                        <small>Supported formats: PNG, JPG, GIF, SVG. Maximum size: 2MB</small>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-upload"></i> Upload Logo
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Color Scheme -->
+<div class="card">
+    <div class="card-header">
+        <h3>Color Scheme</h3>
+    </div>
+    <div class="card-body">
+        <form method="POST">
+            <input type="hidden" name="action" value="update_theme">
+            
+            <div class="theme-grid">
+                <div class="theme-section">
+                    <h4>Theme Mode</h4>
+                    <div class="radio-group">
+                        <label class="radio-label">
+                            <input type="radio" name="theme_mode" value="light" <?php echo ($themeConfig['theme_mode'] ?? 'light') === 'light' ? 'checked' : ''; ?>>
+                            <span class="radio-text">Light Mode</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="theme_mode" value="dark" <?php echo ($themeConfig['theme_mode'] ?? 'light') === 'dark' ? 'checked' : ''; ?>>
+                            <span class="radio-text">Dark Mode</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="theme-section">
+                    <h4>Primary Color</h4>
+                    <div class="color-input-group">
+                        <input type="color" name="primary_color" value="<?php echo $themeConfig['primary_color'] ?? '#3b82f6'; ?>">
+                        <input type="text" name="primary_color_text" value="<?php echo $themeConfig['primary_color'] ?? '#3b82f6'; ?>" placeholder="#3b82f6">
+                    </div>
+                </div>
+                
+                <div class="theme-section">
+                    <h4>Secondary Color</h4>
+                    <div class="color-input-group">
+                        <input type="color" name="secondary_color" value="<?php echo $themeConfig['secondary_color'] ?? '#6b7280'; ?>">
+                        <input type="text" name="secondary_color_text" value="<?php echo $themeConfig['secondary_color'] ?? '#6b7280'; ?>" placeholder="#6b7280">
+                    </div>
+                </div>
+                
+                <div class="theme-section">
+                    <h4>Accent Color</h4>
+                    <div class="color-input-group">
+                        <input type="color" name="accent_color" value="<?php echo $themeConfig['accent_color'] ?? '#10b981'; ?>">
+                        <input type="text" name="accent_color_text" value="<?php echo $themeConfig['accent_color'] ?? '#10b981'; ?>" placeholder="#10b981">
+                    </div>
+                </div>
+            </div>
+            
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save"></i> Save Color Scheme
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Typography -->
+<div class="card">
+    <div class="card-header">
+        <h3>Typography</h3>
+    </div>
+    <div class="card-body">
+        <form method="POST">
+            <input type="hidden" name="action" value="update_theme">
+            
+            <div class="typography-grid">
+                <div class="typo-section">
+                    <h4>Text Size</h4>
+                    <select name="text_size">
+                        <option value="small" <?php echo ($themeConfig['text_size'] ?? 'medium') === 'small' ? 'selected' : ''; ?>>Small</option>
+                        <option value="medium" <?php echo ($themeConfig['text_size'] ?? 'medium') === 'medium' ? 'selected' : ''; ?>>Medium</option>
+                        <option value="large" <?php echo ($themeConfig['text_size'] ?? 'medium') === 'large' ? 'selected' : ''; ?>>Large</option>
+                    </select>
+                </div>
+                
+                <div class="typo-section">
+                    <h4>Font Family</h4>
+                    <select name="font_family">
+                        <option value="default" <?php echo ($themeConfig['font_family'] ?? 'default') === 'default' ? 'selected' : ''; ?>>Default (System)</option>
+                        <option value="arial" <?php echo ($themeConfig['font_family'] ?? 'default') === 'arial' ? 'selected' : ''; ?>>Arial</option>
+                        <option value="helvetica" <?php echo ($themeConfig['font_family'] ?? 'default') === 'helvetica' ? 'selected' : ''; ?>>Helvetica</option>
+                        <option value="georgia" <?php echo ($themeConfig['font_family'] ?? 'default') === 'georgia' ? 'selected' : ''; ?>>Georgia</option>
+                        <option value="courier" <?php echo ($themeConfig['font_family'] ?? 'default') === 'courier' ? 'selected' : ''; ?>>Courier New</option>
+                    </select>
+                </div>
+            </div>
+            
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save"></i> Save Typography
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Layout Preferences -->
+<div class="card">
+    <div class="card-header">
+        <h3>Layout Preferences</h3>
+    </div>
+    <div class="card-body">
+        <form method="POST">
+            <input type="hidden" name="action" value="update_theme">
+            
+            <div class="layout-grid">
+                <div class="layout-section">
+                    <h4>Sidebar Position</h4>
+                    <div class="radio-group">
+                        <label class="radio-label">
+                            <input type="radio" name="sidebar_position" value="left" <?php echo ($themeConfig['sidebar_position'] ?? 'left') === 'left' ? 'checked' : ''; ?>>
+                            <span class="radio-text">Left Sidebar</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="sidebar_position" value="right" <?php echo ($themeConfig['sidebar_position'] ?? 'left') === 'right' ? 'checked' : ''; ?>>
+                            <span class="radio-text">Right Sidebar</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="layout-section">
+                    <h4>Sidebar State</h4>
+                    <div class="radio-group">
+                        <label class="radio-label">
+                            <input type="radio" name="sidebar_state" value="expanded" <?php echo ($themeConfig['sidebar_state'] ?? 'expanded') === 'expanded' ? 'checked' : ''; ?>>
+                            <span class="radio-text">Expanded</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="sidebar_state" value="compact" <?php echo ($themeConfig['sidebar_state'] ?? 'expanded') === 'compact' ? 'checked' : ''; ?>>
+                            <span class="radio-text">Compact</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save"></i> Save Layout
+            </button>
+        </form>
+    </div>
+</div>
+
+<style>
+    .preset-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+    }
+    
+    .preset-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 20px;
+        text-align: center;
+        background: white;
+        transition: all 0.3s ease;
+    }
+    
+    .preset-card:hover {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        transform: translateY(-2px);
+    }
+    
+    .preset-preview {
+        width: 100%;
+        height: 120px;
+        border-radius: 6px;
+        margin-bottom: 15px;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .preview-header {
+        height: 30px;
+        background: #f3f4f6;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    
+    .preview-sidebar {
+        position: absolute;
+        left: 0;
+        top: 30px;
+        width: 40px;
+        height: 90px;
+        background: #374151;
+    }
+    
+    .preview-content {
+        position: absolute;
+        left: 40px;
+        top: 30px;
+        right: 0;
+        height: 90px;
+        background: #f9fafb;
+    }
+    
+    .default-preview .preview-header { background: #3b82f6; }
+    .default-preview .preview-sidebar { background: #1f2937; }
+    
+    .corporate-preview .preview-header { background: #1e40af; }
+    .corporate-preview .preview-sidebar { background: #374151; }
+    
+    .minimalist-preview .preview-header { background: #6b7280; }
+    .minimalist-preview .preview-sidebar { background: #9ca3af; }
+    
+    .high-contrast-preview .preview-header { background: #000000; }
+    .high-contrast-preview .preview-sidebar { background: #000000; }
+    .high-contrast-preview .preview-content { background: #ffffff; }
+    
+    .logo-section {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 30px;
+        margin-top: 20px;
+    }
+    
+    .current-logo h4,
+    .logo-upload h4 {
+        margin-bottom: 15px;
+        color: #1f2937;
+        font-weight: 600;
+    }
+    
+    .logo-preview {
+        padding: 20px;
+        border: 2px dashed #d1d5db;
+        border-radius: 8px;
+        text-align: center;
+        background: #f9fafb;
+    }
+    
+    .theme-grid,
+    .typography-grid,
+    .layout-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+    }
+    
+    .theme-section,
+    .typo-section,
+    .layout-section {
+        padding: 20px;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        background: #f9fafb;
+    }
+    
+    .theme-section h4,
+    .typo-section h4,
+    .layout-section h4 {
+        margin-bottom: 15px;
+        color: #1f2937;
+        font-weight: 600;
+    }
+    
+    .radio-group {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .radio-label {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        cursor: pointer;
+    }
+    
+    .radio-label input[type="radio"] {
+        margin: 0;
+    }
+    
+    .color-input-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .color-input-group input[type="color"] {
+        width: 50px;
+        height: 40px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+    
+    .color-input-group input[type="text"] {
+        flex: 1;
+        padding: 8px 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: 14px;
+    }
+    
+    .form-group {
+        margin-bottom: 20px;
+    }
+    
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 600;
+        color: #374151;
+    }
+    
+    .form-group input[type="file"] {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: 14px;
+    }
+    
+    .form-group small {
+        display: block;
+        margin-top: 5px;
+        color: #6b7280;
+        font-size: 12px;
+    }
+    
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .btn-primary {
+        background: #3b82f6;
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        background: #2563eb;
+        transform: translateY(-1px);
+    }
+    
+    .card {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+    
+    .card-header {
+        padding: 16px 20px;
+        border-bottom: 1px solid #e5e7eb;
+        background: #f9fafb;
+    }
+    
+    .card-header h3 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 600;
+        color: #1f2937;
+    }
+    
+    .card-body {
+        padding: 20px;
+    }
+    
+    select {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: 14px;
+        background: white;
+    }
+    
+    @media (max-width: 768px) {
+        .logo-section {
+            grid-template-columns: 1fr;
+        }
+        
+        .preset-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<script>
+function applyPreset(preset) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.innerHTML = `
+        <input type="hidden" name="action" value="apply_preset">
+        <input type="hidden" name="preset" value="${preset}">
+    `;
+    document.body.appendChild(form);
+    form.submit();
+}
+
+// Sync color inputs
+document.addEventListener('DOMContentLoaded', function() {
+    const colorInputs = document.querySelectorAll('input[type="color"]');
+    const textInputs = document.querySelectorAll('input[type="text"][name$="_text"]');
+    
+    colorInputs.forEach((colorInput, index) => {
+        const textInput = textInputs[index];
+        
+        colorInput.addEventListener('change', function() {
+            if (textInput) {
+                textInput.value = this.value;
+            }
+        });
+        
+        textInput.addEventListener('change', function() {
+            if (colorInput && /^#[0-9A-F]{6}$/i.test(this.value)) {
+                colorInput.value = this.value;
+            }
+        });
+    });
+});
+</script>
+
+
+<?php include __DIR__ . '/../partials/footer.php'; ?>
+
+<?php
+// Theme configuration functions
+function getThemeConfig() {
+    global $pdo;
+    
+    try {
+        $stmt = $pdo->query("SELECT config_key, config_value FROM ui_config WHERE config_category = 'theme'");
+        $config = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $config[$row['config_key']] = $row['config_value'];
+        }
+        return $config;
+    } catch (Exception $e) {
+        return [];
+    }
+}
+
+function updateThemeConfig($key, $value) {
+    global $pdo;
+    
+    try {
+        $stmt = $pdo->prepare("INSERT INTO ui_config (config_category, config_key, config_value, updated_at) 
+                              VALUES ('theme', ?, ?, CURRENT_TIMESTAMP) 
+                              ON DUPLICATE KEY UPDATE config_value = VALUES(config_value), updated_at = CURRENT_TIMESTAMP");
+        return $stmt->execute([$key, $value]);
+    } catch (Exception $e) {
+        error_log("Failed to update theme config: " . $e->getMessage());
+        return false;
+    }
+}
+
+function applyThemePreset($preset) {
+    $presets = [
+        'default' => [
+            'theme_mode' => 'light',
+            'primary_color' => '#3b82f6',
+            'secondary_color' => '#6b7280',
+            'accent_color' => '#10b981',
+            'text_size' => 'medium',
+            'font_family' => 'default',
+            'sidebar_position' => 'left',
+            'sidebar_state' => 'expanded'
+        ],
+        'corporate' => [
+            'theme_mode' => 'light',
+            'primary_color' => '#1e40af',
+            'secondary_color' => '#374151',
+            'accent_color' => '#059669',
+            'text_size' => 'medium',
+            'font_family' => 'helvetica',
+            'sidebar_position' => 'left',
+            'sidebar_state' => 'expanded'
+        ],
+        'minimalist' => [
+            'theme_mode' => 'light',
+            'primary_color' => '#6b7280',
+            'secondary_color' => '#9ca3af',
+            'accent_color' => '#d1d5db',
+            'text_size' => 'small',
+            'font_family' => 'arial',
+            'sidebar_position' => 'left',
+            'sidebar_state' => 'compact'
+        ],
+        'high-contrast' => [
+            'theme_mode' => 'light',
+            'primary_color' => '#000000',
+            'secondary_color' => '#000000',
+            'accent_color' => '#ffffff',
+            'text_size' => 'large',
+            'font_family' => 'default',
+            'sidebar_position' => 'left',
+            'sidebar_state' => 'expanded'
+        ]
+    ];
+    
+    if (isset($presets[$preset])) {
+        foreach ($presets[$preset] as $key => $value) {
+            updateThemeConfig($key, $value);
+        }
+        return true;
+    }
+    return false;
+}
+?>

@@ -1,0 +1,518 @@
+<?php
+$page_id = 'admin_export_center';
+require_once __DIR__ . '/../backend/lib.php';
+require_once __DIR__ . '/../public/db_connect.php';
+require_login();
+
+$me = current_user();
+$role = role_key($me['role'] ?? '');
+
+// Restrict access to Admin/Owner roles only
+if (!in_array($role, ['admin', 'owner', 'superadmin'])) {
+    $_SESSION['error'] = 'Access denied. Admin/Owner access required for Export Center.';
+    header('Location: dashboard.php');
+    exit;
+}
+
+$station_id = user_station_id();
+
+// Handle export requests
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['export_type'])) {
+    $export_type = $_POST['export_type'];
+    $start_date = $_POST['start_date'] ?? date('Y-m-d', strtotime('-30 days'));
+    $end_date = $_POST['end_date'] ?? date('Y-m-d');
+    $format = $_POST['format'] ?? 'excel';
+    
+    try {
+        switch ($export_type) {
+            case 'validated_transactions':
+                exportValidatedTransactions($pdo, $station_id, $start_date, $end_date, $format);
+                break;
+            case 'audit_trail':
+                exportAuditTrail($pdo, $station_id, $start_date, $end_date, $format);
+                break;
+            case 'compliance_report':
+                exportComplianceReport($pdo, $station_id, $start_date, $end_date, $format);
+                break;
+            case 'anomaly_report':
+                exportAnomalyReport($pdo, $station_id, $start_date, $end_date, $format);
+                break;
+            default:
+                throw new Exception('Invalid export type');
+        }
+    } catch (Exception $e) {
+        $_SESSION['error'] = 'Export failed: ' . $e->getMessage();
+        header('Location: admin_export_center.php');
+        exit;
+    }
+}
+
+function exportValidatedTransactions($pdo, $station_id, $start_date, $end_date, $format) {
+    $stmt = $pdo->prepare("
+        SELECT 
+            combined.transaction_id,
+            combined.type,
+            combined.status,
+            combined.created_at,
+            COALESCE(u.name, 'System') as staff_name,
+            CASE 
+                WHEN combined.type = 'fuel' THEN ft.fuel_type
+                ELSE GROUP_CONCAT(DISTINCT si.name SEPARATOR ', ')
+            END as product_name,
+            COALESCE(ft.total_amount, s.total, 0) as amount,
+            CASE 
+                WHEN combined.type = 'fuel' THEN ft.payment_method
+                ELSE s.payment_method
+            END as payment_method,
+            CASE 
+                WHEN combined.type = 'fuel' THEN ft.liters_sold
+                ELSE SUM(si.quantity)
+            END as quantity,
+            CASE 
+                WHEN combined.type = 'fuel' THEN ft.price_per_liter
+                ELSE AVG(si.unit_price)
+            END as unit_price,
+            combined.manager_id,
+            manager.name as manager_name,
+            combined.action,
+            combined.reason
+        FROM (
+            SELECT transaction_id, status, total_amount, created_at, staff_id, manager_id, action, reason, 'fuel' as type 
+            FROM fuel_transactions WHERE station_id = ? AND status = 'Complete'
+            UNION ALL
+            SELECT id as transaction_id, status, total as total_amount, created_at, user_id as staff_id, manager_id, action, reason, 'merchandise' as type 
+            FROM sales WHERE station_id = ? AND status = 'Complete'
+        ) combined
+        LEFT JOIN fuel_transactions ft ON combined.transaction_id = ft.transaction_id AND combined.type = 'fuel'
+        LEFT JOIN sales s ON combined.transaction_id = s.id AND combined.type = 'merchandise'
+        LEFT JOIN users u ON combined.staff_id = u.id
+        LEFT JOIN users manager ON combined.manager_id = manager.id
+        LEFT JOIN sale_items si ON s.id = si.sale_id
+        WHERE DATE(combined.created_at) BETWEEN ? AND ?
+        GROUP BY combined.transaction_id
+        ORDER BY combined.created_at DESC
+    ");
+    $stmt->execute([$station_id, $station_id, $start_date, $end_date]);
+    $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    $filename = "validated_transactions_{$start_date}_to_{$end_date}";
+    
+    if ($format === 'excel') {
+        exportToExcel($data, $filename, [
+            'Transaction ID', 'Type', 'Product', 'Staff', 'Manager', 
+            'Quantity', 'Unit Price', 'Total Amount', 'Payment Method', 
+            'Date/Time', 'Action', 'Reason'
+        ]);
+    } else {
+        exportToPDF($data, $filename, 'Validated Transactions Report');
+    }
+}
+
+function exportAuditTrail($pdo, $station_id, $start_date, $end_date, $format) {
+    $stmt = $pdo->prepare("
+        SELECT 
+            al.id,
+            al.action,
+            al.details,
+            al.ip_address,
+            al.user_agent,
+            al.created_at,
+            u.name as user_name,
+            u.role,
+            s.name as station_name
+        FROM audit_log al
+        LEFT JOIN users u ON al.user_id = u.id
+        LEFT JOIN stations s ON al.station_id = s.id
+        WHERE al.station_id = ? AND DATE(al.created_at) BETWEEN ? AND ?
+        ORDER BY al.created_at DESC
+    ");
+    $stmt->execute([$station_id, $start_date, $end_date]);
+    $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    $filename = "audit_trail_{$start_date}_to_{$end_date}";
+    
+    if ($format === 'excel') {
+        exportToExcel($data, $filename, [
+            'ID', 'Action', 'Details', 'IP Address', 'User Agent', 
+            'Date/Time', 'User', 'Role', 'Station'
+        ]);
+    } else {
+        exportToPDF($data, $filename, 'Audit Trail Report');
+    }
+}
+
+function exportComplianceReport($pdo, $station_id, $start_date, $end_date, $format) {
+    $stmt = $pdo->prepare("
+        SELECT 
+            DATE(created_at) as report_date,
+            type,
+            COUNT(*) as total_transactions,
+            SUM(CASE WHEN status = 'Complete' THEN 1 ELSE 0 END) as validated_count,
+            SUM(CASE WHEN status = 'Pending Validation' THEN 1 ELSE 0 END) as pending_count,
+            SUM(CASE WHEN status = 'Rejected' THEN 1 ELSE 0 END) as rejected_count,
+            ROUND(
+                (SUM(CASE WHEN status = 'Complete' THEN 1 ELSE 0 END) * 100.0 / COUNT(*)), 2
+            ) as validation_rate,
+            SUM(COALESCE(total_amount, 0)) as total_amount
+        FROM (
+            SELECT created_at, status, total_amount, 'fuel' as type 
+            FROM fuel_transactions WHERE station_id = ?
+            UNION ALL
+            SELECT created_at, status, total as total_amount, 'merchandise' as type 
+            FROM sales WHERE station_id = ?
+        ) combined
+        WHERE DATE(created_at) BETWEEN ? AND ?
+        GROUP BY DATE(created_at), type
+        ORDER BY report_date DESC, type
+    ");
+    $stmt->execute([$station_id, $station_id, $start_date, $end_date]);
+    $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    $filename = "compliance_report_{$start_date}_to_{$end_date}";
+    
+    if ($format === 'excel') {
+        exportToExcel($data, $filename, [
+            'Date', 'Type', 'Total Transactions', 'Validated', 'Pending', 
+            'Rejected', 'Validation Rate (%)', 'Total Amount'
+        ]);
+    } else {
+        exportToPDF($data, $filename, 'Compliance Report');
+    }
+}
+
+function exportAnomalyReport($pdo, $station_id, $start_date, $end_date, $format) {
+    $stmt = $pdo->prepare("
+        SELECT 
+            fvr.id,
+            fvr.fuel_type,
+            fvr.expected_liters,
+            fvr.actual_liters,
+            fvr.variance_liters,
+            fvr.variance_percentage,
+            fvr.severity,
+            fvr.status,
+            fvr.created_at,
+            fvr.investigation_notes,
+            u.name as created_by
+        FROM fuel_variance_reports fvr
+        LEFT JOIN users u ON fvr.created_by = u.id
+        WHERE fvr.station_id = ? AND DATE(fvr.created_at) BETWEEN ? AND ?
+        ORDER BY fvr.created_at DESC
+    ");
+    $stmt->execute([$station_id, $start_date, $end_date]);
+    $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    $filename = "anomaly_report_{$start_date}_to_{$end_date}";
+    
+    if ($format === 'excel') {
+        exportToExcel($data, $filename, [
+            'ID', 'Fuel Type', 'Expected Liters', 'Actual Liters', 
+            'Variance Liters', 'Variance %', 'Severity', 'Status', 
+            'Date/Time', 'Investigation Notes', 'Created By'
+        ]);
+    } else {
+        exportToPDF($data, $filename, 'Anomaly Report');
+    }
+}
+
+function exportToExcel($data, $filename, $headers) {
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment; filename="' . $filename . '.csv"');
+    
+    $output = fopen('php://output', 'w');
+    
+    // Add BOM for UTF-8
+    fwrite($output, "\xEF\xBB\xBF");
+    
+    // Headers
+    fputcsv($output, $headers);
+    
+    // Data
+    foreach ($data as $row) {
+        $formatted_row = [];
+        foreach ($row as $value) {
+            // Clean up data for CSV
+            $formatted_row[] = is_string($value) ? str_replace(["\n", "\r", "\t"], ' ', $value) : $value;
+        }
+        fputcsv($output, $formatted_row);
+    }
+    
+    fclose($output);
+    exit;
+}
+
+function exportToPDF($data, $filename, $title) {
+    // Simple HTML to PDF export
+    header('Content-Type: application/pdf');
+    header('Content-Disposition: attachment; filename="' . $filename . '.pdf"');
+    
+    $html = '<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>' . $title . '</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h1 { color: #002F6C; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #002F6C; color: white; }
+        tr:nth-child(even) { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+    <h1>' . $title . '</h1>
+    <p>Generated on: ' . date('Y-m-d H:i:s') . '</p>
+    <table>';
+    
+    // Headers
+    if (!empty($data)) {
+        $html .= '<tr>';
+        foreach (array_keys($data[0]) as $header) {
+            $html .= '<th>' . htmlspecialchars(ucwords(str_replace('_', ' ', $header))) . '</th>';
+        }
+        $html .= '</tr>';
+        
+        // Data
+        foreach ($data as $row) {
+            $html .= '<tr>';
+            foreach ($row as $value) {
+                $html .= '<td>' . htmlspecialchars($value) . '</td>';
+            }
+            $html .= '</tr>';
+        }
+    }
+    
+    $html .= '</table>
+</body>
+</html>';
+    
+    echo $html;
+    exit;
+}
+
+include __DIR__ . '/../partials/header.php';
+?>
+
+<div class="page-head">
+    <div>
+        <h1 class="h1">Export Center</h1>
+        <div class="sub">Generate official reports in Excel or PDF format</div>
+    </div>
+    <div class="actions">
+        <a href="dashboard.php" class="btn primary"><i class="fas fa-arrow-left"></i> Back to Dashboard</a>
+    </div>
+</div>
+
+<!-- Export Options -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 30px;">
+    
+    <!-- Validated Transactions Export -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fas fa-check-circle" style="color: #28a745;"></i> Validated Transactions</h3>
+        </div>
+        <div class="card-body">
+            <p style="margin-bottom: 15px;">Export all validated fuel and merchandise transactions with manager approval details.</p>
+            
+            <form method="POST" style="margin-bottom: 15px;">
+                <input type="hidden" name="export_type" value="validated_transactions">
+                
+                <div style="margin-bottom: 10px;">
+                    <label class="lbl">Date Range</label>
+                    <div style="display: flex; gap: 5px;">
+                        <input type="date" name="start_date" value="<?php echo date('Y-m-d', strtotime('-30 days')); ?>" class="inp" required>
+                        <input type="date" name="end_date" value="<?php echo date('Y-m-d'); ?>" class="inp" required>
+                    </div>
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <label class="lbl">Format</label>
+                    <div style="display: flex; gap: 10px;">
+                        <label style="display: flex; align-items: center;">
+                            <input type="radio" name="format" value="excel" checked style="margin-right: 5px;">
+                            Excel (CSV)
+                        </label>
+                        <label style="display: flex; align-items: center;">
+                            <input type="radio" name="format" value="pdf" style="margin-right: 5px;">
+                            PDF
+                        </label>
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn primary" style="width: 100%;">
+                    <i class="fas fa-download"></i> Export Validated Transactions
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Audit Trail Export -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fas fa-shield-alt" style="color: #007bff;"></i> Audit Trail</h3>
+        </div>
+        <div class="card-body">
+            <p style="margin-bottom: 15px;">Export complete audit trail with user actions, IP addresses, and timestamps.</p>
+            
+            <form method="POST" style="margin-bottom: 15px;">
+                <input type="hidden" name="export_type" value="audit_trail">
+                
+                <div style="margin-bottom: 10px;">
+                    <label class="lbl">Date Range</label>
+                    <div style="display: flex; gap: 5px;">
+                        <input type="date" name="start_date" value="<?php echo date('Y-m-d', strtotime('-30 days')); ?>" class="inp" required>
+                        <input type="date" name="end_date" value="<?php echo date('Y-m-d'); ?>" class="inp" required>
+                    </div>
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <label class="lbl">Format</label>
+                    <div style="display: flex; gap: 10px;">
+                        <label style="display: flex; align-items: center;">
+                            <input type="radio" name="format" value="excel" checked style="margin-right: 5px;">
+                            Excel (CSV)
+                        </label>
+                        <label style="display: flex; align-items: center;">
+                            <input type="radio" name="format" value="pdf" style="margin-right: 5px;">
+                            PDF
+                        </label>
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn primary" style="width: 100%;">
+                    <i class="fas fa-download"></i> Export Audit Trail
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Compliance Report Export -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fas fa-chart-bar" style="color: #17a2b8;"></i> Compliance Report</h3>
+        </div>
+        <div class="card-body">
+            <p style="margin-bottom: 15px;">Export compliance metrics including validation rates and transaction summaries.</p>
+            
+            <form method="POST" style="margin-bottom: 15px;">
+                <input type="hidden" name="export_type" value="compliance_report">
+                
+                <div style="margin-bottom: 10px;">
+                    <label class="lbl">Date Range</label>
+                    <div style="display: flex; gap: 5px;">
+                        <input type="date" name="start_date" value="<?php echo date('Y-m-d', strtotime('-30 days')); ?>" class="inp" required>
+                        <input type="date" name="end_date" value="<?php echo date('Y-m-d'); ?>" class="inp" required>
+                    </div>
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <label class="lbl">Format</label>
+                    <div style="display: flex; gap: 10px;">
+                        <label style="display: flex; align-items: center;">
+                            <input type="radio" name="format" value="excel" checked style="margin-right: 5px;">
+                            Excel (CSV)
+                        </label>
+                        <label style="display: flex; align-items: center;">
+                            <input type="radio" name="format" value="pdf" style="margin-right: 5px;">
+                            PDF
+                        </label>
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn primary" style="width: 100%;">
+                    <i class="fas fa-download"></i> Export Compliance Report
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Anomaly Report Export -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fas fa-exclamation-triangle" style="color: #ffc107;"></i> Anomaly Report</h3>
+        </div>
+        <div class="card-body">
+            <p style="margin-bottom: 15px;">Export fuel variance anomalies and investigation details for compliance monitoring.</p>
+            
+            <form method="POST" style="margin-bottom: 15px;">
+                <input type="hidden" name="export_type" value="anomaly_report">
+                
+                <div style="margin-bottom: 10px;">
+                    <label class="lbl">Date Range</label>
+                    <div style="display: flex; gap: 5px;">
+                        <input type="date" name="start_date" value="<?php echo date('Y-m-d', strtotime('-30 days')); ?>" class="inp" required>
+                        <input type="date" name="end_date" value="<?php echo date('Y-m-d'); ?>" class="inp" required>
+                    </div>
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <label class="lbl">Format</label>
+                    <div style="display: flex; gap: 10px;">
+                        <label style="display: flex; align-items: center;">
+                            <input type="radio" name="format" value="excel" checked style="margin-right: 5px;">
+                            Excel (CSV)
+                        </label>
+                        <label style="display: flex; align-items: center;">
+                            <input type="radio" name="format" value="pdf" style="margin-right: 5px;">
+                            PDF
+                        </label>
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn primary" style="width: 100%;">
+                    <i class="fas fa-download"></i> Export Anomaly Report
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Exports -->
+<div class="card">
+    <div class="card-header">
+        <h3><i class="fas fa-history"></i> Export Guidelines</h3>
+    </div>
+    <div class="card-body">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+            <div>
+                <h4 style="color: #28a745; margin-bottom: 10px;"><i class="fas fa-file-excel"></i> Excel Format</h4>
+                <ul style="margin: 0; padding-left: 20px; color: #666;">
+                    <li>CSV format compatible with Excel</li>
+                    <li>Full data with all columns</li>
+                    <li>Easy for data analysis</li>
+                    <li>UTF-8 encoded</li>
+                </ul>
+            </div>
+            <div>
+                <h4 style="color: #dc3545; margin-bottom: 10px;"><i class="fas fa-file-pdf"></i> PDF Format</h4>
+                <ul style="margin: 0; padding-left: 20px; color: #666;">
+                    <li>Print-ready format</li>
+                    <li>Professional presentation</li>
+                    <li>Official documentation</li>
+                    <li>Formatted tables</li>
+                </ul>
+            </div>
+            <div>
+                <h4 style="color: #007bff; margin-bottom: 10px;"><i class="fas fa-info-circle"></i> Export Limits</h4>
+                <ul style="margin: 0; padding-left: 20px; color: #666;">
+                    <li>Maximum 30 days per export</li>
+                    <li>Large files may take time</li>
+                    <li>All exports are logged</li>
+                    <li>Download immediately</li>
+                </ul>
+            </div>
+            <div>
+                <h4 style="color: #17a2b8; margin-bottom: 10px;"><i class="fas fa-shield-alt"></i> Security</h4>
+                <ul style="margin: 0; padding-left: 20px; color: #666;">
+                    <li>Admin/Owner access only</li>
+                    <li>All exports are tracked</li>
+                    <li>Sensitive data protected</li>
+                    <li>Compliance ready</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<?php include __DIR__ . '/../partials/footer.php'; ?>

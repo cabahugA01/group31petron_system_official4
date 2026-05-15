@@ -1,0 +1,291 @@
+<?php
+// Navigation Arrows Component - Smooth Scrolling with Debugging
+?>
+<!-- Navigation Arrows -->
+<button class="nav-arrow up" onclick="navigateUp()" aria-label="Navigate up">
+    <i class="fas fa-chevron-up"></i>
+</button>
+<button class="nav-arrow down" onclick="navigateDown()" aria-label="Navigate down">
+    <i class="fas fa-chevron-down"></i>
+</button>
+
+<style>
+.nav-arrow {
+    position: fixed;
+    right: 20px;
+    width: 40px;
+    height: 40px;
+    background: #002f70;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    box-shadow: 0 4px 12px rgba(0, 47, 112, 0.3);
+    z-index: 9999;
+    transition: all 0.3s ease;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    user-select: none;
+    outline: none;
+}
+
+.nav-arrow:hover {
+    background: #003580;
+    transform: scale(1.1);
+    box-shadow: 0 6px 20px rgba(0, 47, 112, 0.4);
+}
+
+.nav-arrow:active {
+    transform: scale(0.95);
+}
+
+.nav-arrow.up {
+    bottom: 120px;
+    z-index: 9998;
+}
+
+.nav-arrow.down {
+    bottom: 70px;
+    z-index: 9999;
+}
+
+.nav-arrow.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+</style>
+
+<script>
+function navigateUp() {
+    console.log('=== NAVIGATE UP DEBUG ===');
+    console.log('Up button clicked at:', new Date().toISOString());
+    
+    try {
+        const currentScroll = window.pageYOffset || document.documentElement.scrollTop;
+        const scrollStep = Math.min(300, currentScroll);
+        const targetPosition = Math.max(0, currentScroll - scrollStep);
+        
+        console.log('Current scroll position:', currentScroll);
+        console.log('Scroll step calculated:', scrollStep);
+        console.log('Target position:', targetPosition);
+        console.log('Window height:', window.innerHeight);
+        console.log('Document height:', document.documentElement.scrollHeight);
+        
+        window.scrollTo({
+            top: targetPosition,
+            behavior: 'smooth'
+        });
+        
+        console.log('Smooth scroll initiated successfully');
+        console.log('=== END NAVIGATE UP DEBUG ===');
+        
+    } catch (error) {
+        console.error('Error navigating up:', error);
+        console.log('Using fallback scroll method');
+        // Fallback for older browsers
+        window.scrollBy(0, -300);
+    }
+}
+
+function navigateDown() {
+    console.log('=== NAVIGATE DOWN DEBUG ===');
+    console.log('Down button clicked at:', new Date().toISOString());
+    
+    try {
+        const currentScroll = window.pageYOffset || document.documentElement.scrollTop;
+        const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+        const remainingScroll = maxScroll - currentScroll;
+        const scrollStep = Math.min(300, remainingScroll);
+        const targetPosition = currentScroll + scrollStep;
+        
+        console.log('Current scroll position:', currentScroll);
+        console.log('Maximum scroll position:', maxScroll);
+        console.log('Remaining scroll:', remainingScroll);
+        console.log('Scroll step calculated:', scrollStep);
+        console.log('Target position:', targetPosition);
+        console.log('Window height:', window.innerHeight);
+        console.log('Document height:', document.documentElement.scrollHeight);
+        
+        window.scrollTo({
+            top: targetPosition,
+            behavior: 'smooth'
+        });
+        
+        console.log('Smooth scroll initiated successfully');
+        console.log('=== END NAVIGATE DOWN DEBUG ===');
+        
+    } catch (error) {
+        console.error('Error navigating down:', error);
+        console.log('Using fallback scroll method');
+        // Fallback for older browsers
+        window.scrollBy(0, 300);
+    }
+}
+
+function toggleNavArrows() {
+    const upArrow = document.querySelector('.nav-arrow.up');
+    const downArrow = document.querySelector('.nav-arrow.down');
+    
+    if (upArrow && downArrow) {
+        // Always show arrows - never hide them
+        upArrow.classList.remove('hidden');
+        downArrow.classList.remove('hidden');
+        console.log('Navigation arrows visibility: VISIBLE');
+    }
+}
+
+// Simple test function to verify arrow functionality
+function testArrowButtons() {
+    console.log('=== TESTING ARROW BUTTONS ===');
+    
+    const upButton = document.querySelector('.nav-arrow.up');
+    const downButton = document.querySelector('.nav-arrow.down');
+    
+    if (upButton && downButton) {
+        console.log('SUCCESS: Both arrow buttons found!');
+        console.log('Up button position:', upButton.getBoundingClientRect());
+        console.log('Down button position:', downButton.getBoundingClientRect());
+        
+        // Test click functionality
+        console.log('Testing up button click...');
+        upButton.click();
+        
+        setTimeout(() => {
+            console.log('Testing down button click...');
+            downButton.click();
+        }, 1000);
+        
+    } else {
+        console.error('ERROR: Arrow buttons not found!');
+        console.log('Up button:', upButton);
+        console.log('Down button:', downButton);
+    }
+    
+    console.log('=== END ARROW BUTTON TEST ===');
+}
+
+// Initialize navigation arrows on page load
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('=== NAVIGATION ARROWS INITIALIZATION ===');
+    console.log('Initializing navigation arrows...');
+    
+    const upButton = document.querySelector('.nav-arrow.up');
+    const downButton = document.querySelector('.nav-arrow.down');
+    
+    if (upButton) {
+        console.log('Up button found and functional');
+        upButton.addEventListener('click', function() {
+            console.log('Up button click event triggered');
+        });
+    } else {
+        console.error('Up button not found!');
+    }
+    
+    if (downButton) {
+        console.log('Down button found and functional');
+        downButton.addEventListener('click', function() {
+            console.log('Down button click event triggered');
+        });
+    } else {
+        console.error('Down button not found!');
+    }
+    
+    // Initialize arrow visibility
+    toggleNavArrows();
+    
+    // Log page dimensions for debugging
+    console.log('Page dimensions:');
+    console.log('- Document height:', document.documentElement.scrollHeight);
+    console.log('- Window height:', window.innerHeight);
+    console.log('- Maximum scroll:', document.documentElement.scrollHeight - window.innerHeight);
+    
+    console.log('Navigation arrows initialization complete');
+    console.log('=== END NAVIGATION ARROWS INITIALIZATION ===');
+    
+    // Auto-test after 2 seconds
+    setTimeout(testArrowButtons, 2000);
+});
+
+// Monitor scroll events for debugging
+window.addEventListener('scroll', function() {
+    const currentScroll = window.pageYOffset || document.documentElement.scrollTop;
+    const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+    const scrollPercentage = (currentScroll / maxScroll) * 100;
+    
+    // Only log every 100px to avoid spam
+    if (currentScroll % 100 < 10) {
+        console.log('Scroll position:', currentScroll, '(', scrollPercentage.toFixed(1) + '%)');
+    }
+});
+
+// Add keyboard shortcuts for arrow navigation
+document.addEventListener('keydown', function(event) {
+    // Use Ctrl + Arrow keys for navigation
+    if (event.ctrlKey) {
+        if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            console.log('Keyboard: Ctrl + Arrow Up pressed');
+            navigateUp();
+        } else if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            console.log('Keyboard: Ctrl + Arrow Down pressed');
+            navigateDown();
+        }
+    }
+    
+    // Test function with F12 key
+    if (event.key === 'F12') {
+        event.preventDefault();
+        console.log('Keyboard: F12 pressed - Testing arrow buttons');
+        testArrowButtons();
+    }
+});
+
+// Ensure arrows are always visible
+window.addEventListener('load', function() {
+    console.log('Page fully loaded - Ensuring arrow visibility');
+    
+    const upButton = document.querySelector('.nav-arrow.up');
+    const downButton = document.querySelector('.nav-arrow.down');
+    
+    if (upButton) {
+        upButton.style.opacity = '1';
+        upButton.style.visibility = 'visible';
+        upButton.style.pointerEvents = 'auto';
+        console.log('Up button forced visible');
+    }
+    
+    if (downButton) {
+        downButton.style.opacity = '1';
+        downButton.style.visibility = 'visible';
+        downButton.style.pointerEvents = 'auto';
+        console.log('Down button forced visible');
+    }
+    
+    // Add visual indicator that arrows are working
+    setTimeout(() => {
+        if (upButton && downButton) {
+            upButton.style.animation = 'pulse 2s';
+            downButton.style.animation = 'pulse 2s';
+            console.log('Arrow buttons highlighted with pulse animation');
+        }
+    }, 3000);
+});
+
+// Add pulse animation for visual feedback
+const style = document.createElement('style');
+style.textContent = `
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.2); }
+    100% { transform: scale(1); }
+}
+`;
+document.head.appendChild(style);
+</script>

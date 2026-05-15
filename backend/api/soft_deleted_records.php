@@ -1,0 +1,330 @@
+<?php
+// API for Soft Deleted Records Management
+header('Content-Type: application/json');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE');
+header('Access-Control-Allow-Headers: Content-Type, X-Requested-With');
+
+require_once '../../backend/rbac.php';
+require_once '../public/db_connect.php';
+
+// Start session for authentication
+session_start();
+
+// Check if user is logged in
+if (!isset($_SESSION['user_id'])) {
+    http_response_code(401);
+    echo json_encode(['success' => false, 'message' => 'Unauthorized access']);
+    exit();
+}
+
+// Database connection is available as global $pdo from db_connect.php
+
+// Check role-based access control (SuperAdmin/Developer only for soft delete operations)
+if ($_SESSION['role'] !== 'superadmin' && $_SESSION['role'] !== 'developer') {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Access denied. Soft delete operations require SuperAdmin/Developer privileges.']);
+    exit();
+}
+
+// Get action from request
+$action = $_GET['action'] ?? '';
+
+try {
+    switch ($action) {
+        case 'view':
+            handleViewSoftDeleted($pdo);
+            break;
+        case 'stats':
+            handleGetStats($pdo);
+            break;
+        case 'restore':
+            handleRestoreRecords($pdo);
+            break;
+        case 'purge':
+            handlePurgeRecords($pdo);
+            break;
+        case 'list_tables':
+            handleListTables($pdo);
+            break;
+        default:
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => 'Invalid action']);
+    }
+} catch (Exception $e) {
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Server error: ' . $e->getMessage()]);
+}
+
+function handleViewSoftDeleted($pdo) {
+    $tableKey = $_GET['table'] ?? '';
+    
+    if (empty($tableKey)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Table key is required']);
+        return;
+    }
+    
+    // Get table configuration
+    $tableConfig = getTableConfig($pdo, $tableKey);
+    if (!$tableConfig) {
+        http_response_code(404);
+        echo json_encode(['success' => false, 'message' => 'Table configuration not found']);
+        return;
+    }
+    
+    // Get soft deleted records
+    $records = getSoftDeletedRecords($pdo, $tableConfig);
+    $columns = getTableColumns($pdo, $tableConfig['table_name']);
+    
+    // Log action
+    logSoftDeleteAction($pdo, $_SESSION['user_id'], 'view_soft_deleted', "Viewed soft deleted records from: {$tableConfig['table_name']}");
+    
+    echo json_encode([
+        'success' => true,
+        'records' => $records,
+        'columns' => $columns,
+        'table_config' => $tableConfig
+    ]);
+}
+
+function handleGetStats($pdo) {
+    $tableKey = $_GET['table'] ?? '';
+    
+    if (empty($tableKey)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Table key is required']);
+        return;
+    }
+    
+    // Get table configuration
+    $tableConfig = getTableConfig($pdo, $tableKey);
+    if (!$tableConfig) {
+        http_response_code(404);
+        echo json_encode(['success' => false, 'message' => 'Table configuration not found']);
+        return;
+    }
+    
+    // Get statistics
+    $stats = getSoftDeletedStats($pdo, $tableConfig);
+    
+    echo json_encode([
+        'success' => true,
+        'count' => $stats['count'],
+        'last_modified' => $stats['last_modified']
+    ]);
+}
+
+function handleRestoreRecords($pdo) {
+    $input = json_decode(file_get_contents('php://input'), true);
+    
+    $tableKey = $input['table'] ?? '';
+    $recordIds = $input['record_ids'] ?? [];
+    
+    if (empty($tableKey) || empty($recordIds)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Table key and record IDs are required']);
+        return;
+    }
+    
+    // Get table configuration
+    $tableConfig = getTableConfig($pdo, $tableKey);
+    if (!$tableConfig) {
+        http_response_code(404);
+        echo json_encode(['success' => false, 'message' => 'Table configuration not found']);
+        return;
+    }
+    
+    if (!$tableConfig['restore_enabled']) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Restore is not enabled for this table']);
+        return;
+    }
+    
+    // Restore records
+    $restoredCount = restoreSoftDeletedRecords($pdo, $tableConfig, $recordIds);
+    
+    // Log action
+    logSoftDeleteAction($pdo, $_SESSION['user_id'], 'restore_records', "Restored $restoredCount records from: {$tableConfig['table_name']}");
+    
+    echo json_encode([
+        'success' => true,
+        'message' => "Successfully restored $restoredCount records",
+        'restored_count' => $restoredCount
+    ]);
+}
+
+function handlePurgeRecords($pdo) {
+    $input = json_decode(file_get_contents('php://input'), true);
+    
+    $tableKey = $input['table'] ?? '';
+    $recordIds = $input['record_ids'] ?? [];
+    
+    if (empty($tableKey) || empty($recordIds)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Table key and record IDs are required']);
+        return;
+    }
+    
+    // Get table configuration
+    $tableConfig = getTableConfig($pdo, $tableKey);
+    if (!$tableConfig) {
+        http_response_code(404);
+        echo json_encode(['success' => false, 'message' => 'Table configuration not found']);
+        return;
+    }
+    
+    if (!$tableConfig['purge_enabled']) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Purge is not enabled for this table']);
+        return;
+    }
+    
+    // Purge records
+    $purgedCount = purgeSoftDeletedRecords($pdo, $tableConfig, $recordIds);
+    
+    // Log action
+    logSoftDeleteAction($pdo, $_SESSION['user_id'], 'purge_records', "Permanently purged $purgedCount records from: {$tableConfig['table_name']}");
+    
+    echo json_encode([
+        'success' => true,
+        'message' => "Successfully purged $purgedCount records",
+        'purged_count' => $purgedCount
+    ]);
+}
+
+function handleListTables($pdo) {
+    $stmt = $pdo->prepare("SELECT * FROM soft_delete_tables_config WHERE is_active = TRUE ORDER BY sort_order");
+    $stmt->execute();
+    $tables = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    echo json_encode([
+        'success' => true,
+        'tables' => $tables
+    ]);
+}
+
+function getTableConfig($pdo, $tableKey) {
+    $stmt = $pdo->prepare("SELECT * FROM soft_delete_tables_config WHERE table_key = ? AND is_active = TRUE");
+    $stmt->execute([$tableKey]);
+    return $stmt->fetch(PDO::FETCH_ASSOC);
+}
+
+function getTableColumns($pdo, $tableName) {
+    $stmt = $pdo->prepare("DESCRIBE `$tableName`");
+    $stmt->execute();
+    $columns = [];
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $columns[] = $row['Field'];
+    }
+    return $columns;
+}
+
+function getSoftDeletedRecords($pdo, $tableConfig) {
+    $tableName = $tableConfig['table_name'];
+    $softDeleteColumn = $tableConfig['soft_delete_column'];
+    $inactiveValue = $tableConfig['inactive_value'];
+    
+    // Build query based on soft delete column and value
+    if ($inactiveValue === 'deleted') {
+        // For timestamp-based soft deletes
+        $sql = "SELECT * FROM `$tableName` WHERE `$softDeleteColumn` IS NOT NULL ORDER BY `$softDeleteColumn` DESC LIMIT 100";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute();
+    } else {
+        // For status-based soft deletes
+        $sql = "SELECT * FROM `$tableName` WHERE `$softDeleteColumn` = ? ORDER BY id DESC LIMIT 100";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$inactiveValue]);
+    }
+    
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function getSoftDeletedStats($pdo, $tableConfig) {
+    $tableName = $tableConfig['table_name'];
+    $softDeleteColumn = $tableConfig['soft_delete_column'];
+    $inactiveValue = $tableConfig['inactive_value'];
+    
+    // Get count
+    if ($inactiveValue === 'deleted') {
+        $sql = "SELECT COUNT(*) as count, MAX(`$softDeleteColumn`) as last_modified FROM `$tableName` WHERE `$softDeleteColumn` IS NOT NULL";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute();
+    } else {
+        $sql = "SELECT COUNT(*) as count, MAX(updated_at) as last_modified FROM `$tableName` WHERE `$softDeleteColumn` = ?";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$inactiveValue]);
+    }
+    
+    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    return [
+        'count' => $result['count'],
+        'last_modified' => $result['last_modified'] ? date('Y-m-d H:i:s', strtotime($result['last_modified'])) : null
+    ];
+}
+
+function restoreSoftDeletedRecords($pdo, $tableConfig, $recordIds) {
+    $tableName = $tableConfig['table_name'];
+    $softDeleteColumn = $tableConfig['soft_delete_column'];
+    $activeValue = $tableConfig['active_value'];
+    
+    // Build placeholders for IN clause
+    $placeholders = implode(',', array_fill(0, count($recordIds), '?'));
+    
+    if ($activeValue === null || $activeValue === '') {
+        // Set to NULL for active records
+        $sql = "UPDATE `$tableName` SET `$softDeleteColumn` = NULL WHERE id IN ($placeholders)";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($recordIds);
+    } else {
+        // Set to active value
+        $sql = "UPDATE `$tableName` SET `$softDeleteColumn` = ? WHERE id IN ($placeholders)";
+        $params = array_merge([$activeValue], $recordIds);
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+    }
+    
+    return $stmt->rowCount();
+}
+
+function purgeSoftDeletedRecords($pdo, $tableConfig, $recordIds) {
+    $tableName = $tableConfig['table_name'];
+    $softDeleteColumn = $tableConfig['soft_delete_column'];
+    $inactiveValue = $tableConfig['inactive_value'];
+    
+    // Build placeholders for IN clause
+    $placeholders = implode(',', array_fill(0, count($recordIds), '?'));
+    
+    // Delete records that match soft delete criteria and are in the specified IDs
+    if ($inactiveValue === 'deleted') {
+        $sql = "DELETE FROM `$tableName` WHERE id IN ($placeholders) AND `$softDeleteColumn` IS NOT NULL";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($recordIds);
+    } else {
+        $sql = "DELETE FROM `$tableName` WHERE id IN ($placeholders) AND `$softDeleteColumn` = ?";
+        $params = array_merge($recordIds, [$inactiveValue]);
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+    }
+    
+    return $stmt->rowCount();
+}
+
+function logSoftDeleteAction($pdo, $userId, $action, $details) {
+    try {
+        $stmt = $pdo->prepare("INSERT INTO audit_log (user_id, action, details, ip_address, user_agent, created_at) VALUES (?, ?, ?, ?, ?, NOW())");
+        $stmt->execute([
+            $userId,
+            $action,
+            $details,
+            $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+            $_SERVER['HTTP_USER_AGENT'] ?? 'unknown'
+        ]);
+    } catch (Exception $e) {
+        // Log error but don't break main functionality
+        error_log("Failed to log soft delete action: " . $e->getMessage());
+    }
+}
+?>

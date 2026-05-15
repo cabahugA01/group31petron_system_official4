@@ -1,0 +1,173 @@
+<?php
+// API for multi-service selection and cost calculation
+require_once "../db_connect.php";
+
+header("Content-Type: application/json");
+header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Methods: GET, POST");
+header("Access-Control-Allow-Headers: Content-Type, Authorization");
+
+session_start();
+
+// Check if user is logged in
+if (!isset($_SESSION["user_id"])) {
+    echo json_encode(["success" => false, "error" => "Unauthorized"]);
+    exit;
+}
+
+$action = $_GET["action"] ?? "";
+
+try {
+    global $pdo;
+    
+    switch ($action) {
+        case "get_multiple_service_parts":
+            // Get parts for multiple service types
+            $serviceKeys = $_GET["service_keys"] ?? [];
+            
+            if (empty($serviceKeys)) {
+                echo json_encode(["success" => false, "error" => "No service keys provided"]);
+                exit;
+            }
+            
+            $allServices = [];
+            
+            foreach ($serviceKeys as $serviceKey) {
+                // Get service info with fees
+                $stmt = $pdo->prepare("
+                    SELECT sf.*, 
+                           COUNT(spm.id) as parts_count
+                    FROM service_fees sf
+                    LEFT JOIN service_parts_mapping spm ON sf.service_key = spm.service_key
+                    WHERE sf.service_key = ? AND sf.is_active = TRUE
+                    GROUP BY sf.id
+                ");
+                $stmt->execute([$serviceKey]);
+                $serviceInfo = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if ($serviceInfo) {
+                    // Get parts for this service
+                    $stmt = $pdo->prepare("
+                        SELECT part_name, part_category, default_quantity, default_unit_price
+                        FROM service_parts_mapping
+                        WHERE service_key = ?
+                        ORDER BY sort_order
+                    ");
+                    $stmt->execute([$serviceKey]);
+                    $parts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    
+                    $allServices[] = [
+                        "service_key" => $serviceKey,
+                        "service_name" => $serviceInfo["service_name"],
+                        "base_fee" => floatval($serviceInfo["base_fee"]),
+                        "labor_cost_per_hour" => floatval($serviceInfo["labor_cost_per_hour"]),
+                        "estimated_hours" => floatval($serviceInfo["estimated_hours"]),
+                        "total_service_fee" => floatval($serviceInfo["base_fee"]) + (floatval($serviceInfo["labor_cost_per_hour"]) * floatval($serviceInfo["estimated_hours"])),
+                        "parts" => $parts
+                    ];
+                }
+            }
+            
+            echo json_encode([
+                "success" => true,
+                "data" => $allServices,
+                "total_services" => count($allServices)
+            ]);
+            break;
+            
+        case "calculate_totals":
+            // Calculate totals for selected services and parts
+            $data = json_decode(file_get_contents("php://input"), true);
+            $selectedServices = $data["services"] ?? [];
+            
+            $grandTotal = 0;
+            $serviceBreakdown = [];
+            
+            foreach ($selectedServices as $service) {
+                $serviceKey = $service["service_key"];
+                $selectedParts = $service["selected_parts"] ?? [];
+                
+                // Get service fee
+                $stmt = $pdo->prepare("
+                    SELECT base_fee, labor_cost_per_hour, estimated_hours
+                    FROM service_fees
+                    WHERE service_key = ? AND is_active = TRUE
+                ");
+                $stmt->execute([$serviceKey]);
+                $feeInfo = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if ($feeInfo) {
+                    $serviceFee = floatval($feeInfo["base_fee"]) + 
+                                 (floatval($feeInfo["labor_cost_per_hour"]) * floatval($feeInfo["estimated_hours"]));
+                    
+                    $partsCost = 0;
+                    $partsDetails = [];
+                    
+                    foreach ($selectedParts as $part) {
+                        $partName = $part["part_name"];
+                        $quantity = intval($part["quantity"] ?? 1);
+                        $unitPrice = floatval($part["unit_price"] ?? 0);
+                        
+                        $partCost = $quantity * $unitPrice;
+                        $partsCost += $partCost;
+                        
+                        $partsDetails[] = [
+                            "part_name" => $partName,
+                            "quantity" => $quantity,
+                            "unit_price" => $unitPrice,
+                            "total_cost" => $partCost
+                        ];
+                    }
+                    
+                    $serviceTotal = $serviceFee + $partsCost;
+                    $grandTotal += $serviceTotal;
+                    
+                    $serviceBreakdown[] = [
+                        "service_key" => $serviceKey,
+                        "service_name" => $service["service_name"],
+                        "service_fee" => $serviceFee,
+                        "parts_cost" => $partsCost,
+                        "service_total" => $serviceTotal,
+                        "parts_details" => $partsDetails
+                    ];
+                }
+            }
+            
+            echo json_encode([
+                "success" => true,
+                "grand_total" => $grandTotal,
+                "service_breakdown" => $serviceBreakdown,
+                "summary" => [
+                    "total_services" => count($serviceBreakdown),
+                    "total_service_fees" => array_sum(array_column($serviceBreakdown, "service_fee")),
+                    "total_parts_cost" => array_sum(array_column($serviceBreakdown, "parts_cost")),
+                    "grand_total" => $grandTotal
+                ]
+            ]);
+            break;
+            
+        case "get_service_fees":
+            // Get all service fees for reference
+            $stmt = $pdo->query("
+                SELECT service_key, service_name, base_fee, labor_cost_per_hour, estimated_hours,
+                       (base_fee + (labor_cost_per_hour * estimated_hours)) as total_fee
+                FROM service_fees
+                WHERE is_active = TRUE
+                ORDER BY service_name
+            ");
+            $fees = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            echo json_encode([
+                "success" => true,
+                "data" => $fees
+            ]);
+            break;
+            
+        default:
+            echo json_encode(["success" => false, "error" => "Action not found"]);
+    }
+    
+} catch (Exception $e) {
+    echo json_encode(["success" => false, "error" => $e->getMessage()]);
+}
+?>

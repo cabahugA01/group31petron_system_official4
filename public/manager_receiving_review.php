@@ -1,0 +1,376 @@
+<?php
+if (session_status() === PHP_SESSION_NONE) session_start();
+$page_id = 'manager_receiving_review';
+require_once __DIR__ . '/../backend/lib.php';
+require_once __DIR__ . '/../public/db_connect.php';
+require_login();
+
+$me = current_user();
+$station_id = user_station_id();
+$role = function_exists('role_key') ? role_key($me['role'] ?? '') : strtolower(trim($me['role'] ?? ''));
+
+// Manager or Admin only
+if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
+    header("Location: dashboard.php");
+    exit;
+}
+
+$msg = '';
+$view = $_GET['view'] ?? 'pending';
+$batch_id = $_GET['batch'] ?? null;
+
+// Handle actions
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? '';
+    
+    if ($action === 'receive_batch') {
+        $batch_id = (int)($_POST['batch_id'] ?? 0);
+        $notes = $_POST['notes'] ?? '';
+        
+        try {
+            $pdo->beginTransaction();
+            
+            // Get batch
+            $stmt = $pdo->prepare("SELECT * FROM receiving_batches WHERE id = ? AND status = 'pending'");
+            $stmt->execute([$batch_id]);
+            $batch = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$batch) {
+                $msg = "❌ Batch not found or already processed.";
+            } else {
+                // Update batch to received
+                $stmt_update = $pdo->prepare("
+                    UPDATE receiving_batches 
+                    SET status = 'received', received_by_manager = ?, received_at = NOW(), updated_at = NOW()
+                    WHERE id = ?
+                ");
+                $stmt_update->execute([$me['id'], $batch_id]);
+                
+                // Update all items to received
+                $stmt_items = $pdo->prepare("
+                    UPDATE received_items 
+                    SET status = 'received'
+                    WHERE batch_id = ?
+                ");
+                $stmt_items->execute([$batch_id]);
+                
+                    log_activity($pdo, $me['id'], 'Receiving Batch Received', "Batch {$batch['batch_number']} received by {$me['name']}", $_SERVER['REMOTE_ADDR']);
+                    
+                    $pdo->commit();
+                    
+                    // Auto-redirect to stock confirmation page
+                    header("Location: admin_stock_confirmation.php?batch={$batch_id}&from=receiving");
+                    exit;
+            }
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            $msg = "❌ Error: " . $e->getMessage();
+        }
+    }
+    
+    elseif ($action === 'reject_batch') {
+        $batch_id = (int)($_POST['batch_id'] ?? 0);
+        $reason = trim($_POST['reason'] ?? '');
+        
+        if (strlen($reason) < 10) {
+            $msg = "❌ Rejection reason must be at least 10 characters.";
+        } else {
+            try {
+                $pdo->beginTransaction();
+                
+                // Get batch
+                $stmt = $pdo->prepare("SELECT * FROM receiving_batches WHERE id = ? AND status = 'pending'");
+                $stmt->execute([$batch_id]);
+                $batch = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if (!$batch) {
+                    $msg = "❌ Batch not found or already processed.";
+                } else {
+                    // Update batch to rejected
+                    $stmt_update = $pdo->prepare("
+                        UPDATE receiving_batches 
+                        SET status = 'rejected', notes = CONCAT(COALESCE(notes, ''), '\n--- Rejected: ', ?), rejected_at = NOW(), updated_at = NOW()
+                        WHERE id = ?
+                    ");
+                    $stmt_update->execute([$reason, $batch_id]);
+                    
+                    // Update all items to rejected
+                    $stmt_items = $pdo->prepare("
+                        UPDATE received_items 
+                        SET status = 'rejected'
+                        WHERE batch_id = ?
+                    ");
+                    $stmt_items->execute([$batch_id]);
+                    
+                    log_activity($pdo, $me['id'], 'Receiving Batch Rejected', "Batch {$batch['batch_number']} rejected. Reason: $reason", $_SERVER['REMOTE_ADDR']);
+                    
+                    $pdo->commit();
+                    $msg = "✅ Batch {$batch['batch_number']} rejected successfully.";
+                }
+            } catch (Exception $e) {
+                $pdo->rollBack();
+                $msg = "❌ Error: " . $e->getMessage();
+            }
+        }
+    }
+}
+
+// Fetch batches
+$batches = [];
+try {
+    if ($role === 'superadmin') {
+        $stmt = $pdo->query("
+            SELECT rb.*, u.name as received_by_name, u2.name as received_by_manager_name
+            FROM receiving_batches rb
+            LEFT JOIN users u ON rb.received_by = u.id
+            LEFT JOIN users u2 ON rb.received_by_manager = u2.id
+            WHERE rb.status = ?
+            ORDER BY rb.created_at DESC
+        ");
+        $stmt->execute([$view === 'pending' ? 'pending' : 'received']);
+    } else {
+        $stmt = $pdo->prepare("
+            SELECT rb.*, u.name as received_by_name, u2.name as received_by_manager_name
+            FROM receiving_batches rb
+            LEFT JOIN users u ON rb.received_by = u.id
+            LEFT JOIN users u2 ON rb.received_by_manager = u2.id
+            WHERE rb.station_id = ? AND rb.status = ?
+            ORDER BY rb.created_at DESC
+        ");
+        $stmt->execute([$station_id, $view === 'pending' ? 'pending' : 'received']);
+    }
+    $batches = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    $batches = [];
+}
+
+// Fetch batch details if viewing specific batch
+$batch_details = null;
+$batch_items = [];
+if ($batch_id) {
+    try {
+        $stmt = $pdo->prepare("
+            SELECT rb.*, u.name as received_by_name, u2.name as received_by_manager_name
+            FROM receiving_batches rb
+            LEFT JOIN users u ON rb.received_by = u.id
+            LEFT JOIN users u2 ON rb.received_by_manager = u2.id
+            WHERE rb.id = ? AND rb.station_id = ?
+        ");
+        $stmt->execute([$batch_id, $station_id]);
+        $batch_details = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($batch_details) {
+            // Fetch items
+            $stmt_items = $pdo->prepare("SELECT * FROM received_items WHERE batch_id = ?");
+            $stmt_items->execute([$batch_id]);
+            $batch_items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
+        }
+    } catch (Exception $e) {
+        $batch_details = null;
+    }
+}
+
+include __DIR__ . '/../partials/header.php';
+?>
+
+<div style="max-width: 1400px; margin: 0 auto; padding: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+        <div>
+            <h1 style="font-size: 32px; font-weight: 700; color: var(--petron-blue); margin: 0;">
+                <i class="fas fa-clipboard-check"></i> Step 2: Receiving Review (Validation)
+            </h1>
+            <p style="color: var(--muted); margin-top: 4px; font-size: 14px;">
+                <strong>Admin:</strong> Validate encoded data, compare physical items vs. encoded request, flag discrepancies
+            </p>
+            <div style="margin-top: 8px; padding: 8px 12px; background: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 4px; font-size: 12px; color: #92400e;">
+                <i class="fas fa-shield-alt"></i> 
+                <strong>Validation Checks:</strong> Physical count ✓ | Product codes ✓ | Batch numbers ✓ | Supplier match ✓ | Flag discrepancies ❌
+            </div>
+        </div>
+        
+        <div style="display: flex; gap: 8px;">
+            <a href="?view=pending" class="btn <?php echo $view === 'pending' ? 'btn-primary' : 'ghost'; ?>">
+                <i class="fas fa-clock"></i> Pending (<?php echo count(array_filter($batches, fn($b) => $b['status'] === 'pending')); ?>)
+            </a>
+            <a href="?view=received" class="btn <?php echo $view === 'received' ? 'btn-primary' : 'ghost'; ?>">
+                <i class="fas fa-check-circle"></i> Received (<?php echo count(array_filter($batches, fn($b) => $b['status'] === 'received')); ?>)
+            </a>
+        </div>
+    </div>
+    
+    <?php if ($msg): ?>
+        <div style="padding: 16px 20px; border-radius: 12px; margin-bottom: 24px; background: <?php echo strpos($msg, '✅') !== false ? '#e6f4ea' : '#fee2e2'; ?>; color: <?php echo strpos($msg, '✅') !== false ? '#065f46' : '#dc2626'; ?>; border: 1px solid <?php echo strpos($msg, '✅') !== false ? '#a7f3d0' : '#fecaca'; ?>; display: flex; align-items: center; gap: 10px;">
+            <i class="fas <?php echo strpos($msg, '✅') !== false ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
+            <?php echo htmlspecialchars($msg); ?>
+        </div>
+    <?php endif; ?>
+    
+    <?php if ($batch_details): ?>
+        <!-- Batch Detail View -->
+        <div style="background: white; border-radius: 12px; padding: 24px; border: 1px solid #e2e8f0; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 2px solid #f1f5f9;">
+                <div>
+                    <h2 style="font-size: 24px; font-weight: 700; color: #0f172a; margin: 0 0 8px;"><?php echo htmlspecialchars($batch_details['batch_number']); ?></h2>
+                    <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 14px; color: #64748b;">
+                        <div><i class="fas fa-truck"></i> <strong>Supplier:</strong> <?php echo htmlspecialchars($batch_details['supplier']); ?></div>
+                        <div><i class="fas fa-calendar"></i> <strong>Delivery Date:</strong> <?php echo date('M d, Y', strtotime($batch_details['delivery_date'])); ?></div>
+                        <div><i class="fas fa-user"></i> <strong>Submitted By:</strong> <?php echo htmlspecialchars($batch_details['received_by_name']); ?></div>
+                        <div><i class="fas fa-clock"></i> <strong>Created:</strong> <?php echo date('M d, Y H:i', strtotime($batch_details['created_at'])); ?></div>
+                    </div>
+                </div>
+                <span style="background: #fef3c7; color: #92400e; padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; text-transform: uppercase;">
+                    Pending Review
+                </span>
+            </div>
+            
+            <?php if ($batch_details['notes']): ?>
+                <div style="background: #f8fafc; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; border-left: 3px solid #eab308;">
+                    <strong style="color: #0f172a; font-size: 13px;">Notes:</strong>
+                    <p style="color: #64748b; font-size: 14px; margin: 4px 0 0 0;"><?php echo nl2br(htmlspecialchars($batch_details['notes'])); ?></p>
+                </div>
+            <?php endif; ?>
+            
+            <h3 style="font-size: 18px; font-weight: 600; color: #0f172a; margin: 0 0 16px;">Items in Batch</h3>
+            
+            <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0;">
+                <thead>
+                    <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0;">
+                        <th style="padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 600; color: #475569;">#</th>
+                        <th style="padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 600; color: #475569;">Item Name</th>
+                        <th style="padding: 12px 16px; text-align: right; font-size: 12px; font-weight: 600; color: #475569;">Quantity</th>
+                        <th style="padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 600; color: #475569;">Unit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($batch_items as $index => $item): ?>
+                        <tr style="border-bottom: 1px solid #f1f5f9;">
+                            <td style="padding: 12px 16px; font-size: 13px;"><?php echo $index + 1; ?></td>
+                            <td style="padding: 12px 16px; font-size: 13px; font-weight: 500; color: #0f172a;"><?php echo htmlspecialchars($item['item_name']); ?></td>
+                            <td style="padding: 12px 16px; font-size: 13px; text-align: right; font-weight: 600; color: var(--petron-blue);"><?php echo number_format($item['quantity'], 0); ?></td>
+                            <td style="padding: 12px 16px; font-size: 13px; color: #64748b;">pcs</td>
+                        </tr>
+                    <?php endforeach; ?>
+                    <tr style="background: #f8fafc; font-weight: 600;">
+                        <td colspan="2" style="padding: 12px 16px; font-size: 13px;">Total Items:</td>
+                        <td style="padding: 12px 16px; font-size: 13px; text-align: right; color: var(--petron-blue);"><?php echo count($batch_items); ?></td>
+                        <td style="padding: 12px 16px; font-size: 13px;">items</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <?php if ($batch_details['status'] === 'pending'): ?>
+                <!-- Actions -->
+                <div style="margin-top: 24px; padding-top: 24px; border-top: 2px solid #f1f5f9; display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <form method="post">
+                        <input type="hidden" name="action" value="receive_batch">
+                        <input type="hidden" name="batch_id" value="<?php echo $batch_details['id']; ?>">
+                        <button type="submit" style="width: 100%; background: #22c55e; color: white; border: none; padding: 14px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                            <i class="fas fa-check-circle"></i> Receive Batch
+                        </button>
+                    </form>
+                    
+                    <button type="button" onclick="showRejectModal(<?php echo $batch_details['id']; ?>, '<?php echo htmlspecialchars($batch_details['batch_number']); ?>')" style="width: 100%; background: #ef4444; color: white; border: none; padding: 14px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                        <i class="fas fa-times-circle"></i> Reject Batch
+                    </button>
+                </div>
+            <?php else: ?>
+                <div style="margin-top: 24px; padding: 16px 20px; background: #d1fae5; color: #065f46; border-radius: 8px; text-align: center;">
+                    <i class="fas fa-info-circle"></i> This batch has been <?php echo $batch_details['status']; ?>.
+                </div>
+            <?php endif; ?>
+        </div>
+        
+        <a href="?view=<?php echo $view; ?>" class="btn ghost" style="display: inline-flex; align-items: center; gap: 8px;">
+            <i class="fas fa-arrow-left"></i> Back to List
+        </a>
+    <?php else: ?>
+        <!-- Batch List View -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 20px;">
+            <?php if (empty($batches)): ?>
+                <div style="grid-column: 1 / -1; background: white; border-radius: 12px; padding: 60px 20px; text-align: center; border: 1px solid #e2e8f0; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                    <i class="fas fa-inbox" style="font-size: 48px; color: #cbd5e1; margin-bottom: 16px;"></i>
+                    <div style="font-size: 18px; font-weight: 600; color: #0f172a; margin-bottom: 8px;">No Batches Found</div>
+                    <div style="color: #64748b; font-size: 14px;">
+                        <?php if ($view === 'pending'): ?>
+                            There are no pending batches to review.
+                        <?php else: ?>
+                            There are no received batches ready for stock confirmation.
+                        <?php endif; ?>
+                    </div>
+                </div>
+            <?php else: ?>
+                <?php foreach ($batches as $batch): ?>
+                    <div style="background: white; border-radius: 12px; padding: 20px; border: 1px solid #e2e8f0; box-shadow: 0 2px 8px rgba(0,0,0,0.08); cursor: pointer; transition: all 0.2s;" onclick="window.location.href='?view=<?php echo $view; ?>&batch=<?php echo $batch['id']; ?>'" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                            <div>
+                                <div style="font-size: 16px; font-weight: 700; color: #0f172a; margin-bottom: 4px;"><?php echo htmlspecialchars($batch['batch_number']); ?></div>
+                                <div style="font-size: 13px; color: #64748b;"><i class="fas fa-truck"></i> <?php echo htmlspecialchars($batch['supplier']); ?></div>
+                            </div>
+                            <span style="background: <?php echo $batch['status'] === 'pending' ? '#fef3c7' : '#bfdbfe'; ?>; color: <?php echo $batch['status'] === 'pending' ? '#92400e' : '#1e3a8a'; ?>; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; text-transform: uppercase;">
+                                <?php echo $batch['status']; ?>
+                            </span>
+                        </div>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 13px; color: #64748b;">
+                            <div><i class="fas fa-calendar"></i> <?php echo date('M d, Y', strtotime($batch['delivery_date'])); ?></div>
+                            <div><i class="fas fa-user"></i> <?php echo htmlspecialchars($batch['received_by_name']); ?></div>
+                        </div>
+                        
+                        <?php if ($batch['status'] === 'received'): ?>
+                            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #059669; display: flex; align-items: center; gap: 6px;">
+                                <i class="fas fa-check-circle"></i> Received by <?php echo htmlspecialchars($batch['received_by_manager_name'] ?? 'N/A'); ?> on <?php echo date('M d, Y H:i', strtotime($batch['received_at'])); ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+    <?php endif; ?>
+</div>
+
+<!-- Reject Modal -->
+<div id="rejectModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 1000; padding: 20px;">
+    <div style="background: white; border-radius: 12px; padding: 24px; max-width: 500px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+        <h3 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 20px;">Reject Batch</h3>
+        <p style="color: #64748b; font-size: 14px; margin-bottom: 16px;">Please provide a reason for rejecting this batch (minimum 10 characters).</p>
+        
+        <form method="post">
+            <input type="hidden" name="action" value="reject_batch">
+            <input type="hidden" name="batch_id" id="rejectBatchId">
+            
+            <div style="margin-bottom: 20px;">
+                <label style="font-size: 13px; font-weight: 600; color: #475569; display: block; margin-bottom: 8px;">Reason for Rejection *</label>
+                <textarea name="reason" id="rejectReason" rows="4" placeholder="Explain why this batch is being rejected..." required style="width: 100%; padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; resize: none;"></textarea>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <button type="button" onclick="closeRejectModal()" style="background: #f3f4f6; color: #64748b; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px;">
+                    Cancel
+                </button>
+                <button type="submit" style="background: #ef4444; color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px;">
+                    Reject Batch
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function showRejectModal(batchId, batchNumber) {
+    document.getElementById('rejectBatchId').value = batchId;
+    document.getElementById('rejectModal').style.display = 'flex';
+}
+
+function closeRejectModal() {
+    document.getElementById('rejectModal').style.display = 'none';
+    document.getElementById('rejectReason').value = '';
+}
+
+document.getElementById('rejectModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeRejectModal();
+    }
+});
+</script>
+
+<?php include __DIR__ . '/../partials/footer.php'; ?>

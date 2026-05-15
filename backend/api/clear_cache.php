@@ -1,0 +1,182 @@
+<?php
+require_once __DIR__ . '/../lib.php';
+require_once __DIR__ . '/../../public/db_connect.php';
+
+// Check if user is authenticated and has proper role
+session_start();
+if (!isset($_SESSION['user_id'])) {
+    http_response_code(401);
+    echo json_encode(['error' => 'Unauthorized']);
+    exit;
+}
+
+$u = current_user();
+$role = $u['role'] ?? 'staff';
+$roleKey = function_exists('role_key') ? role_key($role) : strtolower(trim((string)$role));
+
+if (!in_array($roleKey, ['superadmin', 'admin', 'developer'])) {
+    http_response_code(403);
+    echo json_encode(['error' => 'Access denied']);
+    exit;
+}
+
+header('Content-Type: application/json');
+
+try {
+    // Only allow POST method
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['error' => 'Method not allowed']);
+        exit;
+    }
+    
+    $cache_cleared = [];
+    $errors = [];
+    
+    // 1. Clear PHP OPcache if enabled
+    if (function_exists('opcache_reset')) {
+        opcache_reset();
+        $cache_cleared[] = 'PHP OPcache';
+    }
+    
+    // 2. Clear session files (except current session)
+    try {
+        $session_path = session_save_path();
+        if ($session_path && is_dir($session_path)) {
+            $files = glob($session_path . '/sess_*');
+            $current_session_id = session_id();
+            $cleared = 0;
+            
+            foreach ($files as $file) {
+                $file_session_id = basename($file, 'sess_');
+                if ($file_session_id !== $current_session_id) {
+                    @unlink($file);
+                    $cleared++;
+                }
+            }
+            
+            if ($cleared > 0) {
+                $cache_cleared[] = "Session files ({$cleared} files)";
+            }
+        }
+    } catch (Exception $e) {
+        $errors[] = 'Session cleanup: ' . $e->getMessage();
+    }
+    
+    // 3. Clear system cache from database
+    try {
+        // Check if system_configuration table exists
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'system_configuration'");
+        $stmt->execute();
+        $config_exists = $stmt->fetchColumn() > 0;
+        
+        if ($config_exists) {
+            // Reset cache metrics
+            $stmt = $pdo->prepare("
+                UPDATE system_configuration 
+                SET config_value = '0' 
+                WHERE config_key IN ('cache_size', 'cache_hits', 'cache_misses')
+            ");
+            $stmt->execute();
+            
+            $cache_cleared[] = 'Database cache metrics';
+        }
+    } catch (Exception $e) {
+        $errors[] = 'Database cache cleanup: ' . $e->getMessage();
+    }
+    
+    // 4. Clear application cache directories
+    $cache_dirs = [
+        __DIR__ . '/../../cache/',
+        __DIR__ . '/../../temp/',
+        __DIR__ . '/../../assets/cache/'
+    ];
+    
+    foreach ($cache_dirs as $cache_dir) {
+        if (is_dir($cache_dir)) {
+            $files = glob($cache_dir . '*');
+            $cleared = 0;
+            
+            foreach ($files as $file) {
+                if (is_file($file)) {
+                    @unlink($file);
+                    $cleared++;
+                }
+            }
+            
+            if ($cleared > 0) {
+                $cache_cleared[] = basename($cache_dir) . " ({$cleared} files)";
+            }
+        }
+    }
+    
+    // 5. Clear template cache if exists
+    $template_cache = __DIR__ . '/../../templates/cache/';
+    if (is_dir($template_cache)) {
+        $files = glob($template_cache . '*');
+        $cleared = 0;
+        
+        foreach ($files as $file) {
+            if (is_file($file)) {
+                @unlink($file);
+                $cleared++;
+            }
+        }
+        
+        if ($cleared > 0) {
+            $cache_cleared[] = "Template cache ({$cleared} files)";
+        }
+    }
+    
+    // 6. Update cache status in configuration
+    try {
+        if ($config_exists) {
+            $stmt = $pdo->prepare("
+                INSERT INTO system_configuration (config_key, config_value) 
+                VALUES ('cache_status', 'cleared'), ('cache_cleared_at', ?) 
+                ON DUPLICATE KEY UPDATE 
+                    config_value = VALUES(config_value),
+                    updated_at = NOW()
+            ");
+            $stmt->execute([date('Y-m-d H:i:s')]);
+        }
+    } catch (Exception $e) {
+        $errors[] = 'Cache status update: ' . $e->getMessage();
+    }
+    
+    // 7. Log the cache clearing action
+    try {
+        $stmt = $pdo->prepare("
+            INSERT INTO audit_log (user_id, action, description, status, ip_address) 
+            VALUES (?, ?, ?, 'SUCCESS', ?)
+        ");
+        $stmt->execute([
+            $_SESSION['user_id'],
+            'Cache Cleared',
+            'System cache cleared by ' . $roleKey,
+            $_SERVER['REMOTE_ADDR'] ?? 'Unknown'
+        ]);
+    } catch (Exception $e) {
+        $errors[] = 'Audit logging: ' . $e->getMessage();
+    }
+    
+    // Prepare response
+    $success = count($cache_cleared) > 0 || empty($errors);
+    
+    echo json_encode([
+        'success' => $success,
+        'message' => $success ? 'Cache cleared successfully' : 'No cache to clear',
+        'cache_cleared' => $cache_cleared,
+        'errors' => $errors,
+        'total_cleared' => count($cache_cleared)
+    ]);
+    
+} catch (Exception $e) {
+    error_log("Clear Cache API Error: " . $e->getMessage());
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'error' => 'Failed to clear cache: ' . $e->getMessage()
+    ]);
+}
+?>
