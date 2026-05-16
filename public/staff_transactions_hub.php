@@ -322,21 +322,36 @@ $jo_rejected_count = 0;
 if ($section === 'merchandise') {
     // Handle status-update POST from the tracker
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['jo_action'])) {
-        $jo_action = $_POST['jo_action'];
-        $jo_id     = (int)($_POST['jo_id'] ?? 0);
+        $jo_action  = $_POST['jo_action'];
+        $jo_id      = (int)($_POST['jo_id'] ?? 0);
+        $jo_src     = $_POST['jo_source'] ?? 'job_orders';
         $tracker_tab = $_POST['tracker_tab'] ?? 'pending';
 
         if ($jo_id > 0) {
             try {
-                if ($jo_action === 'set_in_progress') {
-                    $pdo->prepare("UPDATE job_orders SET status='In Progress', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
-                    $_SESSION['success'] = 'Job Order marked as In Progress.';
-                } elseif ($jo_action === 'set_completed') {
-                    $pdo->prepare("UPDATE job_orders SET status='Completed', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
-                    $_SESSION['success'] = 'Job Order marked as Completed.';
-                } elseif ($jo_action === 'set_paid') {
-                    $pdo->prepare("UPDATE job_orders SET payment_status='Paid', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
-                    $_SESSION['success'] = 'Payment recorded as Paid.';
+                if ($jo_src === 'merchandise_transactions') {
+                    // Record lives in merchandise_transactions — use workflow_status column
+                    if ($jo_action === 'set_in_progress') {
+                        $pdo->prepare("UPDATE merchandise_transactions SET workflow_status='In Progress', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
+                        $_SESSION['success'] = 'Job Order marked as In Progress.';
+                    } elseif ($jo_action === 'set_completed') {
+                        $pdo->prepare("UPDATE merchandise_transactions SET workflow_status='Completed', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
+                        $_SESSION['success'] = 'Job Order marked as Completed.';
+                    } elseif ($jo_action === 'set_paid') {
+                        $pdo->prepare("UPDATE merchandise_transactions SET payment_status='Paid', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
+                        $_SESSION['success'] = 'Payment recorded as Paid.';
+                    }
+                } else {
+                    if ($jo_action === 'set_in_progress') {
+                        $pdo->prepare("UPDATE job_orders SET status='In Progress', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
+                        $_SESSION['success'] = 'Job Order marked as In Progress.';
+                    } elseif ($jo_action === 'set_completed') {
+                        $pdo->prepare("UPDATE job_orders SET status='Completed', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
+                        $_SESSION['success'] = 'Job Order marked as Completed.';
+                    } elseif ($jo_action === 'set_paid') {
+                        $pdo->prepare("UPDATE job_orders SET payment_status='Paid', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
+                        $_SESSION['success'] = 'Payment recorded as Paid.';
+                    }
                 }
             } catch (Exception $e) {
                 $_SESSION['error'] = 'Error updating job order: ' . $e->getMessage();
@@ -347,25 +362,86 @@ if ($section === 'merchandise') {
     }
 
     try {
-        $stmt = $pdo->prepare("
-            SELECT jo.*,
-                   COALESCE(u.name, u.username) AS mechanic_name,
-                   COALESCE(cb.name, cb.username) AS created_by_name
-            FROM job_orders jo
-            LEFT JOIN users u  ON u.id = jo.assigned_mechanic_id
-            LEFT JOIN users cb ON cb.id = jo.created_by
-            WHERE jo.station_id = ?
-            ORDER BY jo.created_at DESC
-        ");
-        $stmt->execute([$station_id]);
-        $job_orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        // Part 1: native job_orders rows
+        $jo_rows = [];
+        try {
+            $stmt = $pdo->prepare("
+                SELECT jo.*,
+                       COALESCE(u.name, u.username) AS mechanic_name,
+                       COALESCE(cb.name, cb.username) AS created_by_name,
+                       'job_orders' AS _source
+                FROM job_orders jo
+                LEFT JOIN users u  ON u.id = jo.assigned_mechanic_id
+                LEFT JOIN users cb ON cb.id = jo.created_by
+                WHERE jo.station_id = ?
+                ORDER BY jo.created_at DESC
+            ");
+            $stmt->execute([$station_id]);
+            $jo_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) { $jo_rows = []; }
+
+        // Part 2: merchandise_transactions with job_order/combined type
+        $mt_rows = [];
+        try {
+            $stmt2 = $pdo->prepare("
+                SELECT
+                    mt.id,
+                    mt.customer_name,
+                    COALESCE(mt.job_order_service, 'Service') AS service_type,
+                    '' AS service_description,
+                    COALESCE(mt.workflow_status, mt.validation_status, 'Pending') AS status,
+                    COALESCE(mt.validation_status, 'Pending') AS validation_status,
+                    mt.total_amount AS estimated_cost,
+                    mt.total_amount AS total_cost,
+                    '' AS notes,
+                    COALESCE(mt.job_order_vehicle_plate, '') AS vehicle_plate,
+                    COALESCE(mt.job_order_vehicle_type, '') AS vehicle_type,
+                    mt.created_at,
+                    COALESCE(mt.job_order_mechanic_name, '') AS mechanic_name,
+                    u.name AS created_by_name,
+                    mt.payment_method,
+                    COALESCE(mt.payment_status, 'Unpaid') AS payment_status,
+                    NULL AS assigned_mechanic_id,
+                    NULL AS customer_id,
+                    NULL AS job_order_id,
+                    NULL AS job_order_number,
+                    NULL AS required_parts,
+                    NULL AS additional_notes,
+                    NULL AS shift_id,
+                    mt.updated_at,
+                    'merchandise_transactions' AS _source
+                FROM merchandise_transactions mt
+                LEFT JOIN users u ON u.id = mt.staff_id
+                WHERE mt.station_id = ?
+                  AND mt.transaction_type IN ('job_order', 'combined')
+                ORDER BY mt.created_at DESC
+            ");
+            $stmt2->execute([$station_id]);
+            $mt_rows = $stmt2->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            error_log('staff_transactions_hub MT tracker query error: ' . $e->getMessage());
+            $mt_rows = [];
+        }
+
+        // Merge and sort by created_at DESC
+        $job_orders = array_merge($jo_rows, $mt_rows);
+        usort($job_orders, fn($a, $b) => strtotime($b['created_at']) - strtotime($a['created_at']));
+
     } catch (Exception $e) {
         $job_orders = [];
     }
 
-    $jo_pending_count  = count(array_filter($job_orders, fn($j) => ($j['validation_status'] ?? '') === 'Pending Validation'));
-    $jo_approved_count = count(array_filter($job_orders, fn($j) => ($j['validation_status'] ?? '') === 'Approved'));
-    $jo_rejected_count = count(array_filter($job_orders, fn($j) => ($j['status'] ?? '') === 'Rejected'));
+    $jo_pending_count  = count(array_filter($job_orders, fn($j) =>
+        in_array($j['validation_status'] ?? '', ['Pending Validation', 'Pending', ''])
+        || ($j['validation_status'] ?? '') === null
+    ));
+    $jo_approved_count = count(array_filter($job_orders, fn($j) =>
+        in_array($j['validation_status'] ?? '', ['Approved', 'Validated'])
+    ));
+    $jo_rejected_count = count(array_filter($job_orders, fn($j) =>
+        in_array($j['status'] ?? '', ['Rejected', 'Cancelled'])
+        || ($j['validation_status'] ?? '') === 'Rejected'
+    ));
 }
 
 // ── Mechanics list (for job order encode form) ────────────────────────────────
@@ -1604,11 +1680,62 @@ main.main {
         ══════════════════════════════════════════════════════ */ ?>
         <?php elseif ($section === 'merchandise'): ?>
         <?php
-        // Active inner tab: merchandise | encode_jo | tracker
+        // Active inner tab: merchandise | encode_jo | tracker | txn_history
         $active_tab  = $_GET['active_tab'] ?? 'merchandise';
-        if (!in_array($active_tab, ['merchandise','tracker'])) $active_tab = 'merchandise';
+        if (!in_array($active_tab, ['merchandise','tracker','txn_history'])) $active_tab = 'merchandise';
         $tracker_tab = $_GET['tracker_tab'] ?? 'pending';
         if (!in_array($tracker_tab, ['pending','approved','rejected'])) $tracker_tab = 'pending';
+
+        // ── Transaction History data (for txn_history tab) ───────────────────
+        $th_page     = max(1, (int)($_GET['th_page'] ?? 1));
+        $th_per_page = in_array((int)($_GET['th_per_page'] ?? 10), [10,20,30,40,50]) ? (int)$_GET['th_per_page'] : 10;
+        $th_offset   = ($th_page - 1) * $th_per_page;
+        $th_date     = trim($_GET['th_date']   ?? '');
+        $th_status   = trim($_GET['th_status'] ?? '');
+        $th_type     = trim($_GET['th_type']   ?? '');
+        $th_rows     = [];
+        $th_total    = 0;
+        try {
+            $mt_cols_th = [];
+            foreach ($pdo->query("SHOW COLUMNS FROM merchandise_transactions")->fetchAll(PDO::FETCH_ASSOC) as $c)
+                $mt_cols_th[strtolower($c['Field'])] = true;
+            $th_date_col   = isset($mt_cols_th['transaction_date']) ? 'mt.transaction_date' : 'mt.created_at';
+            $th_status_col = isset($mt_cols_th['validation_status']) ? 'mt.validation_status' : "'Pending'";
+            $th_txnid_col  = isset($mt_cols_th['transaction_id'])    ? 'mt.transaction_id'   : 'mt.id';
+            $th_jo_col     = isset($mt_cols_th['job_order_service'])  ? 'mt.job_order_service' : 'NULL';
+            $th_type_col   = isset($mt_cols_th['transaction_type'])   ? 'mt.transaction_type'  : "'merchandise'";
+
+            $th_where  = "WHERE mt.station_id = ? AND mt.staff_id = ?";
+            $th_params = [$station_id, $me['id']];
+            if ($th_date   !== '') { $th_where .= " AND DATE($th_date_col) = ?";              $th_params[] = $th_date; }
+            if ($th_status !== '') { $th_where .= " AND LOWER($th_status_col) = LOWER(?)";   $th_params[] = $th_status; }
+            if ($th_type   !== '') { $th_where .= " AND $th_type_col = ?";                    $th_params[] = $th_type; }
+
+            $cnt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions mt $th_where");
+            $cnt->execute($th_params);
+            $th_total = (int)$cnt->fetchColumn();
+
+            $stmt_th = $pdo->prepare("
+                SELECT mt.id,
+                       $th_txnid_col  AS transaction_id,
+                       mt.customer_name,
+                       mt.total_amount,
+                       mt.payment_method,
+                       $th_date_col   AS transaction_date,
+                       $th_status_col AS status,
+                       mt.shift_name,
+                       mt.shift_period,
+                       $th_jo_col     AS job_order_service,
+                       $th_type_col   AS transaction_type
+                FROM merchandise_transactions mt
+                $th_where
+                ORDER BY $th_date_col DESC
+                LIMIT $th_per_page OFFSET $th_offset
+            ");
+            $stmt_th->execute($th_params);
+            $th_rows = $stmt_th->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) { $th_rows = []; $th_total = 0; }
+
         $jo_pending  = array_values(array_filter($job_orders, fn($j) => ($j['validation_status'] ?? '') === 'Pending Validation'));
         $jo_approved = array_values(array_filter($job_orders, fn($j) => ($j['validation_status'] ?? '') === 'Approved'));
         $jo_rejected = array_values(array_filter($job_orders, fn($j) => ($j['status'] ?? '') === 'Rejected'));
@@ -5254,15 +5381,33 @@ main.main {
         ══════════════════════════════════════════════════════════ -->
         <div id="innerTab_tracker" style="display:<?= $active_tab === 'tracker' ? 'block' : 'none' ?>;">
         <?php
-        // Count by status for KPI strip
-        $jo_count_pending    = count(array_filter($job_orders, fn($j) => ($j['validation_status'] ?? '') === 'Pending Validation'));
-        $jo_count_inprogress = count(array_filter($job_orders, fn($j) => ($j['status'] ?? '') === 'In Progress'));
-        $jo_count_completed  = count(array_filter($job_orders, fn($j) => ($j['status'] ?? '') === 'Completed'));
-        $jo_count_rejected   = count(array_filter($job_orders, fn($j) => ($j['status'] ?? '') === 'Rejected'));
+        // Count by status for KPI strip — handles both job_orders and merchandise_transactions rows
+        $jo_count_pending    = count(array_filter($job_orders, function($j) {
+            $vs = $j['validation_status'] ?? '';
+            $st = $j['status'] ?? '';
+            return in_array($vs, ['Pending Validation', 'Pending', ''])
+                && !in_array($st, ['In Progress', 'Completed', 'Rejected', 'Cancelled', 'Approved']);
+        }));
+        $jo_count_approved   = count(array_filter($job_orders, function($j) {
+            $vs = $j['validation_status'] ?? '';
+            $st = $j['status'] ?? '';
+            return in_array($vs, ['Approved', 'Validated'])
+                && !in_array($st, ['In Progress', 'Completed', 'Rejected', 'Cancelled']);
+        }));
+        $jo_count_inprogress = count(array_filter($job_orders, fn($j) =>
+            ($j['status'] ?? '') === 'In Progress' || ($j['validation_status'] ?? '') === 'In Progress'
+        ));
+        $jo_count_completed  = count(array_filter($job_orders, fn($j) =>
+            ($j['status'] ?? '') === 'Completed' || ($j['validation_status'] ?? '') === 'Completed'
+        ));
+        $jo_count_rejected   = count(array_filter($job_orders, fn($j) =>
+            in_array($j['status'] ?? '', ['Rejected', 'Cancelled'])
+            || ($j['validation_status'] ?? '') === 'Rejected'
+        ));
         ?>
 
-        <!-- KPI strip (4 status cards) -->
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
+        <!-- KPI strip (5 status cards) -->
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px;">
             <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px;">
                 <div style="width:36px;height:36px;border-radius:50%;background:#fef9c3;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
                     <i class="fas fa-clock" style="color:#b45309;font-size:14px;"></i>
@@ -5270,6 +5415,15 @@ main.main {
                 <div>
                     <div style="font-size:20px;font-weight:800;color:#b45309;"><?= $jo_count_pending ?></div>
                     <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Pending</div>
+                </div>
+            </div>
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px;">
+                <div style="width:36px;height:36px;border-radius:50%;background:#d1fae5;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-check" style="color:#065f46;font-size:14px;"></i>
+                </div>
+                <div>
+                    <div style="font-size:20px;font-weight:800;color:#065f46;"><?= $jo_count_approved ?></div>
+                    <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Approved</div>
                 </div>
             </div>
             <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px;">
@@ -5361,15 +5515,16 @@ main.main {
                         $remarks     = $job['rejection_remarks'] ?? $job['notes'] ?? $job['additional_notes'] ?? '';
 
                         // Determine combined workflow label + badge style
-                        if ($wf_status === 'Rejected') {
+                        if (in_array($wf_status, ['Rejected', 'Cancelled']) || $val_status === 'Rejected') {
                             $wf_bg='#fee2e2'; $wf_color='#991b1b'; $wf_label='REJECTED'; $row_filter='rejected';
-                        } elseif ($wf_status === 'Completed') {
+                        } elseif ($wf_status === 'Completed' || $val_status === 'Completed') {
                             $wf_bg='#dcfce7'; $wf_color='#166534'; $wf_label='COMPLETED'; $row_filter='completed';
-                        } elseif ($wf_status === 'In Progress') {
+                        } elseif ($wf_status === 'In Progress' || $val_status === 'In Progress') {
                             $wf_bg='#dbeafe'; $wf_color='#1d4ed8'; $wf_label='IN PROGRESS'; $row_filter='inprogress';
-                        } elseif ($val_status === 'Approved') {
+                        } elseif (in_array($val_status, ['Approved', 'Validated'])) {
                             $wf_bg='#d1fae5'; $wf_color='#065f46'; $wf_label='APPROVED'; $row_filter='approved';
                         } else {
+                            // Catches: 'Pending Validation', 'Pending', '', NULL
                             $wf_bg='#fef9c3'; $wf_color='#854d0e'; $wf_label='PENDING VALIDATION'; $row_filter='pending';
                         }
 
@@ -5455,6 +5610,7 @@ main.main {
                                 <form method="POST" action="staff_transactions_hub.php?section=merchandise" style="margin:0;">
                                     <input type="hidden" name="jo_action" value="set_paid">
                                     <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
+                                    <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
                                     <button type="submit" class="txn-btn success" style="padding:5px 11px;font-size:11px;white-space:nowrap;">
                                         <i class="fas fa-money-bill-wave"></i> Mark Paid
                                     </button>
@@ -5469,6 +5625,7 @@ main.main {
                                     <form method="POST" action="staff_transactions_hub.php?section=merchandise" style="margin:0;">
                                         <input type="hidden" name="jo_action" value="set_in_progress">
                                         <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
+                                        <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
                                         <button type="submit" class="txn-btn primary" style="padding:5px 11px;font-size:11px;width:100%;white-space:nowrap;">
                                             <i class="fas fa-play"></i> In Progress
                                         </button>
@@ -5477,6 +5634,7 @@ main.main {
                                     <form method="POST" action="staff_transactions_hub.php?section=merchandise" style="margin:0;">
                                         <input type="hidden" name="jo_action" value="set_completed">
                                         <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
+                                        <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
                                         <button type="submit" class="txn-btn success" style="padding:5px 11px;font-size:11px;width:100%;white-space:nowrap;">
                                             <i class="fas fa-check"></i> Complete
                                         </button>

@@ -431,6 +431,9 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
         'rejection_reason'      => 'TEXT NULL',
         'adjustment_reason'     => 'TEXT NULL',
         'updated_at'            => 'DATETIME NULL',
+        // ── Payment and workflow tracking ─────────────────────────────────────
+        'payment_status'        => "VARCHAR(20) NOT NULL DEFAULT 'Unpaid'",
+        'workflow_status'       => "VARCHAR(20) NOT NULL DEFAULT 'Pending'",
         // ── Job Order integration ──────────────────────────────────────────
         'job_order_id'               => 'VARCHAR(50) NULL',
         'job_order_db_id'            => 'INT NULL',
@@ -670,6 +673,15 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             'ewallet_reference'     => $data['ewallet_reference'] ?? null,
             'ewallet_provider'      => $data['ewallet_provider'] ?? null,
             'efuel_card_number'          => $data['efuel_card_number'] ?? null,
+            // ── Payment status: Paid for cash/card/ewallet/efuel, Unpaid for credit ──
+            'payment_status'        => (function() use ($data) {
+                $method = strtolower($data['payment_method'] ?? '');
+                if ($method === 'credit') return 'Unpaid';
+                $tendered = (float)($data['amount_tendered'] ?? 0);
+                return $tendered > 0 ? 'Paid' : 'Unpaid';
+            })(),
+            // ── Workflow status: tracks In Progress / Completed after manager approval ──
+            'workflow_status'       => 'Pending',
             // ── Job Order integration ──────────────────────────────────────
             'job_order_id'               => !empty($data['job_order_id'])            ? $data['job_order_id']               : null,
             'job_order_db_id'            => !empty($data['job_order_db_id'])         ? (int)$data['job_order_db_id']       : null,

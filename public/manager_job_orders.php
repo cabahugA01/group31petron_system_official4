@@ -37,38 +37,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
     // ── Approve / Reject ──────────────────────────────────────────────────
     if ($action === 'approve_reject_job_order' && $job_id) {
-        $approval = $_POST['approval_action'] ?? '';
+        $approval   = $_POST['approval_action'] ?? '';
+        $job_source = $_POST['job_source'] ?? 'job_orders';
         try {
-            $cols = $getColMap();
-            $has  = fn($col) => isset($cols[$col]);
-            if (!$has('validated_by')) $pdo->exec("ALTER TABLE {$db_config['job_orders']} ADD COLUMN validated_by INT NULL");
-            if (!$has('validated_at')) $pdo->exec("ALTER TABLE {$db_config['job_orders']} ADD COLUMN validated_at DATETIME NULL");
-
-            $stmt = $pdo->prepare("SELECT * FROM {$db_config['job_orders']} WHERE id=? AND station_id=?");
-            $stmt->execute([$job_id, $station_id]);
-            $job = $stmt->fetch(PDO::FETCH_ASSOC);
-            if (!$job) throw new Exception('Job order not found.');
-
-            if ($approval === 'approve') {
-                $set = ["validation_status='Approved'", "status='Pending'"]; $vals = [];
-                if ($has('validated_by')) { $set[] = "validated_by=?"; $vals[] = $me['id']; }
-                if ($has('validated_at')) { $set[] = "validated_at=NOW()"; }
-                if ($has('updated_at'))   { $set[] = "updated_at=NOW()"; }
-                $pdo->prepare("UPDATE {$db_config['job_orders']} SET ".implode(',',$set)." WHERE id=?")->execute(array_merge($vals,[$job_id]));
-                try { $pdo->prepare("INSERT INTO job_order_audit (job_order_id,action,before_status,after_status,performed_by,performed_at,notes,ip_address,user_agent) VALUES (?,?,?,?,?,NOW(),?,?,?)")
-                    ->execute([$job_id,'APPROVE',$job['validation_status'],'Approved',$me['id'],"Approved by {$me['name']}".($remarks?" Remarks:$remarks":''),$_SERVER['REMOTE_ADDR']??'',$_SERVER['HTTP_USER_AGENT']??'']); } catch(Exception $e){}
-                log_activity($pdo,$me['id'],'JOB_ORDER_APPROVED',"Manager {$me['name']} approved job order #{$job_id}.");
-                $_SESSION['success'] = "Job order #{$job_id} approved.";
+            if ($job_source === 'merchandise_transactions') {
+                // Record from staff_transactions_hub — lives in merchandise_transactions
+                if ($approval === 'approve') {
+                    $pdo->prepare("UPDATE merchandise_transactions SET validation_status='Approved', validated_by=?, validated_at=NOW(), updated_at=NOW() WHERE id=? AND station_id=?")
+                        ->execute([$me['id'], $job_id, $station_id]);
+                    log_activity($pdo, $me['id'], 'JOB_ORDER_APPROVED', "Manager {$me['name']} approved job order #{$job_id} (merch_txn).");
+                    $_SESSION['success'] = "Job order #{$job_id} approved.";
+                } else {
+                    $pdo->prepare("UPDATE merchandise_transactions SET validation_status='Rejected', validated_by=?, validated_at=NOW(), updated_at=NOW() WHERE id=? AND station_id=?")
+                        ->execute([$me['id'], $job_id, $station_id]);
+                    log_activity($pdo, $me['id'], 'JOB_ORDER_REJECTED', "Manager {$me['name']} rejected job order #{$job_id} (merch_txn).");
+                    $_SESSION['success'] = "Job order #{$job_id} rejected.";
+                }
             } else {
-                $set = ["validation_status='Rejected'", "status='Cancelled'"]; $vals = [];
-                if ($has('validated_by')) { $set[] = "validated_by=?"; $vals[] = $me['id']; }
-                if ($has('validated_at')) { $set[] = "validated_at=NOW()"; }
-                if ($has('updated_at'))   { $set[] = "updated_at=NOW()"; }
-                $pdo->prepare("UPDATE {$db_config['job_orders']} SET ".implode(',',$set)." WHERE id=?")->execute(array_merge($vals,[$job_id]));
-                try { $pdo->prepare("INSERT INTO job_order_audit (job_order_id,action,before_status,after_status,performed_by,performed_at,notes,ip_address,user_agent) VALUES (?,?,?,?,?,NOW(),?,?,?)")
-                    ->execute([$job_id,'REJECT',$job['validation_status'],'Rejected',$me['id'],"Rejected by {$me['name']}".($remarks?" Remarks:$remarks":''),$_SERVER['REMOTE_ADDR']??'',$_SERVER['HTTP_USER_AGENT']??'']); } catch(Exception $e){}
-                log_activity($pdo,$me['id'],'JOB_ORDER_REJECTED',"Manager {$me['name']} rejected job order #{$job_id}.");
-                $_SESSION['success'] = "Job order #{$job_id} rejected.";
+                $cols = $getColMap();
+                $has  = fn($col) => isset($cols[$col]);
+                if (!$has('validated_by')) $pdo->exec("ALTER TABLE {$db_config['job_orders']} ADD COLUMN validated_by INT NULL");
+                if (!$has('validated_at')) $pdo->exec("ALTER TABLE {$db_config['job_orders']} ADD COLUMN validated_at DATETIME NULL");
+
+                $stmt = $pdo->prepare("SELECT * FROM {$db_config['job_orders']} WHERE id=? AND station_id=?");
+                $stmt->execute([$job_id, $station_id]);
+                $job = $stmt->fetch(PDO::FETCH_ASSOC);
+                if (!$job) throw new Exception('Job order not found.');
+
+                if ($approval === 'approve') {
+                    $set = ["validation_status='Approved'", "status='Pending'"]; $vals = [];
+                    if ($has('validated_by')) { $set[] = "validated_by=?"; $vals[] = $me['id']; }
+                    if ($has('validated_at')) { $set[] = "validated_at=NOW()"; }
+                    if ($has('updated_at'))   { $set[] = "updated_at=NOW()"; }
+                    $pdo->prepare("UPDATE {$db_config['job_orders']} SET ".implode(',',$set)." WHERE id=?")->execute(array_merge($vals,[$job_id]));
+                    try { $pdo->prepare("INSERT INTO job_order_audit (job_order_id,action,before_status,after_status,performed_by,performed_at,notes,ip_address,user_agent) VALUES (?,?,?,?,?,NOW(),?,?,?)")
+                        ->execute([$job_id,'APPROVE',$job['validation_status'],'Approved',$me['id'],"Approved by {$me['name']}".($remarks?" Remarks:$remarks":''),$_SERVER['REMOTE_ADDR']??'',$_SERVER['HTTP_USER_AGENT']??'']); } catch(Exception $e){}
+                    log_activity($pdo,$me['id'],'JOB_ORDER_APPROVED',"Manager {$me['name']} approved job order #{$job_id}.");
+                    $_SESSION['success'] = "Job order #{$job_id} approved.";
+                } else {
+                    $set = ["validation_status='Rejected'", "status='Cancelled'"]; $vals = [];
+                    if ($has('validated_by')) { $set[] = "validated_by=?"; $vals[] = $me['id']; }
+                    if ($has('validated_at')) { $set[] = "validated_at=NOW()"; }
+                    if ($has('updated_at'))   { $set[] = "updated_at=NOW()"; }
+                    $pdo->prepare("UPDATE {$db_config['job_orders']} SET ".implode(',',$set)." WHERE id=?")->execute(array_merge($vals,[$job_id]));
+                    try { $pdo->prepare("INSERT INTO job_order_audit (job_order_id,action,before_status,after_status,performed_by,performed_at,notes,ip_address,user_agent) VALUES (?,?,?,?,?,NOW(),?,?,?)")
+                        ->execute([$job_id,'REJECT',$job['validation_status'],'Rejected',$me['id'],"Rejected by {$me['name']}".($remarks?" Remarks:$remarks":''),$_SERVER['REMOTE_ADDR']??'',$_SERVER['HTTP_USER_AGENT']??'']); } catch(Exception $e){}
+                    log_activity($pdo,$me['id'],'JOB_ORDER_REJECTED',"Manager {$me['name']} rejected job order #{$job_id}.");
+                    $_SESSION['success'] = "Job order #{$job_id} rejected.";
+                }
             }
         } catch (Exception $e) { $_SESSION['error'] = 'Error: '.$e->getMessage(); }
         header('Location: manager_job_orders.php'); exit;
@@ -164,7 +180,8 @@ try {
             $mt_params2 = [$station_id];
 
             if ($status_filter !== '') {
-                $mt2_where[] = "(mt2.validation_status = ? OR mt2.validation_status = ?)";
+                // Check both validation_status (Pending/Approved/Rejected) and workflow_status (In Progress/Completed)
+                $mt2_where[] = "(mt2.validation_status = ? OR mt2.workflow_status = ?)";
                 $mt_params2[] = $status_filter; $mt_params2[] = $status_filter;
             }
             if ($search_filter !== '') {
@@ -184,8 +201,8 @@ try {
                 COALESCE(NULLIF(TRIM(mt2.customer_name),''),'Walk-in'),
                 COALESCE(mt2.job_order_service,'Service'),
                 '',
-                COALESCE(mt2.validation_status,'Pending Validation'),
-                COALESCE(mt2.validation_status,'Pending Validation'),
+                COALESCE(mt2.workflow_status, mt2.validation_status,'Pending'),
+                COALESCE(mt2.validation_status,'Pending'),
                 mt2.total_amount,
                 '',
                 {$mt2_date},
@@ -329,6 +346,7 @@ include __DIR__ . '/../partials/header.php';
             <form method="POST" style="margin:0;">
               <input type="hidden" name="action" value="approve_reject_job_order">
               <input type="hidden" name="job_id" value="<?php echo (int)$j['id']; ?>">
+              <input type="hidden" name="job_source" value="<?php echo htmlspecialchars($j['_source'] ?? 'job_orders'); ?>">
               <input type="hidden" name="approval_action" value="approve">
               <button type="submit" class="jo-act-btn" style="background:#28a745;" onclick="return confirm('Approve job order #<?php echo (int)$j['id']; ?>?')">
                 <i class="fas fa-check"></i> Approve
@@ -337,6 +355,7 @@ include __DIR__ . '/../partials/header.php';
             <form method="POST" style="margin:0;">
               <input type="hidden" name="action" value="approve_reject_job_order">
               <input type="hidden" name="job_id" value="<?php echo (int)$j['id']; ?>">
+              <input type="hidden" name="job_source" value="<?php echo htmlspecialchars($j['_source'] ?? 'job_orders'); ?>">
               <input type="hidden" name="approval_action" value="reject">
               <button type="submit" class="jo-act-btn" style="background:#dc3545;" onclick="return confirm('Reject job order #<?php echo (int)$j['id']; ?>?')">
                 <i class="fas fa-times"></i> Reject

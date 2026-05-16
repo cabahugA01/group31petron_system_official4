@@ -189,7 +189,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($pdo->inTransaction()) $pdo->rollBack();
             $_SESSION['error'] = 'Error approving JO: ' . $e->getMessage();
         }
-        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','status'=>$_POST['_status']??'','type'=>'jo'])));
+        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'merch'])));
         exit;
     }
 
@@ -218,7 +218,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($pdo->inTransaction()) $pdo->rollBack();
             $_SESSION['error'] = 'Error rejecting JO: ' . $e->getMessage();
         }
-        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','status'=>$_POST['_status']??'','type'=>'jo'])));
+        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'merch'])));
         exit;
     }
 
@@ -241,6 +241,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['error'] = 'Error adjusting JO: ' . $e->getMessage();
         }
         header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','status'=>$_POST['_status']??'','type'=>'jo'])));
+        exit;
+    }
+
+    // ── Mark Job Order Paid ───────────────────────────────────────────────────
+    if ($action === 'mark_jo_paid') {
+        $jo_id   = (int)($_POST['jo_id'] ?? 0);
+        $jo_src  = $_POST['jo_source'] ?? 'job_orders';
+        try {
+            if ($jo_src === 'merchandise_transactions') {
+                $pdo->prepare("UPDATE merchandise_transactions SET payment_status='Paid', updated_at=NOW() WHERE id=? AND station_id=?")
+                    ->execute([$jo_id, $station_id]);
+            } else {
+                $pdo->prepare("UPDATE job_orders SET payment_status='Paid', updated_at=NOW() WHERE id=? AND station_id=?")
+                    ->execute([$jo_id, $station_id]);
+            }
+            log_activity($pdo, $me['id'], 'JO_MARKED_PAID', "Job Order #{$jo_id} marked as Paid by {$me['name']}.");
+            $_SESSION['success'] = "Job Order #{$jo_id} marked as Paid.";
+        } catch (Exception $e) {
+            $_SESSION['error'] = 'Error marking paid: ' . $e->getMessage();
+        }
+        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'jo'])));
         exit;
     }
 }
@@ -377,7 +398,8 @@ $sql = "
         $mt_mechanic_expr AS mechanic,
         $mt_txn_type_expr AS txn_type,
         '' AS jo_status,
-        '' AS payment_status
+        '' AS payment_status,
+        'merchandise_transactions' AS _source
     FROM merchandise_transactions mt
     LEFT JOIN users u ON mt.staff_id = u.id
     $mw
@@ -428,7 +450,8 @@ $jo_sql = "
         0 AS unit_price,
         'job_order' AS txn_type,
         jo.status AS jo_status,
-        COALESCE(NULLIF(TRIM(jo.payment_status),''), 'Unpaid') AS payment_status
+        COALESCE(NULLIF(TRIM(jo.payment_status),''), 'Unpaid') AS payment_status,
+        'job_orders' AS _source
     FROM job_orders jo
     LEFT JOIN users u ON u.id = COALESCE(jo.created_by, jo.user_id)
     $jow
@@ -474,15 +497,32 @@ $jo_search_filter = trim($_GET['jo_search'] ?? '');
 
 $jo_stats = ['total'=>0,'pending'=>0,'approved'=>0,'in_progress'=>0,'completed'=>0,'rejected'=>0];
 try {
+    // Count from job_orders
     $r = $pdo->prepare("SELECT COUNT(*) AS total,
         SUM(CASE WHEN status='Pending Validation' OR validation_status='Pending Validation' THEN 1 ELSE 0 END) AS pending,
-        SUM(CASE WHEN status IN ('Approved','Validated') THEN 1 ELSE 0 END) AS approved,
+        SUM(CASE WHEN validation_status IN ('Approved','Validated') AND status NOT IN ('In Progress','Completed','Rejected','Cancelled') THEN 1 ELSE 0 END) AS approved,
         SUM(CASE WHEN status='In Progress' THEN 1 ELSE 0 END) AS in_progress,
         SUM(CASE WHEN status='Completed' THEN 1 ELSE 0 END) AS completed,
         SUM(CASE WHEN status IN ('Rejected','Cancelled') THEN 1 ELSE 0 END) AS rejected
         FROM job_orders WHERE station_id=?");
     $r->execute([$station_id]);
     $jo_stats = $r->fetch(PDO::FETCH_ASSOC) ?: $jo_stats;
+
+    // Also count from merchandise_transactions (job_order/combined type)
+    $r2 = $pdo->prepare("SELECT COUNT(*) AS total,
+        SUM(CASE WHEN validation_status='Pending' THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN validation_status='Approved' AND COALESCE(workflow_status,'Pending') NOT IN ('In Progress','Completed','Rejected') THEN 1 ELSE 0 END) AS approved,
+        SUM(CASE WHEN COALESCE(workflow_status,'Pending')='In Progress' THEN 1 ELSE 0 END) AS in_progress,
+        SUM(CASE WHEN COALESCE(workflow_status,'Pending')='Completed' THEN 1 ELSE 0 END) AS completed,
+        SUM(CASE WHEN validation_status='Rejected' THEN 1 ELSE 0 END) AS rejected
+        FROM merchandise_transactions WHERE station_id=? AND transaction_type IN ('job_order','combined')");
+    $r2->execute([$station_id]);
+    $mt_stats = $r2->fetch(PDO::FETCH_ASSOC);
+    if ($mt_stats) {
+        foreach (['total','pending','approved','in_progress','completed','rejected'] as $k) {
+            $jo_stats[$k] = ($jo_stats[$k] ?? 0) + ($mt_stats[$k] ?? 0);
+        }
+    }
 } catch (Exception $e) {}
 
 $jo_where = ["j.station_id=?"]; $jo_params = [$station_id];
@@ -550,7 +590,9 @@ try {
         $mt_params2 = [$station_id];
 
         if ($jo_status_filter !== '') {
-            $mt2_where[] = "(mt2.validation_status = ? OR mt2.validation_status = ?)";
+            // For MT rows: check both validation_status (Pending/Approved/Rejected)
+            // and workflow_status (In Progress/Completed) since they're separate columns
+            $mt2_where[] = "(mt2.validation_status = ? OR mt2.workflow_status = ?)";
             $mt_params2[] = $jo_status_filter; $mt_params2[] = $jo_status_filter;
         }
         if ($jo_search_filter !== '') {
@@ -570,8 +612,8 @@ try {
             COALESCE(NULLIF(TRIM(mt2.customer_name),''),'Walk-in')         AS customer_name,
             COALESCE(mt2.job_order_service,'Service')                       AS service_type,
             ''                                                              AS service_description,
-            COALESCE(mt2.validation_status,'Pending Validation')            AS status,
-            COALESCE(mt2.validation_status,'Pending Validation')            AS validation_status,
+            COALESCE(mt2.workflow_status, mt2.validation_status,'Pending')  AS status,
+            COALESCE(mt2.validation_status,'Pending')                       AS validation_status,
             mt2.total_amount                                                AS estimated_cost,
             mt2.total_amount                                                AS total_cost,
             ''                                                              AS notes,
@@ -579,7 +621,7 @@ try {
             {$mt2_date_col}                                                 AS created_at,
             COALESCE(NULLIF(TRIM(mt2.customer_name),''),'Walk-in')         AS cust,
             u2.name                                                         AS staff_name,
-            'Unpaid'                                                        AS payment_status,
+            COALESCE(mt2.payment_status,'Unpaid')                          AS payment_status,
             {$mt_mech2}                                                     AS mechanic_name,
             'merchandise_transactions'                                      AS _source
         FROM merchandise_transactions mt2
@@ -980,6 +1022,7 @@ try {
                             <form method="POST" style="display:contents;" onsubmit="return confirm('Approve this Job Order?');">
                                 <input type="hidden" name="action" value="approve_job_order">
                                 <input type="hidden" name="jo_id" value="<?php echo $rowId; ?>">
+                                <input type="hidden" name="jo_source" value="<?php echo htmlspecialchars($t['_source'] ?? 'job_orders'); ?>">
                                 <input type="hidden" name="remarks" value="Approved via Pending Transactions">
                                 <input type="hidden" name="_start" value="<?php echo htmlspecialchars($start); ?>">
                                 <input type="hidden" name="_end" value="<?php echo htmlspecialchars($end); ?>">
@@ -988,7 +1031,7 @@ try {
                                 <button type="submit" class="ab ab-approve"><i class="fas fa-check-circle"></i><span class="ab-lbl"> Approve</span></button>
                             </form>
                             <!-- JO: Reject -->
-                            <button class="ab ab-reject" onclick="openJORejectModal(<?php echo $rowId; ?>)">
+                            <button class="ab ab-reject" onclick="openJORejectModal(<?php echo $rowId; ?>, '<?php echo htmlspecialchars($t['_source'] ?? 'job_orders'); ?>')">
                                 <i class="fas fa-times-circle"></i><span class="ab-lbl"> Reject</span>
                             </button>
                             <!-- JO: Adjust -->
@@ -1127,11 +1170,24 @@ try {
                 'Adjusted'          =>['#E0E7FF','#3730A3'],
             ];
             foreach ($jo_tracker_rows as $j):
-                $jst       = $j['validation_status'] ?: $j['status'] ?: 'Pending Validation';
+                // For MT rows: status = workflow_status (In Progress/Completed), validation_status = approval state (Approved/Pending)
+                // Use status for workflow display; fall back to validation_status only if status is empty/pending
+                $wf_st     = $j['status'] ?? '';
+                $val_st    = $j['validation_status'] ?? '';
+                // Determine display status: workflow state takes priority if it's a meaningful workflow step
+                if (in_array($wf_st, ['In Progress','Completed','Rejected','Cancelled'])) {
+                    $jst = $wf_st;
+                } elseif ($val_st !== '') {
+                    $jst = $val_st;
+                } else {
+                    $jst = 'Pending Validation';
+                }
                 $jsc       = $jo_stMap[$jst] ?? ['#f3f4f6','#374151'];
                 $svc       = htmlspecialchars($j['service_type'] ?: $j['service_description'] ?: '—');
-                $isPending = in_array($jst, ['Pending Validation','Pending']);
+                $isPending = in_array($jst, ['Pending Validation','Pending']) || in_array($val_st, ['Pending Validation','Pending']);
+                $isCompleted = in_array($jst, ['Completed']);
                 $canAdjust = !in_array($jst, ['Completed','Cancelled']);
+                $jps       = strtolower($j['payment_status'] ?? 'unpaid');
                 $cost      = (float)($j['total_cost'] ?: 0) > 0
                            ? (float)$j['total_cost']
                            : (float)($j['estimated_cost'] ?? 0);
@@ -1146,7 +1202,6 @@ try {
                 <td><span class="jo-badge" style="background:<?php echo $jsc[0]; ?>;color:<?php echo $jsc[1]; ?>;"><?php echo htmlspecialchars($jst); ?></span></td>
                 <td>
                     <?php
-                        $jps = strtolower($j['payment_status'] ?? 'unpaid');
                         $jpsc = $jps === 'paid' ? '#28a745' : ($jps === 'partial' ? '#e6a817' : '#dc3545');
                         $jpst = $jps === 'partial' ? '#212529' : '#fff';
                     ?>
@@ -1181,7 +1236,21 @@ try {
                             <i class="fas fa-sliders"></i> Adjust
                         </button>
                         <?php endif; ?>
-                        <?php if (!$isPending && !$canAdjust): ?>
+                        <?php if ($isCompleted && $jps !== 'paid'): ?>
+                        <form method="POST" action="transactions.php" style="margin:0;">
+                            <input type="hidden" name="action" value="mark_jo_paid">
+                            <input type="hidden" name="jo_id" value="<?php echo (int)$j['id']; ?>">
+                            <input type="hidden" name="jo_source" value="<?php echo htmlspecialchars($j['_source'] ?? 'job_orders'); ?>">
+                            <input type="hidden" name="_start" value="<?php echo htmlspecialchars($start); ?>">
+                            <input type="hidden" name="_end" value="<?php echo htmlspecialchars($end); ?>">
+                            <button type="submit" class="jo-act-btn" style="background:#16a34a;"
+                                onclick="return confirm('Mark Job Order #<?php echo (int)$j['id']; ?> as Paid?')">
+                                <i class="fas fa-money-bill-wave"></i> Mark Paid
+                            </button>
+                        </form>
+                        <?php elseif ($isCompleted && $jps === 'paid'): ?>
+                        <span style="font-size:11px;color:#16a34a;font-weight:700;"><i class="fas fa-check-circle"></i> Paid</span>
+                        <?php elseif (!$isPending && !$canAdjust): ?>
                         <span style="font-size:11px;color:#9ca3af;">—</span>
                         <?php endif; ?>
                     </div>
