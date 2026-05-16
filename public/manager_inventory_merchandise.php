@@ -18,21 +18,22 @@ $categories      = [];
 $msg = '';
 try {
     $stmt = $pdo->prepare("
-        SELECT id, product_name AS name, category AS category_name,
-               unit_price AS price, unit_cost AS cost,
-               unit_price, sku, stock AS stock_level,
-               10 AS reorder_level
-        FROM inventory_products
-        WHERE category NOT IN ('Fuel')
-        ORDER BY category, product_name
+        SELECT ip.id,
+               ip.product_name AS name,
+               ip.category     AS category_name,
+               ip.unit_price   AS price,
+               ip.unit_cost    AS cost,
+               ip.sku,
+               COALESCE(si.stock_level, ip.stock, 0) AS stock_level,
+               COALESCE(si.reorder_level, 10)        AS reorder_level
+        FROM inventory_products ip
+        LEFT JOIN station_inventory si
+               ON si.product_id = ip.id AND si.station_id = ?
+        WHERE ip.category NOT IN ('Fuel')
+        ORDER BY ip.category, ip.product_name
     ");
-    $stmt->execute();
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $p) {
-        $sl  = (int)($p['stock_level'] ?? 0);
-        $oos = false;
-        if ($sl <= 0) { $sl = rand(15, 50); $oos = true; }
-        $merch_inventory[] = array_merge($p, ['stock_level' => $sl, 'was_out_of_stock' => $oos]);
-    }
+    $stmt->execute([$station_id]);
+    $merch_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     $msg = 'Error loading merchandise: ' . $e->getMessage();
 }
@@ -79,6 +80,7 @@ include __DIR__ . '/../partials/header.php';
         <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; Oversight of merchandise stock levels &amp; categories</div>
     </div>
     <div class="header-actions">
+        <a href="manager_inventory_stock_requests.php" class="btn primary"><i class="fas fa-inbox"></i> Stock Requests</a>
         <button onclick="location.reload()" class="btn ghost"><i class="fas fa-sync-alt"></i> Refresh</button>
     </div>
 </div>
@@ -95,6 +97,23 @@ include __DIR__ . '/../partials/header.php';
         <div style="display:flex;align-items:center;gap:10px;">
             <span class="readonly-badge"><i class="fas fa-eye"></i> View-only oversight</span>
             <span style="font-size:13px;color:#6c757d;"><?php echo count($merch_inventory); ?> products</span>
+            <?php
+            $low_count = 0; $out_count = 0;
+            foreach ($merch_inventory as $it) {
+                $sl = (float)($it['stock_level'] ?? 0);
+                $rl = (float)($it['reorder_level'] ?? 10);
+                if ($sl <= 0) $out_count++;
+                elseif ($sl <= $rl) $low_count++;
+            }
+            if ($out_count > 0): ?>
+                <span style="background:#fee2e2;color:#dc3545;border-radius:20px;padding:3px 10px;font-size:12px;font-weight:700;">
+                    <i class="fas fa-exclamation-circle"></i> <?php echo $out_count; ?> Out of Stock
+                </span>
+            <?php endif; if ($low_count > 0): ?>
+                <span style="background:#fff3cd;color:#856404;border-radius:20px;padding:3px 10px;font-size:12px;font-weight:700;">
+                    <i class="fas fa-exclamation-triangle"></i> <?php echo $low_count; ?> Low Stock
+                </span>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -148,9 +167,6 @@ include __DIR__ . '/../partials/header.php';
                         <td><?php echo number_format($stock, 0); ?></td>
                         <td>
                             <span style="color:<?php echo $sc; ?>;font-weight:700;"><?php echo $st; ?></span>
-                            <?php if ($item['was_out_of_stock'] ?? false): ?>
-                                <span style="font-size:.75em;color:#17a2b8;margin-left:3px;">&#128230; Auto-stocked</span>
-                            <?php endif; ?>
                         </td>
                         <td class="cost-col">&#8369;<?php echo number_format($item['cost'], 2); ?></td>
                         <td class="price-col">

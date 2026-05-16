@@ -36,23 +36,24 @@ try {
     $stmt->execute([$station_id]);
     $fuel_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Merchandise inventory
+    // Merchandise inventory — use station_inventory for per-station stock levels
     $stmt = $pdo->prepare("
-        SELECT id, product_name AS name, category AS category_name,
-               unit_price AS price, unit_cost AS cost,
-               unit_price, sku, stock AS stock_level,
-               10 AS reorder_level, null AS inventory_id
-        FROM inventory_products
-        WHERE category NOT IN ('Fuel')
-        ORDER BY category, product_name
+        SELECT ip.id,
+               ip.product_name AS name,
+               ip.category     AS category_name,
+               ip.unit_price   AS price,
+               ip.unit_cost    AS cost,
+               ip.sku,
+               COALESCE(si.stock_level, ip.stock, 0) AS stock_level,
+               COALESCE(si.reorder_level, 10)        AS reorder_level
+        FROM inventory_products ip
+        LEFT JOIN station_inventory si
+               ON si.product_id = ip.id AND si.station_id = ?
+        WHERE ip.category NOT IN ('Fuel')
+        ORDER BY ip.category, ip.product_name
     ");
-    $stmt->execute();
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $p) {
-        $sl  = (int)($p['stock_level'] ?? 0);
-        $oos = false;
-        if ($sl <= 0) { $sl = rand(15, 50); $oos = true; }
-        $merch_inventory[] = array_merge($p, ['stock_level' => $sl, 'was_out_of_stock' => $oos]);
-    }
+    $stmt->execute([$station_id]);
+    $merch_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // Stock requests (this staff member only)
     $stmt = $pdo->prepare("
@@ -259,23 +260,22 @@ include __DIR__ . '/../partials/header.php';
                         <th>Current Level</th>
                         <th>Capacity</th>
                         <th>Fill %</th>
-                        <th>Status</th>
                         <th>Price / L</th>
                     </tr>
                 </thead>
                 <tbody>
                 <?php if (empty($fuel_inventory)): ?>
-                    <tr><td colspan="6" style="text-align:center;padding:24px;color:#6c757d;">No fuel inventory data available.</td></tr>
+                    <tr><td colspan="5" style="text-align:center;padding:24px;color:#6c757d;">No fuel inventory data available.</td></tr>
                 <?php else: ?>
                     <?php foreach ($fuel_inventory as $fuel):
                         $fl  = (float)($fuel['stock_level'] ?? 0);
                         $cap = (float)($fuel['capacity']    ?? 1);
                         $pct = $cap > 0 ? ($fl / $cap) * 100 : 0;
-                        if ($fl <= 0)       { $st = 'OUT OF STOCK'; $sc = '#dc3545'; }
-                        elseif ($pct <= 10) { $st = 'CRITICAL';     $sc = '#dc3545'; }
-                        elseif ($pct <= 25) { $st = 'LOW';          $sc = '#fd7e14'; }
-                        elseif ($fl <= 500) { $st = 'LOW STOCK';    $sc = '#fd7e14'; }
-                        else                { $st = 'AVAILABLE';    $sc = '#28a745'; }
+                        if ($fl <= 0)       { $sc = '#dc3545'; }
+                        elseif ($pct <= 10) { $sc = '#dc3545'; }
+                        elseif ($pct <= 25) { $sc = '#fd7e14'; }
+                        elseif ($fl <= 500) { $sc = '#fd7e14'; }
+                        else                { $sc = '#28a745'; }
                         $bar_cls = $pct > 50 ? 'fill-ok' : ($pct > 20 ? 'fill-low' : 'fill-crit');
                     ?>
                     <tr>
@@ -288,7 +288,6 @@ include __DIR__ . '/../partials/header.php';
                             </div>
                             <small style="color:#6c757d;"><?php echo round($pct, 1); ?>%</small>
                         </td>
-                        <td><span style="color:<?php echo $sc; ?>;font-weight:700;"><?php echo $st; ?></span></td>
                         <td>&#8369;<?php echo number_format($fuel['price'] ?? 0, 2); ?></td>
                     </tr>
                     <?php endforeach; ?>
@@ -329,11 +328,6 @@ include __DIR__ . '/../partials/header.php';
         <!-- Content -->
         <div id="fsrContent" style="display:none;">
 
-            <!-- Info banner -->
-            <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:9px 13px;margin-bottom:14px;font-size:12px;color:#856404;display:flex;align-items:flex-start;gap:7px;">
-                <i class="fas fa-exclamation-triangle" style="margin-top:1px;flex-shrink:0;"></i>
-                <span>Only <strong>Low Stock, Critical, and Out of Stock</strong> fuels are listed. Check the box next to each fuel you want to request and submit — the manager will set the quantity.</span>
-            </div>
 
             <!-- All-stocked message -->
             <div id="fsrNoLow" style="display:none;text-align:center;padding:32px;color:#28a745;">
@@ -523,7 +517,36 @@ include __DIR__ . '/../partials/header.php';
     </div>
     <div class="inv-section-body">
 
-        
+        <!-- Filters row -->
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:14px;">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <label style="font-size:12px;color:#6c757d;white-space:nowrap;">Status:</label>
+                <select id="histStatusFilter" style="font-size:12px;padding:5px 8px;border:1px solid #dee2e6;border-radius:5px;color:#495057;">
+                    <option value="">All</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Approved">Approved</option>
+                    <option value="Validated">Validated</option>
+                    <option value="Rejected">Rejected</option>
+                </select>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+                <label style="font-size:12px;color:#6c757d;white-space:nowrap;">From:</label>
+                <input type="date" id="histDateFrom" style="font-size:12px;padding:5px 8px;border:1px solid #dee2e6;border-radius:5px;color:#495057;">
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+                <label style="font-size:12px;color:#6c757d;white-space:nowrap;">To:</label>
+                <input type="date" id="histDateTo" style="font-size:12px;padding:5px 8px;border:1px solid #dee2e6;border-radius:5px;color:#495057;">
+            </div>
+            <button id="histFilterBtn" onclick="histApplyFilters()" style="font-size:12px;padding:5px 14px;background:#002F70;color:#fff;border:none;border-radius:5px;cursor:pointer;">
+                <i class="fas fa-filter"></i> Filter
+            </button>
+            <button onclick="histResetFilters()" style="font-size:12px;padding:5px 12px;background:#6c757d;color:#fff;border:none;border-radius:5px;cursor:pointer;">
+                Reset
+            </button>
+            <span id="histTotalLabel" style="margin-left:auto;font-size:12px;color:#6c757d;"></span>
+        </div>
+
+        <!-- Table -->
         <div class="table-wrap">
             <table class="table">
                 <thead>
@@ -540,46 +563,42 @@ include __DIR__ . '/../partials/header.php';
                         <th>Last Updated</th>
                     </tr>
                 </thead>
-                <tbody>
-                <?php if (empty($stock_requests)): ?>
-                    <tr>
-                        <td colspan="10" style="text-align:center;padding:32px;color:#6c757d;">
-                            <i class="fas fa-inbox" style="font-size:2em;display:block;margin-bottom:8px;"></i>
-                            No stock requests yet. Go to <strong>Merchandise Inventory</strong> to submit one.
-                        </td>
-                    </tr>
-                <?php else: ?>
-                    <?php foreach ($stock_requests as $req):
-                        $st  = $req['status'] ?? 'Pending';
-                        $cls = 'sbadge sbadge-' . strtolower($st);
-                    ?>
-                    <tr>
-                        <td style="color:#6c757d;font-size:12px;">#<?php echo (int)$req['id']; ?></td>
-                        <td><?php echo date('M d, Y H:i', strtotime($req['created_at'])); ?></td>
-                        <td><code><?php echo htmlspecialchars($req['item_sku']); ?></code></td>
-                        <td><?php echo htmlspecialchars($req['item_name']); ?></td>
-                        <td><?php echo htmlspecialchars($req['item_category']); ?></td>
-                        <td style="text-align:center;font-weight:600;"><?php echo (int)$req['requested_quantity']; ?></td>
-                        <td style="text-align:center;">
-                            <?php if ($req['approved_quantity'] !== null): ?>
-                                <strong style="color:#28a745;"><?php echo (int)$req['approved_quantity']; ?></strong>
-                            <?php else: ?>
-                                <span style="color:#adb5bd;">&#8212;</span>
-                            <?php endif; ?>
-                        </td>
-                        <td><span class="<?php echo $cls; ?>"><?php echo htmlspecialchars($st); ?></span></td>
-                        <td style="font-size:13px;color:#495057;">
-                            <?php echo $req['manager_notes']
-                                ? htmlspecialchars($req['manager_notes'])
-                                : '<span style="color:#adb5bd;">&#8212;</span>'; ?>
-                        </td>
-                        <td style="font-size:12px;color:#6c757d;"><?php echo date('M d, Y H:i', strtotime($req['updated_at'])); ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
+                <tbody id="histTableBody">
+                    <tr><td colspan="10" style="text-align:center;padding:32px;color:#6c757d;">
+                        <i class="fas fa-spinner fa-spin" style="font-size:1.5em;display:block;margin-bottom:8px;"></i>
+                        Loading...
+                    </td></tr>
                 </tbody>
             </table>
         </div>
+
+        <!-- Pagination controls -->
+        <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;">
+            <!-- Rows per page -->
+            <div style="display:flex;align-items:center;gap:7px;">
+                <label style="font-size:12px;color:#6c757d;white-space:nowrap;">Rows per page:</label>
+                <select id="histPerPage" onchange="histChangePerPage()" style="font-size:12px;padding:5px 8px;border:1px solid #dee2e6;border-radius:5px;color:#495057;">
+                    <option value="10" selected>10</option>
+                    <option value="20">20</option>
+                    <option value="30">30</option>
+                    <option value="40">40</option>
+                    <option value="50">50</option>
+                </select>
+            </div>
+            <!-- Page indicator + arrows -->
+            <div style="display:flex;align-items:center;gap:8px;">
+                <button id="histPrevBtn" onclick="histGoPage(histState.page - 1)"
+                    style="padding:5px 12px;border:1px solid #dee2e6;border-radius:5px;background:#fff;cursor:pointer;font-size:13px;color:#495057;">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <span id="histPageLabel" style="font-size:13px;color:#495057;white-space:nowrap;">Page 1 of 1</span>
+                <button id="histNextBtn" onclick="histGoPage(histState.page + 1)"
+                    style="padding:5px 12px;border:1px solid #dee2e6;border-radius:5px;background:#fff;cursor:pointer;font-size:13px;color:#495057;">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+
     </div>
 </div>
 
@@ -1029,6 +1048,11 @@ function switchTab(tabName) {
     sidebarLinks.forEach(function(link) {
         link.classList.add('active');
     });
+
+    // Load history data when switching to history tab
+    if (tabName === 'history') {
+        histLoad();
+    }
 }
 
 /* ── Scroll to anchor on load (sidebar sub-item navigation) ── */
@@ -1175,39 +1199,39 @@ function buildFuelRows(fuels) {
 
     tbody.innerHTML = html;
 
-    // Checkbox toggle — enable/disable row inputs
+    // Checkbox toggle — highlight row and sync select-all state
     document.querySelectorAll('.fsr-cb').forEach(function(cb) {
         cb.addEventListener('change', function() {
-            var i      = this.dataset.row;
-            var rowEl  = document.getElementById('fsr_row_' + i);
+            var i     = this.dataset.row;
+            var rowEl = document.getElementById('fsr_row_' + i);
 
-            if (this.checked) {
-                rowEl.style.background = '#fff8f8';
-            } else {
-                rowEl.style.background = '';
-            }
+            rowEl.style.background = this.checked ? '#fff8f8' : '';
 
-            // Sync select-all state
-            var allCbs    = document.querySelectorAll('.fsr-cb');
-            var checkedCbs = document.querySelectorAll('.fsr-cb:checked');
-            document.getElementById('fsrSelectAll').checked =
-                checkedCbs.length === allCbs.length && allCbs.length > 0;
-            document.getElementById('fsrSelectAll').indeterminate =
-                checkedCbs.length > 0 && checkedCbs.length < allCbs.length;
-
+            syncSelectAll();
             updateSelCount();
         });
     });
+}
 
-    // Select-all toggle
-    document.getElementById('fsrSelectAll').addEventListener('change', function() {
-        document.querySelectorAll('.fsr-cb').forEach(function(cb) {
-            if (cb.checked !== document.getElementById('fsrSelectAll').checked) {
-                cb.checked = document.getElementById('fsrSelectAll').checked;
-                cb.dispatchEvent(new Event('change'));
-            }
-        });
-    });
+// Sync the Select All checkbox state based on individual checkboxes
+function syncSelectAll() {
+    var allCbs     = document.querySelectorAll('.fsr-cb');
+    var checkedCbs = document.querySelectorAll('.fsr-cb:checked');
+    var selectAll  = document.getElementById('fsrSelectAll');
+
+    if (allCbs.length === 0) {
+        selectAll.checked       = false;
+        selectAll.indeterminate = false;
+    } else if (checkedCbs.length === allCbs.length) {
+        selectAll.checked       = true;
+        selectAll.indeterminate = false;
+    } else if (checkedCbs.length === 0) {
+        selectAll.checked       = false;
+        selectAll.indeterminate = false;
+    } else {
+        selectAll.checked       = false;
+        selectAll.indeterminate = true;
+    }
 }
 
 function updateSelCount() {
@@ -1223,6 +1247,17 @@ function updateSelCount() {
         if (hint) hint.textContent = '';
     }
 }
+
+// Select All — attached once at page load, not inside buildFuelRows
+document.getElementById('fsrSelectAll').addEventListener('change', function() {
+    var shouldCheck = this.checked;
+    document.querySelectorAll('.fsr-cb').forEach(function(cb) {
+        cb.checked = shouldCheck;
+        var rowEl = document.getElementById('fsr_row_' + cb.dataset.row);
+        if (rowEl) rowEl.style.background = shouldCheck ? '#fff8f8' : '';
+    });
+    updateSelCount();
+});
 
 function closeFuelModal() {
     document.getElementById('fuelStockRequestModal').classList.remove('show');
@@ -1337,6 +1372,170 @@ function escHtml(str) {
 function number_format(n) {
     return parseFloat(n || 0).toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
+
+// ══════════════════════════════════════════════════════
+//  INVENTORY HISTORY — Paginated, server-driven
+// ══════════════════════════════════════════════════════
+var histState = {
+    page:     1,
+    per_page: 10,
+    status:   '',
+    date_from:'',
+    date_to:  ''
+};
+
+function histLoad() {
+    var tbody = document.getElementById('histTableBody');
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:32px;color:#6c757d;">' +
+        '<i class="fas fa-spinner fa-spin" style="font-size:1.5em;display:block;margin-bottom:8px;"></i>Loading...</td></tr>';
+
+    var params = new URLSearchParams({
+        action:    'my_requests',
+        page:      histState.page,
+        per_page:  histState.per_page
+    });
+    if (histState.status)    params.append('status',    histState.status);
+    if (histState.date_from) params.append('date_from', histState.date_from);
+    if (histState.date_to)   params.append('date_to',   histState.date_to);
+
+    fetch('../backend/api/stock_request.php?' + params.toString())
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+            if (!res.success) {
+                tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:#dc3545;">' +
+                    '<i class="fas fa-exclamation-circle"></i> ' + escHtml(res.message || 'Failed to load history.') + '</td></tr>';
+                return;
+            }
+            histRender(res);
+        })
+        .catch(function(err) {
+            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:#dc3545;">' +
+                '<i class="fas fa-exclamation-circle"></i> Network error. Please refresh and try again.</td></tr>';
+        });
+}
+
+function histRender(res) {
+    var tbody      = document.getElementById('histTableBody');
+    var requests   = res.requests || [];
+    var total      = res.total      || 0;
+    var page       = res.page       || 1;
+    var totalPages = res.total_pages || 1;
+
+    // Update state
+    histState.page = page;
+
+    // Total label
+    var start = total === 0 ? 0 : (page - 1) * histState.per_page + 1;
+    var end   = Math.min(page * histState.per_page, total);
+    document.getElementById('histTotalLabel').textContent =
+        total === 0 ? '0 records' : 'Showing ' + start + '–' + end + ' of ' + total + ' records';
+
+    // Page indicator
+    document.getElementById('histPageLabel').textContent = 'Page ' + page + ' of ' + totalPages;
+
+    // Prev / Next buttons
+    document.getElementById('histPrevBtn').disabled = (page <= 1);
+    document.getElementById('histPrevBtn').style.opacity = (page <= 1) ? '0.4' : '1';
+    document.getElementById('histNextBtn').disabled = (page >= totalPages);
+    document.getElementById('histNextBtn').style.opacity = (page >= totalPages) ? '0.4' : '1';
+
+    if (requests.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:32px;color:#6c757d;">' +
+            '<i class="fas fa-inbox" style="font-size:2em;display:block;margin-bottom:8px;"></i>' +
+            'No stock requests found.</td></tr>';
+        return;
+    }
+
+    var statusColors = {
+        'pending':   { bg:'#fff3cd', color:'#856404' },
+        'approved':  { bg:'#d1ecf1', color:'#0c5460' },
+        'validated': { bg:'#cce5ff', color:'#004085' },
+        'rejected':  { bg:'#f8d7da', color:'#721c24' }
+    };
+
+    var html = '';
+    requests.forEach(function(req) {
+        var st      = req.status || 'Pending';
+        var stKey   = st.toLowerCase();
+        var clr     = statusColors[stKey] || { bg:'#e9ecef', color:'#495057' };
+        var badge   = '<span style="background:' + clr.bg + ';color:' + clr.color +
+                      ';padding:2px 9px;border-radius:8px;font-size:11px;font-weight:700;">' +
+                      escHtml(st) + '</span>';
+
+        var approvedQty = (req.approved_quantity !== null && req.approved_quantity !== undefined && req.approved_quantity !== '')
+            ? '<strong style="color:#28a745;">' + parseInt(req.approved_quantity) + '</strong>'
+            : '<span style="color:#adb5bd;">&#8212;</span>';
+
+        var notes = req.manager_notes
+            ? escHtml(req.manager_notes)
+            : '<span style="color:#adb5bd;">&#8212;</span>';
+
+        var createdAt = req.created_at ? histFmtDate(req.created_at) : '—';
+        var updatedAt = req.updated_at ? histFmtDate(req.updated_at) : '—';
+
+        html +=
+            '<tr>' +
+            '<td style="color:#6c757d;font-size:12px;">#' + parseInt(req.id) + '</td>' +
+            '<td>' + createdAt + '</td>' +
+            '<td><code>' + escHtml(req.item_sku || '') + '</code></td>' +
+            '<td>' + escHtml(req.item_name || '') + '</td>' +
+            '<td>' + escHtml(req.item_category || '') + '</td>' +
+            '<td style="text-align:center;font-weight:600;">' + parseInt(req.requested_quantity || 0) + '</td>' +
+            '<td style="text-align:center;">' + approvedQty + '</td>' +
+            '<td>' + badge + '</td>' +
+            '<td style="font-size:13px;color:#495057;">' + notes + '</td>' +
+            '<td style="font-size:12px;color:#6c757d;">' + updatedAt + '</td>' +
+            '</tr>';
+    });
+    tbody.innerHTML = html;
+}
+
+function histFmtDate(dtStr) {
+    var d = new Date(dtStr.replace(' ', 'T'));
+    if (isNaN(d)) return dtStr;
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var hh = String(d.getHours()).padStart(2,'0');
+    var mm = String(d.getMinutes()).padStart(2,'0');
+    return months[d.getMonth()] + ' ' + String(d.getDate()).padStart(2,'0') + ', ' + d.getFullYear() + ' ' + hh + ':' + mm;
+}
+
+function histApplyFilters() {
+    histState.page      = 1;
+    histState.status    = document.getElementById('histStatusFilter').value;
+    histState.date_from = document.getElementById('histDateFrom').value;
+    histState.date_to   = document.getElementById('histDateTo').value;
+    histLoad();
+}
+
+function histResetFilters() {
+    document.getElementById('histStatusFilter').value = '';
+    document.getElementById('histDateFrom').value     = '';
+    document.getElementById('histDateTo').value       = '';
+    histState.page      = 1;
+    histState.status    = '';
+    histState.date_from = '';
+    histState.date_to   = '';
+    histLoad();
+}
+
+function histChangePerPage() {
+    histState.per_page = parseInt(document.getElementById('histPerPage').value);
+    histState.page     = 1;
+    histLoad();
+}
+
+function histGoPage(p) {
+    if (p < 1) return;
+    histState.page = p;
+    histLoad();
+}
+
+// Auto-load when the history tab is the default active tab on page load
+(function() {
+    if (window.location.hash === '#history') {
+        histLoad();
+    }
+})();
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

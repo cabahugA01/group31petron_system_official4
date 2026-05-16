@@ -207,7 +207,7 @@ include __DIR__ . '/../partials/header.php';
                 <?php else: ?>
                   <span style="color: #94a3b8; font-size: 12px;">Completed</span>
                 <?php endif; ?>
-                <a href="print_po.php?id=<?php echo $po['id']; ?>" target="_blank" class="st-btn" style="background: #059669; text-decoration: none; margin-left: 5px;">Print</a>
+                <a href="print_po_new.php?id=<?php echo $po['id']; ?>&print=1" target="_blank" class="st-btn" style="background: #059669; text-decoration: none; margin-left: 5px;">Print</a>
               </td>
             </tr>
           <?php endforeach; ?>

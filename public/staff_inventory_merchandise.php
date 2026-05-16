@@ -221,7 +221,6 @@ include __DIR__ . '/../partials/header.php';
                         <th>SKU</th>
                         <th>Category</th>
                         <th>Stock</th>
-                        <th>Status</th>
                         <th>Cost</th>
                         <th>Price</th>
                         <th>Action</th>
@@ -244,7 +243,7 @@ include __DIR__ . '/../partials/header.php';
 
                 foreach ($sorted as $cat_label => $items): ?>
                     <tr class="cat-header">
-                        <td colspan="8"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td>
+                        <td colspan="7"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td>
                     </tr>
                     <?php foreach ($items as $item):
                         $stock  = (float)($item['stock_level'] ?? 0);
@@ -273,9 +272,6 @@ include __DIR__ . '/../partials/header.php';
                         <td><code style="font-size:11px;"><?php echo htmlspecialchars($item['sku'] ?? ''); ?></code></td>
                         <td><?php echo htmlspecialchars($item['category_name'] ?? ''); ?></td>
                         <td style="font-weight:700;color:<?php echo $st_color; ?>;"><?php echo number_format($stock, 0); ?></td>
-                        <td>
-                            <span style="color:<?php echo $st_color; ?>;font-weight:700;font-size:12px;"><?php echo $st_label; ?></span>
-                        </td>
                         <td class="cost-col">&#8369;<?php echo number_format((float)($item['cost'] ?? 0), 2); ?></td>
                         <td class="price-col">
                             &#8369;<?php echo number_format((float)($item['price'] ?? 0), 2); ?>
@@ -300,10 +296,10 @@ include __DIR__ . '/../partials/header.php';
                 <?php endforeach; ?>
 
                 <?php if (empty($merch_inventory)): ?>
-                    <tr><td colspan="8" style="text-align:center;padding:28px;color:#6c757d;">No merchandise data available.</td></tr>
+                    <tr><td colspan="7" style="text-align:center;padding:28px;color:#6c757d;">No merchandise data available.</td></tr>
                 <?php else: ?>
                     <tr style="background:#f8f9fa;font-weight:700;border-top:2px solid #dee2e6;">
-                        <td colspan="5">TOTAL</td>
+                        <td colspan="4">TOTAL</td>
                         <td colspan="3"><?php echo count($merch_inventory); ?> items &mdash; <?php echo count($categories); ?> categories</td>
                     </tr>
                 <?php endif; ?>
