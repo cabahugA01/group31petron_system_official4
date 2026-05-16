@@ -844,6 +844,8 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
                 'transaction_id' => $transaction_id,
                 'total_amount'   => $total_amount,
                 'item_count'     => count($data['items']),
+                'customer_name'  => $data['customer_name'] ?? 'Walk-in',
+                'payment_method' => $data['payment_method'] ?? '',
             ]);
         } catch (Exception $e) { /* audit failure must not block the response */ }
 
@@ -1255,45 +1257,54 @@ function logFailedTransactionAttempt($pdo, $station_id, $me) {
 
 function logMerchandiseTransactionAudit($pdo, $user_id, $transaction_id, $action, $data = []) {
     try {
-        // Check if merchandise_transaction_audit table exists
+        // ── Write to merchandise_transaction_audit (existing table) ──────────
         $stmt = $pdo->prepare("SHOW TABLES LIKE 'merchandise_transaction_audit'");
         $stmt->execute();
-        
         if ($stmt->rowCount() === 0) {
-            // Create audit table if it doesn't exist
-            $pdo->exec("
-                CREATE TABLE IF NOT EXISTS merchandise_transaction_audit (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    transaction_id INT NOT NULL,
-                    user_id INT NOT NULL,
-                    action VARCHAR(50) NOT NULL,
-                    details JSON,
-                    ip_address VARCHAR(45),
-                    user_agent TEXT,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    INDEX idx_transaction (transaction_id),
-                    INDEX idx_user (user_id),
-                    INDEX idx_action (action),
-                    INDEX idx_created_at (created_at),
-                    FOREIGN KEY (transaction_id) REFERENCES merchandise_transactions(id),
-                    FOREIGN KEY (user_id) REFERENCES users(id)
-                )
-            ");
+            $pdo->exec("CREATE TABLE IF NOT EXISTS merchandise_transaction_audit (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                transaction_id INT NOT NULL,
+                user_id INT NOT NULL,
+                action VARCHAR(50) NOT NULL,
+                details JSON,
+                ip_address VARCHAR(45),
+                user_agent TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_transaction (transaction_id),
+                INDEX idx_user (user_id),
+                INDEX idx_action (action),
+                INDEX idx_created_at (created_at)
+            )");
         }
-        
-        // Insert audit record
-        $stmt = $pdo->prepare("
-            INSERT INTO merchandise_transaction_audit 
-            (transaction_id, user_id, action, details, ip_address, user_agent)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ");
-        
-        $details = json_encode($data);
-        $ip_address = $_SERVER['REMOTE_ADDR'] ?? '';
-        $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? '';
-        
-        $stmt->execute([$transaction_id, $user_id, $action, $details, $ip_address, $user_agent]);
-        
+        $details_json = json_encode($data);
+        $ip  = $_SERVER['REMOTE_ADDR'] ?? '';
+        $ua  = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        $pdo->prepare("INSERT INTO merchandise_transaction_audit (transaction_id, user_id, action, details, ip_address, user_agent) VALUES (?, ?, ?, ?, ?, ?)")
+            ->execute([$transaction_id, $user_id, $action, $details_json, $ip, $ua]);
+
+        // ── Also write to audit_logs so the Audit Trail report shows it ──────
+        $action_map = [
+            'CREATED'  => 'Create',
+            'APPROVED' => 'Approve',
+            'REJECTED' => 'Reject',
+            'ADJUSTED' => 'Adjust',
+            'VOIDED'   => 'Delete',
+        ];
+        $action_type = $action_map[strtoupper($action)] ?? ucfirst(strtolower($action));
+
+        // Build a human-readable detail string
+        $txn_ref   = $data['transaction_id'] ?? "MT-{$transaction_id}";
+        $amount    = isset($data['total_amount']) ? '₱' . number_format((float)$data['total_amount'], 2) : '';
+        $items     = isset($data['item_count'])   ? $data['item_count'] . ' item(s)' : '';
+        $customer  = $data['customer_name'] ?? '';
+        $payment   = $data['payment_method'] ?? '';
+        $parts = array_filter(["Merchandise Transaction {$action_type}", "Ref: {$txn_ref}", $amount, $items, $customer ? "Customer: {$customer}" : '', $payment ? "Payment: {$payment}" : '']);
+        $detail_str = implode(' | ', $parts);
+
+        $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, new_values, status, ip_address, user_agent, created_at)
+                       VALUES (?, 'transaction', ?, ?, 'merchandise_transactions', ?, ?, 'Success', ?, ?, NOW())")
+            ->execute([$user_id, $action_type, $detail_str, $transaction_id, $details_json, $ip, $ua]);
+
     } catch (Exception $e) {
         error_log("Error logging merchandise transaction audit: " . $e->getMessage());
     }

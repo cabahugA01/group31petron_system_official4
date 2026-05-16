@@ -315,6 +315,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     $_SESSION['success'] = "✅ Fuel reading encoded successfully! 📊 Difference: " . number_format($difference, 2) . "L" . 
                                         ($low_stock_alert ? " ⚠️ [LOW STOCK ALERT!]" : "");
+
+                    // ── Audit log ──
+                    try {
+                        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+                        $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                        $detail = "Fuel reading encoded | Pump #{$pump_number} | {$fuel_type} | Prev: " . number_format($previous_reading,2) . "L → Present: " . number_format($present_reading,2) . "L | Diff: " . number_format($difference,2) . "L | Shift: {$shift_period}" . ($low_stock_alert ? " | ⚠ LOW STOCK" : '');
+                        $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'transaction', 'Create', ?, 'fuel_readings', ?, 'Success', ?, ?, NOW())")
+                            ->execute([$me['id'], $detail, $reading_id, $ip, $ua]);
+                    } catch (Exception $e) {}
+
                     header('Location: fuel_readings_encoding.php');
                     exit;
                     

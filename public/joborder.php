@@ -696,7 +696,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $_SESSION['success'] = "Job Order $job_order_id created successfully!";
                         $_SESSION['last_job_order_id'] = $job_order_id;
                     }
-                    
+
+                    // ── Write to audit_logs so Audit Trail report shows this ──
+                    try {
+                        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+                        $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                        $detail = "Job Order created: {$job_order_id} | Service: {$service_type} | Customer: {$customer_name}"
+                                . " | Vehicle: {$vehicle_plate} | Payment: {$payment_method}"
+                                . " | Total: ₱" . number_format((float)($total_amount ?? 0), 2);
+                        $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at)
+                                       VALUES (?, 'transaction', 'Create', ?, 'job_orders', ?, 'Success', ?, ?, NOW())")
+                            ->execute([$me['id'], $detail, $database_id, $ip, $ua]);
+                    } catch (Exception $e) { /* silent */ }
+
                     header('Location: joborder.php');
                     exit;
                     
@@ -843,6 +855,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     } else {
                         $_SESSION['success'] = "Job Order #{$current['job_order_id']} status updated to $new_status!";
                     }
+
+                    // ── Write to audit_logs ──
+                    try {
+                        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+                        $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                        $jo_ref = $current['job_order_id'] ?? "JO-{$job_id}";
+                        $old_st = $current['status'] ?? '—';
+                        $detail = "Job Order status updated: {$jo_ref} | {$old_st} → {$new_status}"
+                                . ($notes ? " | Notes: {$notes}" : '');
+                        $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at)
+                                       VALUES (?, 'transaction', 'Update', ?, 'job_orders', ?, 'Success', ?, ?, NOW())")
+                            ->execute([$me['id'], $detail, $job_id, $ip, $ua]);
+                    } catch (Exception $e) { /* silent */ }
+
                     $tracker_tab = $_POST['tracker_tab'] ?? 'approved-validated';
                     header('Location: joborder.php?tracker_tab=' . urlencode($tracker_tab) . '#tracker');
                     exit;
@@ -929,6 +955,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ]);
                     
                     $_SESSION['success'] = "Job Order {$job_order['job_order_id']} {$action}d successfully!";
+
+                    // ── Write to audit_logs ──
+                    try {
+                        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+                        $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                        $audit_action_type = ($action === 'approve') ? 'Approve' : 'Reject';
+                        $detail = "Job Order {$audit_action_type}d: {$job_order['job_order_id']}"
+                                . " | Service: " . ($job_order['service_type'] ?? '—')
+                                . " | Customer: " . ($job_order['customer_name'] ?? '—')
+                                . ($notes ? " | Notes: {$notes}" : '');
+                        $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at)
+                                       VALUES (?, 'transaction', ?, ?, 'job_orders', ?, 'Success', ?, ?, NOW())")
+                            ->execute([$me['id'], $audit_action_type, $detail, $job_id, $ip, $ua]);
+                    } catch (Exception $e) { /* silent */ }
+
                     $tracker_tab = $_POST['tracker_tab'] ?? 'pending-validation';
                     header('Location: joborder.php?tracker_tab=' . urlencode($tracker_tab) . '#tracker');
                     exit;
@@ -1104,7 +1145,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     // Clear edit session
                     unset($_SESSION['edit_job_order']);
-                    
+
+                    // ── Write to audit_logs ──
+                    try {
+                        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+                        $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                        $detail = "Job Order edited: #{$job_order_id} | Changes: {$change_summary}";
+                        $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at)
+                                       VALUES (?, 'transaction', 'Update', ?, 'job_orders', ?, 'Success', ?, ?, NOW())")
+                            ->execute([$me['id'], $detail, $job_id, $ip, $ua]);
+                    } catch (Exception $e) { /* silent */ }
+
                     $_SESSION['success'] = "Job Order #{$job_order_id} updated successfully!";
                     header('Location: joborder.php#tracker');
                     exit;

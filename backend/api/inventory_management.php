@@ -105,7 +105,19 @@ function update_item() {
             'unit_cost' => $unit_cost,
             'unit_price' => $unit_price
         ], $me['id']);
-        
+
+        // ── Audit log ──
+        try {
+            $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+            $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+            $detail = "Inventory updated | Item: {$current_item['product_name']} (ID #{$item_id})"
+                    . " | Stock: {$current_item['stock_quantity']} → {$stock_level}"
+                    . " | Cost: ₱" . number_format($unit_cost, 2)
+                    . " | Price: ₱" . number_format($unit_price, 2);
+            $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'inventory', 'Update', ?, 'inventory', ?, 'Success', ?, ?, NOW())")
+                ->execute([$me['id'], $detail, $item_id, $ip, $ua]);
+        } catch (Exception $e) {}
+
         echo json_encode([
             'success' => true,
             'message' => 'Item updated successfully'

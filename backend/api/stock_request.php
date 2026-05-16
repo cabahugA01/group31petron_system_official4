@@ -175,6 +175,15 @@ function handle_create($pdo, $me, $role, $station_id) {
             'requested_quantity' => $requested_quantity,
             'status'             => 'Pending'
         ]);
+
+        // ── Audit log ──
+        try {
+            $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+            $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+            $detail = "Stock request created | Item: {$item_name} (SKU: {$sku}) | Category: {$item_category} | Current stock: {$current_stock} | Requested qty: {$requested_quantity}" . ($remarks ? " | Remarks: {$remarks}" : '');
+            $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'inventory', 'Create', ?, 'stock_requests', ?, 'Success', ?, ?, NOW())")
+                ->execute([$me['id'], $detail, $request_id, $ip, $ua]);
+        } catch (Exception $e) {}
     } catch (Exception $e) {
         $pdo->rollBack();
         throw $e;
@@ -394,6 +403,15 @@ function handle_approve($pdo, $me, $role, $station_id) {
             'po_number'            => $po_number,
             'purchase_request_id'  => $pr_id
         ]);
+
+        // ── Audit log ──
+        try {
+            $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+            $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+            $detail = "Stock request approved | Request #{$request_id} | Item: {$req['item_name']} | Approved qty: {$approved_quantity} | PR: {$pr_id} | PO: {$po_number}" . ($manager_notes ? " | Notes: {$manager_notes}" : '');
+            $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'inventory', 'Approve', ?, 'stock_requests', ?, 'Success', ?, ?, NOW())")
+                ->execute([$me['id'], $detail, $request_id, $ip, $ua]);
+        } catch (Exception $e) {}
     } catch (Exception $e) {
         $pdo->rollBack();
         throw $e;
@@ -458,6 +476,15 @@ function handle_reject($pdo, $me, $role, $station_id) {
 
         $pdo->commit();
         echo json_encode(['success' => true, 'message' => 'Request rejected successfully']);
+
+        // ── Audit log ──
+        try {
+            $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+            $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+            $detail = "Stock request rejected | Request #{$request_id} | Item: {$req['item_name']} | Reason: {$manager_notes}";
+            $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'inventory', 'Reject', ?, 'stock_requests', ?, 'Success', ?, ?, NOW())")
+                ->execute([$me['id'], $detail, $request_id, $ip, $ua]);
+        } catch (Exception $e) {}
     } catch (Exception $e) {
         $pdo->rollBack();
         throw $e;

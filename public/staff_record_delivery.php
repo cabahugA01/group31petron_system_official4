@@ -185,7 +185,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
 
             $msg_type = 'success';
 
-            /* Audit trail */
+            /* Audit trail — write to audit_logs so it shows in Audit Trail report */
+            try {
+                $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+                $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                $action_label = $resubmit_id > 0 ? 'Update' : 'Create';
+                $detail = ($resubmit_id > 0 ? 'Delivery resubmitted' : 'Delivery recorded')
+                        . " | Ref: {$delivery_ref} | Supplier: {$supplier_name} | Item: {$item_name}"
+                        . " | Qty: {$quantity} {$unit} | Date: {$delivery_date}"
+                        . ($dr_number ? " | DR#: {$dr_number}" : '');
+                $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'transaction', ?, ?, 'deliveries', ?, 'Success', ?, ?, NOW())")
+                    ->execute([$me['id'], $action_label, $detail, null, $ip, $ua]);
+            } catch (Exception $ae) {}
+
+            /* Audit trail — legacy table */
             try {
                 $pdo->prepare("
                     INSERT INTO audit_trail

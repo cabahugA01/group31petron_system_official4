@@ -296,6 +296,15 @@ echo json_encode(['success' => true, 'data' => $rows, 'counts' => $counts]);
             try_log_merch($pdo, $me['id'], 'Approve Delivery',
                 "Approved delivery #{$id} ref:{$del['delivery_ref']} ({$del['product']}, qty:{$del['quantity']}) — inventory updated");
 
+            // ── Audit log ──
+            try {
+                $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+                $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                $detail = "Delivery approved | Ref: {$del['delivery_ref']} | Product: {$del['product']} | Qty: {$del['quantity']} | Supplier: {$del['supplier']}" . ($reason ? " | Notes: {$reason}" : '');
+                $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'transaction', 'Approve', ?, 'deliveries', ?, 'Success', ?, ?, NOW())")
+                    ->execute([$me['id'], $detail, $id, $ip, $ua]);
+            } catch (Exception $e) {}
+
             echo json_encode(['success' => true, 'message' => 'Delivery approved and inventory updated.']);
             break;
 
@@ -333,6 +342,15 @@ echo json_encode(['success' => true, 'data' => $rows, 'counts' => $counts]);
 
             try_log_merch($pdo, $me['id'], 'Reject Delivery',
                 "Rejected delivery #{$id} ref:{$del['delivery_ref']} ({$del['product']}) — reason: {$reason}");
+
+            // ── Audit log ──
+            try {
+                $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+                $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                $detail = "Delivery rejected | Ref: {$del['delivery_ref']} | Product: {$del['product']} | Qty: {$del['quantity']} | Reason: {$reason}";
+                $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'transaction', 'Reject', ?, 'deliveries', ?, 'Success', ?, ?, NOW())")
+                    ->execute([$me['id'], $detail, $id, $ip, $ua]);
+            } catch (Exception $e) {}
 
             echo json_encode(['success' => true, 'message' => 'Delivery rejected. Staff can now resubmit with corrections.']);
             break;

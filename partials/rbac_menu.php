@@ -32,28 +32,20 @@ $master_menu = [
     
     // Customers - Staff access
     ['id'=>'customers','label'=>'Customers','ico'=>'fas fa-users','href'=>'customers.php','permissions'=>['create_transactions','view_transactions'],'station_specific'=>true,'sub_items'=>[
-        ['id'=>'customer_encode',   'label'=>'Encode Customer Details', 'href'=>'customers.php?section=encode',   'permissions'=>['create_transactions']],
-        ['id'=>'customer_update',   'label'=>'Update Customer Details', 'href'=>'customers.php?section=update',   'permissions'=>['create_transactions']],
+        ['id'=>'customer_encode',   'label'=>'Customer List',           'href'=>'customers.php?section=encode',   'permissions'=>['create_transactions','view_transactions']],
         ['id'=>'customer_history',  'label'=>'Customer History',        'href'=>'customers.php?section=history',  'permissions'=>['view_transactions']],
         ['id'=>'customer_linkage',  'label'=>'Transaction Linkage',     'href'=>'customers.php?section=linkage',  'permissions'=>['create_transactions']],
-        ['id'=>'customer_balances', 'label'=>'Outstanding Balances',    'href'=>'customers.php?section=balances', 'permissions'=>['create_transactions']],
     ]],
 
     // Customers - Manager access (separate page with approval/oversight)
     ['id'=>'mgr_customers','label'=>'Customers','ico'=>'fas fa-users','href'=>'manager_customers.php','permissions'=>['approve_transactions','view_transactions','manage_job_orders'],'station_specific'=>true,'sub_items'=>[
-        ['id'=>'mgr_cust_validation',   'label'=>'Customer Validation',      'href'=>'manager_customers.php?section=validation',   'permissions'=>['approve_transactions','manage_job_orders']],
-        ['id'=>'mgr_cust_updates',      'label'=>'Updates Approval',         'href'=>'manager_customers.php?section=updates',      'permissions'=>['approve_transactions','manage_job_orders']],
-        ['id'=>'mgr_cust_history',      'label'=>'Customer History',         'href'=>'manager_customers.php?section=history',      'permissions'=>['approve_transactions','view_transactions']],
-        ['id'=>'mgr_cust_balances',     'label'=>'Balances Monitoring',      'href'=>'manager_customers.php?section=balances',     'permissions'=>['approve_transactions','manage_job_orders']],
-        ['id'=>'mgr_cust_transactions', 'label'=>'Transaction Oversight',    'href'=>'manager_customers.php?section=transactions', 'permissions'=>['approve_transactions','manage_job_orders']],
-        ['id'=>'mgr_cust_transparency', 'label'=>'Transparency Tab',         'href'=>'manager_customers.php?section=transparency', 'permissions'=>['approve_transactions','manage_job_orders']],
+        ['id'=>'mgr_cust_encode',       'label'=>'Encode Customer',          'href'=>'manager_customers.php?section=encode',        'permissions'=>['approve_transactions','manage_job_orders']],
+        ['id'=>'mgr_cust_edit',         'label'=>'Update Customer Details',  'href'=>'manager_customers.php?section=edit_customer',  'permissions'=>['approve_transactions','manage_job_orders']],
+        ['id'=>'mgr_cust_balances',     'label'=>'Balances Monitoring',      'href'=>'manager_customers.php?section=balances',       'permissions'=>['approve_transactions','manage_job_orders']],
     ]],
     
     // Deliveries Management - Staff & Manager
     ['id'=>'mgr_deliveries','label'=>'Deliveries Management','ico'=>'fas fa-truck','href'=>'staff_record_delivery.php','permissions'=>['manage_inventory','view_inventory','encode_fuel','create_transactions','approve_transactions','manage_job_orders'],'station_specific'=>true],
-
-    // Audit Trail — Manager sidebar navigation (auto-log only, compliance record)
-    ['id'=>'mgr_audit_trail','label'=>'Audit Trail','ico'=>'fas fa-shield-halved','href'=>'manager_audit_trail.php','permissions'=>['approve_transactions','manage_job_orders'],'station_specific'=>true],
 
     // Product Management - Manager (view/manage products & pricing)
     ['id'=>'product_management','label'=>'Product Management','ico'=>'fas fa-boxes','href'=>'manager_product_merchandise.php','permissions'=>['manage_inventory','view_inventory','approve_transactions','manage_job_orders'],'station_specific'=>true,'sub_items'=>[
@@ -142,8 +134,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
     $manager_hidden_sub_items = ['stock_requests', 'fuel_variance_report', 'fuel_reading_tracker', 'fuel_calibration_logs', 'fuel_stock_levels', 'fuel_variance_reports']; // Hide old fuel items from manager (replaced by new sub-menu)
     $manager_hidden_parent_items = ['purchase_orders', 'customers']; // Hide staff customers from manager (manager has own pages)
     // Hide manager-only items from staff/admin
-    $staff_hidden_parent_items[] = 'mgr_audit_trail';
-    $admin_hidden_parent_items[] = 'mgr_audit_trail';
+    // Audit Trail is a standalone top-level item injected after Reports for manager role
     
     // Admin Sidebar Navigation (custom, per request)
     // Note: this only changes what Admin sees in the sidebar; it does not change any page/module behavior.
@@ -403,6 +394,17 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 ];
                 // Add directly — skip the generic sub-item filter below
                 $filtered_menu[] = $filtered_item;
+
+                // ── Audit Trail — standalone top-level item after Reports ──
+                $filtered_menu[] = [
+                    'id'               => 'mgr_audit_trail',
+                    'label'            => 'Audit Trail',
+                    'ico'              => 'fas fa-shield-halved',
+                    'href'             => 'manager_reports.php?section=audit_trail',
+                    'permissions'      => ['approve_transactions','manage_job_orders'],
+                    'station_specific' => true,
+                    'sub_items'        => [],
+                ];
                 continue;
             }
 
@@ -417,7 +419,6 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                     ['id'=>'mgr_report_deliveries',    'label'=>'Deliveries Report',      'href'=>'manager_reports.php?section=deliveries',   'permissions'=>['view_operational_reports']],
                     ['id'=>'mgr_report_staff',         'label'=>'Staff Performance',      'href'=>'manager_reports.php?section=staff',        'permissions'=>['view_operational_reports','manage_job_orders']],
                     ['id'=>'mgr_report_validation',    'label'=>'Validation Logs',        'href'=>'manager_reports.php?section=validation',   'permissions'=>['view_operational_reports','approve_transactions']],
-                    ['id'=>'mgr_report_audit',         'label'=>'Audit Trail',            'href'=>'manager_reports.php?section=audit_trail',  'permissions'=>['view_operational_reports','approve_transactions']],
                     // ── Fuel Reports ────────────────────────────────────────────
                     ['id'=>'fuel_vol_sales',           'label'=>'Volume Sales Summary',   'href'=>'manager_fuel_sales_summary.php',           'permissions'=>['manage_fuel','view_operational_reports']],
                     ['id'=>'fuel_vol_amount',          'label'=>'Volume & Amount Summary','href'=>'manager_fuel_sales_summary.php',           'permissions'=>['manage_fuel','view_operational_reports']],

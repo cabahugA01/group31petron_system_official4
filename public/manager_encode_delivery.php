@@ -93,6 +93,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'encod
                     "Ref: {$delivery_ref} | {$product} | {$quantity} {$unit} | Supplier: {$supplier} | By: {$me['name']}");
             }
 
+            // ── Audit log ──
+            try {
+                $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+                $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                $detail = "Manager encoded delivery | Ref: {$delivery_ref} | Supplier: {$supplier} | Product: {$product} | Qty: {$quantity} {$unit} | Date: {$delivery_date}" . ($dr_number ? " | DR#: {$dr_number}" : '');
+                $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'transaction', 'Create', ?, 'deliveries', ?, 'Success', ?, ?, NOW())")
+                    ->execute([$me['id'], $detail, null, $ip, $ua]);
+            } catch (Exception $e) {}
+
             $msg      = "New delivery record encoded by Manager. Status: Pending Validation. Reference: <strong>" . htmlspecialchars($delivery_ref) . "</strong>";
             $msg_type = 'success';
         } catch (Exception $e) {

@@ -173,44 +173,44 @@
     
     /* Toggle Scroll Button Styling */
     .toggle-scroll-btn {
-        position: fixed;
-        bottom: 40px; /* flush against the top of the footer — out of content area */
-        right: 20px;
-        width: 40px;
-        height: 40px;
-        background: var(--petron-blue, #002F6C);
-        border: 2px solid #ffffff;
-        border-radius: 50%;
-        color: white;
-        font-size: 14px;
-        cursor: pointer;
-        z-index: 10001; /* Above footer (9999) */
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0 4px 14px rgba(0, 47, 112, 0.35), 0 2px 4px rgba(0,0,0,0.12);
+        position: fixed !important;
+        bottom: 50px !important; /* sits just above the 40px footer */
+        right: 20px !important;
+        width: 40px !important;
+        height: 40px !important;
+        background: var(--petron-blue, #002F6C) !important;
+        border: 2px solid #ffffff !important;
+        border-radius: 50% !important;
+        color: white !important;
+        font-size: 14px !important;
+        cursor: pointer !important;
+        z-index: 10001 !important; /* Above footer (990) and modals */
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        box-shadow: 0 4px 14px rgba(0, 47, 112, 0.35), 0 2px 4px rgba(0,0,0,0.12) !important;
         /* Hidden by default — shown only when scroll is needed */
-        opacity: 0;
-        transform: scale(0.75) translateY(8px);
-        pointer-events: none;
-        transition: opacity 0.25s ease, transform 0.25s ease, background 0.2s ease, box-shadow 0.2s ease;
+        opacity: 0 !important;
+        transform: scale(0.75) translateY(8px) !important;
+        pointer-events: none !important;
+        transition: opacity 0.25s ease, transform 0.25s ease, background 0.2s ease, box-shadow 0.2s ease !important;
     }
 
     .toggle-scroll-btn.visible {
-        opacity: 1;
-        transform: scale(1) translateY(0);
-        pointer-events: auto;
+        opacity: 1 !important;
+        transform: scale(1) translateY(0) !important;
+        pointer-events: auto !important;
     }
 
     .toggle-scroll-btn:hover {
-        background: #0040a0;
-        box-shadow: 0 6px 18px rgba(0, 47, 112, 0.45), 0 3px 6px rgba(0,0,0,0.15);
-        transform: scale(1.08) translateY(-1px);
+        background: #0040a0 !important;
+        box-shadow: 0 6px 18px rgba(0, 47, 112, 0.45), 0 3px 6px rgba(0,0,0,0.15) !important;
+        transform: scale(1.08) translateY(-1px) !important;
     }
 
     .toggle-scroll-btn:active {
-        transform: scale(0.94) translateY(0);
-        box-shadow: 0 2px 6px rgba(0, 47, 112, 0.25);
+        transform: scale(0.94) translateY(0) !important;
+        box-shadow: 0 2px 6px rgba(0, 47, 112, 0.25) !important;
     }
 
     /* Red highlight while the page is scrolling */
@@ -221,14 +221,13 @@
         transform: scale(1.12) translateY(-1px) !important;
     }
 
-    /* Arrow icon — no CSS rotation needed, icon class is swapped directly in JS */
+    /* Arrow icon */
     .toggle-scroll-btn i {
-        display: block;
-        line-height: 1;
-        transition: none;
+        display: block !important;
+        line-height: 1 !important;
+        transition: none !important;
     }
 
-    /* .arrow-up is kept as a state marker for JS but does NOT rotate the icon */
     .toggle-scroll-btn.arrow-up i {
         /* intentionally empty — icon swap handled in JS */
     }
@@ -236,19 +235,32 @@
     /* Mobile */
     @media (max-width: 768px) {
         .toggle-scroll-btn {
-            width: 36px;
-            height: 36px;
-            font-size: 13px;
-            bottom: 40px;
-            right: 12px;
+            width: 36px !important;
+            height: 36px !important;
+            font-size: 13px !important;
+            bottom: 50px !important;
+            right: 12px !important;
         }
     }
 </style>
 
-  <!-- TOGGLE SCROLL BUTTON — fixed bottom-right, above footer -->
-  <button id="toggleScrollBtn" class="toggle-scroll-btn" aria-label="Scroll to bottom" title="Scroll to bottom">
-    <i class="fas fa-arrow-down"></i>
-  </button>
+  <!-- TOGGLE SCROLL BUTTON — injected into body by JS to avoid fixed-in-overflow-container bug -->
+  <script>
+  (function() {
+    // Remove any button that may have been rendered inside <main>
+    var existing = document.getElementById('toggleScrollBtn');
+    if (existing) existing.remove();
+
+    // Create fresh button as a direct child of <body>
+    var btn = document.createElement('button');
+    btn.id = 'toggleScrollBtn';
+    btn.className = 'toggle-scroll-btn';
+    btn.setAttribute('aria-label', 'Scroll to bottom');
+    btn.setAttribute('title', 'Scroll to bottom');
+    btn.innerHTML = '<i class="fas fa-arrow-down"></i>';
+    document.body.appendChild(btn);
+  })();
+  </script>
 
   <!-- FIXED FOOTER -->
   <footer class="fixed-footer">

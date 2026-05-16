@@ -101,8 +101,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Check if audit_logs table exists before inserting
                     $tables = $pdo->query("SHOW TABLES LIKE 'audit_logs'")->fetchAll();
                     if (!empty($tables)) {
-                        $auditStmt = $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, status, ip_address, user_agent, created_at) VALUES (?, 'user', 'Login', 'User logged in', 'Success', ?, ?, NOW())");
+                        $login_name   = $user['name'] ?? $user['username'] ?? 'Unknown';
+                        $login_role   = ucfirst(strtolower($user['role'] ?? 'staff'));
+                        $login_detail = "{$login_name} ({$login_role}) logged in";
+                        $auditStmt = $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'user', 'Login', ?, 'users', ?, 'Success', ?, ?, NOW())");
                         $auditStmt->execute([
+                            $user['id'],
+                            $login_detail,
                             $user['id'],
                             $_SERVER['REMOTE_ADDR'] ?? null,
                             $_SERVER['HTTP_USER_AGENT'] ?? null,
@@ -177,10 +182,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Check if audit_logs table exists before inserting
                     $tables = $pdo->query("SHOW TABLES LIKE 'audit_logs'")->fetchAll();
                     if (!empty($tables)) {
-                        $auditStmt = $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, status, ip_address, user_agent, created_at) VALUES (?, 'user', 'Login Failed', ?, 'Failed', ?, ?, NOW())");
+                        $fail_role   = ucfirst(strtolower($user['role'] ?? 'unknown'));
+                        $fail_detail = "Failed login attempt — username: {$username}" . ($fail_role !== 'Unknown' ? " ({$fail_role})" : '');
+                        $auditStmt = $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'user', 'Login Failed', ?, 'users', ?, 'Failed', ?, ?, NOW())");
                         $auditStmt->execute([
                             $user['id'] ?? null,
-                            "Failed login attempt for username: $username",
+                            $fail_detail,
+                            $user['id'] ?? null,
                             $_SERVER['REMOTE_ADDR'] ?? null,
                             $_SERVER['HTTP_USER_AGENT'] ?? null,
                         ]);
