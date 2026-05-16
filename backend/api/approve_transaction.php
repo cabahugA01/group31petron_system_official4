@@ -16,6 +16,7 @@ header('Content-Type: application/json');
 
 // Check authentication
 if (!isset($_SESSION['user'])) {
+    http_response_code(200); // 200 instead of 401 to prevent Apache from serving HTML
     echo json_encode(['success' => false, 'message' => 'Session expired. Please login again.']);
     exit;
 }

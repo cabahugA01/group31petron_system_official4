@@ -1,12 +1,34 @@
-﻿<?php
+<?php
 /**
  * Staff Transactions Hub
  * Sidebar navigation for Fuel (internal) and Merchandise (customer-facing) transactions.
  */
+// Force browser to always load fresh — prevents stale JS/form state
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: Thu, 01 Jan 1970 00:00:00 GMT');
+
 $page_id = 'transactions';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
 require_login();
+
+$me         = current_user();
+$station_id = user_station_id();
+$role       = role_key($me['role'] ?? '');
+
+// ── Generate a per-request API token so AJAX calls don't depend on session cookies ──
+// Token = HMAC(user_id|date, sha256(password_hash + app_salt))
+// The key is derived from the DB password hash — never exposed to the client.
+$_api_token = '';
+try {
+    $tok_stmt = $pdo->prepare("SELECT password FROM users WHERE id = ? LIMIT 1");
+    $tok_stmt->execute([$me['id']]);
+    $pw_hash    = $tok_stmt->fetchColumn() ?: '';
+    $app_salt   = 'petron_fuel_api_2026';
+    $token_key  = hash('sha256', $pw_hash . $app_salt);
+    $_api_token = hash_hmac('sha256', $me['id'] . '|' . date('Y-m-d'), $token_key);
+} catch (Exception $e) { $_api_token = ''; }
 
 $me         = current_user();
 $station_id = user_station_id();
@@ -28,36 +50,69 @@ if (!in_array($section, ['fuel', 'merchandise', 'history', 'fuel_history'])) {
     $section = 'fuel';
 }
 
-// ── Fuel types for this station (exclude discontinued types) ─────────────────
+// ── Fuel types for this station — DB-driven, no hardcoded exclusions ─────────
 $fuel_types = [];
-$excluded_fuel_types = ['Petron Blaze 100', 'Petron E10'];
 try {
-    $placeholders = implode(',', array_fill(0, count($excluded_fuel_types), '?'));
-    $stmt = $pdo->prepare("
+    // Pull excluded fuel type names from system_settings (key: excluded_fuel_types, comma-separated)
+    $excl_setting = '';
+    try {
+        $excl_stmt = $pdo->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'excluded_fuel_types' LIMIT 1");
+        $excl_stmt->execute();
+        $excl_setting = trim($excl_stmt->fetchColumn() ?: '');
+    } catch (Exception $e) {}
+    $excluded_fuel_types = array_filter(array_map('trim', explode(',', $excl_setting)));
+
+    $ft_sql = "
         SELECT fi.fuel_type,
                COALESCE(fi.current_level, fi.current_stock, 0) AS current_level,
-               COALESCE(fi.price_per_liter, 0)         AS price_per_liter,
-               COALESCE(fi.latest_calibration, 0)      AS calibration,
-               COALESCE(last_tx.present_reading, 0)    AS previous_reading
+
+               -- Price: fuel_pricing (manager-set, active) → fuel_inventory fallback
+               COALESCE(
+                   (SELECT fp.price_per_liter FROM fuel_pricing fp
+                    INNER JOIN fuel_types ftt ON ftt.id = fp.fuel_type_id
+                    WHERE fp.station_id = fi.station_id
+                      AND LOWER(TRIM(ftt.name)) = LOWER(TRIM(fi.fuel_type))
+                      AND fp.is_active = 1
+                    ORDER BY fp.effective_date DESC, fp.id DESC LIMIT 1),
+                   fi.price_per_liter, 0
+               ) AS price_per_liter,
+
+               -- Calibration: fuel_calibration table (technician record, active) → fuel_inventory fallback
+               COALESCE(
+                   (SELECT fc.calibration_constant FROM fuel_calibration fc
+                    WHERE LOWER(TRIM(fc.fuel_type)) = LOWER(TRIM(fi.fuel_type))
+                      AND fc.status = 'active'
+                    ORDER BY fc.effective_date DESC, fc.id DESC LIMIT 1),
+                   fi.latest_calibration, 0
+               ) AS calibration,
+
+               -- Previous reading: last present_reading from ANY status (last ending reading)
+               COALESCE(last_tx.present_reading, 0) AS previous_reading
+
         FROM fuel_inventory fi
         LEFT JOIN (
-            SELECT ft.station_id, ft.fuel_type, ft.present_reading
-            FROM fuel_transactions ft
+            SELECT ft2.station_id, ft2.fuel_type, ft2.present_reading
+            FROM fuel_transactions ft2
             INNER JOIN (
                 SELECT station_id, fuel_type, MAX(transaction_date) AS latest
                 FROM fuel_transactions
-                WHERE LOWER(status) IN ('approved','verified')
                 GROUP BY station_id, fuel_type
-            ) lx ON lx.station_id = ft.station_id
-               AND LOWER(TRIM(lx.fuel_type)) = LOWER(TRIM(ft.fuel_type))
-               AND lx.latest = ft.transaction_date
+            ) lx ON lx.station_id = ft2.station_id
+               AND LOWER(TRIM(lx.fuel_type)) = LOWER(TRIM(ft2.fuel_type))
+               AND lx.latest = ft2.transaction_date
         ) last_tx ON last_tx.station_id = fi.station_id
                  AND LOWER(TRIM(last_tx.fuel_type)) = LOWER(TRIM(fi.fuel_type))
         WHERE fi.station_id = ?
-          AND fi.fuel_type NOT IN ($placeholders)
-        ORDER BY fi.fuel_type
-    ");
-    $stmt->execute(array_merge([$station_id], $excluded_fuel_types));
+    ";
+    $ft_params = [$station_id];
+    if (!empty($excluded_fuel_types)) {
+        $placeholders = implode(',', array_fill(0, count($excluded_fuel_types), '?'));
+        $ft_sql .= " AND fi.fuel_type NOT IN ($placeholders)";
+        $ft_params = array_merge($ft_params, $excluded_fuel_types);
+    }
+    $ft_sql .= " ORDER BY fi.fuel_type";
+    $stmt = $pdo->prepare($ft_sql);
+    $stmt->execute($ft_params);
     $fuel_types = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) { $fuel_types = []; }
 
@@ -104,7 +159,7 @@ try {
 // Get staff names for filter
 $staff_list = [];
 try {
-    $stmt = $pdo->prepare("SELECT id, name, username FROM users WHERE station_id = ? AND role IN ('staff', 'cashier', 'pump_attendant') AND account_status = 'active' ORDER BY name");
+    $stmt = $pdo->prepare("SELECT id, name, username FROM users WHERE station_id = ? AND role IN ('staff', 'cashier', 'pump_attendant', 'operations_staff') AND status = 'active' ORDER BY name");
     $stmt->execute([$station_id]);
     $staff_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) { $staff_list = []; }
@@ -125,8 +180,8 @@ $filter_status = $_GET['status'] ?? '';
 $filter_shift = $_GET['shift'] ?? '';
 
 // ── Detect current shift period — use active labor session first (matches dashboard) ──
-$merch_shift_key  = 'first';
-$merch_shift_name = 'First Shift: 6:00 AM – 2:00 PM';
+$merch_shift_key  = '';
+$merch_shift_name = '';
 try {
     // Priority 1: use the shift from the staff's active clock-in session (same as dashboard)
     $active_sess = $pdo->prepare(
@@ -139,9 +194,9 @@ try {
 
     if ($active_row && !empty($active_row['shift_period'])) {
         $merch_shift_key  = $active_row['shift_period'];
-        $merch_shift_name = $active_row['shift_name'] ?: $merch_shift_name;
+        $merch_shift_name = $active_row['shift_name'] ?: '';
     } else {
-        // Priority 2: fall back to time-based detection
+        // Priority 2: fall back to time-based detection from DB
         $ct = date('H:i:s');
         $sp = $pdo->prepare("SELECT shift_key, shift_name FROM shift_periods WHERE is_active = 1 AND start_time <= ? AND end_time >= ? ORDER BY sort_order ASC LIMIT 1");
         $sp->execute([$ct, $ct]);
@@ -150,10 +205,17 @@ try {
             $merch_shift_key  = $sf['shift_key'];
             $merch_shift_name = $sf['shift_name'];
         } else {
-            $sp2 = $pdo->query("SELECT shift_key, shift_name FROM shift_periods WHERE is_active = 1 ORDER BY sort_order DESC LIMIT 1");
+            // Priority 3: first active shift from DB
+            $sp2 = $pdo->query("SELECT shift_key, shift_name FROM shift_periods WHERE is_active = 1 ORDER BY sort_order ASC LIMIT 1");
             $sf2 = $sp2 ? $sp2->fetch(PDO::FETCH_ASSOC) : null;
             if ($sf2) { $merch_shift_key = $sf2['shift_key']; $merch_shift_name = $sf2['shift_name']; }
         }
+    }
+    // If still empty, last resort: any shift from DB
+    if (empty($merch_shift_key)) {
+        $sp3 = $pdo->query("SELECT shift_key, shift_name FROM shift_periods ORDER BY sort_order ASC LIMIT 1");
+        $sf3 = $sp3 ? $sp3->fetch(PDO::FETCH_ASSOC) : null;
+        if ($sf3) { $merch_shift_key = $sf3['shift_key']; $merch_shift_name = $sf3['shift_name']; }
     }
 } catch (Exception $e) {}
 // Fuel form uses the same shift
@@ -172,7 +234,7 @@ $hist_page          = max(1, (int)($_GET['page'] ?? 1));
 $hist_per_page      = 50;
 $hist_offset        = ($hist_page - 1) * $hist_per_page;
 
-if ($section === 'history' || $section === 'fuel_history') {
+if ($section === 'history' || $section === 'fuel_history' || $section === 'merchandise') {
     // Build fuel WHERE clause with optional shift/date filters
     $fuel_where  = "WHERE ft.station_id = ? AND ft.staff_id = ?";
     $fuel_params = [$station_id, $me['id']];
@@ -246,7 +308,7 @@ if ($section === 'history' || $section === 'fuel_history') {
             FROM merchandise_transactions mt
             $merch_where2
             ORDER BY $mt_date_col DESC
-            LIMIT $hist_per_page OFFSET $hist_offset
+            " . ($section === 'merchandise' ? '' : "LIMIT $hist_per_page OFFSET $hist_offset") . "
         ");
         $stmt->execute($merch_params2);
         $recent_merch = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -1097,7 +1159,7 @@ main.main {
                         </select>
                     </div>
 
-                    <!-- Status — actual DB values -->
+                    <!-- Status — pulled from DB distinct values -->
                     <div style="display:flex;flex-direction:column;gap:4px;min-width:150px;">
                         <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">
                             <i class="fas fa-flag" style="margin-right:3px;"></i>Status
@@ -1105,15 +1167,27 @@ main.main {
                         <select name="status"
                                 style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;color:#1e293b;background:#fff;width:100%;">
                             <option value="">All Statuses</option>
-                            <option value="Pending Validation" <?= $filter_status === 'Pending Validation' ? 'selected' : '' ?>>Pending Validation</option>
-                            <option value="Approved"           <?= $filter_status === 'Approved'           ? 'selected' : '' ?>>Approved</option>
-                            <option value="Verified"           <?= $filter_status === 'Verified'           ? 'selected' : '' ?>>Verified</option>
-                            <option value="Adjusted"           <?= $filter_status === 'Adjusted'           ? 'selected' : '' ?>>Adjusted</option>
-                            <option value="Rejected"           <?= $filter_status === 'Rejected'           ? 'selected' : '' ?>>Rejected</option>
+                            <?php
+                            // Pull distinct statuses from DB
+                            $db_statuses = [];
+                            try {
+                                $ss = $pdo->prepare("SELECT DISTINCT status FROM fuel_transactions WHERE station_id = ? AND status IS NOT NULL AND status != '' ORDER BY status");
+                                $ss->execute([$station_id]);
+                                $db_statuses = $ss->fetchAll(PDO::FETCH_COLUMN);
+                            } catch (Exception $e) {}
+                            // Ensure standard statuses always appear even if no data yet
+                            $std_statuses = ['Pending Validation','Approved','Verified','Adjusted','Rejected'];
+                            $all_statuses = array_unique(array_merge($std_statuses, $db_statuses));
+                            foreach ($all_statuses as $st):
+                            ?>
+                            <option value="<?= htmlspecialchars($st) ?>" <?= $filter_status === $st ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($st) ?>
+                            </option>
+                            <?php endforeach; ?>
                         </select>
                     </div>
 
-                    <!-- Shift Period — from DB -->
+                    <!-- Shift Period — from DB only -->
                     <div style="display:flex;flex-direction:column;gap:4px;min-width:200px;">
                         <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">
                             <i class="fas fa-clock" style="margin-right:3px;"></i>Shift Period
@@ -1121,13 +1195,7 @@ main.main {
                         <select name="shift"
                                 style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;color:#1e293b;background:#fff;width:100%;">
                             <option value="">All Shifts</option>
-                            <?php
-                            $shift_opts = !empty($shift_periods) ? $shift_periods : [
-                                ['shift_key' => 'first',  'shift_name' => 'First Shift: 6:00 AM – 2:00 PM'],
-                                ['shift_key' => 'second', 'shift_name' => 'Second Shift: 2:00 PM – 12:00 Midnight'],
-                            ];
-                            foreach ($shift_opts as $sp_opt):
-                            ?>
+                            <?php foreach ($shift_periods as $sp_opt): ?>
                             <option value="<?= htmlspecialchars($sp_opt['shift_key']) ?>"
                                 <?= $filter_shift === $sp_opt['shift_key'] ? 'selected' : '' ?>>
                                 <?= htmlspecialchars($sp_opt['shift_name']) ?>
@@ -1338,6 +1406,35 @@ main.main {
                 </span>
             </div>
 
+            <?php /* ── Hidden forms for each fuel row — placed OUTSIDE the table.
+                        Inputs inside the table rows use form="fuelForm_..." to associate.
+                        Putting <form> inside <td>/<tr> is invalid HTML; browsers eject it
+                        from the table, breaking FormData collection. */ ?>
+            <?php foreach ($fuel_types as $idx => $ft):
+                $ft_id_form = 'fuel_' . preg_replace('/[^a-z0-9]/i', '_', $ft['fuel_type']) . '_' . $idx;
+                $ft_name_form = htmlspecialchars($ft['fuel_type']);
+                $prev_reading_form = (float)$ft['previous_reading'];
+            ?>
+            <form id="fuelForm_<?= $ft_id_form ?>"
+                  method="POST"
+                  action="api_fuel_readings.php"
+                  onsubmit="return submitFuelCard(event, '<?= $ft_id_form ?>')"
+                  style="display:none;">
+                <input type="hidden" name="action"           value="encode_reading">
+                <input type="hidden" name="api_token"        value="<?= htmlspecialchars($_api_token) ?>">
+                <input type="hidden" name="auth_user_id"     value="<?= (int)$me['id'] ?>">
+                <input type="hidden" name="shift_id"         value="<?= (int)($current_shift['id'] ?? 0) ?>">
+                <input type="hidden" name="staff_id"         value="<?= (int)$me['id'] ?>">
+                <input type="hidden" name="station_id"       value="<?= (int)$station_id ?>">
+                <input type="hidden" name="fuel_type"        value="<?= $ft_name_form ?>">
+                <input type="hidden" name="previous_reading" value="<?= $prev_reading_form ?>">
+                <input type="hidden" name="price_per_liter"  value="<?= (float)$ft['price_per_liter'] ?>">
+                <input type="hidden" name="shift_period"     value="<?= htmlspecialchars($fuel_shift_key) ?>">
+                <input type="hidden" name="shift_name"       value="<?= htmlspecialchars($fuel_shift_name) ?>">
+                <input type="hidden" name="reading_date"     value="<?= date('Y-m-d') ?>">
+            </form>
+            <?php endforeach; ?>
+
             <div class="fet-wrap">
                 <table class="fet">
                     <thead>
@@ -1369,23 +1466,6 @@ main.main {
                     ?>
                     <tr id="fuelRow_<?= $ft_id ?>">
                         <td>
-                            <!-- Hidden form fields for this row -->
-                            <form id="fuelForm_<?= $ft_id ?>"
-                                  method="POST"
-                                  action="api_fuel_readings.php"
-                                  onsubmit="return submitFuelCard(event, '<?= $ft_id ?>')">
-                                <input type="hidden" name="action"           value="encode_reading">
-                                <input type="hidden" name="shift_id"         value="<?= (int)($current_shift['id'] ?? 0) ?>">
-                                <input type="hidden" name="staff_id"         value="<?= (int)$me['id'] ?>">
-                                <input type="hidden" name="station_id"       value="<?= (int)$station_id ?>">
-                                <input type="hidden" name="fuel_type"        value="<?= $ft_name ?>">
-                                <input type="hidden" name="previous_reading" value="<?= $prev_reading ?>">
-                                <input type="hidden" name="price_per_liter"  value="<?= (float)$ft['price_per_liter'] ?>">
-                                <input type="hidden" name="shift_period"     value="<?= htmlspecialchars($fuel_shift_key) ?>">
-                                <input type="hidden" name="shift_name"       value="<?= htmlspecialchars($fuel_shift_name) ?>">
-                                <input type="hidden" name="reading_date"     value="<?= date('Y-m-d') ?>">
-                            </form>
-
                             <!-- Fuel type identity -->
                             <div class="fet-fuel-cell">
                                 <div style="width:32px;height:32px;border-radius:50%;background:<?= $ft_color ?>;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
@@ -1413,24 +1493,34 @@ main.main {
                                    placeholder="Enter reading"
                                    required
                                    autocomplete="off"
-                                   style="border-color:<?= $ft_color ?>;">
+                                   style="border-color:<?= $ft_color ?>;"
+                                   oninput="updateFuelCalc('<?= $ft_id ?>', <?= $prev_reading ?>, <?= (float)$ft['price_per_liter'] ?>)">
                         </td>
 
-                        <!-- Calibration — optional adjustment -->
+                        <!-- Calibration — always starts at 0.000; technician ref shown as hint -->
                         <td>
                             <input type="number"
                                    form="fuelForm_<?= $ft_id ?>"
                                    name="calibration"
                                    id="calib_<?= $ft_id ?>"
                                    class="fet-input calib"
-                                   step="0.001" min="0" value="0"
+                                   step="0.001" min="0"
+                                   value="0.000"
                                    placeholder="0.000"
-                                   autocomplete="off">
-                            <?php if ((float)$ft['calibration'] > 0): ?>
-                            <div style="font-size:10px;color:#94a3b8;margin-top:3px;font-style:italic;">
-                                ref: <?= number_format((float)$ft['calibration'], 3) ?>
+                                   autocomplete="off"
+                                   oninput="updateFuelCalc('<?= $ft_id ?>', <?= $prev_reading ?>, <?= (float)$ft['price_per_liter'] ?>)">
+                            <div style="font-size:10px;color:#94a3b8;margin-top:3px;font-style:italic;line-height:1.5;" id="calibHint_<?= $ft_id ?>">
+                                <?php if ((float)$ft['calibration'] != 0): ?>
+                                    technician ref: <?= number_format((float)$ft['calibration'], 3) ?> L
+                                    &nbsp;<button type="button"
+                                        onclick="applyTechCalib('<?= $ft_id ?>', <?= number_format((float)$ft['calibration'], 3, '.', '') ?>, <?= $prev_reading ?>, <?= (float)$ft['price_per_liter'] ?>)"
+                                        style="font-size:9px;padding:1px 6px;border:1px solid #94a3b8;border-radius:4px;background:#f8fafc;color:#475569;cursor:pointer;vertical-align:middle;">
+                                        Use
+                                    </button>
+                                <?php else: ?>
+                                    0.000 = no correction today
+                                <?php endif; ?>
                             </div>
-                            <?php endif; ?>
                         </td>
 
                         <!-- Notes — optional -->
@@ -1455,10 +1545,13 @@ main.main {
                                 </button>
                                 <button type="button"
                                         class="fet-reset-btn"
-                                        onclick="resetCard('<?= $ft_id ?>')"
+                                        onclick="resetCard('<?= $ft_id ?>', <?= $prev_reading ?>, <?= number_format((float)$ft['calibration'], 3, '.', '') ?>, <?= (float)$ft['price_per_liter'] ?>)"
                                         title="Reset this row">
                                     <i class="fas fa-undo"></i>
                                 </button>
+                            </div>
+                            <!-- Live calculation preview -->
+                            <div id="calcPreview_<?= $ft_id ?>" style="display:none;margin-top:6px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:6px 10px;font-size:11px;color:#0369a1;line-height:1.7;">
                             </div>
                             <div id="cardMsg_<?= $ft_id ?>" class="fet-row-msg" style="margin-top:5px;"></div>
                         </td>
@@ -1498,6 +1591,229 @@ main.main {
             window.location.href = 'staff_transactions_hub.php?section=fuel';
         }
 
+        // ── Live calculation preview per row ──────────────────────────────────
+        // Correct flow:
+        //   Step 1 — Raw Volume  = Present Reading − Previous Reading
+        //   Step 2 — Net Volume  = Raw Volume − Calibration
+        //            If Net Volume < 0 → auto-set to 0 (valid, no sale this shift)
+        //   Step 3 — Amount      = Net Volume × Price per Liter
+        function updateFuelCalc(ftId, prevReading, pricePerLiter) {
+            const presentEl  = document.getElementById('present_'   + ftId);
+            const calibEl    = document.getElementById('calib_'     + ftId);
+            const previewEl  = document.getElementById('calcPreview_' + ftId);
+            const hintEl     = document.getElementById('calibHint_' + ftId);
+            if (!presentEl || !previewEl) return;
+
+            const present = parseFloat(presentEl.value);
+            const prev    = parseFloat(prevReading)    || 0;
+            const calib   = parseFloat(calibEl?.value) || 0;
+            const price   = parseFloat(pricePerLiter)  || 0;
+
+            if (isNaN(present) || present <= 0) {
+                previewEl.style.display = 'none';
+                return;
+            }
+
+            // Step 1: raw volume
+            const rawVol = present - prev;
+            // Step 2: apply calibration, clamp to 0
+            const netVol = Math.max(0, rawVol - calib);
+            // Step 3: amount
+            const amount = netVol * price;
+
+            const fmt = (n, d=2) => Number(n).toLocaleString('en-PH', {minimumFractionDigits:d, maximumFractionDigits:d});
+
+            // Update calibration hint
+            if (hintEl) {
+                if (calib >= rawVol && rawVol > 0) {
+                    hintEl.style.color = '#b45309';
+                    hintEl.textContent = `⚠ Calibration (${fmt(calib,3)}) ≥ difference (${fmt(rawVol,3)}) — 0 L net (valid zero-sale). Correct if wrong.`;
+                } else if (calib > 0) {
+                    hintEl.style.color = '#94a3b8';
+                    hintEl.textContent = `technician ref: ${fmt(calib,3)} L`;
+                } else {
+                    hintEl.style.color = '#94a3b8';
+                    hintEl.textContent = '0.000 = no correction';
+                }
+            }
+
+            // Build preview
+            const sign = calib === 0 ? '' : ` − ${fmt(calib,3)}`;
+            let html = `<b>Volume:</b> (${fmt(present)} − ${fmt(prev)})${sign} = <b>${fmt(netVol)} L</b>`;
+
+            if (calib >= rawVol && rawVol > 0) {
+                html += `<br><span style="color:#b45309;font-size:10px;">ℹ Calibration ≥ difference — 0 L net (valid). Edit calibration field to correct.</span>`;
+            }
+
+            if (price > 0) {
+                html += `<br><b>Amount:</b> ${fmt(netVol)} L × ₱${fmt(price)} = <b>₱${fmt(amount)}</b>`;
+            } else {
+                html += `<br><span style="color:#f59e0b;font-size:10px;">⚠ Price not set — contact manager</span>`;
+            }
+
+            previewEl.style.display = 'block';
+            previewEl.innerHTML = html;
+        }
+
+        // ── AJAX submit per fuel row ──────────────────────────────────────────
+        async function submitFuelCard(event, ftId) {
+            event.preventDefault();
+
+            const form      = document.getElementById('fuelForm_' + ftId);
+            const submitBtn = document.getElementById('submitBtn_' + ftId);
+            const msgEl     = document.getElementById('cardMsg_'   + ftId);
+            const presentEl = document.getElementById('present_'   + ftId);
+
+            if (!form || !presentEl) return false;
+
+            // Client-side validation
+            const present  = parseFloat(presentEl.value) || 0;
+            const previous = parseFloat(form.querySelector('[name="previous_reading"]')?.value) || 0;
+            const calib    = parseFloat(document.getElementById('calib_' + ftId)?.value) || 0;
+
+            if (present <= 0) {
+                showRowMsg(msgEl, 'error', 'Present reading is required.');
+                presentEl.focus();
+                return false;
+            }
+            if (present < previous) {
+                showRowMsg(msgEl, 'error', `Present (${present.toFixed(2)}) cannot be less than previous (${previous.toFixed(2)}).`);
+                presentEl.focus();
+                return false;
+            }
+
+            // ── Calibration > difference guard (Removed blocking validation) ──
+            const diff = present - previous;
+            // The system auto-computes Math.max(0, diff - calib) during submit, 
+            // so we allow it to proceed and save as 0 L per business rules.
+
+            // Disable button, show loading
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting…';
+            showRowMsg(msgEl, '', '');
+
+            try {
+                const data = new FormData(form);
+                console.log('Sending FormData for form:', form.id);
+                for (let pair of data.entries()) {
+                    console.log(pair[0] + ': ' + pair[1]);
+                }
+                const res  = await fetch(form.action, {
+                    method: 'POST',
+                    body: data,
+                    credentials: 'same-origin',
+                });
+
+                // Read body as text first, then parse — a Response body can only be read once,
+                // so calling res.json() then res.text() always fails with "(no response)".
+                const raw = await res.text().catch(() => '');
+                let json;
+                try {
+                    // Strip any PHP warnings/notices prepended before the JSON.
+                    // Look specifically for {"success" to avoid matching { inside HTML/CSS.
+                    const jsonStart = raw.indexOf('{"success"');
+                    const jsonStr   = jsonStart >= 0 ? raw.slice(jsonStart) : raw;
+                    json = JSON.parse(jsonStr);
+                } catch (parseErr) {
+                    // Check if it's a login redirect (HTML response)
+                    if (raw.includes('<!DOCTYPE') || raw.includes('<html')) {
+                        showRowMsg(msgEl, 'error', 'Session expired. Please refresh the page and log in again.');
+                    } else if (raw.length === 0) {
+                        showRowMsg(msgEl, 'error', 'Empty response from server. Check PHP error logs.');
+                    } else {
+                        // Show the actual raw server response for debugging
+                        showRowMsg(msgEl, 'error', 'Parse error — raw response: ' + raw.substring(0, 400));
+                    }
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit';
+                    return false;
+                }
+
+                if (json.success) {
+                    const liters = parseFloat(json.liters_sold || 0).toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
+                    const amount = parseFloat(json.total_amount || 0).toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
+                    const litersNum = parseFloat(json.liters_sold || 0);
+                    let msg = `✅ Meter Reading successfully submitted. ${litersNum > 0 ? liters + ' L — ₱' + amount + '.' : '0.00 L recorded (calibration = difference).'} Awaiting Manager approval.`;
+                    if (json.price_missing) {
+                        msg = `✅ Meter Reading successfully submitted. ${liters} L recorded. Price not set — Manager will set amount on approval.`;
+                    }
+                    showRowMsg(msgEl, 'success', msg);
+                    // Clear the present reading and preview
+                    const submittedPresent = parseFloat(presentEl.value) || 0;
+                    presentEl.value = '';
+                    const previewEl = document.getElementById('calcPreview_' + ftId);
+                    if (previewEl) previewEl.style.display = 'none';
+                    // Update previous reading hidden field + display so next submit is correct
+                    const prevInput = form.querySelector('[name="previous_reading"]');
+                    if (prevInput && submittedPresent > 0) {
+                        prevInput.value = submittedPresent;
+                        // Update the visible prev reading cell in the table row
+                        const prevCell = document.querySelector(`#fuelRow_${ftId} .fet-auto`);
+                        if (prevCell) {
+                            prevCell.classList.remove('dim');
+                            prevCell.textContent = submittedPresent.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
+                        }
+                    }
+                    // Refresh the entries table
+                    loadTodayEntries();
+                } else {
+                    // Show the actual server error message
+                    const errMsg = json.message || 'Submission failed. Please try again.';
+                    if (errMsg.toLowerCase().includes('session') || errMsg.toLowerCase().includes('log in')) {
+                        showRowMsg(msgEl, 'error', errMsg); // Show the full message including debug info
+                    } else {
+                        showRowMsg(msgEl, 'error', errMsg);
+                    }
+                }
+            } catch (err) {
+                showRowMsg(msgEl, 'error', 'Request failed: ' + (err.message || 'Unknown error'));
+            }
+
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit';
+            return false;
+        }
+
+        function showRowMsg(el, type, text) {
+            if (!el) return;
+            if (!text) { el.style.display = 'none'; el.innerHTML = ''; return; }
+            const colors = {
+                success: { bg: '#dcfce7', color: '#166534', border: '#86efac' },
+                error:   { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' },
+            };
+            const c = colors[type] || { bg: '#f1f5f9', color: '#475569', border: '#e2e8f0' };
+            el.style.cssText = `display:block;background:${c.bg};color:${c.color};border:1px solid ${c.border};
+                                border-radius:6px;padding:6px 10px;font-size:11px;font-weight:600;white-space:normal;
+                                margin-top:5px;line-height:1.5;`;
+            const icon = type === 'success' ? '✓ ' : type === 'error' ? '✗ ' : '';
+            el.textContent = icon + text;
+        }
+
+        // ── Reset a single row ────────────────────────────────────────────────
+        function resetCard(ftId, prevReading, defaultCalib, pricePerLiter) {
+            const presentEl = document.getElementById('present_' + ftId);
+            const calibEl   = document.getElementById('calib_'   + ftId);
+            const msgEl     = document.getElementById('cardMsg_' + ftId);
+            const previewEl = document.getElementById('calcPreview_' + ftId);
+            const notesEl   = document.querySelector(`#fuelForm_${ftId} [name="notes"]`);
+
+            if (presentEl) presentEl.value = '';
+            if (calibEl)   calibEl.value   = '0.000';
+            if (notesEl)   notesEl.value   = '';
+            if (msgEl)     showRowMsg(msgEl, '', '');
+            if (previewEl) previewEl.style.display = 'none';
+        }
+
+        // ── Apply technician calibration value with one click ────────────────
+        function applyTechCalib(ftId, techValue, prevReading, pricePerLiter) {
+            const calibEl = document.getElementById('calib_' + ftId);
+            if (calibEl) {
+                calibEl.value = parseFloat(techValue).toFixed(3);
+                updateFuelCalc(ftId, prevReading, pricePerLiter);
+                calibEl.focus();
+            }
+        }
+
         // ── Today's Entries (Table A) — auto-load + refresh after submit ──────
         async function loadTodayEntries() {
             const body = document.getElementById('todayEntriesBody');
@@ -1514,7 +1830,7 @@ main.main {
                 const status    = form?.querySelector('[name="status"]')?.value     || '';
                 const shift     = form?.querySelector('[name="shift"]')?.value      || '';
 
-                const params = new URLSearchParams({ action: 'summary', date_from: dateFrom, date_to: dateTo });
+                const params = new URLSearchParams({ action: 'summary', date_from: dateFrom, date_to: dateTo, auth_user_id: '<?= (int)$me['id'] ?>' });
                 if (fuelType) params.set('fuel_type', fuelType);
                 if (staffId)  params.set('staff_id',  staffId);
                 if (status)   params.set('status',    status);
@@ -1604,7 +1920,7 @@ main.main {
         ══════════════════════════════════════════════════════ */ ?>
         <?php elseif ($section === 'merchandise'): ?>
         <?php
-        // Active inner tab: merchandise | encode_jo | tracker
+        // Active inner tab: merchandise | tracker
         $active_tab  = $_GET['active_tab'] ?? 'merchandise';
         if (!in_array($active_tab, ['merchandise','tracker'])) $active_tab = 'merchandise';
         $tracker_tab = $_GET['tracker_tab'] ?? 'pending';
@@ -1630,9 +1946,9 @@ main.main {
         <div style="display:flex;gap:0;margin-bottom:24px;border-bottom:2px solid #e2e8f0;flex-wrap:wrap;">
             <?php
             $inner_tabs = [
-                'merchandise' => ['label'=>'Merchandise/Service Transaction', 'icon'=>'fa-shopping-cart', 'color'=>'#28a745'],
-                'tracker'     => ['label'=>'Job Order Tracker',       'icon'=>'fa-tasks',         'color'=>'#003d7a',
-                                  'badge'=> $jo_pending_count > 0 ? $jo_pending_count : null],
+                'merchandise'   => ['label'=>'Merchandise/Service Transaction', 'icon'=>'fa-shopping-cart', 'color'=>'#28a745'],
+                'tracker'       => ['label'=>'Job Order Tracker',       'icon'=>'fa-tasks',         'color'=>'#003d7a',
+                                    'badge'=> $jo_pending_count > 0 ? $jo_pending_count : null],
             ];
             foreach ($inner_tabs as $tk => $tc):
                 $ia = ($active_tab === $tk);
@@ -1838,6 +2154,25 @@ main.main {
                         <i class="fas fa-shopping-cart" style="color:#28a745;"></i>
                         <h3>Merchandise</h3>
                     </div>
+
+                    <!-- ── Merchandise sub-tabs ─────────────────────────────── -->
+                    <div style="display:flex;gap:0;border-bottom:2px solid #e2e8f0;padding:0 16px;">
+                        <button onclick="switchMerchTab('form')" id="merchTabBtn_form"
+                                style="padding:9px 18px;border:none;background:#fff;border-bottom:2px solid #28a745;
+                                       margin-bottom:-2px;font-size:12px;font-weight:700;color:#28a745;
+                                       cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;">
+                            <i class="fas fa-shopping-cart"></i> Merchandise
+                        </button>
+                        <button onclick="switchMerchTab('history')" id="merchTabBtn_history"
+                                style="padding:9px 18px;border:none;background:#f8fafc;border-bottom:2px solid transparent;
+                                       margin-bottom:-2px;font-size:12px;font-weight:500;color:#64748b;
+                                       cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;">
+                            <i class="fas fa-history"></i> Merchandise History
+                        </button>
+                    </div>
+
+                    <!-- ── Sub-tab: Form ─────────────────────────────────────── -->
+                    <div id="merchTab_form">
                     <div class="txn-card-body">
 
                         <!-- Customer Details — captured here at the Merchandise level -->
@@ -1989,7 +2324,181 @@ main.main {
                             </button>
                         </div>
 
-                    </div>
+                    </div><!-- /txn-card-body -->
+                    </div><!-- /merchTab_form -->
+
+                    <!-- ── Sub-tab: History ──────────────────────────────────── -->
+                    <div id="merchTab_history" style="display:none;">
+                        <!-- Filter bar -->
+                        <div style="padding:14px 16px;border-bottom:1px solid #e2e8f0;">
+                            <form method="GET" action="staff_transactions_hub.php" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+                                <input type="hidden" name="section" value="merchandise">
+                                <input type="hidden" name="mh_open" value="1">
+                                <div style="display:flex;flex-direction:column;gap:4px;min-width:130px;">
+                                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Date</label>
+                                    <input type="date" name="date" value="<?= htmlspecialchars($filter_date) ?>"
+                                           style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;">
+                                </div>
+                                <div style="display:flex;flex-direction:column;gap:4px;min-width:140px;">
+                                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Shift</label>
+                                    <select name="shift" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;">
+                                        <option value="">All Shifts</option>
+                                        <?php foreach ($available_shifts as $sh): ?>
+                                        <option value="<?= htmlspecialchars($sh['shift_key']) ?>" <?= $filter_shift === $sh['shift_key'] ? 'selected' : '' ?>>
+                                            <?= htmlspecialchars($sh['shift_name']) ?>
+                                        </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                                <button type="submit" class="txn-btn primary" style="padding:7px 14px;font-size:12px;">
+                                    <i class="fas fa-filter"></i> Filter
+                                </button>
+                                <a href="staff_transactions_hub.php?section=merchandise&mh_open=1" class="txn-btn secondary" style="padding:7px 12px;font-size:12px;">
+                                    <i class="fas fa-times"></i> Clear
+                                </a>
+                            </form>
+                        </div>
+                        <!-- Table -->
+                        <div style="padding:0;">
+                            <?php if (empty($recent_merch)): ?>
+                            <div style="text-align:center;padding:36px;color:#94a3b8;">
+                                <i class="fas fa-receipt" style="font-size:26px;display:block;margin-bottom:8px;"></i>
+                                No merchandise transactions found.
+                            </div>
+                            <?php else: ?>
+                            <div style="overflow-x:auto;">
+                            <table class="txn-table" style="min-width:680px;">
+                                <thead>
+                                    <tr>
+                                        <th>Txn ID</th>
+                                        <th>Customer</th>
+                                        <th>Amount</th>
+                                        <th>Payment</th>
+                                        <th>Shift</th>
+                                        <th>Date</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="mhTableBody">
+                                <?php foreach ($recent_merch as $txn): ?>
+                                <tr class="mh-row">
+                                    <td><strong style="color:var(--petron-blue);"><?= htmlspecialchars($txn['transaction_id'] ?? ('#'.$txn['id'])) ?></strong></td>
+                                    <td><?= htmlspecialchars($txn['customer_name'] ?? '—') ?></td>
+                                    <td style="font-weight:700;color:var(--petron-blue);">₱<?= number_format((float)($txn['total_amount'] ?? 0), 2) ?></td>
+                                    <td style="font-size:11px;"><?= htmlspecialchars($txn['payment_method'] ?? '—') ?></td>
+                                    <td style="font-size:11px;color:#64748b;"><?= htmlspecialchars($txn['shift_name'] ?? $txn['shift_period'] ?? '—') ?></td>
+                                    <td style="font-size:11px;color:#64748b;white-space:nowrap;"><?= date('M j, Y h:i A', strtotime($txn['transaction_date'] ?? 'now')) ?></td>
+                                    <td><?= status_badge($txn['status'] ?? 'Pending') ?></td>
+                                </tr>
+                                <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                            </div>
+                            <!-- Rows per page + Pagination controls -->
+                            <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-top:1px solid #e2e8f0;">
+                                <!-- Rows per page -->
+                                <div style="display:flex;align-items:center;gap:7px;">
+                                    <label style="font-size:12px;color:#6c757d;white-space:nowrap;">Rows per page:</label>
+                                    <select id="mhPerPage" onchange="mhChangePerPage()" style="font-size:12px;padding:5px 8px;border:1px solid #dee2e6;border-radius:5px;color:#495057;">
+                                        <option value="10" selected>10</option>
+                                        <option value="20">20</option>
+                                        <option value="30">30</option>
+                                        <option value="40">40</option>
+                                        <option value="50">50</option>
+                                    </select>
+                                </div>
+                                <!-- Page indicator + arrows -->
+                                <div style="display:flex;align-items:center;gap:8px;">
+                                    <button id="mhPrevBtn" onclick="mhGoPage(mhState.page - 1)"
+                                        style="padding:5px 12px;border:1px solid #dee2e6;border-radius:5px;background:#fff;cursor:pointer;font-size:13px;color:#495057;">
+                                        <i class="fas fa-chevron-left"></i>
+                                    </button>
+                                    <span id="mhPageLabel" style="font-size:13px;color:#495057;white-space:nowrap;">Page 1 of 1</span>
+                                    <button id="mhNextBtn" onclick="mhGoPage(mhState.page + 1)"
+                                        style="padding:5px 12px;border:1px solid #dee2e6;border-radius:5px;background:#fff;cursor:pointer;font-size:13px;color:#495057;">
+                                        <i class="fas fa-chevron-right"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <?php endif; ?>
+                        </div>
+                    </div><!-- /merchTab_history -->
+
+                    <script>
+                    (function(){
+                        var mhOpen = <?= (!empty($_GET['mh_open'])) ? 'true' : 'false' ?>;
+
+                        // ── Merchandise History pagination ────────────────────
+                        var mhState = { page: 1, per_page: 10 };
+
+                        function mhRender() {
+                            var rows = document.querySelectorAll('#mhTableBody .mh-row');
+                            var total = rows.length;
+                            var perPage = mhState.per_page;
+                            var page = mhState.page;
+                            var totalPages = Math.max(1, Math.ceil(total / perPage));
+                            if (page > totalPages) { mhState.page = page = totalPages; }
+
+                            var start = (page - 1) * perPage;
+                            var end   = start + perPage;
+                            rows.forEach(function(row, i) {
+                                row.style.display = (i >= start && i < end) ? '' : 'none';
+                            });
+
+                            var lbl = document.getElementById('mhPageLabel');
+                            if (lbl) lbl.textContent = 'Page ' + page + ' of ' + totalPages;
+
+                            var prev = document.getElementById('mhPrevBtn');
+                            var next = document.getElementById('mhNextBtn');
+                            if (prev) prev.disabled = (page <= 1);
+                            if (next) next.disabled = (page >= totalPages);
+                            if (prev) prev.style.opacity = (page <= 1) ? '0.4' : '1';
+                            if (next) next.style.opacity = (page >= totalPages) ? '0.4' : '1';
+                        }
+
+                        window.mhState = mhState;
+                        window.mhGoPage = function(p) {
+                            var rows = document.querySelectorAll('#mhTableBody .mh-row');
+                            var totalPages = Math.max(1, Math.ceil(rows.length / mhState.per_page));
+                            if (p < 1 || p > totalPages) return;
+                            mhState.page = p;
+                            mhRender();
+                        };
+                        window.mhChangePerPage = function() {
+                            var sel = document.getElementById('mhPerPage');
+                            if (sel) mhState.per_page = parseInt(sel.value);
+                            mhState.page = 1;
+                            mhRender();
+                        };
+
+                        // ── Tab switcher ──────────────────────────────────────
+                        function switchMerchTab(tab) {
+                            var isHistory = (tab === 'history');
+                            var formPanel = document.getElementById('merchTab_form');
+                            var histPanel = document.getElementById('merchTab_history');
+                            var formBtn   = document.getElementById('merchTabBtn_form');
+                            var histBtn   = document.getElementById('merchTabBtn_history');
+                            if (!formPanel || !histPanel) return;
+                            formPanel.style.display = isHistory ? 'none' : 'block';
+                            histPanel.style.display = isHistory ? 'block' : 'none';
+                            formBtn.style.fontWeight   = isHistory ? '500' : '700';
+                            formBtn.style.color        = isHistory ? '#64748b' : '#28a745';
+                            formBtn.style.background   = isHistory ? '#f8fafc' : '#fff';
+                            formBtn.style.borderBottom = isHistory ? '2px solid transparent' : '2px solid #28a745';
+                            histBtn.style.fontWeight   = isHistory ? '700' : '500';
+                            histBtn.style.color        = isHistory ? '#28a745' : '#64748b';
+                            histBtn.style.background   = isHistory ? '#fff' : '#f8fafc';
+                            histBtn.style.borderBottom = isHistory ? '2px solid #28a745' : '2px solid transparent';
+                            if (isHistory) mhRender();
+                        }
+                        window.switchMerchTab = switchMerchTab;
+
+                        // Init
+                        mhRender();
+                        if (mhOpen) switchMerchTab('history');
+                    })();
+                    </script>
+
                 </div><!-- /merchandise card -->
 
             </div><!-- /left column -->
@@ -5542,104 +6051,12 @@ main.main {
                 <div class="txn-section-icon hist"><i class="fas fa-history"></i></div>
                 <div>
                     <h1>Shift History</h1>
-                    <p>Your merchandise transaction history by shift</p>
+                    <p>Your shift log history</p>
                 </div>
             </div>
             <a href="staff_transactions_hub.php?section=merchandise" class="txn-btn secondary" style="font-size:12px;padding:8px 14px;">
                 <i class="fas fa-arrow-left"></i> Back to Transactions
             </a>
-        </div>
-
-        <!-- Filter bar -->
-        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 18px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.04);">
-            <form method="GET" action="staff_transactions_hub.php">
-                <input type="hidden" name="section" value="history">
-                <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
-                    <div style="display:flex;flex-direction:column;gap:4px;min-width:140px;">
-                        <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Date</label>
-                        <input type="date" name="date" value="<?= htmlspecialchars($filter_date) ?>"
-                               style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;color:#1e293b;background:#fff;">
-                    </div>
-                    <div style="display:flex;flex-direction:column;gap:4px;min-width:150px;">
-                        <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Shift</label>
-                        <select name="shift" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;color:#1e293b;background:#fff;">
-                            <option value="">All Shifts</option>
-                            <?php foreach ($available_shifts as $sh): ?>
-                            <option value="<?= htmlspecialchars($sh['shift_key']) ?>" <?= $filter_shift === $sh['shift_key'] ? 'selected' : '' ?>>
-                                <?= htmlspecialchars($sh['shift_name']) ?>
-                            </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <button type="submit" class="txn-btn primary" style="padding:8px 16px;font-size:12px;">
-                        <i class="fas fa-filter"></i> Filter
-                    </button>
-                    <a href="staff_transactions_hub.php?section=history" class="txn-btn secondary" style="padding:8px 14px;font-size:12px;">
-                        <i class="fas fa-times"></i> Clear
-                    </a>
-                </div>
-            </form>
-        </div>
-
-        <!-- Merchandise Transactions -->
-        <div class="txn-card">
-            <div class="txn-card-header">
-                <i class="fas fa-shopping-cart" style="color:#28a745;"></i>
-                <h3>Merchandise Transactions</h3>
-                <span style="margin-left:auto;font-size:11px;color:#64748b;"><?= $merch_total_count ?> total record(s)</span>
-            </div>
-            <div class="txn-card-body" style="padding:0;">
-                <?php if (empty($recent_merch)): ?>
-                <div style="text-align:center;padding:40px;color:#94a3b8;">
-                    <i class="fas fa-receipt" style="font-size:28px;display:block;margin-bottom:8px;"></i>
-                    No merchandise transactions found.
-                </div>
-                <?php else: ?>
-                <div style="overflow-x:auto;">
-                <table class="txn-table" style="min-width:700px;">
-                    <thead>
-                        <tr>
-                            <th>Txn ID</th>
-                            <th>Customer</th>
-                            <th>Amount</th>
-                            <th>Payment</th>
-                            <th>Shift</th>
-                            <th>Date</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    <?php foreach ($recent_merch as $txn): ?>
-                    <tr>
-                        <td><strong style="color:var(--petron-blue);"><?= htmlspecialchars($txn['transaction_id'] ?? ('#'.$txn['id'])) ?></strong></td>
-                        <td><?= htmlspecialchars($txn['customer_name'] ?? '—') ?></td>
-                        <td style="font-weight:700;color:var(--petron-blue);">₱<?= number_format((float)($txn['total_amount'] ?? 0), 2) ?></td>
-                        <td style="font-size:11px;"><?= htmlspecialchars($txn['payment_method'] ?? '—') ?></td>
-                        <td style="font-size:11px;color:#64748b;"><?= htmlspecialchars($txn['shift_name'] ?? $txn['shift_period'] ?? '—') ?></td>
-                        <td style="font-size:11px;color:#64748b;white-space:nowrap;"><?= date('M j, Y h:i A', strtotime($txn['transaction_date'] ?? 'now')) ?></td>
-                        <td><?= status_badge($txn['status'] ?? 'Pending') ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
-                </div>
-                <!-- Pagination -->
-                <?php if ($merch_total_count > $hist_per_page): ?>
-                <?php $total_pages = (int)ceil($merch_total_count / $hist_per_page); ?>
-                <div style="display:flex;justify-content:center;gap:6px;padding:14px;">
-                    <?php for ($p = 1; $p <= $total_pages; $p++): ?>
-                    <a href="<?= hist_page_url($p, $filter_shift, $filter_date) ?>"
-                       style="padding:5px 11px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;
-                              background:<?= $p === $hist_page ? 'var(--petron-blue)' : '#f1f5f9' ?>;
-                              color:<?= $p === $hist_page ? '#fff' : '#475569' ?>;
-                              border:1px solid <?= $p === $hist_page ? 'var(--petron-blue)' : '#e2e8f0' ?>;">
-                        <?= $p ?>
-                    </a>
-                    <?php endfor; ?>
-                </div>
-                <?php endif; ?>
-                <?php endif; ?>
-            </div>
         </div>
 
         <!-- Shift Log -->
@@ -5660,9 +6077,9 @@ main.main {
                             <th>Duration</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="shiftLogBody">
                     <?php foreach ($shift_log as $ls): ?>
-                    <tr>
+                    <tr class="sl-row">
                         <td><?= htmlspecialchars($ls['shift_label'] ?? $ls['shift_period'] ?? '—') ?></td>
                         <td style="font-size:11px;color:#64748b;"><?= date('M j, Y h:i A', strtotime($ls['start_time'])) ?></td>
                         <td style="font-size:11px;color:#64748b;">
@@ -5679,7 +6096,75 @@ main.main {
                     </tbody>
                 </table>
                 </div>
+                <!-- Rows per page + Pagination controls -->
+                <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-top:1px solid #e2e8f0;">
+                    <div style="display:flex;align-items:center;gap:7px;">
+                        <label style="font-size:12px;color:#6c757d;white-space:nowrap;">Rows per page:</label>
+                        <select id="slPerPage" onchange="slChangePerPage()" style="font-size:12px;padding:5px 8px;border:1px solid #dee2e6;border-radius:5px;color:#495057;">
+                            <option value="10" selected>10</option>
+                            <option value="20">20</option>
+                            <option value="30">30</option>
+                            <option value="40">40</option>
+                            <option value="50">50</option>
+                        </select>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <button id="slPrevBtn" onclick="slGoPage(slState.page - 1)"
+                            style="padding:5px 12px;border:1px solid #dee2e6;border-radius:5px;background:#fff;cursor:pointer;font-size:13px;color:#495057;">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <span id="slPageLabel" style="font-size:13px;color:#495057;white-space:nowrap;">Page 1 of 1</span>
+                        <button id="slNextBtn" onclick="slGoPage(slState.page + 1)"
+                            style="padding:5px 12px;border:1px solid #dee2e6;border-radius:5px;background:#fff;cursor:pointer;font-size:13px;color:#495057;">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
             </div>
+        </div>
+        <script>
+        (function(){
+            var slState = { page: 1, per_page: 10 };
+            function slRender() {
+                var rows = document.querySelectorAll('#shiftLogBody .sl-row');
+                var total = rows.length;
+                var perPage = slState.per_page;
+                var page = slState.page;
+                var totalPages = Math.max(1, Math.ceil(total / perPage));
+                if (page > totalPages) { slState.page = page = totalPages; }
+                var start = (page - 1) * perPage;
+                var end   = start + perPage;
+                rows.forEach(function(row, i) {
+                    row.style.display = (i >= start && i < end) ? '' : 'none';
+                });
+                var lbl = document.getElementById('slPageLabel');
+                if (lbl) lbl.textContent = 'Page ' + page + ' of ' + totalPages;
+                var prev = document.getElementById('slPrevBtn');
+                var next = document.getElementById('slNextBtn');
+                if (prev) { prev.disabled = (page <= 1); prev.style.opacity = (page <= 1) ? '0.4' : '1'; }
+                if (next) { next.disabled = (page >= totalPages); next.style.opacity = (page >= totalPages) ? '0.4' : '1'; }
+            }
+            window.slState = slState;
+            window.slGoPage = function(p) {
+                var rows = document.querySelectorAll('#shiftLogBody .sl-row');
+                var totalPages = Math.max(1, Math.ceil(rows.length / slState.per_page));
+                if (p < 1 || p > totalPages) return;
+                slState.page = p;
+                slRender();
+            };
+            window.slChangePerPage = function() {
+                var sel = document.getElementById('slPerPage');
+                if (sel) slState.per_page = parseInt(sel.value);
+                slState.page = 1;
+                slRender();
+            };
+            slRender();
+        })();
+        </script>
+        <?php else: ?>
+        <div style="text-align:center;padding:48px;color:#94a3b8;">
+            <i class="fas fa-clock" style="font-size:32px;display:block;margin-bottom:10px;"></i>
+            No shift log found.
         </div>
         <?php endif; ?>
 
@@ -5726,12 +6211,12 @@ main.main {
                             <th>Status</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="fhTableBody">
                     <?php foreach ($recent_fuel as $ft): ?>
-                    <tr>
+                    <tr class="fh-row">
                         <td><strong style="color:var(--petron-blue);"><?= htmlspecialchars($ft['transaction_id'] ?? ('#'.$ft['id'])) ?></strong></td>
                         <td><?= htmlspecialchars($ft['fuel_type'] ?? '—') ?></td>
-                        <td><?= number_format((float)($ft['liters'] ?? 0), 2) ?> L</td>
+                        <td><?= number_format((float)($ft['liters'] ?? $ft['liters_sold'] ?? 0), 2) ?> L</td>
                         <td style="font-weight:700;color:var(--petron-blue);">₱<?= number_format((float)($ft['total_amount'] ?? $ft['amount'] ?? 0), 2) ?></td>
                         <td style="font-size:11px;"><?= htmlspecialchars($ft['payment_method'] ?? '—') ?></td>
                         <td style="font-size:11px;color:#64748b;white-space:nowrap;"><?= date('M j, Y h:i A', strtotime($ft['transaction_date'] ?? $ft['created_at'] ?? 'now')) ?></td>
@@ -5741,9 +6226,72 @@ main.main {
                     </tbody>
                 </table>
                 </div>
+                <!-- Rows per page + Pagination controls -->
+                <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-top:1px solid #e2e8f0;">
+                    <div style="display:flex;align-items:center;gap:7px;">
+                        <label style="font-size:12px;color:#6c757d;white-space:nowrap;">Rows per page:</label>
+                        <select id="fhPerPage" onchange="fhChangePerPage()" style="font-size:12px;padding:5px 8px;border:1px solid #dee2e6;border-radius:5px;color:#495057;">
+                            <option value="10" selected>10</option>
+                            <option value="20">20</option>
+                            <option value="30">30</option>
+                            <option value="40">40</option>
+                            <option value="50">50</option>
+                        </select>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <button id="fhPrevBtn" onclick="fhGoPage(fhState.page - 1)"
+                            style="padding:5px 12px;border:1px solid #dee2e6;border-radius:5px;background:#fff;cursor:pointer;font-size:13px;color:#495057;">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <span id="fhPageLabel" style="font-size:13px;color:#495057;white-space:nowrap;">Page 1 of 1</span>
+                        <button id="fhNextBtn" onclick="fhGoPage(fhState.page + 1)"
+                            style="padding:5px 12px;border:1px solid #dee2e6;border-radius:5px;background:#fff;cursor:pointer;font-size:13px;color:#495057;">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
                 <?php endif; ?>
             </div>
         </div>
+        <script>
+        (function(){
+            var fhState = { page: 1, per_page: 10 };
+            function fhRender() {
+                var rows = document.querySelectorAll('#fhTableBody .fh-row');
+                var total = rows.length;
+                var perPage = fhState.per_page;
+                var page = fhState.page;
+                var totalPages = Math.max(1, Math.ceil(total / perPage));
+                if (page > totalPages) { fhState.page = page = totalPages; }
+                var start = (page - 1) * perPage;
+                var end   = start + perPage;
+                rows.forEach(function(row, i) {
+                    row.style.display = (i >= start && i < end) ? '' : 'none';
+                });
+                var lbl = document.getElementById('fhPageLabel');
+                if (lbl) lbl.textContent = 'Page ' + page + ' of ' + totalPages;
+                var prev = document.getElementById('fhPrevBtn');
+                var next = document.getElementById('fhNextBtn');
+                if (prev) { prev.disabled = (page <= 1); prev.style.opacity = (page <= 1) ? '0.4' : '1'; }
+                if (next) { next.disabled = (page >= totalPages); next.style.opacity = (page >= totalPages) ? '0.4' : '1'; }
+            }
+            window.fhState = fhState;
+            window.fhGoPage = function(p) {
+                var rows = document.querySelectorAll('#fhTableBody .fh-row');
+                var totalPages = Math.max(1, Math.ceil(rows.length / fhState.per_page));
+                if (p < 1 || p > totalPages) return;
+                fhState.page = p;
+                fhRender();
+            };
+            window.fhChangePerPage = function() {
+                var sel = document.getElementById('fhPerPage');
+                if (sel) fhState.per_page = parseInt(sel.value);
+                fhState.page = 1;
+                fhRender();
+            };
+            fhRender();
+        })();
+        </script>
 
         <?php endif; /* end section switch */ ?>
 

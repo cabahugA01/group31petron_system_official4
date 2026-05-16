@@ -374,7 +374,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 $filtered_item['sub_items'] = [
                     ['id'=>'mgr_inv_fuel',          'label'=>'Fuel Inventory',         'href'=>'manager_inventory_fuel.php',          'permissions'=>['manage_inventory','view_inventory']],
                     ['id'=>'mgr_inv_merch',          'label'=>'Merchandise Inventory',  'href'=>'manager_inventory_merchandise.php',   'permissions'=>['manage_inventory','view_inventory']],
-                    ['id'=>'mgr_inv_requests',       'label'=>'Stock Requests',         'href'=>'manager_inventory_stock_requests.php','permissions'=>['manage_inventory','view_inventory']],
+                    ['id'=>'mgr_inv_requests',       'label'=>'Purchase Requests',      'href'=>'manager_inventory_stock_requests.php','permissions'=>['manage_inventory','view_inventory']],
                 ];
                 $filtered_menu[] = $filtered_item;
                 continue;
@@ -437,8 +437,12 @@ function filter_menu_by_permissions($menu_items, $user_role) {
             if ($user_role === 'manager' && ($item['id'] ?? '') === 'mgr_deliveries') {
                 $filtered_item['label'] = 'Deliveries Management';
                 $filtered_item['href'] = 'manager_merchandise_deliveries.php';
-                $filtered_item['sub_items'] = [];
-                $force_direct_link = true;
+                $filtered_item['sub_items'] = [
+                    ['id'=>'mgr_del_manage',  'label'=>'Manage Deliveries',  'href'=>'manager_merchandise_deliveries.php', 'permissions'=>[]],
+                    ['id'=>'mgr_del_history', 'label'=>'Delivery History',   'href'=>'manager_delivery_history.php',       'permissions'=>[]],
+                ];
+                $filtered_menu[] = $filtered_item;
+                continue;
             }
 
             if ($user_role === 'manager' && ($item['id'] ?? '') === 'calendar') {

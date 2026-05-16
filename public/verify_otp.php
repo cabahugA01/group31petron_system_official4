@@ -1,6 +1,6 @@
 <?php
-ob_start();
 session_start();
+ob_start();
 
 // Include database connection
 require_once __DIR__ . '/../public/db_connect.php';

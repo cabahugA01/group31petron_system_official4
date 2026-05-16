@@ -1,6 +1,7 @@
 <?php
-ob_start(); // Fix: Prevent "Headers already sent" errors
+// session_start() MUST come before ob_start()
 session_start();
+ob_start(); // Buffer output to prevent "headers already sent" errors
 
 // Auto Clock Out for staff roles on logout
 $staff_roles = ['staff', 'cashier', 'pump_attendant'];

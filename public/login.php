@@ -1,6 +1,7 @@
 <?php
-ob_start(); // Fix: Prevent "Headers already sent" errors
+// session_start() MUST come before ob_start() — ob_end_clean() would discard the Set-Cookie header
 session_start();
+ob_start(); // Buffer output to prevent "headers already sent" errors
 
 // Include database connection
 require_once __DIR__ . '/db_connect.php';

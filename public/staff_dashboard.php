@@ -1118,15 +1118,39 @@ require_once __DIR__ . '/../partials/header.php';
       </div>
     </div>
 
-    <!-- Horizontal bar chart -->
-    <div>
-      <div style="font-size:12px;font-weight:700;color:#344054;margin-bottom:10px">
-        Items needing restock
-        <span style="font-size:11px;font-weight:400;color:#9ca3af;margin-left:6px">— click a bar to request</span>
+    <!-- Horizontal bar charts: two columns split by stock level -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+
+      <!-- Left column: stock below 50 -->
+      <div>
+        <div style="font-size:12px;font-weight:700;color:#ef4444;margin-bottom:8px;display:flex;align-items:center;gap:5px">
+          <span style="width:8px;height:8px;border-radius:50%;background:#ef4444;display:inline-block"></span>
+          Below 50
+          <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:4px">— click to request</span>
+        </div>
+        <div id="merch-stock-bar-wrap-low" style="position:relative;height:<?= max(120, count($stock_chart_merch) * 44) ?>px;min-height:120px">
+          <canvas id="merchStockBarLow"></canvas>
+        </div>
+        <div id="merch-bar-low-empty" style="display:none;text-align:center;padding:20px 0;color:#9ca3af;font-size:11px">
+          <i class="fas fa-check" style="color:#22c55e"></i> None below 50
+        </div>
       </div>
-      <div id="merch-stock-bar-wrap" style="position:relative;height:<?= max(120, count($stock_chart_merch) * 40) ?>px;min-height:120px">
-        <canvas id="merchStockBar"></canvas>
+
+      <!-- Right column: stock 50 and above (but still low/at threshold) -->
+      <div>
+        <div style="font-size:12px;font-weight:700;color:#f59e0b;margin-bottom:8px;display:flex;align-items:center;gap:5px">
+          <span style="width:8px;height:8px;border-radius:50%;background:#f59e0b;display:inline-block"></span>
+          Above 50
+          <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:4px">— click to request</span>
+        </div>
+        <div id="merch-stock-bar-wrap-high" style="position:relative;height:<?= max(120, count($stock_chart_merch) * 44) ?>px;min-height:120px">
+          <canvas id="merchStockBarHigh"></canvas>
+        </div>
+        <div id="merch-bar-high-empty" style="display:none;text-align:center;padding:20px 0;color:#9ca3af;font-size:11px">
+          <i class="fas fa-check" style="color:#22c55e"></i> None above 50
+        </div>
       </div>
+
     </div>
 
   </div>
@@ -2091,11 +2115,11 @@ function buildFuelChart(allData) {
 
 function buildMerchDonut(data) {
     var ctx = document.getElementById('merchStockDonut');
-    var barWrapEl = document.getElementById('merch-stock-bar-wrap');
     var emptyEl = document.getElementById('merch-stock-empty');
     if (!ctx) return;
     if (_merchChart) { _merchChart.destroy(); _merchChart = null; }
     if (_merchBarChart) { _merchBarChart.destroy(); _merchBarChart = null; }
+    if (window._merchBarChartHigh) { window._merchBarChartHigh.destroy(); window._merchBarChartHigh = null; }
 
     // Only show Low Stock and Out of Stock — filter out Normal
     var alertData = (data || []).filter(function(d) {
@@ -2105,14 +2129,15 @@ function buildMerchDonut(data) {
     });
 
     if (!alertData.length) {
-        if (barWrapEl) barWrapEl.style.display = 'none';
+        ['merch-stock-bar-wrap-low','merch-stock-bar-wrap-high'].forEach(function(id) {
+            var el = document.getElementById(id); if (el) el.style.display = 'none';
+        });
         if (emptyEl) emptyEl.style.display = 'block';
         var countsEl = document.getElementById('merch-donut-counts');
         if (countsEl) countsEl.innerHTML = '';
         return;
     }
     if (emptyEl) emptyEl.style.display = 'none';
-    if (barWrapEl) barWrapEl.style.display = 'block';
 
     var low = 0, out = 0;
     alertData.forEach(function(d) {
@@ -2183,27 +2208,49 @@ function buildMerchDonut(data) {
 }
 
 function buildMerchBar(alertData) {
-    var barCtx = document.getElementById('merchStockBar');
-    var barWrapEl = document.getElementById('merch-stock-bar-wrap');
+    // Split into below-50 and above-50 (but still low/at threshold)
+    var lowData  = (alertData || []).filter(function(d) { return (parseFloat(d.current_stock) || 0) < 50; });
+    var highData = (alertData || []).filter(function(d) { return (parseFloat(d.current_stock) || 0) >= 50; });
+
+    _buildMerchBarSingle('low',  lowData);
+    _buildMerchBarSingle('high', highData);
+}
+
+function _buildMerchBarSingle(side, alertData) {
+    var canvasId  = side === 'low' ? 'merchStockBarLow'        : 'merchStockBarHigh';
+    var wrapId    = side === 'low' ? 'merch-stock-bar-wrap-low' : 'merch-stock-bar-wrap-high';
+    var emptyId   = side === 'low' ? 'merch-bar-low-empty'      : 'merch-bar-high-empty';
+
+    var barCtx    = document.getElementById(canvasId);
+    var barWrapEl = document.getElementById(wrapId);
+    var emptyEl   = document.getElementById(emptyId);
+
+    // Destroy existing chart on this canvas
+    if (side === 'low'  && _merchBarChart)            { _merchBarChart.destroy(); _merchBarChart = null; }
+    if (side === 'high' && window._merchBarChartHigh) { window._merchBarChartHigh.destroy(); window._merchBarChartHigh = null; }
+
     if (!barCtx) return;
-    if (_merchBarChart) { _merchBarChart.destroy(); _merchBarChart = null; }
 
     if (!alertData || !alertData.length) {
         if (barWrapEl) barWrapEl.style.display = 'none';
+        if (emptyEl)   emptyEl.style.display   = 'block';
         return;
     }
 
-    if (barWrapEl) { barWrapEl.style.display = 'block'; barWrapEl.style.height = Math.max(120, alertData.length * 44) + 'px'; }
+    // Set height BEFORE Chart.js init so it can measure correctly
+    var newHeight = Math.max(120, alertData.length * 44);
+    if (barWrapEl) {
+        barWrapEl.style.height  = newHeight + 'px';
+        barWrapEl.style.display = 'block';
+    }
+    if (emptyEl) emptyEl.style.display = 'none';
 
-    // Labels: just the product name
-    var labels = alertData.map(function(d) {
-        return d.product_name;
-    });
-    var currents  = alertData.map(function(d) { return parseFloat(d.current_stock) || 0; });
+    var labels     = alertData.map(function(d) { return d.product_name; });
+    var currents   = alertData.map(function(d) { return parseFloat(d.current_stock) || 0; });
     var thresholds = alertData.map(function(d) { return parseFloat(d.threshold) || 10; });
-    var colors    = alertData.map(function(d) { return getMerchBarColor(parseFloat(d.current_stock)||0, parseFloat(d.threshold)||10); });
+    var colors     = alertData.map(function(d) { return getMerchBarColor(parseFloat(d.current_stock)||0, parseFloat(d.threshold)||10); });
 
-    _merchBarChart = new Chart(barCtx, {
+    var chart = new Chart(barCtx, {
         type: 'bar',
         data: {
             labels: labels,
@@ -2286,6 +2333,9 @@ function buildMerchBar(alertData) {
             }
         }
     });
+
+    if (side === 'low')  _merchBarChart = chart;
+    if (side === 'high') window._merchBarChartHigh = chart;
 }
 
 function initStockCharts() {

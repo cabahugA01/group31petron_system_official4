@@ -257,8 +257,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt->execute([
                         $pump_number, $fuel_type, $present_reading, $previous_reading,
                         $difference, $shift_period, $station_id, $me['id']
-                    ]);
-                    
+                    ]);                    
                     $reading_id = $pdo->lastInsertId();
                     
                     // Update stock levels
@@ -269,29 +268,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ");
                     $stmt->execute([$new_stock, $station_id, $fuel_type]);
                     
-                    // Check for low stock alert
+                    // Check for low stock alert — pull thresholds from DB
+                    $threshold = 500.0; // safe default
+                    $critical_threshold = 100.0;
+                    try {
+                        $thr_stmt = $pdo->query("SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('low_stock_threshold','critical_stock_threshold')");
+                        if ($thr_stmt) {
+                            foreach ($thr_stmt->fetchAll(PDO::FETCH_KEY_PAIR) as $k => $v) {
+                                if ($k === 'low_stock_threshold'     && (float)$v > 0) $threshold          = (float)$v;
+                                if ($k === 'critical_stock_threshold' && (float)$v > 0) $critical_threshold = (float)$v;
+                            }
+                        }
+                    } catch (Exception $e) {}
+                    // Also check fuel_inventory.reorder_threshold for this specific fuel type
                     if (fm_has_column($pdo, 'fuel_inventory', 'reorder_threshold')) {
-                        $stmt = $pdo->prepare("SELECT reorder_threshold FROM fuel_inventory WHERE station_id = ? AND fuel_type = ?");
-                        $stmt->execute([$station_id, $fuel_type]);
-                        $threshold_info = $stmt->fetch(PDO::FETCH_ASSOC);
-                        $threshold = $threshold_info['reorder_threshold'] ?? 500;
-                    } else {
-                        $threshold = 500;
+                        $thr2 = $pdo->prepare("SELECT reorder_threshold FROM fuel_inventory WHERE station_id = ? AND fuel_type = ? AND reorder_threshold > 0 LIMIT 1");
+                        $thr2->execute([$station_id, $fuel_type]);
+                        $rt = $thr2->fetchColumn();
+                        if ($rt !== false && (float)$rt > 0) $threshold = (float)$rt;
                     }
-                    
+
                     $low_stock_alert = false;
                     if ($new_stock < $threshold) {
                         $low_stock_alert = true;
-                        
-                        // Create low stock alert
                         $stmt = $pdo->prepare("
                             INSERT INTO low_stock_alerts (
                                 station_id, fuel_type, current_stock, threshold, alert_level,
                                 created_by, created_at
                             ) VALUES (?, ?, ?, ?, ?, ?, NOW())
                         ");
-                        
-                        $alert_level = $new_stock < 100 ? 'Critical' : 'Warning';
+                        $alert_level = $new_stock < $critical_threshold ? 'Critical' : 'Warning';
                         $stmt->execute([$station_id, $fuel_type, $new_stock, $threshold, $alert_level, $me['id']]);
                     }
                     

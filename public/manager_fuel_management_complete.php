@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'manager_fuel_management';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -117,9 +117,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $pdo->commit();
 
                 if ($status === 'verified') {
-                    $_SESSION['success'] = "? Transaction #{$reading_id} approved. Tank levels and pump logs updated.";
+                    $_SESSION['success'] = "Transaction approved successfully. Entry saved to Daily Sales Summary.";
                 } else {
-                    $_SESSION['success'] = "?? Transaction #{$reading_id} rejected and flagged for staff correction.";
+                    $_SESSION['success'] = "Transaction #{$reading_id} rejected and flagged for staff correction.";
                 }
             } catch (Exception $e) {
                 if ($pdo->inTransaction()) $pdo->rollBack();

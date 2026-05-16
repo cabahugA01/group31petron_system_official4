@@ -77,27 +77,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 if (isset($_GET['refresh']) && $_GET['refresh'] == '1') {
     header('Content-Type: application/json');
     try {
-        // JO counts
-        $jo_total = (int)$pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id=?")->execute([$station_id]) ? $pdo->query("SELECT COUNT(*) FROM job_orders WHERE station_id={$station_id}")->fetchColumn() : 0;
-        $s = function($sql) use ($pdo, $station_id) { $st=$pdo->prepare($sql); $st->execute([$station_id]); return (int)$st->fetchColumn(); };
+        $s = function($sql) use ($pdo, $station_id) {
+            $st = $pdo->prepare($sql);
+            $st->execute([$station_id]);
+            return (int)$st->fetchColumn();
+        };
+        // JO counts — all use prepared statements
+        $jo_total    = $s("SELECT COUNT(*) FROM job_orders WHERE station_id=?");
         $jo_pending  = $s("SELECT COUNT(*) FROM job_orders WHERE station_id=? AND (status='Pending Validation' OR validation_status='Pending Validation')");
         $jo_approved = $s("SELECT COUNT(*) FROM job_orders WHERE station_id=? AND status IN ('Approved','Validated')");
         $jo_inprog   = $s("SELECT COUNT(*) FROM job_orders WHERE station_id=? AND status='In Progress'");
         $jo_done     = $s("SELECT COUNT(*) FROM job_orders WHERE station_id=? AND status='Completed'");
         $jo_rejected = $s("SELECT COUNT(*) FROM job_orders WHERE station_id=? AND status IN ('Rejected','Cancelled')");
         // Today sales
-        $fs = $pdo->prepare("SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date)=CURDATE()"); $fs->execute([$station_id]); $fuel_sales=(float)$fs->fetchColumn();
-        $ms = $pdo->prepare("SELECT COALESCE(SUM(total_amount),0) FROM merchandise_transactions WHERE station_id=? AND DATE(COALESCE(transaction_date,created_at))=CURDATE()"); $ms->execute([$station_id]); $merch_sales=(float)$ms->fetchColumn();
+        $fs = $pdo->prepare("SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date)=CURDATE()");
+        $fs->execute([$station_id]); $fuel_sales = (float)$fs->fetchColumn();
+        $ms = $pdo->prepare("SELECT COALESCE(SUM(total_amount),0) FROM merchandise_transactions WHERE station_id=? AND DATE(COALESCE(transaction_date,created_at))=CURDATE()");
+        $ms->execute([$station_id]); $merch_sales = (float)$ms->fetchColumn();
         // Staff clocked in
-        $sc = $pdo->prepare("SELECT COUNT(DISTINCT user_id) FROM labor_sessions WHERE station_id=? AND DATE(start_time)=CURDATE() AND end_time IS NULL"); $sc->execute([$station_id]); $staff_in=(int)$sc->fetchColumn();
-        // Low stock
-        $ls = $pdo->prepare("SELECT COUNT(*) FROM station_inventory WHERE station_id=? AND status='active' AND stock_level<=reorder_level"); $ls->execute([$station_id]); $low_stock=(int)$ls->fetchColumn();
-        // Pending deliveries
-        $pd = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Pending Validation','Pending Manager Approval','Pending Manager Confirmation')"); $pd->execute([$station_id]); $pend_del=(int)$pd->fetchColumn();
+        $sc = $pdo->prepare("SELECT COUNT(DISTINCT user_id) FROM labor_sessions WHERE station_id=? AND DATE(start_time)=CURDATE() AND end_time IS NULL");
+        $sc->execute([$station_id]); $staff_in = (int)$sc->fetchColumn();
+        // Low stock — fuel + merchandise combined
+        $ls_merch = $pdo->prepare("SELECT COUNT(*) FROM station_inventory WHERE station_id=? AND status='active' AND stock_level<=reorder_level");
+        $ls_merch->execute([$station_id]); $low_merch = (int)$ls_merch->fetchColumn();
+        $ls_fuel  = $pdo->prepare("SELECT COUNT(*) FROM fuel_inventory WHERE station_id=? AND COALESCE(current_level,current_stock,0)<=2000");
+        $ls_fuel->execute([$station_id]); $low_fuel = (int)$ls_fuel->fetchColumn();
+        $low_stock = $low_merch + $low_fuel;
+        // Deliveries — pending, approved, rejected
+        $pd = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Pending Validation','Pending Manager Approval','Pending Manager Confirmation')");
+        $pd->execute([$station_id]); $pend_del = (int)$pd->fetchColumn();
+        $da = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Validated','Confirmed','Approved')");
+        $da->execute([$station_id]); $del_approved = (int)$da->fetchColumn();
+        $dr = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Rejected','Flagged','Discrepancy')");
+        $dr->execute([$station_id]); $del_rejected = (int)$dr->fetchColumn();
         // Fuel levels
-        $fl = $pdo->prepare("SELECT COALESCE(ft.name,fi.fuel_type) AS fuel_type, COALESCE(fi.current_level,fi.current_stock,0) AS current_stock, COALESCE(fi.capacity,10000) AS capacity FROM fuel_inventory fi LEFT JOIN fuel_types ft ON fi.fuel_type_id=ft.id WHERE fi.station_id=? ORDER BY fuel_type"); $fl->execute([$station_id]); $fuel_levels=$fl->fetchAll(PDO::FETCH_ASSOC);
-        echo json_encode(['success'=>true,'jo_total'=>$jo_total,'jo_pending'=>$jo_pending,'jo_approved'=>$jo_approved,'jo_inprog'=>$jo_inprog,'jo_done'=>$jo_done,'jo_rejected'=>$jo_rejected,'today_sales'=>$fuel_sales+$merch_sales,'fuel_sales'=>$fuel_sales,'merch_sales'=>$merch_sales,'staff_clocked_in'=>$staff_in,'low_stock_count'=>$low_stock,'pending_deliveries'=>$pend_del,'fuel_levels'=>$fuel_levels]);
-    } catch (Exception $e) { echo json_encode(['success'=>false,'error'=>$e->getMessage()]); }
+        $fl = $pdo->prepare("SELECT COALESCE(ft.name,fi.fuel_type) AS fuel_type, COALESCE(fi.current_level,fi.current_stock,0) AS current_stock, COALESCE(fi.capacity,10000) AS capacity FROM fuel_inventory fi LEFT JOIN fuel_types ft ON fi.fuel_type_id=ft.id WHERE fi.station_id=? ORDER BY fuel_type");
+        $fl->execute([$station_id]); $fuel_levels = $fl->fetchAll(PDO::FETCH_ASSOC);
+        echo json_encode([
+            'success'          => true,
+            'jo_total'         => $jo_total,
+            'jo_pending'       => $jo_pending,
+            'jo_approved'      => $jo_approved,
+            'jo_inprog'        => $jo_inprog,
+            'jo_done'          => $jo_done,
+            'jo_rejected'      => $jo_rejected,
+            'today_sales'      => $fuel_sales + $merch_sales,
+            'fuel_sales'       => $fuel_sales,
+            'merch_sales'      => $merch_sales,
+            'staff_clocked_in' => $staff_in,
+            'low_stock_count'  => $low_stock,
+            'pending_deliveries'=> $pend_del,
+            'del_approved'     => $del_approved,
+            'del_rejected'     => $del_rejected,
+            'fuel_levels'      => $fuel_levels,
+        ]);
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
     exit;
 }
 
@@ -670,7 +706,7 @@ require_once __DIR__ . '/../partials/header.php';
       <div class="kpi-icon"><i class="fas fa-peso-sign"></i></div>
     </div>
     <div class="kpi-label">Today's Sales</div>
-    <div class="kpi-sub">Fuel &#8369;<?= number_format($today_fuel_sales,0) ?> &bull; Merch &#8369;<?= number_format($today_merch_sales,0) ?></div>
+    <div class="kpi-sub" id="kpi-today-sales-sub">Fuel &#8369;<?= number_format($today_fuel_sales,0) ?> &bull; Merch &#8369;<?= number_format($today_merch_sales,0) ?></div>
   </div>
 
   <!-- 8 -->
@@ -1685,8 +1721,15 @@ async function doRefresh() {
     updateKpiEl('kpi-low-stock',   d.low_stock_count);
     updateKpiEl('kpi-pend-del',    d.pending_deliveries);
 
+    // Today's Sales sub-label (Fuel • Merch breakdown)
+    const salesSub = document.getElementById('kpi-today-sales-sub');
+    if (salesSub) {
+      salesSub.textContent = 'Fuel \u20B1' + Math.round(d.fuel_sales).toLocaleString('en-PH')
+                           + ' \u2022 Merch \u20B1' + Math.round(d.merch_sales).toLocaleString('en-PH');
+    }
+
     // Delivery cards
-    updateKpiEl('del-pending',  d.pending_deliveries ?? d.del_pending ?? 0);
+    updateKpiEl('del-pending',  d.pending_deliveries);
     updateKpiEl('del-approved', d.del_approved ?? 0);
     updateKpiEl('del-rejected', d.del_rejected ?? 0);
 

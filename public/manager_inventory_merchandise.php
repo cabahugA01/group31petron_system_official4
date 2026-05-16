@@ -80,7 +80,6 @@ include __DIR__ . '/../partials/header.php';
         <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; Oversight of merchandise stock levels &amp; categories</div>
     </div>
     <div class="header-actions">
-        <a href="manager_inventory_stock_requests.php" class="btn primary"><i class="fas fa-inbox"></i> Stock Requests</a>
         <button onclick="location.reload()" class="btn ghost"><i class="fas fa-sync-alt"></i> Refresh</button>
     </div>
 </div>
@@ -95,25 +94,7 @@ include __DIR__ . '/../partials/header.php';
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h4 class="mb-0"><i class="fas fa-box"></i> Merchandise Stock</h4>
         <div style="display:flex;align-items:center;gap:10px;">
-            <span class="readonly-badge"><i class="fas fa-eye"></i> View-only oversight</span>
             <span style="font-size:13px;color:#6c757d;"><?php echo count($merch_inventory); ?> products</span>
-            <?php
-            $low_count = 0; $out_count = 0;
-            foreach ($merch_inventory as $it) {
-                $sl = (float)($it['stock_level'] ?? 0);
-                $rl = (float)($it['reorder_level'] ?? 10);
-                if ($sl <= 0) $out_count++;
-                elseif ($sl <= $rl) $low_count++;
-            }
-            if ($out_count > 0): ?>
-                <span style="background:#fee2e2;color:#dc3545;border-radius:20px;padding:3px 10px;font-size:12px;font-weight:700;">
-                    <i class="fas fa-exclamation-circle"></i> <?php echo $out_count; ?> Out of Stock
-                </span>
-            <?php endif; if ($low_count > 0): ?>
-                <span style="background:#fff3cd;color:#856404;border-radius:20px;padding:3px 10px;font-size:12px;font-weight:700;">
-                    <i class="fas fa-exclamation-triangle"></i> <?php echo $low_count; ?> Low Stock
-                </span>
-            <?php endif; ?>
         </div>
     </div>
 

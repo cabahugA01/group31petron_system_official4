@@ -25,7 +25,9 @@ function json_response($data, $code=200){
 }
 
 function require_login(){
-  if(session_status() !== PHP_SESSION_ACTIVE) session_start();
+  if(session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+  }
   if(empty($_SESSION['user'])){
     // If called from /backend/*, return JSON 401 to avoid fetch() HTML redirects.
     $script = $_SERVER['SCRIPT_NAME'] ?? '';

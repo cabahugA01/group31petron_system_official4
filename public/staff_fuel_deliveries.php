@@ -268,6 +268,7 @@ require_once __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
+/* ── Page layout ─────────────────────────────────────────────── */
 .page-head {
     display: flex;
     align-items: center;
@@ -275,111 +276,6 @@ require_once __DIR__ . '/../partials/header.php';
     flex-wrap: wrap;
     gap: 12px;
     margin-bottom: 24px;
-}
-.delivery-form {
-    background: white;
-    border-radius: 12px;
-    padding: 24px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    margin-bottom: 24px;
-}
-.delivery-form h3 {
-    margin: 0 0 20px 0;
-    color: #003d82;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 1.05rem;
-}
-.form-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 16px;
-    margin-bottom: 20px;
-}
-.form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-.form-group label {
-    font-weight: 600;
-    color: #333;
-    font-size: 0.88rem;
-}
-.form-group input,
-.form-group select,
-.form-group textarea {
-    padding: 9px 11px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    font-size: 0.93rem;
-}
-.form-group textarea { resize: vertical; min-height: 72px; }
-.btn-record {
-    background: #003d82;
-    color: white;
-    border: none;
-    padding: 11px 24px;
-    border-radius: 6px;
-    font-weight: 600;
-    cursor: pointer;
-    font-size: .93rem;
-    transition: background 0.2s;
-}
-.btn-record:hover { background: #002a5c; }
-.deliveries-table {
-    background: white;
-    border-radius: 12px;
-    overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    margin-bottom: 24px;
-}
-.deliveries-table h3 {
-    margin: 0;
-    padding: 16px 20px;
-    background: #f8f9fa;
-    border-bottom: 1px solid #dee2e6;
-    color: #003d82;
-    font-size: 1rem;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.table-wrapper { overflow-x: auto; }
-.deliveries-table table { width: 100%; border-collapse: collapse; }
-.deliveries-table th,
-.deliveries-table td { padding: 11px 12px; text-align: left; border-bottom: 1px solid #dee2e6; font-size: .88rem; }
-.deliveries-table th { background: #f8f9fa; font-weight: 600; color: #495057; font-size: .8rem; text-transform: uppercase; }
-.status-badge { padding: 3px 10px; border-radius: 20px; font-size: .78rem; font-weight: 600; display: inline-block; }
-.status-badge.pending    { background: #fff3cd; color: #856404; }
-.status-badge.verified   { background: #d4edda; color: #155724; }
-.status-badge.rejected   { background: #f8d7da; color: #721c24; }
-.status-badge.pending_review { background: #fff3cd; color: #856404; }
-.tank-cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 12px;
-    margin-bottom: 24px;
-}
-.tank-card {
-    background: white;
-    border-radius: 10px;
-    padding: 14px 16px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-    border-left: 4px solid #003d82;
-}
-.tank-card .tc-label { font-size: .72rem; color: #888; text-transform: uppercase; font-weight: 600; margin-bottom: 4px; }
-.tank-card .tc-value { font-size: 1.2rem; font-weight: 700; color: #003d82; }
-.tank-card .tc-cap   { font-size: .75rem; color: #aaa; margin-top: 2px; }
-.info-banner {
-    background: #e8f4ff;
-    border-left: 4px solid #003d82;
-    border-radius: 8px;
-    padding: 12px 16px;
-    margin-bottom: 20px;
-    font-size: .85rem;
-    color: #444;
 }
 .back-link {
     display: inline-flex;
@@ -396,6 +292,190 @@ require_once __DIR__ . '/../partials/header.php';
     white-space: nowrap;
 }
 .back-link:hover { background: #001f4d; color: #fff; text-decoration: none; }
+
+/* ── Delivery encoding table (matches fuel transaction table style) ── */
+.del-card {
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 6px rgba(0,0,0,.05);
+    overflow: hidden;
+    margin-bottom: 20px;
+}
+.del-card-header {
+    padding: 14px 20px;
+    background: #f0f4ff;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.del-card-header h3 {
+    font-size: 14px !important;
+    font-weight: 700 !important;
+    color: #003d82 !important;
+    margin: 0 !important;
+    text-transform: uppercase !important;
+    letter-spacing: .5px !important;
+}
+
+/* ── Shared fields row (date, supplier, invoice, tanker) ── */
+.del-shared-row {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    padding: 16px 20px 0;
+    align-items: flex-end;
+}
+.del-shared-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 160px;
+    flex: 1;
+}
+.del-shared-field label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+}
+.del-shared-field input {
+    padding: 8px 11px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 7px;
+    font-size: 13px;
+    color: #1e293b;
+    background: #fff;
+    transition: border-color .15s, box-shadow .15s;
+}
+.del-shared-field input:focus {
+    outline: none;
+    border-color: #003d82;
+    box-shadow: 0 0 0 3px rgba(0,61,130,.1);
+}
+
+/* ── Delivery encoding table ─────────────────────────────────── */
+.det-wrap { overflow-x: auto; padding: 14px 0 0; }
+.det {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    min-width: 820px;
+}
+.det thead tr { background: #f1f5f9; }
+.det th {
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 700;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: .45px;
+    border-bottom: 2px solid #e2e8f0;
+    white-space: nowrap;
+}
+.det th.num { text-align: right; }
+.det tbody tr { border-bottom: 1px solid #f1f5f9; transition: background .12s; }
+.det tbody tr:last-child { border-bottom: none; }
+.det tbody tr:hover { background: #f8fafc; }
+.det td { padding: 10px 14px; vertical-align: middle; }
+.det td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Fuel type identity cell */
+.det-fuel-cell {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    white-space: nowrap;
+}
+.det-fuel-name { font-weight: 700; font-size: 13px; }
+.det-auto { color: #334155; font-weight: 600; font-variant-numeric: tabular-nums; }
+.det-auto.dim { color: #94a3b8; font-weight: 400; font-style: italic; }
+
+/* Input cells */
+.det-input {
+    padding: 8px 10px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 7px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #1e293b;
+    background: #fff;
+    width: 100%;
+    min-width: 120px;
+    transition: border-color .15s, box-shadow .15s;
+}
+.det-input:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(0,61,130,.1);
+}
+.det-input.notes-input { min-width: 140px; font-weight: 400; font-size: 12px; }
+
+/* Submit button per row */
+.det-submit-btn {
+    padding: 8px 16px;
+    background: #002f6c;
+    color: #fff;
+    border: none;
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background .15s;
+}
+.det-submit-btn:hover   { background: #001f4d; }
+.det-submit-btn:disabled { opacity: .5; cursor: not-allowed; }
+.det-reset-btn {
+    padding: 8px 12px;
+    background: #f1f5f9;
+    color: #475569;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s;
+}
+.det-reset-btn:hover { background: #e2e8f0; }
+.det-row-msg { font-size: 11px; display: none; white-space: nowrap; }
+
+/* ── Delivery records table ──────────────────────────────────── */
+.deliveries-table {
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    margin-bottom: 24px;
+}
+.table-wrapper { overflow-x: auto; }
+.deliveries-table table { width: 100%; border-collapse: collapse; }
+.deliveries-table th,
+.deliveries-table td { padding: 10px 13px; text-align: left; border-bottom: 1px solid #f1f5f9; font-size: 12px; }
+.deliveries-table th {
+    background: #f8fafc;
+    font-weight: 700;
+    color: #64748b;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    border-bottom: 2px solid #e2e8f0;
+    white-space: nowrap;
+}
+.deliveries-table tbody tr:hover td { background: #f8fafc; }
+
+/* ── Status badges ───────────────────────────────────────────── */
+.status-badge { padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: 700; display: inline-block; white-space: nowrap; }
+.status-badge.pending         { background: #fef9c3; color: #854d0e; }
+.status-badge.verified        { background: #dcfce7; color: #166534; }
+.status-badge.rejected        { background: #fee2e2; color: #991b1b; }
+.status-badge.pending_review  { background: #fef9c3; color: #854d0e; }
+
 .empty-state { text-align: center; padding: 36px; color: #6c757d; }
 .empty-state i { font-size: 2.5rem; margin-bottom: 12px; opacity: .45; display: block; }
 </style>
@@ -420,75 +500,215 @@ require_once __DIR__ . '/../partials/header.php';
 
 
 
-<!-- Record New Delivery Form -->
-<div class="delivery-form">
-    <h3><i class="fas fa-plus-circle"></i> Record New Delivery</h3>
-    <form method="POST" id="deliveryForm">
-        <input type="hidden" name="action" value="record_delivery">
-        <div class="form-grid">
-            <div class="form-group">
-                <label for="delivery_date">Delivery Date <span style="color:red">*</span></label>
-                <input type="date" id="delivery_date" name="delivery_date"
-                       value="<?= date('Y-m-d') ?>" required>
-            </div>
-            <div class="form-group">
-                <label for="fuel_type">Fuel Type <span style="color:red">*</span></label>
-                <select id="fuel_type" name="fuel_type" required>
-                    <option value="">Select Fuel Type</option>
-                    <?php foreach ($fuel_types as $fuel): ?>
-                    <?php
-                        $key   = strtolower(trim($fuel['name']));
-                        $tl    = $tank_levels[$key] ?? null;
-                        $cur   = $tl ? (float)$tl['current_stock'] : 0;
-                        $cap   = $tl ? (float)$tl['capacity']      : 0;
-                        $avail = ($cap > 0) ? max(0, $cap - $cur)  : null;
-                    ?>
-                    <option value="<?= htmlspecialchars($fuel['name']) ?>"
-                        data-current="<?= $cur ?>"
-                        data-capacity="<?= $cap ?>">
-                        <?= htmlspecialchars($fuel['name']) ?>
-                        <?php if ($tl): ?>
-                         — <?= number_format($cur, 0) ?> L / <?= $cap > 0 ? number_format($cap, 0) . ' L cap' : 'no cap set' ?>
-                        <?php endif; ?>
-                    </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <div class="form-group">
-                <label for="supplier">Supplier <span style="color:red">*</span></label>
-                <input type="text" id="supplier" name="supplier"
-                       value="Petron Corporation" required
-                       placeholder="e.g., Petron Corporation">
-            </div>
-            <div class="form-group">
-                <label for="invoice_no">Invoice Number <span style="color:red">*</span></label>
-                <input type="text" id="invoice_no" name="invoice_no"
-                       placeholder="e.g., INV-2024-001" required>
-            </div>
-            <div class="form-group">
-                <label for="delivery_liters">Quantity Delivered (Liters) <span style="color:red">*</span></label>
-                <input type="number" id="delivery_liters" name="delivery_liters"
-                       step="0.01" min="0.01" placeholder="e.g., 10000.00" required
-                       oninput="checkCapacity()">
-                <div id="capacity_hint" style="margin-top:4px;font-size:.82rem;display:none;"></div>
-            </div>
-            <div class="form-group">
-                <label for="tanker_number">Tanker Number</label>
-                <input type="text" id="tanker_number" name="tanker_number"
-                       placeholder="e.g., TK-001">
-            </div>
-        </div>
-        <div class="form-group" style="margin-bottom:16px;">
-            <label for="notes">Delivery Notes</label>
-            <textarea id="notes" name="notes" placeholder="Optional: driver name, seal number, observations..."></textarea>
-        </div>
-        <div style="display:flex;justify-content:flex-end;">
-            <button type="submit" class="btn-record">
-                <i class="fas fa-paper-plane"></i> Submit for Manager Validation
-            </button>
-        </div>
-    </form>
+<!-- ═══════════════════════════════════════════════════════════
+     RECORD NEW DELIVERY — Table format (matches fuel transaction style)
+═══════════════════════════════════════════════════════════ -->
+
+<?php if (empty($fuel_types)): ?>
+<div style="background:#fff8e1;border:1px solid #ffe082;border-radius:10px;padding:16px 20px;margin-bottom:20px;color:#7c5c00;font-size:13px;">
+    <i class="fas fa-exclamation-triangle" style="margin-right:6px;"></i>
+    No fuel types configured for this station. Contact your manager.
 </div>
+<?php else: ?>
+
+<!-- Hidden forms for each fuel row (placed outside table — <form> inside <tr> is invalid HTML) -->
+<?php foreach ($fuel_types as $idx => $fuel):
+    $ft_key  = 'del_' . preg_replace('/[^a-z0-9]/', '_', strtolower($fuel['name'])) . '_' . $idx;
+    $ft_name = htmlspecialchars($fuel['name']);
+    $tl_key  = strtolower(trim($fuel['name']));
+    $tl      = $tank_levels[$tl_key] ?? null;
+    $cur     = $tl ? (float)$tl['current_stock'] : 0;
+    $cap     = $tl ? (float)$tl['capacity']      : 0;
+?>
+<form id="delForm_<?= $ft_key ?>"
+      method="POST"
+      action="staff_fuel_deliveries.php"
+      style="display:none;">
+    <input type="hidden" name="action"            value="record_delivery">
+    <input type="hidden" name="fuel_type"         value="<?= $ft_name ?>">
+    <input type="hidden" name="delivery_date"     id="delDate_<?= $ft_key ?>">
+    <input type="hidden" name="supplier"          id="delSupplier_<?= $ft_key ?>">
+    <input type="hidden" name="invoice_no"        id="delInvoice_<?= $ft_key ?>">
+    <input type="hidden" name="delivery_liters"   id="delLiters_<?= $ft_key ?>">
+    <input type="hidden" name="tanker_number"     id="delTanker_<?= $ft_key ?>">
+    <input type="hidden" name="notes"             id="delNotes_<?= $ft_key ?>">
+</form>
+<?php endforeach; ?>
+
+<div class="del-card">
+    <div class="del-card-header">
+        <i class="fas fa-truck" style="color:#003d82;"></i>
+        <h3>Record New Delivery</h3>
+        <span style="margin-left:auto;font-size:11px;color:#64748b;font-weight:500;">
+            <?= date('F j, Y') ?> &nbsp;|&nbsp; Pending Manager Validation
+        </span>
+    </div>
+
+    <!-- Shared fields: Date & Supplier (apply to all rows) -->
+    <div class="del-shared-row">
+        <div class="del-shared-field">
+            <label><i class="fas fa-calendar-day" style="margin-right:4px;"></i>Delivery Date <span style="color:#dc2626;">*</span></label>
+            <input type="date" id="sharedDate" value="<?= date('Y-m-d') ?>">
+        </div>
+        <div class="del-shared-field" style="max-width:280px;flex:0 1 280px;">
+            <label><i class="fas fa-building" style="margin-right:4px;"></i>Supplier <span style="color:#dc2626;">*</span></label>
+            <input type="text" id="sharedSupplier" value="Petron Corporation" placeholder="e.g., Petron Corporation">
+        </div>
+        <div style="display:flex;align-items:flex-end;padding-bottom:1px;">
+            <div style="font-size:11px;color:#64748b;background:#f1f5f9;border-radius:7px;padding:8px 12px;line-height:1.5;">
+                <i class="fas fa-info-circle" style="margin-right:4px;color:#003d82;"></i>
+                Fill in <strong>Invoice</strong> &amp; <strong>Liters</strong> per fuel type below, then click <strong>Submit</strong>.
+            </div>
+        </div>
+    </div>
+
+    <!-- Per-fuel-type table -->
+    <div class="det-wrap">
+        <table class="det">
+            <thead>
+                <tr>
+                    <th>Fuel Type</th>
+                    <th class="num">Current Level</th>
+                    <th class="num">Tank Capacity</th>
+                    <th style="min-width:150px;">Invoice No. <span style="color:#dc2626;font-weight:800;">*</span></th>
+                    <th style="min-width:140px;">Liters Delivered <span style="color:#dc2626;font-weight:800;">*</span></th>
+                    <th style="min-width:120px;">Tanker No.</th>
+                    <th style="min-width:160px;">Notes</th>
+                    <th style="min-width:160px;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($fuel_types as $idx => $fuel):
+                $ft_key  = 'del_' . preg_replace('/[^a-z0-9]/', '_', strtolower($fuel['name'])) . '_' . $idx;
+                $ft_name = htmlspecialchars($fuel['name']);
+                $ft_lower = strtolower($fuel['name']);
+                $tl_key  = strtolower(trim($fuel['name']));
+                $tl      = $tank_levels[$tl_key] ?? null;
+                $cur     = $tl ? (float)$tl['current_stock'] : 0;
+                $cap     = $tl ? (float)$tl['capacity']      : 0;
+                $avail   = ($cap > 0) ? max(0, $cap - $cur) : null;
+
+                // Brand-accurate colors (same as fuel transaction table)
+                if      (str_contains($ft_lower, 'diesel'))   { $ft_color = '#003d7a'; $ft_icon = 'fa-gas-pump';  }
+                elseif  (str_contains($ft_lower, 'kerosene')) { $ft_color = '#b45309'; $ft_icon = 'fa-fire';      }
+                elseif  (str_contains($ft_lower, 'xcs'))      { $ft_color = '#0369a1'; $ft_icon = 'fa-gas-pump';  }
+                elseif  (str_contains($ft_lower, 'xtra'))     { $ft_color = '#15803d'; $ft_icon = 'fa-gas-pump';  }
+                elseif  (str_contains($ft_lower, 'blaze'))    { $ft_color = '#b91c1c'; $ft_icon = 'fa-fire-alt';  }
+                elseif  (str_contains($ft_lower, 'e10'))      { $ft_color = '#065f46'; $ft_icon = 'fa-leaf';      }
+                else                                           { $ft_color = '#334155'; $ft_icon = 'fa-gas-pump';  }
+
+                // Capacity fill percentage
+                $fill_pct = ($cap > 0) ? min(100, round(($cur / $cap) * 100)) : 0;
+                $fill_color = $fill_pct >= 80 ? '#15803d' : ($fill_pct >= 40 ? '#b45309' : '#dc2626');
+            ?>
+            <tr id="delRow_<?= $ft_key ?>">
+                <!-- Fuel type identity -->
+                <td>
+                    <div class="det-fuel-cell">
+                        <div style="width:32px;height:32px;border-radius:50%;background:<?= $ft_color ?>;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                            <i class="fas <?= $ft_icon ?>" style="color:#fff;font-size:13px;"></i>
+                        </div>
+                        <div class="det-fuel-name" style="color:<?= $ft_color ?>;"><?= $ft_name ?></div>
+                    </div>
+                </td>
+
+                <!-- Current level -->
+                <td class="num">
+                    <span class="det-auto <?= $cur > 0 ? '' : 'dim' ?>">
+                        <?= $cur > 0 ? number_format($cur, 0) . ' L' : '—' ?>
+                    </span>
+                    <?php if ($cap > 0): ?>
+                    <div style="margin-top:4px;height:4px;background:#e2e8f0;border-radius:4px;min-width:60px;">
+                        <div style="height:4px;background:<?= $fill_color ?>;border-radius:4px;width:<?= $fill_pct ?>%;"></div>
+                    </div>
+                    <div style="font-size:10px;color:<?= $fill_color ?>;margin-top:2px;font-weight:600;"><?= $fill_pct ?>%</div>
+                    <?php endif; ?>
+                </td>
+
+                <!-- Tank capacity -->
+                <td class="num">
+                    <span class="det-auto <?= $cap > 0 ? '' : 'dim' ?>">
+                        <?= $cap > 0 ? number_format($cap, 0) . ' L' : '—' ?>
+                    </span>
+                    <?php if ($avail !== null): ?>
+                    <div style="font-size:10px;color:#64748b;margin-top:2px;">
+                        <?= number_format($avail, 0) ?> L avail.
+                    </div>
+                    <?php endif; ?>
+                </td>
+
+                <!-- Invoice No. -->
+                <td>
+                    <input type="text"
+                           id="invoice_<?= $ft_key ?>"
+                           class="det-input"
+                           placeholder="INV-2024-001"
+                           maxlength="100"
+                           autocomplete="off"
+                           style="border-color:<?= $ft_color ?>;"
+                           oninput="this.value=this.value.toUpperCase()">
+                </td>
+
+                <!-- Liters Delivered -->
+                <td>
+                    <input type="number"
+                           id="liters_<?= $ft_key ?>"
+                           class="det-input"
+                           step="0.01" min="0.01"
+                           placeholder="e.g. 10000"
+                           autocomplete="off"
+                           style="border-color:<?= $ft_color ?>;"
+                           oninput="checkDelCapacity('<?= $ft_key ?>', <?= $cur ?>, <?= $cap ?>)">
+                    <div id="capHint_<?= $ft_key ?>" style="font-size:10px;margin-top:3px;display:none;"></div>
+                </td>
+
+                <!-- Tanker No. -->
+                <td>
+                    <input type="text"
+                           id="tanker_<?= $ft_key ?>"
+                           class="det-input"
+                           placeholder="TK-001"
+                           maxlength="50"
+                           autocomplete="off"
+                           oninput="this.value=this.value.toUpperCase()">
+                </td>
+
+                <!-- Notes -->
+                <td>
+                    <input type="text"
+                           id="notes_<?= $ft_key ?>"
+                           class="det-input notes-input"
+                           placeholder="Driver, seal no., remarks…"
+                           maxlength="255"
+                           autocomplete="off">
+                </td>
+
+                <!-- Actions -->
+                <td>
+                    <div style="display:flex;gap:6px;align-items:center;flex-wrap:nowrap;">
+                        <button type="button"
+                                class="det-submit-btn"
+                                id="delSubmitBtn_<?= $ft_key ?>"
+                                onclick="triggerDelSubmit('<?= $ft_key ?>', <?= $cur ?>, <?= $cap ?>)">
+                            <i class="fas fa-paper-plane"></i> Submit
+                        </button>
+                        <button type="button"
+                                class="det-reset-btn"
+                                onclick="resetDelRow('<?= $ft_key ?>')"
+                                title="Clear this row">
+                            <i class="fas fa-undo"></i>
+                        </button>
+                    </div>
+                    <div id="delRowMsg_<?= $ft_key ?>" class="det-row-msg" style="margin-top:5px;"></div>
+                </td>
+            </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div><!-- /det-wrap -->
+</div><!-- /del-card -->
+
+<?php endif; ?>
 
 <!-- ═══════════════════════════════════════════════════════════
      DELIVERY RECORDS — Filter Bar + Summary + Table
@@ -697,154 +917,176 @@ require_once __DIR__ . '/../partials/header.php';
 </div><!-- /deliveries-table -->
 
 <script>
-var tankData = <?php
-    $js_tank = [];
-    foreach ($tank_levels as $key => $tl) {
-        $js_tank[strtolower(trim($tl['fuel_type']))] = [
-            'current'  => (float)$tl['current_stock'],
-            'capacity' => (float)$tl['capacity'],
-        ];
-    }
-    echo json_encode($js_tank);
-?>;
-
-document.getElementById('invoice_no').addEventListener('input', function(e) {
-    e.target.value = e.target.value.toUpperCase();
-});
-document.getElementById('tanker_number').addEventListener('input', function(e) {
-    e.target.value = e.target.value.toUpperCase();
-});
-
 // ── Period preset toggle ──────────────────────────────────────
 function setPeriod(key) {
-    // Update hidden input
     document.getElementById('periodInput').value = key;
-
-    // Update button styles
     ['ytd','monthly','weekly','custom'].forEach(function(k) {
         var btn = document.getElementById('periodBtn_' + k);
         if (!btn) return;
         if (k === key) {
-            btn.style.background   = '#002f6c';
-            btn.style.color        = '#fff';
-            btn.style.borderColor  = '#002f6c';
+            btn.style.background  = '#002f6c';
+            btn.style.color       = '#fff';
+            btn.style.borderColor = '#002f6c';
         } else {
-            btn.style.background   = '#fff';
-            btn.style.color        = '#475569';
-            btn.style.borderColor  = '#dee2e6';
+            btn.style.background  = '#fff';
+            btn.style.color       = '#475569';
+            btn.style.borderColor = '#dee2e6';
         }
     });
-
-    // Show/hide custom date row
     var customRow = document.getElementById('customDateRow');
-    if (customRow) {
-        customRow.style.display = (key === 'custom') ? 'flex' : 'none';
-    }
-
-    // Auto-submit for preset periods (not custom — user needs to pick dates first)
-    if (key !== 'custom') {
-        document.getElementById('filterForm').submit();
-    }
+    if (customRow) customRow.style.display = (key === 'custom') ? 'flex' : 'none';
+    if (key !== 'custom') document.getElementById('filterForm').submit();
 }
 
-// Update capacity hint when fuel type changes
-document.getElementById('fuel_type').addEventListener('change', function() {
-    checkCapacity();
-});
+// ── Per-row capacity hint ─────────────────────────────────────
+function checkDelCapacity(ftKey, current, capacity) {
+    var litersEl = document.getElementById('liters_' + ftKey);
+    var hint     = document.getElementById('capHint_' + ftKey);
+    if (!litersEl || !hint) return;
 
-function checkCapacity() {
-    var fuelSel  = document.getElementById('fuel_type');
-    var litersEl = document.getElementById('delivery_liters');
-    var hint     = document.getElementById('capacity_hint');
-    if (!fuelSel || !litersEl || !hint) return;
+    var liters = parseFloat(litersEl.value) || 0;
 
-    var fuelKey  = (fuelSel.value || '').toLowerCase().trim();
-    var liters   = parseFloat(litersEl.value) || 0;
-    var tank     = tankData[fuelKey];
+    // Clear any previous row error message when user is typing
+    var msgEl = document.getElementById('delRowMsg_' + ftKey);
+    if (msgEl && liters > 0) { msgEl.style.display = 'none'; }
 
-    if (!tank || tank.capacity <= 0) {
-        hint.style.display = 'none';
-        return;
-    }
+    if (capacity <= 0) { hint.style.display = 'none'; return; }
 
-    var current  = tank.current;
-    var capacity = tank.capacity;
-    var avail    = Math.max(0, capacity - current);
-    var after    = current + liters;
-
+    var avail = Math.max(0, capacity - current);
+    var after = current + liters;
     hint.style.display = 'block';
 
     if (liters > 0 && after > capacity) {
-        hint.style.color   = '#dc3545';
-        hint.style.background = '#fff5f5';
-        hint.style.border  = '1px solid #f5c6cb';
-        hint.style.padding = '6px 10px';
-        hint.style.borderRadius = '5px';
-        hint.innerHTML = '<i class="fas fa-exclamation-triangle"></i> '
-            + '<strong>Exceeds capacity!</strong> '
-            + 'Available space: <strong>' + Math.round(avail).toLocaleString() + ' L</strong> '
-            + '(Current: ' + Math.round(current).toLocaleString() + ' L, '
-            + 'Capacity: ' + Math.round(capacity).toLocaleString() + ' L)';
+        hint.style.color      = '#dc2626';
+        hint.style.fontWeight = '700';
+        hint.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Exceeds capacity! Avail: '
+            + Math.round(avail).toLocaleString() + ' L';
     } else if (liters > 0) {
-        var remaining = avail - liters;
-        hint.style.color   = '#198754';
-        hint.style.background = '#f0fdf4';
-        hint.style.border  = '1px solid #bbf7d0';
-        hint.style.padding = '6px 10px';
-        hint.style.borderRadius = '5px';
-        hint.innerHTML = '<i class="fas fa-check-circle"></i> '
-            + 'OK — After delivery: <strong>' + Math.round(after).toLocaleString() + ' L</strong> '
-            + '/ ' + Math.round(capacity).toLocaleString() + ' L cap '
-            + '(' + Math.round((after / capacity) * 100) + '% full, '
-            + Math.round(remaining).toLocaleString() + ' L remaining space)';
+        hint.style.color      = '#15803d';
+        hint.style.fontWeight = '600';
+        hint.innerHTML = '<i class="fas fa-check-circle"></i> After delivery: '
+            + Math.round(after).toLocaleString() + ' L / '
+            + Math.round(capacity).toLocaleString() + ' L ('
+            + Math.round((after / capacity) * 100) + '%)';
     } else {
-        hint.style.color   = '#667085';
-        hint.style.background = 'transparent';
-        hint.style.border  = 'none';
-        hint.style.padding = '0';
-        hint.innerHTML = 'Available space: <strong>' + Math.round(avail).toLocaleString() + ' L</strong> '
-            + '(Current: ' + Math.round(current).toLocaleString() + ' L / '
-            + Math.round(capacity).toLocaleString() + ' L)';
+        hint.style.color      = '#64748b';
+        hint.style.fontWeight = '400';
+        hint.innerHTML = 'Available space: ' + Math.round(avail).toLocaleString() + ' L';
     }
 }
 
-document.getElementById('deliveryForm').addEventListener('submit', function(e) {
-    var liters = parseFloat(document.getElementById('delivery_liters').value);
-    if (liters <= 0 || isNaN(liters)) {
-        e.preventDefault();
-        alert('Delivery liters must be greater than 0');
-        return false;
+// ── Reset a delivery row ──────────────────────────────────────
+function resetDelRow(ftKey) {
+    ['invoice_', 'liters_', 'tanker_', 'notes_'].forEach(function(prefix) {
+        var el = document.getElementById(prefix + ftKey);
+        if (el) el.value = '';
+    });
+    var hint = document.getElementById('capHint_' + ftKey);
+    if (hint) { hint.style.display = 'none'; hint.innerHTML = ''; }
+    var msg = document.getElementById('delRowMsg_' + ftKey);
+    if (msg) { msg.style.display = 'none'; msg.innerHTML = ''; }
+    var btn = document.getElementById('delSubmitBtn_' + ftKey);
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit'; }
+}
+
+// ── Show inline row message ───────────────────────────────────
+function showDelMsg(ftKey, text, color) {
+    var msgEl = document.getElementById('delRowMsg_' + ftKey);
+    if (!msgEl) return;
+    msgEl.style.display  = 'block';
+    msgEl.style.color    = color || '#dc2626';
+    msgEl.innerHTML      = text;
+}
+
+// ── Trigger submit for a row ──────────────────────────────────
+function triggerDelSubmit(ftKey, current, capacity) {
+    var dateEl     = document.getElementById('sharedDate');
+    var supplierEl = document.getElementById('sharedSupplier');
+    var invoiceEl  = document.getElementById('invoice_' + ftKey);
+    var litersEl   = document.getElementById('liters_'  + ftKey);
+    var tankerEl   = document.getElementById('tanker_'  + ftKey);
+    var notesEl    = document.getElementById('notes_'   + ftKey);
+    var btn        = document.getElementById('delSubmitBtn_' + ftKey);
+
+    // Clear previous message
+    var msgEl = document.getElementById('delRowMsg_' + ftKey);
+    if (msgEl) { msgEl.style.display = 'none'; msgEl.innerHTML = ''; }
+
+    // Read values
+    var delivDate = dateEl     ? dateEl.value.trim()     : '';
+    var supplier  = supplierEl ? supplierEl.value.trim() : '';
+    var invoice   = invoiceEl  ? invoiceEl.value.trim()  : '';
+    var liters    = litersEl   ? parseFloat(litersEl.value) : NaN;
+
+    // ── Validation ────────────────────────────────────────────
+    if (!delivDate) {
+        showDelMsg(ftKey, '<i class="fas fa-exclamation-circle"></i> Delivery date is required.');
+        dateEl && dateEl.focus();
+        return;
     }
-    var invoiceNo = document.getElementById('invoice_no').value.trim();
-    if (!invoiceNo) {
-        e.preventDefault();
-        alert('Invoice number is required');
-        return false;
+    if (!supplier) {
+        showDelMsg(ftKey, '<i class="fas fa-exclamation-circle"></i> Supplier is required.');
+        supplierEl && supplierEl.focus();
+        return;
     }
-    var fuelType = document.getElementById('fuel_type').value;
-    if (!fuelType) {
-        e.preventDefault();
-        alert('Please select a fuel type');
-        return false;
+    if (!invoice) {
+        showDelMsg(ftKey, '<i class="fas fa-exclamation-circle"></i> Invoice number is required.');
+        invoiceEl && invoiceEl.focus();
+        return;
+    }
+    if (isNaN(liters) || liters <= 0) {
+        showDelMsg(ftKey, '<i class="fas fa-exclamation-circle"></i> Enter a valid quantity (liters > 0).');
+        litersEl && litersEl.focus();
+        return;
     }
 
-    // Hard block if over capacity
-    var fuelKey  = fuelType.toLowerCase().trim();
-    var tank     = tankData[fuelKey];
-    if (tank && tank.capacity > 0) {
-        var avail = Math.max(0, tank.capacity - tank.current);
+    // ── Capacity guard ────────────────────────────────────────
+    if (capacity > 0) {
+        var avail = Math.max(0, capacity - current);
         if (liters > avail) {
-            e.preventDefault();
-            alert(
-                'Cannot submit: delivery of ' + Math.round(liters).toLocaleString() + ' L exceeds available tank space.\n\n' +
-                'Fuel type: ' + fuelType + '\n' +
-                'Current level: ' + Math.round(tank.current).toLocaleString() + ' L\n' +
-                'Tank capacity: ' + Math.round(tank.capacity).toLocaleString() + ' L\n' +
-                'Available space: ' + Math.round(avail).toLocaleString() + ' L'
+            showDelMsg(ftKey,
+                '<i class="fas fa-exclamation-triangle"></i> Exceeds available tank space! Max: '
+                + Math.round(avail).toLocaleString() + ' L'
             );
-            return false;
+            litersEl && litersEl.focus();
+            return;
         }
     }
+
+    // ── Populate hidden form fields ───────────────────────────
+    document.getElementById('delDate_'     + ftKey).value = delivDate;
+    document.getElementById('delSupplier_' + ftKey).value = supplier;
+    document.getElementById('delInvoice_'  + ftKey).value = invoice;
+    document.getElementById('delLiters_'   + ftKey).value = liters;
+    document.getElementById('delTanker_'   + ftKey).value = tankerEl ? tankerEl.value.trim() : '';
+    document.getElementById('delNotes_'    + ftKey).value = notesEl  ? notesEl.value.trim()  : '';
+
+    // ── Disable button to prevent double-submit ───────────────
+    if (btn) {
+        btn.disabled    = true;
+        btn.innerHTML   = '<i class="fas fa-spinner fa-spin"></i> Submitting\u2026';
+    }
+
+    // ── Submit the hidden form ────────────────────────────────
+    var form = document.getElementById('delForm_' + ftKey);
+    if (form) {
+        form.submit();
+    } else {
+        showDelMsg(ftKey, '<i class="fas fa-exclamation-circle"></i> Form not found. Please refresh the page.');
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit'; }
+    }
+}
+
+// ── Prevent Enter key from accidentally submitting shared fields ──
+document.addEventListener('DOMContentLoaded', function() {
+    ['sharedDate', 'sharedSupplier'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') e.preventDefault();
+            });
+        }
+    });
 });
 </script>
 

@@ -32,49 +32,116 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"])) {
         try {
             $new_status = $status_map[$act];
 
+            // Fetch the delivery row BEFORE updating status (need delivery_type, product, quantity)
+            $row = $pdo->prepare("SELECT * FROM deliveries_oversight WHERE id = ? AND station_id = ?");
+            $row->execute([$del_id, $station_id]);
+            $dr = $row->fetch(PDO::FETCH_ASSOC);
+
+            if (!$dr) {
+                $msg      = "Delivery not found.";
+                $msg_type = "error";
+                goto end_post;
+            }
+
+            $pdo->beginTransaction();
+
             $pdo->prepare("
                 UPDATE deliveries_oversight
                 SET status = ?, admin_id = ?, admin_action_at = NOW(), admin_notes = ?, updated_at = NOW()
                 WHERE id = ? AND station_id = ?
             ")->execute([$new_status, $me["id"], $notes ?: null, $del_id, $station_id]);
 
-            /* Inventory auto-update on Confirm */
+            /* ── Inventory auto-update on Approve ── */
             if ($act === "confirm") {
-                try {
-                    $row = $pdo->prepare("SELECT * FROM deliveries_oversight WHERE id = ?");
-                    $row->execute([$del_id]);
-                    $dr = $row->fetch(PDO::FETCH_ASSOC);
-                    if ($dr && $dr["delivery_type"] === "merchandise") {
-                        /* inventory_products has no station_id — update by product_name */
+                $qty     = (float)$dr["quantity"];
+                $product = trim($dr["product"]);
+
+                if ($dr["delivery_type"] === "fuel") {
+                    // ── FUEL: update both current_level and current_stock ──────
+                    $upd = $pdo->prepare("
+                        UPDATE fuel_inventory
+                        SET current_level = COALESCE(current_level, 0) + ?,
+                            current_stock = COALESCE(current_stock, 0) + ?,
+                            last_updated  = NOW(),
+                            updated_by    = ?
+                        WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                        LIMIT 1
+                    ");
+                    $upd->execute([$qty, $qty, $me["id"], $station_id, $product]);
+
+                    if ($upd->rowCount() === 0) {
+                        // Fallback: match via fuel_types join
                         $pdo->prepare("
-                            UPDATE inventory_products
-                            SET stock = stock + ?
-                            WHERE product_name = ?
-                        ")->execute([$dr["quantity"], $dr["product"]]);
+                            UPDATE fuel_inventory fi
+                            JOIN fuel_types ft ON fi.fuel_type_id = ft.id
+                            SET fi.current_level = COALESCE(fi.current_level, 0) + ?,
+                                fi.current_stock = COALESCE(fi.current_stock, 0) + ?,
+                                fi.last_updated  = NOW(),
+                                fi.updated_by    = ?
+                            WHERE fi.station_id = ? AND LOWER(TRIM(ft.name)) = LOWER(TRIM(?))
+                            LIMIT 1
+                        ")->execute([$qty, $qty, $me["id"], $station_id, $product]);
                     }
-                } catch (Exception $ie) {}
+
+                } else {
+                    // ── MERCHANDISE: update inventory_products.stock ──────────
+                    $upd = $pdo->prepare("
+                        UPDATE inventory_products
+                        SET stock = stock + ?
+                        WHERE product_name = ?
+                        LIMIT 1
+                    ");
+                    $upd->execute([$qty, $product]);
+
+                    // Also update station_inventory.stock_level (per-station stock)
+                    $upd2 = $pdo->prepare("
+                        UPDATE station_inventory si
+                        JOIN inventory_products ip ON si.product_id = ip.id
+                        SET si.stock_level = si.stock_level + ?,
+                            si.last_updated = NOW()
+                        WHERE si.station_id = ? AND ip.product_name = ?
+                        LIMIT 1
+                    ");
+                    $upd2->execute([$qty, $station_id, $product]);
+                }
             }
 
             /* Audit trail */
             try {
                 $pdo->prepare("
                     INSERT INTO audit_trail (transaction_id, manager_id, action_type, old_value, new_value, station_id, entity_type)
-                    SELECT delivery_ref, ?, ?, status, ?, station_id, 'delivery'
-                    FROM deliveries_oversight WHERE id = ?
-                ")->execute([$me["id"], ucfirst($act) . " Delivery", $new_status, $del_id]);
+                    VALUES (?, ?, ?, ?, ?, ?, 'delivery')
+                ")->execute([
+                    $dr["delivery_ref"],
+                    $me["id"],
+                    ucfirst($act) . " Delivery",
+                    $dr["status"],
+                    $new_status,
+                    $station_id
+                ]);
             } catch (Exception $ae) {}
 
             log_activity($pdo, $me["id"], ucfirst($act) . " Delivery",
-                "Delivery ID #{$del_id} | Action: {$act} | Status: {$new_status}");
+                "Delivery ID #{$del_id} ({$dr['delivery_type']}) | Product: {$dr['product']} | Qty: {$dr['quantity']} | Status: {$new_status}");
 
-            $msg      = "&#10003; Delivery #" . $del_id . " status updated to <strong>" . $new_status . "</strong>.";
+            $pdo->commit();
+
+            $inv_note = "";
+            if ($act === "confirm") {
+                $inv_note = $dr["delivery_type"] === "fuel"
+                    ? " Fuel inventory updated (+{$dr['quantity']} L of {$dr['product']})."
+                    : " Merchandise inventory updated (+{$dr['quantity']} {$dr['unit']} of {$dr['product']}).";
+            }
+            $msg      = "&#10003; Delivery #{$del_id} status updated to <strong>{$new_status}</strong>.{$inv_note}";
             $msg_type = "success";
 
         } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
             $msg      = "Error: " . $e->getMessage();
             $msg_type = "error";
         }
     }
+    end_post:
 }
 
 /* Filters */
@@ -122,16 +189,16 @@ try {
     try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN remarks TEXT DEFAULT NULL"); } catch (Exception $ae) {}
     try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN dr_number VARCHAR(100) DEFAULT NULL"); } catch (Exception $ae) {}
 
-    $where  = "WHERE do2.station_id = ? AND do2.delivery_type = 'merchandise' AND do2.delivery_date BETWEEN ? AND ?";
+    $where  = "WHERE do2.station_id = ? AND do2.delivery_date BETWEEN ? AND ?";
     $params = [$station_id, $filter_start, $filter_end];
 
     if ($filter_status !== "") {
         if ($filter_status === 'Pending') {
-            $where .= " AND do2.status LIKE 'Pending%'";
+            $where .= " AND do2.status IN ('Pending Manager Approval','Pending Manager Confirmation','Pending Validation')";
         } elseif ($filter_status === 'Approved') {
-            $where .= " AND do2.status IN ('Confirmed', 'Approved')";
+            $where .= " AND do2.status IN ('Confirmed', 'Approved', 'Validated', 'Adjusted')";
         } elseif ($filter_status === 'Rejected') {
-            $where .= " AND do2.status IN ('Discrepancy', 'Rejected')";
+            $where .= " AND do2.status IN ('Discrepancy', 'Rejected', 'Flagged', 'Pending Resolution', 'Awaiting Replacement', 'Returned to Supplier')";
         } else {
             $where .= " AND do2.status = ?";
             $params[] = $filter_status;
@@ -146,7 +213,13 @@ try {
         LEFT JOIN users u_enc ON do2.encoded_by = u_enc.id
         LEFT JOIN users u_act ON do2.admin_id   = u_act.id
         $where
-        ORDER BY FIELD(do2.status,\"Pending Manager Approval\",\"Pending Manager Confirmation\",\"Discrepancy\",\"Rejected\",\"Confirmed\",\"Approved\",\"Closed\"), do2.created_at DESC
+        ORDER BY FIELD(do2.status,
+            'Pending Manager Approval','Pending Manager Confirmation','Pending Validation',
+            'Pending Resolution','Awaiting Replacement',
+            'Discrepancy','Rejected','Flagged',
+            'Confirmed','Approved','Validated','Adjusted',
+            'Returned to Supplier','Closed'
+        ), do2.created_at DESC
     ");
     $stmt->execute($params);
     $deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -155,9 +228,9 @@ try {
         $s = $r["status"];
         if (strpos($s, 'Pending') !== false) {
             $counts['Pending']++;
-        } elseif ($s === 'Confirmed' || $s === 'Approved') {
+        } elseif (in_array($s, ['Confirmed', 'Approved', 'Validated', 'Adjusted'])) {
             $counts['Approved']++;
-        } elseif ($s === 'Discrepancy' || $s === 'Rejected') {
+        } elseif (in_array($s, ['Discrepancy', 'Rejected', 'Flagged', 'Pending Resolution', 'Awaiting Replacement', 'Returned to Supplier'])) {
             $counts['Rejected']++;
         } elseif ($s === 'Closed') {
             $counts['Closed']++;
@@ -247,12 +320,12 @@ include __DIR__ . '/../partials/header.php';
 
 <div class="page-head">
     <div>
-        <h1 class="h1"><i class="fas fa-truck"></i> Manager &ndash; Deliveries Management</h1>
-        <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; Validate staff-encoded merchandise deliveries</div>
+        <h1 class="h1"><i class="fas fa-truck"></i> Manager &ndash; Delivery History</h1>
+        <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; All deliveries (Fuel &amp; Merchandise) &mdash; history &amp; actions</div>
     </div>
     <div class="header-actions">
-        <a href="manager_record_delivery.php" class="btn-record-del">
-            <i class="fas fa-plus"></i> Record Delivery
+        <a href="manager_merchandise_deliveries.php" class="btn-record-del">
+            <i class="fas fa-tasks"></i> Manage Deliveries
         </a>
     </div>
 </div>
@@ -353,10 +426,11 @@ include __DIR__ . '/../partials/header.php';
                 <thead>
                     <tr>
                         <th>Delivery ID</th>
+                        <th>Type</th>
                         <th>Supplier Name</th>
                         <th>Product / Fuel Type</th>
                         <th>Quantity Delivered</th>
-                        <th>Date & Time</th>
+                        <th>Date &amp; Time</th>
                         <th>Encoded By (Staff)</th>
                         <th>Status</th>
                         <th>Remarks</th>
@@ -388,10 +462,11 @@ include __DIR__ . '/../partials/header.php';
                     ?>
                     <tr>
                         <td><strong style="font-family:monospace;font-size:12px;"><?php echo htmlspecialchars($d['delivery_ref']); ?></strong></td>
+                        <td><span class="<?php echo $d['delivery_type'] === 'fuel' ? 'type-fuel' : 'type-merch'; ?>" style="font-size:12px;"><?php echo ucfirst($d['delivery_type']); ?></span></td>
                         <td><?php echo htmlspecialchars($d['supplier']); ?></td>
-                        <td><?php echo htmlspecialchars($d['product']); ?> <br><span style="font-size:11px;color:#6c757d;font-weight:600;">(<?php echo ucfirst($d['delivery_type']); ?>)</span></td>
+                        <td><?php echo htmlspecialchars($d['product']); ?></td>
                         <td><?php echo number_format((float)$d['quantity'], 2); ?> <?php echo htmlspecialchars($d['unit']); ?></td>
-                        <td style="white-space:nowrap;"><?php echo date('M j, Y', strtotime($d['delivery_date'])) . '<br><span style="font-size:11px;color:#6c757d;">' . date('h:i A', strtotime($d['created_at'])) . '</span>'; ?></td>
+                        <td style="white-space:nowrap;"><?php echo date('M j, Y', strtotime($d['delivery_date'])); ?><br><span style="font-size:11px;color:#6c757d;"><?php echo date('h:i A', strtotime($d['created_at'])); ?></span></td>
                         <td style="font-size:12px;"><?php echo htmlspecialchars($d['encoded_by_name'] ?? '—'); ?></td>
                         <td><span class="<?php echo $badge_class; ?>"><?php echo htmlspecialchars($badge_label); ?></span></td>
                         <td style="font-size:12px;color:#6c757d;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="<?php echo htmlspecialchars($d['remarks'] ?? ''); ?>">

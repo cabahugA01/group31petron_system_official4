@@ -75,9 +75,9 @@ try {
         if ($filter_status === 'Pending Manager Approval') {
             $where .= " AND do2.status IN ('Pending Manager Approval','Pending Manager Confirmation')";
         } elseif ($filter_status === 'Confirmed') {
-            $where .= " AND do2.status = 'Confirmed'";
+            $where .= " AND do2.status IN ('Confirmed','Approved','Adjusted')";
         } elseif ($filter_status === 'Discrepancy') {
-            $where .= " AND do2.status = 'Discrepancy'";
+            $where .= " AND do2.status IN ('Discrepancy','Pending Resolution','Awaiting Replacement','Returned to Supplier')";
         } elseif ($filter_status === 'Closed') {
             $where .= " AND do2.status = 'Closed'";
         }
@@ -225,7 +225,7 @@ include __DIR__ . '/../partials/header.php';
                         <option value="">All Statuses</option>
                         <option value="Pending Manager Approval" <?php echo $filter_status === 'Pending Manager Approval' ? 'selected' : ''; ?>>Pending Approval</option>
                         <option value="Confirmed"   <?php echo $filter_status === 'Confirmed'   ? 'selected' : ''; ?>>Approved</option>
-                        <option value="Discrepancy" <?php echo $filter_status === 'Discrepancy' ? 'selected' : ''; ?>>Rejected</option>
+                        <option value="Discrepancy" <?php echo $filter_status === 'Discrepancy' ? 'selected' : ''; ?>>Discrepancy / Rejected</option>
                         <option value="Closed"      <?php echo $filter_status === 'Closed'      ? 'selected' : ''; ?>>Closed</option>
                     </select>
                 </div>
@@ -279,21 +279,39 @@ include __DIR__ . '/../partials/header.php';
                 <?php foreach ($deliveries as $d):
                     $status      = $d['status'];
                     $is_pending  = in_array($status, ['Pending Manager Approval', 'Pending Manager Confirmation']);
-                    $is_rejected = ($status === 'Discrepancy');
-                    $is_approved = ($status === 'Confirmed');
+                    $is_discrepancy = in_array($status, ['Discrepancy', 'Pending Resolution', 'Awaiting Replacement', 'Returned to Supplier']);
+                    $is_approved = in_array($status, ['Confirmed', 'Approved', 'Adjusted']);
                     $is_closed   = ($status === 'Closed');
+                    $is_rejected = in_array($status, ['Rejected', 'Discrepancy']);
 
-                    $badge_class = $is_pending  ? 'badge-pending'
-                                 : ($is_approved ? 'badge-approved'
-                                 : ($is_rejected ? 'badge-rejected'
-                                 : 'badge-closed'));
+                    // Badge class
+                    if ($is_pending) {
+                        $badge_class = 'badge-pending';
+                        $badge_label = 'Pending Approval';
+                    } elseif ($status === 'Pending Resolution') {
+                        $badge_class = 'badge-rejected';
+                        $badge_label = 'Pending Resolution';
+                    } elseif ($status === 'Awaiting Replacement') {
+                        $badge_class = 'badge-pending';
+                        $badge_label = 'Awaiting Replacement';
+                    } elseif ($status === 'Returned to Supplier') {
+                        $badge_class = 'badge-closed';
+                        $badge_label = 'Returned to Supplier';
+                    } elseif ($status === 'Adjusted') {
+                        $badge_class = 'badge-approved';
+                        $badge_label = 'Adjusted';
+                    } elseif ($is_approved) {
+                        $badge_class = 'badge-approved';
+                        $badge_label = 'Approved';
+                    } elseif ($status === 'Discrepancy') {
+                        $badge_class = 'badge-rejected';
+                        $badge_label = 'Rejected';
+                    } else {
+                        $badge_class = 'badge-closed';
+                        $badge_label = 'Closed';
+                    }
 
-                    $badge_label = $is_pending  ? 'Pending Approval'
-                                 : ($is_approved ? 'Approved'
-                                 : ($is_rejected ? 'Rejected'
-                                 : 'Closed'));
-
-                    $row_class = $is_rejected ? 'row-rejected' : '';
+                    $row_class = $is_discrepancy ? 'row-rejected' : '';
                 ?>
                     <tr class="<?php echo $row_class; ?>">
                         <td><strong style="font-family:monospace;font-size:12px;"><?php echo htmlspecialchars($d['delivery_ref']); ?></strong></td>
@@ -304,7 +322,7 @@ include __DIR__ . '/../partials/header.php';
                         <td style="font-size:12px;color:#6c757d;"><?php echo $d['dr_number'] ? htmlspecialchars($d['dr_number']) : '—'; ?></td>
                         <td>
                             <span class="<?php echo $badge_class; ?>"><?php echo $badge_label; ?></span>
-                            <?php if ($is_rejected && !empty($d['admin_notes'])): ?>
+                            <?php if ($is_discrepancy && !empty($d['admin_notes'])): ?>
                             <div class="rejection-note">
                                 <i class="fas fa-exclamation-circle" style="margin-top:1px;flex-shrink:0;"></i>
                                 <span><?php echo htmlspecialchars(mb_strimwidth($d['admin_notes'], 0, 60, '…')); ?></span>
@@ -356,14 +374,24 @@ const STATUS_LABELS = {
     'Pending Manager Approval':     'Pending Approval',
     'Pending Manager Confirmation': 'Pending Approval',
     'Confirmed':   'Approved',
+    'Approved':    'Approved',
+    'Adjusted':    'Adjusted',
     'Discrepancy': 'Rejected',
+    'Pending Resolution':   'Pending Resolution',
+    'Awaiting Replacement': 'Awaiting Replacement',
+    'Returned to Supplier': 'Returned to Supplier',
     'Closed':      'Closed',
 };
 const STATUS_COLORS = {
     'Pending Manager Approval':     '#856404',
     'Pending Manager Confirmation': '#856404',
     'Confirmed':   '#155724',
+    'Approved':    '#155724',
+    'Adjusted':    '#0c5460',
     'Discrepancy': '#721c24',
+    'Pending Resolution':   '#7d4e00',
+    'Awaiting Replacement': '#004085',
+    'Returned to Supplier': '#383d41',
     'Closed':      '#383d41',
 };
 
@@ -374,15 +402,22 @@ function viewDelivery(id) {
     const label      = STATUS_LABELS[d.status] || d.status;
     const color      = STATUS_COLORS[d.status] || '#333';
     const isRejected = (d.status === 'Discrepancy');
+    const isDiscrepancy = ['Discrepancy','Pending Resolution','Awaiting Replacement','Returned to Supplier'].includes(d.status);
 
     let html = '';
 
-    if (isRejected) {
+    if (isDiscrepancy) {
+        const discMsg = {
+            'Discrepancy':          'This delivery was Rejected by the Manager.',
+            'Pending Resolution':   'Discrepancy flagged — Pending Resolution. Manager is deciding the action.',
+            'Awaiting Replacement': 'Awaiting replacement delivery from supplier.',
+            'Returned to Supplier': 'Items returned to supplier.',
+        }[d.status] || 'Discrepancy flagged.';
         html += '<div class="rejection-banner">'
-              + '<i class="fas fa-times-circle" style="margin-top:2px;flex-shrink:0;font-size:16px;"></i>'
-              + '<div><strong>This delivery was Rejected by the Manager.</strong>'
+              + '<i class="fas fa-exclamation-triangle" style="margin-top:2px;flex-shrink:0;font-size:16px;"></i>'
+              + '<div><strong>' + escHtml(discMsg) + '</strong>'
               + (d.admin_notes ? '<br><span style="margin-top:4px;display:block;">Manager note: ' + escHtml(d.admin_notes) + '</span>' : '')
-              + '<br><span style="font-size:12px;">Please correct the details and resubmit.</span>'
+              + (d.status === 'Discrepancy' ? '<br><span style="font-size:12px;">Please correct the details and resubmit.</span>' : '')
               + '</div></div>';
     }
 

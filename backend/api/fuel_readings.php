@@ -406,11 +406,11 @@ function validate_readings(float $present, float $previous, float $calibration):
     if ($present < $previous)
         $errors[] = "Present reading ({$present}) cannot be less than previous ({$previous}).";
     $diff = $present - $previous;
-    if ($calibration > $diff)
-        $errors[] = "Calibration ({$calibration}) cannot exceed the difference ({$diff}).";
+    // Allow calibration >= diff — this results in 0 L net sales (valid, matches UI behaviour).
+    // Only reject if it would produce a negative value beyond floating-point rounding.
     $liters = $diff - $calibration;
-    if ($liters < 0)
-        $errors[] = "Negative liters computed ({$liters}). Check your readings.";
+    if ($liters < -0.001)
+        $errors[] = "Negative liters computed (" . round($liters, 3) . "). Check your readings.";
     if ($liters > 2000)
         $errors[] = "Liters sold ({$liters}) exceeds the 2,000 L limit per reading.";
     if ($calibration > 50)
