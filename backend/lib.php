@@ -804,4 +804,26 @@ function get_role_notification_types($role) {
   return $notifications[$role] ?? [];
 }
 
+// ── Audit Trail Helper ────────────────────────────────────────────────────────
+// Call this from any page/action to write a row into audit_logs.
+// $pdo must be available in the calling scope (global or passed in).
+function write_audit_log($pdo, $action_type, $action_details, $entity_type = null, $entity_id = null, $log_type = 'system', $status = 'Success') {
+    try {
+        if (!$pdo) return;
+        $user_id = null;
+        if (session_status() === PHP_SESSION_ACTIVE && !empty($_SESSION['user']['id'])) {
+            $user_id = (int)$_SESSION['user']['id'];
+        }
+        $ip = $_SERVER['HTTP_CLIENT_IP']
+           ?? $_SERVER['HTTP_X_FORWARDED_FOR']
+           ?? $_SERVER['REMOTE_ADDR']
+           ?? '0.0.0.0';
+        $ua = $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown';
+        $pdo->prepare("INSERT INTO audit_logs
+            (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())")
+            ->execute([$user_id, $log_type, $action_type, $action_details, $entity_type, $entity_id, $status, $ip, $ua]);
+    } catch (Exception $e) { /* silent — never block the main action */ }
+}
+
 ?>

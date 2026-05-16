@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'customers';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -13,21 +13,25 @@ if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
 }
 
 // ── Resolve active section (driven by sidebar sub-menu) ───────────────────────
-$valid_sections = ['encode', 'update', 'history', 'linkage', 'balances'];
+$valid_sections = ['encode', 'history', 'linkage'];
 $section = isset($_GET['section']) && in_array($_GET['section'], $valid_sections)
     ? $_GET['section'] : 'encode';
+
+// Block any direct attempt to access removed sections
+if (isset($_GET['section']) && in_array($_GET['section'], ['update', 'balances'])) {
+    header('Location: customers.php?section=encode'); exit;
+}
 
 // ── Government ID types ───────────────────────────────────────────────────────
 $gov_id_types = [
     "Driver's License",
+    "Government ID",
     "Passport",
-    "PhilHealth ID",
-    "SSS ID",
-    "GSIS ID",
-    "TIN ID",
+    "Postal ID",
     "Voter's ID",
-    "UMID",
-    "National ID (PhilSys)",
+    "PhilSys ID",
+    "PRC ID",
+    "Other",
 ];
 
 // ── Ensure customers table has required columns (add if missing) ──────────────
@@ -41,6 +45,12 @@ try {
     }
     if (!in_array('id_number', $cols)) {
         $pdo->exec("ALTER TABLE customers ADD COLUMN id_number VARCHAR(100) NULL AFTER id_type");
+    }
+    if (!in_array('id_image', $cols)) {
+        $pdo->exec("ALTER TABLE customers ADD COLUMN id_image VARCHAR(255) NULL AFTER id_number");
+    }
+    if (!in_array('cr_image', $cols)) {
+        $pdo->exec("ALTER TABLE customers ADD COLUMN cr_image VARCHAR(255) NULL AFTER id_image");
     }
     if (!in_array('credit_limit', $cols)) {
         $pdo->exec("ALTER TABLE customers ADD COLUMN credit_limit DECIMAL(12,2) DEFAULT 0.00 AFTER id_number");
@@ -58,8 +68,39 @@ $flash_success = $flash_error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'encode_customer') {
     $name    = trim($_POST['name']    ?? '');
     $contact = trim($_POST['contact'] ?? '');
-    $id_num  = trim($_POST['id_number'] ?? '');
+    $id_type = trim($_POST['id_type'] ?? '');
     $credit  = (float)($_POST['credit_limit'] ?? 0);
+
+    // Handle ID image upload
+    $id_image_path = null;
+    if (!empty($_FILES['id_image']['name'])) {
+        $upload_dir = __DIR__ . '/../uploads/customer_ids/';
+        if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
+        $ext = strtolower(pathinfo($_FILES['id_image']['name'], PATHINFO_EXTENSION));
+        $allowed = ['jpg','jpeg','png','gif','pdf','webp'];
+        if (in_array($ext, $allowed)) {
+            $fname = 'id_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+            if (move_uploaded_file($_FILES['id_image']['tmp_name'], $upload_dir . $fname)) {
+                $id_image_path = 'uploads/customer_ids/' . $fname;
+            }
+        }
+    }
+
+    // Handle CR image upload
+    $cr_image_path = null;
+    if (!empty($_FILES['cr_image']['name'])) {
+        $upload_dir = __DIR__ . '/../uploads/customer_ids/';
+        if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
+        $ext = strtolower(pathinfo($_FILES['cr_image']['name'], PATHINFO_EXTENSION));
+        $allowed = ['jpg','jpeg','png','gif','pdf','webp'];
+        if (in_array($ext, $allowed)) {
+            $fname = 'cr_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+            if (move_uploaded_file($_FILES['cr_image']['tmp_name'], $upload_dir . $fname)) {
+                $cr_image_path = 'uploads/customer_ids/' . $fname;
+            }
+        }
+    }
+
     if (!$name) {
         $flash_error = 'Customer name is required.';
     } else {
@@ -68,7 +109,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'encod
             $col_list = ['name', 'station_id', 'status', 'created_at'];
             $val_list = [$name, $station_id, 'active', date('Y-m-d H:i:s')];
             if (in_array('contact_number', $ins_cols)) { $col_list[] = 'contact_number'; $val_list[] = $contact; }
-            if (in_array('id_number',      $ins_cols)) { $col_list[] = 'id_number';      $val_list[] = $id_num; }
+            if (in_array('id_type',        $ins_cols)) { $col_list[] = 'id_type';        $val_list[] = $id_type; }
+            if (in_array('id_image',       $ins_cols)) { $col_list[] = 'id_image';       $val_list[] = $id_image_path; }
+            if (in_array('cr_image',       $ins_cols)) { $col_list[] = 'cr_image';       $val_list[] = $cr_image_path; }
             if (in_array('credit_limit',   $ins_cols)) { $col_list[] = 'credit_limit';   $val_list[] = $credit; }
             if (in_array('balance',        $ins_cols)) { $col_list[] = 'balance';         $val_list[] = 0; }
             $placeholders = implode(',', array_fill(0, count($col_list), '?'));
@@ -80,68 +123,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'encod
         }
     }
 }
-
-// ── Handle POST: update customer ─────────────────────────────────────────────
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_customer') {
-    $cid     = (int)($_POST['customer_id'] ?? 0);
-    $name    = trim($_POST['name']    ?? '');
-    $contact = trim($_POST['contact'] ?? '');
-    $id_num  = trim($_POST['id_number'] ?? '');
-    $credit  = (float)($_POST['credit_limit'] ?? 0);
-    if (!$cid || !$name) {
-        $flash_error = 'Customer ID and name are required.';
-    } else {
-        try {
-            // Only update columns that exist
-            $upd_cols = $pdo->query("SHOW COLUMNS FROM customers")->fetchAll(PDO::FETCH_COLUMN);
-            $set_parts = ['name=?'];
-            $upd_vals  = [$name];
-            if (in_array('contact_number', $upd_cols)) { $set_parts[] = 'contact_number=?'; $upd_vals[] = $contact; }
-            if (in_array('id_number',      $upd_cols)) { $set_parts[] = 'id_number=?';      $upd_vals[] = $id_num; }
-            if (in_array('credit_limit',   $upd_cols)) { $set_parts[] = 'credit_limit=?';   $upd_vals[] = $credit; }
-            $upd_vals[] = $cid;
-            $upd_vals[] = $station_id;
-            $pdo->prepare("UPDATE customers SET " . implode(',', $set_parts) . " WHERE id=? AND station_id=?")
-                ->execute($upd_vals);
-            $flash_success = "Customer updated successfully.";
-        } catch (Exception $e) {
-            $flash_error = 'Error updating customer: ' . $e->getMessage();
-        }
-    }
-}
-
 // ── Data fetches ──────────────────────────────────────────────────────────────
 $customers = [];
 try {
     // Detect available columns to avoid errors on older schemas
     $avail = $pdo->query("SHOW COLUMNS FROM customers")->fetchAll(PDO::FETCH_COLUMN);
     $sel_contact  = in_array('contact_number', $avail) ? 'contact_number' : "'' AS contact_number";
-    $sel_id_num   = in_array('id_number',      $avail) ? 'id_number'      : "'' AS id_number";
+    $sel_id_type  = in_array('id_type',        $avail) ? 'id_type'        : "'' AS id_type";
+    $sel_id_image = in_array('id_image',       $avail) ? 'id_image'       : "'' AS id_image";
+    $sel_cr_image = in_array('cr_image',       $avail) ? 'cr_image'       : "'' AS cr_image";
     $sel_balance  = in_array('balance',        $avail) ? 'balance'        : (in_array('current_balance', $avail) ? 'current_balance AS balance' : "0 AS balance");
     $sel_credit   = in_array('credit_limit',   $avail) ? 'credit_limit'   : "0 AS credit_limit";
     $sel_status   = in_array('status',         $avail) ? 'status'         : "'active' AS status";
-    $s = $pdo->prepare("SELECT id, name, $sel_contact, $sel_id_num, $sel_credit, $sel_balance, $sel_status FROM customers WHERE station_id=? ORDER BY name");
+    $s = $pdo->prepare("SELECT id, name, $sel_contact, $sel_id_type, $sel_id_image, $sel_cr_image, $sel_credit, $sel_balance, $sel_status FROM customers WHERE station_id=? ORDER BY name");
     $s->execute([$station_id]);
     $customers = $s->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}
-
-// Outstanding balances — read-only for staff
-$receivables = [];
-try {
-    // Check table exists first
-    $tbl = $pdo->query("SHOW TABLES LIKE 'accounts_receivable'")->rowCount();
-    if ($tbl > 0) {
-        $s = $pdo->prepare("
-            SELECT ar.id, ar.customer_id, c.name AS customer_name,
-                   ar.amount AS balance_amount, ar.due_date, ar.status
-            FROM accounts_receivable ar
-            LEFT JOIN customers c ON ar.customer_id = c.id
-            WHERE ar.station_id = ? AND ar.status = 'Pending'
-            ORDER BY ar.due_date ASC
-        ");
-        $s->execute([$station_id]);
-        $receivables = $s->fetchAll(PDO::FETCH_ASSOC);
-    }
 } catch (Exception $e) {}
 
 // Transaction linkage
@@ -355,21 +351,12 @@ if ($section === 'history') {
     }
 }
 
-// Selected customer for update section
-$edit_customer = null;
-if ($section === 'update' && isset($_GET['customer_id'])) {
-    foreach ($customers as $c) {
-        if ($c['id'] == (int)$_GET['customer_id']) { $edit_customer = $c; break; }
-    }
-}
 
 // Section titles for page header
 $section_titles = [
-    'encode'   => ['fas fa-user-plus',  'Encode Customer Details'],
-    'update'   => ['fas fa-user-edit',  'Update Customer Details'],
+    'encode'   => ['fas fa-list',       'Customer List'],
     'history'  => ['fas fa-history',    'Customer History'],
     'linkage'  => ['fas fa-link',       'Transaction Linkage'],
-    'balances' => ['fas fa-wallet',     'Outstanding Balances'],
 ];
 [$sec_ico, $sec_title] = $section_titles[$section];
 
@@ -427,37 +414,6 @@ include __DIR__ . '/../partials/header.php';
 
 <!-- ══ SECTION: ENCODE ════════════════════════════════════════════════════════ -->
 <?php if ($section === 'encode'): ?>
-<div class="cust-card">
-    <div class="cust-card-head">
-        <h2 class="cust-card-title"><i class="fas fa-user-plus"></i> Add New Customer</h2>
-    </div>
-    <div class="cust-card-body">
-        <form method="POST" action="customers.php?section=encode">
-            <input type="hidden" name="action" value="encode_customer">
-            <div class="cust-form-grid">
-                <div>
-                    <label class="cust-label">Full Name <span style="color:red">*</span></label>
-                    <input type="text" name="name" class="cust-input" placeholder="Enter customer name" required>
-                </div>
-                <div>
-                    <label class="cust-label">Contact Number</label>
-                    <input type="text" name="contact" class="cust-input" placeholder="e.g. 09XX-XXX-XXXX">
-                </div>
-                <div>
-                    <label class="cust-label">ID Number</label>
-                    <input type="text" name="id_number" class="cust-input" placeholder="Gov't ID / Driver's License">
-                </div>
-                <div>
-                    <label class="cust-label">Credit Limit (₱)</label>
-                    <input type="number" name="credit_limit" class="cust-input" placeholder="0.00" min="0" step="0.01" value="0">
-                </div>
-            </div>
-            <div style="margin-top:18px;">
-                <button type="submit" class="cust-btn cust-btn-primary"><i class="fas fa-save"></i> Save Customer</button>
-            </div>
-        </form>
-    </div>
-</div>
 
 <div class="cust-card">
     <div class="cust-card-head">
@@ -465,27 +421,34 @@ include __DIR__ . '/../partials/header.php';
         <span style="font-size:13px;color:#6c757d;"><?= count($customers) ?> customers</span>
     </div>
     <div class="cust-card-body">
+        <div class="readonly-notice">
+            <i class="fas fa-info-circle"></i>
+            <span>Customer records are managed by the manager. Contact your manager to add or edit customers.</span>
+        </div>
         <input type="text" class="cust-search" id="encodeSearch" placeholder="&#128269; Search customers..." oninput="filterTable('encodeSearch','encodeTable')">
         <div style="overflow-x:auto;">
             <table class="cust-table" id="encodeTable">
                 <thead><tr>
-                    <th>ID</th><th>Name</th><th>Contact</th><th>ID Number</th><th>Credit Limit</th><th>Balance</th><th>Status</th><th>Action</th>
+                    <th>ID</th><th>Name</th><th>Contact</th><th>ID Type</th><th>Credit Limit</th><th>Remaining Balance</th><th>Status</th>
                 </tr></thead>
                 <tbody>
                 <?php if (empty($customers)): ?>
-                    <tr><td colspan="8" class="empty-state"><i class="fas fa-users"></i>No customers yet.</td></tr>
+                    <tr><td colspan="7" class="empty-state"><i class="fas fa-users"></i>No customers yet.</td></tr>
                 <?php else: foreach ($customers as $c): ?>
                     <tr data-search="<?= strtolower(htmlspecialchars($c['name'])) ?>">
                         <td style="color:#6c757d;font-size:12px;">#<?= (int)$c['id'] ?></td>
                         <td><strong><?= htmlspecialchars($c['name']) ?></strong></td>
                         <td><?= htmlspecialchars($c['contact_number'] ?? '—') ?></td>
-                        <td style="font-size:12px;color:#6c757d;"><?= htmlspecialchars($c['id_number'] ?? '—') ?></td>
+                        <td style="font-size:12px;color:#6c757d;"><?= htmlspecialchars($c['id_type'] ?? '—') ?></td>
                         <td>₱<?= number_format((float)$c['credit_limit'], 2) ?></td>
-                        <td style="color:<?= (float)$c['balance']>0?'#dc3545':'#28a745' ?>;font-weight:700;">
-                            ₱<?= number_format((float)$c['balance'], 2) ?>
+                        <?php
+                            $remaining = (float)$c['credit_limit'] - (float)$c['balance'];
+                            $rem_color = $remaining <= 0 ? '#dc3545' : ($remaining < (float)$c['credit_limit'] * 0.2 ? '#e67e22' : '#28a745');
+                        ?>
+                        <td style="color:<?= $rem_color ?>;font-weight:700;">
+                            ₱<?= number_format($remaining, 2) ?>
                         </td>
                         <td><span class="badge-<?= $c['status']==='active'?'active':'inactive' ?>"><?= htmlspecialchars($c['status']) ?></span></td>
-                        <td><a href="customers.php?section=update&customer_id=<?= (int)$c['id'] ?>" class="edit-link"><i class="fas fa-edit"></i> Edit</a></td>
                     </tr>
                 <?php endforeach; endif; ?>
                 </tbody>
@@ -494,65 +457,6 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
-<!-- ══ SECTION: UPDATE ════════════════════════════════════════════════════════ -->
-<?php elseif ($section === 'update'): ?>
-<div class="cust-card">
-    <div class="cust-card-head">
-        <h2 class="cust-card-title"><i class="fas fa-user-edit"></i> Update Customer Details</h2>
-    </div>
-    <div class="cust-card-body">
-        <?php if (!$edit_customer): ?>
-        <p style="color:#6c757d;font-size:13px;margin-bottom:14px;">Select a customer to edit:</p>
-        <input type="text" class="cust-search" id="updateSearch" placeholder="&#128269; Search customers..." oninput="filterTable('updateSearch','updateTable')">
-        <div style="overflow-x:auto;">
-            <table class="cust-table" id="updateTable">
-                <thead><tr><th>ID</th><th>Name</th><th>Contact</th><th>Balance</th><th>Status</th><th>Action</th></tr></thead>
-                <tbody>
-                <?php if (empty($customers)): ?>
-                    <tr><td colspan="6" class="empty-state"><i class="fas fa-users"></i>No customers found.</td></tr>
-                <?php else: foreach ($customers as $c): ?>
-                    <tr data-search="<?= strtolower(htmlspecialchars($c['name'])) ?>">
-                        <td style="color:#6c757d;font-size:12px;">#<?= (int)$c['id'] ?></td>
-                        <td><strong><?= htmlspecialchars($c['name']) ?></strong></td>
-                        <td><?= htmlspecialchars($c['contact_number'] ?? '—') ?></td>
-                        <td style="color:<?= (float)$c['balance']>0?'#dc3545':'#28a745' ?>;font-weight:700;">₱<?= number_format((float)$c['balance'],2) ?></td>
-                        <td><span class="badge-<?= $c['status']==='active'?'active':'inactive' ?>"><?= htmlspecialchars($c['status']) ?></span></td>
-                        <td><a href="customers.php?section=update&customer_id=<?= (int)$c['id'] ?>" class="edit-link"><i class="fas fa-edit"></i> Edit</a></td>
-                    </tr>
-                <?php endforeach; endif; ?>
-                </tbody>
-            </table>
-        </div>
-        <?php else: ?>
-        <form method="POST" action="customers.php?section=update">
-            <input type="hidden" name="action" value="update_customer">
-            <input type="hidden" name="customer_id" value="<?= (int)$edit_customer['id'] ?>">
-            <div class="cust-form-grid">
-                <div>
-                    <label class="cust-label">Full Name <span style="color:red">*</span></label>
-                    <input type="text" name="name" class="cust-input" value="<?= htmlspecialchars($edit_customer['name']) ?>" required>
-                </div>
-                <div>
-                    <label class="cust-label">Contact Number</label>
-                    <input type="text" name="contact" class="cust-input" value="<?= htmlspecialchars($edit_customer['contact_number'] ?? '') ?>">
-                </div>
-                <div>
-                    <label class="cust-label">ID Number</label>
-                    <input type="text" name="id_number" class="cust-input" value="<?= htmlspecialchars($edit_customer['id_number'] ?? '') ?>">
-                </div>
-                <div>
-                    <label class="cust-label">Credit Limit (₱)</label>
-                    <input type="number" name="credit_limit" class="cust-input" value="<?= (float)$edit_customer['credit_limit'] ?>" min="0" step="0.01">
-                </div>
-            </div>
-            <div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap;">
-                <button type="submit" class="cust-btn cust-btn-primary"><i class="fas fa-save"></i> Save Changes</button>
-                <a href="customers.php?section=update" class="cust-btn" style="background:#6c757d;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-arrow-left"></i> Back to List</a>
-            </div>
-        </form>
-        <?php endif; ?>
-    </div>
-</div>
 
 <!-- ══ SECTION: TRANSACTION LINKAGE ══════════════════════════════════════════ -->
 <?php elseif ($section === 'linkage'): ?>
@@ -586,7 +490,8 @@ include __DIR__ . '/../partials/header.php';
             <div style="background:#f0f4ff;border:1px solid #c7d7f9;border-radius:8px;padding:12px 16px;margin-bottom:18px;font-size:13px;">
                 <strong style="color:#002F70;"><?= htmlspecialchars($sel_cust['name']) ?></strong>
                 <span style="color:#6c757d;margin-left:12px;">Contact: <?= htmlspecialchars($sel_cust['contact_number'] ?? '—') ?></span>
-                <span style="color:#6c757d;margin-left:12px;">Balance: <strong style="color:<?= (float)$sel_cust['balance']>0?'#dc3545':'#28a745' ?>">₱<?= number_format((float)$sel_cust['balance'],2) ?></strong></span>
+                <?php $sel_remaining = (float)$sel_cust['credit_limit'] - (float)$sel_cust['balance']; ?>
+                <span style="color:#6c757d;margin-left:12px;">Remaining Balance: <strong style="color:<?= $sel_remaining <= 0 ? '#dc3545' : '#28a745' ?>">₱<?= number_format($sel_remaining, 2) ?></strong></span>
             </div>
             <?php endif; ?>
 
@@ -700,7 +605,8 @@ include __DIR__ . '/../partials/header.php';
                         <?php foreach ($hist_customers as $hc): ?>
                         <option value="<?= (int)$hc['id'] ?>" <?= $hist_selected_id === (int)$hc['id'] ? 'selected' : '' ?>>
                             <?= htmlspecialchars($hc['name']) ?>
-                            <?php if ((float)$hc['balance'] > 0): ?> · ₱<?= number_format((float)$hc['balance'], 2) ?> balance<?php endif; ?>
+                            <?php $hc_rem = (float)$hc['credit_limit'] - (float)$hc['balance']; ?>
+                            <?php if ($hc_rem < (float)$hc['credit_limit']): ?> · ₱<?= number_format($hc_rem, 2) ?> remaining<?php endif; ?>
                         </option>
                         <?php endforeach; ?>
                     </select>
@@ -757,7 +663,7 @@ include __DIR__ . '/../partials/header.php';
         <?php
             $ci_balance   = (float)$hist_customer_info['balance'];
             $ci_limit     = (float)$hist_customer_info['credit_limit'];
-            $ci_available = $ci_limit - $ci_balance;
+            $ci_remaining = $ci_limit - $ci_balance;   // remaining credit left
             // Compute totals from records
             $ci_total_txns   = count($hist_records);
             $ci_total_amount = array_sum(array_column($hist_records, 'total_amount'));
@@ -768,17 +674,17 @@ include __DIR__ . '/../partials/header.php';
                 <span class="pill-label">Customer</span>
                 <span class="pill-value" style="font-size:14px;"><?= htmlspecialchars($hist_customer_info['name']) ?></span>
             </div>
-            <div class="ch-info-pill <?= $ci_balance > 0 ? 'danger' : 'success' ?>">
-                <span class="pill-label">Outstanding Balance</span>
-                <span class="pill-value">₱<?= number_format($ci_balance, 2) ?></span>
-            </div>
             <div class="ch-info-pill">
                 <span class="pill-label">Credit Limit</span>
                 <span class="pill-value">₱<?= number_format($ci_limit, 2) ?></span>
             </div>
-            <div class="ch-info-pill <?= $ci_available < 0 ? 'danger' : '' ?>">
-                <span class="pill-label">Available Credit</span>
-                <span class="pill-value">₱<?= number_format($ci_available, 2) ?></span>
+            <div class="ch-info-pill <?= $ci_balance > 0 ? 'danger' : '' ?>">
+                <span class="pill-label">Amount Used</span>
+                <span class="pill-value">₱<?= number_format($ci_balance, 2) ?></span>
+            </div>
+            <div class="ch-info-pill <?= $ci_remaining <= 0 ? 'danger' : 'success' ?>">
+                <span class="pill-label">Remaining Balance</span>
+                <span class="pill-value">₱<?= number_format($ci_remaining, 2) ?></span>
             </div>
             <div class="ch-info-pill">
                 <span class="pill-label">Total Transactions</span>
@@ -899,40 +805,7 @@ include __DIR__ . '/../partials/header.php';
 
 <!-- ══ SECTION: OUTSTANDING BALANCES ════════════════════════════════════════ -->
 <?php elseif ($section === 'balances'): ?>
-<div class="cust-card">
-    <div class="cust-card-head">
-        <h2 class="cust-card-title"><i class="fas fa-wallet"></i> Outstanding Balances</h2>
-        <span style="font-size:13px;color:#6c757d;"><?= count($receivables) ?> pending</span>
-    </div>
-    <div class="cust-card-body">
-        <div class="readonly-notice">
-            <i class="fas fa-lock"></i>
-            <span><strong>View Only</strong> — Staff can view balances but cannot adjust or record payments. Contact your manager to process payments.</span>
-        </div>
-        <?php if (empty($receivables)): ?>
-            <div class="empty-state"><i class="fas fa-check-circle" style="color:#28a745;"></i>No outstanding balances found.</div>
-        <?php else: ?>
-        <div style="overflow-x:auto;">
-            <table class="cust-table">
-                <thead><tr>
-                    <th>Customer ID</th><th>Customer Name</th><th>Balance Amount</th><th>Due Date</th><th>Status</th>
-                </tr></thead>
-                <tbody>
-                <?php foreach ($receivables as $r): ?>
-                    <tr>
-                        <td style="color:#6c757d;font-size:12px;">#<?= (int)$r['customer_id'] ?></td>
-                        <td><strong><?= htmlspecialchars($r['customer_name'] ?? '—') ?></strong></td>
-                        <td style="color:#dc3545;font-weight:700;">₱<?= number_format((float)$r['balance_amount'], 2) ?></td>
-                        <td style="font-size:12px;color:#6c757d;"><?= $r['due_date'] ? date('M d, Y', strtotime($r['due_date'])) : '—' ?></td>
-                        <td><span class="badge-pending"><?= htmlspecialchars($r['status']) ?></span></td>
-                    </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-        <?php endif; ?>
-    </div>
-</div>
+<?php /* removed — staff no longer has access to outstanding balances */ ?>
 <?php endif; ?>
 
 <script>

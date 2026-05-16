@@ -234,7 +234,64 @@ $hist_page          = max(1, (int)($_GET['page'] ?? 1));
 $hist_per_page      = 50;
 $hist_offset        = ($hist_page - 1) * $hist_per_page;
 
+<<<<<<< HEAD
 if ($section === 'history' || $section === 'fuel_history' || $section === 'merchandise') {
+=======
+// ── Merchandise section: Transaction History panel (right side) ───────────────
+$mh_recent        = [];
+$mh_total         = 0;
+$mh_filter_shift  = $_GET['mh_shift'] ?? '';
+$mh_filter_date   = $_GET['mh_date']  ?? '';
+$mh_page          = max(1, (int)($_GET['mh_page'] ?? 1));
+$mh_per_page      = in_array((int)($_GET['mh_per_page'] ?? 10), [10,20,30,50]) ? (int)$_GET['mh_per_page'] : 10;
+$mh_offset        = ($mh_page - 1) * $mh_per_page;
+$mh_available_shifts = [];
+
+if ($section === 'merchandise') {
+    try {
+        $mh_cols = [];
+        try {
+            foreach ($pdo->query("SHOW COLUMNS FROM merchandise_transactions")->fetchAll(PDO::FETCH_ASSOC) as $cr)
+                $mh_cols[strtolower($cr['Field'])] = true;
+        } catch (Exception $e) {}
+        $mh_date_col   = isset($mh_cols['transaction_date']) ? 'mt.transaction_date' : 'mt.created_at';
+        $mh_status_col = isset($mh_cols['validation_status']) ? 'mt.validation_status' : (isset($mh_cols['status']) ? 'mt.status' : "'Pending'");
+        $mh_txnid_col  = isset($mh_cols['transaction_id'])   ? 'mt.transaction_id'   : 'mt.id';
+
+        $mh_where  = "WHERE mt.station_id = ? AND mt.staff_id = ?";
+        $mh_params = [$station_id, $me['id']];
+        if ($mh_filter_shift !== '') { $mh_where .= " AND mt.shift_period = ?"; $mh_params[] = $mh_filter_shift; }
+        if ($mh_filter_date  !== '') { $mh_where .= " AND DATE($mh_date_col) = ?"; $mh_params[] = $mh_filter_date; }
+
+        $cnt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions mt $mh_where");
+        $cnt->execute($mh_params);
+        $mh_total = (int)$cnt->fetchColumn();
+
+        $stmt_mh = $pdo->prepare("
+            SELECT mt.id,
+                   $mh_txnid_col AS transaction_id,
+                   mt.customer_name,
+                   mt.total_amount,
+                   mt.payment_method,
+                   $mh_date_col  AS transaction_date,
+                   $mh_status_col AS status,
+                   mt.shift_name,
+                   mt.shift_period
+            FROM merchandise_transactions mt
+            $mh_where
+            ORDER BY $mh_date_col DESC
+            LIMIT $mh_per_page OFFSET $mh_offset
+        ");
+        $stmt_mh->execute($mh_params);
+        $mh_recent = $stmt_mh->fetchAll(PDO::FETCH_ASSOC);
+
+        $stmt_sh = $pdo->query("SELECT shift_key, shift_name FROM shift_periods WHERE is_active = 1 ORDER BY sort_order ASC");
+        $mh_available_shifts = $stmt_sh ? $stmt_sh->fetchAll(PDO::FETCH_ASSOC) : [];
+    } catch (Exception $e) { $mh_recent = []; $mh_total = 0; }
+}
+
+if ($section === 'history' || $section === 'fuel_history') {
+>>>>>>> 07cb023394ffee8d4476b991d15a0311ff14704e
     // Build fuel WHERE clause with optional shift/date filters
     $fuel_where  = "WHERE ft.station_id = ? AND ft.staff_id = ?";
     $fuel_params = [$station_id, $me['id']];
@@ -384,21 +441,36 @@ $jo_rejected_count = 0;
 if ($section === 'merchandise') {
     // Handle status-update POST from the tracker
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['jo_action'])) {
-        $jo_action = $_POST['jo_action'];
-        $jo_id     = (int)($_POST['jo_id'] ?? 0);
+        $jo_action  = $_POST['jo_action'];
+        $jo_id      = (int)($_POST['jo_id'] ?? 0);
+        $jo_src     = $_POST['jo_source'] ?? 'job_orders';
         $tracker_tab = $_POST['tracker_tab'] ?? 'pending';
 
         if ($jo_id > 0) {
             try {
-                if ($jo_action === 'set_in_progress') {
-                    $pdo->prepare("UPDATE job_orders SET status='In Progress', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
-                    $_SESSION['success'] = 'Job Order marked as In Progress.';
-                } elseif ($jo_action === 'set_completed') {
-                    $pdo->prepare("UPDATE job_orders SET status='Completed', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
-                    $_SESSION['success'] = 'Job Order marked as Completed.';
-                } elseif ($jo_action === 'set_paid') {
-                    $pdo->prepare("UPDATE job_orders SET payment_status='Paid', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
-                    $_SESSION['success'] = 'Payment recorded as Paid.';
+                if ($jo_src === 'merchandise_transactions') {
+                    // Record lives in merchandise_transactions — use workflow_status column
+                    if ($jo_action === 'set_in_progress') {
+                        $pdo->prepare("UPDATE merchandise_transactions SET workflow_status='In Progress', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
+                        $_SESSION['success'] = 'Job Order marked as In Progress.';
+                    } elseif ($jo_action === 'set_completed') {
+                        $pdo->prepare("UPDATE merchandise_transactions SET workflow_status='Completed', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
+                        $_SESSION['success'] = 'Job Order marked as Completed.';
+                    } elseif ($jo_action === 'set_paid') {
+                        $pdo->prepare("UPDATE merchandise_transactions SET payment_status='Paid', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
+                        $_SESSION['success'] = 'Payment recorded as Paid.';
+                    }
+                } else {
+                    if ($jo_action === 'set_in_progress') {
+                        $pdo->prepare("UPDATE job_orders SET status='In Progress', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
+                        $_SESSION['success'] = 'Job Order marked as In Progress.';
+                    } elseif ($jo_action === 'set_completed') {
+                        $pdo->prepare("UPDATE job_orders SET status='Completed', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
+                        $_SESSION['success'] = 'Job Order marked as Completed.';
+                    } elseif ($jo_action === 'set_paid') {
+                        $pdo->prepare("UPDATE job_orders SET payment_status='Paid', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
+                        $_SESSION['success'] = 'Payment recorded as Paid.';
+                    }
                 }
             } catch (Exception $e) {
                 $_SESSION['error'] = 'Error updating job order: ' . $e->getMessage();
@@ -409,25 +481,86 @@ if ($section === 'merchandise') {
     }
 
     try {
-        $stmt = $pdo->prepare("
-            SELECT jo.*,
-                   COALESCE(u.name, u.username) AS mechanic_name,
-                   COALESCE(cb.name, cb.username) AS created_by_name
-            FROM job_orders jo
-            LEFT JOIN users u  ON u.id = jo.assigned_mechanic_id
-            LEFT JOIN users cb ON cb.id = jo.created_by
-            WHERE jo.station_id = ?
-            ORDER BY jo.created_at DESC
-        ");
-        $stmt->execute([$station_id]);
-        $job_orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        // Part 1: native job_orders rows
+        $jo_rows = [];
+        try {
+            $stmt = $pdo->prepare("
+                SELECT jo.*,
+                       COALESCE(u.name, u.username) AS mechanic_name,
+                       COALESCE(cb.name, cb.username) AS created_by_name,
+                       'job_orders' AS _source
+                FROM job_orders jo
+                LEFT JOIN users u  ON u.id = jo.assigned_mechanic_id
+                LEFT JOIN users cb ON cb.id = jo.created_by
+                WHERE jo.station_id = ?
+                ORDER BY jo.created_at DESC
+            ");
+            $stmt->execute([$station_id]);
+            $jo_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) { $jo_rows = []; }
+
+        // Part 2: merchandise_transactions with job_order/combined type
+        $mt_rows = [];
+        try {
+            $stmt2 = $pdo->prepare("
+                SELECT
+                    mt.id,
+                    mt.customer_name,
+                    COALESCE(mt.job_order_service, 'Service') AS service_type,
+                    '' AS service_description,
+                    COALESCE(mt.workflow_status, mt.validation_status, 'Pending') AS status,
+                    COALESCE(mt.validation_status, 'Pending') AS validation_status,
+                    mt.total_amount AS estimated_cost,
+                    mt.total_amount AS total_cost,
+                    '' AS notes,
+                    COALESCE(mt.job_order_vehicle_plate, '') AS vehicle_plate,
+                    COALESCE(mt.job_order_vehicle_type, '') AS vehicle_type,
+                    mt.created_at,
+                    COALESCE(mt.job_order_mechanic_name, '') AS mechanic_name,
+                    u.name AS created_by_name,
+                    mt.payment_method,
+                    COALESCE(mt.payment_status, 'Unpaid') AS payment_status,
+                    NULL AS assigned_mechanic_id,
+                    NULL AS customer_id,
+                    NULL AS job_order_id,
+                    NULL AS job_order_number,
+                    NULL AS required_parts,
+                    NULL AS additional_notes,
+                    NULL AS shift_id,
+                    mt.updated_at,
+                    'merchandise_transactions' AS _source
+                FROM merchandise_transactions mt
+                LEFT JOIN users u ON u.id = mt.staff_id
+                WHERE mt.station_id = ?
+                  AND mt.transaction_type IN ('job_order', 'combined')
+                ORDER BY mt.created_at DESC
+            ");
+            $stmt2->execute([$station_id]);
+            $mt_rows = $stmt2->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            error_log('staff_transactions_hub MT tracker query error: ' . $e->getMessage());
+            $mt_rows = [];
+        }
+
+        // Merge and sort by created_at DESC
+        $job_orders = array_merge($jo_rows, $mt_rows);
+        usort($job_orders, fn($a, $b) => strtotime($b['created_at']) - strtotime($a['created_at']));
+
     } catch (Exception $e) {
         $job_orders = [];
     }
 
-    $jo_pending_count  = count(array_filter($job_orders, fn($j) => ($j['validation_status'] ?? '') === 'Pending Validation'));
-    $jo_approved_count = count(array_filter($job_orders, fn($j) => ($j['validation_status'] ?? '') === 'Approved'));
-    $jo_rejected_count = count(array_filter($job_orders, fn($j) => ($j['status'] ?? '') === 'Rejected'));
+    $jo_pending_count  = count(array_filter($job_orders, fn($j) =>
+        in_array($j['validation_status'] ?? '', ['Pending Validation', 'Pending', ''])
+        || ($j['validation_status'] ?? '') === null
+    ));
+    $jo_approved_count = count(array_filter($job_orders, fn($j) =>
+        in_array($j['validation_status'] ?? '', ['Approved', 'Validated'])
+    ));
+    $jo_rejected_count = count(array_filter($job_orders, fn($j) =>
+        in_array($j['status'] ?? '', ['Rejected', 'Cancelled'])
+        || ($j['validation_status'] ?? '') === 'Rejected'
+    ));
 }
 
 // ── Mechanics list (for job order encode form) ────────────────────────────────
@@ -464,12 +597,64 @@ include __DIR__ . '/../partials/header.php';
     width: 100%;
 }
 
-/* Tighten the main container padding for this page */
+/* Match inventory page — no padding override needed */
 main.main {
-    padding: 12px 14px 60px 14px !important;
+    padding: 20px 20px 60px 20px !important;
 }
 
-/* ── Section Header ──────────────────────────────────────────── */
+/* ── Cart wrapper — single full-width column (matches inventory layout) ── */
+.cart-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: 100%;
+}
+
+/* ── Right panel — now a normal full-width card, not sticky ── */
+.cart-panel {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.07);
+    overflow: hidden;
+}
+
+/* Customer & Payment — no max-height restriction */
+.cart-panel-top {
+    flex-shrink: 0;
+    padding: 14px 18px 12px;
+    border-bottom: 2px solid #f1f5f9;
+}
+
+/* Cart header row */
+.cart-header {
+    flex-shrink: 0;
+    padding: 8px 18px;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* Cart items */
+.cart-body {
+    flex: 1 1 0;
+    overflow-y: auto;
+    padding: 8px 14px;
+    min-height: 60px;
+    max-height: 320px;
+}
+
+/* Totals + button */
+.cart-footer {
+    flex-shrink: 0;
+    padding: 12px 18px 14px;
+    border-top: 2px solid #e2e8f0;
+    background: #fff;
+}
 .txn-section-header {
     display: flex;
     align-items: flex-start;
@@ -663,65 +848,7 @@ main.main {
 .calc-row .calc-label { font-weight: 500; }
 .calc-row .calc-val   { font-weight: 700; }
 
-/* ── Cart wrapper — 2-col grid ───────────────────────────────── */
-.cart-wrapper {
-    display: grid;
-    grid-template-columns: 1fr 320px;
-    gap: 14px;
-    align-items: start;
-    width: 100%;
-}
-
-/* ── Right panel — flex column, full sticky height ───────────── */
-.cart-panel {
-    position: sticky;
-    top: 0;
-    display: flex;
-    flex-direction: column;
-    min-height: 500px;
-    max-height: calc(100vh - 145px);
-    background: #fff;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    box-shadow: 0 2px 10px rgba(0,0,0,.07);
-    overflow: hidden;
-}
-
-/* Customer & Payment — shrinks to fit content */
-.cart-panel-top {
-    flex-shrink: 0;
-    padding: 12px 14px 10px;
-    border-bottom: 2px solid #f1f5f9;
-    overflow-y: auto;
-    max-height: 52%;
-}
-
-/* Cart header row */
-.cart-header {
-    flex-shrink: 0;
-    padding: 8px 14px;
-    border-bottom: 1px solid #f1f5f9;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-
-/* Cart items — grows to fill remaining space */
-.cart-body {
-    flex: 1 1 0;
-    overflow-y: auto;
-    padding: 8px 12px;
-    min-height: 60px;
-}
-
-/* Totals + button — always pinned to bottom */
-.cart-footer {
-    flex-shrink: 0;
-    padding: 10px 14px 12px;
-    border-top: 2px solid #e2e8f0;
-    background: #fff;
-}
-
+/* ── Cart total rows ─────────────────────────────────────────── */
 .cart-total-row {
     display: flex;
     justify-content: space-between;
@@ -742,24 +869,7 @@ main.main {
     margin-top: 4px;
 }
 
-.cart-header {
-    padding: 16px 20px;
-    border-bottom: 1px solid #f1f5f9;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-
-.cart-header h3 {
-    font-size: 14px !important;
-    font-weight: 700 !important;
-    color: #1e293b !important;
-    margin: 0 !important;
-    text-transform: uppercase !important;
-}
-
-.cart-body { padding: 14px; max-height: 200px; overflow-y: auto; }
-
+/* ── Cart item ───────────────────────────────────────────────── */
 .cart-empty {
     text-align: center;
     padding: 30px 20px;
@@ -816,25 +926,6 @@ main.main {
 }
 
 .cart-item-remove:hover { background: #fee2e2; }
-
-.cart-footer { padding: 14px 16px; border-top: 1px solid #f1f5f9; }
-
-.cart-total-row {
-    display: flex;
-    justify-content: space-between;
-    font-size: 13px;
-    color: #475569;
-    margin-bottom: 6px;
-}
-
-.cart-total-row.grand {
-    font-size: 17px;
-    font-weight: 800;
-    color: var(--petron-blue);
-    border-top: 2px solid #e2e8f0;
-    padding-top: 10px;
-    margin-top: 6px;
-}
 
 /* ── Buttons ─────────────────────────────────────────────────── */
 .txn-btn {
@@ -1010,15 +1101,6 @@ main.main {
 @media (max-width: 1100px) {
     .txn-form-grid { grid-template-columns: 1fr; }
     .txn-form-grid.cols-3 { grid-template-columns: 1fr; }
-    .cart-wrapper {
-        grid-template-columns: 1fr;
-    }
-    .cart-panel {
-        position: static;
-        height: auto;
-        max-height: none;
-    }
-    .cart-panel-top { max-height: none; }
     .cart-body { min-height: 120px; max-height: 260px; }
 }
 
@@ -1922,9 +2004,10 @@ main.main {
         <?php
         // Active inner tab: merchandise | tracker
         $active_tab  = $_GET['active_tab'] ?? 'merchandise';
-        if (!in_array($active_tab, ['merchandise','tracker'])) $active_tab = 'merchandise';
+        if (!in_array($active_tab, ['merchandise','encode_jo','tracker'])) $active_tab = 'merchandise';
         $tracker_tab = $_GET['tracker_tab'] ?? 'pending';
         if (!in_array($tracker_tab, ['pending','approved','rejected'])) $tracker_tab = 'pending';
+
         $jo_pending  = array_values(array_filter($job_orders, fn($j) => ($j['validation_status'] ?? '') === 'Pending Validation'));
         $jo_approved = array_values(array_filter($job_orders, fn($j) => ($j['validation_status'] ?? '') === 'Approved'));
         $jo_rejected = array_values(array_filter($job_orders, fn($j) => ($j['status'] ?? '') === 'Rejected'));
@@ -2503,11 +2586,14 @@ main.main {
 
             </div><!-- /left column -->
 
-            <!-- Right: Cart + Customer/Payment panel -->
+            <!-- Payment + Cart panel — full width below the form -->
             <div class="cart-panel">
 
-                <!-- ── Customer & Payment (top, scrollable if needed) ─── -->
-                <div class="cart-panel-top">
+                <!-- ── Two-column inner layout: Payment left, Cart right ── -->
+                <div style="display:grid;grid-template-columns:340px 1fr;gap:0;min-height:320px;">
+
+                <!-- ── Customer & Payment (left column) ─── -->
+                <div class="cart-panel-top" style="border-right:2px solid #f1f5f9;border-bottom:none;">
                     <!-- Customer & Payment header -->
                     <div style="font-size:11px;font-weight:700;color:#1e293b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
                         <i class="fas fa-credit-card" style="color:var(--petron-blue);"></i>Payment
@@ -2591,6 +2677,9 @@ main.main {
                     </div>
                 </div><!-- /cart-panel-top -->
 
+                <!-- ── Right column: Cart header + items + footer ── -->
+                <div style="display:flex;flex-direction:column;min-height:320px;">
+
                 <!-- ── Cart header ────────────────────────────────── -->
                 <div class="cart-header">
                     <span style="font-size:12px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:6px;">
@@ -2629,11 +2718,138 @@ main.main {
                     <p style="font-size:10px;color:#94a3b8;text-align:center;margin:5px 0 0;">
                         A Petron itemized receipt will be generated.
                     </p>
-                </div>
+                </div><!-- /cart-footer -->
+
+                </div><!-- /cart right column -->
+                </div><!-- /cart inner two-col grid -->
 
             </div><!-- /cart-panel -->
 
         </div><!-- /cart-wrapper -->
+
+        <!-- ══ TRANSACTION HISTORY PANEL ══ -->
+        <div style="margin-top:16px;">
+            <!-- Transaction History — full width -->
+            <div class="txn-card" style="min-width:0;width:100%;">
+                <div class="txn-card-header" style="background:#f5f3ff;">
+                    <i class="fas fa-history" style="color:#6f42c1;"></i>
+                    <h3 style="color:#6f42c1;">Transaction History</h3>
+                    <span style="margin-left:auto;font-size:11px;color:#64748b;"><?= $mh_total ?> record(s)</span>
+                </div>
+                <!-- Filter bar -->
+                <div style="padding:10px 14px;border-bottom:1px solid #f1f5f9;">
+                    <form method="GET" action="staff_transactions_hub.php" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+                        <input type="hidden" name="section"    value="merchandise">
+                        <input type="hidden" name="active_tab" value="merchandise">
+                        <input type="hidden" name="mh_page"    value="1">
+                        <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:100px;">
+                            <label style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Date</label>
+                            <input type="date" name="mh_date" value="<?= htmlspecialchars($mh_filter_date) ?>"
+                                   style="padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;color:#1e293b;background:#fff;width:100%;">
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:110px;">
+                            <label style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Shift</label>
+                            <select name="mh_shift" style="padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;color:#1e293b;background:#fff;width:100%;">
+                                <option value="">All Shifts</option>
+                                <?php foreach ($mh_available_shifts as $sh): ?>
+                                <option value="<?= htmlspecialchars($sh['shift_key']) ?>" <?= $mh_filter_shift === $sh['shift_key'] ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($sh['shift_name']) ?>
+                                </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div style="display:flex;gap:5px;align-items:flex-end;padding-bottom:1px;">
+                            <button type="submit" style="padding:5px 12px;background:#6f42c1;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">
+                                <i class="fas fa-filter"></i> Filter
+                            </button>
+                            <a href="staff_transactions_hub.php?section=merchandise&active_tab=merchandise"
+                               style="padding:5px 10px;background:#f1f5f9;color:#475569;border:1.5px solid #e2e8f0;border-radius:6px;font-size:11px;font-weight:700;text-decoration:none;white-space:nowrap;">
+                                <i class="fas fa-times"></i> Clear
+                            </a>
+                        </div>
+                    </form>
+                </div>
+                <!-- Table -->
+                <div style="padding:0;">
+                    <?php if (empty($mh_recent)): ?>
+                    <div style="text-align:center;padding:30px;color:#94a3b8;font-size:12px;">
+                        <i class="fas fa-receipt" style="font-size:22px;display:block;margin-bottom:6px;"></i>
+                        No transactions found.
+                    </div>
+                    <?php else: ?>
+                    <div style="overflow-x:auto;">
+                    <table class="txn-table" style="min-width:340px;font-size:11px;">
+                        <thead>
+                            <tr>
+                                <th style="font-size:9px;">Txn ID</th>
+                                <th style="font-size:9px;">Customer</th>
+                                <th style="font-size:9px;">Amount</th>
+                                <th style="font-size:9px;">Payment</th>
+                                <th style="font-size:9px;">Shift</th>
+                                <th style="font-size:9px;">Date</th>
+                                <th style="font-size:9px;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        <?php foreach ($mh_recent as $mht): ?>
+                        <tr>
+                            <td style="font-size:10px;"><strong style="color:var(--petron-blue);"><?= htmlspecialchars($mht['transaction_id'] ?? ('#'.$mht['id'])) ?></strong></td>
+                            <td style="font-size:10px;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= htmlspecialchars($mht['customer_name'] ?? '—') ?></td>
+                            <td style="font-size:10px;font-weight:700;color:var(--petron-blue);white-space:nowrap;">₱<?= number_format((float)($mht['total_amount'] ?? 0), 2) ?></td>
+                            <td style="font-size:10px;"><?= htmlspecialchars($mht['payment_method'] ?? '—') ?></td>
+                            <td style="font-size:10px;color:#64748b;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= htmlspecialchars($mht['shift_name'] ?? $mht['shift_period'] ?? '—') ?></td>
+                            <td style="font-size:10px;color:#64748b;white-space:nowrap;"><?= date('M j, g:i A', strtotime($mht['transaction_date'] ?? 'now')) ?></td>
+                            <td><?= status_badge($mht['status'] ?? 'Pending') ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                    </div>
+                    <!-- Pagination footer -->
+                    <?php $mh_total_pages = max(1, (int)ceil($mh_total / $mh_per_page)); ?>
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-top:1px solid #f1f5f9;background:#fafbfc;">
+                        <span style="font-size:11px;color:#64748b;">Rows per page:
+                            <form method="GET" action="staff_transactions_hub.php" style="display:inline;">
+                                <input type="hidden" name="section"    value="merchandise">
+                                <input type="hidden" name="active_tab" value="merchandise">
+                                <input type="hidden" name="mh_page"    value="1">
+                                <input type="hidden" name="mh_date"    value="<?= htmlspecialchars($mh_filter_date) ?>">
+                                <input type="hidden" name="mh_shift"   value="<?= htmlspecialchars($mh_filter_shift) ?>">
+                                <select name="mh_per_page" onchange="this.form.submit()"
+                                        style="padding:2px 4px;border:1px solid #e2e8f0;border-radius:4px;font-size:11px;color:#1e293b;background:#fff;cursor:pointer;">
+                                    <?php foreach ([10,20,30,50] as $rpp): ?>
+                                    <option value="<?= $rpp ?>" <?= $mh_per_page === $rpp ? 'selected' : '' ?>><?= $rpp ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </form>
+                        </span>
+                        <div style="display:flex;align-items:center;gap:10px;font-size:11px;color:#64748b;">
+                            <?php
+                            $mh_base = 'staff_transactions_hub.php?section=merchandise&active_tab=merchandise&mh_per_page='.$mh_per_page
+                                .($mh_filter_date  ? '&mh_date='.urlencode($mh_filter_date)   : '')
+                                .($mh_filter_shift ? '&mh_shift='.urlencode($mh_filter_shift) : '');
+                            ?>
+                            <?php if ($mh_page > 1): ?>
+                            <a href="<?= $mh_base ?>&mh_page=<?= $mh_page - 1 ?>" style="color:#475569;text-decoration:none;">
+                                <i class="fas fa-chevron-left" style="font-size:10px;"></i>
+                            </a>
+                            <?php else: ?>
+                            <span style="color:#cbd5e1;"><i class="fas fa-chevron-left" style="font-size:10px;"></i></span>
+                            <?php endif; ?>
+                            <span>Page <strong><?= $mh_page ?></strong> of <strong><?= $mh_total_pages ?></strong></span>
+                            <?php if ($mh_page < $mh_total_pages): ?>
+                            <a href="<?= $mh_base ?>&mh_page=<?= $mh_page + 1 ?>" style="color:#475569;text-decoration:none;">
+                                <i class="fas fa-chevron-right" style="font-size:10px;"></i>
+                            </a>
+                            <?php else: ?>
+                            <span style="color:#cbd5e1;"><i class="fas fa-chevron-right" style="font-size:10px;"></i></span>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div><!-- /transaction history side panel -->
 
         <!-- ══ ADD SERVICE TYPE MODAL ═══════════════════════════════════════ -->
         <div id="addServiceModal"
@@ -5763,15 +5979,33 @@ main.main {
         ══════════════════════════════════════════════════════════ -->
         <div id="innerTab_tracker" style="display:<?= $active_tab === 'tracker' ? 'block' : 'none' ?>;">
         <?php
-        // Count by status for KPI strip
-        $jo_count_pending    = count(array_filter($job_orders, fn($j) => ($j['validation_status'] ?? '') === 'Pending Validation'));
-        $jo_count_inprogress = count(array_filter($job_orders, fn($j) => ($j['status'] ?? '') === 'In Progress'));
-        $jo_count_completed  = count(array_filter($job_orders, fn($j) => ($j['status'] ?? '') === 'Completed'));
-        $jo_count_rejected   = count(array_filter($job_orders, fn($j) => ($j['status'] ?? '') === 'Rejected'));
+        // Count by status for KPI strip — handles both job_orders and merchandise_transactions rows
+        $jo_count_pending    = count(array_filter($job_orders, function($j) {
+            $vs = $j['validation_status'] ?? '';
+            $st = $j['status'] ?? '';
+            return in_array($vs, ['Pending Validation', 'Pending', ''])
+                && !in_array($st, ['In Progress', 'Completed', 'Rejected', 'Cancelled', 'Approved']);
+        }));
+        $jo_count_approved   = count(array_filter($job_orders, function($j) {
+            $vs = $j['validation_status'] ?? '';
+            $st = $j['status'] ?? '';
+            return in_array($vs, ['Approved', 'Validated'])
+                && !in_array($st, ['In Progress', 'Completed', 'Rejected', 'Cancelled']);
+        }));
+        $jo_count_inprogress = count(array_filter($job_orders, fn($j) =>
+            ($j['status'] ?? '') === 'In Progress' || ($j['validation_status'] ?? '') === 'In Progress'
+        ));
+        $jo_count_completed  = count(array_filter($job_orders, fn($j) =>
+            ($j['status'] ?? '') === 'Completed' || ($j['validation_status'] ?? '') === 'Completed'
+        ));
+        $jo_count_rejected   = count(array_filter($job_orders, fn($j) =>
+            in_array($j['status'] ?? '', ['Rejected', 'Cancelled'])
+            || ($j['validation_status'] ?? '') === 'Rejected'
+        ));
         ?>
 
-        <!-- KPI strip (4 status cards) -->
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
+        <!-- KPI strip (5 status cards) -->
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px;">
             <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px;">
                 <div style="width:36px;height:36px;border-radius:50%;background:#fef9c3;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
                     <i class="fas fa-clock" style="color:#b45309;font-size:14px;"></i>
@@ -5779,6 +6013,15 @@ main.main {
                 <div>
                     <div style="font-size:20px;font-weight:800;color:#b45309;"><?= $jo_count_pending ?></div>
                     <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Pending</div>
+                </div>
+            </div>
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px;">
+                <div style="width:36px;height:36px;border-radius:50%;background:#d1fae5;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-check" style="color:#065f46;font-size:14px;"></i>
+                </div>
+                <div>
+                    <div style="font-size:20px;font-weight:800;color:#065f46;"><?= $jo_count_approved ?></div>
+                    <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Approved</div>
                 </div>
             </div>
             <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px;">
@@ -5870,15 +6113,16 @@ main.main {
                         $remarks     = $job['rejection_remarks'] ?? $job['notes'] ?? $job['additional_notes'] ?? '';
 
                         // Determine combined workflow label + badge style
-                        if ($wf_status === 'Rejected') {
+                        if (in_array($wf_status, ['Rejected', 'Cancelled']) || $val_status === 'Rejected') {
                             $wf_bg='#fee2e2'; $wf_color='#991b1b'; $wf_label='REJECTED'; $row_filter='rejected';
-                        } elseif ($wf_status === 'Completed') {
+                        } elseif ($wf_status === 'Completed' || $val_status === 'Completed') {
                             $wf_bg='#dcfce7'; $wf_color='#166534'; $wf_label='COMPLETED'; $row_filter='completed';
-                        } elseif ($wf_status === 'In Progress') {
+                        } elseif ($wf_status === 'In Progress' || $val_status === 'In Progress') {
                             $wf_bg='#dbeafe'; $wf_color='#1d4ed8'; $wf_label='IN PROGRESS'; $row_filter='inprogress';
-                        } elseif ($val_status === 'Approved') {
+                        } elseif (in_array($val_status, ['Approved', 'Validated'])) {
                             $wf_bg='#d1fae5'; $wf_color='#065f46'; $wf_label='APPROVED'; $row_filter='approved';
                         } else {
+                            // Catches: 'Pending Validation', 'Pending', '', NULL
                             $wf_bg='#fef9c3'; $wf_color='#854d0e'; $wf_label='PENDING VALIDATION'; $row_filter='pending';
                         }
 
@@ -5964,6 +6208,7 @@ main.main {
                                 <form method="POST" action="staff_transactions_hub.php?section=merchandise" style="margin:0;">
                                     <input type="hidden" name="jo_action" value="set_paid">
                                     <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
+                                    <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
                                     <button type="submit" class="txn-btn success" style="padding:5px 11px;font-size:11px;white-space:nowrap;">
                                         <i class="fas fa-money-bill-wave"></i> Mark Paid
                                     </button>
@@ -5978,6 +6223,7 @@ main.main {
                                     <form method="POST" action="staff_transactions_hub.php?section=merchandise" style="margin:0;">
                                         <input type="hidden" name="jo_action" value="set_in_progress">
                                         <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
+                                        <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
                                         <button type="submit" class="txn-btn primary" style="padding:5px 11px;font-size:11px;width:100%;white-space:nowrap;">
                                             <i class="fas fa-play"></i> In Progress
                                         </button>
@@ -5986,6 +6232,7 @@ main.main {
                                     <form method="POST" action="staff_transactions_hub.php?section=merchandise" style="margin:0;">
                                         <input type="hidden" name="jo_action" value="set_completed">
                                         <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
+                                        <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
                                         <button type="submit" class="txn-btn success" style="padding:5px 11px;font-size:11px;width:100%;white-space:nowrap;">
                                             <i class="fas fa-check"></i> Complete
                                         </button>

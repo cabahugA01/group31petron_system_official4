@@ -219,7 +219,16 @@ try {
             $user_id = $pdo->lastInsertId();
             
             log_activity($pdo, $me['id'], 'Create User', "Created user $username ($user_role) in station $station_id");
-            
+
+            // ── Audit log ──
+            try {
+                $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+                $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                $detail = "User created | Username: {$username} | Name: {$name} | Role: {$user_role} | Station: {$station_id}";
+                $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'user', 'Create', ?, 'users', ?, 'Success', ?, ?, NOW())")
+                    ->execute([$me['id'], $detail, $user_id, $ip, $ua]);
+            } catch (Exception $e) {}
+
             echo json_encode(['success' => true, 'message' => 'User created successfully', 'user_id' => $user_id, 'password' => $password]);
             break;
             
@@ -288,7 +297,16 @@ try {
             $stmt->execute([$name, $email, $phone, $user_role, $station_id, $status, $user_id]);
             
             log_activity($pdo, $me['id'], 'Update User', "Updated user ID $user_id");
-            
+
+            // ── Audit log ──
+            try {
+                $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+                $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                $detail = "User updated | ID: {$user_id} | Name: {$name} | Role: {$user_role} | Status: {$status} | Station: {$station_id}";
+                $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'user', 'Update', ?, 'users', ?, 'Success', ?, ?, NOW())")
+                    ->execute([$me['id'], $detail, $user_id, $ip, $ua]);
+            } catch (Exception $e) {}
+
             echo json_encode(['success' => true, 'message' => 'User updated successfully']);
             break;
             
@@ -336,7 +354,16 @@ try {
             $stmt->execute([$user_id]);
             
             log_activity($pdo, $me['id'], 'Delete User', "Deleted user {$target_user['username']} (ID: $user_id)");
-            
+
+            // ── Audit log ──
+            try {
+                $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+                $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                $detail = "User deactivated | ID: {$user_id} | Username: {$target_user['username']}";
+                $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'user', 'Delete', ?, 'users', ?, 'Success', ?, ?, NOW())")
+                    ->execute([$me['id'], $detail, $user_id, $ip, $ua]);
+            } catch (Exception $e) {}
+
             echo json_encode(['success' => true, 'message' => 'User deleted successfully']);
             break;
             

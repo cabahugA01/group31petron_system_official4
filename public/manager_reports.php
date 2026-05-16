@@ -1219,10 +1219,12 @@ if ($section === 'validation') {
 // ============================================================
 // DATA QUERIES — SECTION: audit_trail
 // ============================================================
-$audit_trail_rows  = [];
-$audit_trail_users = [];
+$audit_trail_rows    = [];
+$audit_trail_users   = [];
+$audit_action_types  = [];   // dynamic — pulled from DB
+$audit_entity_types  = [];   // dynamic — pulled from DB
 if ($section === 'audit_trail') {
-    // Fetch staff users for filter dropdown (exclude admin/superadmin)
+    // Fetch staff/manager users for User filter dropdown
     try {
         $us = $pdo->prepare(
             "SELECT id, name, role FROM users
@@ -1235,16 +1237,51 @@ if ($section === 'audit_trail') {
         $audit_trail_users = $us->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {}
 
+    // ── Dynamic Action Types — pulled from actual DB values for this station ──
+    try {
+        $at_stmt = $pdo->prepare(
+            "SELECT DISTINCT al.action_type
+             FROM audit_logs al
+             WHERE al.user_id IN (
+                 SELECT id FROM users WHERE station_id = ?
+                 AND LOWER(TRIM(role)) NOT IN ('admin','superadmin','super admin','super_admin')
+             )
+             AND al.action_type IS NOT NULL AND al.action_type != ''
+             ORDER BY al.action_type ASC"
+        );
+        $at_stmt->execute([$station_id]);
+        $audit_action_types = array_column($at_stmt->fetchAll(PDO::FETCH_ASSOC), 'action_type');
+    } catch (Exception $e) {}
+
+    // ── Dynamic Module/Entity Types — pulled from actual DB values ────────────
+    try {
+        $et_stmt = $pdo->prepare(
+            "SELECT DISTINCT al.entity_type
+             FROM audit_logs al
+             WHERE al.user_id IN (
+                 SELECT id FROM users WHERE station_id = ?
+                 AND LOWER(TRIM(role)) NOT IN ('admin','superadmin','super admin','super_admin')
+             )
+             AND al.entity_type IS NOT NULL AND al.entity_type != ''
+             ORDER BY al.entity_type ASC"
+        );
+        $et_stmt->execute([$station_id]);
+        $audit_entity_types = array_column($et_stmt->fetchAll(PDO::FETCH_ASSOC), 'entity_type');
+    } catch (Exception $e) {}
+
     // Optional filters from GET
-    $at_user   = isset($_GET['at_user'])   ? (int)$_GET['at_user']              : 0;
-    $at_action = isset($_GET['at_action']) ? trim($_GET['at_action'])            : '';
-    $at_module = isset($_GET['at_module']) ? trim($_GET['at_module'])            : '';
+    $at_user   = isset($_GET['at_user'])   ? (int)$_GET['at_user']   : 0;
+    $at_action = isset($_GET['at_action']) ? trim($_GET['at_action']) : '';
+    $at_module = isset($_GET['at_module']) ? trim($_GET['at_module']) : '';
 
     // Build WHERE clauses
     $at_where  = "WHERE al.user_id IS NOT NULL
                     AND DATE(al.created_at) BETWEEN ? AND ?
-                    AND LOWER(TRIM(COALESCE(u.role,''))) NOT IN ('admin','superadmin','super admin','super_admin')
-                    AND u.station_id = ?";
+                    AND al.user_id IN (
+                        SELECT id FROM users
+                        WHERE station_id = ?
+                        AND LOWER(TRIM(role)) NOT IN ('admin','superadmin','super admin','super_admin')
+                    )";
     $at_params = [$date_start, $date_end, $station_id];
 
     if ($at_user > 0) {
@@ -1252,8 +1289,9 @@ if ($section === 'audit_trail') {
         $at_params[] = $at_user;
     }
     if ($at_action !== '') {
-        $at_where  .= " AND al.action_type = ?";
-        $at_params[] = $at_action;
+        // LIKE prefix so 'Login' also matches 'Login Failed', 'Create' matches 'Create Customer' etc.
+        $at_where  .= " AND al.action_type LIKE ?";
+        $at_params[] = $at_action . '%';
     }
     if ($at_module !== '') {
         $at_where  .= " AND al.entity_type = ?";
@@ -1264,6 +1302,7 @@ if ($section === 'audit_trail') {
         $s = $pdo->prepare("
             SELECT al.id, al.created_at, al.action_type, al.action_details,
                    al.entity_type, al.entity_id, al.status, al.ip_address,
+                   al.new_values,
                    u.name AS user_name, u.role AS user_role
             FROM audit_logs al
             LEFT JOIN users u ON u.id = al.user_id
@@ -1274,7 +1313,6 @@ if ($section === 'audit_trail') {
         $s->execute($at_params);
         $audit_trail_rows = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
     } catch (Exception $e) {
-        // audit_logs table may not exist yet — silently fall back to empty
         $audit_trail_rows = [];
     }
 }
@@ -2844,16 +2882,38 @@ require_once __DIR__ . '/../partials/header.php';
         <label style="font-size:12px;font-weight:600;color:#667085;text-transform:uppercase;letter-spacing:.4px;">Action:</label>
         <select name="at_action" style="padding:6px 10px;border:1px solid #EAEAEA;border-radius:6px;font-size:13px;">
             <option value="">All Actions</option>
-            <?php foreach (['Login','Logout','Create','Update','Delete','Approve','Reject','Adjust','Price Change','View'] as $act): ?>
-            <option value="<?= $act ?>" <?= $at_act_sel === $act ? 'selected' : '' ?>><?= $act ?></option>
+            <?php foreach ($audit_action_types as $act):
+                // Group 'Login Failed' under 'Login' prefix for display
+                $display = htmlspecialchars($act);
+                $selected = ($at_act_sel !== '' && strpos($act, $at_act_sel) === 0) || $at_act_sel === $act ? 'selected' : '';
+            ?>
+            <option value="<?= htmlspecialchars($act) ?>" <?= $at_act_sel === $act ? 'selected' : '' ?>>
+                <?= $display ?>
+            </option>
             <?php endforeach; ?>
         </select>
 
         <label style="font-size:12px;font-weight:600;color:#667085;text-transform:uppercase;letter-spacing:.4px;">Module:</label>
         <select name="at_module" style="padding:6px 10px;border:1px solid #EAEAEA;border-radius:6px;font-size:13px;">
             <option value="">All Modules</option>
-            <?php foreach (['transactions','job_orders','deliveries','inventory','fuel','users','system'] as $mod): ?>
-            <option value="<?= $mod ?>" <?= $at_mod_sel === $mod ? 'selected' : '' ?>><?= ucfirst(str_replace('_',' ',$mod)) ?></option>
+            <?php
+            // Human-readable labels for known entity types
+            $module_labels = [
+                'users'                    => 'Users',
+                'job_orders'               => 'Job Orders',
+                'merchandise_transactions' => 'Merchandise',
+                'customers'                => 'Customers',
+                'fuel_inventory'           => 'Fuel',
+                'inventory'                => 'Inventory',
+                'sales'                    => 'Sales',
+                'system'                   => 'System',
+            ];
+            foreach ($audit_entity_types as $et):
+                $label = $module_labels[$et] ?? ucfirst(str_replace('_', ' ', $et));
+            ?>
+            <option value="<?= htmlspecialchars($et) ?>" <?= $at_mod_sel === $et ? 'selected' : '' ?>>
+                <?= htmlspecialchars($label) ?>
+            </option>
             <?php endforeach; ?>
         </select>
 
@@ -2917,32 +2977,75 @@ require_once __DIR__ . '/../partials/header.php';
                     $action_badge = in_array($action_lc, ['approve','approved','login','create']) ? 'badge-approved'
                                   : (in_array($action_lc, ['reject','rejected','delete','rbac deny']) ? 'badge-rejected'
                                   : (in_array($action_lc, ['adjust','update','price change']) ? 'badge-inprog' : 'badge-default'));
+
+                    // Build rich detail string
+                    $detail_main = trim($row['action_details'] ?? '');
+                    // If detail is generic, try to enrich from new_values JSON
+                    $generic_phrases = ['user logged in','user logged out','user logged in successfully'];
+                    $is_generic = in_array(strtolower($detail_main), $generic_phrases) || $detail_main === '';
+                    $extra_detail = '';
+                    if (!empty($row['new_values'])) {
+                        $nv = json_decode($row['new_values'], true);
+                        if (is_array($nv)) {
+                            $parts = [];
+                            $show_keys = ['transaction_id','total_amount','item_count','customer_name','payment_method',
+                                          'amount','type','product_name','quantity','difference','login_time','logout_time',
+                                          'fuel_type','reference_type','reference_id'];
+                            foreach ($show_keys as $k) {
+                                if (isset($nv[$k]) && $nv[$k] !== '' && $nv[$k] !== null) {
+                                    $label = ucfirst(str_replace('_', ' ', $k));
+                                    $val   = is_numeric($nv[$k]) && in_array($k, ['total_amount','amount'])
+                                           ? '₱' . number_format((float)$nv[$k], 2)
+                                           : htmlspecialchars((string)$nv[$k]);
+                                    $parts[] = "<span style='color:#667085;'>{$label}:</span> <strong>{$val}</strong>";
+                                }
+                            }
+                            if ($parts) $extra_detail = implode(' &nbsp;|&nbsp; ', $parts);
+                        }
+                    }
+                    $row_id = 'at-row-' . (int)$row['id'];
                 ?>
                 <tr>
                     <td style="white-space:nowrap;">
                         <strong><?= date('M j, Y', strtotime($row['created_at'])) ?></strong>
                         <small style="display:block;color:#667085;"><?= date('g:i A', strtotime($row['created_at'])) ?></small>
                     </td>
+                    <td><strong><?= htmlspecialchars($row['user_name'] ?? '—') ?></strong></td>
+                    <td><span class="badge badge-default"><?= ucfirst(htmlspecialchars($row['user_role'] ?? '—')) ?></span></td>
+                    <td><span class="badge <?= $action_badge ?>"><?= htmlspecialchars($row['action_type'] ?? '—') ?></span></td>
                     <td>
-                        <strong><?= htmlspecialchars($row['user_name'] ?? '—') ?></strong>
+                        <?php
+                        $mod_label = $row['entity_type'] ?? '—';
+                        $mod_map = [
+                            'job_orders'               => 'Job Orders',
+                            'merchandise_transactions' => 'Merchandise',
+                            'customers'                => 'Customers',
+                            'users'                    => 'Users',
+                            'fuel_inventory'           => 'Fuel',
+                            'inventory'                => 'Inventory',
+                            'sales'                    => 'Sales',
+                            'system'                   => 'System',
+                        ];
+                        $mod_label = $mod_map[$mod_label] ?? ucfirst(str_replace('_', ' ', $mod_label));
+                        ?>
+                        <span class="badge badge-default"><?= htmlspecialchars($mod_label) ?></span>
                     </td>
-                    <td>
-                        <span class="badge badge-default"><?= ucfirst(htmlspecialchars($row['user_role'] ?? '—')) ?></span>
-                    </td>
-                    <td>
-                        <span class="badge <?= $action_badge ?>"><?= htmlspecialchars($row['action_type'] ?? '—') ?></span>
-                    </td>
-                    <td>
-                        <span class="badge badge-default"><?= htmlspecialchars($row['entity_type'] ?? '—') ?></span>
-                    </td>
-                    <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;"
-                        title="<?= htmlspecialchars($row['action_details'] ?? '') ?>">
-                        <?= htmlspecialchars($row['action_details'] ?? '—') ?>
+                    <td style="font-size:12px;max-width:320px;">
+                        <?php if ($detail_main): ?>
+                        <div style="color:#1e293b;margin-bottom:<?= $extra_detail ? '4px' : '0' ?>;">
+                            <?= htmlspecialchars($detail_main) ?>
+                        </div>
+                        <?php endif; ?>
+                        <?php if ($extra_detail): ?>
+                        <div style="font-size:11px;color:#475569;line-height:1.6;">
+                            <?= $extra_detail ?>
+                        </div>
+                        <?php elseif (!$detail_main): ?>
+                        <span style="color:#9ca3af;">—</span>
+                        <?php endif; ?>
                     </td>
                     <td style="font-size:12px;color:#667085;"><?= htmlspecialchars($row['ip_address'] ?? '—') ?></td>
-                    <td>
-                        <span class="badge <?= $status_badge ?>"><?= htmlspecialchars($row['status'] ?? '—') ?></span>
-                    </td>
+                    <td><span class="badge <?= $status_badge ?>"><?= htmlspecialchars($row['status'] ?? '—') ?></span></td>
                 </tr>
                 <?php endforeach; ?>
                 </tbody>

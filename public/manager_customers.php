@@ -4,9 +4,9 @@ require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
 
-$valid_sections = ['validation','updates','history','balances','transactions','transparency'];
+$valid_sections = ['encode','edit_customer','balances'];
 $section = isset($_GET['section']) && in_array($_GET['section'], $valid_sections)
-    ? $_GET['section'] : 'validation';
+    ? $_GET['section'] : 'encode';
 
 $me         = current_user();
 $role       = role_key($me['role'] ?? '');
@@ -22,6 +22,9 @@ try {
     foreach ([
         'contact_number' => "VARCHAR(50) NULL",
         'id_number'      => "VARCHAR(100) NULL",
+        'id_type'        => "VARCHAR(100) NULL",
+        'id_image'       => "VARCHAR(255) NULL",
+        'cr_image'       => "VARCHAR(255) NULL",
         'credit_limit'   => "DECIMAL(12,2) DEFAULT 0.00",
         'balance'        => "DECIMAL(12,2) DEFAULT 0.00",
         'status'         => "VARCHAR(20) DEFAULT 'active'",
@@ -54,10 +57,144 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 } catch (Exception $e) {}
 
+// ── Government ID types ───────────────────────────────────────────────────────
+$gov_id_types = [
+    "Driver's License",
+    "Government ID",
+    "Passport",
+    "Postal ID",
+    "Voter's ID",
+    "PhilSys ID",
+    "PRC ID",
+    "Other",
+];
+
 // ── POST handlers ─────────────────────────────────────────────────────────────
 $flash_ok = $flash_err = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $act = $_POST['action'] ?? '';
+
+    // ── Encode new customer (manager) ─────────────────────────────────────────
+    if ($act === 'encode_customer') {
+        $name    = trim($_POST['name']    ?? '');
+        $contact = trim($_POST['contact'] ?? '');
+        $id_type = trim($_POST['id_type'] ?? '');
+        $credit  = (float)($_POST['credit_limit'] ?? 0);
+
+        // Handle ID image upload
+        $id_image_path = null;
+        if (!empty($_FILES['id_image']['name'])) {
+            $upload_dir = __DIR__ . '/../uploads/customer_ids/';
+            if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
+            $ext = strtolower(pathinfo($_FILES['id_image']['name'], PATHINFO_EXTENSION));
+            if (in_array($ext, ['jpg','jpeg','png','gif','pdf','webp'])) {
+                $fname = 'id_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+                if (move_uploaded_file($_FILES['id_image']['tmp_name'], $upload_dir . $fname))
+                    $id_image_path = 'uploads/customer_ids/' . $fname;
+            }
+        }
+        // Handle CR image upload
+        $cr_image_path = null;
+        if (!empty($_FILES['cr_image']['name'])) {
+            $upload_dir = __DIR__ . '/../uploads/customer_ids/';
+            if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
+            $ext = strtolower(pathinfo($_FILES['cr_image']['name'], PATHINFO_EXTENSION));
+            if (in_array($ext, ['jpg','jpeg','png','gif','pdf','webp'])) {
+                $fname = 'cr_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+                if (move_uploaded_file($_FILES['cr_image']['tmp_name'], $upload_dir . $fname))
+                    $cr_image_path = 'uploads/customer_ids/' . $fname;
+            }
+        }
+
+        if (!$name) {
+            $flash_err = 'Customer name is required.';
+        } else {
+            try {
+                $ins_cols = $pdo->query("SHOW COLUMNS FROM customers")->fetchAll(PDO::FETCH_COLUMN);
+                $col_list = ['name', 'station_id', 'status', 'mgr_status', 'created_at'];
+                $val_list = [$name, $station_id, 'active', 'approved', date('Y-m-d H:i:s')];
+                if (in_array('contact_number', $ins_cols)) { $col_list[] = 'contact_number'; $val_list[] = $contact; }
+                if (in_array('id_type',        $ins_cols)) { $col_list[] = 'id_type';        $val_list[] = $id_type; }
+                if (in_array('id_image',       $ins_cols)) { $col_list[] = 'id_image';       $val_list[] = $id_image_path; }
+                if (in_array('cr_image',       $ins_cols)) { $col_list[] = 'cr_image';       $val_list[] = $cr_image_path; }
+                if (in_array('credit_limit',   $ins_cols)) { $col_list[] = 'credit_limit';   $val_list[] = $credit; }
+                if (in_array('balance',        $ins_cols)) { $col_list[] = 'balance';         $val_list[] = 0; }
+                $placeholders = implode(',', array_fill(0, count($col_list), '?'));
+                $pdo->prepare("INSERT INTO customers (" . implode(',', $col_list) . ") VALUES ($placeholders)")
+                    ->execute($val_list);
+                $flash_ok = "Customer \"" . htmlspecialchars($name) . "\" added successfully.";
+                // ── Audit log ──
+                $new_cid = (int)$pdo->lastInsertId();
+                write_audit_log($pdo, 'Create',
+                    "New customer encoded: {$name}" . ($id_type ? " | ID Type: {$id_type}" : '') . " | Credit Limit: ₱" . number_format($credit, 2),
+                    'customers', $new_cid, 'transaction');
+            } catch (Exception $e) {
+                $flash_err = 'Error saving customer: ' . $e->getMessage();
+            }
+        }
+    }
+
+    if ($act === 'update_customer') {
+        $cid     = (int)($_POST['customer_id'] ?? 0);
+        $name    = trim($_POST['name']    ?? '');
+        $contact = trim($_POST['contact'] ?? '');
+        $id_type = trim($_POST['id_type'] ?? '');
+        $credit  = (float)($_POST['credit_limit'] ?? 0);
+
+        // Handle ID image upload
+        $id_image_path = null;
+        if (!empty($_FILES['id_image']['name'])) {
+            $upload_dir = __DIR__ . '/../uploads/customer_ids/';
+            if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
+            $ext = strtolower(pathinfo($_FILES['id_image']['name'], PATHINFO_EXTENSION));
+            if (in_array($ext, ['jpg','jpeg','png','gif','pdf','webp'])) {
+                $fname = 'id_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+                if (move_uploaded_file($_FILES['id_image']['tmp_name'], $upload_dir . $fname))
+                    $id_image_path = 'uploads/customer_ids/' . $fname;
+            }
+        }
+        // Handle CR image upload
+        $cr_image_path = null;
+        if (!empty($_FILES['cr_image']['name'])) {
+            $upload_dir = __DIR__ . '/../uploads/customer_ids/';
+            if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
+            $ext = strtolower(pathinfo($_FILES['cr_image']['name'], PATHINFO_EXTENSION));
+            if (in_array($ext, ['jpg','jpeg','png','gif','pdf','webp'])) {
+                $fname = 'cr_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+                if (move_uploaded_file($_FILES['cr_image']['tmp_name'], $upload_dir . $fname))
+                    $cr_image_path = 'uploads/customer_ids/' . $fname;
+            }
+        }
+
+        if (!$cid || !$name) {
+            $flash_err = 'Customer ID and name are required.';
+        } else {
+            try {
+                $upd_cols  = $pdo->query("SHOW COLUMNS FROM customers")->fetchAll(PDO::FETCH_COLUMN);
+                $set_parts = ['name=?'];
+                $upd_vals  = [$name];
+                if (in_array('contact_number', $upd_cols)) { $set_parts[] = 'contact_number=?'; $upd_vals[] = $contact; }
+                if (in_array('id_type',        $upd_cols)) { $set_parts[] = 'id_type=?';        $upd_vals[] = $id_type; }
+                if ($id_image_path && in_array('id_image', $upd_cols)) { $set_parts[] = 'id_image=?'; $upd_vals[] = $id_image_path; }
+                if ($cr_image_path && in_array('cr_image', $upd_cols)) { $set_parts[] = 'cr_image=?'; $upd_vals[] = $cr_image_path; }
+                if (in_array('credit_limit',   $upd_cols)) { $set_parts[] = 'credit_limit=?';   $upd_vals[] = $credit; }
+                $upd_vals[] = $cid;
+                $upd_vals[] = $station_id;
+                $pdo->prepare("UPDATE customers SET " . implode(',', $set_parts) . " WHERE id=? AND station_id=?")
+                    ->execute($upd_vals);
+                $flash_ok = "Customer updated successfully.";
+                // ── Audit log ──
+                write_audit_log($pdo, 'Update',
+                    "Customer updated: {$name} (ID #{$cid})" . ($id_type ? " | ID Type: {$id_type}" : '') . " | Credit Limit: ₱" . number_format($credit, 2),
+                    'customers', $cid, 'transaction');
+                // Redirect to avoid re-POST on refresh
+                header("Location: manager_customers.php?section=edit_customer&updated=1");
+                exit;
+            } catch (Exception $e) {
+                $flash_err = 'Error updating customer: ' . $e->getMessage();
+            }
+        }
+    }
 
     if ($act === 'validate_customer') {
         $cid  = (int)($_POST['customer_id'] ?? 0);
@@ -100,34 +237,7 @@ try { $avail = $pdo->query("SHOW COLUMNS FROM customers")->fetchAll(PDO::FETCH_C
 $bal_col = in_array('credit_balance',$avail) ? 'credit_balance' : (in_array('balance',$avail) ? 'balance' : '0');
 
 // ── Section data ──────────────────────────────────────────────────────────────
-$pending_customers = $update_requests = $balance_customers = [];
-$txn_customers = $job_orders_linked = $merch_linked = $transparency_data = [];
-$txn_customer_id = isset($_GET['customer_id']) ? (int)$_GET['customer_id'] : 0;
-
-if ($section === 'validation') {
-    try {
-        $mgr_col = in_array('mgr_status',$avail) ? 'mgr_status' : "'pending'";
-        $s = $pdo->prepare("SELECT c.*, COALESCE(u.name,'—') AS encoded_by_name
-            FROM customers c LEFT JOIN users u ON u.id=c.created_by
-            WHERE c.station_id=? AND ($mgr_col='pending' OR $mgr_col IS NULL)
-            ORDER BY c.created_at DESC");
-        $s->execute([$station_id]);
-        $pending_customers = $s->fetchAll(PDO::FETCH_ASSOC);
-    } catch(Exception $e){}
-}
-
-if ($section === 'updates') {
-    try {
-        $s = $pdo->prepare("SELECT cur.*, c.name AS customer_name, COALESCE(u.name,'—') AS requested_by_name
-            FROM customer_update_requests cur
-            LEFT JOIN customers c ON c.id=cur.customer_id
-            LEFT JOIN users u ON u.id=cur.requested_by
-            WHERE cur.station_id=? AND cur.status='pending'
-            ORDER BY cur.created_at DESC");
-        $s->execute([$station_id]);
-        $update_requests = $s->fetchAll(PDO::FETCH_ASSOC);
-    } catch(Exception $e){}
-}
+$balance_customers = [];
 
 if ($section === 'balances') {
     try {
@@ -140,216 +250,56 @@ if ($section === 'balances') {
     } catch(Exception $e){}
 }
 
-if ($section === 'transactions') {
-    try {
-        $s = $pdo->prepare("SELECT id, name FROM customers WHERE station_id=? ORDER BY name");
-        $s->execute([$station_id]);
-        $txn_customers = $s->fetchAll(PDO::FETCH_ASSOC);
-    } catch(Exception $e){}
-    if ($txn_customer_id) {
-        try {
-            $jc = $pdo->query("SHOW COLUMNS FROM job_orders")->fetchAll(PDO::FETCH_COLUMN);
-            $jo_num  = in_array('job_order_id',$jc) ? 'job_order_id' : (in_array('jo_number',$jc) ? 'jo_number' : 'NULL');
-            $svc     = in_array('service_type',$jc) ? 'service_type' : (in_array('service_description',$jc) ? 'service_description' : "'—'");
-            $pay     = in_array('payment_method',$jc) ? 'payment_method' : 'NULL';
-            $has_cc  = in_array('credit_customer_id',$jc);
-            $cond    = $has_cc ? '(customer_id=? OR credit_customer_id=?)' : 'customer_id=?';
-            $params  = $has_cc ? [$station_id,$txn_customer_id,$txn_customer_id] : [$station_id,$txn_customer_id];
-            $s = $pdo->prepare("SELECT id, COALESCE($jo_num,CONCAT('JO-',id)) AS jo_ref,
-                COALESCE($svc,'—') AS service, $pay AS payment_method,
-                COALESCE(estimated_cost,0) AS amount, created_at, status
-                FROM job_orders WHERE station_id=? AND $cond ORDER BY created_at DESC");
-            $s->execute($params);
-            $job_orders_linked = $s->fetchAll(PDO::FETCH_ASSOC);
-        } catch(Exception $e){}
-        try {
-            $mc = $pdo->query("SHOW COLUMNS FROM merchandise_transactions")->fetchAll(PDO::FETCH_COLUMN);
-            if (in_array('customer_id',$mc)) {
-                $dc = in_array('transaction_date',$mc) ? 'COALESCE(transaction_date,created_at)' : 'created_at';
-                $s = $pdo->prepare("SELECT id, customer_name, total_amount, payment_method,
-                    $dc AS txn_date FROM merchandise_transactions
-                    WHERE station_id=? AND customer_id=? ORDER BY txn_date DESC");
-                $s->execute([$station_id,$txn_customer_id]);
-                $merch_linked = $s->fetchAll(PDO::FETCH_ASSOC);
-            }
-        } catch(Exception $e){}
-    }
-}
-
-// ── Customer History data (Manager view) ─────────────────────────────────────
-$hist_customers      = [];
-$hist_selected_id    = isset($_GET['cust_id']) ? (int)$_GET['cust_id'] : 0;
-$hist_filter_type    = $_GET['hist_type']   ?? '';
-$hist_filter_status  = $_GET['hist_status'] ?? '';
-$hist_filter_date    = $_GET['hist_date']   ?? '';
-$hist_records        = [];
-$hist_customer_info  = null;
-if ($section === 'history') {
-    try {
-        $s = $pdo->prepare("SELECT id, name, balance, credit_limit, status FROM customers WHERE station_id=? ORDER BY name ASC");
-        $s->execute([$station_id]);
-        $hist_customers = $s->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) {}
-
-    if ($hist_selected_id) {
-        foreach ($hist_customers as $hc) {
-            if ($hc['id'] === $hist_selected_id) { $hist_customer_info = $hc; break; }
-        }
-
-        try {
-            $jo_cols  = $pdo->query("SHOW COLUMNS FROM job_orders")->fetchAll(PDO::FETCH_COLUMN);
-            $mt_cols  = $pdo->query("SHOW COLUMNS FROM merchandise_transactions")->fetchAll(PDO::FETCH_COLUMN);
-
-            $has_jo_credit  = in_array('credit_customer_id', $jo_cols);
-            $has_mt_cid     = in_array('customer_id', $mt_cols);
-            $has_mt_credit  = in_array('credit_customer_id', $mt_cols);
-            $jo_num_col     = in_array('job_order_number', $jo_cols) ? 'job_order_number'
-                            : (in_array('job_order_id', $jo_cols) ? 'job_order_id' : 'NULL');
-            $jo_svc_col     = in_array('service_type', $jo_cols) ? 'service_type'
-                            : (in_array('service_description', $jo_cols) ? 'service_description' : "''");
-            $jo_pay_stat    = in_array('payment_status', $jo_cols) ? 'payment_status' : "''";
-            $jo_amt_paid    = in_array('amount_paid', $jo_cols) ? 'amount_paid' : '0';
-            $jo_total       = in_array('actual_cost', $jo_cols) ? 'COALESCE(actual_cost, estimated_cost, 0)'
-                            : (in_array('estimated_cost', $jo_cols) ? 'COALESCE(estimated_cost, 0)' : '0');
-            $jo_plate       = in_array('vehicle_plate', $jo_cols) ? 'vehicle_plate' : "''";
-            $jo_cust_cond   = $has_jo_credit
-                ? '(jo.customer_id=? OR jo.credit_customer_id=?)'
-                : 'jo.customer_id=?';
-            $jo_params      = $has_jo_credit
-                ? [$station_id, $hist_selected_id, $hist_selected_id]
-                : [$station_id, $hist_selected_id];
-
-            $mt_date_col    = in_array('transaction_date', $mt_cols) ? 'COALESCE(mt.transaction_date, mt.created_at)' : 'mt.created_at';
-            $mt_cust_cond   = $has_mt_credit
-                ? '(mt.customer_id=? OR mt.credit_customer_id=?)'
-                : ($has_mt_cid ? 'mt.customer_id=?' : '1=0');
-            $mt_params      = ($has_mt_credit || $has_mt_cid)
-                ? ($has_mt_credit ? [$station_id, $hist_selected_id, $hist_selected_id] : [$station_id, $hist_selected_id])
-                : [$station_id];
-
-            $jo_date_filter = $mt_date_filter = '';
-            if ($hist_filter_date) {
-                $jo_date_filter  = " AND DATE(jo.created_at) = " . $pdo->quote($hist_filter_date);
-                $mt_date_filter  = " AND DATE($mt_date_col) = " . $pdo->quote($hist_filter_date);
-            }
-
-            $jo_rows = [];
-            if ($hist_filter_type === '' || $hist_filter_type === 'job_order') {
-                $jo_sql = "
-                    SELECT
-                        'job_order' AS record_type,
-                        jo.id,
-                        COALESCE($jo_num_col, CONCAT('JO-', jo.id)) AS ref_number,
-                        COALESCE($jo_svc_col, '—') AS service_label,
-                        '' AS merch_items_summary,
-                        $jo_total AS total_amount,
-                        $jo_amt_paid AS amount_paid,
-                        COALESCE($jo_pay_stat, 'Unpaid') AS payment_status,
-                        jo.payment_method,
-                        jo.status AS txn_status,
-                        jo.created_at AS txn_date,
-                        $jo_plate AS vehicle_plate
-                    FROM job_orders jo
-                    WHERE jo.station_id=? AND $jo_cust_cond
-                    $jo_date_filter
-                    ORDER BY jo.created_at DESC
-                ";
-                $st = $pdo->prepare($jo_sql);
-                $st->execute($jo_params);
-                $jo_rows = $st->fetchAll(PDO::FETCH_ASSOC);
-            }
-
-            $mt_rows = [];
-            if (($hist_filter_type === '' || $hist_filter_type === 'merchandise') && ($has_mt_cid || $has_mt_credit)) {
-                $mt_sql = "
-                    SELECT
-                        'merchandise' AS record_type,
-                        mt.id,
-                        COALESCE(mt.transaction_id, CONCAT('MT-', mt.id)) AS ref_number,
-                        COALESCE(mt.job_order_service, '') AS service_label,
-                        '' AS merch_items_summary,
-                        COALESCE(mt.total_amount, 0) AS total_amount,
-                        COALESCE(mt.total_amount, 0) AS amount_paid,
-                        COALESCE(mt.status, 'Unpaid') AS payment_status,
-                        mt.payment_method,
-                        COALESCE(mt.validation_status, mt.status, 'Pending') AS txn_status,
-                        $mt_date_col AS txn_date,
-                        '' AS vehicle_plate
-                    FROM merchandise_transactions mt
-                    WHERE mt.station_id=? AND $mt_cust_cond
-                    $mt_date_filter
-                    ORDER BY $mt_date_col DESC
-                ";
-                $st = $pdo->prepare($mt_sql);
-                $st->execute($mt_params);
-                $mt_rows = $st->fetchAll(PDO::FETCH_ASSOC);
-
-                foreach ($mt_rows as &$mtr) {
-                    try {
-                        $is = $pdo->prepare("
-                            SELECT COALESCE(ip.product_name, mti.product_name, 'Item') AS pname, mti.quantity
-                            FROM merchandise_transaction_items mti
-                            LEFT JOIN inventory_products ip ON ip.id = mti.product_id
-                            WHERE mti.transaction_id = ?
-                            LIMIT 5
-                        ");
-                        $is->execute([$mtr['id']]);
-                        $items = $is->fetchAll(PDO::FETCH_ASSOC);
-                        $mtr['merch_items_summary'] = implode(', ', array_map(fn($i) => $i['pname'] . ' ×' . $i['quantity'], $items));
-                    } catch (Exception $e) {}
-                }
-                unset($mtr);
-            }
-
-            $hist_records = array_merge($jo_rows, $mt_rows);
-            usort($hist_records, fn($a, $b) => strtotime($b['txn_date']) - strtotime($a['txn_date']));
-
-            foreach ($hist_records as &$hr) {
-                $ps = strtolower(trim($hr['payment_status'] ?? ''));
-                $total = (float)$hr['total_amount'];
-                $paid  = (float)$hr['amount_paid'];
-                if ($ps === 'paid' || $ps === 'completed' || $ps === 'approved') {
-                    $hr['payment_status'] = 'Paid';
-                } elseif ($ps === 'partial' || ($paid > 0 && $paid < $total)) {
-                    $hr['payment_status'] = 'Partial';
-                } else {
-                    $hr['payment_status'] = 'Unpaid';
-                }
-            }
-            unset($hr);
-
-            if ($hist_filter_status) {
-                $hist_records = array_filter($hist_records, fn($r) => $r['payment_status'] === $hist_filter_status);
-                $hist_records = array_values($hist_records);
-            }
-        } catch (Exception $e) {}
-    }
-}
-
-if ($section === 'transparency') {    try {
-        $s = $pdo->prepare("SELECT c.id, c.name,
-            COALESCE($bal_col,0) AS balance,
-            COALESCE(credit_limit,0) AS credit_limit,
-            c.status, COALESCE(c.contact_number,'—') AS contact_number,
-            (SELECT COUNT(*) FROM merchandise_transactions mt WHERE mt.customer_id=c.id
-             AND mt.payment_method IN ('Account Receivable','Credit','Utang','utang','credit')) AS utang_count,
-            (SELECT COALESCE(SUM(total_amount),0) FROM merchandise_transactions mt WHERE mt.customer_id=c.id
-             AND mt.payment_method IN ('Account Receivable','Credit','Utang','utang','credit')) AS total_utang
-            FROM customers c WHERE c.station_id=? ORDER BY balance DESC");
-        $s->execute([$station_id]);
-        $transparency_data = $s->fetchAll(PDO::FETCH_ASSOC);
-    } catch(Exception $e){}
-}
-
 $section_meta = [
-    'validation'   => ['fas fa-user-check', 'Customer Validation'],
-    'updates'      => ['fas fa-user-edit',   'Customer Updates Approval'],
-    'history'      => ['fas fa-history',     'Customer History'],
-    'balances'     => ['fas fa-wallet',      'Balances Monitoring'],
-    'transactions' => ['fas fa-receipt',     'Transaction Oversight'],
-    'transparency' => ['fas fa-eye',         'Transparency Tab'],
+    'encode'        => ['fas fa-user-plus',  'Encode Customer Details'],
+    'edit_customer' => ['fas fa-user-edit',  'Update Customer Details'],
+    'balances'      => ['fas fa-wallet',     'Balances Monitoring'],
 ];
 [$sec_ico, $sec_title] = $section_meta[$section];
+
+// ── Data for edit_customer section ───────────────────────────────────────────
+$edit_all_customers = [];
+$edit_customer      = null;
+if ($section === 'edit_customer') {
+    try {
+        $ec2_avail   = $pdo->query("SHOW COLUMNS FROM customers")->fetchAll(PDO::FETCH_COLUMN);
+        $ec2_contact = in_array('contact_number', $ec2_avail) ? 'contact_number' : "'' AS contact_number";
+        $ec2_id_type = in_array('id_type',        $ec2_avail) ? 'id_type'        : "'' AS id_type";
+        $ec2_id_img  = in_array('id_image',       $ec2_avail) ? 'id_image'       : "'' AS id_image";
+        $ec2_cr_img  = in_array('cr_image',       $ec2_avail) ? 'cr_image'       : "'' AS cr_image";
+        $ec2_balance = in_array('balance',        $ec2_avail) ? 'balance'        : "0 AS balance";
+        $ec2_credit  = in_array('credit_limit',   $ec2_avail) ? 'credit_limit'   : "0 AS credit_limit";
+        $ec2_status  = in_array('status',         $ec2_avail) ? 'status'         : "'active' AS status";
+        $s = $pdo->prepare("SELECT id, name, $ec2_contact, $ec2_id_type, $ec2_id_img, $ec2_cr_img, $ec2_credit, $ec2_balance, $ec2_status FROM customers WHERE station_id=? ORDER BY name");
+        $s->execute([$station_id]);
+        $edit_all_customers = $s->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {}
+
+    if (isset($_GET['customer_id'])) {
+        $cid_get = (int)$_GET['customer_id'];
+        foreach ($edit_all_customers as $ec) {
+            if ($ec['id'] === $cid_get) { $edit_customer = $ec; break; }
+        }
+    }
+    // Show success flash after redirect
+    if (isset($_GET['updated'])) $flash_ok = "Customer updated successfully.";
+}
+
+// ── Customer list for encode section ─────────────────────────────────────────
+$encode_customers = [];
+if ($section === 'encode') {
+    try {
+        $ec_avail = $pdo->query("SHOW COLUMNS FROM customers")->fetchAll(PDO::FETCH_COLUMN);
+        $ec_contact  = in_array('contact_number', $ec_avail) ? 'contact_number' : "'' AS contact_number";
+        $ec_id_type  = in_array('id_type',        $ec_avail) ? 'id_type'        : "'' AS id_type";
+        $ec_balance  = in_array('balance',        $ec_avail) ? 'balance'        : "0 AS balance";
+        $ec_credit   = in_array('credit_limit',   $ec_avail) ? 'credit_limit'   : "0 AS credit_limit";
+        $ec_status   = in_array('status',         $ec_avail) ? 'status'         : "'active' AS status";
+        $s = $pdo->prepare("SELECT id, name, $ec_contact, $ec_id_type, $ec_credit, $ec_balance, $ec_status FROM customers WHERE station_id=? ORDER BY name");
+        $s->execute([$station_id]);
+        $encode_customers = $s->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {}
+}
 
 include __DIR__ . '/../partials/header.php';
 ?>
@@ -407,82 +357,239 @@ include __DIR__ . '/../partials/header.php';
 <?php if ($flash_ok): ?><div class="flash-ok"><i class="fas fa-check-circle"></i> <?php echo $flash_ok; ?></div><?php endif; ?>
 <?php if ($flash_err): ?><div class="flash-err"><i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($flash_err); ?></div><?php endif; ?>
 
-<!-- ===== SECTION: VALIDATION ===== -->
-<?php if ($section === 'validation'): ?>
+<!-- ===== SECTION: ENCODE CUSTOMER ===== -->
+<?php if ($section === 'encode'): ?>
+<style>
+.enc-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+@media(max-width:600px){.enc-form-grid{grid-template-columns:1fr;}}
+.enc-label{display:block;font-size:12px;font-weight:700;color:#6c757d;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;}
+.enc-input{width:100%;padding:9px 12px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;box-sizing:border-box;}
+.enc-input:focus{border-color:#002F70;outline:none;box-shadow:0 0 0 3px rgba(0,47,112,.1);}
+.enc-btn-primary{padding:10px 22px;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;background:#002F70;color:#fff;transition:all .2s;}
+.enc-btn-primary:hover{background:#0040a0;}
+</style>
+
+<!-- Add New Customer Form -->
 <div class="mgrc-card">
   <div class="mgrc-head">
-    <h2 class="mgrc-title"><i class="fas fa-user-check"></i> Pending Customer Profiles</h2>
-    <span style="font-size:13px;color:#6c757d;"><?php echo count($pending_customers); ?> pending</span>
+    <h2 class="mgrc-title"><i class="fas fa-user-plus"></i> Add New Customer</h2>
   </div>
   <div class="mgrc-body">
-    <div class="mgrc-info-box"><i class="fas fa-info-circle"></i> Review customer profiles encoded by staff. Approve to activate, or reject with notes.</div>
-    <?php if (empty($pending_customers)): ?>
-      <div class="mgrc-empty"><i class="fas fa-user-check"></i><strong>No pending customers</strong><br><small>All customer profiles have been reviewed.</small></div>
-    <?php else: ?>
-    <input class="mgrc-search" id="valSearch" placeholder="Search customers..." oninput="filterRows('valSearch','valTable')">
+    <form method="POST" action="manager_customers.php?section=encode" enctype="multipart/form-data">
+      <input type="hidden" name="action" value="encode_customer">
+      <div class="enc-form-grid">
+        <div>
+          <label class="enc-label">Full Name <span style="color:red">*</span></label>
+          <input type="text" name="name" class="enc-input" placeholder="Enter customer name" required>
+        </div>
+        <div>
+          <label class="enc-label">Contact Number</label>
+          <input type="text" name="contact" class="enc-input" placeholder="e.g. 09XX-XXX-XXXX">
+        </div>
+        <div>
+          <label class="enc-label">Type of ID</label>
+          <select name="id_type" class="enc-input">
+            <option value="">— Select ID Type —</option>
+            <?php foreach ($gov_id_types as $idt): ?>
+            <option value="<?php echo htmlspecialchars($idt); ?>"><?php echo htmlspecialchars($idt); ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div>
+          <label class="enc-label">Upload Selected ID (Front/Copy)</label>
+          <input type="file" name="id_image" class="enc-input" accept="image/*,.pdf" style="padding:6px 10px;">
+          <span style="font-size:11px;color:#9ca3af;margin-top:3px;display:block;">JPG, PNG, PDF accepted</span>
+        </div>
+        <div>
+          <label class="enc-label">Credit Limit (₱)</label>
+          <input type="number" name="credit_limit" class="enc-input" placeholder="0.00" min="0" step="0.01" value="0">
+        </div>
+      </div>
+      <!-- CR / Certificate of Registration -->
+      <div style="margin-top:18px;padding:16px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:8px;">
+        <label class="enc-label" style="font-size:13px;color:#002F70;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+          <i class="fas fa-file-alt"></i> CR / Certificate of Registration
+        </label>
+        <input type="file" name="cr_image" class="enc-input" accept="image/*,.pdf" style="padding:6px 10px;background:#fff;">
+        <span style="font-size:11px;color:#9ca3af;margin-top:4px;display:block;">Upload the vehicle's Certificate of Registration (CR). JPG, PNG, PDF accepted.</span>
+      </div>
+      <div style="margin-top:18px;">
+        <button type="submit" class="enc-btn-primary"><i class="fas fa-save"></i> Save Customer</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Customer List (view-only) -->
+<div class="mgrc-card">
+  <div class="mgrc-head">
+    <h2 class="mgrc-title"><i class="fas fa-list"></i> Customer List</h2>
+    <span style="font-size:13px;color:#6c757d;"><?php echo count($encode_customers); ?> customers</span>
+  </div>
+  <div class="mgrc-body">
+    <input class="mgrc-search" id="encodeSearch" placeholder="&#128269; Search customers..." oninput="filterRows('encodeSearch','encodeTable')">
     <div style="overflow-x:auto;">
-    <table class="mgrc-table" id="valTable">
-      <thead><tr><th>ID</th><th>Name</th><th>Contact</th><th>Credit Limit</th><th>Encoded By</th><th>Date</th><th>Actions</th></tr></thead>
-      <tbody>
-      <?php foreach ($pending_customers as $c): ?>
-      <tr data-search="<?php echo strtolower(htmlspecialchars($c['name'])); ?>">
-        <td style="color:#6c757d;font-size:12px;">#<?php echo (int)$c['id']; ?></td>
-        <td><strong><?php echo htmlspecialchars($c['name']); ?></strong><br><small style="color:#6c757d;"><?php echo htmlspecialchars($c['id_number'] ?? '—'); ?></small></td>
-        <td><?php echo htmlspecialchars($c['contact_number'] ?? '—'); ?></td>
-        <td>&#8369;<?php echo number_format((float)($c['credit_limit'] ?? 0),2); ?></td>
-        <td><?php echo htmlspecialchars($c['encoded_by_name'] ?? '—'); ?></td>
-        <td style="font-size:12px;color:#6c757d;"><?php echo date('M d, Y', strtotime($c['created_at'])); ?></td>
-        <td style="white-space:nowrap;">
-          <button class="mgrc-btn mgrc-btn-approve" onclick="openModal('validate',<?php echo (int)$c['id']; ?>,'<?php echo htmlspecialchars($c['name'],ENT_QUOTES); ?>','approved')"><i class="fas fa-check"></i> Approve</button>
-          <button class="mgrc-btn mgrc-btn-reject" style="margin-left:4px;" onclick="openModal('validate',<?php echo (int)$c['id']; ?>,'<?php echo htmlspecialchars($c['name'],ENT_QUOTES); ?>','rejected')"><i class="fas fa-times"></i> Reject</button>
-        </td>
-      </tr>
-      <?php endforeach; ?>
-      </tbody>
-    </table>
+      <table class="mgrc-table" id="encodeTable">
+        <thead><tr>
+          <th>ID</th><th>Name</th><th>Contact</th><th>ID Type</th><th>Credit Limit</th><th>Remaining Balance</th><th>Status</th>
+        </tr></thead>
+        <tbody>
+        <?php if (empty($encode_customers)): ?>
+          <tr><td colspan="7" class="mgrc-empty"><i class="fas fa-users"></i>No customers yet.</td></tr>
+        <?php else: foreach ($encode_customers as $c): ?>
+          <tr data-search="<?php echo strtolower(htmlspecialchars($c['name'])); ?>">
+            <td style="color:#6c757d;font-size:12px;">#<?php echo (int)$c['id']; ?></td>
+            <td><strong><?php echo htmlspecialchars($c['name']); ?></strong></td>
+            <td><?php echo htmlspecialchars($c['contact_number'] ?? '—'); ?></td>
+            <td style="font-size:12px;color:#6c757d;"><?php echo htmlspecialchars($c['id_type'] ?? '—'); ?></td>
+            <td>₱<?php echo number_format((float)$c['credit_limit'], 2); ?></td>
+            <?php
+              $enc_remaining = (float)$c['credit_limit'] - (float)$c['balance'];
+              $enc_color = $enc_remaining <= 0 ? '#dc3545' : ($enc_remaining < (float)$c['credit_limit'] * 0.2 ? '#e67e22' : '#28a745');
+            ?>
+            <td style="color:<?php echo $enc_color; ?>;font-weight:700;">
+              ₱<?php echo number_format($enc_remaining, 2); ?>
+            </td>
+            <td><span class="badge-<?php echo $c['status']==='active'?'active':'inactive'; ?>"><?php echo htmlspecialchars($c['status']); ?></span></td>
+          </tr>
+        <?php endforeach; endif; ?>
+        </tbody>
+      </table>
     </div>
-    <?php endif; ?>
   </div>
 </div>
 <?php endif; ?>
 
-<!-- ===== SECTION: UPDATES ===== -->
-<?php if ($section === 'updates'): ?>
+<!-- ===== SECTION: UPDATE CUSTOMER DETAILS ===== -->
+<?php if ($section === 'edit_customer'): ?>
+<style>
+.upd-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+@media(max-width:600px){.upd-form-grid{grid-template-columns:1fr;}}
+.upd-label{display:block;font-size:12px;font-weight:700;color:#6c757d;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;}
+.upd-input{width:100%;padding:9px 12px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;box-sizing:border-box;}
+.upd-input:focus{border-color:#002F70;outline:none;box-shadow:0 0 0 3px rgba(0,47,112,.1);}
+</style>
+
+<?php if (!$edit_customer): ?>
+<!-- Customer picker list -->
 <div class="mgrc-card">
   <div class="mgrc-head">
-    <h2 class="mgrc-title"><i class="fas fa-user-edit"></i> Pending Update Requests</h2>
-    <span style="font-size:13px;color:#6c757d;"><?php echo count($update_requests); ?> pending</span>
+    <h2 class="mgrc-title"><i class="fas fa-user-edit"></i> Update Customer Details</h2>
+    <span style="font-size:13px;color:#6c757d;"><?php echo count($edit_all_customers); ?> customers</span>
   </div>
   <div class="mgrc-body">
-    <div class="mgrc-info-box"><i class="fas fa-info-circle"></i> Staff-submitted edit requests for customer info. Approve to apply the change, or reject to keep the original.</div>
-    <?php if (empty($update_requests)): ?>
-      <div class="mgrc-empty"><i class="fas fa-user-edit"></i><strong>No pending update requests</strong><br><small>All changes have been reviewed.</small></div>
-    <?php else: ?>
+    <p style="color:#6c757d;font-size:13px;margin-bottom:14px;">Select a customer to edit:</p>
+    <input class="mgrc-search" id="editSearch" placeholder="&#128269; Search customers..." oninput="filterRows('editSearch','editTable')">
     <div style="overflow-x:auto;">
-    <table class="mgrc-table">
-      <thead><tr><th>Req #</th><th>Customer</th><th>Field</th><th>Old Value</th><th>New Value</th><th>Requested By</th><th>Date</th><th>Actions</th></tr></thead>
-      <tbody>
-      <?php foreach ($update_requests as $r): ?>
-      <tr>
-        <td style="color:#6c757d;font-size:12px;">#<?php echo (int)$r['id']; ?></td>
-        <td><strong><?php echo htmlspecialchars($r['customer_name'] ?? '—'); ?></strong></td>
-        <td><span style="background:#e0e7ff;color:#3730a3;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700;"><?php echo htmlspecialchars($r['field_name']); ?></span></td>
-        <td style="color:#dc3545;font-size:12px;"><?php echo htmlspecialchars($r['old_value'] ?? '—'); ?></td>
-        <td style="color:#28a745;font-size:12px;font-weight:700;"><?php echo htmlspecialchars($r['new_value'] ?? '—'); ?></td>
-        <td><?php echo htmlspecialchars($r['requested_by_name'] ?? '—'); ?></td>
-        <td style="font-size:12px;color:#6c757d;"><?php echo date('M d, Y', strtotime($r['created_at'])); ?></td>
-        <td style="white-space:nowrap;">
-          <button class="mgrc-btn mgrc-btn-approve" onclick="openModal('update',<?php echo (int)$r['id']; ?>,'<?php echo htmlspecialchars($r['customer_name'] ?? '',ENT_QUOTES); ?>','approved')"><i class="fas fa-check"></i> Approve</button>
-          <button class="mgrc-btn mgrc-btn-reject" style="margin-left:4px;" onclick="openModal('update',<?php echo (int)$r['id']; ?>,'<?php echo htmlspecialchars($r['customer_name'] ?? '',ENT_QUOTES); ?>','rejected')"><i class="fas fa-times"></i> Reject</button>
-        </td>
-      </tr>
-      <?php endforeach; ?>
-      </tbody>
-    </table>
+      <table class="mgrc-table" id="editTable">
+        <thead><tr>
+          <th>ID</th><th>Name</th><th>Contact</th><th>ID Type</th><th>Credit Limit</th><th>Remaining Balance</th><th>Status</th><th>Action</th>
+        </tr></thead>
+        <tbody>
+        <?php if (empty($edit_all_customers)): ?>
+          <tr><td colspan="8" class="mgrc-empty"><i class="fas fa-users"></i>No customers found.</td></tr>
+        <?php else: foreach ($edit_all_customers as $c):
+          $rem = (float)$c['credit_limit'] - (float)$c['balance'];
+          $rem_color = $rem <= 0 ? '#dc3545' : ($rem < (float)$c['credit_limit'] * 0.2 ? '#e67e22' : '#28a745');
+        ?>
+          <tr data-search="<?php echo strtolower(htmlspecialchars($c['name'])); ?>">
+            <td style="color:#6c757d;font-size:12px;">#<?php echo (int)$c['id']; ?></td>
+            <td><strong><?php echo htmlspecialchars($c['name']); ?></strong></td>
+            <td><?php echo htmlspecialchars($c['contact_number'] ?? '—'); ?></td>
+            <td style="font-size:12px;color:#6c757d;"><?php echo htmlspecialchars($c['id_type'] ?? '—'); ?></td>
+            <td>₱<?php echo number_format((float)$c['credit_limit'], 2); ?></td>
+            <td style="color:<?php echo $rem_color; ?>;font-weight:700;">₱<?php echo number_format($rem, 2); ?></td>
+            <td><span class="badge-<?php echo $c['status']==='active'?'active':'inactive'; ?>"><?php echo htmlspecialchars($c['status']); ?></span></td>
+            <td>
+              <a href="manager_customers.php?section=edit_customer&customer_id=<?php echo (int)$c['id']; ?>"
+                 class="mgrc-btn mgrc-btn-view" style="font-size:11px;">
+                <i class="fas fa-edit"></i> Edit
+              </a>
+            </td>
+          </tr>
+        <?php endforeach; endif; ?>
+        </tbody>
+      </table>
     </div>
-    <?php endif; ?>
   </div>
 </div>
+
+<?php else: ?>
+<!-- Edit form for selected customer -->
+<div class="mgrc-card">
+  <div class="mgrc-head">
+    <h2 class="mgrc-title"><i class="fas fa-user-edit"></i> Editing: <?php echo htmlspecialchars($edit_customer['name']); ?></h2>
+    <a href="manager_customers.php?section=edit_customer" class="mgrc-btn" style="background:#6c757d;color:#fff;font-size:12px;">
+      <i class="fas fa-arrow-left"></i> Back to List
+    </a>
+  </div>
+  <div class="mgrc-body">
+    <form method="POST" action="manager_customers.php?section=edit_customer" enctype="multipart/form-data">
+      <input type="hidden" name="action" value="update_customer">
+      <input type="hidden" name="customer_id" value="<?php echo (int)$edit_customer['id']; ?>">
+      <div class="upd-form-grid">
+        <div>
+          <label class="upd-label">Full Name <span style="color:red">*</span></label>
+          <input type="text" name="name" class="upd-input" value="<?php echo htmlspecialchars($edit_customer['name']); ?>" required>
+        </div>
+        <div>
+          <label class="upd-label">Contact Number</label>
+          <input type="text" name="contact" class="upd-input" value="<?php echo htmlspecialchars($edit_customer['contact_number'] ?? ''); ?>">
+        </div>
+        <div>
+          <label class="upd-label">Type of ID</label>
+          <select name="id_type" class="upd-input">
+            <option value="">— Select ID Type —</option>
+            <?php foreach ($gov_id_types as $idt): ?>
+            <option value="<?php echo htmlspecialchars($idt); ?>"
+              <?php echo ($edit_customer['id_type'] ?? '') === $idt ? 'selected' : ''; ?>>
+              <?php echo htmlspecialchars($idt); ?>
+            </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div>
+          <label class="upd-label">Upload Selected ID (Front/Copy)</label>
+          <?php if (!empty($edit_customer['id_image'])): ?>
+          <div style="margin-bottom:6px;font-size:12px;color:#6c757d;">
+            <i class="fas fa-paperclip"></i> Current:
+            <a href="../<?php echo htmlspecialchars($edit_customer['id_image']); ?>" target="_blank" style="color:#002F70;">View uploaded ID</a>
+          </div>
+          <?php endif; ?>
+          <input type="file" name="id_image" class="upd-input" accept="image/*,.pdf" style="padding:6px 10px;">
+          <span style="font-size:11px;color:#9ca3af;margin-top:3px;display:block;">Leave blank to keep existing. JPG, PNG, PDF accepted.</span>
+        </div>
+        <div>
+          <label class="upd-label">Credit Limit (₱)</label>
+          <input type="number" name="credit_limit" class="upd-input" value="<?php echo (float)$edit_customer['credit_limit']; ?>" min="0" step="0.01">
+        </div>
+      </div>
+      <!-- CR / Certificate of Registration -->
+      <div style="margin-top:18px;padding:16px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:8px;">
+        <label class="upd-label" style="font-size:13px;color:#002F70;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+          <i class="fas fa-file-alt"></i> CR / Certificate of Registration
+        </label>
+        <?php if (!empty($edit_customer['cr_image'])): ?>
+        <div style="margin-bottom:6px;font-size:12px;color:#6c757d;">
+          <i class="fas fa-paperclip"></i> Current:
+          <a href="../<?php echo htmlspecialchars($edit_customer['cr_image']); ?>" target="_blank" style="color:#002F70;">View uploaded CR</a>
+        </div>
+        <?php endif; ?>
+        <input type="file" name="cr_image" class="upd-input" accept="image/*,.pdf" style="padding:6px 10px;background:#fff;">
+        <span style="font-size:11px;color:#9ca3af;margin-top:4px;display:block;">Leave blank to keep existing. JPG, PNG, PDF accepted.</span>
+      </div>
+      <div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap;">
+        <button type="submit" class="mgrc-btn mgrc-btn-approve" style="padding:10px 22px;font-size:13px;">
+          <i class="fas fa-save"></i> Save Changes
+        </button>
+        <a href="manager_customers.php?section=edit_customer" class="mgrc-btn" style="background:#6c757d;color:#fff;padding:10px 18px;font-size:13px;text-decoration:none;">
+          <i class="fas fa-times"></i> Cancel
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+<?php endif; ?>
 <?php endif; ?>
 
 <!-- ===== SECTION: BALANCES ===== -->
@@ -501,21 +608,23 @@ include __DIR__ . '/../partials/header.php';
       <?php foreach ($balance_customers as $c):
         $bal = (float)($c['balance'] ?? 0);
         $lim = (float)($c['credit_limit'] ?? 0);
-        $avail_credit = max(0, $lim - $bal);
+        $remaining_credit = $lim - $bal;
+        $avail_credit = max(0, $remaining_credit);
         $pct = $lim > 0 ? min(100, round($bal / $lim * 100)) : 0;
-        $color = $bal <= 0 ? '#28a745' : ($pct >= 80 ? '#dc3545' : '#e67e22');
+        $color = $remaining_credit <= 0 ? '#dc3545' : ($pct >= 80 ? '#e67e22' : '#28a745');
         $st = strtolower($c['status'] ?? 'active');
       ?>
       <div class="mgrc-bal-card" data-name="<?php echo strtolower(htmlspecialchars($c['name'])); ?>">
         <div class="mgrc-bal-name"><?php echo htmlspecialchars($c['name']); ?></div>
+        <div style="font-size:11px;color:#6c757d;margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px;">Remaining Balance</div>
         <div class="mgrc-bal-amount" style="color:<?php echo $color; ?>">
-          &#8369;<?php echo number_format($bal, 2); ?>
+          &#8369;<?php echo number_format($avail_credit, 2); ?>
         </div>
-        <div style="background:#e9ecef;border-radius:4px;height:6px;margin-bottom:10px;">
+        <div style="background:#e9ecef;border-radius:4px;height:6px;margin-bottom:10px;" title="<?php echo $pct; ?>% used">
           <div style="background:<?php echo $color; ?>;height:6px;border-radius:4px;width:<?php echo $pct; ?>%;transition:width .4s;"></div>
         </div>
         <div class="mgrc-bal-detail"><span>Credit Limit</span><span>&#8369;<?php echo number_format($lim,2); ?></span></div>
-        <div class="mgrc-bal-detail"><span>Available Credit</span><span>&#8369;<?php echo number_format($avail_credit,2); ?></span></div>
+        <div class="mgrc-bal-detail"><span>Amount Used</span><span style="color:<?php echo $bal>0?'#dc3545':'#6c757d'; ?>">&#8369;<?php echo number_format($bal,2); ?></span></div>
         <div class="mgrc-bal-detail"><span>Contact</span><span><?php echo htmlspecialchars($c['contact_number']); ?></span></div>
         <div class="mgrc-bal-detail"><span>Status</span><span><span class="badge-<?php echo $st; ?>"><?php echo ucfirst($st); ?></span></span></div>
         <div style="margin-top:10px;">
@@ -523,335 +632,6 @@ include __DIR__ . '/../partials/header.php';
         </div>
       </div>
       <?php endforeach; ?>
-    </div>
-    <?php endif; ?>
-  </div>
-</div>
-<?php endif; ?>
-
-<!-- ===== SECTION: TRANSACTIONS ===== -->
-<?php if ($section === 'transactions'): ?>
-<div class="mgrc-card">
-  <div class="mgrc-head">
-    <h2 class="mgrc-title"><i class="fas fa-receipt"></i> Transaction Oversight</h2>
-  </div>
-  <div class="mgrc-body">
-    <form method="GET" action="manager_customers.php" style="margin-bottom:20px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
-      <input type="hidden" name="section" value="transactions">
-      <div>
-        <label style="display:block;font-size:12px;font-weight:700;color:#6c757d;text-transform:uppercase;margin-bottom:5px;">Select Customer</label>
-        <select name="customer_id" class="cust-sel">
-          <option value="">— Select a customer —</option>
-          <?php foreach ($txn_customers as $c): ?>
-          <option value="<?php echo (int)$c['id']; ?>" <?php echo $txn_customer_id==(int)$c['id']?'selected':''; ?>>
-            #<?php echo (int)$c['id']; ?> — <?php echo htmlspecialchars($c['name']); ?>
-          </option>
-          <?php endforeach; ?>
-        </select>
-      </div>
-      <button type="submit" class="mgrc-btn mgrc-btn-view"><i class="fas fa-search"></i> View</button>
-    </form>
-
-    <?php if ($txn_customer_id): ?>
-    <div class="mgrc-section-head"><i class="fas fa-wrench"></i> Job Orders</div>
-    <?php if (empty($job_orders_linked)): ?>
-      <div class="mgrc-empty"><i class="fas fa-wrench"></i>No job orders for this customer.</div>
-    <?php else: ?>
-    <div style="overflow-x:auto;margin-bottom:24px;">
-    <table class="mgrc-table">
-      <thead><tr><th>JO Ref</th><th>Service</th><th>Payment Method</th><th>Amount</th><th>Date</th><th>Status</th></tr></thead>
-      <tbody>
-      <?php foreach ($job_orders_linked as $j):
-        $st = strtolower($j['status'] ?? '');
-        $bc = $st==='completed'?'approved':($st==='rejected'?'rejected':'pending');
-      ?>
-      <tr>
-        <td><strong style="color:#002F70;"><?php echo htmlspecialchars($j['jo_ref']); ?></strong></td>
-        <td><?php echo htmlspecialchars($j['service']); ?></td>
-        <td><?php echo htmlspecialchars($j['payment_method'] ?? '—'); ?></td>
-        <td>&#8369;<?php echo number_format((float)$j['amount'],2); ?></td>
-        <td style="font-size:12px;color:#6c757d;"><?php echo date('M d, Y',strtotime($j['created_at'])); ?></td>
-        <td><span class="badge-<?php echo $bc; ?>"><?php echo htmlspecialchars($j['status'] ?? '—'); ?></span></td>
-      </tr>
-      <?php endforeach; ?>
-      </tbody>
-    </table>
-    </div>
-    <?php endif; ?>
-
-    <div class="mgrc-section-head"><i class="fas fa-shopping-cart"></i> Merchandise Transactions</div>
-    <?php if (empty($merch_linked)): ?>
-      <div class="mgrc-empty"><i class="fas fa-shopping-cart"></i>No merchandise transactions for this customer.</div>
-    <?php else: ?>
-    <div style="overflow-x:auto;">
-    <table class="mgrc-table">
-      <thead><tr><th>#</th><th>Customer</th><th>Amount</th><th>Payment Method</th><th>Date</th></tr></thead>
-      <tbody>
-      <?php foreach ($merch_linked as $mt): ?>
-      <tr>
-        <td style="color:#6c757d;font-size:12px;">#<?php echo (int)$mt['id']; ?></td>
-        <td><?php echo htmlspecialchars($mt['customer_name'] ?? '—'); ?></td>
-        <td style="color:#065f46;font-weight:700;">&#8369;<?php echo number_format((float)$mt['total_amount'],2); ?></td>
-        <td><?php echo htmlspecialchars($mt['payment_method'] ?? '—'); ?></td>
-        <td style="font-size:12px;color:#6c757d;"><?php echo date('M d, Y',strtotime($mt['txn_date'])); ?></td>
-      </tr>
-      <?php endforeach; ?>
-      </tbody>
-    </table>
-    </div>
-    <?php endif; ?>
-    <?php else: ?>
-      <div class="mgrc-empty"><i class="fas fa-hand-pointer"></i>Select a customer above to view their transactions.</div>
-    <?php endif; ?>
-  </div>
-</div>
-<?php endif; ?>
-
-<!-- ===== SECTION: CUSTOMER HISTORY (Manager) ===== -->
-<?php if ($section === 'history'): ?>
-<style>
-.ch-filter-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:18px;}
-.ch-filter-bar .ch-field{display:flex;flex-direction:column;gap:4px;}
-.ch-filter-bar label{font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;letter-spacing:.4px;}
-.ch-filter-bar select,.ch-filter-bar input{padding:8px 12px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;min-width:150px;}
-.ch-info-bar{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px;}
-.ch-info-pill{background:#f0f4ff;border:1px solid #c7d7f9;border-radius:8px;padding:10px 16px;display:flex;flex-direction:column;gap:2px;min-width:140px;}
-.ch-info-pill .pill-label{font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;letter-spacing:.4px;}
-.ch-info-pill .pill-value{font-size:16px;font-weight:800;color:#002F70;}
-.ch-info-pill.danger .pill-value{color:#dc3545;}
-.ch-info-pill.success .pill-value{color:#16a34a;}
-.ch-table-wrap{overflow-x:auto;}
-.ch-table{width:100%;border-collapse:collapse;font-size:13px;}
-.ch-table th{background:#f8f9fa;padding:10px 12px;text-align:left;font-weight:700;color:#495057;border-bottom:2px solid #dee2e6;white-space:nowrap;}
-.ch-table td{padding:10px 12px;border-bottom:1px solid #f0f0f0;vertical-align:middle;}
-.ch-table tr:hover td{background:#fafbff;}
-.ch-badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;}
-.ch-badge-jo{background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;}
-.ch-badge-merch{background:#f0fdf4;color:#15803d;border:1px solid #86efac;}
-.ch-badge-paid{background:#d1fae5;color:#065f46;}
-.ch-badge-unpaid{background:#fee2e2;color:#991b1b;}
-.ch-badge-partial{background:#fef3c7;color:#92400e;}
-.ch-badge-pending{background:#f1f5f9;color:#475569;}
-.ch-badge-approved{background:#d1fae5;color:#065f46;}
-.ch-badge-rejected{background:#fee2e2;color:#991b1b;}
-.ch-empty{text-align:center;padding:40px;color:#9ca3af;}
-.ch-empty i{font-size:2rem;display:block;margin-bottom:8px;}
-.ch-select-prompt{text-align:center;padding:48px 20px;color:#9ca3af;}
-.ch-select-prompt i{font-size:2.5rem;display:block;margin-bottom:12px;color:#c7d7f9;}
-</style>
-<div class="mgrc-card">
-  <div class="mgrc-head">
-    <h2 class="mgrc-title"><i class="fas fa-history"></i> Customer History</h2>
-    <?php if ($hist_customer_info): ?>
-    <span style="font-size:13px;color:#6c757d;"><?= count($hist_records) ?> record<?= count($hist_records) !== 1 ? 's' : '' ?></span>
-    <?php endif; ?>
-  </div>
-  <div class="mgrc-body">
-
-    <form method="GET" action="manager_customers.php">
-      <input type="hidden" name="section" value="history">
-      <div class="ch-filter-bar">
-        <div class="ch-field" style="flex:1;min-width:200px;">
-          <label>Select Customer</label>
-          <select name="cust_id" onchange="this.form.submit()" style="min-width:220px;">
-            <option value="">— Choose a customer —</option>
-            <?php foreach ($hist_customers as $hc): ?>
-            <option value="<?= (int)$hc['id'] ?>" <?= $hist_selected_id === (int)$hc['id'] ? 'selected' : '' ?>>
-              <?= htmlspecialchars($hc['name']) ?>
-              <?php if ((float)$hc['balance'] > 0): ?> · ₱<?= number_format((float)$hc['balance'], 2) ?> balance<?php endif; ?>
-            </option>
-            <?php endforeach; ?>
-          </select>
-        </div>
-        <?php if ($hist_selected_id): ?>
-        <div class="ch-field">
-          <label>Type</label>
-          <select name="hist_type">
-            <option value="" <?= $hist_filter_type === '' ? 'selected' : '' ?>>All Types</option>
-            <option value="job_order"   <?= $hist_filter_type === 'job_order'   ? 'selected' : '' ?>>Job Order Only</option>
-            <option value="merchandise" <?= $hist_filter_type === 'merchandise' ? 'selected' : '' ?>>Merchandise Only</option>
-          </select>
-        </div>
-        <div class="ch-field">
-          <label>Payment Status</label>
-          <select name="hist_status">
-            <option value="" <?= $hist_filter_status === '' ? 'selected' : '' ?>>All Statuses</option>
-            <option value="Paid"    <?= $hist_filter_status === 'Paid'    ? 'selected' : '' ?>>Paid</option>
-            <option value="Unpaid"  <?= $hist_filter_status === 'Unpaid'  ? 'selected' : '' ?>>Unpaid</option>
-            <option value="Partial" <?= $hist_filter_status === 'Partial' ? 'selected' : '' ?>>Partial</option>
-          </select>
-        </div>
-        <div class="ch-field">
-          <label>Date</label>
-          <input type="date" name="hist_date" value="<?= htmlspecialchars($hist_filter_date) ?>">
-        </div>
-        <div class="ch-field" style="justify-content:flex-end;">
-          <label>&nbsp;</label>
-          <div style="display:flex;gap:6px;">
-            <button type="submit" style="padding:8px 16px;background:#002F70;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">
-              <i class="fas fa-filter"></i> Filter
-            </button>
-            <a href="manager_customers.php?section=history&cust_id=<?= $hist_selected_id ?>"
-               style="padding:8px 14px;background:#f1f5f9;color:#475569;border:1px solid #dee2e6;border-radius:6px;font-size:13px;text-decoration:none;">
-              <i class="fas fa-times"></i>
-            </a>
-          </div>
-        </div>
-        <?php endif; ?>
-      </div>
-    </form>
-
-    <?php if (!$hist_selected_id): ?>
-    <div class="ch-select-prompt">
-      <i class="fas fa-user-clock"></i>
-      <p>Select a customer above to view their full transaction history.</p>
-    </div>
-    <?php else: ?>
-
-    <?php if ($hist_customer_info): ?>
-    <?php
-      $ci_balance   = (float)$hist_customer_info['balance'];
-      $ci_limit     = (float)$hist_customer_info['credit_limit'];
-      $ci_available = $ci_limit - $ci_balance;
-      $ci_unpaid_count = count(array_filter($hist_records, fn($r) => $r['payment_status'] === 'Unpaid'));
-    ?>
-    <div class="ch-info-bar">
-      <div class="ch-info-pill">
-        <span class="pill-label">Customer</span>
-        <span class="pill-value" style="font-size:14px;"><?= htmlspecialchars($hist_customer_info['name']) ?></span>
-      </div>
-      <div class="ch-info-pill <?= $ci_balance > 0 ? 'danger' : 'success' ?>">
-        <span class="pill-label">Outstanding Balance</span>
-        <span class="pill-value">₱<?= number_format($ci_balance, 2) ?></span>
-      </div>
-      <div class="ch-info-pill">
-        <span class="pill-label">Credit Limit</span>
-        <span class="pill-value">₱<?= number_format($ci_limit, 2) ?></span>
-      </div>
-      <div class="ch-info-pill <?= $ci_available < 0 ? 'danger' : '' ?>">
-        <span class="pill-label">Available Credit</span>
-        <span class="pill-value">₱<?= number_format($ci_available, 2) ?></span>
-      </div>
-      <div class="ch-info-pill">
-        <span class="pill-label">Total Transactions</span>
-        <span class="pill-value"><?= count($hist_records) ?></span>
-      </div>
-      <?php if ($ci_unpaid_count > 0): ?>
-      <div class="ch-info-pill danger">
-        <span class="pill-label">Unpaid Transactions</span>
-        <span class="pill-value"><?= $ci_unpaid_count ?></span>
-      </div>
-      <?php endif; ?>
-    </div>
-    <?php endif; ?>
-
-    <?php if (empty($hist_records)): ?>
-    <div class="ch-empty">
-      <i class="fas fa-receipt"></i>
-      No records found<?= ($hist_filter_type || $hist_filter_status || $hist_filter_date) ? ' for the selected filters.' : ' for this customer.' ?>
-    </div>
-    <?php else: ?>
-    <div class="ch-table-wrap">
-      <table class="ch-table">
-        <thead>
-          <tr>
-            <th>#</th><th>Reference</th><th>Type</th><th>Service / Items</th>
-            <th>Vehicle</th><th style="text-align:right;">Total</th>
-            <th>Payment</th><th>Pay Status</th><th>Txn Status</th><th>Date</th>
-          </tr>
-        </thead>
-        <tbody>
-        <?php foreach ($hist_records as $idx => $hr):
-          $ps = $hr['payment_status'];
-          $ps_class = match($ps) { 'Paid' => 'ch-badge-paid', 'Partial' => 'ch-badge-partial', default => 'ch-badge-unpaid' };
-          $ts = strtolower($hr['txn_status'] ?? '');
-          $ts_class = match(true) {
-            str_contains($ts,'approved')||str_contains($ts,'completed')||str_contains($ts,'verified') => 'ch-badge-approved',
-            str_contains($ts,'rejected')||str_contains($ts,'cancelled') => 'ch-badge-rejected',
-            default => 'ch-badge-pending',
-          };
-          $is_jo = $hr['record_type'] === 'job_order';
-          $svc_text = $is_jo
-            ? htmlspecialchars($hr['service_label'] ?: '—')
-            : ($hr['merch_items_summary'] ?: htmlspecialchars($hr['service_label'] ?: '—'));
-        ?>
-        <tr>
-          <td style="color:#9ca3af;font-size:11px;"><?= count($hist_records) - $idx ?></td>
-          <td><span style="font-family:monospace;font-size:11px;font-weight:700;color:#002F70;"><?= htmlspecialchars($hr['ref_number']) ?></span></td>
-          <td>
-            <span class="ch-badge <?= $is_jo ? 'ch-badge-jo' : 'ch-badge-merch' ?>">
-              <i class="fas <?= $is_jo ? 'fa-tools' : 'fa-shopping-cart' ?>" style="margin-right:3px;"></i>
-              <?= $is_jo ? 'Job Order' : 'Merchandise' ?>
-            </span>
-          </td>
-          <td style="max-width:220px;font-size:12px;color:#374151;"><?= $svc_text ?></td>
-          <td style="font-size:12px;color:#6c757d;"><?= $hr['vehicle_plate'] ? htmlspecialchars($hr['vehicle_plate']) : '—' ?></td>
-          <td style="text-align:right;font-weight:700;color:#002F70;white-space:nowrap;">₱<?= number_format((float)$hr['total_amount'], 2) ?></td>
-          <td style="font-size:12px;color:#6c757d;"><?= htmlspecialchars($hr['payment_method'] ?: '—') ?></td>
-          <td>
-            <span class="ch-badge <?= $ps_class ?>">
-              <?php if ($ps==='Paid'): ?><i class="fas fa-check-circle" style="margin-right:3px;"></i>
-              <?php elseif ($ps==='Partial'): ?><i class="fas fa-adjust" style="margin-right:3px;"></i>
-              <?php else: ?><i class="fas fa-clock" style="margin-right:3px;"></i><?php endif; ?>
-              <?= $ps ?>
-            </span>
-          </td>
-          <td><span class="ch-badge <?= $ts_class ?>"><?= htmlspecialchars(ucfirst($hr['txn_status'] ?? 'Pending')) ?></span></td>
-          <td style="font-size:11px;color:#6c757d;white-space:nowrap;">
-            <?= date('M j, Y', strtotime($hr['txn_date'])) ?><br>
-            <span style="color:#9ca3af;"><?= date('h:i A', strtotime($hr['txn_date'])) ?></span>
-          </td>
-        </tr>
-        <?php endforeach; ?>
-        </tbody>
-      </table>
-    </div>
-    <div style="display:flex;justify-content:flex-end;padding:12px 4px 0;gap:24px;font-size:13px;border-top:1px solid #f0f0f0;margin-top:4px;">
-      <span style="color:#6c757d;"><?= count($hist_records) ?> record<?= count($hist_records) !== 1 ? 's' : '' ?></span>
-      <span style="font-weight:700;color:#002F70;">Total: ₱<?= number_format(array_sum(array_column($hist_records, 'total_amount')), 2) ?></span>
-    </div>
-    <?php endif; ?>
-    <?php endif; // end $hist_selected_id ?>
-  </div>
-</div>
-<?php endif; // end section === 'history' ?>
-
-<!-- ===== SECTION: TRANSPARENCY ===== -->
-<?php if ($section === 'transparency'): ?>
-<div class="mgrc-card">
-  <div class="mgrc-head">
-    <h2 class="mgrc-title"><i class="fas fa-eye"></i> Customer Credit Transparency</h2>
-    <span style="font-size:13px;color:#6c757d;">Full credit history &amp; linkage</span>
-  </div>
-  <div class="mgrc-body">
-    <input class="mgrc-search" id="transSearch" placeholder="Search customers..." oninput="filterRows('transSearch','transTable')">
-    <?php if (empty($transparency_data)): ?>
-      <div class="mgrc-empty"><i class="fas fa-check-circle" style="color:#28a745;"></i><strong>No customers with outstanding balances.</strong></div>
-    <?php else: ?>
-    <div style="overflow-x:auto;">
-    <table class="mgrc-table" id="transTable">
-      <thead><tr><th>Customer</th><th>Contact</th><th>Balance</th><th>Credit Limit</th><th>Utang Txns</th><th>Total Utang</th><th>Status</th><th>Actions</th></tr></thead>
-      <tbody>
-      <?php foreach ($transparency_data as $c):
-        $bal = (float)($c['balance'] ?? 0);
-        $lim = (float)($c['credit_limit'] ?? 0);
-        $st  = strtolower($c['status'] ?? 'active');
-      ?>
-      <tr data-search="<?php echo strtolower(htmlspecialchars($c['name'])); ?>">
-        <td><strong><?php echo htmlspecialchars($c['name']); ?></strong></td>
-        <td style="font-size:12px;"><?php echo htmlspecialchars($c['contact_number']); ?></td>
-        <td style="font-weight:700;color:<?php echo $bal>0?'#dc3545':'#28a745'; ?>;">&#8369;<?php echo number_format($bal,2); ?></td>
-        <td>&#8369;<?php echo number_format($lim,2); ?></td>
-        <td style="text-align:center;"><?php echo (int)$c['utang_count']; ?></td>
-        <td style="font-weight:700;color:#dc3545;">&#8369;<?php echo number_format((float)$c['total_utang'],2); ?></td>
-        <td><span class="badge-<?php echo $st; ?>"><?php echo ucfirst($st); ?></span></td>
-        <td>
-          <a href="manager_customers.php?section=transactions&customer_id=<?php echo (int)$c['id']; ?>" class="mgrc-btn mgrc-btn-view" style="font-size:11px;"><i class="fas fa-receipt"></i> Transactions</a>
-        </td>
-      </tr>
-      <?php endforeach; ?>
-      </tbody>
-    </table>
     </div>
     <?php endif; ?>
   </div>

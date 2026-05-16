@@ -134,6 +134,15 @@ try {
                     "{$fuel_type}: Present={$present}, Prev={$previous}, Calib={$calibration}, Liters={$liters_sold}");
             } catch (Exception $e) {}
 
+            // ── Audit log ──
+            try {
+                $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+                $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                $detail = "Fuel reading encoded | {$fuel_type} | Present: {$present} | Prev: {$previous} | Liters sold: {$liters_sold} L | Total: ₱" . number_format($total_amount, 2) . " | Shift: {$shift_period}";
+                $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'transaction', 'Create', ?, 'fuel_readings', ?, 'Success', ?, ?, NOW())")
+                    ->execute([$me['id'], $detail, $insert_id, $ip, $ua]);
+            } catch (Exception $e) {}
+
             respond(true, 'Reading submitted. Pending manager approval.', [
                 'transaction_id' => $txn_id,
                 'liters_sold'    => $liters_sold,
@@ -219,6 +228,16 @@ try {
 
             log_activity($pdo, $me['id'], "Fuel Reading {$new_status}",
                 "TXN {$txn_id} | {$txn['fuel_type']} | {$txn['liters_sold']} L");
+
+            // ── Audit log ──
+            try {
+                $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+                $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                $action_type = $new_status === 'Approved' ? 'Approve' : 'Reject';
+                $detail = "Fuel reading {$new_status} | TXN: {$txn_id} | {$txn['fuel_type']} | {$txn['liters_sold']} L" . ($reject_reason ? " | Reason: {$reject_reason}" : '');
+                $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'transaction', ?, ?, 'fuel_readings', ?, 'Success', ?, ?, NOW())")
+                    ->execute([$me['id'], $action_type, $detail, $txn['id'] ?? null, $ip, $ua]);
+            } catch (Exception $e) {}
 
             respond(true, "Reading {$new_status}.");
 

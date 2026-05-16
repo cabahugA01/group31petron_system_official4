@@ -108,7 +108,17 @@ try {
             $stmt->execute([$username, $hashed_password, $full_name, $email, $phone_number, $assigned_station, $status]);
             
             log_user_action('Create Station Admin', "Created admin '$username' for station '$station_name'");
-            
+
+            // ── Audit log ──
+            try {
+                $new_uid = (int)$pdo->lastInsertId();
+                $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+                $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                $detail = "Station admin created | Username: {$username} | Name: {$full_name} | Station: {$station_name}";
+                $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'user', 'Create', ?, 'users', ?, 'Success', ?, ?, NOW())")
+                    ->execute([current_user()['id'] ?? null, $detail, $new_uid, $ip, $ua]);
+            } catch (Exception $e) {}
+
             $response['success'] = true;
             $response['message'] = "Station Admin created successfully! Default password: $default_password";
             break;
@@ -262,7 +272,17 @@ try {
             $stmt->execute([$new_status, $user_id]);
             
             log_user_action('User Status Change', "Changed user '$userInfo[username]' status from '$userInfo[status]' to '$new_status'. Reason: $reason");
-            
+
+            // ── Audit log ──
+            try {
+                $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+                $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                $cu = current_user();
+                $detail = "User status changed | Username: {$userInfo['username']} | {$userInfo['status']} → {$new_status} | Reason: {$reason}";
+                $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'user', 'Update', ?, 'users', ?, 'Success', ?, ?, NOW())")
+                    ->execute([$cu['id'] ?? null, $detail, $user_id, $ip, $ua]);
+            } catch (Exception $e) {}
+
             $response['success'] = true;
             $response['message'] = "User status updated successfully";
             break;

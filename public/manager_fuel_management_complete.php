@@ -116,6 +116,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 log_activity($pdo, $me['id'], 'Validate Transaction', "Transaction #{$reading_id} {$status}. Variance: {$variance_liters} L. Notes: {$notes}");
                 $pdo->commit();
 
+                // ── Audit log ──
+                try {
+                    $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+                    $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                    $action_type = $status === 'verified' ? 'Approve' : 'Reject';
+                    $detail = "Fuel transaction {$status} | TXN: #{$reading_id} | {$transaction['fuel_type']} | {$transaction['liters_sold']} L | Variance: {$variance_liters} L | Notes: {$notes}";
+                    $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'transaction', ?, ?, 'fuel_readings', ?, 'Success', ?, ?, NOW())")
+                        ->execute([$me['id'], $action_type, $detail, $transaction['id'] ?? null, $ip, $ua]);
+                } catch (Exception $e) {}
+
                 if ($status === 'verified') {
                     $_SESSION['success'] = "Transaction approved successfully. Entry saved to Daily Sales Summary.";
                 } else {
