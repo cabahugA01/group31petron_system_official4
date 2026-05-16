@@ -253,40 +253,104 @@ if (isset($_GET['refresh_charts']) && $_GET['refresh_charts'] == '1') {
 }
 
 // ============================================================
-// AJAX ENDPOINT: ?refresh_fuel=1  — live tank levels for fuel widget
+// AJAX ENDPOINT: ?refresh_stock_charts=1  — stock chart data for dashboard
 // ============================================================
-if (isset($_GET['refresh_fuel']) && $_GET['refresh_fuel'] == '1') {
+if (isset($_GET['refresh_stock_charts']) && $_GET['refresh_stock_charts'] == '1') {
     header('Content-Type: application/json');
     try {
+        // Fuel: only Critical (<=10% fill) and Low Stock (<=25% fill) — exclude Normal
         $fsl = $pdo->prepare("
             SELECT COALESCE(ft.name, fi.fuel_type) AS fuel_type_name,
                    COALESCE(fi.current_level, fi.current_stock, 0) AS current_stock,
-                   COALESCE(fi.capacity, 0)         AS capacity,
-                   COALESCE(fi.price_per_liter, 0)  AS price_per_liter
+                   COALESCE(fi.capacity, 0) AS capacity,
+                   fi.id AS fuel_inv_id,
+                   CASE
+                       WHEN COALESCE(fi.current_level, fi.current_stock, 0) <= 0 THEN 'Out of Stock'
+                       WHEN COALESCE(fi.capacity, 0) > 0
+                            AND (COALESCE(fi.current_level, fi.current_stock, 0) / COALESCE(fi.capacity, 0)) * 100 <= 10 THEN 'Critical'
+                       ELSE 'Low Stock'
+                   END AS stock_status
             FROM fuel_inventory fi
             LEFT JOIN fuel_types ft ON fi.fuel_type_id = ft.id
             WHERE fi.station_id = ?
-            ORDER BY fuel_type_name ASC
+              AND (
+                  COALESCE(fi.current_level, fi.current_stock, 0) <= 0
+                  OR (
+                      COALESCE(fi.capacity, 0) > 0
+                      AND (COALESCE(fi.current_level, fi.current_stock, 0) / COALESCE(fi.capacity, 0)) * 100 <= 25
+                  )
+              )
+            ORDER BY current_stock ASC
         ");
         $fsl->execute([$station_id]);
-        $levels = $fsl->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $fuel_levels = $fsl->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-        // Pending deliveries count
-        $pd = $pdo->prepare("SELECT COUNT(*) FROM fuel_deliveries WHERE station_id = ? AND LOWER(status) IN ('pending','pending review')");
-        $pd->execute([$station_id]);
-        $pending_deliveries = (int)$pd->fetchColumn();
+        // Merchandise: ONLY out of stock and low stock items
+        $merch_data = [];
+        try {
+            $msi = $pdo->prepare("
+                SELECT COALESCE(si.product_name, ip.product_name, CONCAT('Product #', si.product_id)) AS product_name,
+                       si.stock_level AS current_stock,
+                       COALESCE(si.reorder_level, 10) AS threshold,
+                       si.id AS inv_id,
+                       si.product_id,
+                       COALESCE(ip.category, 'Merchandise') AS category,
+                       COALESCE(si.unit, ip.size, 'pcs') AS unit,
+                       CASE
+                           WHEN si.stock_level <= 0 THEN 'Out of Stock'
+                           ELSE 'Low Stock'
+                       END AS stock_status
+                FROM station_inventory si
+                LEFT JOIN inventory_products ip ON ip.id = si.product_id
+                WHERE si.station_id = ? AND si.status = 'active'
+                  AND (si.product_name IS NOT NULL AND si.product_name != '')
+                  AND si.stock_level <= COALESCE(si.reorder_level, 10)
+                ORDER BY si.stock_level ASC
+                LIMIT 25
+            ");
+            $msi->execute([$station_id]);
+            $merch_data = $msi->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (Exception $e) {}
+
+        // Fallback to inventory table if station_inventory is empty
+        if (empty($merch_data)) {
+            try {
+                $msi2 = $pdo->prepare("
+                    SELECT COALESCE(ip.product_name, CONCAT('Product #', i.product_id)) AS product_name,
+                           i.stock_level AS current_stock,
+                           COALESCE(i.reorder_level, 10) AS threshold,
+                           i.id AS inv_id,
+                           i.product_id,
+                           COALESCE(ip.category, 'Merchandise') AS category,
+                           COALESCE(i.unit, 'pcs') AS unit,
+                           CASE
+                               WHEN i.stock_level <= 0 THEN 'Out of Stock'
+                               ELSE 'Low Stock'
+                           END AS stock_status
+                    FROM inventory i
+                    LEFT JOIN inventory_products ip ON ip.id = i.product_id
+                    WHERE i.station_id = ?
+                      AND i.stock_level <= COALESCE(i.reorder_level, 10)
+                    ORDER BY i.stock_level ASC
+                    LIMIT 25
+                ");
+                $msi2->execute([$station_id]);
+                $merch_data = $msi2->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            } catch (Exception $e) {}
+        }
 
         echo json_encode([
-            'success'            => true,
-            'fuel_levels'        => $levels,
-            'pending_deliveries' => $pending_deliveries,
-            'refreshed_at'       => date('H:i:s'),
+            'success'      => true,
+            'fuel_stocks'  => $fuel_levels,
+            'merch_stocks' => $merch_data,
+            'station_id'   => $station_id,
         ]);
     } catch (Exception $e) {
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
     }
     exit;
 }
+
 
 // ============================================================
 // PHP DATA QUERIES
@@ -345,12 +409,146 @@ try {
     $fuel_by_type = $fs->fetchAll(PDO::FETCH_ASSOC) ?: [];
 } catch (Exception $e) {}
 
+// Sales Performance: 7-day trend data for charts
+$sales_trend_labels  = [];
+$sales_trend_fuel    = [];
+$sales_trend_merch   = [];
+$sales_trend_liters  = [];
+try {
+    // Generate last 7 days labels
+    for ($i = 6; $i >= 0; $i--) {
+        $sales_trend_labels[] = date('M j', strtotime("-$i days"));
+    }
+    // Fuel daily revenue + liters (last 7 days, no liters_sold filter so zero days still show)
+    $ft7 = $pdo->prepare("
+        SELECT DATE(transaction_date) AS d,
+               COALESCE(SUM(total_amount),0) AS revenue,
+               COALESCE(SUM(liters_sold),0)  AS liters
+        FROM fuel_transactions
+        WHERE station_id = ? AND transaction_date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+        GROUP BY DATE(transaction_date)
+    ");
+    $ft7->execute([$station_id]);
+    $fuel_daily = [];
+    foreach ($ft7->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $fuel_daily[$row['d']] = ['revenue' => (float)$row['revenue'], 'liters' => (float)$row['liters']];
+    }
+    // If no fuel data in last 7 days, try last 30 days and pick last 7 active days
+    if (empty(array_filter($fuel_daily, fn($d) => $d['revenue'] > 0))) {
+        $ft30 = $pdo->prepare("
+            SELECT DATE(transaction_date) AS d,
+                   COALESCE(SUM(total_amount),0) AS revenue,
+                   COALESCE(SUM(liters_sold),0)  AS liters
+            FROM fuel_transactions
+            WHERE station_id = ? AND total_amount > 0
+            GROUP BY DATE(transaction_date)
+            ORDER BY d DESC LIMIT 7
+        ");
+        $ft30->execute([$station_id]);
+        $rows30 = array_reverse($ft30->fetchAll(PDO::FETCH_ASSOC));
+        if (!empty($rows30)) {
+            $sales_trend_labels = [];
+            $fuel_daily = [];
+            foreach ($rows30 as $row) {
+                $label = date('M j', strtotime($row['d']));
+                $sales_trend_labels[] = $label;
+                $fuel_daily[$row['d']] = ['revenue' => (float)$row['revenue'], 'liters' => (float)$row['liters']];
+            }
+        }
+    }
+    // Merchandise daily revenue (direct sales + job order parts)
+    $mt7 = $pdo->prepare("
+        SELECT DATE(COALESCE(NULLIF(transaction_date,'0000-00-00 00:00:00'), created_at)) AS d,
+               COALESCE(SUM(total_amount),0) AS revenue
+        FROM merchandise_transactions
+        WHERE station_id = ?
+          AND COALESCE(NULLIF(transaction_date,'0000-00-00 00:00:00'), created_at) >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+        GROUP BY d
+    ");
+    $mt7->execute([$station_id]);
+    $merch_daily = [];
+    foreach ($mt7->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $merch_daily[$row['d']] = (float)$row['revenue'];
+    }
+    // Job order parts/service revenue — add to merch
+    try {
+        $jt7 = $pdo->prepare("
+            SELECT DATE(created_at) AS d,
+                   COALESCE(SUM(total_cost),0) AS revenue
+            FROM job_orders
+            WHERE station_id = ? AND status = 'Completed'
+              AND created_at >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+              AND total_cost > 0
+            GROUP BY d
+        ");
+        $jt7->execute([$station_id]);
+        foreach ($jt7->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $merch_daily[$row['d']] = ($merch_daily[$row['d']] ?? 0) + (float)$row['revenue'];
+        }
+    } catch (Exception $e) {}
+    // If merch also empty in last 7 days, extend to last 30 days
+    if (empty(array_filter($merch_daily, fn($v) => $v > 0))) {
+        $mt30 = $pdo->prepare("
+            SELECT DATE(COALESCE(NULLIF(transaction_date,'0000-00-00 00:00:00'), created_at)) AS d,
+                   COALESCE(SUM(total_amount),0) AS revenue
+            FROM merchandise_transactions
+            WHERE station_id = ? AND total_amount > 0
+            GROUP BY d ORDER BY d DESC LIMIT 7
+        ");
+        $mt30->execute([$station_id]);
+        $mrows30 = array_reverse($mt30->fetchAll(PDO::FETCH_ASSOC));
+        if (!empty($mrows30)) {
+            $merch_daily = [];
+            foreach ($mrows30 as $row) {
+                $merch_daily[$row['d']] = (float)$row['revenue'];
+            }
+        }
+    }
+    // Build all_dates as a union of fuel and merch dates, take the last 7
+    $combined_dates = array_unique(array_merge(
+        array_keys($fuel_daily),
+        array_keys($merch_daily)
+    ));
+    sort($combined_dates);
+    $combined_dates = array_slice($combined_dates, -7);
+    // If we have combined dates, use them; otherwise fall back to last 7 calendar days
+    if (!empty($combined_dates)) {
+        $all_dates = $combined_dates;
+        $sales_trend_labels = array_map(fn($d) => date('M j', strtotime($d)), $all_dates);
+    } else {
+        $all_dates = [];
+        $sales_trend_labels = [];
+        for ($i = 6; $i >= 0; $i--) {
+            $d = date('Y-m-d', strtotime("-$i days"));
+            $all_dates[] = $d;
+            $sales_trend_labels[] = date('M j', strtotime($d));
+        }
+    }
+    // Build final aligned arrays
+    $sales_trend_fuel   = [];
+    $sales_trend_liters = [];
+    $sales_trend_merch  = [];
+    foreach ($all_dates as $day) {
+        $sales_trend_fuel[]   = $fuel_daily[$day]['revenue']  ?? 0;
+        $sales_trend_liters[] = $fuel_daily[$day]['liters']   ?? 0;
+        $sales_trend_merch[]  = $merch_daily[$day]            ?? 0;
+    }
+} catch (Exception $e) {
+    // fallback: empty 7-day arrays
+    for ($i = 6; $i >= 0; $i--) {
+        $sales_trend_labels[] = date('M j', strtotime("-$i days"));
+        $sales_trend_fuel[]   = 0;
+        $sales_trend_liters[] = 0;
+        $sales_trend_merch[]  = 0;
+    }
+}
+
 // Widget 3: Job order status counts + detail rows
 $pending_validation = 0; $approved_validated = 0; $in_progress = 0; $completed = 0; $rejected = 0;
 $job_order_rows = [];
 try {
-    $pv = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id=? AND status='Pending Validation'"); $pv->execute([$station_id]); $pending_validation = (int)$pv->fetchColumn();
-    $av = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id=? AND status IN ('Approved','Validated')"); $av->execute([$station_id]); $approved_validated = (int)$av->fetchColumn();
+    $pv = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id=? AND (status='Pending Validation' OR status='Pending' OR validation_status='Pending Validation')"); $pv->execute([$station_id]); $pending_validation = (int)$pv->fetchColumn();
+    $av = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id=? AND (status IN ('Approved','Validated') OR validation_status IN ('Approved','Validated'))"); $av->execute([$station_id]); $approved_validated = (int)$av->fetchColumn();
     $ip = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id=? AND status='In Progress'"); $ip->execute([$station_id]); $in_progress = (int)$ip->fetchColumn();
     $cp = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id=? AND status='Completed'"); $cp->execute([$station_id]); $completed = (int)$cp->fetchColumn();
     $rj = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id=? AND status='Rejected'"); $rj->execute([$station_id]); $rejected = (int)$rj->fetchColumn();
@@ -359,20 +557,20 @@ try {
     $jod = $pdo->prepare("
         SELECT
             COALESCE(jo.job_order_id, jo.job_order_number, CONCAT('JO-', jo.id)) AS jo_ref,
+            jo.id,
             COALESCE(c.name, jo.customer_name, 'Walk-in')                  AS customer,
             COALESCE(jo.service_type, jo.service_description, '—')         AS service_type,
-            COALESCE(m.full_name, m.name, '—')                             AS mechanic,
+            COALESCE(u.name, u.username, m.full_name, '—')         AS mechanic,
             jo.created_at,
             jo.status,
             COALESCE(jo.validation_status, jo.status)                      AS display_status,
             jo.notes
         FROM job_orders jo
+        LEFT JOIN users u      ON u.id  = jo.assigned_mechanic_id
         LEFT JOIN mechanics m  ON m.id  = jo.assigned_mechanic_id
         LEFT JOIN customers c  ON c.id  = jo.customer_id
         WHERE jo.station_id = ?
-        ORDER BY
-            FIELD(jo.status,'Pending Validation','In Progress','Approved','Validated','Completed','Rejected'),
-            jo.created_at DESC
+        ORDER BY jo.created_at DESC
         LIMIT 20
     ");
     $jod->execute([$station_id]);
@@ -419,6 +617,89 @@ try {
     $lsi->execute([$station_id]);
     $low_stock_items = $lsi->fetchAll(PDO::FETCH_ASSOC) ?: [];
 } catch (Exception $e) {}
+
+// Widget: Stock Charts — ALL fuel types + low/out-of-stock merchandise only
+$stock_chart_fuel = [];
+$stock_chart_merch = [];
+try {
+    // Fuel: only Critical (<=10% fill) and Low Stock (<=25% fill) — exclude Normal
+    $scf = $pdo->prepare("
+        SELECT COALESCE(ft.name, fi.fuel_type) AS fuel_type_name,
+               COALESCE(fi.current_level, fi.current_stock, 0) AS current_stock,
+               COALESCE(fi.capacity, 0) AS capacity,
+               fi.id AS fuel_inv_id,
+               CASE
+                   WHEN COALESCE(fi.current_level, fi.current_stock, 0) <= 0 THEN 'Out of Stock'
+                   WHEN COALESCE(fi.capacity, 0) > 0
+                        AND (COALESCE(fi.current_level, fi.current_stock, 0) / COALESCE(fi.capacity, 0)) * 100 <= 10 THEN 'Critical'
+                   ELSE 'Low Stock'
+               END AS stock_status
+        FROM fuel_inventory fi
+        LEFT JOIN fuel_types ft ON fi.fuel_type_id = ft.id
+        WHERE fi.station_id = ?
+          AND (
+              COALESCE(fi.current_level, fi.current_stock, 0) <= 0
+              OR (
+                  COALESCE(fi.capacity, 0) > 0
+                  AND (COALESCE(fi.current_level, fi.current_stock, 0) / COALESCE(fi.capacity, 0)) * 100 <= 25
+              )
+          )
+        ORDER BY current_stock ASC
+    ");
+    $scf->execute([$station_id]);
+    $stock_chart_fuel = $scf->fetchAll(PDO::FETCH_ASSOC) ?: [];
+} catch (Exception $e) {}
+try {
+    // Merchandise: only Out of Stock (stock_level <= 0) and Low Stock (stock_level <= reorder_level)
+    $scm = $pdo->prepare("
+        SELECT COALESCE(si.product_name, ip.product_name, CONCAT('Product #', si.product_id)) AS product_name,
+               si.stock_level AS current_stock,
+               COALESCE(si.reorder_level, 10) AS threshold,
+               si.id AS inv_id,
+               si.product_id,
+               COALESCE(ip.category, 'Merchandise') AS category,
+               COALESCE(si.unit, ip.size, 'pcs') AS unit,
+               CASE
+                   WHEN si.stock_level <= 0 THEN 'Out of Stock'
+                   ELSE 'Low Stock'
+               END AS stock_status
+        FROM station_inventory si
+        LEFT JOIN inventory_products ip ON ip.id = si.product_id
+        WHERE si.station_id = ? AND si.status = 'active'
+          AND (si.product_name IS NOT NULL AND si.product_name != '')
+          AND si.stock_level <= COALESCE(si.reorder_level, 10)
+        ORDER BY si.stock_level ASC
+        LIMIT 25
+    ");
+    $scm->execute([$station_id]);
+    $stock_chart_merch = $scm->fetchAll(PDO::FETCH_ASSOC) ?: [];
+} catch (Exception $e) {}
+// Fallback: if station_inventory is empty, try inventory table joined with inventory_products
+if (empty($stock_chart_merch)) {
+    try {
+        $scm2 = $pdo->prepare("
+            SELECT COALESCE(ip.product_name, CONCAT('Product #', i.product_id)) AS product_name,
+                   i.stock_level AS current_stock,
+                   COALESCE(i.reorder_level, 10) AS threshold,
+                   i.id AS inv_id,
+                   i.product_id,
+                   COALESCE(ip.category, 'Merchandise') AS category,
+                   COALESCE(i.unit, 'pcs') AS unit,
+                   CASE
+                       WHEN i.stock_level <= 0 THEN 'Out of Stock'
+                       ELSE 'Low Stock'
+                   END AS stock_status
+            FROM inventory i
+            LEFT JOIN inventory_products ip ON ip.id = i.product_id
+            WHERE i.station_id = ?
+              AND i.stock_level <= COALESCE(i.reorder_level, 10)
+            ORDER BY i.stock_level ASC
+            LIMIT 25
+        ");
+        $scm2->execute([$station_id]);
+        $stock_chart_merch = $scm2->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (Exception $e) {}
+}
 
 // Widget 6: Clock-in / Clock-out
 $current_session = null;
@@ -558,6 +839,32 @@ require_once __DIR__ . '/../partials/header.php';
 .qa-active { background:#f0fdf4 !important; border-color:#22c55e !important; color:#065F46 !important; }
 .qa-active i { color:#22c55e; }
 @media(max-width:768px) { .quick-actions-grid { grid-template-columns:repeat(3,1fr); } .reports-grid { grid-template-columns:repeat(3,1fr); } .status-grid { grid-template-columns:repeat(3,1fr); } }
+
+/* ── Stock Status Charts ── */
+.stock-chart-section { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+@media(max-width:900px) { .stock-chart-section { grid-template-columns:1fr; } }
+.stock-chart-wrap { position:relative; }
+.stock-legend { display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; font-size:11px; font-weight:600; }
+.stock-legend-dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:4px; }
+.stock-alert-banner { display:flex; align-items:center; gap:8px; padding:8px 12px; border-radius:8px; font-size:12px; font-weight:700; margin-bottom:10px; }
+.stock-alert-red    { background:#FEE2E2; color:#991B1B; border:1px solid #fecaca; }
+.stock-alert-orange { background:#FEF3C7; color:#92400E; border:1px solid #fde68a; }
+
+/* Stock Request Modal */
+#stockRequestModal .modal-card { max-width:480px; }
+.sr-field { margin-bottom:14px; }
+.sr-field label { display:block; font-size:12px; font-weight:700; color:#344054; margin-bottom:5px; }
+.sr-field input, .sr-field select, .sr-field textarea {
+    width:100%; padding:9px 12px; border:1px solid #d0d5dd; border-radius:8px;
+    font-size:13px; color:#101828; background:#fff; box-sizing:border-box;
+}
+.sr-field textarea { resize:vertical; min-height:70px; }
+.sr-urgency-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
+.sr-urgency-btn { padding:8px; border:2px solid #e5e7eb; border-radius:8px; background:#f8fafc;
+    font-size:12px; font-weight:700; cursor:pointer; text-align:center; transition:.15s; }
+.sr-urgency-btn.active-low    { border-color:#22c55e; background:#f0fdf4; color:#065F46; }
+.sr-urgency-btn.active-medium { border-color:#f59e0b; background:#fffbeb; color:#92400E; }
+.sr-urgency-btn.active-high   { border-color:#ef4444; background:#fef2f2; color:#991B1B; }
 </style>
 
 <!-- Page Header -->
@@ -588,136 +895,76 @@ require_once __DIR__ . '/../partials/header.php';
 
 <div class="dashboard-grid">
 
-<!-- ===== WIDGET 1: Merchandise Sales Summary ===== -->
-<div class="widget-card">
-  <h3><i class="fas fa-cash-register"></i> Merchandise Sales</h3>
-  <?php
-    $merch_total_combined = $merch_cash+$jo_cash + $merch_card+$jo_card + $merch_ewallet+$jo_ewallet + $merch_efuel+$jo_efuel + $merch_credit+$jo_credit;
-  ?>
-  <?php if ($merch_total_combined == 0 && $merch_txns == 0): ?>
-    <p style="color:#9ca3af;text-align:center;padding:20px 0;font-size:13px"><i class="fas fa-inbox"></i> No sales recorded for this period.</p>
-  <?php else: ?>
-  <table style="width:100%;border-collapse:collapse;font-size:13px">
-    <thead>
-      <tr style="background:#f8fafc;border-bottom:2px solid #EAEAEA">
-        <th style="text-align:left;padding:8px 10px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">Payment Type</th>
-        <th style="text-align:right;padding:8px 10px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">Amount</th>
-        <th style="text-align:right;padding:8px 10px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">% Share</th>
-      </tr>
-    </thead>
-    <tbody id="merch-tbody">
-      <?php
-        $payments = [
-          ['label'=>'Cash',        'color'=>'#22c55e', 'icon'=>'fa-money-bill-wave', 'val'=>$merch_cash+$jo_cash],
-          ['label'=>'Card',        'color'=>'#3b82f6', 'icon'=>'fa-credit-card',     'val'=>$merch_card+$jo_card],
-          ['label'=>'E-Wallet',    'color'=>'#a855f7', 'icon'=>'fa-mobile-alt',      'val'=>$merch_ewallet+$jo_ewallet],
-          ['label'=>'E-Fuel Card', 'color'=>'#f59e0b', 'icon'=>'fa-gas-pump',        'val'=>$merch_efuel+$jo_efuel],
-          ['label'=>'Credit/Utang','color'=>'#ef4444', 'icon'=>'fa-file-invoice',    'val'=>$merch_credit+$jo_credit],
-        ];
-        foreach ($payments as $p):
-          $share = $merch_total_combined > 0 ? round(($p['val'] / $merch_total_combined) * 100, 1) : 0;
-      ?>
-      <tr style="border-bottom:1px solid #f5f5f5" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
-        <td style="padding:9px 10px">
-          <span style="display:inline-flex;align-items:center;gap:7px">
-            <span style="width:8px;height:8px;border-radius:50%;background:<?= $p['color'] ?>;flex-shrink:0;display:inline-block"></span>
-            <i class="fas <?= $p['icon'] ?>" style="color:<?= $p['color'] ?>;font-size:12px"></i>
-            <span style="font-weight:600;color:#344054"><?= $p['label'] ?></span>
-          </span>
-        </td>
-        <td style="padding:9px 10px;text-align:right;font-weight:700;color:#101828">&#8369;<?= number_format($p['val'],2) ?></td>
-        <td style="padding:9px 10px;text-align:right">
-          <span style="background:<?= $p['color'] ?>22;color:<?= $p['color'] ?>;font-size:11px;font-weight:700;padding:2px 7px;border-radius:20px"><?= $share ?>%</span>
-        </td>
-      </tr>
-      <?php endforeach; ?>
-    </tbody>
-    <tfoot id="merch-tfoot">
-      <tr style="background:#f0f4ff;border-top:2px solid #EAEAEA">
-        <td style="padding:10px;font-weight:800;color:#00264D;font-size:13px"><i class="fas fa-sigma" style="margin-right:5px"></i>Total</td>
-        <td style="padding:10px;text-align:right;font-weight:800;color:#00264D;font-size:14px">&#8369;<?= number_format($merch_total_combined,2) ?></td>
-        <td style="padding:10px;text-align:right;font-size:12px;color:#667085"><?= $merch_txns ?> txn<?= $merch_txns!=1?'s':'' ?></td>
-      </tr>
-    </tfoot>
-  </table>
-  <?php endif; ?>
-</div>
+<!-- ===== WIDGET 1+2: Sales Performance Charts (side by side) ===== -->
+<div class="widget-card widget-full">
+  <h3>
+    <i class="fas fa-chart-line"></i> Sales Performance
+    <span style="margin-left:8px;font-size:11px;font-weight:500;color:#667085">Last 7 days &bull; Hover for details</span>
+    <div style="margin-left:auto;display:flex;gap:8px;flex-shrink:0">
+      <a href="staff_transactions_hub.php?section=merchandise" style="font-size:12px;background:#2563eb;color:#fff;padding:5px 14px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:5px">
+        <i class="fas fa-shopping-cart"></i> Merchandise
+      </a>
+      <a href="staff_transactions_hub.php?section=fuel" style="font-size:12px;background:#dc2626;color:#fff;padding:5px 14px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:5px">
+        <i class="fas fa-gas-pump"></i> Fuel
+      </a>
+    </div>
+  </h3>
 
-<!-- ===== WIDGET 2: Fuel Sales Monitoring ===== -->
-<div class="widget-card">
-  <h3><i class="fas fa-gas-pump"></i> Fuel Sales</h3>
-  <span style="margin-left:8px;font-size:11px;font-weight:500;color:#667085">Liters &bull; Revenue &bull; Variance</span>
-  <a href="staff_transactions_hub.php?section=fuel" style="margin-left:auto;font-size:12px;background:#00264D;color:#fff;padding:5px 14px;border-radius:8px;text-decoration:none;font-weight:600;flex-shrink:0">
-    <i class="fas fa-plus"></i> Encode
-  </a>
-  <?php if (empty($fuel_by_type)): ?>
-    <p style="color:#9ca3af;text-align:center;padding:20px 0;font-size:13px"><i class="fas fa-inbox"></i> No fuel readings recorded for this period.</p>
-  <?php else: ?>
-  <table style="width:100%;border-collapse:collapse;font-size:13px">
-    <thead>
-      <tr style="background:#f8fafc;border-bottom:2px solid #EAEAEA">
-        <th style="text-align:left;padding:10px 12px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">Fuel Type</th>
-        <th style="text-align:right;padding:10px 12px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">Liters Sold</th>
-        <th style="text-align:right;padding:10px 12px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">Revenue</th>
-        <th style="text-align:right;padding:10px 12px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">Avg Price/L</th>
-        <th style="text-align:right;padding:10px 12px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">Variance</th>
-        <th style="text-align:center;padding:10px 12px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">Status</th>
-      </tr>
-    </thead>
-    <tbody id="fuel-tbody">
-      <?php
-        $fuel_total_liters  = 0;
-        $fuel_total_revenue = 0;
-        $has_any_variance = false;
-        foreach ($fuel_by_type as $ft):
-          $fuel_total_liters += $ft['total_liters'];
-          $fuel_total_revenue += $ft['total_revenue'];
-          $has_variance = $ft['has_discrepancy'];
-          $has_any_variance = $has_any_variance || $has_variance;
-          $avg_price = $ft['total_liters'] > 0 ? $ft['total_revenue'] / $ft['total_liters'] : 0;
-      ?>
-      <tr style="border-bottom:1px solid #f5f5f5" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
-        <td style="padding:10px 12px"><span style="display:inline-flex;align-items:center;gap:8px">
-          <span style="width:10px;height:10px;border-radius:50%;background:#3b82f6;flex-shrink:0;display:inline-block"></span>
-          <strong style="color:#00264D"><?= htmlspecialchars($ft['fuel_type']) ?></strong></span></td>
-        <td style="padding:10px 12px;text-align:right;font-weight:700;color:#101828"><?= number_format($ft['total_liters'],2) ?> <span style="font-size:11px;color:#667085;font-weight:400">L</span></td>
-        <td style="padding:10px 12px;text-align:right;font-weight:700;color:#101828">&#8369;<?= number_format($ft['total_revenue'],2) ?></td>
-        <td style="padding:10px 12px;text-align:right;color:#667085">&#8369;<?= number_format($avg_price,2) ?></td>
-        <td style="padding:10px 12px;text-align:right;color:#667085">—</td>
-        <td style="padding:10px 12px;text-align:center">
-          <?php if ($has_variance): ?>
-            <span style="background:#FEF3C7;color:#92400E;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;display:inline-flex;align-items:center;gap:4px"><i class="fas fa-exclamation-triangle"></i> Variance</span>
-          <?php else: ?>
-            <span style="background:#D1FAE5;color:#065F46;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;display:inline-flex;align-items:center;gap:4px"><i class="fas fa-check"></i> OK</span>
-          <?php endif; ?>
-        </td>
-      </tr>
-      <?php endforeach; ?>
-    </tbody>
-    <tfoot id="fuel-tfoot">
-      <tr style="background:#f0f4ff;border-top:2px solid #EAEAEA">
-        <td style="padding:10px 12px;font-weight:800;color:#00264D"><i class="fas fa-sigma" style="margin-right:5px"></i>Total</td>
-        <td style="padding:10px 12px;text-align:right;font-weight:800;color:#00264D"><?= number_format($fuel_total_liters,2) ?> L</td>
-        <td style="padding:10px 12px;text-align:right;font-weight:800;color:#00264D">&#8369;<?= number_format($fuel_total_revenue,2) ?></td>
-        <td style="padding:10px 12px;text-align:right;color:#667085">—</td>
-        <td style="padding:10px 12px;text-align:right;font-weight:700;color:#00264D">—</td>
-        <td style="padding:10px 12px;text-align:center">
-          <?php if ($has_any_variance): ?>
-            <span style="background:#FEE2E2;color:#991B1B;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px"><i class="fas fa-exclamation-circle"></i> Check Readings</span>
-          <?php else: ?>
-            <span style="background:#D1FAE5;color:#065F46;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px"><i class="fas fa-check-circle"></i> All OK</span>
-          <?php endif; ?>
-        </td>
-      </tr>
-    </tfoot>
-  </table>
-  <?php endif; ?>
-</div>
+  <!-- Summary totals row -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+    <div style="background:#fef2f2;border-radius:10px;padding:12px 16px;border:1px solid #fecaca">
+      <div style="font-size:11px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px"><i class="fas fa-gas-pump"></i> Fuel Revenue</div>
+      <div style="font-size:20px;font-weight:800;color:#991b1b">&#8369;<?= number_format(array_sum($sales_trend_fuel), 2) ?></div>
+      <div style="font-size:11px;color:#ef4444;margin-top:2px"><?= number_format(array_sum($sales_trend_liters), 2) ?> L sold</div>
+    </div>
+    <div style="background:#eff6ff;border-radius:10px;padding:12px 16px;border:1px solid #bfdbfe">
+      <div style="font-size:11px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px"><i class="fas fa-boxes"></i> Merch Revenue</div>
+      <div style="font-size:20px;font-weight:800;color:#1d4ed8">&#8369;<?= number_format(array_sum($sales_trend_merch), 2) ?></div>
+      <div style="font-size:11px;color:#3b82f6;margin-top:2px"><?= $merch_txns ?> transaction<?= $merch_txns!=1?'s':'' ?></div>
+    </div>
+    <div style="background:#f0fdf4;border-radius:10px;padding:12px 16px;border:1px solid #bbf7d0">
+      <div style="font-size:11px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px"><i class="fas fa-coins"></i> Combined Total</div>
+      <div style="font-size:20px;font-weight:800;color:#15803d">&#8369;<?= number_format(array_sum($sales_trend_fuel) + array_sum($sales_trend_merch), 2) ?></div>
+      <div style="font-size:11px;color:#22c55e;margin-top:2px">7-day period</div>
+    </div>
+    <div style="background:#fefce8;border-radius:10px;padding:12px 16px;border:1px solid #fde68a">
+      <div style="font-size:11px;font-weight:700;color:#ca8a04;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px"><i class="fas fa-wrench"></i> Job Orders</div>
+      <div style="font-size:20px;font-weight:800;color:#92400e"><?= $pending_validation + $approved_validated + $in_progress + $completed + $rejected ?></div>
+      <div style="font-size:11px;color:#f59e0b;margin-top:2px"><?= $in_progress ?> in progress</div>
+    </div>
+  </div>
 
+  <!-- Charts side by side -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+
+    <!-- Fuel Sales Chart -->
+    <div>
+      <div style="font-size:12px;font-weight:700;color:#991b1b;margin-bottom:10px;display:flex;align-items:center;gap:6px">
+        <span style="width:12px;height:12px;border-radius:2px;background:#ef4444;display:inline-block"></span>
+        Fuel Sales — Revenue &amp; Liters (7 days)
+      </div>
+      <div style="position:relative;height:220px">
+        <canvas id="fuelSalesChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Merchandise Sales Chart -->
+    <div>
+      <div style="font-size:12px;font-weight:700;color:#1d4ed8;margin-bottom:10px;display:flex;align-items:center;gap:6px">
+        <span style="width:12px;height:12px;border-radius:2px;background:#3b82f6;display:inline-block"></span>
+        Merchandise Sales — Direct + Job Order Parts (7 days)
+      </div>
+      <div style="position:relative;height:220px">
+        <canvas id="merchSalesChart"></canvas>
+      </div>
+    </div>
+
+  </div>
+</div>
 <!-- ===== WIDGET 3: Job Orders Status ===== -->
 <div class="widget-card widget-full">
   <h3><i class="fas fa-wrench"></i> Job Orders Status
-    <a href="joborder.php?action=create" style="margin-left:auto;font-size:12px;background:#00264D;color:#fff;padding:5px 14px;border-radius:8px;text-decoration:none;font-weight:600;flex-shrink:0">
+    <a href="staff_transactions_hub.php?section=merchandise&active_tab=merchandise" style="margin-left:auto;font-size:12px;background:#00264D;color:#fff;padding:5px 14px;border-radius:8px;text-decoration:none;font-weight:600;flex-shrink:0">
       <i class="fas fa-plus"></i> New Job Order
     </a>
   </h3>
@@ -726,8 +973,10 @@ require_once __DIR__ . '/../partials/header.php';
   <?php
     $jo_status_cfg = [
       'Pending Validation' => ['bg'=>'#FFF3CD','color'=>'#92400E','icon'=>'fa-hourglass-half'],
+      'Pending'            => ['bg'=>'#FFF3CD','color'=>'#92400E','icon'=>'fa-hourglass-half'],
       'Approved'           => ['bg'=>'#D1FAE5','color'=>'#065F46','icon'=>'fa-check-circle'],
       'Validated'          => ['bg'=>'#D1FAE5','color'=>'#065F46','icon'=>'fa-check-circle'],
+      'Adjusted'           => ['bg'=>'#DBEAFE','color'=>'#1E40AF','icon'=>'fa-edit'],
       'In Progress'        => ['bg'=>'#DBEAFE','color'=>'#1E40AF','icon'=>'fa-spinner'],
       'Completed'          => ['bg'=>'#DCFCE7','color'=>'#14532D','icon'=>'fa-flag-checkered'],
       'Rejected'           => ['bg'=>'#FEE2E2','color'=>'#991B1B','icon'=>'fa-times-circle'],
@@ -755,7 +1004,7 @@ require_once __DIR__ . '/../partials/header.php';
     ?>
       <tr style="border-bottom:1px solid #f5f5f5" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
         <td style="padding:9px 12px;font-weight:700;color:#00264D">
-          <a href="joborder.php?id=<?= (int)($jo['id'] ?? 0) ?>" style="color:#00264D;text-decoration:none">
+          <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="color:#00264D;text-decoration:none">
             <?= htmlspecialchars($jo['jo_ref']) ?>
           </a>
         </td>
@@ -780,7 +1029,7 @@ require_once __DIR__ . '/../partials/header.php';
       <tr style="background:#f0f4ff;border-top:2px solid #EAEAEA">
         <td colspan="5" style="padding:9px 12px;font-size:12px;color:#667085">
           Showing <?= count($job_order_rows) ?> most recent &bull;
-          <a href="joborder.php" style="color:#2563eb;font-weight:600">View all job orders</a>
+          <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="color:#2563eb;font-weight:600">View all job orders</a>
         </td>
         <td style="padding:9px 12px;text-align:center;font-size:12px;color:#667085">
           Total: <strong style="color:#00264D"><?= $pending_validation+$approved_validated+$in_progress+$completed+$rejected ?></strong>
@@ -793,168 +1042,144 @@ require_once __DIR__ . '/../partials/header.php';
 </div>
 
 
-<!-- ===== WIDGET 4: Fuel Monitoring ===== -->
-<div class="widget-card" id="fuel-monitor-card">
-  <h3><i class="fas fa-tachometer-alt"></i> Fuel Monitoring
-    <span style="margin-left:8px;font-size:11px;font-weight:500;color:#667085">Tank Levels &bull; Variance &bull; Low Stock Alerts</span>
-    <span id="fuel-refresh-ts" style="margin-left:auto;font-size:10px;color:#9ca3af;font-weight:400;flex-shrink:0"></span>
-    <button onclick="refreshFuelWidget()" title="Refresh tank levels" style="margin-left:8px;background:none;border:1px solid #e5e7eb;border-radius:6px;padding:3px 8px;cursor:pointer;color:#667085;font-size:11px;flex-shrink:0">
-      <i class="fas fa-sync-alt" id="fuel-refresh-icon"></i>
+
+
+<!-- ===== WIDGET 4b+5: Fuel & Merchandise Inventory Status (side by side) ===== -->
+
+<!-- Fuel Inventory Status -->
+<div class="widget-card" id="fuel-stock-chart-card">
+  <h3>
+    <i class="fas fa-gas-pump"></i> Fuel Inventory Status
+    <button onclick="refreshStockCharts()" title="Refresh" style="margin-left:auto;background:none;border:1px solid #e5e7eb;border-radius:6px;padding:3px 8px;cursor:pointer;color:#667085;font-size:11px;flex-shrink:0">
+      <i class="fas fa-sync-alt" id="fuel-stock-refresh-icon"></i>
     </button>
-    <?php if (in_array($role, ['manager', 'admin', 'superadmin'])): ?>
-    <a href="fuel_reconciliation_manager.php" style="margin-left:6px;font-size:12px;background:#00264D;color:#fff;padding:5px 14px;border-radius:8px;text-decoration:none;font-weight:600;flex-shrink:0">
-      <i class="fas fa-tools"></i> Manage
-    </a>
-    <?php endif; ?>
   </h3>
 
-  <div id="fuel-monitor-body">
-  
-  <!-- Variance Alerts Banner -->
-  <?php if (!empty($fuel_variance_alerts)): ?>
-  <div style="background:#FEF3C7;border:1px solid #f59e0b;border-radius:8px;padding:12px;margin-bottom:16px">
-    <div style="font-size:12px;font-weight:700;color:#92400E;margin-bottom:8px">
-      <i class="fas fa-exclamation-triangle"></i> Variance Alerts Today
+  <!-- Color legend -->
+  <div style="display:flex;gap:18px;margin-bottom:14px;flex-wrap:wrap">
+    <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#667085">
+      <span style="width:14px;height:14px;border-radius:3px;background:#f59e0b;display:inline-block"></span>Low Stock (≤25% fill)
+    </span>
+    <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#667085">
+      <span style="width:14px;height:14px;border-radius:3px;background:#ef4444;display:inline-block"></span>Out of Stock (0L)
+    </span>
+    <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#667085">
+      <span style="width:14px;height:14px;border-radius:3px;background:rgba(0,0,0,0.06);border:1px solid #d1d5db;display:inline-block"></span>Capacity
+    </span>
+  </div>
+
+  <!-- Chart area -->
+  <div id="fuel-stock-chart-wrap" style="position:relative;min-height:120px;height:<?= max(120, count($stock_chart_fuel) * 60) ?>px">
+    <canvas id="fuelStockChart"></canvas>
+  </div>
+
+  <!-- Empty state -->
+  <div id="fuel-stock-empty" style="display:<?= empty($stock_chart_fuel) ? 'block' : 'none' ?>;text-align:center;padding:30px 0;color:#9ca3af;font-size:13px">
+    <i class="fas fa-inbox" style="font-size:28px;display:block;margin-bottom:8px"></i>
+    No fuel inventory data available for this station.
+  </div>
+</div>
+
+<!-- Merchandise Inventory Status -->
+<div class="widget-card" id="stock-charts-card">
+  <h3>
+    <i class="fas fa-boxes"></i> Merchandise Inventory Status
+    <button onclick="refreshStockCharts()" title="Refresh" style="margin-left:auto;background:none;border:1px solid #e5e7eb;border-radius:6px;padding:3px 8px;cursor:pointer;color:#667085;font-size:11px;flex-shrink:0">
+      <i class="fas fa-sync-alt" id="stock-refresh-icon"></i>
+    </button>
+  </h3>
+
+  <!-- Color legend -->
+  <div style="display:flex;gap:18px;margin-bottom:14px;flex-wrap:wrap">
+    <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#667085">
+      <span style="width:14px;height:14px;border-radius:3px;background:#f59e0b;display:inline-block"></span>Low Stock
+    </span>
+    <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#667085">
+      <span style="width:14px;height:14px;border-radius:3px;background:#ef4444;display:inline-block"></span>Out of Stock
+    </span>
+  </div>
+
+  <div style="display:grid;grid-template-columns:160px 1fr;gap:16px;align-items:start">
+
+    <!-- Donut summary -->
+    <div style="display:flex;flex-direction:column;align-items:center">
+      <div style="font-size:12px;font-weight:700;color:#344054;margin-bottom:10px;text-align:center">Summary</div>
+      <div style="position:relative;height:140px;width:140px">
+        <canvas id="merchStockDonut"></canvas>
+      </div>
+      <div id="merch-donut-counts" style="margin-top:10px;font-size:12px;text-align:center;color:#667085"></div>
+      <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
+        <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#667085">
+          <span style="width:10px;height:10px;border-radius:50%;background:#f59e0b;display:inline-block"></span>Low Stock
+        </span>
+        <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#667085">
+          <span style="width:10px;height:10px;border-radius:50%;background:#ef4444;display:inline-block"></span>Out of Stock
+        </span>
+      </div>
     </div>
-    <?php foreach ($fuel_variance_alerts as $fva): ?>
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #fde68a;font-size:12px">
-      <div>
-        <strong style="color:#92400E"><?= htmlspecialchars($fva['fuel_type']) ?></strong>
-        <div style="color:#78350f;font-size:11px">
-          Sold: <?= number_format($fva['liters_sold'],2) ?>L &bull; Pump: <?= number_format($fva['pump_delta'],2) ?>L
+
+    <!-- Horizontal bar chart -->
+    <div>
+      <div style="font-size:12px;font-weight:700;color:#344054;margin-bottom:10px">
+        Items needing restock
+        <span style="font-size:11px;font-weight:400;color:#9ca3af;margin-left:6px">— click a bar to request</span>
+      </div>
+      <div id="merch-stock-bar-wrap" style="position:relative;height:<?= max(120, count($stock_chart_merch) * 40) ?>px;min-height:120px">
+        <canvas id="merchStockBar"></canvas>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Empty state -->
+  <div id="merch-stock-empty" style="display:none;text-align:center;padding:30px 0;color:#9ca3af;font-size:13px">
+    <i class="fas fa-check-circle" style="font-size:28px;color:#22c55e;display:block;margin-bottom:8px"></i>
+    All merchandise items are well-stocked. No alerts at this time.
+  </div>
+</div>
+
+<!-- ===== STOCK REQUEST MODAL ===== -->
+<div class="modal" id="stockRequestModal" aria-hidden="true" role="dialog" aria-labelledby="srModalTitle">
+  <div class="modal-card" style="max-width:480px">
+    <div class="modal-head">
+      <div class="modal-title" id="srModalTitle"><i class="fas fa-clipboard-list"></i> Request Stock Replenishment</div>
+      <button class="icon-btn" onclick="closeStockRequestModal()" aria-label="Close"><i class="fas fa-times"></i></button>
+    </div>
+    <div style="padding:0 4px">
+      <div id="sr-stock-info" style="background:#f8fafc;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;border:1px solid #e5e7eb"></div>
+      <div class="sr-field">
+        <label>Product / Fuel Type</label>
+        <input type="text" id="sr-product-name" readonly style="background:#f3f4f6;color:#667085" />
+      </div>
+      <div class="sr-field">
+        <label>Type</label>
+        <input type="text" id="sr-product-type" readonly style="background:#f3f4f6;color:#667085" />
+      </div>
+      <div class="sr-field">
+        <label>Requested Quantity <span style="color:#9ca3af;font-weight:400">(liters / pieces)</span></label>
+        <input type="number" id="sr-qty" min="1" step="1" placeholder="Enter quantity needed" />
+      </div>
+      <div class="sr-field">
+        <label>Urgency</label>
+        <div class="sr-urgency-row">
+          <button type="button" class="sr-urgency-btn" data-urgency="low" onclick="setSrUrgency('low')"><i class="fas fa-circle" style="color:#22c55e;font-size:9px;vertical-align:middle"></i> Low</button>
+          <button type="button" class="sr-urgency-btn active-medium" data-urgency="medium" onclick="setSrUrgency('medium')"><i class="fas fa-circle" style="color:#f59e0b;font-size:9px;vertical-align:middle"></i> Medium</button>
+          <button type="button" class="sr-urgency-btn" data-urgency="high" onclick="setSrUrgency('high')"><i class="fas fa-circle" style="color:#ef4444;font-size:9px;vertical-align:middle"></i> High</button>
         </div>
       </div>
-      <div style="text-align:right">
-        <strong style="color:#92400E"><?= number_format($fva['variance_liters'],2) ?>L</strong>
-        <div style="color:#78350f;font-size:10px">TXN #<?= (int)$fva['transaction_id'] ?></div>
+      <div class="sr-field">
+        <label>Reason / Notes <span style="color:#9ca3af;font-weight:400">(optional)</span></label>
+        <textarea id="sr-notes" placeholder="e.g., Running low before weekend rush..."></textarea>
       </div>
+      <div id="sr-feedback" style="display:none;padding:8px 12px;border-radius:8px;font-size:12px;font-weight:600;margin-bottom:10px"></div>
     </div>
-    <?php endforeach; ?>
-  </div>
-  <?php endif; ?>
-
-  <!-- Low Stock Alerts Banner -->
-  <?php 
-  $low_stock_fuel = array_filter($fuel_stock_levels ?? [], function($fsl) {
-    return $fsl['current_stock'] <= 500;
-  });
-  ?>
-  <?php if (!empty($low_stock_fuel)): ?>
-  <div style="background:#FEE2E2;border:1px solid #ef4444;border-radius:8px;padding:12px;margin-bottom:16px">
-    <div style="font-size:12px;font-weight:700;color:#991B1B;margin-bottom:8px">
-      <i class="fas fa-exclamation-circle"></i> Low Stock Alerts
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeStockRequestModal()">Cancel</button>
+      <button class="btn primary" id="sr-submit-btn" onclick="submitStockRequest()">
+        <i class="fas fa-paper-plane"></i> Submit Request
+      </button>
     </div>
-    <?php foreach ($low_stock_fuel as $fsl): ?>
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #fecaca;font-size:12px">
-      <div>
-        <strong style="color:#991B1B"><?= htmlspecialchars($fsl['fuel_type_name']) ?></strong>
-        <div style="color:#7f1d1d;font-size:11px">Critical: <?= number_format($fsl['current_stock'],0) ?>L remaining</div>
-      </div>
-      <span style="background:#ef4444;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:12px">
-        CRITICAL
-      </span>
-    </div>
-    <?php endforeach; ?>
   </div>
-  <?php endif; ?>
-
-  <!-- Tank Levels Table -->
-  <?php if (empty($fuel_stock_levels)): ?>
-    <p style="color:#9ca3af;text-align:center;padding:20px 0;font-size:13px">
-      <i class="fas fa-inbox"></i> Fuel stock data unavailable.
-    </p>
-  <?php else: ?>
-  <div style="overflow-x:auto">
-    <table style="width:100%;border-collapse:collapse;font-size:13px">
-      <thead>
-        <tr style="background:#f8fafc;border-bottom:2px solid #EAEAEA">
-          <th style="text-align:left;padding:10px 12px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">Fuel Type</th>
-          <th style="text-align:right;padding:10px 12px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">Current Level</th>
-          <th style="text-align:right;padding:10px 12px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">Capacity</th>
-          <th style="text-align:center;padding:10px 12px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        <?php 
-        $total_current = 0;
-        $total_capacity = 0;
-        foreach ($fuel_stock_levels as $fsl): 
-          $total_current += $fsl['current_stock'];
-          $total_capacity += $fsl['capacity'];
-          $pct = ($fsl['capacity'] > 0) ? min(100, ($fsl['current_stock'] / $fsl['capacity']) * 100) : 0;
-          
-          // Determine status
-          $status = 'OK';
-          $status_color = '#22c55e';
-          $status_bg = '#DCFCE7';
-          if ($fsl['current_stock'] <= 500) {
-            $status = 'Critical';
-            $status_color = '#991B1B';
-            $status_bg = '#FEE2E2';
-          } elseif ($fsl['current_stock'] <= 2000) {
-            $status = 'Low Stock';
-            $status_color = '#92400E';
-            $status_bg = '#FEF3C7';
-          }
-        ?>
-        <tr style="border-bottom:1px solid #f5f5f5" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
-          <td style="padding:10px 12px">
-            <div style="display:flex;align-items:center;gap:8px">
-              <span style="width:8px;height:8px;border-radius:50%;background:<?= $status_color ?>;flex-shrink:0"></span>
-              <strong style="color:#00264D"><?= htmlspecialchars($fsl['fuel_type_name']) ?></strong>
-            </div>
-          </td>
-          <td style="padding:10px 12px;text-align:right;font-weight:700;color:#101828">
-            <?= number_format($fsl['current_stock'],0) ?> <span style="font-size:11px;color:#667085">L</span>
-          </td>
-          <td style="padding:10px 12px;text-align:right;color:#667085">
-            <?= number_format($fsl['capacity'],0) ?> <span style="font-size:11px;color:#667085">L</span>
-          </td>
-          <td style="padding:10px 12px;text-align:center">
-            <span style="background:<?= $status_bg ?>;color:<?= $status_color ?>;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px">
-              <?= $status ?>
-            </span>
-          </td>
-        </tr>
-        <?php endforeach; ?>
-      </tbody>
-      <tfoot>
-        <tr style="background:#f0f4ff;border-top:2px solid #EAEAEA">
-          <td style="padding:10px 12px;font-weight:800;color:#00264D">
-            <i class="fas fa-sigma" style="margin-right:5px"></i>Total
-          </td>
-          <td style="padding:10px 12px;text-align:right;font-weight:800;color:#00264D">
-            <?= number_format($total_current,0) ?> <span style="font-size:11px;color:#667085">L</span>
-          </td>
-          <td style="padding:10px 12px;text-align:right;color:#667085">
-            <?= number_format($total_capacity,0) ?> <span style="font-size:11px;color:#667085">L</span>
-          </td>
-          <td style="padding:10px 12px;text-align:center">
-            <?php 
-            $overall_pct = ($total_capacity > 0) ? ($total_current / $total_capacity) * 100 : 0;
-            $overall_status = 'OK';
-            $overall_color = '#22c55e';
-            $overall_bg = '#DCFCE7';
-            if ($overall_pct < 25) {
-              $overall_status = 'Critical';
-              $overall_color = '#991B1B';
-              $overall_bg = '#FEE2E2';
-            } elseif ($overall_pct < 50) {
-              $overall_status = 'Low';
-              $overall_color = '#92400E';
-              $overall_bg = '#FEF3C7';
-            }
-            ?>
-            <span style="background:<?= $overall_bg ?>;color:<?= $overall_color ?>;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px">
-              <?= $overall_status ?>
-            </span>
-          </td>
-        </tr>
-      </tfoot>
-    </table>
-  </div>
-  <?php endif; ?>
-  </div><!-- /#fuel-monitor-body -->
 </div>
 
 <!-- ===== WIDGET 6: Clock-in / Clock-out ===== -->
@@ -1220,14 +1445,176 @@ require_once __DIR__ . '/../partials/header.php';
 </div>
 </div><!-- .page-content -->
 
+<!-- Chart.js CDN for stock status charts -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+
 <script>
 // ============================================================
-// Chart.js Initialisation — removed (tables used instead)
+// Sales Performance Charts — Fuel (red) + Merchandise (blue)
 // ============================================================
-(function() {
-    // Fuel Chart removed — replaced with table view
-    var fuelCtx = null; // kept for AJAX compat
-})();
+var _salesTrendLabels = <?= json_encode($sales_trend_labels) ?>;
+var _salesTrendFuel   = <?= json_encode($sales_trend_fuel) ?>;
+var _salesTrendLiters = <?= json_encode($sales_trend_liters) ?>;
+var _salesTrendMerch  = <?= json_encode($sales_trend_merch) ?>;
+
+var _fuelSalesChart  = null;
+var _merchSalesChart = null;
+
+function buildSalesCharts() {
+    var allFuelZero  = _salesTrendFuel.every(function(v){ return v === 0; });
+    var allMerchZero = _salesTrendMerch.every(function(v){ return v === 0; });
+
+    // ── Fuel Sales Chart ───────────────────────────────────────────────
+    var fuelCtx = document.getElementById('fuelSalesChart');
+    if (fuelCtx) {
+        if (_fuelSalesChart) _fuelSalesChart.destroy();
+        if (allFuelZero) {
+            fuelCtx.style.display = 'none';
+            var fe = document.getElementById('fuelSalesEmpty');
+            if (!fe) {
+                fe = document.createElement('div');
+                fe.id = 'fuelSalesEmpty';
+                fe.style.cssText = 'text-align:center;padding:60px 0;color:#9ca3af;font-size:13px';
+                fe.innerHTML = '<i class="fas fa-gas-pump" style="font-size:28px;display:block;margin-bottom:8px;opacity:.4"></i>No fuel sales recorded yet';
+                fuelCtx.parentNode.appendChild(fe);
+            }
+            fe.style.display = 'block';
+        } else {
+            fuelCtx.style.display = '';
+            var fe2 = document.getElementById('fuelSalesEmpty');
+            if (fe2) fe2.style.display = 'none';
+            _fuelSalesChart = new Chart(fuelCtx, {
+            type: 'bar',
+            data: {
+                labels: _salesTrendLabels,
+                datasets: [
+                    {
+                        label: 'Revenue (₱)',
+                        data: _salesTrendFuel,
+                        backgroundColor: 'rgba(239,68,68,0.75)',
+                        borderColor: '#dc2626',
+                        borderWidth: 1,
+                        borderRadius: 5,
+                        yAxisID: 'yRev',
+                        order: 2,
+                    },
+                    {
+                        label: 'Liters Sold',
+                        data: _salesTrendLiters,
+                        type: 'line',
+                        borderColor: '#f97316',
+                        backgroundColor: 'rgba(249,115,22,0.12)',
+                        borderWidth: 2,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#f97316',
+                        tension: 0.35,
+                        fill: true,
+                        yAxisID: 'yLit',
+                        order: 1,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: true, position: 'top', labels: { font: { size: 11 }, boxWidth: 12, padding: 10 } },
+                    tooltip: {
+                        backgroundColor: '#1e293b',
+                        titleColor: '#f1f5f9',
+                        bodyColor: '#cbd5e1',
+                        padding: 10,
+                        callbacks: {
+                            label: function(ctx) {
+                                if (ctx.dataset.label === 'Revenue (₱)') return ' ₱' + ctx.parsed.y.toLocaleString('en-PH', {minimumFractionDigits:2});
+                                return ' ' + ctx.parsed.y.toLocaleString('en-PH', {minimumFractionDigits:2}) + ' L';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    yRev: {
+                        type: 'linear', position: 'left',
+                        ticks: { font:{size:10}, callback: function(v){ return '₱'+v.toLocaleString(); } },
+                        grid: { color: 'rgba(0,0,0,0.05)' }
+                    },
+                    yLit: {
+                        type: 'linear', position: 'right',
+                        ticks: { font:{size:10}, callback: function(v){ return v+'L'; } },
+                        grid: { drawOnChartArea: false }
+                    },
+                    x: { ticks: { font:{size:10} }, grid: { display: false } }
+                }
+            }
+        });
+        } // end else (fuel has data)
+    }
+
+    // ── Merchandise Sales Chart (bar) ───────────────────────────────────
+    var merchCtx = document.getElementById('merchSalesChart');
+    if (merchCtx) {
+        if (_merchSalesChart) _merchSalesChart.destroy();
+        if (allMerchZero) {
+            merchCtx.style.display = 'none';
+            var me = document.getElementById('merchSalesEmpty');
+            if (!me) {
+                me = document.createElement('div');
+                me.id = 'merchSalesEmpty';
+                me.style.cssText = 'text-align:center;padding:60px 0;color:#9ca3af;font-size:13px';
+                me.innerHTML = '<i class="fas fa-boxes" style="font-size:28px;display:block;margin-bottom:8px;opacity:.4"></i>No merchandise sales recorded yet';
+                merchCtx.parentNode.appendChild(me);
+            }
+            me.style.display = 'block';
+        } else {
+            merchCtx.style.display = '';
+            var me2 = document.getElementById('merchSalesEmpty');
+            if (me2) me2.style.display = 'none';
+        _merchSalesChart = new Chart(merchCtx, {
+            type: 'bar',
+            data: {
+                labels: _salesTrendLabels,
+                datasets: [
+                    {
+                        label: 'Revenue (₱)',
+                        data: _salesTrendMerch,
+                        backgroundColor: 'rgba(59,130,246,0.75)',
+                        borderColor: '#2563eb',
+                        borderWidth: 1,
+                        borderRadius: 5,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: true, position: 'top', labels: { font: { size: 11 }, boxWidth: 12, padding: 10 } },
+                    tooltip: {
+                        backgroundColor: '#1e293b',
+                        titleColor: '#f1f5f9',
+                        bodyColor: '#cbd5e1',
+                        padding: 10,
+                        callbacks: {
+                            label: function(ctx) {
+                                return ' ₱' + ctx.parsed.y.toLocaleString('en-PH', {minimumFractionDigits:2});
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        ticks: { font:{size:10}, callback: function(v){ return '₱'+v.toLocaleString(); } },
+                        grid: { color: 'rgba(0,0,0,0.05)' }
+                    },
+                    x: { ticks: { font:{size:10} }, grid: { display: false } }
+                }
+            }
+        });
+        } // end else (merch has data)
+    }
+}
 
 // ============================================================
 // updateMetricCards — rebuilds tables from AJAX data
@@ -1455,7 +1842,6 @@ function refreshFuelWidget() {
             var totalCurrent  = 0;
             var totalCapacity = 0;
             var rows = '';
-            var lowAlerts = '';
 
             levels.forEach(function(f) {
                 var cur = parseFloat(f.current_stock) || 0;
@@ -1464,57 +1850,37 @@ function refreshFuelWidget() {
                 totalCapacity += cap;
                 var pct = cap > 0 ? Math.min(100, (cur / cap) * 100) : 0;
 
-                var statusLabel = 'OK';
-                var statusColor = '#22c55e';
-                var statusBg    = '#DCFCE7';
-                if (cur <= 500) {
-                    statusLabel = 'Critical'; statusColor = '#991B1B'; statusBg = '#FEE2E2';
-                    lowAlerts += '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #fecaca;font-size:12px">'
-                        + '<div><strong style="color:#991B1B">' + escHtml(f.fuel_type_name) + '</strong>'
-                        + '<div style="color:#7f1d1d;font-size:11px">Critical: ' + Math.round(cur).toLocaleString() + 'L remaining</div></div>'
-                        + '<span style="background:#ef4444;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:12px">CRITICAL</span></div>';
-                } else if (cur <= 2000) {
-                    statusLabel = 'Low Stock'; statusColor = '#92400E'; statusBg = '#FEF3C7';
-                }
+                var dotColor = '#22c55e';
+                if (cur <= 500)       { dotColor = '#dc3545'; }
+                else if (cur <= 2000) { dotColor = '#fd7e14'; }
 
                 rows += '<tr style="border-bottom:1px solid #f5f5f5" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'\'">'
                     + '<td style="padding:10px 12px"><div style="display:flex;align-items:center;gap:8px">'
-                    + '<span style="width:8px;height:8px;border-radius:50%;background:' + statusColor + ';flex-shrink:0"></span>'
+                    + '<span style="width:8px;height:8px;border-radius:50%;background:' + dotColor + ';flex-shrink:0"></span>'
                     + '<strong style="color:#00264D">' + escHtml(f.fuel_type_name) + '</strong></div></td>'
                     + '<td style="padding:10px 12px;text-align:right;font-weight:700;color:#101828">'
                     + Math.round(cur).toLocaleString() + ' <span style="font-size:11px;color:#667085">L</span></td>'
                     + '<td style="padding:10px 12px;text-align:right;color:#667085">'
-                    + Math.round(cap).toLocaleString() + ' <span style="font-size:11px;color:#667085">L</span></td>'
-                    + '<td style="padding:10px 12px;text-align:center">'
-                    + '<span style="background:' + statusBg + ';color:' + statusColor + ';font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px">' + statusLabel + '</span></td></tr>';
+                    + Math.round(cap).toLocaleString() + ' <span style="font-size:11px;color:#667085">L</span></td></tr>';
             });
 
             // Overall footer
             var overallPct    = totalCapacity > 0 ? (totalCurrent / totalCapacity) * 100 : 0;
-            var overallStatus = 'OK';
             var overallColor  = '#22c55e';
-            var overallBg     = '#DCFCE7';
-            if (overallPct < 25) { overallStatus = 'Critical'; overallColor = '#991B1B'; overallBg = '#FEE2E2'; }
-            else if (overallPct < 50) { overallStatus = 'Low'; overallColor = '#92400E'; overallBg = '#FEF3C7'; }
+            if (overallPct < 25)      { overallColor = '#dc3545'; }
+            else if (overallPct < 50) { overallColor = '#fd7e14'; }
 
             var html = '';
-            if (lowAlerts) {
-                html += '<div style="background:#FEE2E2;border:1px solid #ef4444;border-radius:8px;padding:12px;margin-bottom:16px">'
-                    + '<div style="font-size:12px;font-weight:700;color:#991B1B;margin-bottom:8px"><i class="fas fa-exclamation-circle"></i> Low Stock Alerts</div>'
-                    + lowAlerts + '</div>';
-            }
             html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'
                 + '<thead><tr style="background:#f8fafc;border-bottom:2px solid #EAEAEA">'
                 + '<th style="text-align:left;padding:10px 12px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">Fuel Type</th>'
                 + '<th style="text-align:right;padding:10px 12px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">Current Level</th>'
                 + '<th style="text-align:right;padding:10px 12px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">Capacity</th>'
-                + '<th style="text-align:center;padding:10px 12px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">Status</th>'
                 + '</tr></thead><tbody>' + rows + '</tbody>'
                 + '<tfoot><tr style="background:#f0f4ff;border-top:2px solid #EAEAEA">'
                 + '<td style="padding:10px 12px;font-weight:800;color:#00264D"><i class="fas fa-sigma" style="margin-right:5px"></i>Total</td>'
-                + '<td style="padding:10px 12px;text-align:right;font-weight:800;color:#00264D">' + Math.round(totalCurrent).toLocaleString() + ' <span style="font-size:11px;color:#667085">L</span></td>'
+                + '<td style="padding:10px 12px;text-align:right;font-weight:800;color:' + overallColor + '">' + Math.round(totalCurrent).toLocaleString() + ' <span style="font-size:11px;color:#667085">L</span></td>'
                 + '<td style="padding:10px 12px;text-align:right;color:#667085">' + Math.round(totalCapacity).toLocaleString() + ' <span style="font-size:11px;color:#667085">L</span></td>'
-                + '<td style="padding:10px 12px;text-align:center"><span style="background:' + overallBg + ';color:' + overallColor + ';font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px">' + overallStatus + '</span></td>'
                 + '</tr></tfoot></table></div>';
 
             body.innerHTML = html;
@@ -1537,6 +1903,531 @@ function escHtml(str) {
 
 // Auto-refresh fuel widget every 5 seconds (same cadence as main polling)
 setInterval(refreshFuelWidget, 5000);
+
+// ============================================================
+// Stock Status Charts (Chart.js)
+// ============================================================
+
+// PHP data passed to JS
+var _stockFuelData  = <?= json_encode(array_values($stock_chart_fuel)) ?>;
+var _stockMerchData = <?= json_encode(array_values($stock_chart_merch)) ?>;
+var _stationId      = <?= (int)$station_id ?>;
+
+var _fuelChart  = null;
+var _merchChart = null;
+var _merchBarChart = null;
+var _srUrgency  = 'medium';
+var _srProductType = 'fuel';
+
+function getFuelBarColor(current, capacity) {
+    if (current <= 0) return '#ef4444';
+    var pct = capacity > 0 ? (current / capacity) * 100 : 0;
+    if (pct <= 10) return '#ef4444';
+    if (pct <= 25) return '#f59e0b';
+    return '#22c55e';
+}
+
+function getMerchBarColor(current, threshold) {
+    if (current <= 0) return '#ef4444';
+    if (current <= threshold) return '#f59e0b';
+    return '#22c55e';
+}
+
+function getFuelStatusLabel(current, capacity) {
+    if (current <= 0) return 'Out of Stock';
+    var pct = capacity > 0 ? (current / capacity) * 100 : 0;
+    if (pct <= 10) return 'Out of Stock';
+    if (pct <= 25) return 'Low Stock';
+    return 'Normal';
+}
+
+function buildFuelChart(allData) {
+    var ctx = document.getElementById('fuelStockChart');
+    var wrapEl = document.getElementById('fuel-stock-chart-wrap');
+    var emptyEl = document.getElementById('fuel-stock-empty');
+    if (!ctx) return;
+    if (_fuelChart) { _fuelChart.destroy(); _fuelChart = null; }
+
+    if (!allData || !allData.length) {
+        if (wrapEl) wrapEl.style.display = 'none';
+        if (emptyEl) emptyEl.style.display = 'block';
+        return;
+    }
+
+    // Data already filtered to Critical/Low Stock only from the backend
+    var data = allData;
+
+    if (!data || !data.length) {
+        if (wrapEl) wrapEl.style.display = 'none';
+        if (emptyEl) { emptyEl.style.display = 'block'; emptyEl.textContent = 'All fuel levels are normal.'; }
+        return;
+    }
+
+    if (wrapEl) { wrapEl.style.display = 'block'; wrapEl.style.height = Math.max(120, data.length * 60) + 'px'; }
+
+    // Labels: just the fuel type name
+    var labels = data.map(function(d) {
+        return d.fuel_type_name;
+    });
+    var currents = data.map(function(d) { return parseFloat(d.current_stock) || 0; });
+    var caps     = data.map(function(d) { return parseFloat(d.capacity) || 0; });
+    var colors   = data.map(function(d) {
+        var cur = parseFloat(d.current_stock) || 0;
+        var cap = parseFloat(d.capacity) || 0;
+        var status = d.stock_status || getFuelStatusLabel(cur, cap);
+        if (status === 'Out of Stock' || status === 'Critical') return '#ef4444';
+        return '#f59e0b'; // Low Stock
+    });
+
+    _fuelChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Current Level (L)',
+                    data: currents,
+                    backgroundColor: colors,
+                    borderRadius: 6,
+                    borderSkipped: false,
+                    barThickness: 26,
+                },
+                {
+                    label: 'Capacity (L)',
+                    data: caps,
+                    backgroundColor: 'rgba(0,0,0,0.06)',
+                    borderRadius: 6,
+                    borderSkipped: false,
+                    barThickness: 26,
+                }
+            ]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: { font: { size: 11 }, boxWidth: 12, padding: 14 }
+                },
+                tooltip: {
+                    backgroundColor: '#1e293b',
+                    titleColor: '#f1f5f9',
+                    bodyColor: '#cbd5e1',
+                    padding: 12,
+                    callbacks: {
+                        title: function(items) {
+                            return data[items[0].dataIndex].fuel_type_name;
+                        },
+                        label: function(item) {
+                            var d = data[item.dataIndex];
+                            var cur = parseFloat(d.current_stock) || 0;
+                            var cap = parseFloat(d.capacity) || 0;
+                            var pct = cap > 0 ? ((cur / cap) * 100).toFixed(1) : '0.0';
+                            var status = d.stock_status || getFuelStatusLabel(cur, cap);
+                            if (item.datasetIndex === 0) {
+                                var icon = status === 'Out of Stock' ? '\u26d4' : (status === 'Low Stock' ? '\uD83D\uDFE0' : '\uD83D\uDFE2');
+                                return [
+                                    icon + ' Status: ' + status,
+                                    '\uD83D\uDCE6 Current Level: ' + Math.round(cur).toLocaleString() + ' L',
+                                    '\uD83C\uDFED Capacity: ' + Math.round(cap).toLocaleString() + ' L',
+                                    '\uD83D\uDCCA Fill Level: ' + pct + '%',
+                                    (status !== 'Normal' ? '' : null),
+                                    (status !== 'Normal' ? '\uD83D\uDC46 Click to request restock' : null)
+                                ].filter(function(v) { return v !== null; });
+                            }
+                            return item.datasetIndex === 1
+                                ? ['\uD83C\uDFED Capacity: ' + Math.round(cap).toLocaleString() + ' L']
+                                : null;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    stacked: false,
+                    grid: { color: 'rgba(0,0,0,0.04)' },
+                    ticks: { font: { size: 11 }, callback: function(v) { return v.toLocaleString() + ' L'; } }
+                },
+                y: {
+                    grid: { display: false },
+                    ticks: {
+                        font: { size: 11, weight: '600' },
+                        color: '#344054',
+                        // Wrap long labels
+                        callback: function(val) {
+                            var label = this.getLabelForValue(val);
+                            if (label.length > 45) return label.substring(0, 43) + '…';
+                            return label;
+                        }
+                    }
+                }
+            },
+            onClick: function(evt, elements) {
+                if (!elements.length) return;
+                var idx = elements[0].index;
+                var d = data[idx];
+                var cur = parseFloat(d.current_stock) || 0;
+                var cap = parseFloat(d.capacity) || 0;
+                var status = d.stock_status || getFuelStatusLabel(cur, cap);
+                if (status !== 'Normal') {
+                    openStockRequestModal('fuel', d.fuel_type_name, cur, cap, 'L');
+                }
+            },
+            onHover: function(evt, elements) {
+                if (!elements.length) { evt.native.target.style.cursor = 'default'; return; }
+                var idx = elements[0].index;
+                var d = data[idx];
+                var cur = parseFloat(d.current_stock) || 0;
+                var cap = parseFloat(d.capacity) || 0;
+                var status = d.stock_status || getFuelStatusLabel(cur, cap);
+                evt.native.target.style.cursor = status !== 'Normal' ? 'pointer' : 'default';
+            }
+        }
+    });
+}
+
+function buildMerchDonut(data) {
+    var ctx = document.getElementById('merchStockDonut');
+    var barWrapEl = document.getElementById('merch-stock-bar-wrap');
+    var emptyEl = document.getElementById('merch-stock-empty');
+    if (!ctx) return;
+    if (_merchChart) { _merchChart.destroy(); _merchChart = null; }
+    if (_merchBarChart) { _merchBarChart.destroy(); _merchBarChart = null; }
+
+    // Only show Low Stock and Out of Stock — filter out Normal
+    var alertData = (data || []).filter(function(d) {
+        var cur = parseFloat(d.current_stock) || 0;
+        var thr = parseFloat(d.threshold) || 10;
+        return cur <= thr; // includes out of stock (cur <= 0) and low stock (cur <= thr)
+    });
+
+    if (!alertData.length) {
+        if (barWrapEl) barWrapEl.style.display = 'none';
+        if (emptyEl) emptyEl.style.display = 'block';
+        var countsEl = document.getElementById('merch-donut-counts');
+        if (countsEl) countsEl.innerHTML = '';
+        return;
+    }
+    if (emptyEl) emptyEl.style.display = 'none';
+    if (barWrapEl) barWrapEl.style.display = 'block';
+
+    var low = 0, out = 0;
+    alertData.forEach(function(d) {
+        var cur = parseFloat(d.current_stock) || 0;
+        if (cur <= 0) out++;
+        else low++;
+    });
+
+    // Update counts label
+    var countsEl = document.getElementById('merch-donut-counts');
+    if (countsEl) {
+        countsEl.innerHTML = (out > 0 ? '<span style="color:#991B1B;font-weight:700">' + out + ' Out of Stock</span><br>' : '')
+            + (low > 0 ? '<span style="color:#92400E;font-weight:700">' + low + ' Low Stock</span>' : '');
+    }
+
+    _merchChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Low Stock', 'Out of Stock'],
+            datasets: [{
+                data: [low, out],
+                backgroundColor: ['#f59e0b', '#ef4444'],
+                borderWidth: 2,
+                borderColor: '#fff',
+                hoverOffset: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '65%',
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#1e293b',
+                    titleColor: '#f1f5f9',
+                    bodyColor: '#cbd5e1',
+                    padding: 10,
+                    callbacks: {
+                        label: function(item) {
+                            var total = low + out;
+                            var pct = total > 0 ? ((item.raw / total) * 100).toFixed(1) : 0;
+                            return item.label + ': ' + item.raw + ' items (' + pct + '%)';
+                        }
+                    }
+                }
+            },
+            onClick: function(evt, elements) {
+                if (!elements.length) return;
+                var idx = elements[0].index; // 0=low, 1=out
+                var target = null;
+                alertData.forEach(function(d) {
+                    if (target) return;
+                    var cur = parseFloat(d.current_stock) || 0;
+                    var thr = parseFloat(d.threshold) || 10;
+                    if (idx === 1 && cur <= 0) target = d;
+                    else if (idx === 0 && cur > 0 && cur <= thr) target = d;
+                });
+                if (target) {
+                    openStockRequestModal('merch', target.product_name, parseFloat(target.current_stock)||0, parseFloat(target.threshold)||10, target.unit || 'pcs');
+                }
+            }
+        }
+    });
+
+    // Build horizontal bar chart for merchandise items
+    buildMerchBar(alertData);
+}
+
+function buildMerchBar(alertData) {
+    var barCtx = document.getElementById('merchStockBar');
+    var barWrapEl = document.getElementById('merch-stock-bar-wrap');
+    if (!barCtx) return;
+    if (_merchBarChart) { _merchBarChart.destroy(); _merchBarChart = null; }
+
+    if (!alertData || !alertData.length) {
+        if (barWrapEl) barWrapEl.style.display = 'none';
+        return;
+    }
+
+    if (barWrapEl) { barWrapEl.style.display = 'block'; barWrapEl.style.height = Math.max(120, alertData.length * 44) + 'px'; }
+
+    // Labels: just the product name
+    var labels = alertData.map(function(d) {
+        return d.product_name;
+    });
+    var currents  = alertData.map(function(d) { return parseFloat(d.current_stock) || 0; });
+    var thresholds = alertData.map(function(d) { return parseFloat(d.threshold) || 10; });
+    var colors    = alertData.map(function(d) { return getMerchBarColor(parseFloat(d.current_stock)||0, parseFloat(d.threshold)||10); });
+
+    _merchBarChart = new Chart(barCtx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Current Stock',
+                    data: currents,
+                    backgroundColor: colors,
+                    borderRadius: 5,
+                    borderSkipped: false,
+                    barThickness: 18,
+                },
+                {
+                    label: 'Threshold',
+                    data: thresholds,
+                    backgroundColor: 'rgba(0,0,0,0.07)',
+                    borderRadius: 5,
+                    borderSkipped: false,
+                    barThickness: 18,
+                }
+            ]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#1e293b',
+                    titleColor: '#f1f5f9',
+                    bodyColor: '#cbd5e1',
+                    padding: 12,
+                    callbacks: {
+                        title: function(items) {
+                            var d = alertData[items[0].dataIndex];
+                            return d.product_name;
+                        },
+                        label: function(item) {
+                            if (item.datasetIndex !== 0) return null;
+                            var d = alertData[item.dataIndex];
+                            var cur = parseFloat(d.current_stock) || 0;
+                            var thr = parseFloat(d.threshold) || 10;
+                            var unit = d.unit || 'pcs';
+                            var statusIcon = cur <= 0 ? '[OUT]' : '[LOW]';
+                            var status = cur <= 0 ? 'Out of Stock' : 'Low Stock';
+                            return [
+                                statusIcon + ' Status: ' + status,
+                                'Remaining: ' + Math.round(cur) + ' ' + unit,
+                                'Threshold: ' + Math.round(thr) + ' ' + unit,
+                                'Shortage: ' + Math.max(0, Math.round(thr - cur)) + ' ' + unit,
+                                '',
+                                'Click to request restock'
+                            ];
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    stacked: false,
+                    grid: { color: 'rgba(0,0,0,0.04)' },
+                    ticks: { font: { size: 11 } }
+                },
+                y: {
+                    grid: { display: false },
+                    ticks: { font: { size: 11, weight: '600' }, color: '#344054' }
+                }
+            },
+            onClick: function(evt, elements) {
+                if (!elements.length) return;
+                var idx = elements[0].index;
+                var d = alertData[idx];
+                var cur = parseFloat(d.current_stock) || 0;
+                var thr = parseFloat(d.threshold) || 10;
+                openStockRequestModal('merch', d.product_name, cur, thr, d.unit || 'pcs');
+            },
+            onHover: function(evt, elements) {
+                evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+            }
+        }
+    });
+}
+
+function initStockCharts() {
+    buildFuelChart(_stockFuelData);
+    buildMerchDonut(_stockMerchData);
+}
+
+function refreshStockCharts() {
+    var icon = document.getElementById('stock-refresh-icon');
+    var icon2 = document.getElementById('fuel-stock-refresh-icon');
+    if (icon) icon.style.animation = 'spin 0.8s linear infinite';
+    if (icon2) icon2.style.animation = 'spin 0.8s linear infinite';
+    fetch('staff_dashboard.php?refresh_stock_charts=1')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (icon) icon.style.animation = '';
+            if (icon2) icon2.style.animation = '';
+            if (!data.success) return;
+            _stockFuelData  = data.fuel_stocks  || [];
+            _stockMerchData = data.merch_stocks || [];
+            buildFuelChart(_stockFuelData);
+            buildMerchDonut(_stockMerchData);
+        })
+        .catch(function() {
+            if (icon) icon.style.animation = '';
+            if (icon2) icon2.style.animation = '';
+        });
+}
+
+// ── Stock Request Modal ──────────────────────────────────────
+function openStockRequestModal(type, productName, currentQty, threshold, unit) {
+    _srProductType = type;
+    _srUrgency = currentQty <= 0 ? 'high' : 'medium';
+    setSrUrgency(_srUrgency);
+
+    var infoEl = document.getElementById('sr-stock-info');
+    var statusLabel = currentQty <= 0 ? '<i class="fas fa-ban"></i> OUT OF STOCK' : '<i class="fas fa-exclamation-triangle"></i> LOW STOCK';
+    var statusColor = currentQty <= 0 ? '#991B1B' : '#92400E';
+    if (infoEl) {
+        infoEl.innerHTML = '<span style="font-weight:700;color:' + statusColor + '">' + statusLabel + '</span>'
+            + ' &mdash; <strong>' + escHtml(productName) + '</strong>'
+            + '<br><span style="color:#667085">Current: <strong>' + Math.round(currentQty) + ' ' + unit + '</strong>'
+            + ' &nbsp;|&nbsp; Threshold: <strong>' + Math.round(threshold) + ' ' + unit + '</strong></span>';
+    }
+
+    var nameEl = document.getElementById('sr-product-name');
+    if (nameEl) nameEl.value = productName;
+
+    var typeEl = document.getElementById('sr-product-type');
+    if (typeEl) typeEl.value = type === 'fuel' ? 'Fuel (Liters)' : 'Merchandise (Pieces)';
+
+    var qtyEl = document.getElementById('sr-qty');
+    if (qtyEl) {
+        var suggested = type === 'fuel' ? Math.max(1000, Math.round(threshold * 2)) : Math.max(10, Math.round(threshold * 2));
+        qtyEl.value = suggested;
+        qtyEl.placeholder = 'Suggested: ' + suggested + ' ' + unit;
+    }
+
+    var notesEl = document.getElementById('sr-notes');
+    if (notesEl) notesEl.value = '';
+
+    var fb = document.getElementById('sr-feedback');
+    if (fb) { fb.style.display = 'none'; fb.textContent = ''; }
+
+    var btn = document.getElementById('sr-submit-btn');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Request'; }
+
+    document.getElementById('stockRequestModal').classList.add('show');
+}
+
+function closeStockRequestModal() {
+    document.getElementById('stockRequestModal').classList.remove('show');
+}
+
+function setSrUrgency(level) {
+    _srUrgency = level;
+    document.querySelectorAll('.sr-urgency-btn').forEach(function(btn) {
+        btn.className = 'sr-urgency-btn';
+        if (btn.dataset.urgency === level) {
+            btn.classList.add('active-' + level);
+        }
+    });
+}
+
+function submitStockRequest() {
+    var productName = (document.getElementById('sr-product-name').value || '').trim();
+    var qty = parseInt(document.getElementById('sr-qty').value || '0', 10);
+    var notes = (document.getElementById('sr-notes').value || '').trim();
+    var fb = document.getElementById('sr-feedback');
+    var btn = document.getElementById('sr-submit-btn');
+
+    if (!productName) { showSrFeedback('error', 'Product name is required.'); return; }
+    if (!qty || qty <= 0) { showSrFeedback('error', 'Please enter a valid quantity.'); return; }
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
+
+    var formData = new FormData();
+    formData.append('action', 'request_stock');
+    formData.append('req_type', _srProductType === 'fuel' ? 'fuel' : 'merch');
+    formData.append('product_name', productName);
+    formData.append('notes', notes);
+    // CSRF token
+    var csrfInput = document.querySelector('input[name="csrf_token"]');
+    if (csrfInput) formData.append('csrf_token', csrfInput.value);
+
+    fetch('inventory.php', { method: 'POST', body: formData })
+        .then(function(r) { return r.text(); })
+        .then(function() {
+            showSrFeedback('success', 'Stock request submitted! Waiting for manager approval.');
+            btn.innerHTML = '<i class="fas fa-check"></i> Submitted';
+            setTimeout(function() { closeStockRequestModal(); }, 1800);
+        })
+        .catch(function() {
+            showSrFeedback('error', 'Failed to submit. Please try again.');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Request';
+        });
+}
+
+function showSrFeedback(type, msg) {
+    var fb = document.getElementById('sr-feedback');
+    if (!fb) return;
+    fb.style.display = 'block';
+    fb.style.background = type === 'success' ? '#D1FAE5' : '#FEE2E2';
+    fb.style.color = type === 'success' ? '#065F46' : '#991B1B';
+    fb.style.border = '1px solid ' + (type === 'success' ? '#A7F3D0' : '#FECACA');
+    fb.textContent = msg;
+}
+
+// Init charts on page load (after Chart.js is available)
+(function waitForChartJs() {
+    if (typeof Chart !== 'undefined') {
+        buildSalesCharts();
+        initStockCharts();
+    } else {
+        setTimeout(waitForChartJs, 100);
+    }
+})();
+
+// Auto-refresh stock charts every 30 seconds
+setInterval(refreshStockCharts, 30000);
 
 // ============================================================
 // Elapsed time counter for active clock-in session

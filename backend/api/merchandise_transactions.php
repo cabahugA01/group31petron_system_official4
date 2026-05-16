@@ -476,11 +476,37 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
         $stmt->execute([$me['id']]);
         $active_session = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($active_session) {
-            $shift_id   = $active_session['id'];
+            // Only use labor_session id as shift_id if it actually exists in the shifts table
             $shift_key  = $shift_key  ?: ($active_session['shift_period'] ?? null);
             $shift_name = $shift_name ?: ($active_session['shift_name']   ?? null);
         }
     } catch (Exception $e) {}
+
+    // Resolve shift_id from the shifts table (not labor_sessions)
+    // Try to find an active shift for this station/staff
+    if (!$shift_id) {
+        try {
+            $scheck = $pdo->prepare("SELECT id FROM shifts WHERE station_id = ? AND staff_id = ? AND end_time IS NULL ORDER BY start_time DESC LIMIT 1");
+            $scheck->execute([$station_id, $me['id']]);
+            $active_shift = $scheck->fetch(PDO::FETCH_ASSOC);
+            if ($active_shift) {
+                $shift_id = $active_shift['id'];
+            }
+        } catch (Exception $e) {}
+    }
+
+    // Validate that shift_id actually exists in shifts table — set NULL if not
+    if ($shift_id) {
+        try {
+            $sv = $pdo->prepare("SELECT id FROM shifts WHERE id = ? LIMIT 1");
+            $sv->execute([$shift_id]);
+            if (!$sv->fetch()) {
+                $shift_id = null; // FK would fail — use NULL instead
+            }
+        } catch (Exception $e) {
+            $shift_id = null;
+        }
+    }
 
     if (!$shift_key) {
         try {

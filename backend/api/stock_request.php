@@ -182,16 +182,62 @@ function handle_create($pdo, $me, $role, $station_id) {
 }
 
 function handle_my_requests($pdo, $me) {
+    $status_filter = $_GET['status']    ?? '';
+    $date_from     = $_GET['date_from'] ?? '';
+    $date_to       = $_GET['date_to']   ?? '';
+    $item_type     = $_GET['item_type'] ?? '';
+    $per_page      = max(1, min(100, (int)($_GET['per_page'] ?? 10)));
+    $page          = max(1, (int)($_GET['page'] ?? 1));
+    $offset        = ($page - 1) * $per_page;
+
+    $where  = ['sr.staff_id = ?'];
+    $params = [$me['id']];
+
+    if ($status_filter) {
+        $where[]  = 'sr.status = ?';
+        $params[] = $status_filter;
+    }
+    if ($date_from) {
+        $where[]  = 'DATE(sr.created_at) >= ?';
+        $params[] = $date_from;
+    }
+    if ($date_to) {
+        $where[]  = 'DATE(sr.created_at) <= ?';
+        $params[] = $date_to;
+    }
+    if ($item_type) {
+        $where[]  = 'sr.item_category = ?';
+        $params[] = $item_type;
+    }
+
+    $whereSQL = 'WHERE ' . implode(' AND ', $where);
+
+    // Total count for pagination
+    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM stock_requests sr $whereSQL");
+    $countStmt->execute($params);
+    $total = (int)$countStmt->fetchColumn();
+
+    // Paginated data — bind LIMIT/OFFSET as integers explicitly
     $stmt = $pdo->prepare("
         SELECT sr.*, m.name AS manager_name
         FROM stock_requests sr
         LEFT JOIN users m ON sr.manager_id = m.id
-        WHERE sr.staff_id = ?
+        $whereSQL
         ORDER BY sr.created_at DESC
-        LIMIT 50
+        LIMIT $per_page OFFSET $offset
     ");
-    $stmt->execute([$me['id']]);
-    echo json_encode(['success' => true, 'requests' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+    $stmt->execute($params);
+
+    $total_pages = $total > 0 ? (int)ceil($total / $per_page) : 1;
+
+    echo json_encode([
+        'success'     => true,
+        'requests'    => $stmt->fetchAll(PDO::FETCH_ASSOC),
+        'total'       => $total,
+        'page'        => $page,
+        'per_page'    => $per_page,
+        'total_pages' => $total_pages,
+    ]);
 }
 
 function handle_get_requests($pdo, $me, $role, $station_id) {
