@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'calendar';
 require_once __DIR__ . '/../backend/lib.php';
@@ -90,6 +90,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
         header('Location: staff_calendar.php?week_offset='.$week_offset); exit;
     }
+    if ($act === 'flag_conflict') {
+        $event_id = $_POST['event_id'] ?? '';
+        $reason = trim($_POST['conflict_reason'] ?? '');
+        if ($event_id && $reason) {
+            if (function_exists('log_activity')) log_activity($pdo, $user_id, 'Calendar Conflict Flagged', "Event: $event_id. Reason: $reason");
+            
+            // If it's a native calendar event, update notes
+            if (is_numeric($event_id)) {
+                try {
+                    $pdo->prepare("UPDATE staff_calendar_events SET notes=CONCAT(COALESCE(notes,''), '\n[CONFLICT] ', ?), status='pending' WHERE id=? AND station_id=?")
+                        ->execute([$reason, (int)$event_id, $station_id]);
+                } catch(Exception $e){}
+            }
+            $_SESSION['success'] = 'Conflict flagged. Manager will be notified.';
+        }
+        header('Location: staff_calendar.php?week_offset='.$week_offset); exit;
+    }
 }
 
 // Load data
@@ -116,30 +133,118 @@ try {
         $week_events[$row['staff_encoder_id']][$row['event_date']][] = $row;
     }
 
+    // Auto-sync Staff Shifts
+    try {
+        $sh = $pdo->prepare("SELECT ss.id, ss.user_id, ss.shift, ss.scheduled_date, ss.status, u.name AS staff_name, s.start_time, s.end_time FROM staff_schedules ss JOIN users u ON ss.user_id=u.id LEFT JOIN shifts s ON ss.shift=s.name WHERE ss.scheduled_date BETWEEN ? AND ?");
+        $sh->execute([$week_dates[0],$week_dates[6]]);
+        foreach ($sh->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $week_events[$r['user_id']][$r['scheduled_date']][] = [
+                'id'=>'shift_'.$r['id'],
+                'type_key'=>'staff_shift',
+                'type_name'=>'Staff Shift',
+                'icon_class'=>'fas fa-clock',
+                'staff_encoder_id'=>$r['user_id'],
+                'staff_encoder_name'=>$r['staff_name'],
+                'manager_assigned_name'=>'--',
+                'event_date'=>$r['scheduled_date'],
+                'start_time'=>$r['start_time']??'00:00',
+                'end_time'=>$r['end_time']??'00:00',
+                'work_description'=>'Duty Shift: ' . htmlspecialchars($r['shift']),
+                'status'=>strtolower($r['status']??'pending'),
+                'staff_color'=>'#7c3aed',
+                'manager_color'=>'#6b7280',
+                'auto_synced'=>true,
+                'extra'=>['Shift'=>$r['shift']]
+            ];
+        }
+    } catch (Exception $e) {}
+
     // Auto-sync Job Orders
     try {
-        $jo = $pdo->prepare("SELECT jo.id,jo.job_order_id AS jo_ref,jo.created_by,jo.service_type,jo.validation_status AS status,jo.validated_by,u.name AS staff_name,mu.name AS manager_name,DATE(jo.created_at) AS event_date FROM job_orders jo JOIN users u ON jo.created_by=u.id LEFT JOIN users mu ON jo.validated_by=mu.id WHERE jo.station_id=? AND DATE(jo.created_at) BETWEEN ? AND ?");
+        $jo = $pdo->prepare("SELECT jo.id,jo.job_order_number AS jo_ref,jo.created_by,jo.service_type,jo.status,jo.validated_by,u.name AS staff_name,mu.name AS manager_name,DATE(jo.created_at) AS event_date, jo.customer_name, jo.vehicle_plate FROM job_orders jo JOIN users u ON jo.created_by=u.id LEFT JOIN users mu ON jo.validated_by=mu.id WHERE jo.station_id=? AND DATE(jo.created_at) BETWEEN ? AND ?");
         $jo->execute([$station_id,$week_dates[0],$week_dates[6]]);
         foreach ($jo->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $week_events[$r['created_by']][$r['event_date']][] = ['id'=>'jo_'.$r['id'],'type_key'=>'job_order','type_name'=>'Job Order','icon_class'=>'fas fa-wrench','staff_encoder_id'=>$r['created_by'],'staff_encoder_name'=>$r['staff_name'],'manager_assigned_id'=>$r['validated_by'],'manager_assigned_name'=>$r['manager_name']??'--','event_date'=>$r['event_date'],'start_time'=>'00:00','end_time'=>'00:00','work_description'=>$r['service_type']??'Encode Job Order','status'=>strtolower($r['status']??'pending'),'staff_color'=>'#2563eb','manager_color'=>'#dc2626','auto_synced'=>true,'ref'=>$r['jo_ref']];
+            $st = strtolower($r['status']??'pending');
+            $map_st = match($st) { 'completed'=>'completed', 'verified'=>'completed', 'finalized'=>'completed', 'rejected'=>'cancelled', 'cancelled'=>'cancelled', 'in progress'=>'pending', 'awaiting parts'=>'pending', 'reviewed'=>'approved', default=>'pending' };
+            $week_events[$r['created_by']][$r['event_date']][] = [
+                'id'=>'jo_'.$r['id'],
+                'db_id'=>$r['id'],
+                'type_key'=>'job_order',
+                'type_name'=>'Job Order',
+                'icon_class'=>'fas fa-wrench',
+                'staff_encoder_id'=>$r['created_by'],
+                'staff_encoder_name'=>$r['staff_name'],
+                'manager_assigned_id'=>$r['validated_by'],
+                'manager_assigned_name'=>$r['manager_name']??'--',
+                'event_date'=>$r['event_date'],
+                'start_time'=>'00:00',
+                'end_time'=>'00:00',
+                'work_description'=>$r['service_type']??'Encode Job Order',
+                'status'=>$map_st,
+                'staff_color'=>'#2563eb',
+                'manager_color'=>'#dc2626',
+                'auto_synced'=>true,
+                'ref'=>$r['jo_ref'],
+                'extra'=>['Customer'=>$r['customer_name'],'Plate'=>$r['vehicle_plate']]
+            ];
         }
     } catch (Exception $e) {}
 
     // Auto-sync Deliveries
     try {
-        $dl = $pdo->prepare("SELECT d.id,d.created_by,d.validated_by,DATE(d.created_at) AS event_date,u.name AS staff_name,mu.name AS manager_name,d.status FROM deliveries d JOIN users u ON d.created_by=u.id LEFT JOIN users mu ON d.validated_by=mu.id WHERE d.station_id=? AND DATE(d.created_at) BETWEEN ? AND ?");
+        $dl = $pdo->prepare("SELECT d.id,d.encoded_by,d.admin_id,DATE(d.delivery_date) AS event_date,u.name AS staff_name,mu.name AS manager_name,d.status, d.supplier, d.product, d.quantity, d.unit FROM deliveries_oversight d JOIN users u ON d.encoded_by=u.id LEFT JOIN users mu ON d.admin_id=mu.id WHERE d.station_id=? AND DATE(d.delivery_date) BETWEEN ? AND ?");
         $dl->execute([$station_id,$week_dates[0],$week_dates[6]]);
         foreach ($dl->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $week_events[$r['created_by']][$r['event_date']][] = ['id'=>'del_'.$r['id'],'type_key'=>'merchandise_delivery','type_name'=>'Merchandise Delivery','icon_class'=>'fas fa-box','staff_encoder_id'=>$r['created_by'],'staff_encoder_name'=>$r['staff_name'],'manager_assigned_id'=>$r['validated_by'],'manager_assigned_name'=>$r['manager_name']??'--','event_date'=>$r['event_date'],'start_time'=>'00:00','end_time'=>'00:00','work_description'=>'Encode Merchandise Delivery','status'=>strtolower($r['status']??'pending'),'staff_color'=>'#16a34a','manager_color'=>'#dc2626','auto_synced'=>true];
+            $st = strtolower($r['status']??'pending');
+            $map_st = match($st) { 'approved'=>'approved', 'validated'=>'approved', 'completed'=>'completed', 'rejected'=>'cancelled', 'cancelled'=>'cancelled', default=>'pending' };
+            $week_events[$r['encoded_by']][$r['event_date']][] = [
+                'id'=>'del_'.$r['id'],
+                'db_id'=>$r['id'],
+                'type_key'=>'merchandise_delivery',
+                'type_name'=>'Merchandise Delivery',
+                'icon_class'=>'fas fa-box',
+                'staff_encoder_id'=>$r['encoded_by'],
+                'staff_encoder_name'=>$r['staff_name'],
+                'manager_assigned_id'=>$r['admin_id'],
+                'manager_assigned_name'=>$r['manager_name']??'--',
+                'event_date'=>$r['event_date'],
+                'start_time'=>'00:00',
+                'end_time'=>'00:00',
+                'work_description'=>'Encode Delivery: ' . htmlspecialchars($r['supplier']),
+                'status'=>$map_st,
+                'staff_color'=>'#16a34a',
+                'manager_color'=>'#dc2626',
+                'auto_synced'=>true,
+                'extra'=>['Supplier'=>$r['supplier'],'Product'=>$r['product'],'Qty'=>$r['quantity'] . ' ' . $r['unit']]
+            ];
         }
     } catch (Exception $e) {}
 
     // Auto-sync Fuel Calibration
     try {
-        $fc = $pdo->prepare("SELECT fc.id,fc.created_by,fc.validated_by,DATE(fc.created_at) AS event_date,u.name AS staff_name,mu.name AS manager_name,fc.status FROM fuel_calibration_log fc JOIN users u ON fc.created_by=u.id LEFT JOIN users mu ON fc.validated_by=mu.id WHERE fc.station_id=? AND DATE(fc.created_at) BETWEEN ? AND ?");
+        $fc = $pdo->prepare("SELECT fc.id,fc.encoded_by,DATE(fc.encoded_at) AS event_date,u.name AS staff_name, fc.fuel_type, fc.calibration_value FROM calibration_logs fc JOIN users u ON fc.encoded_by=u.id WHERE fc.station_id=? AND DATE(fc.encoded_at) BETWEEN ? AND ?");
         $fc->execute([$station_id,$week_dates[0],$week_dates[6]]);
         foreach ($fc->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $week_events[$r['created_by']][$r['event_date']][] = ['id'=>'cal_'.$r['id'],'type_key'=>'fuel_calibration','type_name'=>'Fuel Calibration','icon_class'=>'fas fa-gas-pump','staff_encoder_id'=>$r['created_by'],'staff_encoder_name'=>$r['staff_name'],'manager_assigned_id'=>$r['validated_by'],'manager_assigned_name'=>$r['manager_name']??'--','event_date'=>$r['event_date'],'start_time'=>'00:00','end_time'=>'00:00','work_description'=>'Encode Fuel Calibration','status'=>strtolower($r['status']??'pending'),'staff_color'=>'#d97706','manager_color'=>'#dc2626','auto_synced'=>true];
+            $week_events[$r['encoded_by']][$r['event_date']][] = [
+                'id'=>'cal_'.$r['id'],
+                'db_id'=>$r['id'],
+                'type_key'=>'fuel_calibration',
+                'type_name'=>'Fuel Calibration',
+                'icon_class'=>'fas fa-gas-pump',
+                'staff_encoder_id'=>$r['encoded_by'],
+                'staff_encoder_name'=>$r['staff_name'],
+                'manager_assigned_id'=>null,
+                'manager_assigned_name'=>'--',
+                'event_date'=>$r['event_date'],
+                'start_time'=>'00:00',
+                'end_time'=>'00:00',
+                'work_description'=>'Fuel Calibration: ' . $r['fuel_type'],
+                'status'=>'completed',
+                'staff_color'=>'#d97706',
+                'manager_color'=>'#dc2626',
+                'auto_synced'=>true,
+                'extra'=>['Fuel'=>$r['fuel_type'],'Value'=>$r['calibration_value']]
+            ];
         }
     } catch (Exception $e) {}
 
@@ -668,10 +773,42 @@ function openDetailModal(ev) {
   document.getElementById('modalTitle').innerHTML =
     `<i class="${ev.icon_class||'fas fa-calendar-check'}"></i> ${ev.type_name||'Event'} ${synced}`;
 
+  let extraRows = '';
+  if (ev.extra) {
+      for (const [key, value] of Object.entries(ev.extra)) {
+          if(value) extraRows += `<div class="sc-detail-row"><span class="sc-detail-label">${key}</span><span class="sc-detail-val">${value}</span></div>`;
+      }
+  }
+  
+  let staffActions = '';
+  <?php if($rk === 'staff'): ?>
+  staffActions = `<div style="margin-top:16px;padding-top:16px;border-top:1px solid #f0f0f0;display:flex;gap:10px;">`;
+  
+  // Show encoding buttons if status is pending/active and type matches
+  if (st === 'pending' || st === 'scheduled' || st === 'in progress') {
+      if (ev.type_key === 'job_order') {
+          staffActions += `<a href="staff_transactions_hub.php?edit_jo=${ev.db_id}" class="sc-btn-primary" style="text-decoration:none;"><i class="fas fa-edit"></i> Encode Job Order</a>`;
+      } else if (ev.type_key === 'merchandise_delivery') {
+          staffActions += `<a href="staff_record_delivery.php" class="sc-btn-primary" style="text-decoration:none;"><i class="fas fa-edit"></i> Encode Delivery</a>`;
+      }
+  }
+
+  // Always show flag conflict button
+  staffActions += `
+      <form method="post" action="staff_calendar.php?week_offset=<?php echo $week_offset; ?>" style="display:flex;gap:8px;">
+          <input type="hidden" name="action" value="flag_conflict">
+          <input type="hidden" name="event_id" value="${ev.id}">
+          <input type="text" name="conflict_reason" class="sc-form-input" placeholder="Reason (e.g. absent, wrong shift)" style="min-width:180px;" required>
+          <button type="submit" class="sc-btn-danger"><i class="fas fa-flag"></i> Flag Conflict</button>
+      </form>
+  </div>`;
+  <?php endif; ?>
+
   document.getElementById('modalBody').innerHTML = `
     <div class="sc-detail-row"><span class="sc-detail-label">Date</span><span class="sc-detail-val">${ev.event_date}</span></div>
     <div class="sc-detail-row"><span class="sc-detail-label">Time</span><span class="sc-detail-val">${timeStr}</span></div>
     <div class="sc-detail-row"><span class="sc-detail-label">Event Type</span><span class="sc-detail-val">${ev.type_name}</span></div>
+    ${extraRows}
     <div class="sc-detail-row"><span class="sc-detail-label">Staff Encoder</span><span class="sc-detail-val"><span style="background:${ev.staff_color};color:#fff;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:700">${ev.staff_encoder_name}</span></span></div>
     <div class="sc-detail-row"><span class="sc-detail-label">Manager Assigned</span><span class="sc-detail-val"><span style="background:${ev.manager_color};color:#fff;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:700">${ev.manager_assigned_name||'--'}</span></span></div>
     <div class="sc-detail-row"><span class="sc-detail-label">Work Description</span><span class="sc-detail-val">${ev.work_description}</span></div>
@@ -679,6 +816,7 @@ function openDetailModal(ev) {
     ${ev.notes ? `<div class="sc-detail-row"><span class="sc-detail-label">Notes</span><span class="sc-detail-val">${ev.notes}</span></div>` : ''}
     ${ev.ref ? `<div class="sc-detail-row"><span class="sc-detail-label">Reference</span><span class="sc-detail-val">${ev.ref}</span></div>` : ''}
     ${statusActions}
+    ${staffActions}
   `;
   document.getElementById('detailModal').classList.add('open');
 }

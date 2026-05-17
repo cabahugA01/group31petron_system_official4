@@ -73,7 +73,7 @@ try {
 } catch (Exception $e) { /* table already exists */ }
 
 /* Add columns that may be missing in older installs */
-foreach (['remarks TEXT DEFAULT NULL', 'dr_number VARCHAR(100) DEFAULT NULL'] as $col_def) {
+foreach (['remarks TEXT DEFAULT NULL', 'dr_number VARCHAR(100) DEFAULT NULL', 'batch_id VARCHAR(100) DEFAULT NULL'] as $col_def) {
     try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN {$col_def}"); } catch (Exception $e) {}
 }
 
@@ -117,116 +117,155 @@ if ($edit_id > 0) {
 ══════════════════════════════════════════════════════════ */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'record_delivery') {
     $supplier_name = trim($_POST['supplier_name'] ?? '');
-    $item_name     = trim($_POST['item_name']     ?? '');
-    $category      = trim($_POST['category']      ?? '');
-    $quantity      = (float)($_POST['quantity']   ?? 0);
-    $unit          = trim($_POST['unit']          ?? 'pcs');
     $delivery_date = trim($_POST['delivery_date'] ?? date('Y-m-d'));
     $dr_number     = trim($_POST['dr_number']     ?? '') ?: null;
     $remarks       = trim($_POST['remarks']       ?? '') ?: null;
 
-    /* Reject Fuel category */
-    if ($category === 'Fuel') {
-        $msg      = 'Fuel deliveries are handled in Fuel Management. Please select a merchandise category.';
-        $msg_type = 'error';
-    } elseif ($supplier_name === '') {
+    $categories = $_POST['category'] ?? [];
+    $item_names = $_POST['item_name'] ?? [];
+    $quantities = $_POST['quantity'] ?? [];
+    $units      = $_POST['unit'] ?? [];
+
+    if ($supplier_name === '') {
         $msg = 'Supplier Name is required.'; $msg_type = 'error';
-    } elseif ($item_name === '') {
-        $msg = 'Item / Product Name is required.'; $msg_type = 'error';
-    } elseif ($category === '') {
-        $msg = 'Category is required.'; $msg_type = 'error';
-    } elseif ($quantity <= 0) {
-        $msg = 'Quantity must be greater than zero.'; $msg_type = 'error';
     } elseif ($delivery_date === '') {
         $msg = 'Date Received is required.'; $msg_type = 'error';
+    } elseif (empty($item_names)) {
+        $msg = 'At least one item must be added.'; $msg_type = 'error';
     } else {
         try {
-            /* Auto-generate delivery reference (MDR = Merchandise Delivery Receipt) */
-            $delivery_ref = 'MDR-' . date('Ymd', strtotime($delivery_date))
-                          . '-' . strtoupper(substr(md5(uniqid('', true)), 0, 6));
-
             $resubmit_id = (int)($_POST['resubmit_id'] ?? 0);
-
+            
+            // Generate sequential Batch ID
             if ($resubmit_id > 0) {
-                /* RESUBMIT — update existing rejected record back to Pending */
-                $pdo->prepare("
-                    UPDATE deliveries_oversight
-                    SET supplier = ?, product = ?, quantity = ?, unit = ?,
-                        delivery_date = ?, dr_number = ?, remarks = ?,
-                        status = 'Pending Manager Approval',
-                        admin_notes = NULL, admin_id = NULL, admin_action_at = NULL,
-                        updated_at = NOW()
-                    WHERE id = ? AND station_id = ? AND encoded_by = ?
-                ")->execute([
-                    $supplier_name, $item_name, $quantity, $unit,
-                    $delivery_date, $dr_number, $remarks,
-                    $resubmit_id, $station_id, $me['id']
-                ]);
-                /* Fetch delivery_ref for audit/message */
-                $ref_row = $pdo->prepare("SELECT delivery_ref FROM deliveries_oversight WHERE id = ?");
+                $ref_row = $pdo->prepare("SELECT batch_id FROM deliveries_oversight WHERE id = ?");
                 $ref_row->execute([$resubmit_id]);
-                $delivery_ref = $ref_row->fetchColumn() ?: $delivery_ref;
-                $msg = "&#10003; Delivery <strong>{$delivery_ref}</strong> resubmitted. Status: <strong>Pending Manager Approval</strong>.";
+                $batch_id = $ref_row->fetchColumn();
+                if (!$batch_id) $batch_id = 'BATCH-' . date('Ymd', strtotime($delivery_date)) . '-001';
             } else {
-                /* NEW delivery — INSERT */
-                $pdo->prepare("
-                    INSERT INTO deliveries_oversight
-                        (delivery_type, delivery_ref, supplier, product, quantity, unit,
-                         delivery_date, dr_number, encoded_by, station_id, status, remarks,
-                         created_at, updated_at)
-                    VALUES ('merchandise', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Manager Approval', ?, NOW(), NOW())
-                ")->execute([
-                    $delivery_ref, $supplier_name, $item_name,
-                    $quantity, $unit, $delivery_date, $dr_number,
-                    $me['id'], $station_id, $remarks
-                ]);
-                $msg = "&#10003; Delivery <strong>{$delivery_ref}</strong> recorded. Status: <strong>Pending Manager Approval</strong>.";
+                $batch_prefix = 'BATCH-' . date('Ymd', strtotime($delivery_date)) . '-';
+                $stmt = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(batch_id, '-', -1) AS UNSIGNED)) FROM deliveries_oversight WHERE batch_id LIKE ?");
+                $stmt->execute([$batch_prefix . '%']);
+                $max_batch_num = (int)$stmt->fetchColumn();
+                $batch_id = $batch_prefix . str_pad($max_batch_num + 1, 3, '0', STR_PAD_LEFT);
+            }
+            
+            // Get base for Delivery IDs (Sequential MDR per item)
+            $date_prefix = 'MDR-' . date('Ymd', strtotime($delivery_date)) . '-';
+            $stmt = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(delivery_ref, '-', -1) AS UNSIGNED)) FROM deliveries_oversight WHERE delivery_ref LIKE ?");
+            $stmt->execute([$date_prefix . '%']);
+            $max_num = (int)$stmt->fetchColumn();
+
+            $pdo->beginTransaction();
+
+            $total_items = count($item_names);
+            $success_count = 0;
+
+            for ($i = 0; $i < $total_items; $i++) {
+                $category = trim($categories[$i] ?? '');
+                $item_name = trim($item_names[$i] ?? '');
+                $quantity = (float)($quantities[$i] ?? 0);
+                $unit = trim($units[$i] ?? 'pcs');
+
+                if ($category === 'Fuel') continue; // Skip fuel
+                if ($item_name === '' || $category === '' || $quantity <= 0) continue;
+
+                if ($resubmit_id > 0 && $i === 0) {
+                    /* RESUBMIT — update existing rejected record back to Pending */
+                    // We keep the old delivery_ref for the first item on resubmit
+                    $ref_row = $pdo->prepare("SELECT delivery_ref FROM deliveries_oversight WHERE id = ?");
+                    $ref_row->execute([$resubmit_id]);
+                    $delivery_ref = $ref_row->fetchColumn();
+                    
+                    $pdo->prepare("
+                        UPDATE deliveries_oversight
+                        SET supplier = ?, product = ?, quantity = ?, unit = ?,
+                            delivery_date = ?, dr_number = ?, remarks = ?, batch_id = ?,
+                            status = 'Pending Manager Approval',
+                            admin_notes = NULL, admin_id = NULL, admin_action_at = NULL,
+                            updated_at = NOW()
+                        WHERE id = ? AND station_id = ? AND encoded_by = ?
+                    ")->execute([
+                        $supplier_name, $item_name, $quantity, $unit,
+                        $delivery_date, $dr_number, $remarks, $batch_id,
+                        $resubmit_id, $station_id, $me['id']
+                    ]);
+                    $success_count++;
+                } else {
+                    /* NEW delivery — INSERT */
+                    $max_num++;
+                    $delivery_ref = $date_prefix . str_pad($max_num, 4, '0', STR_PAD_LEFT);
+                    
+                    $pdo->prepare("
+                        INSERT INTO deliveries_oversight
+                            (delivery_type, delivery_ref, batch_id, supplier, product, quantity, unit,
+                             delivery_date, dr_number, encoded_by, station_id, status, remarks,
+                             created_at, updated_at)
+                        VALUES ('merchandise', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Manager Approval', ?, NOW(), NOW())
+                    ")->execute([
+                        $delivery_ref, $batch_id, $supplier_name, $item_name,
+                        $quantity, $unit, $delivery_date, $dr_number,
+                        $me['id'], $station_id, $remarks
+                    ]);
+                    $success_count++;
+                }
             }
 
-            $msg_type = 'success';
+            $pdo->commit();
 
-            /* Audit trail — write to audit_logs so it shows in Audit Trail report */
-            try {
-                $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
-                $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
-                $action_label = $resubmit_id > 0 ? 'Update' : 'Create';
-                $detail = ($resubmit_id > 0 ? 'Delivery resubmitted' : 'Delivery recorded')
-                        . " | Ref: {$delivery_ref} | Supplier: {$supplier_name} | Item: {$item_name}"
-                        . " | Qty: {$quantity} {$unit} | Date: {$delivery_date}"
-                        . ($dr_number ? " | DR#: {$dr_number}" : '');
-                $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'transaction', ?, ?, 'deliveries', ?, 'Success', ?, ?, NOW())")
-                    ->execute([$me['id'], $action_label, $detail, null, $ip, $ua]);
-            } catch (Exception $ae) {}
+            if ($success_count > 0) {
+                if ($resubmit_id > 0) {
+                    $msg = "&#10003; Delivery batch <strong>{$batch_id}</strong> resubmitted with {$success_count} item(s). Status: <strong>Pending Manager Approval</strong>.";
+                } else {
+                    $msg = "&#10003; Delivery batch <strong>{$batch_id}</strong> recorded with {$success_count} item(s). Status: <strong>Pending Manager Approval</strong>.";
+                }
+                $msg_type = 'success';
 
-            /* Audit trail — legacy table */
-            try {
-                $pdo->prepare("
-                    INSERT INTO audit_trail
-                        (transaction_id, manager_id, action_type, new_value, station_id, entity_type)
-                    VALUES (?, ?, 'Staff Record Delivery', ?, ?, 'delivery')
-                ")->execute([
-                    $delivery_ref, $me['id'],
-                    json_encode([
-                        'supplier' => $supplier_name, 'product' => $item_name,
-                        'category' => $category, 'quantity' => $quantity,
-                        'unit' => $unit, 'delivery_date' => $delivery_date,
-                        'dr_number' => $dr_number, 'status' => 'Pending Manager Approval',
-                        'resubmit' => $resubmit_id > 0,
-                    ]),
-                    $station_id
-                ]);
-            } catch (Exception $ae) {}
+                /* Audit trail — write to audit_logs */
+                try {
+                    $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+                    $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                    $action_label = $resubmit_id > 0 ? 'Update' : 'Create';
+                    $detail = ($resubmit_id > 0 ? 'Delivery resubmitted' : 'Delivery batch recorded')
+                            . " | Batch: {$batch_id} | Supplier: {$supplier_name} | Items: {$success_count}"
+                            . " | Date: {$delivery_date}"
+                            . ($dr_number ? " | DR#: {$dr_number}" : '');
+                    $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'transaction', ?, ?, 'deliveries', ?, 'Success', ?, ?, NOW())")
+                        ->execute([$me['id'], $action_label, $detail, null, $ip, $ua]);
+                } catch (Exception $ae) {}
 
-            /* Activity log */
-            log_activity($pdo, $me['id'], $resubmit_id > 0 ? 'Staff Resubmit Delivery' : 'Staff Record Delivery',
-                "DR: {$delivery_ref} | Supplier: {$supplier_name} | Item: {$item_name} | Qty: {$quantity} {$unit} | Date: {$delivery_date}");
+                /* Audit trail — legacy table */
+                try {
+                    $pdo->prepare("
+                        INSERT INTO audit_trail
+                            (transaction_id, manager_id, action_type, new_value, station_id, entity_type)
+                        VALUES (?, ?, 'Staff Record Delivery Batch', ?, ?, 'delivery')
+                    ")->execute([
+                        $batch_id, $me['id'],
+                        json_encode([
+                            'supplier' => $supplier_name, 'items_count' => $success_count,
+                            'batch_id' => $batch_id, 'delivery_date' => $delivery_date,
+                            'dr_number' => $dr_number, 'status' => 'Pending Manager Approval'
+                        ]),
+                        $station_id
+                    ]);
+                } catch (Exception $ae) {}
 
-            /* Clear POST data on success so form resets */
-            $_POST    = [];
-            $edit_id  = 0;
-            $edit_delivery = null;
+                /* Activity log */
+                log_activity($pdo, $me['id'], $resubmit_id > 0 ? 'Staff Resubmit Delivery Batch' : 'Staff Record Delivery Batch',
+                    "Batch: {$batch_id} | Supplier: {$supplier_name} | Items: {$success_count} | Date: {$delivery_date}");
+
+                /* Clear POST data on success so form resets */
+                $_POST    = [];
+                $edit_id  = 0;
+                $edit_delivery = null;
+            } else {
+                $msg = 'No valid items were provided.';
+                $msg_type = 'error';
+            }
 
         } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
             $msg      = 'Error recording delivery: ' . $e->getMessage();
             $msg_type = 'error';
         }
@@ -250,14 +289,20 @@ if (empty($merch_cats)) {
 
 /* ── Fetch ALL merchandise products for initial datalist ── */
 $merch_products = [];
+$merch_products_map = [];
 try {
     $mp = $pdo->query("
-        SELECT DISTINCT product_name
+        SELECT DISTINCT product_name, category
         FROM inventory_products
         WHERE category NOT IN ('Fuel') AND product_name IS NOT NULL AND product_name <> ''
         ORDER BY product_name
     ");
-    $merch_products = $mp ? $mp->fetchAll(PDO::FETCH_COLUMN) : [];
+    if ($mp) {
+        foreach ($mp->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $merch_products[] = $row['product_name'];
+            $merch_products_map[$row['product_name']] = $row['category'];
+        }
+    }
 } catch (Exception $e) {}
 
 /* ── Fetch suppliers ── */
@@ -453,8 +498,8 @@ include __DIR__ . '/../partials/header.php';
             <!-- Row 1: Delivery ID preview + Supplier -->
             <div class="form-row">
                 <div class="form-group">
-                    <label class="form-label">Delivery ID <span style="font-size:10px;color:#6c757d;font-weight:400;text-transform:none;">(auto-generated)</span></label>
-                    <div class="del-id-preview" id="deliveryIdPreview">MDR-<?php echo date('Ymd'); ?>-XXXXXX</div>
+                    <label class="form-label">Batch ID <span style="font-size:10px;color:#6c757d;font-weight:400;text-transform:none;">(auto-generated)</span></label>
+                    <div class="del-id-preview" id="deliveryIdPreview">BATCH-<?php echo date('Ymd'); ?>-XXX</div>
                 </div>
                 <div class="form-group">
                     <label class="form-label" for="supplier_name">Supplier Name <span class="req">*</span></label>
@@ -469,64 +514,14 @@ include __DIR__ . '/../partials/header.php';
                 </div>
             </div>
 
-            <!-- Row 2: Date Received + Category -->
-            <div class="form-row">
+            <!-- Row 2: Date + DR + Remarks -->
+            <div class="form-row-3">
                 <div class="form-group">
                     <label class="form-label" for="delivery_date">Date Received <span class="req">*</span></label>
                     <input type="date" id="delivery_date" name="delivery_date" class="form-control"
                            value="<?php echo htmlspecialchars($_POST['delivery_date'] ?? $edit_delivery['delivery_date'] ?? date('Y-m-d')); ?>"
                            max="<?php echo date('Y-m-d'); ?>" required>
                 </div>
-                <div class="form-group">
-                    <label class="form-label" for="category">Category <span class="req">*</span></label>
-                    <select id="category" name="category" class="form-select" required onchange="loadProductsByCategory()">
-                        <option value="">— Select Category —</option>
-                        <?php foreach ($merch_cats as $cat): ?>
-                            <option value="<?php echo htmlspecialchars($cat); ?>"
-                                <?php echo (($_POST['category'] ?? '') === $cat) ? 'selected' : ''; ?>>
-                                <?php echo htmlspecialchars($cat); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-            </div>
-
-            <!-- Row 3: Item Name + Quantity + Unit -->
-            <div class="form-row-3">
-                <div class="form-group">
-                    <label class="form-label" for="item_name">Item / Product Name <span class="req">*</span></label>
-                    <input type="text" id="item_name" name="item_name" class="form-control"
-                           list="productList" placeholder="Select category first, then type item..."
-                           value="<?php echo htmlspecialchars($_POST['item_name'] ?? $edit_delivery['product'] ?? ''); ?>" required autocomplete="off">
-                    <datalist id="productList">
-                        <?php foreach ($merch_products as $p): ?>
-                            <option value="<?php echo htmlspecialchars($p); ?>">
-                        <?php endforeach; ?>
-                    </datalist>
-                    <span id="productLoadingHint" style="font-size:11px;color:#6c757d;display:none;">
-                        <i class="fas fa-spinner fa-spin"></i> Loading products...
-                    </span>
-                </div>
-                <div class="form-group">
-                    <label class="form-label" for="quantity">Quantity <span class="req">*</span></label>
-                    <input type="number" id="quantity" name="quantity" class="form-control"
-                           step="0.001" min="0.001" placeholder="0.000"
-                           value="<?php echo htmlspecialchars($_POST['quantity'] ?? $edit_delivery['quantity'] ?? ''); ?>" required>
-                </div>
-                <div class="form-group">
-                    <label class="form-label" for="unit">Unit <span class="req">*</span></label>
-                    <select id="unit" name="unit" class="form-select" required>
-                        <option value="pcs" <?php echo (($_POST['unit'] ?? 'pcs') === 'pcs') ? 'selected' : ''; ?>>pcs (Pieces)</option>
-                        <option value="kg"  <?php echo (($_POST['unit'] ?? '') === 'kg')  ? 'selected' : ''; ?>>kg (Kilograms)</option>
-                        <option value="box" <?php echo (($_POST['unit'] ?? '') === 'box') ? 'selected' : ''; ?>>box</option>
-                        <option value="set" <?php echo (($_POST['unit'] ?? '') === 'set') ? 'selected' : ''; ?>>set</option>
-                        <option value="L"   <?php echo (($_POST['unit'] ?? '') === 'L')   ? 'selected' : ''; ?>>L (Liters)</option>
-                    </select>
-                </div>
-            </div>
-
-            <!-- Row 4: DR Number + Remarks -->
-            <div class="form-row">
                 <div class="form-group">
                     <label class="form-label" for="dr_number">DR Number <span style="font-size:10px;color:#6c757d;font-weight:400;text-transform:none;">(optional)</span></label>
                     <input type="text" id="dr_number" name="dr_number" class="form-control"
@@ -541,85 +536,188 @@ include __DIR__ . '/../partials/header.php';
                 </div>
             </div>
 
+            <!-- Items Section -->
+            <div style="margin-top:30px; border-top:1px solid #e9ecef; padding-top:20px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                    <h3 style="margin:0; font-size:15px; color:#002F70;"><i class="fas fa-boxes"></i> Delivery Items</h3>
+                    <?php if (!$edit_delivery): ?>
+                    <button type="button" class="btn-secondary-del" style="padding:6px 12px; font-size:12px;" onclick="addItemRow()">
+                        <i class="fas fa-plus"></i> Add Another Item
+                    </button>
+                    <?php endif; ?>
+                </div>
+                
+                <div id="itemsContainer">
+                    <div class="item-row" style="background:#f8f9fa; border:1px solid #dee2e6; border-radius:8px; padding:15px; margin-bottom:15px; position:relative;">
+                        <div style="display:grid; grid-template-columns: 1fr 1.5fr 0.8fr 0.8fr; gap:15px;">
+                            <div class="form-group">
+                                <label class="form-label">Category <span class="req">*</span></label>
+                                <select name="category[]" class="form-select category-select" required onchange="loadProductsByCategory(this)">
+                                    <option value="">— Select Category —</option>
+                                    <?php foreach ($merch_cats as $cat): ?>
+                                        <option value="<?php echo htmlspecialchars($cat); ?>"
+                                            <?php echo (($edit_delivery['category'] ?? '') === $cat) ? 'selected' : ''; ?>>
+                                            <?php echo htmlspecialchars($cat); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Item Name <span class="req">*</span></label>
+                                <input type="text" name="item_name[]" class="form-control item-name-input"
+                                       list="productList" placeholder="Type or select item..."
+                                       value="<?php echo htmlspecialchars($edit_delivery['product'] ?? ''); ?>" required autocomplete="off" oninput="autoSelectCategory(this)">
+                                <span class="productLoadingHint" style="font-size:11px;color:#6c757d;display:none;">
+                                    <i class="fas fa-spinner fa-spin"></i> Loading...
+                                </span>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Quantity <span class="req">*</span></label>
+                                <input type="number" name="quantity[]" class="form-control"
+                                       step="0.001" min="0.001" placeholder="0.000"
+                                       value="<?php echo htmlspecialchars($edit_delivery['quantity'] ?? ''); ?>" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Unit <span class="req">*</span></label>
+                                <select name="unit[]" class="form-select" required>
+                                    <option value="pcs" <?php echo (($edit_delivery['unit'] ?? 'pcs') === 'pcs') ? 'selected' : ''; ?>>pcs (Pieces)</option>
+                                    <option value="kg"  <?php echo (($edit_delivery['unit'] ?? '') === 'kg')  ? 'selected' : ''; ?>>kg (Kilograms)</option>
+                                    <option value="box" <?php echo (($edit_delivery['unit'] ?? '') === 'box') ? 'selected' : ''; ?>>box</option>
+                                    <option value="set" <?php echo (($edit_delivery['unit'] ?? '') === 'set') ? 'selected' : ''; ?>>set</option>
+                                    <option value="L"   <?php echo (($edit_delivery['unit'] ?? '') === 'L')   ? 'selected' : ''; ?>>L (Liters)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Form Actions -->
-            <div class="form-actions">
+            <div class="form-actions" style="margin-top:10px;">
                 <button type="submit" class="btn-primary-del" id="submitBtn">
                     <i class="fas fa-save"></i> Save Delivery Record
                 </button>
                 <button type="button" class="btn-secondary-del" onclick="resetForm()">
                     <i class="fas fa-undo"></i> Reset
                 </button>
-
             </div>
         </form>
     </div>
 </div>
+<datalist id="productList">
+    <?php foreach ($merch_products as $p): ?>
+        <option value="<?php echo htmlspecialchars($p); ?>">
+    <?php endforeach; ?>
+</datalist>
 
 <script>
 /* ── AJAX: load products filtered by category ── */
-function loadProductsByCategory() {
-    const cat     = document.getElementById('category').value;
-    const input   = document.getElementById('item_name');
-    const list    = document.getElementById('productList');
-    const hint    = document.getElementById('productLoadingHint');
+function loadProductsByCategory(selectElem) {
+    const cat = selectElem.value;
+    const row = selectElem.closest('.item-row');
+    const input = row.querySelector('.item-name-input');
+    const hint = row.querySelector('.productLoadingHint');
 
-    /* Clear current item value and datalist */
-    input.value   = '';
-    list.innerHTML = '';
-
-    if (!cat) return;
+    if (!cat) {
+        input.value = '';
+        return;
+    }
 
     hint.style.display = 'inline';
-    input.placeholder  = 'Loading products...';
-
+    
+    // We update a shared datalist but we don't need to rebuild it if we just use the global one.
+    // The previous implementation replaced the datalist entirely. Let's just fetch if needed.
     fetch('staff_record_delivery.php?ajax=products_by_category&category=' + encodeURIComponent(cat))
         .then(function(r) { return r.json(); })
         .then(function(data) {
             hint.style.display = 'none';
-            input.placeholder  = 'Type or select item...';
-            (data.products || []).forEach(function(p) {
-                const opt   = document.createElement('option');
-                opt.value   = p;
-                list.appendChild(opt);
-            });
             if ((data.products || []).length === 0) {
                 input.placeholder = 'No products found — type manually';
+            } else {
+                input.placeholder = 'Type or select item...';
             }
         })
         .catch(function() {
             hint.style.display = 'none';
-            input.placeholder  = 'Type item name manually';
         });
 }
 
-/* ── Delivery ID preview updates on date change (MDR prefix) ── */
+/* ── Dynamic Rows ── */
+function addItemRow() {
+    const container = document.getElementById('itemsContainer');
+    const firstRow = container.querySelector('.item-row');
+    const newRow = firstRow.cloneNode(true);
+    
+    // Clear inputs in cloned row
+    newRow.querySelectorAll('input, select').forEach(input => {
+        if (input.tagName === 'SELECT') {
+            input.selectedIndex = 0;
+            if(input.name === 'unit[]') input.value = 'pcs';
+        } else {
+            input.value = '';
+        }
+    });
+    
+    // Add remove button
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn-secondary-del';
+    removeBtn.style.cssText = 'position:absolute; top:-12px; right:-12px; padding:4px 8px; border-radius:50%; background:#dc3545; font-size:12px; z-index:10;';
+    removeBtn.innerHTML = '<i class="fas fa-times"></i>';
+    removeBtn.onclick = function() { newRow.remove(); };
+    newRow.appendChild(removeBtn);
+    
+    container.appendChild(newRow);
+}
+
+/* ── Delivery ID preview updates on date change (BATCH prefix) ── */
 document.getElementById('delivery_date').addEventListener('change', function () {
     const d = this.value;
     if (!d) return;
     const parts = d.split('-');
     if (parts.length !== 3) return;
     document.getElementById('deliveryIdPreview').textContent =
-        'MDR-' + parts[0] + parts[1] + parts[2] + '-XXXXXX';
+        'BATCH-' + parts[0] + parts[1] + parts[2] + '-XXX';
 });
+
+/* ── Auto-Select Category based on Item ── */
+const productCategoryMap = <?php echo json_encode($merch_products_map, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+
+function autoSelectCategory(inputElem) {
+    const productName = inputElem.value.trim();
+    if (productCategoryMap[productName]) {
+        const row = inputElem.closest('.item-row');
+        const catSelect = row.querySelector('.category-select');
+        catSelect.value = productCategoryMap[productName];
+    }
+}
 
 /* ── Form validation ── */
 document.getElementById('deliveryForm').addEventListener('submit', function (e) {
     const supplier = document.getElementById('supplier_name').value.trim();
-    const item     = document.getElementById('item_name').value.trim();
-    const category = document.getElementById('category').value;
-    const quantity = parseFloat(document.getElementById('quantity').value);
     const date     = document.getElementById('delivery_date').value;
 
     const errors = [];
+    if (!supplier) errors.push('Supplier Name is required.');
+    if (!date)     errors.push('Date Received is required.');
 
-    if (category === 'Fuel') {
-        errors.push('Fuel deliveries are handled in Fuel Management. Please select a merchandise category.');
+    const categories = document.querySelectorAll('.category-select');
+    const items = document.querySelectorAll('.item-name-input');
+    const quantities = document.querySelectorAll('input[name="quantity[]"]');
+
+    let hasValidItem = false;
+    for (let i = 0; i < items.length; i++) {
+        if (categories[i].value === 'Fuel') {
+            errors.push('Fuel deliveries are handled in Fuel Management.');
+        }
+        if (categories[i].value && items[i].value.trim() && parseFloat(quantities[i].value) > 0) {
+            hasValidItem = true;
+        } else if (categories[i].value || items[i].value.trim() || quantities[i].value) {
+            errors.push('Please complete all fields for each item row.');
+        }
     }
-    if (!supplier)                  errors.push('Supplier Name is required.');
-    if (!category)                  errors.push('Category is required.');
-    if (!item)                      errors.push('Item / Product Name is required.');
-    if (!quantity || quantity <= 0) errors.push('Quantity must be greater than 0.');
-    if (!date)                      errors.push('Date Received is required.');
+
+    if (!hasValidItem) errors.push('At least one complete item is required.');
 
     if (errors.length > 0) {
         e.preventDefault();

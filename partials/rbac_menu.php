@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // RBAC-Based Menu Generation
 // Master menu array with all possible items and their permission requirements
 $master_menu = [
@@ -9,11 +9,11 @@ $master_menu = [
     ['id'=>'manager_dashboard','label'=>'Dashboard','ico'=>'fas fa-gauge-high','href'=>'manager_dashboard.php','permissions'=>['approve_transactions','manage_job_orders'],'station_specific'=>true],
     
     // Transactions & POS - Managers and Staff only (Admin/Owner excluded)
-    ['id'=>'transactions','label'=>'Transactions','ico'=>'fas fa-shopping-cart','href'=>'staff_transactions.php','permissions'=>['create_transactions', 'view_transactions', 'approve_transactions'],'station_specific'=>true],
+    ['id'=>'transactions','label'=>'Transactions','ico'=>'fas fa-shopping-cart','href'=>'staff_transactions_hub.php?section=merchandise','permissions'=>['create_transactions', 'view_transactions', 'approve_transactions'],'station_specific'=>true],
 
         
     // Job Orders - Managers handle operations, Staff create
-    ['id'=>'job_orders','label'=>'Job Orders','ico'=>'fas fa-wrench','href'=>'joborder.php','permissions'=>['manage_job_orders', 'create_job_orders'],'station_specific'=>true],
+    ['id'=>'job_orders','label'=>'Job Orders','ico'=>'fas fa-wrench','href'=>'staff_transactions_hub.php?section=merchandise&active_tab=encode_jo','permissions'=>['manage_job_orders', 'create_job_orders'],'station_specific'=>true],
     
     // Fuel Management - Managers handle operations, Staff do encoding
     ['id'=>'fuel','label'=>'Fuel Management','ico'=>'fas fa-gas-pump','href'=>'fuel_readings_encoding.php','permissions'=>['manage_fuel', 'encode_fuel', 'view_fuel_variance'],'station_specific'=>true,'sub_items'=>[
@@ -59,13 +59,17 @@ $master_menu = [
 
     // Reports - Different access levels
     ['id'=>'reports','label'=>'Reports','ico'=>'fas fa-chart-bar','href'=>'staff_reports.php','permissions'=>['view_personal_reports', 'view_operational_reports', 'view_financial_reports', 'view_all_reports'],'station_specific'=>true,'sub_items'=>[
-        ['id'=>'report_daily_sales',       'label'=>'Daily Sales Summary',        'href'=>'staff_reports.php?view=daily_sales_summary', 'permissions'=>['view_personal_reports','view_operational_reports']],
-        ['id'=>'report_jo_tracker',        'label'=>'Job Order Tracker Report',   'href'=>'staff_reports.php?view=jo_tracker_report',   'permissions'=>['view_personal_reports','view_operational_reports']],
-        ['id'=>'report_activity',          'label'=>'Personal Activity Report',   'href'=>'staff_reports.php?view=personal_activity',   'permissions'=>['view_personal_reports']],
-        ['id'=>'report_fuel_meter',        'label'=>'Meter Reading Report',       'href'=>'staff_fuel_reports.php?view=meter_readings',  'permissions'=>['encode_fuel']],
-        ['id'=>'report_fuel_deliveries',   'label'=>'Fuel Deliveries Report',     'href'=>'staff_fuel_reports.php?view=deliveries',      'permissions'=>['encode_fuel']],
+        ['id'=>'report_daily_sales',       'label'=>'Daily Sales Summary',               'href'=>'staff_reports.php?view=daily_sales',        'permissions'=>['view_personal_reports','view_operational_reports']],
+        ['id'=>'report_jo_tracker',        'label'=>'Job Order Tracker Report',          'href'=>'staff_reports.php?view=jo_tracker',         'permissions'=>['view_personal_reports','view_operational_reports']],
+        ['id'=>'report_activity',          'label'=>'Personal Activity Report',          'href'=>'staff_reports.php?view=personal_activity',  'permissions'=>['view_personal_reports']],
+        ['id'=>'report_fuel_meter',        'label'=>'Meter Reading Report',              'href'=>'staff_reports.php?view=meter_readings',     'permissions'=>['encode_fuel','view_personal_reports']],
+        ['id'=>'report_fuel_deliveries',   'label'=>'Fuel Deliveries Report',            'href'=>'staff_reports.php?view=fuel_deliveries',    'permissions'=>['encode_fuel','view_personal_reports']],
+        ['id'=>'report_merch_deliveries',  'label'=>'Merchandise Deliveries Report',     'href'=>'staff_reports.php?view=merch_deliveries',   'permissions'=>['view_personal_reports','view_operational_reports']],
+        ['id'=>'report_inv_movement',      'label'=>'Inventory Movement Report',         'href'=>'staff_reports.php?view=inventory_movement', 'permissions'=>['view_personal_reports','view_operational_reports']],
+        ['id'=>'report_payment_status',    'label'=>'Payment Status Report',             'href'=>'staff_reports.php?view=payment_status',     'permissions'=>['view_personal_reports','view_operational_reports']],
+        ['id'=>'report_cust_linkage',      'label'=>'Customer Transaction Linkage Report','href'=>'staff_reports.php?view=customer_linkage',   'permissions'=>['view_personal_reports','view_operational_reports']],
+        ['id'=>'report_audit_trail',       'label'=>'Audit Trail Report',                'href'=>'staff_reports.php?view=audit_trail',        'permissions'=>['view_personal_reports','view_operational_reports']],
     ]],
-    
     
     // ── SUPERADMIN / DEVELOPER SIDEBAR ──────────────────────────────────────────
     // Exact 9-item spec. Developer-focused, no business ops.
@@ -322,7 +326,6 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 $filtered_item['ico']  = 'fas fa-exchange-alt';
                 $filtered_item['sub_items'] = [
                     ['id'=>'merchandise_transaction', 'label'=>'Merchandise Transaction', 'href'=>'staff_transactions_hub.php?section=merchandise&active_tab=merchandise', 'permissions'=>['create_transactions']],
-                    ['id'=>'job_order_tracker',       'label'=>'Job Order Tracker',       'href'=>'staff_transactions_hub.php?section=merchandise&active_tab=tracker',     'permissions'=>['create_transactions']],
                     ['id'=>'shift_transactions',      'label'=>'Shift History',           'href'=>'staff_transactions_hub.php?section=history',                            'permissions'=>['create_transactions']],
                 ];
             }

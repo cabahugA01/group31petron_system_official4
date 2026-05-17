@@ -44,6 +44,11 @@ function station_where(string $alias, int $station_id): string {
     return $station_id ? "AND {$alias}.station_id = {$station_id}" : '';
 }
 
+// Log full page search queries
+if (!empty($query) && !$is_ajax) {
+    log_activity($pdo, $user_id, 'Global Search', "User searched for: {$query}");
+}
+
 // ── Icon map per category ─────────────────────────────────────
 $ICONS = [
     'Transaction'      => 'fas fa-shopping-cart',
@@ -495,6 +500,11 @@ if (!empty($query)) {
 // ── AJAX: return JSON for autocomplete (max 4 per type) ──────
 if ($is_ajax) {
     header('Content-Type: application/json; charset=utf-8');
+    
+    if (!empty($query) && strlen(trim($query)) >= 3) {
+        log_activity($pdo, $user_id, 'Global Search (Ajax)', "User searched: {$query}");
+    }
+    
     // Limit to 4 per category for dropdown
     $grouped = [];
     foreach ($results as $r) {

@@ -782,7 +782,7 @@ try {
 
 require_once __DIR__ . '/../partials/header.php';
 ?>
-<div class="dashboard-content" style="max-width:100%;box-sizing:border-box;overflow-x:hidden;">
+<div class="dashboard-content" style="max-width:100%;box-sizing:border-box;overflow-x:hidden;padding-bottom:100px;">
 <style>
 .dashboard-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; padding:0; }
 .widget-full { grid-column: 1 / -1; }
@@ -818,7 +818,7 @@ require_once __DIR__ . '/../partials/header.php';
 .quick-action-btn { display:flex; flex-direction:column; align-items:center; gap:8px; padding:16px 10px; background:#f8fafc; border-radius:12px; border:1px solid #EAEAEA; text-decoration:none; color:#344054; font-size:12px; font-weight:600; text-align:center; transition:.2s; }
 .quick-action-btn:hover { background:#00264D; color:#fff; border-color:#00264D; transform:translateY(-2px); }
 .quick-action-btn i { font-size:22px; }
-.reports-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; }
+.reports-grid { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; }
 .report-btn { display:flex; flex-direction:column; align-items:center; gap:8px; padding:14px 10px; background:#f8fafc; border-radius:12px; border:1px solid #EAEAEA; text-decoration:none; color:#344054; font-size:12px; font-weight:600; text-align:center; transition:.2s; }
 .report-btn:hover { background:#2563eb; color:#fff; border-color:#2563eb; }
 .report-btn i { font-size:20px; }
@@ -964,7 +964,7 @@ require_once __DIR__ . '/../partials/header.php';
 <!-- ===== WIDGET 3: Job Orders Status ===== -->
 <div class="widget-card widget-full">
   <h3><i class="fas fa-wrench"></i> Job Orders Status
-    <a href="staff_transactions_hub.php?section=merchandise&active_tab=merchandise" style="margin-left:auto;font-size:12px;background:#00264D;color:#fff;padding:5px 14px;border-radius:8px;text-decoration:none;font-weight:600;flex-shrink:0">
+    <a href="staff_transactions_hub.php?section=merchandise&active_tab=encode_jo" style="margin-left:auto;font-size:12px;background:#00264D;color:#fff;padding:5px 14px;border-radius:8px;text-decoration:none;font-weight:600;flex-shrink:0">
       <i class="fas fa-plus"></i> New Job Order
     </a>
   </h3>
@@ -1362,7 +1362,7 @@ require_once __DIR__ . '/../partials/header.php';
     </a>
 
     <!-- Credit Sale -->
-    <a href="staff_transactions_hub.php?section=merchandise#credit" class="quick-action-btn">
+    <a href="staff_transactions_hub.php?section=merchandise" class="quick-action-btn">
       <div style="position:relative;display:inline-block">
         <i class="fas fa-file-invoice-dollar"></i>
         <?php if ($qa_credit_today > 0): ?>
@@ -1376,7 +1376,7 @@ require_once __DIR__ . '/../partials/header.php';
     </a>
 
     <!-- Create Job Order -->
-    <a href="joborder.php?action=create" class="quick-action-btn">
+    <a href="staff_transactions_hub.php?section=merchandise&active_tab=encode_jo" class="quick-action-btn">
       <div style="position:relative;display:inline-block">
         <i class="fas fa-wrench"></i>
         <?php if ($qa_pending_jo > 0): ?>
@@ -1390,7 +1390,7 @@ require_once __DIR__ . '/../partials/header.php';
     </a>
 
     <!-- Receive Items -->
-    <a href="staff_deliveries.php" class="quick-action-btn">
+    <a href="staff_record_delivery.php" class="quick-action-btn">
       <div style="position:relative;display:inline-block">
         <i class="fas fa-box-open"></i>
         <?php if ($qa_pending_del > 0): ?>
@@ -1418,7 +1418,7 @@ require_once __DIR__ . '/../partials/header.php';
     </a>
 
     <!-- My Shift -->
-    <a href="staff_shift_history.php" class="quick-action-btn <?= $qa_clocked_in ? 'qa-active' : '' ?>">
+    <a href="staff_reports.php?view=personal_activity&user_id=<?= (int)$me['id'] ?>" class="quick-action-btn <?= $qa_clocked_in ? 'qa-active' : '' ?>">
       <div style="position:relative;display:inline-block">
         <i class="fas fa-clock"></i>
         <?php if ($qa_clocked_in): ?>
@@ -1464,6 +1464,11 @@ require_once __DIR__ . '/../partials/header.php';
       <i class="fas fa-user-clock"></i>
       <span>Personal Activity</span>
       <span class="qa-desc">Clock-in/out &amp; action logs</span>
+    </a>
+    <a href="staff_reports.php?view=audit_trail" class="report-btn">
+      <i class="fas fa-history"></i>
+      <span>Audit Trail Report</span>
+      <span class="qa-desc">View action history</span>
     </a>
   </div>
 </div>

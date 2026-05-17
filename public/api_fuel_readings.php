@@ -2,6 +2,10 @@
 /**
  * Fuel Readings API
  */
+// Buffer ALL output from the very start — prevents any PHP notices/warnings
+// from corrupting the JSON response
+ob_start();
+
 error_reporting(E_ALL);
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
@@ -117,18 +121,22 @@ try {
             if (empty($fuel_type)) respond(false, 'Fuel type is required.');
             if ($present  <= 0)   respond(false, 'Present reading must be greater than 0.');
 
-            // ── Re-pull previous reading from DB (last present_reading, any status) ──
+            // ── Previous reading — use provided if any, else fallback to DB ──
             $previous = 0.0;
-            try {
-                $prev_stmt = $pdo->prepare("
-                    SELECT present_reading FROM fuel_transactions
-                    WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
-                    ORDER BY transaction_date DESC LIMIT 1
-                ");
-                $prev_stmt->execute([$station_id, $fuel_type]);
-                $row_prev = $prev_stmt->fetchColumn();
-                if ($row_prev !== false) $previous = (float)$row_prev;
-            } catch (Exception $e) {}
+            if (isset($_POST['previous_reading']) && $_POST['previous_reading'] !== '') {
+                $previous = (float)$_POST['previous_reading'];
+            } else {
+                try {
+                    $prev_stmt = $pdo->prepare("
+                        SELECT present_reading FROM fuel_transactions
+                        WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                        ORDER BY transaction_date DESC LIMIT 1
+                    ");
+                    $prev_stmt->execute([$station_id, $fuel_type]);
+                    $row_prev = $prev_stmt->fetchColumn();
+                    if ($row_prev !== false) $previous = (float)$row_prev;
+                } catch (Exception $e) {}
+            }
 
             // ── Re-pull calibration from DB ──
             // Priority: fuel_calibration table (technician record) → fuel_inventory.latest_calibration
@@ -288,7 +296,19 @@ try {
                 }
             } catch (Exception $e) {}
 
-            // ── Insert transaction ──
+            $shift_id = (int)($_POST['shift_id'] ?? 0);
+            if ($shift_id > 0) {
+                try {
+                    $chk = $pdo->prepare("SELECT id FROM shifts WHERE id = ?");
+                    $chk->execute([$shift_id]);
+                    if (!$chk->fetchColumn()) {
+                        $shift_id = null; // Invalid shift_id (e.g. from labor_sessions instead of shifts), fallback to true NULL
+                    }
+                } catch (Exception $e) { $shift_id = null; }
+            } else {
+                $shift_id = null;
+            }
+
             // Ensure NOT NULL columns have fallback values
             $shift_period_safe   = substr(!empty($shift_period) ? $shift_period : 'general', 0, 50);
             $shift_name_safe     = substr($shift_name ?? '', 0, 100);
@@ -748,7 +768,6 @@ function respond(bool $ok, string $msg = '', array $data = []): void {
     echo json_encode(array_merge(['success' => $ok, 'message' => $msg], $data));
     exit;
 }
-
 function fuel_validate(float $present, float $previous, float $calibration, PDO $pdo): array {
     // Pull limits from system_settings; fall back to safe defaults if not configured
     $max_liters    = 2000.0;

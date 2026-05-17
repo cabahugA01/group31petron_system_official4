@@ -209,7 +209,7 @@ try {
             "Job Order {$jo_num} — {$display}",
             "Job Order {$jo_num} ({$r['service_type']}) for {$r['customer_name']} is now {$display}.",
             $key,
-            'joborder.php'
+            'staff_transactions_hub.php?section=merchandise&active_tab=tracker'
         );
     }
 } catch (Exception $e) {}
@@ -239,7 +239,7 @@ try {
             "Invalid Meter Input — Pump #{$pump}",
             "Fuel Pump #{$pump} has a negative variance ({$r['computed_liters']} L) on {$r['reading_date']}. Please verify meter reading.",
             $key,
-            'fuel_readings_encoding.php'
+            'staff_transactions_hub.php?section=fuel'
         );
     }
 } catch (Exception $e) {}
@@ -264,7 +264,7 @@ try {
             "Fuel Pump #{$r['pump_id']} Refill Request Pending",
             "Fuel Pump #{$r['pump_id']} refill request pending since " . date('M d, Y H:i', strtotime($r['created_at'])) . ".",
             $key,
-            'fuel_readings_encoding.php'
+            'staff_transactions_hub.php?section=fuel'
         );
     }
 } catch (Exception $e) { /* table may not exist */ }
@@ -343,7 +343,7 @@ try {
             "Customer Pending Validation",
             "Customer {$r['name']} uploaded ID — pending validation.",
             $key,
-            'customers.php?section=validation'
+            'customers.php?view=customers'
         );
     }
 } catch (Exception $e) {}

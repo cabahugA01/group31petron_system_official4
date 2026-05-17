@@ -265,6 +265,7 @@ include __DIR__ . '/../partials/header.php';
                 <thead>
                     <tr>
                         <th>Delivery ID</th>
+                        <th>Batch ID</th>
                         <th>Supplier</th>
                         <th>Item / Product</th>
                         <th>Qty</th>
@@ -315,6 +316,7 @@ include __DIR__ . '/../partials/header.php';
                 ?>
                     <tr class="<?php echo $row_class; ?>">
                         <td><strong style="font-family:monospace;font-size:12px;"><?php echo htmlspecialchars($d['delivery_ref']); ?></strong></td>
+                        <td><strong style="font-family:monospace;font-size:11px;color:#002F70;"><?php echo htmlspecialchars($d['batch_id'] ?? '—'); ?></strong></td>
                         <td><?php echo htmlspecialchars($d['supplier']); ?></td>
                         <td><?php echo htmlspecialchars($d['product']); ?></td>
                         <td><?php echo number_format((float)$d['quantity'], 2); ?> <span style="color:#6c757d;font-size:11px;"><?php echo htmlspecialchars($d['unit']); ?></span></td>
@@ -423,6 +425,7 @@ function viewDelivery(id) {
 
     html += '<table class="detail-table">'
           + '<tr><td>Delivery ID</td><td><strong style="font-family:monospace;">' + escHtml(d.delivery_ref) + '</strong></td></tr>'
+          + '<tr><td>Batch ID</td><td><strong style="font-family:monospace;color:#002F70;">' + escHtml(d.batch_id || '—') + '</strong></td></tr>'
           + '<tr><td>Supplier</td><td>' + escHtml(d.supplier) + '</td></tr>'
           + '<tr><td>Item / Product</td><td>' + escHtml(d.product) + '</td></tr>'
           + '<tr><td>Quantity</td><td>' + parseFloat(d.quantity).toFixed(2) + ' ' + escHtml(d.unit) + '</td></tr>'

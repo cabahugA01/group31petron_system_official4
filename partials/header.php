@@ -334,9 +334,9 @@ if (!isset($pdo) || !$pdo) {
             text-align: center !important;
         }
 
-        /* sidebar-menu fills remaining space, footer sits below it naturally */
+        /* sidebar-menu fills remaining space, footer sits below it naturally. Increased padding so last item is fully visible. */
         .sidebar-menu {
-            padding-bottom: 8px !important;
+            padding-bottom: 80px !important;
         }
 
         /* Avatar circle — centered above name */
@@ -460,38 +460,36 @@ if (!isset($pdo) || !$pdo) {
 
         /* Main content adjustments */
         .main {
-            margin-left: 280px;
-            margin-top: 70px;
-            height: calc(100vh - 70px); /* Viewport - Header only */
-            overflow-y: auto; /* Main content scrolls vertically */
-            overflow-x: hidden; /* Prevent horizontal scrolling */
-            padding: 20px 20px 60px 20px; /* Added bottom padding for fixed footer */
-            transition: margin-left 0.3s ease;
+            position: fixed;
+            top: 70px;
+            left: 280px;
+            right: 0;
+            bottom: 0;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 20px 20px 60px 20px;
+            background: #f8f9fa;
+            transition: left 0.3s ease;
         }
         
         /* Mobile responsive adjustments */
         @media (max-width: 991px) {
             .main {
-                margin-left: 0 !important;
-            }
-            
-            body.sidebar-expanded .main,
-            body.sidebar-collapsed .main {
-                margin-left: 0 !important;
+                left: 0 !important;
             }
         }
 
         .main.sidebar-collapsed {
-            margin-left: 70px; /* Adjust for collapsed sidebar */
+            left: 70px;
         }
         
         /* Sidebar state classes for main content alignment */
         body.sidebar-expanded .main {
-            margin-left: 280px !important;
+            left: 280px !important;
         }
         
         body.sidebar-collapsed .main {
-            margin-left: 70px !important;
+            left: 70px !important;
         }
     }
 
@@ -1282,11 +1280,11 @@ if (!isset($pdo) || !$pdo) {
 
     /* Toggle bar with sidebar adjustment */
     .main.with-toggle-bar {
-        margin-top: 110px; /* Header (70px) + Toggle Bar (40px) */
+        top: 110px; /* Header (70px) + Toggle Bar (40px) */
     }
 
     .main.with-toggle-bar.sidebar-collapsed {
-        margin-left: 70px;
+        left: 70px;
     }
 
     /* Responsive adjustments */
@@ -1812,7 +1810,7 @@ require_once __DIR__ . '/rbac_menu.php';
                             <button id="refreshNotificationsBtn"><i class="fas fa-sync"></i></button>
                         </div>
                     </div>
-                    <div class="notif-list" id="notificationList" style="max-height: 300px; overflow-y: auto;">
+                    <div class="notif-list" id="notificationList" style="max-height: 400px; overflow-y: auto; overflow-x: hidden;">
                         <div class="notif-loading" style="text-align: center; padding: 20px; color: #888;">
                             <i class="fas fa-spinner fa-spin"></i> Loading notifications...
                         </div>
@@ -1913,11 +1911,17 @@ require_once __DIR__ . '/rbac_menu.php';
                     profileDropdown.classList.remove('show');
                 }
 
-                const wasOpen = notifDropdown.classList.contains('show');
                 // Toggle notification dropdown
                 notifDropdown.classList.toggle('show');
-                // If we just opened it, trigger load (handled by IIFE listener)
-                notifDropdown.dataset.justOpened = (!wasOpen) ? '1' : '0';
+                
+                // If we just opened it, load notifications
+                if (notifDropdown.classList.contains('show')) {
+                    if (typeof window.loadStaffNotifications === 'function') {
+                        window.loadStaffNotifications();
+                    } else if (typeof window.saLoadNotifications === 'function') {
+                        window.saLoadNotifications();
+                    }
+                }
             });
         }
 
@@ -1990,7 +1994,8 @@ require_once __DIR__ . '/rbac_menu.php';
                 sidebarToggleIcon.className = 'fas fa-chevron-right';
                 
                 if (mainContent) {
-                    mainContent.style.marginLeft = '70px';
+                    mainContent.style.left = '70px';
+                    mainContent.style.marginLeft = '';
                     mainContent.classList.add('sidebar-collapsed');
                     document.body.classList.add('sidebar-collapsed');
                     document.body.classList.remove('sidebar-expanded');
@@ -1999,7 +2004,8 @@ require_once __DIR__ . '/rbac_menu.php';
                 sidebarToggleIcon.className = 'fas fa-bars';
                 
                 if (mainContent) {
-                    mainContent.style.marginLeft = '280px';
+                    mainContent.style.left = '280px';
+                    mainContent.style.marginLeft = '';
                     mainContent.classList.remove('sidebar-collapsed');
                     document.body.classList.add('sidebar-expanded');
                     document.body.classList.remove('sidebar-collapsed');
@@ -2018,7 +2024,8 @@ require_once __DIR__ . '/rbac_menu.php';
                     localStorage.setItem('sidebarState', 'expanded');
                     
                     if (mainContent) {
-                        mainContent.style.marginLeft = '280px';
+                        mainContent.style.left = '280px';
+                        mainContent.style.marginLeft = '';
                         mainContent.classList.remove('sidebar-collapsed');
                         document.body.classList.add('sidebar-expanded');
                         document.body.classList.remove('sidebar-collapsed');
@@ -2030,7 +2037,8 @@ require_once __DIR__ . '/rbac_menu.php';
                     localStorage.setItem('sidebarState', 'collapsed');
                     
                     if (mainContent) {
-                        mainContent.style.marginLeft = '70px';
+                        mainContent.style.left = '70px';
+                        mainContent.style.marginLeft = '';
                         mainContent.classList.add('sidebar-collapsed');
                         document.body.classList.add('sidebar-collapsed');
                         document.body.classList.remove('sidebar-expanded');
@@ -2352,14 +2360,8 @@ require_once __DIR__ . '/rbac_menu.php';
                 });
             }
 
-            // Load on bell open
-            const bell = document.getElementById('notificationBell');
-            if (bell) {
-                bell.addEventListener('click', function () {
-                    const dd = document.getElementById('notificationDropdown');
-                    if (dd && dd.dataset.justOpened === '1') loadNotifications();
-                });
-            }
+            // Load on bell open (Expose globally for the toggle listener)
+            window.saLoadNotifications = loadNotifications;
 
             // On page load: generate new alerts then get count
             generateAndRefresh();
@@ -2375,6 +2377,20 @@ require_once __DIR__ . '/rbac_menu.php';
 
             const API_LIST = '../backend/api/notifications_api.php';
             const API_GEN  = '<?php echo $notif_generator; ?>';
+
+            // Inject styles for hover effects
+            if (!document.getElementById('notifStyles')) {
+                const style = document.createElement('style');
+                style.id = 'notifStyles';
+                style.innerHTML = `
+                    .notif-item { background: #fff; transition: background 0.2s; border-radius: 8px; margin: 0 8px; }
+                    .notif-item:hover { background: #f0f2f5; }
+                    .notif-item.unread { background: #eef3f8; }
+                    .notif-item.unread:hover { background: #e4ebf3; }
+                    #notificationList { padding-bottom: 8px; padding-top: 8px; }
+                `;
+                document.head.appendChild(style);
+            }
 
             // Event type → icon mapping
             const EVT_ICON = {
@@ -2437,19 +2453,25 @@ require_once __DIR__ . '/rbac_menu.php';
                             const bg     = unread ? 'rgba(0,47,108,0.04)' : 'transparent';
                             const url    = (n.redirect_url || '').replace(/'/g, "\\'");
                             const ago    = n.time_ago || timeAgo(n.created_at);
-                            html += `<div style="padding:12px 15px;border-bottom:1px solid #f0f0f0;cursor:pointer;background:${bg};"
+                            // Facebook-like notification styling
+                            const hoverClass = unread ? 'notif-item unread' : 'notif-item';
+                            html += `<div class="${hoverClass}" style="padding:12px 16px;cursor:pointer;display:flex;align-items:flex-start;gap:12px;text-decoration:none;"
                                           onclick="staffMarkRead(${n.id},'${url}')">
-                                        <div style="display:flex;align-items:flex-start;gap:10px;">
-                                            <div style="width:32px;height:32px;border-radius:50%;background:${color}20;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                                                <i class="${icon}" style="color:${color};font-size:13px;"></i>
-                                            </div>
-                                            <div style="flex:1;min-width:0;">
-                                                <div style="font-weight:${unread?'700':'500'};font-size:13px;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${n.title}</div>
-                                                <div style="color:#64748b;font-size:12px;margin-top:2px;line-height:1.4;">${n.message}</div>
-                                                <div style="color:#94a3b8;font-size:11px;margin-top:4px;">${ago}</div>
-                                            </div>
-                                            ${unread ? '<div style="width:8px;height:8px;border-radius:50%;background:#002F6C;flex-shrink:0;margin-top:4px;"></div>' : ''}
+                                        <div style="width:48px;height:48px;border-radius:50%;background:${color}15;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:1px solid ${color}30;">
+                                            <i class="${icon}" style="color:${color};font-size:20px;"></i>
                                         </div>
+                                        <div style="flex:1;min-width:0;line-height:1.3;">
+                                            <div style="font-size:14px;color:#050505;margin-bottom:2px;">
+                                                <strong style="font-weight:600;">${n.title}</strong>
+                                            </div>
+                                            <div style="color:#65676B;font-size:13px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;">
+                                                ${n.message}
+                                            </div>
+                                            <div style="color:${unread ? '#002F6C' : '#65676B'};font-size:12px;font-weight:${unread ? '600' : 'normal'};margin-top:4px;">
+                                                ${ago}
+                                            </div>
+                                        </div>
+                                        ${unread ? '<div style="width:10px;height:10px;border-radius:50%;background:#002F6C;flex-shrink:0;margin-top:20px;"></div>' : ''}
                                     </div>`;
                         });
                         el.innerHTML = html;
@@ -2522,16 +2544,8 @@ require_once __DIR__ . '/rbac_menu.php';
                 });
             }
 
-            // ── Bell click: load immediately when dropdown opens ──────────────
-            const bell = document.getElementById('notificationBell');
-            if (bell) {
-                bell.addEventListener('click', function () {
-                    const dd = document.getElementById('notificationDropdown');
-                    if (dd && dd.dataset.justOpened === '1') {
-                        loadNotifications();
-                    }
-                });
-            }
+            // Expose globally for the toggle listener
+            window.loadStaffNotifications = loadNotifications;
 
             // ── On page load: fetch count immediately, run generator after 2s ─
             fetchUnreadCount();

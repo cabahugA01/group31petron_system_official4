@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'customers';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -146,15 +146,27 @@ $job_orders_linked   = [];
 $merch_linked        = [];
 if ($linkage_customer_id) {
     try {
+        // Fetch customer name for fallback matching
+        $c_stmt = $pdo->prepare("SELECT name FROM customers WHERE id = ?");
+        $c_stmt->execute([$linkage_customer_id]);
+        $linkage_customer_name = $c_stmt->fetchColumn();
+
         // Check if credit_customer_id column exists
         $jo_cols = $pdo->query("SHOW COLUMNS FROM job_orders")->fetchAll(PDO::FETCH_COLUMN);
         $has_credit_cid = in_array('credit_customer_id', $jo_cols);
+        $has_jo_name = in_array('customer_name', $jo_cols);
+        
         $cust_cond = $has_credit_cid
-            ? '(customer_id=? OR credit_customer_id=?)'
-            : 'customer_id=?';
+            ? '(customer_id=? OR credit_customer_id=?' . ($has_jo_name && $linkage_customer_name ? ' OR customer_name=?' : '') . ')'
+            : '(customer_id=?' . ($has_jo_name && $linkage_customer_name ? ' OR customer_name=?' : '') . ')';
+            
         $params = $has_credit_cid
             ? [$station_id, $linkage_customer_id, $linkage_customer_id]
             : [$station_id, $linkage_customer_id];
+            
+        if ($has_jo_name && $linkage_customer_name) {
+            $params[] = $linkage_customer_name;
+        }
 
         $jo_num_col = in_array('job_order_id', $jo_cols) ? 'job_order_id'
                     : (in_array('jo_number', $jo_cols) ? 'jo_number' : 'NULL');
@@ -176,16 +188,25 @@ if ($linkage_customer_id) {
     try {
         // Check if customer_id exists in merchandise_transactions
         $mt_cols = $pdo->query("SHOW COLUMNS FROM merchandise_transactions")->fetchAll(PDO::FETCH_COLUMN);
-        if (in_array('customer_id', $mt_cols)) {
+        if (in_array('customer_name', $mt_cols)) {
             $date_col = in_array('transaction_date', $mt_cols) ? 'COALESCE(transaction_date, created_at)' : 'created_at';
+            
+            $mt_cond = "customer_name = ?";
+            $mt_params = [$station_id, $linkage_customer_name];
+            
+            if (in_array('customer_id', $mt_cols)) {
+                $mt_cond = "(customer_id = ? OR customer_name = ?)";
+                $mt_params = [$station_id, $linkage_customer_id, $linkage_customer_name];
+            }
+            
             $s = $pdo->prepare("
                 SELECT id, customer_name, total_amount,
-                       $date_col AS txn_date, payment_method
+                       $date_col AS txn_date, payment_method, item_sku, quantity
                 FROM merchandise_transactions
-                WHERE station_id=? AND customer_id=?
+                WHERE station_id=? AND $mt_cond
                 ORDER BY txn_date DESC
             ");
-            $s->execute([$station_id, $linkage_customer_id]);
+            $s->execute($mt_params);
             $merch_linked = $s->fetchAll(PDO::FETCH_ASSOC);
         }
     } catch (Exception $e) {}
@@ -217,10 +238,16 @@ if ($section === 'history') {
         try {
             $jo_cols  = $pdo->query("SHOW COLUMNS FROM job_orders")->fetchAll(PDO::FETCH_COLUMN);
             $mt_cols  = $pdo->query("SHOW COLUMNS FROM merchandise_transactions")->fetchAll(PDO::FETCH_COLUMN);
+            
+            $hist_customer_name = $hist_customer_info['name'] ?? '';
 
             $has_jo_credit  = in_array('credit_customer_id', $jo_cols);
+            $has_jo_name    = in_array('customer_name', $jo_cols);
+            
             $has_mt_cid     = in_array('customer_id', $mt_cols);
             $has_mt_credit  = in_array('credit_customer_id', $mt_cols);
+            $has_mt_name    = in_array('customer_name', $mt_cols);
+            
             $jo_num_col     = in_array('job_order_number', $jo_cols) ? 'job_order_number'
                             : (in_array('job_order_id', $jo_cols) ? 'job_order_id' : 'NULL');
             $jo_svc_col     = in_array('service_type', $jo_cols) ? 'service_type'
@@ -230,20 +257,39 @@ if ($section === 'history') {
             $jo_total       = in_array('actual_cost', $jo_cols) ? 'COALESCE(actual_cost, estimated_cost, 0)'
                             : (in_array('estimated_cost', $jo_cols) ? 'COALESCE(estimated_cost, 0)' : '0');
             $jo_plate       = in_array('vehicle_plate', $jo_cols) ? 'vehicle_plate' : "''";
+            
             $jo_cust_cond   = $has_jo_credit
-                ? '(jo.customer_id=? OR jo.credit_customer_id=?)'
-                : 'jo.customer_id=?';
+                ? '(jo.customer_id=? OR jo.credit_customer_id=?' . ($has_jo_name && $hist_customer_name ? ' OR jo.customer_name=?' : '') . ')'
+                : '(jo.customer_id=?' . ($has_jo_name && $hist_customer_name ? ' OR jo.customer_name=?' : '') . ')';
+                
             $jo_params      = $has_jo_credit
                 ? [$station_id, $hist_selected_id, $hist_selected_id]
                 : [$station_id, $hist_selected_id];
+                
+            if ($has_jo_name && $hist_customer_name) {
+                $jo_params[] = $hist_customer_name;
+            }
 
             $mt_date_col    = in_array('transaction_date', $mt_cols) ? 'COALESCE(mt.transaction_date, mt.created_at)' : 'mt.created_at';
-            $mt_cust_cond   = $has_mt_credit
-                ? '(mt.customer_id=? OR mt.credit_customer_id=?)'
-                : ($has_mt_cid ? 'mt.customer_id=?' : '1=0');
-            $mt_params      = ($has_mt_credit || $has_mt_cid)
-                ? ($has_mt_credit ? [$station_id, $hist_selected_id, $hist_selected_id] : [$station_id, $hist_selected_id])
-                : [$station_id];
+            
+            // Build MT conditions
+            $mt_cond_parts = [];
+            $mt_params = [$station_id];
+            
+            if ($has_mt_cid) {
+                $mt_cond_parts[] = "mt.customer_id=?";
+                $mt_params[] = $hist_selected_id;
+            }
+            if ($has_mt_credit) {
+                $mt_cond_parts[] = "mt.credit_customer_id=?";
+                $mt_params[] = $hist_selected_id;
+            }
+            if ($has_mt_name && $hist_customer_name) {
+                $mt_cond_parts[] = "mt.customer_name=?";
+                $mt_params[] = $hist_customer_name;
+            }
+            
+            $mt_cust_cond = empty($mt_cond_parts) ? '1=0' : '(' . implode(' OR ', $mt_cond_parts) . ')';
 
             // Date filter
             $jo_date_filter = $mt_date_filter = '';
@@ -392,6 +438,9 @@ include __DIR__ . '/../partials/header.php';
 .cust-search { width:100%; padding:9px 12px; border:1px solid #dee2e6; border-radius:6px; font-size:13px; margin-bottom:14px; box-sizing:border-box; }
 .edit-link { color:#002F70; font-size:12px; font-weight:600; text-decoration:none; padding:4px 10px; border:1px solid #002F70; border-radius:5px; white-space:nowrap; }
 .edit-link:hover { background:#002F70; color:#fff; }
+.cust-tab { padding:10px 16px; border:none; background:transparent; font-size:14px; font-weight:700; color:#6c757d; cursor:pointer; border-bottom:3px solid transparent; margin-bottom:-1px; }
+.cust-tab.active { color:#002F70; border-bottom-color:#002F70; }
+.cust-tab:hover:not(.active) { color:#343a40; border-bottom-color:#dee2e6; }
 </style>
 
 <div class="page-head">
@@ -461,9 +510,7 @@ include __DIR__ . '/../partials/header.php';
 <!-- ══ SECTION: TRANSACTION LINKAGE ══════════════════════════════════════════ -->
 <?php elseif ($section === 'linkage'): ?>
 <div class="cust-card">
-    <div class="cust-card-head">
-        <h2 class="cust-card-title"><i class="fas fa-link"></i> Transaction Linkage</h2>
-    </div>
+
     <div class="cust-card-body">
         <form method="GET" action="customers.php" style="margin-bottom:20px;">
             <input type="hidden" name="section" value="linkage">
@@ -495,52 +542,63 @@ include __DIR__ . '/../partials/header.php';
             </div>
             <?php endif; ?>
 
-            <div class="section-head"><i class="fas fa-wrench"></i> Job Orders</div>
-            <?php if (empty($job_orders_linked)): ?>
-                <div class="empty-state"><i class="fas fa-wrench"></i>No job orders found for this customer.</div>
-            <?php else: ?>
-            <div style="overflow-x:auto;margin-bottom:24px;">
-                <table class="cust-table">
-                    <thead><tr><th>JO Ref</th><th>Service</th><th>Date</th><th>Status</th></tr></thead>
-                    <tbody>
-                    <?php foreach ($job_orders_linked as $jo): ?>
-                        <tr>
-                            <td><strong style="color:#002F70;"><?= htmlspecialchars($jo['jo_ref']) ?></strong></td>
-                            <td><?= htmlspecialchars($jo['service']) ?></td>
-                            <td style="font-size:12px;color:#6c757d;"><?= date('M d, Y', strtotime($jo['created_at'])) ?></td>
-                            <td>
-                                <?php $st = strtolower($jo['status']);
-                                $cls = $st==='completed'?'badge-completed':($st==='rejected'?'badge-inactive':'badge-pending'); ?>
-                                <span class="<?= $cls ?>"><?= htmlspecialchars($jo['status']) ?></span>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
+            <div style="border-bottom:1px solid #dee2e6; margin-bottom:20px; display:flex; gap:10px;">
+                <button type="button" class="cust-tab active" onclick="switchLinkageTab('jo', this)"><i class="fas fa-wrench"></i> Job Orders</button>
+                <button type="button" class="cust-tab" onclick="switchLinkageTab('merch', this)"><i class="fas fa-shopping-cart"></i> Merchandise Transactions</button>
             </div>
-            <?php endif; ?>
 
-            <div class="section-head"><i class="fas fa-shopping-cart"></i> Merchandise Transactions</div>
-            <?php if (empty($merch_linked)): ?>
-                <div class="empty-state"><i class="fas fa-shopping-cart"></i>No merchandise transactions found for this customer.</div>
-            <?php else: ?>
-            <div style="overflow-x:auto;">
-                <table class="cust-table">
-                    <thead><tr><th>#</th><th>Customer</th><th>Amount</th><th>Payment</th><th>Date</th></tr></thead>
-                    <tbody>
-                    <?php foreach ($merch_linked as $mt): ?>
-                        <tr>
-                            <td style="color:#6c757d;font-size:12px;">#<?= (int)$mt['id'] ?></td>
-                            <td><?= htmlspecialchars($mt['customer_name'] ?? '—') ?></td>
-                            <td><strong style="color:#065f46;">₱<?= number_format((float)$mt['total_amount'], 2) ?></strong></td>
-                            <td style="font-size:12px;"><?= htmlspecialchars($mt['payment_method'] ?? '—') ?></td>
-                            <td style="font-size:12px;color:#6c757d;"><?= date('M d, Y', strtotime($mt['txn_date'])) ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
+            <!-- TAB CONTENT: JOB ORDERS -->
+            <div id="tab-jo" class="linkage-tab-content">
+                <?php if (empty($job_orders_linked)): ?>
+                    <div class="empty-state"><i class="fas fa-wrench"></i>No job orders found for this customer.</div>
+                <?php else: ?>
+                <div style="overflow-x:auto;margin-bottom:24px;">
+                    <table class="cust-table">
+                        <thead><tr><th>JO Ref</th><th>Service</th><th>Date</th><th>Status</th></tr></thead>
+                        <tbody>
+                        <?php foreach ($job_orders_linked as $jo): ?>
+                            <tr>
+                                <td><strong style="color:#002F70;"><?= htmlspecialchars($jo['jo_ref']) ?></strong></td>
+                                <td><?= htmlspecialchars($jo['service']) ?></td>
+                                <td style="font-size:12px;color:#6c757d;"><?= date('M d, Y', strtotime($jo['created_at'])) ?></td>
+                                <td>
+                                    <?php $st = strtolower($jo['status']);
+                                    $cls = $st==='completed'?'badge-completed':($st==='rejected'?'badge-inactive':'badge-pending'); ?>
+                                    <span class="<?= $cls ?>"><?= htmlspecialchars($jo['status']) ?></span>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <?php endif; ?>
             </div>
-            <?php endif; ?>
+
+            <!-- TAB CONTENT: MERCHANDISE -->
+            <div id="tab-merch" class="linkage-tab-content" style="display:none;">
+                <?php if (empty($merch_linked)): ?>
+                    <div class="empty-state"><i class="fas fa-shopping-cart"></i>No merchandise transactions found for this customer.</div>
+                <?php else: ?>
+                <div style="overflow-x:auto;">
+                    <table class="cust-table">
+                        <thead><tr><th>#</th><th>Customer</th><th>Item / Product</th><th>Qty</th><th>Amount</th><th>Payment</th><th>Date</th></tr></thead>
+                        <tbody>
+                        <?php foreach ($merch_linked as $mt): ?>
+                            <tr>
+                                <td style="color:#6c757d;font-size:12px;">#<?= (int)$mt['id'] ?></td>
+                                <td><?= htmlspecialchars($mt['customer_name'] ?? '—') ?></td>
+                                <td><strong style="color:#002F70;"><?= htmlspecialchars($mt['item_sku'] ?? '—') ?></strong></td>
+                                <td><?= htmlspecialchars($mt['quantity'] ?? '1') ?></td>
+                                <td><strong style="color:#065f46;">₱<?= number_format((float)$mt['total_amount'], 2) ?></strong></td>
+                                <td style="font-size:12px;"><?= htmlspecialchars($mt['payment_method'] ?? '—') ?></td>
+                                <td style="font-size:12px;color:#6c757d;"><?= date('M d, Y', strtotime($mt['txn_date'])) ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <?php endif; ?>
+            </div>
         <?php else: ?>
             <div class="empty-state"><i class="fas fa-hand-pointer"></i>Select a customer above to view their linked transactions.</div>
         <?php endif; ?>
@@ -814,6 +872,17 @@ function filterTable(inputId, tableId) {
     document.querySelectorAll('#' + tableId + ' tbody tr[data-search]').forEach(function(row) {
         row.style.display = row.getAttribute('data-search').includes(q) ? '' : 'none';
     });
+}
+
+function switchLinkageTab(tabId, btn) {
+    document.querySelectorAll('.linkage-tab-content').forEach(function(el) {
+        el.style.display = 'none';
+    });
+    document.querySelectorAll('.cust-tab').forEach(function(el) {
+        el.classList.remove('active');
+    });
+    document.getElementById('tab-' + tabId).style.display = 'block';
+    if(btn) btn.classList.add('active');
 }
 </script>
 

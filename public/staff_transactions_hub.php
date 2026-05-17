@@ -234,16 +234,13 @@ $hist_page          = max(1, (int)($_GET['page'] ?? 1));
 $hist_per_page      = 50;
 $hist_offset        = ($hist_page - 1) * $hist_per_page;
 
-<<<<<<< HEAD
-if ($section === 'history' || $section === 'fuel_history' || $section === 'merchandise') {
-=======
 // ── Merchandise section: Transaction History panel (right side) ───────────────
 $mh_recent        = [];
 $mh_total         = 0;
 $mh_filter_shift  = $_GET['mh_shift'] ?? '';
 $mh_filter_date   = $_GET['mh_date']  ?? '';
 $mh_page          = max(1, (int)($_GET['mh_page'] ?? 1));
-$mh_per_page      = in_array((int)($_GET['mh_per_page'] ?? 10), [10,20,30,50]) ? (int)$_GET['mh_per_page'] : 10;
+$mh_per_page      = isset($_GET['mh_per_page']) && in_array((int)$_GET['mh_per_page'], [10,20,30,50]) ? (int)$_GET['mh_per_page'] : 10;
 $mh_offset        = ($mh_page - 1) * $mh_per_page;
 $mh_available_shifts = [];
 
@@ -287,11 +284,14 @@ if ($section === 'merchandise') {
 
         $stmt_sh = $pdo->query("SELECT shift_key, shift_name FROM shift_periods WHERE is_active = 1 ORDER BY sort_order ASC");
         $mh_available_shifts = $stmt_sh ? $stmt_sh->fetchAll(PDO::FETCH_ASSOC) : [];
-    } catch (Exception $e) { $mh_recent = []; $mh_total = 0; }
+    } catch (Exception $e) { 
+        $mh_recent = []; 
+        $mh_total = 0; 
+        echo '<!-- MERCH ERROR: ' . htmlspecialchars($e->getMessage()) . ' -->';
+    }
 }
 
 if ($section === 'history' || $section === 'fuel_history') {
->>>>>>> 07cb023394ffee8d4476b991d15a0311ff14704e
     // Build fuel WHERE clause with optional shift/date filters
     $fuel_where  = "WHERE ft.station_id = ? AND ft.staff_id = ?";
     $fuel_params = [$station_id, $me['id']];
@@ -599,7 +599,7 @@ include __DIR__ . '/../partials/header.php';
 
 /* Match inventory page — no padding override needed */
 main.main {
-    padding: 20px 20px 60px 20px !important;
+    padding: 20px 20px 120px 20px !important;
 }
 
 /* ── Cart wrapper — single full-width column (matches inventory layout) ── */
@@ -1509,7 +1509,6 @@ main.main {
                 <input type="hidden" name="staff_id"         value="<?= (int)$me['id'] ?>">
                 <input type="hidden" name="station_id"       value="<?= (int)$station_id ?>">
                 <input type="hidden" name="fuel_type"        value="<?= $ft_name_form ?>">
-                <input type="hidden" name="previous_reading" value="<?= $prev_reading_form ?>">
                 <input type="hidden" name="price_per_liter"  value="<?= (float)$ft['price_per_liter'] ?>">
                 <input type="hidden" name="shift_period"     value="<?= htmlspecialchars($fuel_shift_key) ?>">
                 <input type="hidden" name="shift_name"       value="<?= htmlspecialchars($fuel_shift_name) ?>">
@@ -1557,11 +1556,19 @@ main.main {
                             </div>
                         </td>
 
-                        <!-- Previous Reading — auto-pulled, read-only -->
-                        <td class="num">
-                            <span class="fet-auto <?= $prev_reading > 0 ? '' : 'dim' ?>">
-                                <?= $prev_reading > 0 ? number_format($prev_reading, 2) : '—' ?>
-                            </span>
+                        <!-- Previous Reading — auto-display but editable -->
+                        <td>
+                            <input type="number"
+                                   form="fuelForm_<?= $ft_id ?>"
+                                   name="previous_reading"
+                                   id="prev_<?= $ft_id ?>"
+                                   class="fet-input"
+                                   step="0.01" min="0"
+                                   value="<?= $prev_reading > 0 ? $prev_reading : '' ?>"
+                                   placeholder="Enter previous"
+                                   required
+                                   autocomplete="off"
+                                   oninput="updateFuelCalc('<?= $ft_id ?>', <?= (float)$ft['price_per_liter'] ?>)">
                         </td>
 
                         <!-- Present Reading — staff encodes -->
@@ -1572,11 +1579,11 @@ main.main {
                                    id="present_<?= $ft_id ?>"
                                    class="fet-input"
                                    step="0.01" min="0"
-                                   placeholder="Enter reading"
+                                   placeholder="Enter present"
                                    required
                                    autocomplete="off"
                                    style="border-color:<?= $ft_color ?>;"
-                                   oninput="updateFuelCalc('<?= $ft_id ?>', <?= $prev_reading ?>, <?= (float)$ft['price_per_liter'] ?>)">
+                                   oninput="updateFuelCalc('<?= $ft_id ?>', <?= (float)$ft['price_per_liter'] ?>)">
                         </td>
 
                         <!-- Calibration — always starts at 0.000; technician ref shown as hint -->
@@ -1590,12 +1597,12 @@ main.main {
                                    value="0.000"
                                    placeholder="0.000"
                                    autocomplete="off"
-                                   oninput="updateFuelCalc('<?= $ft_id ?>', <?= $prev_reading ?>, <?= (float)$ft['price_per_liter'] ?>)">
+                                   oninput="updateFuelCalc('<?= $ft_id ?>', <?= (float)$ft['price_per_liter'] ?>)">
                             <div style="font-size:10px;color:#94a3b8;margin-top:3px;font-style:italic;line-height:1.5;" id="calibHint_<?= $ft_id ?>">
                                 <?php if ((float)$ft['calibration'] != 0): ?>
                                     technician ref: <?= number_format((float)$ft['calibration'], 3) ?> L
                                     &nbsp;<button type="button"
-                                        onclick="applyTechCalib('<?= $ft_id ?>', <?= number_format((float)$ft['calibration'], 3, '.', '') ?>, <?= $prev_reading ?>, <?= (float)$ft['price_per_liter'] ?>)"
+                                        onclick="applyTechCalib('<?= $ft_id ?>', <?= number_format((float)$ft['calibration'], 3, '.', '') ?>, <?= (float)$ft['price_per_liter'] ?>)"
                                         style="font-size:9px;padding:1px 6px;border:1px solid #94a3b8;border-radius:4px;background:#f8fafc;color:#475569;cursor:pointer;vertical-align:middle;">
                                         Use
                                     </button>
@@ -1647,7 +1654,7 @@ main.main {
         <?php endif; ?>
 
         <!-- ── TODAY'S ENTRIES — Meter Reading Table (Table A) ──────────── -->
-        <div class="txn-card" id="todayEntriesCard" style="margin-top:8px;">
+        <div class="txn-card" id="todayEntriesCard" style="margin-top:8px; margin-bottom:80px;">
             <div class="txn-card-header" style="background:#f0f4ff;">
                 <i class="fas fa-tachometer-alt" style="color:var(--petron-blue);"></i>
                 <h3>Today's Meter Readings</h3>
@@ -1679,15 +1686,16 @@ main.main {
         //   Step 2 — Net Volume  = Raw Volume − Calibration
         //            If Net Volume < 0 → auto-set to 0 (valid, no sale this shift)
         //   Step 3 — Amount      = Net Volume × Price per Liter
-        function updateFuelCalc(ftId, prevReading, pricePerLiter) {
+        function updateFuelCalc(ftId, pricePerLiter) {
+            const prevEl     = document.getElementById('prev_'      + ftId);
             const presentEl  = document.getElementById('present_'   + ftId);
             const calibEl    = document.getElementById('calib_'     + ftId);
             const previewEl  = document.getElementById('calcPreview_' + ftId);
             const hintEl     = document.getElementById('calibHint_' + ftId);
-            if (!presentEl || !previewEl) return;
+            if (!presentEl || !prevEl || !previewEl) return;
 
             const present = parseFloat(presentEl.value);
-            const prev    = parseFloat(prevReading)    || 0;
+            const prev    = parseFloat(prevEl.value)   || 0;
             const calib   = parseFloat(calibEl?.value) || 0;
             const price   = parseFloat(pricePerLiter)  || 0;
 
@@ -1719,16 +1727,18 @@ main.main {
                 }
             }
 
-            // Build preview
+            // Build preview — matches documented formula:
+            // Liters Sold = (Present − Previous) − Calibration
+            // Amount = Liters Sold × Price per Liter
             const sign = calib === 0 ? '' : ` − ${fmt(calib,3)}`;
-            let html = `<b>Volume:</b> (${fmt(present)} − ${fmt(prev)})${sign} = <b>${fmt(netVol)} L</b>`;
+            let html = `<b>Liters Sold</b> = (${fmt(present)} − ${fmt(prev)})${sign} = <b>${fmt(netVol)} L</b>`;
 
             if (calib >= rawVol && rawVol > 0) {
-                html += `<br><span style="color:#b45309;font-size:10px;">ℹ Calibration ≥ difference — 0 L net (valid). Edit calibration field to correct.</span>`;
+                html += `<br><span style="color:#b45309;font-size:10px;">ℹ Calibration ≥ difference — 0 L net (valid zero-sale). Edit calibration field to correct.</span>`;
             }
 
             if (price > 0) {
-                html += `<br><b>Amount:</b> ${fmt(netVol)} L × ₱${fmt(price)} = <b>₱${fmt(amount)}</b>`;
+                html += `<br><b>Amount</b> = ${fmt(netVol)} L × ₱${fmt(price)} = <b>₱${fmt(amount)}</b>`;
             } else {
                 html += `<br><span style="color:#f59e0b;font-size:10px;">⚠ Price not set — contact manager</span>`;
             }
@@ -1750,7 +1760,8 @@ main.main {
 
             // Client-side validation
             const present  = parseFloat(presentEl.value) || 0;
-            const previous = parseFloat(form.querySelector('[name="previous_reading"]')?.value) || 0;
+            const prevEl   = document.getElementById('prev_' + ftId);
+            const previous = parseFloat(prevEl?.value) || 0;
             const calib    = parseFloat(document.getElementById('calib_' + ftId)?.value) || 0;
 
             if (present <= 0) {
@@ -1780,7 +1791,8 @@ main.main {
                 for (let pair of data.entries()) {
                     console.log(pair[0] + ': ' + pair[1]);
                 }
-                const res  = await fetch(form.action, {
+                const targetUrl = window.location.pathname.replace(/[^\\/]+$/, '') + 'api_fuel_readings.php';
+                const res  = await fetch(targetUrl, {
                     method: 'POST',
                     body: data,
                     credentials: 'same-origin',
@@ -1797,55 +1809,86 @@ main.main {
                     const jsonStr   = jsonStart >= 0 ? raw.slice(jsonStart) : raw;
                     json = JSON.parse(jsonStr);
                 } catch (parseErr) {
-                    // Check if it's a login redirect (HTML response)
-                    if (raw.includes('<!DOCTYPE') || raw.includes('<html')) {
-                        showRowMsg(msgEl, 'error', 'Session expired. Please refresh the page and log in again.');
-                    } else if (raw.length === 0) {
-                        showRowMsg(msgEl, 'error', 'Empty response from server. Check PHP error logs.');
-                    } else {
-                        // Show the actual raw server response for debugging
-                        showRowMsg(msgEl, 'error', 'Parse error — raw response: ' + raw.substring(0, 400));
-                    }
+                    // Show the actual raw server response for debugging
+                    const preview = raw.length > 0
+                        ? raw.substring(0, 400).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                        : '(empty response)';
+                    showRowMsg(msgEl, 'error',
+                        'Server error — could not parse response.<br>' +
+                        '<code style="font-size:10px;word-break:break-all;display:block;margin-top:4px;background:#fff;padding:4px;border-radius:4px;">' +
+                        preview + '</code>'
+                    );
                     submitBtn.disabled = false;
                     submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit';
                     return false;
                 }
 
                 if (json.success) {
-                    const liters = parseFloat(json.liters_sold || 0).toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
-                    const amount = parseFloat(json.total_amount || 0).toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
-                    const litersNum = parseFloat(json.liters_sold || 0);
-                    let msg = `✅ Meter Reading successfully submitted. ${litersNum > 0 ? liters + ' L — ₱' + amount + '.' : '0.00 L recorded (calibration = difference).'} Awaiting Manager approval.`;
-                    if (json.price_missing) {
-                        msg = `✅ Meter Reading successfully submitted. ${liters} L recorded. Price not set — Manager will set amount on approval.`;
-                    }
-                    showRowMsg(msgEl, 'success', msg);
+                    const prev    = parseFloat(json.previous_reading || 0);
+                    const present = parseFloat(form.querySelector('[name="present_reading"]')?.value || presentEl.value || 0);
+                    const calib   = parseFloat(json.calibration || 0);
+                    const liters  = parseFloat(json.liters_sold  || 0);
+                    const price   = parseFloat(json.price_per_liter || 0);
+                    const amount  = parseFloat(json.total_amount || 0);
+
+                    const fmt  = (n, d=2) => n.toLocaleString('en-PH', {minimumFractionDigits:d, maximumFractionDigits:d});
+
+                    // Simple clean success message requested by user
+                    const msg = `Meter Reading submitted successfully!`;
+                    
+                    // Create and show a global toast notification at the top
+                    const toast = document.createElement('div');
+                    toast.style.position = 'fixed';
+                    toast.style.top = '80px'; // Below top header
+                    toast.style.left = '50%';
+                    toast.style.transform = 'translateX(-50%)';
+                    toast.style.backgroundColor = '#d4edda';
+                    toast.style.color = '#155724';
+                    toast.style.border = '1px solid #c3e6cb';
+                    toast.style.padding = '12px 24px';
+                    toast.style.borderRadius = '8px';
+                    toast.style.fontWeight = '600';
+                    toast.style.zIndex = '9999';
+                    toast.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
+                    toast.style.transition = 'opacity 0.3s ease';
+                    toast.innerHTML = `<i class="fas fa-check-circle" style="color:#28a745; margin-right:8px;"></i> ${msg}`;
+                    document.body.appendChild(toast);
+                    
+                    // Fade out after 3 seconds
+                    setTimeout(() => {
+                        toast.style.opacity = '0';
+                        setTimeout(() => toast.remove(), 300);
+                    }, 3000);
+
+                    // Clear any inline message to keep the row clean
+                    msgEl.style.display = 'none';
+                    msgEl.innerHTML = '';
+
                     // Clear the present reading and preview
                     const submittedPresent = parseFloat(presentEl.value) || 0;
                     presentEl.value = '';
                     const previewEl = document.getElementById('calcPreview_' + ftId);
                     if (previewEl) previewEl.style.display = 'none';
-                    // Update previous reading hidden field + display so next submit is correct
-                    const prevInput = form.querySelector('[name="previous_reading"]');
+                    // Update previous reading input so next submit is correct
+                    const prevInput = document.getElementById('prev_' + ftId);
                     if (prevInput && submittedPresent > 0) {
                         prevInput.value = submittedPresent;
-                        // Update the visible prev reading cell in the table row
-                        const prevCell = document.querySelector(`#fuelRow_${ftId} .fet-auto`);
-                        if (prevCell) {
-                            prevCell.classList.remove('dim');
-                            prevCell.textContent = submittedPresent.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
-                        }
                     }
-                    // Refresh the entries table
+                    // Refresh the entries table and scroll to it
                     loadTodayEntries();
+                    setTimeout(() => {
+                        const todayCard = document.getElementById('todayEntriesCard');
+                        if (todayCard) {
+                            todayCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            todayCard.style.outline = '2px solid #86efac';
+                            todayCard.style.borderRadius = '12px';
+                            setTimeout(() => { todayCard.style.outline = ''; }, 2000);
+                        }
+                    }, 600);
                 } else {
                     // Show the actual server error message
                     const errMsg = json.message || 'Submission failed. Please try again.';
-                    if (errMsg.toLowerCase().includes('session') || errMsg.toLowerCase().includes('log in')) {
-                        showRowMsg(msgEl, 'error', errMsg); // Show the full message including debug info
-                    } else {
-                        showRowMsg(msgEl, 'error', errMsg);
-                    }
+                    showRowMsg(msgEl, 'error', errMsg);
                 }
             } catch (err) {
                 showRowMsg(msgEl, 'error', 'Request failed: ' + (err.message || 'Unknown error'));
@@ -1865,20 +1908,23 @@ main.main {
             };
             const c = colors[type] || { bg: '#f1f5f9', color: '#475569', border: '#e2e8f0' };
             el.style.cssText = `display:block;background:${c.bg};color:${c.color};border:1px solid ${c.border};
-                                border-radius:6px;padding:6px 10px;font-size:11px;font-weight:600;white-space:normal;
-                                margin-top:5px;line-height:1.5;`;
-            const icon = type === 'success' ? '✓ ' : type === 'error' ? '✗ ' : '';
-            el.textContent = icon + text;
+                                border-radius:6px;padding:8px 12px;font-size:11px;font-weight:600;white-space:normal;
+                                margin-top:5px;line-height:1.8;`;
+            // Convert \n to <br> for multi-line messages
+            const safeText = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+            el.innerHTML = safeText;
         }
 
         // ── Reset a single row ────────────────────────────────────────────────
         function resetCard(ftId, prevReading, defaultCalib, pricePerLiter) {
+            const prevEl    = document.getElementById('prev_'    + ftId);
             const presentEl = document.getElementById('present_' + ftId);
             const calibEl   = document.getElementById('calib_'   + ftId);
             const msgEl     = document.getElementById('cardMsg_' + ftId);
             const previewEl = document.getElementById('calcPreview_' + ftId);
             const notesEl   = document.querySelector(`#fuelForm_${ftId} [name="notes"]`);
 
+            if (prevEl)    prevEl.value = prevReading > 0 ? prevReading : '';
             if (presentEl) presentEl.value = '';
             if (calibEl)   calibEl.value   = '0.000';
             if (notesEl)   notesEl.value   = '';
@@ -1887,11 +1933,11 @@ main.main {
         }
 
         // ── Apply technician calibration value with one click ────────────────
-        function applyTechCalib(ftId, techValue, prevReading, pricePerLiter) {
+        function applyTechCalib(ftId, techValue, pricePerLiter) {
             const calibEl = document.getElementById('calib_' + ftId);
             if (calibEl) {
                 calibEl.value = parseFloat(techValue).toFixed(3);
-                updateFuelCalc(ftId, prevReading, pricePerLiter);
+                updateFuelCalc(ftId, pricePerLiter);
                 calibEl.focus();
             }
         }
@@ -1931,57 +1977,9 @@ main.main {
                     return;
                 }
 
-                const rows = json.meter_readings;
-                const statusMap = {
-                    'pending validation': {bg:'#fef9c3',color:'#854d0e',label:'Pending'},
-                    'pending':            {bg:'#fef9c3',color:'#854d0e',label:'Pending'},
-                    'approved':           {bg:'#dcfce7',color:'#166534',label:'Approved'},
-                    'verified':           {bg:'#dcfce7',color:'#166534',label:'Verified'},
-                    'adjusted':           {bg:'#dbeafe',color:'#1d4ed8',label:'Adjusted'},
-                    'rejected':           {bg:'#fee2e2',color:'#991b1b',label:'Rejected'},
-                };
-                function badge(s) {
-                    const k = (s||'').toLowerCase().trim();
-                    const c = statusMap[k] || {bg:'#f1f5f9',color:'#64748b',label:s||'—'};
-                    return `<span style="background:${c.bg};color:${c.color};padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;">${c.label}</span>`;
-                }
-                function fmt(n,d=2){ return Number(n||0).toLocaleString('en-PH',{minimumFractionDigits:d,maximumFractionDigits:d}); }
-
-                let html = `<div style="overflow-x:auto;">
-                    <table style="width:100%;border-collapse:collapse;font-size:13px;">
-                        <thead>
-                            <tr style="background:#f8fafc;">
-                                <th style="padding:10px 13px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Fuel Type</th>
-                                <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Beginning</th>
-                                <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Ending</th>
-                                <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Cal</th>
-                                <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Liters Sold</th>
-                                <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Price/L</th>
-                                <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Amount</th>
-                                <th style="padding:10px 13px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Shift</th>
-                                <th style="padding:10px 13px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>`;
-
-                rows.forEach(r => {
-                    const shiftLabel = r.shift_name || (r.shift_period ? r.shift_period.replace(/_/g,' ') : '—');
-                    html += `<tr style="border-bottom:1px solid #f1f5f9;">
-                        <td style="padding:10px 13px;font-weight:700;color:#1e293b;">${r.fuel_type||'—'}</td>
-                        <td style="padding:10px 13px;text-align:right;font-variant-numeric:tabular-nums;">${fmt(r.beginning)}</td>
-                        <td style="padding:10px 13px;text-align:right;font-variant-numeric:tabular-nums;">${fmt(r.ending)}</td>
-                        <td style="padding:10px 13px;text-align:right;font-variant-numeric:tabular-nums;">${fmt(r.cal,3)}</td>
-                        <td style="padding:10px 13px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums;">${fmt(r.volume_liters)} L</td>
-                        <td style="padding:10px 13px;text-align:right;font-variant-numeric:tabular-nums;">₱${fmt(r.price_per_liter)}</td>
-                        <td style="padding:10px 13px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums;">₱${fmt(r.amount)}</td>
-                        <td style="padding:10px 13px;font-size:11px;color:#64748b;white-space:nowrap;">${shiftLabel}</td>
-                        <td style="padding:10px 13px;">${badge(r.status)}</td>
-                    </tr>`;
-                });
-
-                html += `</tbody></table></div>`;
-                body.innerHTML = html;
-
+                window.todayEntriesData = json.meter_readings;
+                window.todayEntriesPage = 1;
+                renderTodayEntriesTable();
             } catch(e) {
                 body.innerHTML = `<div style="text-align:center;padding:24px;color:#ef4444;font-size:13px;">
                     <i class="fas fa-exclamation-circle" style="display:block;margin-bottom:6px;"></i>
@@ -1989,6 +1987,99 @@ main.main {
                 </div>`;
             }
             if (icon) icon.className = 'fas fa-sync';
+        }
+
+        window.todayEntriesPageSize = 10;
+        
+        function renderTodayEntriesTable() {
+            const body = document.getElementById('todayEntriesBody');
+            const rows = window.todayEntriesData || [];
+            if (rows.length === 0) return;
+            
+            const totalRows = rows.length;
+            const totalPages = Math.max(1, Math.ceil(totalRows / window.todayEntriesPageSize));
+            if (window.todayEntriesPage > totalPages) window.todayEntriesPage = totalPages;
+            
+            const startIdx = (window.todayEntriesPage - 1) * window.todayEntriesPageSize;
+            const endIdx = Math.min(startIdx + window.todayEntriesPageSize, totalRows);
+            const pageRows = rows.slice(startIdx, endIdx);
+
+            const statusMap = {
+                'pending validation': {bg:'#fef9c3',color:'#854d0e',label:'Pending'},
+                'pending':            {bg:'#fef9c3',color:'#854d0e',label:'Pending'},
+                'approved':           {bg:'#dcfce7',color:'#166534',label:'Approved'},
+                'verified':           {bg:'#dcfce7',color:'#166534',label:'Verified'},
+                'adjusted':           {bg:'#dbeafe',color:'#1d4ed8',label:'Adjusted'},
+                'rejected':           {bg:'#fee2e2',color:'#991b1b',label:'Rejected'},
+            };
+            function badge(s) {
+                const k = (s||'').toLowerCase().trim();
+                const c = statusMap[k] || {bg:'#f1f5f9',color:'#64748b',label:s||'—'};
+                return `<span style="background:${c.bg};color:${c.color};padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;">${c.label}</span>`;
+            }
+            function fmt(n,d=2){ return Number(n||0).toLocaleString('en-PH',{minimumFractionDigits:d,maximumFractionDigits:d}); }
+
+            let html = `<div style="max-height:450px; overflow-y:auto; overflow-x:auto; border-bottom:1px solid #e2e8f0;">
+                <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                    <thead style="position:sticky; top:0; z-index:10; background:#f8fafc;">
+                        <tr>
+                            <th style="padding:10px 13px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Fuel Type</th>
+                            <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Beginning</th>
+                            <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Ending</th>
+                            <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Cal</th>
+                            <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Liters Sold</th>
+                            <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Price/L</th>
+                            <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Amount</th>
+                            <th style="padding:10px 13px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Shift</th>
+                            <th style="padding:10px 13px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
+            pageRows.forEach(r => {
+                const shiftLabel = r.shift_name || (r.shift_period ? r.shift_period.replace(/_/g,' ') : '—');
+                html += `<tr style="border-bottom:1px solid #f1f5f9;">
+                    <td style="padding:10px 13px;font-weight:700;color:#1e293b;">${r.fuel_type||'—'}</td>
+                    <td style="padding:10px 13px;text-align:right;font-variant-numeric:tabular-nums;">${fmt(r.beginning)}</td>
+                    <td style="padding:10px 13px;text-align:right;font-variant-numeric:tabular-nums;">${fmt(r.ending)}</td>
+                    <td style="padding:10px 13px;text-align:right;font-variant-numeric:tabular-nums;">${fmt(r.cal,3)}</td>
+                    <td style="padding:10px 13px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums;">${fmt(r.volume_liters)} L</td>
+                    <td style="padding:10px 13px;text-align:right;font-variant-numeric:tabular-nums;">₱${fmt(r.price_per_liter)}</td>
+                    <td style="padding:10px 13px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums;">₱${fmt(r.amount)}</td>
+                    <td style="padding:10px 13px;font-size:11px;color:#64748b;white-space:nowrap;">${shiftLabel}</td>
+                    <td style="padding:10px 13px;">${badge(r.status)}</td>
+                </tr>`;
+            });
+
+            html += `</tbody></table></div>`;
+            
+            // Pagination Footer
+            html += `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 20px; border-top:1px solid #e2e8f0; background:#fff; border-radius:0 0 12px 12px; font-size:13px; color:#475569;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <label style="margin:0; font-weight:400; color:#475569;">Rows per page:</label>
+                    <select onchange="window.todayEntriesPageSize=parseInt(this.value); window.todayEntriesPage=1; renderTodayEntriesTable();" style="padding:4px 24px 4px 8px; border:1px solid #cbd5e1; border-radius:4px; font-size:13px; background:#fff; color:#1e293b; outline:none; cursor:pointer;">
+                        <option value="10" ${window.todayEntriesPageSize === 10 ? 'selected' : ''}>10</option>
+                        <option value="20" ${window.todayEntriesPageSize === 20 ? 'selected' : ''}>20</option>
+                        <option value="30" ${window.todayEntriesPageSize === 30 ? 'selected' : ''}>30</option>
+                        <option value="40" ${window.todayEntriesPageSize === 40 ? 'selected' : ''}>40</option>
+                        <option value="50" ${window.todayEntriesPageSize === 50 ? 'selected' : ''}>50</option>
+                    </select>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <button onclick="if(window.todayEntriesPage>1){ window.todayEntriesPage--; renderTodayEntriesTable(); }" 
+                            style="width:28px; height:28px; background:#fff; border:1px solid #cbd5e1; border-radius:4px; cursor:${window.todayEntriesPage > 1 ? 'pointer' : 'not-allowed'}; color:${window.todayEntriesPage > 1 ? '#475569' : '#cbd5e1'}; display:flex; align-items:center; justify-content:center;">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <span style="color:#475569; font-size:13px; padding:0 4px;">Page ${window.todayEntriesPage} of ${totalPages}</span>
+                    <button onclick="if(window.todayEntriesPage<${totalPages}){ window.todayEntriesPage++; renderTodayEntriesTable(); }" 
+                            style="width:28px; height:28px; background:#fff; border:1px solid #cbd5e1; border-radius:4px; cursor:${window.todayEntriesPage < totalPages ? 'pointer' : 'not-allowed'}; color:${window.todayEntriesPage < totalPages ? '#475569' : '#cbd5e1'}; display:flex; align-items:center; justify-content:center;">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>`;
+            
+            body.innerHTML = html;
         }
 
         function refreshTodayEntries() { loadTodayEntries(); }
@@ -2053,12 +2144,6 @@ main.main {
             <?php endforeach; ?>
         </div>
 
-        <?php if (!empty($flash_success)): ?>
-        <div class="flash success"><i class="fas fa-check-circle"></i> <?= htmlspecialchars($flash_success) ?></div>
-        <?php endif; ?>
-        <?php if (!empty($flash_error)): ?>
-        <div class="flash error"><i class="fas fa-exclamation-circle"></i> <?= htmlspecialchars($flash_error) ?></div>
-        <?php endif; ?>
 
         <!-- ══════════════════════════════════════════════════════════
              TAB 1: MERCHANDISE/SERVICE TRANSACTION
@@ -2066,7 +2151,7 @@ main.main {
         <div id="innerTab_merchandise" style="display:<?= $active_tab === 'merchandise' ? 'block' : 'none' ?>;">
 
         <!-- Cart layout -->
-        <div class="cart-wrapper">
+        <div class="cart-wrapper" style="display:grid; grid-template-columns:1fr 340px; gap:16px; align-items:start;">
 
             <!-- Left: Job Order section (top) + Merchandise section (bottom) + Customer/Payment -->
             <div>
@@ -2411,7 +2496,7 @@ main.main {
                     </div><!-- /merchTab_form -->
 
                     <!-- ── Sub-tab: History ──────────────────────────────────── -->
-                    <div id="merchTab_history" style="display:none;">
+                    <div id="merchTab_history" style="display:none; padding-bottom: 80px;">
                         <!-- Filter bar -->
                         <div style="padding:14px 16px;border-bottom:1px solid #e2e8f0;">
                             <form method="GET" action="staff_transactions_hub.php" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
@@ -2443,7 +2528,7 @@ main.main {
                         </div>
                         <!-- Table -->
                         <div style="padding:0;">
-                            <?php if (empty($recent_merch)): ?>
+                            <?php if (empty($mh_recent)): ?>
                             <div style="text-align:center;padding:36px;color:#94a3b8;">
                                 <i class="fas fa-receipt" style="font-size:26px;display:block;margin-bottom:8px;"></i>
                                 No merchandise transactions found.
@@ -2463,7 +2548,7 @@ main.main {
                                     </tr>
                                 </thead>
                                 <tbody id="mhTableBody">
-                                <?php foreach ($recent_merch as $txn): ?>
+                                <?php foreach ($mh_recent as $txn): ?>
                                 <tr class="mh-row">
                                     <td><strong style="color:var(--petron-blue);"><?= htmlspecialchars($txn['transaction_id'] ?? ('#'.$txn['id'])) ?></strong></td>
                                     <td><?= htmlspecialchars($txn['customer_name'] ?? '—') ?></td>
@@ -2573,6 +2658,17 @@ main.main {
                             histBtn.style.background   = isHistory ? '#fff' : '#f8fafc';
                             histBtn.style.borderBottom = isHistory ? '2px solid #28a745' : '2px solid transparent';
                             if (isHistory) mhRender();
+                            
+                            // Update URL so refresh keeps the tab open
+                            if (window.history && window.history.replaceState) {
+                                var url = new URL(window.location.href);
+                                if (isHistory) {
+                                    url.searchParams.set('mh_open', '1');
+                                } else {
+                                    url.searchParams.delete('mh_open');
+                                }
+                                window.history.replaceState(null, '', url);
+                            }
                         }
                         window.switchMerchTab = switchMerchTab;
 
@@ -2589,11 +2685,11 @@ main.main {
             <!-- Payment + Cart panel — full width below the form -->
             <div class="cart-panel">
 
-                <!-- ── Two-column inner layout: Payment left, Cart right ── -->
-                <div style="display:grid;grid-template-columns:340px 1fr;gap:0;min-height:320px;">
+                <!-- ── Single-column inner layout: Payment top, Cart bottom ── -->
+                <div style="display:flex; flex-direction:column; gap:0; min-height:320px;">
 
-                <!-- ── Customer & Payment (left column) ─── -->
-                <div class="cart-panel-top" style="border-right:2px solid #f1f5f9;border-bottom:none;">
+                <!-- ── Customer & Payment (top) ─── -->
+                <div class="cart-panel-top" style="border-bottom:2px solid #f1f5f9;">
                     <!-- Customer & Payment header -->
                     <div style="font-size:11px;font-weight:700;color:#1e293b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
                         <i class="fas fa-credit-card" style="color:var(--petron-blue);"></i>Payment
@@ -2727,129 +2823,7 @@ main.main {
 
         </div><!-- /cart-wrapper -->
 
-        <!-- ══ TRANSACTION HISTORY PANEL ══ -->
-        <div style="margin-top:16px;">
-            <!-- Transaction History — full width -->
-            <div class="txn-card" style="min-width:0;width:100%;">
-                <div class="txn-card-header" style="background:#f5f3ff;">
-                    <i class="fas fa-history" style="color:#6f42c1;"></i>
-                    <h3 style="color:#6f42c1;">Transaction History</h3>
-                    <span style="margin-left:auto;font-size:11px;color:#64748b;"><?= $mh_total ?> record(s)</span>
-                </div>
-                <!-- Filter bar -->
-                <div style="padding:10px 14px;border-bottom:1px solid #f1f5f9;">
-                    <form method="GET" action="staff_transactions_hub.php" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
-                        <input type="hidden" name="section"    value="merchandise">
-                        <input type="hidden" name="active_tab" value="merchandise">
-                        <input type="hidden" name="mh_page"    value="1">
-                        <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:100px;">
-                            <label style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Date</label>
-                            <input type="date" name="mh_date" value="<?= htmlspecialchars($mh_filter_date) ?>"
-                                   style="padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;color:#1e293b;background:#fff;width:100%;">
-                        </div>
-                        <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:110px;">
-                            <label style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Shift</label>
-                            <select name="mh_shift" style="padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;color:#1e293b;background:#fff;width:100%;">
-                                <option value="">All Shifts</option>
-                                <?php foreach ($mh_available_shifts as $sh): ?>
-                                <option value="<?= htmlspecialchars($sh['shift_key']) ?>" <?= $mh_filter_shift === $sh['shift_key'] ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($sh['shift_name']) ?>
-                                </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div style="display:flex;gap:5px;align-items:flex-end;padding-bottom:1px;">
-                            <button type="submit" style="padding:5px 12px;background:#6f42c1;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">
-                                <i class="fas fa-filter"></i> Filter
-                            </button>
-                            <a href="staff_transactions_hub.php?section=merchandise&active_tab=merchandise"
-                               style="padding:5px 10px;background:#f1f5f9;color:#475569;border:1.5px solid #e2e8f0;border-radius:6px;font-size:11px;font-weight:700;text-decoration:none;white-space:nowrap;">
-                                <i class="fas fa-times"></i> Clear
-                            </a>
-                        </div>
-                    </form>
-                </div>
-                <!-- Table -->
-                <div style="padding:0;">
-                    <?php if (empty($mh_recent)): ?>
-                    <div style="text-align:center;padding:30px;color:#94a3b8;font-size:12px;">
-                        <i class="fas fa-receipt" style="font-size:22px;display:block;margin-bottom:6px;"></i>
-                        No transactions found.
-                    </div>
-                    <?php else: ?>
-                    <div style="overflow-x:auto;">
-                    <table class="txn-table" style="min-width:340px;font-size:11px;">
-                        <thead>
-                            <tr>
-                                <th style="font-size:9px;">Txn ID</th>
-                                <th style="font-size:9px;">Customer</th>
-                                <th style="font-size:9px;">Amount</th>
-                                <th style="font-size:9px;">Payment</th>
-                                <th style="font-size:9px;">Shift</th>
-                                <th style="font-size:9px;">Date</th>
-                                <th style="font-size:9px;">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                        <?php foreach ($mh_recent as $mht): ?>
-                        <tr>
-                            <td style="font-size:10px;"><strong style="color:var(--petron-blue);"><?= htmlspecialchars($mht['transaction_id'] ?? ('#'.$mht['id'])) ?></strong></td>
-                            <td style="font-size:10px;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= htmlspecialchars($mht['customer_name'] ?? '—') ?></td>
-                            <td style="font-size:10px;font-weight:700;color:var(--petron-blue);white-space:nowrap;">₱<?= number_format((float)($mht['total_amount'] ?? 0), 2) ?></td>
-                            <td style="font-size:10px;"><?= htmlspecialchars($mht['payment_method'] ?? '—') ?></td>
-                            <td style="font-size:10px;color:#64748b;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= htmlspecialchars($mht['shift_name'] ?? $mht['shift_period'] ?? '—') ?></td>
-                            <td style="font-size:10px;color:#64748b;white-space:nowrap;"><?= date('M j, g:i A', strtotime($mht['transaction_date'] ?? 'now')) ?></td>
-                            <td><?= status_badge($mht['status'] ?? 'Pending') ?></td>
-                        </tr>
-                        <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                    </div>
-                    <!-- Pagination footer -->
-                    <?php $mh_total_pages = max(1, (int)ceil($mh_total / $mh_per_page)); ?>
-                    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-top:1px solid #f1f5f9;background:#fafbfc;">
-                        <span style="font-size:11px;color:#64748b;">Rows per page:
-                            <form method="GET" action="staff_transactions_hub.php" style="display:inline;">
-                                <input type="hidden" name="section"    value="merchandise">
-                                <input type="hidden" name="active_tab" value="merchandise">
-                                <input type="hidden" name="mh_page"    value="1">
-                                <input type="hidden" name="mh_date"    value="<?= htmlspecialchars($mh_filter_date) ?>">
-                                <input type="hidden" name="mh_shift"   value="<?= htmlspecialchars($mh_filter_shift) ?>">
-                                <select name="mh_per_page" onchange="this.form.submit()"
-                                        style="padding:2px 4px;border:1px solid #e2e8f0;border-radius:4px;font-size:11px;color:#1e293b;background:#fff;cursor:pointer;">
-                                    <?php foreach ([10,20,30,50] as $rpp): ?>
-                                    <option value="<?= $rpp ?>" <?= $mh_per_page === $rpp ? 'selected' : '' ?>><?= $rpp ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </form>
-                        </span>
-                        <div style="display:flex;align-items:center;gap:10px;font-size:11px;color:#64748b;">
-                            <?php
-                            $mh_base = 'staff_transactions_hub.php?section=merchandise&active_tab=merchandise&mh_per_page='.$mh_per_page
-                                .($mh_filter_date  ? '&mh_date='.urlencode($mh_filter_date)   : '')
-                                .($mh_filter_shift ? '&mh_shift='.urlencode($mh_filter_shift) : '');
-                            ?>
-                            <?php if ($mh_page > 1): ?>
-                            <a href="<?= $mh_base ?>&mh_page=<?= $mh_page - 1 ?>" style="color:#475569;text-decoration:none;">
-                                <i class="fas fa-chevron-left" style="font-size:10px;"></i>
-                            </a>
-                            <?php else: ?>
-                            <span style="color:#cbd5e1;"><i class="fas fa-chevron-left" style="font-size:10px;"></i></span>
-                            <?php endif; ?>
-                            <span>Page <strong><?= $mh_page ?></strong> of <strong><?= $mh_total_pages ?></strong></span>
-                            <?php if ($mh_page < $mh_total_pages): ?>
-                            <a href="<?= $mh_base ?>&mh_page=<?= $mh_page + 1 ?>" style="color:#475569;text-decoration:none;">
-                                <i class="fas fa-chevron-right" style="font-size:10px;"></i>
-                            </a>
-                            <?php else: ?>
-                            <span style="color:#cbd5e1;"><i class="fas fa-chevron-right" style="font-size:10px;"></i></span>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                    <?php endif; ?>
-                </div>
-            </div>
-        </div><!-- /transaction history side panel -->
+
 
         <!-- ══ ADD SERVICE TYPE MODAL ═══════════════════════════════════════ -->
         <div id="addServiceModal"
@@ -6076,11 +6050,10 @@ main.main {
         </style>
 
         <!-- Unified Job Order Table -->
-        <div class="txn-card">
+        <div class="txn-card" style="margin-bottom: 80px;">
             <div class="txn-card-header" style="background:#f0f7ff;">
                 <i class="fas fa-clipboard-list" style="color:#003d7a;"></i>
                 <h3 style="color:#003d7a;">All Job Orders</h3>
-                <span style="margin-left:auto;font-size:11px;color:#64748b;">Status-based workflow — all orders in one view</span>
             </div>
             <div class="txn-card-body" style="padding:0;">
                 <?php if (empty($job_orders)): ?>
@@ -6126,15 +6099,17 @@ main.main {
                             $wf_bg='#fef9c3'; $wf_color='#854d0e'; $wf_label='PENDING VALIDATION'; $row_filter='pending';
                         }
 
-                        // Payment badge
+                        // Payment badge and label mapping based on user request
                         if ($pay_status === 'Paid') {
                             $pay_bg='#dcfce7'; $pay_color='#166534'; $pay_label='PAID';
                         } elseif ($pay_status === 'Partial') {
-                            $pay_bg='#fef9c3'; $pay_color='#854d0e'; $pay_label='PARTIAL';
+                            $pay_bg='#fef9c3'; $pay_color='#854d0e'; $pay_label='DOWNPAYMENT';
                         } elseif ($pay_status === 'Unpaid') {
                             $pay_bg='#fee2e2'; $pay_color='#991b1b'; $pay_label='UNPAID';
+                        } elseif ($pay_status === 'Credit' || $pay_status === 'Receivables/Credit') {
+                            $pay_bg='#e0e7ff'; $pay_color='#3730a3'; $pay_label='RECEIVABLES/CREDIT';
                         } else {
-                            $pay_bg='#f1f5f9'; $pay_color='#64748b'; $pay_label='PENDING';
+                            $pay_bg='#f1f5f9'; $pay_color='#64748b'; $pay_label='PENDING PAYMENT';
                         }
 
                         // Parts/items
@@ -6245,11 +6220,90 @@ main.main {
                     </tbody>
                 </table>
                 </div>
+                <!-- Pagination Footer -->
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 20px; border-top:1px solid #e2e8f0; background:#fff; font-size:13px; color:#475569; border-radius:0 0 12px 12px;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <label style="margin:0; font-weight:400; color:#475569;">Rows per page:</label>
+                        <select id="joPerPage" onchange="joChangePerPage()"
+                                style="padding:4px 24px 4px 8px; border:1px solid #cbd5e1; border-radius:4px; font-size:13px; color:#1e293b; background:#fff; outline:none; cursor:pointer;">
+                            <option value="10" selected>10</option>
+                            <option value="20">20</option>
+                            <option value="30">30</option>
+                            <option value="40">40</option>
+                            <option value="50">50</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <button id="joPrevBtn" onclick="joGoPage(joState.page - 1)" style="width:28px; height:28px; background:#fff; border:1px solid #cbd5e1; border-radius:4px; font-size:12px; color:#475569; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all .15s;">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <span id="joPageLabel" style="color:#475569; font-size:13px; padding:0 4px;">Page 1 of 1</span>
+                        <button id="joNextBtn" onclick="joGoPage(joState.page + 1)" style="width:28px; height:28px; background:#fff; border:1px solid #cbd5e1; border-radius:4px; font-size:12px; color:#475569; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all .15s;">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
                 <?php endif; ?>
             </div>
         </div>
 
         <script>
+        var joState = {
+            filter: 'all',
+            page: 1,
+            per_page: 10
+        };
+
+        function joRenderTable() {
+            var rows = document.querySelectorAll('#joUnifiedTable tbody tr');
+            var visibleRows = [];
+            
+            // 1. Apply filter first
+            rows.forEach(function(row) {
+                var rowFilter = row.getAttribute('data-jo-filter');
+                if (joState.filter === 'all' || rowFilter === joState.filter) {
+                    visibleRows.push(row);
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+
+            // 2. Pagination calculations
+            var total = visibleRows.length;
+            var perPage = joState.per_page;
+            var totalPages = Math.max(1, Math.ceil(total / perPage));
+            if (joState.page > totalPages) { joState.page = totalPages; }
+
+            var start = (joState.page - 1) * perPage;
+            var end = start + perPage;
+
+            // 3. Display rows within page window
+            visibleRows.forEach(function(row, index) {
+                if (index >= start && index < end) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+
+            // 4. Update UI labels and buttons
+            var lbl = document.getElementById('joPageLabel');
+            if (lbl) lbl.textContent = 'Page ' + joState.page + ' of ' + totalPages;
+
+            var prev = document.getElementById('joPrevBtn');
+            var next = document.getElementById('joNextBtn');
+            if (prev) {
+                prev.disabled = (joState.page <= 1);
+                prev.style.opacity = prev.disabled ? '0.5' : '1';
+                prev.style.cursor = prev.disabled ? 'not-allowed' : 'pointer';
+            }
+            if (next) {
+                next.disabled = (joState.page >= totalPages);
+                next.style.opacity = next.disabled ? '0.5' : '1';
+                next.style.cursor = next.disabled ? 'not-allowed' : 'pointer';
+            }
+        }
+
         function joFilterTable(filter) {
             // Update active button
             document.querySelectorAll('.jo-filter-btn').forEach(function(btn) {
@@ -6258,12 +6312,29 @@ main.main {
             var activeBtn = document.getElementById('joFilter_' + filter);
             if (activeBtn) activeBtn.classList.add('jo-filter-active');
 
-            // Show/hide rows
-            document.querySelectorAll('#joUnifiedTable tbody tr').forEach(function(row) {
-                var rowFilter = row.getAttribute('data-jo-filter');
-                row.style.display = (filter === 'all' || rowFilter === filter) ? '' : 'none';
-            });
+            joState.filter = filter;
+            joState.page = 1; // reset to page 1 on filter
+            joRenderTable();
         }
+
+        function joGoPage(p) {
+            joState.page = p;
+            joRenderTable();
+        }
+
+        function joChangePerPage() {
+            var sel = document.getElementById('joPerPage');
+            if (sel) {
+                joState.per_page = parseInt(sel.value, 10);
+                joState.page = 1; // reset to page 1
+                joRenderTable();
+            }
+        }
+
+        // Initialize pagination on load
+        document.addEventListener('DOMContentLoaded', function() {
+            joRenderTable();
+        });
         </script>
 
         </div><!-- /innerTab_tracker -->

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * STAFF FUEL DELIVERIES INTERFACE
  * 
@@ -846,8 +846,8 @@ require_once __DIR__ . '/../partials/header.php';
     </div><!-- /filter header -->
 
     <!-- ── Table ──────────────────────────────────────────────── -->
-    <div class="table-wrapper">
-        <table>
+    <div class="table-wrapper" style="max-height: 450px; overflow-y: auto;">
+        <table id="deliveriesTable">
             <thead>
                 <tr>
                     <th>#</th>
@@ -862,7 +862,7 @@ require_once __DIR__ . '/../partials/header.php';
                     <th>Encoded</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="deliveriesTableBody">
                 <?php foreach ($recent_deliveries as $delivery):
                     $st_raw    = $delivery['status'] ?? 'Pending';
                     $st_key    = strtolower(str_replace(' ', '_', $st_raw));
@@ -900,23 +900,121 @@ require_once __DIR__ . '/../partials/header.php';
                     <td style="font-size:.8rem;color:#888;"><?= date('M j, g:i A', strtotime($delivery['created_at'])) ?></td>
                 </tr>
                 <?php endforeach; ?>
-                <?php if (empty($recent_deliveries)): ?>
-                <tr>
-                    <td colspan="10">
-                        <div class="empty-state">
-                            <i class="fas fa-truck"></i>
-                            <p>No deliveries found for the selected filters.</p>
-                        </div>
-                    </td>
-                </tr>
-                <?php endif; ?>
             </tbody>
         </table>
     </div>
 
+    <!-- Pagination Footer -->
+    <?php if (!empty($recent_deliveries)): ?>
+    <div id="deliveriesPagination" style="display:flex; justify-content:space-between; align-items:center; padding:12px 20px; border-top:1px solid #e2e8f0; background:#fff; font-size:13px; color:#475569;">
+        <div style="display:flex; align-items:center; gap:8px;">
+            <label style="margin:0; font-weight:400; color:#475569;">Rows per page:</label>
+            <select id="delRowsPerPage" onchange="changeDelPageSize()" style="padding:4px 24px 4px 8px; border:1px solid #cbd5e1; border-radius:4px; font-size:13px; background:#fff; color:#1e293b; outline:none; cursor:pointer;">
+                <option value="10" selected>10</option>
+                <option value="20">20</option>
+                <option value="30">30</option>
+                <option value="40">40</option>
+                <option value="50">50</option>
+            </select>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+            <button onclick="prevDelPage()" id="delPrevBtn" style="width:28px; height:28px; background:#fff; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; font-size:12px; color:#475569; display:flex; align-items:center; justify-content:center;" disabled>
+                <i class="fas fa-chevron-left"></i>
+            </button>
+            <span id="delPageInfo" style="color:#475569; font-size:13px; padding:0 4px;">Page 1 of 1</span>
+            <button onclick="nextDelPage()" id="delNextBtn" style="width:28px; height:28px; background:#fff; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; font-size:12px; color:#475569; display:flex; align-items:center; justify-content:center;">
+                <i class="fas fa-chevron-right"></i>
+            </button>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <?php if (empty($recent_deliveries)): ?>
+    <div class="empty-state">
+        <i class="fas fa-truck"></i>
+        <p>No deliveries found for the selected filters.</p>
+    </div>
+    <?php endif; ?>
+
 </div><!-- /deliveries-table -->
 
+<div style="height: 80px;"></div> <!-- Spacer to prevent overlap with fixed footer -->
+
 <script>
+// ── Pagination Logic ─────────────────────────────────────────
+var currentDelPage = 1;
+var rowsPerDelPage = 10;
+var totalDelRows = 0;
+var allDelRows = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    var tbody = document.getElementById('deliveriesTableBody');
+    if (tbody) {
+        allDelRows = Array.from(tbody.querySelectorAll('tr'));
+        totalDelRows = allDelRows.length;
+        if (totalDelRows > 0) {
+            renderDelPage();
+        }
+    }
+});
+
+function changeDelPageSize() {
+    var select = document.getElementById('delRowsPerPage');
+    rowsPerDelPage = parseInt(select.value, 10);
+    currentDelPage = 1;
+    renderDelPage();
+}
+
+function prevDelPage() {
+    if (currentDelPage > 1) {
+        currentDelPage--;
+        renderDelPage();
+    }
+}
+
+function nextDelPage() {
+    var totalPages = Math.ceil(totalDelRows / rowsPerDelPage);
+    if (currentDelPage < totalPages) {
+        currentDelPage++;
+        renderDelPage();
+    }
+}
+
+function renderDelPage() {
+    if (totalDelRows === 0) return;
+    
+    var totalPages = Math.ceil(totalDelRows / rowsPerDelPage) || 1;
+    var startIndex = (currentDelPage - 1) * rowsPerDelPage;
+    var endIndex = Math.min(startIndex + rowsPerDelPage, totalDelRows);
+    
+    allDelRows.forEach(function(row, index) {
+        if (index >= startIndex && index < endIndex) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+    
+    var info = document.getElementById('delPageInfo');
+    if (info) {
+        info.textContent = 'Page ' + currentDelPage + ' of ' + totalPages;
+    }
+    
+    var prevBtn = document.getElementById('delPrevBtn');
+    if (prevBtn) {
+        prevBtn.disabled = (currentDelPage === 1);
+        prevBtn.style.opacity = prevBtn.disabled ? '0.5' : '1';
+        prevBtn.style.cursor = prevBtn.disabled ? 'not-allowed' : 'pointer';
+    }
+    
+    var nextBtn = document.getElementById('delNextBtn');
+    if (nextBtn) {
+        nextBtn.disabled = (currentDelPage >= totalPages) || (totalDelRows === 0);
+        nextBtn.style.opacity = nextBtn.disabled ? '0.5' : '1';
+        nextBtn.style.cursor = nextBtn.disabled ? 'not-allowed' : 'pointer';
+    }
+}
+
 // ── Period preset toggle ──────────────────────────────────────
 function setPeriod(key) {
     document.getElementById('periodInput').value = key;
