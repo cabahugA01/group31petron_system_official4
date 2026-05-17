@@ -32,7 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             try {
                 // Check if product exists
-                $stmt = $pdo->prepare("SELECT id, cost as old_cost, price as old_price FROM products WHERE id = ?");
+                $stmt = $pdo->prepare("SELECT id, unit_cost as old_cost, unit_price as old_price FROM inventory_products WHERE id = ?");
                 $stmt->execute([$product_id]);
                 $prod = $stmt->fetch(PDO::FETCH_ASSOC);
                 
@@ -55,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Fetch all products
 $products = [];
 try {
-    $stmt = $pdo->query("SELECT id, name, sku, cost, price FROM products ORDER BY name ASC");
+    $stmt = $pdo->query("SELECT id, product_name as name, sku, unit_cost as cost, unit_price as price FROM inventory_products ORDER BY product_name ASC");
     $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     $products = [];
@@ -68,16 +68,16 @@ try {
         SELECT DISTINCT 
             ri.id,
             ri.delivery_date,
-            ri.item_name,
+            ri.product as item_name,
             ri.quantity,
             ri.supplier,
             u.name as received_by_name,
-            p.name as product_name,
-            p.id as product_id
-        FROM received_items ri
-        LEFT JOIN users u ON ri.received_by = u.id
-        LEFT JOIN products p ON ri.product_id = p.id
-        WHERE ri.delivery_date >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            ip.product_name,
+            ip.id as product_id
+        FROM deliveries_oversight ri
+        LEFT JOIN users u ON ri.encoded_by = u.id
+        LEFT JOIN inventory_products ip ON ri.product = ip.product_name
+        WHERE ri.delivery_date >= DATE_SUB(NOW(), INTERVAL 7 DAY) AND ri.delivery_type='merchandise'
         ORDER BY ri.delivery_date DESC 
         LIMIT 20
     ");

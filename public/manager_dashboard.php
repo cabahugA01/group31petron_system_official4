@@ -277,7 +277,7 @@ try {
     if ($jo_filter_status) { $where .= " AND jo.status=?"; $params[] = $jo_filter_status; }
     if ($jo_filter_customer) { $where .= " AND (jo.customer_name LIKE ? OR c.name LIKE ?)"; $params[] = "%{$jo_filter_customer}%"; $params[] = "%{$jo_filter_customer}%"; }
     $cnt=$pdo->prepare("SELECT COUNT(*) FROM job_orders jo LEFT JOIN customers c ON c.id=jo.customer_id {$where}"); $cnt->execute($params); $jo_total_filtered=(int)$cnt->fetchColumn();
-    $jod=$pdo->prepare("SELECT COALESCE(jo.job_order_id,jo.jo_number,CONCAT('JO-',jo.id)) AS jo_ref, COALESCE(c.name,jo.customer_name,'Walk-in') AS customer, COALESCE(jo.vehicle_plate,'â€”') AS vehicle_plate, COALESCE(jo.service_type,jo.service_description,'â€”') AS service_type, COALESCE(m.full_name,m.name,'â€”') AS mechanic, jo.status, COALESCE(jo.validation_status,jo.status) AS display_status, jo.payment_method, jo.created_at, jo.id FROM job_orders jo LEFT JOIN mechanics m ON m.id=jo.assigned_mechanic_id LEFT JOIN customers c ON c.id=jo.customer_id {$where} ORDER BY FIELD(jo.status,'Pending Validation','In Progress','Approved','Validated','Completed','Rejected','Cancelled'), jo.created_at DESC LIMIT {$jo_per_page} OFFSET {$jo_offset}");
+    $jod=$pdo->prepare("SELECT COALESCE(jo.job_order_id,jo.job_order_number,CONCAT('JO-',jo.id)) AS jo_ref, COALESCE(c.name,jo.customer_name,'Walk-in') AS customer, COALESCE(jo.vehicle_plate,'—') AS vehicle_plate, COALESCE(jo.service_type,jo.service_description,'—') AS service_type, COALESCE(m.full_name,'—') AS mechanic, jo.status, COALESCE(jo.validation_status,jo.status) AS display_status, jo.payment_method, jo.created_at, jo.id FROM job_orders jo LEFT JOIN mechanics m ON m.id=jo.assigned_mechanic_id LEFT JOIN customers c ON c.id=jo.customer_id {$where} ORDER BY FIELD(jo.status,'Pending Validation','In Progress','Approved','Validated','Completed','Rejected','Cancelled'), jo.created_at DESC LIMIT {$jo_per_page} OFFSET {$jo_offset}");
     $jod->execute($params); $job_order_rows=$jod->fetchAll(PDO::FETCH_ASSOC)?:[];
 } catch (Exception $e) {}
 
@@ -328,7 +328,7 @@ try {
         SELECT c.name,
                COALESCE(c.credit_limit, 0) AS credit_limit,
                COALESCE(
-                   (SELECT SUM(jo.total_amount - COALESCE(jo.amount_paid, 0))
+                   (SELECT SUM(jo.total_cost - COALESCE(jo.amount_paid, 0))
                     FROM job_orders jo
                     WHERE jo.customer_id = c.id
                       AND jo.payment_method IN ('Credit','Account Receivable','utang','Utang')
@@ -336,7 +336,7 @@ try {
                       AND jo.station_id = ?), 0
                ) +
                COALESCE(
-                   (SELECT SUM(mt.total_amount - COALESCE(mt.amount_paid, 0))
+                   (SELECT SUM(mt.total_amount - COALESCE(mt.amount_tendered, 0))
                     FROM merchandise_transactions mt
                     WHERE mt.customer_id = c.id
                       AND mt.payment_method IN ('Credit','Account Receivable','utang','Utang')
@@ -353,7 +353,7 @@ try {
 } catch (Exception $e) {
     // Fallback: job_orders only
     try {
-        $cb2 = $pdo->prepare("SELECT c.name, COALESCE(c.credit_limit,0) AS credit_limit, COALESCE(SUM(jo.total_amount - COALESCE(jo.amount_paid,0)),0) AS outstanding FROM customers c LEFT JOIN job_orders jo ON jo.customer_id=c.id AND jo.payment_method IN ('Credit','Account Receivable','utang','Utang') AND jo.payment_status != 'Paid' AND jo.station_id=? WHERE c.station_id=? GROUP BY c.id,c.name,c.credit_limit HAVING outstanding>0 ORDER BY outstanding DESC LIMIT 10");
+        $cb2 = $pdo->prepare("SELECT c.name, COALESCE(c.credit_limit,0) AS credit_limit, COALESCE(SUM(jo.total_cost - COALESCE(jo.amount_paid,0)),0) AS outstanding FROM customers c LEFT JOIN job_orders jo ON jo.customer_id=c.id AND jo.payment_method IN ('Credit','Account Receivable','utang','Utang') AND jo.payment_status != 'Paid' AND jo.station_id=? WHERE c.station_id=? GROUP BY c.id,c.name,c.credit_limit HAVING outstanding>0 ORDER BY outstanding DESC LIMIT 10");
         $cb2->execute([$station_id, $station_id]);
         $customer_balances = $cb2->fetchAll(PDO::FETCH_ASSOC) ?: [];
     } catch (Exception $e2) {}
@@ -388,6 +388,35 @@ try {
     ");
     $sp->execute([$station_id, $station_id, $station_id]);
     $staff_performance = $sp->fetchAll(PDO::FETCH_ASSOC) ?: [];
+} catch (Exception $e) {}
+
+// --- Audit Trail Quick View (Last 5 Manager Actions) ---
+$audit_trail = [];
+try {
+    $at = $pdo->prepare("SELECT action, details, created_at FROM activity_logs WHERE user_id = ? ORDER BY created_at DESC LIMIT 5");
+    $at->execute([$me['id']]);
+    $audit_trail = $at->fetchAll(PDO::FETCH_ASSOC) ?: [];
+} catch (Exception $e) {}
+
+// --- Inventory Snapshot ---
+$inv_fuel_total = 0;
+$inv_merch_total = 0;
+try {
+    $ift = $pdo->prepare("SELECT COALESCE(SUM(current_stock),0) FROM fuel_inventory WHERE station_id = ?");
+    $ift->execute([$station_id]);
+    $inv_fuel_total = (float)$ift->fetchColumn();
+
+    $imt = $pdo->prepare("SELECT COALESCE(SUM(stock_level),0) FROM station_inventory WHERE station_id = ? AND status = 'active'");
+    $imt->execute([$station_id]);
+    $inv_merch_total = (int)$imt->fetchColumn();
+} catch (Exception $e) {}
+
+// --- Price Change Snapshot (Pending / Approved) ---
+$price_changes = [];
+try {
+    $pc = $pdo->prepare("SELECT action, details, created_at FROM activity_logs WHERE action IN ('Propose Price', 'Approve Price', 'Reject Price', 'Hold Price') ORDER BY created_at DESC LIMIT 5");
+    $pc->execute();
+    $price_changes = $pc->fetchAll(PDO::FETCH_ASSOC) ?: [];
 } catch (Exception $e) {}
 
 // --- Payment Breakdown (today) — Job Orders + Merchandise ONLY, fuel is internal ---
@@ -442,38 +471,43 @@ require_once __DIR__ . '/../partials/header.php';
 .mgr-page { max-width:100%; box-sizing:border-box; overflow-x:hidden; }
 .dashboard-content { max-width:100%; box-sizing:border-box; overflow-x:hidden; }
 
-/* KPI Cards — responsive auto-fill, min 190px per card */
+/* KPI Cards — matching staff summary cards design */
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  grid-template-columns: repeat(5, 1fr);
   gap: 14px;
   margin-bottom: 24px;
 }
+@media(max-width: 1200px) { .kpi-grid { grid-template-columns: repeat(3, 1fr); } }
+@media(max-width: 768px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+
 .kpi-card {
   background: #fff;
   border-radius: 14px;
   border: 1px solid #EAEAEA;
   border-top: 4px solid #EAEAEA;
-  padding: 18px 16px 14px;
+  padding: 18px 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  box-shadow: 0 1px 6px rgba(0,0,0,.05);
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.04);
   transition: transform .15s, box-shadow .15s;
   cursor: default;
-  min-height: 110px;
+  min-height: 100px;
 }
 .kpi-card:hover { box-shadow: 0 6px 20px rgba(0,0,0,.09); transform: translateY(-2px); }
-.kpi-card-top { display: flex; align-items: center; justify-content: space-between; }
+.kpi-card-top { display: flex; align-items: center; justify-content: center; gap: 8px; }
 .kpi-icon {
-  width: 40px; height: 40px;
-  border-radius: 10px;
+  width: 32px; height: 32px;
+  border-radius: 8px;
   display: flex; align-items: center; justify-content: center;
-  font-size: 18px;
+  font-size: 14px;
   flex-shrink: 0;
 }
 .kpi-num {
-  font-size: 28px;
+  font-size: 26px;
   font-weight: 800;
   color: #101828;
   line-height: 1;
@@ -484,16 +518,13 @@ require_once __DIR__ . '/../partials/header.php';
   font-weight: 700;
   color: #344054;
   line-height: 1.3;
-  white-space: normal;
-  word-break: break-word;
+  text-align: center;
 }
 .kpi-sub {
   font-size: 11px;
   color: #9ca3af;
   margin-top: 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  text-align: center;
 }
 /* Color variants — top border + icon bg/color */
 .kpi-blue   { border-top-color: #00264D; } .kpi-blue   .kpi-icon { background: #e8f0f8; color: #00264D; }
@@ -705,7 +736,7 @@ require_once __DIR__ . '/../partials/header.php';
       <div class="kpi-num" id="kpi-today-sales" style="font-size:20px;">&#8369;<?= number_format($today_total_sales, 0) ?></div>
       <div class="kpi-icon"><i class="fas fa-peso-sign"></i></div>
     </div>
-    <div class="kpi-label">Today's Sales</div>
+    <div class="kpi-label">Sales Snapshot</div>
     <div class="kpi-sub" id="kpi-today-sales-sub">Fuel &#8369;<?= number_format($today_fuel_sales,0) ?> &bull; Merch &#8369;<?= number_format($today_merch_sales,0) ?></div>
   </div>
 
@@ -738,126 +769,7 @@ require_once __DIR__ . '/../partials/header.php';
 
 </div><!-- /kpi-grid -->
 
-<!-- ============================================================
-     FUEL VOLUME SALES SUMMARY — Table B
-     Shows today's validated fuel readings aggregated by fuel type.
-     Populated dynamically from api_fuel_readings.php?action=summary
-     ============================================================ -->
-<div class="mgr-card" id="fuelVolSummaryCard" style="margin-bottom:20px;">
-    <h3 style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-        <span><i class="fas fa-chart-bar" style="color:#16a34a;margin-right:6px;"></i> Volume Sales Summary — Today</span>
-        <span style="display:flex;align-items:center;gap:8px;">
-            <span id="fvs_date_label" style="font-size:11px;color:#64748b;font-weight:500;"><?= date('F j, Y') ?></span>
-            <a href="manager_fuel_sales_summary.php" style="font-size:11px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;padding:4px 10px;border-radius:6px;font-weight:600;text-decoration:none;white-space:nowrap;">
-                <i class="fas fa-external-link-alt"></i> Full Report
-            </a>
-            <button onclick="loadFuelVolSummary()" style="font-size:11px;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:600;display:flex;align-items:center;gap:4px;">
-                <i class="fas fa-sync" id="fvs_refresh_icon"></i> Refresh
-            </button>
-        </span>
-    </h3>
-    <div id="fuelVolSummaryBody">
-        <div style="text-align:center;padding:28px;color:#94a3b8;font-size:13px;">
-            <i class="fas fa-spinner fa-spin" style="font-size:20px;display:block;margin-bottom:8px;"></i>
-            Loading volume summary…
-        </div>
-    </div>
-</div>
 
-<script>
-// ── Fuel Volume Sales Summary (Table B) — Manager Dashboard ──────────────────
-async function loadFuelVolSummary() {
-    const body = document.getElementById('fuelVolSummaryBody');
-    const icon = document.getElementById('fvs_refresh_icon');
-    if (icon) icon.className = 'fas fa-spinner fa-spin';
-
-    try {
-        const today = new Date().toISOString().slice(0,10);
-        const url   = `./api_fuel_readings.php?action=summary&date_from=${today}&date_to=${today}`;
-        const res   = await fetch(url, {credentials:'same-origin'});
-        const json  = await res.json();
-
-        if (!json.success) {
-            body.innerHTML = `<p style="color:#ef4444;text-align:center;padding:20px;font-size:13px;">
-                <i class="fas fa-exclamation-circle"></i> ${json.message || 'Failed to load summary.'}
-            </p>`;
-            if (icon) icon.className = 'fas fa-sync';
-            return;
-        }
-
-        const vs  = json.vol_sales_summary || [];
-        const tot = json.totals || {};
-
-        // Count pending vs approved
-        const mr = json.meter_readings || [];
-        const pendingCount  = mr.filter(r => ['pending','pending validation'].includes((r.status||'').toLowerCase())).length;
-        const approvedCount = mr.filter(r => ['approved','verified','adjusted'].includes((r.status||'').toLowerCase())).length;
-
-        if (vs.length === 0) {
-            body.innerHTML = `<div style="text-align:center;padding:28px;color:#94a3b8;font-size:13px;">
-                <i class="fas fa-chart-bar" style="font-size:24px;display:block;margin-bottom:8px;"></i>
-                No fuel readings recorded today.
-                <br><a href="manager_fuel_management_complete.php" style="color:#1d4ed8;font-size:12px;margin-top:6px;display:inline-block;">
-                    View Fuel Management →
-                </a>
-            </div>`;
-            if (icon) icon.className = 'fas fa-sync';
-            return;
-        }
-
-        function fmtL(n){ return Number(n||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2}); }
-
-        // Status summary bar
-        let statusBar = '';
-        if (pendingCount > 0 || approvedCount > 0) {
-            statusBar = `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;font-size:12px;">
-                <span style="background:#fef9c3;color:#854d0e;padding:3px 10px;border-radius:20px;font-weight:700;">
-                    <i class="fas fa-hourglass-half"></i> ${pendingCount} Pending Validation
-                </span>
-                <span style="background:#dcfce7;color:#166534;padding:3px 10px;border-radius:20px;font-weight:700;">
-                    <i class="fas fa-check-circle"></i> ${approvedCount} Approved/Verified
-                </span>
-            </div>`;
-        }
-
-        let tableHtml = `<div style="overflow-x:auto;">
-            <table style="width:100%;border-collapse:collapse;font-size:13px;">
-                <thead>
-                    <tr style="background:#f0fdf4;">
-                        <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #bbf7d0;">Fuel Type</th>
-                        <th style="padding:10px 14px;text-align:right;font-size:11px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #bbf7d0;">Volume Sales (L)</th>
-                    </tr>
-                </thead>
-                <tbody>`;
-
-        vs.forEach(r => {
-            tableHtml += `<tr style="border-bottom:1px solid #f0fdf4;">
-                <td style="padding:10px 14px;font-weight:600;color:#1e293b;">${r.fuel_type||'—'}</td>
-                <td style="padding:10px 14px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums;">${fmtL(r.volume_sales)}</td>
-            </tr>`;
-        });
-
-        const totalVol = vs.reduce((s,r) => s + parseFloat(r.volume_sales||0), 0);
-        tableHtml += `<tr style="background:#eff6ff;border-top:2px solid #bfdbfe;">
-            <td style="padding:10px 14px;font-weight:800;color:#1d4ed8;">TOTAL</td>
-            <td style="padding:10px 14px;text-align:right;font-weight:800;color:#1d4ed8;font-variant-numeric:tabular-nums;">${fmtL(totalVol)}</td>
-        </tr>`;
-
-        tableHtml += `</tbody></table></div>`;
-
-        body.innerHTML = statusBar + tableHtml;
-
-    } catch(e) {
-        body.innerHTML = `<p style="color:#ef4444;text-align:center;padding:20px;font-size:13px;">
-            <i class="fas fa-exclamation-circle"></i> Network error. Please refresh.
-        </p>`;
-    }
-    if (icon) icon.className = 'fas fa-sync';
-}
-
-// Auto-load on page open
-document.addEventListener('DOMContentLoaded', loadFuelVolSummary);
-</script>
 <div class="charts-grid-4">
 
   <div class="mgr-card" style="margin-bottom:0">
@@ -923,12 +835,11 @@ document.addEventListener('DOMContentLoaded', loadFuelVolSummary);
         <th>Status</th>
         <th>Payment</th>
         <th>Date</th>
-        <th>Actions</th>
       </tr>
     </thead>
     <tbody>
     <?php if (empty($job_order_rows)): ?>
-      <tr><td colspan="9" style="text-align:center;padding:24px;color:#9ca3af;font-size:13px;">
+      <tr><td colspan="8" style="text-align:center;padding:24px;color:#9ca3af;font-size:13px;">
         <i class="fas fa-clipboard-list"></i> No job orders found.
       </td></tr>
     <?php else: ?>
@@ -955,14 +866,6 @@ document.addEventListener('DOMContentLoaded', loadFuelVolSummary);
         <td><span class="badge <?= $badge_class ?>"><?= htmlspecialchars($ds) ?></span></td>
         <td><?= htmlspecialchars($jo['payment_method'] ?? '—') ?></td>
         <td style="white-space:nowrap"><?= date('M j, Y', strtotime($jo['created_at'])) ?></td>
-        <td style="white-space:nowrap">
-          <?php if ($can_act): ?>
-          <button class="btn btn-success btn-sm" onclick="openApproveModal(<?= (int)$jo['id'] ?>, '<?= htmlspecialchars(addslashes($jo['jo_ref'])) ?>')"><i class="fas fa-check"></i> Approve</button>
-          <button class="btn btn-danger btn-sm"  onclick="openRejectModal(<?= (int)$jo['id'] ?>, '<?= htmlspecialchars(addslashes($jo['jo_ref'])) ?>')" style="margin-left:4px"><i class="fas fa-times"></i> Reject</button>
-          <?php else: ?>
-          <span style="color:#9ca3af;font-size:12px">—</span>
-          <?php endif; ?>
-        </td>
       </tr>
       <?php endforeach; ?>
     <?php endif; ?>
@@ -1121,6 +1024,98 @@ document.addEventListener('DOMContentLoaded', loadFuelVolSummary);
 <!-- ============================================================
      BOTTOM SECTION
      ============================================================ -->
+
+<!-- Additional Snapshots (Price, Inventory, Audit) -->
+<div class="charts-grid-3">
+
+  <!-- Price Change Snapshot -->
+  <div class="mgr-card" style="margin-bottom:0; display:flex; flex-direction:column; height: 100%;">
+    <h3 style="margin-bottom: 16px;"><i class="fas fa-tags"></i> Price Change Snapshot</h3>
+    <?php if (empty($price_changes)): ?>
+      <div style="flex:1;display:flex;align-items:center;justify-content:center;">
+          <p style="color:#9ca3af;text-align:center;font-size:13px;"><i class="fas fa-tag"></i> No recent price adjustments.</p>
+      </div>
+    <?php else: ?>
+      <ul style="list-style:none;padding:0;margin:0;flex:1;">
+      <?php foreach ($price_changes as $pc): ?>
+        <?php
+          $pc_badge = match($pc['action']) {
+            'Approve Price' => 'badge-approved',
+            'Reject Price' => 'badge-rejected',
+            'Hold Price' => 'badge-pending',
+            default => 'badge-inprog'
+          };
+          
+          $details = htmlspecialchars($pc['details']);
+          $parts = explode('|', $details);
+          $details_html = '';
+          foreach ($parts as $part) {
+              $part = trim($part);
+              if (!empty($part)) {
+                  $details_html .= '<div style="margin-top:3px; display:flex; gap:6px; align-items:flex-start;">
+                                      <i class="fas fa-arrow-right" style="color:#cbd5e1;font-size:9px;margin-top:4px;"></i>
+                                      <span style="flex:1;">' . $part . '</span>
+                                    </div>';
+              }
+          }
+        ?>
+        <li style="border-bottom:1px solid #f1f5f9;padding:12px 0;font-size:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <span class="badge <?= $pc_badge ?>" style="font-size:10px;padding:3px 8px;letter-spacing:0.5px;text-transform:uppercase;border-radius:4px;"><?= htmlspecialchars($pc['action']) ?></span>
+            <span style="color:#94a3b8;font-size:11px;font-weight:500;"><i class="far fa-clock" style="margin-right:3px;"></i><?= date('M j, h:i A', strtotime($pc['created_at'])) ?></span>
+          </div>
+          <div style="color:#64748b;line-height:1.4;font-size:11px;"><?= $details_html ?></div>
+        </li>
+      <?php endforeach; ?>
+      </ul>
+      <div style="text-align:center;margin-top:16px;padding-top:12px;border-top:1px solid #e2e8f0;">
+        <a href="manager_approve_prices.php" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#2563eb;text-decoration:none;font-weight:700;padding:6px 12px;border-radius:6px;transition:all 0.2s;" onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='transparent'">
+          Manage Prices <i class="fas fa-arrow-right"></i>
+        </a>
+      </div>
+    <?php endif; ?>
+  </div>
+
+  <!-- Inventory Snapshot -->
+  <div class="mgr-card" style="margin-bottom:0">
+    <h3><i class="fas fa-boxes"></i> Inventory Snapshot</h3>
+    <div style="display:flex;flex-direction:column;gap:16px;margin-top:12px;">
+      <div style="background:#f0f9ff;border:1px solid #bae6fd;padding:16px;border-radius:10px;text-align:center;">
+        <div style="font-size:24px;font-weight:800;color:#0369a1;"><?= number_format($inv_fuel_total, 2) ?> L</div>
+        <div style="font-size:12px;font-weight:700;color:#0284c7;text-transform:uppercase;">Total Fuel Stock</div>
+      </div>
+      <div style="background:#f5f3ff;border:1px solid #ddd6fe;padding:16px;border-radius:10px;text-align:center;">
+        <div style="font-size:24px;font-weight:800;color:#6d28d9;"><?= number_format($inv_merch_total) ?> Items</div>
+        <div style="font-size:12px;font-weight:700;color:#7c3aed;text-transform:uppercase;">Total Merchandise Stock</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Audit Trail Quick View -->
+  <div class="mgr-card" style="margin-bottom:0">
+    <h3><i class="fas fa-history"></i> Audit Trail (My Last 5 Actions)</h3>
+    <?php if (empty($audit_trail)): ?>
+      <p style="color:#9ca3af;text-align:center;padding:24px 0;font-size:13px;"><i class="fas fa-shoe-prints"></i> No recent activity found.</p>
+    <?php else: ?>
+      <ul style="list-style:none;padding:0;margin:0;">
+      <?php foreach ($audit_trail as $at): ?>
+        <li style="border-bottom:1px solid #f5f5f5;padding:8px 0;font-size:12px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+            <strong style="color:var(--petron-blue);"><?= htmlspecialchars($at['action']) ?></strong>
+            <span style="color:#9ca3af;font-size:11px;"><?= date('M j, h:i A', strtotime($at['created_at'])) ?></span>
+          </div>
+          <div style="color:#667085;line-height:1.4;"><?= htmlspecialchars($at['details']) ?></div>
+        </li>
+      <?php endforeach; ?>
+      </ul>
+      <div style="text-align:center;margin-top:12px;">
+        <a href="manager_reports.php?tab=audit" style="font-size:12px;color:#3b82f6;text-decoration:none;font-weight:600;">View Full Audit Trail &rarr;</a>
+      </div>
+    <?php endif; ?>
+  </div>
+
+</div>
+
 <!-- Delivery Status Cards + Trend -->
 <div class="mgr-card">
   <h3><i class="fas fa-truck-loading"></i> Delivery Overview</h3>
@@ -1828,4 +1823,5 @@ document.addEventListener('visibilitychange', () => {
 
 </script>
 
+<div style="height: 80px;"></div>
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

@@ -18,10 +18,13 @@ if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
     exit;
 }
 
-// ── Ensure inventory_products has a status column ──────────────────────────
 try { $pdo->exec("ALTER TABLE inventory_products ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active'"); } catch (Exception $e) {}
 try { $pdo->exec("ALTER TABLE inventory_products ADD COLUMN min_stock INT NOT NULL DEFAULT 0"); } catch (Exception $e) {}
 try { $pdo->exec("ALTER TABLE inventory_products ADD COLUMN max_stock INT NOT NULL DEFAULT 0"); } catch (Exception $e) {}
+try { $pdo->exec("ALTER TABLE inventory_products ADD COLUMN sku VARCHAR(100) DEFAULT NULL"); } catch (Exception $e) {}
+try { $pdo->exec("ALTER TABLE inventory_products ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"); } catch (Exception $e) {}
+try { $pdo->exec("ALTER TABLE inventory_products ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"); } catch (Exception $e) {}
+try { $pdo->exec("ALTER TABLE inventory_products ADD COLUMN station_id INT NOT NULL DEFAULT 1"); } catch (Exception $e) {}
 
 // ── Ensure merchandise_batches table exists ────────────────────────────────
 try {
@@ -77,8 +80,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($chk->fetchColumn()) {
                     $_SESSION['error'] = "Product '$name' already exists.";
                 } else {
-                    $pdo->prepare("INSERT INTO inventory_products (product_name, category, sku, unit_cost, unit_price, stock, status, min_stock, max_stock, created_at) VALUES (?,?,?,?,?,0,'active',?,?,NOW())")
-                        ->execute([$name, $category, $sku, $unit_cost, $unit_price, $min_stock, $max_stock]);
+                    $pdo->prepare("INSERT INTO inventory_products (station_id, product_name, category, sku, unit_cost, unit_price, stock, status, min_stock, max_stock, created_at) VALUES (?,?,?,?,?,?,0,'active',?,?,NOW())")
+                        ->execute([$station_id, $name, $category, $sku, $unit_cost, $unit_price, $min_stock, $max_stock]);
                     log_activity($pdo, $me['id'], 'Product Added', "Merchandise product '$name' (category: $category) added by {$me['name']}");
                     $_SESSION['success'] = "Product '$name' added. Stock updates automatically when deliveries are approved.";
                 }
@@ -605,3 +608,147 @@ include __DIR__ . '/../partials/header.php';
 </form>
 
 <div class="toast" id="toast"></div>
+
+<script>
+// --- Modals ---
+function openModal(id) {
+    document.getElementById(id).classList.add('open');
+}
+function closeModal(id) {
+    document.getElementById(id).classList.remove('open');
+}
+
+// --- Toggle Category ---
+function toggleNewCat(prefix) {
+    const sel = document.getElementById(prefix + 'CatSelect');
+    const wrap = document.getElementById(prefix + 'NewCatWrap');
+    const input = document.getElementById(prefix + 'NewCat');
+    if (sel.value === '__new__') {
+        wrap.style.display = 'block';
+        input.required = true;
+    } else {
+        wrap.style.display = 'none';
+        input.required = false;
+        input.value = '';
+    }
+}
+
+// --- Validation ---
+function validateProductForm(form) {
+    const cost = parseFloat(form.unit_cost.value);
+    const price = parseFloat(form.unit_price.value);
+    if (price < cost) {
+        showToast('Selling price cannot be less than cost price', 'error');
+        return false;
+    }
+    return true;
+}
+
+// --- Status Toggle ---
+function toggleStatus(id, newStatus, name) {
+    const actionText = newStatus === 'active' ? 'activate' : 'deactivate';
+    if (!confirm(`Are you sure you want to ${actionText} ${name}?`)) return;
+    document.getElementById('tProductId').value = id;
+    document.getElementById('tNewStatus').value = newStatus;
+    document.getElementById('toggleForm').submit();
+}
+
+// --- Populate Edit Modal ---
+const productData = <?php echo json_encode($products); ?>;
+
+function editProduct(id) {
+    const p = productData.find(item => item.id == id);
+    if (!p) return;
+    
+    document.getElementById('editProductId').value = p.id;
+    document.getElementById('editProductName').value = p.product_name;
+    
+    const catSel = document.getElementById('editCatSelect');
+    // Check if category exists in dropdown, else set to new
+    let foundCat = false;
+    for(let i=0; i<catSel.options.length; i++) {
+        if(catSel.options[i].value === p.category) {
+            foundCat = true;
+            break;
+        }
+    }
+    if (foundCat) {
+        catSel.value = p.category;
+        document.getElementById('editNewCatWrap').style.display = 'none';
+        document.getElementById('editNewCat').required = false;
+    } else {
+        catSel.value = '__new__';
+        document.getElementById('editNewCatWrap').style.display = 'block';
+        document.getElementById('editNewCat').value = p.category;
+        document.getElementById('editNewCat').required = true;
+    }
+    
+    document.getElementById('editProductSku').value = p.sku || '';
+    document.getElementById('editProductCost').value = parseFloat(p.unit_cost).toFixed(2);
+    document.getElementById('editProductPrice').value = parseFloat(p.unit_price).toFixed(2);
+    document.getElementById('editMinStock').value = p.min_stock || 0;
+    document.getElementById('editMaxStock').value = p.max_stock || 0;
+    
+    openModal('editModal');
+}
+
+// --- Populate View Modal ---
+function viewProduct(id) {
+    const p = productData.find(item => item.id == id);
+    if (!p) return;
+    
+    document.getElementById('vId').textContent = '#' + p.id;
+    document.getElementById('vSku').textContent = p.sku || 'N/A';
+    document.getElementById('vName').textContent = p.product_name;
+    document.getElementById('vCat').textContent = p.category || 'N/A';
+    document.getElementById('vCost').textContent = '₱' + parseFloat(p.unit_cost).toFixed(2);
+    document.getElementById('vPrice').textContent = '₱' + parseFloat(p.unit_price).toFixed(2);
+    document.getElementById('vMin').textContent = p.min_stock || 0;
+    document.getElementById('vMax').textContent = p.max_stock || 0;
+    document.getElementById('vStock').textContent = p.stock || 0;
+    document.getElementById('vStatus').textContent = (p.status === 'active' ? 'Active' : 'Inactive');
+    document.getElementById('vBatches').textContent = (p.active_batches || 0) + ' active / ' + (p.total_batches || 0) + ' total';
+    
+    openModal('viewModal');
+}
+
+// --- Table Filtering ---
+function filterTable() {
+    const catFilter = document.getElementById('catFilter').value.toLowerCase();
+    const search = document.getElementById('merchSearch').value.toLowerCase();
+    
+    const rows = document.querySelectorAll('.product-row');
+    rows.forEach(row => {
+        const rowCat = row.dataset.cat || '';
+        const rowName = row.dataset.name || '';
+        const rowSku = row.dataset.sku || '';
+        
+        const catMatch = !catFilter || rowCat === catFilter;
+        const searchMatch = !search || rowName.includes(search) || rowSku.includes(search);
+        
+        if (catMatch && searchMatch) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+
+// --- Toast ---
+function showToast(msg, type='success') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show ' + (type==='success' ? 'toast-success' : 'toast-error');
+    setTimeout(() => { t.className = 'toast'; }, 3000);
+}
+
+// --- Close Modals on click outside or escape ---
+window.addEventListener('click', e => {
+    if (e.target.classList.contains('modal')) e.target.classList.remove('open');
+});
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open'));
+});
+</script>
+
+<?php include __DIR__ . '/../partials/footer.php'; ?>

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'shift_transactions_view';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -13,64 +13,7 @@ if (!in_array($role, ['manager','admin','superadmin'])) {
     header('Location: dashboard.php'); exit;
 }
 
-// ── Excel export ──────────────────────────────────────────────────────
-if (isset($_GET['export']) && $_GET['export'] === 'excel') {
-    header('Content-Type: application/vnd.ms-excel');
-    header('Content-Disposition: attachment; filename="shift_transactions_' . date('Y-m-d') . '.xls"');
-    header('Pragma: no-cache');
-    header('Expires: 0');
-    
-    echo '<table border="1">';
-    echo '<tr><th>Shift ID</th><th>Staff Name</th><th>Shift Date</th><th>Merchandise Sales</th><th>Total Sales</th><th>Transactions</th><th>Notes</th></tr>';
-    
-    $stmt = $pdo->prepare("
-        SELECT 
-            ls.id,
-            u.name as staff_name,
-            DATE(ls.start_time) as shift_date,
-            COALESCE(merch_sales.merch_total, 0) as merch_sales,
-            COALESCE(merch_sales.merch_total, 0) as total_sales,
-            COALESCE(merch_sales.merch_count, 0) as transaction_count,
-            CASE WHEN COALESCE(merch_sales.merch_count, 0) > 0 
-                 THEN CONCAT('Merch: ', merch_sales.merch_count, ' txn(s)') 
-                 ELSE '' END as notes
-        FROM labor_sessions ls
-        LEFT JOIN users u ON ls.user_id = u.id
-        LEFT JOIN (
-            SELECT 
-                shift_id,
-                SUM(total_amount) as merch_total,
-                COUNT(*) as merch_count
-            FROM merchandise_transactions 
-            GROUP BY shift_id
-        ) merch_sales ON ls.id = merch_sales.shift_id
-        WHERE ls.station_id = ? 
-            AND DATE(ls.start_time) BETWEEN ? AND ?
-        GROUP BY ls.id, u.name, DATE(ls.start_time), merch_sales.merch_total, merch_sales.merch_count
-        ORDER BY ls.start_time DESC
-    ");
-    
-    $start_date = $_GET['start'] ?? date('Y-m-d', strtotime('-30 days'));
-    $end_date = $_GET['end'] ?? date('Y-m-d');
-    
-    $stmt->execute([$station_id, $start_date, $end_date]);
-    $shifts = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    foreach ($shifts as $shift) {
-        echo '<tr>';
-        echo '<td>' . htmlspecialchars($shift['id']) . '</td>';
-        echo '<td>' . htmlspecialchars($shift['staff_name']) . '</td>';
-        echo '<td>' . htmlspecialchars($shift['shift_date']) . '</td>';
-        echo '<td>₱' . number_format($shift['merch_sales'], 2) . '</td>';
-        echo '<td>₱' . number_format($shift['total_sales'], 2) . '</td>';
-        echo '<td>' . htmlspecialchars($shift['transaction_count']) . '</td>';
-        echo '<td>' . htmlspecialchars($shift['notes']) . '</td>';
-        echo '</tr>';
-    }
-    
-    echo '</table>';
-    exit;
-}
+
 
 // ── POST: save manager note ───────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -297,10 +240,7 @@ include __DIR__ . '/../partials/header.php';
         <div class="sub">Shift-based transaction summaries, consolidated sales, and audit oversight</div>
     </div>
     <div class="actions">
-        <a href="?start=<?php echo $start; ?>&end=<?php echo $end; ?>&staff_id=<?php echo $staff_id; ?>&export=excel"
-           style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:#1d6f42;color:#fff;border-radius:7px;text-decoration:none;font-size:13px;font-weight:600;transition:filter .15s;" onmouseover="this.style.filter='brightness(.88)'" onmouseout="this.style.filter='none'">
-            <i class="fas fa-file-excel"></i> Export Excel
-        </a>
+
         <a href="transactions.php" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:#002F70;color:#fff;border-radius:7px;text-decoration:none;font-size:13px;font-weight:600;transition:filter .15s;" onmouseover="this.style.filter='brightness(.88)'" onmouseout="this.style.filter='none'">
             <i class="fas fa-arrow-left"></i> Back
         </a>
@@ -318,15 +258,7 @@ include __DIR__ . '/../partials/header.php';
 </div>
 <?php endif; ?>
 
-<!-- ── Summary Cards ─────────────────────────────────────────────────────── -->
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px;">
-    <div class="scard"><div class="scard-num"><?php echo $total_shifts; ?></div><div class="scard-lbl">Total Shifts</div></div>
-    <div class="scard scard-active"><div class="scard-num"><?php echo $active_shifts; ?></div><div class="scard-lbl">Active</div></div>
-    <div class="scard scard-done"><div class="scard-num"><?php echo $completed_shifts; ?></div><div class="scard-lbl">Completed</div></div>
-    <div class="scard scard-merch"><div class="scard-num">&#8369;<?php echo number_format($grand_merch, 2); ?></div><div class="scard-lbl">Merch Sales</div></div>
-    <div class="scard" style="background:#fff8f0;border-color:#fed7aa;"><div class="scard-num" style="color:#c2410c;">&#8369;<?php echo number_format($grand_jo, 2); ?></div><div class="scard-lbl">JO Sales</div></div>
-    <div class="scard scard-total"><div class="scard-num">&#8369;<?php echo number_format($grand_combined, 2); ?></div><div class="scard-lbl">Total Sales</div></div>
-</div>
+
 
 <!-- ── Filter Form ───────────────────────────────────────────────────────── -->
 <div class="card" style="padding:14px 18px;margin-bottom:18px;">
@@ -434,16 +366,13 @@ include __DIR__ . '/../partials/header.php';
                     </td>
                     <td class="stv-sticky">
                         <div class="stv-action-btns">
-                            <button class="svab svab-view" onclick="openShiftModal(<?php echo $idx; ?>)">
+                            <button type="button" class="jo-act-btn" style="background:#002F6C;" onclick="openShiftModal(<?php echo $idx; ?>)">
                                 <i class="fas fa-eye"></i> View
                             </button>
-                            <button class="svab svab-note" onclick="openNoteModal(<?php echo $s['id']; ?>)">
-                                <i class="fas fa-sticky-note"></i> Note
+                            <button type="button" class="jo-act-btn" style="background:#6c757d;" onclick="openNoteModal(<?php echo $s['id']; ?>)">
+                                <i class="fas fa-edit"></i> Note
                             </button>
-                            <a href="?start=<?php echo $start; ?>&end=<?php echo $end; ?>&staff_id=<?php echo $staff_id; ?>&export=excel"
-                               class="svab svab-export">
-                                <i class="fas fa-file-excel"></i> Export
-                            </a>
+
                         </div>
                     </td>
                 </tr>
@@ -463,7 +392,7 @@ include __DIR__ . '/../partials/header.php';
         </div>
         <div class="stv-modal-body" id="shiftModalBody">Loading…</div>
         <div class="stv-modal-footer">
-            <button class="svab svab-note-lg" onclick="closeShiftModal()"><i class="fas fa-times"></i> Close</button>
+            <button type="button" class="jo-act-btn" style="background:#6c757d;padding:9px 18px;width:auto;" onclick="closeShiftModal()"><i class="fas fa-times"></i> Close</button>
         </div>
     </div>
 </div>
@@ -490,8 +419,8 @@ include __DIR__ . '/../partials/header.php';
                 </div>
             </div>
             <div class="stv-modal-footer">
-                <button type="submit" class="svab svab-view" style="padding:9px 18px;"><i class="fas fa-save"></i> Save Note</button>
-                <button type="button" class="svab svab-note-lg" onclick="closeNoteModal()">Cancel</button>
+                <button type="submit" class="jo-act-btn" style="background:#28a745;padding:9px 18px;width:auto;"><i class="fas fa-save"></i> Save Note</button>
+                <button type="button" class="jo-act-btn" style="background:#6c757d;padding:9px 18px;width:auto;" onclick="closeNoteModal()">Cancel</button>
             </div>
         </form>
     </div>
@@ -631,14 +560,10 @@ function statusColor(s) {
 .stv-table tbody tr:hover td { background:#f8fbff; }
 .stv-sticky { position:sticky; right:0; background:#f8f9fa; box-shadow:-3px 0 8px rgba(0,0,0,.07); z-index:2; }
 .stv-table tbody tr:hover .stv-sticky { background:#f8fbff; }
-/* Action buttons — stacked, matching product_management.php */
+/* Action buttons */
 .stv-action-btns { display:flex; flex-direction:column; gap:4px; align-items:stretch; min-width:90px; }
-.svab { display:flex; align-items:center; justify-content:center; gap:5px; padding:5px 8px; border:none; border-radius:5px; font-size:11px; font-weight:600; cursor:pointer; white-space:nowrap; width:100%; text-decoration:none; transition:filter .15s; }
-.svab:hover { filter:brightness(.88); }
-.svab-view    { background:#28a745; color:#fff; }
-.svab-note    { background:#6c757d; color:#fff; }
-.svab-export  { background:#002F70; color:#fff; }
-.svab-note-lg { background:#6c757d; color:#fff; padding:9px 18px; width:auto; }
+.jo-act-btn { padding:5px 10px; border-radius:4px; font-size:12px; font-weight:600; border:none; cursor:pointer; display:inline-flex; align-items:center; gap:4px; color:#fff; width:100%; justify-content:center; margin-bottom: 4px; transition:filter .15s; }
+.jo-act-btn:hover { filter:brightness(0.88); }
 /* Modal */
 .stv-modal { display:none; position:fixed; z-index:1050; inset:0; background:rgba(0,0,0,.55); align-items:center; justify-content:center; }
 .stv-modal-content { background:#fff; border-radius:12px; width:96%; max-width:1100px; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 8px 32px rgba(0,0,0,.22); overflow:hidden; }
@@ -666,6 +591,8 @@ function statusColor(s) {
 .sm-table thead th { background:#002F6C; color:#fff; padding:6px 8px; text-align:left; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; }
 .sm-table tbody td { padding:6px 8px; border-bottom:1px solid #f0f0f0; vertical-align:middle; }
 .sm-table tbody tr:hover td { background:#f8fbff; }
+
+
 </style>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

@@ -39,13 +39,19 @@ $master_menu = [
 
     // Customers - Manager access (separate page with approval/oversight)
     ['id'=>'mgr_customers','label'=>'Customers','ico'=>'fas fa-users','href'=>'manager_customers.php','permissions'=>['approve_transactions','view_transactions','manage_job_orders'],'station_specific'=>true,'sub_items'=>[
-        ['id'=>'mgr_cust_encode',       'label'=>'Encode Customer',          'href'=>'manager_customers.php?section=encode',        'permissions'=>['approve_transactions','manage_job_orders']],
-        ['id'=>'mgr_cust_edit',         'label'=>'Update Customer Details',  'href'=>'manager_customers.php?section=edit_customer',  'permissions'=>['approve_transactions','manage_job_orders']],
-        ['id'=>'mgr_cust_balances',     'label'=>'Balances Monitoring',      'href'=>'manager_customers.php?section=balances',       'permissions'=>['approve_transactions','manage_job_orders']],
+        ['id'=>'mgr_cust_records',      'label'=>'Customer Records',         'href'=>'manager_customers.php?section=records',       'permissions'=>['approve_transactions','manage_job_orders']],
+        ['id'=>'mgr_cust_balances',     'label'=>'Balances Monitoring',      'href'=>'manager_customers.php?section=balances',      'permissions'=>['approve_transactions','manage_job_orders']],
+        ['id'=>'mgr_cust_validation',   'label'=>'Validation & Oversight',   'href'=>'manager_customers.php?section=validation',    'permissions'=>['approve_transactions','manage_job_orders']],
     ]],
     
-    // Deliveries Management - Staff & Manager
-    ['id'=>'mgr_deliveries','label'=>'Deliveries Management','ico'=>'fas fa-truck','href'=>'staff_record_delivery.php','permissions'=>['manage_inventory','view_inventory','encode_fuel','create_transactions','approve_transactions','manage_job_orders'],'station_specific'=>true],
+    // Deliveries Management - Staff
+    ['id'=>'staff_deliveries','label'=>'Record Delivery','ico'=>'fas fa-truck-loading','href'=>'staff_record_delivery.php','permissions'=>['manage_inventory','view_inventory','encode_fuel','create_transactions'],'station_specific'=>true],
+
+    // Deliveries Management - Manager (Validation & History)
+    ['id'=>'manager_deliveries','label'=>'Deliveries Management','ico'=>'fas fa-truck','href'=>'manager_deliveries.php','permissions'=>['approve_transactions','manage_job_orders'],'station_specific'=>true,'sub_items'=>[
+        ['id'=>'mgr_del_manage',  'label'=>'Manage Deliveries', 'href'=>'manager_deliveries.php?section=manage',  'permissions'=>['approve_transactions','manage_job_orders']],
+        ['id'=>'mgr_del_history', 'label'=>'Delivery History',  'href'=>'manager_deliveries.php?section=history', 'permissions'=>['approve_transactions','manage_job_orders']],
+    ]],
 
     // Product Management - Manager (view/manage products & pricing)
     ['id'=>'product_management','label'=>'Product Management','ico'=>'fas fa-boxes','href'=>'manager_product_merchandise.php','permissions'=>['manage_inventory','view_inventory','approve_transactions','manage_job_orders'],'station_specific'=>true,'sub_items'=>[
@@ -377,12 +383,16 @@ function filter_menu_by_permissions($menu_items, $user_role) {
             if ($user_role === 'manager' && ($item['id'] ?? '') === 'reports') {
                 $filtered_item['href'] = '#';
                 $filtered_item['sub_items'] = [
-                    ['id'=>'report_sales',        'label'=>'Sales Reports',          'href'=>'manager_reports.php?section=sales',        'permissions'=>['view_team_reports']],
-                    ['id'=>'report_job_orders',   'label'=>'Job Orders Report',      'href'=>'manager_reports.php?section=job_orders',   'permissions'=>['view_team_reports']],
-                    ['id'=>'report_balances',     'label'=>'Customer Balances',      'href'=>'manager_reports.php?section=balances',     'permissions'=>['view_team_reports']],
-                    ['id'=>'report_deliveries',   'label'=>'Deliveries Report',      'href'=>'manager_reports.php?section=deliveries',   'permissions'=>['view_team_reports']],
-                    ['id'=>'report_staff',        'label'=>'Staff Performance',      'href'=>'manager_reports.php?section=staff',        'permissions'=>['view_team_reports']],
-                    ['id'=>'report_validation',   'label'=>'Validation Logs',        'href'=>'manager_reports.php?section=validation',   'permissions'=>['view_team_reports']],
+                    ['id'=>'report_sales',        'label'=>'Sales Volume & Amount Report', 'href'=>'manager_reports.php?section=sales',          'permissions'=>['view_team_reports']],
+                    ['id'=>'report_job_orders',   'label'=>'Job Orders Report',            'href'=>'manager_reports.php?section=job_orders',     'permissions'=>['view_team_reports']],
+                    ['id'=>'report_balances',     'label'=>'Customer Balances',            'href'=>'manager_reports.php?section=balances',       'permissions'=>['view_team_reports']],
+                    ['id'=>'report_deliveries',   'label'=>'Deliveries Report',            'href'=>'manager_reports.php?section=deliveries',     'permissions'=>['view_team_reports']],
+                    ['id'=>'report_staff',        'label'=>'Staff Performance',            'href'=>'manager_reports.php?section=staff',          'permissions'=>['view_team_reports']],
+                    ['id'=>'report_validation',   'label'=>'Validation Logs',              'href'=>'manager_reports.php?section=validation',     'permissions'=>['view_team_reports']],
+                    ['id'=>'report_variance',     'label'=>'Variance Reports',             'href'=>'manager_reports.php?section=variance',       'permissions'=>['view_team_reports']],
+                    ['id'=>'report_meter',        'label'=>'Validated Meter Reading',      'href'=>'manager_reports.php?section=meter_readings', 'permissions'=>['view_team_reports']],
+                    ['id'=>'report_inventory',    'label'=>'Inventory Reports',            'href'=>'manager_reports.php?section=inventory',      'permissions'=>['view_team_reports']],
+                    ['id'=>'report_price_logs',   'label'=>'Price Change Logs',            'href'=>'manager_reports.php?section=price_logs',     'permissions'=>['view_team_reports']],
                 ];
                 // keep $force_direct_link = false so sub-menu renders
             }
@@ -396,6 +406,27 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                     ['id'=>'fuel_pump_master',  'label'=>'Pump Master',       'href'=>'manager_fuel_management_complete.php#pump-master',       'permissions'=>['manage_fuel']],
                 ];
                 // Add directly — skip the generic sub-item filter below
+                $filtered_menu[] = $filtered_item;
+                continue;
+            }
+
+            if ($user_role === 'manager' && ($item['id'] ?? '') === 'reports') {
+                $filtered_item['href'] = 'manager_reports.php';
+                $filtered_item['label'] = 'Reports';
+                $filtered_item['ico']   = 'fas fa-chart-bar';
+                $filtered_item['sub_items'] = [
+                    ['id'=>'mgr_report_sales',        'label'=>'Sales Volume & Amount Report', 'href'=>'manager_reports.php?section=sales',        'permissions'=>['view_operational_reports','view_financial_reports']],
+                    ['id'=>'mgr_report_joborders',     'label'=>'Job Orders Report',      'href'=>'manager_reports.php?section=job_orders',   'permissions'=>['view_operational_reports','manage_job_orders']],
+                    ['id'=>'mgr_report_balances',      'label'=>'Customer Balances',      'href'=>'manager_reports.php?section=balances',     'permissions'=>['view_operational_reports','view_financial_reports']],
+                    ['id'=>'mgr_report_deliveries',    'label'=>'Deliveries Report',      'href'=>'manager_reports.php?section=deliveries',   'permissions'=>['view_operational_reports']],
+                    ['id'=>'mgr_report_staff',         'label'=>'Staff Performance',      'href'=>'manager_reports.php?section=staff',        'permissions'=>['view_operational_reports','manage_job_orders']],
+                    ['id'=>'mgr_report_validation',    'label'=>'Validation Logs',        'href'=>'manager_reports.php?section=validation',   'permissions'=>['view_operational_reports','approve_transactions']],
+                    // ── Extra Reports ────────────────────────────────────────────
+                    ['id'=>'mgr_report_variance',      'label'=>'Variance Reports',       'href'=>'manager_reports.php?section=variance',     'permissions'=>['view_operational_reports','manage_fuel']],
+                    ['id'=>'mgr_report_meter',         'label'=>'Validated Meter Reading','href'=>'manager_reports.php?section=meter_readings', 'permissions'=>['view_operational_reports','manage_fuel']],
+                    ['id'=>'mgr_report_inventory',     'label'=>'Inventory Reports',      'href'=>'manager_reports.php?section=inventory',    'permissions'=>['view_operational_reports']],
+                    ['id'=>'mgr_report_price_logs',    'label'=>'Price Change Logs',      'href'=>'manager_reports.php?section=price_logs',   'permissions'=>['view_operational_reports']],
+                ];
                 $filtered_menu[] = $filtered_item;
 
                 // ── Audit Trail — standalone top-level item after Reports ──
@@ -411,31 +442,14 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 continue;
             }
 
-            if ($user_role === 'manager' && ($item['id'] ?? '') === 'reports') {
-                $filtered_item['href'] = 'manager_reports.php';
-                $filtered_item['label'] = 'Reports';
-                $filtered_item['ico']   = 'fas fa-chart-bar';
-                $filtered_item['sub_items'] = [
-                    ['id'=>'mgr_report_sales',        'label'=>'Sales Reports',          'href'=>'manager_reports.php?section=sales',        'permissions'=>['view_operational_reports','view_financial_reports']],
-                    ['id'=>'mgr_report_joborders',     'label'=>'Job Orders Report',      'href'=>'manager_reports.php?section=job_orders',   'permissions'=>['view_operational_reports','manage_job_orders']],
-                    ['id'=>'mgr_report_balances',      'label'=>'Customer Balances',      'href'=>'manager_reports.php?section=balances',     'permissions'=>['view_operational_reports','view_financial_reports']],
-                    ['id'=>'mgr_report_deliveries',    'label'=>'Deliveries Report',      'href'=>'manager_reports.php?section=deliveries',   'permissions'=>['view_operational_reports']],
-                    ['id'=>'mgr_report_staff',         'label'=>'Staff Performance',      'href'=>'manager_reports.php?section=staff',        'permissions'=>['view_operational_reports','manage_job_orders']],
-                    ['id'=>'mgr_report_validation',    'label'=>'Validation Logs',        'href'=>'manager_reports.php?section=validation',   'permissions'=>['view_operational_reports','approve_transactions']],
-                    // ── Fuel Reports ────────────────────────────────────────────
-                    ['id'=>'fuel_vol_sales',           'label'=>'Volume Sales Summary',   'href'=>'manager_fuel_sales_summary.php',           'permissions'=>['manage_fuel','view_operational_reports']],
-                    ['id'=>'fuel_vol_amount',          'label'=>'Volume & Amount Summary','href'=>'manager_fuel_sales_summary.php',           'permissions'=>['manage_fuel','view_operational_reports']],
-                    ['id'=>'fuel_variance_report',     'label'=>'Variance Reports',       'href'=>'manager_fuel_management_complete.php#variance-reports', 'permissions'=>['manage_fuel','view_operational_reports']],
-                    ['id'=>'fuel_meter_reading',       'label'=>'Validated Meter Reading','href'=>'manager_fuel_sales_summary.php',           'permissions'=>['manage_fuel','view_operational_reports']],
-                ];
-                $filtered_menu[] = $filtered_item;
-                continue;
-            }
-
             if ($user_role === 'manager' && ($item['id'] ?? '') === 'purchase_orders') {
                 $filtered_item['href'] = 'manager_purchase_orders.php';
                 $filtered_item['sub_items'] = [];
                 $force_direct_link = true;
+            }
+
+            if ($user_role === 'manager' && ($item['id'] ?? '') === 'staff_deliveries') {
+                continue; // Hide Staff's Record Delivery from Manager
             }
 
             if ($user_role === 'manager' && ($item['id'] ?? '') === 'mgr_deliveries') {

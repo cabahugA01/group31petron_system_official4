@@ -1619,7 +1619,7 @@ require_once __DIR__ . '/rbac_menu.php';
             }
         }
         // Special case for fuel management page
-        if ($page_id === 'manager_fuel_management') $parent_active = true;
+        if ($page_id === 'manager_fuel_management' && ($it['id'] ?? '') === 'fuel') $parent_active = true;
     }
 
     echo '<div class="nav-item-wrapper">';

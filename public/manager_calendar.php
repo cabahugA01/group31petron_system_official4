@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'calendar';
 require_once __DIR__ . '/../backend/lib.php';
@@ -20,6 +20,11 @@ $stmt = $pdo->prepare("SELECT name FROM stations WHERE id = ?");
 $stmt->execute([$station_id]);
 $station = $stmt->fetch(PDO::FETCH_ASSOC);
 $station_name = $station['name'] ?? 'Unknown Station';
+
+// Auto-migrate schema for staff_shifts validations
+try { $pdo->exec("ALTER TABLE staff_shifts ADD COLUMN validation_status VARCHAR(20) NOT NULL DEFAULT 'pending'"); } catch(Exception $e) {}
+try { $pdo->exec("ALTER TABLE staff_shifts ADD COLUMN validated_by INT NULL"); } catch(Exception $e) {}
+try { $pdo->exec("ALTER TABLE staff_shifts ADD COLUMN validation_notes TEXT NULL"); } catch(Exception $e) {}
 
 // Get current date and week navigation
 $today = new DateTime();
@@ -71,11 +76,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         if ($delivery_id && in_array($status, ['Approved', 'Rejected', 'Adjusted'])) {
             try {
-                $stmt = $pdo->prepare("UPDATE deliveries SET status = ?, approved_by = ?, approved_at = NOW(), notes = ? WHERE id = ? AND station_id = ?");
+                $stmt = $pdo->prepare("UPDATE deliveries_oversight SET status = ?, admin_id = ?, admin_notes = ?, admin_action_at = NOW() WHERE id = ? AND station_id = ?");
                 $stmt->execute([$status, $user_id, $notes, $delivery_id, $station_id]);
                 $_SESSION['success'] = "Delivery #$delivery_id has been $status";
             } catch (Exception $e) {
                 $_SESSION['error'] = "Error updating delivery: " . $e->getMessage();
+            }
+        }
+        header("Location: manager_calendar.php?week=$week_offset");
+        exit;
+    }
+    
+    if ($action === 'validate_staff_shift') {
+        $shift_id = (int)($_POST['shift_id'] ?? 0);
+        $status = $_POST['status'] ?? '';
+        $notes = $_POST['notes'] ?? '';
+        
+        if ($shift_id && in_array($status, ['Approved', 'Rejected', 'Adjusted'])) {
+            try {
+                $stmt = $pdo->prepare("UPDATE staff_shifts SET validation_status = ?, validated_by = ?, validation_notes = ? WHERE id = ? AND station_id = ?");
+                $stmt->execute([strtolower($status), $user_id, $notes, $shift_id, $station_id]);
+                $_SESSION['success'] = "Staff Shift #$shift_id has been $status";
+            } catch (Exception $e) {
+                $_SESSION['error'] = "Error updating shift: " . $e->getMessage();
             }
         }
         header("Location: manager_calendar.php?week=$week_offset");
@@ -182,15 +205,15 @@ try {
 // Auto-sync Deliveries
 try {
     $stmt = $pdo->prepare("
-        SELECT d.id, d.created_by, d.status, d.supplier,
-               DATE(d.created_at) AS event_date,
+        SELECT d.id, d.encoded_by as created_by, d.status, d.supplier,
+               DATE(d.delivery_date) AS event_date,
                u.name AS staff_name,
                mu.name AS manager_assigned_name
-        FROM deliveries d
-        JOIN users u ON d.created_by = u.id AND u.role IN ('staff','cashier','pump_attendant')
-        LEFT JOIN users mu ON d.approved_by = mu.id
-        WHERE d.station_id = ? AND DATE(d.created_at) BETWEEN ? AND ?
-        ORDER BY d.created_at DESC");
+        FROM deliveries_oversight d
+        JOIN users u ON d.encoded_by = u.id AND u.role IN ('staff','cashier','pump_attendant')
+        LEFT JOIN users mu ON d.admin_id = mu.id
+        WHERE d.station_id = ? AND DATE(d.delivery_date) BETWEEN ? AND ?
+        ORDER BY d.delivery_date DESC");
     $stmt->execute([$station_id, $week_start_str, $week_end_str]);
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
         $week_events[$r['created_by']][$r['event_date']][] = [
@@ -219,9 +242,11 @@ try {
 try {
     $stmt = $pdo->prepare("
         SELECT ss.id, ss.staff_id, ss.shift_date, ss.start_time, ss.end_time,
-               u.name AS staff_name
+               u.name AS staff_name, ss.validation_status, ss.validated_by,
+               mu.name AS manager_assigned_name
         FROM staff_shifts ss
         JOIN users u ON ss.staff_id = u.id
+        LEFT JOIN users mu ON ss.validated_by = mu.id
         WHERE ss.station_id = ? AND ss.shift_date BETWEEN ? AND ?
         ORDER BY ss.shift_date, ss.start_time");
     $stmt->execute([$station_id, $week_start_str, $week_end_str]);
@@ -234,19 +259,41 @@ try {
             'icon_class'        => 'fas fa-user-clock',
             'staff_encoder_id'  => $r['staff_id'],
             'staff_name'        => $r['staff_name'],
-            'manager_name'      => '—',
+            'manager_name'      => $r['manager_assigned_name'] ?? '—',
             'event_date'        => $r['shift_date'],
             'start_time'        => $r['start_time'],
             'end_time'          => $r['end_time'],
             'work_description'  => date('g:i A', strtotime($r['start_time'])).' — '.date('g:i A', strtotime($r['end_time'])),
-            'status'            => 'completed',
-            'validation_status' => 'completed',
+            'status'            => strtolower($r['validation_status'] ?? 'pending'),
+            'validation_status' => $r['validation_status'] ?? 'pending',
             'customer_name'     => '',
             'staff_color'       => '#0891b2',
             'auto_synced'       => true,
         ];
     }
 } catch (Exception $e) {}
+
+// Conflict Monitoring: Check for overlapping shifts
+foreach ($week_events as $staff_id => &$dates) {
+    foreach ($dates as $date => &$evs) {
+        $shifts = array_filter($evs, function($e) { return $e['type_key'] === 'staff_shift'; });
+        if (count($shifts) > 1) {
+            // Check for overlaps
+            usort($shifts, function($a, $b) { return strcmp($a['start_time'], $b['start_time']); });
+            for ($i = 0; $i < count($shifts) - 1; $i++) {
+                if ($shifts[$i]['end_time'] > $shifts[$i+1]['start_time']) {
+                    // Mark conflict
+                    foreach ($evs as &$ev) {
+                        if ($ev['id'] === $shifts[$i]['id'] || $ev['id'] === $shifts[$i+1]['id']) {
+                            $ev['has_conflict'] = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+unset($dates, $evs, $ev);
 
 // ── Staff list (encoders only) ────────────────────────────────────────────────
 $staff_list = [];
@@ -446,10 +493,10 @@ require_once '../partials/header.php';
 }
 
 /* sc-wrap handles its own padding; grid scroll is handled by .sc-grid-wrap */
-.sc-wrap { overflow-x: hidden; }
+.sc-wrap { padding-bottom: 60px; }
 </style>
 
-<div class="sc-wrap">
+<div class="sc-wrap" style="width: 100%; box-sizing: border-box;">
   <!-- ===== MAIN CALENDAR AREA ===== -->
   <div class="sc-main">
 
@@ -598,6 +645,9 @@ require_once '../partials/header.php';
                 <i class="fas fa-user-tie" style="color:#dc2626;font-size:9px"></i>
                 <?php echo htmlspecialchars($ev['manager_name']); ?>
               </div>
+              <?php endif; ?>
+              <?php if(!empty($ev['has_conflict'])): ?>
+              <div style="color:#b91c1c;font-size:10px;font-weight:700;margin-top:4px;"><i class="fas fa-exclamation-triangle"></i> Conflict!</div>
               <?php endif; ?>
               <?php echo cal_status_badge($st); ?>
             </div>
@@ -756,12 +806,13 @@ function openDetailModal(ev) {
   if (String(ev.id).startsWith('jo_'))    eventType = 'job_order';
   else if (String(ev.id).startsWith('ct_'))  eventType = 'credit_transaction';
   else if (String(ev.id).startsWith('del_')) eventType = 'delivery';
+  else if (String(ev.id).startsWith('shift_')) eventType = 'staff_shift';
 
   // Manager action buttons — only for pending validatable events
   let actionsHtml = '';
   const canValidate = eventType && ['pending','pending validation'].includes(vs);
   if (canValidate) {
-    const adjustBtn = (eventType === 'job_order' || eventType === 'delivery')
+    const adjustBtn = (eventType === 'job_order' || eventType === 'delivery' || eventType === 'staff_shift')
       ? `<button class="sc-adjust-btn" onclick="submitValidation('${eventType}',${eventId},'Adjusted')"><i class="fas fa-edit"></i> Adjust</button>`
       : '';
     actionsHtml = `
@@ -791,6 +842,10 @@ function openDetailModal(ev) {
       <span class="sc-detail-val"><span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:8px;height:8px;border-radius:50%;background:${tc};display:inline-block;"></span>${ev.type_name||'—'}</span></span>
     </div>
     <div class="sc-detail-row"><span class="sc-detail-label">Description</span><span class="sc-detail-val">${ev.work_description||'—'}</span></div>`;
+
+  if (ev.has_conflict) {
+    html += `<div class="sc-detail-row" style="background:#fee2e2;padding:8px;border-radius:6px;"><span class="sc-detail-label" style="color:#991b1b;"><i class="fas fa-exclamation-triangle"></i> Alert</span><span class="sc-detail-val" style="color:#991b1b;font-weight:600;">This shift conflicts with another assigned shift for this staff member!</span></div>`;
+  }
 
   if (ev.staff_name) {
     html += `<div class="sc-detail-row"><span class="sc-detail-label">Staff</span><span class="sc-detail-val"><i class="fas fa-user" style="color:#2563eb;font-size:10px;margin-right:4px;"></i>${ev.staff_name}</span></div>`;
@@ -831,6 +886,7 @@ function submitValidation(eventType, eventId, status) {
     job_order:            { action: 'validate_job_order',         idField: 'job_order_id' },
     credit_transaction:   { action: 'validate_credit_transaction', idField: 'transaction_id' },
     delivery:             { action: 'update_delivery_status',      idField: 'delivery_id' },
+    staff_shift:          { action: 'validate_staff_shift',        idField: 'shift_id' },
   };
   const cfg = actionMap[eventType];
   if (!cfg) return;

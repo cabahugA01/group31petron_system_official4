@@ -28,7 +28,7 @@ if (!$station_id) {
 // ============================================================
 // SECTION & DATE RANGE LOGIC
 // ============================================================
-$valid_sections = ['sales', 'job_orders', 'balances', 'deliveries', 'staff', 'validation', 'audit_trail'];
+$valid_sections = ['sales', 'job_orders', 'balances', 'deliveries', 'staff', 'validation', 'audit_trail', 'variance', 'meter_readings', 'inventory', 'price_logs'];
 $section = trim($_GET['section'] ?? 'sales');
 if (!in_array($section, $valid_sections)) $section = 'sales';
 
@@ -108,6 +108,28 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
                         number_format($row['total_liters'], 2) . ' L',
                         number_format($row['total_revenue'], 2),
                         number_format($row['avg_variance_liters'], 4) . ' L',
+                    ]);
+                }
+            } catch (Exception $e) {}
+
+            fputcsv($out, []);
+
+            // ── Sales Volume & Amount Summary ─────────────────────────────
+            fputcsv($out, ['SALES VOLUME & AMOUNT REPORT']);
+            fputcsv($out, ['Fuel Type', 'Volume Sales (L)', 'Amount Sales']);
+            try {
+                $fsc = "LOWER(TRIM(ft.status)) IN ('verified','adjusted','complete','completed','approved','validated','verified sale')";
+                $s = $pdo->prepare("
+                    SELECT ft.fuel_type, COALESCE(SUM(ft.liters_sold),0) AS total_liters, COALESCE(SUM(ft.total_amount),0) AS total_revenue
+                    FROM fuel_transactions ft
+                    WHERE ft.station_id=? AND $fsc AND DATE(ft.transaction_date) BETWEEN ? AND ?
+                    GROUP BY ft.fuel_type ORDER BY ft.fuel_type ASC");
+                $s->execute([$station_id, $date_start, $date_end]);
+                foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                    fputcsv($out, [
+                        $row['fuel_type'],
+                        number_format($row['total_liters'], 2) . ' L',
+                        number_format($row['total_revenue'], 2)
                     ]);
                 }
             } catch (Exception $e) {}
@@ -557,33 +579,43 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
             break;
 
         case 'audit_trail':
-            fputcsv($out, ['AUDIT TRAIL REPORT']);
-            fputcsv($out, ['Date & Time', 'User', 'Role', 'Action', 'Module', 'Details', 'IP Address', 'Status']);
+            fputcsv($out, ['AUDIT TRAIL (MANAGER)']);
+            fputcsv($out, ['Transaction ID', 'Manager ID', 'Action', 'Remarks / Reason', 'Timestamp']);
+            $manager_id = $me['id'];
             try {
-                $s = $pdo->prepare("
-                    SELECT al.created_at, al.action_type, al.action_details,
-                           al.entity_type, al.status, al.ip_address,
-                           u.name AS user_name, u.role AS user_role
-                    FROM audit_logs al
-                    LEFT JOIN users u ON u.id = al.user_id
-                    WHERE al.user_id IS NOT NULL
-                      AND DATE(al.created_at) BETWEEN ? AND ?
-                      AND LOWER(TRIM(COALESCE(u.role,''))) NOT IN ('admin','superadmin','super admin','super_admin')
-                      AND u.station_id = ?
-                    ORDER BY al.created_at DESC
-                    LIMIT 5000
-                ");
-                $s->execute([$date_start, $date_end, $station_id]);
-                foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                // Fetch the logs just like in the UI
+                $jo_val = []; $mt_val = []; $dv_val = [];
+                
+                try {
+                    $s = $pdo->prepare("SELECT jo.validated_at AS date_time, jo.validated_by AS manager_id, COALESCE(jo.validation_status, 'Validated') AS action, COALESCE(jo.job_order_id, jo.job_order_number, CONCAT('JO-',jo.id)) AS reference_id, COALESCE(jo.adjustment_reason, jo.admin_remarks, '') AS reason FROM job_orders jo WHERE jo.station_id = ? AND jo.validated_by = ? AND jo.validated_at IS NOT NULL AND DATE(jo.validated_at) BETWEEN ? AND ?");
+                    $s->execute([$station_id, $manager_id, $date_start, $date_end]);
+                    $jo_val = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                } catch (Exception $e) {}
+            
+                try {
+                    $s = $pdo->prepare("SELECT mt.validated_at AS date_time, mt.validated_by AS manager_id, COALESCE(mt.validation_status, 'Validated') AS action, mt.transaction_id AS reference_id, COALESCE(mt.rejection_reason, mt.adjustment_reason, '') AS reason FROM merchandise_transactions mt WHERE mt.station_id = ? AND mt.validated_by = ? AND mt.validated_at IS NOT NULL AND mt.validation_status IN ('Approved','Rejected','Adjusted') AND DATE(mt.validated_at) BETWEEN ? AND ?");
+                    $s->execute([$station_id, $manager_id, $date_start, $date_end]);
+                    $mt_val = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                } catch (Exception $e) {}
+            
+                try {
+                    $s = $pdo->prepare("SELECT d.admin_action_at AS date_time, d.admin_id AS manager_id, d.status AS action, COALESCE(d.delivery_ref, CONCAT('DEL-', d.id)) AS reference_id, COALESCE(d.admin_notes, d.remarks, '') AS reason FROM deliveries_oversight d WHERE d.station_id = ? AND d.admin_id = ? AND d.admin_action_at IS NOT NULL AND DATE(d.admin_action_at) BETWEEN ? AND ?");
+                    $s->execute([$station_id, $manager_id, $date_start, $date_end]);
+                    $dv_val = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                } catch (Exception $e) {}
+            
+                $all_logs = array_merge($jo_val, $mt_val, $dv_val);
+                usort($all_logs, function($a, $b) {
+                    return strtotime($b['date_time']) - strtotime($a['date_time']);
+                });
+
+                foreach ($all_logs as $row) {
                     fputcsv($out, [
-                        date('M j, Y g:i A', strtotime($row['created_at'])),
-                        $row['user_name'],
-                        ucfirst($row['user_role']),
-                        $row['action_type'],
-                        $row['entity_type'] ?: '—',
-                        $row['action_details'],
-                        $row['ip_address'] ?: '—',
-                        $row['status'] ?: '—',
+                        $row['reference_id'],
+                        $row['manager_id'],
+                        $row['action'],
+                        $row['reason'] ?: '—',
+                        date('M j, Y g:i A', strtotime($row['date_time']))
                     ]);
                 }
             } catch (Exception $e) {}
@@ -683,6 +715,26 @@ if ($section === 'sales') {
         ");
         $s->execute([$station_id, $date_start, $date_end]);
         $merch_sales_data = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (Exception $e) {}
+
+    // ── Sales Volume & Amount Summary ─────────────────────────
+    $sales_volume_amount_data = [];
+    try {
+        $fs_clause = "LOWER(TRIM(COALESCE(ft.status,''))) NOT IN ('rejected','cancelled','voided','void')";
+        $svas = $pdo->prepare("
+            SELECT
+                ft.fuel_type,
+                COALESCE(SUM(ft.liters_sold), 0)  AS total_liters,
+                COALESCE(SUM(ft.total_amount), 0) AS total_revenue
+            FROM fuel_transactions ft
+            WHERE ft.station_id = ?
+              AND $fs_clause
+              AND DATE(ft.transaction_date) BETWEEN ? AND ?
+            GROUP BY ft.fuel_type
+            ORDER BY ft.fuel_type ASC
+        ");
+        $svas->execute([$station_id, $date_start, $date_end]);
+        $sales_volume_amount_data = $svas->fetchAll(PDO::FETCH_ASSOC) ?: [];
     } catch (Exception $e) {}
 
     // ── Daily Summary ─────────────────────────────────────────
@@ -1219,101 +1271,115 @@ if ($section === 'validation') {
 // ============================================================
 // DATA QUERIES — SECTION: audit_trail
 // ============================================================
-$audit_trail_rows    = [];
-$audit_trail_users   = [];
-$audit_action_types  = [];   // dynamic — pulled from DB
-$audit_entity_types  = [];   // dynamic — pulled from DB
 if ($section === 'audit_trail') {
-    // Fetch staff/manager users for User filter dropdown
-    try {
-        $us = $pdo->prepare(
-            "SELECT id, name, role FROM users
-             WHERE station_id = ?
-               AND status = 'active'
-               AND LOWER(TRIM(role)) NOT IN ('admin','superadmin','super admin','super_admin')
-             ORDER BY role, name"
-        );
-        $us->execute([$station_id]);
-        $audit_trail_users = $us->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) {}
-
-    // ── Dynamic Action Types — pulled from actual DB values for this station ──
-    try {
-        $at_stmt = $pdo->prepare(
-            "SELECT DISTINCT al.action_type
-             FROM audit_logs al
-             WHERE al.user_id IN (
-                 SELECT id FROM users WHERE station_id = ?
-                 AND LOWER(TRIM(role)) NOT IN ('admin','superadmin','super admin','super_admin')
-             )
-             AND al.action_type IS NOT NULL AND al.action_type != ''
-             ORDER BY al.action_type ASC"
-        );
-        $at_stmt->execute([$station_id]);
-        $audit_action_types = array_column($at_stmt->fetchAll(PDO::FETCH_ASSOC), 'action_type');
-    } catch (Exception $e) {}
-
-    // ── Dynamic Module/Entity Types — pulled from actual DB values ────────────
-    try {
-        $et_stmt = $pdo->prepare(
-            "SELECT DISTINCT al.entity_type
-             FROM audit_logs al
-             WHERE al.user_id IN (
-                 SELECT id FROM users WHERE station_id = ?
-                 AND LOWER(TRIM(role)) NOT IN ('admin','superadmin','super admin','super_admin')
-             )
-             AND al.entity_type IS NOT NULL AND al.entity_type != ''
-             ORDER BY al.entity_type ASC"
-        );
-        $et_stmt->execute([$station_id]);
-        $audit_entity_types = array_column($et_stmt->fetchAll(PDO::FETCH_ASSOC), 'entity_type');
-    } catch (Exception $e) {}
-
-    // Optional filters from GET
-    $at_user   = isset($_GET['at_user'])   ? (int)$_GET['at_user']   : 0;
-    $at_action = isset($_GET['at_action']) ? trim($_GET['at_action']) : '';
-    $at_module = isset($_GET['at_module']) ? trim($_GET['at_module']) : '';
-
-    // Build WHERE clauses
-    $at_where  = "WHERE al.user_id IS NOT NULL
-                    AND DATE(al.created_at) BETWEEN ? AND ?
-                    AND al.user_id IN (
-                        SELECT id FROM users
-                        WHERE station_id = ?
-                        AND LOWER(TRIM(role)) NOT IN ('admin','superadmin','super admin','super_admin')
-                    )";
-    $at_params = [$date_start, $date_end, $station_id];
-
-    if ($at_user > 0) {
-        $at_where  .= " AND al.user_id = ?";
-        $at_params[] = $at_user;
-    }
-    if ($at_action !== '') {
-        // LIKE prefix so 'Login' also matches 'Login Failed', 'Create' matches 'Create Customer' etc.
-        $at_where  .= " AND al.action_type LIKE ?";
-        $at_params[] = $at_action . '%';
-    }
-    if ($at_module !== '') {
-        $at_where  .= " AND al.entity_type = ?";
-        $at_params[] = $at_module;
-    }
-
+    $manager_id = $me['id'];
+    
+    // 1. Job Orders
     try {
         $s = $pdo->prepare("
-            SELECT al.id, al.created_at, al.action_type, al.action_details,
-                   al.entity_type, al.entity_id, al.status, al.ip_address,
-                   al.new_values,
-                   u.name AS user_name, u.role AS user_role
-            FROM audit_logs al
-            LEFT JOIN users u ON u.id = al.user_id
-            $at_where
-            ORDER BY al.created_at DESC
-            LIMIT 500
+            SELECT jo.validated_at AS date_time,
+                   jo.validated_by AS manager_id,
+                   COALESCE(jo.validation_status, 'Validated') AS action,
+                   'Job Order' AS module,
+                   COALESCE(jo.job_order_id, jo.job_order_number, CONCAT('JO-',jo.id)) AS reference_id,
+                   COALESCE(jo.adjustment_reason, jo.admin_remarks, '') AS reason
+            FROM job_orders jo
+            WHERE jo.station_id = ? AND jo.validated_by = ? AND jo.validated_at IS NOT NULL
+              AND DATE(jo.validated_at) BETWEEN ? AND ?
         ");
-        $s->execute($at_params);
-        $audit_trail_rows = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
-    } catch (Exception $e) {
-        $audit_trail_rows = [];
+        $s->execute([$station_id, $manager_id, $date_start, $date_end]);
+        $jo_val = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (Exception $e) { $jo_val = []; }
+
+    // 2. Merchandise
+    try {
+        $s = $pdo->prepare("
+            SELECT mt.validated_at AS date_time,
+                   mt.validated_by AS manager_id,
+                   COALESCE(mt.validation_status, 'Validated') AS action,
+                   'Merchandise' AS module,
+                   mt.transaction_id AS reference_id,
+                   COALESCE(mt.rejection_reason, mt.adjustment_reason, '') AS reason
+            FROM merchandise_transactions mt
+            WHERE mt.station_id = ? AND mt.validated_by = ? AND mt.validated_at IS NOT NULL
+              AND mt.validation_status IN ('Approved','Rejected','Adjusted')
+              AND DATE(mt.validated_at) BETWEEN ? AND ?
+        ");
+        $s->execute([$station_id, $manager_id, $date_start, $date_end]);
+        $mt_val = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (Exception $e) { $mt_val = []; }
+
+    // 3. Deliveries
+    try {
+        $s = $pdo->prepare("
+            SELECT d.admin_action_at AS date_time,
+                   d.admin_id AS manager_id,
+                   d.status AS action,
+                   'Delivery' AS module,
+                   COALESCE(d.delivery_ref, CONCAT('DEL-', d.id)) AS reference_id,
+                   COALESCE(d.admin_notes, d.remarks, '') AS reason
+            FROM deliveries_oversight d
+            WHERE d.station_id = ? AND d.admin_id = ? AND d.admin_action_at IS NOT NULL
+              AND DATE(d.admin_action_at) BETWEEN ? AND ?
+        ");
+        $s->execute([$station_id, $manager_id, $date_start, $date_end]);
+        $dv_val = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (Exception $e) { $dv_val = []; }
+
+    $audit_trail_rows = array_merge($jo_val, $mt_val, $dv_val);
+    usort($audit_trail_rows, function($a, $b) {
+        return strtotime($b['date_time']) - strtotime($a['date_time']);
+    });
+}
+
+// ============================================================
+// DATA QUERIES — NEW SECTIONS
+// ============================================================
+$variance_rows = [];
+if ($section === 'variance') {
+    try {
+        $s = $pdo->prepare("SELECT v.*, u.name as staff_name FROM fuel_variance_reports v LEFT JOIN users u ON u.id = v.staff_id WHERE v.station_id = ? AND DATE(v.report_date) BETWEEN ? AND ? ORDER BY v.report_date DESC");
+        $s->execute([$station_id, $date_start, $date_end]);
+        $variance_rows = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch(Exception $e) {}
+}
+
+$meter_rows = [];
+if ($section === 'meter_readings') {
+    try {
+        $s = $pdo->prepare("SELECT m.*, u.name as staff_name FROM fuel_pump_readings m LEFT JOIN users u ON u.id = m.user_id WHERE m.station_id = ? AND m.status = 'Approved' AND DATE(m.reading_time) BETWEEN ? AND ? ORDER BY m.reading_time DESC");
+        $s->execute([$station_id, $date_start, $date_end]);
+        $meter_rows = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch(Exception $e) {}
+}
+
+$inventory_rows = [];
+$inventory_merch_rows = [];
+if ($section === 'inventory') {
+    try {
+        $s = $pdo->prepare("SELECT * FROM fuel_inventory WHERE station_id = ? ORDER BY fuel_type ASC");
+        $s->execute([$station_id]);
+        $inventory_rows = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        
+        $s2 = $pdo->prepare("SELECT si.*, p.product_name, p.category, p.unit_price FROM station_inventory si JOIN inventory_products p ON si.catalog_product_id = p.id WHERE si.station_id = ? ORDER BY p.product_name ASC");
+        $s2->execute([$station_id]);
+        $inventory_merch_rows = $s2->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch(Exception $e) {}
+}
+
+$price_log_rows = [];
+if ($section === 'price_logs') {
+    try {
+        $s = $pdo->prepare("SELECT al.action_date AS created_at, al.description AS details, u.name AS user_name FROM audit_log al LEFT JOIN users u ON u.id = al.user_id WHERE al.action_type LIKE '%Price%' AND al.station_id = ? AND DATE(al.action_date) BETWEEN ? AND ? ORDER BY al.action_date DESC");
+        $s->execute([$station_id, $date_start, $date_end]);
+        $price_log_rows = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch(Exception $e) {
+        // Fallback to activity_logs
+        try {
+            $s = $pdo->prepare("SELECT al.created_at, al.details, u.name AS user_name FROM activity_logs al LEFT JOIN users u ON u.id = al.user_id WHERE al.action LIKE '%Price%' AND DATE(al.created_at) BETWEEN ? AND ? ORDER BY al.created_at DESC");
+            $s->execute([$date_start, $date_end]);
+            $price_log_rows = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch(Exception $e2) {}
     }
 }
 
@@ -1498,9 +1564,6 @@ require_once __DIR__ . '/../partials/header.php';
         $exp_base = 'manager_report_export.php?' . http_build_query(['section'=>$section,'range'=>$range,'start'=>$date_start,'end'=>$date_end]);
         ?>
         <div class="export-buttons">
-            <a href="<?= $exp_base ?>&format=csv" class="btn-export" style="background:#374151;color:#fff;border-color:#374151;">
-                <i class="fa-solid fa-download"></i> CSV
-            </a>
             <a href="<?= $exp_base ?>&format=excel" class="btn-export" style="background:#22c55e;color:#fff;border-color:#22c55e;">
                 <i class="fa-solid fa-file-excel"></i> Excel
             </a>
@@ -1577,34 +1640,51 @@ require_once __DIR__ . '/../partials/header.php';
             </table>
         </div>
 
-        <!-- Fuel Type Summary -->
-        <?php if (count($fuel_type_totals) > 1): ?>
-        <div style="margin-top:20px;padding-top:16px;border-top:1px solid #EAEAEA;">
-            <h4 style="font-size:14px;font-weight:700;color:var(--petron-blue);margin-bottom:12px;">Summary by Fuel Type</h4>
-            <div class="table-scroll">
-                <table class="mgr-table">
-                    <thead><tr>
-                        <th>Fuel Type</th>
-                        <th>Transactions</th>
-                        <th>Total Liters</th>
-                        <th>Total Revenue</th>
-                        <th>Avg Variance</th>
-                    </tr></thead>
-                    <tbody>
-                    <?php foreach ($fuel_type_totals as $ft => $t): ?>
-                    <tr>
-                        <td><strong><?= htmlspecialchars($ft) ?></strong></td>
-                        <td><?= number_format($t['txns']) ?></td>
-                        <td><?= number_format($t['liters'], 2) ?> L</td>
-                        <td>&#8369;<?= number_format($t['revenue'], 2) ?></td>
-                        <td><?= abs($t['variance']) > 0 ? number_format($t['variance'], 4).' L' : '—' ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
+    <?php endif; ?>
+    </div>
+
+    <!-- ── SALES VOLUME & AMOUNT REPORT ──────────────────────── -->
+    <div class="rpt-card">
+        <div class="rpt-card-head">
+            <h3><i class="fa-solid fa-layer-group"></i> Sales Volume &amp; Amount Report
+                <span class="badge-count"><?= count($sales_volume_amount_data) ?></span>
+            </h3>
         </div>
-        <?php endif; ?>
+        <?php if (empty($sales_volume_amount_data)): ?>
+        <div class="empty-state"><i class="fa-solid fa-layer-group"></i><p>No volume and amount data for this period.</p></div>
+        <?php else:
+            $grand_vol_liters = 0;
+            $grand_vol_revenue = 0;
+            foreach ($sales_volume_amount_data as $r) {
+                $grand_vol_liters += (float)$r['total_liters'];
+                $grand_vol_revenue += (float)$r['total_revenue'];
+            }
+        ?>
+        <div class="table-scroll">
+            <table class="mgr-table">
+                <thead><tr>
+                    <th>Fuel Type</th>
+                    <th>Volume Sales (L)</th>
+                    <th>Amount Sales (₱)</th>
+                </tr></thead>
+                <tbody>
+                <?php foreach ($sales_volume_amount_data as $row): ?>
+                <tr>
+                    <td><strong><?= htmlspecialchars($row['fuel_type']) ?></strong></td>
+                    <td><strong><?= number_format((float)$row['total_liters'], 2) ?> L</strong></td>
+                    <td><strong>&#8369;<?= number_format((float)$row['total_revenue'], 2) ?></strong></td>
+                </tr>
+                <?php endforeach; ?>
+                </tbody>
+                <tfoot>
+                <tr style="font-weight:700;background:#f0f4f8;border-top:2px solid #EAEAEA;">
+                    <td>TOTAL</td>
+                    <td><?= number_format($grand_vol_liters, 2) ?> L</td>
+                    <td>&#8369;<?= number_format($grand_vol_revenue, 2) ?></td>
+                </tr>
+                </tfoot>
+            </table>
+        </div>
         <?php endif; ?>
     </div>
 
@@ -1614,16 +1694,6 @@ require_once __DIR__ . '/../partials/header.php';
             <h3><i class="fa-solid fa-store"></i> Merchandise Sales Report
                 <span class="badge-count"><?= count($merch_sales_data) ?></span>
             </h3>
-            <div style="display:flex;gap:8px;">
-                <a href="manager_reports.php?<?= http_build_query(['section'=>$section,'range'=>$range,'start'=>$date_start,'end'=>$date_end,'export'=>'csv','sub'=>'merch']) ?>"
-                   class="btn-export" style="background:#22c55e;color:#fff;border-color:#22c55e;font-size:11px;padding:5px 12px;">
-                    <i class="fa-solid fa-file-excel"></i> Export Excel
-                </a>
-                <a href="export_sales_pdf.php?type=merchandise&range=<?= urlencode($range) ?>&start=<?= urlencode($date_start) ?>&end=<?= urlencode($date_end) ?>"
-                   class="btn-export" style="background:#dc3545;color:#fff;border-color:#dc3545;font-size:11px;padding:5px 12px;">
-                    <i class="fa-solid fa-file-pdf"></i> Export PDF
-                </a>
-            </div>
         </div>
         <?php if (empty($merch_sales_data)): ?>
         <div class="empty-state"><i class="fa-solid fa-store"></i><p>No merchandise sales data for this period.</p></div>
@@ -1687,124 +1757,10 @@ require_once __DIR__ . '/../partials/header.php';
             </table>
         </div>
 
-        <!-- Payment Breakdown Summary -->
-        <div style="margin-top:20px;padding-top:16px;border-top:1px solid #EAEAEA;">
-            <h4 style="font-size:14px;font-weight:700;color:var(--petron-blue);margin-bottom:12px;">Payment Method Breakdown</h4>
-            <div class="table-scroll">
-                <table class="mgr-table">
-                    <thead><tr>
-                        <th>Payment Method</th>
-                        <th>Total Amount</th>
-                        <th>% of Revenue</th>
-                    </tr></thead>
-                    <tbody>
-                    <?php
-                    $pay_methods = [
-                        'Cash'        => $grand_pay_cash,
-                        'Card'        => $grand_pay_card,
-                        'E-Wallet'    => $grand_pay_ewallet,
-                        'E-Fuel Card' => $grand_pay_efuel,
-                        'Credit'      => $grand_pay_credit,
-                    ];
-                    foreach ($pay_methods as $pm => $amt):
-                        if ($amt <= 0) continue;
-                        $pct = $grand_merch_revenue > 0 ? ($amt / $grand_merch_revenue) * 100 : 0;
-                    ?>
-                    <tr>
-                        <td><span class="badge badge-default"><?= $pm ?></span></td>
-                        <td><strong>&#8369;<?= number_format($amt, 2) ?></strong></td>
-                        <td>
-                            <div style="display:flex;align-items:center;gap:8px;">
-                                <div class="progress-bar-wrap" style="flex:1;"><div class="progress-bar-fill" style="width:<?= round($pct) ?>%;background:var(--petron-blue);"></div></div>
-                                <span style="font-size:11px;font-weight:700;"><?= number_format($pct, 1) ?>%</span>
-                            </div>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                    <tr style="font-weight:700;background:#f8fafc;">
-                        <td>Total</td>
-                        <td>&#8369;<?= number_format($grand_merch_revenue, 2) ?></td>
-                        <td>100.0%</td>
-                    </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
         <?php endif; ?>
     </div>
 
-    <!-- ── DAILY SUMMARY REPORT ───────────────────────────────── -->
-    <div class="rpt-card">
-        <div class="rpt-card-head">
-            <h3><i class="fa-solid fa-calendar-check"></i> Daily Summary Report
-                <span class="badge-count"><?= count($daily_summary_data) ?></span>
-            </h3>
-            <div style="display:flex;gap:8px;">
-                <a href="manager_reports.php?<?= http_build_query(['section'=>$section,'range'=>$range,'start'=>$date_start,'end'=>$date_end,'export'=>'csv','sub'=>'summary']) ?>"
-                   class="btn-export" style="background:#22c55e;color:#fff;border-color:#22c55e;font-size:11px;padding:5px 12px;">
-                    <i class="fa-solid fa-file-excel"></i> Export Excel
-                </a>
-                <a href="export_sales_pdf.php?type=summary&range=<?= urlencode($range) ?>&start=<?= urlencode($date_start) ?>&end=<?= urlencode($date_end) ?>"
-                   class="btn-export" style="background:#dc3545;color:#fff;border-color:#dc3545;font-size:11px;padding:5px 12px;">
-                    <i class="fa-solid fa-file-pdf"></i> Export PDF
-                </a>
-            </div>
-        </div>
-        <?php if (empty($daily_summary_data)): ?>
-        <div class="empty-state"><i class="fa-solid fa-calendar-check"></i><p>No summary data for this period.</p></div>
-        <?php else:
-            $grand_sum_fuel_liters  = 0;
-            $grand_sum_fuel_rev     = 0;
-            $grand_sum_merch_rev    = 0;
-            $grand_sum_total_rev    = 0;
-            foreach ($daily_summary_data as $r) {
-                $grand_sum_fuel_liters += (float)$r['total_fuel_liters'];
-                $grand_sum_fuel_rev    += (float)$r['fuel_revenue'];
-                $grand_sum_merch_rev   += (float)$r['merch_revenue'];
-                $grand_sum_total_rev   += (float)$r['total_revenue'];
-            }
-        ?>
-        <div class="table-scroll">
-            <table class="mgr-table">
-                <thead><tr>
-                    <th>Date</th>
-                    <th>Total Fuel Liters Sold</th>
-                    <th>Total Fuel Revenue</th>
-                    <th>Total Merchandise Revenue</th>
-                    <th>Combined Daily Revenue</th>
-                    <th>Variance Alert</th>
-                </tr></thead>
-                <tbody>
-                <?php foreach ($daily_summary_data as $row):
-                    $variance    = (float)$row['fuel_variance'];
-                    $has_alert   = abs($variance) > 0.5;
-                    $alert_class = $has_alert ? 'badge-rejected' : 'badge-approved';
-                    $alert_label = $has_alert ? '⚠ '.number_format($variance, 4).' L avg' : 'None';
-                ?>
-                <tr>
-                    <td><strong><?= htmlspecialchars(date('M j, Y', strtotime($row['sale_date']))) ?></strong></td>
-                    <td><?= number_format((float)$row['total_fuel_liters'], 2) ?> L</td>
-                    <td>&#8369;<?= number_format((float)$row['fuel_revenue'], 2) ?></td>
-                    <td>&#8369;<?= number_format((float)$row['merch_revenue'], 2) ?></td>
-                    <td><strong>&#8369;<?= number_format((float)$row['total_revenue'], 2) ?></strong></td>
-                    <td><span class="badge <?= $alert_class ?>"><?= $alert_label ?></span></td>
-                </tr>
-                <?php endforeach; ?>
-                </tbody>
-                <tfoot>
-                <tr style="font-weight:700;background:#f0f4f8;border-top:2px solid #EAEAEA;">
-                    <td>TOTAL</td>
-                    <td><?= number_format($grand_sum_fuel_liters, 2) ?> L</td>
-                    <td>&#8369;<?= number_format($grand_sum_fuel_rev,  2) ?></td>
-                    <td>&#8369;<?= number_format($grand_sum_merch_rev, 2) ?></td>
-                    <td>&#8369;<?= number_format($grand_sum_total_rev, 2) ?></td>
-                    <td>—</td>
-                </tr>
-                </tfoot>
-            </table>
-        </div>
-        <?php endif; ?>
-    </div>
+
     <?php endif; // end sales ?>
 
 
@@ -1841,33 +1797,7 @@ require_once __DIR__ . '/../partials/header.php';
         arsort($staff_perf);
     ?>
 
-    <!-- ── STATUS SUMMARY CARDS ──────────────────────────────── -->
-    <div class="stat-grid" style="margin-bottom:20px;">
-        <?php
-        $card_defs = [
-            'Pending'   => ['color'=>'stat-orange','icon'=>'fa-clock',        'label'=>'Pending'],
-            'Approved'  => ['color'=>'stat-green', 'icon'=>'fa-circle-check', 'label'=>'Approved'],
-            'Adjusted'  => ['color'=>'stat-blue',  'icon'=>'fa-pen-to-square','label'=>'Adjusted'],
-            'Rejected'  => ['color'=>'stat-red',   'icon'=>'fa-circle-xmark', 'label'=>'Rejected'],
-            'Completed' => ['color'=>'stat-teal',  'icon'=>'fa-flag-checkered','label'=>'Completed'],
-        ];
-        foreach ($card_defs as $key => $def): ?>
-        <div class="stat-card <?= $def['color'] ?>">
-            <div class="stat-icon"><i class="fa-solid <?= $def['icon'] ?>"></i></div>
-            <div class="stat-body">
-                <div class="stat-num"><?= $status_buckets[$key] ?></div>
-                <div class="stat-label"><?= $def['label'] ?></div>
-            </div>
-        </div>
-        <?php endforeach; ?>
-        <div class="stat-card stat-purple">
-            <div class="stat-icon"><i class="fa-solid fa-list"></i></div>
-            <div class="stat-body">
-                <div class="stat-num"><?= count($jo_rows) ?></div>
-                <div class="stat-label">Total JOs</div>
-            </div>
-        </div>
-    </div>
+
 
     <!-- ── MAIN JOB ORDERS TABLE ─────────────────────────────── -->
     <div class="rpt-card">
@@ -1875,16 +1805,6 @@ require_once __DIR__ . '/../partials/header.php';
             <h3><i class="fa-solid fa-wrench"></i> Job Orders Report
                 <span class="badge-count"><?= count($jo_rows) ?></span>
             </h3>
-            <div style="display:flex;gap:8px;">
-                <a href="manager_reports.php?<?= http_build_query(['section'=>$section,'range'=>$range,'start'=>$date_start,'end'=>$date_end,'export'=>'csv']) ?>"
-                   class="btn-export" style="background:#22c55e;color:#fff;border-color:#22c55e;font-size:11px;padding:5px 12px;">
-                    <i class="fa-solid fa-file-excel"></i> Export Excel
-                </a>
-                <a href="export_jo_pdf.php?range=<?= urlencode($range) ?>&start=<?= urlencode($date_start) ?>&end=<?= urlencode($date_end) ?>"
-                   class="btn-export" style="background:#dc3545;color:#fff;border-color:#dc3545;font-size:11px;padding:5px 12px;">
-                    <i class="fa-solid fa-file-pdf"></i> Export PDF
-                </a>
-            </div>
         </div>
         <?php if (empty($jo_rows)): ?>
         <div class="empty-state"><i class="fa-solid fa-wrench"></i><p>No job orders found for this period.</p></div>
@@ -2051,37 +1971,7 @@ require_once __DIR__ . '/../partials/header.php';
         $has_any = !empty($balance_rows) || !empty($balance_jo_rows) || !empty($balance_mt_rows);
     ?>
 
-    <!-- ── SUMMARY CARDS ─────────────────────────────────────── -->
-    <div class="stat-grid" style="margin-bottom:20px;">
-        <div class="stat-card stat-red">
-            <div class="stat-icon"><i class="fa-solid fa-scale-balanced"></i></div>
-            <div class="stat-body">
-                <div class="stat-num">&#8369;<?= number_format($grand_outstanding + $grand_jo_balance + $grand_mt_balance, 2) ?></div>
-                <div class="stat-label">Total Outstanding</div>
-            </div>
-        </div>
-        <div class="stat-card stat-blue">
-            <div class="stat-icon"><i class="fa-solid fa-users"></i></div>
-            <div class="stat-body">
-                <div class="stat-num"><?= count($balance_rows) ?></div>
-                <div class="stat-label">Customers w/ Balance</div>
-            </div>
-        </div>
-        <div class="stat-card stat-orange">
-            <div class="stat-icon"><i class="fa-solid fa-wrench"></i></div>
-            <div class="stat-body">
-                <div class="stat-num">&#8369;<?= number_format($grand_jo_balance, 2) ?></div>
-                <div class="stat-label">Unpaid Job Orders</div>
-            </div>
-        </div>
-        <div class="stat-card stat-purple">
-            <div class="stat-icon"><i class="fa-solid fa-store"></i></div>
-            <div class="stat-body">
-                <div class="stat-num">&#8369;<?= number_format($grand_mt_balance, 2) ?></div>
-                <div class="stat-label">Unpaid Merchandise</div>
-            </div>
-        </div>
-    </div>
+
 
     <?php if (!$has_any): ?>
     <div class="rpt-card">
@@ -2096,16 +1986,7 @@ require_once __DIR__ . '/../partials/header.php';
             <h3><i class="fa-solid fa-users"></i> Customer Credit Balances
                 <span class="badge-count"><?= count($balance_rows) ?></span>
             </h3>
-            <div style="display:flex;gap:8px;">
-                <a href="manager_reports.php?<?= http_build_query(['section'=>$section,'range'=>$range,'start'=>$date_start,'end'=>$date_end,'export'=>'csv']) ?>"
-                   class="btn-export" style="background:#22c55e;color:#fff;border-color:#22c55e;font-size:11px;padding:5px 12px;">
-                    <i class="fa-solid fa-file-excel"></i> Export Excel
-                </a>
-                <a href="export_balances_pdf.php?range=<?= urlencode($range) ?>&start=<?= urlencode($date_start) ?>&end=<?= urlencode($date_end) ?>"
-                   class="btn-export" style="background:#dc3545;color:#fff;border-color:#dc3545;font-size:11px;padding:5px 12px;">
-                    <i class="fa-solid fa-file-pdf"></i> Export PDF
-                </a>
-            </div>
+
         </div>
         <div class="table-scroll">
             <table class="mgr-table">
@@ -2285,34 +2166,7 @@ require_once __DIR__ . '/../partials/header.php';
         }
     ?>
 
-    <!-- ── STATUS SUMMARY CARDS ──────────────────────────────── -->
-    <div class="stat-grid" style="margin-bottom:20px;">
-        <?php
-        $pending_cnt  = 0; $approved_cnt = 0; $rejected_cnt = 0;
-        foreach ($del_status_counts as $st => $cnt) {
-            $stl = strtolower($st);
-            if (str_contains($stl,'pending'))                                          $pending_cnt  += $cnt;
-            elseif (in_array($stl,['confirmed','approved','validated','verified']))    $approved_cnt += $cnt;
-            elseif (in_array($stl,['rejected','flagged','returned','discrepancy']))    $rejected_cnt += $cnt;
-        }
-        ?>
-        <div class="stat-card stat-orange">
-            <div class="stat-icon"><i class="fa-solid fa-clock"></i></div>
-            <div class="stat-body"><div class="stat-num"><?= $pending_cnt ?></div><div class="stat-label">Pending</div></div>
-        </div>
-        <div class="stat-card stat-green">
-            <div class="stat-icon"><i class="fa-solid fa-circle-check"></i></div>
-            <div class="stat-body"><div class="stat-num"><?= $approved_cnt ?></div><div class="stat-label">Approved / Confirmed</div></div>
-        </div>
-        <div class="stat-card stat-red">
-            <div class="stat-icon"><i class="fa-solid fa-circle-xmark"></i></div>
-            <div class="stat-body"><div class="stat-num"><?= $rejected_cnt ?></div><div class="stat-label">Rejected</div></div>
-        </div>
-        <div class="stat-card stat-blue">
-            <div class="stat-icon"><i class="fa-solid fa-truck"></i></div>
-            <div class="stat-body"><div class="stat-num"><?= count($all_deliveries) ?></div><div class="stat-label">Total Deliveries</div></div>
-        </div>
-    </div>
+
 
     <?php if (!$has_any): ?>
     <div class="rpt-card">
@@ -2327,16 +2181,7 @@ require_once __DIR__ . '/../partials/header.php';
             <h3><i class="fa-solid fa-boxes-stacked"></i> Merchandise &amp; General Deliveries
                 <span class="badge-count"><?= count($delivery_rows) ?></span>
             </h3>
-            <div style="display:flex;gap:8px;">
-                <a href="manager_reports.php?<?= http_build_query(['section'=>$section,'range'=>$range,'start'=>$date_start,'end'=>$date_end,'export'=>'csv']) ?>"
-                   class="btn-export" style="background:#22c55e;color:#fff;border-color:#22c55e;font-size:11px;padding:5px 12px;">
-                    <i class="fa-solid fa-file-excel"></i> Export Excel
-                </a>
-                <a href="export_deliveries_pdf.php?range=<?= urlencode($range) ?>&start=<?= urlencode($date_start) ?>&end=<?= urlencode($date_end) ?>"
-                   class="btn-export" style="background:#dc3545;color:#fff;border-color:#dc3545;font-size:11px;padding:5px 12px;">
-                    <i class="fa-solid fa-file-pdf"></i> Export PDF
-                </a>
-            </div>
+
         </div>
         <div class="table-scroll">
             <table class="mgr-table">
@@ -2385,18 +2230,7 @@ require_once __DIR__ . '/../partials/header.php';
             <h3><i class="fa-solid fa-gas-pump"></i> Fuel Tanker Deliveries
                 <span class="badge-count"><?= count($fuel_delivery_rows) ?></span>
             </h3>
-            <?php if (empty($delivery_rows)): // show export here if no merch deliveries ?>
-            <div style="display:flex;gap:8px;">
-                <a href="manager_reports.php?<?= http_build_query(['section'=>$section,'range'=>$range,'start'=>$date_start,'end'=>$date_end,'export'=>'csv']) ?>"
-                   class="btn-export" style="background:#22c55e;color:#fff;border-color:#22c55e;font-size:11px;padding:5px 12px;">
-                    <i class="fa-solid fa-file-excel"></i> Export Excel
-                </a>
-                <a href="export_deliveries_pdf.php?range=<?= urlencode($range) ?>&start=<?= urlencode($date_start) ?>&end=<?= urlencode($date_end) ?>"
-                   class="btn-export" style="background:#dc3545;color:#fff;border-color:#dc3545;font-size:11px;padding:5px 12px;">
-                    <i class="fa-solid fa-file-pdf"></i> Export PDF
-                </a>
-            </div>
-            <?php endif; ?>
+
         </div>
         <div class="table-scroll">
             <table class="mgr-table">
@@ -2436,44 +2270,7 @@ require_once __DIR__ . '/../partials/header.php';
     </div>
     <?php endif; ?>
 
-    <!-- ── SUPPLIER SUMMARY ──────────────────────────────────── -->
-    <?php if ($has_any && !empty($del_supplier_map)): ?>
-    <div class="rpt-card">
-        <div class="rpt-card-head">
-            <h3><i class="fa-solid fa-building"></i> Supplier Summary</h3>
-        </div>
-        <div class="table-scroll">
-            <table class="mgr-table">
-                <thead><tr>
-                    <th>Supplier</th>
-                    <th>Deliveries</th>
-                    <th>Total Quantity</th>
-                    <th>Approved / Confirmed</th>
-                    <th>Success Rate</th>
-                </tr></thead>
-                <tbody>
-                <?php foreach ($del_supplier_map as $sup => $d):
-                    $rate = $d['count'] > 0 ? ($d['approved'] / $d['count']) * 100 : 0;
-                    $rate_color = $rate >= 80 ? '#22c55e' : ($rate >= 50 ? '#f59e0b' : '#dc3545');
-                ?>
-                <tr>
-                    <td><strong><?= htmlspecialchars($sup) ?></strong></td>
-                    <td><?= $d['count'] ?></td>
-                    <td><?= number_format($d['qty'], 2) ?> <?= htmlspecialchars($d['unit']) ?></td>
-                    <td><?= $d['approved'] ?> / <?= $d['count'] ?></td>
-                    <td>
-                        <div style="display:flex;align-items:center;gap:8px;">
-                            <div class="progress-bar-wrap" style="flex:1;"><div class="progress-bar-fill" style="width:<?= round($rate) ?>%;background:<?= $rate_color ?>;"></div></div>
-                            <span style="font-size:11px;font-weight:700;color:<?= $rate_color ?>;"><?= number_format($rate,1) ?>%</span>
-                        </div>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-    <?php endif; ?>
+
 
     <?php endif; // end deliveries ?>
 
@@ -2498,25 +2295,7 @@ require_once __DIR__ . '/../partials/header.php';
         $staff_count = count($staff_performance);
     ?>
 
-    <!-- ── SUMMARY CARDS ─────────────────────────────────────── -->
-    <div class="stat-grid" style="margin-bottom:20px;">
-        <div class="stat-card stat-blue">
-            <div class="stat-icon"><i class="fa-solid fa-users"></i></div>
-            <div class="stat-body"><div class="stat-num"><?= $staff_count ?></div><div class="stat-label">Active Staff</div></div>
-        </div>
-        <div class="stat-card stat-green">
-            <div class="stat-icon"><i class="fa-solid fa-receipt"></i></div>
-            <div class="stat-body"><div class="stat-num"><?= number_format($grand_txns) ?></div><div class="stat-label">Total Transactions</div></div>
-        </div>
-        <div class="stat-card stat-orange">
-            <div class="stat-icon"><i class="fa-solid fa-wrench"></i></div>
-            <div class="stat-body"><div class="stat-num"><?= number_format($grand_jo) ?></div><div class="stat-label">Job Orders</div></div>
-        </div>
-        <div class="stat-card stat-teal">
-            <div class="stat-icon"><i class="fa-solid fa-clock"></i></div>
-            <div class="stat-body"><div class="stat-num"><?= number_format($grand_hrs, 1) ?>h</div><div class="stat-label">Total Hours Logged</div></div>
-        </div>
-    </div>
+
 
     <!-- ── STAFF PERFORMANCE TABLE ───────────────────────────── -->
     <div class="rpt-card">
@@ -2587,35 +2366,7 @@ require_once __DIR__ . '/../partials/header.php';
             </table>
         </div>
 
-        <!-- Team Summary -->
-        <div style="margin-top:20px;padding-top:16px;border-top:1px solid #EAEAEA;">
-            <h4 style="font-size:14px;font-weight:700;color:var(--petron-blue);margin-bottom:12px;">Team Summary</h4>
-            <div class="table-scroll">
-                <table class="mgr-table">
-                    <thead><tr><th>Metric</th><th>Total</th><th>Avg per Staff</th><th>Top Performer</th></tr></thead>
-                    <tbody>
-                    <tr>
-                        <td>Transactions Encoded</td>
-                        <td><strong><?= number_format($grand_txns) ?></strong></td>
-                        <td><?= $staff_count > 0 ? number_format($grand_txns / $staff_count, 1) : '0' ?></td>
-                        <td><?= htmlspecialchars($top_txn_name) ?></td>
-                    </tr>
-                    <tr>
-                        <td>Job Orders Handled</td>
-                        <td><strong><?= number_format($grand_jo) ?></strong></td>
-                        <td><?= $staff_count > 0 ? number_format($grand_jo / $staff_count, 1) : '0' ?></td>
-                        <td>—</td>
-                    </tr>
-                    <tr>
-                        <td>Hours Worked</td>
-                        <td><strong><?= number_format($grand_hrs, 1) ?>h</strong></td>
-                        <td><?= $staff_count > 0 ? number_format($grand_hrs / $staff_count, 1) : '0' ?>h</td>
-                        <td>—</td>
-                    </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
+
         <?php endif; ?>
     </div>
 
@@ -2689,25 +2440,7 @@ require_once __DIR__ . '/../partials/header.php';
         $total_val = count($validation_rows);
     ?>
 
-    <!-- ── SUMMARY CARDS ─────────────────────────────────────── -->
-    <div class="stat-grid" style="margin-bottom:20px;">
-        <div class="stat-card stat-blue">
-            <div class="stat-icon"><i class="fa-solid fa-clipboard-list"></i></div>
-            <div class="stat-body"><div class="stat-num"><?= $total_val ?></div><div class="stat-label">Total Actions</div></div>
-        </div>
-        <div class="stat-card stat-green">
-            <div class="stat-icon"><i class="fa-solid fa-circle-check"></i></div>
-            <div class="stat-body"><div class="stat-num"><?= $action_counts['Approved'] + $action_counts['Confirmed'] ?></div><div class="stat-label">Approved / Confirmed</div></div>
-        </div>
-        <div class="stat-card stat-orange">
-            <div class="stat-icon"><i class="fa-solid fa-pen-to-square"></i></div>
-            <div class="stat-body"><div class="stat-num"><?= $action_counts['Adjusted'] ?></div><div class="stat-label">Adjusted</div></div>
-        </div>
-        <div class="stat-card stat-red">
-            <div class="stat-icon"><i class="fa-solid fa-circle-xmark"></i></div>
-            <div class="stat-body"><div class="stat-num"><?= $action_counts['Rejected'] ?></div><div class="stat-label">Rejected</div></div>
-        </div>
-    </div>
+
 
     <!-- ── VALIDATION LOG TABLE ──────────────────────────────── -->
     <div class="rpt-card">
@@ -2812,253 +2545,312 @@ require_once __DIR__ . '/../partials/header.php';
          SECTION: AUDIT TRAIL
          ============================================================ -->
     <?php if ($section === 'audit_trail'):
-        $at_total    = count($audit_trail_rows);
-        $at_success  = count(array_filter($audit_trail_rows, fn($r) => strtolower($r['status'] ?? '') === 'success'));
-        $at_failed   = count(array_filter($audit_trail_rows, fn($r) => strtolower($r['status'] ?? '') === 'failed'));
-        $at_user_sel = isset($_GET['at_user'])   ? (int)$_GET['at_user']   : 0;
-        $at_act_sel  = isset($_GET['at_action']) ? trim($_GET['at_action']) : '';
-        $at_mod_sel  = isset($_GET['at_module']) ? trim($_GET['at_module']) : '';
+        $at_total = count($audit_trail_rows);
+        $limit = isset($_GET['limit']) ? max(1, (int)$_GET['limit']) : 10;
+        $page  = isset($_GET['page'])  ? max(1, (int)$_GET['page']) : 1;
+        $total_pages = ceil($at_total / $limit);
+        if ($page > $total_pages && $total_pages > 0) $page = $total_pages;
+        $offset = ($page - 1) * $limit;
+        $paginated_rows = array_slice($audit_trail_rows, $offset, $limit);
     ?>
 
-    <!-- ── SCOPE NOTICE ──────────────────────────────────────── -->
-    <div style="display:flex;align-items:center;gap:10px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 16px;margin-bottom:16px;font-size:13px;color:#1e40af;">
-        <i class="fa-solid fa-circle-info" style="font-size:16px;flex-shrink:0;"></i>
-        <span>
-            <strong>Scope:</strong> Shows <strong>Staff</strong> and <strong>Manager</strong> actions only —
-            encoding, approvals, adjustments, and system events.
-            Admin is an oversight role and is not logged here.
-        </span>
-    </div>
-
-    <!-- ── SUMMARY CARDS ─────────────────────────────────────── -->
-    <div class="stat-grid" style="margin-bottom:20px;">
-        <div class="stat-card stat-blue">
-            <div class="stat-icon"><i class="fa-solid fa-shield-halved"></i></div>
-            <div class="stat-body"><div class="stat-num"><?= $at_total ?></div><div class="stat-label">Total Log Entries</div></div>
-        </div>
-        <div class="stat-card stat-green">
-            <div class="stat-icon"><i class="fa-solid fa-circle-check"></i></div>
-            <div class="stat-body"><div class="stat-num"><?= $at_success ?></div><div class="stat-label">Successful</div></div>
-        </div>
-        <div class="stat-card stat-red">
-            <div class="stat-icon"><i class="fa-solid fa-circle-xmark"></i></div>
-            <div class="stat-body"><div class="stat-num"><?= $at_failed ?></div><div class="stat-label">Failed / Denied</div></div>
-        </div>
-        <div class="stat-card stat-orange">
-            <div class="stat-icon"><i class="fa-solid fa-users"></i></div>
-            <div class="stat-body">
-                <div class="stat-num"><?= count(array_unique(array_column($audit_trail_rows, 'user_name'))) ?></div>
-                <div class="stat-label">Active Users</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ── FILTERS ───────────────────────────────────────────── -->
-    <form method="GET" action="manager_reports.php" style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:#fff;border:1px solid #EAEAEA;border-radius:10px;padding:12px 16px;margin-bottom:16px;">
-        <input type="hidden" name="section" value="audit_trail">
-        <input type="hidden" name="range"   value="<?= htmlspecialchars($range) ?>">
-        <input type="hidden" name="start"   value="<?= htmlspecialchars($date_start) ?>">
-        <input type="hidden" name="end"     value="<?= htmlspecialchars($date_end) ?>">
-
-        <label style="font-size:12px;font-weight:600;color:#667085;text-transform:uppercase;letter-spacing:.4px;">User:</label>
-        <select name="at_user" style="padding:6px 10px;border:1px solid #EAEAEA;border-radius:6px;font-size:13px;">
-            <option value="">All Staff &amp; Managers</option>
-            <?php
-            $last_role_at = '';
-            foreach ($audit_trail_users as $u):
-                $rl = ucfirst(strtolower($u['role'] ?? ''));
-                if ($rl !== $last_role_at) {
-                    if ($last_role_at !== '') echo '</optgroup>';
-                    echo '<optgroup label="' . htmlspecialchars($rl) . '">';
-                    $last_role_at = $rl;
-                }
-            ?>
-            <option value="<?= (int)$u['id'] ?>" <?= $at_user_sel === (int)$u['id'] ? 'selected' : '' ?>>
-                <?= htmlspecialchars($u['name']) ?>
-            </option>
-            <?php endforeach; if ($last_role_at !== '') echo '</optgroup>'; ?>
-        </select>
-
-        <label style="font-size:12px;font-weight:600;color:#667085;text-transform:uppercase;letter-spacing:.4px;">Action:</label>
-        <select name="at_action" style="padding:6px 10px;border:1px solid #EAEAEA;border-radius:6px;font-size:13px;">
-            <option value="">All Actions</option>
-            <?php foreach ($audit_action_types as $act):
-                // Group 'Login Failed' under 'Login' prefix for display
-                $display = htmlspecialchars($act);
-                $selected = ($at_act_sel !== '' && strpos($act, $at_act_sel) === 0) || $at_act_sel === $act ? 'selected' : '';
-            ?>
-            <option value="<?= htmlspecialchars($act) ?>" <?= $at_act_sel === $act ? 'selected' : '' ?>>
-                <?= $display ?>
-            </option>
-            <?php endforeach; ?>
-        </select>
-
-        <label style="font-size:12px;font-weight:600;color:#667085;text-transform:uppercase;letter-spacing:.4px;">Module:</label>
-        <select name="at_module" style="padding:6px 10px;border:1px solid #EAEAEA;border-radius:6px;font-size:13px;">
-            <option value="">All Modules</option>
-            <?php
-            // Human-readable labels for known entity types
-            $module_labels = [
-                'users'                    => 'Users',
-                'job_orders'               => 'Job Orders',
-                'merchandise_transactions' => 'Merchandise',
-                'customers'                => 'Customers',
-                'fuel_inventory'           => 'Fuel',
-                'inventory'                => 'Inventory',
-                'sales'                    => 'Sales',
-                'system'                   => 'System',
-            ];
-            foreach ($audit_entity_types as $et):
-                $label = $module_labels[$et] ?? ucfirst(str_replace('_', ' ', $et));
-            ?>
-            <option value="<?= htmlspecialchars($et) ?>" <?= $at_mod_sel === $et ? 'selected' : '' ?>>
-                <?= htmlspecialchars($label) ?>
-            </option>
-            <?php endforeach; ?>
-        </select>
-
-        <button type="submit" style="padding:6px 16px;background:var(--petron-blue);color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">
-            <i class="fa-solid fa-magnifying-glass"></i> Filter
-        </button>
-        <a href="manager_reports.php?section=audit_trail&range=<?= urlencode($range) ?>&start=<?= urlencode($date_start) ?>&end=<?= urlencode($date_end) ?>"
-           style="padding:6px 14px;background:#f8fafc;color:#374151;border:1px solid #EAEAEA;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none;">
-            <i class="fa-solid fa-rotate-left"></i> Reset
-        </a>
-    </form>
-
-    <!-- ── EXPORT BAR ────────────────────────────────────────── -->
-    <?php
-    $at_exp_qs = http_build_query([
-        'section' => 'audit_trail', 'range' => $range,
-        'start'   => $date_start,   'end'   => $date_end,
-        'at_user' => $at_user_sel,  'at_action' => $at_act_sel, 'at_module' => $at_mod_sel,
-    ]);
-    ?>
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
-        <span style="font-size:12px;font-weight:600;color:#667085;text-transform:uppercase;letter-spacing:.4px;"><i class="fa-solid fa-download"></i> Export:</span>
-        <a href="manager_reports.php?<?= $at_exp_qs ?>&export=csv&format=csv"
-           style="padding:6px 14px;background:#22c55e;color:#fff;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none;">
-            <i class="fa-solid fa-file-csv"></i> CSV
-        </a>
-    </div>
+    <style>
+        .pagination-wrapper { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; background: #fff; border: 1px solid #EAEAEA; border-radius: 12px; margin-top: 12px; margin-bottom: 80px; box-shadow: 0 2px 5px rgba(0,0,0,0.02); flex-wrap: wrap; gap: 10px; }
+        .rows-per-page { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #6b7280; }
+        .rows-per-page select { padding: 6px; border: 1px solid #e5e7eb; border-radius: 4px; outline: none; cursor: pointer; }
+        .page-info { font-size: 13px; color: #6b7280; }
+        .pagination-controls { display: flex; align-items: center; gap: 10px; }
+        .btn-page { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; color: #374151; text-decoration: none; transition: 0.2s; }
+        .btn-page:not(.disabled):hover { background: #f3f4f6; color: var(--petron-blue); }
+        .btn-page.disabled { opacity: 0.5; cursor: not-allowed; }
+        .current-page { font-size: 13px; font-weight: 600; color: #374151; }
+    </style>
 
     <!-- ── AUDIT LOG TABLE ───────────────────────────────────── -->
     <div class="rpt-card">
-        <div class="rpt-card-head">
-            <h3><i class="fa-solid fa-shield-halved"></i> Audit Trail
+        <div class="rpt-card-head" style="display: flex; align-items: center; justify-content: space-between;">
+            <h3><i class="fa-solid fa-shield-halved"></i> Audit Trail (Manager Validation Logs)
                 <span class="badge-count"><?= $at_total ?></span>
             </h3>
+
         </div>
-        <?php if (empty($audit_trail_rows)): ?>
+        <?php if (empty($paginated_rows)): ?>
         <div class="empty-state">
             <i class="fa-solid fa-shield-halved"></i>
-            <p>No audit log entries found for this period.</p>
+            <p>No validation logs found for this period.</p>
         </div>
+        <?php else: ?>
+        <div class="table-scroll">
+            <table class="mgr-table">
+                <thead><tr>
+                    <th>Transaction ID</th>
+                    <th>Manager ID</th>
+                    <th>Action</th>
+                    <th>Remarks / Reason</th>
+                    <th>Timestamp</th>
+                </tr></thead>
+                <tbody>
+                <?php foreach ($paginated_rows as $row):
+                    $action_lc = strtolower($row['action'] ?? '');
+                    $action_badge = in_array($action_lc, ['approve','approved','confirmed']) ? 'badge-approved'
+                                  : (in_array($action_lc, ['reject','rejected']) ? 'badge-rejected'
+                                  : (in_array($action_lc, ['adjust','adjusted']) ? 'badge-inprog' : 'badge-default'));
+                ?>
+                <tr>
+                    <td><strong><?= htmlspecialchars($row['reference_id'] ?? '—') ?></strong></td>
+                    <td><?= htmlspecialchars($row['manager_id'] ?? '—') ?></td>
+                    <td><span class="badge <?= $action_badge ?>"><?= htmlspecialchars($row['action'] ?? '—') ?></span></td>
+                    <td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#667085;font-size:12px;" title="<?= htmlspecialchars($row['reason'] ?? '') ?>">
+                        <?= htmlspecialchars($row['reason'] ?: '—') ?>
+                    </td>
+                    <td style="white-space:nowrap;">
+                        <strong><?= date('M j, Y', strtotime($row['date_time'])) ?></strong>
+                        <small style="display:block;color:#667085;"><?= date('g:i A', strtotime($row['date_time'])) ?></small>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php endif; ?>
+    </div>
+    
+    <?php if (!empty($audit_trail_rows)): ?>
+    <div class="pagination-wrapper">
+        <div class="rows-per-page">
+            <label>Rows per page:</label>
+            <select onchange="changeLimit(this)">
+                <option value="10" <?= $limit == 10 ? 'selected' : '' ?>>10</option>
+                <option value="25" <?= $limit == 25 ? 'selected' : '' ?>>25</option>
+                <option value="50" <?= $limit == 50 ? 'selected' : '' ?>>50</option>
+                <option value="100" <?= $limit == 100 ? 'selected' : '' ?>>100</option>
+            </select>
+        </div>
+        <div class="page-info">
+            Showing <?= $at_total > 0 ? $offset + 1 : 0 ?> to <?= min($offset + $limit, $at_total) ?> of <?= $at_total ?> entries
+        </div>
+        <div class="pagination-controls">
+            <?php 
+                // Build base URL for pagination links
+                $base_url = "manager_reports.php?section=audit_trail&range=" . urlencode($range) . "&start=" . urlencode($date_start) . "&end=" . urlencode($date_end) . "&limit=" . $limit; 
+            ?>
+            <?php if ($page > 1): ?>
+                <a href="<?= $base_url ?>&page=<?= $page - 1 ?>" class="btn-page" title="Previous Page"><i class="fa-solid fa-chevron-left"></i></a>
+            <?php else: ?>
+                <span class="btn-page disabled"><i class="fa-solid fa-chevron-left"></i></span>
+            <?php endif; ?>
+            
+            <span class="current-page">Page <?= $page ?> of <?= max(1, $total_pages) ?></span>
+            
+            <?php if ($page < $total_pages): ?>
+                <a href="<?= $base_url ?>&page=<?= $page + 1 ?>" class="btn-page" title="Next Page"><i class="fa-solid fa-chevron-right"></i></a>
+            <?php else: ?>
+                <span class="btn-page disabled"><i class="fa-solid fa-chevron-right"></i></span>
+            <?php endif; ?>
+        </div>
+    </div>
+    <script>
+    function changeLimit(select) {
+        let url = new URL(window.location.href);
+        url.searchParams.set('limit', select.value);
+        url.searchParams.set('page', 1);
+        window.location.href = url.toString();
+    }
+    </script>
+    <?php endif; ?>
+    </div>
+    <?php endif; // end audit_trail ?>
+
+    <!-- ============================================================
+         SECTION: VARIANCE
+         ============================================================ -->
+    <?php if ($section === 'variance'): ?>
+    <div class="rpt-card">
+        <div class="rpt-card-head">
+            <h3><i class="fa-solid fa-scale-unbalanced"></i> Variance Reports <span class="badge-count"><?= count($variance_rows) ?></span></h3>
+        </div>
+        <?php if (empty($variance_rows)): ?>
+        <div class="empty-state"><i class="fa-solid fa-scale-balanced"></i><p>No variance reports found.</p></div>
+        <?php else: ?>
+        <div class="table-scroll">
+            <table class="mgr-table">
+                <thead><tr>
+                    <th>Report Date</th>
+                    <th>Fuel Type</th>
+                    <th>System Liters</th>
+                    <th>Pump Liters</th>
+                    <th>Variance Liters</th>
+                    <th>Staff Name</th>
+                    <th>Status</th>
+                </tr></thead>
+                <tbody>
+                <?php foreach ($variance_rows as $row): 
+                    $v = (float)$row['variance_liters'];
+                    $v_badge = abs($v) > 0.5 ? 'badge-rejected' : 'badge-approved';
+                ?>
+                <tr>
+                    <td><?= date('M j, Y', strtotime($row['report_date'])) ?></td>
+                    <td><strong><?= htmlspecialchars($row['fuel_type']) ?></strong></td>
+                    <td><?= number_format((float)$row['system_liters'], 2) ?> L</td>
+                    <td><?= number_format((float)$row['pump_liters'], 2) ?> L</td>
+                    <td><span class="badge <?= $v_badge ?>"><?= number_format($v, 4) ?> L</span></td>
+                    <td><?= htmlspecialchars($row['staff_name'] ?? '—') ?></td>
+                    <td><span class="badge <?= status_badge_class($row['status']) ?>"><?= htmlspecialchars($row['status']) ?></span></td>
+                </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
+
+    <!-- ============================================================
+         SECTION: METER READINGS
+         ============================================================ -->
+    <?php if ($section === 'meter_readings'): ?>
+    <div class="rpt-card">
+        <div class="rpt-card-head">
+            <h3><i class="fa-solid fa-tachometer-alt"></i> Validated Meter Readings <span class="badge-count"><?= count($meter_rows) ?></span></h3>
+        </div>
+        <?php if (empty($meter_rows)): ?>
+        <div class="empty-state"><i class="fa-solid fa-tachometer-alt"></i><p>No validated meter readings found.</p></div>
+        <?php else: ?>
+        <div class="table-scroll">
+            <table class="mgr-table">
+                <thead><tr>
+                    <th>Date &amp; Time</th>
+                    <th>Pump / Nozzle</th>
+                    <th>Fuel Type</th>
+                    <th>Opening</th>
+                    <th>Closing</th>
+                    <th>Staff</th>
+                </tr></thead>
+                <tbody>
+                <?php foreach ($meter_rows as $row): ?>
+                <tr>
+                    <td><?= date('M j, Y H:i', strtotime($row['reading_time'])) ?></td>
+                    <td>Pump <?= htmlspecialchars($row['pump_number']) ?> - N<?= htmlspecialchars($row['nozzle_number']) ?></td>
+                    <td><strong><?= htmlspecialchars($row['fuel_type']) ?></strong></td>
+                    <td><?= number_format((float)$row['opening_reading'], 2) ?></td>
+                    <td><?= number_format((float)$row['closing_reading'], 2) ?></td>
+                    <td><?= htmlspecialchars($row['staff_name'] ?? '—') ?></td>
+                </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
+
+    <!-- ============================================================
+         SECTION: INVENTORY
+         ============================================================ -->
+    <?php if ($section === 'inventory'): ?>
+    <div class="rpt-card">
+        <div class="rpt-card-head">
+            <h3><i class="fa-solid fa-gas-pump"></i> Fuel Inventory</h3>
+        </div>
+        <?php if (empty($inventory_rows)): ?>
+        <div class="empty-state"><i class="fa-solid fa-gas-pump"></i><p>No fuel inventory found.</p></div>
+        <?php else: ?>
+        <div class="table-scroll">
+            <table class="mgr-table">
+                <thead><tr>
+                    <th>Fuel Type</th>
+                    <th>Tank ID</th>
+                    <th>Capacity</th>
+                    <th>Current Level</th>
+                    <th>Status</th>
+                </tr></thead>
+                <tbody>
+                <?php foreach ($inventory_rows as $row): 
+                    $lvl = (float)$row['current_level'];
+                    $cap = (float)$row['capacity'];
+                    $pct = $cap > 0 ? ($lvl / $cap) * 100 : 0;
+                    $badge = $pct < 20 ? 'badge-rejected' : 'badge-approved';
+                ?>
+                <tr>
+                    <td><strong><?= htmlspecialchars($row['fuel_type']) ?></strong></td>
+                    <td><?= htmlspecialchars($row['tank_id'] ?? '—') ?></td>
+                    <td><?= number_format($cap, 2) ?> L</td>
+                    <td><?= number_format($lvl, 2) ?> L</td>
+                    <td><span class="badge <?= $badge ?>"><?= number_format($pct, 1) ?>%</span></td>
+                </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php endif; ?>
+    </div>
+
+    <div class="rpt-card">
+        <div class="rpt-card-head">
+            <h3><i class="fa-solid fa-boxes"></i> Merchandise Inventory</h3>
+        </div>
+        <?php if (empty($inventory_merch_rows)): ?>
+        <div class="empty-state"><i class="fa-solid fa-boxes"></i><p>No merchandise inventory found.</p></div>
+        <?php else: ?>
+        <div class="table-scroll">
+            <table class="mgr-table">
+                <thead><tr>
+                    <th>Product</th>
+                    <th>Category</th>
+                    <th>Unit Price</th>
+                    <th>Stock Quantity</th>
+                </tr></thead>
+                <tbody>
+                <?php foreach ($inventory_merch_rows as $row): 
+                    $qty = (int)$row['stock_quantity'];
+                    $badge = $qty <= 10 ? 'badge-rejected' : 'badge-approved';
+                ?>
+                <tr>
+                    <td><strong><?= htmlspecialchars($row['product_name']) ?></strong></td>
+                    <td><?= htmlspecialchars($row['category']) ?></td>
+                    <td>&#8369;<?= number_format((float)$row['unit_price'], 2) ?></td>
+                    <td><span class="badge <?= $badge ?>"><?= number_format($qty) ?></span></td>
+                </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
+
+    <!-- ============================================================
+         SECTION: PRICE LOGS
+         ============================================================ -->
+    <?php if ($section === 'price_logs'): ?>
+    <div class="rpt-card">
+        <div class="rpt-card-head">
+            <h3><i class="fa-solid fa-tags"></i> Price Change Logs <span class="badge-count"><?= count($price_log_rows) ?></span></h3>
+        </div>
+        <?php if (empty($price_log_rows)): ?>
+        <div class="empty-state"><i class="fa-solid fa-tags"></i><p>No price change logs found for this period.</p></div>
         <?php else: ?>
         <div class="table-scroll">
             <table class="mgr-table">
                 <thead><tr>
                     <th>Date &amp; Time</th>
                     <th>User</th>
-                    <th>Role</th>
-                    <th>Action</th>
-                    <th>Module</th>
                     <th>Details</th>
-                    <th>IP Address</th>
-                    <th>Status</th>
                 </tr></thead>
                 <tbody>
-                <?php foreach ($audit_trail_rows as $row):
-                    $sl = strtolower($row['status'] ?? '');
-                    $status_badge = $sl === 'success'  ? 'badge-approved'
-                                  : ($sl === 'failed'  ? 'badge-rejected'
-                                  : ($sl === 'pending' ? 'badge-pending' : 'badge-default'));
-                    $action_lc = strtolower($row['action_type'] ?? '');
-                    $action_badge = in_array($action_lc, ['approve','approved','login','create']) ? 'badge-approved'
-                                  : (in_array($action_lc, ['reject','rejected','delete','rbac deny']) ? 'badge-rejected'
-                                  : (in_array($action_lc, ['adjust','update','price change']) ? 'badge-inprog' : 'badge-default'));
-
-                    // Build rich detail string
-                    $detail_main = trim($row['action_details'] ?? '');
-                    // If detail is generic, try to enrich from new_values JSON
-                    $generic_phrases = ['user logged in','user logged out','user logged in successfully'];
-                    $is_generic = in_array(strtolower($detail_main), $generic_phrases) || $detail_main === '';
-                    $extra_detail = '';
-                    if (!empty($row['new_values'])) {
-                        $nv = json_decode($row['new_values'], true);
-                        if (is_array($nv)) {
-                            $parts = [];
-                            $show_keys = ['transaction_id','total_amount','item_count','customer_name','payment_method',
-                                          'amount','type','product_name','quantity','difference','login_time','logout_time',
-                                          'fuel_type','reference_type','reference_id'];
-                            foreach ($show_keys as $k) {
-                                if (isset($nv[$k]) && $nv[$k] !== '' && $nv[$k] !== null) {
-                                    $label = ucfirst(str_replace('_', ' ', $k));
-                                    $val   = is_numeric($nv[$k]) && in_array($k, ['total_amount','amount'])
-                                           ? '₱' . number_format((float)$nv[$k], 2)
-                                           : htmlspecialchars((string)$nv[$k]);
-                                    $parts[] = "<span style='color:#667085;'>{$label}:</span> <strong>{$val}</strong>";
-                                }
-                            }
-                            if ($parts) $extra_detail = implode(' &nbsp;|&nbsp; ', $parts);
-                        }
-                    }
-                    $row_id = 'at-row-' . (int)$row['id'];
-                ?>
+                <?php foreach ($price_log_rows as $row): ?>
                 <tr>
-                    <td style="white-space:nowrap;">
-                        <strong><?= date('M j, Y', strtotime($row['created_at'])) ?></strong>
-                        <small style="display:block;color:#667085;"><?= date('g:i A', strtotime($row['created_at'])) ?></small>
-                    </td>
-                    <td><strong><?= htmlspecialchars($row['user_name'] ?? '—') ?></strong></td>
-                    <td><span class="badge badge-default"><?= ucfirst(htmlspecialchars($row['user_role'] ?? '—')) ?></span></td>
-                    <td><span class="badge <?= $action_badge ?>"><?= htmlspecialchars($row['action_type'] ?? '—') ?></span></td>
-                    <td>
-                        <?php
-                        $mod_label = $row['entity_type'] ?? '—';
-                        $mod_map = [
-                            'job_orders'               => 'Job Orders',
-                            'merchandise_transactions' => 'Merchandise',
-                            'customers'                => 'Customers',
-                            'users'                    => 'Users',
-                            'fuel_inventory'           => 'Fuel',
-                            'inventory'                => 'Inventory',
-                            'sales'                    => 'Sales',
-                            'system'                   => 'System',
-                        ];
-                        $mod_label = $mod_map[$mod_label] ?? ucfirst(str_replace('_', ' ', $mod_label));
-                        ?>
-                        <span class="badge badge-default"><?= htmlspecialchars($mod_label) ?></span>
-                    </td>
-                    <td style="font-size:12px;max-width:320px;">
-                        <?php if ($detail_main): ?>
-                        <div style="color:#1e293b;margin-bottom:<?= $extra_detail ? '4px' : '0' ?>;">
-                            <?= htmlspecialchars($detail_main) ?>
-                        </div>
-                        <?php endif; ?>
-                        <?php if ($extra_detail): ?>
-                        <div style="font-size:11px;color:#475569;line-height:1.6;">
-                            <?= $extra_detail ?>
-                        </div>
-                        <?php elseif (!$detail_main): ?>
-                        <span style="color:#9ca3af;">—</span>
-                        <?php endif; ?>
-                    </td>
-                    <td style="font-size:12px;color:#667085;"><?= htmlspecialchars($row['ip_address'] ?? '—') ?></td>
-                    <td><span class="badge <?= $status_badge ?>"><?= htmlspecialchars($row['status'] ?? '—') ?></span></td>
+                    <td style="white-space:nowrap;"><?= date('M j, Y g:i A', strtotime($row['created_at'])) ?></td>
+                    <td><strong><?= htmlspecialchars($row['user_name'] ?? 'System') ?></strong></td>
+                    <td><?= htmlspecialchars($row['details']) ?></td>
                 </tr>
                 <?php endforeach; ?>
                 </tbody>
             </table>
         </div>
-        <?php if ($at_total >= 500): ?>
-        <div style="text-align:center;padding:10px;font-size:12px;color:#667085;">
-            <i class="fa-solid fa-circle-info"></i> Showing latest 500 entries. Use CSV export for the full dataset.
-        </div>
-        <?php endif; ?>
         <?php endif; ?>
     </div>
-    <?php endif; // end audit_trail ?>
+    <?php endif; ?>
 
 </div><!-- /.page-content -->
 
@@ -3533,6 +3325,112 @@ require_once __DIR__ . '/../partials/header.php';
         setTimeout(update, 150);
         setTimeout(update, 600);
     })();
+
+    // Client-side pagination for all .mgr-table elements that don't have server-side pagination
+    document.addEventListener('DOMContentLoaded', function() {
+        const tables = document.querySelectorAll('table.mgr-table');
+        tables.forEach(table => {
+            // Check if it already has a pagination wrapper right after its container
+            const container = table.closest('.table-scroll');
+            if (!container) return;
+            if (container.nextElementSibling && container.nextElementSibling.classList.contains('pagination-wrapper')) return;
+
+            const tbody = table.querySelector('tbody');
+            if (!tbody) return;
+            
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            if (rows.length === 0) return;
+
+            let currentPage = 1;
+            let rowsPerPage = 10;
+            let totalRows = rows.length;
+            let totalPages = Math.ceil(totalRows / rowsPerPage);
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'pagination-wrapper client-side-pagination';
+            wrapper.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; background: #fff; border: 1px solid #EAEAEA; border-radius: 12px; margin-top: 12px; margin-bottom: 80px; box-shadow: 0 2px 5px rgba(0,0,0,0.02); flex-wrap: wrap; gap: 10px;';
+            
+            // Apply global CSS for pagination elements (only once)
+            if (!document.getElementById('client-pagination-style')) {
+                const style = document.createElement('style');
+                style.id = 'client-pagination-style';
+                style.innerHTML = `
+                    .rows-per-page { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #6b7280; }
+                    .rows-per-page select { padding: 6px; border: 1px solid #e5e7eb; border-radius: 4px; outline: none; cursor: pointer; }
+                    .page-info { font-size: 13px; color: #6b7280; }
+                    .pagination-controls { display: flex; align-items: center; gap: 10px; }
+                    .btn-page { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; color: #374151; text-decoration: none; transition: 0.2s; cursor: pointer; }
+                    .btn-page:hover:not(.disabled) { background: #f3f4f6; }
+                    .btn-page.disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+                    .current-page { font-size: 13px; font-weight: 500; color: #111827; }
+                `;
+                document.head.appendChild(style);
+            }
+
+            function renderTable() {
+                tbody.innerHTML = '';
+                const start = (currentPage - 1) * rowsPerPage;
+                const end = start + rowsPerPage;
+                const paginatedRows = rows.slice(start, end);
+                
+                paginatedRows.forEach(row => tbody.appendChild(row));
+                updateControls();
+            }
+
+            function updateControls() {
+                totalPages = Math.ceil(totalRows / rowsPerPage);
+                
+                const start = (currentPage - 1) * rowsPerPage + 1;
+                const end = Math.min(currentPage * rowsPerPage, totalRows);
+                
+                wrapper.innerHTML = `
+                    <div class="rows-per-page">
+                        <label>Rows per page:</label>
+                        <select class="rpp-select">
+                            <option value="10" ${rowsPerPage === 10 ? 'selected' : ''}>10</option>
+                            <option value="25" ${rowsPerPage === 25 ? 'selected' : ''}>25</option>
+                            <option value="50" ${rowsPerPage === 50 ? 'selected' : ''}>50</option>
+                            <option value="100" ${rowsPerPage === 100 ? 'selected' : ''}>100</option>
+                            <option value="${totalRows}" ${rowsPerPage === totalRows ? 'selected' : ''}>All</option>
+                        </select>
+                    </div>
+                    <div class="page-info">
+                        Showing ${totalRows === 0 ? 0 : start} to ${end} of ${totalRows} entries
+                    </div>
+                    <div class="pagination-controls">
+                        <button type="button" class="btn-page prev-btn ${currentPage === 1 ? 'disabled' : ''}"><i class="fa-solid fa-chevron-left"></i></button>
+                        <span class="current-page">Page ${currentPage} of ${Math.max(1, totalPages)}</span>
+                        <button type="button" class="btn-page next-btn ${currentPage === totalPages || totalPages === 0 ? 'disabled' : ''}"><i class="fa-solid fa-chevron-right"></i></button>
+                    </div>
+                `;
+
+                wrapper.querySelector('.rpp-select').addEventListener('change', function(e) {
+                    rowsPerPage = parseInt(e.target.value);
+                    currentPage = 1;
+                    renderTable();
+                });
+
+                wrapper.querySelector('.prev-btn').addEventListener('click', function(e) {
+                    e.preventDefault();
+                    if (currentPage > 1) {
+                        currentPage--;
+                        renderTable();
+                    }
+                });
+
+                wrapper.querySelector('.next-btn').addEventListener('click', function(e) {
+                    e.preventDefault();
+                    if (currentPage < totalPages) {
+                        currentPage++;
+                        renderTable();
+                    }
+                });
+            }
+
+            container.parentNode.insertBefore(wrapper, container.nextSibling);
+            renderTable();
+        });
+    });
   </script>
 </body>
 </html>

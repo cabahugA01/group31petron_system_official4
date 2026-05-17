@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // manager_report_export.php — handles CSV, Excel, PDF for all manager report sections
 if (session_status() === PHP_SESSION_NONE) session_start();
 require_once __DIR__ . '/../backend/lib.php';
@@ -19,8 +19,11 @@ $format     = strtolower(trim($_GET['format'] ?? 'csv')); // csv | excel | pdf
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_start)) $date_start = date('Y-m-01');
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_end))   $date_end   = date('Y-m-d');
 
-$label_map = ['sales'=>'Sales Reports','job_orders'=>'Job Orders','balances'=>'Customer Balances',
-              'deliveries'=>'Deliveries','staff'=>'Staff Performance','validation'=>'Validation Logs'];
+$label_map = ['sales'=>'Sales Volume & Amount Report','job_orders'=>'Job Orders','balances'=>'Customer Balances',
+              'deliveries'=>'Deliveries','staff'=>'Staff Performance','validation'=>'Validation Logs',
+              'audit_trail'=>'Audit Trail (Manager Validation Logs)',
+              'variance'=>'Variance Reports','meter_readings'=>'Validated Meter Readings',
+              'inventory'=>'Inventory Reports','price_logs'=>'Price Change Logs'];
 $section_label = $label_map[$section] ?? ucfirst($section);
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -68,12 +71,18 @@ if ($section === 'sales') {
         WHERE mt.station_id=? AND ($mde) BETWEEN ? AND ?
         AND LOWER(TRIM(COALESCE(mt.validation_status,''))) NOT IN ('rejected','returned','cancelled')
         GROUP BY ($mde) ORDER BY sale_date DESC",[$station_id,$date_start,$date_end]);
+    
+    $svas_rows = q($pdo,"SELECT ft.fuel_type, COALESCE(SUM(ft.liters_sold),0) AS total_liters, COALESCE(SUM(ft.total_amount),0) AS total_revenue
+        FROM fuel_transactions ft WHERE ft.station_id=? AND $fsc_local AND DATE(ft.transaction_date) BETWEEN ? AND ?
+        GROUP BY ft.fuel_type ORDER BY ft.fuel_type ASC",[$station_id,$date_start,$date_end]);
+
     $datasets['fuel']  = ['title'=>'Fuel Sales Report','headers'=>['Date','Fuel Type','Transactions','Liters Sold','Revenue (PHP)','Variance vs Pump'],'rows'=>$fuel_rows,'map'=>function($r){return [date('M j, Y',strtotime($r['sale_date'])),$r['fuel_type'],$r['txn_count'],number_format($r['total_liters'],2).' L',number_format($r['total_revenue'],2),number_format($r['avg_variance_liters'],4).' L'];}];
+    $datasets['svas']  = ['title'=>'Sales Volume & Amount Report','headers'=>['Fuel Type','Volume Sales (L)','Amount Sales (PHP)'],'rows'=>$svas_rows,'map'=>function($r){return [$r['fuel_type'],number_format($r['total_liters'],2).' L',number_format($r['total_revenue'],2)];}];
     $datasets['merch'] = ['title'=>'Merchandise Sales Report','headers'=>['Date','Transactions','Qty Sold','Revenue (PHP)','Cash','Card','E-Wallet','E-Fuel Card','Credit'],'rows'=>$merch_rows,'map'=>function($r){return [date('M j, Y',strtotime($r['sale_date'])),$r['txn_count'],$r['total_quantity'],number_format($r['total_revenue'],2),number_format($r['pay_cash'],2),number_format($r['pay_card'],2),number_format($r['pay_ewallet'],2),number_format($r['pay_efuel'],2),number_format($r['pay_credit'],2)];}];
 }
 
 if ($section === 'job_orders') {
-    $jo_rows = q($pdo,"SELECT COALESCE(jo.job_order_id,jo.job_order_number,CONCAT('JO-',jo.id)) AS jo_ref,
+    $jo_query = "SELECT COALESCE(jo.job_order_id,jo.job_order_number,CONCAT('JO-',jo.id)) AS jo_ref,
         COALESCE(jo.customer_name,c.name,'Walk-in') AS customer,
         COALESCE(jo.vehicle_plate,'') AS vehicle_plate, COALESCE(jo.vehicle_type,'') AS vehicle_type,
         COALESCE(jo.service_type,jo.service_description,'') AS service_type,
@@ -84,9 +93,15 @@ if ($section === 'job_orders') {
         COALESCE(jo.total_cost,jo.estimated_cost,0) AS total_cost,
         COALESCE(jo.amount_paid,0) AS amount_paid, COALESCE(jo.payment_method,'') AS payment_method, jo.created_at
         FROM job_orders jo LEFT JOIN customers c ON c.id=jo.customer_id
-        LEFT JOIN users staff ON staff.id=jo.created_by LEFT JOIN users mech ON mech.id=jo.assigned_mechanic_id
-        WHERE jo.station_id=? AND DATE(jo.created_at) BETWEEN ? AND ? ORDER BY jo.created_at DESC",
+        LEFT JOIN users staff ON staff.id=jo.created_by LEFT JOIN users mech ON mech.id=jo.assigned_mechanic_id";
+        
+    $jo_rows = q($pdo,"$jo_query WHERE jo.station_id=? AND DATE(jo.created_at) BETWEEN ? AND ? ORDER BY jo.created_at DESC",
         [$station_id,$date_start,$date_end]);
+        
+    if (empty($jo_rows)) {
+        $jo_rows = q($pdo,"$jo_query WHERE jo.station_id=? ORDER BY jo.created_at DESC LIMIT 50", [$station_id]);
+    }
+    
     $datasets['jo'] = ['title'=>'Job Orders Report','headers'=>['JO Reference','Customer','Vehicle Plate','Vehicle Type','Service Type','Staff','Mechanic','Validation Status','JO Status','Labor Cost','Parts Cost','Total Cost','Amount Paid','Payment Method','Date'],'rows'=>$jo_rows,'map'=>function($r){return [$r['jo_ref'],$r['customer'],$r['vehicle_plate'],$r['vehicle_type'],$r['service_type'],$r['assigned_staff'],$r['mechanic'],$r['validation_status'],$r['jo_status'],number_format($r['labor_cost'],2),number_format($r['parts_cost'],2),number_format($r['total_cost'],2),number_format($r['amount_paid'],2),$r['payment_method'],date('M j, Y',strtotime($r['created_at']))];}];
 }
 
@@ -175,6 +190,88 @@ if ($section === 'validation') {
     $datasets['val'] = ['title'=>'Validation Logs','headers'=>['Date & Time','Manager','Role','Action','Details','IP Address','Module','Record ID'],'rows'=>$val_rows,'map'=>function($r){return [date('M j, Y g:i A',strtotime($r['date_time'])),$r['manager_name'],ucfirst($r['role']),$r['action'],$r['details'],$r['ip_address'],$r['module_name']?:'—',$r['record_id']?:'—'];}];
 }
 
+if ($section === 'audit_trail') {
+    $manager_id = $me['id'];
+    $jo_val = []; $mt_val = []; $dv_val = [];
+    
+    try {
+        $s = $pdo->prepare("SELECT jo.validated_at AS date_time, jo.validated_by AS manager_id, COALESCE(jo.validation_status, 'Validated') AS action, COALESCE(jo.job_order_id, jo.job_order_number, CONCAT('JO-',jo.id)) AS reference_id, COALESCE(jo.adjustment_reason, jo.admin_remarks, '') AS reason FROM job_orders jo WHERE jo.station_id = ? AND jo.validated_by = ? AND jo.validated_at IS NOT NULL AND DATE(jo.validated_at) BETWEEN ? AND ?");
+        $s->execute([$station_id, $manager_id, $date_start, $date_end]);
+        $jo_val = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (Exception $e) {}
+
+    try {
+        $s = $pdo->prepare("SELECT mt.validated_at AS date_time, mt.validated_by AS manager_id, COALESCE(mt.validation_status, 'Validated') AS action, mt.transaction_id AS reference_id, COALESCE(mt.rejection_reason, mt.adjustment_reason, '') AS reason FROM merchandise_transactions mt WHERE mt.station_id = ? AND mt.validated_by = ? AND mt.validated_at IS NOT NULL AND mt.validation_status IN ('Approved','Rejected','Adjusted') AND DATE(mt.validated_at) BETWEEN ? AND ?");
+        $s->execute([$station_id, $manager_id, $date_start, $date_end]);
+        $mt_val = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (Exception $e) {}
+
+    try {
+        $s = $pdo->prepare("SELECT d.admin_action_at AS date_time, d.admin_id AS manager_id, d.status AS action, COALESCE(d.delivery_ref, CONCAT('DEL-', d.id)) AS reference_id, COALESCE(d.admin_notes, d.remarks, '') AS reason FROM deliveries_oversight d WHERE d.station_id = ? AND d.admin_id = ? AND d.admin_action_at IS NOT NULL AND DATE(d.admin_action_at) BETWEEN ? AND ?");
+        $s->execute([$station_id, $manager_id, $date_start, $date_end]);
+        $dv_val = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (Exception $e) {}
+
+    $all_logs = array_merge($jo_val, $mt_val, $dv_val);
+    usort($all_logs, function($a, $b) {
+        return strtotime($b['date_time']) - strtotime($a['date_time']);
+    });
+
+    $datasets['audit_trail'] = [
+        'title' => 'Audit Trail (Manager Validation Logs)',
+        'headers' => ['Transaction ID', 'Manager ID', 'Action', 'Remarks / Reason', 'Timestamp'],
+        'rows' => $all_logs,
+        'map' => function($r) {
+            return [
+                $r['reference_id'],
+                $r['manager_id'],
+                $r['action'],
+                $r['reason'] ?: '—',
+                date('M j, Y g:i A', strtotime($r['date_time']))
+            ];
+        }
+    ];
+}
+if ($section === 'variance') {
+    $variance_rows = q($pdo,"SELECT v.*, u.name as staff_name FROM fuel_variance_reports v LEFT JOIN users u ON u.id = v.staff_id WHERE v.station_id = ? AND DATE(v.report_date) BETWEEN ? AND ? ORDER BY v.report_date DESC", [$station_id, $date_start, $date_end]);
+    if (empty($variance_rows)) {
+        $variance_rows = q($pdo,"SELECT v.*, u.name as staff_name FROM fuel_variance_reports v LEFT JOIN users u ON u.id = v.staff_id WHERE v.station_id = ? ORDER BY v.report_date DESC LIMIT 50", [$station_id]);
+    }
+    $datasets['variance'] = ['title'=>'Variance Reports','headers'=>['Report Date','Fuel Type','System Liters','Pump Liters','Variance Liters','Staff Name','Status'],'rows'=>$variance_rows,'map'=>function($r){return [date('M j, Y',strtotime($r['report_date'])),$r['fuel_type'],number_format($r['system_liters'],2).' L',number_format($r['pump_liters'],2).' L',number_format($r['variance_liters'],4).' L',$r['staff_name']?:'—',$r['status']];}];
+}
+
+if ($section === 'meter_readings') {
+    $meter_rows = q($pdo,"SELECT m.*, u.name as staff_name FROM fuel_pump_readings m LEFT JOIN users u ON u.id = m.user_id WHERE m.station_id = ? AND m.status = 'Approved' AND DATE(m.reading_time) BETWEEN ? AND ? ORDER BY m.reading_time DESC", [$station_id, $date_start, $date_end]);
+    if (empty($meter_rows)) {
+        $meter_rows = q($pdo,"SELECT m.*, u.name as staff_name FROM fuel_pump_readings m LEFT JOIN users u ON u.id = m.user_id WHERE m.station_id = ? AND m.status = 'Approved' ORDER BY m.reading_time DESC LIMIT 50", [$station_id]);
+    }
+    $datasets['meter'] = ['title'=>'Validated Meter Readings','headers'=>['Date & Time','Pump / Nozzle','Fuel Type','Opening Reading','Closing Reading','Staff'],'rows'=>$meter_rows,'map'=>function($r){return [date('M j, Y H:i',strtotime($r['reading_time'])),'Pump '.$r['pump_number'].' - N'.$r['nozzle_number'],$r['fuel_type'],number_format($r['opening_reading'],2),number_format($r['closing_reading'],2),$r['staff_name']?:'—'];}];
+}
+
+if ($section === 'inventory') {
+    $inventory_rows = q($pdo,"SELECT * FROM fuel_inventory WHERE station_id = ? ORDER BY fuel_type ASC", [$station_id]);
+    $datasets['fuel_inv'] = ['title'=>'Fuel Inventory','headers'=>['Fuel Type','Tank ID','Capacity','Current Level','Fill %'],'rows'=>$inventory_rows,'map'=>function($r){$pct=$r['capacity']>0?($r['current_level']/$r['capacity'])*100:0; return [$r['fuel_type'],$r['tank_id']?:'—',number_format($r['capacity'],2).' L',number_format($r['current_level'],2).' L',number_format($pct,1).'%'];}];
+    
+    $inventory_merch_rows = q($pdo,"SELECT si.*, p.product_name, p.category, p.unit_price FROM station_inventory si JOIN inventory_products p ON si.catalog_product_id = p.id WHERE si.station_id = ? ORDER BY p.product_name ASC", [$station_id]);
+    $datasets['merch_inv'] = ['title'=>'Merchandise Inventory','headers'=>['Product','Category','Unit Price (PHP)','Stock Quantity'],'rows'=>$inventory_merch_rows,'map'=>function($r){return [$r['product_name'],$r['category'],number_format($r['unit_price'],2),$r['stock_quantity']];}];
+}
+
+if ($section === 'price_logs') {
+    $price_log_rows = [];
+    try {
+        $s = $pdo->prepare("SELECT al.action_date AS created_at, al.description AS details, u.name AS user_name FROM audit_log al LEFT JOIN users u ON u.id = al.user_id WHERE al.action_type LIKE '%Price%' AND al.station_id = ? AND DATE(al.action_date) BETWEEN ? AND ? ORDER BY al.action_date DESC");
+        $s->execute([$station_id, $date_start, $date_end]);
+        $price_log_rows = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch(Exception $e) {
+        try {
+            $s = $pdo->prepare("SELECT al.created_at, al.details, u.name AS user_name FROM activity_logs al LEFT JOIN users u ON u.id = al.user_id WHERE al.action LIKE '%Price%' AND DATE(al.created_at) BETWEEN ? AND ? ORDER BY al.created_at DESC");
+            $s->execute([$date_start, $date_end]);
+            $price_log_rows = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch(Exception $e2) {}
+    }
+    $datasets['price_logs'] = ['title'=>'Price Change Logs','headers'=>['Date & Time','User','Details'],'rows'=>$price_log_rows,'map'=>function($r){return [date('M j, Y g:i A',strtotime($r['created_at'])),$r['user_name']?:'System',$r['details']];}];
+}
+
 // ── OUTPUT ────────────────────────────────────────────────────────────────────
 $station_name = '';
 try { $sn=$pdo->prepare("SELECT name FROM stations WHERE id=?"); $sn->execute([$station_id]); $station_name=$sn->fetchColumn()?:''; } catch(Exception $e){}
@@ -195,7 +292,7 @@ if ($format === 'pdf') {
     tr:nth-child(even) td{background:#f8fafc;}
     .empty{color:#9ca3af;font-style:italic;padding:12px;}
     @media print{body{margin:10px;} .no-print{display:none;}}
-    </style></head><body>';
+    </style></head><body onload="window.print()">';
     echo '<div class="no-print" style="margin-bottom:16px;"><button onclick="window.print()" style="background:#00264D;color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-size:13px;">🖨 Print / Save as PDF</button>&nbsp;<a href="javascript:history.back()" style="color:#00264D;font-size:13px;">← Back</a></div>';
     echo '<h1>'.htmlspecialchars($section_label).'</h1>';
     echo '<div class="sub">'.htmlspecialchars($station_name).' &nbsp;|&nbsp; Period: '.$period_label.'</div>';

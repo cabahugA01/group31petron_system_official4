@@ -32,7 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             try {
                 // Get old prices
-                $stmt = $pdo->prepare("SELECT cost, price FROM products WHERE id = ?");
+                $stmt = $pdo->prepare("SELECT unit_cost as cost, unit_price as price FROM inventory_products WHERE id = ?");
                 $stmt->execute([$product_id]);
                 $prod = $stmt->fetch(PDO::FETCH_ASSOC);
                 
@@ -40,12 +40,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $msg = "❌ Product not found.";
                 } else {
                     // APPLY the price changes now that manager approved
-                    $stmt = $pdo->prepare("UPDATE products SET cost = ?, price = ? WHERE id = ?");
+                    $stmt = $pdo->prepare("UPDATE inventory_products SET unit_cost = ?, unit_price = ? WHERE id = ?");
                     $stmt->execute([$new_cost, $new_price, $product_id]);
                     
-                    // Also update station_inventory selling price so POS gets it immediately
-                    $stmt = $pdo->prepare("UPDATE station_inventory SET price = ? WHERE product_id = ? AND station_id = ?");
-                    $stmt->execute([$new_price, $product_id, $station_id]);
+                    // Also update station_inventory selling price so POS gets it immediately (silent fail if table doesn't exist)
+                    try {
+                        $stmt = $pdo->prepare("UPDATE station_inventory SET price = ? WHERE product_id = ? AND station_id = ?");
+                        $stmt->execute([$new_price, $product_id, $station_id]);
+                    } catch (Exception $e) {}
                     
                     log_activity($pdo, $me['id'], 'Approve Price', "APPROVED: Product ID $product_id | Old Cost: {$prod['cost']} → New Cost: $new_cost | Old Price: {$prod['price']} → New Price: $new_price | NOW ACTIVE FOR STAFF");
                     
@@ -89,7 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Fetch all products with their current prices
 $products = [];
 try {
-    $stmt = $pdo->query("SELECT id, name, sku, cost as current_cost, price as current_price FROM products ORDER BY name ASC");
+    $stmt = $pdo->query("SELECT id, product_name as name, sku, unit_cost as current_cost, unit_price as current_price FROM inventory_products ORDER BY product_name ASC");
     $all_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // For each product, extract proposed prices from latest "Propose Price" log
@@ -161,12 +163,14 @@ include __DIR__ . '/../partials/header.php';
   .pm-table th { background:#f1f3f4; font-weight:600; color:#333; border-bottom:2px solid #dee2e6; white-space:nowrap; }
   .pm-table td { vertical-align:middle; padding: 12px; }
   
-  .action-col { display:flex; flex-direction:column; gap:4px; }
-  .action-col .btn { width:100%; font-size:12px; padding:5px 8px; border:none; border-radius:4px; cursor:pointer; display:flex; align-items:center; gap:5px; justify-content:center; transition:all .15s; }
-  .action-col .btn:hover { filter:brightness(.9); transform:translateY(-1px); }
-  .btn-approve { background: #10b981; color: white; }
-  .btn-hold { background: #f59e0b; color: white; }
-  .btn-reject { background: #ef4444; color: white; }
+  .action-col { display:flex; flex-direction:column; gap:6px; align-items:center; }
+  .action-col .btn { width:90px; padding:6px 14px; border:none; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer; transition:all .2s; display:inline-flex; align-items:center; justify-content:center; gap:5px; margin:0; }
+  .btn-approve { background:#28a745; color:#fff; }
+  .btn-approve:hover { background:#218838; }
+  .btn-hold { background:#ffc107; color:#212529; }
+  .btn-hold:hover { background:#e0a800; }
+  .btn-reject { background:#dc3545; color:#fff; }
+  .btn-reject:hover { background:#c82333; }
   
   .badge-pending { background: #e0e7ff; color: #4338ca; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; display: inline-block; }
   .badge-hold { background: #fef3c7; color: #b45309; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; display: inline-block; }
@@ -241,7 +245,7 @@ include __DIR__ . '/../partials/header.php';
               </td>
               <td style="text-align: center; vertical-align: middle;">
                 <div class="action-col">
-                  <form method="post" style="width: 100%; margin: 0;">
+                  <form method="post" style="margin: 0; display:flex; justify-content:center; width:100%;">
                     <input type="hidden" name="action" value="approve_price">
                     <input type="hidden" name="product_id" value="<?php echo $p['id']; ?>">
                     <input type="hidden" name="new_cost" value="<?php echo $p['proposed_cost']; ?>">

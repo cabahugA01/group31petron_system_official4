@@ -48,73 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    if ($action === 'export_variance') {
-        header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename=variance_reports_' . date('Y-m-d') . '.csv');
-        $output = fopen('php://output', 'w');
-        
-        // Add formula instructions at the top
-        fputcsv($output, ['VARIANCE ALERTS EXPORT - WITH FORMULAS']);
-        fputcsv($output, ['INSTRUCTIONS:']);
-        fputcsv($output, ['Total Column → =Qty * UnitPrice (auto-compute per row)']);
-        fputcsv($output, ['Grand Total → =SUM(TotalColumn) (auto-sum all transactions)']);
-        fputcsv($output, ['Count Pending/Verified/Returned → =COUNTIF(StatusRange,"Pending") and similar formulas']);
-        fputcsv($output, ['Variance Check (optional) → =ActualReading - EncodedQty (for variance data)']);
-        fputcsv($output, []);
-        
-        // Main data headers
-        fputcsv($output, ['Alert ID', 'Transaction Type', 'Product/SKU', 'Variance Amount', 'Status', 'Staff', 'Date/Time', 'Notes']);
-        
-        $stmt = $pdo->prepare("
-            SELECT
-                va.id,
-                va.transaction_type,
-                va.item_identifier,
-                va.variance_amount,
-                va.status,
-                u.name as staff_name,
-                va.created_at,
-                va.investigation_notes
-            FROM variance_alerts va
-            LEFT JOIN users u ON va.user_id = u.id
-            WHERE va.station_id = ?
-              AND va.transaction_type = 'merchandise'
-            ORDER BY va.created_at DESC
-        ");
-        $stmt->execute([$station_id]);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        $startRow = 7; // Data starts at row 7 (after instructions)
-        $currentRow = $startRow;
-        
-        foreach ($rows as $row) {
-            fputcsv($output, [
-                $row['id'],
-                $row['transaction_type'],
-                $row['item_identifier'],
-                $row['variance_amount'],
-                $row['status'],
-                $row['staff_name'] ?? 'System',
-                $row['created_at'],
-                $row['investigation_notes']
-            ]);
-            $currentRow++;
-        }
-        
-        // Add summary rows with formulas at the end
-        $dataEndRow = $currentRow - 1;
-        fputcsv($output, []);
-        fputcsv($output, ['SUMMARY FORMULAS:']);
-        fputcsv($output, ['Grand Total Variance', '=SUM(D' . $startRow . ':D' . $dataEndRow . ')']);
-        fputcsv($output, ['Count Status:']);
-        fputcsv($output, ['Pending Count', '=COUNTIF(E' . $startRow . ':E' . $dataEndRow . ',"Pending")']);
-        fputcsv($output, ['Investigating Count', '=COUNTIF(E' . $startRow . ':E' . $dataEndRow . ',"Investigating")']);
-        fputcsv($output, ['Resolved Count', '=COUNTIF(E' . $startRow . ':E' . $dataEndRow . ',"Resolved")']);
-        fputcsv($output, ['Escalated Count', '=COUNTIF(E' . $startRow . ':E' . $dataEndRow . ',"Escalated")']);
-        
-        fclose($output);
-        exit;
-    }
+
 }
 
 // Get variance alerts — merchandise AND job orders, DB-driven columns
@@ -183,12 +117,7 @@ include __DIR__ . '/../partials/header.php';
         <div class="sub">Anomaly detection for Merchandise &amp; Job Orders — Qty vs Stock, Price vs Expected</div>
     </div>
     <div class="actions">
-        <form method="POST" style="display:inline;">
-            <input type="hidden" name="action" value="export_variance">
-            <button type="submit" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:#1d6f42;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;" onmouseover="this.style.filter='brightness(.88)'" onmouseout="this.style.filter='none'">
-                <i class="fas fa-file-export"></i> Export Report
-            </button>
-        </form>
+
         <button onclick="location.reload()" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:#002F70;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;" onmouseover="this.style.filter='brightness(.88)'" onmouseout="this.style.filter='none'">
             <i class="fas fa-sync"></i> Refresh
         </button>
@@ -209,29 +138,7 @@ include __DIR__ . '/../partials/header.php';
 </div>
 <?php endif; ?>
 
-<!-- Summary Cards -->
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:18px;">
-    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.05);">
-        <div style="font-size:24px;font-weight:800;color:#002F6C;"><?php echo count($variance_alerts); ?></div>
-        <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.5px;">Total Alerts</div>
-    </div>
-    <div style="background:#fff3cd;border:1px solid #fde68a;border-radius:10px;padding:14px;text-align:center;">
-        <div style="font-size:24px;font-weight:800;color:#92400e;"><?php echo $va_open; ?></div>
-        <div style="font-size:11px;color:#92400e;text-transform:uppercase;letter-spacing:.5px;">Open</div>
-    </div>
-    <div style="background:#dbeafe;border:1px solid #93c5fd;border-radius:10px;padding:14px;text-align:center;">
-        <div style="font-size:24px;font-weight:800;color:#1e40af;"><?php echo $va_investigating; ?></div>
-        <div style="font-size:11px;color:#1e40af;text-transform:uppercase;letter-spacing:.5px;">Investigating</div>
-    </div>
-    <div style="background:#d1fae5;border:1px solid #6ee7b7;border-radius:10px;padding:14px;text-align:center;">
-        <div style="font-size:24px;font-weight:800;color:#065f46;"><?php echo $va_resolved; ?></div>
-        <div style="font-size:11px;color:#065f46;text-transform:uppercase;letter-spacing:.5px;">Resolved</div>
-    </div>
-    <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:14px;text-align:center;">
-        <div style="font-size:24px;font-weight:800;color:#991b1b;"><?php echo $va_escalated; ?></div>
-        <div style="font-size:11px;color:#991b1b;text-transform:uppercase;letter-spacing:.5px;">Escalated</div>
-    </div>
-</div>
+
 
 <!-- Variance Table -->
 <div class="card" style="padding:0;">
@@ -320,16 +227,16 @@ include __DIR__ . '/../partials/header.php';
                     </td>
                     <td>
                         <div class="var-action-btns">
-                            <button class="vab vab-view" onclick="openInvestigateModal(<?php echo $vid; ?>,<?php echo $typeJs; ?>,<?php echo $itemJs; ?>,<?php echo $varJs; ?>,<?php echo $staffJs; ?>,<?php echo $dateJs; ?>,<?php echo $statusJs; ?>,<?php echo $notesJs; ?>,<?php echo $txnIdJs; ?>,<?php echo $shiftJs; ?>,<?php echo $staffIdJs; ?>)">
+                            <button type="button" class="jo-act-btn" style="background:#002F6C;" onclick="openInvestigateModal(<?php echo $vid; ?>,<?php echo $typeJs; ?>,<?php echo $itemJs; ?>,<?php echo $varJs; ?>,<?php echo $staffJs; ?>,<?php echo $dateJs; ?>,<?php echo $statusJs; ?>,<?php echo $notesJs; ?>,<?php echo $txnIdJs; ?>,<?php echo $shiftJs; ?>,<?php echo $staffIdJs; ?>)">
                                 <i class="fas fa-eye"></i> View
                             </button>
                             <?php if (strtolower($v['status'] ?? '') !== 'resolved'): ?>
-                            <button class="vab vab-resolve" onclick="openResolveModal(<?php echo $vid; ?>,<?php echo $notesJs; ?>)">
-                                <i class="fas fa-check-circle"></i> Resolve
+                            <button type="button" class="jo-act-btn" style="background:#28a745;" onclick="openResolveModal(<?php echo $vid; ?>,<?php echo $notesJs; ?>)">
+                                <i class="fas fa-check"></i> Resolve
                             </button>
                             <?php endif; ?>
                             <?php if (strtolower($v['status'] ?? '') !== 'escalated'): ?>
-                            <button class="vab vab-escalate" onclick="openEscalateModal(<?php echo $vid; ?>,<?php echo $notesJs; ?>)">
+                            <button type="button" class="jo-act-btn" style="background:#dc3545;" onclick="openEscalateModal(<?php echo $vid; ?>,<?php echo $notesJs; ?>)">
                                 <i class="fas fa-arrow-up"></i> Escalate
                             </button>
                             <?php endif; ?>
@@ -567,7 +474,7 @@ function validateEscalate() {
 .table th,.table td{padding:8px 12px;border-bottom:1px solid #eef1f4;text-align:center;}
 .table th{font-weight:700;background:#f8f9fa;color:#2c3e50;}
 
-/* ── Variance action buttons — stacked, matching product_management.php ── */
+/* ── Variance action buttons ── */
 .var-action-btns {
     display: flex;
     flex-direction: column;
@@ -575,27 +482,9 @@ function validateEscalate() {
     align-items: stretch;
     min-width: 90px;
 }
-.vab {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-    padding: 5px 8px;
-    border: none;
-    border-radius: 5px;
-    font-size: 11px;
-    font-weight: 600;
-    cursor: pointer;
-    white-space: nowrap;
-    width: 100%;
-    transition: filter .15s;
-}
-.vab:hover { filter: brightness(.88); }
-/* Match product_management.php exactly */
-.vab-view    { background: #28a745; color: #fff; }  /* green     — View       */
-.vab-notes   { background: #6c757d; color: #fff; }  /* grey      — Notes      */
-.vab-resolve { background: #002F70; color: #fff; }  /* dark blue — Resolve    */
-.vab-escalate{ background: #E3001F; color: #fff; }  /* petron red — Escalate  */
+.jo-act-btn { padding:5px 10px; border-radius:4px; font-size:12px; font-weight:600; border:none; cursor:pointer; display:inline-flex; align-items:center; gap:4px; color:#fff; width:100%; justify-content:center; margin-bottom: 4px; }
+.jo-act-btn:hover { opacity:.88; }
+
 </style>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

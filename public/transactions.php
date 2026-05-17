@@ -651,69 +651,7 @@ try {
     $_SESSION['jo_query_error'] = $e->getMessage();
 }
 
-// ── Excel Export ──────────────────────────────────────────────────────────────
-if ($do_export === 'excel') {
-    $filename = 'transactions_' . $start . '_to_' . $end . '.xls';
-    header('Content-Type: application/vnd.ms-excel');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
-    header('Pragma: no-cache');
-    header('Expires: 0');
-    echo '<!DOCTYPE html><html><head><meta charset="utf-8">
-    <style>
-        body{font-family:Arial,sans-serif;}
-        table{border-collapse:collapse;width:100%;}
-        th{background:#002F6C;color:#fff;padding:8px;border:1px solid #ccc;font-size:12px;}
-        td{padding:7px 8px;border:1px solid #ddd;font-size:11px;}
-        .hdr{background:#002F6C;color:#fff;font-size:14px;font-weight:bold;padding:10px;text-align:center;}
-        .sub{background:#f0f4ff;font-size:11px;padding:5px 10px;color:#555;}
-        .fuel-row td{background:#fff8f0;}
-        .merch-row td{background:#f0f8ff;}
-        .status-v{color:#155724;font-weight:bold;}
-        .status-p{color:#856404;font-weight:bold;}
-        .status-r{color:#721c24;font-weight:bold;}
-    </style></head><body>';
-    echo '<div class="hdr">PETRON STATION MANAGEMENT SYSTEM</div>';
-    echo '<div class="sub">Fuel &amp; Merchandise Transactions Report &nbsp;|&nbsp; Period: ' . htmlspecialchars($start) . ' to ' . htmlspecialchars($end) . ' &nbsp;|&nbsp; Generated: ' . date('M j, Y H:i A') . '</div>';
-    echo '<br>';
-    echo '<table><thead><tr>
-        <th>#</th><th>Transaction ID</th><th>Product</th>
-        <th>Qty</th><th>Unit Price</th><th>Total</th>
-        <th>Payment</th><th>Customer</th><th>Staff</th><th>Date/Time</th><th>Status</th>
-    </tr></thead><tbody>';
-    $n = 1;
-    foreach ($transactions as $t) {
-        $ns = normalise_status($t['status'] ?? '');
-        if ($ns === 'verified') {
-            $statusLabel = 'Verified'; $statusClass = 'status-v';
-        } elseif ($ns === 'pending') {
-            $statusLabel = 'Pending Validation'; $statusClass = 'status-p';
-        } elseif ($ns === 'returned') {
-            $statusLabel = 'Returned'; $statusClass = 'status-r';
-        } else {
-            $statusLabel = ucfirst($t['status']); $statusClass = '';
-        }
-        echo '<tr>';
-        echo '<td>' . $n++ . '</td>';
-        echo '<td>' . htmlspecialchars($t['txn_ref'] ?? $t['row_id']) . '</td>';
-        echo '<td>' . htmlspecialchars($t['product_name']) . '</td>';
-        echo '<td style="text-align:right">' . number_format($t['quantity'], 2) . '</td>';
-        echo '<td style="text-align:right">&#8369;' . number_format($t['unit_price'], 2) . '</td>';
-        echo '<td style="text-align:right;font-weight:bold">&#8369;' . number_format($t['total'], 2) . '</td>';
-        echo '<td>' . htmlspecialchars($t['payment_method'] ?? '') . '</td>';
-        echo '<td>' . htmlspecialchars($t['customer']) . '</td>';
-        echo '<td>' . htmlspecialchars($t['staff_name']) . '</td>';
-        echo '<td>' . date('M d, Y H:i', strtotime($t['created_at'])) . '</td>';
-        echo '<td class="' . $statusClass . '">' . $statusLabel . '</td>';
-        echo '</tr>';
-    }
-    echo '<tr style="background:#e8f0fe;font-weight:bold;">
-        <td colspan="5" style="text-align:right">GRAND TOTAL</td>
-        <td style="text-align:right">&#8369;' . number_format($grandTotal, 2) . '</td>
-        <td colspan="5">' . count($transactions) . ' transaction(s)</td>
-    </tr>';
-    echo '</tbody></table></body></html>';
-    exit;
-}
+
 
 include __DIR__ . '/../partials/header.php';
 ?>
@@ -736,23 +674,7 @@ include __DIR__ . '/../partials/header.php';
 </div>
 <?php endif; ?>
 
-<!-- ══ TAB BAR ══════════════════════════════════════════════════════════════ -->
-<div class="txn-tab-bar">
-    <a href="?tab=merch&start=<?php echo urlencode($start); ?>&end=<?php echo urlencode($end); ?>"
-       class="txn-tab <?php echo $active_tab !== 'jo' ? 'txn-tab-active' : ''; ?>">
-        <i class="fas fa-shopping-cart"></i> Pending Merchandise/Service Transactions
-        <?php if ($pendingCount > 0): ?>
-        <span class="txn-tab-badge"><?php echo $pendingCount; ?></span>
-        <?php endif; ?>
-    </a>
-    <a href="?tab=jo&start=<?php echo urlencode($start); ?>&end=<?php echo urlencode($end); ?>"
-       class="txn-tab <?php echo $active_tab === 'jo' ? 'txn-tab-active' : ''; ?>">
-        <i class="fas fa-wrench"></i> Job Order Tracker
-        <?php if (($jo_stats['pending'] ?? 0) > 0): ?>
-        <span class="txn-tab-badge"><?php echo (int)$jo_stats['pending']; ?></span>
-        <?php endif; ?>
-    </a>
-</div>
+
 
 <?php if ($active_tab !== 'jo'): ?>
 <?php
@@ -778,12 +700,6 @@ try {
 
     <div class="flt-header">
         <span class="flt-title"><i class="fas fa-filter"></i> Filter Transactions</span>
-        <div class="flt-export-btns">
-            <a href="?<?php echo http_build_query(array_merge($_GET, ['export'=>'excel'])); ?>"
-               class="flt-btn flt-btn-excel">
-                <i class="fas fa-file-excel"></i> Export Excel
-            </a>
-        </div>
     </div>
 
     <form method="get" id="filterForm">
@@ -881,14 +797,7 @@ try {
 
 <!-- Transactions Table -->
 <div class="card" style="padding:0;" id="printableTable">
-    <!-- Summary bar -->
-    <div style="display:flex;gap:12px;flex-wrap:wrap;padding:14px 18px;border-bottom:1px solid #f0f0f0;background:#fafbfc;">
-        <span style="font-size:12px;color:#555;">Total: <strong><?php echo $totalCount; ?></strong></span>
-        <span style="font-size:12px;color:#856404;">🕐 Pending: <strong><?php echo $pendingCount; ?></strong></span>
-        <span style="font-size:12px;color:#155724;">✅ Approved: <strong><?php echo $verifiedCount; ?></strong></span>
-        <span style="font-size:12px;color:#721c24;">↩ Rejected: <strong><?php echo $rejectedCount; ?></strong></span>
-        <span style="margin-left:auto;font-size:13px;font-weight:700;color:#002F6C;">Grand Total: &#8369;<?php echo number_format($grandTotal,2); ?></span>
-    </div>
+    <!-- Summary bar removed -->
     <div class="txn-table-wrap">
         <table class="table txn-table" id="txnTable">
             <thead>
@@ -1028,15 +937,15 @@ try {
                                 <input type="hidden" name="_end" value="<?php echo htmlspecialchars($end); ?>">
                                 <input type="hidden" name="_status" value="<?php echo htmlspecialchars($status_f); ?>">
                                 <input type="hidden" name="_type" value="<?php echo htmlspecialchars($type_f); ?>">
-                                <button type="submit" class="ab ab-approve"><i class="fas fa-check-circle"></i><span class="ab-lbl"> Approve</span></button>
+                                <button type="submit" class="jo-act-btn" style="background:#28a745;"><i class="fas fa-check"></i> Approve</button>
                             </form>
                             <!-- JO: Reject -->
-                            <button class="ab ab-reject" onclick="openJORejectModal(<?php echo $rowId; ?>, '<?php echo htmlspecialchars($t['_source'] ?? 'job_orders'); ?>')">
-                                <i class="fas fa-times-circle"></i><span class="ab-lbl"> Reject</span>
+                            <button type="button" class="jo-act-btn" style="background:#dc3545;" onclick="openJORejectModal(<?php echo $rowId; ?>, '<?php echo htmlspecialchars($t['_source'] ?? 'job_orders'); ?>')">
+                                <i class="fas fa-times"></i> Reject
                             </button>
                             <!-- JO: Adjust -->
-                            <button class="ab ab-adjust" onclick="openJOAdjustModal(<?php echo $rowId; ?>, '<?php echo number_format($t['total'],2); ?>')">
-                                <i class="fas fa-sliders"></i><span class="ab-lbl"> Adjust</span>
+                            <button type="button" class="jo-act-btn" style="background:#002F6C;" onclick="openJOAdjustModal(<?php echo $rowId; ?>, '<?php echo number_format($t['total'],2); ?>')">
+                                <i class="fas fa-sliders"></i> Adjust
                             </button>
                             <?php else: ?>
                             <!-- Merch: Approve -->
@@ -1048,24 +957,24 @@ try {
                                 <input type="hidden" name="_end" value="<?php echo htmlspecialchars($end); ?>">
                                 <input type="hidden" name="_status" value="<?php echo htmlspecialchars($status_f); ?>">
                                 <input type="hidden" name="_type" value="<?php echo htmlspecialchars($type_f); ?>">
-                                <button type="submit" class="ab ab-approve"><i class="fas fa-check-circle"></i><span class="ab-lbl"> Approve</span></button>
+                                <button type="submit" class="jo-act-btn" style="background:#28a745;"><i class="fas fa-check"></i> Approve</button>
                             </form>
                             <!-- Merch: Reject -->
-                            <button class="ab ab-reject" onclick="openRejectModal('<?php echo $rowId; ?>','merchandise')">
-                                <i class="fas fa-undo-alt"></i><span class="ab-lbl"> Reject</span>
+                            <button type="button" class="jo-act-btn" style="background:#dc3545;" onclick="openRejectModal('<?php echo $rowId; ?>','merchandise')">
+                                <i class="fas fa-times"></i> Reject
                             </button>
                             <!-- Merch: Adjust -->
-                            <button class="ab ab-adjust" onclick="openAdjustModal(<?php echo $rowId; ?>, '<?php echo number_format($t['total'],2); ?>')">
-                                <i class="fas fa-sliders"></i><span class="ab-lbl"> Adjust</span>
+                            <button type="button" class="jo-act-btn" style="background:#002F6C;" onclick="openAdjustModal(<?php echo $rowId; ?>, '<?php echo number_format($t['total'],2); ?>')">
+                                <i class="fas fa-sliders"></i> Adjust
                             </button>
                             <?php endif; ?>
                             <?php endif; ?>
 
                             <?php if (!$isJO): ?>
                             <!-- Receipt -->
-                            <button class="ab ab-receipt" title="Print Receipt"
+                            <button type="button" class="jo-act-btn" style="background:#6c757d;" title="Print Receipt"
                                 onclick="window.open('receipt.php?id=<?php echo $receiptId; ?>&type=merchandise','_blank','width=520,height=800,scrollbars=yes')">
-                                <i class="fas fa-receipt"></i><span class="ab-lbl"> Receipt</span>
+                                <i class="fas fa-receipt"></i> Receipt
                             </button>
                             <?php endif; ?>
                         </div>
@@ -1090,28 +999,7 @@ try {
 <?php if ($active_tab === 'jo'): ?>
 <!-- ══ TAB 2: JOB ORDER TRACKER ═════════════════════════════════════════════ -->
 
-<!-- JO Stats Cards -->
-<div class="jo-stat-grid">
-    <?php
-    $jo_stat_items = [
-        ['label'=>'Total',       'val'=>$jo_stats['total'],       'color'=>'#002F6C', 'icon'=>'fa-list'],
-        ['label'=>'Pending',     'val'=>$jo_stats['pending'],     'color'=>'#92400e', 'icon'=>'fa-clock', 'filter'=>'Pending Validation'],
-        ['label'=>'Approved',    'val'=>$jo_stats['approved'],    'color'=>'#065f46', 'icon'=>'fa-check-circle', 'filter'=>'Approved'],
-        ['label'=>'In Progress', 'val'=>$jo_stats['in_progress'], 'color'=>'#1e40af', 'icon'=>'fa-spinner', 'filter'=>'In Progress'],
-        ['label'=>'Completed',   'val'=>$jo_stats['completed'],   'color'=>'#14532d', 'icon'=>'fa-flag-checkered', 'filter'=>'Completed'],
-        ['label'=>'Rejected',    'val'=>$jo_stats['rejected'],    'color'=>'#991b1b', 'icon'=>'fa-times-circle', 'filter'=>'Rejected'],
-    ];
-    foreach ($jo_stat_items as $si):
-        $href = '?tab=jo&jo_status=' . urlencode($si['filter'] ?? '') . '&start=' . urlencode($start) . '&end=' . urlencode($end);
-        $isActive = isset($si['filter']) && $jo_status_filter === $si['filter'];
-    ?>
-    <a href="<?php echo $href; ?>" class="jo-stat-card <?php echo $isActive ? 'active-filter' : ''; ?>">
-        <div class="si" style="color:<?php echo $si['color']; ?>;"><i class="fas <?php echo $si['icon']; ?>"></i></div>
-        <div class="sv" style="color:<?php echo $si['color']; ?>;"><?php echo (int)$si['val']; ?></div>
-        <div class="sl"><?php echo $si['label']; ?></div>
-    </a>
-    <?php endforeach; ?>
-</div>
+<!-- JO Stats Cards Removed -->
 
 <!-- JO Filter + Table -->
 <div class="jo-card">
@@ -1637,45 +1525,7 @@ function escHtml(str) {
 </script>
 
 <style>
-/* ══ TAB BAR ═══════════════════════════════════════════════════════════════════ */
-.txn-tab-bar {
-    display: flex;
-    gap: 0;
-    border-bottom: 2px solid #dee2e6;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-}
-.txn-tab {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 11px 22px;
-    font-size: 13px;
-    font-weight: 600;
-    color: #6c757d;
-    text-decoration: none;
-    border-bottom: 3px solid transparent;
-    margin-bottom: -2px;
-    transition: color .15s, border-color .15s;
-    white-space: nowrap;
-}
-.txn-tab:hover { color: #002F6C; }
-.txn-tab-active {
-    color: #002F6C;
-    border-bottom-color: #002F6C;
-    background: #f8fbff;
-    border-radius: 6px 6px 0 0;
-}
-.txn-tab-badge {
-    background: #dc3545;
-    color: #fff;
-    font-size: 10px;
-    font-weight: 700;
-    padding: 1px 6px;
-    border-radius: 10px;
-    min-width: 18px;
-    text-align: center;
-}
+
 
 /* ══ JO TRACKER STYLES ══════════════════════════════════════════════════════════ */
 .jo-stat-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:20px}
