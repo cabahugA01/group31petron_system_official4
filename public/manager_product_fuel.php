@@ -41,11 +41,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $unit_price  = (float)($_POST['unit_price']  ?? $unit_cost);
         $stock_level = (int)($_POST['stock_level']   ?? 0);
         try {
-            $stmt = $pdo->prepare("UPDATE inventory_products SET product_name=?, unit_cost=?, unit_price=?, stock=? WHERE id=?");
-            $stmt->execute([$name, $unit_cost, $unit_price, $stock_level, $id]);
+            $stmt = $pdo->prepare("SELECT unit_cost, unit_price FROM inventory_products WHERE id=?");
+            $stmt->execute([$id]);
+            $old = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($old && ((float)$old['unit_cost'] != $unit_cost || (float)$old['unit_price'] != $unit_price)) {
+                $stmt = $pdo->prepare("UPDATE inventory_products SET product_name=?, stock=? WHERE id=?");
+                $stmt->execute([$name, $stock_level, $id]);
+                
+                $pdo->prepare("INSERT INTO pending_price_approvals (station_id, product_type, product_id, old_cost, new_cost, old_price, new_price, manager_id, status) VALUES (?, 'fuel', ?, ?, ?, ?, ?, ?, 'pending')")
+                    ->execute([$station_id, $id, $old['unit_cost'], $unit_cost, $old['unit_price'], $unit_price, $me['id']]);
+                
+                $log_msg = "Fuel product '$name' updated. Price change submitted: Cost {$old['unit_cost']}->{$unit_cost}, Price {$old['unit_price']}->{$unit_price} (Pending Approval)";
+                $_SESSION['success'] = "Product details updated. Price change submitted for Admin approval.";
+            } else {
+                $stmt = $pdo->prepare("UPDATE inventory_products SET product_name=?, unit_cost=?, unit_price=?, stock=? WHERE id=?");
+                $stmt->execute([$name, $unit_cost, $unit_price, $stock_level, $id]);
+                $log_msg = "Fuel product '$name' updated";
+                $_SESSION['success'] = "Product '$name' updated.";
+            }
+
             $stmt = $pdo->prepare("INSERT INTO audit_log (station_id, user_id, action, details, created_at) VALUES (?, ?, 'Product Updated', ?, NOW())");
-            $stmt->execute([$station_id, $me['id'], "Fuel product '$name' updated"]);
-            $_SESSION['success'] = "Product '$name' updated.";
+            $stmt->execute([$station_id, $me['id'], $log_msg]);
         } catch (Exception $e) {
             $_SESSION['error'] = 'Error updating: ' . $e->getMessage();
         }
@@ -70,11 +87,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $price_per_liter = (float)($_POST['price_per_liter'] ?? 0);
         $status          = $_POST['fuel_status']          ?? 'Normal';
         try {
-            $stmt = $pdo->prepare("UPDATE fuel_inventory SET price_per_liter=?, status=?, last_updated=NOW(), updated_by=? WHERE id=?");
-            $stmt->execute([$price_per_liter, $status, $me['id'], $id]);
+            $stmt = $pdo->prepare("SELECT price_per_liter FROM fuel_inventory WHERE id=?");
+            $stmt->execute([$id]);
+            $old = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($old && (float)$old['price_per_liter'] != $price_per_liter) {
+                $stmt = $pdo->prepare("UPDATE fuel_inventory SET status=?, last_updated=NOW(), updated_by=? WHERE id=?");
+                $stmt->execute([$status, $me['id'], $id]);
+                
+                $pdo->prepare("INSERT INTO pending_price_approvals (station_id, product_type, product_id, old_cost, new_cost, old_price, new_price, manager_id, status) VALUES (?, 'fuel_inventory', ?, ?, ?, ?, ?, ?, 'pending')")
+                    ->execute([$station_id, $id, $old['price_per_liter'], $price_per_liter, $old['price_per_liter'], $price_per_liter, $me['id']]);
+                
+                $log_msg = "Fuel inventory id=$id updated status=$status. Price change submitted: {$old['price_per_liter']}->{$price_per_liter} (Pending Approval)";
+                $_SESSION['success'] = "Fuel status updated. Price change submitted for Admin approval.";
+            } else {
+                $stmt = $pdo->prepare("UPDATE fuel_inventory SET price_per_liter=?, status=?, last_updated=NOW(), updated_by=? WHERE id=?");
+                $stmt->execute([$price_per_liter, $status, $me['id'], $id]);
+                $log_msg = "Fuel inventory id=$id updated price=₱$price_per_liter status=$status";
+                $_SESSION['success'] = 'Fuel inventory updated.';
+            }
+
             $stmt = $pdo->prepare("INSERT INTO audit_log (station_id, user_id, action, details, created_at) VALUES (?, ?, 'Fuel Updated', ?, NOW())");
-            $stmt->execute([$station_id, $me['id'], "Fuel inventory id=$id updated price=₱$price_per_liter status=$status"]);
-            $_SESSION['success'] = 'Fuel inventory updated.';
+            $stmt->execute([$station_id, $me['id'], $log_msg]);
         } catch (Exception $e) {
             $_SESSION['error'] = 'Error: ' . $e->getMessage();
         }

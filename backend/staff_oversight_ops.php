@@ -186,6 +186,46 @@ class StaffOversightOps {
         $stmt->execute($params);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
+
+    /**
+     * Get flagged items
+     */
+    public function get_flagged_items() {
+        $items = [];
+        // fuel_daily_readings
+        try {
+            $stmt1 = $this->pdo->prepare("SELECT 'Fuel Reading' as type, 'fuel_daily_readings' as `table`, id, user_id as staff_id, created_at as date, manager_notes as note, flagged as status FROM fuel_daily_readings WHERE flagged = 1 AND station_id = ?");
+            $stmt1->execute([$this->station_id]);
+            $items = array_merge($items, $stmt1->fetchAll(PDO::FETCH_ASSOC));
+        } catch(Exception $e) {}
+
+        // job_orders
+        try {
+            $stmt2 = $this->pdo->prepare("SELECT 'Job Order' as type, 'job_orders' as `table`, id, created_by as staff_id, created_at as date, manager_notes as note, flagged as status FROM job_orders WHERE flagged = 1 AND station_id = ?");
+            $stmt2->execute([$this->station_id]);
+            $items = array_merge($items, $stmt2->fetchAll(PDO::FETCH_ASSOC));
+        } catch(Exception $e) {}
+        
+        // shift_reports
+        try {
+            $stmt3 = $this->pdo->prepare("SELECT 'Shift Report' as type, 'shift_reports' as `table`, id, user_id as staff_id, created_at as date, manager_notes as note, flagged as status FROM shift_reports WHERE flagged = 1 AND station_id = ?");
+            $stmt3->execute([$this->station_id]);
+            $items = array_merge($items, $stmt3->fetchAll(PDO::FETCH_ASSOC));
+        } catch(Exception $e) {}
+
+        foreach ($items as &$item) {
+            $u = $this->pdo->prepare("SELECT name FROM users WHERE id = ?");
+            $u->execute([$item['staff_id']]);
+            $item['staff'] = $u->fetchColumn() ?: 'Unknown';
+            $item['status'] = 'Flagged';
+        }
+        
+        usort($items, function($a, $b) {
+            return strtotime($b['date']) - strtotime($a['date']);
+        });
+
+        return $items;
+    }
 }
 
 // API Endpoints (AJAX handler)
@@ -221,6 +261,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             case 'performance':
                 $result = $ops->get_performance_report($_POST['staff_id'] ?? null, $_POST['period'] ?? 'week');
                 echo json_encode(['success' => true, 'data' => $result]);
+                break;
+            case 'get_flagged_items':
+                $result = $ops->get_flagged_items();
+                echo json_encode(['success' => true, 'data' => $result]);
+                break;
+            case 'staff_list':
+                $stmt = $pdo->prepare("SELECT id, name FROM users WHERE station_id = ? AND role IN ('staff', 'cashier', 'mechanic')");
+                $stmt->execute([$station_id]);
+                echo json_encode(['success' => true, 'data' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
                 break;
             default:
                 throw new Exception('Invalid action');

@@ -2237,6 +2237,19 @@ main.main {
                                             onchange="onJoServiceTypeChange()">
                                         <option value="">— Loading… —</option>
                                     </select>
+                                    <!-- Add Service to Cart Button -->
+                                    <button type="button"
+                                            onclick="addServiceFromFormToCart()"
+                                            title="Add Job Order Service to Cart"
+                                            style="flex-shrink:0;width:34px;height:34px;border:1.5px solid #7dd3fc;
+                                                   background:#e0f2fe;border-radius:6px;cursor:pointer;
+                                                   font-size:15px;font-weight:700;color:#0369a1;
+                                                   display:flex;align-items:center;justify-content:center;
+                                                   transition:background .15s,border-color .15s;"
+                                            onmouseover="this.style.background='#bae6fd';this.style.borderColor='#0369a1';"
+                                            onmouseout="this.style.background='#e0f2fe';this.style.borderColor='#7dd3fc';">
+                                        <i class="fas fa-cart-plus"></i>
+                                    </button>
                                     <button type="button"
                                             onclick="openAddServiceModal()"
                                             title="Add a new service type"
@@ -2367,19 +2380,27 @@ main.main {
                             <div class="txn-field">
                                 <label>Product</label>
                                 <div id="productDropdownWrap" style="position:relative;">
-                                    <div style="position:relative;">
-                                        <input type="text" id="productSearch" class="txn-input"
-                                               placeholder="Search by name, SKU, or category…"
-                                               oninput="filterProductDropdown()"
-                                               onfocus="openProductDropdown()"
-                                               autocomplete="off"
-                                               style="padding-right:34px;">
-                                        <span id="productDropdownArrow"
-                                              onclick="toggleProductDropdown()"
-                                              style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
-                                                     cursor:pointer;color:#64748b;font-size:12px;user-select:none;">
-                                            <i class="fas fa-chevron-down" id="productArrowIcon"></i>
-                                        </span>
+                                    <div style="display:flex;gap:6px;align-items:center;">
+                                        <div style="position:relative;flex:1;">
+                                            <input type="text" id="productSearch" class="txn-input"
+                                                   placeholder="Search by name, SKU, or category…"
+                                                   oninput="filterProductDropdown()"
+                                                   onfocus="openProductDropdown()"
+                                                   autocomplete="off"
+                                                   style="padding-right:34px;">
+                                            <span id="productDropdownArrow"
+                                                  onclick="toggleProductDropdown()"
+                                                  style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
+                                                         cursor:pointer;color:#64748b;font-size:12px;user-select:none;">
+                                                <i class="fas fa-chevron-down" id="productArrowIcon"></i>
+                                            </span>
+                                        </div>
+                                        <!-- Add Selected to Cart -->
+                                        <button type="button" onclick="addProductFromFormToCart()" title="Add selected product to cart" style="width:36px;height:36px;background:#e0f2fe;border:1px solid #7dd3fc;border-radius:8px;cursor:pointer;font-size:16px;font-weight:700;color:#0369a1;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                            <i class="fas fa-cart-plus"></i>
+                                        </button>
+                                        <!-- Register brand new product -->
+                                        <button type="button" onclick="openAddProductModal()" title="Add new product to database" style="width:36px;height:36px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;cursor:pointer;font-size:16px;font-weight:700;color:#166534;display:flex;align-items:center;justify-content:center;flex-shrink:0;">+</button>
                                     </div>
                                     <!-- Dropdown list -->
                                     <div id="productDropdownList"
@@ -2417,8 +2438,9 @@ main.main {
                                              data-search="<?= strtolower(htmlspecialchars($p['product_name'].' '.$p['sku'].' '.$p['category'].' '.$p['size'])) ?>"
                                              onclick="selectProduct(this)"
                                              style="padding:8px 14px;cursor:pointer;
-                                                    display:flex;align-items:flex-start;
+                                                    display:flex;align-items:center;
                                                     border-bottom:1px solid #f8fafc;gap:8px;
+                                                    justify-content:space-between;
                                                     <?= $out_of_stock ? 'opacity:.6;' : '' ?>">
                                             <!-- Product name + SKU only -->
                                             <span style="min-width:0;flex:1;">
@@ -2435,6 +2457,10 @@ main.main {
                                                     <?php endif; ?>
                                                 </span>
                                             </span>
+                                            <!-- Right side: Price display -->
+                                            <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+                                                <span style="font-size:12px;font-weight:700;color:var(--petron-blue);">₱<?= number_format((float)$p['unit_price'], 2) ?></span>
+                                            </div>
                                         </div>
                                         <?php endforeach; ?>
                                         <?php endif; ?>
@@ -3261,7 +3287,7 @@ main.main {
                     const opt = document.createElement('option');
                     opt.value       = t.name;
                     opt.textContent = t.name;
-                    if (t.name === prev) opt.selected = true;
+                    if (t.name === prev || t.name === prev + ' (Pending Approval)') opt.selected = true;
                     sel.appendChild(opt);
                 });
 
@@ -3367,7 +3393,7 @@ main.main {
                         const opt = document.createElement('option');
                         opt.value       = v.name;
                         opt.textContent = v.name;
-                        if (v.name === prev) opt.selected = true;
+                        if (v.name === prev || v.name === prev + ' (Pending Approval)') opt.selected = true;
                         grp.appendChild(opt);
                     });
                     sel.appendChild(grp);
@@ -3482,6 +3508,85 @@ main.main {
             renderCart();
             updateCheckoutBtn();
             resetMerchandiseForm();
+        }
+
+        // ── Quick Add selected product directly from dropdown list option ───
+        function quickAddProductToCart(productId) {
+            const opt = document.querySelector(`#productSelect option[value="${productId}"]`);
+            if (!opt) return;
+
+            const name = opt.getAttribute('data-name');
+            const sku = opt.getAttribute('data-sku');
+            const cat = opt.getAttribute('data-cat');
+            const size = opt.getAttribute('data-size');
+            const price = parseFloat(opt.getAttribute('data-price') || 0);
+            const stock = parseInt(opt.getAttribute('data-stock') || 0);
+
+            if (stock <= 0) {
+                showTxnAlert('This product is out of stock.', 'warning');
+                return;
+            }
+
+            const pid = String(productId);
+            const existing = cart.find(i => i.item_type === 'merchandise' && String(i.product_id) === pid);
+            if (existing) {
+                const newQty = existing.quantity + 1;
+                if (newQty > stock) {
+                    showTxnAlert(`Cannot add more — only ${stock} unit(s) available in stock.`, 'warning');
+                    return;
+                }
+                existing.quantity = newQty;
+            } else {
+                cart.push({
+                    item_type:    'merchandise',
+                    product_id:   productId,
+                    product_name: name,
+                    category:     cat,
+                    size_variant: size || '',
+                    quantity:     1,
+                    unit_price:   price,
+                    stock_level:  stock
+                });
+            }
+
+            renderCart();
+            updateCheckoutBtn();
+            showTxnAlert(`"${name}" added to cart!`, 'success');
+        }
+
+        // ── Add currently selected product in merchandise form to cart ──────
+        function addProductFromFormToCart() {
+            if (!selectedProduct) {
+                showTxnAlert('Please select a product from the dropdown first.', 'warning');
+                return;
+            }
+            addToCart();
+        }
+
+        // ── Add currently configured Job Order service to cart ───────────────
+        async function addServiceFromFormToCart() {
+            const svcType      = (document.getElementById('joServiceType')?.value || '').trim();
+            const svcPrice     = parseFloat(document.getElementById('joServicePrice')?.value || 0);
+            const vehiclePlate = (document.getElementById('joVehiclePlate')?.value || '').trim();
+            const vehicleType  = (document.getElementById('joVehicleType')?.value || '').trim();
+
+            if (!svcType) {
+                showTxnAlert('Please select a service type first.', 'warning');
+                return;
+            }
+            if (svcPrice <= 0 || isNaN(svcPrice)) {
+                showTxnAlert('Please enter a service fee greater than ₱0.', 'warning');
+                return;
+            }
+            if (!vehiclePlate) {
+                showTxnAlert('Please enter the vehicle plate number first.', 'warning');
+                const plateInput = document.getElementById('joVehiclePlate');
+                if (plateInput) plateInput.focus();
+                return;
+            }
+
+            // Run standard Job Order cart addition logic (includes auto-adding mapped parts)
+            await applyJobOrderToCart();
         }
 
         // ── Combined: add service (from Job Order) + merchandise to cart ─────

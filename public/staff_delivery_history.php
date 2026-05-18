@@ -13,8 +13,16 @@ if (!in_array($role, ['staff', 'manager', 'admin', 'superadmin'])) {
     exit;
 }
 
-$msg      = '';
-$msg_type = 'success';
+/* ── Flash messages from redirect ── */
+$flash_messages = [
+    'received'     => '&#10003; Delivery received and submitted for Manager Approval. View it below.',
+    'discrepancy'  => '&#9888; Variance detected! Delivery was flagged as Discrepancy. Please review below.',
+    'manual_saved' => '&#10003; Manual delivery saved successfully. Status: Pending Manager Approval.',
+    'resubmitted'  => '&#10003; Delivery resubmitted successfully and is now pending Manager Approval.',
+];
+$msg_key  = trim($_GET['msg'] ?? '');
+$msg      = $flash_messages[$msg_key] ?? '';
+$msg_type = trim($_GET['type'] ?? 'success');
 
 /* ── Filters from GET ── */
 $filter_status   = trim($_GET['status']   ?? '');
@@ -61,14 +69,14 @@ try {
     try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN remarks TEXT DEFAULT NULL"); } catch (Exception $e) {}
     try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN dr_number VARCHAR(100) DEFAULT NULL"); } catch (Exception $e) {}
 
-    $where  = "WHERE do2.station_id = ? AND do2.delivery_type = 'merchandise' AND do2.delivery_date BETWEEN ? AND ?";
+    $where  = "WHERE do2.station_id = ? AND do2.delivery_type = 'merchandise' AND do2.status != 'Expected Delivery' AND do2.delivery_date BETWEEN ? AND ?";
     $params = [$station_id, $filter_start, $filter_end];
 
-    /* Staff sees only their own records */
-    if ($role === 'staff') {
-        $where   .= " AND do2.encoded_by = ?";
-        $params[] = $me['id'];
-    }
+    /* Allow all staff in the station to see the delivery history for that station */
+    // if ($role === 'staff') {
+    //     $where   .= " AND do2.encoded_by = ?";
+    //     $params[] = $me['id'];
+    // }
 
     /* Map filter value to DB values */
     if ($filter_status !== '') {
@@ -196,8 +204,8 @@ include __DIR__ . '/../partials/header.php';
 
 <div class="page-head">
     <div>
-        <h1 class="h1"><i class="fas fa-history"></i> Delivery History</h1>
-        <div class="sub">Merchandise deliveries &mdash; your encoded records</div>
+        <h1 class="h1"><i class="fas fa-history"></i> Merchandise Delivery History</h1>
+        <div class="sub">All merchandise deliveries for this station &mdash; Pending, Approved, Discrepancy, and Closed records.</div>
     </div>
     <div class="header-actions"></div>
 </div>
@@ -212,8 +220,8 @@ include __DIR__ . '/../partials/header.php';
 <!-- Filters + Table -->
 <div class="del-card">
     <div class="del-card-head">
-        <div class="del-card-title"><i class="fas fa-list"></i> My Delivery Records</div>
-        <span style="font-size:12px;color:#6c757d;"><?php echo count($deliveries); ?> record(s)</span>
+        <div class="del-card-title"><i class="fas fa-boxes"></i> Merchandise Delivery Records</div>
+        <span style="font-size:12px;color:#6c757d;"><?php echo count($deliveries); ?> record(s) &mdash; <span style="color:#002F70;font-weight:600;">Merchandise Only</span></span>
     </div>
     <div class="del-card-body">
 

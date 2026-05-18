@@ -7,7 +7,7 @@
  *  - Auto-generated PO Number display
  *  - Status badge (Approved / Pending / Cancelled)
  *  - Date Finalized + Finalized By (Admin)
- *  - Station Name, Address, Supplier (Petron Corporation — fixed)
+ *  - Station Name, Address, Supplier
  *  - Approval Chain / Audit Trail: Staff → Manager → Admin → Supplier
  *  - Order Details Table: #, Product, SKU, Qty, Unit Price, Total Amount
  *  - Subtotal + Total Order Amount (₱ formatted)
@@ -41,6 +41,7 @@ try {
                st.location   AS station_location,
                st.address    AS station_address,
                st.vat_tin    AS station_vat_tin,
+               sup.name      AS supplier_name,
                u.name        AS created_by_name,
                ab.name       AS approved_by_name,
                sr.staff_id,
@@ -52,6 +53,7 @@ try {
                mgr_u.name            AS manager_name
         FROM purchase_orders po
         LEFT JOIN stations st     ON po.station_id  = st.id
+        LEFT JOIN suppliers sup   ON po.supplier_id = sup.id
         LEFT JOIN users u         ON po.created_by  = u.id
         LEFT JOIN users ab        ON po.approved_by = ab.id
         LEFT JOIN stock_requests sr   ON po.request_id = sr.id
@@ -104,6 +106,7 @@ $sr_notes       = htmlspecialchars($po['sr_manager_notes'] ?? $po['notes'] ?? ''
 $vat_tin        = htmlspecialchars($po['station_vat_tin']  ?? '');
 $station_name   = htmlspecialchars($po['station_name']     ?? '—');
 $station_addr   = htmlspecialchars($po['station_address']  ?? $po['station_location'] ?? '');
+$supplier_name  = htmlspecialchars($po['supplier_name']    ?? 'Not Assigned');
 
 // Status display
 $raw_status = $po['status'] ?? 'Approved';
@@ -399,7 +402,7 @@ body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:12px;line-heigh
             <?php endif; ?>
             <div class="info-row">
                 <span class="info-label">Supplier:</span>
-                <span class="info-value"><strong>Petron Corporation</strong></span>
+                <span class="info-value"><strong><?php echo $supplier_name; ?></strong></span>
             </div>
         </div>
 
@@ -447,7 +450,7 @@ body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:12px;line-heigh
             <div class="audit-step step-supplier">
                 <div class="step-name">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-                    Petron Corporation
+                    <?php echo $supplier_name; ?>
                 </div>
                 <div class="step-role">Supplier &mdash; Receives &amp; Arranges Delivery</div>
             </div>
@@ -536,7 +539,7 @@ body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:12px;line-heigh
         <strong>This Purchase Order is official and valid only with authorized signatures.</strong><br>
         Document ID: <?php echo $po_number; ?> &nbsp;&bull;&nbsp;
         Station: <?php echo $station_name; ?> &nbsp;&bull;&nbsp;
-        Supplier: Petron Corporation &nbsp;&bull;&nbsp;
+        Supplier: <?php echo $supplier_name; ?> &nbsp;&bull;&nbsp;
         Generated: <?php echo $printed_date; ?><br>
         <span style="font-size:8px;">
             Printed by: <?php echo htmlspecialchars($me['name']); ?> (<?php echo ucfirst($role); ?>)

@@ -113,10 +113,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['error'] = 'Unit price cannot be less than unit cost.';
         } else {
             try {
-                $pdo->prepare("UPDATE inventory_products SET product_name=?, category=?, sku=?, unit_cost=?, unit_price=?, min_stock=?, max_stock=? WHERE id=?")
-                    ->execute([$name, $category, $sku, $unit_cost, $unit_price, $min_stock, $max_stock, $id]);
-                log_activity($pdo, $me['id'], 'Product Updated', "Merchandise product '$name' (ID:$id) updated by {$me['name']}");
-                $_SESSION['success'] = "Product '$name' updated.";
+                // Check if price or cost changed
+                $stmt = $pdo->prepare("SELECT unit_cost, unit_price FROM inventory_products WHERE id=?");
+                $stmt->execute([$id]);
+                $old = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                if ($old && ((float)$old['unit_cost'] != $unit_cost || (float)$old['unit_price'] != $unit_price)) {
+                    // Update non-pricing fields
+                    $pdo->prepare("UPDATE inventory_products SET product_name=?, category=?, sku=?, min_stock=?, max_stock=? WHERE id=?")
+                        ->execute([$name, $category, $sku, $min_stock, $max_stock, $id]);
+                    
+                    // Insert into pending_price_approvals
+                    $pdo->prepare("INSERT INTO pending_price_approvals (station_id, product_type, product_id, old_cost, new_cost, old_price, new_price, manager_id, status) VALUES (?, 'merchandise', ?, ?, ?, ?, ?, ?, 'pending')")
+                        ->execute([$station_id, $id, $old['unit_cost'], $unit_cost, $old['unit_price'], $unit_price, $me['id']]);
+                    
+                    $_SESSION['success'] = "Product details updated. Price change submitted for Admin approval.";
+                    $log_msg = "Product '$name' updated. Price change submitted: Cost {$old['unit_cost']}->{$unit_cost}, Price {$old['unit_price']}->{$unit_price} (Pending Approval)";
+                } else {
+                    $pdo->prepare("UPDATE inventory_products SET product_name=?, category=?, sku=?, unit_cost=?, unit_price=?, min_stock=?, max_stock=? WHERE id=?")
+                        ->execute([$name, $category, $sku, $unit_cost, $unit_price, $min_stock, $max_stock, $id]);
+                    $_SESSION['success'] = "Product updated.";
+                    $log_msg = "Merchandise product '$name' updated.";
+                }
+                log_activity($pdo, $me['id'], 'Product Updated', $log_msg);
+
             } catch (Exception $e) {
                 $_SESSION['error'] = 'Error updating: ' . $e->getMessage();
             }

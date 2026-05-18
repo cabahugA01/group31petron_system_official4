@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'admin_transactions_oversight';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -108,7 +108,6 @@ if ($active_tab === 'transactions') {
                 {$mt_where}
                 GROUP BY mt.id
                 ORDER BY txn_date DESC
-                LIMIT 500
             ");
             $stmt->execute($mt_params);
             $mt_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -343,28 +342,9 @@ include __DIR__ . '/../partials/header.php';
     </form>
 </div>
 
-<!-- ── Summary Bar ─────────────────────────────────────────────────────────── -->
-<div class="ato-summary-bar">
-    <span>Total Records: <strong><?php echo count($rows); ?></strong></span>
-    <?php if ($active_tab === 'transactions'): ?>
-        <?php foreach ($type_counts as $t => $c): ?>
-        <span class="ato-sum-pill ato-pill-type"><?php echo htmlspecialchars($t); ?>: <strong><?php echo $c; ?></strong></span>
-        <?php endforeach; ?>
-        <span class="ato-sum-sep">|</span>
-    <?php endif; ?>
-    <?php foreach ($status_counts as $s => $c): ?>
-    <span class="ato-sum-pill"><?php echo ucfirst($s); ?>: <strong><?php echo $c; ?></strong></span>
-    <?php endforeach; ?>
-    <span style="margin-left:auto;font-weight:700;color:#002F6C;font-size:14px;">
-        Grand Total: &#8369;<?php echo number_format($total_amount, 2); ?>
-    </span>
-</div>
 
-<!-- ── Read-only notice ─────────────────────────────────────────────────────── -->
-<div class="ato-readonly-notice">
-    <i class="fas fa-lock"></i>
-    <strong>Read-only view.</strong> This panel is for monitoring and transparency only. No encoding or validation actions are available here.
-</div>
+
+
 
 <!-- ── Unified Table ───────────────────────────────────────────────────────── -->
 <div class="card" style="padding:0;">
@@ -468,8 +448,8 @@ include __DIR__ . '/../partials/header.php';
 .ato-pill-type { background:#f3e8ff;color:#6f42c1; }
 .ato-sum-sep { color:#dee2e6;font-size:16px; }
 .ato-readonly-notice { display:flex;align-items:center;gap:10px;padding:10px 16px;background:#fff8e1;border:1px solid #ffe082;border-radius:8px;margin-bottom:14px;font-size:12px;color:#5d4037; }
-.ato-table { width:100%;border-collapse:collapse;font-size:12px;min-width:1000px; }
-.ato-table thead th { background:#f8f9fa;color:#495057;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:9px 10px;border-bottom:2px solid #dee2e6;white-space:nowrap; }
+.ato-table { width:100%;border-collapse:collapse;font-size:12px; }
+.ato-table thead th { background:#f8f9fa;color:#495057;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:9px 10px;border-bottom:2px solid #dee2e6; }
 .ato-table tbody td { padding:8px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle; }
 .ato-table tbody tr:hover td { background:#f8fbff; }
 @media print {
@@ -479,4 +459,110 @@ include __DIR__ . '/../partials/header.php';
 }
 </style>
 
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const tables = document.querySelectorAll('table.ato-table');
+        tables.forEach(table => {
+            const container = table.closest('div');
+            if (!container) return;
+            if (container.nextElementSibling && container.nextElementSibling.classList.contains('pagination-wrapper')) return;
+
+            const tbody = table.querySelector('tbody');
+            if (!tbody) return;
+            
+            // Filter out the empty placeholder row if it exists
+            let rows = Array.from(tbody.querySelectorAll('tr'));
+            if (rows.length === 1 && rows[0].querySelector('.fa-inbox')) return;
+
+            let currentPage = 1;
+            let rowsPerPage = 10;
+            let totalRows = rows.length;
+            let totalPages = Math.ceil(totalRows / rowsPerPage);
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'pagination-wrapper client-side-pagination';
+            wrapper.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; background: #fff; border: 1px solid #EAEAEA; border-radius: 12px; margin-top: 12px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.02); flex-wrap: wrap; gap: 10px;';
+            
+            if (!document.getElementById('client-pagination-style')) {
+                const style = document.createElement('style');
+                style.id = 'client-pagination-style';
+                style.innerHTML = `
+                    .rows-per-page { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #6b7280; }
+                    .rows-per-page select { padding: 6px; border: 1px solid #e5e7eb; border-radius: 4px; outline: none; cursor: pointer; }
+                    .page-info { font-size: 13px; color: #6b7280; }
+                    .pagination-controls { display: flex; align-items: center; gap: 10px; }
+                    .btn-page { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; color: #374151; text-decoration: none; transition: 0.2s; cursor: pointer; }
+                    .btn-page:hover:not(.disabled) { background: #f3f4f6; }
+                    .btn-page.disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+                    .current-page { font-size: 13px; font-weight: 500; color: #111827; }
+                `;
+                document.head.appendChild(style);
+            }
+
+            function renderTable() {
+                tbody.innerHTML = '';
+                const start = (currentPage - 1) * rowsPerPage;
+                const end = start + rowsPerPage;
+                const paginatedRows = rows.slice(start, end);
+                
+                paginatedRows.forEach(row => tbody.appendChild(row));
+                updateControls();
+            }
+
+            function updateControls() {
+                totalPages = Math.ceil(totalRows / rowsPerPage);
+                
+                const start = (currentPage - 1) * rowsPerPage + 1;
+                const end = Math.min(currentPage * rowsPerPage, totalRows);
+                
+                wrapper.innerHTML = `
+                    <div class="rows-per-page">
+                        <label>Rows per page:</label>
+                        <select class="rpp-select">
+                            <option value="10" ${rowsPerPage === 10 ? 'selected' : ''}>10</option>
+                            <option value="25" ${rowsPerPage === 25 ? 'selected' : ''}>25</option>
+                            <option value="50" ${rowsPerPage === 50 ? 'selected' : ''}>50</option>
+                            <option value="100" ${rowsPerPage === 100 ? 'selected' : ''}>100</option>
+                            <option value="${totalRows}" ${rowsPerPage === totalRows ? 'selected' : ''}>All</option>
+                        </select>
+                    </div>
+                    <div class="page-info">
+                        Showing ${totalRows === 0 ? 0 : start} to ${end} of ${totalRows} entries
+                    </div>
+                    <div class="pagination-controls">
+                        <button type="button" class="btn-page prev-btn ${currentPage === 1 ? 'disabled' : ''}"><i class="fa-solid fa-chevron-left"></i></button>
+                        <span class="current-page">Page ${currentPage} of ${Math.max(1, totalPages)}</span>
+                        <button type="button" class="btn-page next-btn ${currentPage === totalPages || totalPages === 0 ? 'disabled' : ''}"><i class="fa-solid fa-chevron-right"></i></button>
+                    </div>
+                `;
+
+                wrapper.querySelector('.rpp-select').addEventListener('change', function(e) {
+                    rowsPerPage = parseInt(e.target.value);
+                    currentPage = 1;
+                    renderTable();
+                });
+
+                wrapper.querySelector('.prev-btn').addEventListener('click', function(e) {
+                    e.preventDefault();
+                    if (currentPage > 1) {
+                        currentPage--;
+                        renderTable();
+                    }
+                });
+
+                wrapper.querySelector('.next-btn').addEventListener('click', function(e) {
+                    e.preventDefault();
+                    if (currentPage < totalPages) {
+                        currentPage++;
+                        renderTable();
+                    }
+                });
+            }
+
+            container.parentNode.insertBefore(wrapper, container.nextSibling);
+            renderTable();
+        });
+    });
+</script>
+<div style="height: 80px;"></div>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

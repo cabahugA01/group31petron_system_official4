@@ -50,7 +50,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         // 1. Add User
         if ($action === 'add_user') {
-            $name           = trim($_POST['name']);
+            $first_name     = trim($_POST['first_name'] ?? '');
+            $last_name      = trim($_POST['last_name'] ?? '');
+            $name           = trim($first_name . ' ' . $last_name);
             $role_key_input = $_POST['role'] ?? '';
             $role           = role_key($role_key_input);
             $phone          = trim($_POST['phone'] ?? '');
@@ -62,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $username = $email;
 
             // Validate required fields
-            if (empty($name))           throw new Exception("Full Name is required.");
+            if (empty($first_name) || empty($last_name)) throw new Exception("First Name and Last Name are required.");
             if (empty($email))          throw new Exception("Email address is required.");
             if (empty($role_key_input)) throw new Exception("Role is required.");
             if (!filter_var($email, FILTER_VALIDATE_EMAIL)) throw new Exception("Invalid email address format.");
@@ -218,7 +220,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // 2. Edit User
         elseif ($action === 'edit_user') {
             $id = $_POST['user_id'];
-            $name = trim($_POST['name']);
+            $first_name = trim($_POST['first_name'] ?? '');
+            $last_name = trim($_POST['last_name'] ?? '');
+            $name = trim($first_name . ' ' . $last_name);
             $role = trim($_POST['role'] ?? 'staff');
             $phone = trim($_POST['phone']);
             $email = trim($_POST['email']);
@@ -448,23 +452,20 @@ include __DIR__ . '/../partials/header.php';
                     <?php endif; ?>
                     <td><span class="badge bg-<?php echo $statusClass; ?>"><?php echo ucfirst($u['status']); ?></span></td>
                     <td>
-                        <div style="display:flex; gap:5px; flex-wrap: wrap; align-items:center;">
+                        <div style="display:flex; flex-direction:column; gap:5px; align-items:flex-end;">
 
                             <?php if ($roleKey === 'manager'): ?>
                                 <!-- Manager: View + Deactivate/Activate only (no Edit, no Reset) -->
-                                <button class="btn btn-sm" onclick="openViewModal(<?php echo htmlspecialchars(json_encode($u)); ?>)" title="View Manager Profile"
-                                    style="background:linear-gradient(135deg,#28a745 0%,#20c997 100%);border:2px solid #28a745;color:#fff;padding:4px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-weight:600;">
+                                <button class="action-btn btn-view" onclick="openViewModal(<?php echo htmlspecialchars(json_encode($u)); ?>)" title="View Manager Profile">
                                     <i class="fas fa-eye"></i> View
                                 </button>
                                 <?php if($u['id'] != $me['id']): ?>
                                     <?php if($u['status'] === 'active'): ?>
-                                        <button class="btn btn-sm" onclick="toggleStatus(<?php echo $u['id']; ?>, 'inactive')" title="Deactivate Manager"
-                                            style="background:linear-gradient(135deg,#dc3545 0%,#c82333 100%);border:2px solid #dc3545;color:#fff;padding:4px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-weight:600;">
-                                            <i class="fas fa-ban"></i> Deactivate
+                                        <button class="action-btn btn-danger" onclick="toggleStatus(<?php echo $u['id']; ?>, 'inactive')" title="Deactivate Manager">
+                                            <i class="fas fa-times"></i> Deactivate
                                         </button>
                                     <?php else: ?>
-                                        <button class="btn btn-sm" onclick="toggleStatus(<?php echo $u['id']; ?>, 'active')" title="Activate Manager"
-                                            style="background:linear-gradient(135deg,#003d7a 0%,#0056b3 100%);border:2px solid #003d7a;color:#fff;padding:4px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-weight:600;">
+                                        <button class="action-btn btn-success" onclick="toggleStatus(<?php echo $u['id']; ?>, 'active')" title="Activate Manager">
                                             <i class="fas fa-check"></i> Activate
                                         </button>
                                     <?php endif; ?>
@@ -472,27 +473,22 @@ include __DIR__ . '/../partials/header.php';
 
                             <?php else: ?>
                                 <!-- Staff: View, Edit, Reset, Deactivate/Activate -->
-                                <button class="btn btn-sm" onclick="openViewModal(<?php echo htmlspecialchars(json_encode($u)); ?>)" title="View Staff Profile"
-                                    style="background:linear-gradient(135deg,#28a745 0%,#20c997 100%);border:2px solid #28a745;color:#fff;padding:4px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-weight:600;">
+                                <button class="action-btn btn-view" onclick="openViewModal(<?php echo htmlspecialchars(json_encode($u)); ?>)" title="View Staff Profile">
                                     <i class="fas fa-eye"></i> View
                                 </button>
-                                <button class="btn btn-sm" onclick="openEditModal(<?php echo htmlspecialchars(json_encode($u)); ?>)" title="Edit Staff"
-                                    style="background:linear-gradient(135deg,#ff9500 0%,#e67e00 100%);border:2px solid #ff9500;color:#fff;padding:4px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-weight:600;">
+                                <button class="action-btn btn-edit" onclick="openEditModal(<?php echo htmlspecialchars(json_encode($u)); ?>)" title="Edit Staff">
                                     <i class="fas fa-edit"></i> Edit
                                 </button>
-                                <button class="btn btn-sm" onclick="openResetModal(<?php echo $u['id']; ?>, '<?php echo htmlspecialchars(addslashes($u['username'])); ?>')" title="Reset Password"
-                                    style="background:linear-gradient(135deg,#003d7a 0%,#0056b3 100%);border:2px solid #003d7a;color:#fff;padding:4px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-weight:600;">
+                                <button class="action-btn btn-reset" onclick="openResetModal(<?php echo $u['id']; ?>, '<?php echo htmlspecialchars(addslashes($u['username'])); ?>')" title="Reset Password">
                                     <i class="fas fa-key"></i> Reset
                                 </button>
                                 <?php if($u['id'] != $me['id']): ?>
                                     <?php if($u['status'] === 'active'): ?>
-                                        <button class="btn btn-sm" onclick="toggleStatus(<?php echo $u['id']; ?>, 'inactive')" title="Deactivate Staff"
-                                            style="background:linear-gradient(135deg,#dc3545 0%,#c82333 100%);border:2px solid #dc3545;color:#fff;padding:4px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-weight:600;">
-                                            <i class="fas fa-ban"></i> Deactivate
+                                        <button class="action-btn btn-danger" onclick="toggleStatus(<?php echo $u['id']; ?>, 'inactive')" title="Deactivate Staff">
+                                            <i class="fas fa-times"></i> Deactivate
                                         </button>
                                     <?php else: ?>
-                                        <button class="btn btn-sm" onclick="toggleStatus(<?php echo $u['id']; ?>, 'active')" title="Activate Staff"
-                                            style="background:linear-gradient(135deg,#003d7a 0%,#0056b3 100%);border:2px solid #003d7a;color:#fff;padding:4px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-weight:600;">
+                                        <button class="action-btn btn-success" onclick="toggleStatus(<?php echo $u['id']; ?>, 'active')" title="Activate Staff">
                                             <i class="fas fa-check"></i> Activate
                                         </button>
                                     <?php endif; ?>
@@ -522,9 +518,15 @@ include __DIR__ . '/../partials/header.php';
             <div class="modal-body">
                 <input type="hidden" name="action" value="add_user">
                 
-                <div class="form-group mb-3">
-                    <label class="lbl">Full Name <span style="color:red;">*</span></label>
-                    <input type="text" name="name" class="inp full" required placeholder="e.g. Juan Dela Cruz">
+                <div class="grid-2 mb-3" style="gap:10px;">
+                    <div class="form-group">
+                        <label class="lbl">First Name <span style="color:red;">*</span></label>
+                        <input type="text" name="first_name" class="inp full" required placeholder="e.g. Juan">
+                    </div>
+                    <div class="form-group">
+                        <label class="lbl">Last Name <span style="color:red;">*</span></label>
+                        <input type="text" name="last_name" class="inp full" required placeholder="e.g. Dela Cruz">
+                    </div>
                 </div>
 
                 <div class="form-group mb-3">
@@ -630,9 +632,15 @@ include __DIR__ . '/../partials/header.php';
                 <input type="hidden" name="action" value="edit_user">
                 <input type="hidden" name="user_id" id="edit_user_id">
                 
-                <div class="form-group mb-3">
-                    <label class="lbl">Full Name</label>
-                    <input type="text" name="name" id="edit_name" class="inp full" required>
+                <div class="grid-2 mb-3" style="gap:10px;">
+                    <div class="form-group">
+                        <label class="lbl">First Name <span style="color:red;">*</span></label>
+                        <input type="text" name="first_name" id="edit_first_name" class="inp full" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="lbl">Last Name <span style="color:red;">*</span></label>
+                        <input type="text" name="last_name" id="edit_last_name" class="inp full" required>
+                    </div>
                 </div>
                 <div class="form-group mb-3">
                     <label class="lbl">Role</label>
@@ -912,7 +920,13 @@ function openAddModal() {
 
 function openEditModal(user) {
     document.getElementById('edit_user_id').value = user.id;
-    document.getElementById('edit_name').value = user.name;
+    
+    let parts = (user.name || '').trim().split(' ');
+    let firstName = parts[0] || '';
+    let lastName = parts.slice(1).join(' ') || '';
+    
+    document.getElementById('edit_first_name').value = firstName;
+    document.getElementById('edit_last_name').value = lastName;
 
     const normalizedRole = (user.role || '').toLowerCase().trim();
     const roleSelect = document.getElementById('user_role_edit');
@@ -1007,22 +1021,28 @@ document.addEventListener('DOMContentLoaded', function () {
     .mb-3 { margin-bottom: 1rem; }
     .mt-3 { margin-top: 1rem; }
     
+    .action-btn { font-size:12px; padding:5px 8px; border:none; border-radius:4px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:5px; transition:all .15s; font-weight:600; width:100px; text-decoration:none; }
+    .action-btn:hover { filter:brightness(.9); transform:translateY(-1px); }
+    .btn-view    { background:#28a745; color:#fff; }
+    .btn-edit    { background:#002F70; color:#fff; }
+    .btn-reset   { background:#ffc107; color:#333; }
+    .btn-danger  { background:#dc3545; color:#fff; }
+    .btn-success { background:#28a745; color:#fff; }
+
     /* Modal improvements - Database-driven configuration */
     #addModal .modal-content,
     #editModal .modal-content,
-    #resetModal .modal-content {
+    #resetModal .modal-content,
+    #viewModal .modal-content {
         max-width: <?php echo UIConfig::getWithUnit('modal_max_width', 'px', '600'); ?>;
         width: min(<?php echo UIConfig::get('modal_max_width', '600'); ?>px, 95vw);
-        max-height: <?php echo UIConfig::getWithUnit('modal_max_height_vh', 'vh', '90'); ?>;
-        display: flex;
-        flex-direction: column;
+        max-height: calc(100vh - 60px) !important;
+        margin: 30px auto !important;
+        overflow-y: auto;
     }
     
     .modal-body {
         padding: <?php echo UIConfig::get('modal_body_padding', '24px 20px'); ?>;
-        overflow-y: auto;
-        flex: 1;
-        max-height: calc(<?php echo UIConfig::get('modal_max_height_vh', '90'); ?>vh - <?php echo UIConfig::get('modal_footer_height_offset', '140'); ?>px);
     }
     
     .form-group {

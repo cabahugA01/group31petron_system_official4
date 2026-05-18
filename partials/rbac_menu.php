@@ -44,8 +44,11 @@ $master_menu = [
         ['id'=>'mgr_cust_validation',   'label'=>'Validation & Oversight',   'href'=>'manager_customers.php?section=validation',    'permissions'=>['approve_transactions','manage_job_orders']],
     ]],
     
-    // Deliveries Management - Staff
-    ['id'=>'staff_deliveries','label'=>'Record Delivery','ico'=>'fas fa-truck-loading','href'=>'staff_record_delivery.php','permissions'=>['manage_inventory','view_inventory','encode_fuel','create_transactions'],'station_specific'=>true],
+    // Deliveries Management - Staff (Merchandise ONLY — Fuel is under Fuel Management)
+    ['id'=>'staff_deliveries','label'=>'Merchandise Deliveries','ico'=>'fas fa-boxes','href'=>'#','permissions'=>['manage_inventory','view_inventory','encode_fuel','create_transactions'],'station_specific'=>true,'sub_items'=>[
+        ['id'=>'staff_record_del', 'label'=>'Record Delivery',        'href'=>'staff_record_delivery.php',  'permissions'=>['manage_inventory','encode_fuel','create_transactions']],
+        ['id'=>'staff_del_manage', 'label'=>'Delivery History',        'href'=>'staff_delivery_history.php', 'permissions'=>['manage_inventory','encode_fuel','create_transactions']],
+    ]],
 
     // Deliveries Management - Manager (Validation & History)
     ['id'=>'manager_deliveries','label'=>'Deliveries Management','ico'=>'fas fa-truck','href'=>'manager_deliveries.php','permissions'=>['approve_transactions','manage_job_orders'],'station_specific'=>true,'sub_items'=>[
@@ -137,7 +140,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
     $filtered_menu = [];
     $user_permissions = get_user_permissions($user_role);
     $staff_hidden_report_items = ['sales_reports', 'inventory_reports', 'customer_reports', 'fuel_variance_report', 'shift_reports', 'profit_loss'];
-    $staff_hidden_parent_items = ['staff', 'users', 'inventory_manager', 'admin_oversight', 'mgr_customers'];
+    $staff_hidden_parent_items = ['staff', 'users', 'inventory_manager', 'admin_oversight', 'mgr_customers', 'manager_deliveries'];
     $staff_hidden_sub_items    = ['job_create'];
     $admin_hidden_parent_items = ['stations', 'transactions', 'job_orders', 'fuel', 'customers', 'mgr_customers', 'inventory', 'inventory_manager', 'purchase_orders'];
     $admin_hidden_sub_items = ['stock_requests']; // Hide staff stock requests from admin
@@ -452,7 +455,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 continue; // Hide Staff's Record Delivery from Manager
             }
 
-            if ($user_role === 'manager' && ($item['id'] ?? '') === 'mgr_deliveries') {
+            if ($user_role === 'manager' && ($item['id'] ?? '') === 'manager_deliveries') {
                 $filtered_item['label'] = 'Deliveries Management';
                 $filtered_item['href'] = 'manager_merchandise_deliveries.php';
                 $filtered_item['sub_items'] = [
@@ -482,15 +485,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 $force_direct_link = false;
             }
 
-            if ($user_role === 'staff' && ($item['id'] ?? '') === 'mgr_deliveries') {
-                $filtered_item['label'] = 'Deliveries Management';
-                $filtered_item['href'] = '#';
-                $filtered_item['sub_items'] = [
-                    ['id'=>'staff_record_delivery',   'label'=>'Record Delivery',    'href'=>'staff_record_delivery.php',   'permissions'=>['manage_inventory']],
-                    ['id'=>'staff_delivery_history',  'label'=>'Delivery History',   'href'=>'staff_delivery_history.php',  'permissions'=>['manage_inventory']],
-                ];
-                $force_direct_link = false;
-            }
+
 
             // Product Management is for Manager only — hide from Staff
             if ($user_role === 'staff' && ($item['id'] ?? '') === 'product_management') {

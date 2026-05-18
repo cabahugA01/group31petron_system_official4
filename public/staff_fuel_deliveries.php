@@ -65,19 +65,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $capStmt->execute([$station_id, $fuel_type]);
                 $capRow = $capStmt->fetch(PDO::FETCH_ASSOC);
 
+                $excess_flagged = false;
+                $original_liters = $delivery_liters;
+                $redirect_info = "";
+
                 if ($capRow && $capRow['capacity'] > 0) {
                     $current  = (float)$capRow['current_level'];
                     $capacity = (float)$capRow['capacity'];
-                    $after    = $current + $delivery_liters;
-                    if ($after > $capacity) {
-                        $available = max(0, $capacity - $current);
-                        throw new Exception(
-                            "Delivery exceeds tank capacity for {$fuel_type}. " .
-                            "Capacity: " . number_format($capacity, 0) . " L, " .
-                            "Current level: " . number_format($current, 0) . " L, " .
-                            "Available space: " . number_format($available, 0) . " L, " .
-                            "You entered: " . number_format($delivery_liters, 0) . " L."
-                        );
+                    $available = max(0, $capacity - $current);
+                    
+                    if ($delivery_liters > $available) {
+                        $excess_flagged = true;
+                        $excess_liters = $delivery_liters - $available;
+                        $delivery_liters = $available; // Encode only what fits
+
+                        // Check other tanks of the same fuel type for available space
+                        try {
+                            $otherStmt = $pdo->prepare("
+                                SELECT id, fuel_type, 
+                                       COALESCE(current_level, current_stock, 0) AS cur,
+                                       COALESCE(capacity, 0) AS cap
+                                FROM fuel_inventory
+                                WHERE station_id = ? 
+                                  AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                                  AND COALESCE(capacity, 0) > COALESCE(current_level, current_stock, 0)
+                            ");
+                            $otherStmt->execute([$station_id, $fuel_type]);
+                            $otherTanks = $otherStmt->fetchAll(PDO::FETCH_ASSOC);
+                            
+                            if (!empty($otherTanks)) {
+                                $tank_infos = [];
+                                foreach ($otherTanks as $ot) {
+                                    $tank_avail = max(0, $ot['cap'] - $ot['cur']);
+                                    if ($tank_avail > 0) {
+                                        $tank_infos[] = "Tank ID {$ot['id']} (Avail: " . number_format($tank_avail, 2) . " L)";
+                                    }
+                                }
+                                if (!empty($tank_infos)) {
+                                    $redirect_info = "Suggested redirect tanks with space: " . implode(', ', $tank_infos);
+                                } else {
+                                    $redirect_info = "No alternative tanks of the same fuel type have available space.";
+                                }
+                            } else {
+                                $redirect_info = "No alternative tanks of the same fuel type have available space.";
+                            }
+                        } catch (Exception $oe) {
+                            $redirect_info = "Error checking alternative tanks.";
+                        }
+
+                        // Build robust excess notes
+                        $excess_note = "[Excess Fuel Capped: " . number_format($excess_liters, 2) . " L of excess not received due to full tank. Original: " . number_format($original_liters, 2) . " L. Available: " . number_format($available, 2) . " L. " . $redirect_info . "]";
+                        $notes = $excess_note . ($notes ? "\n" . $notes : "");
                     }
                 }
 
@@ -99,13 +137,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $delivery_id = $pdo->lastInsertId();
 
                 log_activity($pdo, $me['id'], 'Record Fuel Delivery',
-                    "Recorded delivery: {$delivery_liters}L of {$fuel_type} (Invoice: {$invoice_no})",
+                    "Recorded delivery: {$delivery_liters}L of {$fuel_type} (Invoice: {$invoice_no})" . ($excess_flagged ? " (Excess flagged)" : ""),
                     'fuel_management'
                 );
 
                 $pdo->commit();
 
-                $_SESSION['success'] = "Fuel delivery recorded successfully! Delivery ID: {$delivery_id}. Awaiting manager verification.";
+                if ($excess_flagged) {
+                    $_SESSION['success'] = "Fuel delivery recorded! Capped at available space (" . number_format($delivery_liters, 2) . " L). Excess " . number_format($original_liters - $delivery_liters, 2) . " L has been flagged in notes/remarks. Awaiting manager verification.";
+                } else {
+                    $_SESSION['success'] = "Fuel delivery recorded successfully! Delivery ID: {$delivery_id}. Awaiting manager verification.";
+                }
                 header('Location: staff_fuel_deliveries.php');
                 exit;
 
@@ -117,6 +159,140 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         } else {
             $msg      = "Please fill all required fields.";
             $msg_type = 'error';
+        }
+    }
+
+    // STAFF: Receive Expected Fuel Delivery (from Admin-finalized PO)
+    if ($action === 'receive_fuel_expected') {
+        $del_id       = (int)($_POST['delivery_id'] ?? 0);
+        $actual_liters = (float)($_POST['actual_liters'] ?? 0);
+        $invoice_no   = trim($_POST['invoice_no'] ?? '');
+        $tanker_no    = trim($_POST['tanker_number'] ?? '');
+        $notes        = trim($_POST['notes'] ?? '');
+
+        if ($del_id > 0 && $actual_liters > 0 && $invoice_no) {
+            try {
+                $pdo->beginTransaction();
+
+                $stmt = $pdo->prepare("SELECT * FROM deliveries_oversight WHERE id = ? AND station_id = ? AND status = 'Expected Delivery' AND delivery_type = 'fuel'");
+                $stmt->execute([$del_id, $station_id]);
+                $del = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                if (!$del) throw new Exception('Expected delivery not found or already processed.');
+
+                // ── Capacity check before receiving ──────────────────────────
+                $capStmt = $pdo->prepare("
+                    SELECT COALESCE(current_level, current_stock, 0) AS current_level,
+                           COALESCE(capacity, 0) AS capacity
+                    FROM fuel_inventory
+                    WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                    LIMIT 1
+                ");
+                $capStmt->execute([$station_id, $del['product']]);
+                $capRow = $capStmt->fetch(PDO::FETCH_ASSOC);
+
+                $excess_flagged = false;
+                $original_actual_liters = $actual_liters;
+                $redirect_info = "";
+
+                if ($capRow && $capRow['capacity'] > 0) {
+                    $current  = (float)$capRow['current_level'];
+                    $capacity = (float)$capRow['capacity'];
+                    $available = max(0, $capacity - $current);
+                    
+                    if ($actual_liters > $available) {
+                        $excess_flagged = true;
+                        $excess_liters = $actual_liters - $available;
+                        $actual_liters = $available; // Capped at available space
+
+                        // Check other tanks of the same fuel type for available space
+                        try {
+                            $otherStmt = $pdo->prepare("
+                                SELECT id, fuel_type, 
+                                       COALESCE(current_level, current_stock, 0) AS cur,
+                                       COALESCE(capacity, 0) AS cap
+                                FROM fuel_inventory
+                                WHERE station_id = ? 
+                                  AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                                  AND COALESCE(capacity, 0) > COALESCE(current_level, current_stock, 0)
+                            ");
+                            $otherStmt->execute([$station_id, $del['product']]);
+                            $otherTanks = $otherStmt->fetchAll(PDO::FETCH_ASSOC);
+                            
+                            if (!empty($otherTanks)) {
+                                $tank_infos = [];
+                                foreach ($otherTanks as $ot) {
+                                    $tank_avail = max(0, $ot['cap'] - $ot['cur']);
+                                    if ($tank_avail > 0) {
+                                        $tank_infos[] = "Tank ID {$ot['id']} (Avail: " . number_format($tank_avail, 2) . " L)";
+                                    }
+                                }
+                                if (!empty($tank_infos)) {
+                                    $redirect_info = "Suggested redirect tanks with space: " . implode(', ', $tank_infos);
+                                } else {
+                                    $redirect_info = "No alternative tanks of the same fuel type have available space.";
+                                }
+                            } else {
+                                $redirect_info = "No alternative tanks of the same fuel type have available space.";
+                            }
+                        } catch (Exception $oe) {
+                            $redirect_info = "Error checking alternative tanks.";
+                        }
+
+                        // Build robust excess notes
+                        $excess_note = "[Excess Fuel Capped: " . number_format($excess_liters, 2) . " L of excess not received in this tank due to full tank. Original input: " . number_format($original_actual_liters, 2) . " L. Available Space: " . number_format($available, 2) . " L. " . $redirect_info . "]";
+                        $notes = $excess_note . ($notes ? "\n" . $notes : "");
+                    }
+                }
+
+                $expected_liters = (float)$del['quantity'];
+                // We use the original_actual_liters or capped actual_liters?
+                // Capped actual_liters is what we commit, but we flag variance against the PO expected amount!
+                $diff = abs($actual_liters - $expected_liters);
+                $new_status  = ($diff > 0.001 || $excess_flagged) ? 'Discrepancy' : 'Pending Manager Approval';
+                $admin_notes = ($diff > 0.001 || $excess_flagged)
+                    ? "System Flag: PO expected " . number_format($expected_liters, 2) . " L, but received " . number_format($actual_liters, 2) . " L." . ($excess_flagged ? " (Capped due to full tank. Excess: " . number_format($original_actual_liters - $actual_liters, 2) . " L)" : " Variance: " . number_format($actual_liters - $expected_liters, 2) . " L.")
+                    : null;
+
+                $pdo->prepare("
+                    UPDATE deliveries_oversight
+                    SET quantity = ?, dr_number = ?, remarks = ?, encoded_by = ?,
+                        status = ?, admin_notes = ?, delivery_date = CURDATE(), updated_at = NOW()
+                    WHERE id = ?
+                ")->execute([$actual_liters, $invoice_no, ($tanker_no ? 'Tanker: '.$tanker_no.'. '.$notes : $notes), $me['id'], $new_status, $admin_notes, $del_id]);
+
+                // Also insert into fuel_deliveries table for the existing delivery records view
+                $pdo->prepare("
+                    INSERT INTO fuel_deliveries
+                        (station_id, delivery_date, fuel_type, supplier, invoice_no,
+                         delivery_liters, tanker_number, received_by, notes, status, created_at)
+                    VALUES (?, CURDATE(), ?, ?, ?, ?, ?, ?, ?, 'Pending', NOW())
+                ")->execute([
+                    $station_id, $del['product'], $del['supplier'],
+                    $invoice_no, $actual_liters, $tanker_no, $me['id'], $notes
+                ]);
+
+                log_activity($pdo, $me['id'], 'Staff Received Fuel PO Delivery',
+                    "PO: {$del['source_ref']} | Fuel: {$del['product']} | Expected: {$expected_liters}L | Actual: {$actual_liters}L",
+                    'fuel_management'
+                );
+
+                $pdo->commit();
+
+                if ($new_status === 'Discrepancy') {
+                    $_SESSION['error'] = "&#9888; Variance detected! Expected " . number_format($expected_liters, 2) . "L but recorded " . number_format($actual_liters, 2) . "L. Flagged for Manager review.";
+                } else {
+                    $_SESSION['success'] = "&#10003; Fuel delivery received and matches PO. Pending Manager Approval.";
+                }
+                header('Location: staff_fuel_deliveries.php');
+                exit;
+
+            } catch (Exception $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                $msg = $e->getMessage(); $msg_type = 'error';
+            }
+        } else {
+            $msg = 'Please fill all required fields (Actual Liters and Invoice No.).'; $msg_type = 'error';
         }
     }
 }
@@ -263,6 +439,18 @@ $summary_liters  = array_sum(array_column($recent_deliveries, 'delivery_liters')
 $summary_count   = count($recent_deliveries);
 $pending_count   = count(array_filter($recent_deliveries, fn($d) => in_array(strtolower($d['status'] ?? ''), ['pending','pending review'])));
 $verified_count  = count(array_filter($recent_deliveries, fn($d) => strtolower($d['status'] ?? '') === 'verified'));
+
+// Fetch expected fuel deliveries from Admin-finalized POs
+$expected_fuel_deliveries = [];
+try {
+    $stmt = $pdo->prepare("
+        SELECT * FROM deliveries_oversight
+        WHERE station_id = ? AND delivery_type = 'fuel' AND status = 'Expected Delivery'
+        ORDER BY created_at ASC
+    ");
+    $stmt->execute([$station_id]);
+    $expected_fuel_deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
 
 require_once __DIR__ . '/../partials/header.php';
 ?>
@@ -478,6 +666,21 @@ require_once __DIR__ . '/../partials/header.php';
 
 .empty-state { text-align: center; padding: 36px; color: #6c757d; }
 .empty-state i { font-size: 2.5rem; margin-bottom: 12px; opacity: .45; display: block; }
+
+/* ── Expected Deliveries Card (matches merchandise style) ── */
+.exp-card { background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.06); border: 1px solid #e9ecef; margin-bottom: 20px; }
+.exp-card-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #e9ecef; }
+.exp-card-title { font-size: 1rem; font-weight: 700; color: #002F70; display: flex; align-items: center; gap: 8px; }
+.exp-card-body { padding: 20px; }
+.expected-item { background: #f8f9fa; border: 1px solid #e9ecef; border-left: 4px solid #002F6C; border-radius: 8px; padding: 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px; transition: transform .1s, box-shadow .1s; }
+.expected-item:last-child { margin-bottom: 0; }
+.expected-item:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0,0,0,.05); }
+.expected-info h4 { margin: 0 0 4px 0; font-size: 14px; color: #002F6C; }
+.expected-meta { font-size: 12px; color: #6c757d; display: flex; gap: 12px; flex-wrap: wrap; }
+.expected-meta span { display: inline-flex; align-items: center; gap: 4px; }
+.po-badge { background: #e8f4fd; color: #002F6C; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 11px; font-weight: bold; border: 1px solid #b8d4f0; }
+.btn-receive-fuel { background: #28a745; color: #fff; border: none; padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.btn-receive-fuel:hover { background: #218838; }
 </style>
 
 <div class="page-head" data-rendering="php">
@@ -499,6 +702,44 @@ require_once __DIR__ . '/../partials/header.php';
 <?php endif; ?>
 
 
+
+<!-- ═══════════════════════════════════════════════════════════
+     EXPECTED FUEL DELIVERIES (from Admin-finalized POs)
+═══════════════════════════════════════════════════════════ -->
+<?php if (!empty($expected_fuel_deliveries)): ?>
+<div class="exp-card">
+    <div class="exp-card-head">
+        <div class="exp-card-title">
+            <i class="fas fa-clipboard-list"></i> Expected Fuel Deliveries
+            <span style="background:#dc3545;color:#fff;border-radius:10px;padding:2px 8px;font-size:11px;"><?php echo count($expected_fuel_deliveries); ?></span>
+        </div>
+        <span style="font-size:12px;color:#6c757d;">Based on Admin-Finalized POs</span>
+    </div>
+    <div class="exp-card-body">
+        <?php foreach ($expected_fuel_deliveries as $efd): ?>
+        <div class="expected-item">
+            <div class="expected-info">
+                <h4><i class="fas fa-gas-pump" style="margin-right:6px;opacity:.7;"></i><?php echo htmlspecialchars($efd['product']); ?></h4>
+                <div class="expected-meta">
+                    <span><i class="fas fa-hashtag"></i> PO: <span class="po-badge"><?php echo htmlspecialchars($efd['source_ref'] ?? 'N/A'); ?></span></span>
+                    <span><i class="fas fa-tint"></i> Exp: <strong><?php echo number_format((float)$efd['quantity'], 2); ?> L</strong></span>
+                    <span><i class="fas fa-building"></i> <?php echo htmlspecialchars($efd['supplier']); ?></span>
+                </div>
+            </div>
+            <button class="btn-receive-fuel" onclick="openFuelReceiveModal(
+                <?php echo (int)$efd['id']; ?>,
+                '<?php echo addslashes($efd['source_ref'] ?? ''); ?>',
+                '<?php echo addslashes($efd['product']); ?>',
+                '<?php echo addslashes($efd['supplier']); ?>',
+                <?php echo (float)$efd['quantity']; ?>
+            )">
+                <i class="fas fa-hand-holding-box"></i> Receive
+            </button>
+        </div>
+        <?php endforeach; ?>
+    </div>
+</div>
+<?php endif; ?>
 
 <!-- ═══════════════════════════════════════════════════════════
      RECORD NEW DELIVERY — Table format (matches fuel transaction style)
@@ -1185,7 +1426,147 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
     });
+
+    // Move fuel receive modal to body
+    var fm = document.getElementById('fuelReceiveModal');
+    if (fm && fm.parentNode !== document.body) document.body.appendChild(fm);
+});
+
+// ── Fuel Expected Delivery Receive Modal ──
+var _fuelExpected = 0;
+var tankCapacityInfo = <?php echo json_encode($tank_levels); ?>;
+
+function openFuelReceiveModal(id, po, product, supplier, expected) {
+    _fuelExpected = expected;
+    document.getElementById('frec_id').value       = id;
+    document.getElementById('frec_po').value       = po || 'N/A';
+    document.getElementById('frec_product').value  = product;
+    document.getElementById('frec_supplier').value = supplier;
+    document.getElementById('frec_expected').value = expected.toFixed(2) + ' L';
+    document.getElementById('frec_actual').value   = expected.toFixed(2);
+    document.getElementById('frec_invoice').value  = '';
+    document.getElementById('frec_tanker').value   = '';
+    document.getElementById('frec_notes').value    = '';
+    checkFuelVariance();
+    document.getElementById('fuelReceiveModal').style.display = 'flex';
+}
+
+function closeFuelReceiveModal() {
+    document.getElementById('fuelReceiveModal').style.display = 'none';
+}
+
+function checkFuelVariance() {
+    var actual = parseFloat(document.getElementById('frec_actual').value) || 0;
+    var warn   = document.getElementById('fuelVarianceWarn');
+    var product = document.getElementById('frec_product').value.toLowerCase().trim();
+    var overfillWarn = document.getElementById('fuelOverfillWarn');
+    
+    // Variance check
+    if (Math.abs(actual - _fuelExpected) > 0.001) {
+        warn.style.display = 'block';
+    } else {
+        warn.style.display = 'none';
+    }
+
+    // Live Tank Capacity / Overfill validation
+    overfillWarn.style.display = 'none';
+    if (tankCapacityInfo && tankCapacityInfo[product]) {
+        var info = tankCapacityInfo[product];
+        var capacity = parseFloat(info.capacity) || 0;
+        var current = parseFloat(info.current_stock) || 0;
+        var available = Math.max(0, capacity - current);
+        
+        if (actual > available) {
+            document.getElementById('fuelOverfillMsg').innerHTML = 
+                '<strong>&times; Overfill Warning!</strong> Delivery of <strong>' + actual.toLocaleString() + ' L</strong> exceeds remaining tank space of <strong>' + available.toLocaleString() + ' L</strong> (Capacity: ' + capacity.toLocaleString() + ' L, Current level: ' + current.toLocaleString() + ' L).';
+            overfillWarn.style.display = 'block';
+        }
+    }
+}
+
+document.addEventListener('click', function(e) {
+    var modal = document.getElementById('fuelReceiveModal');
+    if (modal && e.target === modal) closeFuelReceiveModal();
 });
 </script>
+
+<!-- ═══════════════ FUEL RECEIVE MODAL ═══════════════ -->
+<div id="fuelReceiveModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:14px;width:520px;max-width:92%;padding:28px;box-shadow:0 24px 80px rgba(0,0,0,.3);animation:mIn .2s ease;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #e9ecef;">
+            <h3 style="margin:0;color:#002F6C;font-size:16px;"><i class="fas fa-gas-pump"></i> Receive Fuel Delivery (PO-Based)</h3>
+            <button onclick="closeFuelReceiveModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#adb5bd;">&times;</button>
+        </div>
+
+        <form method="POST" action="staff_fuel_deliveries.php">
+            <input type="hidden" name="action" value="receive_fuel_expected">
+            <input type="hidden" name="delivery_id" id="frec_id">
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;">PO Number</label>
+                    <input type="text" id="frec_po" readonly style="width:100%;padding:8px 11px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;background:#f8f9fa;box-sizing:border-box;">
+                </div>
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;">Supplier</label>
+                    <input type="text" id="frec_supplier" readonly style="width:100%;padding:8px 11px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;background:#f8f9fa;box-sizing:border-box;">
+                </div>
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <label style="display:block;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;">Fuel Type</label>
+                <input type="text" id="frec_product" readonly style="width:100%;padding:8px 11px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;background:#f8f9fa;font-weight:700;color:#002F6C;box-sizing:border-box;">
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;background:#f0f4ff;padding:14px;border-radius:8px;border:1px solid #c5d3f0;margin-bottom:14px;">
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#002F6C;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;">Expected (PO Liters)</label>
+                    <input type="text" id="frec_expected" readonly style="width:100%;padding:8px 11px;border:1.5px solid #b8d4f0;border-radius:7px;font-size:14px;background:#e8f4fd;color:#002F6C;font-weight:700;box-sizing:border-box;">
+                </div>
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#28a745;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;">Actual Delivered (L) <span style="color:red;">*</span></label>
+                    <input type="number" step="0.01" name="actual_liters" id="frec_actual" required oninput="checkFuelVariance()"
+                           style="width:100%;padding:8px 11px;border:1.5px solid #28a745;border-radius:7px;font-size:14px;font-weight:700;background:#f8fff9;box-sizing:border-box;">
+                </div>
+            </div>
+
+            <div id="fuelVarianceWarn" style="display:none;background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:10px 12px;font-size:12px;color:#856404;margin-bottom:14px;">
+                <i class="fas fa-exclamation-triangle"></i> <strong>Variance Detected!</strong> Actual liters does not match PO quantity. This will be flagged for Manager review.
+            </div>
+
+            <div id="fuelOverfillWarn" style="display:none;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;padding:10px 12px;font-size:12px;color:#991b1b;margin-bottom:14px;">
+                <span id="fuelOverfillMsg"></span>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;">Invoice No. <span style="color:red;">*</span></label>
+                    <input type="text" name="invoice_no" id="frec_invoice" required placeholder="e.g. INV-2024-001"
+                           style="width:100%;padding:8px 11px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;box-sizing:border-box;" oninput="this.value=this.value.toUpperCase()">
+                </div>
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;">Tanker No.</label>
+                    <input type="text" name="tanker_number" id="frec_tanker" placeholder="e.g. TK-001"
+                           style="width:100%;padding:8px 11px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;box-sizing:border-box;" oninput="this.value=this.value.toUpperCase()">
+                </div>
+            </div>
+
+            <div style="margin-bottom:18px;">
+                <label style="display:block;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;">Notes (Optional)</label>
+                <input type="text" name="notes" id="frec_notes" placeholder="Driver, seal no., remarks..."
+                       style="width:100%;padding:8px 11px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;box-sizing:border-box;">
+            </div>
+
+            <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #e9ecef;padding-top:14px;">
+                <button type="button" onclick="closeFuelReceiveModal()"
+                        style="background:#e9ecef;color:#495057;border:none;padding:10px 18px;border-radius:7px;font-weight:600;cursor:pointer;">Cancel</button>
+                <button type="submit"
+                        style="background:#28a745;color:#fff;border:none;padding:10px 22px;border-radius:7px;font-weight:700;cursor:pointer;">
+                    <i class="fas fa-check"></i> Submit Delivery
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
 
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

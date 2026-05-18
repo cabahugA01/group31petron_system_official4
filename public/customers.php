@@ -201,13 +201,34 @@ if ($linkage_customer_id) {
             
             $s = $pdo->prepare("
                 SELECT id, customer_name, total_amount,
-                       $date_col AS txn_date, payment_method, item_sku, quantity
+                       $date_col AS txn_date, payment_method
                 FROM merchandise_transactions
                 WHERE station_id=? AND $mt_cond
                 ORDER BY txn_date DESC
             ");
             $s->execute($mt_params);
             $merch_linked = $s->fetchAll(PDO::FETCH_ASSOC);
+
+            // Compile transaction items and quantity for linkage display
+            foreach ($merch_linked as &$mt) {
+                $mt['item_sku'] = '—';
+                $mt['quantity'] = 0;
+                try {
+                    $is = $pdo->prepare("
+                        SELECT COALESCE(ip.product_name, mti.product_name, 'Item') AS pname, mti.quantity
+                        FROM merchandise_transaction_items mti
+                        LEFT JOIN inventory_products ip ON ip.id = mti.product_id
+                        WHERE mti.transaction_id = ?
+                    ");
+                    $is->execute([$mt['id']]);
+                    $items = $is->fetchAll(PDO::FETCH_ASSOC);
+                    if (!empty($items)) {
+                        $mt['item_sku'] = implode(', ', array_map(fn($i) => $i['pname'] . ' ×' . $i['quantity'], $items));
+                        $mt['quantity'] = array_sum(array_column($items, 'quantity'));
+                    }
+                } catch (Exception $e) {}
+            }
+            unset($mt);
         }
     } catch (Exception $e) {}
 }

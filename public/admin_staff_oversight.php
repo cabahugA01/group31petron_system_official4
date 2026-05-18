@@ -16,6 +16,29 @@ if ((int)$station_id <= 0 && $role === 'admin') {
 }
 ?>
 
+<style>
+    .action-btn { font-size:12px; padding:5px 8px; border:none; border-radius:4px; cursor:pointer; display:inline-flex; align-items:center; gap:5px; transition:all .15s; font-weight:600; text-decoration:none; justify-content:center; width:100px;}
+    .action-btn:hover { filter:brightness(.9); transform:translateY(-1px); }
+    .btn-view    { background:#28a745; color:#fff; }
+    .btn-edit    { background:#002F70; color:#fff; }
+    .btn-reset   { background:#ffc107; color:#333; }
+    .btn-danger  { background:#dc3545; color:#fff; }
+    .btn-success { background:#28a745; color:#fff; }
+    
+    /* Modal scroll fix to prevent bottom from being covered */
+    .modal { align-items: flex-start !important; overflow-y: auto !important; padding: 20px !important; }
+    .modal-content { margin: 30px auto !important; max-height: calc(100vh - 60px) !important; display: flex !important; flex-direction: column !important; }
+    .modal-body { overflow-y: auto !important; }
+    
+    /* Make table header sticky */
+    .table-responsive thead th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background-color: #f8f9fa;
+    }
+</style>
+
 
 <div class="container-fluid">
     <div class="row">
@@ -23,9 +46,6 @@ if ((int)$station_id <= 0 && $role === 'admin') {
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; width: 100%;">
                 <h2 style="margin: 0; text-transform: uppercase;"><i class="fas fa-users-cog me-2"></i>Staff Oversight – Admin View</h2>
                 <div style="display: flex; gap: 10px; margin-left: auto; margin-top: 10px;">
-                    <button class="btn btn-sm" onclick="exportStaffList()" style="background:linear-gradient(135deg,#28a745 0%,#20c997 100%);border:2px solid #28a745;color:#fff;font-weight:600;padding:6px 12px;border-radius:5px;">
-                        <i class="fas fa-file-export"></i> Export Staff List
-                    </button>
                     <button class="btn btn-primary" onclick="loadStaffOversight()" style="font-weight:600;padding:6px 12px;border-radius:5px;">
                         <i class="fas fa-sync-alt"></i> Refresh
                     </button>
@@ -39,7 +59,7 @@ if ((int)$station_id <= 0 && $role === 'admin') {
                     <h5 class="mb-0">Staff Activity & Oversight</h5>
                 </div>
                 <div class="card-body">
-                    <div class="table-responsive">
+                    <div class="table-responsive" style="max-height: calc(100vh - 250px); overflow-y: auto;">
                         <table class="table table-hover table-striped align-middle" id="staffOversightTable">
                             <thead class="table-light">
                                 <tr>
@@ -228,14 +248,14 @@ function loadStaffOversight() {
                         </td>
                         <td class="text-end">
                             <div style="display:flex; flex-direction:column; gap:5px; align-items:flex-end;">
-                                <button class="btn btn-sm" onclick="openEditModal('${staffJson}')" title="Edit Account" style="background:linear-gradient(135deg,#003d7a 0%,#0056b3 100%);border:2px solid #003d7a;color:#fff;padding:4px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-weight:600; text-decoration:none; text-align:center; width:100px;">
+                                <button class="action-btn btn-edit" onclick="openEditModal('${staffJson}')" title="Edit Account">
                                     <i class="fas fa-edit"></i> Edit
                                 </button>
                                 ${staff.account_status === 'active' ? 
-                                    `<button class="btn btn-sm" onclick="openDeactivateModal(${staff.staff_id})" title="Deactivate" style="background:linear-gradient(135deg,#dc3545 0%,#c82333 100%);border:2px solid #dc3545;color:#fff;padding:4px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-weight:600; width:100px;">
-                                        <i class="fas fa-ban"></i> Deactivate
+                                    `<button class="action-btn btn-danger" onclick="openDeactivateModal(${staff.staff_id})" title="Deactivate">
+                                        <i class="fas fa-times"></i> Deactivate
                                     </button>` : 
-                                    `<button class="btn btn-sm" onclick="toggleStatus(${staff.staff_id}, 'active')" title="Activate" style="background:linear-gradient(135deg,#003d7a 0%,#0056b3 100%);border:2px solid #003d7a;color:#fff;padding:4px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-weight:600; width:100px;">
+                                    `<button class="action-btn btn-success" onclick="toggleStatus(${staff.staff_id}, 'active')" title="Activate">
                                         <i class="fas fa-check"></i> Activate
                                     </button>`
                                 }

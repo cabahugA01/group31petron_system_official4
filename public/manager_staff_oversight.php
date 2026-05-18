@@ -6,6 +6,16 @@ $user = current_user();
 $station_id = user_station_id();
 ?>
 
+<style>
+    .action-btn { font-size:12px; padding:5px 8px; border:none; border-radius:4px; cursor:pointer; display:inline-flex; align-items:center; gap:5px; transition:all .15s; font-weight:600; }
+    .action-btn:hover { filter:brightness(.9); transform:translateY(-1px); }
+    .btn-view    { background:#28a745; color:#fff; }
+    .btn-edit    { background:#002F70; color:#fff; }
+    .btn-reset   { background:#ffc107; color:#333; }
+    .btn-danger  { background:#dc3545; color:#fff; }
+    .btn-success { background:#28a745; color:#fff; }
+</style>
+
 <div class="container-fluid">
     <div class="row">
         <div class="col-12">
@@ -56,7 +66,6 @@ $station_id = user_station_id();
                                         <th>Action</th>
                                         <th>Date/Time</th>
                                         <th>Details</th>
-                                        <th>Actions</th>
                                     </tr>
                                 </thead>
                             </table>
@@ -108,7 +117,17 @@ $station_id = user_station_id();
                         </div>
                         <div class="card-body">
                             <canvas id="perfChart" height="400"></canvas>
-                            <table id="perfTable" class="table table-striped mt-3"></table>
+                            <table id="perfTable" class="table table-striped mt-3">
+                                <thead>
+                                    <tr>
+                                        <th>Staff Name</th>
+                                        <th>Completed Job Orders</th>
+                                        <th>Avg JO Amount</th>
+                                        <th>Fuel Readings</th>
+                                        <th>Total Liters Sold</th>
+                                    </tr>
+                                </thead>
+                            </table>
                         </div>
                     </div>
                 </div>
@@ -159,30 +178,17 @@ $(document).ready(function() {
 
 function initTables() {
     logsTable = $('#logsTable').DataTable({
-        ajax: { url: 'ajax_staff_oversight.php?action=get_flagged_logs', dataSrc: 'data' },
+        data: [],
         columns: [
-            { data: 'staff_name' },
+            { data: 'name' },
             { data: 'action' },
             { data: 'created_at', render: (data) => new Date(data).toLocaleString() },
-            { data: 'details' },
-            {
-                data: null,
-                orderable: false,
-                render: (data) => `
-                    <button class="btn btn-warning btn-sm flag-btn" onclick="flagEntry('activity_logs', ${data.id}, 'Suspicious activity')">
-                        <i class="fas fa-flag"></i> Flag
-                    </button>
-                    <button class="btn btn-success btn-sm validate-btn" onclick="validateEntry('activity_logs', ${data.id})">
-                        <i class="fas fa-check"></i> Validate
-                    </button>
-                `
-            }
+            { data: 'details' }
         ]
     });
 
-    // Similar for other tables...
     shiftsTable = $('#shiftsTable').DataTable({
-        ajax: 'ajax_staff_oversight.php?action=shifts',
+        data: [],
         columns: [
             { data: 'pump_number' },
             { data: 'fuel_type' },
@@ -192,8 +198,39 @@ function initTables() {
             {
                 data: null,
                 render: data => `
-                    <button class="btn btn-warning btn-sm" onclick="flagEntry('fuel_daily_readings', ${data.id})">
-                        Flag
+                    <button class="action-btn btn-danger" onclick="flagEntry('fuel_daily_readings', ${data.id}, 'Suspicious Shift')">
+                        <i class="fas fa-times"></i> Flag
+                    </button>
+                `
+            }
+        ]
+    });
+
+    perfTable = $('#perfTable').DataTable({
+        data: [],
+        columns: [
+            { data: 'name' },
+            { data: 'completed' },
+            { data: 'avg_amount', render: data => '₱' + parseFloat(data || 0).toFixed(2) },
+            { data: 'readings' },
+            { data: 'total_liters', render: data => parseFloat(data || 0).toFixed(2) + ' L' }
+        ]
+    });
+
+    flagsTable = $('#flagsTable').DataTable({
+        data: [],
+        columns: [
+            { data: 'type' },
+            { data: 'id' },
+            { data: 'staff' },
+            { data: 'date', render: data => new Date(data).toLocaleString() },
+            { data: 'note' },
+            { data: 'status' },
+            {
+                data: null,
+                render: data => `
+                    <button class="action-btn btn-success validate-btn" onclick="validateEntry('${data.table}', ${data.id})">
+                        <i class="fas fa-check"></i> Validate
                     </button>
                 `
             }
@@ -230,34 +267,47 @@ function loadShifts() {
 }
 
 function loadPerformance() {
-    $.post('backend/manager_reports.php', {
-        action: 'team_performance',
+    $.post('backend/staff_oversight_ops.php', {
+        action: 'performance',
         period: $('#perfPeriod').val()
     }, function(data) {
         if (data.success) {
-            // Chart
-            perfChart?.destroy();
+            if (perfChart) perfChart.destroy();
             const ctx = document.getElementById('perfChart').getContext('2d');
             perfChart = new Chart(ctx, {
                 type: 'bar',
                 data: {
                     labels: data.data.map(row => row.name),
                     datasets: [{
-                        label: 'Total Sales',
-                        data: data.data.map(row => row.total_sales || 0),
+                        label: 'Total Completed Jobs',
+                        data: data.data.map(row => row.completed || 0),
                         backgroundColor: '#3498db'
                     }]
                 }
             });
-            
-            // Table
             perfTable.clear().rows.add(data.data).draw();
         }
     });
 }
 
 function loadFlags() {
-    flagsTable.ajax.reload();
+    $.post('backend/staff_oversight_ops.php', { action: 'get_flagged_items' }, function(data) {
+        if (data.success) {
+            flagsTable.clear().rows.add(data.data).draw();
+        }
+    });
+}
+
+function loadStaffFilter() {
+    $.post('backend/staff_oversight_ops.php', { action: 'staff_list' }, function(data) {
+        if (data.success) {
+            let options = '<option value="">All Staff</option>';
+            data.data.forEach(staff => {
+                options += `<option value="${staff.id}">${staff.name}</option>`;
+            });
+            $('#staffFilter').html(options);
+        }
+    });
 }
 
 function flagEntry(table, id, note) {
@@ -271,8 +321,10 @@ function flagEntry(table, id, note) {
     }, function(data) {
         if (data.success) {
             alert('Flagged!');
-            logsTable.ajax.reload();
-            flagsTable.ajax.reload();
+            loadLogs();
+            loadFlags();
+        } else {
+            alert('Error: ' + data.error);
         }
     });
 }
@@ -286,11 +338,17 @@ function validateEntry(table, id, note = '') {
     }, function(data) {
         if (data.success) {
             alert('Validated!');
-            logsTable.ajax.reload();
-            flagsTable.ajax.reload();
+            loadLogs();
+            loadFlags();
+        } else {
+            alert('Error: ' + data.error);
         }
     });
 }
+
+$('#dateFrom, #dateTo, #staffFilter').on('change', loadLogs);
+$('#shiftType').on('change', loadShifts);
+$('#perfPeriod').on('change', loadPerformance);
 </script>
 
 <?php require_once '../partials/footer.php'; ?>

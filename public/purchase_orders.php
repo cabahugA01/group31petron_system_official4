@@ -22,95 +22,180 @@ $msg     = '';
 $msgType = 'success';
 
 // ── Ensure DB schema is up to date ──────────────────────────────────────────
-try {
-    // Add purchase_request_id to stock_requests if missing
-    $sr_cols = array_column($pdo->query('SHOW COLUMNS FROM stock_requests')->fetchAll(PDO::FETCH_ASSOC), 'Field');
-    if (!in_array('purchase_request_id', $sr_cols)) {
-        $pdo->exec("ALTER TABLE stock_requests ADD COLUMN purchase_request_id VARCHAR(50) NULL DEFAULT NULL");
-    }
-    // Expand stock_requests.status enum
-    $pdo->exec("ALTER TABLE stock_requests MODIFY COLUMN status ENUM('Pending','Approved','Validated','Forwarded to Admin','Approved PO','Rejected') DEFAULT 'Pending'");
-    // Expand purchase_orders.status enum
-    $pdo->exec("ALTER TABLE purchase_orders MODIFY COLUMN status ENUM('Draft','Pending Approval','Approved','Rejected','Pending','Confirmed','Received','Cancelled','Pending Admin Validation','Official','Approved PO') DEFAULT 'Pending Admin Validation'");
-} catch (Exception $ignored) {}
+try { $pdo->exec("ALTER TABLE purchase_orders MODIFY COLUMN status ENUM('Draft','Pending Approval','Approved','Rejected','Pending','Confirmed','Received','Cancelled','Pending Admin Validation','Official','Approved PO') DEFAULT 'Pending Admin Validation'"); } catch (Exception $ignored) {}
+try { $pdo->exec("ALTER TABLE fuel_purchase_orders MODIFY COLUMN status ENUM('Draft','Pending Approval','Approved','Rejected','Pending','Confirmed','Received','Cancelled','Pending Admin Validation','Official','Approved PO') DEFAULT 'Pending Admin Validation'"); } catch (Exception $ignored) {}
+try { $pdo->exec("ALTER TABLE fuel_purchase_orders ADD COLUMN updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP AFTER created_at"); } catch (Exception $ignored) {}
 
-/* ── POST: Admin finalizes PO → Approved PO ── */
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'finalize_po') {
-    $po_id        = (int)($_POST['po_id']            ?? 0);
-    $final_qty    = (float)($_POST['final_quantity']  ?? 0);
-    $final_price  = (float)($_POST['final_unit_price'] ?? 0);
-    $total_amount = round($final_qty * $final_price, 2);
+/* ── POST: Admin finalizes or rejects PO ── */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    $po_id        = (int)($_POST['po_id'] ?? 0);
+    $po_type      = $_POST['po_type'] ?? 'merch';
+    $action       = $_POST['action'];
+    $remarks      = trim($_POST['remarks'] ?? '');
 
-    if ($po_id > 0 && $final_qty > 0 && $final_price >= 0) {
-        try {
-            $stmt_po = $pdo->prepare("SELECT * FROM purchase_orders WHERE id = ?");
-            $stmt_po->execute([$po_id]);
-            $po_record = $stmt_po->fetch(PDO::FETCH_ASSOC);
-            if (!$po_record) throw new Exception('PO not found.');
+    if ($action === 'finalize_po') {
+        $final_qty    = (float)($_POST['final_quantity']  ?? 0);
+        $final_price  = (float)($_POST['final_unit_price'] ?? 0);
+        $total_amount = round($final_qty * $final_price, 2);
 
-            $pdo->beginTransaction();
+        if ($po_id > 0 && $final_qty > 0 && $final_price >= 0) {
+            try {
+                $pdo->beginTransaction();
 
-            // Update PO → Approved PO
-            $pdo->prepare("
-                UPDATE purchase_orders
-                SET status       = 'Approved PO',
-                    quantity     = ?,
-                    unit_price   = ?,
-                    total_amount = ?,
-                    approved_by  = ?,
-                    approved_at  = NOW(),
-                    updated_at   = NOW()
-                WHERE id = ?
-            ")->execute([$final_qty, $final_price, $total_amount, $me['id'], $po_id]);
+                if ($po_type === 'merch') {
+                    $stmt_po = $pdo->prepare("SELECT * FROM purchase_orders WHERE id = ?");
+                    $stmt_po->execute([$po_id]);
+                    $po_record = $stmt_po->fetch(PDO::FETCH_ASSOC);
+                    if (!$po_record) throw new Exception('Merchandise PO not found.');
 
-            // Audit trail + update linked stock request
-            if (!empty($po_record['request_id'])) {
-                $pdo->prepare("
-                    INSERT INTO stock_request_audit
-                        (stock_request_id, action_type, performed_by, performed_by_role,
-                         old_status, new_status, notes)
-                    VALUES (?, 'PO Finalized', ?, ?, 'Forwarded to Admin', 'Approved PO', ?)
-                ")->execute([
-                    $po_record['request_id'], $me['id'], $role,
-                    "Admin finalized PO: {$po_record['po_number']}. Supplier: Petron Corporation. Qty: {$final_qty}, Unit Price: ₱{$final_price}, Total: ₱{$total_amount}. Admin: {$me['name']}"
-                ]);
-                $pdo->prepare("UPDATE stock_requests SET status='Approved PO', updated_at=NOW() WHERE id=?")
-                    ->execute([$po_record['request_id']]);
+                    // Get or create Petron supplier
+                    $sup_id = $pdo->query("SELECT id FROM suppliers WHERE name LIKE '%Petron%' LIMIT 1")->fetchColumn() ?: 0;
+                    if (!$sup_id) {
+                        $pdo->exec("INSERT INTO suppliers (name) VALUES ('Petron Corporation')");
+                        $sup_id = $pdo->lastInsertId();
+                    }
+
+                    // Update PO
+                    $pdo->prepare("
+                        UPDATE purchase_orders
+                        SET status       = 'Approved PO',
+                            quantity     = ?,
+                            unit_price   = ?,
+                            total_amount = ?,
+                            supplier_id  = ?,
+                            remarks      = ?,
+                            approved_by  = ?,
+                            approved_at  = NOW(),
+                            updated_at   = NOW()
+                        WHERE id = ?
+                    ")->execute([$final_qty, $final_price, $total_amount, $sup_id, $remarks, $me['id'], $po_id]);
+
+                    // Sync to deliveries oversight
+                    $batch_id = 'BATCH-' . date('Ymd') . '-001';
+                    $pdo->prepare("
+                        INSERT INTO deliveries_oversight (
+                            delivery_type, delivery_ref, batch_id, supplier, product, quantity, unit,
+                            delivery_date, station_id, status, source_ref, remarks, created_at, updated_at
+                        ) VALUES (
+                            'merchandise', ?, ?, 'Petron Corporation', ?, ?, 'pcs',
+                            CURDATE(), ?, 'Expected Delivery', ?, ?, NOW(), NOW()
+                        )
+                    ")->execute([
+                        'MDR-' . date('Ymd') . '-' . rand(1000, 9999),
+                        $batch_id,
+                        $po_record['product_name'],
+                        $final_qty,
+                        $po_record['station_id'] ?: $station_id,
+                        $po_record['po_number'],
+                        $remarks
+                    ]);
+
+                } else {
+                    $stmt_po = $pdo->prepare("SELECT fpo.*, ft.name as product_name FROM fuel_purchase_orders fpo LEFT JOIN fuel_types ft ON fpo.fuel_type_id = ft.id WHERE fpo.id = ?");
+                    $stmt_po->execute([$po_id]);
+                    $po_record = $stmt_po->fetch(PDO::FETCH_ASSOC);
+                    if (!$po_record) throw new Exception('Fuel PO not found.');
+
+                    $sup_id = $pdo->query("SELECT id FROM suppliers WHERE name LIKE '%Petron%' LIMIT 1")->fetchColumn() ?: 0;
+                    if (!$sup_id) {
+                        $pdo->exec("INSERT INTO suppliers (name) VALUES ('Petron Corporation')");
+                        $sup_id = $pdo->lastInsertId();
+                    }
+
+                    $pdo->prepare("
+                        UPDATE fuel_purchase_orders
+                        SET status       = 'Approved PO',
+                            volume       = ?,
+                            unit_price   = ?,
+                            total_amount = ?,
+                            supplier_id  = ?,
+                            notes        = ?,
+                            updated_at   = NOW()
+                        WHERE id = ?
+                    ")->execute([$final_qty, $final_price, $total_amount, $sup_id, $remarks, $po_id]);
+
+                    // Sync to deliveries oversight
+                    $batch_id = 'BATCH-' . date('Ymd') . '-001';
+                    $pdo->prepare("
+                        INSERT INTO deliveries_oversight (
+                            delivery_type, delivery_ref, batch_id, supplier, product, quantity, unit,
+                            delivery_date, station_id, status, source_ref, remarks, created_at, updated_at
+                        ) VALUES (
+                            'fuel', ?, ?, 'Petron Corporation', ?, ?, 'L',
+                            CURDATE(), ?, 'Expected Delivery', ?, ?, NOW(), NOW()
+                        )
+                    ")->execute([
+                        'FDR-' . date('Ymd') . '-' . rand(1000, 9999),
+                        $batch_id,
+                        $po_record['product_name'],
+                        $final_qty,
+                        $po_record['station_id'] ?: $station_id,
+                        $po_record['po_number'],
+                        $remarks
+                    ]);
+                }
+
+                // Notify staff
+                $stat_id = $po_record['station_id'] ?: $station_id;
+                $staffs = $pdo->prepare("SELECT id FROM users WHERE role IN ('staff','manager') AND station_id=?");
+                $staffs->execute([$stat_id]);
+                foreach ($staffs->fetchAll(PDO::FETCH_COLUMN) as $sid) {
+                    $pdo->prepare("
+                        INSERT INTO notifications (user_id, type, title, message, event_type, severity, source_key, redirect_url)
+                        VALUES (?, 'info', 'Incoming Delivery Expected', ?, 'delivery', 'medium', ?, 'staff_record_delivery.php')
+                    ")->execute([
+                        $sid,
+                        "Incoming Delivery based on PO {$po_record['po_number']} is expected. Please prepare to receive it.",
+                        "expected_del_" . $po_record['po_number'] . "_" . time()
+                    ]);
+                }
+
+                log_activity($pdo, $me['id'], 'Finalize Purchase Order', "PO {$po_record['po_number']} finalized. Qty: {$final_qty}");
+
+                $pdo->commit();
+                $msg     = "&#10003; PO <strong>{$po_record['po_number']}</strong> finalized as <strong>Approved PO</strong>.";
+                $msgType = 'success';
+
+            } catch (Exception $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                $msg     = "&#10005; Error: " . $e->getMessage();
+                $msgType = 'error';
             }
-
-            log_activity($pdo, $me['id'], 'Finalize Purchase Order',
-                "PO {$po_record['po_number']} finalized as Approved PO. Product: {$po_record['product_name']} | Qty: {$final_qty} | Total: ₱{$total_amount} | Supplier: Petron Corporation | Admin: {$me['name']}");
-
-            $pdo->commit();
-            $msg     = "&#10003; PO <strong>{$po_record['po_number']}</strong> finalized as <strong>Approved PO</strong>. Ready to print &amp; coordinate with Petron Corporation.";
-            $msgType = 'success';
-
-        } catch (Exception $e) {
-            if ($pdo->inTransaction()) $pdo->rollBack();
-            $msg     = "&#10005; Error: " . $e->getMessage();
+        } else {
+            $msg     = "&#10005; Please enter valid quantity and price.";
             $msgType = 'error';
         }
-    } else {
-        $msg     = "&#10005; Please enter a valid quantity and unit price.";
-        $msgType = 'error';
+    } elseif ($action === 'reject_po') {
+        if ($po_id > 0) {
+            try {
+                if ($po_type === 'merch') {
+                    $pdo->prepare("UPDATE purchase_orders SET status='Rejected', rejection_reason=?, updated_at=NOW() WHERE id=?")->execute([$remarks, $po_id]);
+                } else {
+                    $pdo->prepare("UPDATE fuel_purchase_orders SET status='Rejected', notes=?, updated_at=NOW() WHERE id=?")->execute([$remarks, $po_id]);
+                }
+                log_activity($pdo, $me['id'], 'Reject Purchase Order', "PO ID {$po_id} rejected. Reason: {$remarks}");
+                $msg = "&#10003; Purchase Order has been rejected.";
+                $msgType = 'success';
+            } catch(Exception $e) {
+                $msg = "&#10005; Error: " . $e->getMessage();
+                $msgType = 'error';
+            }
+        }
     }
 }
 
-/* ── FETCH POs ── */
-$pos_pending   = [];
-$pos_processed = [];
+/* ── FETCH MERCHANDISE POs ── */
+$merch_pending   = [];
+$merch_processed = [];
 try {
     $sql = "
-        SELECT po.*,
+        SELECT po.*, 'merch' as po_type,
                s.name   AS station_name,
                u.name   AS created_by_name,
                ab.name  AS approved_by_name,
                sr.staff_id,
                sr.item_sku,
                sr.purchase_request_id  AS pr_id,
-               sr.requested_quantity   AS sr_requested_qty,
-               sr.approved_quantity    AS sr_approved_qty,
-               sr.manager_notes        AS sr_manager_notes,
                st.name  AS staff_name,
                mgr.name AS manager_name
         FROM purchase_orders po
@@ -123,16 +208,49 @@ try {
         ORDER BY po.created_at DESC
     ";
     $rows = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
-
     foreach ($rows as $po) {
         if ($po['status'] === 'Pending Admin Validation') {
-            $pos_pending[] = $po;
+            $merch_pending[] = $po;
         } else {
-            $pos_processed[] = $po;
+            $merch_processed[] = $po;
         }
     }
 } catch (Exception $e) {
-    $msg     = "Error loading POs: " . $e->getMessage();
+    $msg = "Error loading Merch POs: " . $e->getMessage();
+    $msgType = 'error';
+}
+
+/* ── FETCH FUEL POs ── */
+$fuel_pending = [];
+$fuel_processed = [];
+try {
+    $sql_f = "
+        SELECT fpo.*, 'fuel' as po_type,
+               s.name AS station_name,
+               ft.name AS product_name,
+               u.name AS created_by_name,
+               fpo.volume AS quantity,
+               NULL AS pr_id,
+               NULL AS staff_name,
+               NULL AS manager_name,
+               NULL AS item_sku,
+               NULL AS approved_by_name
+        FROM fuel_purchase_orders fpo
+        LEFT JOIN stations s ON fpo.station_id = s.id
+        LEFT JOIN fuel_types ft ON fpo.fuel_type_id = ft.id
+        LEFT JOIN users u ON fpo.created_by = u.id
+        ORDER BY fpo.created_at DESC
+    ";
+    $rows_f = $pdo->query($sql_f)->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($rows_f as $po) {
+        if (in_array($po['status'], ['Pending Admin Validation', 'Pending'])) {
+            $fuel_pending[] = $po;
+        } else {
+            $fuel_processed[] = $po;
+        }
+    }
+} catch (Exception $e) {
+    $msg = "Error loading Fuel POs: " . $e->getMessage();
     $msgType = 'error';
 }
 
@@ -161,32 +279,38 @@ include __DIR__ . '/../partials/header.php';
 .po-alert-success { background:#d4edda; color:#155724; border:1px solid #c3e6cb; }
 .po-alert-error   { background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; }
 
-/* ── Finalize button ── */
+/* ── Buttons ── */
 .btn-finalize { background:#002F70; color:#fff; border:none; padding:7px 14px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; display:inline-flex; align-items:center; gap:5px; transition:background .15s; }
 .btn-finalize:hover { background:#001F4F; }
+
+/* ── Global Tabs ── */
+.global-tabs { display:flex; gap:10px; border-bottom:2px solid #e9ecef; margin-bottom:20px; }
+.global-tab { background:none; border:none; padding:12px 20px; cursor:pointer; font-size:14px; font-weight:700; color:#6c757d; border-bottom:3px solid transparent; transition:all .2s; margin-bottom:-2px; display:flex; align-items:center; gap:8px; }
+.global-tab:hover { color:#002F70; }
+.global-tab.active { color:#002F70; border-bottom-color:#002F70; }
+.main-view { display:none; animation:fadeIn .3s; }
+.main-view.active { display:block; }
+@keyframes fadeIn { from{opacity:0;} to{opacity:1;} }
 
 /* ── Audit chain ── */
 .audit-chain { display:flex; align-items:center; gap:5px; font-size:11px; flex-wrap:wrap; }
 .audit-chain .step { background:#f0f4ff; border:1px solid #c5d3f0; border-radius:4px; padding:2px 7px; color:#002F70; font-weight:600; }
 .audit-chain .arrow { color:#adb5bd; }
-
-/* ── PR ID badge ── */
 .pr-id-tag { font-size:10px; background:#e6e6fa; color:#5f5f9c; border:1px solid #d8d8ff; border-radius:4px; padding:1px 6px; font-family:monospace; display:inline-block; margin-top:3px; }
 
 /* ── Modal ── */
 .modal-overlay { display:none; position:fixed; top:0;left:0;right:0;bottom:0; width:100vw;height:100vh; background:rgba(0,0,0,.6); z-index:9999; align-items:center; justify-content:center; }
 .modal-overlay.open { display:flex; }
-.modal-box { background:#fff; border-radius:14px; padding:28px; width:560px; max-width:calc(100vw - 32px); max-height:calc(100vh - 40px); overflow-y:auto; box-shadow:0 24px 80px rgba(0,0,0,.3); position:relative; z-index:10000; animation:modalIn .2s ease; }
+.modal-box { background:#fff; border-radius:14px; padding:28px; width:560px; max-width:calc(100vw - 32px); max-height:calc(100vh - 40px); overflow-y:auto; box-shadow:0 24px 80px rgba(0,0,0,.3); animation:modalIn .2s ease; }
 @keyframes modalIn { from{opacity:0;transform:scale(.96)} to{opacity:1;transform:scale(1)} }
 .modal-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; padding-bottom:14px; border-bottom:2px solid #e9ecef; }
 .modal-title { font-size:1rem; font-weight:700; color:#002F70; display:flex; align-items:center; gap:8px; }
 .modal-close { background:none; border:none; font-size:22px; cursor:pointer; color:#adb5bd; line-height:1; }
-.modal-close:hover { color:#333; }
 .field-group { margin-bottom:14px; }
 .field-group label { display:block; margin-bottom:5px; font-weight:700; font-size:12px; color:#495057; text-transform:uppercase; letter-spacing:.4px; }
-.field-group input { width:100%; padding:9px 11px; border:1px solid #dee2e6; border-radius:6px; font-size:13px; box-sizing:border-box; }
+.field-group input, .field-group textarea { width:100%; padding:9px 11px; border:1px solid #dee2e6; border-radius:6px; font-size:13px; box-sizing:border-box; font-family:inherit;}
 .field-group input[readonly] { background:#f8f9fa; color:#6c757d; }
-.field-group input:focus:not([readonly]) { border-color:#002F70; outline:none; box-shadow:0 0 0 3px rgba(0,47,112,.12); }
+.field-group input:focus:not([readonly]), .field-group textarea:focus { border-color:#002F70; outline:none; box-shadow:0 0 0 3px rgba(0,47,112,.12); }
 .modal-footer { display:flex; gap:10px; justify-content:flex-end; margin-top:18px; padding-top:14px; border-top:1px solid #e9ecef; }
 .total-preview { background:#e8f4fd; border-left:4px solid #002F70; border-radius:6px; padding:10px 14px; margin-bottom:14px; font-size:15px; color:#002F70; font-weight:700; }
 .info-note { background:#e8f4fd; border-left:4px solid #002F70; border-radius:6px; padding:10px 14px; margin-bottom:14px; font-size:12px; color:#002F70; line-height:1.7; }
@@ -210,165 +334,281 @@ include __DIR__ . '/../partials/header.php';
 </div>
 <?php endif; ?>
 
-<!-- ══════════════════════════════════════════════════════════
-     SECTION 1 — PENDING ADMIN VALIDATION
-     ══════════════════════════════════════════════════════════ -->
-<div class="po-card">
-    <div class="po-card-head">
-        <div class="po-card-title">
-            <i class="fas fa-clock"></i>
-            Pending Admin Validation
-            <?php if (count($pos_pending) > 0): ?>
-                <span style="background:#dc3545;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;"><?php echo count($pos_pending); ?></span>
+<!-- ── GLOBAL TABS ── -->
+<div class="global-tabs">
+    <button class="global-tab active" onclick="switchMainView('fuel-view', this)">
+        <i class="fas fa-gas-pump"></i> Fuel
+        <?php if(count($fuel_pending)>0): ?>
+            <span style="background:#dc3545;color:#fff;border-radius:10px;padding:2px 7px;font-size:10px;"><?php echo count($fuel_pending); ?></span>
+        <?php endif; ?>
+    </button>
+    <button class="global-tab" onclick="switchMainView('merch-view', this)">
+        <i class="fas fa-box"></i> Merchandise
+        <?php if(count($merch_pending)>0): ?>
+            <span style="background:#dc3545;color:#fff;border-radius:10px;padding:2px 7px;font-size:10px;"><?php echo count($merch_pending); ?></span>
+        <?php endif; ?>
+    </button>
+</div>
+
+<!-- ==========================================
+     FUEL VIEW
+     ========================================== -->
+<div id="fuel-view" class="main-view active">
+    <!-- PENDING FUEL -->
+    <div class="po-card">
+        <div class="po-card-head">
+            <div class="po-card-title">
+                <i class="fas fa-clock"></i>
+                Pending Admin Validation — Fuel
+                <?php if (count($fuel_pending) > 0): ?>
+                    <span style="background:#dc3545;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;"><?php echo count($fuel_pending); ?></span>
+                <?php endif; ?>
+            </div>
+            <span style="font-size:12px;color:#6c757d;">Set final volume, price, and instructions, then Finalize.</span>
+        </div>
+        <div class="po-card-body">
+            <?php if (empty($fuel_pending)): ?>
+                <div style="text-align:center;padding:40px;color:#6c757d;">
+                    <i class="fas fa-check-circle" style="font-size:2.5em;display:block;margin-bottom:10px;color:#28a745;opacity:.5;"></i>
+                    <strong>No Fuel POs pending.</strong>
+                </div>
+            <?php else: ?>
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>PO Number</th>
+                            <th>Station</th>
+                            <th>Fuel Type</th>
+                            <th style="text-align:center;">Volume (L)</th>
+                            <th>Unit Price</th>
+                            <th>Total</th>
+                            <th>Generated</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($fuel_pending as $po): ?>
+                    <tr>
+                        <td><strong style="color:#002F70;"><?php echo htmlspecialchars($po['po_number']); ?></strong></td>
+                        <td style="font-size:12px;"><?php echo htmlspecialchars($po['station_name'] ?? '—'); ?></td>
+                        <td><strong><?php echo htmlspecialchars($po['product_name'] ?? '—'); ?></strong></td>
+                        <td style="text-align:center;font-weight:700;"><?php echo number_format((float)($po['quantity'] ?? 0), 2); ?> L</td>
+                        <td>&#8369;<?php echo number_format((float)($po['unit_price'] ?? 0), 2); ?></td>
+                        <td><strong>&#8369;<?php echo number_format((float)($po['total_amount'] ?? 0), 2); ?></strong></td>
+                        <td style="font-size:12px;color:#6c757d;"><?php echo date('M d, Y H:i', strtotime($po['created_at'])); ?></td>
+                        <td>
+                            <button class="btn-finalize" onclick="openFinalize(
+                                <?php echo (int)$po['id']; ?>, 'fuel',
+                                '<?php echo addslashes(htmlspecialchars($po['po_number'])); ?>',
+                                '<?php echo addslashes(htmlspecialchars($po['product_name'] ?? '')); ?>',
+                                <?php echo (float)($po['quantity'] ?? 0); ?>,
+                                <?php echo (float)($po['unit_price'] ?? 0); ?>,
+                                ''
+                            )">
+                                <i class="fas fa-check-double"></i> Review
+                            </button>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
             <?php endif; ?>
         </div>
-        <span style="font-size:12px;color:#6c757d;">
-            Encode supplier details, set final qty &amp; price, then finalize as <strong>Approved PO</strong>.
-        </span>
     </div>
-    <div class="po-card-body">
-        <?php if (empty($pos_pending)): ?>
-            <div style="text-align:center;padding:40px;color:#6c757d;">
-                <i class="fas fa-check-circle" style="font-size:2.5em;display:block;margin-bottom:10px;color:#28a745;opacity:.5;"></i>
-                <strong>No POs pending validation.</strong><br>
-                <span style="font-size:13px;">All purchase requests have been processed.</span>
-            </div>
-        <?php else: ?>
-        <div class="table-wrap">
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>PO Number</th>
-                        <th>Station</th>
-                        <th>Product / PR ID</th>
-                        <th style="text-align:center;">Qty</th>
-                        <th>Unit Price</th>
-                        <th>Total</th>
-                        <th>Supplier</th>
-                        <th>Audit Trail</th>
-                        <th>Generated</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                <?php foreach ($pos_pending as $po): ?>
-                <tr>
-                    <td><strong style="color:#002F70;"><?php echo htmlspecialchars($po['po_number']); ?></strong></td>
-                    <td style="font-size:12px;"><?php echo htmlspecialchars($po['station_name'] ?? '—'); ?></td>
-                    <td>
-                        <strong><?php echo htmlspecialchars($po['product_name'] ?? '—'); ?></strong>
-                        <?php if (!empty($po['item_sku'])): ?>
-                            <br><code style="font-size:10px;color:#6c757d;"><?php echo htmlspecialchars($po['item_sku']); ?></code>
-                        <?php endif; ?>
-                        <?php if (!empty($po['pr_id'])): ?>
-                            <br><span class="pr-id-tag"><?php echo htmlspecialchars($po['pr_id']); ?></span>
-                        <?php endif; ?>
-                    </td>
-                    <td style="text-align:center;font-weight:700;"><?php echo number_format((float)($po['quantity'] ?? 0), 0); ?></td>
-                    <td>&#8369;<?php echo number_format((float)($po['unit_price'] ?? 0), 2); ?></td>
-                    <td><strong>&#8369;<?php echo number_format((float)($po['total_amount'] ?? 0), 2); ?></strong></td>
-                    <td style="font-size:12px;font-weight:700;color:#155724;">Petron Corporation</td>
-                    <td>
-                        <div class="audit-chain">
-                            <span class="step">&#128100; <?php echo htmlspecialchars($po['staff_name'] ?? 'Staff'); ?></span>
-                            <span class="arrow">&#8594;</span>
-                            <span class="step">&#128101; <?php echo htmlspecialchars($po['manager_name'] ?? $po['created_by_name'] ?? 'Manager'); ?></span>
-                            <span class="arrow">&#8594;</span>
-                            <span class="step" style="background:#fff3cd;color:#856404;">&#128203; Admin</span>
-                        </div>
-                    </td>
-                    <td style="font-size:12px;color:#6c757d;"><?php echo date('M d, Y H:i', strtotime($po['created_at'])); ?></td>
-                    <td>
-                        <button class="btn-finalize" onclick="openFinalize(
-                            <?php echo (int)$po['id']; ?>,
-                            '<?php echo addslashes(htmlspecialchars($po['po_number'])); ?>',
-                            '<?php echo addslashes(htmlspecialchars($po['product_name'] ?? '')); ?>',
-                            <?php echo (float)($po['quantity'] ?? 0); ?>,
-                            <?php echo (float)($po['unit_price'] ?? 0); ?>,
-                            '<?php echo addslashes(htmlspecialchars($po['pr_id'] ?? '')); ?>'
-                        )">
-                            <i class="fas fa-check-double"></i> Finalize
-                        </button>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
+
+    <!-- PROCESSED FUEL -->
+    <div class="po-card">
+        <div class="po-card-head">
+            <div class="po-card-title"><i class="fas fa-history"></i> Processed Purchase Orders — Fuel</div>
         </div>
-        <?php endif; ?>
+        <div class="po-card-body">
+            <?php if (empty($fuel_processed)): ?>
+                <div style="text-align:center;padding:28px;color:#6c757d;">No processed Fuel POs.</div>
+            <?php else: ?>
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>PO Number</th>
+                            <th>Station</th>
+                            <th>Fuel Type</th>
+                            <th style="text-align:center;">Volume (L)</th>
+                            <th>Unit Price</th>
+                            <th>Total</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($fuel_processed as $po):
+                        $st = $po['status'] ?? '';
+                        $st_key = strtolower(str_replace([' ', '/'], ['-', '-'], $st));
+                    ?>
+                    <tr>
+                        <td><strong style="color:#002F70;"><?php echo htmlspecialchars($po['po_number']); ?></strong></td>
+                        <td style="font-size:12px;"><?php echo htmlspecialchars($po['station_name'] ?? '—'); ?></td>
+                        <td><?php echo htmlspecialchars($po['product_name'] ?? '—'); ?></td>
+                        <td style="text-align:center;"><?php echo number_format((float)($po['quantity'] ?? 0), 2); ?></td>
+                        <td>&#8369;<?php echo number_format((float)($po['unit_price'] ?? 0), 2); ?></td>
+                        <td><strong>&#8369;<?php echo number_format((float)($po['total_amount'] ?? 0), 2); ?></strong></td>
+                        <td><span class="sbadge sbadge-<?php echo $st_key; ?>"><?php echo htmlspecialchars($st); ?></span></td>
+                        <td style="font-size:12px;color:#6c757d;">
+                            <?php echo date('M d, Y', strtotime($po['updated_at'] ?? $po['created_at'])); ?>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <?php endif; ?>
+        </div>
     </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════
-     SECTION 2 — FINALIZED PURCHASE ORDERS
-     ══════════════════════════════════════════════════════════ -->
-<div class="po-card">
-    <div class="po-card-head">
-        <div class="po-card-title"><i class="fas fa-history"></i> Finalized Purchase Orders</div>
-        <span style="font-size:12px;color:#6c757d;"><?php echo count($pos_processed); ?> record(s)</span>
-    </div>
-    <div class="po-card-body">
-        <?php if (empty($pos_processed)): ?>
-            <div style="text-align:center;padding:28px;color:#6c757d;">No finalized POs yet.</div>
-        <?php else: ?>
-        <div class="table-wrap">
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>PO Number</th>
-                        <th>Station</th>
-                        <th>Product</th>
-                        <th style="text-align:center;">Qty</th>
-                        <th>Unit Price</th>
-                        <th>Total</th>
-                        <th>Status</th>
-                        <th>Finalized By</th>
-                        <th>Date</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                <?php foreach ($pos_processed as $po):
-                    $st     = $po['status'] ?? '';
-                    $st_key = strtolower(str_replace([' ', '/'], ['-', '-'], $st));
-                    $cls    = 'sbadge sbadge-' . $st_key;
-                    $is_printable = in_array($st, ['Approved PO', 'Official', 'Approved']);
-                ?>
-                <tr>
-                    <td><strong style="color:#002F70;"><?php echo htmlspecialchars($po['po_number']); ?></strong></td>
-                    <td style="font-size:12px;"><?php echo htmlspecialchars($po['station_name'] ?? '—'); ?></td>
-                    <td>
-                        <?php echo htmlspecialchars($po['product_name'] ?? '—'); ?>
-                        <?php if (!empty($po['pr_id'])): ?>
-                            <br><span class="pr-id-tag"><?php echo htmlspecialchars($po['pr_id']); ?></span>
-                        <?php endif; ?>
-                    </td>
-                    <td style="text-align:center;"><?php echo number_format((float)($po['quantity'] ?? 0), 0); ?></td>
-                    <td>&#8369;<?php echo number_format((float)($po['unit_price'] ?? 0), 2); ?></td>
-                    <td><strong>&#8369;<?php echo number_format((float)($po['total_amount'] ?? 0), 2); ?></strong></td>
-                    <td><span class="<?php echo $cls; ?>"><?php echo htmlspecialchars($st); ?></span></td>
-                    <td style="font-size:12px;"><?php echo htmlspecialchars($po['approved_by_name'] ?? '—'); ?></td>
-                    <td style="font-size:12px;color:#6c757d;">
-                        <?php echo $po['approved_at']
-                            ? date('M d, Y', strtotime($po['approved_at']))
-                            : date('M d, Y', strtotime($po['created_at'])); ?>
-                    </td>
-                    <td>
-                        <?php if ($is_printable): ?>
-                        <a href="print_po_new.php?id=<?php echo (int)$po['id']; ?>&print=1" target="_blank"
-                           style="font-size:12px;color:#002F70;text-decoration:none;display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border:1px solid #c5d3f0;border-radius:5px;background:#f0f4ff;font-weight:600;">
-                            <i class="fas fa-print"></i> Print
-                        </a>
-                        <?php else: ?>
-                        <span style="font-size:11px;color:#adb5bd;">—</span>
-                        <?php endif; ?>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
+<!-- ==========================================
+     MERCHANDISE VIEW
+     ========================================== -->
+<div id="merch-view" class="main-view">
+    <!-- PENDING MERCH -->
+    <div class="po-card">
+        <div class="po-card-head">
+            <div class="po-card-title">
+                <i class="fas fa-clock"></i>
+                Pending Admin Validation — Merchandise
+                <?php if (count($merch_pending) > 0): ?>
+                    <span style="background:#dc3545;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;"><?php echo count($merch_pending); ?></span>
+                <?php endif; ?>
+            </div>
+            <span style="font-size:12px;color:#6c757d;">Set final qty, price, and instructions, then Finalize.</span>
         </div>
-        <?php endif; ?>
+        <div class="po-card-body">
+            <?php if (empty($merch_pending)): ?>
+                <div style="text-align:center;padding:40px;color:#6c757d;">
+                    <i class="fas fa-check-circle" style="font-size:2.5em;display:block;margin-bottom:10px;color:#28a745;opacity:.5;"></i>
+                    <strong>No Merchandise POs pending.</strong>
+                </div>
+            <?php else: ?>
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>PO Number</th>
+                            <th>Station</th>
+                            <th>Product / PR ID</th>
+                            <th style="text-align:center;">Qty</th>
+                            <th>Unit Price</th>
+                            <th>Total</th>
+                            <th>Audit Trail</th>
+                            <th>Generated</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($merch_pending as $po): ?>
+                    <tr>
+                        <td><strong style="color:#002F70;"><?php echo htmlspecialchars($po['po_number']); ?></strong></td>
+                        <td style="font-size:12px;"><?php echo htmlspecialchars($po['station_name'] ?? '—'); ?></td>
+                        <td>
+                            <strong><?php echo htmlspecialchars($po['product_name'] ?? '—'); ?></strong>
+                            <?php if (!empty($po['item_sku'])): ?>
+                                <br><code style="font-size:10px;color:#6c757d;"><?php echo htmlspecialchars($po['item_sku']); ?></code>
+                            <?php endif; ?>
+                            <?php if (!empty($po['pr_id'])): ?>
+                                <br><span class="pr-id-tag"><?php echo htmlspecialchars($po['pr_id']); ?></span>
+                            <?php endif; ?>
+                        </td>
+                        <td style="text-align:center;font-weight:700;"><?php echo number_format((float)($po['quantity'] ?? 0), 0); ?></td>
+                        <td>&#8369;<?php echo number_format((float)($po['unit_price'] ?? 0), 2); ?></td>
+                        <td><strong>&#8369;<?php echo number_format((float)($po['total_amount'] ?? 0), 2); ?></strong></td>
+                        <td>
+                            <div class="audit-chain">
+                                <span class="step">&#128100; <?php echo htmlspecialchars($po['staff_name'] ?? 'Staff'); ?></span>
+                                <span class="arrow">&#8594;</span>
+                                <span class="step">&#128101; <?php echo htmlspecialchars($po['manager_name'] ?? $po['created_by_name'] ?? 'Manager'); ?></span>
+                            </div>
+                        </td>
+                        <td style="font-size:12px;color:#6c757d;"><?php echo date('M d, Y H:i', strtotime($po['created_at'])); ?></td>
+                        <td>
+                            <button class="btn-finalize" onclick="openFinalize(
+                                <?php echo (int)$po['id']; ?>, 'merch',
+                                '<?php echo addslashes(htmlspecialchars($po['po_number'])); ?>',
+                                '<?php echo addslashes(htmlspecialchars($po['product_name'] ?? '')); ?>',
+                                <?php echo (float)($po['quantity'] ?? 0); ?>,
+                                <?php echo (float)($po['unit_price'] ?? 0); ?>,
+                                '<?php echo addslashes(htmlspecialchars($po['pr_id'] ?? '')); ?>'
+                            )">
+                                <i class="fas fa-check-double"></i> Review
+                            </button>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- PROCESSED MERCH -->
+    <div class="po-card">
+        <div class="po-card-head">
+            <div class="po-card-title"><i class="fas fa-history"></i> Processed Purchase Orders — Merchandise</div>
+        </div>
+        <div class="po-card-body">
+            <?php if (empty($merch_processed)): ?>
+                <div style="text-align:center;padding:28px;color:#6c757d;">No processed Merch POs.</div>
+            <?php else: ?>
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>PO Number</th>
+                            <th>Station</th>
+                            <th>Product</th>
+                            <th style="text-align:center;">Qty</th>
+                            <th>Unit Price</th>
+                            <th>Total</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($merch_processed as $po):
+                        $st = $po['status'] ?? '';
+                        $st_key = strtolower(str_replace([' ', '/'], ['-', '-'], $st));
+                        $is_printable = in_array($st, ['Approved PO', 'Official', 'Approved']);
+                    ?>
+                    <tr>
+                        <td><strong style="color:#002F70;"><?php echo htmlspecialchars($po['po_number']); ?></strong></td>
+                        <td style="font-size:12px;"><?php echo htmlspecialchars($po['station_name'] ?? '—'); ?></td>
+                        <td><?php echo htmlspecialchars($po['product_name'] ?? '—'); ?></td>
+                        <td style="text-align:center;"><?php echo number_format((float)($po['quantity'] ?? 0), 0); ?></td>
+                        <td>&#8369;<?php echo number_format((float)($po['unit_price'] ?? 0), 2); ?></td>
+                        <td><strong>&#8369;<?php echo number_format((float)($po['total_amount'] ?? 0), 2); ?></strong></td>
+                        <td><span class="sbadge sbadge-<?php echo $st_key; ?>"><?php echo htmlspecialchars($st); ?></span></td>
+                        <td style="font-size:12px;color:#6c757d;">
+                            <?php echo $po['approved_at'] ? date('M d, Y', strtotime($po['approved_at'])) : date('M d, Y', strtotime($po['created_at'])); ?>
+                        </td>
+                        <td>
+                            <?php if ($is_printable): ?>
+                            <a href="print_po_new.php?id=<?php echo (int)$po['id']; ?>&print=1" target="_blank"
+                               style="font-size:12px;color:#002F70;text-decoration:none;display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border:1px solid #c5d3f0;border-radius:5px;background:#f0f4ff;font-weight:600;">
+                                <i class="fas fa-print"></i> Print
+                            </a>
+                            <?php else: ?>
+                            <span style="font-size:11px;color:#adb5bd;">—</span>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <?php endif; ?>
+        </div>
     </div>
 </div>
 
@@ -380,14 +620,15 @@ include __DIR__ . '/../partials/header.php';
         <div class="modal-head">
             <div class="modal-title">
                 <i class="fas fa-check-double" style="color:#28a745;"></i>
-                Finalize Purchase Order
+                Review Purchase Order
             </div>
             <button class="modal-close" onclick="closeFinalize()">&times;</button>
         </div>
 
         <form method="POST" id="finalizeForm">
-            <input type="hidden" name="action" value="finalize_po">
+            <input type="hidden" name="action" id="formAction" value="finalize_po">
             <input type="hidden" name="po_id" id="finPoId">
+            <input type="hidden" name="po_type" id="finPoType">
 
             <div class="field-group">
                 <label>PO Number</label>
@@ -395,7 +636,7 @@ include __DIR__ . '/../partials/header.php';
             </div>
 
             <div class="field-group">
-                <label>Product</label>
+                <label>Product / Type</label>
                 <input type="text" id="finProduct" readonly>
             </div>
 
@@ -406,21 +647,23 @@ include __DIR__ . '/../partials/header.php';
 
             <div class="field-group">
                 <label>Supplier</label>
-                <input type="text" value="Petron Corporation" readonly
-                       style="background:#f0fdf4;color:#155724;font-weight:700;border-color:#86efac;">
+                <input type="text" value="Petron Corporation" readonly style="background:#f0f8ff; color:#002F70; font-weight:bold;">
             </div>
 
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
                 <div class="field-group">
-                    <label>Final Quantity <span style="color:red;">*</span></label>
-                    <input type="number" name="final_quantity" id="finQty" min="1" step="1" required
-                           placeholder="e.g. 20">
+                    <label>Final Quantity / Volume <span style="color:red;">*</span></label>
+                    <input type="number" name="final_quantity" id="finQty" min="1" step="0.01" required placeholder="e.g. 20">
                 </div>
                 <div class="field-group">
                     <label>Unit Price &#8369; <span style="color:red;">*</span></label>
-                    <input type="number" name="final_unit_price" id="finPrice" min="0" step="0.01" required
-                           placeholder="e.g. 705.90">
+                    <input type="number" name="final_unit_price" id="finPrice" min="0" step="0.01" required placeholder="e.g. 705.90">
                 </div>
+            </div>
+
+            <div class="field-group">
+                <label>Remarks / Special Instructions <span style="font-weight:normal;color:#6c757d;">(Optional)</span></label>
+                <textarea name="remarks" id="finRemarks" rows="2" placeholder="e.g. Please deliver before noon..."></textarea>
             </div>
 
             <div class="total-preview">
@@ -430,40 +673,65 @@ include __DIR__ . '/../partials/header.php';
             <div class="info-note">
                 <i class="fas fa-info-circle"></i> <strong>On Finalize:</strong><br>
                 &bull; Status → <strong>Approved PO</strong> (ready for printing)<br>
-                &bull; Supplier: <strong>Petron Corporation</strong> (fixed — no delivery schedule needed)<br>
-                &bull; Audit trail logged: Admin name, action, timestamp<br>
-                &bull; Print the official PO document for supplier coordination
+                &bull; Auto-syncs to Staff's <strong>Deliveries Oversight</strong> module.<br>
+                &bull; Staff will receive a notification of this incoming delivery.
             </div>
 
-            <div class="modal-footer">
-                <button type="button" onclick="closeFinalize()"
-                        style="padding:9px 22px;background:#6c757d;color:#fff;border:none;border-radius:6px;cursor:pointer;">
-                    Cancel
+            <div class="modal-footer" style="justify-content:space-between;">
+                <button type="button" onclick="submitReject()" style="padding:9px 18px;background:#dc3545;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">
+                    <i class="fas fa-times"></i> Reject PO
                 </button>
-                <button type="submit"
-                        style="padding:9px 22px;background:#002F70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">
-                    <i class="fas fa-check-double"></i> Finalize as Approved PO
-                </button>
+                <div style="display:flex;gap:10px;">
+                    <button type="button" onclick="closeFinalize()" style="padding:9px 22px;background:#6c757d;color:#fff;border:none;border-radius:6px;cursor:pointer;">
+                        Cancel
+                    </button>
+                    <button type="button" onclick="submitFinalize()" style="padding:9px 22px;background:#002F70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">
+                        <i class="fas fa-check-double"></i> Finalize
+                    </button>
+                </div>
             </div>
         </form>
     </div>
 </div>
 
 <script>
-// Move modal to body to avoid overflow clipping
+function switchMainView(viewId, btn) {
+    document.querySelectorAll('.main-view').forEach(v => v.classList.remove('active'));
+    document.querySelectorAll('.global-tab').forEach(b => b.classList.remove('active'));
+    
+    document.getElementById(viewId).classList.add('active');
+    btn.classList.add('active');
+
+    // Remember the selected tab
+    localStorage.setItem('poActiveTab', viewId);
+}
+
 document.addEventListener('DOMContentLoaded', function () {
     var m = document.getElementById('finalizeModal');
     if (m && m.parentNode !== document.body) document.body.appendChild(m);
+
+    // Restore the selected tab if one was previously selected
+    var savedTab = localStorage.getItem('poActiveTab');
+    if (savedTab) {
+        var btn = document.querySelector(`.global-tab[onclick*="${savedTab}"]`);
+        if (btn && document.getElementById(savedTab)) {
+            document.querySelectorAll('.main-view').forEach(v => v.classList.remove('active'));
+            document.querySelectorAll('.global-tab').forEach(b => b.classList.remove('active'));
+            document.getElementById(savedTab).classList.add('active');
+            btn.classList.add('active');
+        }
+    }
 });
 
-function openFinalize(id, poNum, product, qty, price, prId) {
+function openFinalize(id, type, poNum, product, qty, price, prId) {
     document.getElementById('finPoId').value     = id;
+    document.getElementById('finPoType').value   = type;
     document.getElementById('finPoNumber').value = poNum;
     document.getElementById('finProduct').value  = product;
     document.getElementById('finQty').value      = qty > 0 ? qty : '';
     document.getElementById('finPrice').value    = price > 0 ? price : '';
+    document.getElementById('finRemarks').value  = '';
 
-    // Show PR ID row if available
     var prRow = document.getElementById('finPrIdRow');
     if (prId && prId.trim() !== '') {
         document.getElementById('finPrId').value = prId;
@@ -474,11 +742,8 @@ function openFinalize(id, poNum, product, qty, price, prId) {
 
     computeTotal();
     document.getElementById('finalizeModal').classList.add('open');
-    // Focus first editable field
     setTimeout(function () {
-        var qtyEl = document.getElementById('finQty');
-        if (!qtyEl.value) qtyEl.focus();
-        else document.getElementById('finPrice').focus();
+        document.getElementById('finQty').focus();
     }, 150);
 }
 
@@ -497,6 +762,30 @@ function computeTotal() {
 
 document.getElementById('finQty').addEventListener('input', computeTotal);
 document.getElementById('finPrice').addEventListener('input', computeTotal);
+
+function submitFinalize() {
+    if (!document.getElementById('finQty').value || !document.getElementById('finPrice').value) {
+        alert("Quantity and Unit Price are required to finalize.");
+        return;
+    }
+    document.getElementById('formAction').value = 'finalize_po';
+    document.getElementById('finalizeForm').submit();
+}
+
+function submitReject() {
+    const remarks = document.getElementById('finRemarks').value.trim();
+    if (remarks === '') {
+        alert("Please provide Remarks / Special Instructions before rejecting.");
+        document.getElementById('finRemarks').focus();
+        return;
+    }
+    if (confirm("Are you sure you want to reject this Purchase Order?")) {
+        document.getElementById('finQty').required = false;
+        document.getElementById('finPrice').required = false;
+        document.getElementById('formAction').value = 'reject_po';
+        document.getElementById('finalizeForm').submit();
+    }
+}
 
 document.getElementById('finalizeModal').addEventListener('click', function (e) {
     if (e.target === this) closeFinalize();

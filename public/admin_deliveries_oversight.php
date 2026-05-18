@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'admin_deliveries_oversight';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -58,6 +58,12 @@ table.dt{width:100%;border-collapse:collapse;font-size:13px;}
 table.dt th{background:var(--light);padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray);border-bottom:2px solid #dee2e6;white-space:nowrap;text-transform:uppercase;letter-spacing:.4px;}
 table.dt td{padding:10px 12px;border-bottom:1px solid #f0f0f0;vertical-align:middle;}
 table.dt tr:hover td{background:#f8f9fa;}
+/* ── Action Buttons (Aligned with User Management) ── */
+.action-btn { font-size:12px; padding:5px 8px; border:none; border-radius:4px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:5px; transition:all .15s; font-weight:600; width:100px; text-decoration:none; }
+.action-btn:hover { filter:brightness(.9); transform:translateY(-1px); }
+.btn-view    { background:#28a745; color:#fff; }
+.btn-validate { background:#002F70; color:#fff; }
+.btn-flag    { background:#dc3545; color:#fff; }
 /* ── Badges ── */
 .badge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;white-space:nowrap;}
 .badge-pending{background:#fff3cd;color:#856404;}
@@ -100,7 +106,7 @@ table.dt tr:hover td{background:#f8f9fa;}
 <div class="page-head">
   <div>
     <h1><i class="fas fa-truck"></i> Deliveries Oversight</h1>
-    <div class="page-subtitle">Review and validate delivery records from Manager — Station: <?php echo htmlspecialchars($station_name); ?></div>
+    <div class="page-subtitle">Review and validate delivery records from Manager</div>
   </div>
   <div class="header-actions">
     <button class="btn btn-outline" onclick="loadDeliveries()"><i class="fas fa-sync-alt"></i> Refresh</button>
@@ -297,10 +303,10 @@ function buildRow(r){
     ?'<span class="badge badge-fuel">Fuel</span>'
     :'<span class="badge badge-merch">Merchandise</span>';
 
-  let actions=`<button class="btn btn-outline btn-sm" onclick="showDetail(${r.id})" title="View Details"><i class="fas fa-eye"></i> View</button> `;
+  let actions=`<button class="action-btn btn-view" onclick="showDetail(${r.id})" title="View Details"><i class="fas fa-eye"></i> View</button> `;
   if(displayStatus==='Pending Validation'){
-    actions+=`<button class="btn btn-success btn-sm" onclick="openValidate(${r.id},'${esc(r.supplier)}','${esc(r.product)}','${fmtQty(r.quantity,r.unit)}','${esc(r.dr_number||'')}')"><i class="fas fa-check"></i> Validate</button> `;
-    actions+=`<button class="btn btn-danger btn-sm" onclick="openFlag(${r.id},'${esc(r.supplier)}','${esc(r.product)}')"><i class="fas fa-flag"></i> Flag</button>`;
+    actions+=`<button class="action-btn btn-validate" onclick="openValidate(${r.id},'${esc(r.supplier)}','${esc(r.product)}','${fmtQty(r.quantity,r.unit)}','${esc(r.dr_number||'')}')"><i class="fas fa-check"></i> Validate</button> `;
+    actions+=`<button class="action-btn btn-flag" onclick="openFlag(${r.id},'${esc(r.supplier)}','${esc(r.product)}')"><i class="fas fa-flag"></i> Flag</button>`;
   }
 
   return `<tr>
@@ -315,7 +321,11 @@ function buildRow(r){
     <td>${statusBadge}</td>
     <td style="font-size:12px;color:var(--gray);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
         title="${esc(r.admin_notes||r.remarks||'')}">${esc(r.admin_notes||r.remarks||'—')}</td>
-    <td style="white-space:nowrap;">${actions}</td>
+    <td style="vertical-align:middle;">
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:stretch;">
+        ${actions}
+      </div>
+    </td>
   </tr>`;
 }
 

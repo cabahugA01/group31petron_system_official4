@@ -17,54 +17,43 @@ if ((int)$station_id <= 0 && $role === 'admin') {
     render_no_station_page('admin_dashboard.php');
 }
 
-// ── Block POST for admin (read-only role) ───────────────────────────────────
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && $role === 'admin') {
-    http_response_code(403);
-    die('Access denied: Admins have read-only access to product pricing.');
-}
-
-// ── CSV Export ───────────────────────────────────────────────────────────────
-if (isset($_GET['export']) && $_GET['export'] === 'excel') {
-    // Fetch merchandise for export
-    $export_rows = [];
-    try {
-        $stmt = $pdo->query("
-            SELECT product_name, sku, category, size, unit_cost, unit_price,
-                   stock_quantity, stock
-            FROM inventory_products
-            WHERE category != 'Fuel'
-            ORDER BY category, product_name
-        ");
-        $export_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) {
-        $export_rows = [];
+// ── Handle Approvals / Rejections ──────────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? '';
+    if ($action === 'approve_price') {
+        $approval_id = (int)$_POST['approval_id'];
+        $stmt = $pdo->prepare("SELECT * FROM pending_price_approvals WHERE id = ? AND status = 'pending'");
+        $stmt->execute([$approval_id]);
+        $pending = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($pending) {
+            if ($pending['product_type'] === 'merchandise') {
+                $pdo->prepare("UPDATE inventory_products SET unit_cost=?, unit_price=? WHERE id=?")
+                    ->execute([$pending['new_cost'], $pending['new_price'], $pending['product_id']]);
+            } else {
+                $pdo->prepare("UPDATE fuel_inventory SET price_per_liter=? WHERE id=?")
+                    ->execute([$pending['new_price'], $pending['product_id']]);
+            }
+            $pdo->prepare("UPDATE pending_price_approvals SET status='approved', admin_id=?, updated_at=NOW() WHERE id=?")
+                ->execute([$me['id'], $approval_id]);
+            log_activity($pdo, $me['id'], 'Approve Price', "Admin approved price change for " . $pending['product_type'] . " ID " . $pending['product_id']);
+            $_SESSION['success'] = "Price change approved successfully!";
+        }
+    } elseif ($action === 'reject_price') {
+        $approval_id = (int)$_POST['approval_id'];
+        $remarks = trim($_POST['remarks'] ?? '');
+        $stmt = $pdo->prepare("UPDATE pending_price_approvals SET status='rejected', remarks=?, admin_id=?, updated_at=NOW() WHERE id=? AND status='pending'");
+        $stmt->execute([$remarks, $me['id'], $approval_id]);
+        if ($stmt->rowCount() > 0) {
+            log_activity($pdo, $me['id'], 'Reject Price', "Admin rejected price change (Approval ID $approval_id). Remarks: $remarks");
+            $_SESSION['success'] = "Price change rejected.";
+        }
     }
-
-    header('Content-Type: application/vnd.ms-excel; charset=utf-8');
-    header('Content-Disposition: attachment; filename="product_pricing_' . date('Y-m-d') . '.xls"');
-    $out = fopen('php://output', 'w');
-    fputcsv($out, ['Product Name', 'SKU', 'Category', 'Size', 'Cost (PHP)', 'Price (PHP)', 'Stock', 'Margin (PHP)', 'Status']);
-    foreach ($export_rows as $r) {
-        $stock  = (int)($r['stock_quantity'] ?? $r['stock'] ?? 0);
-        $cost   = (float)($r['unit_cost']  ?? 0);
-        $price  = (float)($r['unit_price'] ?? 0);
-        $margin = $price - $cost;
-        $status = $stock <= 0 ? 'Out of Stock' : ($stock <= 10 ? 'Low Stock' : 'Available');
-        fputcsv($out, [
-            $r['product_name'],
-            $r['sku'] ?? '',
-            $r['category'] ?? '',
-            $r['size'] ?? '',
-            number_format($cost, 2, '.', ''),
-            number_format($price, 2, '.', ''),
-            $stock,
-            number_format($margin, 2, '.', ''),
-            $status,
-        ]);
-    }
-    fclose($out);
+    header("Location: admin_set_prices.php");
     exit;
 }
+
+
 
 // ── Fetch station name ───────────────────────────────────────────────────────
 $station_name = 'Unknown Station';
@@ -78,11 +67,13 @@ try {
 $fuel_products = [];
 try {
     $stmt = $pdo->prepare("
-        SELECT id, fuel_type, price_per_liter, current_level, capacity,
-               critical_level, status, last_updated, updated_by
-        FROM fuel_inventory
-        WHERE station_id = ?
-        ORDER BY fuel_type
+        SELECT f.id, f.fuel_type, f.price_per_liter, f.current_level, f.capacity,
+               f.critical_level, f.status, f.last_updated, f.updated_by,
+               p.new_price as pending_price, p.status as approval_status, p.id as approval_id
+        FROM fuel_inventory f
+        LEFT JOIN pending_price_approvals p ON f.id = p.product_id AND p.product_type = 'fuel_inventory' AND p.status = 'pending'
+        WHERE f.station_id = ?
+        ORDER BY f.fuel_type
     ");
     $stmt->execute([$station_id]);
     $fuel_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -98,11 +89,13 @@ $all_categories = [];
 
 try {
     $stmt = $pdo->query("
-        SELECT id, category, product_name, sku, size, unit_cost, supplier,
-               unit_price, stock_quantity, stock, created_at
-        FROM inventory_products
-        WHERE category != 'Fuel'
-        ORDER BY category, product_name
+        SELECT i.id, i.category, i.product_name, i.sku, i.size, i.unit_cost, i.supplier,
+               i.unit_price, i.stock_quantity, i.stock, i.created_at,
+               p.new_cost as pending_cost, p.new_price as pending_price, p.status as approval_status, p.id as approval_id
+        FROM inventory_products i
+        LEFT JOIN pending_price_approvals p ON i.id = p.product_id AND p.product_type = 'merchandise' AND p.status = 'pending'
+        WHERE i.category != 'Fuel'
+        ORDER BY i.category, i.product_name
     ");
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -148,6 +141,10 @@ include __DIR__ . '/../partials/header.php';
 
 <style>
 /* ── Page-level styles ─────────────────────────────────────────────────────── */
+.ato-tab-bar { display:flex;gap:0;border-bottom:2px solid #dee2e6;margin-bottom:18px; }
+.ato-tab { display:inline-flex;align-items:center;gap:7px;padding:10px 22px;font-size:13px;font-weight:600;color:#6c757d;text-decoration:none;border-bottom:3px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;white-space:nowrap; cursor:pointer; }
+.ato-tab:hover { color:#002F6C; }
+.ato-tab.active { color:#002F6C;border-bottom-color:#002F6C;background:#f8fbff;border-radius:6px 6px 0 0; }
 .pricing-tabs { display: none; } /* replaced by dropdown */
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
@@ -246,25 +243,14 @@ include __DIR__ . '/../partials/header.php';
         <h1 class="h1"><i class="fas fa-tags"></i> Product &amp; Pricing Overview</h1>
         <div class="sub">Product &amp; Pricing Overview</div>
     </div>
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <a href="?export=excel" class="btn btn-export-csv" style="padding:8px 16px;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:6px;">
-            <i class="fas fa-file-excel"></i> Export Excel
-        </a>
-        <a href="export_product_pricing_final.php" class="btn btn-export-pdf" style="padding:8px 16px;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:6px;background:#dc2626;color:#fff;" onclick="this.href='export_product_pricing_final.php?section=' + document.getElementById('sectionDropdown').value">
-            <i class="fas fa-file-pdf"></i> Print / PDF
-        </a>
-    </div>
 </div>
 
 
-<!-- ── Section Dropdown ──────────────────────────────────────────────────── -->
-<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
-    <label style="font-size:13px;font-weight:600;color:#374151;">View Section:</label>
-    <select id="sectionDropdown" onchange="switchTab(this.value)" style="padding:9px 36px 9px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;font-weight:600;color:#002F6C;background:#fff url('data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'8\'><path d=\'M1 1l5 5 5-5\' stroke=\'%23002F6C\' stroke-width=\'2\' fill=\'none\' stroke-linecap=\'round\'/></svg>') no-repeat right 12px center;appearance:none;cursor:pointer;min-width:240px;box-shadow:0 1px 3px rgba(0,0,0,.08);">
-        <option value="fuel">Fuel Products</option>
-        <option value="merch">Merchandise</option>
-    </select>
-    <span id="sectionLabel" style="font-size:12px;color:#64748b;"></span>
+<!-- ── Section Tabs ──────────────────────────────────────────────────── -->
+<input type="hidden" id="activeSection" value="fuel">
+<div class="ato-tab-bar">
+    <a onclick="switchTab('fuel')" id="tab-btn-fuel" class="ato-tab active"><i class="fas fa-gas-pump"></i> Fuel Products</a>
+    <a onclick="switchTab('merch')" id="tab-btn-merch" class="ato-tab"><i class="fas fa-box"></i> Merchandise</a>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════════════
@@ -287,6 +273,7 @@ include __DIR__ . '/../partials/header.php';
                         <th>Critical Level (L)</th>
                         <th>Status</th>
                         <th>Last Updated</th>
+                        <th style="text-align: center;">Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -351,6 +338,25 @@ include __DIR__ . '/../partials/header.php';
                         <td class="muted" style="font-size:12px;">
                             <?php echo $f['last_updated'] ? htmlspecialchars(date('M d, Y H:i', strtotime($f['last_updated']))) : '&mdash;'; ?>
                         </td>
+                        <td style="text-align: center; vertical-align: middle;">
+                            <?php if ($f['approval_status'] === 'pending'): ?>
+                                <div style="display:flex; flex-direction:column; gap:4px; align-items:center;">
+                                    <div style="font-size:11px; color:#b45309; background:#fef3c7; padding:2px 6px; border-radius:4px; margin-bottom:4px;">
+                                        <strong>Proposed: ₱<?php echo number_format($f['pending_price'], 2); ?></strong>
+                                    </div>
+                                    <div style="display:flex; gap:4px;">
+                                        <form method="POST" style="margin:0;">
+                                            <input type="hidden" name="action" value="approve_price">
+                                            <input type="hidden" name="approval_id" value="<?php echo $f['approval_id']; ?>">
+                                            <button type="submit" class="btn" style="background:#16a34a;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;display:flex;align-items:center;gap:4px;"><i class="fas fa-check"></i> Approve</button>
+                                        </form>
+                                        <button type="button" class="btn" style="background:#dc2626;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;display:flex;align-items:center;gap:4px;" onclick="openRejectModal(<?php echo $f['approval_id']; ?>)"><i class="fas fa-times"></i> Reject</button>
+                                    </div>
+                                </div>
+                            <?php else: ?>
+                                <span class="muted" style="font-size:11px;">&mdash;</span>
+                            <?php endif; ?>
+                        </td>
                     </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -405,8 +411,8 @@ include __DIR__ . '/../partials/header.php';
                         <th>Cost (&#8369;)</th>
                         <th>Price (&#8369;)</th>
                         <th>Stock</th>
-                        <th>Margin (&#8369;)</th>
                         <th>Status</th>
+                        <th style="text-align: center;">Action</th>
                     </tr>
                 </thead>
                 <tbody id="merchBody">
@@ -415,7 +421,7 @@ include __DIR__ . '/../partials/header.php';
                         <td colspan="9">
                             <i class="fas fa-folder"></i>
                             <?php echo htmlspecialchars($cat_label); ?>
-                            <span class="muted" style="font-weight:400;margin-left:6px;">(<?php echo count($items); ?> items)</span>
+                            <span class="muted cat-count" style="font-weight:400;margin-left:6px;">(<?php echo count($items); ?> items)</span>
                         </td>
                     </tr>
                     <?php foreach ($items as $item):
@@ -460,16 +466,27 @@ include __DIR__ . '/../partials/header.php';
                             <?php endif; ?>
                         </td>
                         <td><?php echo number_format($stock, 0); ?></td>
-                        <td>
-                            <?php if (!$no_price): ?>
-                                <span style="color:<?php echo $margin >= 0 ? '#16a34a' : '#dc2626'; ?>;font-weight:600;">
-                                    <?php echo ($margin >= 0 ? '+' : '') . '&#8369;' . number_format($margin, 2); ?>
-                                </span>
+                        <td><span class="badge <?php echo $st_class; ?>"><?php echo $st_label; ?></span></td>
+                        <td style="text-align: center; vertical-align: middle;">
+                            <?php if (($item['approval_status'] ?? '') === 'pending'): ?>
+                                <div style="display:flex; flex-direction:column; gap:4px; align-items:center;">
+                                    <div style="font-size:11px; color:#b45309; background:#fef3c7; padding:2px 6px; border-radius:4px; margin-bottom:4px; text-align:left;">
+                                        Proposed Cost: ₱<?php echo number_format($item['pending_cost'], 2); ?><br>
+                                        Proposed Price: ₱<?php echo number_format($item['pending_price'], 2); ?>
+                                    </div>
+                                    <div style="display:flex; gap:4px;">
+                                        <form method="POST" style="margin:0;">
+                                            <input type="hidden" name="action" value="approve_price">
+                                            <input type="hidden" name="approval_id" value="<?php echo $item['approval_id']; ?>">
+                                            <button type="submit" class="btn" style="background:#16a34a;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;"><i class="fas fa-check"></i> Approve</button>
+                                        </form>
+                                        <button type="button" class="btn" style="background:#dc2626;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;" onclick="openRejectModal(<?php echo $item['approval_id']; ?>)"><i class="fas fa-times"></i> Reject</button>
+                                    </div>
+                                </div>
                             <?php else: ?>
-                                <span class="muted">&mdash;</span>
+                                <span class="muted" style="font-size:11px;">&mdash;</span>
                             <?php endif; ?>
                         </td>
-                        <td><span class="badge <?php echo $st_class; ?>"><?php echo $st_label; ?></span></td>
                     </tr>
                     <?php endforeach; ?>
                 <?php endforeach; ?>
@@ -480,8 +497,47 @@ include __DIR__ . '/../partials/header.php';
     <?php endif; ?>
 </div>
 
-                            
+</div>
+
+<!-- Rejection Modal -->
+<style>
+.modal { display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,.5); align-items:center; justify-content:center; }
+.modal.open { display:flex; }
+.modal-content { background:#fff; border-radius:12px; width:90%; max-width:400px; box-shadow:0 8px 32px rgba(0,0,0,.25); }
+.modal-header { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid #e9ecef; }
+.modal-header h3 { margin:0; font-size:16px; font-weight:700; color:#dc2626; display:flex; align-items:center; gap:8px; }
+.modal-body { padding:20px; }
+.modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:16px 20px; border-top:1px solid #e9ecef; }
+</style>
+<div class="modal" id="rejectModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3><i class="fas fa-times-circle"></i> Reject Price Proposal</h3>
+      <button type="button" style="background:none;border:none;font-size:24px;cursor:pointer;color:#aaa;" onclick="closeRejectModal()">&times;</button>
+    </div>
+    <form method="post" id="rejectForm">
+      <div class="modal-body">
+          <input type="hidden" name="action" value="reject_price">
+          <input type="hidden" name="approval_id" id="rejectApprovalId" value="">
+          <label style="display:block; margin-bottom:8px; font-weight:600; font-size:13px; color:#374151;">Reason for Rejection <span style="color:#dc2626;">*</span></label>
+          <textarea name="remarks" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-family:inherit; resize:vertical; min-height:80px;" placeholder="Provide remarks for the manager..." required></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" style="padding:8px 16px; border:1px solid #cbd5e1; background:#fff; border-radius:6px; cursor:pointer; font-weight:600; color:#475569;" onclick="closeRejectModal()">Cancel</button>
+        <button type="submit" style="padding:8px 16px; border:none; background:#dc2626; border-radius:6px; cursor:pointer; font-weight:600; color:#fff;">Reject Proposal</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
+function openRejectModal(id) {
+    document.getElementById('rejectApprovalId').value = id;
+    document.getElementById('rejectModal').classList.add('open');
+}
+function closeRejectModal() {
+    document.getElementById('rejectModal').classList.remove('open');
+}
 // ── Section dropdown switching ───────────────────────────────────────────────
 function switchTab(name) {
     // Remove active class from all tab panels
@@ -495,10 +551,19 @@ function switchTab(name) {
         targetTab.classList.add('active');
     }
     
-    // Update dropdown value
-    var dropdown = document.getElementById('sectionDropdown');
-    if (dropdown) {
-        dropdown.value = name;
+    // Update active class on tab buttons
+    document.querySelectorAll('.ato-tab').forEach(function(btn) {
+        btn.classList.remove('active');
+    });
+    var targetBtn = document.getElementById('tab-btn-' + name);
+    if (targetBtn) {
+        targetBtn.classList.add('active');
+    }
+    
+    // Update hidden input for PDF export
+    var activeSec = document.getElementById('activeSection');
+    if (activeSec) {
+        activeSec.value = name;
     }
 }
 
@@ -522,8 +587,8 @@ function filterTable() {
     var catHeaders = document.querySelectorAll('#merchBody .cat-row');
     var visible    = 0;
 
-    // Track which categories have visible rows
-    var catVisible = {};
+    // Track which categories have visible rows and how many
+    var catVisibleCount = {};
 
     rows.forEach(function(row) {
         var name      = row.getAttribute('data-name') || '';
@@ -546,14 +611,21 @@ function filterTable() {
         row.style.display = show ? '' : 'none';
         if (show) {
             visible++;
-            catVisible[cat] = true;
+            catVisibleCount[cat] = (catVisibleCount[cat] || 0) + 1;
         }
     });
 
-    // Show/hide category header rows
+    // Show/hide category header rows and update counts
     catHeaders.forEach(function(hdr) {
         var cat = hdr.getAttribute('data-cat-header') || '';
-        hdr.style.display = catVisible[cat] ? '' : 'none';
+        var count = catVisibleCount[cat] || 0;
+        if (count > 0) {
+            hdr.style.display = '';
+            var countSpan = hdr.querySelector('.cat-count');
+            if (countSpan) countSpan.textContent = '(' + count + ' item' + (count !== 1 ? 's' : '') + ')';
+        } else {
+            hdr.style.display = 'none';
+        }
     });
 
     var countEl = document.getElementById('visibleCount');

@@ -191,6 +191,30 @@ function handle_create($pdo, $me, $role, $station_id) {
 }
 
 function handle_my_requests($pdo, $me) {
+    // Ensure both tables exist
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS fuel_stock_requests (
+                id               INT AUTO_INCREMENT PRIMARY KEY,
+                staff_id         INT NOT NULL,
+                station_id       INT NOT NULL,
+                fuel_type        VARCHAR(100) NOT NULL,
+                current_level    DECIMAL(12,2) NOT NULL DEFAULT 0,
+                capacity         DECIMAL(12,2) NOT NULL DEFAULT 0,
+                stock_status     VARCHAR(30)  NOT NULL DEFAULT 'LOW',
+                requested_liters DECIMAL(12,2) NOT NULL,
+                remarks          TEXT,
+                status           ENUM('Pending','Approved','Rejected') DEFAULT 'Pending',
+                approved_liters  DECIMAL(12,2) NULL,
+                manager_id       INT NULL,
+                manager_notes    TEXT NULL,
+                processed_at     TIMESTAMP NULL,
+                created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+    } catch (Exception $ignored) {}
+
     $status_filter = $_GET['status']    ?? '';
     $date_from     = $_GET['date_from'] ?? '';
     $date_to       = $_GET['date_to']   ?? '';
@@ -199,49 +223,95 @@ function handle_my_requests($pdo, $me) {
     $page          = max(1, (int)($_GET['page'] ?? 1));
     $offset        = ($page - 1) * $per_page;
 
-    $where  = ['sr.staff_id = ?'];
-    $params = [$me['id']];
+    $where_merch  = ['sr.staff_id = ?'];
+    $params_merch = [$me['id']];
+    
+    $where_fuel  = ['fsr.staff_id = ?'];
+    $params_fuel = [$me['id']];
 
     if ($status_filter) {
-        $where[]  = 'sr.status = ?';
-        $params[] = $status_filter;
+        $where_merch[]  = 'sr.status = ?';
+        $params_merch[] = $status_filter;
+        
+        $where_fuel[]  = 'fsr.status = ?';
+        $params_fuel[] = $status_filter;
     }
     if ($date_from) {
-        $where[]  = 'DATE(sr.created_at) >= ?';
-        $params[] = $date_from;
+        $where_merch[]  = 'DATE(sr.created_at) >= ?';
+        $params_merch[] = $date_from;
+        
+        $where_fuel[]  = 'DATE(fsr.created_at) >= ?';
+        $params_fuel[] = $date_from;
     }
     if ($date_to) {
-        $where[]  = 'DATE(sr.created_at) <= ?';
-        $params[] = $date_to;
+        $where_merch[]  = 'DATE(sr.created_at) <= ?';
+        $params_merch[] = $date_to;
+        
+        $where_fuel[]  = 'DATE(fsr.created_at) <= ?';
+        $params_fuel[] = $date_to;
     }
     if ($item_type) {
-        $where[]  = 'sr.item_category = ?';
-        $params[] = $item_type;
+        if (strtolower($item_type) === 'fuel') {
+            $where_merch[] = '1 = 0';
+        } else {
+            $where_merch[] = 'sr.item_category = ?';
+            $params_merch[] = $item_type;
+            
+            $where_fuel[] = '1 = 0';
+        }
     }
 
-    $whereSQL = 'WHERE ' . implode(' AND ', $where);
+    $whereSQL_merch = 'WHERE ' . implode(' AND ', $where_merch);
+    $whereSQL_fuel  = 'WHERE ' . implode(' AND ', $where_fuel);
 
-    // Total count for pagination
-    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM stock_requests sr $whereSQL");
-    $countStmt->execute($params);
+    $sql_count = "
+        SELECT SUM(cnt) FROM (
+            SELECT COUNT(*) AS cnt FROM stock_requests sr $whereSQL_merch
+            UNION ALL
+            SELECT COUNT(*) AS cnt FROM fuel_stock_requests fsr $whereSQL_fuel
+        ) t
+    ";
+
+    $params_combined = array_merge($params_merch, $params_fuel);
+
+    $countStmt = $pdo->prepare($sql_count);
+    $countStmt->execute($params_combined);
     $total = (int)$countStmt->fetchColumn();
 
-    // Paginated data — bind LIMIT/OFFSET as integers explicitly
-    $stmt = $pdo->prepare("
-        SELECT sr.*, m.name AS manager_name
+    $sql_data = "
+        SELECT 
+            sr.id, sr.staff_id, sr.station_id, sr.item_id, sr.item_sku, sr.item_name, sr.item_category,
+            sr.current_stock, sr.requested_quantity, sr.approved_quantity, sr.remarks, sr.status,
+            sr.manager_id, sr.manager_notes, sr.processed_at, sr.created_at, sr.updated_at,
+            m.name AS manager_name
         FROM stock_requests sr
         LEFT JOIN users m ON sr.manager_id = m.id
-        $whereSQL
-        ORDER BY sr.created_at DESC
+        $whereSQL_merch
+        
+        UNION ALL
+        
+        SELECT 
+            fsr.id, fsr.staff_id, fsr.station_id, 0 AS item_id, '—' AS item_sku, fsr.fuel_type AS item_name, 'Fuel' AS item_category,
+            fsr.current_level AS current_stock, fsr.requested_liters AS requested_quantity, fsr.approved_liters AS approved_quantity, fsr.remarks, fsr.status,
+            fsr.manager_id, fsr.manager_notes, fsr.processed_at, fsr.created_at, fsr.updated_at,
+            m.name AS manager_name
+        FROM fuel_stock_requests fsr
+        LEFT JOIN users m ON fsr.manager_id = m.id
+        $whereSQL_fuel
+        
+        ORDER BY created_at DESC
         LIMIT $per_page OFFSET $offset
-    ");
-    $stmt->execute($params);
+    ";
+
+    $stmt = $pdo->prepare($sql_data);
+    $stmt->execute($params_combined);
+    $requests = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $total_pages = $total > 0 ? (int)ceil($total / $per_page) : 1;
 
     echo json_encode([
         'success'     => true,
-        'requests'    => $stmt->fetchAll(PDO::FETCH_ASSOC),
+        'requests'    => $requests,
         'total'       => $total,
         'page'        => $page,
         'per_page'    => $per_page,

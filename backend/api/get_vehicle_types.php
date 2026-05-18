@@ -108,18 +108,22 @@ try {
 
 $method = $_SERVER['REQUEST_METHOD'];
 
-// ── GET: return approved vehicle types ───────────────────────────────────────
+// ── GET: return approved and pending vehicle types ───────────────────────────
 if ($method === 'GET') {
     $rows = $pdo->query("
-        SELECT id, category, vehicle_name, sort_order
+        SELECT id, category, vehicle_name, sort_order, status
         FROM   vehicle_types
-        WHERE  is_active = 1 AND status = 'approved'
+        WHERE  is_active = 1 AND status IN ('approved', 'pending')
         ORDER  BY sort_order ASC, category ASC, vehicle_name ASC
     ")->fetchAll(PDO::FETCH_ASSOC);
 
     $grouped = [];
     foreach ($rows as $r) {
-        $grouped[$r['category']][] = ['id' => (int)$r['id'], 'name' => $r['vehicle_name']];
+        $name = $r['vehicle_name'];
+        if ($r['status'] === 'pending') {
+            $name .= ' (Pending Approval)';
+        }
+        $grouped[$r['category']][] = ['id' => (int)$r['id'], 'name' => $name];
     }
     echo json_encode(['success' => true, 'groups' => $grouped]);
     exit;
