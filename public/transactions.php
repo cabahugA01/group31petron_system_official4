@@ -225,12 +225,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // ── Adjust Job Order ──────────────────────────────────────────────────────
     if ($action === 'adjust_job_order') {
         $jo_id    = (int)($_POST['jo_id'] ?? 0);
+        $jo_src   = $_POST['jo_source'] ?? 'job_orders';
         $new_cost = (float)($_POST['adj_cost'] ?? 0);
         $adj_note = trim($_POST['adj_note'] ?? '');
         try {
             $pdo->beginTransaction();
-            $pdo->prepare("UPDATE job_orders SET total_cost=?, validation_status='Adjusted', validated_by=?, validated_at=NOW() WHERE id=? AND station_id=?")
-                ->execute([$new_cost, $me['id'], $jo_id, $station_id]);
+            if ($jo_src === 'merchandise_transactions') {
+                // JO that lives in merchandise_transactions (created via staff hub)
+                $pdo->prepare("UPDATE merchandise_transactions SET total_amount=?, validation_status='Adjusted', validated_by=?, validated_at=NOW(), updated_at=NOW() WHERE id=? AND station_id=?")
+                    ->execute([$new_cost, $me['id'], $jo_id, $station_id]);
+            } else {
+                $pdo->prepare("UPDATE job_orders SET total_cost=?, validation_status='Adjusted', validated_by=?, validated_at=NOW() WHERE id=? AND station_id=?")
+                    ->execute([$new_cost, $me['id'], $jo_id, $station_id]);
+            }
             try { $pdo->prepare("INSERT INTO audit_trail (transaction_id,manager_id,action_type,new_value,station_id) VALUES (?,?,'Adjust',?,?)")
                 ->execute([$jo_id,$me['id'],"JO Adjusted. New cost: ₱{$new_cost}. {$adj_note}",$station_id]); } catch(Exception $ae){}
             log_activity($pdo,$me['id'],'JO_ADJUSTED',"Job Order #{$jo_id} adjusted to ₱{$new_cost} by {$me['name']}.");
@@ -268,7 +275,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // ── Filters ───────────────────────────────────────────────────────────────────
 // Default: last 30 days so existing April data always shows on first load
-$start    = $_GET['start']  ?? date('Y-m-d', strtotime('-30 days'));
+$start    = $_GET['start']  ?? date('Y-m-d', strtotime('-90 days'));
 $end      = $_GET['end']    ?? date('Y-m-d');
 $customer = trim($_GET['customer'] ?? '');
 $payment  = $_GET['payment'] ?? '';
@@ -314,9 +321,9 @@ if (empty($payment_methods)) {
 // ── Status normaliser ─────────────────────────────────────────────────────────
 function normalise_status(string $raw): string {
     $s = strtolower(trim($raw));
-    if ($s === '' || in_array($s, ['pending','pending validation','pendingvalidation'])) return 'pending';
-    if (in_array($s, ['verified','validated','approved','complete','completed']))        return 'verified';
-    if (in_array($s, ['rejected','returned']))  return 'returned';
+    if ($s === '' || in_array($s, ['pending','pending validation','pendingvalidation','awaiting'])) return 'pending';
+    if (in_array($s, ['verified','validated','approved','complete','completed','in progress']))    return 'verified';
+    if (in_array($s, ['rejected','returned','cancelled']))  return 'returned';
     if ($s === 'adjusted') return 'adjusted';
     return 'pending';
 }
@@ -359,9 +366,22 @@ if ($status_f === 'pending') {
 
 // ── Merchandise query ─────────────────────────────────────────────────────────
 // Use actual transaction_type column if it exists, otherwise default to 'merchandise'
-$mt_txn_type_expr = $mt_has('transaction_type')
-    ? "CASE WHEN mt.transaction_type IN ('job_order','combined') THEN 'job_order' ELSE 'merchandise' END"
-    : "'merchandise'";
+// Dynamically classify transactions as combined, job_order, or merchandise
+$mt_txn_type_expr = "
+    CASE 
+        WHEN (
+            (TRIM(COALESCE(mt.job_order_service, '')) <> '') OR 
+            (SELECT COUNT(*) FROM merchandise_transaction_items i WHERE i.transaction_id = mt.id AND i.item_type = 'service') > 0
+        ) AND (
+            (SELECT COUNT(*) FROM merchandise_transaction_items i WHERE i.transaction_id = mt.id AND COALESCE(i.item_type, 'merchandise') = 'merchandise') > 0
+        ) THEN 'combined'
+        WHEN (
+            (TRIM(COALESCE(mt.job_order_service, '')) <> '') OR 
+            (SELECT COUNT(*) FROM merchandise_transaction_items i WHERE i.transaction_id = mt.id AND i.item_type = 'service') > 0
+        ) THEN 'job_order'
+        ELSE 'merchandise'
+    END
+";
 $mt_vehicle_expr  = $mt_has('job_order_vehicle_plate') ? "COALESCE(mt.job_order_vehicle_plate,'')" : "''";
 $mt_mechanic_expr = $mt_has('job_order_mechanic_name') ? "COALESCE(mt.job_order_mechanic_name,'')" : "''";
 $mt_jo_service_expr = $mt_has('job_order_service') ? "COALESCE(mt.job_order_service,'')" : "''";
@@ -469,14 +489,17 @@ try {
 }
 
 // ── Merge based on type filter ────────────────────────────────────────────────
-if ($type_f === 'merchandise') {
-    $all_transactions = $transactions;
-} elseif ($type_f === 'jo') {
-    $all_transactions = $job_orders;
-} else {
-    // Merge and sort by created_at desc
-    $all_transactions = array_merge($transactions, $job_orders);
-    usort($all_transactions, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['created_at']));
+$all_transactions = array_merge($transactions, $job_orders);
+usort($all_transactions, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['created_at']));
+
+if ($type_f !== '') {
+    $all_transactions = array_filter($all_transactions, function($t) use ($type_f) {
+        $type = $t['txn_type'] ?? '';
+        if ($type_f === 'merchandise') return $type === 'merchandise';
+        if ($type_f === 'jo')          return $type === 'job_order';
+        if ($type_f === 'combined')    return $type === 'combined';
+        return true;
+    });
 }
 
 // ── Summary counts ────────────────────────────────────────────────────────────
@@ -491,167 +514,7 @@ foreach ($all_transactions as $t) {
     $grandTotal += (float)($t['total'] ?? 0);
 }
 
-// ── Job Order Tracker data (Tab 2) ────────────────────────────────────────────
-$jo_status_filter = trim($_GET['jo_status'] ?? '');
-$jo_search_filter = trim($_GET['jo_search'] ?? '');
-
-$jo_stats = ['total'=>0,'pending'=>0,'approved'=>0,'in_progress'=>0,'completed'=>0,'rejected'=>0];
-try {
-    // Count from job_orders
-    $r = $pdo->prepare("SELECT COUNT(*) AS total,
-        SUM(CASE WHEN status='Pending Validation' OR validation_status='Pending Validation' THEN 1 ELSE 0 END) AS pending,
-        SUM(CASE WHEN validation_status IN ('Approved','Validated') AND status NOT IN ('In Progress','Completed','Rejected','Cancelled') THEN 1 ELSE 0 END) AS approved,
-        SUM(CASE WHEN status='In Progress' THEN 1 ELSE 0 END) AS in_progress,
-        SUM(CASE WHEN status='Completed' THEN 1 ELSE 0 END) AS completed,
-        SUM(CASE WHEN status IN ('Rejected','Cancelled') THEN 1 ELSE 0 END) AS rejected
-        FROM job_orders WHERE station_id=?");
-    $r->execute([$station_id]);
-    $jo_stats = $r->fetch(PDO::FETCH_ASSOC) ?: $jo_stats;
-
-    // Also count from merchandise_transactions (job_order/combined type)
-    $r2 = $pdo->prepare("SELECT COUNT(*) AS total,
-        SUM(CASE WHEN validation_status='Pending' THEN 1 ELSE 0 END) AS pending,
-        SUM(CASE WHEN validation_status='Approved' AND COALESCE(workflow_status,'Pending') NOT IN ('In Progress','Completed','Rejected') THEN 1 ELSE 0 END) AS approved,
-        SUM(CASE WHEN COALESCE(workflow_status,'Pending')='In Progress' THEN 1 ELSE 0 END) AS in_progress,
-        SUM(CASE WHEN COALESCE(workflow_status,'Pending')='Completed' THEN 1 ELSE 0 END) AS completed,
-        SUM(CASE WHEN validation_status='Rejected' THEN 1 ELSE 0 END) AS rejected
-        FROM merchandise_transactions WHERE station_id=? AND transaction_type IN ('job_order','combined')");
-    $r2->execute([$station_id]);
-    $mt_stats = $r2->fetch(PDO::FETCH_ASSOC);
-    if ($mt_stats) {
-        foreach (['total','pending','approved','in_progress','completed','rejected'] as $k) {
-            $jo_stats[$k] = ($jo_stats[$k] ?? 0) + ($mt_stats[$k] ?? 0);
-        }
-    }
-} catch (Exception $e) {}
-
-$jo_where = ["j.station_id=?"]; $jo_params = [$station_id];
-if ($jo_status_filter !== '') {
-    $jo_where[] = "(j.status=? OR j.validation_status=?)";
-    $jo_params[] = $jo_status_filter; $jo_params[] = $jo_status_filter;
-}
-if ($jo_search_filter !== '') {
-    $jo_where[] = "(COALESCE(c.name,j.customer_name,'') LIKE ? OR j.service_type LIKE ? OR u.name LIKE ? OR j.vehicle_plate LIKE ?)";
-    $s = '%'.$jo_search_filter.'%';
-    $jo_params[] = $s; $jo_params[] = $s; $jo_params[] = $s; $jo_params[] = $s;
-}
-
-$jo_tracker_rows = [];
-try {
-    $pay_status_col = $jo_has('payment_status')
-        ? "COALESCE(NULLIF(TRIM(j.payment_status),''),'Unpaid')"
-        : "'Unpaid'";
-    $mechanic_col = $jo_has('assigned_mechanic_id')
-        ? 'COALESCE(m.name,\'\')'
-        : ($jo_has('mechanic_name') ? 'COALESCE(j.mechanic_name,\'\')' : "''");
-    $staff_col = $jo_has('created_by')
-        ? 'COALESCE(j.created_by, j.user_id)'
-        : 'j.user_id';
-
-    // ── Part 1: native job_orders rows ───────────────────────────────────────
-    $jo_where_sql = implode(' AND ', $jo_where);
-    $part1_sql = "
-        SELECT
-            j.id,
-            j.customer_name,
-            j.service_type,
-            j.service_description,
-            j.status,
-            j.validation_status,
-            j.estimated_cost,
-            j.total_cost,
-            j.notes,
-            j.vehicle_plate,
-            j.created_at,
-            COALESCE(c.name, j.customer_name, 'Walk-in') AS cust,
-            u.name AS staff_name,
-            {$pay_status_col} AS payment_status,
-            {$mechanic_col} AS mechanic_name,
-            'job_orders' AS _source
-        FROM job_orders j
-        LEFT JOIN customers c ON c.id = j.customer_id
-        LEFT JOIN users u ON u.id = {$staff_col}
-        " . ($jo_has('assigned_mechanic_id') ? "LEFT JOIN users m ON m.id = j.assigned_mechanic_id" : "") . "
-        WHERE {$jo_where_sql}
-    ";
-
-    // ── Part 2: merchandise_transactions with transaction_type job_order/combined ─
-    // Only include if the transaction_type column exists
-    $part2_sql = '';
-    $mt_params2 = [];
-    if ($mt_has('transaction_type') && $mt_has('job_order_service')) {
-        $mt_mech2 = $mt_has('job_order_mechanic_name') ? "COALESCE(mt2.job_order_mechanic_name,'')" : "''";
-        $mt_plate2 = $mt_has('job_order_vehicle_plate') ? "COALESCE(mt2.job_order_vehicle_plate,'')" : "''";
-        $mt_vtype2 = $mt_has('job_order_vehicle_type') ? "COALESCE(mt2.job_order_vehicle_type,'')" : "''";
-
-        // Build search/status conditions for merchandise_transactions
-        $mt2_where = ["mt2.station_id = ?",
-                      "mt2.transaction_type IN ('job_order','combined')"];
-        $mt_params2 = [$station_id];
-
-        if ($jo_status_filter !== '') {
-            // For MT rows: check both validation_status (Pending/Approved/Rejected)
-            // and workflow_status (In Progress/Completed) since they're separate columns
-            $mt2_where[] = "(mt2.validation_status = ? OR mt2.workflow_status = ?)";
-            $mt_params2[] = $jo_status_filter; $mt_params2[] = $jo_status_filter;
-        }
-        if ($jo_search_filter !== '') {
-            $mt2_where[] = "(mt2.customer_name LIKE ? OR mt2.job_order_service LIKE ? OR {$mt_plate2} LIKE ?)";
-            $s2 = '%'.$jo_search_filter.'%';
-            $mt_params2[] = $s2; $mt_params2[] = $s2; $mt_params2[] = $s2;
-        }
-
-        $mt2_date_col = $mt_has('transaction_date')
-            ? "CASE WHEN mt2.transaction_date > '2000-01-01' THEN mt2.transaction_date ELSE mt2.created_at END"
-            : "mt2.created_at";
-
-        $part2_sql = "
-        UNION ALL
-        SELECT
-            mt2.id                                                          AS id,
-            COALESCE(NULLIF(TRIM(mt2.customer_name),''),'Walk-in')         AS customer_name,
-            COALESCE(mt2.job_order_service,'Service')                       AS service_type,
-            ''                                                              AS service_description,
-            COALESCE(mt2.workflow_status, mt2.validation_status,'Pending')  AS status,
-            COALESCE(mt2.validation_status,'Pending')                       AS validation_status,
-            mt2.total_amount                                                AS estimated_cost,
-            mt2.total_amount                                                AS total_cost,
-            ''                                                              AS notes,
-            {$mt_plate2}                                                    AS vehicle_plate,
-            {$mt2_date_col}                                                 AS created_at,
-            COALESCE(NULLIF(TRIM(mt2.customer_name),''),'Walk-in')         AS cust,
-            u2.name                                                         AS staff_name,
-            COALESCE(mt2.payment_status,'Unpaid')                          AS payment_status,
-            {$mt_mech2}                                                     AS mechanic_name,
-            'merchandise_transactions'                                      AS _source
-        FROM merchandise_transactions mt2
-        LEFT JOIN users u2 ON u2.id = mt2.staff_id
-        WHERE " . implode(' AND ', $mt2_where) . "
-        ";
-    }
-
-    $full_sql = "
-        SELECT * FROM (
-            {$part1_sql}
-            {$part2_sql}
-        ) combined_jo
-        ORDER BY
-            CASE WHEN status = 'Pending Validation'
-                   OR validation_status = 'Pending Validation' THEN 0 ELSE 1 END,
-            created_at DESC
-        LIMIT 200
-    ";
-
-    $all_jo_params = array_merge($jo_params, $mt_params2);
-    $r = $pdo->prepare($full_sql);
-    $r->execute($all_jo_params);
-    $jo_tracker_rows = $r->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {
-    // Surface the error so it's visible during debugging
-    $_SESSION['jo_query_error'] = $e->getMessage();
-}
-
-
+// ── Job Order Tracker data (Removed to enforce unified view) ────────────────
 
 include __DIR__ . '/../partials/header.php';
 ?>
@@ -676,7 +539,7 @@ include __DIR__ . '/../partials/header.php';
 
 
 
-<?php if ($active_tab !== 'jo'): ?>
+
 <?php
 // ── Customer list for auto-suggest ───────────────────────────────────────────
 $customer_list = [];
@@ -771,7 +634,8 @@ try {
                 <select name="type" class="flt-inp flt-select">
                     <option value="">All Types</option>
                     <option value="merchandise" <?php echo ($type_f==='merchandise') ? 'selected':''; ?>>🛒 Merchandise</option>
-                    <option value="jo"          <?php echo ($type_f==='jo')          ? 'selected':''; ?>>🔧 Job Order</option>
+                    <option value="jo"          <?php echo ($type_f==='jo')          ? 'selected':''; ?>>🔧 Job Order Only</option>
+                    <option value="combined"    <?php echo ($type_f==='combined')    ? 'selected':''; ?>>📦 JO with Merch</option>
                 </select>
             </div>
 
@@ -819,19 +683,25 @@ try {
             <tbody>
                 <?php foreach($all_transactions as $t): ?>
                 <?php
-                    $isJO      = ($t['txn_type'] ?? '') === 'job_order';
-                    $status    = $t['status'] ?? 'Pending Validation';
-                    $ns        = normalise_status($status);
-                    if ($ns === 'verified') {
-                        $statusColor = '#28a745'; $statusLabel = 'Approved';
-                    } elseif ($ns === 'pending') {
+                    $isJO       = ($t['txn_type'] ?? '') === 'job_order';
+                    $isCombined = ($t['txn_type'] ?? '') === 'combined';
+                    $status     = $t['status'] ?? 'Pending Validation';
+                    // Refined status display for JO lifecycle: Pending -> Approved -> In Progress -> Completed
+                    $statusColor = '#6c757d';
+                    $statusLabel = htmlspecialchars($status);
+                    $stLower     = strtolower(trim($status));
+                    if (in_array($stLower, ['pending', 'pending validation', 'pendingvalidation'])) {
                         $statusColor = '#e6a817'; $statusLabel = 'Pending';
-                    } elseif ($ns === 'returned') {
+                    } elseif (in_array($stLower, ['approved', 'validated', 'verified'])) {
+                        $statusColor = '#28a745'; $statusLabel = 'Approved';
+                    } elseif ($stLower === 'in progress') {
+                        $statusColor = '#17a2b8'; $statusLabel = 'In Progress';
+                    } elseif (in_array($stLower, ['complete', 'completed'])) {
+                        $statusColor = '#28a745'; $statusLabel = 'Completed';
+                    } elseif (in_array($stLower, ['rejected', 'returned', 'cancelled'])) {
                         $statusColor = '#dc3545'; $statusLabel = 'Rejected';
-                    } elseif ($ns === 'adjusted') {
+                    } elseif ($stLower === 'adjusted') {
                         $statusColor = '#6f42c1'; $statusLabel = 'Adjusted';
-                    } else {
-                        $statusColor = '#6c757d'; $statusLabel = htmlspecialchars($status);
                     }
 
                     $rowId      = (int)$t['row_id'];
@@ -845,6 +715,7 @@ try {
                         'rowId'         => $rowId,
                         'txnRef'        => (string)$txnRef,
                         'isJO'          => $isJO,
+                        'isCombined'    => $isCombined,
                         'product'       => $t['product_name'],
                         'vehicle'       => $vehicle,
                         'mechanic'      => $mechanic,
@@ -864,12 +735,14 @@ try {
                     ];
                     $receiptId = urlencode((string)$txnRef);
                 ?>
-                <tr class="<?php echo $isJO ? 'row-jo' : 'row-merch'; ?>">
+                <tr class="<?php echo ($isJO || $isCombined) ? 'row-jo' : 'row-merch'; ?>">
                     <td class="col-txnid" title="<?php echo htmlspecialchars($txnDisplay); ?>">
                         <span style="font-weight:600;font-size:11px;">#<?php echo htmlspecialchars($txnShort); ?></span>
                     </td>
                     <td class="col-type" style="text-align:center;">
-                        <?php if ($isJO): ?>
+                        <?php if ($isCombined): ?>
+                        <span style="background:#6f42c1;color:#fff;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700;">JO+M</span>
+                        <?php elseif ($isJO): ?>
                         <span style="background:#fd7e14;color:#fff;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700;">JO</span>
                         <?php else: ?>
                         <span style="background:#0d6efd;color:#fff;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700;">Merch</span>
@@ -944,7 +817,7 @@ try {
                                 <i class="fas fa-times"></i> Reject
                             </button>
                             <!-- JO: Adjust -->
-                            <button type="button" class="jo-act-btn" style="background:#002F6C;" onclick="openJOAdjustModal(<?php echo $rowId; ?>, '<?php echo number_format($t['total'],2); ?>')">
+                            <button type="button" class="jo-act-btn" style="background:#002F6C;" onclick="openJOAdjustModal(<?php echo $rowId; ?>, '<?php echo number_format($t['total'],2); ?>', '<?php echo htmlspecialchars($t['_source'] ?? 'job_orders'); ?>')">
                                 <i class="fas fa-sliders"></i> Adjust
                             </button>
                             <?php else: ?>
@@ -994,170 +867,7 @@ try {
     </div>
 </div>
 
-<?php endif; /* end Tab 1: Pending Merchandise/Service */ ?>
 
-<?php if ($active_tab === 'jo'): ?>
-<!-- ══ TAB 2: JOB ORDER TRACKER ═════════════════════════════════════════════ -->
-
-<!-- JO Stats Cards Removed -->
-
-<!-- JO Filter + Table -->
-<div class="jo-card">
-    <form method="GET" action="transactions.php" class="filter-bar" style="margin-bottom:16px;">
-        <input type="hidden" name="tab" value="jo">
-        <input type="hidden" name="start" value="<?php echo htmlspecialchars($start); ?>">
-        <input type="hidden" name="end" value="<?php echo htmlspecialchars($end); ?>">
-        <select name="jo_status" style="padding:7px 12px;border:1px solid #ddd;border-radius:8px;font-size:13px;min-width:180px;">
-            <option value="">All Statuses</option>
-            <?php foreach (['Pending Validation','Approved','Validated','In Progress','Completed','Rejected','Cancelled','Adjusted'] as $opt): ?>
-            <option value="<?php echo $opt; ?>" <?php echo $jo_status_filter === $opt ? 'selected' : ''; ?>><?php echo $opt; ?></option>
-            <?php endforeach; ?>
-        </select>
-        <input type="text" name="jo_search" value="<?php echo htmlspecialchars($jo_search_filter); ?>"
-               placeholder="Search customer, service, vehicle, staff…"
-               style="padding:7px 12px;border:1px solid #ddd;border-radius:8px;font-size:13px;width:260px;">
-        <button type="submit" style="padding:7px 14px;background:#002F6C;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
-            <i class="fas fa-search"></i> Search
-        </button>
-        <?php if ($jo_status_filter !== '' || $jo_search_filter !== ''): ?>
-        <a href="?tab=jo&start=<?php echo urlencode($start); ?>&end=<?php echo urlencode($end); ?>"
-           style="padding:7px 14px;background:#f8f9fa;color:#495057;border:1px solid #ddd;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:6px;">
-            <i class="fas fa-times"></i> Clear
-        </a>
-        <?php endif; ?>
-        <span style="font-size:12px;color:#6c757d;margin-left:auto;"><?php echo count($jo_tracker_rows); ?> record(s)</span>
-    </form>
-
-    <div style="overflow-x:auto;">
-        <table class="jo-table">
-            <thead>
-                <tr>
-                    <th>JO ID</th>
-                    <th>Customer</th>
-                    <th>Service</th>
-                    <th>Vehicle</th>
-                    <th>Mechanic</th>
-                    <th>Staff</th>
-                    <th>Status</th>
-                    <th>Payment</th>
-                    <th>Cost</th>
-                    <th>Created</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-            <?php
-            $jo_stMap = [
-                'Pending Validation'=>['#FFF3CD','#92400E'],
-                'Approved'          =>['#D1FAE5','#065F46'],
-                'Validated'         =>['#D1FAE5','#065F46'],
-                'In Progress'       =>['#DBEAFE','#1E40AF'],
-                'Completed'         =>['#DCFCE7','#14532D'],
-                'Rejected'          =>['#FEE2E2','#991B1B'],
-                'Cancelled'         =>['#FEE2E2','#991B1B'],
-                'Adjusted'          =>['#E0E7FF','#3730A3'],
-            ];
-            foreach ($jo_tracker_rows as $j):
-                // For MT rows: status = workflow_status (In Progress/Completed), validation_status = approval state (Approved/Pending)
-                // Use status for workflow display; fall back to validation_status only if status is empty/pending
-                $wf_st     = $j['status'] ?? '';
-                $val_st    = $j['validation_status'] ?? '';
-                // Determine display status: workflow state takes priority if it's a meaningful workflow step
-                if (in_array($wf_st, ['In Progress','Completed','Rejected','Cancelled'])) {
-                    $jst = $wf_st;
-                } elseif ($val_st !== '') {
-                    $jst = $val_st;
-                } else {
-                    $jst = 'Pending Validation';
-                }
-                $jsc       = $jo_stMap[$jst] ?? ['#f3f4f6','#374151'];
-                $svc       = htmlspecialchars($j['service_type'] ?: $j['service_description'] ?: '—');
-                $isPending = in_array($jst, ['Pending Validation','Pending']) || in_array($val_st, ['Pending Validation','Pending']);
-                $isCompleted = in_array($jst, ['Completed']);
-                $canAdjust = !in_array($jst, ['Completed','Cancelled']);
-                $jps       = strtolower($j['payment_status'] ?? 'unpaid');
-                $cost      = (float)($j['total_cost'] ?: 0) > 0
-                           ? (float)$j['total_cost']
-                           : (float)($j['estimated_cost'] ?? 0);
-            ?>
-            <tr>
-                <td style="font-weight:700;color:#002F6C;">#<?php echo (int)$j['id']; ?></td>
-                <td><?php echo htmlspecialchars($j['cust']); ?></td>
-                <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?php echo $svc; ?>"><?php echo $svc; ?></td>
-                <td style="font-size:11px;color:#555;"><?php echo htmlspecialchars($j['vehicle_plate'] ?? '—'); ?></td>
-                <td style="font-size:11px;color:#555;"><?php echo htmlspecialchars($j['mechanic_name'] ?? '—'); ?></td>
-                <td style="color:#6c757d;font-size:11px;"><?php echo htmlspecialchars($j['staff_name'] ?? '—'); ?></td>
-                <td><span class="jo-badge" style="background:<?php echo $jsc[0]; ?>;color:<?php echo $jsc[1]; ?>;"><?php echo htmlspecialchars($jst); ?></span></td>
-                <td>
-                    <?php
-                        $jpsc = $jps === 'paid' ? '#28a745' : ($jps === 'partial' ? '#e6a817' : '#dc3545');
-                        $jpst = $jps === 'partial' ? '#212529' : '#fff';
-                    ?>
-                    <span class="jo-badge" style="background:<?php echo $jpsc; ?>;color:<?php echo $jpst; ?>;"><?php echo ucfirst($jps); ?></span>
-                </td>
-                <td style="font-weight:600;">&#8369;<?php echo number_format($cost, 2); ?></td>
-                <td style="color:#6c757d;font-size:11px;white-space:nowrap;"><?php echo $j['created_at'] ? date('M j, Y g:i A', strtotime($j['created_at'])) : '—'; ?></td>
-                <td>
-                    <div class="action-col">
-                        <?php if ($isPending): ?>
-                        <form method="POST" action="transactions.php" style="margin:0;">
-                            <input type="hidden" name="action" value="approve_job_order">
-                            <input type="hidden" name="jo_id" value="<?php echo (int)$j['id']; ?>">
-                            <input type="hidden" name="jo_source" value="<?php echo htmlspecialchars($j['_source'] ?? 'job_orders'); ?>">
-                            <input type="hidden" name="remarks" value="Approved via Job Order Tracker">
-                            <input type="hidden" name="_start" value="<?php echo htmlspecialchars($start); ?>">
-                            <input type="hidden" name="_end" value="<?php echo htmlspecialchars($end); ?>">
-                            <input type="hidden" name="_type" value="jo">
-                            <button type="submit" class="jo-act-btn" style="background:#28a745;"
-                                onclick="return confirm('Approve Job Order #<?php echo (int)$j['id']; ?>?')">
-                                <i class="fas fa-check"></i> Approve
-                            </button>
-                        </form>
-                        <button type="button" class="jo-act-btn" style="background:#dc3545;"
-                            onclick="openJORejectModal(<?php echo (int)$j['id']; ?>, '<?php echo htmlspecialchars($j['_source'] ?? 'job_orders'); ?>')">
-                            <i class="fas fa-times"></i> Reject
-                        </button>
-                        <?php endif; ?>
-                        <?php if ($canAdjust): ?>
-                        <button type="button" class="jo-act-btn" style="background:#002F6C;"
-                            onclick="openJOAdjustModal(<?php echo (int)$j['id']; ?>, '<?php echo number_format($cost, 2); ?>')">
-                            <i class="fas fa-sliders"></i> Adjust
-                        </button>
-                        <?php endif; ?>
-                        <?php if ($isCompleted && $jps !== 'paid'): ?>
-                        <form method="POST" action="transactions.php" style="margin:0;">
-                            <input type="hidden" name="action" value="mark_jo_paid">
-                            <input type="hidden" name="jo_id" value="<?php echo (int)$j['id']; ?>">
-                            <input type="hidden" name="jo_source" value="<?php echo htmlspecialchars($j['_source'] ?? 'job_orders'); ?>">
-                            <input type="hidden" name="_start" value="<?php echo htmlspecialchars($start); ?>">
-                            <input type="hidden" name="_end" value="<?php echo htmlspecialchars($end); ?>">
-                            <button type="submit" class="jo-act-btn" style="background:#16a34a;"
-                                onclick="return confirm('Mark Job Order #<?php echo (int)$j['id']; ?> as Paid?')">
-                                <i class="fas fa-money-bill-wave"></i> Mark Paid
-                            </button>
-                        </form>
-                        <?php elseif ($isCompleted && $jps === 'paid'): ?>
-                        <span style="font-size:11px;color:#16a34a;font-weight:700;"><i class="fas fa-check-circle"></i> Paid</span>
-                        <?php elseif (!$isPending && !$canAdjust): ?>
-                        <span style="font-size:11px;color:#9ca3af;">—</span>
-                        <?php endif; ?>
-                    </div>
-                </td>
-            </tr>
-            <?php endforeach; ?>
-            <?php if (empty($jo_tracker_rows)): ?>
-            <tr>
-                <td colspan="10" style="text-align:center;padding:40px;color:#9ca3af;">
-                    <i class="fas fa-inbox" style="font-size:28px;display:block;margin-bottom:10px;opacity:.4;"></i>
-                    No job orders found.
-                </td>
-            </tr>
-            <?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-</div>
-<?php endif; /* end Tab 2: Job Order Tracker */ ?>
 
 <div id="viewDetailsModal" class="txn-modal" onclick="if(event.target===this)closeViewModal()">
     <div class="txn-modal-content" style="max-width:700px;">
@@ -1290,6 +1000,7 @@ try {
             <div class="txn-modal-body">
                 <input type="hidden" name="action" value="adjust_job_order">
                 <input type="hidden" id="jo_adj_id" name="jo_id">
+                <input type="hidden" id="jo_adj_source" name="jo_source" value="job_orders">
                 <input type="hidden" name="_start" value="<?php echo htmlspecialchars($start); ?>">
                 <input type="hidden" name="_end" value="<?php echo htmlspecialchars($end); ?>">
                 <input type="hidden" name="_status" value="<?php echo htmlspecialchars($status_f); ?>">
@@ -1322,6 +1033,7 @@ function viewDetails(d) {
     const rowId         = d.rowId;
     const txnRef        = d.txnRef;
     const isJO          = d.isJO;
+    const isCombined    = d.isCombined;
     const product       = d.product;
     const vehicle       = d.vehicle;
     const mechanic      = d.mechanic;
@@ -1346,18 +1058,23 @@ function viewDetails(d) {
     else if (sl.includes('rejected') || sl.includes('returned') || sl.includes('cancelled')) statusColor = '#dc3545';
     else if (sl.includes('adjusted')) statusColor = '#6f42c1';
 
-    const typeBadge = isJO
-        ? `<span style="background:#fd7e14;color:#fff;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;">Job Order</span>`
-        : `<span style="background:#0d6efd;color:#fff;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;">Merchandise</span>`;
+    let typeBadge = '';
+    if (isCombined) {
+        typeBadge = `<span style="background:#6f42c1;color:#fff;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;">JO with Merch</span>`;
+    } else if (isJO) {
+        typeBadge = `<span style="background:#fd7e14;color:#fff;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;">Job Order</span>`;
+    } else {
+        typeBadge = `<span style="background:#0d6efd;color:#fff;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;">Merchandise</span>`;
+    }
 
     let html = `
     <div class="detail-grid">
-        <div class="detail-item"><span class="detail-label">${isJO ? 'JO ID' : 'Transaction ID'}</span><span class="detail-value" style="font-weight:700;">#${escHtml(txnRef)}</span></div>
+        <div class="detail-item"><span class="detail-label">${(isJO || isCombined) ? 'JO ID' : 'Transaction ID'}</span><span class="detail-value" style="font-weight:700;">#${escHtml(txnRef)}</span></div>
         <div class="detail-item"><span class="detail-label">Type</span><span class="detail-value">${typeBadge}</span></div>
-        <div class="detail-item"><span class="detail-label">${isJO ? 'Service' : 'Product / Item'}</span><span class="detail-value">${escHtml(product)}</span></div>
+        <div class="detail-item"><span class="detail-label">${(isJO || isCombined) ? 'Service' : 'Product / Item'}</span><span class="detail-value">${escHtml(product)}</span></div>
         <div class="detail-item"><span class="detail-label">Customer</span><span class="detail-value">${escHtml(customer)}</span></div>`;
 
-    if (isJO) {
+    if (isJO || isCombined) {
         html += `
         <div class="detail-item"><span class="detail-label">Vehicle</span><span class="detail-value">${escHtml(vehicle) || '—'}</span></div>
         <div class="detail-item"><span class="detail-label">Mechanic</span><span class="detail-value">${escHtml(mechanic) || '—'}</span></div>
@@ -1381,7 +1098,7 @@ function viewDetails(d) {
         <div class="detail-item" style="grid-column:1/-1;"><span class="detail-label">Total Amount</span><span class="detail-value" style="font-size:20px;font-weight:800;color:#002F6C;">&#8369;${escHtml(total)}</span></div>
     </div>`;
 
-    if (!isJO) {
+    if (!isJO || isCombined) {
         html += `<div style="margin-top:14px;" id="vd_items_section">
             <div style="font-size:11px;font-weight:700;color:#0056b3;text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">Items Purchased</div>
             <div id="vd_items_loading" style="text-align:center;padding:16px;color:#888;">
@@ -1393,7 +1110,7 @@ function viewDetails(d) {
     document.getElementById('vd_body').innerHTML = html;
 
     const footer = document.getElementById('vd_footer');
-    if (!isJO) {
+    if (!isJO || isCombined) {
         footer.innerHTML = `
             <button class="btn-receipt-lg" onclick="window.open('receipt.php?id=${encodeURIComponent(txnRef)}&type=merchandise','_blank','width=520,height=800,scrollbars=yes')">
                 <i class="fas fa-receipt"></i> Print Receipt
@@ -1497,10 +1214,11 @@ function validateJOReject() {
 }
 
 // ── JO Adjust Modal ───────────────────────────────────────────────────────────
-function openJOAdjustModal(id, currentCost) {
-    document.getElementById('jo_adj_id').value   = id;
-    document.getElementById('jo_adj_cost').value = currentCost.replace(/,/g,'');
-    document.getElementById('jo_adj_note').value = '';
+function openJOAdjustModal(id, currentCost, source) {
+    document.getElementById('jo_adj_id').value     = id;
+    document.getElementById('jo_adj_cost').value   = currentCost.replace(/,/g,'');
+    document.getElementById('jo_adj_note').value   = '';
+    document.getElementById('jo_adj_source').value = source || 'job_orders';
     document.getElementById('joAdjustModal').style.display = 'flex';
     setTimeout(() => document.getElementById('jo_adj_cost').focus(), 120);
 }
