@@ -168,7 +168,7 @@
     }
     
     main {
-        padding-bottom: 60px !important; /* Account for fixed footer */
+        padding-bottom: 110px !important; /* fixed footer (40px) + scroll btn (50px from bottom, 40px tall) = 90px, +20px buffer */
     }
     
     /* Toggle Scroll Button Styling */

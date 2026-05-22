@@ -271,6 +271,101 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'jo'])));
         exit;
     }
+
+    // ── Process Payment ───────────────────────────────────────────────────────
+    if ($action === 'process_payment') {
+        $row_id     = (int)($_POST['pay_id'] ?? 0);
+        $pay_src    = $_POST['pay_source'] ?? 'merchandise_transactions';
+        $pay_status = trim($_POST['pay_status'] ?? 'Unpaid');
+        $amt_paid   = (float)($_POST['amount_paid'] ?? 0);
+        $pay_note   = trim($_POST['pay_note'] ?? '');
+        $valid_ps   = ['Paid','Unpaid','Pending Payment','Partial','Credit'];
+        if (!in_array($pay_status, $valid_ps)) $pay_status = 'Unpaid';
+        try {
+            $pdo->beginTransaction();
+            if ($pay_src === 'job_orders') {
+                $is_credit = ($pay_status === 'Credit') ? 1 : 0;
+                $pdo->prepare("UPDATE job_orders SET payment_status=?, is_credit=?, amount_paid=?, updated_at=NOW() WHERE id=? AND station_id=?")
+                    ->execute([$pay_status, $is_credit, $amt_paid, $row_id, $station_id]);
+            } else {
+                // Check old payment_status to avoid double inventory deduction
+                $old_stmt = $pdo->prepare("SELECT payment_status FROM merchandise_transactions WHERE id=? AND station_id=?");
+                $old_stmt->execute([$row_id, $station_id]);
+                $old_ps = strtolower($old_stmt->fetchColumn() ?? 'unpaid');
+                $pdo->prepare("UPDATE merchandise_transactions SET payment_status=?, amount_tendered=?, updated_at=NOW() WHERE id=? AND station_id=?")
+                    ->execute([$pay_status, $amt_paid ?: null, $row_id, $station_id]);
+                // Auto-deduct inventory only when newly transitioning to a payment state
+                $deduct_statuses = ['paid','partial','credit'];
+                if (in_array(strtolower($pay_status), $deduct_statuses) && !in_array($old_ps, $deduct_statuses)) {
+                    $items_stmt = $pdo->prepare("SELECT product_id, product_name, quantity FROM merchandise_transaction_items WHERE transaction_id = ? AND item_type = 'merchandise'");
+                    $items_stmt->execute([$row_id]);
+                    foreach ($items_stmt->fetchAll(PDO::FETCH_ASSOC) as $item) {
+                        if (!empty($item['product_id'])) {
+                            $pdo->prepare("UPDATE station_inventory SET stock_level = GREATEST(stock_level - ?, 0), last_updated=NOW() WHERE product_id = ? AND station_id = ?")
+                                ->execute([$item['quantity'], $item['product_id'], $station_id]);
+                        } else {
+                            $pdo->prepare("UPDATE station_inventory SET stock_level = GREATEST(stock_level - ?, 0), last_updated=NOW() WHERE product_name = ? AND station_id = ?")
+                                ->execute([$item['quantity'], $item['product_name'], $station_id]);
+                        }
+                    }
+                }
+            }
+            try {
+                $pdo->prepare("INSERT INTO audit_trail (transaction_id,manager_id,action_type,new_value,station_id) VALUES (?,?,'Payment',?,?)")
+                    ->execute([$row_id, $me['id'], "Payment set to {$pay_status}." . ($pay_note ? " Note: {$pay_note}" : ''), $station_id]);
+            } catch(Exception $ae){}
+            log_activity($pdo, $me['id'], 'PAYMENT_SET', "Transaction #{$row_id} payment set to {$pay_status} by {$me['name']}.");
+            $pdo->commit();
+            $_SESSION['success'] = "Payment status set to <strong>{$pay_status}</strong>.";
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            $_SESSION['error'] = 'Error setting payment: ' . $e->getMessage();
+        }
+        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','status'=>$_POST['_status']??'','type'=>$_POST['_type']??''])));
+        exit;
+    }
+
+    // ── Mark JO In Progress ───────────────────────────────────────────────────
+    if ($action === 'mark_jo_inprogress') {
+        $jo_id  = (int)($_POST['jo_id'] ?? 0);
+        $jo_src = $_POST['jo_source'] ?? 'job_orders';
+        try {
+            if ($jo_src === 'merchandise_transactions') {
+                $pdo->prepare("UPDATE merchandise_transactions SET workflow_status='In Progress', updated_at=NOW() WHERE id=? AND station_id=?")
+                    ->execute([$jo_id, $station_id]);
+            } else {
+                $pdo->prepare("UPDATE job_orders SET status='In Progress', started_at=NOW(), updated_at=NOW() WHERE id=? AND station_id=?")
+                    ->execute([$jo_id, $station_id]);
+            }
+            log_activity($pdo, $me['id'], 'JO_INPROGRESS', "Job Order #{$jo_id} marked In Progress by {$me['name']}.");
+            $_SESSION['success'] = "Job Order #{$jo_id} marked as In Progress.";
+        } catch (Exception $e) {
+            $_SESSION['error'] = 'Error: ' . $e->getMessage();
+        }
+        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','status'=>$_POST['_status']??'','type'=>$_POST['_type']??''])));
+        exit;
+    }
+
+    // ── Mark JO Completed ─────────────────────────────────────────────────────
+    if ($action === 'mark_jo_completed') {
+        $jo_id  = (int)($_POST['jo_id'] ?? 0);
+        $jo_src = $_POST['jo_source'] ?? 'job_orders';
+        try {
+            if ($jo_src === 'merchandise_transactions') {
+                $pdo->prepare("UPDATE merchandise_transactions SET workflow_status='Completed', updated_at=NOW() WHERE id=? AND station_id=?")
+                    ->execute([$jo_id, $station_id]);
+            } else {
+                $pdo->prepare("UPDATE job_orders SET status='Completed', completed_at=NOW(), updated_at=NOW() WHERE id=? AND station_id=?")
+                    ->execute([$jo_id, $station_id]);
+            }
+            log_activity($pdo, $me['id'], 'JO_COMPLETED', "Job Order #{$jo_id} marked Completed by {$me['name']}.");
+            $_SESSION['success'] = "Job Order #{$jo_id} marked as Completed.";
+        } catch (Exception $e) {
+            $_SESSION['error'] = 'Error: ' . $e->getMessage();
+        }
+        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','status'=>$_POST['_status']??'','type'=>$_POST['_type']??''])));
+        exit;
+    }
 }
 
 // ── Filters ───────────────────────────────────────────────────────────────────
@@ -417,8 +512,8 @@ $sql = "
         $mt_vehicle_expr AS vehicle,
         $mt_mechanic_expr AS mechanic,
         $mt_txn_type_expr AS txn_type,
-        '' AS jo_status,
-        '' AS payment_status,
+        COALESCE(NULLIF(TRIM(mt.workflow_status),''), 'Pending') AS jo_status,
+        COALESCE(NULLIF(TRIM(mt.payment_status),''), 'Unpaid') AS payment_status,
         'merchandise_transactions' AS _source
     FROM merchandise_transactions mt
     LEFT JOIN users u ON mt.staff_id = u.id
@@ -775,14 +870,13 @@ try {
                     <td class="col-total"><strong>&#8369;<?php echo number_format($t['total'], 2); ?></strong></td>
                     <td class="col-pay">
                         <?php echo htmlspecialchars($t['payment_method'] ?? ''); ?>
-                        <?php if ($isJO && !empty($t['payment_status'])): ?>
                         <?php
-                            $ps = strtolower($t['payment_status'] ?? 'unpaid');
-                            $psc = $ps === 'paid' ? '#28a745' : ($ps === 'partial' ? '#e6a817' : '#dc3545');
-                            $pst = $ps === 'paid' ? '#fff' : ($ps === 'partial' ? '#212529' : '#fff');
+                            $ps_raw = $t['payment_status'] ?? 'Unpaid';
+                            $ps = strtolower(trim($ps_raw));
+                            $psc = $ps === 'paid' ? '#28a745' : ($ps === 'partial' ? '#e6a817' : ($ps === 'credit' ? '#6f42c1' : ($ps === 'pending payment' ? '#17a2b8' : '#dc3545')));
+                            $pst = ($ps === 'partial' || $ps === 'pending payment') ? '#212529' : '#fff';
                         ?>
-                        <div><span style="background:<?php echo $psc; ?>;color:<?php echo $pst; ?>;padding:1px 6px;border-radius:6px;font-size:9px;font-weight:700;"><?php echo ucfirst($t['payment_status']); ?></span></div>
-                        <?php endif; ?>
+                        <div><span style="background:<?php echo $psc; ?>;color:<?php echo $pst; ?>;padding:1px 6px;border-radius:6px;font-size:9px;font-weight:700;white-space:nowrap;"><?php echo htmlspecialchars($ps_raw); ?></span></div>
                     </td>
                     <td class="col-date"><?php echo date('M d, H:i', strtotime($t['created_at'])); ?></td>
                     <td class="col-status">
@@ -843,10 +937,69 @@ try {
                             <?php endif; ?>
                             <?php endif; ?>
 
-                            <?php if (!$isJO): ?>
-                            <!-- Receipt -->
+                            <?php
+                            // ── Post-approval buttons ─────────────────────────────────────
+                            $cur_pay    = strtolower(trim($t['payment_status'] ?? 'unpaid'));
+                            $cur_wf     = strtolower(trim($t['jo_status'] ?? 'pending'));
+                            $is_paid_ps = in_array($cur_pay, ['paid','partial','credit']);
+                            $src        = $t['_source'] ?? 'merchandise_transactions';
+                            ?>
+
+                            <?php if ($ns === 'verified'): ?>
+
+                            <?php if ($isJO || $isCombined): ?>
+                            <?php if (in_array($cur_wf, ['pending','','pending validation','reviewed'])): ?>
+                            <!-- JO: Start Service -->
+                            <form method="POST" style="display:contents;">
+                                <input type="hidden" name="action" value="mark_jo_inprogress">
+                                <input type="hidden" name="jo_id" value="<?php echo $rowId; ?>">
+                                <input type="hidden" name="jo_source" value="<?php echo htmlspecialchars($src); ?>">
+                                <input type="hidden" name="_start" value="<?php echo htmlspecialchars($start); ?>">
+                                <input type="hidden" name="_end" value="<?php echo htmlspecialchars($end); ?>">
+                                <input type="hidden" name="_status" value="<?php echo htmlspecialchars($status_f); ?>">
+                                <input type="hidden" name="_type" value="<?php echo htmlspecialchars($type_f); ?>">
+                                <button type="submit" class="jo-act-btn" style="background:#17a2b8;" onclick="return confirm('Mark as In Progress?')">
+                                    <i class="fas fa-play"></i> Start
+                                </button>
+                            </form>
+                            <?php elseif ($cur_wf === 'in progress'): ?>
+                            <!-- JO: Complete Service -->
+                            <form method="POST" style="display:contents;">
+                                <input type="hidden" name="action" value="mark_jo_completed">
+                                <input type="hidden" name="jo_id" value="<?php echo $rowId; ?>">
+                                <input type="hidden" name="jo_source" value="<?php echo htmlspecialchars($src); ?>">
+                                <input type="hidden" name="_start" value="<?php echo htmlspecialchars($start); ?>">
+                                <input type="hidden" name="_end" value="<?php echo htmlspecialchars($end); ?>">
+                                <input type="hidden" name="_status" value="<?php echo htmlspecialchars($status_f); ?>">
+                                <input type="hidden" name="_type" value="<?php echo htmlspecialchars($type_f); ?>">
+                                <button type="submit" class="jo-act-btn" style="background:#28a745;" onclick="return confirm('Mark service as Completed?')">
+                                    <i class="fas fa-check-double"></i> Complete
+                                </button>
+                            </form>
+                            <?php endif; ?>
+                            <?php endif; ?>
+
+                            <!-- Set Payment -->
+                            <?php
+                            $pbg = $cur_pay === 'paid' ? '#28a745' : ($cur_pay === 'partial' ? '#e6a817' : ($cur_pay === 'credit' ? '#6f42c1' : '#dc3545'));
+                            $pfc = ($cur_pay === 'partial') ? '#212529' : '#fff';
+                            ?>
+                            <button type="button" class="jo-act-btn" style="background:<?php echo $pbg; ?>;color:<?php echo $pfc; ?>;" title="Set Payment Status"
+                                onclick="openPaymentModal(<?php echo $rowId; ?>, '<?php echo htmlspecialchars($src); ?>', '<?php echo htmlspecialchars($t['payment_status'] ?? 'Unpaid'); ?>', <?php echo (float)$t['total']; ?>)">
+                                <i class="fas fa-credit-card"></i> <?php echo ($cur_pay === 'paid') ? 'Paid ✓' : 'Set Payment'; ?>
+                            </button>
+
+                            <?php endif; // verified ?>
+
+                            <!-- Receipt: only after approval + payment finalised -->
+                            <?php if ($ns === 'verified' && $is_paid_ps && !$isJO): ?>
                             <button type="button" class="jo-act-btn" style="background:#6c757d;" title="Print Receipt"
                                 onclick="window.open('receipt.php?id=<?php echo $receiptId; ?>&type=merchandise','_blank','width=520,height=800,scrollbars=yes')">
+                                <i class="fas fa-receipt"></i> Receipt
+                            </button>
+                            <?php elseif ($ns === 'verified' && $is_paid_ps && ($isJO || $isCombined)): ?>
+                            <button type="button" class="jo-act-btn" style="background:#6c757d;" title="Print Receipt"
+                                onclick="window.open('receipt.php?id=<?php echo $receiptId; ?>&type=job_order','_blank','width=520,height=800,scrollbars=yes')">
                                 <i class="fas fa-receipt"></i> Receipt
                             </button>
                             <?php endif; ?>
@@ -1023,7 +1176,67 @@ try {
     </div>
 </div>
 
+<!-- ══ PAYMENT MODAL ══════════════════════════════════════════════════════════ -->
+<div id="paymentModal" class="txn-modal" onclick="if(event.target===this)closePaymentModal()">
+    <div class="txn-modal-content" style="max-width:480px;">
+        <div class="txn-modal-header">
+            <h3><i class="fas fa-credit-card"></i> Set Payment Status</h3>
+            <button class="txn-close" onclick="closePaymentModal()">&times;</button>
+        </div>
+        <form method="POST" onsubmit="return validatePaymentModal()">
+            <div class="txn-modal-body">
+                <input type="hidden" name="action" value="process_payment">
+                <input type="hidden" id="pm_pay_id"     name="pay_id">
+                <input type="hidden" id="pm_pay_source" name="pay_source">
+                <input type="hidden" name="_start" value="<?php echo htmlspecialchars($start); ?>">
+                <input type="hidden" name="_end"   value="<?php echo htmlspecialchars($end); ?>">
+                <input type="hidden" name="_status" value="<?php echo htmlspecialchars($status_f); ?>">
+                <input type="hidden" name="_type"   value="<?php echo htmlspecialchars($type_f); ?>">
 
+                <div id="pm_summary" style="background:#f0f4ff;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#002F6C;font-weight:600;"></div>
+
+                <div class="form-group">
+                    <label class="form-label">Payment Status <span style="color:red;">*</span></label>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" id="pm_status_grid">
+                        <?php foreach([
+                            ['Paid',           '#28a745','#fff','fas fa-check-circle',    'Full payment received'],
+                            ['Partial',        '#e6a817','#212529','fas fa-adjust',       'Downpayment / partial'],
+                            ['Credit',         '#6f42c1','#fff','fas fa-handshake',       'Tagged as credit/utang'],
+                            ['Pending Payment','#17a2b8','#fff','fas fa-hourglass-half',  'Waiting to settle'],
+                            ['Unpaid',         '#dc3545','#fff','fas fa-times-circle',    'Not yet paid'],
+                        ] as [$ps_val,$ps_bg,$ps_fg,$ps_ico,$ps_desc]): ?>
+                        <label class="pm-status-option" style="cursor:pointer;border:2px solid #e9ecef;border-radius:8px;padding:9px 10px;display:flex;align-items:center;gap:8px;transition:border-color .15s;">
+                            <input type="radio" name="pay_status" value="<?php echo $ps_val; ?>" class="pm-radio" style="display:none;">
+                            <span style="background:<?php echo $ps_bg; ?>;color:<?php echo $ps_fg; ?>;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                <i class="<?php echo $ps_ico; ?>"></i>
+                            </span>
+                            <span>
+                                <div style="font-weight:700;font-size:12px;"><?php echo $ps_val; ?></div>
+                                <div style="font-size:10px;color:#888;"><?php echo $ps_desc; ?></div>
+                            </span>
+                        </label>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+
+                <div class="form-group" id="pm_amount_wrap">
+                    <label class="form-label">Amount Paid (&#8369;)</label>
+                    <input type="number" id="pm_amount" name="amount_paid" class="form-control" step="0.01" min="0" placeholder="0.00">
+                    <div style="font-size:11px;color:#888;margin-top:4px;">Required for Partial. Leave 0 for full amount.</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Payment Note <span style="font-weight:400;color:#888;">(optional)</span></label>
+                    <textarea id="pm_note" name="pay_note" class="form-control" rows="2" placeholder="e.g. GCash ref #, credit approved by manager…"></textarea>
+                </div>
+            </div>
+            <div class="txn-modal-footer">
+                <button type="submit" id="pm_submit_btn" class="btn-receipt-lg"><i class="fas fa-save"></i> Save Payment</button>
+                <button type="button" class="btn-secondary" onclick="closePaymentModal()">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
 
 <script>
 // ── View Details ──────────────────────────────────────────────────────────────
@@ -1239,6 +1452,47 @@ function escHtml(str) {
         .replace(/</g,'&lt;')
         .replace(/>/g,'&gt;')
         .replace(/"/g,'&quot;');
+}
+
+// ── Payment Modal ─────────────────────────────────────────────────────────────
+function openPaymentModal(id, source, currentStatus, total) {
+    document.getElementById('pm_pay_id').value     = id;
+    document.getElementById('pm_pay_source').value = source;
+    document.getElementById('pm_amount').value     = '';
+    document.getElementById('pm_note').value       = '';
+    document.getElementById('pm_summary').textContent = `Transaction #${id} — Total: ₱${parseFloat(total||0).toFixed(2)}`;
+
+    // Reset radio styles
+    document.querySelectorAll('.pm-status-option').forEach(el => {
+        el.style.borderColor = '#e9ecef';
+        el.style.background  = '#fff';
+    });
+    // Pre-select current status
+    document.querySelectorAll('.pm-radio').forEach(r => {
+        r.checked = (r.value === currentStatus);
+        if (r.checked) {
+            const lbl = r.closest('.pm-status-option');
+            if (lbl) { lbl.style.borderColor = '#002F6C'; lbl.style.background = '#f0f4ff'; }
+        }
+    });
+    // Radio style on click
+    document.querySelectorAll('.pm-radio').forEach(r => {
+        r.addEventListener('change', function() {
+            document.querySelectorAll('.pm-status-option').forEach(el => { el.style.borderColor='#e9ecef'; el.style.background='#fff'; });
+            if (this.checked) { const lbl = this.closest('.pm-status-option'); if(lbl){ lbl.style.borderColor='#002F6C'; lbl.style.background='#f0f4ff'; } }
+        });
+    });
+    document.getElementById('paymentModal').style.display = 'flex';
+}
+function closePaymentModal() { document.getElementById('paymentModal').style.display = 'none'; }
+function validatePaymentModal() {
+    const selected = document.querySelector('.pm-radio:checked');
+    if (!selected) { alert('Please select a payment status.'); return false; }
+    if (selected.value === 'Partial') {
+        const amt = parseFloat(document.getElementById('pm_amount').value||0);
+        if (!amt || amt <= 0) { alert('Please enter the partial amount paid.'); return false; }
+    }
+    return confirm(`Set payment to "${selected.value}"? This will be logged in the Audit Trail.`);
 }
 </script>
 
