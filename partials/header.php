@@ -1873,7 +1873,168 @@ require_once __DIR__ . '/rbac_menu.php';
         </div>
 </header>
 
-    
+    <!-- ══ GLOBAL FLASH MESSAGE STYLES ══════════════════════════════════════ -->
+    <style>
+    /* ── Petron system-wide flash alerts ── */
+    .petron-flash {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 13px 18px;
+        border-radius: 8px;
+        margin: 14px 0 6px 0;
+        font-size: 14px;
+        font-weight: 500;
+        line-height: 1.5;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        animation: flashSlideIn 0.3s ease;
+        position: relative;
+    }
+    @keyframes flashSlideIn {
+        from { opacity: 0; transform: translateY(-8px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    .petron-flash.flash-success {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #b8dfc4;
+        border-left: 5px solid #28a745;
+    }
+    .petron-flash.flash-error {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f1b0b7;
+        border-left: 5px solid #dc3545;
+    }
+    .petron-flash.flash-warning {
+        background: #fff3cd;
+        color: #856404;
+        border: 1px solid #ffe08a;
+        border-left: 5px solid #ffc107;
+    }
+    .petron-flash.flash-info {
+        background: #d1ecf1;
+        color: #0c5460;
+        border: 1px solid #a8d9e3;
+        border-left: 5px solid #17a2b8;
+    }
+    .petron-flash i { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+    .petron-flash .flash-close {
+        position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+        background: none; border: none; cursor: pointer;
+        color: inherit; opacity: 0.5; font-size: 16px; padding: 0 4px;
+        line-height: 1;
+    }
+    .petron-flash .flash-close:hover { opacity: 1; }
+
+    /* ── JS-powered toast (bottom-right, for AJAX actions) ── */
+    #petron-toast-container {
+        position: fixed;
+        bottom: 60px;
+        right: 24px;
+        z-index: 99999;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        pointer-events: none;
+    }
+    .petron-toast {
+        min-width: 280px;
+        max-width: 420px;
+        padding: 13px 18px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        line-height: 1.45;
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        box-shadow: 0 4px 18px rgba(0,0,0,0.18);
+        pointer-events: auto;
+        animation: toastIn 0.3s ease;
+        transition: opacity 0.35s ease, transform 0.35s ease;
+    }
+    .petron-toast.toast-success { background:#28a745; color:#fff; }
+    .petron-toast.toast-error   { background:#dc3545; color:#fff; }
+    .petron-toast.toast-warning { background:#ffc107; color:#333; }
+    .petron-toast.toast-info    { background:#17a2b8; color:#fff; }
+    .petron-toast.toast-hide    { opacity:0; transform:translateX(30px); }
+    @keyframes toastIn {
+        from { opacity:0; transform:translateX(30px); }
+        to   { opacity:1; transform:translateX(0); }
+    }
+    .petron-toast i { font-size: 16px; flex-shrink: 0; margin-top: 2px; }
+    </style>
+
+    <!-- ══ GLOBAL FLASH MESSAGE RENDERER (PHP SESSION → HTML) ════════════════ -->
+    <?php
+    /* Icons + classes map */
+    $__flash_map = [
+        'success' => ['cls'=>'flash-success', 'ico'=>'fa-check-circle'],
+        'error'   => ['cls'=>'flash-error',   'ico'=>'fa-exclamation-circle'],
+        'warning' => ['cls'=>'flash-warning', 'ico'=>'fa-exclamation-triangle'],
+        'info'    => ['cls'=>'flash-info',    'ico'=>'fa-info-circle'],
+    ];
+    foreach ($__flash_map as $__ftype => $__fmeta):
+        $__fkey = ($__ftype === 'error') ? 'error' : $__ftype;
+        /* support both $_SESSION['success'] and $_SESSION['flash_success'] patterns */
+        $__fmsg = $_SESSION[$__fkey] ?? $_SESSION['flash_'.$__fkey] ?? '';
+        if ($__fmsg === '') continue;
+        unset($_SESSION[$__fkey], $_SESSION['flash_'.$__fkey]);
+    ?>
+    <div class="petron-flash <?php echo $__fmeta['cls']; ?>" role="alert">
+        <i class="fas <?php echo $__fmeta['ico']; ?>"></i>
+        <span><?php echo htmlspecialchars((string)$__fmsg, ENT_QUOTES); ?></span>
+        <button class="flash-close" onclick="this.parentElement.remove();" title="Dismiss">&times;</button>
+    </div>
+    <?php endforeach; ?>
+
+    <!-- ══ GLOBAL JS TOAST HELPER ═══════════════════════════════════════════ -->
+    <div id="petron-toast-container"></div>
+    <script>
+    /**
+     * showPetronFlash(message, type, duration)
+     * Shows a bottom-right toast notification for AJAX-driven actions.
+     * type: 'success' | 'error' | 'warning' | 'info'   (default: 'success')
+     * duration: ms (default 3500, use 0 for persistent)
+     */
+    function showPetronFlash(message, type, duration) {
+        type     = type     || 'success';
+        duration = (duration === undefined) ? 3500 : duration;
+        var icons = {
+            success: 'fa-check-circle',
+            error:   'fa-exclamation-circle',
+            warning: 'fa-exclamation-triangle',
+            info:    'fa-info-circle'
+        };
+        var container = document.getElementById('petron-toast-container');
+        if (!container) return;
+        var toast = document.createElement('div');
+        toast.className = 'petron-toast toast-' + type;
+        toast.innerHTML =
+            '<i class="fas ' + (icons[type] || icons.success) + '"></i>' +
+            '<span>' + message + '</span>';
+        container.appendChild(toast);
+        if (duration > 0) {
+            setTimeout(function() {
+                toast.classList.add('toast-hide');
+                setTimeout(function() { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 400);
+            }, duration);
+        }
+    }
+
+    /* Auto-dismiss page-level flash banners after 6 seconds */
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.petron-flash').forEach(function(el) {
+            setTimeout(function() {
+                el.style.transition = 'opacity 0.5s ease';
+                el.style.opacity = '0';
+                setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 500);
+            }, 6000);
+        });
+    });
+    </script>
+
     <!-- Page content starts here -->      
     <script>
         

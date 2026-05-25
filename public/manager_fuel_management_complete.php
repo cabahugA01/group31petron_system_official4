@@ -9,7 +9,7 @@ $me = current_user();
 $station_id = user_station_id();
 $role = role_key($me['role'] ?? '');
 
-// ── Module gate ───────────────────────────────────────────────
+// â"€â"€ Module gate â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 if (!in_array($role, ['superadmin','developer']) && !is_module_enabled('fuel_management')) {
     render_module_disabled_page('Fuel Management');
 }
@@ -51,6 +51,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $stmt->execute([$reading_id, $station_id]);
                 $transaction = $stmt->fetch(PDO::FETCH_ASSOC);
                 if (!$transaction) throw new Exception('Transaction not found.');
+
+                // Allow action on any pending-variant status (case-insensitive)
+                $cur_status = strtolower(trim($transaction['status'] ?? ''));
+                if (!str_contains($cur_status, 'pending')) {
+                    throw new Exception('This transaction has already been processed (status: ' . htmlspecialchars($transaction['status']) . ').');
+                }
+
+                // Normalize status value to canonical form
+                $new_status = in_array(strtolower($status), ['verified','approved']) ? 'Verified' : 'Rejected';
 
                 $pdo->beginTransaction();
 
@@ -116,7 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 log_activity($pdo, $me['id'], 'Validate Transaction', "Transaction #{$reading_id} {$status}. Variance: {$variance_liters} L. Notes: {$notes}");
                 $pdo->commit();
 
-                // ── Audit log ──
+                // â"€â"€ Audit log â"€â"€
                 try {
                     $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
                     $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
@@ -263,7 +272,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 // Mark as rejected
                 $pdo->prepare("UPDATE fuel_transactions SET status='Rejected', validated_by=?, validated_at=NOW() WHERE transaction_id=? AND station_id=?")->execute([$me['id'], $txn_id, $station_id]);
 
-                // Audit trail � no inventory change on reject
+                // Audit trail  -  no inventory change on reject
                 $reason = substr("Daily log REJECTED. Txn #{$txn_id}. Reason: {$rej_notes}", 0, 255);
                 $pdo->prepare("
                     INSERT INTO fuel_adjustments (station_id, fuel_type_id, adjustment_type, liters, reason, user_id, adjustment_date)
@@ -343,15 +352,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $del = $stmt->fetch(PDO::FETCH_ASSOC);
 
                 if (!$del) throw new Exception('Delivery record not found.');
-                if (!in_array(strtolower($del['status']), ['pending', 'pending review'])) {
-                    throw new Exception('This delivery has already been processed.');
+                $pending_statuses = ['pending', 'pending review', 'pending manager approval', 'discrepancy'];
+                if (!in_array(strtolower($del['status']), $pending_statuses)) {
+                    throw new Exception('This delivery has already been processed (status: ' . htmlspecialchars($del['status']) . ').');
                 }
 
                 $original_liters = (float)$del['delivery_liters'];
                 $fuel_type       = $del['fuel_type'];
                 $liters_to_add   = 0;
 
-                // ── Capacity check (before transaction) ──────────────────────
+                // â"€â"€ Capacity check (before transaction) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
                 // Determine how many liters will actually be added
                 $liters_for_cap_check = ($action === 'adjust') ? $adj_liters : $original_liters;
 
@@ -378,7 +388,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                                 "Capacity: " . number_format($capacity, 0) . " L, " .
                                 "Current level: " . number_format($current, 0) . " L, " .
                                 "Available space: " . number_format($available, 0) . " L. " .
-                                "Please use Adjust to enter a corrected volume ≤ " . number_format($available, 0) . " L."
+                                "Please use Adjust to enter a corrected volume â‰¤ " . number_format($available, 0) . " L."
                             );
                         }
                     }
@@ -414,7 +424,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         WHERE id = ?
                     ")->execute([$me['id'], $val_notes, $delivery_id]);
 
-                    // Update tank — try by station+fuel_type first
+                    // Update tank â€" try by station+fuel_type first
                     $upd = $pdo->prepare("
                         UPDATE fuel_inventory
                         SET current_level = COALESCE(current_level, 0) + ?,
@@ -440,7 +450,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 } elseif ($action === 'adjust') {
                     if ($adj_liters <= 0) throw new Exception('Adjusted volume must be greater than 0.');
                     $liters_to_add = $adj_liters;
-                    $full_notes = " | Manager Adjusted (Orig: {$original_liters}L → New: {$adj_liters}L): " . $val_notes;
+                    $full_notes = " | Manager Adjusted (Orig: {$original_liters}L â†' New: {$adj_liters}L): " . $val_notes;
 
                     $pdo->prepare("
                         UPDATE fuel_deliveries
@@ -497,7 +507,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 // Audit log (non-fatal)
                 if ($fuel_type_id && in_array($action, ['approve', 'adjust'])) {
                     try {
-                        $tank_note    = $new_tank_level !== null ? " New tank: {$new_tank_level}L." : '';
+                        $tank_note    = $new_tank_level !== null ? " New tank: {$new_tank_level}L." : 'â€"';
                         $audit_reason = substr("Delivery #{$delivery_id} {$action}d. Added {$liters_to_add}L of {$fuel_type}.{$tank_note} Notes: {$val_notes}", 0, 255);
                         $pdo->prepare("
                             INSERT INTO fuel_adjustments
@@ -512,12 +522,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 log_activity($pdo, $me['id'], 'Validate Delivery',
                     "Delivery #{$delivery_id} {$action}. Fuel: {$fuel_type}. Liters: {$liters_to_add}. Notes: {$val_notes}");
 
+                // Notify the staff member who recorded the delivery
+                try {
+                    if ($del['received_by']) {
+                        $notif_title = $action === 'reject'
+                            ? 'Fuel Delivery Returned for Correction'
+                            : 'Fuel Delivery Approved';
+                        $notif_msg = $action === 'reject'
+                            ? "Your fuel delivery #{$delivery_id} ({$fuel_type}) has been returned by the manager. Reason: {$val_notes}"
+                            : "Your fuel delivery #{$delivery_id} ({$fuel_type}, " . number_format($liters_to_add, 0) . " L) has been approved and added to inventory.";
+                        $notif_severity = $action === 'reject' ? 'high' : 'medium';
+                        $pdo->prepare("
+                            INSERT INTO notifications (user_id, type, title, message, event_type, severity, source_key, redirect_url, created_at)
+                            VALUES (?, 'info', ?, ?, 'delivery', ?, ?, 'staff_fuel_deliveries.php', NOW())
+                        ")->execute([
+                            $del['received_by'],
+                            $notif_title,
+                            $notif_msg,
+                            $notif_severity,
+                            'fuel_del_' . $delivery_id . '_' . $action
+                        ]);
+                    }
+                } catch (Exception $ne) {
+                    error_log("Delivery notification failed: " . $ne->getMessage());
+                }
+
                 $pdo->commit();
 
                 if (in_array($action, ['approve', 'adjust'])) {
                     $tank_msg = $new_tank_level !== null
                         ? " Tank level updated to <strong>" . number_format($new_tank_level, 0) . " L</strong>."
-                        : '';
+                        : 'â€"';
                     $_SESSION['success'] = "Delivery #{$delivery_id} approved. Added " . number_format($liters_to_add, 0) . "L of {$fuel_type} to inventory.{$tank_msg}";
                 } else {
                     $_SESSION['success'] = "Delivery #{$delivery_id} returned to staff for correction.";
@@ -562,7 +597,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 log_activity($pdo, $me['id'], 'Adjust Tank Level', "Adjusted {$adjustment_type} for {$fuel_name}: {$difference} L (new level: {$new_level} L). Reason: {$reason}");
                 $pdo->commit();
 
-                $diff_str = ($difference >= 0 ? '+' : '') . number_format($difference, 2);
+                $diff_str = ($difference >= 0 ? '+' : 'â€"') . number_format($difference, 2);
                 $_SESSION['success'] = "? {$fuel_name} tank level set to " . number_format($new_level, 2) . " L (change: {$diff_str} L). Audit trail saved.";
             } catch (Exception $e) {
                 if ($pdo->inTransaction()) $pdo->rollBack();
@@ -595,7 +630,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 // Update price
                 $pdo->prepare("UPDATE fuel_inventory SET price_per_liter=?, last_updated=NOW() WHERE station_id=? AND fuel_type_id=?")->execute([$new_price, $station_id, $fuel_type_id]);
 
-                // Audit trail row � use liters=0, store price change in reason
+                // Audit trail row  -  use liters=0, store price change in reason
                 $audit_reason = substr("Price: ?{$old_price} ? ?{$new_price}/L. {$reason}", 0, 255);
                 $pdo->prepare("INSERT INTO fuel_adjustments (station_id, fuel_type_id, fuel_type, adjustment_type, liters, reason, user_id, adjustment_date) VALUES (?,?,?,'price_update',0,?,?,CURDATE())")->execute([$station_id, $fuel_type_id, $fuel_name, $audit_reason, $me['id']]);
 
@@ -731,7 +766,12 @@ try {
     $stmt = $pdo->prepare("
         SELECT ft.*, u.name as staff_name,
                fi.current_stock as tank_level,
-               fi.latest_calibration as tank_calibration
+               fi.latest_calibration as tank_calibration,
+               (SELECT MIN(pc.pump_number) 
+                FROM pump_configuration pc 
+                WHERE pc.station_id = ft.station_id 
+                  AND LOWER(TRIM(pc.fuel_type)) = LOWER(TRIM(ft.fuel_type))
+                  AND pc.pump_status = 'active') as pump_number
         FROM fuel_transactions ft
         JOIN users u ON ft.staff_id = u.id
         LEFT JOIN fuel_inventory fi
@@ -763,23 +803,61 @@ try {
 } catch (Exception $e) { error_log("recent_adjustments: ".$e->getMessage()); }
 
 try {
-    $stmt = $pdo->prepare("
-        SELECT fd.*, u.name as recorded_by_name, v.name as verified_by_name,
-               COALESCE(fi.current_level, fi.current_stock, 0) as current_tank_level,
-               COALESCE(fi.capacity, 0)                        as tank_capacity
+    // Ensure verified_by / verified_at columns exist
+    try { $pdo->exec("ALTER TABLE fuel_deliveries ADD COLUMN verified_by INT DEFAULT NULL"); } catch (Exception $e) {}
+    try { $pdo->exec("ALTER TABLE fuel_deliveries ADD COLUMN verified_at DATETIME DEFAULT NULL"); } catch (Exception $e) {}
+
+    // Filter state for DR Validation table
+    $del_filter_status = trim($_GET['del_status'] ?? '');
+    $del_filter_fuel   = trim($_GET['del_fuel']   ?? '');
+    $del_filter_kw     = trim($_GET['del_kw']     ?? '');
+
+    $del_sql = "
+        SELECT fd.id, fd.delivery_date, fd.fuel_type, fd.supplier,
+               fd.invoice_no, fd.delivery_liters, fd.tanker_number,
+               fd.notes, fd.status, fd.created_at,
+               fd.verified_by, fd.verified_at,
+               u.name  AS recorded_by_name,
+               v.name  AS verified_by_name,
+               COALESCE(fi.current_level, fi.current_stock, 0) AS current_tank_level,
+               COALESCE(fi.capacity, 0)                        AS tank_capacity
         FROM fuel_deliveries fd
-        LEFT JOIN users u ON fd.received_by = u.id
-        LEFT JOIN users v ON fd.verified_by = v.id
+        LEFT JOIN users u  ON fd.received_by = u.id
+        LEFT JOIN users v  ON fd.verified_by = v.id
         LEFT JOIN fuel_inventory fi
             ON fi.station_id = fd.station_id
             AND LOWER(TRIM(fi.fuel_type)) = LOWER(TRIM(fd.fuel_type))
         WHERE fd.station_id = ?
-        ORDER BY fd.delivery_date DESC, fd.created_at DESC
-        LIMIT 30
-    ");
-    $stmt->execute([$station_id]);
+    ";
+    $del_params = [$station_id];
+
+    if ($del_filter_status !== '') {
+        if ($del_filter_status === 'pending') {
+            $del_sql .= " AND LOWER(fd.status) IN ('pending','pending review','pending manager approval','discrepancy')";
+        } elseif ($del_filter_status === 'verified') {
+            $del_sql .= " AND LOWER(fd.status) IN ('verified','approved')";
+        } elseif ($del_filter_status === 'rejected') {
+            $del_sql .= " AND LOWER(fd.status) = 'rejected'";
+        }
+    }
+    if ($del_filter_fuel !== '') {
+        $del_sql .= " AND LOWER(TRIM(fd.fuel_type)) = LOWER(TRIM(?))";
+        $del_params[] = $del_filter_fuel;
+    }
+    if ($del_filter_kw !== '') {
+        $del_sql .= " AND (fd.invoice_no LIKE ? OR fd.supplier LIKE ? OR fd.tanker_number LIKE ?)";
+        $kw = '%' . $del_filter_kw . '%';
+        $del_params = array_merge($del_params, [$kw, $kw, $kw]);
+    }
+
+    $del_sql .= " ORDER BY
+        CASE WHEN LOWER(fd.status) IN ('pending','pending review','pending manager approval','discrepancy') THEN 0 ELSE 1 END ASC,
+        fd.delivery_date DESC, fd.created_at DESC";
+
+    $stmt = $pdo->prepare($del_sql);
+    $stmt->execute($del_params);
     $deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) { error_log("deliveries: ".$e->getMessage()); }
+} catch (Exception $e) { error_log("deliveries: ".$e->getMessage()); $deliveries = []; }
 
 try {
     $stmt = $pdo->prepare("
@@ -819,7 +897,7 @@ try {
     $reconciliation_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) { error_log("reconciliation_data: ".$e->getMessage()); }
 
-// Pump master fuel types — join fuel_pumps for pump ID, encoded-by, last calibration date
+// Pump master fuel types â€" join fuel_pumps for pump ID, encoded-by, last calibration date
 $pump_master_fuel_types = [];
 try {
     $stmt = $pdo->prepare("
@@ -862,6 +940,25 @@ include __DIR__ . '/../partials/header.php';
 
 <?php
 // Helper functions
+function status_badge(string $status): string {
+    $map = [
+        'pending validation'        => ['bg' => '#fef9c3', 'color' => '#854d0e', 'border' => '#fde047', 'label' => 'Pending'],
+        'pending'                   => ['bg' => '#fef9c3', 'color' => '#854d0e', 'border' => '#fde047', 'label' => 'Pending'],
+        'pending review'            => ['bg' => '#fef9c3', 'color' => '#854d0e', 'border' => '#fde047', 'label' => 'Pending Review'],
+        'pending manager approval'  => ['bg' => '#fff3cd', 'color' => '#7c5c00', 'border' => '#ffc107', 'label' => 'Pending Approval'],
+        'discrepancy'               => ['bg' => '#fee2e2', 'color' => '#991b1b', 'border' => '#fca5a5', 'label' => 'Discrepancy'],
+        'verified'                  => ['bg' => '#dcfce7', 'color' => '#166534', 'border' => '#86efac', 'label' => 'Verified'],
+        'approved'                  => ['bg' => '#dcfce7', 'color' => '#166534', 'border' => '#86efac', 'label' => 'Verified'],
+        'rejected'                  => ['bg' => '#fee2e2', 'color' => '#991b1b', 'border' => '#fca5a5', 'label' => 'Returned'],
+    ];
+    $key  = strtolower(trim($status));
+    $cfg  = $map[$key] ?? ['bg' => '#f1f5f9', 'color' => '#64748b', 'border' => '#e2e8f0', 'label' => htmlspecialchars($status)];
+    return sprintf(
+        '<span style="background:%s;color:%s;border:1px solid %s;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;display:inline-block;text-align:center;">%s</span>',
+        $cfg['bg'], $cfg['color'], $cfg['border'], $cfg['label']
+    );
+}
+
 function hex2rgb($hex) {
     $hex = str_replace('#','',$hex);
     if (strlen($hex)==3) { $r=hexdec($hex[0].$hex[0]); $g=hexdec($hex[1].$hex[1]); $b=hexdec($hex[2].$hex[2]); }
@@ -933,10 +1030,46 @@ function adjustColor($hex,$pct) {
 .tank-detail-value { font-weight:600; color:#333; }
 
 /* Tables */
-.data-table { width:100%; border-collapse:collapse; font-size:.85rem; }
-.data-table th, .data-table td { padding:10px 12px; text-align:left; border-bottom:1px solid #e9ecef; }
-.data-table th { background:linear-gradient(135deg,<?php echo $colors['primary']; ?>,<?php echo adjustColor($colors['primary'],-20); ?>); color:#fff; font-weight:600; font-size:.78rem; text-transform:uppercase; letter-spacing:.5px; }
-.data-table tr:hover { background:rgba(<?php echo hex2rgb($colors['primary']); ?>,.04); }
+.data-table { width:100%; border-collapse:collapse; font-size:.85rem; margin-top: 8px; }
+.data-table th, .data-table td { padding:12px 14px; text-align:left; border-bottom:1px solid #f1f3f5; vertical-align:middle; }
+.data-table th { background:transparent; color:#555; font-weight:700; font-size:.78rem; text-transform:uppercase; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding-top:16px; padding-bottom:16px; }
+.data-table tr { transition: background-color 0.2s ease; }
+.data-table tr:hover { background:rgba(<?php echo hex2rgb($colors['primary']); ?>,.02); }
+
+/* Modern Status Pills */
+.status-pill-pending {
+    background-color: #fffbeb;
+    color: #b45309;
+    padding: 5px 12px;
+    border-radius: 16px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    display: inline-block;
+    text-align: center;
+    border: 1px solid #fef3c7;
+}
+.status-pill-verified {
+    background-color: #e6f7ed;
+    color: #137333;
+    padding: 5px 12px;
+    border-radius: 16px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    display: inline-block;
+    text-align: center;
+    border: 1px solid #c6f6d5;
+}
+.status-pill-rejected {
+    background-color: #fef2f2;
+    color: #991b1b;
+    padding: 5px 12px;
+    border-radius: 16px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    display: inline-block;
+    text-align: center;
+    border: 1px solid #fee2e2;
+}
 
 /* Variance Tags */
 .tag-investigate { background:#dc3545; color:#fff; padding:3px 8px; border-radius:4px; font-size:.72rem; font-weight:700; animation:pulse 1.5s infinite; }
@@ -1031,39 +1164,30 @@ function adjustColor($hex,$pct) {
     <div class="page-head">
         <div>
             <h1 class="h1">Manager Fuel Management</h1>
-            <div class="sub">Fuel Transactions � Deliveries � Daily Operations � Sales Summary � Pump Master</div>
+            <div class="sub">Fuel Transactions  -  Deliveries  -  Daily Operations  -  Sales Summary  -  Pump Master</div>
         </div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <?php if ($high_variances > 0): ?>
-            <span class="tag-investigate"><i class="fas fa-exclamation-triangle"></i> <?php echo $high_variances; ?> High Variance<?php echo $high_variances>1?'s':''; ?></span>
-            <?php endif; ?>
-            <?php if ($pending_cnt > 0): ?>
-            <span class="tag-open"><i class="fas fa-clock"></i> <?php echo $pending_cnt; ?> Pending Validation</span>
-            <?php endif; ?>
-        </div>
+        <div style="display:none;"></div>
     </div>
 
 <?php if ($msg): ?>
 <div class="mfm-alert <?php echo $msg_type; ?>">
     <i class="fas fa-<?php echo $msg_type==='success'?'check-circle':'exclamation-circle'; ?>"></i>
     <span><?php echo htmlspecialchars($msg); ?></span>
-    <span class="close-alert" onclick="this.parentElement.remove()">�</span>
+    <span class="close-alert" onclick="this.parentElement.remove()">&times; - </span>
 </div>
 <?php endif; ?>
 
 <!-- -- SECTION NAVIGATION (sidebar-driven, no top tabs) -- -->
 
 <!-- ----------------------------------------------------------
-     SECTION 1: FUEL TRANSACTIONS � PUMP READING VALIDATION
+     SECTION 1: FUEL TRANSACTIONS  -  PUMP READING VALIDATION
 ---------------------------------------------------------- -->
 <div id="fuel-transactions" class="fuel-section">
 <div class="fuel-section-inner">
 
     <div class="section-head">
-        <div class="section-title"><i class="fas fa-gas-pump"></i> Fuel Transactions � Pump Reading Validation</div>
-        <?php if ($pending_cnt > 0): ?>
-        <span class="tag-open"><i class="fas fa-clock"></i> <?php echo $pending_cnt; ?> Awaiting Review</span>
-        <?php endif; ?>
+        <div class="section-title"><i class="fas fa-gas-pump"></i> Fuel Transactions  -  Pump Reading Validation</div>
+
     </div>
 
 
@@ -1071,14 +1195,14 @@ function adjustColor($hex,$pct) {
         <div class="empty-state"><i class="fas fa-check-circle"></i><p>No pending staff readings to validate.</p></div>
     <?php else: ?>
     <div style="overflow-x:auto;">
-    <table class="data-table">
+    <div style="overflow-x:auto; width:100%; border-radius:8px; border:1px solid #eef0f2; margin-top:12px; background:#fff;">
+    <table class="data-table" style="font-size:0.82rem; min-width:850px;">
         <thead><tr>
-            <th>Transaction ID</th>
-            <th>Pump / Fuel Type</th>
-            <th>Previous Reading</th>
-            <th>Present Reading</th>
+            <th>TXN ID</th>
+            <th>Pump / Fuel</th>
+            <th>Meter Reading<br><small style="font-weight:normal;opacity:0.8">Prev -> Present</small></th>
             <th>Liters Sold</th>
-            <th>Shift Period</th>
+            <th>Shift</th>
             <th>Staff</th>
             <th>Submitted</th>
             <th>Variance</th>
@@ -1104,25 +1228,23 @@ function adjustColor($hex,$pct) {
             // Shift label
             $shift_raw   = $r['shift_period'] ?? $r['shift_name'] ?? '';
             $shift_label = match(strtolower($shift_raw)) {
-                'first','morning','am','1'  => '6AM � 2PM',
-                'second','afternoon','pm','2' => '2PM � 12MN',
-                default => $shift_raw ? htmlspecialchars($shift_raw) : '�',
+                'first','morning','am','1'  => '6AM - 2PM',
+                'second','afternoon','pm','2' => '2PM - 12MN',
+                default => $shift_raw ? htmlspecialchars($shift_raw) : 'â€"',
             };
             $submitted_at = $r['created_at'] ?? $r['transaction_date'] ?? null;
         ?>
-        <tr style="<?php echo $is_flagged ? 'background:#fff8f0;' : ''; ?>">
-            <td><strong style="font-size:.76rem;font-family:monospace;"><?php echo htmlspecialchars($r['transaction_id']); ?></strong></td>
+        <tr style="<?php echo $is_flagged ? 'background:#fff8f0;' : 'â€"'; ?>">
+            <td><strong style="font-size:.72rem;font-family:monospace;"><?php echo htmlspecialchars($r['transaction_id']); ?></strong></td>
             <td>
                 <div style="font-weight:700;font-size:.85rem;">
-                    Pump #<?php echo htmlspecialchars($r['pump_number'] ?? $r['pump_id'] ?? '�'); ?>
+                    Pump #<?php echo htmlspecialchars($r['pump_number'] ?? $r['pump_id'] ?? ''); ?>
                 </div>
                 <div style="font-size:.75rem;color:#666;"><?php echo htmlspecialchars($r['fuel_type']); ?></div>
             </td>
             <td style="text-align:right;">
-                <span style="font-size:.88rem;color:#555;"><?php echo $prev_reading > 0 ? number_format($prev_reading, 2) : '<span style="color:#bbb;">�</span>'; ?></span>
-            </td>
-            <td style="text-align:right;">
-                <span style="font-size:.88rem;font-weight:600;"><?php echo $pres_reading > 0 ? number_format($pres_reading, 2) : '<span style="color:#bbb;">�</span>'; ?></span>
+                <div style="font-size:.82rem;color:#555;"><?php echo $prev_reading > 0 ? number_format($prev_reading, 2) : '<span style="color:#bbb;"></span>'; ?></div>
+                <div style="font-size:.82rem;font-weight:600;"><i class="fas fa-arrow-down" style="font-size:0.6rem;opacity:0.5;"></i> <?php echo $pres_reading > 0 ? number_format($pres_reading, 2) : '<span style="color:#bbb;"></span>'; ?></div>
             </td>
             <td style="text-align:right;">
                 <strong style="color:<?php echo $colors['primary']; ?>;"><?php echo number_format($liters_sold, 2); ?> L</strong>
@@ -1139,7 +1261,7 @@ function adjustColor($hex,$pct) {
                 <span class="audit-badge"><i class="fas fa-user"></i> <?php echo htmlspecialchars($r['staff_name']); ?></span>
             </td>
             <td style="font-size:.75rem;color:#666;white-space:nowrap;">
-                <?php echo $submitted_at ? date('M j, Y<br>H:i', strtotime($submitted_at)) : '�'; ?>
+                <?php echo $submitted_at ? date('M j, Y<br>H:i', strtotime($submitted_at)) : ' - '; ?>
             </td>
             <td style="text-align:center;">
                 <?php if ($is_flagged): ?>
@@ -1151,17 +1273,15 @@ function adjustColor($hex,$pct) {
                         <i class="fas fa-check"></i> <?php echo number_format($variance_pct, 1); ?>%
                     </span>
                 <?php else: ?>
-                    <span style="color:#bbb;font-size:.78rem;">�</span>
+                    <span style="color:#bbb;font-size:.78rem;"> - </span>
                 <?php endif; ?>
             </td>
             <td>
-                <span class="tag-open" style="font-size:.7rem;padding:2px 8px;">
-                    <i class="fas fa-clock"></i> Pending
-                </span>
+                <?php echo status_badge($r['status'] ?? 'pending'); ?>
             </td>
             <td style="white-space:nowrap;">
                 <div style="display:flex;flex-direction:column;gap:4px;">
-                    <button class="btn btn-success" style="font-size:.75rem;padding:4px 10px;"
+                    <button class="btn btn-success" style="font-size:.75rem;padding:5px 10px;justify-content:center;border-radius:4px;"
                         onclick="openValidateModal(
                             '<?php echo htmlspecialchars($r['transaction_id']); ?>',
                             <?php echo $liters_sold; ?>,
@@ -1173,11 +1293,11 @@ function adjustColor($hex,$pct) {
                         )">
                         <i class="fas fa-check"></i> Approve
                     </button>
-                    <button class="btn btn-danger" style="font-size:.75rem;padding:4px 10px;"
+                    <button class="btn btn-danger" style="font-size:.75rem;padding:5px 10px;justify-content:center;border-radius:4px;"
                         onclick="openRejectModal('<?php echo htmlspecialchars($r['transaction_id']); ?>')">
                         <i class="fas fa-times"></i> Reject
                     </button>
-                    <button class="btn btn-primary" style="font-size:.75rem;padding:4px 10px;"
+                    <button class="btn btn-primary" style="font-size:.75rem;padding:5px 10px;justify-content:center;border-radius:4px;"
                         onclick="openAdjustModal(
                             '<?php echo htmlspecialchars($r['transaction_id']); ?>',
                             <?php echo $liters_sold; ?>,
@@ -1193,54 +1313,16 @@ function adjustColor($hex,$pct) {
         </tbody>
     </table>
     </div>
+    </div>
     <?php endif; ?>
 
-    <!-- All Transactions History -->
-    <div class="section-head" style="margin-top:24px;padding-top:18px;border-top:2px solid #e9ecef;">
-        <div class="section-title"><i class="fas fa-history"></i> All Fuel Transactions � Audit Log</div>
-        <span class="readonly-badge"><i class="fas fa-lock"></i> Read-Only</span>
-    </div>
-    <?php if (empty($shift_history)): ?>
-        <div class="empty-state"><i class="fas fa-history"></i><p>No transactions found.</p></div>
-    <?php else: ?>
-    <div style="overflow-x:auto;">
-    <table class="data-table">
-        <thead><tr>
-            <th>Transaction ID</th><th>Date</th><th>Fuel Type</th>
-            <th>Liters Sold</th><th>Staff</th><th>Status</th>
-            <th>Validated By</th><th>Validated At</th>
-        </tr></thead>
-        <tbody>
-        <?php foreach ($shift_history as $h):
-            $st = strtolower($h['status']??'pending');
-        ?>
-        <tr>
-            <td><strong style="font-size:.76rem;"><?php echo htmlspecialchars($h['transaction_id']); ?></strong></td>
-            <td style="white-space:nowrap;"><?php echo date('M j, Y',strtotime($h['transaction_date'])); ?></td>
-            <td><strong><?php echo htmlspecialchars($h['fuel_type']); ?></strong></td>
-            <td><strong><?php echo number_format($h['liters_sold'],2); ?> L</strong></td>
-            <td><span class="audit-badge"><i class="fas fa-user"></i> <?php echo htmlspecialchars($h['staff_name']); ?></span></td>
-            <td>
-                <?php
-                if ($st==='approved' || $st==='verified') echo '<span class="tag-resolved"><i class="fas fa-check"></i> Approved</span>';
-                elseif ($st==='rejected') echo '<span class="tag-investigate"><i class="fas fa-times"></i> Rejected</span>';
-                else echo '<span class="tag-open"><i class="fas fa-clock"></i> Pending</span>';
-                ?>
-            </td>
-            <td><?php echo !empty($h['validated_by_name']) ? '<span class="audit-badge"><i class="fas fa-user-tie"></i> '.htmlspecialchars($h['validated_by_name']).'</span>' : '�'; ?></td>
-            <td style="font-size:.78rem;white-space:nowrap;"><?php echo !empty($h['validated_at']) ? date('M j H:i',strtotime($h['validated_at'])) : '�'; ?></td>
-        </tr>
-        <?php endforeach; ?>
-        </tbody>
-    </table>
-    </div>
-    <?php endif; ?>
+    
 
 </div>
 </div>
 
 <!-- ----------------------------------------------------------
-     SECTION 2: DAILY OPERATIONS � TANK LEVELS & APPROVAL
+     SECTION 2: DAILY OPERATIONS  -  TANK LEVELS & APPROVAL
 ---------------------------------------------------------- -->
 <div id="daily-ops" class="fuel-section">
 <div class="fuel-section-inner">
@@ -1255,7 +1337,7 @@ function adjustColor($hex,$pct) {
      Manager approves/rejects daily shift entries
 --------------------------------------------- -->
 <div class="section-head" style="margin-top:4px;padding-top:18px;border-top:2px solid #e9ecef;">
-    <div class="section-title"><i class="fas fa-clipboard-check"></i> Daily Logs � Shift Approval</div>
+    <div class="section-title"><i class="fas fa-clipboard-check"></i> Daily Logs  -  Shift Approval</div>
     <?php
     $pending_daily = array_filter($shift_history, fn($h) => str_contains(strtolower($h['status'] ?? ''), 'pending'));
     $pending_daily_cnt = count($pending_daily);
@@ -1288,14 +1370,14 @@ function adjustColor($hex,$pct) {
 <div style="overflow-x:auto;">
 <table class="data-table" id="dailyLogsTable">
     <thead><tr>
-        <th>Daily Log ID</th>
+        <th>Log ID</th>
         <th>Date</th>
-        <th>Shift Period</th>
-        <th>Pump / Fuel Type</th>
-        <th>Sales Liters</th>
-        <th>Tank Level</th>
+        <th>Shift</th>
+        <th>Pump/Fuel</th>
+        <th>Sales (L)</th>
+        <th>Tank (L)</th>
         <th>Variance %</th>
-        <th>Encoded By</th>
+        <th>Staff</th>
         <th>Status</th>
         <th>Actions</th>
     </tr></thead>
@@ -1310,12 +1392,12 @@ function adjustColor($hex,$pct) {
         // Shift label
         $shift_raw   = $h['shift_period'] ?? $h['shift_name'] ?? '';
         $shift_label = match(strtolower($shift_raw)) {
-            'first','morning','am','1'    => '6AM � 2PM',
-            'second','afternoon','pm','2' => '2PM � 12MN',
-            default => $shift_raw ? htmlspecialchars($shift_raw) : '�',
+            'first','morning','am','1'    => '6AM  -  2PM',
+            'second','afternoon','pm','2' => '2PM  -  12MN',
+            default => $shift_raw ? htmlspecialchars($shift_raw) : ' - ',
         };
 
-        // Pump display � only pump_id exists in fuel_transactions
+        // Pump display  -  only pump_id exists in fuel_transactions
         $pump_display = $h['pump_id'] ?? null;
 
         // Tank level from inventory join
@@ -1363,7 +1445,7 @@ function adjustColor($hex,$pct) {
             <?php if ($tank_lvl > 0): ?>
                 <span style="font-size:.85rem;font-weight:600;"><?php echo number_format($tank_lvl, 2); ?> L</span>
             <?php else: ?>
-                <span style="color:#bbb;font-size:.78rem;">�</span>
+                <span style="color:#bbb;font-size:.78rem;"> - </span>
             <?php endif; ?>
         </td>
         <td style="text-align:center;">
@@ -1376,7 +1458,7 @@ function adjustColor($hex,$pct) {
                     <i class="fas fa-check"></i> <?php echo number_format($var_pct_h, 1); ?>%
                 </span>
             <?php else: ?>
-                <span style="color:#bbb;font-size:.78rem;">�</span>
+                <span style="color:#bbb;font-size:.78rem;"> - </span>
             <?php endif; ?>
         </td>
         <td>
@@ -1394,7 +1476,7 @@ function adjustColor($hex,$pct) {
         <td style="white-space:nowrap;">
             <?php if ($st_norm === 'pending'): ?>
             <div style="display:flex;flex-direction:column;gap:4px;">
-                <button class="btn btn-success" style="font-size:.75rem;padding:4px 10px;"
+                <button class="btn btn-success" style="font-size:.75rem;padding:5px 10px;justify-content:center;border-radius:4px;"
                     onclick="openApproveDailyModal(
                         '<?php echo htmlspecialchars($h['transaction_id']); ?>',
                         '<?php echo htmlspecialchars(addslashes($h['fuel_type'])); ?>',
@@ -1403,7 +1485,7 @@ function adjustColor($hex,$pct) {
                     )">
                     <i class="fas fa-check"></i> Approve
                 </button>
-                <button class="btn btn-danger" style="font-size:.75rem;padding:4px 10px;"
+                <button class="btn btn-danger" style="font-size:.75rem;padding:5px 10px;justify-content:center;border-radius:4px;"
                     onclick="openRejectDailyModal('<?php echo htmlspecialchars($h['transaction_id']); ?>')">
                     <i class="fas fa-times"></i> Reject
                 </button>
@@ -1423,156 +1505,207 @@ function adjustColor($hex,$pct) {
 </div>
 
 <!-- ----------------------------------------------------------
-     SECTION 3: FUEL DELIVERIES � STAFF DR VALIDATION
+     SECTION 3: FUEL DELIVERIES  -  STAFF DR VALIDATION
 ---------------------------------------------------------- -->
 <div id="fuel-deliveries" class="fuel-section">
 <div class="fuel-section-inner">
 
     <div class="section-head">
-        <div class="section-title"><i class="fas fa-truck"></i> Fuel Deliveries � Supplier DR Validation</div>
-        <?php
-        $pending_del = array_filter($deliveries ?? [], fn($d) => in_array(strtolower($d['status'] ?? ''), ['pending', 'pending review']));
-        if (count($pending_del) > 0):
-        ?>
-        <span class="tag-open"><i class="fas fa-clock"></i> <?php echo count($pending_del); ?> Pending Validation</span>
-        <?php endif; ?>
+        <div class="section-title"><i class="fas fa-truck"></i> Fuel Deliveries  -  Supplier DR Validation</div>
+
     </div>
 
-    <div style="padding:12px 16px;background:#f0f4ff;border-radius:8px;border-left:4px solid <?php echo $colors['primary']; ?>;margin-bottom:18px;font-size:.85rem;color:#444;">
-        <strong style="color:<?php echo $colors['primary']; ?>;">Purpose:</strong>
-        Manager reviews supplier Delivery Receipts (DRs) encoded by Staff.
-        <strong>Approve</strong> ? auto-updates fuel inventory stock.
-        <strong>Reject</strong> ? returns to Staff for correction.
-    </div>
 
-    <!-- -- DELIVERY LOG + VALIDATION -- -->
-    <div class="section-head">
-        <div class="section-title"><i class="fas fa-list"></i> Staff-Encoded Deliveries &amp; Validation</div>
-    </div>
+
+
 
     <?php if (empty($deliveries)): ?>
         <div class="empty-state"><i class="fas fa-truck"></i><p>No deliveries recorded yet.</p></div>
     <?php else: ?>
-    <div style="overflow-x:auto;">
-    <table class="data-table">
-        <thead><tr>
-            <th>#</th>
-            <th>Supplier</th>
-            <th>Fuel Type</th>
-            <th>Volume (L)</th>
-            <th>Date & Time</th>
-            <th>Invoice No.</th>
-            <th>Notes</th>
-            <th>Encoded By</th>
-            <th>Status</th>
-            <th>Validated By</th>
-            <th>Action</th>
-        </tr></thead>
-        <tbody>
-        <?php foreach ($deliveries as $d):
-            $st = strtolower($d['status'] ?? 'pending');
-            $is_pending = str_contains($st, 'pending');
-        ?>
-        <tr style="<?php echo $is_pending ? 'background:#fffbea;' : ''; ?>">
-            <td><strong>#<?php echo $d['id']; ?></strong></td>
-            <td><strong><?php echo htmlspecialchars($d['supplier'] ?? 'N/A'); ?></strong></td>
-            <td><strong><?php echo htmlspecialchars($d['fuel_type']); ?></strong></td>
-            <td>
-                <strong><?php echo number_format($d['delivery_liters'], 2); ?> L</strong>
-                <?php if ($is_pending && isset($d['current_tank_level'])): ?>
-                <br><span style="font-size:.72rem;color:#888;">Tank now: <?php echo number_format($d['current_tank_level'], 0); ?> L</span>
-                <?php
-                    $cap_val   = (float)($d['tank_capacity'] ?? 0);
-                    $cur_val   = (float)($d['current_tank_level'] ?? 0);
-                    $del_val   = (float)$d['delivery_liters'];
-                    $over_cap  = $cap_val > 0 && ($cur_val + $del_val) > $cap_val;
-                    if ($cap_val > 0):
-                ?>
-                <br><span style="font-size:.72rem;color:<?php echo $over_cap ? '#dc3545' : '#888'; ?>;">
-                    Cap: <?php echo number_format($cap_val, 0); ?> L
-                    <?php if ($over_cap): ?>
-                    &bull; <strong style="color:#dc3545;">Exceeds cap by <?php echo number_format(($cur_val + $del_val) - $cap_val, 0); ?> L</strong>
-                    <?php endif; ?>
+
+    <style>
+    /* ── DR Validation card layout ── */
+    .dr-card {
+        background: #fff;
+        border: 1.5px solid #e2e8f0;
+        border-radius: 10px;
+        margin-bottom: 10px;
+        overflow: hidden;
+        transition: box-shadow .15s;
+    }
+    .dr-card:hover { box-shadow: 0 2px 10px rgba(0,0,0,.07); }
+    .dr-card.dr-pending { border-left: 4px solid #f59e0b; background: #fffbea; }
+    .dr-card.dr-discrepancy { border-left: 4px solid #dc3545; background: #fff5f5; }
+    .dr-card.dr-done { border-left: 4px solid #86efac; }
+
+    /* Head row: ID + fuel type + status + actions */
+    .dr-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border-bottom: 1px solid #f1f5f9;
+        flex-wrap: wrap;
+    }
+    .dr-id { font-weight: 800; font-size: 13px; color: #002F6C; flex-shrink: 0; }
+    .dr-fuel { font-weight: 700; font-size: 13px; color: #334155; }
+    .dr-vol { font-weight: 700; font-size: 14px; color: #002F6C; margin-left: auto; }
+
+    /* Body: 3-column info grid */
+    .dr-body {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px 16px;
+        padding: 10px 14px;
+    }
+    @media (max-width: 700px) { .dr-body { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 480px) { .dr-body { grid-template-columns: 1fr; } }
+
+    .dr-field { display: flex; flex-direction: column; gap: 2px; }
+    .dr-label { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: .4px; }
+    .dr-value { font-size: 12px; color: #1e293b; font-weight: 500; }
+    .dr-value.mono { font-family: monospace; font-size: 12px; }
+
+    /* Footer: actions right-aligned */
+    .dr-foot {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        padding: 8px 14px;
+        background: #f8fafc;
+        border-top: 1px solid #f1f5f9;
+        flex-wrap: wrap;
+    }
+    .dr-btn {
+        padding: 6px 14px;
+        border: none;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        transition: opacity .15s;
+    }
+    .dr-btn:hover { opacity: .85; }
+    .dr-btn-view   { background: #0d6efd; color: #fff; }
+    .dr-btn-approve { background: #198754; color: #fff; }
+    .dr-btn-return  { background: #dc3545; color: #fff; }
+    .dr-done-label  { font-size: 12px; color: #94a3b8; font-weight: 600; }
+
+    /* Overfill warning inline */
+    .dr-overfill { font-size: 11px; color: #dc3545; font-weight: 700; margin-top: 2px; }
+    </style>
+
+    <div style="margin-top: 12px;">
+    <?php foreach ($deliveries as $d):
+        $st       = strtolower($d['status'] ?? 'pending');
+        $is_pending = in_array($st, ['pending', 'pending review', 'pending manager approval', 'discrepancy']);
+        $is_disc    = $st === 'discrepancy';
+
+        $cap_val  = (float)($d['tank_capacity']     ?? 0);
+        $cur_val  = (float)($d['current_tank_level'] ?? 0);
+        $del_val  = (float)($d['delivery_liters']    ?? 0);
+        $over_cap = $cap_val > 0 && ($cur_val + $del_val) > $cap_val;
+
+        $card_class = $is_disc ? 'dr-card dr-discrepancy' : ($is_pending ? 'dr-card dr-pending' : 'dr-card dr-done');
+    ?>
+    <div class="<?= $card_class ?>">
+
+        <!-- Head: ID · Fuel Type · Volume · Status -->
+        <div class="dr-head">
+            <span class="dr-id">#<?= (int)$d['id'] ?></span>
+            <span class="dr-fuel"><i class="fas fa-gas-pump" style="opacity:.6;margin-right:4px;"></i><?= htmlspecialchars($d['fuel_type']) ?></span>
+            <?= status_badge($d['status'] ?? 'pending') ?>
+            <span class="dr-vol"><?= number_format($del_val, 2) ?> L</span>
+            <?php if ($over_cap): ?>
+            <span class="dr-overfill"><i class="fas fa-exclamation-triangle"></i> Exceeds cap by <?= number_format(($cur_val + $del_val) - $cap_val, 0) ?> L</span>
+            <?php endif; ?>
+        </div>
+
+        <!-- Body: info fields -->
+        <div class="dr-body">
+            <div class="dr-field">
+                <span class="dr-label">Supplier</span>
+                <span class="dr-value"><?= htmlspecialchars($d['supplier'] ?? '—') ?></span>
+            </div>
+            <div class="dr-field">
+                <span class="dr-label">Invoice No.</span>
+                <span class="dr-value mono"><?= htmlspecialchars($d['invoice_no'] ?? '—') ?></span>
+            </div>
+            <div class="dr-field">
+                <span class="dr-label">Date &amp; Time</span>
+                <span class="dr-value"><?= date('M j, Y H:i', strtotime($d['created_at'])) ?></span>
+            </div>
+            <div class="dr-field">
+                <span class="dr-label">Encoded By</span>
+                <span class="dr-value"><i class="fas fa-user-tie" style="opacity:.5;margin-right:3px;"></i><?= htmlspecialchars($d['recorded_by_name'] ?? 'Staff') ?></span>
+            </div>
+            <div class="dr-field">
+                <span class="dr-label">Tank Level Now</span>
+                <span class="dr-value">
+                    <?php if ($cur_val > 0): ?>
+                        <?= number_format($cur_val, 0) ?> L<?= $cap_val > 0 ? ' / ' . number_format($cap_val, 0) . ' L' : '' ?>
+                    <?php else: ?>—<?php endif; ?>
                 </span>
-                <?php endif; ?>
-                <?php endif; ?>
-            </td>
-            <td><?php echo date('M j, Y H:i', strtotime($d['created_at'])); ?></td>
-            <td><?php echo htmlspecialchars($d['invoice_no'] ?? '&#8212;'); ?></td>
-            <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.78rem;"
-                title="<?php echo htmlspecialchars($d['notes'] ?? ''); ?>">
-                <?php echo htmlspecialchars($d['notes'] ?? '&#8212;'); ?>
-            </td>
-            <td>
-                <span class="audit-badge">
-                    <i class="fas fa-user-tie"></i>
-                    <?php echo htmlspecialchars($d['recorded_by_name'] ?? 'Staff'); ?>
-                </span>
-            </td>
-            <td>
-                <?php if ($st === 'verified'): ?>
-                    <span class="tag-resolved"><i class="fas fa-check"></i> Verified</span>
-                <?php elseif ($st === 'rejected'): ?>
-                    <span class="tag-investigate"><i class="fas fa-times"></i> Rejected</span>
-                <?php else: ?>
-                    <span class="tag-open"><i class="fas fa-clock"></i> Pending</span>
-                <?php endif; ?>
-            </td>
-            <td>
-                <?php if ($d['verified_by_name']): ?>
-                    <span class="audit-badge" style="font-size:.7rem;">
-                        <i class="fas fa-user-tie"></i> <?php echo htmlspecialchars($d['verified_by_name']); ?>
-                        <?php if ($d['verified_at']): ?>
-                        <br><span style="color:#aaa;"><?php echo date('M j H:i', strtotime($d['verified_at'])); ?></span>
+            </div>
+            <div class="dr-field">
+                <span class="dr-label">Validated By</span>
+                <span class="dr-value">
+                    <?php if (!empty($d['verified_by_name'])): ?>
+                        <i class="fas fa-user-check" style="opacity:.5;margin-right:3px;"></i><?= htmlspecialchars($d['verified_by_name']) ?>
+                        <?php if (!empty($d['verified_at'])): ?>
+                        <span style="font-size:10px;color:#94a3b8;display:block;"><?= date('M j, g:i A', strtotime($d['verified_at'])) ?></span>
                         <?php endif; ?>
-                    </span>
-                <?php else: ?>
-                    <span style="color:#bbb;font-size:.78rem;">&#8212;</span>
-                <?php endif; ?>
-            </td>
-            <td style="white-space:nowrap;">
-                <?php if ($is_pending): ?>
-                <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
-                    <button class="btn" style="font-size:.72rem;padding:4px 10px;background:#0d6efd;color:#fff;border:none;border-radius:5px;cursor:pointer;width:100%;"
-                        onclick="openDeliveryDetailsModal(<?php echo htmlspecialchars(json_encode([
-                            'id'             => $d['id'],
-                            'supplier'       => $d['supplier'] ?? 'N/A',
-                            'fuel_type'      => $d['fuel_type'],
-                            'delivery_liters'=> $d['delivery_liters'],
-                            'invoice_no'     => $d['invoice_no'] ?? '',
-                            'notes'          => $d['notes'] ?? '',
-                            'recorded_by'    => $d['recorded_by_name'] ?? 'N/A',
-                            'created_at'     => $d['created_at'],
-                            'delivery_date'  => $d['delivery_date'] ?? $d['created_at'],
-                            'current_tank'   => $d['current_tank_level'] ?? null,
-                            'tank_capacity'  => $d['tank_capacity'] ?? null,
-                        ]), ENT_QUOTES); ?>)">
-                        <i class="fas fa-eye"></i> View Details
-                    </button>
-                    <button class="btn btn-success" style="font-size:.72rem;padding:4px 10px;width:100%;"
-                        onclick="openDeliveryApproveModal(<?php echo $d['id']; ?>,'<?php echo htmlspecialchars($d['fuel_type']); ?>',<?php echo $d['delivery_liters']; ?>,'<?php echo htmlspecialchars($d['invoice_no']??''); ?>',<?php echo (float)($d['current_tank_level'] ?? 0); ?>,<?php echo (float)($d['tank_capacity'] ?? 0); ?>)">
-                        <i class="fas fa-check"></i> Approve
-                    </button>
-                    <button class="btn" style="font-size:.72rem;padding:4px 10px;background:#dc3545;color:#fff;border:none;border-radius:5px;cursor:pointer;width:100%;"
-                        onclick="openDeliveryReturnModal(<?php echo $d['id']; ?>,'<?php echo htmlspecialchars($d['fuel_type']); ?>',<?php echo $d['delivery_liters']; ?>,'<?php echo htmlspecialchars($d['invoice_no']??''); ?>')">
-                        <i class="fas fa-undo"></i> Return
-                    </button>
-                </div>
-                <?php else: ?>
-                <span style="color:#bbb;font-size:.78rem;">Done</span>
-                <?php endif; ?>
-            </td>
-        </tr>
-        <?php endforeach; ?>
-        </tbody>
-    </table>
+                    <?php else: ?>—<?php endif; ?>
+                </span>
+            </div>
+            <?php if (!empty($d['notes'])): ?>
+            <div class="dr-field" style="grid-column: 1 / -1;">
+                <span class="dr-label">Notes</span>
+                <span class="dr-value" style="font-size:11px;color:#475569;"><?= htmlspecialchars($d['notes']) ?></span>
+            </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- Footer: action buttons -->
+        <div class="dr-foot">
+            <?php if ($is_pending): ?>
+                <button class="dr-btn dr-btn-view"
+                    onclick="openDeliveryDetailsModal(<?= htmlspecialchars(json_encode([
+                        'id'             => $d['id'],
+                        'supplier'       => $d['supplier'] ?? 'N/A',
+                        'fuel_type'      => $d['fuel_type'],
+                        'delivery_liters'=> $d['delivery_liters'],
+                        'invoice_no'     => $d['invoice_no'] ?? '',
+                        'notes'          => $d['notes'] ?? '',
+                        'recorded_by'    => $d['recorded_by_name'] ?? 'N/A',
+                        'created_at'     => $d['created_at'],
+                        'delivery_date'  => $d['delivery_date'] ?? $d['created_at'],
+                        'current_tank'   => $d['current_tank_level'] ?? null,
+                        'tank_capacity'  => $d['tank_capacity'] ?? null,
+                    ]), ENT_QUOTES) ?>)">
+                    <i class="fas fa-eye"></i> View
+                </button>
+                <button class="dr-btn dr-btn-approve"
+                    onclick="openDeliveryApproveModal(<?= $d['id'] ?>,'<?= htmlspecialchars($d['fuel_type']) ?>',<?= $del_val ?>,'<?= htmlspecialchars($d['invoice_no'] ?? '') ?>',<?= $cur_val ?>,<?= $cap_val ?>)">
+                    <i class="fas fa-check"></i> Approve
+                </button>
+                <button class="dr-btn dr-btn-return"
+                    onclick="openDeliveryReturnModal(<?= $d['id'] ?>,'<?= htmlspecialchars($d['fuel_type']) ?>',<?= $del_val ?>,'<?= htmlspecialchars($d['invoice_no'] ?? '') ?>')">
+                    <i class="fas fa-undo"></i> Return
+                </button>
+            <?php else: ?>
+                <span class="dr-done-label"><i class="fas fa-check-circle" style="color:#86efac;margin-right:4px;"></i>Done</span>
+            <?php endif; ?>
+        </div>
+
     </div>
-    <div style="margin-top:8px;font-size:.76rem;color:#888;display:flex;gap:16px;flex-wrap:wrap;">
-        <span><i class="fas fa-check-circle" style="color:<?php echo $colors['success']; ?>"></i> Verified ? stock update confirmed, audit trail saved</span>
-        <span><i class="fas fa-times-circle" style="color:<?php echo $colors['danger']; ?>"></i> Rejected ? returned to Staff for correction</span>
-        <span><i class="fas fa-edit" style="color:#856404;"></i> Adjusted ? quantity corrected and stock updated</span>
-        <span style="color:#CC8800;"><i class="fas fa-clock"></i> Highlighted rows = awaiting manager validation</span>
+    <?php endforeach; ?>
     </div>
+
     <?php endif; ?>
 
 </div>
@@ -1604,7 +1737,7 @@ function adjustColor($hex,$pct) {
                         <option value="<?php echo $t['fuel_type_id']; ?>"
                             data-stock="<?php echo $t['current_stock']; ?>"
                             data-name="<?php echo htmlspecialchars($t['fuel_type_name']); ?>">
-                            <?php echo htmlspecialchars($t['fuel_type_name']); ?> � <?php echo number_format($t['current_stock'],2); ?> L
+                            <?php echo htmlspecialchars($t['fuel_type_name']); ?>  -  <?php echo number_format($t['current_stock'],2); ?> L
                         </option>
                         <?php endforeach; ?>
                     </select>
@@ -1656,7 +1789,7 @@ function adjustColor($hex,$pct) {
                         <option value="<?php echo $t['fuel_type_id']; ?>"
                             data-price="<?php echo $t['price_per_liter'] ?? 0; ?>"
                             data-name="<?php echo htmlspecialchars($t['fuel_type_name']); ?>">
-                            <?php echo htmlspecialchars($t['fuel_type_name']); ?> � ?<?php echo number_format($t['price_per_liter']??0,2); ?>/L
+                            <?php echo htmlspecialchars($t['fuel_type_name']); ?>  -  ?<?php echo number_format($t['price_per_liter']??0,2); ?>/L
                         </option>
                         <?php endforeach; ?>
                     </select>
@@ -1685,16 +1818,17 @@ function adjustColor($hex,$pct) {
         </div>
     </div>
 
-    <!-- -- Adjustment History � Audit Trail -- -->
+    <!-- -- Adjustment History  -  Audit Trail -- -->
     <div class="section-head" style="margin-top:24px;">
-        <div class="section-title"><i class="fas fa-history"></i> Adjustment History � Audit Trail</div>
+        <div class="section-title"><i class="fas fa-history"></i> Adjustment History  -  Audit Trail</div>
         <span class="audit-badge"><i class="fas fa-shield-alt"></i> Immutable log</span>
     </div>
     <?php if (empty($recent_adjustments)): ?>
         <div class="empty-state"><i class="fas fa-history"></i><p>No adjustments recorded yet.</p></div>
     <?php else: ?>
     <div style="overflow-x:auto;">
-    <table class="data-table">
+    <div style="overflow-x:auto; width:100%; border-radius:8px; border:1px solid #eef0f2; margin-top:12px; background:#fff;">
+    <table class="data-table" style="font-size:0.82rem; min-width:850px;">
         <thead><tr>
             <th>Date</th>
             <th>Fuel Type</th>
@@ -1712,7 +1846,7 @@ function adjustColor($hex,$pct) {
         ?>
         <tr>
             <td><?php echo date('M j, Y', strtotime($adj['adjustment_date'])); ?></td>
-            <td><strong><?php echo htmlspecialchars($adj['fuel_type_name'] ?? ($adj['fuel_type'] ?? '�')); ?></strong></td>
+            <td><strong><?php echo htmlspecialchars($adj['fuel_type_name'] ?? ($adj['fuel_type'] ?? ' - ')); ?></strong></td>
             <td>
                 <?php
                 $type_labels = [
@@ -1738,13 +1872,13 @@ function adjustColor($hex,$pct) {
                     </span>
                 <?php else: ?>
                     <span class="<?php echo $liters >= 0 ? 'var-ok' : 'var-crit'; ?>" style="font-weight:700;">
-                        <?php echo ($liters >= 0 ? '+' : '') . number_format($liters, 2); ?> L
+                        <?php echo ($liters >= 0 ? '+' : 'â€"') . number_format($liters, 2); ?> L
                     </span>
                 <?php endif; ?>
             </td>
             <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
                 title="<?php echo htmlspecialchars($adj['reason'] ?? ''); ?>">
-                <?php echo htmlspecialchars($adj['reason'] ?? '�'); ?>
+                <?php echo htmlspecialchars($adj['reason'] ?? ' - '); ?>
             </td>
             <td>
                 <span class="audit-badge">
@@ -1760,6 +1894,7 @@ function adjustColor($hex,$pct) {
         <?php endforeach; ?>
         </tbody>
     </table>
+    </div>
     </div>
     <?php endif; ?>
 
@@ -1798,7 +1933,7 @@ foreach ($reconciliation_data as $rec) {
 ?>
 
     <div class="section-head">
-        <div class="section-title"><i class="fas fa-balance-scale"></i> Reconciliation � Pump Sales vs Tank Levels</div>
+        <div class="section-title"><i class="fas fa-balance-scale"></i> Reconciliation  -  Pump Sales vs Tank Levels</div>
         <span class="audit-badge"><i class="fas fa-calendar-day"></i> <?php echo date('M j, Y'); ?></span>
     </div>
 
@@ -1807,7 +1942,7 @@ foreach ($reconciliation_data as $rec) {
         <i class="fas fa-bell" style="color:<?php echo $colors['danger']; ?>;font-size:1rem;"></i>
         <div style="flex:1;">
             <strong style="color:<?php echo $colors['danger']; ?>;font-size:.88rem;">Critical Low Stock:</strong>
-            <span style="color:#555;font-size:.85rem;"> <?php echo implode(', ', $critical_fuels); ?> � below 15%. Coordinate with Admin to trigger Purchase Order.</span>
+            <span style="color:#555;font-size:.85rem;"> <?php echo implode(', ', $critical_fuels); ?>  -  below 15%. Coordinate with Admin to trigger Purchase Order.</span>
         </div>
         <span class="audit-badge" style="background:<?php echo $colors['danger']; ?>;color:#fff;white-space:nowrap;">
             <i class="fas fa-user-tie"></i> Manager + Admin
@@ -1821,7 +1956,8 @@ foreach ($reconciliation_data as $rec) {
         <div class="section-title"><i class="fas fa-chart-bar"></i> Today's Pump Sales vs Tank Summary</div>
     </div>
     <div style="overflow-x:auto;margin-bottom:4px;">
-    <table class="data-table">
+    <div style="overflow-x:auto; width:100%; border-radius:8px; border:1px solid #eef0f2; margin-top:12px; background:#fff;">
+    <table class="data-table" style="font-size:0.82rem; min-width:850px;">
         <thead><tr>
             <th>Fuel Type</th><th>Current Stock</th><th>Capacity</th>
             <th>Sold Today</th><th>Last Delivery</th><th>Last Pump Reading</th>
@@ -1841,14 +1977,14 @@ foreach ($reconciliation_data as $rec) {
             <td><?php echo $rec['capacity'] ? number_format($rec['capacity'], 2).' L' : 'N/A'; ?></td>
             <td><strong><?php echo number_format($rec['total_sold_today'], 2); ?> L</strong></td>
             <td style="font-size:.78rem;color:#555;">
-                <?php echo $last_del ? date('M j, Y', strtotime($last_del)) : '<span style="color:#bbb;">�</span>'; ?>
+                <?php echo $last_del ? date('M j, Y', strtotime($last_del)) : '<span style="color:#bbb;"> - </span>'; ?>
             </td>
             <td style="font-size:.78rem;">
                 <?php if ($last_rdg): ?>
                     <strong><?php echo number_format($last_rdg['last_pump_reading'], 2); ?></strong>
                     <span style="color:#aaa;font-size:.7rem;display:block;"><?php echo date('M j H:i', strtotime($last_rdg['last_reading_date'])); ?></span>
                 <?php else: ?>
-                    <span style="color:#bbb;">�</span>
+                    <span style="color:#bbb;"> - </span>
                 <?php endif; ?>
             </td>
             <td>
@@ -1874,6 +2010,7 @@ foreach ($reconciliation_data as $rec) {
         <?php endforeach; ?>
         </tbody>
     </table>
+    </div>
     </div>
 
     <!-- Optional Trend Chart (collapsible) -->
@@ -1910,7 +2047,8 @@ foreach ($reconciliation_data as $rec) {
         <div class="empty-state"><i class="fas fa-check-circle"></i><p>No discrepancies found. All reconciled.</p></div>
     <?php else: ?>
     <div style="overflow-x:auto;">
-    <table class="data-table">
+    <div style="overflow-x:auto; width:100%; border-radius:8px; border:1px solid #eef0f2; margin-top:12px; background:#fff;">
+    <table class="data-table" style="font-size:0.82rem; min-width:850px;">
         <thead><tr>
             <th>#</th><th>Date</th><th>Fuel Type</th>
             <th>Variance (L)</th><th>Variance %</th>
@@ -1932,7 +2070,7 @@ foreach ($reconciliation_data as $rec) {
             <td style="font-size:.78rem;white-space:nowrap;"><?php echo date('M j, Y', strtotime($v['report_date'])); ?></td>
             <td><strong><?php echo htmlspecialchars($v['fuel_type']); ?></strong></td>
             <td class="<?php echo $vl_cls; ?>" style="font-weight:700;white-space:nowrap;">
-                <?php echo ($vl >= 0 ? '+' : '') . number_format($vl, 2); ?> L
+                <?php echo ($vl >= 0 ? '+' : 'â€"') . number_format($vl, 2); ?> L
             </td>
             <td>
                 <span class="<?php echo $vp_cls; ?>" style="font-weight:700;"><?php echo number_format($vp_val, 2); ?>%</span>
@@ -1940,11 +2078,11 @@ foreach ($reconciliation_data as $rec) {
             </td>
             <td style="max-width:150px;font-size:.78rem;">
                 <?php $cause = $v['reason'] ?? '';
-                echo $cause ? '<span title="'.htmlspecialchars($cause).'">'.htmlspecialchars(mb_strimwidth($cause,0,45,'�')).'</span>' : '<span style="color:#bbb;">�</span>'; ?>
+                echo $cause ? '<span title="'.htmlspecialchars($cause).'">'.htmlspecialchars(mb_strimwidth($cause,0,45,' - ')).'</span>' : '<span style="color:#bbb;"> - </span>'; ?>
             </td>
             <td style="max-width:150px;font-size:.78rem;">
                 <?php $rn = $v['resolution_notes'] ?? '';
-                echo $rn ? '<span title="'.htmlspecialchars($rn).'">'.htmlspecialchars(mb_strimwidth($rn,0,45,'�')).'</span>' : '<span style="color:#bbb;">�</span>'; ?>
+                echo $rn ? '<span title="'.htmlspecialchars($rn).'">'.htmlspecialchars(mb_strimwidth($rn,0,45,' - ')).'</span>' : '<span style="color:#bbb;"> - </span>'; ?>
             </td>
             <td>
                 <?php if ($st === 'Resolved'): ?>
@@ -1958,7 +2096,7 @@ foreach ($reconciliation_data as $rec) {
             <td style="font-size:.78rem;">
                 <?php echo $v['resolved_by_name']
                     ? '<span class="audit-badge"><i class="fas fa-user-tie"></i> '.htmlspecialchars($v['resolved_by_name']).'</span>'
-                    : '<span style="color:#bbb;">�</span>'; ?>
+                    : '<span style="color:#bbb;"> - </span>'; ?>
             </td>
             <td style="font-size:.75rem;color:#555;white-space:nowrap;">
                 <?php echo !empty($v['updated_at'])
@@ -1983,6 +2121,7 @@ foreach ($reconciliation_data as $rec) {
         <?php endforeach; ?>
         </tbody>
     </table>
+    </div>
     </div>
     <div style="margin-top:8px;font-size:.75rem;color:#888;">
         <i class="fas fa-shield-alt"></i> Every status change is auto-logged with Manager ID + timestamp in the audit trail.
@@ -2076,7 +2215,8 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
         <div class="empty-state"><i class="fas fa-chart-line"></i><p>No variance reports found for this station.</p></div>
     <?php else: ?>
     <div style="overflow-x:auto;">
-    <table class="data-table">
+    <div style="overflow-x:auto; width:100%; border-radius:8px; border:1px solid #eef0f2; margin-top:12px; background:#fff;">
+    <table class="data-table" style="font-size:0.82rem; min-width:850px;">
         <thead><tr>
             <th>#</th>
             <th>Date</th>
@@ -2107,7 +2247,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
             <td style="font-size:.8rem;white-space:nowrap;"><?php echo date('M j, Y', strtotime($v['report_date'])); ?></td>
             <td><strong><?php echo htmlspecialchars($v['fuel_type']); ?></strong></td>
             <td class="<?php echo $vl_cls; ?>" style="font-weight:700;white-space:nowrap;">
-                <?php echo ($vl >= 0 ? '+' : '') . number_format($vl, 2); ?> L
+                <?php echo ($vl >= 0 ? '+' : 'â€"') . number_format($vl, 2); ?> L
             </td>
             <td>
                 <span class="<?php echo $vp_cls; ?>" style="font-weight:700;"><?php echo number_format($vp_val, 2); ?>%</span>
@@ -2130,13 +2270,13 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
             <td style="max-width:180px;font-size:.78rem;">
                 <?php $rn = $v['resolution_notes'] ?? '';
                 echo $rn
-                    ? '<span title="'.htmlspecialchars($rn).'">'.htmlspecialchars(mb_strimwidth($rn, 0, 55, '�')).'</span>'
-                    : '<span style="color:#bbb;">�</span>'; ?>
+                    ? '<span title="'.htmlspecialchars($rn).'">'.htmlspecialchars(mb_strimwidth($rn, 0, 55, ' - ')).'</span>'
+                    : '<span style="color:#bbb;"> - </span>'; ?>
             </td>
             <td style="font-size:.78rem;">
                 <?php echo $v['resolved_by_name']
                     ? '<span class="audit-badge"><i class="fas fa-user-tie"></i> '.htmlspecialchars($v['resolved_by_name']).'</span>'
-                    : '<span style="color:#bbb;">�</span>'; ?>
+                    : '<span style="color:#bbb;"> - </span>'; ?>
             </td>
             <td style="font-size:.75rem;color:#555;white-space:nowrap;">
                 <?php echo !empty($v['updated_at'])
@@ -2159,6 +2299,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
         </tbody>
     </table>
     </div>
+    </div>
     <div style="margin-top:8px;font-size:.75rem;color:#888;display:flex;gap:16px;flex-wrap:wrap;">
         <span><i class="fas fa-shield-alt"></i> Every action auto-logged: Manager ID + timestamp + notes</span>
         <span><i class="fas fa-file-export"></i> Use Export above to generate compliance report for Admin/regulatory</span>
@@ -2175,7 +2316,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
 <div class="fuel-section-inner">
 
     <div class="section-head">
-        <div class="section-title"><i class="fas fa-history"></i> Shift History � Read-Only Audit Log</div>
+        <div class="section-title"><i class="fas fa-history"></i> Shift History  -  Read-Only Audit Log</div>
         <span class="readonly-badge"><i class="fas fa-lock"></i> Read-Only</span>
     </div>
 
@@ -2189,8 +2330,8 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
             <label style="font-size:.78rem;font-weight:600;color:#555;display:block;margin-bottom:4px;">Shift</label>
             <select id="histShiftFilter" class="form-control" style="width:180px;">
                 <option value="">All Shifts</option>
-                <option value="first">First Shift (6AM�2PM)</option>
-                <option value="second">Second Shift (2PM�12MN)</option>
+                <option value="first">First Shift (6AM - 2PM)</option>
+                <option value="second">Second Shift (2PM - 12MN)</option>
             </select>
         </div>
         <div>
@@ -2235,7 +2376,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
         <tr>
             <td><strong style="font-size:.76rem;"><?php echo htmlspecialchars($h['transaction_id']); ?></strong></td>
             <td style="white-space:nowrap;"><?php echo date('M j, Y',strtotime($h['transaction_date'])); ?></td>
-            <td style="font-size:.78rem;"><?php echo htmlspecialchars($h['shift_name'] ?? ucfirst($h['shift_period'] ?? '�')); ?></td>
+            <td style="font-size:.78rem;"><?php echo htmlspecialchars($h['shift_name'] ?? ucfirst($h['shift_period'] ?? ' - ')); ?></td>
             <td><strong><?php echo htmlspecialchars($h['fuel_type']); ?></strong></td>
             <td><?php echo number_format($h['present_reading'] ?? 0, 2); ?></td>
             <td><?php echo number_format($h['previous_reading'] ?? 0, 2); ?></td>
@@ -2252,15 +2393,16 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
                 ?>
             </td>
             <td>
-                <?php echo !empty($h['validated_by_name']) ? '<span class="audit-badge"><i class="fas fa-user-tie"></i> '.htmlspecialchars($h['validated_by_name']).'</span>' : '�'; ?>
+                <?php echo !empty($h['validated_by_name']) ? '<span class="audit-badge"><i class="fas fa-user-tie"></i> '.htmlspecialchars($h['validated_by_name']).'</span>' : ' - '; ?>
             </td>
             <td style="font-size:.78rem;white-space:nowrap;">
-                <?php echo !empty($h['validated_at']) ? date('M j H:i',strtotime($h['validated_at'])) : '�'; ?>
+                <?php echo !empty($h['validated_at']) ? date('M j H:i',strtotime($h['validated_at'])) : ' - '; ?>
             </td>
         </tr>
         <?php endforeach; ?>
         </tbody>
     </table>
+    </div>
     </div>
     <div style="margin-top:10px;font-size:.8rem;color:#888;"><i class="fas fa-info-circle"></i> Showing last 30 transactions. All entries are immutable for audit compliance.</div>
     <?php endif; ?>
@@ -2276,7 +2418,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
 <div class="fuel-section-inner">
 
     <div class="section-head">
-        <div class="section-title"><i class="fas fa-chart-bar"></i> Sales Summary � Monitoring</div>
+        <div class="section-title"><i class="fas fa-chart-bar"></i> Sales Summary  -  Monitoring</div>
         <span class="audit-badge"><i class="fas fa-lock"></i> Approved Entries Only</span>
     </div>
 
@@ -2323,8 +2465,8 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
             <label style="font-size:.78rem;font-weight:600;color:#555;display:block;margin-bottom:4px;">Shift</label>
             <select id="rptShift" class="form-control" style="width:180px;">
                 <option value="">All Shifts</option>
-                <option value="first">First Shift (6AM�2PM)</option>
-                <option value="second">Second Shift (2PM�12MN)</option>
+                <option value="first">First Shift (6AM - 2PM)</option>
+                <option value="second">Second Shift (2PM - 12MN)</option>
             </select>
         </div>
         <button class="btn btn-primary btn-lg" onclick="generateReport()">
@@ -2338,7 +2480,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
     <!-- -- Loading / Empty states -- -->
     <div id="rptLoading" style="display:none;text-align:center;padding:40px;color:#888;">
         <i class="fas fa-spinner fa-spin" style="font-size:2rem;margin-bottom:12px;display:block;"></i>
-        Generating report�
+        Generating report - 
     </div>
     <div id="rptEmpty" style="display:none;">
         <div class="empty-state">
@@ -2359,23 +2501,23 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
             </div>
             <div style="text-align:center;">
                 <div style="font-size:.72rem;opacity:.8;text-transform:uppercase;letter-spacing:.5px;">Total Revenue</div>
-                <div id="rptGrandSales" style="font-size:1.8rem;font-weight:700;">₱0.00</div>
+                <div id="rptGrandSales" style="font-size:1.8rem;font-weight:700;">&#8369;0.00</div>
             </div>
             <div style="text-align:center;">
                 <div style="font-size:.72rem;opacity:.8;text-transform:uppercase;letter-spacing:.5px;">Avg Price/L</div>
-                <div id="rptGrandAvgPrice" style="font-size:1.8rem;font-weight:700;">₱0.00</div>
+                <div id="rptGrandAvgPrice" style="font-size:1.8rem;font-weight:700;">&#8369;0.00</div>
             </div>
             <div style="text-align:right;">
                 <div style="font-size:.72rem;opacity:.8;text-transform:uppercase;letter-spacing:.5px;">Period</div>
-                <div id="rptPeriodLabel" style="font-size:1rem;font-weight:600;">—</div>
+                <div id="rptPeriodLabel" style="font-size:1rem;font-weight:600;">â€"</div>
             </div>
         </div>
 
-        <!-- ══════════════════════════════════════════════════════════════
-             TABLE 1 — METER READING TABLE  (raw per-pump rows)
-        ══════════════════════════════════════════════════════════════ -->
+        <!-- ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�
+             TABLE 1 â€" METER READING TABLE  (raw per-pump rows)
+        ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢� -->
         <div class="section-head" style="margin-bottom:8px;">
-            <div class="section-title"><i class="fas fa-tachometer-alt"></i> Table 1 — Meter Reading</div>
+            <div class="section-title"><i class="fas fa-tachometer-alt"></i> Table 1 â€" Meter Reading</div>
             <span class="audit-badge" style="background:#e8f5e9;color:#1b5e20;border:1px solid #a5d6a7;">
                 <i class="fas fa-check-circle"></i> Approved Only
             </span>
@@ -2390,7 +2532,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
                     <th style="padding:9px 12px;text-align:right;white-space:nowrap;">CAL</th>
                     <th style="padding:9px 12px;text-align:right;white-space:nowrap;">Volume (L)</th>
                     <th style="padding:9px 12px;text-align:right;white-space:nowrap;">Price/L</th>
-                    <th style="padding:9px 12px;text-align:right;white-space:nowrap;">Amount (₱)</th>
+                    <th style="padding:9px 12px;text-align:right;white-space:nowrap;">Amount (&#8369;)</th>
                     <th style="padding:9px 12px;text-align:center;white-space:nowrap;">Shift</th>
                     <th style="padding:9px 12px;text-align:left;white-space:nowrap;">Staff</th>
                 </tr>
@@ -2408,16 +2550,17 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
                 </tr>
             </tfoot>
         </table>
+    </div>
         </div>
 
-        <!-- ══════════════════════════════════════════════════════════════
-             TABLE 2 — VOLUME SALES SUMMARY  (liters per fuel type)
-        ══════════════════════════════════════════════════════════════ -->
+        <!-- ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�
+             TABLE 2 â€" VOLUME SALES SUMMARY  (liters per fuel type)
+        ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢� -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:28px;align-items:start;">
 
             <div>
                 <div class="section-head" style="margin-bottom:8px;">
-                    <div class="section-title"><i class="fas fa-gas-pump"></i> Table 2 — Volume Sales Summary</div>
+                    <div class="section-title"><i class="fas fa-gas-pump"></i> Table 2 â€" Volume Sales Summary</div>
                 </div>
                 <table style="width:100%;border-collapse:collapse;font-size:.85rem;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);">
                     <thead>
@@ -2427,7 +2570,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
                         </tr>
                     </thead>
                     <tbody id="volSalesTbody">
-                        <tr><td colspan="2" style="text-align:center;color:#bbb;padding:20px;">—</td></tr>
+                        <tr><td colspan="2" style="text-align:center;color:#bbb;padding:20px;">â€"</td></tr>
                     </tbody>
                     <tfoot id="volSalesFoot" style="display:none;">
                         <tr style="background:#e8f0fe;font-weight:700;border-top:2px solid #0056b3;">
@@ -2436,25 +2579,26 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
                         </tr>
                     </tfoot>
                 </table>
+    </div>
             </div>
 
-            <!-- ══════════════════════════════════════════════════════════════
-                 TABLE 3 — VOLUME & AMOUNT SUMMARY  (liters + amount + TOTAL)
-            ══════════════════════════════════════════════════════════════ -->
+            <!-- ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�
+                 TABLE 3 â€" VOLUME & AMOUNT SUMMARY  (liters + amount + TOTAL)
+            ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢�ââ€¢� -->
             <div>
                 <div class="section-head" style="margin-bottom:8px;">
-                    <div class="section-title"><i class="fas fa-table"></i> Table 3 — Volume &amp; Amount Summary</div>
+                    <div class="section-title"><i class="fas fa-table"></i> Table 3 â€" Volume &amp; Amount Summary</div>
                 </div>
                 <table style="width:100%;border-collapse:collapse;font-size:.85rem;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);">
                     <thead>
                         <tr style="background:<?php echo $colors['primary']; ?>;color:#fff;">
                             <th style="padding:10px 14px;text-align:left;">Fuel Type</th>
                             <th style="padding:10px 14px;text-align:right;">Volume Sales (L)</th>
-                            <th style="padding:10px 14px;text-align:right;">Amount Sales (₱)</th>
+                            <th style="padding:10px 14px;text-align:right;">Amount Sales (&#8369;)</th>
                         </tr>
                     </thead>
                     <tbody id="volAmtSummaryTbody">
-                        <tr><td colspan="3" style="text-align:center;color:#bbb;padding:20px;">—</td></tr>
+                        <tr><td colspan="3" style="text-align:center;color:#bbb;padding:20px;">â€"</td></tr>
                     </tbody>
                     <tfoot id="volAmtSummaryFoot" style="display:none;">
                         <tr style="background:#f0f4ff;font-weight:700;border-top:2px solid <?php echo $colors['primary']; ?>;">
@@ -2464,34 +2608,35 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
                         </tr>
                     </tfoot>
                 </table>
+    </div>
             </div>
 
         </div><!-- /2-col grid -->
 
-        <!-- Per-Fuel-Type KPI Cards -->
-        <div class="section-head">
+        <!-- Per-Fuel-Type KPI Cards (Hidden) -->
+        <div class="section-head" style="display:none;">
             <div class="section-title"><i class="fas fa-gas-pump"></i> Sales by Fuel Type</div>
         </div>
-        <div id="rptSummaryCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:24px;"></div>
+        <div id="rptSummaryCards" style="display:none;"></div>
 
-        <!-- Trend Chart -->
-        <div class="section-head" style="margin-top:4px;">
+        <!-- Trend Chart (Hidden) -->
+        <div class="section-head" style="display:none;margin-top:4px;">
             <div class="section-title"><i class="fas fa-chart-line"></i> Sales Trend</div>
             <div style="display:flex;gap:8px;">
                 <button class="btn btn-secondary" style="font-size:.75rem;padding:3px 10px;" onclick="switchChart('bar')"><i class="fas fa-chart-bar"></i> Bar</button>
                 <button class="btn btn-secondary" style="font-size:.75rem;padding:3px 10px;" onclick="switchChart('line')"><i class="fas fa-chart-line"></i> Line</button>
             </div>
         </div>
-        <div style="background:#fff;border:1px solid #e9ecef;border-radius:10px;padding:16px;margin-bottom:24px;position:relative;height:300px;">
+        <div style="display:none;background:#fff;border:1px solid #e9ecef;border-radius:10px;padding:16px;margin-bottom:24px;position:relative;height:300px;">
             <canvas id="rptChart"></canvas>
         </div>
 
-        <!-- Pump Readings vs Sales Comparison -->
-        <div class="section-head">
+        <!-- Pump Readings vs Sales Comparison (Hidden) -->
+        <div class="section-head" style="display:none;">
             <div class="section-title"><i class="fas fa-balance-scale"></i> Pump Readings vs Sales Comparison</div>
             <span style="font-size:.75rem;color:#888;">Variance &gt;5% auto-flagged</span>
         </div>
-        <div style="overflow-x:auto;margin-bottom:24px;">
+        <div style="display:none;overflow-x:auto;margin-bottom:24px;">
         <table class="data-table" id="rptCompareTable">
             <thead><tr>
                 <th>Fuel Type</th>
@@ -2506,10 +2651,11 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
             </tr></thead>
             <tbody id="rptCompareTbody"></tbody>
         </table>
+    </div>
         </div>
 
         <!-- Daily Breakdown + Staff/Shift Drill-down -->
-        <div class="section-head">
+        <div class="section-head" style="display:none;">
             <div class="section-title"><i class="fas fa-table"></i> Daily Breakdown</div>
             <div style="display:flex;gap:8px;align-items:center;">
                 <span id="rptEntryCount" style="font-size:.8rem;color:#888;"></span>
@@ -2518,7 +2664,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
                 </button>
             </div>
         </div>
-        <div style="overflow-x:auto;">
+        <div style="display:none;overflow-x:auto;">
         <table class="data-table" id="rptDailyTable">
             <thead>
                 <tr id="rptDailyHead">
@@ -2526,11 +2672,12 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
                     <th>Fuel Type</th>
                     <th>Liters Sold</th>
                     <th>Avg Price/L</th>
-                    <th>Sales Amount (₱)</th>
+                    <th>Sales Amount (&#8369;)</th>
                 </tr>
             </thead>
             <tbody id="rptDailyTbody"></tbody>
         </table>
+    </div>
         </div>
 
     </div><!-- /rptOutput -->
@@ -2545,7 +2692,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
 <div class="fuel-section-inner">
 
     <div class="section-head">
-        <div class="section-title"><i class="fas fa-cog"></i> Pump Master � Calibration Management</div>
+        <div class="section-title"><i class="fas fa-cog"></i> Pump Master  -  Calibration Management</div>
         <span class="audit-badge"><i class="fas fa-lock"></i> Manager Only</span>
     </div>
 
@@ -2561,15 +2708,15 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
                         <option value="">Select fuel type...</option>
                         <?php foreach ($pump_master_fuel_types as $f): ?>
                         <option value="<?php echo htmlspecialchars($f['fuel_type']); ?>" data-current="<?php echo $f['latest_calibration']??0; ?>">
-                            <?php echo htmlspecialchars($f['fuel_type']); ?> � Current: <?php echo $f['latest_calibration']??0; ?> L
+                            <?php echo htmlspecialchars($f['fuel_type']); ?>  -  Current: <?php echo $f['latest_calibration']??0; ?> L
                         </option>
                         <?php endforeach; ?>
                     </select>
                 </div>
                 <div class="form-group">
                     <label class="form-label">New Calibration Value (Liters) <span class="required">*</span></label>
-                    <input type="number" name="new_calibration" id="calValueInput" class="form-control" step="0.01" min="0" max="50" required placeholder="0.00 � 50.00 L">
-                    <div class="form-hint"><i class="fas fa-info-circle"></i> Range: 0�50 liters. This value auto-pulls to staff transaction forms.</div>
+                    <input type="number" name="new_calibration" id="calValueInput" class="form-control" step="0.01" min="0" max="50" required placeholder="0.00  -  50.00 L">
+                    <div class="form-hint"><i class="fas fa-info-circle"></i> Range: 0 - 50 liters. This value auto-pulls to staff transaction forms.</div>
                 </div>
             </div>
             <div style="display:flex;gap:10px;">
@@ -2587,7 +2734,8 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
         <div class="empty-state"><i class="fas fa-cog"></i><p>No fuel types found.</p></div>
     <?php else: ?>
     <div style="overflow-x:auto;">
-    <table class="data-table">
+    <div style="overflow-x:auto; width:100%; border-radius:8px; border:1px solid #eef0f2; margin-top:12px; background:#fff;">
+    <table class="data-table" style="font-size:0.82rem; min-width:850px;">
         <thead><tr>
             <th>Fuel Type</th><th>Available Stock</th><th>Calibration Value</th>
             <th>Price/Liter</th><th>Last Updated</th><th>Quick Edit</th>
@@ -2630,6 +2778,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
         </tbody>
     </table>
     </div>
+    </div>
     <?php endif; ?>
 
     <!-- Calibration Log -->
@@ -2638,7 +2787,8 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
         <div class="section-title"><i class="fas fa-history"></i> Recent Calibration Log</div>
     </div>
     <div style="overflow-x:auto;">
-    <table class="data-table">
+    <div style="overflow-x:auto; width:100%; border-radius:8px; border:1px solid #eef0f2; margin-top:12px; background:#fff;">
+    <table class="data-table" style="font-size:0.82rem; min-width:850px;">
         <thead><tr><th>Pump</th><th>Fuel Type</th><th>Calibration Value</th><th>Updated By</th><th>Updated At</th></tr></thead>
         <tbody>
         <?php foreach ($calibration_logs as $cl): ?>
@@ -2647,11 +2797,12 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
             <td><?php echo htmlspecialchars($cl['fuel_type_name']); ?></td>
             <td><strong><?php echo number_format($cl['calibration_value']??0,2); ?> L</strong></td>
             <td><span class="audit-badge"><i class="fas fa-user-tie"></i> <?php echo htmlspecialchars($cl['updated_by_name']??'System'); ?></span></td>
-            <td style="font-size:.8rem;"><?php echo $cl['calibration_updated_at'] ? date('M j, Y H:i',strtotime($cl['calibration_updated_at'])) : '�'; ?></td>
+            <td style="font-size:.8rem;"><?php echo $cl['calibration_updated_at'] ? date('M j, Y H:i',strtotime($cl['calibration_updated_at'])) : ' - '; ?></td>
         </tr>
         <?php endforeach; ?>
         </tbody>
     </table>
+    </div>
     </div>
     <?php endif; ?>
 
@@ -2668,19 +2819,19 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
 <div id="calEditModal" class="modal">
 <div class="modal-box" style="max-width:460px;">
     <div class="modal-header">
-        <div class="modal-title"><i class="fas fa-edit"></i> Edit Calibration � <span id="calEditFuelName"></span></div>
-        <button class="modal-close" onclick="closeModal('calEditModal')">�</button>
+        <div class="modal-title"><i class="fas fa-edit"></i> Edit Calibration  -  <span id="calEditFuelName"></span></div>
+        <button class="modal-close" onclick="closeModal('calEditModal')"> - </button>
     </div>
 
     <!-- Current values display -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px;background:#f8f9fa;border-radius:8px;padding:12px;">
         <div style="text-align:center;">
             <div style="font-size:.7rem;color:#888;text-transform:uppercase;margin-bottom:4px;">Current Calibration</div>
-            <div style="font-size:1.2rem;font-weight:700;color:<?php echo $colors['primary']; ?>;" id="calEditCurrentCal">�</div>
+            <div style="font-size:1.2rem;font-weight:700;color:<?php echo $colors['primary']; ?>;" id="calEditCurrentCal"> - </div>
         </div>
         <div style="text-align:center;">
             <div style="font-size:.7rem;color:#888;text-transform:uppercase;margin-bottom:4px;">Current Price/L</div>
-            <div style="font-size:1.2rem;font-weight:700;color:<?php echo $colors['primary']; ?>;" id="calEditCurrentPrice">�</div>
+            <div style="font-size:1.2rem;font-weight:700;color:<?php echo $colors['primary']; ?>;" id="calEditCurrentPrice"> - </div>
         </div>
     </div>
 
@@ -2693,8 +2844,8 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
             <label class="form-label">New Calibration Value (Liters) <span class="required">*</span></label>
             <input type="number" name="new_calibration" id="calEditNewCal"
                 class="form-control" step="0.01" min="0" max="50" required
-                placeholder="0.00 � 50.00 L">
-            <div class="form-hint"><i class="fas fa-info-circle"></i> Range: 0�50 L. Auto-pulls to staff transaction forms on save.</div>
+                placeholder="0.00  -  50.00 L">
+            <div class="form-hint"><i class="fas fa-info-circle"></i> Range: 0 - 50 L. Auto-pulls to staff transaction forms on save.</div>
         </div>
 
         <div class="modal-footer">
@@ -2747,42 +2898,43 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
             <tbody>
                 <tr style="border-bottom:1px solid #f0f0f0;">
                     <td style="padding:8px 6px;color:#888;width:38%;font-weight:600;">Delivery #</td>
-                    <td style="padding:8px 6px;font-weight:700;" id="dd_id">—</td>
+                    <td style="padding:8px 6px;font-weight:700;" id="dd_id">â€"</td>
                 </tr>
                 <tr style="border-bottom:1px solid #f0f0f0;">
                     <td style="padding:8px 6px;color:#888;font-weight:600;">Supplier</td>
-                    <td style="padding:8px 6px;" id="dd_supplier">—</td>
+                    <td style="padding:8px 6px;" id="dd_supplier">â€"</td>
                 </tr>
                 <tr style="border-bottom:1px solid #f0f0f0;">
                     <td style="padding:8px 6px;color:#888;font-weight:600;">Fuel Type</td>
-                    <td style="padding:8px 6px;" id="dd_fuel_type">—</td>
+                    <td style="padding:8px 6px;" id="dd_fuel_type">â€"</td>
                 </tr>
                 <tr style="border-bottom:1px solid #f0f0f0;">
                     <td style="padding:8px 6px;color:#888;font-weight:600;">Volume (L)</td>
-                    <td style="padding:8px 6px;font-weight:700;color:#198754;" id="dd_liters">—</td>
+                    <td style="padding:8px 6px;font-weight:700;color:#198754;" id="dd_liters">â€"</td>
                 </tr>
                 <tr style="border-bottom:1px solid #f0f0f0;">
                     <td style="padding:8px 6px;color:#888;font-weight:600;">Invoice No.</td>
-                    <td style="padding:8px 6px;" id="dd_invoice">—</td>
+                    <td style="padding:8px 6px;" id="dd_invoice">â€"</td>
                 </tr>
                 <tr style="border-bottom:1px solid #f0f0f0;">
                     <td style="padding:8px 6px;color:#888;font-weight:600;">Delivery Date</td>
-                    <td style="padding:8px 6px;" id="dd_date">—</td>
+                    <td style="padding:8px 6px;" id="dd_date">â€"</td>
                 </tr>
                 <tr style="border-bottom:1px solid #f0f0f0;">
                     <td style="padding:8px 6px;color:#888;font-weight:600;">Encoded By</td>
-                    <td style="padding:8px 6px;" id="dd_encoded_by">—</td>
+                    <td style="padding:8px 6px;" id="dd_encoded_by">â€"</td>
                 </tr>
                 <tr>
                     <td style="padding:8px 6px;color:#888;font-weight:600;vertical-align:top;">Notes</td>
-                    <td style="padding:8px 6px;white-space:pre-wrap;" id="dd_notes">—</td>
+                    <td style="padding:8px 6px;white-space:pre-wrap;" id="dd_notes">â€"</td>
                 </tr>
                 <tr>
                     <td style="padding:8px 6px;color:#888;font-weight:600;">Current Tank Level</td>
-                    <td style="padding:8px 6px;font-weight:700;color:#003d82;" id="dd_current_tank">—</td>
+                    <td style="padding:8px 6px;font-weight:700;color:#003d82;" id="dd_current_tank">â€"</td>
                 </tr>
             </tbody>
         </table>
+    </div>
         <div style="margin-top:16px;display:flex;gap:10px;justify-content:flex-end;">
             <button type="button" class="btn btn-success" style="font-size:.82rem;"
                 onclick="promoteToApprove()">
@@ -2817,20 +2969,20 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
             <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;margin-bottom:14px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center;">
                 <div>
                     <div style="font-size:.68rem;color:#888;text-transform:uppercase;">Fuel Type</div>
-                    <div style="font-weight:700;color:#166534;" id="dapprove_fuel">—</div>
+                    <div style="font-weight:700;color:#166534;" id="dapprove_fuel">â€"</div>
                 </div>
                 <div>
                     <div style="font-size:.68rem;color:#888;text-transform:uppercase;">Volume</div>
-                    <div style="font-weight:700;color:#166534;" id="dapprove_liters">—</div>
+                    <div style="font-weight:700;color:#166534;" id="dapprove_liters">â€"</div>
                 </div>
                 <div>
                     <div style="font-size:.68rem;color:#888;text-transform:uppercase;">Invoice No.</div>
-                    <div style="font-weight:700;color:#166534;" id="dapprove_invoice">—</div>
+                    <div style="font-weight:700;color:#166534;" id="dapprove_invoice">â€"</div>
                 </div>
             </div>
             <!-- Tank level preview -->
             <div id="dapprove_new_tank" style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:6px;padding:8px 12px;margin-bottom:14px;font-size:.82rem;color:#1b5e20;font-weight:600;text-align:center;">
-                —
+                â€"
             </div>
 
             <div class="form-group">
@@ -2867,15 +3019,15 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
             <div style="background:#fff5f5;border:1px solid #fecaca;border-radius:8px;padding:12px;margin-bottom:14px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center;">
                 <div>
                     <div style="font-size:.68rem;color:#888;text-transform:uppercase;">Fuel Type</div>
-                    <div style="font-weight:700;color:#991b1b;" id="dreturn_fuel">—</div>
+                    <div style="font-weight:700;color:#991b1b;" id="dreturn_fuel">â€"</div>
                 </div>
                 <div>
                     <div style="font-size:.68rem;color:#888;text-transform:uppercase;">Volume</div>
-                    <div style="font-weight:700;color:#991b1b;" id="dreturn_liters">—</div>
+                    <div style="font-weight:700;color:#991b1b;" id="dreturn_liters">â€"</div>
                 </div>
                 <div>
                     <div style="font-size:.68rem;color:#888;text-transform:uppercase;">Invoice No.</div>
-                    <div style="font-weight:700;color:#991b1b;" id="dreturn_invoice">—</div>
+                    <div style="font-weight:700;color:#991b1b;" id="dreturn_invoice">â€"</div>
                 </div>
             </div>
 
@@ -2906,7 +3058,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
 <div class="modal-box">
     <div class="modal-header">
         <div class="modal-title"><i class="fas fa-clipboard-check"></i> Validate Staff Reading</div>
-        <button class="modal-close" onclick="closeModal('validateModal')">�</button>
+        <button class="modal-close" onclick="closeModal('validateModal')"> - </button>
     </div>
     <form method="post" action="manager_fuel_management_complete.php">
         <input type="hidden" name="action" value="validate_reading">
@@ -2933,15 +3085,15 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center;">
                 <div>
                     <div style="font-size:.7rem;color:#888;">Tank Level</div>
-                    <div style="font-weight:700;font-size:.95rem;" id="val_tank_level">�</div>
+                    <div style="font-weight:700;font-size:.95rem;" id="val_tank_level"> - </div>
                 </div>
                 <div>
                     <div style="font-size:.7rem;color:#888;">Calibration</div>
-                    <div style="font-weight:700;font-size:.95rem;" id="val_calibration">�</div>
+                    <div style="font-weight:700;font-size:.95rem;" id="val_calibration"> - </div>
                 </div>
                 <div>
                     <div style="font-size:.7rem;color:#888;">Variance %</div>
-                    <div style="font-weight:700;font-size:.95rem;" id="val_variance_pct">�</div>
+                    <div style="font-weight:700;font-size:.95rem;" id="val_variance_pct"> - </div>
                 </div>
             </div>
             <div id="val_variance_warn" style="display:none;margin-top:10px;padding:8px 10px;background:#f8d7da;border-radius:6px;font-size:.78rem;color:#721c24;font-weight:600;">
@@ -2950,7 +3102,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
         </div>
 
         <div class="form-group">
-            <label class="form-label">Variance Override (Liters) <span style="font-size:.75rem;color:#888;">� 0 if none</span></label>
+            <label class="form-label">Variance Override (Liters) <span style="font-size:.75rem;color:#888;"> -  0 if none</span></label>
             <input type="number" name="variance_liters" class="form-control" step="0.01" value="0" placeholder="Positive = overage, Negative = shortage">
         </div>
         <div class="form-group">
@@ -2971,7 +3123,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
 <div class="modal-box">
     <div class="modal-header">
         <div class="modal-title" style="color:<?php echo $colors['danger']; ?>;"><i class="fas fa-times-circle"></i> Reject Staff Reading</div>
-        <button class="modal-close" onclick="closeModal('rejectModal')">�</button>
+        <button class="modal-close" onclick="closeModal('rejectModal')"> - </button>
     </div>
     <form method="post" action="manager_fuel_management_complete.php">
         <input type="hidden" name="action" value="validate_reading">
@@ -2996,7 +3148,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
 <div class="modal-box">
     <div class="modal-header">
         <div class="modal-title" style="color:#00264D;"><i class="fas fa-edit"></i> Adjust Staff Reading</div>
-        <button class="modal-close" onclick="closeModal('adjustModal')">�</button>
+        <button class="modal-close" onclick="closeModal('adjustModal')"> - </button>
     </div>
     <form method="post" action="manager_fuel_management_complete.php">
         <input type="hidden" name="action" value="adjust_reading">
@@ -3006,15 +3158,15 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
         <div style="background:#fffbf0;border:1px solid #ffeaa7;border-radius:8px;padding:12px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center;">
             <div>
                 <div style="font-size:.7rem;color:#888;text-transform:uppercase;">Transaction</div>
-                <div style="font-weight:700;font-size:.8rem;font-family:monospace;" id="adj_txn_id">�</div>
+                <div style="font-weight:700;font-size:.8rem;font-family:monospace;" id="adj_txn_id"> - </div>
             </div>
             <div>
                 <div style="font-size:.7rem;color:#888;text-transform:uppercase;">Fuel Type</div>
-                <div style="font-weight:700;" id="adj_fuel_type">�</div>
+                <div style="font-weight:700;" id="adj_fuel_type"> - </div>
             </div>
             <div>
                 <div style="font-size:.7rem;color:#888;text-transform:uppercase;">Staff-Encoded (L)</div>
-                <div style="font-weight:700;color:#00264D;" id="adj_original_liters">�</div>
+                <div style="font-weight:700;color:#00264D;" id="adj_original_liters"> - </div>
             </div>
         </div>
 
@@ -3053,7 +3205,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
 <div class="modal-box" style="max-width:480px;">
     <div class="modal-header">
         <div class="modal-title" style="color:<?php echo $colors['success']; ?>;"><i class="fas fa-check-circle"></i> Approve Daily Log Entry</div>
-        <button class="modal-close" onclick="closeModal('approveDailyModal')">�</button>
+        <button class="modal-close" onclick="closeModal('approveDailyModal')"> - </button>
     </div>
     <form method="post" action="manager_fuel_management_complete.php">
         <input type="hidden" name="action" value="approve_daily_log">
@@ -3063,15 +3215,15 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
         <div style="background:#f0fff4;border:1px solid #c3e6cb;border-radius:8px;padding:12px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center;">
             <div>
                 <div style="font-size:.7rem;color:#888;text-transform:uppercase;">Log ID</div>
-                <div style="font-weight:700;font-size:.78rem;font-family:monospace;" id="adl_display_id">�</div>
+                <div style="font-weight:700;font-size:.78rem;font-family:monospace;" id="adl_display_id"> - </div>
             </div>
             <div>
                 <div style="font-size:.7rem;color:#888;text-transform:uppercase;">Fuel Type</div>
-                <div style="font-weight:700;" id="adl_fuel_type">�</div>
+                <div style="font-weight:700;" id="adl_fuel_type"> - </div>
             </div>
             <div>
                 <div style="font-size:.7rem;color:#888;text-transform:uppercase;">Liters Sold</div>
-                <div style="font-weight:700;color:<?php echo $colors['primary']; ?>;" id="adl_liters">�</div>
+                <div style="font-weight:700;color:<?php echo $colors['primary']; ?>;" id="adl_liters"> - </div>
             </div>
         </div>
         <div style="font-size:.82rem;color:#555;margin-bottom:14px;padding:8px 12px;background:#f8f9fa;border-radius:6px;">
@@ -3098,7 +3250,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
 <div class="modal-box" style="max-width:480px;">
     <div class="modal-header">
         <div class="modal-title" style="color:<?php echo $colors['danger']; ?>;"><i class="fas fa-times-circle"></i> Reject Daily Log Entry</div>
-        <button class="modal-close" onclick="closeModal('rejectDailyModal')">�</button>
+        <button class="modal-close" onclick="closeModal('rejectDailyModal')"> - </button>
     </div>
     <form method="post" action="manager_fuel_management_complete.php">
         <input type="hidden" name="action" value="reject_daily_log">
@@ -3127,7 +3279,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
 <div class="modal-box">
     <div class="modal-header">
         <div class="modal-title"><i class="fas fa-search"></i> Variance Investigation</div>
-        <button class="modal-close" onclick="closeModal('varianceModal')">�</button>
+        <button class="modal-close" onclick="closeModal('varianceModal')"> - </button>
     </div>
     <form method="post" action="manager_fuel_management_complete.php">
         <input type="hidden" name="action" value="update_variance_status">
@@ -3272,7 +3424,7 @@ function openDeliveryApproveModal(id, fuelType, liters, invoiceNo, currentTank, 
             tankEl.style.color      = '#1b5e20';
             tankEl.innerHTML = '<i class="fas fa-check-circle"></i> '
                 + 'Current: ' + Math.round(cur).toLocaleString() + ' L'
-                + ' &rarr; After Approval: <strong>' + Math.round(newLevel).toLocaleString() + ' L</strong>'
+                + ' -> After Approval: <strong>' + Math.round(newLevel).toLocaleString() + ' L</strong>'
                 + ' (' + pct + '% of ' + Math.round(cap).toLocaleString() + ' L capacity)';
         } else {
             tankEl.style.background = '#e8f5e9';
@@ -3373,7 +3525,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const newV = parseFloat(this.value) || 0;
             if (this.value !== '' && orig > 0) {
                 const diff = newV - orig;
-                const sign = diff >= 0 ? '+' : '';
+                const sign = diff >= 0 ? '+' : 'â€"';
                 hint.style.display = 'block';
                 hint.style.color   = diff !== 0 ? '#CC8800' : '#28a745';
                 hint.innerHTML     = '<i class="fas fa-arrow-right"></i> Change from original: <strong>' + sign + diff.toFixed(2) + ' L</strong>';
@@ -3443,7 +3595,7 @@ function openCalEditModal(fuelType, currentCal, currentPrice, fuelTypeId) {
 }
 
 function quickEditCalibration(fuelType, currentVal) {
-    // Legacy: used by tank cards "Update" button � open modal with price=0
+    // Legacy: used by tank cards "Update" button  -  open modal with price=0
     openCalEditModal(fuelType, currentVal, 0, '');
 }
 
@@ -3471,7 +3623,7 @@ function activateTabFromHash() {
 document.addEventListener('DOMContentLoaded', function() {
     activateTabFromHash();
 
-    // Sidebar sub-item clicks � show/hide section without reload if already on page
+    // Sidebar sub-item clicks  -  show/hide section without reload if already on page
     document.querySelectorAll('a[href*="manager_fuel_management_complete.php#"]').forEach(function(link) {
         link.addEventListener('click', function(e) {
             const hash = this.getAttribute('href').split('#')[1];
@@ -3524,7 +3676,7 @@ function updateDiffHint() {
     const newVal  = parseFloat(newInp.value || 0);
     if (newInp.value !== '' && !isNaN(current)) {
         const diff = newVal - current;
-        const sign = diff >= 0 ? '+' : '';
+        const sign = diff >= 0 ? '+' : 'â€"';
         diffEl.style.display = 'block';
         diffEl.style.color   = diff >= 0 ? '#28a745' : '#dc3545';
         diffEl.innerHTML     = '<i class="fas fa-arrow-right"></i> Change: <strong>' + sign + diff.toFixed(2) + ' L</strong>';
@@ -3543,7 +3695,7 @@ function updatePriceDiffHint() {
     const newVal  = parseFloat(newInp.value || 0);
     if (newInp.value !== '' && !isNaN(current) && current > 0) {
         const diff = newVal - current;
-        const sign = diff >= 0 ? '+' : '';
+        const sign = diff >= 0 ? '+' : 'â€"';
         diffEl.style.display = 'block';
         diffEl.style.color   = diff >= 0 ? '#dc3545' : '#28a745';
         diffEl.innerHTML     = '<i class="fas fa-arrow-right"></i> Change: <strong>?' + sign + diff.toFixed(2) + '/L</strong>';
@@ -3593,7 +3745,7 @@ function initTrendChart() {
         labels.push(d.toLocaleDateString('en-US', {month:'short', day:'numeric'}));
     }
 
-    // Data from PHP � tank levels per fuel type (last known stock, simplified)
+    // Data from PHP  -  tank levels per fuel type (last known stock, simplified)
     const tankData = <?php
         $chart_data = [];
         foreach ($tank_data as $t) {
@@ -3673,7 +3825,7 @@ function loadShiftHistory() {
 function resetHistoryFilters() {
     ['histDateFilter','histShiftFilter','histFuelFilter','histStatusFilter'].forEach(id => {
         const el = document.getElementById(id);
-        if (el) el.value = id === 'histDateFilter' ? '<?php echo date('Y-m-d'); ?>' : '';
+        if (el) el.value = id === 'histDateFilter' ? '<?php echo date('Y-m-d'); ?>' : 'â€"';
     });
     const tbody = document.getElementById('historyTbody');
     if (tbody) tbody.querySelectorAll('tr').forEach(r => r.style.display = '');
@@ -3705,7 +3857,7 @@ function getRptDateRange() {
         const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
         const fmt = dt => dt.toISOString().split('T')[0];
         return { from: fmt(mon), to: fmt(sun),
-            label: 'Week: ' + mon.toLocaleDateString('en-US',{month:'short',day:'numeric'}) + ' � ' + sun.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) };
+            label: 'Week: ' + mon.toLocaleDateString('en-US',{month:'short',day:'numeric'}) + '  -  ' + sun.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) };
     } else if (p === 'monthly') {
         const m = document.getElementById('rptMonth').value || new Date().toISOString().slice(0,7);
         const [yr, mo] = m.split('-');
@@ -3758,18 +3910,18 @@ async function generateReport() {
 const _chartColors = ['#003d7a','#28a745','#dc3545','#fd7e14','#6f42c1','#17a2b8','#e83e8c','#20c997'];
 
 function renderReport({ meter_readings, vol_sales_summary, vol_amt_summary, summary, daily, comparison, label }) {
-    // ── Grand totals ──────────────────────────────────────────────────────────
+    // â"€â"€ Grand totals â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
     let grandL = 0, grandS = 0;
     (vol_amt_summary||[]).forEach(r => { grandL += parseFloat(r.volume_sales||0); grandS += parseFloat(r.amount_sales||0); });
     const grandAvg = grandL > 0 ? grandS / grandL : 0;
     document.getElementById('rptGrandLiters').textContent   = n2(grandL) + ' L';
-    document.getElementById('rptGrandSales').textContent    = '₱' + n2(grandS);
-    document.getElementById('rptGrandAvgPrice').textContent = '₱' + n2(grandAvg);
+    document.getElementById('rptGrandSales').textContent    = '&#8369;' + n2(grandS);
+    document.getElementById('rptGrandAvgPrice').textContent = '&#8369;' + n2(grandAvg);
     document.getElementById('rptPeriodLabel').textContent   = label;
 
     const rowBg = ['#fff','#f8faff'];
 
-    // ── TABLE 1: Meter Reading ────────────────────────────────────────────────
+    // â"€â"€ TABLE 1: Meter Reading â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
     const mrTbody = document.getElementById('meterReadingTbody');
     const mrFoot  = document.getElementById('meterReadingFoot');
     mrTbody.innerHTML = '';
@@ -3779,28 +3931,28 @@ function renderReport({ meter_readings, vol_sales_summary, vol_amt_summary, summ
             const vol = parseFloat(r.volume_liters||0);
             const amt = parseFloat(r.amount||0);
             mrTotalL += vol; mrTotalA += amt;
-            const shiftLbl = r.shift_period === 'first' ? '6AM–2PM' : (r.shift_period === 'second' ? '2PM–12MN' : (r.shift_period||'—'));
+            const shiftLbl = r.shift_period === 'first' ? '6AMâ€"2PM' : (r.shift_period === 'second' ? '2PMâ€"12MN' : (r.shift_period||'â€"'));
             mrTbody.innerHTML += `<tr style="background:${rowBg[i%2]};border-bottom:1px solid #f0f0f0;">
                 <td style="padding:8px 12px;font-weight:600;">${esc(r.fuel_type)}</td>
                 <td style="padding:8px 12px;text-align:right;color:#555;">${n2(parseFloat(r.beginning||0))}</td>
                 <td style="padding:8px 12px;text-align:right;font-weight:600;">${n2(parseFloat(r.ending||0))}</td>
                 <td style="padding:8px 12px;text-align:right;color:#888;">${parseFloat(r.cal||0).toFixed(3)}</td>
                 <td style="padding:8px 12px;text-align:right;font-weight:700;color:#003d7a;">${n2(vol)}</td>
-                <td style="padding:8px 12px;text-align:right;">₱${n2(parseFloat(r.price_per_liter||0))}</td>
-                <td style="padding:8px 12px;text-align:right;font-weight:700;">₱${n2(amt)}</td>
+                <td style="padding:8px 12px;text-align:right;">&#8369;${n2(parseFloat(r.price_per_liter||0))}</td>
+                <td style="padding:8px 12px;text-align:right;font-weight:700;">&#8369;${n2(amt)}</td>
                 <td style="padding:8px 12px;text-align:center;"><span style="font-size:.72rem;background:#e8f4fd;color:#0056b3;padding:2px 7px;border-radius:10px;">${esc(shiftLbl)}</span></td>
-                <td style="padding:8px 12px;font-size:.78rem;color:#555;">${esc(r.staff_name||'—')}</td>
+                <td style="padding:8px 12px;font-size:.78rem;color:#555;">${esc(r.staff_name||'â€"')}</td>
             </tr>`;
         });
         document.getElementById('mrTotalLiters').textContent = n2(mrTotalL) + ' L';
-        document.getElementById('mrTotalAmount').textContent = '₱' + n2(mrTotalA);
+        document.getElementById('mrTotalAmount').textContent = '&#8369;' + n2(mrTotalA);
         mrFoot.style.display = '';
     } else {
         mrTbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#bbb;padding:20px;">No approved meter readings found.</td></tr>';
         mrFoot.style.display = 'none';
     }
 
-    // ── TABLE 2: Volume Sales Summary ─────────────────────────────────────────
+    // â"€â"€ TABLE 2: Volume Sales Summary â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
     const vsTbody = document.getElementById('volSalesTbody');
     const vsFoot  = document.getElementById('volSalesFoot');
     vsTbody.innerHTML = '';
@@ -3817,11 +3969,11 @@ function renderReport({ meter_readings, vol_sales_summary, vol_amt_summary, summ
         document.getElementById('volSalesTotalLiters').textContent = n2(vsTotalL) + ' L';
         vsFoot.style.display = '';
     } else {
-        vsTbody.innerHTML = '<tr><td colspan="2" style="text-align:center;color:#bbb;padding:20px;">—</td></tr>';
+        vsTbody.innerHTML = '<tr><td colspan="2" style="text-align:center;color:#bbb;padding:20px;">â€"</td></tr>';
         vsFoot.style.display = 'none';
     }
 
-    // ── TABLE 3: Volume & Amount Summary ──────────────────────────────────────
+    // â"€â"€ TABLE 3: Volume & Amount Summary â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
     const vaTbody = document.getElementById('volAmtSummaryTbody');
     const vaFoot  = document.getElementById('volAmtSummaryFoot');
     vaTbody.innerHTML = '';
@@ -3832,18 +3984,18 @@ function renderReport({ meter_readings, vol_sales_summary, vol_amt_summary, summ
             vaTbody.innerHTML += `<tr style="background:${rowBg[i%2]};border-bottom:1px solid #f0f0f0;">
                 <td style="padding:10px 14px;font-weight:600;">${esc(r.fuel_type)}</td>
                 <td style="padding:10px 14px;text-align:right;font-weight:700;color:#003d7a;">${n2(vol)}</td>
-                <td style="padding:10px 14px;text-align:right;font-weight:700;color:#166534;">₱${n2(amt)}</td>
+                <td style="padding:10px 14px;text-align:right;font-weight:700;color:#166534;">&#8369;${n2(amt)}</td>
             </tr>`;
         });
         document.getElementById('volAmtTotalLiters').textContent = n2(grandL) + ' L';
-        document.getElementById('volAmtTotalAmount').textContent = '₱' + n2(grandS);
+        document.getElementById('volAmtTotalAmount').textContent = '&#8369;' + n2(grandS);
         vaFoot.style.display = '';
     } else {
-        vaTbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#bbb;padding:20px;">—</td></tr>';
+        vaTbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#bbb;padding:20px;">â€"</td></tr>';
         vaFoot.style.display = 'none';
     }
 
-    // ── Per-fuel KPI cards ────────────────────────────────────────────────────
+    // â"€â"€ Per-fuel KPI cards â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
     const cardsEl = document.getElementById('rptSummaryCards');
     cardsEl.innerHTML = '';
     (summary||[]).forEach((row, i) => {
@@ -3860,7 +4012,7 @@ function renderReport({ meter_readings, vol_sales_summary, vol_amt_summary, summ
             </div>
             <div style="font-size:1.5rem;font-weight:700;color:${c};">${n2(liters)} L</div>
             <div style="font-size:.82rem;color:#333;font-weight:600;margin:4px 0;">?${n2(sales)}</div>
-            <div style="font-size:.72rem;color:#888;">Avg ?${n2(price)}/L &nbsp;�&nbsp; ${count} entries</div>
+            <div style="font-size:.72rem;color:#888;">Avg ?${n2(price)}/L &nbsp; - &nbsp; ${count} entries</div>
             <div style="margin-top:8px;background:#e9ecef;border-radius:4px;height:6px;overflow:hidden;">
                 <div style="width:${pct.toFixed(1)}%;height:100%;background:${c};border-radius:4px;"></div>
             </div>
@@ -3880,11 +4032,11 @@ function renderReport({ meter_readings, vol_sales_summary, vol_amt_summary, summ
         const varL     = encoded - approved;
         const varPct   = encoded > 0 ? Math.abs(varL / encoded * 100) : 0;
         const flagged  = varPct > 5;
-        cTbody.innerHTML += `<tr style="${flagged ? 'background:#fff8f0;' : ''}">
+        cTbody.innerHTML += `<tr style="${flagged ? 'background:#fff8f0;' : 'â€"'}">
             <td><strong>${esc(row.fuel_type)}</strong></td>
             <td style="text-align:right;">${n2(encoded)} L</td>
             <td style="text-align:right;color:#28a745;font-weight:600;">${n2(approved)} L</td>
-            <td style="text-align:right;${varL > 0.01 ? 'color:#dc3545;' : 'color:#28a745;'}">${varL >= 0 ? '+' : ''}${n2(varL)} L</td>
+            <td style="text-align:right;${varL > 0.01 ? 'color:#dc3545;' : 'color:#28a745;'}">${varL >= 0 ? '+' : 'â€"'}${n2(varL)} L</td>
             <td style="text-align:center;">
                 ${flagged
                     ? `<span style="background:#dc3545;color:#fff;padding:2px 7px;border-radius:10px;font-size:.72rem;font-weight:700;"><i class="fas fa-exclamation-triangle"></i> ${varPct.toFixed(1)}%</span>`
@@ -3969,21 +4121,21 @@ function renderDailyTable(daily, showShift) {
     const head  = document.getElementById('rptDailyHead');
     const tbody = document.getElementById('rptDailyTbody');
     if (showShift) {
-        head.innerHTML = '<th>Date</th><th>Fuel Type</th><th>Shift</th><th>Staff</th><th>Liters Sold</th><th>Avg Price/L</th><th>Sales Amount (?)</th>';
+        head.innerHTML = '<th>Date</th><th>Fuel Type</th><th>Shift</th><th>Staff</th><th>Liters Sold</th><th>Avg Price/L</th><th>Sales Amount (&#8369;)</th>';
     } else {
-        head.innerHTML = '<th>Date</th><th>Fuel Type</th><th>Liters Sold</th><th>Avg Price/L</th><th>Sales Amount (?)</th>';
+        head.innerHTML = '<th>Date</th><th>Fuel Type</th><th>Liters Sold</th><th>Avg Price/L</th><th>Sales Amount (&#8369;)</th>';
     }
     tbody.innerHTML = '';
     (daily||[]).forEach(row => {
         const d  = new Date(row.day + 'T00:00:00');
         const ds = d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
-        const shiftLabel = row.shift_period === 'first' ? '6AM�2PM' : (row.shift_period === 'second' ? '2PM�12MN' : (row.shift_period || '�'));
+        const shiftLabel = row.shift_period === 'first' ? '6AM - 2PM' : (row.shift_period === 'second' ? '2PM - 12MN' : (row.shift_period || ' - '));
         if (showShift) {
             tbody.innerHTML += `<tr>
                 <td style="white-space:nowrap;">${ds}</td>
                 <td><strong>${esc(row.fuel_type)}</strong></td>
                 <td><span style="font-size:.75rem;background:#e8f4fd;color:#0056b3;padding:2px 6px;border-radius:8px;">${shiftLabel}</span></td>
-                <td><span style="font-size:.78rem;">${esc(row.staff_name||'�')}</span></td>
+                <td><span style="font-size:.78rem;">${esc(row.staff_name||' - ')}</span></td>
                 <td style="text-align:right;"><strong>${n2(parseFloat(row.liters||0))} L</strong></td>
                 <td style="text-align:right;">?${n2(parseFloat(row.avg_price||0))}</td>
                 <td style="text-align:right;"><strong>?${n2(parseFloat(row.sales||0))}</strong></td>
@@ -4018,7 +4170,7 @@ function exportReport() {
 
     let csv = `Daily Sales Report\nPeriod: ${label}\nGenerated: ${new Date().toLocaleString()}\n\n`;
 
-    // ── TABLE 1: METER READING ──
+    // â"€â"€ TABLE 1: METER READING â"€â"€
     csv += `TABLE 1 - METER READING\n`;
     csv += `Fuel Type,Beginning,Ending,CAL,Volume (L),Price/L,Amount (PHP),Shift,Staff\n`;
     (meter_readings||[]).forEach(r => {
@@ -4027,7 +4179,7 @@ function exportReport() {
     });
     csv += `TOTAL,,,,${grandL.toFixed(2)},,${grandS.toFixed(2)},,\n\n`;
 
-    // ── TABLE 2: VOLUME SALES SUMMARY ──
+    // â"€â"€ TABLE 2: VOLUME SALES SUMMARY â"€â"€
     csv += `TABLE 2 - VOLUME SALES SUMMARY\n`;
     csv += `Fuel Type,Volume Sales (L)\n`;
     (vol_sales_summary||[]).forEach(r => {
@@ -4035,7 +4187,7 @@ function exportReport() {
     });
     csv += `TOTAL,${grandL.toFixed(2)}\n\n`;
 
-    // ── TABLE 3: VOLUME & AMOUNT SUMMARY ──
+    // â"€â"€ TABLE 3: VOLUME & AMOUNT SUMMARY â"€â"€
     csv += `TABLE 3 - VOLUME & AMOUNT SUMMARY\n`;
     csv += `Fuel Type,Volume Sales (L),Amount Sales (PHP)\n`;
     (vol_amt_summary||[]).forEach(r => {
@@ -4043,7 +4195,7 @@ function exportReport() {
     });
     csv += `TOTAL,${grandL.toFixed(2)},${grandS.toFixed(2)}\n\n`;
 
-    // ── PUMP READINGS VS SALES COMPARISON ──
+    // â"€â"€ PUMP READINGS VS SALES COMPARISON â"€â"€
     csv += `PUMP READINGS VS SALES COMPARISON\nFuel Type,Total Encoded (L),Approved (L),Variance (L),Variance %,Total Readings,Approved,Pending,Rejected\n`;
     (comparison||[]).forEach(r => {
         const enc = parseFloat(r.total_encoded_liters||0), app = parseFloat(r.approved_liters||0);

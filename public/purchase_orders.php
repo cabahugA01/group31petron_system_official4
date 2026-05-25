@@ -137,16 +137,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 // Notify staff
                 $stat_id = $po_record['station_id'] ?: $station_id;
+                $notify_url = ($po_type === 'fuel') ? 'staff_fuel_deliveries.php' : 'staff_record_delivery.php';
                 $staffs = $pdo->prepare("SELECT id FROM users WHERE role IN ('staff','manager') AND station_id=?");
                 $staffs->execute([$stat_id]);
                 foreach ($staffs->fetchAll(PDO::FETCH_COLUMN) as $sid) {
                     $pdo->prepare("
                         INSERT INTO notifications (user_id, type, title, message, event_type, severity, source_key, redirect_url)
-                        VALUES (?, 'info', 'Incoming Delivery Expected', ?, 'delivery', 'medium', ?, 'staff_record_delivery.php')
+                        VALUES (?, 'info', 'Incoming Delivery Expected', ?, 'delivery', 'medium', ?, ?)
                     ")->execute([
                         $sid,
                         "Incoming Delivery based on PO {$po_record['po_number']} is expected. Please prepare to receive it.",
-                        "expected_del_" . $po_record['po_number'] . "_" . time()
+                        "expected_del_" . $po_record['po_number'] . "_" . time(),
+                        $notify_url
                     ]);
                 }
 

@@ -252,6 +252,22 @@ try {
     $expected_deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
+/* ── Fetch Merchandise Purchase Orders for staff reference ── */
+$merchandise_purchase_orders = [];
+try {
+    $stmt = $pdo->prepare("
+        SELECT po.*, s.name as supplier_name
+        FROM purchase_orders po
+        LEFT JOIN suppliers s ON po.supplier_id = s.id
+        WHERE po.station_id = ?
+        ORDER BY po.created_at DESC
+    ");
+    $stmt->execute([$station_id]);
+    $merchandise_purchase_orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    error_log("Error fetching merchandise POs: " . $e->getMessage());
+}
+
 /* ── Fetch dependencies for manual form ── */
 $merch_cats = ['Accessories', 'Car Care', 'Oil & Lubricants', 'Other'];
 $merch_products = [];
@@ -457,6 +473,66 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
+<!-- Collapsible Merchandise PO Reference Card -->
+<div class="del-card" style="margin-top: 20px; margin-bottom: 20px;">
+    <div class="del-card-head" style="cursor: pointer;" onclick="toggleMerchPOCard()">
+        <div class="del-card-title">
+            <i class="fas fa-file-invoice-dollar" style="color: #002F70;"></i> Purchase Orders Reference (Merchandise)
+            <span style="background:#002F70;color:#fff;border-radius:10px;padding:2px 8px;font-size:11px;"><?php echo count($merchandise_purchase_orders); ?></span>
+        </div>
+        <span style="font-size:12px;color:#6c757d;"><i class="fas fa-chevron-down" id="merchPoToggleChevron"></i> Click to Toggle</span>
+    </div>
+    <div class="del-card-body" id="merchPoCardBody" style="display: none; max-height: 400px; overflow-y: auto; padding: 20px;">
+        <div style="margin-bottom: 12px; display: flex; gap: 8px;">
+            <input type="text" id="merchPoSearchInput" placeholder="Search PO#, Product, Status..." onkeyup="searchMerchPOs()" style="padding: 6px 12px; border: 1.5px solid #ced4da; border-radius: 6px; font-size: 13px; width: 100%; max-width: 300px;">
+        </div>
+        <div style="overflow-x: auto;">
+            <table style="width:100%; border-collapse:collapse; font-size: 12px; margin-bottom: 0;">
+                <thead>
+                    <tr style="background: #f8fafc; border-bottom: 2px solid #e9ecef;">
+                        <th style="padding: 8px; text-align: left; font-weight: 700; color: #64748b; text-transform: uppercase;">PO Number</th>
+                        <th style="padding: 8px; text-align: left; font-weight: 700; color: #64748b; text-transform: uppercase;">Product Name</th>
+                        <th style="padding: 8px; text-align: right; font-weight: 700; color: #64748b; text-transform: uppercase;">Quantity</th>
+                        <th style="padding: 8px; text-align: left; font-weight: 700; color: #64748b; text-transform: uppercase;">Expected Date</th>
+                        <th style="padding: 8px; text-align: left; font-weight: 700; color: #64748b; text-transform: uppercase;">Supplier</th>
+                        <th style="padding: 8px; text-align: left; font-weight: 700; color: #64748b; text-transform: uppercase;">Status</th>
+                    </tr>
+                </thead>
+                <tbody id="merchPoReferenceTableBody">
+                    <?php if (empty($merchandise_purchase_orders)): ?>
+                        <tr>
+                            <td colspan="6" style="text-align: center; color: #adb5bd; padding: 20px;">No purchase orders found.</td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($merchandise_purchase_orders as $po):
+                            $po_status = strtolower($po['status'] ?? 'pending');
+                            $badge_class = 'pending';
+                            if (in_array($po_status, ['approved', 'approved po'])) {
+                                $badge_class = 'verified';
+                            } elseif (in_array($po_status, ['rejected', 'cancelled'])) {
+                                $badge_class = 'rejected';
+                            }
+                        ?>
+                            <tr class="merch-po-row" style="border-bottom: 1px solid #f1f5f9;">
+                                <td style="padding: 8px;"><strong><?php echo htmlspecialchars($po['po_number']); ?></strong></td>
+                                <td style="padding: 8px;"><?php echo htmlspecialchars($po['product_name']); ?></td>
+                                <td style="padding: 8px; text-align: right;"><strong><?php echo number_format($po['quantity'], 2); ?></strong></td>
+                                <td style="padding: 8px;"><?php echo $po['expected_delivery_date'] ? date('M d, Y', strtotime($po['expected_delivery_date'])) : '—'; ?></td>
+                                <td style="padding: 8px;"><?php echo htmlspecialchars($po['supplier_name'] ?? 'Petron Corporation'); ?></td>
+                                <td style="padding: 8px;">
+                                    <span class="status-badge <?php echo $badge_class; ?>">
+                                        <?php echo htmlspecialchars(ucfirst($po['status'])); ?>
+                                    </span>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 <!-- ══════════════════════════════════════════════════════════
      RECEIVE MODAL (Auto-filled from PO)
      ══════════════════════════════════════════════════════════ -->
@@ -595,6 +671,33 @@ document.addEventListener('DOMContentLoaded', function() {
     var em = document.getElementById('editModal');
     if (em && em.parentNode !== document.body) document.body.appendChild(em);
 });
+
+function toggleMerchPOCard() {
+    var body = document.getElementById('merchPoCardBody');
+    var chevron = document.getElementById('merchPoToggleChevron');
+    if (body.style.display === 'none') {
+        body.style.display = 'block';
+        chevron.className = 'fas fa-chevron-up';
+    } else {
+        body.style.display = 'none';
+        chevron.className = 'fas fa-chevron-down';
+    }
+}
+
+function searchMerchPOs() {
+    var input = document.getElementById('merchPoSearchInput');
+    var filter = input.value.toLowerCase();
+    var rows = document.querySelectorAll('#merchPoReferenceTableBody .merch-po-row');
+    
+    rows.forEach(function(row) {
+        var text = row.textContent.toLowerCase();
+        if (text.indexOf(filter) > -1) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
 </script>
 
 <?php if ($edit_data): ?>

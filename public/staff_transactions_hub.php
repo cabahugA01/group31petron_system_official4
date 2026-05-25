@@ -270,6 +270,9 @@ if ($section === 'merchandise') {
                    mt.customer_name,
                    mt.total_amount,
                    mt.payment_method,
+                   COALESCE(mt.amount_paid, 0)                                    AS amount_paid,
+                   COALESCE(mt.balance_due, mt.total_amount)                      AS balance_due,
+                   COALESCE(mt.payment_status, 'Pending Payment')                 AS payment_status,
                    $mh_date_col  AS transaction_date,
                    $mh_status_col AS status,
                    mt.shift_name,
@@ -414,11 +417,22 @@ function hist_page_url(int $page, string $shift, string $date): string {
 // ── Status badge helper ───────────────────────────────────────
 function status_badge(string $status): string {
     $map = [
-        'pending validation' => ['bg' => '#fef9c3', 'color' => '#854d0e', 'border' => '#fde047', 'label' => 'Pending Validation'],
-        'pending'            => ['bg' => '#fef9c3', 'color' => '#854d0e', 'border' => '#fde047', 'label' => 'Pending Validation'],
-        'verified'           => ['bg' => '#dcfce7', 'color' => '#166534', 'border' => '#86efac', 'label' => 'Verified'],
-        'approved'           => ['bg' => '#dcfce7', 'color' => '#166534', 'border' => '#86efac', 'label' => 'Verified'],
-        'rejected'           => ['bg' => '#fee2e2', 'color' => '#991b1b', 'border' => '#fca5a5', 'label' => 'Rejected'],
+        // Validation statuses
+        'pending validation'  => ['bg' => '#fef9c3', 'color' => '#854d0e', 'border' => '#fde047', 'label' => 'Pending Validation'],
+        'pending'             => ['bg' => '#fef9c3', 'color' => '#854d0e', 'border' => '#fde047', 'label' => 'Pending Validation'],
+        'verified'            => ['bg' => '#dcfce7', 'color' => '#166534', 'border' => '#86efac', 'label' => 'Verified'],
+        'approved'            => ['bg' => '#dcfce7', 'color' => '#166534', 'border' => '#86efac', 'label' => 'Verified'],
+        'rejected'            => ['bg' => '#fee2e2', 'color' => '#991b1b', 'border' => '#fca5a5', 'label' => 'Rejected'],
+        // Payment statuses
+        'paid'                => ['bg' => '#dcfce7', 'color' => '#166534', 'border' => '#86efac', 'label' => 'Paid'],
+        'partial payment'     => ['bg' => '#fef9c3', 'color' => '#92400e', 'border' => '#fde68a', 'label' => 'Partial Payment'],
+        'pending payment'     => ['bg' => '#ffedd5', 'color' => '#9a3412', 'border' => '#fed7aa', 'label' => 'Pending Payment'],
+        'credit transaction'  => ['bg' => '#f3e8ff', 'color' => '#6b21a8', 'border' => '#d8b4fe', 'label' => 'Credit Transaction'],
+        'credit'              => ['bg' => '#f3e8ff', 'color' => '#6b21a8', 'border' => '#d8b4fe', 'label' => 'Credit Transaction'],
+        'unpaid'              => ['bg' => '#fee2e2', 'color' => '#991b1b', 'border' => '#fca5a5', 'label' => 'Unpaid'],
+        // Workflow statuses
+        'in progress'         => ['bg' => '#dbeafe', 'color' => '#1e40af', 'border' => '#93c5fd', 'label' => 'In Progress'],
+        'completed'           => ['bg' => '#d1fae5', 'color' => '#065f46', 'border' => '#6ee7b7', 'label' => 'Completed'],
     ];
     $key  = strtolower(trim($status));
     $cfg  = $map[$key] ?? ['bg' => '#f1f5f9', 'color' => '#64748b', 'border' => '#e2e8f0', 'label' => htmlspecialchars($status)];
@@ -441,13 +455,86 @@ $jo_rejected_count = 0;
 if ($section === 'merchandise') {
     // Handle status-update POST from the tracker
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['jo_action'])) {
-        $jo_action  = $_POST['jo_action'];
-        $jo_id      = (int)($_POST['jo_id'] ?? 0);
-        $jo_src     = $_POST['jo_source'] ?? 'job_orders';
+        // Auto-create audit log table if it doesn't exist yet
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS payment_audit_log (
+                id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                record_id       INT UNSIGNED NOT NULL,
+                record_source   VARCHAR(60)  NOT NULL DEFAULT 'job_orders',
+                staff_id        INT UNSIGNED NOT NULL,
+                station_id      INT UNSIGNED NOT NULL,
+                amount_paid     DECIMAL(12,2) NOT NULL DEFAULT 0,
+                payment_method  VARCHAR(60)  NOT NULL DEFAULT 'Cash',
+                balance_due     DECIMAL(12,2) NOT NULL DEFAULT 0,
+                payment_status  VARCHAR(60)  NOT NULL DEFAULT 'Pending Payment',
+                remarks         TEXT,
+                logged_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_record (record_id, record_source),
+                INDEX idx_staff  (staff_id),
+                INDEX idx_logged (logged_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        } catch (Exception $e) {}
+
+        $jo_action   = $_POST['jo_action'];
+        $jo_id       = (int)($_POST['jo_id'] ?? 0);
+        $jo_src      = $_POST['jo_source'] ?? 'job_orders';
         $tracker_tab = $_POST['tracker_tab'] ?? 'pending';
+        $redirect_tab = $_POST['redirect_tab'] ?? 'tracker';   // tracker | merchandise (for MH settle)
 
         if ($jo_id > 0) {
             try {
+                // ── settle_payment: capture amount, compute balance, set status ──────
+                if ($jo_action === 'settle_payment') {
+                    $amount_now   = round((float)($_POST['settle_amount'] ?? 0), 2);
+                    $pay_method   = trim($_POST['settle_method'] ?? 'Cash');
+                    $remarks      = trim($_POST['settle_remarks'] ?? '');
+                    $mark_complete = !empty($_POST['mark_complete_on_settle']); // also flip to Completed
+
+                    if ($jo_src === 'merchandise_transactions') {
+                        // Fetch current totals
+                        $row = $pdo->prepare("SELECT total_amount, COALESCE(amount_paid,0) AS amount_paid, COALESCE(balance_due, total_amount) AS balance_due FROM merchandise_transactions WHERE id=? AND station_id=? LIMIT 1");
+                        $row->execute([$jo_id, $station_id]);
+                        $cur = $row->fetch(PDO::FETCH_ASSOC);
+                        if ($cur) {
+                            $total       = (float)$cur['total_amount'];
+                            $prev_paid   = (float)$cur['amount_paid'];
+                            $new_paid    = $prev_paid + $amount_now;
+                            $new_balance = max(0, round($total - $new_paid, 2));
+                            $new_status  = $new_balance <= 0.009 ? 'Paid' : 'Partial Payment';
+                            $sets = "payment_status=?, amount_paid=?, balance_due=?, payment_method=?, updated_at=NOW()";
+                            $params = [$new_status, $new_paid, $new_balance, $pay_method];
+                            if ($mark_complete) { $sets .= ", workflow_status='Completed'"; }
+                            $pdo->prepare("UPDATE merchandise_transactions SET $sets WHERE id=? AND station_id=?")->execute(array_merge($params, [$jo_id, $station_id]));
+                            // Audit log
+                            try { $pdo->prepare("INSERT INTO payment_audit_log (record_id, record_source, staff_id, station_id, amount_paid, payment_method, balance_due, payment_status, remarks, logged_at) VALUES (?,?,?,?,?,?,?,?,?,NOW())")->execute([$jo_id,'merchandise_transactions',$me['id'],$station_id,$amount_now,$pay_method,$new_balance,$new_status,$remarks]); } catch(Exception $ae){}
+                            $_SESSION['success'] = $new_status === 'Paid' ? 'Payment fully settled. Balance: ₱0.00.' : 'Partial payment recorded. Balance due: ₱' . number_format($new_balance, 2) . '.';
+                        }
+                    } else {
+                        // job_orders table
+                        $row = $pdo->prepare("SELECT COALESCE(total_cost,estimated_cost,0) AS total_amount, COALESCE(amount_paid,0) AS amount_paid, COALESCE(balance_due, COALESCE(total_cost,estimated_cost,0)) AS balance_due FROM job_orders WHERE id=? AND station_id=? LIMIT 1");
+                        $row->execute([$jo_id, $station_id]);
+                        $cur = $row->fetch(PDO::FETCH_ASSOC);
+                        if ($cur) {
+                            $total       = (float)$cur['total_amount'];
+                            $prev_paid   = (float)$cur['amount_paid'];
+                            $new_paid    = $prev_paid + $amount_now;
+                            $new_balance = max(0, round($total - $new_paid, 2));
+                            $new_status  = $new_balance <= 0.009 ? 'Paid' : 'Partial Payment';
+                            $sets = "payment_status=?, amount_paid=?, balance_due=?, payment_method=?, updated_at=NOW()";
+                            $params = [$new_status, $new_paid, $new_balance, $pay_method];
+                            if ($mark_complete) { $sets .= ", status='Completed'"; }
+                            $pdo->prepare("UPDATE job_orders SET $sets WHERE id=? AND station_id=?")->execute(array_merge($params, [$jo_id, $station_id]));
+                            // Audit log
+                            try { $pdo->prepare("INSERT INTO payment_audit_log (record_id, record_source, staff_id, station_id, amount_paid, payment_method, balance_due, payment_status, remarks, logged_at) VALUES (?,?,?,?,?,?,?,?,?,NOW())")->execute([$jo_id,'job_orders',$me['id'],$station_id,$amount_now,$pay_method,$new_balance,$new_status,$remarks]); } catch(Exception $ae){}
+                            $_SESSION['success'] = $new_status === 'Paid' ? 'Payment fully settled. Balance: ₱0.00.' : 'Partial payment recorded. Balance due: ₱' . number_format($new_balance, 2) . '.';
+                        }
+                    }
+                    $redir_tab = ($redirect_tab === 'merchandise') ? 'merchandise' : 'tracker';
+                    $redir_mh  = ($redirect_tab === 'merchandise') ? '&mh_open=1' : '';
+                    header("Location: staff_transactions_hub.php?section=merchandise&active_tab={$redir_tab}{$redir_mh}");
+                    exit;
+                }
+
                 if ($jo_src === 'merchandise_transactions') {
                     // Record lives in merchandise_transactions — use workflow_status column
                     if ($jo_action === 'set_in_progress') {
@@ -457,7 +544,7 @@ if ($section === 'merchandise') {
                         $pdo->prepare("UPDATE merchandise_transactions SET workflow_status='Completed', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
                         $_SESSION['success'] = 'Job Order marked as Completed.';
                     } elseif ($jo_action === 'set_paid') {
-                        $pdo->prepare("UPDATE merchandise_transactions SET payment_status='Paid', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
+                        $pdo->prepare("UPDATE merchandise_transactions SET payment_status='Paid', balance_due=0, updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
                         $_SESSION['success'] = 'Payment recorded as Paid.';
                     }
                 } else {
@@ -468,7 +555,7 @@ if ($section === 'merchandise') {
                         $pdo->prepare("UPDATE job_orders SET status='Completed', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
                         $_SESSION['success'] = 'Job Order marked as Completed.';
                     } elseif ($jo_action === 'set_paid') {
-                        $pdo->prepare("UPDATE job_orders SET payment_status='Paid', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
+                        $pdo->prepare("UPDATE job_orders SET payment_status='Paid', balance_due=0, updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
                         $_SESSION['success'] = 'Payment recorded as Paid.';
                     }
                 }
@@ -519,7 +606,9 @@ if ($section === 'merchandise') {
                     COALESCE(mt.job_order_mechanic_name, '') AS mechanic_name,
                     u.name AS created_by_name,
                     mt.payment_method,
-                    COALESCE(mt.payment_status, 'Unpaid') AS payment_status,
+                    COALESCE(mt.payment_status, 'Pending Payment') AS payment_status,
+                    COALESCE(mt.amount_paid, 0)                    AS amount_paid,
+                    COALESCE(mt.balance_due, mt.total_amount)      AS balance_due,
                     NULL AS assigned_mechanic_id,
                     NULL AS customer_id,
                     NULL AS job_order_id,
@@ -610,7 +699,7 @@ main.main {
     width: 100%;
 }
 
-/* ── Right panel — now a normal full-width card, not sticky ── */
+/* ── Right panel — sticky so it stays visible while scrolling history ── */
 .cart-panel {
     display: flex;
     flex-direction: column;
@@ -620,6 +709,10 @@ main.main {
     border-radius: 12px;
     box-shadow: 0 2px 10px rgba(0,0,0,.07);
     overflow: hidden;
+    position: sticky;
+    top: 80px;   /* below the fixed top nav */
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
 }
 
 /* Customer & Payment — no max-height restriction */
@@ -1319,7 +1412,7 @@ main.main {
                 }
                 if ($filter_status) $active_filters[] = $filter_status;
                 if ($filter_shift) {
-                    foreach ($shift_opts as $sp_opt) {
+                    foreach ($shift_periods as $sp_opt) {
                         if ($sp_opt['shift_key'] === $filter_shift) {
                             $active_filters[] = $sp_opt['shift_name'];
                             break;
@@ -1639,9 +1732,6 @@ main.main {
                                     <i class="fas fa-undo"></i>
                                 </button>
                             </div>
-                            <!-- Live calculation preview -->
-                            <div id="calcPreview_<?= $ft_id ?>" style="display:none;margin-top:6px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:6px 10px;font-size:11px;color:#0369a1;line-height:1.7;">
-                            </div>
                             <div id="cardMsg_<?= $ft_id ?>" class="fet-row-msg" style="margin-top:5px;"></div>
                         </td>
                     </tr>
@@ -1690,30 +1780,19 @@ main.main {
             const prevEl     = document.getElementById('prev_'      + ftId);
             const presentEl  = document.getElementById('present_'   + ftId);
             const calibEl    = document.getElementById('calib_'     + ftId);
-            const previewEl  = document.getElementById('calcPreview_' + ftId);
             const hintEl     = document.getElementById('calibHint_' + ftId);
-            if (!presentEl || !prevEl || !previewEl) return;
+            if (!presentEl || !prevEl) return;
 
             const present = parseFloat(presentEl.value);
             const prev    = parseFloat(prevEl.value)   || 0;
             const calib   = parseFloat(calibEl?.value) || 0;
-            const price   = parseFloat(pricePerLiter)  || 0;
 
-            if (isNaN(present) || present <= 0) {
-                previewEl.style.display = 'none';
-                return;
-            }
+            if (isNaN(present) || present <= 0) return;
 
-            // Step 1: raw volume
             const rawVol = present - prev;
-            // Step 2: apply calibration, clamp to 0
-            const netVol = Math.max(0, rawVol - calib);
-            // Step 3: amount
-            const amount = netVol * price;
-
             const fmt = (n, d=2) => Number(n).toLocaleString('en-PH', {minimumFractionDigits:d, maximumFractionDigits:d});
 
-            // Update calibration hint
+            // Update calibration hint only
             if (hintEl) {
                 if (calib >= rawVol && rawVol > 0) {
                     hintEl.style.color = '#b45309';
@@ -1726,25 +1805,6 @@ main.main {
                     hintEl.textContent = '0.000 = no correction';
                 }
             }
-
-            // Build preview — matches documented formula:
-            // Liters Sold = (Present − Previous) − Calibration
-            // Amount = Liters Sold × Price per Liter
-            const sign = calib === 0 ? '' : ` − ${fmt(calib,3)}`;
-            let html = `<b>Liters Sold</b> = (${fmt(present)} − ${fmt(prev)})${sign} = <b>${fmt(netVol)} L</b>`;
-
-            if (calib >= rawVol && rawVol > 0) {
-                html += `<br><span style="color:#b45309;font-size:10px;">ℹ Calibration ≥ difference — 0 L net (valid zero-sale). Edit calibration field to correct.</span>`;
-            }
-
-            if (price > 0) {
-                html += `<br><b>Amount</b> = ${fmt(netVol)} L × ₱${fmt(price)} = <b>₱${fmt(amount)}</b>`;
-            } else {
-                html += `<br><span style="color:#f59e0b;font-size:10px;">⚠ Price not set — contact manager</span>`;
-            }
-
-            previewEl.style.display = 'block';
-            previewEl.innerHTML = html;
         }
 
         // ── AJAX submit per fuel row ──────────────────────────────────────────
@@ -1864,11 +1924,9 @@ main.main {
                     msgEl.style.display = 'none';
                     msgEl.innerHTML = '';
 
-                    // Clear the present reading and preview
+                    // Clear the present reading
                     const submittedPresent = parseFloat(presentEl.value) || 0;
                     presentEl.value = '';
-                    const previewEl = document.getElementById('calcPreview_' + ftId);
-                    if (previewEl) previewEl.style.display = 'none';
                     // Update previous reading input so next submit is correct
                     const prevInput = document.getElementById('prev_' + ftId);
                     if (prevInput && submittedPresent > 0) {
@@ -2095,7 +2153,7 @@ main.main {
         <?php
         // Active inner tab: merchandise | tracker
         $active_tab  = $_GET['active_tab'] ?? 'merchandise';
-        if (!in_array($active_tab, ['merchandise','encode_jo','tracker'])) $active_tab = 'merchandise';
+        if (!in_array($active_tab, ['merchandise','tracker'])) $active_tab = 'merchandise';
         $tracker_tab = $_GET['tracker_tab'] ?? 'pending';
         if (!in_array($tracker_tab, ['pending','approved','rejected'])) $tracker_tab = 'pending';
 
@@ -2121,7 +2179,7 @@ main.main {
             <?php
             $inner_tabs = [
                 'merchandise'   => ['label'=>'Merchandise/Service Transaction', 'icon'=>'fa-shopping-cart', 'color'=>'#28a745'],
-                'tracker'       => ['label'=>'Job Order Tracker',       'icon'=>'fa-tasks',         'color'=>'#003d7a',
+                'tracker'       => ['label'=>'Job Order Tracker',               'icon'=>'fa-tasks',         'color'=>'#003d7a',
                                     'badge'=> $jo_pending_count > 0 ? $jo_pending_count : null],
             ];
             foreach ($inner_tabs as $tk => $tc):
@@ -2151,10 +2209,10 @@ main.main {
         <div id="innerTab_merchandise" style="display:<?= $active_tab === 'merchandise' ? 'block' : 'none' ?>;">
 
         <!-- Cart layout -->
-        <div class="cart-wrapper" style="display:grid; grid-template-columns:1fr 340px; gap:16px; align-items:start;">
+        <div class="cart-wrapper" style="display:grid; grid-template-columns:<?= !empty($_GET['mh_open']) ? '1fr' : '1fr 340px' ?>; gap:16px; align-items:start;">
 
             <!-- Left: Job Order section (top) + Merchandise section (bottom) + Customer/Payment -->
-            <div>
+            <div style="min-width:0;overflow:hidden;">
 
                 <!-- ══ JOB ORDER SECTION (TOP) ══════════════════════════════ -->
                 <div class="txn-card" id="joCard">
@@ -2278,10 +2336,10 @@ main.main {
                         </div>
 
                         <!-- Assigned Mechanic + Notes -->
-                        <div class="txn-form-grid" style="margin-bottom:14px;">
+                        <div class="txn-form-grid" style="margin-bottom:6px;">
                             <div class="txn-field">
                                 <label>Assigned Mechanic</label>
-                                <select id="joMechanic" class="txn-select">
+                                <select id="joMechanic" class="txn-select" onchange="onMechanicChange()">
                                     <option value="">Select mechanic…</option>
                                     <?php foreach ($mechanics as $mech): ?>
                                     <option value="<?= (int)$mech['id'] ?>"
@@ -2302,6 +2360,22 @@ main.main {
                                 <input type="text" id="joNotes" class="txn-input"
                                        placeholder="Any additional remarks…"
                                        autocomplete="off">
+                            </div>
+                        </div>
+
+                        <!-- Mechanic busy warning banner -->
+                        <div id="joMechanicBusyWarn" style="display:none;margin-bottom:14px;
+                             background:#fffbeb;border:1.5px solid #f59e0b;border-radius:8px;
+                             padding:10px 14px;font-size:12px;color:#92400e;">
+                            <div style="display:flex;align-items:flex-start;gap:8px;">
+                                <i class="fas fa-exclamation-triangle" style="color:#f59e0b;margin-top:1px;flex-shrink:0;"></i>
+                                <div>
+                                    <strong>Mechanic may be busy</strong> — this mechanic has ongoing job order(s):
+                                    <div id="joMechanicBusyList" style="margin-top:6px;display:flex;flex-direction:column;gap:4px;"></div>
+                                    <div style="margin-top:6px;font-size:11px;color:#b45309;">
+                                        You can still proceed. Make sure to note this in the <em>Notes</em> field if needed.
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -2457,10 +2531,6 @@ main.main {
                                                     <?php endif; ?>
                                                 </span>
                                             </span>
-                                            <!-- Right side: Price display -->
-                                            <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
-                                                <span style="font-size:12px;font-weight:700;color:var(--petron-blue);">₱<?= number_format((float)$p['unit_price'], 2) ?></span>
-                                            </div>
                                         </div>
                                         <?php endforeach; ?>
                                         <?php endif; ?>
@@ -2522,7 +2592,7 @@ main.main {
                     </div><!-- /merchTab_form -->
 
                     <!-- ── Sub-tab: History ──────────────────────────────────── -->
-                    <div id="merchTab_history" style="display:none; padding-bottom: 80px;">
+                    <div id="merchTab_history" style="display:none; padding-bottom: 80px; min-width:0; overflow:hidden;">
                         <!-- Filter bar -->
                         <div style="padding:14px 16px;border-bottom:1px solid #e2e8f0;">
                             <form method="GET" action="staff_transactions_hub.php" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
@@ -2560,29 +2630,68 @@ main.main {
                                 No merchandise transactions found.
                             </div>
                             <?php else: ?>
-                            <div style="overflow-x:auto;">
-                            <table class="txn-table" style="min-width:680px;">
+                            <div style="width:100%;">
+                            <style>
+                            #mhHistoryTable th { padding: 8px 6px; }
+                            #mhHistoryTable td { padding: 8px 6px; }
+                            </style>
+                            <table class="txn-table" id="mhHistoryTable" style="width:100%;table-layout:fixed;">
+                                <colgroup>
+                                    <col style="width:10%;"><!-- Txn ID -->
+                                    <col style="width:13%;"><!-- Customer -->
+                                    <col style="width:9%;"><!-- Total -->
+                                    <col style="width:9%;"><!-- Method -->
+                                    <col style="width:10%;"><!-- Balance Due -->
+                                    <col style="width:16%;"><!-- Shift -->
+                                    <col style="width:14%;"><!-- Date -->
+                                    <col style="width:12%;"><!-- Payment Status -->
+                                    <col style="width:7%;"><!-- Actions -->
+                                </colgroup>
                                 <thead>
                                     <tr>
-                                        <th>Txn ID</th>
-                                        <th>Customer</th>
-                                        <th>Amount</th>
-                                        <th>Payment</th>
-                                        <th>Shift</th>
-                                        <th>Date</th>
-                                        <th>Status</th>
+                                        <th style="font-size:11px;">Txn ID</th>
+                                        <th style="font-size:11px;">Customer</th>
+                                        <th style="font-size:11px;">Total</th>
+                                        <th style="font-size:11px;">Method</th>
+                                        <th style="font-size:11px;">Balance Due</th>
+                                        <th style="font-size:11px;">Shift</th>
+                                        <th style="font-size:11px;">Date</th>
+                                        <th style="font-size:11px;">Payment Status</th>
+                                        <th style="font-size:11px;">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="mhTableBody">
                                 <?php foreach ($mh_recent as $txn): ?>
+                                <?php
+                                    $mh_pay_status = $txn['payment_status'] ?? $txn['status'] ?? 'Pending Payment';
+                                    $mh_balance    = (float)($txn['balance_due'] ?? 0);
+                                    $mh_paid       = (float)($txn['amount_paid'] ?? 0);
+                                    $mh_total      = (float)($txn['total_amount'] ?? 0);
+                                    $mh_can_settle = !in_array(strtolower($mh_pay_status), ['paid']) && $mh_balance > 0.009;
+                                ?>
                                 <tr class="mh-row">
-                                    <td><strong style="color:var(--petron-blue);"><?= htmlspecialchars($txn['transaction_id'] ?? ('#'.$txn['id'])) ?></strong></td>
-                                    <td><?= htmlspecialchars($txn['customer_name'] ?? '—') ?></td>
-                                    <td style="font-weight:700;color:var(--petron-blue);">₱<?= number_format((float)($txn['total_amount'] ?? 0), 2) ?></td>
-                                    <td style="font-size:11px;"><?= htmlspecialchars($txn['payment_method'] ?? '—') ?></td>
-                                    <td style="font-size:11px;color:#64748b;"><?= htmlspecialchars($txn['shift_name'] ?? $txn['shift_period'] ?? '—') ?></td>
+                                    <td style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><strong style="color:var(--petron-blue);"><?= htmlspecialchars($txn['transaction_id'] ?? ('#'.$txn['id'])) ?></strong></td>
+                                    <td style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($txn['customer_name'] ?? '') ?>"><?= htmlspecialchars($txn['customer_name'] ?? '—') ?></td>
+                                    <td style="font-size:11px;font-weight:700;color:var(--petron-blue);white-space:nowrap;">₱<?= number_format($mh_total, 2) ?></td>
+                                    <td style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= htmlspecialchars($txn['payment_method'] ?? '—') ?></td>
+                                    <td style="font-size:11px;white-space:nowrap;">
+                                        <?= $mh_balance > 0 ? '<span style="color:#9a3412;font-weight:700;">₱' . number_format($mh_balance, 2) . '</span>' : '<span style="color:#166534;">—</span>' ?>
+                                    </td>
+                                    <td style="font-size:11px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($txn['shift_name'] ?? $txn['shift_period'] ?? '') ?>"><?= htmlspecialchars($txn['shift_name'] ?? $txn['shift_period'] ?? '—') ?></td>
                                     <td style="font-size:11px;color:#64748b;white-space:nowrap;"><?= date('M j, Y h:i A', strtotime($txn['transaction_date'] ?? 'now')) ?></td>
-                                    <td><?= status_badge($txn['status'] ?? 'Pending') ?></td>
+                                    <td><?= status_badge($mh_pay_status) ?></td>
+                                    <td>
+                                        <?php if ($mh_can_settle): ?>
+                                        <button type="button"
+                                                onclick="openPaymentModal(<?= (int)$txn['id'] ?>,'merchandise_transactions',<?= $mh_total ?>,<?= $mh_paid ?>,<?= $mh_balance ?>,'<?= addslashes($txn['customer_name'] ?? '') ?>',false,'merchandise')"
+                                                style="padding:3px 7px;font-size:10px;border:1px solid #7dd3fc;background:#e0f2fe;color:#0369a1;border-radius:6px;cursor:pointer;white-space:nowrap;font-weight:600;">
+                                            <i class="fas fa-coins"></i>
+                                            <?= strtolower($mh_pay_status) === 'partial payment' ? 'Settle' : 'Paid' ?>
+                                        </button>
+                                        <?php else: ?>
+                                        <span style="font-size:11px;color:#94a3b8;">—</span>
+                                        <?php endif; ?>
+                                    </td>
                                 </tr>
                                 <?php endforeach; ?>
                                 </tbody>
@@ -2673,8 +2782,26 @@ main.main {
                             var formBtn   = document.getElementById('merchTabBtn_form');
                             var histBtn   = document.getElementById('merchTabBtn_history');
                             if (!formPanel || !histPanel) return;
+
+                            // Show/hide sub-tab panels
                             formPanel.style.display = isHistory ? 'none' : 'block';
                             histPanel.style.display = isHistory ? 'block' : 'none';
+
+                            // When history is active: expand left column to full width, hide cart panel
+                            // When form is active: restore the 2-column grid with cart panel
+                            var cartWrapper = document.querySelector('.cart-wrapper');
+                            var cartPanel   = document.querySelector('.cart-panel');
+                            if (cartWrapper && cartPanel) {
+                                if (isHistory) {
+                                    cartWrapper.style.gridTemplateColumns = '1fr';
+                                    cartPanel.style.display = 'none';
+                                } else {
+                                    cartWrapper.style.gridTemplateColumns = '1fr 340px';
+                                    cartPanel.style.display = 'flex';
+                                }
+                            }
+
+                            // Tab button styles
                             formBtn.style.fontWeight   = isHistory ? '500' : '700';
                             formBtn.style.color        = isHistory ? '#64748b' : '#28a745';
                             formBtn.style.background   = isHistory ? '#f8fafc' : '#fff';
@@ -2684,7 +2811,7 @@ main.main {
                             histBtn.style.background   = isHistory ? '#fff' : '#f8fafc';
                             histBtn.style.borderBottom = isHistory ? '2px solid #28a745' : '2px solid transparent';
                             if (isHistory) mhRender();
-                            
+
                             // Update URL so refresh keeps the tab open
                             if (window.history && window.history.replaceState) {
                                 var url = new URL(window.location.href);
@@ -2709,7 +2836,7 @@ main.main {
             </div><!-- /left column -->
 
             <!-- Payment + Cart panel — full width below the form -->
-            <div class="cart-panel">
+            <div class="cart-panel" <?= !empty($_GET['mh_open']) ? 'style="display:none;"' : '' ?>>
 
                 <!-- ── Single-column inner layout: Payment top, Cart bottom ── -->
                 <div style="display:flex; flex-direction:column; gap:0; min-height:320px;">
@@ -2736,7 +2863,9 @@ main.main {
                             <option value="Card">Card</option>
                             <option value="E-Wallet">E-Wallet</option>
                             <option value="E-Fuel Card">E-Fuel Card</option>
+                            <?php if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])): ?>
                             <option value="Credit">Credit (Utang)</option>
+                            <?php endif; ?>
                         </select>
                     </div>
 
@@ -2746,17 +2875,17 @@ main.main {
                             <div class="txn-field">
                                 <label style="font-size:10px;">Amount Tendered</label>
                                 <input type="number" id="amountTendered" class="txn-input" style="font-size:12px;padding:7px 10px;"
-                                       step="0.01" min="0" placeholder="Cash received"
+                                       step="0.01" min="0" placeholder="₱0.00"
                                        oninput="computeChange()">
                             </div>
-                            <div class="txn-field">
+                            <div class="txn-field" id="changeWrap" style="display:none;">
                                 <label style="font-size:10px;">Change</label>
-                                <input type="number" id="changeAmount" class="txn-input computed" style="font-size:12px;padding:7px 10px;" readonly placeholder="—">
+                                <input type="number" id="changeAmount" class="txn-input" style="font-size:12px;padding:7px 10px;background:#f0fdf4;" readonly placeholder="—">
                             </div>
-                        </div>
-                        <div id="cashInsufficientNote" style="display:none;margin-top:6px;padding:6px 10px;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;color:#991b1b;font-size:11px;font-weight:600;display:flex;align-items:center;gap:5px;">
-                            <i class="fas fa-exclamation-triangle" style="flex-shrink:0;"></i>
-                            <span>Insufficient cash amount.</span>
+                            <div class="txn-field" id="cashBalanceWrap" style="display:none;">
+                                <label style="font-size:10px;">Balance Due</label>
+                                <input type="number" id="cashBalanceDue" class="txn-input" style="font-size:12px;padding:7px 10px;background:#fff7ed;" readonly placeholder="—">
+                            </div>
                         </div>
                     </div>
 
@@ -2782,9 +2911,9 @@ main.main {
                     <div id="refFields" style="display:none;margin-bottom:4px;">
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
                             <div class="txn-field">
-                                <label style="font-size:10px;">Amount Paid <span style="color:#dc2626;">*</span></label>
+                                <label style="font-size:10px;">Amount Paid</label>
                                 <input type="number" id="cardAmount" class="txn-input" style="font-size:12px;padding:7px 10px;"
-                                       step="0.01" min="0" placeholder="Amount paid"
+                                       step="0.01" min="0" placeholder="₱0.00"
                                        oninput="checkCardSufficiency()">
                             </div>
                             <div class="txn-field">
@@ -2792,11 +2921,21 @@ main.main {
                                 <input type="text" id="refNumber" class="txn-input" style="font-size:12px;padding:7px 10px;" placeholder="Optional">
                             </div>
                         </div>
-                        <div id="cardInsufficientNote" style="display:none;margin-top:6px;padding:6px 10px;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;color:#991b1b;font-size:11px;font-weight:600;display:flex;align-items:center;gap:5px;">
-                            <i class="fas fa-exclamation-triangle" style="flex-shrink:0;"></i>
-                            <span>Insufficient payment amount.</span>
+                        <div class="txn-field" id="cardBalanceWrap" style="display:none;margin-top:6px;">
+                            <label style="font-size:10px;">Balance Due</label>
+                            <input type="number" id="cardBalanceDue" class="txn-input" style="font-size:12px;padding:7px 10px;background:#fff7ed;" readonly placeholder="—">
                         </div>
                     </div>
+
+                    <!-- ── Live Payment Status Badge ── -->
+                    <div id="payStatusBadgeWrap" style="display:none;margin-top:10px;padding:8px 12px;border-radius:8px;border:1.5px solid #e2e8f0;background:#f8fafc;align-items:center;gap:8px;">
+                        <i id="payStatusIcon" class="fas fa-circle" style="font-size:10px;flex-shrink:0;"></i>
+                        <div>
+                            <div id="payStatusLabel" style="font-size:12px;font-weight:700;"></div>
+                            <div id="payStatusSub" style="font-size:10px;margin-top:1px;color:#64748b;"></div>
+                        </div>
+                    </div>
+
                 </div><!-- /cart-panel-top -->
 
                 <!-- ── Right column: Cart header + items + footer ── -->
@@ -3087,6 +3226,59 @@ main.main {
             const wrap = document.getElementById('productDropdownWrap');
             if (wrap && !wrap.contains(e.target)) closeProductDropdown();
         });
+
+        // ── Mechanic busy-status check ────────────────────────────────────────
+        // Fires when the Assigned Mechanic dropdown changes.
+        // Calls the API and shows a warning banner if the mechanic has ongoing jobs.
+        async function onMechanicChange() {
+            const sel     = document.getElementById('joMechanic');
+            const warnBox = document.getElementById('joMechanicBusyWarn');
+            const listEl  = document.getElementById('joMechanicBusyList');
+            if (!sel || !warnBox || !listEl) return;
+
+            const mechId = sel.value;
+            if (!mechId) {
+                warnBox.style.display = 'none';
+                listEl.innerHTML = '';
+                return;
+            }
+
+            try {
+                const res  = await fetch(`../backend/api/get_mechanic_status.php?mechanic_id=${encodeURIComponent(mechId)}`, {
+                    credentials: 'same-origin',
+                });
+                const data = await res.json();
+
+                if (data.busy && data.jobs && data.jobs.length > 0) {
+                    const statusColors = {
+                        'In Progress':        '#1e40af',
+                        'Pending':            '#92400e',
+                        'Pending Validation': '#92400e',
+                        'Approved':           '#065f46',
+                        'Validated':          '#065f46',
+                    };
+                    listEl.innerHTML = data.jobs.map(j => {
+                        const color  = statusColors[j.status] || '#475569';
+                        const plate  = j.vehicle_plate ? ` — <strong>${j.vehicle_plate}</strong>` : '';
+                        const svc    = j.service_label  ? ` (${j.service_label})`                 : '';
+                        const ref    = j.jo_ref         ? `<span style="font-weight:700;">${j.jo_ref}</span>` : '';
+                        return `<div style="display:flex;align-items:center;gap:6px;padding:4px 8px;
+                                            background:#fff;border:1px solid #fde68a;border-radius:6px;font-size:11px;">
+                                    <span style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0;"></span>
+                                    ${ref}${svc}${plate}
+                                    <span style="margin-left:auto;color:${color};font-weight:700;">${j.status}</span>
+                                </div>`;
+                    }).join('');
+                    warnBox.style.display = 'block';
+                } else {
+                    warnBox.style.display = 'none';
+                    listEl.innerHTML = '';
+                }
+            } catch (err) {
+                // Silently ignore network errors — don't block the workflow
+                warnBox.style.display = 'none';
+            }
+        }
 
         // ── JO Service type change ────────────────────────────────────────────
         // When a service type is selected:
@@ -3785,24 +3977,109 @@ main.main {
             if (creditFields) creditFields.style.display = method === 'Credit' ? 'block' : 'none';
             if (refFields)    refFields.style.display    = ['Card','E-Wallet','E-Fuel Card'].includes(method) ? 'block' : 'none';
             computeChange();
+            checkCardSufficiency();
+            updatePaymentStatusBadge();
             updateCheckoutBtn();
         }
 
         function computeChange() {
             const grand    = getGrandTotal();
             const tendered = parseFloat(document.getElementById('amountTendered')?.value || 0);
-            const change   = Math.max(0, tendered - grand);
-            const changeEl = document.getElementById('changeAmount');
-            if (changeEl) changeEl.value = change > 0 ? change.toFixed(2) : '';
-            const note = document.getElementById('cashInsufficientNote');
-            if (note) note.style.display = (tendered > 0 && tendered < grand) ? 'flex' : 'none';
+
+            // Change: only show when tendered >= grand (exact / overpayment)
+            const changeWrap = document.getElementById('changeWrap');
+            const changeEl   = document.getElementById('changeAmount');
+            // Balance Due: show when tendered is 0 or partial
+            const balWrap = document.getElementById('cashBalanceWrap');
+            const balEl   = document.getElementById('cashBalanceDue');
+
+            if (tendered >= grand && grand > 0) {
+                const change = tendered - grand;
+                if (changeWrap) changeWrap.style.display = 'block';
+                if (changeEl)   changeEl.value = change.toFixed(2);
+                if (balWrap)    balWrap.style.display  = 'none';
+                if (balEl)      balEl.value = '';
+            } else {
+                if (changeWrap) changeWrap.style.display = 'none';
+                if (changeEl)   changeEl.value = '';
+                const bal = Math.max(0, grand - tendered);
+                if (balWrap) balWrap.style.display = (grand > 0) ? 'block' : 'none';
+                if (balEl)   balEl.value = bal > 0 ? bal.toFixed(2) : '';
+            }
+            updatePaymentStatusBadge();
         }
 
         function checkCardSufficiency() {
             const grand  = getGrandTotal();
             const amount = parseFloat(document.getElementById('cardAmount')?.value || 0);
-            const note   = document.getElementById('cardInsufficientNote');
-            if (note) note.style.display = (amount > 0 && amount < grand) ? 'flex' : 'none';
+            const balWrap = document.getElementById('cardBalanceWrap');
+            const balEl   = document.getElementById('cardBalanceDue');
+            if (amount >= grand && grand > 0) {
+                if (balWrap) balWrap.style.display = 'none';
+                if (balEl)   balEl.value = '';
+            } else {
+                const bal = Math.max(0, grand - amount);
+                if (balWrap) balWrap.style.display = (grand > 0) ? 'block' : 'none';
+                if (balEl)   balEl.value = bal > 0 ? bal.toFixed(2) : '';
+            }
+            updatePaymentStatusBadge();
+        }
+
+        // ── Live payment status badge ─────────────────────────────────────────
+        function updatePaymentStatusBadge() {
+            const method = document.getElementById('paymentMethod')?.value || '';
+            const wrap   = document.getElementById('payStatusBadgeWrap');
+            const icon   = document.getElementById('payStatusIcon');
+            const lbl    = document.getElementById('payStatusLabel');
+            const sub    = document.getElementById('payStatusSub');
+            if (!wrap || !method) { if (wrap) wrap.style.display = 'none'; return; }
+
+            const grand = getGrandTotal();
+            let status, color, border, bg, iconClass, subText = '';
+
+            if (method === 'Credit') {
+                status    = 'Credit Transaction';
+                color     = '#6b21a8'; border = '#d8b4fe'; bg = '#f3e8ff';
+                iconClass = 'fas fa-handshake';
+                subText   = 'Utang — Manager/Admin tagged. Full amount on credit.';
+            } else {
+                let amountPaid = 0;
+                if (method === 'Cash') {
+                    amountPaid = parseFloat(document.getElementById('amountTendered')?.value || 0);
+                } else {
+                    amountPaid = parseFloat(document.getElementById('cardAmount')?.value || 0);
+                }
+
+                if (amountPaid <= 0 || grand === 0) {
+                    status    = 'Pending Payment';
+                    color     = '#9a3412'; border = '#fed7aa'; bg = '#ffedd5';
+                    iconClass = 'fas fa-clock';
+                    subText   = grand > 0 ? 'No amount encoded. Balance due: \u20b1' + fmtNum(grand) : 'Enter cart items first.';
+                } else if (amountPaid < grand - 0.009) {
+                    const bal = grand - amountPaid;
+                    status    = 'Partial Payment';
+                    color     = '#92400e'; border = '#fde68a'; bg = '#fef9c3';
+                    iconClass = 'fas fa-exclamation-circle';
+                    subText   = 'Downpayment \u20b1' + fmtNum(amountPaid) + ' \u2014 Balance due: \u20b1' + fmtNum(bal);
+                } else {
+                    status    = 'Paid';
+                    color     = '#166534'; border = '#86efac'; bg = '#dcfce7';
+                    iconClass = 'fas fa-check-circle';
+                    if (method === 'Cash') {
+                        const change = amountPaid - grand;
+                        subText = change > 0.009 ? 'Change: \u20b1' + fmtNum(change) : 'Exact amount paid.';
+                    } else {
+                        subText = 'Full amount received via ' + method + '.';
+                    }
+                }
+            }
+
+            wrap.style.display  = 'flex';
+            wrap.style.background = bg;
+            wrap.style.borderColor = border;
+            if (icon) { icon.className = iconClass; icon.style.color = color; }
+            if (lbl)  { lbl.textContent = status; lbl.style.color = color; }
+            if (sub)  { sub.textContent = subText; }
         }
 
         function getGrandTotal() {
@@ -3843,15 +4120,8 @@ main.main {
                 // Merchandise-only: name is optional (defaults to Walk-in Customer)
             }
 
-            // Payment validation
-            if (method === 'Cash') {
-                const tendered = parseFloat(document.getElementById('amountTendered')?.value || 0);
-                if (tendered < grand) { showTxnAlert('Cash amount is insufficient.', 'warning'); return; }
-            }
-            if (['Card','E-Wallet','E-Fuel Card'].includes(method)) {
-                const paid = parseFloat(document.getElementById('cardAmount')?.value || 0);
-                if (paid < grand) { showTxnAlert('Payment amount is insufficient.', 'warning'); return; }
-            }
+            // Payment validation — only hard-block Credit without an account
+            // Cash/Card/E-Wallet/E-Fuel Card allow partial (downpayment) or zero (pending)
             if (method === 'Credit') {
                 const creditSel = document.getElementById('creditCustomer');
                 if (!creditSel?.value) { showTxnAlert('Please select a credit account.', 'warning'); return; }
@@ -3873,14 +4143,37 @@ main.main {
                 };
             }
 
+            // Compute amount_paid + derived payment_status for payload
+            let amountPaid = 0;
+            if (method === 'Cash') {
+                amountPaid = parseFloat(document.getElementById('amountTendered')?.value || 0);
+            } else if (['Card','E-Wallet','E-Fuel Card'].includes(method)) {
+                amountPaid = parseFloat(document.getElementById('cardAmount')?.value || 0);
+            }
+            let paymentStatus;
+            if (method === 'Credit') {
+                paymentStatus = 'Credit Transaction';
+            } else if (amountPaid <= 0) {
+                paymentStatus = 'Pending Payment';
+            } else if (amountPaid < grand - 0.009) {
+                paymentStatus = 'Partial Payment';
+            } else {
+                paymentStatus = 'Paid';
+            }
+            const balanceDue = (paymentStatus === 'Credit Transaction') ? grand
+                             : (paymentStatus === 'Paid' ? 0 : Math.max(0, grand - amountPaid));
+
             const payload = {
                 action:              'create_transaction',
                 customer_first_name: firstName || null,
                 customer_last_name:  lastName  || null,
                 customer_name:       [firstName, lastName].filter(Boolean).join(' ') || 'Walk-in Customer',
                 payment_method:      method,
-                amount_tendered:     parseFloat(document.getElementById('amountTendered')?.value || 0) || null,
-                change_amount:       parseFloat(document.getElementById('changeAmount')?.value || 0) || null,
+                amount_paid:         amountPaid > 0 ? amountPaid : null,
+                amount_tendered:     method === 'Cash' ? (amountPaid > 0 ? amountPaid : null) : null,
+                change_amount:       (method === 'Cash' && amountPaid >= grand) ? parseFloat((amountPaid - grand).toFixed(2)) : null,
+                balance_due:         balanceDue > 0 ? parseFloat(balanceDue.toFixed(2)) : null,
+                payment_status:      paymentStatus,
                 card_reference:      document.getElementById('refNumber')?.value || null,
                 card_type:           method === 'Card' ? 'Card' : null,
                 ewallet_reference:   method === 'E-Wallet' ? (document.getElementById('refNumber')?.value || null) : null,
@@ -3933,6 +4226,9 @@ main.main {
                     if (joMech) joMech.selectedIndex = 0;
                     const notesWrap = document.getElementById('joServicePriceNotes');
                     if (notesWrap) notesWrap.style.display = 'none';
+                    // Hide mechanic busy warning on reset
+                    const mechBusyWarn = document.getElementById('joMechanicBusyWarn');
+                    if (mechBusyWarn) mechBusyWarn.style.display = 'none';
                     clearSuggestedParts();
                     // Reset merch customer fields
                     ['merchFirstName','merchLastName'].forEach(id => {
@@ -6283,22 +6579,32 @@ main.main {
                                 <!-- Pending: view only -->
                                 <span style="font-size:11px;color:#94a3b8;font-style:italic;">Awaiting approval</span>
                             <?php elseif ($wf_status === 'Completed'): ?>
-                                <!-- Completed: show payment update if not yet paid -->
-                                <?php if ($pay_status !== 'Paid'): ?>
-                                <form method="POST" action="staff_transactions_hub.php?section=merchandise" style="margin:0;">
-                                    <input type="hidden" name="jo_action" value="set_paid">
-                                    <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
-                                    <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
-                                    <button type="submit" class="txn-btn success" style="padding:5px 11px;font-size:11px;white-space:nowrap;">
-                                        <i class="fas fa-money-bill-wave"></i> Mark Paid
-                                    </button>
-                                </form>
-                                <?php else: ?>
+                                <!-- Completed: payment settlement -->
+                                <?php if ($pay_status === 'Paid'): ?>
                                 <span style="font-size:11px;color:#16a34a;font-weight:700;"><i class="fas fa-check-circle"></i> Paid</span>
+                                <?php else:
+                                    $jo_total   = (float)($job['total_cost'] ?? $job['estimated_cost'] ?? 0);
+                                    $jo_paid    = (float)($job['amount_paid'] ?? 0);
+                                    $jo_balance = (float)($job['balance_due'] ?? 0);
+                                    // If balance_due is 0 but not paid, compute from total - paid
+                                    if ($jo_balance <= 0.009 && $jo_total > 0) $jo_balance = max(0, $jo_total - $jo_paid);
+                                ?>
+                                <button type="button"
+                                        onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',false,'tracker')"
+                                        class="txn-btn success" style="padding:5px 11px;font-size:11px;white-space:nowrap;">
+                                    <i class="fas fa-money-bill-wave"></i>
+                                    <?= $pay_status === 'Partial Payment' ? 'Settle Balance' : 'Mark Paid' ?>
+                                </button>
                                 <?php endif; ?>
                             <?php else: ?>
-                                <!-- Approved / In Progress: workflow actions -->
-                                <div style="display:flex;flex-direction:column;gap:4px;min-width:110px;">
+                                <!-- Approved / In Progress: workflow + payment actions -->
+                                <?php
+                                    $jo_total   = (float)($job['total_cost'] ?? $job['estimated_cost'] ?? 0);
+                                    $jo_paid    = (float)($job['amount_paid'] ?? 0);
+                                    $jo_balance = (float)($job['balance_due'] ?? 0);
+                                    if ($jo_balance <= 0.009 && $jo_total > 0) $jo_balance = max(0, $jo_total - $jo_paid);
+                                ?>
+                                <div style="display:flex;flex-direction:column;gap:4px;min-width:120px;">
                                     <?php if ($wf_status !== 'In Progress'): ?>
                                     <form method="POST" action="staff_transactions_hub.php?section=merchandise" style="margin:0;">
                                         <input type="hidden" name="jo_action" value="set_in_progress">
@@ -6309,14 +6615,19 @@ main.main {
                                         </button>
                                     </form>
                                     <?php endif; ?>
-                                    <form method="POST" action="staff_transactions_hub.php?section=merchandise" style="margin:0;">
-                                        <input type="hidden" name="jo_action" value="set_completed">
-                                        <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
-                                        <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
-                                        <button type="submit" class="txn-btn success" style="padding:5px 11px;font-size:11px;width:100%;white-space:nowrap;">
-                                            <i class="fas fa-check"></i> Complete
-                                        </button>
-                                    </form>
+                                    <!-- Complete opens payment modal (mark complete + settle payment together) -->
+                                    <button type="button"
+                                            onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',true,'tracker')"
+                                            class="txn-btn success" style="padding:5px 11px;font-size:11px;width:100%;white-space:nowrap;">
+                                        <i class="fas fa-check"></i> Complete
+                                    </button>
+                                    <?php if (in_array($pay_status, ['Partial Payment','Partial','Unpaid','Pending Payment','Pending']) && $wf_status === 'In Progress'): ?>
+                                    <button type="button"
+                                            onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',false,'tracker')"
+                                            class="txn-btn" style="padding:5px 11px;font-size:11px;width:100%;white-space:nowrap;background:#fef9c3;color:#92400e;border:1px solid #fde68a;">
+                                        <i class="fas fa-coins"></i> Downpayment
+                                    </button>
+                                    <?php endif; ?>
                                 </div>
                             <?php endif; ?>
                         </td>
@@ -6444,13 +6755,340 @@ main.main {
 
         </div><!-- /innerTab_tracker -->
 
+        <!-- ══════════════════════════════════════════════════════════
+             PAYMENT SETTLEMENT MODAL  (v2 — clean per-method fields)
+        ══════════════════════════════════════════════════════════ -->
+        <style>
+        @keyframes pmSlideIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+        .pm-method-btn{flex:1;min-width:70px;padding:8px 4px;border:1.5px solid #e2e8f0;border-radius:8px;
+            background:#f8fafc;font-size:11px;font-weight:600;color:#64748b;cursor:pointer;text-align:center;
+            transition:all .15s;line-height:1.4;}
+        .pm-method-btn.active{border-color:#003d7a;background:#eff6ff;color:#003d7a;}
+        .pm-method-btn:hover:not(.active){border-color:#94a3b8;background:#f1f5f9;}
+        .pm-label{font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px;
+            text-transform:uppercase;letter-spacing:.3px;}
+        .pm-input{width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
+            color:#1e293b;background:#fff;outline:none;box-sizing:border-box;transition:border-color .15s;}
+        .pm-input:focus{border-color:#003d7a;}
+        .pm-row{margin-bottom:13px;}
+        </style>
+        <div id="paymentSettleModal" style="display:none;position:fixed;inset:0;z-index:9999;
+             background:rgba(0,0,0,.5);align-items:center;justify-content:center;">
+          <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
+                      width:100%;max-width:450px;margin:16px;overflow:hidden;animation:pmSlideIn .18s ease;">
+
+            <!-- Header -->
+            <div style="background:linear-gradient(135deg,#003d7a,#0369a1);padding:15px 20px;
+                        display:flex;align-items:center;justify-content:space-between;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:34px;height:34px;background:rgba(255,255,255,.15);border-radius:8px;
+                            display:flex;align-items:center;justify-content:center;">
+                  <i id="pmHeaderIcon" class="fas fa-receipt" style="color:#fff;font-size:15px;"></i>
+                </div>
+                <div>
+                  <div id="pmModalTitle" style="color:#fff;font-weight:700;font-size:14px;">Payment Settlement</div>
+                  <div id="pmModalCustomer" style="color:#93c5fd;font-size:11px;margin-top:1px;"></div>
+                </div>
+              </div>
+              <button onclick="closePaymentModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;
+                      width:28px;height:28px;border-radius:6px;font-size:17px;cursor:pointer;
+                      display:flex;align-items:center;justify-content:center;"
+                      onmouseover="this.style.background='rgba(255,255,255,.28)'"
+                      onmouseout="this.style.background='rgba(255,255,255,.15)'">&times;</button>
+            </div>
+
+            <!-- Balance Strip -->
+            <div style="background:#f0f7ff;border-bottom:1px solid #dbeafe;padding:11px 20px;
+                        display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center;">
+              <div>
+                <div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Grand Total</div>
+                <div style="font-size:15px;font-weight:800;color:#003d7a;">₱<span id="pmTotal">0.00</span></div>
+              </div>
+              <div>
+                <div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Already Paid</div>
+                <div style="font-size:15px;font-weight:800;color:#166534;">₱<span id="pmAlreadyPaid">0.00</span></div>
+              </div>
+              <div id="pmBalanceCell" style="border-radius:8px;padding:3px 6px;">
+                <div id="pmBalanceLbl" style="font-size:9px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Balance Due</div>
+                <div style="font-size:15px;font-weight:800;" id="pmBalanceDueWrap">₱<span id="pmBalanceDue">0.00</span></div>
+              </div>
+            </div>
+
+            <!-- Complete notice -->
+            <div id="pmCompleteNotice" style="display:none;background:#f0fdf4;border-bottom:1px solid #bbf7d0;
+                 padding:8px 20px;font-size:12px;color:#166534;align-items:center;gap:7px;">
+              <i class="fas fa-check-circle"></i>
+              <span>This will also mark the Job Order as <strong>Completed</strong>.</span>
+            </div>
+
+            <!-- Form -->
+            <form id="paymentSettleForm" method="POST"
+                  action="staff_transactions_hub.php?section=merchandise"
+                  style="padding:16px 20px 20px;">
+              <input type="hidden" name="jo_action"               value="settle_payment">
+              <input type="hidden" name="jo_id"                   id="pmJoId"         value="">
+              <input type="hidden" name="jo_source"               id="pmJoSource"     value="">
+              <input type="hidden" name="redirect_tab"            id="pmRedirectTab"  value="tracker">
+              <input type="hidden" name="mark_complete_on_settle" id="pmMarkComplete" value="">
+              <input type="hidden" name="settle_method"           id="pmMethodHidden" value="Cash">
+
+              <!-- Amount -->
+              <div class="pm-row">
+                <label class="pm-label">Amount to Pay Now <span style="color:#dc2626;">*</span></label>
+                <div style="display:flex;gap:6px;">
+                  <div id="pmAmountWrap" style="display:flex;align-items:center;border:1.5px solid #d1d5db;
+                       border-radius:8px;overflow:hidden;flex:1;transition:border-color .15s;">
+                    <span style="background:#f3f4f6;padding:9px 11px;font-weight:700;color:#374151;
+                                 border-right:1px solid #d1d5db;font-size:13px;">₱</span>
+                    <input type="number" id="pmAmountInput" name="settle_amount"
+                           step="0.01" min="0.01" placeholder="0.00" oninput="pmRecalc()"
+                           onfocus="document.getElementById('pmAmountWrap').style.borderColor='#003d7a'"
+                           onblur="document.getElementById('pmAmountWrap').style.borderColor='#d1d5db'"
+                           style="flex:1;border:none;padding:9px 10px;font-size:16px;font-weight:700;
+                                  color:#003d7a;outline:none;background:#fff;min-width:0;">
+                  </div>
+                  <button type="button" onclick="pmSetFull()"
+                          style="padding:0 13px;background:#003d7a;color:#fff;border:none;border-radius:8px;
+                                 font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;line-height:1.3;">
+                    Full<br>Amount
+                  </button>
+                </div>
+              </div>
+
+              <!-- Payment Method buttons -->
+              <div class="pm-row">
+                <label class="pm-label">Payment Method</label>
+                <div style="display:flex;gap:5px;flex-wrap:wrap;">
+                  <button type="button" class="pm-method-btn active" data-method="Cash"        onclick="pmSelectMethod('Cash')">
+                    <i class="fas fa-money-bill-wave" style="display:block;font-size:13px;margin-bottom:2px;color:#16a34a;"></i>Cash
+                  </button>
+                  <button type="button" class="pm-method-btn"        data-method="Card"        onclick="pmSelectMethod('Card')">
+                    <i class="fas fa-credit-card"     style="display:block;font-size:13px;margin-bottom:2px;color:#003d7a;"></i>Card
+                  </button>
+                  <button type="button" class="pm-method-btn"        data-method="E-Wallet"    onclick="pmSelectMethod('E-Wallet')">
+                    <i class="fas fa-mobile-alt"      style="display:block;font-size:13px;margin-bottom:2px;color:#7c3aed;"></i>E-Wallet
+                  </button>
+                  <button type="button" class="pm-method-btn"        data-method="E-Fuel Card" onclick="pmSelectMethod('E-Fuel Card')">
+                    <i class="fas fa-gas-pump"        style="display:block;font-size:13px;margin-bottom:2px;color:#dc2626;"></i>E-Fuel
+                  </button>
+                  <button type="button" class="pm-method-btn"        data-method="Credit"      onclick="pmSelectMethod('Credit')">
+                    <i class="fas fa-file-invoice-dollar" style="display:block;font-size:13px;margin-bottom:2px;color:#92400e;"></i>Credit
+                  </button>
+                </div>
+              </div>
+
+              <!-- Cash: tendered + change -->
+              <div id="pmCashFields" class="pm-row">
+                <label class="pm-label">Amount Tendered <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#94a3b8;">(optional)</span></label>
+                <div style="display:flex;align-items:center;border:1.5px solid #d1d5db;border-radius:8px;overflow:hidden;max-width:200px;">
+                  <span style="background:#f3f4f6;padding:9px 11px;font-weight:700;color:#374151;border-right:1px solid #d1d5db;font-size:13px;">₱</span>
+                  <input type="number" id="pmTendered" step="0.01" min="0" placeholder="0.00"
+                         oninput="pmCalcChange()"
+                         style="flex:1;border:none;padding:9px 10px;font-size:14px;color:#1e293b;outline:none;background:#fff;">
+                </div>
+                <div id="pmChangeRow" style="display:none;margin-top:7px;padding:8px 12px;
+                     background:#dcfce7;border:1px solid #86efac;border-radius:7px;
+                     font-size:13px;color:#166534;font-weight:700;display:none;">
+                  <i class="fas fa-coins" style="margin-right:6px;"></i>Change (Sukli): ₱<span id="pmChangeAmt">0.00</span>
+                </div>
+              </div>
+
+              <!-- Card / E-Wallet / E-Fuel: reference -->
+              <div id="pmRefFields" style="display:none;" class="pm-row">
+                <label class="pm-label" id="pmRefLabel">Reference Number</label>
+                <input type="text" id="pmRefInput" name="settle_reference" class="pm-input"
+                       placeholder="e.g. ref #12345…">
+              </div>
+
+              <!-- Credit: note -->
+              <div id="pmCreditFields" style="display:none;" class="pm-row">
+                <div style="padding:10px 13px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;
+                            font-size:12px;color:#92400e;">
+                  <i class="fas fa-exclamation-triangle" style="margin-right:6px;"></i>
+                  <strong>Credit (Utang)</strong> — balance will remain as receivable.
+                </div>
+              </div>
+
+              <!-- Remarks -->
+              <div class="pm-row">
+                <label class="pm-label">Remarks <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#94a3b8;">(optional)</span></label>
+                <input type="text" id="pmRemarks" name="settle_remarks" class="pm-input"
+                       placeholder="e.g. Final payment, GCash ref #12345…">
+              </div>
+
+              <!-- Live preview -->
+              <div id="pmPreview" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;
+                   border-radius:8px;padding:10px 14px;margin-bottom:14px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+                  <span style="font-size:11px;color:#64748b;">New Balance Due</span>
+                  <strong id="pmPreviewBalance" style="font-size:14px;color:#9a3412;">—</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <span style="font-size:11px;color:#64748b;">Payment Status</span>
+                  <span id="pmPreviewStatusBadge" style="font-size:11px;font-weight:700;padding:3px 10px;
+                        border-radius:20px;background:#fef9c3;color:#92400e;border:1px solid #fde68a;">—</span>
+                </div>
+              </div>
+
+              <!-- Buttons -->
+              <div style="display:flex;gap:8px;">
+                <button type="submit" id="pmSubmitBtn"
+                        style="flex:1;padding:11px;background:#003d7a;color:#fff;border:none;border-radius:8px;
+                               font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;
+                               justify-content:center;gap:7px;">
+                  <i class="fas fa-check-circle"></i><span id="pmSubmitLabel">Confirm Payment</span>
+                </button>
+                <button type="button" onclick="closePaymentModal()"
+                        style="padding:11px 16px;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;
+                               border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <script>
+        // ── Payment Settlement Modal JS ───────────────────────────────────────
+        var _pmBalance = 0;
+        var _pmMethod  = 'Cash';
+
+        function openPaymentModal(joId, joSource, total, alreadyPaid, balanceDue, customerName, markComplete, redirectTab) {
+            _pmBalance = parseFloat(balanceDue) || 0;
+            var fmt = function(n){ return parseFloat(n).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2}); };
+
+            document.getElementById('pmJoId').value         = joId;
+            document.getElementById('pmJoSource').value     = joSource;
+            document.getElementById('pmRedirectTab').value  = redirectTab || 'tracker';
+            document.getElementById('pmMarkComplete').value = markComplete ? '1' : '';
+            document.getElementById('pmTotal').textContent       = fmt(total);
+            document.getElementById('pmAlreadyPaid').textContent = fmt(alreadyPaid);
+            document.getElementById('pmBalanceDue').textContent  = fmt(balanceDue);
+
+            // Colour balance cell
+            var cell = document.getElementById('pmBalanceCell');
+            var lbl  = document.getElementById('pmBalanceLbl');
+            var val  = document.getElementById('pmBalanceDueWrap');
+            if (_pmBalance > 0.009) {
+                cell.style.background = '#fff3cd'; lbl.style.color = '#92400e'; val.style.color = '#9a3412';
+            } else {
+                cell.style.background = '#dcfce7'; lbl.style.color = '#166534'; val.style.color = '#166534';
+            }
+
+            // Auto-fill amount = balance due; tendered = balance due (staff just edits if different)
+            document.getElementById('pmAmountInput').value = _pmBalance > 0.009 ? _pmBalance.toFixed(2) : '';
+            document.getElementById('pmTendered').value    = _pmBalance > 0.009 ? _pmBalance.toFixed(2) : '';
+            document.getElementById('pmRefInput').value    = '';
+            document.getElementById('pmRemarks').value     = '';
+            document.getElementById('pmChangeRow').style.display = 'none';
+            document.getElementById('pmPreview').style.display   = 'none';
+
+            // Complete notice
+            var notice = document.getElementById('pmCompleteNotice');
+            notice.style.display = markComplete ? 'flex' : 'none';
+
+            // Title / icon / submit label
+            var title = markComplete ? 'Complete & Settle Payment'
+                      : (_pmBalance > 0.009 ? 'Settle Balance' : 'Record Payment');
+            document.getElementById('pmModalTitle').textContent    = title;
+            document.getElementById('pmModalCustomer').textContent = customerName ? 'Customer: ' + customerName : '';
+            document.getElementById('pmHeaderIcon').className      = markComplete ? 'fas fa-check-circle' : 'fas fa-receipt';
+            document.getElementById('pmSubmitLabel').textContent   = markComplete ? 'Complete & Confirm' : 'Confirm Payment';
+
+            pmSelectMethod('Cash');
+            document.getElementById('paymentSettleModal').style.display = 'flex';
+            // Focus tendered for Cash (staff just types what customer hands over)
+            setTimeout(function(){
+                var focus = _pmMethod === 'Cash'
+                    ? document.getElementById('pmTendered')
+                    : document.getElementById('pmAmountInput');
+                if (focus) focus.select();
+            }, 80);
+        }
+
+        function closePaymentModal() {
+            document.getElementById('paymentSettleModal').style.display = 'none';
+        }
+
+        function pmSelectMethod(method) {
+            _pmMethod = method;
+            document.getElementById('pmMethodHidden').value = method;
+            document.querySelectorAll('.pm-method-btn').forEach(function(b){
+                b.classList.toggle('active', b.dataset.method === method);
+            });
+            document.getElementById('pmCashFields').style.display   = method === 'Cash'     ? 'block' : 'none';
+            document.getElementById('pmRefFields').style.display    = ['Card','E-Wallet','E-Fuel Card'].includes(method) ? 'block' : 'none';
+            document.getElementById('pmCreditFields').style.display = method === 'Credit'   ? 'block' : 'none';
+            var labels = {'Card':'Card Reference No.','E-Wallet':'E-Wallet Ref No. (GCash/Maya)','E-Fuel Card':'E-Fuel Card ID'};
+            if (labels[method]) document.getElementById('pmRefLabel').textContent = labels[method];
+            pmRecalc();
+        }
+
+        function pmSetFull() {
+            document.getElementById('pmAmountInput').value = _pmBalance.toFixed(2);
+            if (_pmMethod === 'Cash') {
+                document.getElementById('pmTendered').value = _pmBalance.toFixed(2);
+                pmCalcChange();
+            }
+            pmRecalc();
+        }
+
+        function pmCalcChange() {
+            var tendered = parseFloat(document.getElementById('pmTendered').value) || 0;
+            var amount   = parseFloat(document.getElementById('pmAmountInput').value) || _pmBalance;
+            var change   = tendered - amount;
+            var row      = document.getElementById('pmChangeRow');
+            if (tendered > 0 && change >= 0) {
+                document.getElementById('pmChangeAmt').textContent =
+                    change.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
+                row.style.display = 'block';
+            } else {
+                row.style.display = 'none';
+            }
+        }
+
+        function pmRecalc() {
+            var amount  = parseFloat(document.getElementById('pmAmountInput').value) || 0;
+            var preview = document.getElementById('pmPreview');
+            if (amount <= 0) { preview.style.display = 'none'; return; }
+            var newBal  = Math.max(0, _pmBalance - amount);
+            var isPaid  = newBal <= 0.009;
+            var status  = isPaid ? 'Paid' : 'Partial Payment';
+            var fmt = function(n){ return '₱'+parseFloat(n).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2}); };
+            document.getElementById('pmPreviewBalance').textContent = fmt(newBal);
+            document.getElementById('pmPreviewBalance').style.color = isPaid ? '#166534' : '#9a3412';
+            var badge = document.getElementById('pmPreviewStatusBadge');
+            badge.textContent      = status;
+            badge.style.background = isPaid ? '#dcfce7' : '#fef9c3';
+            badge.style.color      = isPaid ? '#166534' : '#92400e';
+            badge.style.border     = isPaid ? '1px solid #86efac' : '1px solid #fde68a';
+            preview.style.display  = 'block';
+            if (_pmMethod === 'Cash') pmCalcChange();
+        }
+
+        document.getElementById('paymentSettleModal').addEventListener('click', function(e){
+            if (e.target === this) closePaymentModal();
+        });
+
+        document.getElementById('paymentSettleForm').addEventListener('submit', function(e){
+            var amount = parseFloat(document.getElementById('pmAmountInput').value) || 0;
+            if (amount <= 0) {
+                e.preventDefault();
+                var wrap = document.getElementById('pmAmountWrap');
+                wrap.style.borderColor = '#dc2626';
+                document.getElementById('pmAmountInput').focus();
+                setTimeout(function(){ wrap.style.borderColor = '#d1d5db'; }, 2000);
+            }
+        });
+        </script>
+
         <script>
         function switchInnerTab(tab) {
-            ['merchandise','tracker'].forEach(function(t) {
+            ['merchandise','encode_jo','tracker'].forEach(function(t) {
                 var panel = document.getElementById('innerTab_' + t);
                 var btn   = document.getElementById('innerTabBtn_' + t);
                 if (!panel || !btn) return;
-                var colors = {merchandise:'#28a745', tracker:'#003d7a'};
+                var colors = {merchandise:'#28a745', encode_jo:'#b45309', tracker:'#003d7a'};
                 var active = (t === tab);
                 panel.style.display    = active ? 'block' : 'none';
                 btn.style.fontWeight   = active ? '700' : '500';

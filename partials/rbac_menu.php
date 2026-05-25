@@ -356,12 +356,12 @@ function filter_menu_by_permissions($menu_items, $user_role) {
 
 
             if ($user_role === 'manager' && ($item['id'] ?? '') === 'transactions') {
-                $filtered_item['href'] = 'transactions.php';
+                $filtered_item['href']  = 'transactions.php';
                 $filtered_item['label'] = 'Transactions';
                 $filtered_item['sub_items'] = [
-                    ['id'=>'pending_transactions',    'label'=>'Pending Merchandise/Service',  'href'=>'transactions.php',          'permissions'=>['view_transactions','approve_transactions']],
-                    ['id'=>'variance_alerts',         'label'=>'Variance Alerts',              'href'=>'transactions_variance.php', 'permissions'=>['view_transactions','approve_transactions']],
-                    ['id'=>'shift_transactions_view', 'label'=>'Shift Transactions View',      'href'=>'transactions_shift.php',    'permissions'=>['view_transactions','approve_transactions']],
+                    ['id'=>'merch_transactions',      'label'=>'Merchandise / Service',    'href'=>'transactions.php?type=merchandise', 'permissions'=>['view_transactions','approve_transactions']],
+                    ['id'=>'variance_alerts',         'label'=>'Variance Alerts',          'href'=>'transactions_variance.php',         'permissions'=>['view_transactions','approve_transactions']],
+                    ['id'=>'shift_transactions_view', 'label'=>'Shift Transactions View',  'href'=>'transactions_shift.php',            'permissions'=>['view_transactions','approve_transactions']],
                 ];
             }
 

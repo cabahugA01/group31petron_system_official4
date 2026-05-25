@@ -140,6 +140,9 @@ if ($type === 'merchandise') {
                 'customer_first_name'   => $txn['resolved_first_name'] ?? $txn['customer_first_name'] ?? '',
                 'customer_last_name'    => $txn['resolved_last_name']  ?? $txn['customer_last_name']  ?? '',
                 'payment_method'        => $txn['payment_method'] ?? 'Cash',
+                'payment_status'        => $txn['payment_status'] ?? null,
+                'amount_paid'           => $txn['amount_paid']    ?? $txn['amount_tendered'] ?? 0,
+                'balance_due'           => $txn['balance_due']    ?? null,
                 'credit_customer_id'    => $txn['credit_customer_id'] ?? null,
                 'total_amount'          => $txn['total_amount'] ?? 0,
                 'subtotal_amount'       => $txn['subtotal_amount'] ?? null,
@@ -229,6 +232,27 @@ $total        = (float)($sale['total_amount'] ?? $sale['total'] ?? 0);
 $tendered     = (float)($sale['amount_tendered'] ?? $sale['amount_received'] ?? 0);
 $change       = (float)($sale['change_amount']   ?? $sale['change'] ?? 0);
 
+// ── Payment status derivation ────────────────────────────────────────────────
+// Use stored payment_status if present, otherwise derive from amount_paid vs total
+$stored_pay_status = strtolower(trim($sale['payment_status'] ?? ''));
+$amount_paid_db    = (float)($sale['amount_paid'] ?? $tendered ?? 0);
+$balance_due_db    = (float)($sale['balance_due'] ?? 0);
+
+if ($stored_pay_status === 'partial payment' || $stored_pay_status === 'partial') {
+    $pay_status_norm = 'partial';
+} elseif ($stored_pay_status === 'pending payment' || ($stored_pay_status === '' && $amount_paid_db <= 0)) {
+    $pay_status_norm = 'pending';
+} elseif (in_array($stored_pay_status, ['credit transaction', 'credit'])) {
+    $pay_status_norm = 'credit';
+} else {
+    $pay_status_norm = 'paid'; // Paid or fully settled
+}
+
+// For display: if balance_due not stored, compute it
+if ($balance_due_db <= 0 && $pay_status_norm === 'partial') {
+    $balance_due_db = max(0, $total - $amount_paid_db);
+}
+
 // ── Transaction type label — always fixed ─────────────────────────────────────
 $txn_type_label    = 'MERCHANDISE/SERVICE TRANSACTION';
 $txn_type_sublabel = 'Official Merchandise & Service Invoice';
@@ -268,14 +292,61 @@ $has_jo       = !empty($job_order);
 // Logo path - use absolute URL from web root
 $logo = '/group31petron_system_official4/assets/img/Petron Logo.png';
 
-// QR — encode transaction details: ID, customer, date/time, amount, TIN, JO ref
-$qr_customer = $customer !== 'Walk-in Customer' ? $customer : 'Walk-in';
-$qr_datetime = date('Ymd\THis', strtotime($ts));
-$qr_data = "MERCH:{$txn_id}|CUST:{$qr_customer}|DT:{$qr_datetime}|AMT:{$total}|TIN:{$vat_tin}";
-if ($has_jo && !empty($job_order['job_order_id'])) {
-    $qr_data .= '|JO:' . $job_order['job_order_id'];
+// ── QR Code: encode verify URL ───────────────────────────────────────────────
+$qr_customer_disp = $customer !== 'Walk-in Customer' ? $customer : 'Walk-in';
+
+$http_host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+$scheme    = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')) ? 'https' : 'http';
+
+// Check if we are accessed via localhost
+$is_localhost = in_array(strtolower(explode(':', $http_host)[0]), ['localhost', '127.0.0.1', '::1']);
+
+$qr_host = $http_host;
+
+// If accessed via localhost, try to replace with actual LAN IP so phones can scan it
+if ($is_localhost) {
+    $lan_ip = '';
+    
+    // First attempt: reliable socket approach (finds the IP used to reach the internet)
+    try {
+        $sock = @fsockopen('8.8.8.8', 53, $en, $es, 0.5);
+        if ($sock) {
+            $lan_ip = explode(':', stream_socket_get_name($sock, false))[0];
+            fclose($sock);
+        }
+    } catch (Exception $e) {}
+
+    // Second attempt: DNS lookup
+    if (empty($lan_ip) || str_starts_with($lan_ip, '127.') || str_starts_with($lan_ip, '169.254.')) {
+        try {
+            $host_ips = gethostbynamel(gethostname());
+            if (is_array($host_ips)) {
+                foreach ($host_ips as $ip) {
+                    if (!str_starts_with($ip, '127.') && !str_starts_with($ip, '169.254.') && filter_var($ip, FILTER_VALIDATE_IP)) {
+                        $lan_ip = $ip;
+                        break;
+                    }
+                }
+            }
+        } catch (Exception $e) {}
+    }
+
+    // Final fallback
+    if (!empty($lan_ip) && !str_starts_with($lan_ip, '169.254.')) {
+        $port_suffix = str_contains($http_host, ':') ? (':' . explode(':', $http_host)[1]) : '';
+        $qr_host = $lan_ip . $port_suffix;
+    }
 }
-$qr_url  = 'https://api.qrserver.com/v1/create-qr-code/?size=88x88&data=' . urlencode($qr_data);
+
+// Build the verify URL (this will be an online URL if accessed via ngrok/public domain)
+$verify_url = $scheme . '://' . $qr_host . '/group31petron_system_official4/public/verify.php'
+            . '?id=' . urlencode($txn_id) . '&type=merchandise';
+
+// Generate human-readable text for fallback (in case image fails to load)
+$qr_data = "TXN: {$txn_id}\nURL: {$verify_url}";
+
+// QR image — encodes the verify URL with real LAN IP (scannable from phone)
+$qr_url = 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&ecc=M&data=' . urlencode($verify_url);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -311,6 +382,7 @@ $qr_url  = 'https://api.qrserver.com/v1/create-qr-code/?size=88x88&data=' . urle
   body{margin:0;padding:0;background:#fff}
   .jo-page{box-shadow:none;border-radius:0;padding:0;max-width:80mm;width:80mm}
   .jo-toolbar{display:none!important}
+  .no-print{display:none!important}
 }
 
 /* ── Receipt body ── */
@@ -526,45 +598,78 @@ $qr_url  = 'https://api.qrserver.com/v1/create-qr-code/?size=88x88&data=' . urle
     <span class="jo-r-val jo-r-bold"><?php echo htmlspecialchars(strtoupper($pay_method)); ?></span>
   </div>
 
-  <?php if ($pm_lc === 'cash'): ?>
+  <?php if ($pay_status_norm === 'partial'): ?>
+    <!-- ── PARTIAL PAYMENT ── -->
     <div class="jo-r-row">
-      <span class="jo-r-key">Amount Tendered</span>
-      <span class="jo-r-val">&#8369;<?php echo number_format($tendered > 0 ? $tendered : $total, 2); ?></span>
+      <span class="jo-r-key">Amount Paid</span>
+      <span class="jo-r-val jo-r-bold">&#8369;<?php echo number_format($amount_paid_db, 2); ?></span>
     </div>
+    <div class="jo-r-row" style="color:#9a3412;font-weight:700;">
+      <span class="jo-r-key">Balance Due</span>
+      <span class="jo-r-val">&#8369;<?php echo number_format($balance_due_db, 2); ?></span>
+    </div>
+    <?php if ($pm_lc === 'cash' && $tendered > 0): ?>
+    <div class="jo-r-row"><span class="jo-r-key">Change</span><span class="jo-r-val">&#8369;<?php echo number_format($change, 2); ?></span></div>
+    <?php endif; ?>
+    <?php if (!empty($sale['card_reference'])): ?>  <div class="jo-r-row"><span class="jo-r-key">Ref No.</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['card_reference'] ?: $sale['ewallet_reference'] ?: $sale['efuel_card_number']); ?></span></div><?php endif; ?>
+
+  <?php elseif ($pay_status_norm === 'pending'): ?>
+    <!-- ── PENDING PAYMENT (no amount collected yet) ── -->
     <div class="jo-r-row">
-      <span class="jo-r-key">Change</span>
-      <span class="jo-r-val jo-r-bold">&#8369;<?php echo number_format($change, 2); ?></span>
+      <span class="jo-r-key">Amount Paid</span>
+      <span class="jo-r-val">&#8369;0.00</span>
+    </div>
+    <div class="jo-r-row" style="color:#9a3412;font-weight:700;">
+      <span class="jo-r-key">Balance Due</span>
+      <span class="jo-r-val">&#8369;<?php echo number_format($total, 2); ?></span>
     </div>
 
-  <?php elseif ($pm_lc === 'card'): ?>
-    <div class="jo-r-row"><span class="jo-r-key">Amount Charged</span><span class="jo-r-val">&#8369;<?php echo number_format($total, 2); ?></span></div>
-    <?php if (!empty($sale['card_reference'])): ?>
-    <div class="jo-r-row"><span class="jo-r-key">Card Ref No.</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['card_reference']); ?></span></div>
-    <?php endif; ?>
-    <?php if (!empty($sale['card_type'])): ?>
-    <div class="jo-r-row"><span class="jo-r-key">Card Type</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['card_type']); ?></span></div>
-    <?php endif; ?>
-
-  <?php elseif ($pm_lc === 'e-wallet'): ?>
-    <div class="jo-r-row"><span class="jo-r-key">Amount Transferred</span><span class="jo-r-val">&#8369;<?php echo number_format($total, 2); ?></span></div>
-    <?php if (!empty($sale['ewallet_reference'])): ?>
-    <div class="jo-r-row"><span class="jo-r-key">E-Wallet Ref</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['ewallet_reference']); ?></span></div>
-    <?php endif; ?>
-    <?php if (!empty($sale['ewallet_provider'])): ?>
-    <div class="jo-r-row"><span class="jo-r-key">Provider</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['ewallet_provider']); ?></span></div>
-    <?php endif; ?>
-
-  <?php elseif ($pm_lc === 'e-fuel card'): ?>
-    <div class="jo-r-row"><span class="jo-r-key">Amount Deducted</span><span class="jo-r-val">&#8369;<?php echo number_format($total, 2); ?></span></div>
-    <?php if (!empty($sale['efuel_card_number'])): ?>
-    <div class="jo-r-row"><span class="jo-r-key">E-Fuel Card</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['efuel_card_number']); ?></span></div>
-    <?php endif; ?>
-
-  <?php elseif (in_array($pm_lc, ['credit', 'credit (utang)'])): ?>
-    <div class="jo-r-row"><span class="jo-r-key">Amount Tendered</span><span class="jo-r-val">&#8369;0.00</span></div>
+  <?php elseif ($pay_status_norm === 'credit'): ?>
+    <!-- ── CREDIT (UTANG) ── -->
+    <div class="jo-r-row"><span class="jo-r-key">Amount Paid</span><span class="jo-r-val">&#8369;0.00</span></div>
+    <div class="jo-r-row" style="color:#6b21a8;font-weight:700;"><span class="jo-r-key">Credit Amount</span><span class="jo-r-val">&#8369;<?php echo number_format($total, 2); ?></span></div>
     <div class="jo-r-row" style="font-size:9.5px;color:#856404"><span>Transaction forwarded to Receivables module.</span></div>
+
+  <?php else: ?>
+    <!-- ── PAID (full payment) ── -->
+    <?php if ($pm_lc === 'cash'): ?>
+      <div class="jo-r-row">
+        <span class="jo-r-key">Amount Tendered</span>
+        <span class="jo-r-val">&#8369;<?php echo number_format($tendered > 0 ? $tendered : $total, 2); ?></span>
+      </div>
+      <div class="jo-r-row">
+        <span class="jo-r-key">Change</span>
+        <span class="jo-r-val jo-r-bold">&#8369;<?php echo number_format($change, 2); ?></span>
+      </div>
+
+    <?php elseif ($pm_lc === 'card'): ?>
+      <div class="jo-r-row"><span class="jo-r-key">Amount Charged</span><span class="jo-r-val">&#8369;<?php echo number_format($total, 2); ?></span></div>
+      <?php if (!empty($sale['card_reference'])): ?>
+      <div class="jo-r-row"><span class="jo-r-key">Card Ref No.</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['card_reference']); ?></span></div>
+      <?php endif; ?>
+      <?php if (!empty($sale['card_type'])): ?>
+      <div class="jo-r-row"><span class="jo-r-key">Card Type</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['card_type']); ?></span></div>
+      <?php endif; ?>
+
+    <?php elseif ($pm_lc === 'e-wallet'): ?>
+      <div class="jo-r-row"><span class="jo-r-key">Amount Transferred</span><span class="jo-r-val">&#8369;<?php echo number_format($total, 2); ?></span></div>
+      <?php if (!empty($sale['ewallet_reference'])): ?>
+      <div class="jo-r-row"><span class="jo-r-key">E-Wallet Ref</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['ewallet_reference']); ?></span></div>
+      <?php endif; ?>
+      <?php if (!empty($sale['ewallet_provider'])): ?>
+      <div class="jo-r-row"><span class="jo-r-key">Provider</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['ewallet_provider']); ?></span></div>
+      <?php endif; ?>
+
+    <?php elseif ($pm_lc === 'e-fuel card'): ?>
+      <div class="jo-r-row"><span class="jo-r-key">Amount Deducted</span><span class="jo-r-val">&#8369;<?php echo number_format($total, 2); ?></span></div>
+      <?php if (!empty($sale['efuel_card_number'])): ?>
+      <div class="jo-r-row"><span class="jo-r-key">E-Fuel Card</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['efuel_card_number']); ?></span></div>
+      <?php endif; ?>
+    <?php endif; ?>
+
   <?php endif; ?>
 
+  <!-- Payment Status Badge removed for clean layout -->
   
   <?php if (!empty($sale['remarks'])): ?>
   <div class="jo-r-div"></div>
@@ -575,11 +680,17 @@ $qr_url  = 'https://api.qrserver.com/v1/create-qr-code/?size=88x88&data=' . urle
 
   <!-- ══ QR CODE ═══════════════════════════════════════════════════════════════ -->
   <div class="jo-r-qr">
-    <div class="jo-r-qr-lbl">Scan to verify this document</div>
+    <div class="jo-r-qr-lbl">Scan QR to verify this transaction</div>
     <img src="<?php echo htmlspecialchars($qr_url); ?>"
-         alt="QR"
-         onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
-    <div class="jo-r-qr-txt" style="display:none"><?php echo htmlspecialchars($qr_data); ?></div>
+         alt="QR Code"
+         width="120" height="120"
+         onerror="this.style.display='none';document.getElementById('qr_fallback').style.display='block'">
+    <div id="qr_fallback" style="display:none;font-size:7.5px;color:#555;word-break:break-all;
+         background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:6px;
+         text-align:left;margin-top:4px;white-space:pre-wrap;font-family:monospace;"><?php echo htmlspecialchars($qr_data); ?></div>
+    <div class="jo-r-qr-lbl" style="margin-top:4px;font-size:8px;color:#94a3b8;">
+      <?php echo htmlspecialchars($txn_id); ?> &nbsp;·&nbsp; <?php echo strtoupper($pay_status_norm ?? 'paid'); ?>
+    </div>
   </div>
 
   <div class="jo-r-div"></div>
@@ -587,7 +698,22 @@ $qr_url  = 'https://api.qrserver.com/v1/create-qr-code/?size=88x88&data=' . urle
   <!-- ══ FOOTER ════════════════════════════════════════════════════════════════ -->
   <div class="jo-r-foot">
     <div class="jo-r-foot-title">Official Merchandise/Service Transaction Receipt</div>
+    <?php if ($pay_status_norm === 'partial'): ?>
+    <div class="jo-r-foot-line" style="color:#92400e;font-weight:700;border:1px solid #fde68a;background:#fef9c3;padding:4px 6px;border-radius:4px;margin:4px 0;">
+      &#9888; This receipt reflects a partial payment.<br>
+      Balance due of &#8369;<?php echo number_format($balance_due_db, 2); ?> must be settled upon completion of service.
+    </div>
+    <?php elseif ($pay_status_norm === 'pending'): ?>
+    <div class="jo-r-foot-line" style="color:#9a3412;font-weight:700;border:1px solid #fed7aa;background:#ffedd5;padding:4px 6px;border-radius:4px;margin:4px 0;">
+      &#9888; No payment collected yet. Full balance of &#8369;<?php echo number_format($total, 2); ?> remains outstanding.
+    </div>
+    <?php elseif ($pay_status_norm === 'credit'): ?>
+    <div class="jo-r-foot-line" style="color:#6b21a8;font-weight:700;border:1px solid #d8b4fe;background:#f3e8ff;padding:4px 6px;border-radius:4px;margin:4px 0;">
+      &#9888; Credit transaction (Utang). Amount forwarded to the Receivables module.
+    </div>
+    <?php else: ?>
     <div class="jo-r-foot-line">This document is valid as an official service record.</div>
+    <?php endif; ?>
     <div class="jo-r-foot-line">VAT-Registered &nbsp;|&nbsp; TIN: <?php echo $vat_tin; ?></div>
     <div class="jo-r-foot-line">Thank you for choosing Petron!</div>
     <div class="jo-r-foot-meta">

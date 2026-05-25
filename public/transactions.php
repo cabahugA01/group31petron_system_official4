@@ -763,6 +763,7 @@ try {
                 <tr>
                     <th class="col-txnid">Transaction / JO ID</th>
                     <th class="col-type">Type</th>
+                    <th class="col-customer">Customer</th>
                     <th class="col-product">Service / Merchandise</th>
                     <th class="col-vehicle">Vehicle</th>
                     <th class="col-staff">Mechanic / Staff</th>
@@ -771,7 +772,8 @@ try {
                     <th class="col-total">Total</th>
                     <th class="col-pay">Payment</th>
                     <th class="col-date">Date/Time</th>
-                    <th class="col-status">Status</th>
+                    <th class="col-status">Validation</th>
+                    <th class="col-txnstatus">Txn Status</th>
                     <th class="col-actions sticky-col">Actions</th>
                 </tr>
             </thead>
@@ -843,11 +845,11 @@ try {
                         <span style="background:#0d6efd;color:#fff;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700;">Merch</span>
                         <?php endif; ?>
                     </td>
+                    <td class="col-customer">
+                        <span style="font-size:12px;font-weight:600;color:#1e293b;"><?php echo htmlspecialchars($t['customer'] ?? 'Walk-in'); ?></span>
+                    </td>
                     <td class="col-product" title="<?php echo htmlspecialchars($t['product_name']); ?>">
                         <?php echo htmlspecialchars($t['product_name']); ?>
-                        <?php if ($t['customer'] !== 'Walk-in'): ?>
-                        <div style="font-size:10px;color:#888;"><?php echo htmlspecialchars($t['customer']); ?></div>
-                        <?php endif; ?>
                     </td>
                     <td class="col-vehicle" style="font-size:11px;color:#555;">
                         <?php echo $vehicle ? htmlspecialchars($vehicle) : '<span style="color:#ccc;">—</span>'; ?>
@@ -872,17 +874,42 @@ try {
                         <?php echo htmlspecialchars($t['payment_method'] ?? ''); ?>
                         <?php
                             $ps_raw = $t['payment_status'] ?? 'Unpaid';
-                            $ps = strtolower(trim($ps_raw));
-                            $psc = $ps === 'paid' ? '#28a745' : ($ps === 'partial' ? '#e6a817' : ($ps === 'credit' ? '#6f42c1' : ($ps === 'pending payment' ? '#17a2b8' : '#dc3545')));
-                            $pst = ($ps === 'partial' || $ps === 'pending payment') ? '#212529' : '#fff';
+                            $ps     = strtolower(trim($ps_raw));
+                            if ($ps === 'paid') {
+                                $psc = '#166534'; $pst = '#fff';
+                            } elseif (in_array($ps, ['partial payment','partial'])) {
+                                $psc = '#92400e'; $pst = '#fef9c3';
+                            } elseif (in_array($ps, ['pending payment','pending'])) {
+                                $psc = '#9a3412'; $pst = '#ffedd5';
+                            } elseif (in_array($ps, ['credit transaction','credit'])) {
+                                $psc = '#6b21a8'; $pst = '#f3e8ff';
+                            } else {
+                                $psc = '#dc3545'; $pst = '#fff'; // Unpaid
+                            }
                         ?>
                         <div><span style="background:<?php echo $psc; ?>;color:<?php echo $pst; ?>;padding:1px 6px;border-radius:6px;font-size:9px;font-weight:700;white-space:nowrap;"><?php echo htmlspecialchars($ps_raw); ?></span></div>
                     </td>
                     <td class="col-date"><?php echo date('M d, H:i', strtotime($t['created_at'])); ?></td>
+                    <!-- Validation Status -->
                     <td class="col-status">
                         <span style="background:<?php echo $statusColor; ?>;color:<?php echo $statusColor==='#e6a817'?'#212529':'#fff'; ?>;font-weight:700;padding:2px 8px;border-radius:10px;font-size:10px;white-space:nowrap;">
                             <?php echo $statusLabel; ?>
                         </span>
+                    </td>
+                    <!-- Transaction Status (workflow: In Progress / Completed) -->
+                    <td class="col-txnstatus">
+                    <?php
+                        $wf = strtolower(trim($t['jo_status'] ?? 'pending'));
+                        if (in_array($wf, ['in progress','inprogress'])) {
+                            echo '<span style="background:#0e7490;color:#fff;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700;">&#9654; In Progress</span>';
+                        } elseif (in_array($wf, ['completed','complete'])) {
+                            echo '<span style="background:#166534;color:#fff;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700;">&#10003; Completed</span>';
+                        } elseif (in_array($wf, ['approved','verified','validated'])) {
+                            echo '<span style="background:#1d4ed8;color:#fff;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700;">&#10003; Approved</span>';
+                        } else {
+                            echo '<span style="color:#94a3b8;font-size:11px;">—</span>';
+                        }
+                    ?>
                     </td>
                     <td class="col-actions sticky-col">
                         <div class="action-btns">
@@ -1009,7 +1036,7 @@ try {
                 <?php endforeach; ?>
                 <?php if(empty($all_transactions)): ?>
                 <tr>
-                    <td colspan="10" style="text-align:center;padding:48px;color:#888;">
+                    <td colspan="14" style="text-align:center;padding:48px;color:#888;">
                         <i class="fas fa-inbox" style="font-size:36px;display:block;margin-bottom:12px;opacity:0.3;"></i>
                         No transactions found for the selected filters.
                     </td>
@@ -1740,7 +1767,8 @@ function validatePaymentModal() {
 /* ── Column widths (fixed layout) ── */
 .col-txnid    { width: 110px; }
 .col-type     { width: 52px;  text-align: center; }
-.col-product  { width: 130px; }
+.col-customer { width: 100px; }
+.col-product  { width: 120px; }
 .col-vehicle  { width: 72px;  }
 .col-staff    { width: 80px;  }
 .col-subtotal { width: 72px;  text-align: right; }
@@ -1748,7 +1776,8 @@ function validatePaymentModal() {
 .col-total    { width: 76px;  text-align: right; color: #002F6C; }
 .col-pay      { width: 72px;  }
 .col-date     { width: 76px;  white-space: nowrap; }
-.col-status   { width: 76px;  text-align: center; }
+.col-status   { width: 72px;  text-align: center; }
+.col-txnstatus{ width: 90px;  text-align: center; }
 .col-actions  { width: 120px; text-align: center; }
 
 /* ── Sticky Actions column ── */

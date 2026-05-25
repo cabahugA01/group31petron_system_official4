@@ -117,19 +117,27 @@ foreach ($sessions as &$s) {
     $s['fuel'] = ['cnt'=>0,'total'=>0,'liters'=>0,'cash'=>0,'card'=>0,'credit'=>0];
     $s['fuel_detail'] = [];
 
-    // Job Orders per shift — match by date
+    // Job Orders per shift — match by shift_id or staff date fallback
     try {
         $jo = $pdo->prepare("
             SELECT COUNT(*) AS cnt,
                    COALESCE(SUM(total_cost),0) AS total,
-                   SUM(CASE WHEN LOWER(COALESCE(payment_status,'unpaid'))='paid'    THEN 1 ELSE 0 END) AS paid_cnt,
-                   SUM(CASE WHEN LOWER(COALESCE(payment_status,'unpaid'))='partial' THEN 1 ELSE 0 END) AS partial_cnt,
-                   SUM(CASE WHEN LOWER(COALESCE(payment_status,'unpaid'))='unpaid'  THEN 1 ELSE 0 END) AS unpaid_cnt
+                   SUM(CASE WHEN LOWER(COALESCE(payment_status,'')) IN ('paid','verified','approved','completed') THEN 1 ELSE 0 END) AS paid_cnt,
+                   SUM(CASE WHEN LOWER(COALESCE(payment_status,'')) IN ('partial payment','partial') THEN 1 ELSE 0 END) AS partial_cnt,
+                   SUM(CASE WHEN LOWER(COALESCE(payment_status,'')) IN ('pending payment','unpaid','')  THEN 1 ELSE 0 END) AS unpaid_cnt,
+                   SUM(CASE WHEN LOWER(COALESCE(payment_status,'')) = 'credit transaction' THEN 1 ELSE 0 END) AS credit_cnt
             FROM job_orders
             WHERE station_id=?
-              AND DATE(created_at) = ?
+              AND (
+                  shift_id = ?
+                  OR (
+                      COALESCE(created_by, user_id) = ?
+                      AND (shift_id IS NULL OR shift_id = 0 OR shift_id != ?)
+                      AND DATE(created_at) = ?
+                  )
+              )
         ");
-        $jo->execute([$station_id, $shift_date]);
+        $jo->execute([$station_id, $sid, $uid, $sid, $shift_date]);
         $s['jo'] = $jo->fetch(PDO::FETCH_ASSOC) ?: ['cnt'=>0,'total'=>0,'paid_cnt'=>0,'partial_cnt'=>0,'unpaid_cnt'=>0];
     } catch (Exception $e) { $s['jo'] = ['cnt'=>0,'total'=>0,'paid_cnt'=>0,'partial_cnt'=>0,'unpaid_cnt'=>0]; }
     try {
@@ -190,6 +198,33 @@ foreach ($sessions as &$s) {
         $md->execute([$station_id, $sid, $uid, $sid, $shift_date]);
         $s['merch_detail'] = $md->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) { $s['merch_detail'] = []; }
+
+    // Job Order detail rows for modal
+    try {
+        $jd = $pdo->prepare("
+            SELECT id,
+                   COALESCE(order_number, CONCAT('JO-', id)) AS order_number,
+                   COALESCE(customer_name,'Walk-in') AS customer_name,
+                   COALESCE(vehicle_plate,'—') AS vehicle_plate,
+                   COALESCE(total_cost,0) AS total_cost,
+                   COALESCE(payment_status,'unpaid') AS payment_status,
+                   COALESCE(status,'pending') AS status,
+                   created_at
+            FROM job_orders
+            WHERE station_id=?
+              AND (
+                  shift_id = ?
+                  OR (
+                      COALESCE(created_by, user_id) = ?
+                      AND (shift_id IS NULL OR shift_id = 0 OR shift_id != ?)
+                      AND DATE(created_at) = ?
+                  )
+              )
+            ORDER BY created_at DESC
+        ");
+        $jd->execute([$station_id, $sid, $uid, $sid, $shift_date]);
+        $s['jo_detail'] = $jd->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) { $s['jo_detail'] = []; }
 
     // Totals — merchandise + job orders
     $s['combined_total'] = (float)$s['merch']['total'] + (float)($s['jo']['total'] ?? 0);
@@ -307,7 +342,7 @@ include __DIR__ . '/../partials/header.php';
                     <th>Total Sales</th>
                     <th>Txns</th>
                     <th>Variances</th>
-                    <th class="stv-sticky">Actions</th>
+
                 </tr>
             </thead>
             <tbody>
@@ -364,17 +399,7 @@ include __DIR__ . '/../partials/header.php';
                         <span style="color:#aaa;font-size:11px;">—</span>
                         <?php endif; ?>
                     </td>
-                    <td class="stv-sticky">
-                        <div class="stv-action-btns">
-                            <button type="button" class="jo-act-btn" style="background:#002F6C;" onclick="openShiftModal(<?php echo $idx; ?>)">
-                                <i class="fas fa-eye"></i> View
-                            </button>
-                            <button type="button" class="jo-act-btn" style="background:#6c757d;" onclick="openNoteModal(<?php echo $s['id']; ?>)">
-                                <i class="fas fa-edit"></i> Note
-                            </button>
 
-                        </div>
-                    </td>
                 </tr>
                 <?php endforeach; ?>
             <?php endif; ?>
@@ -383,15 +408,16 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
-<!-- ── Shift Detail Modal ────────────────────────────────────────────────── -->
-<div id="shiftModal" class="stv-modal" onclick="if(event.target===this)closeShiftModal()">
+<!-- ── Shift Detail Modal ──────────────────────────────────────────────────── -->
+<div id="shiftModal" class="stv-modal">
     <div class="stv-modal-content">
         <div class="stv-modal-header">
             <h3><i class="fas fa-clock"></i> Shift Details</h3>
             <button class="stv-close" onclick="closeShiftModal()">&times;</button>
         </div>
-        <div class="stv-modal-body" id="shiftModalBody">Loading…</div>
+        <div class="stv-modal-body" id="shiftModalBody">Loading&hellip;</div>
         <div class="stv-modal-footer">
+            <button type="button" class="jo-act-btn" style="background:#28a745;padding:9px 18px;width:auto;" onclick="printShiftModal()"><i class="fas fa-print"></i> Print / Export</button>
             <button type="button" class="jo-act-btn" style="background:#6c757d;padding:9px 18px;width:auto;" onclick="closeShiftModal()"><i class="fas fa-times"></i> Close</button>
         </div>
     </div>
@@ -429,31 +455,70 @@ include __DIR__ . '/../partials/header.php';
 <!-- PLACEHOLDER: old modals removed -->
 
 <script>
-// Shift data passed from PHP for modal rendering
-var SHIFTS = <?php echo json_encode(array_map(function($s) {
+// Shift data — array_values() ensures sequential 0-based JS array
+var SHIFTS = <?php echo json_encode(array_values(array_map(function($s) {
     return [
-        'id'           => $s['id'],
-        'staff_name'   => $s['staff_name'],
-        'shift_name'   => $s['shift_name'] ?? ucfirst($s['shift_period'] ?? ''),
-        'start_time'   => $s['start_time'],
-        'end_time'     => $s['end_time'],
-        'duration'     => strip_tags($s['duration_display']),
-        'shift_status' => $s['shift_status'],
-        'fuel'         => $s['fuel'],
-        'merch'        => $s['merch'],
-        'combined'     => $s['combined_total'],
-        'variance'     => $s['variance'],
-        'merch_detail' => $s['merch_detail'],
-        'audit'        => $s['audit'],
+        'id'           => (int)$s['id'],
+        'staff_name'   => (string)($s['staff_name'] ?? ''),
+        'shift_name'   => (string)($s['shift_name'] ?? ucfirst($s['shift_period'] ?? '')),
+        'start_time'   => (string)($s['start_time'] ?? ''),
+        'end_time'     => $s['end_time'] ? (string)$s['end_time'] : null,
+        'duration'     => (string)strip_tags($s['duration_display'] ?? ''),
+        'shift_status' => (string)($s['shift_status'] ?? 'Completed'),
+        'merch'        => [
+            'total'  => (float)($s['merch']['total']  ?? 0),
+            'cnt'    => (int)($s['merch']['cnt']    ?? 0),
+            'cash'   => (float)($s['merch']['cash']   ?? 0),
+            'card'   => (float)($s['merch']['card']   ?? 0),
+            'credit' => (float)($s['merch']['credit'] ?? 0),
+        ],
+        'combined'     => (float)($s['combined_total'] ?? 0),
+        'variance'     => [
+            'cnt'       => (int)($s['variance']['cnt']       ?? 0),
+            'open_cnt'  => (int)($s['variance']['open_cnt']  ?? 0),
+            'esc_cnt'   => (int)($s['variance']['esc_cnt']   ?? 0),
+        ],
+        'merch_detail' => array_values(array_map(function($md) {
+            return [
+                'id'               => $md['id'],
+                'transaction_id'   => $md['transaction_id'] ?? $md['id'],
+                'customer_name'    => $md['customer_name']    ?? '',
+                'payment_method'   => $md['payment_method']   ?? '',
+                'total_amount'     => (float)($md['total_amount'] ?? 0),
+                'validation_status'=> $md['validation_status'] ?? '',
+                'txn_date'         => $md['txn_date'] ?? '',
+                'items'            => $md['items'] ?? '',
+            ];
+        }, $s['merch_detail'] ?? [])),
+        'jo'           => [
+            'total'       => (float)($s['jo']['total']       ?? 0),
+            'cnt'         => (int)($s['jo']['cnt']         ?? 0),
+            'paid_cnt'    => (int)($s['jo']['paid_cnt']    ?? 0),
+            'partial_cnt' => (int)($s['jo']['partial_cnt'] ?? 0),
+            'unpaid_cnt'  => (int)($s['jo']['unpaid_cnt']  ?? 0),
+        ],
+        'jo_detail'    => array_values(array_map(function($jd) {
+            return [
+                'order_number'   => $jd['order_number']  ?? '',
+                'customer_name'  => $jd['customer_name'] ?? 'Walk-in',
+                'vehicle_plate'  => $jd['vehicle_plate'] ?? '',
+                'total_cost'     => (float)($jd['total_cost'] ?? 0),
+                'payment_status' => $jd['payment_status'] ?? 'unpaid',
+                'status'         => $jd['status']         ?? 'pending',
+                'created_at'     => $jd['created_at']     ?? '',
+            ];
+        }, $s['jo_detail'] ?? [])),
+        'audit'        => array_values($s['audit'] ?? []),
     ];
-}, $sessions)); ?>;
+}, $sessions)), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS); ?>;
 
 function openShiftModal(idx) {
     var s = SHIFTS[idx];
-    if (!s) return;
+    if (!s) { alert('Shift data not found.'); return; }
     var statusBg = s.shift_status === 'Active' ? '#28a745' : '#002F70';
     var html = '';
 
+    // 1. Shift info grid
     html += '<div class="sm-info-grid">';
     html += '<div class="sm-info-item"><span class="sm-lbl">Shift ID</span><span class="sm-val">#' + s.id + '</span></div>';
     html += '<div class="sm-info-item"><span class="sm-lbl">Staff</span><span class="sm-val">' + esc(s.staff_name) + '</span></div>';
@@ -461,64 +526,79 @@ function openShiftModal(idx) {
     html += '<div class="sm-info-item"><span class="sm-lbl">Start Time</span><span class="sm-val">' + fmtDt(s.start_time) + '</span></div>';
     html += '<div class="sm-info-item"><span class="sm-lbl">End Time</span><span class="sm-val">' + (s.end_time ? fmtDt(s.end_time) : '<span style="color:#28a745;font-weight:700;">Active</span>') + '</span></div>';
     html += '<div class="sm-info-item"><span class="sm-lbl">Duration</span><span class="sm-val">' + esc(s.duration) + '</span></div>';
-    html += '<div class="sm-info-item"><span class="sm-lbl">Status</span><span class="sm-val"><span style="background:' + statusBg + ';color:#fff;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;">' + esc(s.shift_status) + '</span></span></div>';
+    html += '<div class="sm-info-item"><span class="sm-lbl">Status</span><span class="sm-val"><span style="background:' + statusBg + ';color:#fff;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;">' + esc(s.shift_status) + '</span></span></div>';
     html += '</div>';
 
-    html += '<div class="sm-totals" style="grid-template-columns:1fr 1fr;">';
+    // 2. Sales summary — 3 columns
+    html += '<div class="sm-totals" style="grid-template-columns:repeat(3,1fr);">';
     html += '<div class="sm-tot-box sm-tot-merch"><div class="sm-tot-num">&#8369;' + fmt(s.merch.total) + '</div><div class="sm-tot-lbl">Merch Sales</div><div class="sm-tot-sub">' + s.merch.cnt + ' txn</div></div>';
+    html += '<div class="sm-tot-box" style="background:#fff5f0;border-color:#fcd9c0;"><div class="sm-tot-num" style="color:#c2410c;">&#8369;' + fmt(s.jo.total) + '</div><div class="sm-tot-lbl">Job Order Sales</div><div class="sm-tot-sub">' + s.jo.cnt + ' JO</div></div>';
     html += '<div class="sm-tot-box sm-tot-combined"><div class="sm-tot-num">&#8369;' + fmt(s.combined) + '</div><div class="sm-tot-lbl">Total Sales</div></div>';
     html += '</div>';
 
-    var cashTotal   = parseFloat(s.merch.cash||0).toFixed(2);
-    var cardTotal   = parseFloat(s.merch.card||0).toFixed(2);
-    var creditTotal = parseFloat(s.merch.credit||0).toFixed(2);
+    // 3. Payment breakdown
     html += '<div class="sm-section-title"><i class="fas fa-credit-card"></i> Payment Breakdown</div>';
     html += '<div class="sm-pay-row">';
-    html += '<div class="sm-pay-box"><i class="fas fa-money-bill-wave" style="color:#28a745;"></i><div>&#8369;' + cashTotal + '</div><div class="sm-pay-lbl">Cash</div></div>';
-    html += '<div class="sm-pay-box"><i class="fas fa-credit-card" style="color:#007bff;"></i><div>&#8369;' + cardTotal + '</div><div class="sm-pay-lbl">Card</div></div>';
-    html += '<div class="sm-pay-box"><i class="fas fa-handshake" style="color:#e6a817;"></i><div>&#8369;' + creditTotal + '</div><div class="sm-pay-lbl">Credit</div></div>';
+    html += '<div class="sm-pay-box"><i class="fas fa-money-bill-wave" style="color:#28a745;"></i><div>&#8369;' + fmt(s.merch.cash) + '</div><div class="sm-pay-lbl">Cash</div></div>';
+    html += '<div class="sm-pay-box"><i class="fas fa-credit-card" style="color:#007bff;"></i><div>&#8369;' + fmt(s.merch.card) + '</div><div class="sm-pay-lbl">Card</div></div>';
+    html += '<div class="sm-pay-box"><i class="fas fa-handshake" style="color:#e6a817;"></i><div>&#8369;' + fmt(s.merch.credit) + '</div><div class="sm-pay-lbl">Credit</div></div>';
     html += '</div>';
 
-    html += '<div class="sm-section-title"><i class="fas fa-shopping-cart"></i> Merchandise Transactions (' + (s.merch_detail ? s.merch_detail.length : 0) + ')</div>';
-    html += '<div style="overflow-x:auto;margin-bottom:16px;"><table class="sm-table"><thead><tr><th>Txn ID</th><th>Customer</th><th>Items</th><th>Total</th><th>Payment</th><th>Status</th><th>Date/Time</th></tr></thead><tbody>';
-    if (s.merch_detail && s.merch_detail.length > 0) {
-        s.merch_detail.forEach(function(mt) {
-            var sc = statusColor(mt.validation_status);
-            html += '<tr><td>#' + esc(mt.transaction_id||mt.id) + '</td><td>' + esc(mt.customer_name||'Walk-in') + '</td>';
-            html += '<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + esc(mt.items) + '">' + esc(mt.items||'—') + '</td>';
-            html += '<td style="text-align:right;font-weight:700;color:#002F70;">&#8369;' + parseFloat(mt.total_amount||0).toFixed(2) + '</td>';
-            html += '<td>' + esc(mt.payment_method||'—') + '</td>';
-            html += '<td><span style="background:' + sc.bg + ';color:' + sc.fg + ';padding:1px 7px;border-radius:8px;font-size:10px;font-weight:700;">' + esc(sc.label) + '</span></td>';
-            html += '<td style="white-space:nowrap;">' + fmtDt(mt.txn_date) + '</td></tr>';
+    // 4. Combined Transaction List
+    var allTxns = [];
+    (s.merch_detail || []).forEach(function(m) {
+        allTxns.push({ type:'Merch', ref: m.transaction_id || m.id, customer: m.customer_name || 'Walk-in',
+            desc: m.items || '—', total: m.total_amount, payment: m.payment_method || '—',
+            status: m.validation_status, date: m.txn_date });
+    });
+    (s.jo_detail || []).forEach(function(j) {
+        allTxns.push({ type:'Job Order', ref: j.order_number, customer: j.customer_name + (j.vehicle_plate ? ' (' + j.vehicle_plate + ')' : ''),
+            desc: 'Job Order', total: j.total_cost, payment: j.payment_status,
+            status: j.payment_status, date: j.created_at });
+    });
+
+    html += '<div class="sm-section-title"><i class="fas fa-list"></i> Transaction List (' + allTxns.length + ')</div>';
+    html += '<div style="overflow-x:auto;margin-bottom:12px;"><table class="sm-table"><thead><tr>';
+    html += '<th>Type</th><th>TXN / Ref</th><th>Customer</th><th>Items / Service</th><th>Total</th><th>Payment</th><th>Status</th><th>Date/Time</th>';
+    html += '</tr></thead><tbody>';
+    if (allTxns.length > 0) {
+        allTxns.forEach(function(t) {
+            var sc = txnStatusColor(t.status, t.type);
+            var typeBg = t.type === 'Merch' ? '#e0f0ff' : '#fff0e8';
+            var typeFg = t.type === 'Merch' ? '#0056b3' : '#c2410c';
+            html += '<tr>';
+            html += '<td><span style="background:' + typeBg + ';color:' + typeFg + ';padding:1px 6px;border-radius:6px;font-size:9px;font-weight:700;">' + esc(t.type) + '</span></td>';
+            html += '<td style="font-weight:700;">#' + esc(String(t.ref)) + '</td>';
+            html += '<td>' + esc(t.customer) + '</td>';
+            html += '<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + esc(t.desc) + '">' + esc(t.desc) + '</td>';
+            html += '<td style="text-align:right;font-weight:700;color:#002F70;">&#8369;' + fmt(t.total) + '</td>';
+            html += '<td>' + esc(t.payment) + '</td>';
+            html += '<td><span style="background:' + sc.bg + ';color:' + sc.fg + ';padding:1px 7px;border-radius:8px;font-size:10px;font-weight:700;">' + sc.label + '</span></td>';
+            html += '<td style="white-space:nowrap;">' + fmtDt(t.date) + '</td>';
+            html += '</tr>';
         });
-    } else { html += '<tr><td colspan="7" style="text-align:center;color:#aaa;padding:12px;">No merchandise transactions for this shift.</td></tr>'; }
+    } else {
+        html += '<tr><td colspan="8" style="text-align:center;color:#aaa;padding:14px;">No transactions for this shift.</td></tr>';
+    }
     html += '</tbody></table></div>';
 
-    var varCnt = parseInt(s.variance.cnt||0);
-    html += '<div class="sm-section-title">Variance Alerts (' + varCnt + ')</div>';
+    // 5. Variance Alerts (read-only)
+    var varCnt = parseInt(s.variance.cnt || 0);
+    html += '<div class="sm-section-title"><i class="fas fa-exclamation-triangle"></i> Variance Alerts (' + varCnt + ')</div>';
     if (varCnt > 0) {
-        html += '<div style="background:#fff8f0;border:1px solid #fde8c8;border-radius:8px;padding:12px;margin-bottom:16px;font-size:12px;">';
-        html += '<span style="color:#b45309;font-weight:600;">' + s.variance.open_cnt + ' open</span> &bull; ';
-        html += '<span style="color:#E3001F;font-weight:600;">' + s.variance.esc_cnt + ' escalated</span>';
-        html += ' — <a href="transactions_variance.php" style="color:#002F70;font-weight:600;">View in Variance Alerts &rarr;</a></div>';
-    } else { html += '<div style="color:#aaa;font-size:12px;margin-bottom:16px;padding:8px;">No variance alerts for this shift.</div>'; }
-
-    html += '<div class="sm-section-title"><i class="fas fa-history"></i> Audit Trail</div>';
-    html += '<div style="overflow-x:auto;"><table class="sm-table"><thead><tr><th>Action</th><th>Manager</th><th>Remarks</th><th>Timestamp</th></tr></thead><tbody>';
-    if (s.audit && s.audit.length > 0) {
-        s.audit.forEach(function(a) {
-            var ac = a.action_type === 'Approve' ? '#28a745' : (a.action_type === 'Return' ? '#E3001F' : '#6c757d');
-            html += '<tr><td><span style="background:' + ac + ';color:#fff;padding:1px 8px;border-radius:8px;font-size:10px;font-weight:700;">' + esc(a.action_type) + '</span></td>';
-            html += '<td>' + esc(a.manager_name||'—') + '</td><td>' + esc(a.remarks||'—') + '</td>';
-            html += '<td style="white-space:nowrap;">' + fmtDt(a.timestamp) + '</td></tr>';
-        });
-    } else { html += '<tr><td colspan="4" style="text-align:center;color:#aaa;padding:12px;">No audit actions recorded for this shift.</td></tr>'; }
-    html += '</tbody></table></div>';
+        html += '<div style="background:#fff8f0;border:1px solid #fde8c8;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;">';
+        html += '<span style="color:#b45309;font-weight:700;">' + s.variance.open_cnt + ' open</span> &bull; ';
+        html += '<span style="color:#E3001F;font-weight:700;">' + s.variance.esc_cnt + ' escalated</span>';
+        html += ' &nbsp;&mdash;&nbsp; <a href="transactions_variance.php" style="color:#002F70;font-weight:600;">View full details &rarr;</a></div>';
+    } else {
+        html += '<div style="color:#aaa;font-size:12px;padding:8px;margin-bottom:12px;">No variance alerts for this shift.</div>';
+    }
 
     document.getElementById('shiftModalBody').innerHTML = html;
     document.getElementById('shiftModal').style.display = 'flex';
 }
 function closeShiftModal() { document.getElementById('shiftModal').style.display = 'none'; }
+function printShiftModal() { var b = document.getElementById('shiftModalBody').innerHTML; var w = window.open('','_blank'); w.document.write('<html><head><title>Shift Report</title><style>body{font-family:sans-serif;font-size:12px;} table{width:100%;border-collapse:collapse;} th,td{border:1px solid #ddd;padding:5px;font-size:11px;} th{background:#002F70;color:#fff;}</style></head><body>' + b + '</body></html>'); w.document.close(); w.print(); }
 
 function openNoteModal(shiftId) {
     document.getElementById('note_shift_id').value = shiftId;
@@ -531,14 +611,23 @@ function closeNoteModal() { document.getElementById('noteModal').style.display =
 function esc(str) { if (!str && str !== 0) return ''; return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function fmt(n) { return parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,','); }
 function fmtDt(d) { if (!d) return '—'; var dt = new Date(d); if (isNaN(dt)) return d; return dt.toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
-function statusColor(s) {
+function txnStatusColor(s, type) {
     var sl = (s||'').toLowerCase().trim();
-    if (['verified','approved','complete','completed'].includes(sl)) return {bg:'#d1fae5',fg:'#065f46',label:'Verified'};
-    if (['pending','pending validation','pendingvalidation',''].includes(sl)) return {bg:'#fef3c7',fg:'#92400e',label:'Pending'};
-    if (['rejected','returned'].includes(sl)) return {bg:'#fee2e2',fg:'#991b1b',label:'Returned'};
-    if (sl === 'active') return {bg:'#d1fae5',fg:'#065f46',label:'Active'};
+    if (['verified','approved','complete','completed','paid'].includes(sl))
+        return {bg:'#d1fae5',fg:'#065f46',label:'Paid'};
+    if (['partial payment','partial'].includes(sl))
+        return {bg:'#fef9c3',fg:'#92400e',label:'Partial Payment'};
+    if (['pending payment','unpaid'].includes(sl))
+        return {bg:'#ffedd5',fg:'#9a3412',label:'Pending Payment'};
+    if (['credit transaction','credit'].includes(sl))
+        return {bg:'#f3e8ff',fg:'#6b21a8',label:'Credit Transaction'};
+    if (['pending','pending validation','pendingvalidation',''].includes(sl))
+        return {bg:'#fef3c7',fg:'#92400e',label:'Pending'};
+    if (['rejected','returned'].includes(sl))
+        return {bg:'#fee2e2',fg:'#991b1b',label:'Returned'};
     return {bg:'#f3f4f6',fg:'#6b7280',label:s||'—'};
 }
+
 </script>
 
 <style>
@@ -565,32 +654,36 @@ function statusColor(s) {
 .jo-act-btn { padding:5px 10px; border-radius:4px; font-size:12px; font-weight:600; border:none; cursor:pointer; display:inline-flex; align-items:center; gap:4px; color:#fff; width:100%; justify-content:center; margin-bottom: 4px; transition:filter .15s; }
 .jo-act-btn:hover { filter:brightness(0.88); }
 /* Modal */
-.stv-modal { display:none; position:fixed; z-index:1050; inset:0; background:rgba(0,0,0,.55); align-items:center; justify-content:center; }
-.stv-modal-content { background:#fff; border-radius:12px; width:96%; max-width:1100px; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 8px 32px rgba(0,0,0,.22); overflow:hidden; }
-.stv-modal-header { display:flex; justify-content:space-between; align-items:center; padding:16px 22px; background:#fff; color:#212529; border-bottom:2px solid #e9ecef; flex-shrink:0; }
-.stv-modal-header h3 { margin:0; font-size:16px; color:#002F6C; }
-.stv-close { background:none; border:none; color:#6c757d; font-size:26px; cursor:pointer; line-height:1; padding:0; }
-.stv-close:hover { color:#212529; }
-.stv-modal-body { padding:22px; overflow-y:auto; flex:1; }
-.stv-modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:14px 22px; background:#f8f9fa; border-top:1px solid #dee2e6; flex-shrink:0; }
+.stv-modal { display:none; position:fixed; z-index:1050; inset:0; background:rgba(0,0,0,.55); align-items:center; justify-content:center; padding:8px 8px 8px 205px; }
+.stv-modal-content { background:#fff; border-radius:12px; width:100%; max-width:860px; max-height:82vh; display:flex; flex-direction:column; box-shadow:0 8px 32px rgba(0,0,0,.25); overflow:hidden; }
+.stv-modal-header { display:flex; justify-content:space-between; align-items:center; padding:12px 18px; background:linear-gradient(135deg,#002F6C 0%,#004aad 100%); color:#fff; flex-shrink:0; }
+.stv-modal-header h3 { margin:0; font-size:15px; font-weight:700; color:#fff; display:flex; align-items:center; gap:8px; }
+.stv-close { background:rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.3); color:#fff; font-size:18px; cursor:pointer; line-height:1; padding:3px 9px; border-radius:6px; transition:background .15s; }
+.stv-close:hover { background:rgba(255,255,255,.3); }
+.stv-modal-body { padding:16px 20px; overflow-y:auto; flex:1; }
+.stv-modal-footer { display:flex; justify-content:flex-end; gap:8px; padding:10px 18px; background:#f8f9fa; border-top:1px solid #dee2e6; flex-shrink:0; }
 /* Modal internals */
-.sm-info-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; background:#f8f9fa; padding:14px; border-radius:8px; margin-bottom:16px; }
-.sm-lbl { font-size:10px; font-weight:700; color:#6c757d; text-transform:uppercase; letter-spacing:.5px; display:block; margin-bottom:2px; }
-.sm-val { font-size:13px; color:#212529; font-weight:600; }
-.sm-totals { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:16px; }
-.sm-tot-box { border-radius:8px; padding:12px; text-align:center; border:1px solid #e2e8f0; }
-.sm-tot-num { font-size:18px; font-weight:800; } .sm-tot-lbl { font-size:11px; color:#6c757d; font-weight:600; text-transform:uppercase; margin-top:2px; } .sm-tot-sub { font-size:10px; color:#aaa; margin-top:2px; }
-.sm-tot-fuel { background:#fff5f5; } .sm-tot-fuel .sm-tot-num { color:#dc3545; }
-.sm-tot-merch { background:#f0f8ff; } .sm-tot-merch .sm-tot-num { color:#007bff; }
-.sm-tot-combined { background:#f0f4ff; } .sm-tot-combined .sm-tot-num { color:#002F70; }
-.sm-pay-row { display:flex; gap:10px; margin-bottom:16px; }
-.sm-pay-box { flex:1; text-align:center; background:#f8f9fa; border:1px solid #e2e8f0; border-radius:8px; padding:10px; font-size:13px; font-weight:700; color:#333; }
-.sm-pay-lbl { font-size:10px; color:#6c757d; font-weight:600; text-transform:uppercase; margin-top:3px; }
-.sm-section-title { font-size:12px; font-weight:700; color:#002F6C; text-transform:uppercase; letter-spacing:.5px; border-bottom:2px solid #e9ecef; padding-bottom:6px; margin:16px 0 10px; display:flex; align-items:center; gap:7px; }
-.sm-table { width:100%; border-collapse:collapse; font-size:11.5px; }
+.sm-info-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:8px; background:#f4f7ff; padding:12px; border-radius:8px; margin-bottom:12px; border:1px solid #dde4f5; }
+.sm-info-item { background:#fff; border-radius:6px; padding:8px 10px; border:1px solid #e8ecf5; }
+.sm-lbl { font-size:9px; font-weight:700; color:#8898aa; text-transform:uppercase; letter-spacing:.6px; display:block; margin-bottom:3px; }
+.sm-val { font-size:12px; color:#1a2640; font-weight:700; }
+.sm-totals { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:12px; }
+.sm-tot-box { border-radius:8px; padding:12px 10px; text-align:center; border:1px solid #e2e8f0; }
+.sm-tot-num { font-size:17px; font-weight:800; }
+.sm-tot-lbl { font-size:10px; color:#6c757d; font-weight:600; text-transform:uppercase; letter-spacing:.4px; margin-top:3px; }
+.sm-tot-sub { font-size:10px; color:#aaa; margin-top:2px; }
+.sm-tot-fuel { background:#fff5f5; border-color:#fecaca; } .sm-tot-fuel .sm-tot-num { color:#dc3545; }
+.sm-tot-merch { background:#f0f8ff; border-color:#bfdbfe; } .sm-tot-merch .sm-tot-num { color:#007bff; }
+.sm-tot-combined { background:#f0f4ff; border-color:#c7d7ff; } .sm-tot-combined .sm-tot-num { color:#002F70; }
+.sm-pay-row { display:flex; gap:8px; margin-bottom:12px; }
+.sm-pay-box { flex:1; text-align:center; background:#f8f9fa; border:1px solid #e2e8f0; border-radius:8px; padding:10px 6px; font-size:13px; font-weight:700; color:#333; }
+.sm-pay-box i { font-size:15px; display:block; margin-bottom:4px; }
+.sm-pay-lbl { font-size:9px; color:#6c757d; font-weight:700; text-transform:uppercase; letter-spacing:.4px; margin-top:3px; }
+.sm-section-title { font-size:11px; font-weight:800; color:#002F6C; text-transform:uppercase; letter-spacing:.5px; border-bottom:1px solid #dee2e6; padding-bottom:5px; margin:12px 0 8px; display:flex; align-items:center; gap:6px; }
+.sm-table { width:100%; border-collapse:collapse; font-size:11px; }
 .sm-table thead th { background:#002F6C; color:#fff; padding:6px 8px; text-align:left; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; }
 .sm-table tbody td { padding:6px 8px; border-bottom:1px solid #f0f0f0; vertical-align:middle; }
-.sm-table tbody tr:hover td { background:#f8fbff; }
+.sm-table tbody tr:hover td { background:#f0f7ff; }
 
 
 </style>

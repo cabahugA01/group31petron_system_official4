@@ -447,8 +447,10 @@ let merchandiseProducts = <?php
 </div>
 
 <?php if($msg): ?>
-<div class="alert <?php echo strpos($msg, 'Error') !== false ? 'alert-error' : 'alert-success'; ?>">
-    <?php echo $msg; ?>
+<div class="petron-flash <?php echo (stripos($msg, 'error') !== false || stripos($msg, 'fail') !== false) ? 'flash-error' : 'flash-success'; ?>" role="alert">
+    <i class="fas <?php echo (stripos($msg, 'error') !== false || stripos($msg, 'fail') !== false) ? 'fa-exclamation-circle' : 'fa-check-circle'; ?>"></i>
+    <span><?php echo htmlspecialchars($msg); ?></span>
+    <button class="flash-close" onclick="this.parentElement.remove();" title="Dismiss">&times;</button>
 </div>
 <?php endif; ?>
 

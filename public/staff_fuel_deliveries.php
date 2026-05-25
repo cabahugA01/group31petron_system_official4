@@ -381,6 +381,14 @@ switch ($filter_period) {
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $resolved_from)) $resolved_from = date('Y-m-01');
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $resolved_to))   $resolved_to   = $today;
 
+// Ensure fuel_deliveries has verified_by + verified_at columns (added by manager verification flow)
+try {
+    $pdo->exec("ALTER TABLE fuel_deliveries ADD COLUMN verified_by INT DEFAULT NULL");
+} catch (Exception $e) {}
+try {
+    $pdo->exec("ALTER TABLE fuel_deliveries ADD COLUMN verified_at DATETIME DEFAULT NULL");
+} catch (Exception $e) {}
+
 // ── Distinct suppliers for filter dropdown ────────────────────
 $supplier_list = [];
 try {
@@ -400,12 +408,23 @@ $recent_deliveries = [];
 try {
     $sql = "
         SELECT
-            fd.*,
-            u.name AS recorded_by_name,
-            v.name AS verified_by_name
+            fd.id,
+            fd.delivery_date,
+            fd.fuel_type,
+            fd.supplier,
+            fd.invoice_no,
+            fd.delivery_liters,
+            fd.tanker_number,
+            fd.notes,
+            fd.status,
+            fd.created_at,
+            fd.verified_by,
+            fd.verified_at,
+            u_rec.name  AS recorded_by_name,
+            u_ver.name  AS verified_by_name
         FROM fuel_deliveries fd
-        LEFT JOIN users u ON fd.received_by = u.id
-        LEFT JOIN users v ON fd.verified_by = v.id
+        LEFT JOIN users u_rec ON fd.received_by  = u_rec.id
+        LEFT JOIN users u_ver ON fd.verified_by  = u_ver.id
         WHERE fd.station_id = ?
           AND DATE(fd.delivery_date) BETWEEN ? AND ?
     ";
@@ -437,20 +456,70 @@ try {
 // ── Summary totals for the active filter period ───────────────
 $summary_liters  = array_sum(array_column($recent_deliveries, 'delivery_liters'));
 $summary_count   = count($recent_deliveries);
-$pending_count   = count(array_filter($recent_deliveries, fn($d) => in_array(strtolower($d['status'] ?? ''), ['pending','pending review'])));
-$verified_count  = count(array_filter($recent_deliveries, fn($d) => strtolower($d['status'] ?? '') === 'verified'));
+$pending_count   = count(array_filter($recent_deliveries, fn($d) => in_array(strtolower($d['status'] ?? ''), ['pending', 'pending review', 'encoded'])));
+$verified_count  = count(array_filter($recent_deliveries, fn($d) => in_array(strtolower($d['status'] ?? ''), ['verified', 'confirmed', 'approved'])));
 
 // Fetch expected fuel deliveries from Admin-finalized POs
 $expected_fuel_deliveries = [];
+$expected_fuel_fetch_error = '';
 try {
+    // Ensure deliveries_oversight table exists with required columns
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS deliveries_oversight (
+            id              INT AUTO_INCREMENT PRIMARY KEY,
+            delivery_type   VARCHAR(20) NOT NULL DEFAULT 'merchandise',
+            delivery_ref    VARCHAR(100) NOT NULL DEFAULT '',
+            batch_id        VARCHAR(100) DEFAULT NULL,
+            supplier        VARCHAR(200) NOT NULL DEFAULT '',
+            product         VARCHAR(200) NOT NULL DEFAULT '',
+            quantity        DECIMAL(12,3) NOT NULL DEFAULT 0,
+            unit            VARCHAR(30) NOT NULL DEFAULT 'pcs',
+            delivery_date   DATE NOT NULL,
+            dr_number       VARCHAR(100) DEFAULT NULL,
+            encoded_by      INT DEFAULT NULL,
+            station_id      INT NOT NULL,
+            status          VARCHAR(60) NOT NULL DEFAULT 'Pending Manager Approval',
+            source_ref      VARCHAR(100) DEFAULT NULL,
+            admin_id        INT DEFAULT NULL,
+            admin_action_at DATETIME DEFAULT NULL,
+            admin_notes     TEXT DEFAULT NULL,
+            remarks         TEXT DEFAULT NULL,
+            created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_station (station_id),
+            INDEX idx_status  (status),
+            INDEX idx_date    (delivery_date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ");
+
     $stmt = $pdo->prepare("
         SELECT * FROM deliveries_oversight
-        WHERE station_id = ? AND delivery_type = 'fuel' AND status = 'Expected Delivery'
+        WHERE station_id = ?
+          AND delivery_type = 'fuel'
+          AND status = 'Expected Delivery'
         ORDER BY created_at ASC
     ");
     $stmt->execute([$station_id]);
     $expected_fuel_deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}
+} catch (Exception $e) {
+    $expected_fuel_fetch_error = $e->getMessage();
+    error_log("Expected fuel deliveries fetch error: " . $e->getMessage());
+}
+
+// Fetch fuel suppliers for datalist (always includes Petron Corporation)
+$fuel_supplier_list = ['Petron Corporation'];
+try {
+    $sp = $pdo->prepare("
+        SELECT DISTINCT supplier_name FROM fuel_suppliers
+        WHERE (station_id = ? OR station_id IS NULL) AND is_active = 1
+        ORDER BY supplier_name
+    ");
+    $sp->execute([$station_id]);
+    $db_suppliers = $sp->fetchAll(PDO::FETCH_COLUMN);
+    $fuel_supplier_list = array_values(array_unique(array_merge($fuel_supplier_list, $db_suppliers)));
+} catch (Exception $e) {
+    // table may not exist yet — default list is fine
+}
 
 require_once __DIR__ . '/../partials/header.php';
 ?>
@@ -481,7 +550,7 @@ require_once __DIR__ . '/../partials/header.php';
 }
 .back-link:hover { background: #001f4d; color: #fff; text-decoration: none; }
 
-/* ── Delivery encoding table (matches fuel transaction table style) ── */
+/* ── Record New Delivery card ── */
 .del-card {
     background: #fff;
     border-radius: 12px;
@@ -507,19 +576,20 @@ require_once __DIR__ . '/../partials/header.php';
     letter-spacing: .5px !important;
 }
 
-/* ── Shared fields row (date, supplier, invoice, tanker) ── */
+/* ── Shared fields row (date + supplier) ── */
 .del-shared-row {
     display: flex;
     gap: 14px;
     flex-wrap: wrap;
-    padding: 16px 20px 0;
+    padding: 16px 16px 12px;
     align-items: flex-end;
+    border-bottom: 1px solid #f1f5f9;
 }
 .del-shared-field {
     display: flex;
     flex-direction: column;
     gap: 5px;
-    min-width: 160px;
+    min-width: 140px;
     flex: 1;
 }
 .del-shared-field label {
@@ -537,6 +607,8 @@ require_once __DIR__ . '/../partials/header.php';
     color: #1e293b;
     background: #fff;
     transition: border-color .15s, box-shadow .15s;
+    width: 100%;
+    box-sizing: border-box;
 }
 .del-shared-field input:focus {
     outline: none;
@@ -544,66 +616,102 @@ require_once __DIR__ . '/../partials/header.php';
     box-shadow: 0 0 0 3px rgba(0,61,130,.1);
 }
 
-/* ── Delivery encoding table ─────────────────────────────────── */
-.det-wrap { overflow-x: auto; padding: 14px 0 0; }
-.det {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-    min-width: 820px;
-}
-.det thead tr { background: #f1f5f9; }
-.det th {
-    padding: 10px 14px;
-    text-align: left;
-    font-size: 11px;
-    font-weight: 700;
-    color: #475569;
-    text-transform: uppercase;
-    letter-spacing: .45px;
-    border-bottom: 2px solid #e2e8f0;
-    white-space: nowrap;
-}
-.det th.num { text-align: right; }
-.det tbody tr { border-bottom: 1px solid #f1f5f9; transition: background .12s; }
-.det tbody tr:last-child { border-bottom: none; }
-.det tbody tr:hover { background: #f8fafc; }
-.det td { padding: 10px 14px; vertical-align: middle; }
-.det td.num { text-align: right; font-variant-numeric: tabular-nums; }
+/* ── Per-fuel-type row cards ── */
+.det-rows { padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
 
-/* Fuel type identity cell */
+.det-row-card {
+    border: 1.5px solid #e2e8f0;
+    border-radius: 10px;
+    overflow: hidden;
+    transition: box-shadow .15s;
+}
+.det-row-card:hover { box-shadow: 0 2px 10px rgba(0,0,0,.07); }
+
+/* Top strip: fuel identity + tank stats */
+.det-row-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    flex-wrap: wrap;
+}
 .det-fuel-cell {
     display: flex;
     align-items: center;
-    gap: 10px;
-    white-space: nowrap;
+    gap: 8px;
+    flex-shrink: 0;
 }
 .det-fuel-name { font-weight: 700; font-size: 13px; }
-.det-auto { color: #334155; font-weight: 600; font-variant-numeric: tabular-nums; }
-.det-auto.dim { color: #94a3b8; font-weight: 400; font-style: italic; }
+.det-tank-stat {
+    font-size: 11px;
+    color: #64748b;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.det-tank-bar {
+    display: inline-block;
+    width: 48px;
+    height: 5px;
+    background: #e2e8f0;
+    border-radius: 4px;
+    vertical-align: middle;
+    overflow: hidden;
+}
+.det-tank-bar-fill { height: 100%; border-radius: 4px; }
 
-/* Input cells */
+/* Input grid inside each row card */
+.det-row-body {
+    padding: 12px 14px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 14px;
+    align-items: end;
+}
+@media (max-width: 600px) {
+    .det-row-body { grid-template-columns: 1fr; }
+}
+
+.det-field { display: flex; flex-direction: column; gap: 4px; }
+.det-field label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+}
 .det-input {
     padding: 8px 10px;
     border: 1.5px solid #e2e8f0;
     border-radius: 7px;
-    font-size: 14px;
-    font-weight: 700;
+    font-size: 13px;
+    font-weight: 600;
     color: #1e293b;
     background: #fff;
     width: 100%;
-    min-width: 120px;
+    box-sizing: border-box;
     transition: border-color .15s, box-shadow .15s;
 }
 .det-input:focus {
     outline: none;
     box-shadow: 0 0 0 3px rgba(0,61,130,.1);
 }
-.det-input.notes-input { min-width: 140px; font-weight: 400; font-size: 12px; }
+.det-input.notes-input { font-weight: 400; font-size: 12px; }
 
-/* Submit button per row */
+/* Actions row at bottom of each card */
+.det-row-actions {
+    padding: 10px 14px;
+    background: #f8fafc;
+    border-top: 1px solid #f1f5f9;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: flex-end;
+}
 .det-submit-btn {
-    padding: 8px 16px;
+    padding: 8px 18px;
     background: #002f6c;
     color: #fff;
     border: none;
@@ -617,7 +725,7 @@ require_once __DIR__ . '/../partials/header.php';
     gap: 6px;
     transition: background .15s;
 }
-.det-submit-btn:hover   { background: #001f4d; }
+.det-submit-btn:hover    { background: #001f4d; }
 .det-submit-btn:disabled { opacity: .5; cursor: not-allowed; }
 .det-reset-btn {
     padding: 8px 12px;
@@ -631,7 +739,7 @@ require_once __DIR__ . '/../partials/header.php';
     transition: background .15s;
 }
 .det-reset-btn:hover { background: #e2e8f0; }
-.det-row-msg { font-size: 11px; display: none; white-space: nowrap; }
+.det-row-msg { font-size: 11px; display: none; }
 
 /* ── Delivery records table ──────────────────────────────────── */
 .deliveries-table {
@@ -664,6 +772,13 @@ require_once __DIR__ . '/../partials/header.php';
 .status-badge.rejected        { background: #fee2e2; color: #991b1b; }
 .status-badge.pending_review  { background: #fef9c3; color: #854d0e; }
 
+/* ── Tabs Styling ────────────────────────────────────────────── */
+.tabs-container { display: flex; gap: 4px; border-bottom: 2px solid #e2e8f0; margin-bottom: 20px; padding-bottom: 1px; }
+.tab-btn { padding: 10px 20px; border: none; background: none; font-size: 14px; font-weight: 600; color: #64748b; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.15s; position: relative; }
+.tab-btn::after { content: ''; position: absolute; bottom: -2px; left: 0; right: 0; height: 3px; background: transparent; transition: all 0.15s; }
+.tab-btn.active { color: #002F6C; font-weight: 700; }
+.tab-btn.active::after { background: #002F6C; }
+
 .empty-state { text-align: center; padding: 36px; color: #6c757d; }
 .empty-state i { font-size: 2.5rem; margin-bottom: 12px; opacity: .45; display: block; }
 
@@ -681,6 +796,12 @@ require_once __DIR__ . '/../partials/header.php';
 .po-badge { background: #e8f4fd; color: #002F6C; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 11px; font-weight: bold; border: 1px solid #b8d4f0; }
 .btn-receive-fuel { background: #28a745; color: #fff; border: none; padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .btn-receive-fuel:hover { background: #218838; }
+
+/* ── Side-by-side layout (mirrors merchandise deliveries) ── */
+.layout-grid { display: grid; grid-template-columns: 1fr; gap: 24px; margin-bottom: 24px; }
+@media (min-width: 1100px) { .layout-grid { grid-template-columns: 1fr 1fr; } }
+.layout-grid .exp-card,
+.layout-grid .del-card { height: 100%; margin-bottom: 0; }
 </style>
 
 <div class="page-head" data-rendering="php">
@@ -701,46 +822,80 @@ require_once __DIR__ . '/../partials/header.php';
 </div>
 <?php endif; ?>
 
+<?php
+$active_tab = 'record-tab';
+if (isset($_GET['period']) || isset($_GET['fuel_type_filter']) || isset($_GET['supplier_filter']) || isset($_GET['keyword'])) {
+    $active_tab = 'history-tab';
+}
+?>
 
+<!-- Tab Navigation -->
+<div class="tabs-container">
+    <button class="tab-btn <?= $active_tab === 'record-tab' ? 'active' : '' ?>" onclick="switchTab('record-tab')" id="tab_record-tab">
+        <i class="fas fa-edit"></i> Record Deliveries
+    </button>
+    <button class="tab-btn <?= $active_tab === 'history-tab' ? 'active' : '' ?>" onclick="switchTab('history-tab')" id="tab_history-tab">
+        <i class="fas fa-history"></i> My Delivery Records
+        <?php if ($pending_count > 0): ?>
+            <span style="background:#b45309;color:#fff;border-radius:10px;padding:2px 8px;font-size:10px;font-weight:700;margin-left:4px;"><?= $pending_count ?></span>
+        <?php endif; ?>
+    </button>
+</div>
 
-<!-- ═══════════════════════════════════════════════════════════
-     EXPECTED FUEL DELIVERIES (from Admin-finalized POs)
-═══════════════════════════════════════════════════════════ -->
-<?php if (!empty($expected_fuel_deliveries)): ?>
-<div class="exp-card">
+<div id="record-tab" class="tab-content" style="display: <?= $active_tab === 'record-tab' ? 'block' : 'none' ?>;">
+    <!-- ═══════════════════════════════════════════════════════════
+         SIDE-BY-SIDE: Expected Deliveries  |  Record New Delivery
+    ═══════════════════════════════════════════════════════════ -->
+    <div class="layout-grid">
+
+    <!-- LEFT: Expected Fuel Deliveries (from Admin-finalized POs) -->
+    <div class="exp-card">
     <div class="exp-card-head">
         <div class="exp-card-title">
-            <i class="fas fa-clipboard-list"></i> Expected Fuel Deliveries
-            <span style="background:#dc3545;color:#fff;border-radius:10px;padding:2px 8px;font-size:11px;"><?php echo count($expected_fuel_deliveries); ?></span>
+            <i class="fas fa-clipboard-list" style="color: #002F6C;"></i> Expected Fuel Deliveries
+            <?php if (count($expected_fuel_deliveries) > 0): ?>
+                <span style="background:#dc3545;color:#fff;border-radius:10px;padding:2px 8px;font-size:11px;"><?php echo count($expected_fuel_deliveries); ?></span>
+            <?php endif; ?>
         </div>
         <span style="font-size:12px;color:#6c757d;">Based on Admin-Finalized POs</span>
     </div>
     <div class="exp-card-body">
-        <?php foreach ($expected_fuel_deliveries as $efd): ?>
-        <div class="expected-item">
-            <div class="expected-info">
-                <h4><i class="fas fa-gas-pump" style="margin-right:6px;opacity:.7;"></i><?php echo htmlspecialchars($efd['product']); ?></h4>
-                <div class="expected-meta">
-                    <span><i class="fas fa-hashtag"></i> PO: <span class="po-badge"><?php echo htmlspecialchars($efd['source_ref'] ?? 'N/A'); ?></span></span>
-                    <span><i class="fas fa-tint"></i> Exp: <strong><?php echo number_format((float)$efd['quantity'], 2); ?> L</strong></span>
-                    <span><i class="fas fa-building"></i> <?php echo htmlspecialchars($efd['supplier']); ?></span>
-                </div>
+        <?php if (!empty($expected_fuel_fetch_error)): ?>
+            <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:14px 16px;color:#991b1b;font-size:13px;">
+                <i class="fas fa-exclamation-circle"></i> <strong>Fetch Error:</strong> <?php echo htmlspecialchars($expected_fuel_fetch_error); ?>
             </div>
-            <button class="btn-receive-fuel" onclick="openFuelReceiveModal(
-                <?php echo (int)$efd['id']; ?>,
-                '<?php echo addslashes($efd['source_ref'] ?? ''); ?>',
-                '<?php echo addslashes($efd['product']); ?>',
-                '<?php echo addslashes($efd['supplier']); ?>',
-                <?php echo (float)$efd['quantity']; ?>
-            )">
-                <i class="fas fa-hand-holding-box"></i> Receive
-            </button>
-        </div>
-        <?php endforeach; ?>
+        <?php elseif (empty($expected_fuel_deliveries)): ?>
+            <div style="text-align:center;padding:40px;color:#adb5bd;">
+                <i class="fas fa-box-open" style="font-size:3em;margin-bottom:15px;display:block;opacity:.65;"></i>
+                No expected fuel deliveries at the moment.
+            </div>
+        <?php else: ?>
+            <?php foreach ($expected_fuel_deliveries as $efd): ?>
+            <div class="expected-item">
+                <div class="expected-info">
+                    <h4><i class="fas fa-gas-pump" style="margin-right:6px;opacity:.7;"></i><?php echo htmlspecialchars($efd['product']); ?></h4>
+                    <div class="expected-meta">
+                        <span><i class="fas fa-hashtag"></i> PO: <span class="po-badge"><?php echo htmlspecialchars($efd['source_ref'] ?? 'N/A'); ?></span></span>
+                        <span><i class="fas fa-tint"></i> Exp: <strong><?php echo number_format((float)$efd['quantity'], 2); ?> L</strong></span>
+                        <span><i class="fas fa-building"></i> <?php echo htmlspecialchars($efd['supplier']); ?></span>
+                    </div>
+                </div>
+                <button class="btn-receive-fuel" onclick="openFuelReceiveModal(
+                    <?php echo (int)$efd['id']; ?>,
+                    '<?php echo addslashes($efd['source_ref'] ?? ''); ?>',
+                    '<?php echo addslashes($efd['product']); ?>',
+                    '<?php echo addslashes($efd['supplier']); ?>',
+                    <?php echo (float)$efd['quantity']; ?>
+                )">
+                    <i class="fas fa-hand-holding-box"></i> Receive
+                </button>
+            </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
     </div>
 </div>
-<?php endif; ?>
 
+<!-- RIGHT: Record New Delivery — Table format (matches fuel transaction style) -->
 <!-- ═══════════════════════════════════════════════════════════
      RECORD NEW DELIVERY — Table format (matches fuel transaction style)
 ═══════════════════════════════════════════════════════════ -->
@@ -793,7 +948,15 @@ require_once __DIR__ . '/../partials/header.php';
         </div>
         <div class="del-shared-field" style="max-width:280px;flex:0 1 280px;">
             <label><i class="fas fa-building" style="margin-right:4px;"></i>Supplier <span style="color:#dc2626;">*</span></label>
-            <input type="text" id="sharedSupplier" value="Petron Corporation" placeholder="e.g., Petron Corporation">
+            <input type="text" id="sharedSupplier" value="Petron Corporation"
+                   placeholder="e.g., Petron Corporation"
+                   list="fuelSupplierList"
+                   autocomplete="off">
+            <datalist id="fuelSupplierList">
+                <?php foreach ($fuel_supplier_list as $s): ?>
+                <option value="<?= htmlspecialchars($s) ?>">
+                <?php endforeach; ?>
+            </datalist>
         </div>
         <div style="display:flex;align-items:flex-end;padding-bottom:1px;">
             <div style="font-size:11px;color:#64748b;background:#f1f5f9;border-radius:7px;padding:8px 12px;line-height:1.5;">
@@ -803,154 +966,125 @@ require_once __DIR__ . '/../partials/header.php';
         </div>
     </div>
 
-    <!-- Per-fuel-type table -->
-    <div class="det-wrap">
-        <table class="det">
-            <thead>
-                <tr>
-                    <th>Fuel Type</th>
-                    <th class="num">Current Level</th>
-                    <th class="num">Tank Capacity</th>
-                    <th style="min-width:150px;">Invoice No. <span style="color:#dc2626;font-weight:800;">*</span></th>
-                    <th style="min-width:140px;">Liters Delivered <span style="color:#dc2626;font-weight:800;">*</span></th>
-                    <th style="min-width:120px;">Tanker No.</th>
-                    <th style="min-width:160px;">Notes</th>
-                    <th style="min-width:160px;">Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-            <?php foreach ($fuel_types as $idx => $fuel):
-                $ft_key  = 'del_' . preg_replace('/[^a-z0-9]/', '_', strtolower($fuel['name'])) . '_' . $idx;
-                $ft_name = htmlspecialchars($fuel['name']);
-                $ft_lower = strtolower($fuel['name']);
-                $tl_key  = strtolower(trim($fuel['name']));
-                $tl      = $tank_levels[$tl_key] ?? null;
-                $cur     = $tl ? (float)$tl['current_stock'] : 0;
-                $cap     = $tl ? (float)$tl['capacity']      : 0;
-                $avail   = ($cap > 0) ? max(0, $cap - $cur) : null;
+    <!-- Per-fuel-type row cards -->
+    <div class="det-rows">
+    <?php foreach ($fuel_types as $idx => $fuel):
+        $ft_key   = 'del_' . preg_replace('/[^a-z0-9]/', '_', strtolower($fuel['name'])) . '_' . $idx;
+        $ft_name  = htmlspecialchars($fuel['name']);
+        $ft_lower = strtolower($fuel['name']);
+        $tl_key   = strtolower(trim($fuel['name']));
+        $tl       = $tank_levels[$tl_key] ?? null;
+        $cur      = $tl ? (float)$tl['current_stock'] : 0;
+        $cap      = $tl ? (float)$tl['capacity']      : 0;
+        $avail    = ($cap > 0) ? max(0, $cap - $cur) : null;
 
-                // Brand-accurate colors (same as fuel transaction table)
-                if      (str_contains($ft_lower, 'diesel'))   { $ft_color = '#003d7a'; $ft_icon = 'fa-gas-pump';  }
-                elseif  (str_contains($ft_lower, 'kerosene')) { $ft_color = '#b45309'; $ft_icon = 'fa-fire';      }
-                elseif  (str_contains($ft_lower, 'xcs'))      { $ft_color = '#0369a1'; $ft_icon = 'fa-gas-pump';  }
-                elseif  (str_contains($ft_lower, 'xtra'))     { $ft_color = '#15803d'; $ft_icon = 'fa-gas-pump';  }
-                elseif  (str_contains($ft_lower, 'blaze'))    { $ft_color = '#b91c1c'; $ft_icon = 'fa-fire-alt';  }
-                elseif  (str_contains($ft_lower, 'e10'))      { $ft_color = '#065f46'; $ft_icon = 'fa-leaf';      }
-                else                                           { $ft_color = '#334155'; $ft_icon = 'fa-gas-pump';  }
+        if      (str_contains($ft_lower, 'diesel'))   { $ft_color = '#003d7a'; $ft_icon = 'fa-gas-pump';  }
+        elseif  (str_contains($ft_lower, 'kerosene')) { $ft_color = '#b45309'; $ft_icon = 'fa-fire';      }
+        elseif  (str_contains($ft_lower, 'xcs'))      { $ft_color = '#0369a1'; $ft_icon = 'fa-gas-pump';  }
+        elseif  (str_contains($ft_lower, 'xtra'))     { $ft_color = '#15803d'; $ft_icon = 'fa-gas-pump';  }
+        elseif  (str_contains($ft_lower, 'blaze'))    { $ft_color = '#b91c1c'; $ft_icon = 'fa-fire-alt';  }
+        elseif  (str_contains($ft_lower, 'e10'))      { $ft_color = '#065f46'; $ft_icon = 'fa-leaf';      }
+        else                                           { $ft_color = '#334155'; $ft_icon = 'fa-gas-pump';  }
 
-                // Capacity fill percentage
-                $fill_pct = ($cap > 0) ? min(100, round(($cur / $cap) * 100)) : 0;
-                $fill_color = $fill_pct >= 80 ? '#15803d' : ($fill_pct >= 40 ? '#b45309' : '#dc2626');
-            ?>
-            <tr id="delRow_<?= $ft_key ?>">
-                <!-- Fuel type identity -->
-                <td>
-                    <div class="det-fuel-cell">
-                        <div style="width:32px;height:32px;border-radius:50%;background:<?= $ft_color ?>;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                            <i class="fas <?= $ft_icon ?>" style="color:#fff;font-size:13px;"></i>
-                        </div>
-                        <div class="det-fuel-name" style="color:<?= $ft_color ?>;"><?= $ft_name ?></div>
-                    </div>
-                </td>
+        $fill_pct   = ($cap > 0) ? min(100, round(($cur / $cap) * 100)) : 0;
+        $fill_color = $fill_pct >= 80 ? '#15803d' : ($fill_pct >= 40 ? '#b45309' : '#dc2626');
+    ?>
+    <div class="det-row-card" id="delRow_<?= $ft_key ?>" style="border-left: 4px solid <?= $ft_color ?>;">
 
-                <!-- Current level -->
-                <td class="num">
-                    <span class="det-auto <?= $cur > 0 ? '' : 'dim' ?>">
-                        <?= $cur > 0 ? number_format($cur, 0) . ' L' : '—' ?>
-                    </span>
-                    <?php if ($cap > 0): ?>
-                    <div style="margin-top:4px;height:4px;background:#e2e8f0;border-radius:4px;min-width:60px;">
-                        <div style="height:4px;background:<?= $fill_color ?>;border-radius:4px;width:<?= $fill_pct ?>%;"></div>
-                    </div>
-                    <div style="font-size:10px;color:<?= $fill_color ?>;margin-top:2px;font-weight:600;"><?= $fill_pct ?>%</div>
-                    <?php endif; ?>
-                </td>
+        <!-- Head: fuel identity + tank stats -->
+        <div class="det-row-head">
+            <div class="det-fuel-cell">
+                <div style="width:30px;height:30px;border-radius:50%;background:<?= $ft_color ?>;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas <?= $ft_icon ?>" style="color:#fff;font-size:12px;"></i>
+                </div>
+                <div class="det-fuel-name" style="color:<?= $ft_color ?>;"><?= $ft_name ?></div>
+            </div>
+            <?php if ($cap > 0): ?>
+            <div class="det-tank-stat">
+                <span><?= number_format($cur, 0) ?> / <?= number_format($cap, 0) ?> L</span>
+                <span class="det-tank-bar"><span class="det-tank-bar-fill" style="width:<?= $fill_pct ?>%;background:<?= $fill_color ?>;"></span></span>
+                <span style="color:<?= $fill_color ?>;font-weight:700;"><?= $fill_pct ?>%</span>
+                <?php if ($avail !== null): ?>
+                <span style="color:#94a3b8;">— <?= number_format($avail, 0) ?> L avail.</span>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
+        </div>
 
-                <!-- Tank capacity -->
-                <td class="num">
-                    <span class="det-auto <?= $cap > 0 ? '' : 'dim' ?>">
-                        <?= $cap > 0 ? number_format($cap, 0) . ' L' : '—' ?>
-                    </span>
-                    <?php if ($avail !== null): ?>
-                    <div style="font-size:10px;color:#64748b;margin-top:2px;">
-                        <?= number_format($avail, 0) ?> L avail.
-                    </div>
-                    <?php endif; ?>
-                </td>
+        <!-- Body: input fields in 2-column grid -->
+        <div class="det-row-body">
+            <div class="det-field">
+                <label>Invoice No. <span style="color:#dc2626;">*</span></label>
+                <input type="text"
+                       id="invoice_<?= $ft_key ?>"
+                       class="det-input"
+                       placeholder="INV-2024-001"
+                       maxlength="100"
+                       autocomplete="off"
+                       style="border-color:<?= $ft_color ?>;"
+                       oninput="this.value=this.value.toUpperCase()">
+            </div>
+            <div class="det-field">
+                <label>Liters Delivered <span style="color:#dc2626;">*</span></label>
+                <input type="number"
+                       id="liters_<?= $ft_key ?>"
+                       class="det-input"
+                       step="0.01" min="0.01"
+                       placeholder="e.g. 10000"
+                       autocomplete="off"
+                       style="border-color:<?= $ft_color ?>;"
+                       oninput="checkDelCapacity('<?= $ft_key ?>', <?= $cur ?>, <?= $cap ?>)">
+                <div id="capHint_<?= $ft_key ?>" style="font-size:10px;margin-top:2px;display:none;"></div>
+            </div>
+            <div class="det-field">
+                <label>Tanker No.</label>
+                <input type="text"
+                       id="tanker_<?= $ft_key ?>"
+                       class="det-input"
+                       placeholder="TK-001"
+                       maxlength="50"
+                       autocomplete="off"
+                       oninput="this.value=this.value.toUpperCase()">
+            </div>
+            <div class="det-field">
+                <label>Notes / Remarks</label>
+                <input type="text"
+                       id="notes_<?= $ft_key ?>"
+                       class="det-input notes-input"
+                       placeholder="Driver, seal no., remarks…"
+                       maxlength="255"
+                       autocomplete="off">
+            </div>
+        </div>
 
-                <!-- Invoice No. -->
-                <td>
-                    <input type="text"
-                           id="invoice_<?= $ft_key ?>"
-                           class="det-input"
-                           placeholder="INV-2024-001"
-                           maxlength="100"
-                           autocomplete="off"
-                           style="border-color:<?= $ft_color ?>;"
-                           oninput="this.value=this.value.toUpperCase()">
-                </td>
+        <!-- Actions -->
+        <div class="det-row-actions">
+            <button type="button"
+                    class="det-submit-btn"
+                    id="delSubmitBtn_<?= $ft_key ?>"
+                    onclick="triggerDelSubmit('<?= $ft_key ?>', <?= $cur ?>, <?= $cap ?>)">
+                <i class="fas fa-paper-plane"></i> Submit
+            </button>
+            <button type="button"
+                    class="det-reset-btn"
+                    onclick="resetDelRow('<?= $ft_key ?>')"
+                    title="Clear this row">
+                <i class="fas fa-undo"></i> Clear
+            </button>
+            <div id="delRowMsg_<?= $ft_key ?>" class="det-row-msg" style="margin-left:4px;"></div>
+        </div>
 
-                <!-- Liters Delivered -->
-                <td>
-                    <input type="number"
-                           id="liters_<?= $ft_key ?>"
-                           class="det-input"
-                           step="0.01" min="0.01"
-                           placeholder="e.g. 10000"
-                           autocomplete="off"
-                           style="border-color:<?= $ft_color ?>;"
-                           oninput="checkDelCapacity('<?= $ft_key ?>', <?= $cur ?>, <?= $cap ?>)">
-                    <div id="capHint_<?= $ft_key ?>" style="font-size:10px;margin-top:3px;display:none;"></div>
-                </td>
-
-                <!-- Tanker No. -->
-                <td>
-                    <input type="text"
-                           id="tanker_<?= $ft_key ?>"
-                           class="det-input"
-                           placeholder="TK-001"
-                           maxlength="50"
-                           autocomplete="off"
-                           oninput="this.value=this.value.toUpperCase()">
-                </td>
-
-                <!-- Notes -->
-                <td>
-                    <input type="text"
-                           id="notes_<?= $ft_key ?>"
-                           class="det-input notes-input"
-                           placeholder="Driver, seal no., remarks…"
-                           maxlength="255"
-                           autocomplete="off">
-                </td>
-
-                <!-- Actions -->
-                <td>
-                    <div style="display:flex;gap:6px;align-items:center;flex-wrap:nowrap;">
-                        <button type="button"
-                                class="det-submit-btn"
-                                id="delSubmitBtn_<?= $ft_key ?>"
-                                onclick="triggerDelSubmit('<?= $ft_key ?>', <?= $cur ?>, <?= $cap ?>)">
-                            <i class="fas fa-paper-plane"></i> Submit
-                        </button>
-                        <button type="button"
-                                class="det-reset-btn"
-                                onclick="resetDelRow('<?= $ft_key ?>')"
-                                title="Clear this row">
-                            <i class="fas fa-undo"></i>
-                        </button>
-                    </div>
-                    <div id="delRowMsg_<?= $ft_key ?>" class="det-row-msg" style="margin-top:5px;"></div>
-                </td>
-            </tr>
-            <?php endforeach; ?>
-            </tbody>
-        </table>
-    </div><!-- /det-wrap -->
+    </div>
+    <?php endforeach; ?>
+    </div><!-- /det-rows -->
 </div><!-- /del-card -->
 
-<?php endif; ?>
+</div><!-- /layout-grid -->
 
+<?php endif; ?>
+</div><!-- /record-tab -->
+
+<div id="history-tab" class="tab-content" style="display: <?= $active_tab === 'history-tab' ? 'block' : 'none' ?>;">
 <!-- ═══════════════════════════════════════════════════════════
      DELIVERY RECORDS — Filter Bar + Summary + Table
 ═══════════════════════════════════════════════════════════ -->
@@ -1105,35 +1239,47 @@ require_once __DIR__ . '/../partials/header.php';
             </thead>
             <tbody id="deliveriesTableBody">
                 <?php foreach ($recent_deliveries as $delivery):
-                    $st_raw    = $delivery['status'] ?? 'Pending';
-                    $st_key    = strtolower(str_replace(' ', '_', $st_raw));
-                    $is_pending = in_array(strtolower($st_raw), ['pending', 'pending review']);
+                    $st_raw     = $delivery['status'] ?? 'Pending';
+                    $st_lower   = strtolower($st_raw);
+                    $is_pending = in_array($st_lower, ['pending', 'pending review', 'encoded']);
+                    $is_verified = in_array($st_lower, ['verified', 'confirmed', 'approved']);
+                    $is_discrepancy = in_array($st_lower, ['discrepancy', 'flagged', 'rejected']);
+
+                    if ($is_verified)     $badge = 'verified';
+                    elseif ($is_pending)  $badge = 'pending';
+                    elseif ($is_discrepancy) $badge = 'rejected';
+                    else                  $badge = 'pending';
                 ?>
-                <tr style="<?= $is_pending ? 'background:#fffbea;' : '' ?>">
-                    <td><strong>#<?= $delivery['id'] ?></strong></td>
+                <tr style="<?= $is_pending ? 'background:#fffbea;' : ($is_discrepancy ? 'background:#fff5f5;' : '') ?>">
+                    <td><strong>#<?= (int)$delivery['id'] ?></strong></td>
                     <td><?= date('M d, Y', strtotime($delivery['delivery_date'])) ?></td>
                     <td><strong><?= htmlspecialchars($delivery['fuel_type']) ?></strong></td>
-                    <td><strong><?= number_format($delivery['delivery_liters'], 0) ?> L</strong></td>
-                    <td><?= htmlspecialchars($delivery['supplier']) ?></td>
-                    <td><?= htmlspecialchars($delivery['invoice_no']) ?></td>
+                    <td><strong><?= number_format((float)$delivery['delivery_liters'], 0) ?> L</strong></td>
+                    <td><?= htmlspecialchars($delivery['supplier'] ?? '—') ?></td>
+                    <td><?= htmlspecialchars($delivery['invoice_no'] ?? '—') ?></td>
                     <td><?= htmlspecialchars($delivery['tanker_number'] ?? '—') ?></td>
                     <td>
-                        <span class="status-badge <?= $st_key ?>">
-                            <?php if ($is_pending): ?>
-                                <i class="fas fa-clock"></i>
-                            <?php elseif (strtolower($st_raw) === 'verified'): ?>
-                                <i class="fas fa-check"></i>
+                        <span class="status-badge <?= $badge ?>">
+                            <?php if ($is_verified): ?>
+                                <i class="fas fa-check-circle"></i>
+                            <?php elseif ($is_discrepancy): ?>
+                                <i class="fas fa-exclamation-triangle"></i>
                             <?php else: ?>
-                                <i class="fas fa-undo"></i>
+                                <i class="fas fa-clock"></i>
                             <?php endif; ?>
                             <?= htmlspecialchars($st_raw) ?>
                         </span>
                     </td>
                     <td>
-                        <?php if ($delivery['verified_by_name']): ?>
+                        <?php if (!empty($delivery['verified_by_name'])): ?>
                             <span style="font-size:.82rem;color:#155724;font-weight:600;">
-                                <i class="fas fa-user-tie"></i> <?= htmlspecialchars($delivery['verified_by_name']) ?>
+                                <i class="fas fa-user-check"></i> <?= htmlspecialchars($delivery['verified_by_name']) ?>
                             </span>
+                            <?php if (!empty($delivery['verified_at'])): ?>
+                            <div style="font-size:10px;color:#6c757d;margin-top:2px;">
+                                <?= date('M j, g:i A', strtotime($delivery['verified_at'])) ?>
+                            </div>
+                            <?php endif; ?>
                         <?php else: ?>
                             <span style="color:#bbb;font-size:.8rem;">Awaiting manager</span>
                         <?php endif; ?>
@@ -1178,10 +1324,23 @@ require_once __DIR__ . '/../partials/header.php';
     <?php endif; ?>
 
 </div><!-- /deliveries-table -->
+</div><!-- /history-tab -->
 
 <div style="height: 80px;"></div> <!-- Spacer to prevent overlap with fixed footer -->
 
 <script>
+function switchTab(tabId) {
+    document.querySelectorAll('.tab-content').forEach(function(el) {
+        el.style.display = 'none';
+    });
+    document.querySelectorAll('.tab-btn').forEach(function(btn) {
+        btn.classList.remove('active');
+    });
+    
+    document.getElementById(tabId).style.display = 'block';
+    document.getElementById('tab_' + tabId).classList.add('active');
+}
+
 // ── Pagination Logic ─────────────────────────────────────────
 var currentDelPage = 1;
 var rowsPerDelPage = 10;
@@ -1488,6 +1647,7 @@ document.addEventListener('click', function(e) {
     var modal = document.getElementById('fuelReceiveModal');
     if (modal && e.target === modal) closeFuelReceiveModal();
 });
+
 </script>
 
 <!-- ═══════════════ FUEL RECEIVE MODAL ═══════════════ -->

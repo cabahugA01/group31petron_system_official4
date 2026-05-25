@@ -432,8 +432,10 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
         'adjustment_reason'     => 'TEXT NULL',
         'updated_at'            => 'DATETIME NULL',
         // ── Payment and workflow tracking ─────────────────────────────────────
-        'payment_status'        => "VARCHAR(20) NOT NULL DEFAULT 'Unpaid'",
+        'payment_status'        => "VARCHAR(30) NOT NULL DEFAULT 'Pending Payment'",
         'workflow_status'       => "VARCHAR(20) NOT NULL DEFAULT 'Pending'",
+        'amount_paid'           => 'DECIMAL(10,2) NULL',
+        'balance_due'           => 'DECIMAL(10,2) NULL',
         // ── Job Order integration ──────────────────────────────────────────
         'job_order_id'               => 'VARCHAR(50) NULL',
         'job_order_db_id'            => 'INT NULL',
@@ -548,27 +550,20 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
         $total_amount    = round($items_subtotal + $vat_amount, 2);
     }
 
-    // ── Payment sufficiency validation ────────────────────────────────────────
+    // ── Payment method + amount setup ─────────────────────────────────────────
     $payment_method  = $data['payment_method'];
-    $amount_tendered = floatval($data['amount_tendered'] ?? 0);
+    // amount_paid: the actual amount the customer paid/tendered right now
+    $amount_paid = floatval($data['amount_paid'] ?? $data['amount_tendered'] ?? 0);
 
-    if (in_array($payment_method, ['Cash', 'Card', 'Credit Card', 'E-Wallet', 'E-Fuel Card'])) {
-        if ($amount_tendered <= 0) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Amount paid is required for ' . $payment_method . ' transactions.']);
-            return;
-        }
-        if ($amount_tendered < $total_amount) {
-            http_response_code(400);
-            echo json_encode([
-                'error' => 'Insufficient payment. Grand total is ₱' . number_format($total_amount, 2)
-                         . ' but only ₱' . number_format($amount_tendered, 2) . ' was entered.'
-            ]);
-            return;
-        }
-    }
-
+    // ── Determine payment_status based on amount vs total ─────────────────────
+    // Credit (Utang) is a special case — always Credit Transaction
+    // For Cash/Card/E-Wallet/E-Fuel Card:
+    //   amount_paid = 0          → Pending Payment
+    //   0 < amount_paid < total  → Partial Payment
+    //   amount_paid >= total     → Paid
     if ($payment_method === 'Credit') {
+        $resolved_payment_status = 'Credit Transaction';
+        // Credit requires a customer account
         $credit_customer_id = intval($data['credit_customer_id'] ?? 0);
         if (!$credit_customer_id) {
             http_response_code(400);
@@ -593,7 +588,20 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             }
         } catch (Exception $e) {
             error_log("Credit limit check warning: " . $e->getMessage());
-            // Non-fatal — proceed if credit table check fails
+        }
+        $balance_due = $total_amount; // full amount is on credit
+    } else {
+        // Cash / Card / E-Wallet / E-Fuel Card
+        if ($amount_paid <= 0) {
+            $resolved_payment_status = 'Pending Payment';
+            $balance_due = $total_amount;
+        } elseif ($amount_paid < $total_amount - 0.009) {
+            // Partial — round tolerance of 1 cent
+            $resolved_payment_status = 'Partial Payment';
+            $balance_due = round($total_amount - $amount_paid, 2);
+        } else {
+            $resolved_payment_status = 'Paid';
+            $balance_due = 0;
         }
     }
 
@@ -699,13 +707,11 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             'ewallet_reference'     => $data['ewallet_reference'] ?? null,
             'ewallet_provider'      => $data['ewallet_provider'] ?? null,
             'efuel_card_number'          => $data['efuel_card_number'] ?? null,
-            // ── Payment status: Paid for cash/card/ewallet/efuel, Unpaid for credit ──
-            'payment_status'        => (function() use ($data) {
-                $method = strtolower($data['payment_method'] ?? '');
-                if ($method === 'credit') return 'Unpaid';
-                $tendered = (float)($data['amount_tendered'] ?? 0);
-                return $tendered > 0 ? 'Paid' : 'Unpaid';
-            })(),
+            // ── Payment tracking fields ──────────────────────────────────────────
+            'amount_paid'           => $amount_paid > 0 ? $amount_paid : null,
+            'balance_due'           => $balance_due > 0 ? $balance_due : null,
+            // payment_status: Paid / Partial Payment / Pending Payment / Credit Transaction
+            'payment_status'        => $resolved_payment_status,
             // ── Workflow status: tracks In Progress / Completed after manager approval ──
             'workflow_status'       => 'Pending',
             // ── Job Order integration ──────────────────────────────────────
