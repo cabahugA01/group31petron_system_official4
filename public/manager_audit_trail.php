@@ -210,10 +210,24 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 <!-- Tab Navigation -->
-<div style="display:flex;gap:0;border-bottom:2px solid #dee2e6;margin-bottom:20px;">
+<div style="display:flex;gap:0;border-bottom:2px solid #dee2e6;margin-bottom:20px;flex-wrap:wrap;">
     <button id="tab-general" onclick="switchAuditTab('general')"
             style="padding:10px 22px;border:none;background:none;font-size:13px;font-weight:700;color:#002F6C;border-bottom:3px solid #002F6C;cursor:pointer;margin-bottom:-2px;">
         <i class="fas fa-shield-halved"></i> General Audit Trail
+    </button>
+    <button id="tab-fuel-deliveries" onclick="switchAuditTab('fuel-deliveries')"
+            style="padding:10px 22px;border:none;background:none;font-size:13px;font-weight:600;color:#6c757d;border-bottom:3px solid transparent;cursor:pointer;margin-bottom:-2px;">
+        <i class="fas fa-truck" style="color:#c0392b;"></i> Fuel Deliveries
+        <?php
+        try {
+            $fd_pending_cnt = 0;
+            $fd_p = $pdo->prepare("SELECT COUNT(*) FROM fuel_deliveries WHERE station_id = ? AND status IN ('Pending','Pending Review')");
+            $fd_p->execute([$station_id]);
+            $fd_pending_cnt = (int)$fd_p->fetchColumn();
+        } catch (Exception $e) { $fd_pending_cnt = 0; }
+        if ($fd_pending_cnt > 0): ?>
+            <span style="background:#dc3545;color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;margin-left:4px;"><?php echo $fd_pending_cnt; ?></span>
+        <?php endif; ?>
     </button>
     <button id="tab-fuel-requests" onclick="switchAuditTab('fuel-requests')"
             style="padding:10px 22px;border:none;background:none;font-size:13px;font-weight:600;color:#6c757d;border-bottom:3px solid transparent;cursor:pointer;margin-bottom:-2px;">
@@ -248,6 +262,296 @@ include __DIR__ . '/../partials/header.php';
         <i class="fas fa-eye" style="color:#6f42c1;"></i> Customer Transparency
     </button>
 </div>
+
+<!-- FUEL DELIVERIES AUDIT SECTION -->
+<div id="section-fuel-deliveries" style="display:none;">
+<?php
+// ── Fetch fuel delivery audit logs ───────────────────────────────────────────
+$fd_audit_start  = $_GET['fd_start']  ?? date('Y-m-d', strtotime('-30 days'));
+$fd_audit_end    = $_GET['fd_end']    ?? date('Y-m-d');
+$fd_action_f     = trim($_GET['fd_action'] ?? '');
+$fd_search       = trim($_GET['fd_search'] ?? '');
+
+// Export CSV for fuel deliveries
+if (isset($_GET['export']) && $_GET['export'] === 'fd_csv') {
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="fuel_delivery_audit_' . date('Y-m-d') . '.csv"');
+    $out = fopen('php://output', 'w');
+    fputcsv($out, ['Audit ID', 'Delivery ID', 'Manager ID', 'Manager Name', 'Action', 'Details / Notes', 'Timestamp']);
+    $fd_sql = "SELECT at.id, at.transaction_id, at.manager_id, u.name AS manager_name,
+                      at.action_type, COALESCE(at.new_value, at.old_value, '') AS details,
+                      at.timestamp AS created_at
+               FROM audit_trail at
+               LEFT JOIN users u ON at.manager_id = u.id
+               WHERE at.station_id = ? AND at.entity_type = 'fuel_delivery'
+                 AND DATE(at.timestamp) BETWEEN ? AND ?";
+    $fd_params = [$station_id, $fd_audit_start, $fd_audit_end];
+    if ($fd_action_f !== '') { $fd_sql .= " AND LOWER(at.action_type) LIKE ?"; $fd_params[] = '%' . strtolower($fd_action_f) . '%'; }
+    if ($fd_search !== '')   { $fd_sql .= " AND (at.transaction_id LIKE ? OR at.new_value LIKE ?)"; $fd_params[] = '%'.$fd_search.'%'; $fd_params[] = '%'.$fd_search.'%'; }
+    $fd_sql .= " ORDER BY at.timestamp DESC";
+    try {
+        $fd_stmt = $pdo->prepare($fd_sql); $fd_stmt->execute($fd_params);
+        while ($row = $fd_stmt->fetch(PDO::FETCH_ASSOC)) {
+            fputcsv($out, [$row['id'], $row['transaction_id'], $row['manager_id'], $row['manager_name'], $row['action_type'], $row['details'], $row['created_at']]);
+        }
+    } catch (Exception $e) {}
+    fclose($out); exit;
+}
+
+// Fetch delivery audit logs
+$fd_audit_logs = [];
+$fd_total = 0;
+try {
+    $fd_sql = "SELECT at.id, at.transaction_id, at.manager_id,
+                      u.name AS manager_name,
+                      at.action_type, COALESCE(at.new_value, at.old_value, '') AS details,
+                      at.timestamp AS created_at,
+                      fd.fuel_type, fd.delivery_liters, fd.invoice_no, fd.supplier,
+                      fd.status AS delivery_status,
+                      enc.name AS encoded_by_name
+               FROM audit_trail at
+               LEFT JOIN users u ON at.manager_id = u.id
+               LEFT JOIN fuel_deliveries fd ON fd.id = CAST(REPLACE(at.transaction_id, 'DEL-', '') AS UNSIGNED) AND fd.station_id = at.station_id
+               LEFT JOIN users enc ON enc.id = fd.received_by
+               WHERE at.station_id = ? AND at.entity_type = 'fuel_delivery'
+                 AND DATE(at.timestamp) BETWEEN ? AND ?";
+    $fd_params = [$station_id, $fd_audit_start, $fd_audit_end];
+    if ($fd_action_f !== '') { $fd_sql .= " AND LOWER(at.action_type) LIKE ?"; $fd_params[] = '%' . strtolower($fd_action_f) . '%'; }
+    if ($fd_search !== '')   { $fd_sql .= " AND (at.transaction_id LIKE ? OR at.new_value LIKE ? OR fd.invoice_no LIKE ?)"; $fd_params[] = '%'.$fd_search.'%'; $fd_params[] = '%'.$fd_search.'%'; $fd_params[] = '%'.$fd_search.'%'; }
+    $fd_sql .= " ORDER BY at.timestamp DESC LIMIT 500";
+    $fd_stmt = $pdo->prepare($fd_sql); $fd_stmt->execute($fd_params);
+    $fd_audit_logs = $fd_stmt->fetchAll(PDO::FETCH_ASSOC);
+    $fd_total = count($fd_audit_logs);
+} catch (Exception $e) {
+    $fd_audit_logs = [];
+}
+
+// Count by action
+$fd_approve_cnt = count(array_filter($fd_audit_logs, fn($r) => strtolower($r['action_type']) === 'approve'));
+$fd_return_cnt  = count(array_filter($fd_audit_logs, fn($r) => strtolower($r['action_type']) === 'return'));
+$fd_adjust_cnt  = count(array_filter($fd_audit_logs, fn($r) => strtolower($r['action_type']) === 'adjust'));
+
+// Also fetch all deliveries for this station (for the full delivery log view)
+$fd_all_deliveries = [];
+try {
+    $fd_del_stmt = $pdo->prepare("
+        SELECT fd.*, u.name AS encoded_by_name, v.name AS validated_by_name
+        FROM fuel_deliveries fd
+        LEFT JOIN users u ON fd.received_by = u.id
+        LEFT JOIN users v ON fd.verified_by = v.id
+        WHERE fd.station_id = ?
+        ORDER BY fd.created_at DESC
+        LIMIT 100
+    ");
+    $fd_del_stmt->execute([$station_id]);
+    $fd_all_deliveries = $fd_del_stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) { $fd_all_deliveries = []; }
+?>
+
+<!-- Summary Cards -->
+<div class="at-summary-row" style="margin-bottom:18px;">
+    <div class="at-card at-card-total">
+        <div class="at-card-num"><?php echo $fd_total; ?></div>
+        <div class="at-card-lbl">Total Audit Logs</div>
+    </div>
+    <div class="at-card at-card-approve">
+        <div class="at-card-num"><?php echo $fd_approve_cnt; ?></div>
+        <div class="at-card-lbl">Approved</div>
+    </div>
+    <div class="at-card at-card-reject">
+        <div class="at-card-num"><?php echo $fd_return_cnt; ?></div>
+        <div class="at-card-lbl">Returned</div>
+    </div>
+    <div class="at-card at-card-adjust">
+        <div class="at-card-num"><?php echo $fd_adjust_cnt; ?></div>
+        <div class="at-card-lbl">Adjusted</div>
+    </div>
+    <div class="at-card" style="border-left:4px solid #fd7e14;">
+        <div class="at-card-num" style="color:#fd7e14;"><?php echo $fd_pending_cnt ?? 0; ?></div>
+        <div class="at-card-lbl">Pending Review</div>
+    </div>
+</div>
+
+<!-- Filter -->
+<div class="at-filter-card">
+    <div class="at-filter-header">
+        <span class="at-filter-title"><i class="fas fa-truck"></i> Fuel Delivery Audit Logs</span>
+        <a href="?<?php echo http_build_query(array_merge($_GET, ['export'=>'fd_csv'])); ?>" class="at-btn at-btn-export">
+            <i class="fas fa-file-csv"></i> Export CSV
+        </a>
+    </div>
+    <form method="get" class="at-filter-row">
+        <input type="hidden" name="tab" value="fuel-deliveries">
+        <div class="at-flt-group">
+            <label class="at-flt-lbl"><i class="fas fa-calendar-alt"></i> Date Range</label>
+            <div class="at-date-wrap">
+                <input type="date" name="fd_start" value="<?php echo htmlspecialchars($fd_audit_start); ?>" class="at-inp" max="<?php echo date('Y-m-d'); ?>">
+                <span class="at-date-sep">to</span>
+                <input type="date" name="fd_end" value="<?php echo htmlspecialchars($fd_audit_end); ?>" class="at-inp" max="<?php echo date('Y-m-d'); ?>">
+            </div>
+        </div>
+        <div class="at-flt-group">
+            <label class="at-flt-lbl"><i class="fas fa-bolt"></i> Action</label>
+            <select name="fd_action" class="at-inp at-select">
+                <option value="">All Actions</option>
+                <option value="approve" <?php echo $fd_action_f==='approve'?'selected':''; ?>>✅ Approve</option>
+                <option value="return"  <?php echo $fd_action_f==='return'?'selected':''; ?>>↩ Return</option>
+                <option value="adjust"  <?php echo $fd_action_f==='adjust'?'selected':''; ?>>🔧 Adjust</option>
+            </select>
+        </div>
+        <div class="at-flt-group">
+            <label class="at-flt-lbl"><i class="fas fa-hashtag"></i> Search (Delivery ID / Invoice)</label>
+            <input type="text" name="fd_search" value="<?php echo htmlspecialchars($fd_search); ?>" class="at-inp" placeholder="e.g. DEL-12 or INV-2024-123">
+        </div>
+        <div class="at-flt-group at-flt-btns">
+            <label class="at-flt-lbl">&nbsp;</label>
+            <div style="display:flex;gap:8px;">
+                <button type="submit" class="at-btn at-btn-search"><i class="fas fa-search"></i> Search</button>
+                <a href="manager_audit_trail.php?tab=fuel-deliveries" class="at-btn at-btn-reset"><i class="fas fa-rotate-left"></i> Reset</a>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Audit Log Table -->
+<div class="card" style="padding:0;margin-bottom:24px;">
+    <div class="at-notice">
+        <i class="fas fa-lock" style="color:#002F6C;"></i>
+        <strong>Read-only.</strong> Auto-logged on every Manager Approve / Return / Adjust action. Includes Manager ID, timestamp, and full delivery details.
+    </div>
+    <div class="at-table-wrap">
+        <table class="at-table">
+            <thead>
+                <tr>
+                    <th>Audit #</th>
+                    <th>Delivery ID</th>
+                    <th>Manager ID</th>
+                    <th>Manager Name</th>
+                    <th>Action</th>
+                    <th>Fuel Type</th>
+                    <th>Volume (L)</th>
+                    <th>Invoice No.</th>
+                    <th>Supplier</th>
+                    <th>Encoded By</th>
+                    <th>Notes / Reason</th>
+                    <th>Timestamp</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($fd_audit_logs as $fdl):
+                $act = strtolower($fdl['action_type'] ?? '');
+                if ($act === 'approve') { $ac = '#28a745'; $al = 'Approve'; $ai = 'fa-check-circle'; }
+                elseif ($act === 'return') { $ac = '#dc3545'; $al = 'Return'; $ai = 'fa-undo'; }
+                elseif ($act === 'adjust') { $ac = '#6f42c1'; $al = 'Adjust'; $ai = 'fa-sliders'; }
+                else { $ac = '#6c757d'; $al = htmlspecialchars($fdl['action_type']); $ai = 'fa-circle-dot'; }
+            ?>
+            <tr>
+                <td style="font-family:monospace;font-size:11px;color:#888;">#<?php echo $fdl['id']; ?></td>
+                <td style="font-weight:700;font-size:12px;color:#002F6C;"><?php echo htmlspecialchars($fdl['transaction_id'] ?? '—'); ?></td>
+                <td style="font-size:11px;color:#888;"><?php echo htmlspecialchars($fdl['manager_id'] ?? '—'); ?></td>
+                <td style="font-size:12px;font-weight:600;"><?php echo htmlspecialchars($fdl['manager_name'] ?? 'System'); ?></td>
+                <td>
+                    <span style="background:<?php echo $ac; ?>;color:#fff;padding:2px 9px;border-radius:8px;font-size:11px;font-weight:700;white-space:nowrap;">
+                        <i class="fas <?php echo $ai; ?>"></i> <?php echo $al; ?>
+                    </span>
+                </td>
+                <td style="font-size:12px;font-weight:600;"><?php echo htmlspecialchars($fdl['fuel_type'] ?? '—'); ?></td>
+                <td style="font-size:12px;font-weight:700;color:#003d82;"><?php echo $fdl['delivery_liters'] ? number_format($fdl['delivery_liters'], 2) . ' L' : '—'; ?></td>
+                <td style="font-size:11px;font-family:monospace;"><?php echo htmlspecialchars($fdl['invoice_no'] ?? '—'); ?></td>
+                <td style="font-size:12px;"><?php echo htmlspecialchars($fdl['supplier'] ?? '—'); ?></td>
+                <td style="font-size:12px;"><?php echo htmlspecialchars($fdl['encoded_by_name'] ?? '—'); ?></td>
+                <td style="font-size:11px;color:#555;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                    title="<?php echo htmlspecialchars($fdl['details'] ?? ''); ?>">
+                    <?php echo htmlspecialchars($fdl['details'] ?: '—'); ?>
+                </td>
+                <td style="font-size:11px;white-space:nowrap;color:#555;">
+                    <?php echo date('M d, Y H:i:s', strtotime($fdl['created_at'])); ?>
+                </td>
+            </tr>
+            <?php endforeach; ?>
+            <?php if (empty($fd_audit_logs)): ?>
+            <tr>
+                <td colspan="12" style="text-align:center;padding:48px;color:#888;">
+                    <i class="fas fa-truck" style="font-size:36px;display:block;margin-bottom:12px;opacity:0.2;"></i>
+                    No fuel delivery audit logs found for the selected filters.
+                </td>
+            </tr>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Full Delivery Log (all deliveries, read-only reference) -->
+<div class="card" style="padding:0;">
+    <div class="at-notice" style="background:#fff8e1;border-bottom-color:#ffe082;">
+        <i class="fas fa-list-alt" style="color:#e65100;"></i>
+        <strong>Full Delivery Log.</strong> All recorded deliveries for this station — including pending, verified, and returned. Read-only reference.
+        <a href="manager_fuel_deliveries.php#fuel-deliveries" style="margin-left:8px;color:#002F6C;font-weight:700;">
+            <i class="fas fa-external-link-alt"></i> Go to Fuel Deliveries
+        </a>
+    </div>
+    <div class="at-table-wrap">
+        <table class="at-table">
+            <thead>
+                <tr>
+                    <th>Delivery #</th>
+                    <th>Date</th>
+                    <th>Supplier</th>
+                    <th>Fuel Type</th>
+                    <th>Volume (L)</th>
+                    <th>Invoice No.</th>
+                    <th>Encoded By</th>
+                    <th>Status</th>
+                    <th>Validated By</th>
+                    <th>Validated At</th>
+                    <th>Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($fd_all_deliveries as $fdel):
+                $dst = strtolower($fdel['status'] ?? 'pending');
+                if ($dst === 'verified') { $dsc = '#28a745'; $dsbg = '#d4edda'; $dsl = 'Verified'; }
+                elseif ($dst === 'rejected') { $dsc = '#dc3545'; $dsbg = '#f8d7da'; $dsl = 'Returned'; }
+                else { $dsc = '#856404'; $dsbg = '#fff3cd'; $dsl = 'Pending Review'; }
+            ?>
+            <tr>
+                <td style="font-weight:700;color:#002F6C;">#<?php echo $fdel['id']; ?></td>
+                <td style="font-size:11px;white-space:nowrap;"><?php echo date('M d, Y', strtotime($fdel['delivery_date'] ?? $fdel['created_at'])); ?></td>
+                <td style="font-size:12px;"><?php echo htmlspecialchars($fdel['supplier'] ?? '—'); ?></td>
+                <td style="font-weight:600;"><?php echo htmlspecialchars($fdel['fuel_type']); ?></td>
+                <td style="font-weight:700;color:#003d82;"><?php echo number_format($fdel['delivery_liters'], 2); ?> L</td>
+                <td style="font-size:11px;font-family:monospace;"><?php echo htmlspecialchars($fdel['invoice_no'] ?? '—'); ?></td>
+                <td style="font-size:12px;"><?php echo htmlspecialchars($fdel['encoded_by_name'] ?? '—'); ?></td>
+                <td>
+                    <span style="background:<?php echo $dsbg; ?>;color:<?php echo $dsc; ?>;padding:2px 9px;border-radius:8px;font-size:11px;font-weight:700;">
+                        <?php echo $dsl; ?>
+                    </span>
+                </td>
+                <td style="font-size:12px;"><?php echo htmlspecialchars($fdel['validated_by_name'] ?? '—'); ?></td>
+                <td style="font-size:11px;white-space:nowrap;color:#555;">
+                    <?php echo $fdel['verified_at'] ? date('M d, Y H:i', strtotime($fdel['verified_at'])) : '—'; ?>
+                </td>
+                <td style="font-size:11px;color:#555;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                    title="<?php echo htmlspecialchars($fdel['notes'] ?? ''); ?>">
+                    <?php echo htmlspecialchars($fdel['notes'] ?: '—'); ?>
+                </td>
+            </tr>
+            <?php endforeach; ?>
+            <?php if (empty($fd_all_deliveries)): ?>
+            <tr>
+                <td colspan="11" style="text-align:center;padding:40px;color:#888;">
+                    <i class="fas fa-truck" style="font-size:32px;display:block;margin-bottom:10px;opacity:0.2;"></i>
+                    No deliveries recorded yet.
+                </td>
+            </tr>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+</div><!-- end section-fuel-deliveries -->
 
 <!-- FUEL STOCK REQUESTS SECTION -->
 <div id="section-fuel-requests" style="display:none;">
@@ -685,33 +989,27 @@ include __DIR__ . '/../partials/header.php';
 
 <script>
 function switchAuditTab(tab) {
-    var tabs = ['general', 'fuel-requests', 'merch-requests'];
+    var tabs = ['general', 'fuel-deliveries', 'fuel-requests', 'merch-requests', 'customer-transparency'];
     tabs.forEach(function(t) {
         var btn = document.getElementById('tab-' + t);
         var sec = document.getElementById('section-' + t);
         if (t === tab) {
-            btn.style.color = '#002F6C';
-            btn.style.borderBottomColor = '#002F6C';
-            btn.style.fontWeight = '700';
+            if (btn) { btn.style.color = '#002F6C'; btn.style.borderBottomColor = '#002F6C'; btn.style.fontWeight = '700'; }
             if (sec) sec.style.display = 'block';
         } else {
-            btn.style.color = '#6c757d';
-            btn.style.borderBottomColor = 'transparent';
-            btn.style.fontWeight = '600';
+            if (btn) { btn.style.color = '#6c757d'; btn.style.borderBottomColor = 'transparent'; btn.style.fontWeight = '600'; }
             if (sec) sec.style.display = 'none';
         }
     });
 }
 
-// Check URL hash on load
+// Auto-open tab from URL param or hash
 document.addEventListener('DOMContentLoaded', function() {
-    var hash = window.location.hash;
-    if (hash === '#fuel-requests') {
-        switchAuditTab('fuel-requests');
-    } else if (hash === '#merch-requests') {
-        switchAuditTab('merch-requests');
-    } else if (hash === '#customer-transparency') {
-        switchAuditTab('customer-transparency');
+    var urlParams = new URLSearchParams(window.location.search);
+    var tabParam  = urlParams.get('tab') || window.location.hash.replace('#','');
+    var validTabs = ['general', 'fuel-deliveries', 'fuel-requests', 'merch-requests', 'customer-transparency'];
+    if (tabParam && validTabs.includes(tabParam)) {
+        switchAuditTab(tabParam);
     } else {
         switchAuditTab('general');
     }

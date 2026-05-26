@@ -369,25 +369,25 @@ include __DIR__ . '/../partials/header.php';
      ════════════════════════════════════════════════════════════ -->
 <div id="fuelApproveModal" class="pr-modal">
     <div class="pr-modal-box" style="max-width:480px;">
-        <div class="pr-modal-header" style="background:#28a745;border-radius:10px 10px 0 0;margin:-28px -28px 20px;padding:18px 24px;">
-            <div class="pr-modal-title" style="color:#fff;"><i class="fas fa-check-circle"></i> Approve Fuel Request</div>
-            <button class="pr-modal-close" onclick="closePrModal('fuelApproveModal')" style="color:#fff;opacity:.8;">×</button>
+        <div class="pr-modal-header">
+            <div class="pr-modal-title"><i class="fas fa-check-circle" style="color:#28a745;margin-right:7px;"></i> Approve Fuel Request</div>
+            <button class="pr-modal-close" onclick="closePrModal('fuelApproveModal')">×</button>
         </div>
         <form method="post">
             <input type="hidden" name="form_type" value="fuel">
             <input type="hidden" name="action" value="approve">
             <input type="hidden" name="request_id" id="fuelApproveId">
-            <div style="background:#d4edda;border:1px solid #c3e6cb;border-radius:8px;padding:12px;margin-bottom:14px;text-align:center;">
-                <div style="font-size:12px;color:#155724;margin-bottom:6px;">Fuel Type</div>
-                <div style="font-weight:700;color:#155724;font-size:16px;" id="fuelApproveFuel">—</div>
+            <div style="background:#f8f9fa;border:1px solid #e9ecef;border-radius:8px;padding:12px;margin-bottom:14px;text-align:center;">
+                <div style="font-size:12px;color:#888;margin-bottom:6px;text-transform:uppercase;">Fuel Type</div>
+                <div style="font-weight:700;color:#212529;font-size:16px;" id="fuelApproveFuel">—</div>
             </div>
             <div style="margin-bottom:14px;">
                 <label style="display:block;font-weight:700;font-size:13px;margin-bottom:6px;">Approved Liters <span style="color:red;">*</span></label>
-                <input type="number" name="approved_liters" id="fuelApproveLiters" step="0.01" min="0.01" required style="width:100%;padding:10px;border:1px solid #ced4da;border-radius:6px;">
+                <input type="number" name="approved_liters" id="fuelApproveLiters" step="0.01" min="0.01" required style="width:100%;padding:10px;border:1px solid #ced4da;border-radius:6px;box-sizing:border-box;">
             </div>
             <div style="margin-bottom:14px;">
                 <label style="display:block;font-weight:700;font-size:13px;margin-bottom:6px;">Manager Notes</label>
-                <textarea name="manager_notes" rows="3" placeholder="Optional notes..." style="width:100%;padding:10px;border:1px solid #ced4da;border-radius:6px;resize:vertical;"></textarea>
+                <textarea name="manager_notes" rows="3" placeholder="Optional notes..." style="width:100%;padding:10px;border:1px solid #ced4da;border-radius:6px;resize:vertical;box-sizing:border-box;"></textarea>
             </div>
             <div class="pr-modal-footer">
                 <button type="submit" style="background:#28a745;color:#fff;border:none;padding:10px 24px;border-radius:6px;font-weight:700;cursor:pointer;"><i class="fas fa-check"></i> Confirm Approve</button>
@@ -399,17 +399,17 @@ include __DIR__ . '/../partials/header.php';
 
 <div id="fuelRejectModal" class="pr-modal">
     <div class="pr-modal-box" style="max-width:480px;">
-        <div class="pr-modal-header" style="background:#dc3545;border-radius:10px 10px 0 0;margin:-28px -28px 20px;padding:18px 24px;">
-            <div class="pr-modal-title" style="color:#fff;"><i class="fas fa-times-circle"></i> Reject Fuel Request</div>
-            <button class="pr-modal-close" onclick="closePrModal('fuelRejectModal')" style="color:#fff;opacity:.8;">×</button>
+        <div class="pr-modal-header">
+            <div class="pr-modal-title"><i class="fas fa-times-circle" style="color:#dc3545;margin-right:7px;"></i> Reject Fuel Request</div>
+            <button class="pr-modal-close" onclick="closePrModal('fuelRejectModal')">×</button>
         </div>
         <form method="post">
             <input type="hidden" name="form_type" value="fuel">
             <input type="hidden" name="action" value="reject">
             <input type="hidden" name="request_id" id="fuelRejectId">
-            <div style="background:#f8d7da;border:1px solid #f5c6cb;border-radius:8px;padding:12px;margin-bottom:14px;text-align:center;">
-                <div style="font-size:12px;color:#721c24;margin-bottom:6px;">Fuel Type</div>
-                <div style="font-weight:700;color:#721c24;font-size:16px;" id="fuelRejectFuel">—</div>
+            <div style="background:#f8f9fa;border:1px solid #e9ecef;border-radius:8px;padding:12px;margin-bottom:14px;text-align:center;">
+                <div style="font-size:12px;color:#888;margin-bottom:6px;text-transform:uppercase;">Fuel Type</div>
+                <div style="font-weight:700;color:#212529;font-size:16px;" id="fuelRejectFuel">—</div>
             </div>
             <div style="margin-bottom:14px;">
                 <label style="display:block;font-weight:700;font-size:13px;margin-bottom:6px;">Rejection Reason <span style="color:red;">*</span></label>

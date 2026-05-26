@@ -334,9 +334,9 @@ include __DIR__ . '/../partials/header.php';
 <!-- Reject Modal -->
 <div id="rejectModal" class="txn-modal" onclick="if(event.target===this)closeRejectModal()">
     <div class="txn-modal-content" style="max-width:480px;">
-        <div class="txn-modal-header" style="background:#dc3545;border-color:#dc3545;">
-            <h3><i class="fas fa-times-circle"></i> Reject Transaction</h3>
-            <button class="txn-close" onclick="closeRejectModal()">&times;</button>
+        <div class="txn-modal-header" style="background:#fff;border-color:#e9ecef;">
+            <h3 style="color:#212529;"><i class="fas fa-times-circle" style="color:#dc3545;margin-right:7px;"></i> Reject Transaction</h3>
+            <button class="txn-close" style="color:#6c757d;" onclick="closeRejectModal()">&times;</button>
         </div>
         <form method="POST" onsubmit="return validateReject()">
             <div class="txn-modal-body">
@@ -359,9 +359,9 @@ include __DIR__ . '/../partials/header.php';
 <!-- Adjust Modal -->
 <div id="adjustModal" class="txn-modal" onclick="if(event.target===this)closeAdjustModal()">
     <div class="txn-modal-content" style="max-width:500px;">
-        <div class="txn-modal-header" style="background:#fd7e14;border-color:#fd7e14;">
-            <h3><i class="fas fa-edit"></i> Adjust Transaction</h3>
-            <button class="txn-close" onclick="closeAdjustModal()">&times;</button>
+        <div class="txn-modal-header" style="background:#fff;border-color:#e9ecef;">
+            <h3 style="color:#212529;"><i class="fas fa-edit" style="color:#fd7e14;margin-right:7px;"></i> Adjust Transaction</h3>
+            <button class="txn-close" style="color:#6c757d;" onclick="closeAdjustModal()">&times;</button>
         </div>
         <form method="POST" onsubmit="return validateAdjust()">
             <div class="txn-modal-body">
@@ -447,10 +447,10 @@ function validateAdjust() {
 <style>
 .txn-modal { display:none; position:fixed; z-index:1050; inset:0; background:rgba(0,0,0,0.55); align-items:center; justify-content:center; }
 .txn-modal-content { background:#fff; border-radius:12px; width:90%; max-width:640px; box-shadow:0 8px 32px rgba(0,0,0,0.2); overflow:hidden; }
-.txn-modal-header { display:flex; justify-content:space-between; align-items:center; padding:18px 24px; background:#0056b3; color:white; }
-.txn-modal-header h3 { margin:0; font-size:17px; }
-.txn-close { background:none; border:none; color:white; font-size:26px; cursor:pointer; line-height:1; }
-.txn-close:hover { color:#ddd; }
+.txn-modal-header { display:flex; justify-content:space-between; align-items:center; padding:16px 24px; background:#fff; color:#212529; border-bottom:1px solid #e9ecef; }
+.txn-modal-header h3 { margin:0; font-size:17px; color:#212529; }
+.txn-close { background:none; border:none; color:#6c757d; font-size:26px; cursor:pointer; line-height:1; }
+.txn-close:hover { color:#212529; }
 .txn-modal-body { padding:24px; }
 .txn-modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:16px 24px; background:#f8f9fa; border-top:1px solid #dee2e6; }
 .detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }

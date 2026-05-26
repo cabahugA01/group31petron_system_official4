@@ -415,7 +415,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                                 "Capacity: " . number_format($capacity, 0) . " L, " .
                                 "Current level: " . number_format($current, 0) . " L, " .
                                 "Available space: " . number_format($available, 0) . " L. " .
-                                "Please use Adjust to enter a corrected volume ≤ " . number_format($available, 0) . " L."
+                                "Please use Adjust to enter a corrected volume <= " . number_format($available, 0) . " L."
                             );
                         }
                     }
@@ -1299,11 +1299,11 @@ function adjustColor($hex,$pct) {
 ============================================================ -->
 <div id="deliveryDetailsModal" class="modal">
 <div class="modal-box" style="max-width:520px;">
-    <div class="modal-header" style="background:#0d6efd;">
-        <div class="modal-title"><i class="fas fa-eye"></i> Delivery Details</div>
-        <button class="modal-close" onclick="closeModal('deliveryDetailsModal')">&#x2715;</button>
+    <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-eye" style="color:#0d6efd;margin-right:7px;"></i> Delivery Details</div>
+        <button class="modal-close" onclick="closeModal('deliveryDetailsModal')" title="Close">&#x2715;</button>
     </div>
-    <div style="padding:18px 20px;">
+    <div class="modal-body" style="padding:18px 20px;">
         <table style="width:100%;border-collapse:collapse;font-size:.88rem;">
             <tbody>
                 <tr style="border-bottom:1px solid #f0f0f0;">
@@ -1334,7 +1334,7 @@ function adjustColor($hex,$pct) {
                     <td style="padding:8px 6px;color:#888;font-weight:600;">Encoded By</td>
                     <td style="padding:8px 6px;" id="dd_encoded_by">—</td>
                 </tr>
-                <tr>
+                <tr style="border-bottom:1px solid #f0f0f0;">
                     <td style="padding:8px 6px;color:#888;font-weight:600;vertical-align:top;">Notes</td>
                     <td style="padding:8px 6px;white-space:pre-wrap;" id="dd_notes">—</td>
                 </tr>
@@ -1344,18 +1344,18 @@ function adjustColor($hex,$pct) {
                 </tr>
             </tbody>
         </table>
-        <div style="margin-top:16px;display:flex;gap:10px;justify-content:flex-end;">
-            <button type="button" class="btn btn-success" style="font-size:.82rem;"
-                onclick="promoteToApprove()">
-                <i class="fas fa-check"></i> Approve
-            </button>
-            <button type="button" class="btn" style="font-size:.82rem;background:#dc3545;color:#fff;border:none;border-radius:5px;cursor:pointer;"
-                onclick="promoteToReturn()">
-                <i class="fas fa-undo"></i> Return
-            </button>
-            <button type="button" class="btn btn-secondary" style="font-size:.82rem;"
-                onclick="closeModal('deliveryDetailsModal')">Close</button>
-        </div>
+    </div>
+    <div class="modal-footer" style="justify-content:flex-end;">
+        <button type="button" class="btn btn-success" style="font-size:.82rem;"
+            onclick="promoteToApprove()">
+            <i class="fas fa-check"></i> Approve
+        </button>
+        <button type="button" class="btn btn-danger" style="font-size:.82rem;"
+            onclick="promoteToReturn()">
+            <i class="fas fa-undo"></i> Return
+        </button>
+        <button type="button" class="btn btn-secondary" style="font-size:.82rem;"
+            onclick="closeModal('deliveryDetailsModal')">Close</button>
     </div>
 </div>
 </div>
@@ -1365,28 +1365,28 @@ function adjustColor($hex,$pct) {
 ============================================================ -->
 <div id="deliveryApproveModal" class="modal">
 <div class="modal-box" style="max-width:480px;">
-    <div class="modal-header" style="background:#198754;">
-        <div class="modal-title"><i class="fas fa-check-circle"></i> Approve Delivery</div>
-        <button class="modal-close" onclick="closeModal('deliveryApproveModal')">&#x2715;</button>
+    <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-check-circle" style="color:#198754;margin-right:7px;"></i> Approve Delivery</div>
+        <button class="modal-close" onclick="closeModal('deliveryApproveModal')" title="Close">&#x2715;</button>
     </div>
     <form method="post" action="manager_fuel_pump_master.php">
         <input type="hidden" name="action" value="validate_delivery">
         <input type="hidden" name="delivery_action" value="approve">
         <input type="hidden" name="delivery_id" id="dapprove_id">
 
-        <div style="padding:16px 20px 0;">
-            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;margin-bottom:14px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center;">
+        <div class="modal-body">
+            <div style="background:#f8f9fa;border:1px solid #e9ecef;border-radius:8px;padding:12px;margin-bottom:14px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center;">
                 <div>
-                    <div style="font-size:.68rem;color:#888;text-transform:uppercase;">Fuel Type</div>
-                    <div style="font-weight:700;color:#166534;" id="dapprove_fuel">—</div>
+                    <div style="font-size:.68rem;color:#888;text-transform:uppercase;margin-bottom:3px;">Fuel Type</div>
+                    <div style="font-weight:700;color:#212529;" id="dapprove_fuel">—</div>
                 </div>
                 <div>
-                    <div style="font-size:.68rem;color:#888;text-transform:uppercase;">Volume</div>
-                    <div style="font-weight:700;color:#166534;" id="dapprove_liters">—</div>
+                    <div style="font-size:.68rem;color:#888;text-transform:uppercase;margin-bottom:3px;">Volume</div>
+                    <div style="font-weight:700;color:#212529;" id="dapprove_liters">—</div>
                 </div>
                 <div>
-                    <div style="font-size:.68rem;color:#888;text-transform:uppercase;">Invoice No.</div>
-                    <div style="font-weight:700;color:#166534;" id="dapprove_invoice">—</div>
+                    <div style="font-size:.68rem;color:#888;text-transform:uppercase;margin-bottom:3px;">Invoice No.</div>
+                    <div style="font-weight:700;color:#212529;" id="dapprove_invoice">—</div>
                 </div>
             </div>
             <!-- Tank level preview -->
@@ -1415,28 +1415,28 @@ function adjustColor($hex,$pct) {
 ============================================================ -->
 <div id="deliveryReturnModal" class="modal">
 <div class="modal-box" style="max-width:480px;">
-    <div class="modal-header" style="background:#dc3545;">
-        <div class="modal-title"><i class="fas fa-undo"></i> Return to Staff</div>
-        <button class="modal-close" onclick="closeModal('deliveryReturnModal')">&#x2715;</button>
+    <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-undo" style="color:#dc3545;margin-right:7px;"></i> Return to Staff</div>
+        <button class="modal-close" onclick="closeModal('deliveryReturnModal')" title="Close">&#x2715;</button>
     </div>
     <form method="post" action="manager_fuel_pump_master.php">
         <input type="hidden" name="action" value="validate_delivery">
         <input type="hidden" name="delivery_action" value="reject">
         <input type="hidden" name="delivery_id" id="dreturn_id">
 
-        <div style="padding:16px 20px 0;">
-            <div style="background:#fff5f5;border:1px solid #fecaca;border-radius:8px;padding:12px;margin-bottom:14px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center;">
+        <div class="modal-body">
+            <div style="background:#f8f9fa;border:1px solid #e9ecef;border-radius:8px;padding:12px;margin-bottom:14px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center;">
                 <div>
-                    <div style="font-size:.68rem;color:#888;text-transform:uppercase;">Fuel Type</div>
-                    <div style="font-weight:700;color:#991b1b;" id="dreturn_fuel">—</div>
+                    <div style="font-size:.68rem;color:#888;text-transform:uppercase;margin-bottom:3px;">Fuel Type</div>
+                    <div style="font-weight:700;color:#212529;" id="dreturn_fuel">—</div>
                 </div>
                 <div>
-                    <div style="font-size:.68rem;color:#888;text-transform:uppercase;">Volume</div>
-                    <div style="font-weight:700;color:#991b1b;" id="dreturn_liters">—</div>
+                    <div style="font-size:.68rem;color:#888;text-transform:uppercase;margin-bottom:3px;">Volume</div>
+                    <div style="font-weight:700;color:#212529;" id="dreturn_liters">—</div>
                 </div>
                 <div>
-                    <div style="font-size:.68rem;color:#888;text-transform:uppercase;">Invoice No.</div>
-                    <div style="font-weight:700;color:#991b1b;" id="dreturn_invoice">—</div>
+                    <div style="font-size:.68rem;color:#888;text-transform:uppercase;margin-bottom:3px;">Invoice No.</div>
+                    <div style="font-weight:700;color:#212529;" id="dreturn_invoice">—</div>
                 </div>
             </div>
 
@@ -1454,9 +1454,7 @@ function adjustColor($hex,$pct) {
         </div>
 
         <div class="modal-footer">
-            <button type="submit" class="btn btn-lg" style="background:#dc3545;color:#fff;border:none;border-radius:6px;padding:10px 22px;cursor:pointer;font-size:.9rem;">
-                <i class="fas fa-undo"></i> Confirm Return
-            </button>
+            <button type="submit" class="btn btn-danger btn-lg"><i class="fas fa-undo"></i> Confirm Return</button>
             <button type="button" class="btn btn-secondary" onclick="closeModal('deliveryReturnModal')">Cancel</button>
         </div>
     </form>

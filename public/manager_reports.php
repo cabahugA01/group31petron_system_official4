@@ -578,6 +578,37 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
             } catch (Exception $e) {}
             break;
 
+        case 'price_logs':
+            fputcsv($out, ['FUEL PRICE CHANGE LOG']);
+            fputcsv($out, ['Date & Time', 'Fuel Type', 'Old Price (PHP/L)', 'New Price (PHP/L)', 'Change (PHP)', 'Change Type', 'Reason', 'Manager']);
+            try {
+                $s = $pdo->prepare("
+                    SELECT fpl.change_timestamp, fpl.fuel_type, fpl.old_price, fpl.new_price,
+                           fpl.price_difference, fpl.change_type, fpl.reason_for_change,
+                           COALESCE(u.name, fpl.changed_by_name, 'Manager') AS user_name
+                    FROM fuel_price_log fpl
+                    LEFT JOIN users u ON fpl.changed_by = u.id
+                    WHERE fpl.station_id = ?
+                      AND DATE(fpl.change_timestamp) BETWEEN ? AND ?
+                    ORDER BY fpl.change_timestamp DESC
+                ");
+                $s->execute([$station_id, $date_start, $date_end]);
+                foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                    $diff = (float)$row['price_difference'];
+                    fputcsv($out, [
+                        date('M j, Y g:i A', strtotime($row['change_timestamp'])),
+                        $row['fuel_type'],
+                        number_format((float)$row['old_price'], 2),
+                        number_format((float)$row['new_price'], 2),
+                        ($diff >= 0 ? '+' : '') . number_format($diff, 2),
+                        $row['change_type'] ?? 'Price Update',
+                        $row['reason_for_change'],
+                        $row['user_name'],
+                    ]);
+                }
+            } catch (Exception $e) {}
+            break;
+
         case 'audit_trail':
             fputcsv($out, ['AUDIT TRAIL (MANAGER)']);
             fputcsv($out, ['Transaction ID', 'Manager ID', 'Action', 'Remarks / Reason', 'Timestamp']);
@@ -1370,14 +1401,71 @@ if ($section === 'inventory') {
 $price_log_rows = [];
 if ($section === 'price_logs') {
     try {
-        $s = $pdo->prepare("SELECT al.action_date AS created_at, al.description AS details, u.name AS user_name FROM audit_log al LEFT JOIN users u ON u.id = al.user_id WHERE al.action_type LIKE '%Price%' AND al.station_id = ? AND DATE(al.action_date) BETWEEN ? AND ? ORDER BY al.action_date DESC");
+        // Primary: query fuel_price_log (dedicated price change table)
+        $pdo->exec("CREATE TABLE IF NOT EXISTS fuel_price_log (
+            id              INT AUTO_INCREMENT PRIMARY KEY,
+            station_id      INT NOT NULL,
+            fuel_type_id    INT,
+            fuel_type       VARCHAR(100) NOT NULL,
+            old_price       DECIMAL(10,4) NOT NULL,
+            new_price       DECIMAL(10,4) NOT NULL,
+            price_difference DECIMAL(10,4) NOT NULL,
+            change_type     VARCHAR(50) DEFAULT 'Price Update',
+            reason_for_change TEXT NOT NULL,
+            changed_by      INT NOT NULL,
+            changed_by_name VARCHAR(255),
+            ip_address      VARCHAR(45),
+            user_agent      TEXT,
+            change_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_station (station_id),
+            INDEX idx_fuel_type (fuel_type),
+            INDEX idx_changed_by (changed_by),
+            INDEX idx_timestamp (change_timestamp)
+        )");
+        $s = $pdo->prepare("
+            SELECT
+                fpl.id,
+                fpl.change_timestamp AS created_at,
+                fpl.fuel_type,
+                fpl.old_price,
+                fpl.new_price,
+                fpl.price_difference,
+                fpl.change_type,
+                fpl.reason_for_change,
+                fpl.changed_by,
+                COALESCE(u.name, fpl.changed_by_name, 'Manager') AS user_name
+            FROM fuel_price_log fpl
+            LEFT JOIN users u ON fpl.changed_by = u.id
+            WHERE fpl.station_id = ?
+              AND DATE(fpl.change_timestamp) BETWEEN ? AND ?
+            ORDER BY fpl.change_timestamp DESC
+        ");
         $s->execute([$station_id, $date_start, $date_end]);
         $price_log_rows = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
     } catch(Exception $e) {
-        // Fallback to activity_logs
+        // Fallback: fuel_adjustments with adjustment_type = 'price_update'
         try {
-            $s = $pdo->prepare("SELECT al.created_at, al.details, u.name AS user_name FROM activity_logs al LEFT JOIN users u ON u.id = al.user_id WHERE al.action LIKE '%Price%' AND DATE(al.created_at) BETWEEN ? AND ? ORDER BY al.created_at DESC");
-            $s->execute([$date_start, $date_end]);
+            $s = $pdo->prepare("
+                SELECT
+                    fa.id,
+                    fa.created_at,
+                    COALESCE(ft.name, fa.fuel_type) AS fuel_type,
+                    NULL AS old_price,
+                    NULL AS new_price,
+                    NULL AS price_difference,
+                    'Price Update' AS change_type,
+                    fa.reason AS reason_for_change,
+                    fa.user_id AS changed_by,
+                    COALESCE(u.name, 'Manager') AS user_name
+                FROM fuel_adjustments fa
+                LEFT JOIN fuel_types ft ON fa.fuel_type_id = ft.id
+                LEFT JOIN users u ON fa.user_id = u.id
+                WHERE fa.station_id = ?
+                  AND fa.adjustment_type = 'price_update'
+                  AND DATE(fa.adjustment_date) BETWEEN ? AND ?
+                ORDER BY fa.created_at DESC
+            ");
+            $s->execute([$station_id, $date_start, $date_end]);
             $price_log_rows = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
         } catch(Exception $e2) {}
     }
@@ -2825,7 +2913,14 @@ require_once __DIR__ . '/../partials/header.php';
     <?php if ($section === 'price_logs'): ?>
     <div class="rpt-card">
         <div class="rpt-card-head">
-            <h3><i class="fa-solid fa-tags"></i> Price Change Logs <span class="badge-count"><?= count($price_log_rows) ?></span></h3>
+            <h3><i class="fa-solid fa-tags"></i> Fuel Price Change Log <span class="badge-count"><?= count($price_log_rows) ?></span></h3>
+            <div style="font-size:.78rem; color:#888; margin-top:4px;">
+                <i class="fas fa-shield-alt" style="color:#0056b3;"></i>
+                Immutable log — every price change and rollback is recorded with Manager ID, old price, new price, reason, and timestamp.
+                <?php if ($role === 'manager'): ?>
+                You can only see changes made at your station.
+                <?php endif; ?>
+            </div>
         </div>
         <?php if (empty($price_log_rows)): ?>
         <div class="empty-state"><i class="fa-solid fa-tags"></i><p>No price change logs found for this period.</p></div>
@@ -2834,15 +2929,49 @@ require_once __DIR__ . '/../partials/header.php';
             <table class="mgr-table">
                 <thead><tr>
                     <th>Date &amp; Time</th>
-                    <th>User</th>
-                    <th>Details</th>
+                    <th>Fuel Type</th>
+                    <th>Old Price</th>
+                    <th>New Price</th>
+                    <th>Change</th>
+                    <th>Type</th>
+                    <th>Reason</th>
+                    <th>Manager</th>
                 </tr></thead>
                 <tbody>
-                <?php foreach ($price_log_rows as $row): ?>
+                <?php foreach ($price_log_rows as $row):
+                    $diff = isset($row['price_difference']) ? (float)$row['price_difference'] : null;
+                    $diff_color = $diff !== null ? ($diff > 0 ? '#dc3545' : ($diff < 0 ? '#28a745' : '#888')) : '#888';
+                    $diff_icon  = $diff !== null ? ($diff > 0 ? '&#9650;' : ($diff < 0 ? '&#9660;' : '&mdash;')) : '';
+                    $diff_label = $diff !== null ? (($diff >= 0 ? '+' : '') . '&#8369;' . number_format(abs($diff), 2)) : '&mdash;';
+                    $ct = strtolower($row['change_type'] ?? '');
+                    $is_rollback = strpos($ct, 'rollback') !== false || strpos($ct, 'decrease') !== false;
+                ?>
                 <tr>
-                    <td style="white-space:nowrap;"><?= date('M j, Y g:i A', strtotime($row['created_at'])) ?></td>
-                    <td><strong><?= htmlspecialchars($row['user_name'] ?? 'System') ?></strong></td>
-                    <td><?= htmlspecialchars($row['details']) ?></td>
+                    <td style="white-space:nowrap;">
+                        <?= date('M j, Y', strtotime($row['created_at'])) ?><br>
+                        <span style="font-size:.72rem; color:#aaa;"><?= date('g:i A', strtotime($row['created_at'])) ?></span>
+                    </td>
+                    <td><strong><?= htmlspecialchars($row['fuel_type'] ?? '') ?></strong></td>
+                    <td style="color:#555;">
+                        <?= isset($row['old_price']) && $row['old_price'] !== null ? '&#8369;' . number_format((float)$row['old_price'], 2) . '/L' : '&mdash;' ?>
+                    </td>
+                    <td style="font-weight:700; color:#00264D;">
+                        <?= isset($row['new_price']) && $row['new_price'] !== null ? '&#8369;' . number_format((float)$row['new_price'], 2) . '/L' : '&mdash;' ?>
+                    </td>
+                    <td style="font-weight:700; color:<?= $diff_color ?>;">
+                        <?= $diff_icon ?> <?= $diff_label ?>
+                    </td>
+                    <td>
+                        <span style="font-size:.72rem; padding:2px 8px; border-radius:10px; font-weight:600;
+                            background:<?= $is_rollback ? '#fff3cd' : '#e8f4fd' ?>;
+                            color:<?= $is_rollback ? '#856404' : '#0056b3' ?>;">
+                            <?= htmlspecialchars($row['change_type'] ?? 'Price Update') ?>
+                        </span>
+                    </td>
+                    <td style="max-width:220px; color:#555; font-size:.8rem;">
+                        <?= htmlspecialchars(mb_strimwidth($row['reason_for_change'] ?? '', 0, 120, '...')) ?>
+                    </td>
+                    <td><strong><?= htmlspecialchars($row['user_name'] ?? 'Manager') ?></strong></td>
                 </tr>
                 <?php endforeach; ?>
                 </tbody>
