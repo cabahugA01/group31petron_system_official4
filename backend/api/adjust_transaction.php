@@ -10,6 +10,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 
 require_once __DIR__ . '/../lib.php';
 require_once __DIR__ . '/../../public/db_connect.php';
+require_once __DIR__ . '/../transaction_schema_fix.php';
 
 // Set JSON response header
 header('Content-Type: application/json');

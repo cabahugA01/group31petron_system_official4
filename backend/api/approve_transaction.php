@@ -10,9 +10,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 
 require_once __DIR__ . '/../lib.php';
 require_once __DIR__ . '/../../public/db_connect.php';
-
-// Set JSON response header
-header('Content-Type: application/json');
+require_once __DIR__ . '/../transaction_schema_fix.php';
 
 // Check authentication
 if (!isset($_SESSION['user'])) {
@@ -78,103 +76,74 @@ $manager_id = $me['id'];
 
 try {
     global $pdo;
-    
-    // Ensure PDO is available
-    if (!isset($pdo)) {
-        throw new Exception('Database connection not available');
-    }
-    
-    // Ensure required columns exist (fuel_transactions only — merchandise_transactions already has these)
-    $pdo->exec("ALTER TABLE fuel_transactions ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Pending'");
-    $pdo->exec("ALTER TABLE fuel_transactions ADD COLUMN IF NOT EXISTS manager_id INT");
-    $pdo->exec("ALTER TABLE fuel_transactions ADD COLUMN IF NOT EXISTS action VARCHAR(50)");
-    
-    // Ensure audit trail table exists
-    $pdo->exec("
-        CREATE TABLE IF NOT EXISTS audit_trail (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            transaction_id VARCHAR(255) NOT NULL,
-            manager_id INT NOT NULL,
-            action_type VARCHAR(50) NOT NULL,
-            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            old_value TEXT,
-            new_value TEXT,
-            station_id INT NOT NULL,
-            INDEX idx_transaction (transaction_id),
-            INDEX idx_manager (manager_id),
-            INDEX idx_timestamp (timestamp)
-        )
-    ");
-    
+    if (!isset($pdo)) throw new Exception('Database connection not available');
+
     $updated = false;
     $transaction_type = '';
-    
-    // Check if it's a fuel transaction (numeric ID = fuel, string txn_ref = check both)
+
+    // Try fuel first by numeric id, then merchandise
     $fuel_row = null;
     $merch_row = null;
 
-    // Try fuel first by numeric id
     if (is_numeric($transaction_id)) {
-        $stmt = $pdo->prepare("SELECT id, status FROM fuel_transactions WHERE id = ? AND station_id = ?");
+        $stmt = $pdo->prepare("SELECT id, COALESCE(status,'') AS status FROM fuel_transactions WHERE id = ? AND station_id = ?");
         $stmt->execute([$transaction_id, $station_id]);
         $fuel_row = $stmt->fetch();
 
         if (!$fuel_row) {
-            $stmt = $pdo->prepare("SELECT id, validation_status AS status FROM merchandise_transactions WHERE id = ? AND station_id = ?");
+            $stmt = $pdo->prepare("SELECT id, COALESCE(validation_status,'') AS status FROM merchandise_transactions WHERE id = ? AND station_id = ?");
             $stmt->execute([$transaction_id, $station_id]);
             $merch_row = $stmt->fetch();
         }
     } else {
-        // String transaction_id — check fuel by transaction_id column
-        $stmt = $pdo->prepare("SELECT id, status FROM fuel_transactions WHERE transaction_id = ? AND station_id = ?");
+        $stmt = $pdo->prepare("SELECT id, COALESCE(status,'') AS status FROM fuel_transactions WHERE transaction_id = ? AND station_id = ?");
         $stmt->execute([$transaction_id, $station_id]);
         $fuel_row = $stmt->fetch();
     }
 
     if ($fuel_row) {
-        $status = strtolower($fuel_row['status'] ?? '');
+        $status = strtolower($fuel_row['status']);
         if (!empty($status) && !in_array($status, ['pending validation', 'pending', ''])) {
             echo json_encode(['success' => false, 'message' => 'Transaction already processed: ' . ucfirst($fuel_row['status'])]);
             exit;
         }
         $stmt = $pdo->prepare("UPDATE fuel_transactions SET status = 'Verified', validated_by = ?, validated_at = NOW() WHERE id = ? AND station_id = ?");
         $stmt->execute([$manager_id, $fuel_row['id'], $station_id]);
-        $updated = true;
+        $updated = $stmt->rowCount() > 0;
         $transaction_type = 'Fuel';
         $db_txn_id = $fuel_row['id'];
     } elseif ($merch_row) {
-        $status = strtolower($merch_row['status'] ?? '');
+        $status = strtolower($merch_row['status']);
         if (!empty($status) && !in_array($status, ['pending validation', 'pending', ''])) {
             echo json_encode(['success' => false, 'message' => 'Transaction already processed: ' . ucfirst($merch_row['status'])]);
             exit;
         }
-        $stmt = $pdo->prepare("UPDATE merchandise_transactions SET validation_status = 'Verified', validated_by = ?, validated_at = NOW() WHERE id = ? AND station_id = ?");
+        $stmt = $pdo->prepare("UPDATE merchandise_transactions SET validation_status = 'Approved', validated_by = ?, validated_at = NOW(), updated_at = NOW() WHERE id = ? AND station_id = ?");
         $stmt->execute([$manager_id, $merch_row['id'], $station_id]);
-        $updated = true;
+        $updated = $stmt->rowCount() > 0;
         $transaction_type = 'Merchandise';
         $db_txn_id = $merch_row['id'];
     }
-    
+
     if (!$updated) {
-        echo json_encode(['success' => false, 'message' => 'Transaction not found']);
+        echo json_encode(['success' => false, 'message' => 'Transaction not found or already processed']);
         exit;
     }
-    
-    // Log to audit trail
-    $audit_stmt = $pdo->prepare("
-        INSERT INTO audit_trail (transaction_id, manager_id, action_type, station_id) 
-        VALUES (?, ?, 'Approve', ?)
-    ");
-    $audit_stmt->execute([$db_txn_id, $manager_id, $station_id]);
-    
+
+    // Log to audit trail (silent — never break main flow)
+    try {
+        $pdo->prepare("INSERT INTO audit_trail (transaction_id, manager_id, action_type, station_id) VALUES (?, ?, 'Approve', ?)")
+            ->execute([$db_txn_id, $manager_id, $station_id]);
+    } catch (Exception $ae) {}
+
     echo json_encode([
-        'success' => true, 
+        'success' => true,
         'message' => $transaction_type . ' transaction approved successfully',
         'transaction_type' => $transaction_type
     ]);
-    
+
 } catch (Exception $e) {
-    // Log the actual error for debugging
+    error_log("Approve Transaction Error: " . $e->getMessage());
     error_log("Approve Transaction Error: " . $e->getMessage());
     echo json_encode(['success' => false, 'message' => 'Database error: ' . $e->getMessage()]);
 }

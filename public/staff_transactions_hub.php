@@ -11,6 +11,7 @@ header('Expires: Thu, 01 Jan 1970 00:00:00 GMT');
 $page_id = 'transactions';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
+require_once __DIR__ . '/../backend/transaction_schema_fix.php';
 require_login();
 
 $me         = current_user();
@@ -43,6 +44,17 @@ if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
     header('Location: dashboard.php');
     exit;
 }
+
+// ── Schema safety: widen columns that are too narrow (idempotent) ─────────────
+foreach ([
+    "ALTER TABLE fuel_transactions MODIFY COLUMN `shift_period` VARCHAR(50) NOT NULL DEFAULT 'general'",
+    "ALTER TABLE fuel_transactions MODIFY COLUMN `payment_method` VARCHAR(50) NOT NULL DEFAULT 'Internal'",
+    "ALTER TABLE fuel_deliveries MODIFY COLUMN `status` VARCHAR(60) NOT NULL DEFAULT 'Pending'",
+    "ALTER TABLE fuel_deliveries MODIFY COLUMN `fuel_type` VARCHAR(100) DEFAULT NULL",
+] as $_fix) {
+    try { $pdo->exec($_fix); } catch (Exception $_e) {}
+}
+unset($_fix, $_e);
 
 // Active sub-section: fuel | merchandise | history | fuel_history  (default: fuel)
 $section = $_GET['section'] ?? 'fuel';
@@ -94,12 +106,12 @@ try {
             SELECT ft2.station_id, ft2.fuel_type, ft2.present_reading
             FROM fuel_transactions ft2
             INNER JOIN (
-                SELECT station_id, fuel_type, MAX(transaction_date) AS latest
+                SELECT station_id, fuel_type, MAX(id) AS latest_id
                 FROM fuel_transactions
                 GROUP BY station_id, fuel_type
             ) lx ON lx.station_id = ft2.station_id
                AND LOWER(TRIM(lx.fuel_type)) = LOWER(TRIM(ft2.fuel_type))
-               AND lx.latest = ft2.transaction_date
+               AND lx.latest_id = ft2.id
         ) last_tx ON last_tx.station_id = fi.station_id
                  AND LOWER(TRIM(last_tx.fuel_type)) = LOWER(TRIM(fi.fuel_type))
         WHERE fi.station_id = ?

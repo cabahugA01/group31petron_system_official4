@@ -327,7 +327,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         case 'record_delivery':
             $fuel_type       = trim($_POST['fuel_type_name'] ?? '');
             $delivery_liters = (float)($_POST['delivery_volume'] ?? 0);
-            $supplier        = trim($_POST['supplier_name'] ?? 'Petron Corporation');
+            $supplier        = trim($_POST['supplier_name'] ?? '');
+            // Fallback: look up first active supplier from DB if none submitted
+            if (empty($supplier)) {
+                try {
+                    $sup_stmt = $pdo->prepare("SELECT supplier_name FROM fuel_suppliers WHERE is_active = 1 ORDER BY id ASC LIMIT 1");
+                    $sup_stmt->execute();
+                    $sup_row = $sup_stmt->fetch(PDO::FETCH_ASSOC);
+                    $supplier = $sup_row ? $sup_row['supplier_name'] : 'Unknown Supplier';
+                } catch (Exception $sup_e) { $supplier = 'Unknown Supplier'; }
+            }
             $delivery_date   = $_POST['delivery_date'] ?? date('Y-m-d');
             $invoice_no      = trim($_POST['receipt_number'] ?? '');
             $tanker_number   = trim($_POST['tanker_number'] ?? '');
@@ -898,16 +907,93 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 }
 
 /* -------------------------------------------------------------
+   SCHEMA SAFETY — widen columns that are too narrow for actual values
+   (idempotent: MySQL ignores if already wide enough)
+------------------------------------------------------------- */
+$_schema_fixes = [
+    // fuel_deliveries.status VARCHAR(20) → VARCHAR(60)
+    // 'Pending Manager Approval' = 24 chars, would be silently truncated
+    "ALTER TABLE fuel_deliveries MODIFY COLUMN `status` VARCHAR(60) NOT NULL DEFAULT 'Pending'",
+    // fuel_deliveries.fuel_type VARCHAR(50) → VARCHAR(100) to match fuel_inventory
+    "ALTER TABLE fuel_deliveries MODIFY COLUMN `fuel_type` VARCHAR(100) DEFAULT NULL",
+    // fuel_variance_reports.fuel_type VARCHAR(50) → VARCHAR(100) to match fuel_inventory
+    "ALTER TABLE fuel_variance_reports MODIFY COLUMN `fuel_type` VARCHAR(100) NOT NULL",
+    // fuel_transactions.shift_period VARCHAR(20) → VARCHAR(50) for longer shift keys
+    "ALTER TABLE fuel_transactions MODIFY COLUMN `shift_period` VARCHAR(50) NOT NULL DEFAULT 'general'",
+    // fuel_transactions.payment_method VARCHAR(20) → VARCHAR(50)
+    "ALTER TABLE fuel_transactions MODIFY COLUMN `payment_method` VARCHAR(50) NOT NULL DEFAULT 'Internal'",
+];
+foreach ($_schema_fixes as $_sf) {
+    try { $pdo->exec($_sf); } catch (Exception $_e) { /* already correct width — ignore */ }
+}
+unset($_schema_fixes, $_sf, $_e);
+
+/* -------------------------------------------------------------
    FETCH DATA
 ------------------------------------------------------------- */
 $tank_data          = [];
-$calibration_logs   = [];
 $pending_readings   = [];
 $variance_reports   = [];
 $recent_adjustments = [];
 $shift_history      = [];
 $deliveries         = [];
 $reconciliation_data = [];
+
+// -- Load shift periods from DB (replaces all hardcoded shift labels) --
+require_once __DIR__ . '/../backend/classes/ShiftPeriodConfig.php';
+$shiftConfig  = new ShiftPeriodConfig($pdo, $station_id);
+$shift_periods = $shiftConfig->getShiftPeriods();
+
+// Build a lookup: shift_key => display label (e.g. 'first' => 'First Shift: 6:00 AM – 2:00 PM')
+$shift_label_map = [];
+foreach ($shift_periods as $sp) {
+    $shift_label_map[$sp['shift_key']] = $sp['shift_name'];
+    // Also map common aliases
+    $shift_label_map[strtolower($sp['shift_name'])] = $sp['shift_name'];
+}
+
+/**
+ * Resolve a raw shift_period/shift_name value to a display label using DB config.
+ */
+function resolve_shift_label(string $raw, array $map): string {
+    if ($raw === '') return '—';
+    $key = strtolower(trim($raw));
+    // Direct key match (e.g. 'first', 'second')
+    if (isset($map[$key])) return htmlspecialchars($map[$key]);
+    // Alias matches
+    $aliases = [
+        'morning' => 'first', 'am' => 'first', '1' => 'first',
+        'afternoon' => 'second', 'pm' => 'second', '2' => 'second',
+    ];
+    if (isset($aliases[$key]) && isset($map[$aliases[$key]])) {
+        return htmlspecialchars($map[$aliases[$key]]);
+    }
+    // Fallback: return raw value
+    return htmlspecialchars($raw);
+}
+
+// -- Load active suppliers from DB --
+$db_suppliers = [];
+try {
+    $stmt = $pdo->prepare("SELECT id, supplier_name FROM fuel_suppliers WHERE is_active = 1 AND (station_id = ? OR station_id IS NULL) ORDER BY supplier_name ASC");
+    $stmt->execute([$station_id]);
+    $db_suppliers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    // Fallback: try without station filter
+    try {
+        $stmt = $pdo->prepare("SELECT id, supplier_name FROM fuel_suppliers WHERE is_active = 1 ORDER BY supplier_name ASC");
+        $stmt->execute();
+        $db_suppliers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e2) { error_log("db_suppliers: " . $e2->getMessage()); }
+}
+
+// -- Load fuel types from DB (no is_active column in this table) --
+$db_fuel_types = [];
+try {
+    $stmt = $pdo->prepare("SELECT ft.id, ft.name FROM fuel_types ft INNER JOIN fuel_inventory fi ON fi.fuel_type_id = ft.id WHERE fi.station_id = ? GROUP BY ft.id, ft.name ORDER BY ft.name ASC");
+    $stmt->execute([$station_id]);
+    $db_fuel_types = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) { error_log("db_fuel_types: " . $e->getMessage()); }
 
 try {
     // Tank levels
@@ -942,12 +1028,6 @@ foreach ($tank_data as $td) {
     $key2 = strtolower(trim($td['fuel_type'] ?? ''));
     if ($key2 && $key2 !== $key) $cal_lookup[$key2] = $cal_lookup[$key];
 }
-
-try {
-    $stmt = $pdo->prepare("SELECT fp.*, ft.name as fuel_type_name, u.name as updated_by_name FROM fuel_pumps fp JOIN fuel_types ft ON fp.fuel_type_id=ft.id LEFT JOIN users u ON fp.calibration_updated_by=u.id WHERE fp.station_id=? ORDER BY COALESCE(fp.calibration_updated_at,fp.created_at) DESC LIMIT 10");
-    $stmt->execute([$station_id]);
-    $calibration_logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) { error_log("calibration_logs: ".$e->getMessage()); }
 
 try {
     $stmt = $pdo->prepare("
@@ -1420,20 +1500,14 @@ function adjustColor($hex,$pct) {
                                : 0;
             $variance_pct    = ($liters_sold > 0) ? abs($variance_l / $liters_sold) * 100 : 0;
             $is_flagged      = $variance_pct > 5;
-            // Shift label
+            // Shift label from DB config
             $shift_raw   = $r['shift_period'] ?? $r['shift_name'] ?? '';
-            $shift_label = match(strtolower($shift_raw)) {
-                'first','morning','am','1'  => '6AM - 2PM',
-                'second','afternoon','pm','2' => '2PM - 12MN',
-                default => $shift_raw ? htmlspecialchars($shift_raw) : '-"',
-            };
+            $shift_label = resolve_shift_label($shift_raw, $shift_label_map);
             $submitted_at = $r['created_at'] ?? $r['transaction_date'] ?? null;
         ?>
-        <tr style="<?php echo $is_flagged ? 'background:#fff8f0;' : '-"'; ?>">
+        <tr style="<?php echo $is_flagged ? 'background:#fff8f0;' : ''; ?>">
             <td><strong style="font-size:.72rem;font-family:monospace;"><?php echo htmlspecialchars($r['transaction_id']); ?></strong></td>
             <td>
-                <div style="font-weight:700;font-size:.85rem;">
-                    Pump #<?php echo htmlspecialchars($r['pump_number'] ?? $r['pump_id'] ?? ''); ?>
                 </div>
                 <div style="font-size:.75rem;color:#666;"><?php echo htmlspecialchars($r['fuel_type']); ?></div>
             </td>
@@ -1584,13 +1658,9 @@ function adjustColor($hex,$pct) {
                  : (str_contains($st, 'verified') || str_contains($st, 'approved') ? 'verified'
                  : (str_contains($st, 'rejected') ? 'rejected' : $st));
 
-        // Shift label
+        // Shift label from DB config
         $shift_raw   = $h['shift_period'] ?? $h['shift_name'] ?? '';
-        $shift_label = match(strtolower($shift_raw)) {
-            'first','morning','am','1'    => '6AM  -  2PM',
-            'second','afternoon','pm','2' => '2PM  -  12MN',
-            default => $shift_raw ? htmlspecialchars($shift_raw) : ' - ',
-        };
+        $shift_label = resolve_shift_label($shift_raw, $shift_label_map);
 
         // Pump display  -  only pump_id exists in fuel_transactions
         $pump_display = $h['pump_id'] ?? null;
@@ -1707,7 +1777,9 @@ function adjustColor($hex,$pct) {
 
     <div class="section-head">
         <div class="section-title"><i class="fas fa-truck"></i> Fuel Deliveries  -  Supplier DR Validation</div>
-
+        <button class="btn btn-primary" style="font-size:.82rem;padding:6px 14px;" onclick="openModal('recordDeliveryModal')">
+            <i class="fas fa-plus"></i> Record Delivery
+        </button>
     </div>
 
 
@@ -2810,8 +2882,9 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
             <label style="font-size:.78rem;font-weight:600;color:#555;display:block;margin-bottom:4px;">Shift</label>
             <select id="histShiftFilter" class="form-control" style="width:180px;">
                 <option value="">All Shifts</option>
-                <option value="first">First Shift (6AM - 2PM)</option>
-                <option value="second">Second Shift (2PM - 12MN)</option>
+                <?php foreach ($shift_periods as $sp): ?>
+                <option value="<?php echo htmlspecialchars($sp['shift_key']); ?>"><?php echo htmlspecialchars($sp['shift_name']); ?></option>
+                <?php endforeach; ?>
             </select>
         </div>
         <div>
@@ -2944,8 +3017,9 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
             <label style="font-size:.78rem;font-weight:600;color:#555;display:block;margin-bottom:4px;">Shift</label>
             <select id="rptShift" class="form-control" style="width:180px;">
                 <option value="">All Shifts</option>
-                <option value="first">First Shift (6AM - 2PM)</option>
-                <option value="second">Second Shift (2PM - 12MN)</option>
+                <?php foreach ($shift_periods as $sp): ?>
+                <option value="<?php echo htmlspecialchars($sp['shift_key']); ?>"><?php echo htmlspecialchars($sp['shift_name']); ?></option>
+                <?php endforeach; ?>
             </select>
         </div>
         <button class="btn btn-primary btn-lg" onclick="generateReport()">
@@ -3283,30 +3357,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
     </div>
     <?php endif; ?>
 
-    <!-- Calibration Log -->
-    <?php if (!empty($calibration_logs)): ?>
-    <div class="section-head" style="margin-top:24px;">
-        <div class="section-title"><i class="fas fa-history"></i> Recent Calibration Log</div>
-    </div>
-    <div style="overflow-x:auto;">
-    <div style="overflow-x:auto; width:100%; border-radius:8px; border:1px solid #eef0f2; margin-top:12px; background:#fff;">
-    <table class="data-table" style="font-size:0.82rem; min-width:850px;">
-        <thead><tr><th>Pump</th><th>Fuel Type</th><th>Calibration Value</th><th>Updated By</th><th>Updated At</th></tr></thead>
-        <tbody>
-        <?php foreach ($calibration_logs as $cl): ?>
-        <tr>
-            <td>Pump #<?php echo htmlspecialchars($cl['pump_number']??$cl['id']); ?></td>
-            <td><?php echo htmlspecialchars($cl['fuel_type_name']); ?></td>
-            <td><strong><?php echo number_format($cl['calibration_value']??0,2); ?> L</strong></td>
-            <td><span class="audit-badge"><i class="fas fa-user-tie"></i> <?php echo htmlspecialchars($cl['updated_by_name']??'System'); ?></span></td>
-            <td style="font-size:.8rem;"><?php echo $cl['calibration_updated_at'] ? date('M j, Y H:i',strtotime($cl['calibration_updated_at'])) : ' - '; ?></td>
-        </tr>
-        <?php endforeach; ?>
-        </tbody>
-    </table>
-    </div>
-    </div>
-    <?php endif; ?>
+
 
 </div>
 </div>
@@ -3383,6 +3434,85 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
             </div>
         </form>
     </div>
+</div>
+</div>
+
+<!-- ============================================================
+     DELIVERY: RECORD NEW DELIVERY MODAL (DB-driven fuel types & suppliers)
+============================================================ -->
+<div id="recordDeliveryModal" class="modal">
+<div class="modal-box" style="max-width:520px;">
+    <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-truck" style="color:#198754;margin-right:7px;"></i> Record New Delivery</div>
+        <button class="modal-close" onclick="closeModal('recordDeliveryModal')" title="Close">&#x2715;</button>
+    </div>
+    <form method="post" action="manager_fuel_management_complete.php">
+        <input type="hidden" name="action" value="record_delivery">
+        <div class="modal-body" style="padding:18px 20px;">
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label">Fuel Type <span class="required">*</span></label>
+                    <select name="fuel_type_name" class="form-control" required>
+                        <option value="">Select fuel type...</option>
+                        <?php foreach ($db_fuel_types as $ft): ?>
+                        <option value="<?php echo htmlspecialchars($ft['name']); ?>"><?php echo htmlspecialchars($ft['name']); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label">Volume (Liters) <span class="required">*</span></label>
+                    <input type="number" name="delivery_volume" class="form-control" step="0.01" min="1" required placeholder="e.g. 10000">
+                </div>
+
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label">Supplier <span class="required">*</span></label>
+                    <select name="supplier_name" class="form-control" required>
+                        <option value="">Select supplier...</option>
+                        <?php foreach ($db_suppliers as $sup): ?>
+                        <option value="<?php echo htmlspecialchars($sup['supplier_name']); ?>"><?php echo htmlspecialchars($sup['supplier_name']); ?></option>
+                        <?php endforeach; ?>
+                        <?php if (empty($db_suppliers)): ?>
+                        <option value="Petron Fuel Supply">Petron Fuel Supply</option>
+                        <?php endif; ?>
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label">Invoice / Receipt No. <span class="required">*</span></label>
+                    <input type="text" name="receipt_number" class="form-control" required placeholder="e.g. INV-2026-001">
+                </div>
+
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label">Delivery Date <span class="required">*</span></label>
+                    <input type="date" name="delivery_date" class="form-control" value="<?php echo date('Y-m-d'); ?>" required>
+                </div>
+
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label">Tanker Number <span style="font-weight:400;color:#aaa;font-size:.75rem;">(Optional)</span></label>
+                    <input type="text" name="tanker_number" class="form-control" placeholder="e.g. TK-001">
+                </div>
+
+            </div>
+
+            <div class="form-group" style="margin-top:12px;">
+                <label class="form-label">Notes <span style="font-weight:400;color:#aaa;font-size:.75rem;">(Optional)</span></label>
+                <textarea name="delivery_notes" class="form-control" rows="2" placeholder="Any observations or notes about this delivery..."></textarea>
+            </div>
+
+            <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:10px;margin-top:10px;font-size:.8rem;color:#856404;">
+                <i class="fas fa-info-circle"></i>
+                Delivery will be saved as <strong>Pending</strong>. Tank levels are updated only after manager validation.
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <button type="submit" class="btn btn-success btn-lg"><i class="fas fa-save"></i> Save Delivery</button>
+            <button type="button" class="btn btn-secondary" onclick="closeModal('recordDeliveryModal')">Cancel</button>
+        </div>
+    </form>
 </div>
 </div>
 
@@ -4282,6 +4412,25 @@ let _rptData = null;
 let _rptChart = null;
 let _shiftBreakdownVisible = false;
 
+// DB-driven shift label map (populated from PHP)
+const _shiftLabelMap = <?php
+    $js_shift_map = [];
+    foreach ($shift_periods as $sp) {
+        $js_shift_map[$sp['shift_key']] = $sp['shift_name'];
+    }
+    echo json_encode($js_shift_map, JSON_UNESCAPED_UNICODE);
+?>;
+
+function getShiftLabel(shift_key) {
+    if (!shift_key) return '—';
+    if (_shiftLabelMap[shift_key]) return _shiftLabelMap[shift_key];
+    // Alias fallback
+    const aliases = { morning: 'first', am: 'first', '1': 'first', afternoon: 'second', pm: 'second', '2': 'second' };
+    const mapped = aliases[String(shift_key).toLowerCase()];
+    if (mapped && _shiftLabelMap[mapped]) return _shiftLabelMap[mapped];
+    return shift_key;
+}
+
 function onRptPeriodChange() {
     const p = document.getElementById('rptPeriod').value;
     document.getElementById('rptDayWrap').style.display    = p === 'daily'   ? 'block' : 'none';
@@ -4377,7 +4526,7 @@ function renderReport({ meter_readings, vol_sales_summary, vol_amt_summary, summ
             const vol = parseFloat(r.volume_liters||0);
             const amt = parseFloat(r.amount||0);
             mrTotalL += vol; mrTotalA += amt;
-            const shiftLbl = r.shift_period === 'first' ? '6AM-"2PM' : (r.shift_period === 'second' ? '2PM-"12MN' : (r.shift_period||'-"'));
+            const shiftLbl = getShiftLabel(r.shift_period);
             mrTbody.innerHTML += `<tr style="background:${rowBg[i%2]};border-bottom:1px solid #f0f0f0;">
                 <td style="padding:8px 12px;font-weight:600;">${esc(r.fuel_type)}</td>
                 <td style="padding:8px 12px;text-align:right;color:#555;">${n2(parseFloat(r.beginning||0))}</td>
@@ -4575,7 +4724,7 @@ function renderDailyTable(daily, showShift) {
     (daily||[]).forEach(row => {
         const d  = new Date(row.day + 'T00:00:00');
         const ds = d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
-        const shiftLabel = row.shift_period === 'first' ? '6AM - 2PM' : (row.shift_period === 'second' ? '2PM - 12MN' : (row.shift_period || ' - '));
+        const shiftLabel = getShiftLabel(row.shift_period);
         if (showShift) {
             tbody.innerHTML += `<tr>
                 <td style="white-space:nowrap;">${ds}</td>
@@ -4620,7 +4769,7 @@ function exportReport() {
     csv += `TABLE 1 - METER READING\n`;
     csv += `Fuel Type,Beginning,Ending,CAL,Volume (L),Price/L,Amount (PHP),Shift,Staff\n`;
     (meter_readings||[]).forEach(r => {
-        const shiftLbl = r.shift_period === 'first' ? '6AM-2PM' : (r.shift_period === 'second' ? '2PM-12MN' : (r.shift_period||''));
+        const shiftLbl = getShiftLabel(r.shift_period);
         csv += `"${r.fuel_type}",${parseFloat(r.beginning||0).toFixed(2)},${parseFloat(r.ending||0).toFixed(2)},${parseFloat(r.cal||0).toFixed(3)},${parseFloat(r.volume_liters||0).toFixed(2)},${parseFloat(r.price_per_liter||0).toFixed(2)},${parseFloat(r.amount||0).toFixed(2)},"${shiftLbl}","${r.staff_name||''}"\n`;
     });
     csv += `TOTAL,,,,${grandL.toFixed(2)},,${grandS.toFixed(2)},,\n\n`;

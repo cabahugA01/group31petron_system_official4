@@ -188,6 +188,11 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 'href' => 'admin_transactions_oversight.php',
                 'permissions' => ['view_all_reports', 'view_dashboard'],
                 'station_specific' => true,
+                'sub_items' => [
+                    ['id' => 'ato_overview',  'label' => 'Overview & Actions',    'href' => 'admin_transactions_oversight.php',          'permissions' => ['view_all_reports']],
+                    ['id' => 'ato_manage',    'label' => 'Manage Transactions',   'href' => 'transactions.php',                          'permissions' => ['view_all_reports']],
+                    ['id' => 'ato_fuel',      'label' => 'Fuel Transactions',     'href' => 'admin_transactions_oversight.php?tab=fuel',  'permissions' => ['view_all_reports']],
+                ],
             ],
             // 5. Product & Pricing Management
             [

@@ -1357,7 +1357,53 @@ if ($section === 'audit_trail') {
         $dv_val = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
     } catch (Exception $e) { $dv_val = []; }
 
-    $audit_trail_rows = array_merge($jo_val, $mt_val, $dv_val);
+    // 4. Calibration changes (fuel_pumps — updated by manager)
+    $cal_rows = [];
+    try {
+        $s = $pdo->prepare("
+            SELECT fp.calibration_updated_at AS date_time,
+                   fp.calibration_updated_by  AS manager_id,
+                   'Calibration Update'        AS action,
+                   'Fuel / Pump Master'        AS module,
+                   CONCAT('PUMP-', fp.pump_number, ' (', COALESCE(ft.name, fi.fuel_type, 'Unknown'), ')') AS reference_id,
+                   CONCAT('Calibration set to ', fp.calibration_value, ' L') AS reason
+            FROM fuel_pumps fp
+            LEFT JOIN fuel_types ft    ON fp.fuel_type_id = ft.id
+            LEFT JOIN fuel_inventory fi ON fi.fuel_type_id = fp.fuel_type_id AND fi.station_id = fp.station_id
+            WHERE fp.station_id = ?
+              AND fp.calibration_updated_by IS NOT NULL
+              AND fp.calibration_updated_at IS NOT NULL
+              AND DATE(fp.calibration_updated_at) BETWEEN ? AND ?
+            GROUP BY fp.id
+            ORDER BY fp.calibration_updated_at DESC
+        ");
+        $s->execute([$station_id, $date_start, $date_end]);
+        $cal_rows = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (Exception $e) { $cal_rows = []; }
+
+    // 5. Fuel adjustments (tank level + price updates done by manager)
+    $fadj_rows = [];
+    try {
+        $s = $pdo->prepare("
+            SELECT COALESCE(fa.created_at, CONCAT(fa.adjustment_date,' 00:00:00')) AS date_time,
+                   fa.user_id   AS manager_id,
+                   fa.adjustment_type AS action,
+                   'Fuel Adjustment' AS module,
+                   CONCAT('ADJ-', fa.id, ' (', COALESCE(ft.name, fa.fuel_type, 'Unknown'), ')') AS reference_id,
+                   COALESCE(fa.reason, '') AS reason
+            FROM fuel_adjustments fa
+            LEFT JOIN fuel_types ft ON fa.fuel_type_id = ft.id
+            WHERE fa.station_id = ?
+              AND fa.user_id = ?
+              AND DATE(COALESCE(fa.created_at, fa.adjustment_date)) BETWEEN ? AND ?
+            ORDER BY COALESCE(fa.created_at, fa.adjustment_date) DESC
+            LIMIT 200
+        ");
+        $s->execute([$station_id, $manager_id, $date_start, $date_end]);
+        $fadj_rows = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (Exception $e) { $fadj_rows = []; }
+
+    $audit_trail_rows = array_merge($jo_val, $mt_val, $dv_val, $cal_rows, $fadj_rows);
     usort($audit_trail_rows, function($a, $b) {
         return strtotime($b['date_time']) - strtotime($a['date_time']);
     });
@@ -2671,25 +2717,46 @@ require_once __DIR__ . '/../partials/header.php';
         <div class="table-scroll">
             <table class="mgr-table">
                 <thead><tr>
-                    <th>Transaction ID</th>
-                    <th>Manager ID</th>
+                    <th>Reference</th>
+                    <th>Module</th>
                     <th>Action</th>
                     <th>Remarks / Reason</th>
+                    <th>Manager</th>
                     <th>Timestamp</th>
                 </tr></thead>
                 <tbody>
                 <?php foreach ($paginated_rows as $row):
                     $action_lc = strtolower($row['action'] ?? '');
-                    $action_badge = in_array($action_lc, ['approve','approved','confirmed']) ? 'badge-approved'
+                    $action_badge = str_contains($action_lc, 'calibrat') ? 'badge-inprog'
+                                  : (str_contains($action_lc, 'price')   ? 'badge-inprog'
+                                  : (in_array($action_lc, ['approve','approved','confirmed','verified','calibration update']) ? 'badge-approved'
                                   : (in_array($action_lc, ['reject','rejected']) ? 'badge-rejected'
-                                  : (in_array($action_lc, ['adjust','adjusted']) ? 'badge-inprog' : 'badge-default'));
+                                  : (in_array($action_lc, ['adjust','adjusted','adjusted_reading','adjust_reading']) ? 'badge-inprog'
+                                  : 'badge-default'))));
+                    // Resolve manager name from ID
+                    $mgr_display = $row['manager_id'] ?? '—';
+                    static $mgr_name_cache = [];
+                    if (is_numeric($mgr_display) && (int)$mgr_display > 0) {
+                        if (!isset($mgr_name_cache[$mgr_display])) {
+                            try {
+                                $ns = $pdo->prepare("SELECT name FROM users WHERE id = ? LIMIT 1");
+                                $ns->execute([$mgr_display]);
+                                $nr = $ns->fetch(PDO::FETCH_ASSOC);
+                                $mgr_name_cache[$mgr_display] = $nr ? $nr['name'] : "ID #{$mgr_display}";
+                            } catch (Exception $e) { $mgr_name_cache[$mgr_display] = "ID #{$mgr_display}"; }
+                        }
+                        $mgr_display = $mgr_name_cache[$mgr_display];
+                    }
                 ?>
                 <tr>
                     <td><strong><?= htmlspecialchars($row['reference_id'] ?? '—') ?></strong></td>
-                    <td><?= htmlspecialchars($row['manager_id'] ?? '—') ?></td>
+                    <td><span style="font-size:11px;background:#f1f5f9;color:#475569;padding:2px 8px;border-radius:10px;font-weight:600;"><?= htmlspecialchars($row['module'] ?? '—') ?></span></td>
                     <td><span class="badge <?= $action_badge ?>"><?= htmlspecialchars($row['action'] ?? '—') ?></span></td>
-                    <td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#667085;font-size:12px;" title="<?= htmlspecialchars($row['reason'] ?? '') ?>">
+                    <td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#667085;font-size:12px;" title="<?= htmlspecialchars($row['reason'] ?? '') ?>">
                         <?= htmlspecialchars($row['reason'] ?: '—') ?>
+                    </td>
+                    <td style="font-size:12px;white-space:nowrap;">
+                        <i class="fa-solid fa-user-tie" style="opacity:.5;margin-right:3px;"></i><?= htmlspecialchars($mgr_display) ?>
                     </td>
                     <td style="white-space:nowrap;">
                         <strong><?= date('M j, Y', strtotime($row['date_time'])) ?></strong>

@@ -2,6 +2,7 @@
 $page_id = 'pending_transactions';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
+require_once __DIR__ . '/../backend/transaction_schema_fix.php';
 require_login();
 
 $me = current_user();
