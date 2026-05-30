@@ -1,7 +1,7 @@
 <?php
 // ============================================================
 // Admin Dashboard – public/admin_dashboard.php
-// All queries verified against actual DB schema
+// Complete redesign: all components, charts, panels, calendar
 // ============================================================
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'admin_dashboard';
@@ -17,38 +17,11 @@ if (!in_array($role, ['admin', 'superadmin'])) {
     $_SESSION['error'] = 'Access denied. Admin access required.';
     header('Location: staff_dashboard.php'); exit;
 }
-
-// Guard: admin must have a station assigned
 if ($station_id <= 0 && $role === 'admin') {
     render_no_station_page('admin_dashboard.php');
 }
 
-// ── Date range ────────────────────────────────────────────────────────────────
-$quick     = trim($_GET['quick']     ?? 'today');
-$date_from = trim($_GET['date_from'] ?? '');
-$date_to   = trim($_GET['date_to']   ?? '');
-
-switch ($quick) {
-    case 'week':
-        $date_from = date('Y-m-d', strtotime('monday this week'));
-        $date_to   = date('Y-m-d');
-        break;
-    case 'month':
-        $date_from = date('Y-m-01');
-        $date_to   = date('Y-m-d');
-        break;
-    case 'last_month':
-        $date_from = date('Y-m-01', strtotime('first day of last month'));
-        $date_to   = date('Y-m-t',  strtotime('last day of last month'));
-        break;
-    default:
-        if (empty($date_from)) $date_from = date('Y-m-d');
-        if (empty($date_to))   $date_to   = date('Y-m-d');
-        if ($quick === 'today') { $date_from = $date_to = date('Y-m-d'); }
-        break;
-}
-
-// ── Station name ──────────────────────────────────────────────────────────────
+// ── Station Name ──────────────────────────────────────────
 $station_name = 'Station';
 try {
     $sn = $pdo->prepare("SELECT name FROM stations WHERE id=? LIMIT 1");
@@ -56,7 +29,19 @@ try {
     $station_name = $sn->fetchColumn() ?: 'Station';
 } catch (Exception $e) {}
 
-// ── Safe query helpers ────────────────────────────────────────────────────────
+// ── Date Range ────────────────────────────────────────────
+$quick     = trim($_GET['quick']     ?? 'month');
+$date_from = trim($_GET['date_from'] ?? '');
+$date_to   = trim($_GET['date_to']   ?? '');
+switch ($quick) {
+    case 'today':      $date_from = $date_to = date('Y-m-d'); break;
+    case 'week':       $date_from = date('Y-m-d', strtotime('monday this week')); $date_to = date('Y-m-d'); break;
+    case 'month':      $date_from = date('Y-m-01'); $date_to = date('Y-m-d'); break;
+    case 'last_month': $date_from = date('Y-m-01', strtotime('first day of last month')); $date_to = date('Y-m-t', strtotime('last day of last month')); break;
+    default:           if (empty($date_from)) $date_from = date('Y-m-01'); if (empty($date_to)) $date_to = date('Y-m-d'); break;
+}
+
+// ── Helpers ───────────────────────────────────────────────
 function adm_val(PDO $pdo, string $sql, array $p = [], $default = 0) {
     try { $s = $pdo->prepare($sql); $s->execute($p); return $s->fetchColumn() ?? $default; }
     catch (Exception $e) { return $default; }
@@ -66,563 +51,906 @@ function adm_rows(PDO $pdo, string $sql, array $p = []): array {
     catch (Exception $e) { return []; }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// SUMMARY CARDS
-// ══════════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════
+// 1. SUMMARY METRICS
+// ══════════════════════════════════════════════════════════
+$fuel_revenue  = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ?", [$station_id,$date_from,$date_to]);
+$fuel_liters   = (float) adm_val($pdo, "SELECT COALESCE(SUM(liters_sold),0) FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ?", [$station_id,$date_from,$date_to]);
+$merch_revenue = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM merchandise_transactions WHERE station_id=? AND DATE(COALESCE(transaction_date,created_at)) BETWEEN ? AND ?", [$station_id,$date_from,$date_to]);
+$merch_credit  = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM merchandise_transactions WHERE station_id=? AND payment_method='Credit' AND DATE(COALESCE(transaction_date,created_at)) BETWEEN ? AND ?", [$station_id,$date_from,$date_to]);
 
-// 1. Total Fuel Sales — liters + revenue
-$fuel_revenue = (float) adm_val($pdo,
-    "SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions
-     WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ?",
-    [$station_id, $date_from, $date_to]);
-$fuel_liters = (float) adm_val($pdo,
-    "SELECT COALESCE(SUM(liters_sold),0) FROM fuel_transactions
-     WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ?",
-    [$station_id, $date_from, $date_to]);
+$upcoming_deliveries    = (int) adm_val($pdo, "SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND DATE(COALESCE(delivery_date,created_at)) >= CURDATE() AND status NOT IN ('Validated','Approved')", [$station_id]);
+$scheduled_calibrations = (int) adm_val($pdo, "SELECT COUNT(DISTINCT pump_number) FROM calibration_logs WHERE station_id=? AND DATE(encoded_at) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)", [$station_id]);
+$pending_job_orders     = (int) adm_val($pdo, "SELECT COUNT(*) FROM job_orders WHERE station_id=? AND LOWER(status)='pending'", [$station_id]);
+$active_shifts_today    = (int) adm_val($pdo, "SELECT COUNT(*) FROM labor_sessions WHERE station_id=? AND DATE(start_time)=CURDATE()", [$station_id]);
+$variance_alerts_open   = (int) adm_val($pdo, "SELECT COUNT(*) FROM variance_alerts WHERE station_id=? AND status='open'", [$station_id]);
+$variance_liters        = (float) adm_val($pdo, "SELECT COALESCE(SUM(ABS(variance_liters)),0) FROM fuel_variance_reports WHERE station_id=? AND DATE(created_at) BETWEEN ? AND ?", [$station_id,$date_from,$date_to]);
 
-// 2. Total Merchandise Sales — revenue + payment mix
-$merch_revenue = (float) adm_val($pdo,
-    "SELECT COALESCE(SUM(total_amount),0) FROM merchandise_transactions
-     WHERE station_id=? AND DATE(COALESCE(transaction_date,created_at)) BETWEEN ? AND ?",
-    [$station_id, $date_from, $date_to]);
-$merch_cash = (float) adm_val($pdo,
-    "SELECT COALESCE(SUM(total_amount),0) FROM merchandise_transactions
-     WHERE station_id=? AND payment_method='Cash'
-     AND DATE(COALESCE(transaction_date,created_at)) BETWEEN ? AND ?",
-    [$station_id, $date_from, $date_to]);
-$merch_credit = (float) adm_val($pdo,
-    "SELECT COALESCE(SUM(total_amount),0) FROM merchandise_transactions
-     WHERE station_id=? AND payment_method='Credit'
-     AND DATE(COALESCE(transaction_date,created_at)) BETWEEN ? AND ?",
-    [$station_id, $date_from, $date_to]);
-$merch_card = $merch_revenue - $merch_cash - $merch_credit;
-
-// 3. Variance Alerts — from fuel_variance_reports (variance_liters column)
-$variance_open = (int) adm_val($pdo,
-    "SELECT COUNT(*) FROM fuel_variance_reports
-     WHERE station_id=? AND status IN ('Open','Under Investigation')
-     AND DATE(created_at) BETWEEN ? AND ?",
-    [$station_id, $date_from, $date_to]);
-$variance_liters = (float) adm_val($pdo,
-    "SELECT COALESCE(SUM(ABS(variance_liters)),0) FROM fuel_variance_reports
-     WHERE station_id=? AND DATE(created_at) BETWEEN ? AND ?",
-    [$station_id, $date_from, $date_to]);
-// Also check variance_alerts table
-$var_alerts_open = (int) adm_val($pdo,
-    "SELECT COUNT(*) FROM variance_alerts
-     WHERE station_id=? AND status='open'
-     AND DATE(created_at) BETWEEN ? AND ?",
-    [$station_id, $date_from, $date_to]);
-$total_variance_alerts = $variance_open + $var_alerts_open;
-
-// 4. Deliveries Status
-$del_pending  = (int) adm_val($pdo,
-    "SELECT COUNT(*) FROM deliveries_oversight
-     WHERE station_id=? AND status IN ('Pending Validation','Pending Manager Approval','Pending Manager Confirmation')
-     AND DATE(COALESCE(delivery_date,created_at)) BETWEEN ? AND ?",
-    [$station_id, $date_from, $date_to]);
-$del_approved = (int) adm_val($pdo,
-    "SELECT COUNT(*) FROM deliveries_oversight
-     WHERE station_id=? AND status IN ('Validated','Confirmed','Approved')
-     AND DATE(COALESCE(delivery_date,created_at)) BETWEEN ? AND ?",
-    [$station_id, $date_from, $date_to]);
-$del_rejected = (int) adm_val($pdo,
-    "SELECT COUNT(*) FROM deliveries_oversight
-     WHERE station_id=? AND status IN ('Rejected','Flagged','Discrepancy')
-     AND DATE(COALESCE(delivery_date,created_at)) BETWEEN ? AND ?",
-    [$station_id, $date_from, $date_to]);
-$del_total = $del_pending + $del_approved + $del_rejected;
-
-// 5. Staff Accounts Snapshot — active vs inactive (exclude admin/manager/superadmin)
-$staff_active   = (int) adm_val($pdo,
-    "SELECT COUNT(*) FROM users WHERE station_id=? AND status='active'
-     AND role NOT IN ('admin','manager','superadmin','Admin','Manager','Super Admin')",
-    [$station_id]);
-$staff_inactive = (int) adm_val($pdo,
-    "SELECT COUNT(*) FROM users WHERE station_id=? AND status='inactive'
-     AND role NOT IN ('admin','manager','superadmin','Admin','Manager','Super Admin')",
-    [$station_id]);
-$mgr_count = (int) adm_val($pdo,
-    "SELECT COUNT(*) FROM users WHERE station_id=? AND status='active'
-     AND role IN ('manager','Manager','supervisor')",
-    [$station_id]);
-
-// ══════════════════════════════════════════════════════════════════════════════
-// COMPLIANCE ALERTS
-// ══════════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════
+// 2. COMPLIANCE ALERTS
+// ══════════════════════════════════════════════════════════
 $compliance_alerts = [];
-// Rejected transactions
-$rej_txn = (int) adm_val($pdo,
-    "SELECT COUNT(*) FROM merchandise_transactions
-     WHERE station_id=? AND validation_status='Rejected'
-     AND DATE(COALESCE(transaction_date,created_at)) BETWEEN ? AND ?",
-    [$station_id, $date_from, $date_to]);
-if ($rej_txn > 0)
-    $compliance_alerts[] = ['type'=>'danger','icon'=>'fa-times-circle','msg'=>"{$rej_txn} rejected merchandise transaction(s)"];
-if ($total_variance_alerts > 0)
-    $compliance_alerts[] = ['type'=>'danger','icon'=>'fa-exclamation-triangle','msg'=>"{$total_variance_alerts} open variance alert(s)"];
-if ($del_pending > 0)
-    $compliance_alerts[] = ['type'=>'warning','icon'=>'fa-truck','msg'=>"{$del_pending} delivery(ies) pending validation"];
-// Price changes from audit_logs (join users for station scope)
-$price_changes = (int) adm_val($pdo,
-    "SELECT COUNT(*) FROM audit_logs al
-     JOIN users u ON u.id=al.user_id
-     WHERE u.station_id=? AND al.action_type LIKE '%price%'
-     AND DATE(al.created_at) BETWEEN ? AND ?",
-    [$station_id, $date_from, $date_to]);
-if ($price_changes > 0)
-    $compliance_alerts[] = ['type'=>'warning','icon'=>'fa-tag','msg'=>"{$price_changes} price change(s) in audit trail"];
+if ($variance_alerts_open > 0)
+    $compliance_alerts[] = ['type'=>'danger','icon'=>'fa-triangle-exclamation','msg'=>"{$variance_alerts_open} unresolved variance alert(s) requiring calibration review."];
+$flagged_del = (int) adm_val($pdo, "SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Rejected','Flagged','Discrepancy')", [$station_id]);
+if ($flagged_del > 0)
+    $compliance_alerts[] = ['type'=>'danger','icon'=>'fa-circle-xmark','msg'=>"{$flagged_del} delivery(ies) flagged with discrepancies."];
+$pending_val = (int) adm_val($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND validation_status='Pending'", [$station_id]);
+if ($pending_val > 0)
+    $compliance_alerts[] = ['type'=>'warning','icon'=>'fa-clock','msg'=>"{$pending_val} merchandise transaction(s) pending manager validation."];
+$pending_jo_alert = (int) adm_val($pdo, "SELECT COUNT(*) FROM job_orders WHERE station_id=? AND LOWER(status)='pending'", [$station_id]);
+if ($pending_jo_alert > 0)
+    $compliance_alerts[] = ['type'=>'warning','icon'=>'fa-wrench','msg'=>"{$pending_jo_alert} job order(s) awaiting scheduling."];
 
-// ══════════════════════════════════════════════════════════════════════════════
-// CHARTS DATA
-// ══════════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════
+// 3. CALENDAR OVERSIGHT (Weekly)
+// ══════════════════════════════════════════════════════════
+$week_offset   = (int)($_GET['week'] ?? 0);
+$start_of_week = date('Y-m-d', strtotime("monday this week +{$week_offset} weeks"));
+$end_of_week   = date('Y-m-d', strtotime("sunday this week +{$week_offset} weeks"));
+$cal_events    = [];
 
-// Sales Trend — 30 days
+foreach (adm_rows($pdo, "SELECT id,service_type,customer_name,status,DATE(created_at) AS edate FROM job_orders WHERE station_id=? AND DATE(created_at) BETWEEN ? AND ?", [$station_id,$start_of_week,$end_of_week]) as $x)
+    $cal_events[] = ['type'=>'job_orders','title'=>"JO: ".($x['service_type']??'')." (".($x['customer_name']??'').")",'date'=>$x['edate'],'status'=>strtolower($x['status']?:'pending')];
+
+foreach (adm_rows($pdo, "SELECT id,supplier,product,quantity,status,DATE(COALESCE(delivery_date,created_at)) AS edate FROM deliveries_oversight WHERE station_id=? AND DATE(COALESCE(delivery_date,created_at)) BETWEEN ? AND ?", [$station_id,$start_of_week,$end_of_week]) as $x)
+    $cal_events[] = ['type'=>'deliveries','title'=>"Del: ".($x['product']??'')." – ".($x['supplier']??'')." (".($x['quantity']??'')."L)",'date'=>$x['edate'],'status'=>strtolower($x['status']?:'pending')];
+
+foreach (adm_rows($pdo, "SELECT id,product_name,quantity,status,DATE(COALESCE(expected_delivery_date,created_at)) AS edate FROM purchase_orders WHERE station_id=? AND DATE(COALESCE(expected_delivery_date,created_at)) BETWEEN ? AND ?", [$station_id,$start_of_week,$end_of_week]) as $x)
+    $cal_events[] = ['type'=>'purchase_orders','title'=>"PO: ".($x['product_name']??'')." (".($x['quantity']??'').")",'date'=>$x['edate'],'status'=>strtolower($x['status']?:'pending')];
+
+foreach (adm_rows($pdo, "SELECT id,pump_number,fuel_type,DATE(encoded_at) AS edate FROM calibration_logs WHERE station_id=? AND DATE(encoded_at) BETWEEN ? AND ?", [$station_id,$start_of_week,$end_of_week]) as $x)
+    $cal_events[] = ['type'=>'fuel_calibration','title'=>"Calib: Pump #".($x['pump_number']??'')." (".($x['fuel_type']??'').")",'date'=>$x['edate'],'status'=>'completed'];
+
+foreach (adm_rows($pdo, "SELECT ss.id,ss.shift,ss.status,ss.scheduled_date AS edate,u.name AS sname FROM staff_schedules ss JOIN users u ON u.id=ss.user_id WHERE u.station_id=? AND ss.scheduled_date BETWEEN ? AND ?", [$station_id,$start_of_week,$end_of_week]) as $x)
+    $cal_events[] = ['type'=>'staff_shift','title'=>"Shift: ".($x['sname']??'')." (".($x['shift']??'').")",'date'=>$x['edate'],'status'=>strtolower($x['status']?:'approved')];
+
+// ══════════════════════════════════════════════════════════
+// 4. CHARTS DATA
+// ══════════════════════════════════════════════════════════
+// Sales trend 30 days
+$fuel_map  = array_column(adm_rows($pdo, "SELECT DATE(transaction_date) AS d, SUM(total_amount) AS rev FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date)>=DATE_SUB(CURDATE(),INTERVAL 30 DAY) GROUP BY d", [$station_id]), 'rev', 'd');
+$merch_map = array_column(adm_rows($pdo, "SELECT DATE(COALESCE(transaction_date,created_at)) AS d, SUM(total_amount) AS rev FROM merchandise_transactions WHERE station_id=? AND DATE(COALESCE(transaction_date,created_at))>=DATE_SUB(CURDATE(),INTERVAL 30 DAY) GROUP BY d", [$station_id]), 'rev', 'd');
 $trend_labels = $trend_fuel = $trend_merch = [];
-$fuel_map  = array_column(adm_rows($pdo,
-    "SELECT DATE(transaction_date) AS d, COALESCE(SUM(total_amount),0) AS rev
-     FROM fuel_transactions WHERE station_id=?
-     AND DATE(transaction_date) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-     GROUP BY DATE(transaction_date)", [$station_id]), 'rev', 'd');
-$merch_map = array_column(adm_rows($pdo,
-    "SELECT DATE(COALESCE(transaction_date,created_at)) AS d, COALESCE(SUM(total_amount),0) AS rev
-     FROM merchandise_transactions WHERE station_id=?
-     AND DATE(COALESCE(transaction_date,created_at)) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-     GROUP BY DATE(COALESCE(transaction_date,created_at))", [$station_id]), 'rev', 'd');
-for ($i=29; $i>=0; $i--) {
+for ($i=29;$i>=0;$i--) {
     $d = date('Y-m-d', strtotime("-{$i} days"));
     $trend_labels[] = date('M j', strtotime($d));
     $trend_fuel[]   = (float)($fuel_map[$d]  ?? 0);
     $trend_merch[]  = (float)($merch_map[$d] ?? 0);
 }
 
-// Deliveries Trend — 14 days
-$del_labels = $del_counts = [];
-$del_map = array_column(adm_rows($pdo,
-    "SELECT DATE(COALESCE(delivery_date,created_at)) AS d, COUNT(*) AS cnt
-     FROM deliveries_oversight WHERE station_id=?
-     AND DATE(COALESCE(delivery_date,created_at)) >= DATE_SUB(CURDATE(), INTERVAL 14 DAY)
-     GROUP BY DATE(COALESCE(delivery_date,created_at))", [$station_id]), 'cnt', 'd');
-for ($i=13; $i>=0; $i--) {
+// Fuel sales per day (bar) – last 7 days
+$fuel_bar_map = array_column(adm_rows($pdo, "SELECT DATE(transaction_date) AS d, SUM(liters_sold) AS ltr FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date)>=DATE_SUB(CURDATE(),INTERVAL 7 DAY) GROUP BY d", [$station_id]), 'ltr', 'd');
+$fuel_bar_labels = $fuel_bar_data = [];
+for ($i=6;$i>=0;$i--) {
     $d = date('Y-m-d', strtotime("-{$i} days"));
-    $del_labels[] = date('M j', strtotime($d));
-    $del_counts[] = (int)($del_map[$d] ?? 0);
+    $fuel_bar_labels[] = date('D', strtotime($d));
+    $fuel_bar_data[]   = (float)($fuel_bar_map[$d] ?? 0);
 }
 
-// Variance Distribution — by fuel_type from fuel_variance_reports
-$var_rows = adm_rows($pdo,
-    "SELECT fuel_type, COALESCE(SUM(ABS(variance_liters)),0) AS total
-     FROM fuel_variance_reports WHERE station_id=?
-     AND DATE(created_at) BETWEEN ? AND ?
-     GROUP BY fuel_type ORDER BY total DESC LIMIT 6",
-    [$station_id, $date_from, $date_to]);
-$var_labels  = !empty($var_rows) ? array_column($var_rows,'fuel_type') : ['No Data'];
-$var_amounts = !empty($var_rows) ? array_column($var_rows,'total')     : [0];
-
-// Staff Performance Chart — top 8 by activity
-$perf_rows = adm_rows($pdo,
-    "SELECT u.name,
-            COUNT(DISTINCT mt.id) AS txn_count,
-            COUNT(DISTINCT jo.id) AS jo_count
-     FROM users u
-     LEFT JOIN merchandise_transactions mt
-        ON mt.staff_id=u.id AND mt.station_id=?
-        AND DATE(COALESCE(mt.transaction_date,mt.created_at)) BETWEEN ? AND ?
-     LEFT JOIN job_orders jo
-        ON jo.user_id=u.id AND jo.station_id=?
-        AND DATE(jo.created_at) BETWEEN ? AND ?
-     WHERE u.station_id=? AND u.status='active'
-       AND u.role NOT IN ('manager','admin','superadmin','Admin','Manager','Super Admin')
-     GROUP BY u.id, u.name
-     ORDER BY (COUNT(DISTINCT mt.id)+COUNT(DISTINCT jo.id)) DESC LIMIT 8",
-    [$station_id,$date_from,$date_to,$station_id,$date_from,$date_to,$station_id]);
-$perf_labels = !empty($perf_rows) ? array_column($perf_rows,'name')      : ['No Data'];
-$perf_txn    = !empty($perf_rows) ? array_column($perf_rows,'txn_count') : [0];
-$perf_jo     = !empty($perf_rows) ? array_column($perf_rows,'jo_count')  : [0];
-
-// ══════════════════════════════════════════════════════════════════════════════
-// OVERSIGHT PANELS
-// ══════════════════════════════════════════════════════════════════════════════
-
-// User Management Snapshot — all roles
-$users_all = adm_rows($pdo,
-    "SELECT role, status, COUNT(*) AS cnt FROM users
-     WHERE station_id=? GROUP BY role, status ORDER BY role, status",
-    [$station_id]);
-
-// Product & Pricing — fuel prices from fuel_pricing (active) + fuel_types
-$fuel_prices = adm_rows($pdo,
-    "SELECT ft.name AS fuel_type, fp.price_per_liter, fp.effective_date
-     FROM fuel_pricing fp
-     JOIN fuel_types ft ON ft.id=fp.fuel_type_id
-     WHERE fp.station_id=? AND fp.is_active=1
-     ORDER BY ft.name",
-    [$station_id]);
-// Fallback to fuel_inventory if fuel_pricing empty
-if (empty($fuel_prices)) {
-    $fuel_prices = adm_rows($pdo,
-        "SELECT COALESCE(ft.name, fi.fuel_type) AS fuel_type,
-                fi.price_per_liter, fi.last_updated AS effective_date
-         FROM fuel_inventory fi
-         LEFT JOIN fuel_types ft ON ft.id=fi.fuel_type_id
-         WHERE fi.station_id=? ORDER BY fuel_type",
-        [$station_id]);
+// Merchandise trend line – last 14 days
+$merch_trend_map = array_column(adm_rows($pdo, "SELECT DATE(COALESCE(transaction_date,created_at)) AS d, SUM(total_amount) AS rev FROM merchandise_transactions WHERE station_id=? AND DATE(COALESCE(transaction_date,created_at))>=DATE_SUB(CURDATE(),INTERVAL 14 DAY) GROUP BY d", [$station_id]), 'rev', 'd');
+$merch_trend_labels = $merch_trend_data = [];
+for ($i=13;$i>=0;$i--) {
+    $d = date('Y-m-d', strtotime("-{$i} days"));
+    $merch_trend_labels[] = date('M j', strtotime($d));
+    $merch_trend_data[]   = (float)($merch_trend_map[$d] ?? 0);
 }
 
-// Merchandise catalog — join station_inventory + products
-$merch_catalog = adm_rows($pdo,
-    "SELECT p.name AS product_name, si.price, si.stock_level, si.unit
-     FROM station_inventory si
-     JOIN products p ON p.id=si.product_id
-     WHERE si.station_id=? AND si.status='active'
-     ORDER BY si.price DESC LIMIT 8",
-    [$station_id]);
+// Deliveries
+$del_rows       = adm_rows($pdo, "SELECT supplier, COUNT(*) AS cnt FROM deliveries_oversight WHERE station_id=? GROUP BY supplier ORDER BY cnt DESC LIMIT 6", [$station_id]);
+$del_sup_labels = !empty($del_rows) ? array_column($del_rows,'supplier') : ['No Supplier'];
+$del_sup_data   = !empty($del_rows) ? array_column($del_rows,'cnt')      : [0];
+$del_pending    = (int) adm_val($pdo, "SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Pending','Pending Validation')", [$station_id]);
+$del_approved   = (int) adm_val($pdo, "SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Approved','Validated','Confirmed')", [$station_id]);
+$del_flagged    = (int) adm_val($pdo, "SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Flagged','Rejected','Discrepancy')", [$station_id]);
 
-// Recent Audit Trail — Staff and Manager actions only (Admin is oversight, not logged here)
-$audit_rows = adm_rows($pdo,
-    "SELECT al.action_type, al.action_details, al.status, al.created_at,
-            u.name AS user_name, u.role AS user_role
-     FROM audit_logs al
-     INNER JOIN users u ON u.id = al.user_id
-     WHERE u.station_id = ?
-       AND LOWER(TRIM(u.role)) NOT IN ('admin','superadmin','super admin','super_admin')
-     ORDER BY al.created_at DESC LIMIT 10",
-    [$station_id]);
+// Job Orders
+$jo_pending     = (int) adm_val($pdo, "SELECT COUNT(*) FROM job_orders WHERE station_id=? AND LOWER(status)='pending'", [$station_id]);
+$jo_in_progress = (int) adm_val($pdo, "SELECT COUNT(*) FROM job_orders WHERE station_id=? AND LOWER(status) IN ('in progress','in-progress')", [$station_id]);
+$jo_completed   = (int) adm_val($pdo, "SELECT COUNT(*) FROM job_orders WHERE station_id=? AND LOWER(status)='completed'", [$station_id]);
 
-// Top staff performer
-$top_staff = adm_rows($pdo,
-    "SELECT u.name,
-            COUNT(DISTINCT mt.id) + COUNT(DISTINCT jo.id) AS total_activity
-     FROM users u
-     LEFT JOIN merchandise_transactions mt
-        ON mt.staff_id=u.id AND mt.station_id=?
-        AND DATE(COALESCE(mt.transaction_date,mt.created_at)) BETWEEN ? AND ?
-     LEFT JOIN job_orders jo
-        ON jo.user_id=u.id AND jo.station_id=?
-        AND DATE(jo.created_at) BETWEEN ? AND ?
-     WHERE u.station_id=? AND u.status='active'
-       AND u.role NOT IN ('manager','admin','superadmin','Admin','Manager','Super Admin')
-     GROUP BY u.id, u.name
-     ORDER BY total_activity DESC LIMIT 1",
-    [$station_id,$date_from,$date_to,$station_id,$date_from,$date_to,$station_id]);
-$top_staff = $top_staff[0] ?? null;
+// Job orders weekly volume – last 8 weeks
+$jo_week_map = array_column(adm_rows($pdo, "SELECT YEARWEEK(created_at,1) AS wk, COUNT(*) AS cnt FROM job_orders WHERE station_id=? AND created_at>=DATE_SUB(CURDATE(),INTERVAL 8 WEEK) GROUP BY wk ORDER BY wk", [$station_id]), 'cnt', 'wk');
+$jo_week_labels = $jo_week_data = [];
+for ($i=7;$i>=0;$i--) {
+    $wk = date('oW', strtotime("-{$i} weeks"));
+    $jo_week_labels[] = 'Wk '.date('W', strtotime("-{$i} weeks"));
+    $jo_week_data[]   = (int)($jo_week_map[$wk] ?? 0);
+}
 
-$display_name = htmlspecialchars(
-    $me['full_name'] ?? trim(($me['first_name']??'').' '.($me['last_name']??'')) ?: ($me['name'] ?? 'Admin')
-);
+// Staff performance
+$staff_perf  = adm_rows($pdo, "SELECT u.name, COUNT(DISTINCT mt.id)+COUNT(DISTINCT jo.id) AS total_activity FROM users u LEFT JOIN merchandise_transactions mt ON mt.staff_id=u.id AND mt.station_id=? LEFT JOIN job_orders jo ON jo.user_id=u.id AND jo.station_id=? WHERE u.station_id=? AND u.role NOT IN ('admin','manager','superadmin') GROUP BY u.id,u.name ORDER BY total_activity DESC LIMIT 6", [$station_id,$station_id,$station_id]);
+$staff_names = !empty($staff_perf) ? array_column($staff_perf,'name')           : ['No Staff'];
+$staff_act   = !empty($staff_perf) ? array_column($staff_perf,'total_activity') : [0];
+
+// Staff attendance – shifts per staff last 30 days
+$att_rows   = adm_rows($pdo, "SELECT u.name, COUNT(ls.id) AS shifts FROM users u LEFT JOIN labor_sessions ls ON ls.user_id=u.id AND ls.station_id=? AND DATE(ls.start_time)>=DATE_SUB(CURDATE(),INTERVAL 30 DAY) WHERE u.station_id=? AND u.role NOT IN ('admin','manager','superadmin') GROUP BY u.id,u.name ORDER BY shifts DESC LIMIT 6", [$station_id,$station_id]);
+$att_names  = !empty($att_rows) ? array_column($att_rows,'name')   : ['No Staff'];
+$att_shifts = !empty($att_rows) ? array_column($att_rows,'shifts') : [0];
+
+// Variance – pump readings vs sales vs deliveries (last 7 days)
+$var_pump_map  = array_column(adm_rows($pdo, "SELECT DATE(reading_date) AS d, SUM(closing_reading-opening_reading) AS ltr FROM fuel_readings WHERE station_id=? AND DATE(reading_date)>=DATE_SUB(CURDATE(),INTERVAL 7 DAY) GROUP BY d", [$station_id]), 'ltr', 'd');
+$var_sales_map = array_column(adm_rows($pdo, "SELECT DATE(transaction_date) AS d, SUM(liters_sold) AS ltr FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date)>=DATE_SUB(CURDATE(),INTERVAL 7 DAY) GROUP BY d", [$station_id]), 'ltr', 'd');
+$var_del_map   = array_column(adm_rows($pdo, "SELECT DATE(COALESCE(delivery_date,created_at)) AS d, SUM(quantity) AS ltr FROM deliveries_oversight WHERE station_id=? AND DATE(COALESCE(delivery_date,created_at))>=DATE_SUB(CURDATE(),INTERVAL 7 DAY) GROUP BY d", [$station_id]), 'ltr', 'd');
+$var_labels = $var_pump_data = $var_sales_data = $var_del_data = [];
+for ($i=6;$i>=0;$i--) {
+    $d = date('Y-m-d', strtotime("-{$i} days"));
+    $var_labels[]     = date('D M j', strtotime($d));
+    $var_pump_data[]  = (float)($var_pump_map[$d]  ?? 0);
+    $var_sales_data[] = (float)($var_sales_map[$d] ?? 0);
+    $var_del_data[]   = (float)($var_del_map[$d]   ?? 0);
+}
+
+// Variance by tank
+$var_tank_rows   = adm_rows($pdo, "SELECT fuel_type, SUM(variance_liters) AS total_var FROM fuel_variance_reports WHERE station_id=? GROUP BY fuel_type", [$station_id]);
+$var_tank_labels = !empty($var_tank_rows) ? array_column($var_tank_rows,'fuel_type')  : ['No Data'];
+$var_tank_values = !empty($var_tank_rows) ? array_column($var_tank_rows,'total_var')  : [0];
+
+// Accounts Receivable
+$ar_rows      = adm_rows($pdo, "SELECT name, outstanding_balance FROM customers WHERE station_id=? AND outstanding_balance>0 ORDER BY outstanding_balance DESC LIMIT 6", [$station_id]);
+$ar_names     = !empty($ar_rows) ? array_column($ar_rows,'name')                : ['All Clear'];
+$ar_balances  = !empty($ar_rows) ? array_column($ar_rows,'outstanding_balance') : [0];
+$ar_total     = (float) adm_val($pdo, "SELECT COALESCE(SUM(outstanding_balance),0) FROM customers WHERE station_id=?", [$station_id]);
+$ar_collected = (float) adm_val($pdo, "SELECT COALESCE(SUM(amount_paid),0) FROM credit_payments WHERE station_id=? AND DATE(payment_date) BETWEEN ? AND ?", [$station_id,$date_from,$date_to]);
+
+// ══════════════════════════════════════════════════════════
+// 5. QUICK PANELS DATA
+// ══════════════════════════════════════════════════════════
+$staff_active     = (int) adm_val($pdo, "SELECT COUNT(*) FROM users WHERE station_id=? AND status='active' AND role NOT IN ('admin','manager','superadmin')", [$station_id]);
+$staff_inactive   = (int) adm_val($pdo, "SELECT COUNT(*) FROM users WHERE station_id=? AND status='inactive' AND role NOT IN ('admin','manager','superadmin')", [$station_id]);
+$mgr_count        = (int) adm_val($pdo, "SELECT COUNT(*) FROM users WHERE station_id=? AND status='active' AND role IN ('manager','supervisor')", [$station_id]);
+$po_pending       = (int) adm_val($pdo, "SELECT COUNT(*) FROM purchase_orders WHERE station_id=? AND status IN ('Pending','Pending Approval','Pending Admin Validation')", [$station_id]);
+$po_finalized     = (int) adm_val($pdo, "SELECT COUNT(*) FROM purchase_orders WHERE station_id=? AND status IN ('Official','Received','Approved PO','Approved')", [$station_id]);
+$tx_pending       = (int) adm_val($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND validation_status='Pending'", [$station_id]);
+$tx_approved      = (int) adm_val($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND validation_status='Approved'", [$station_id]);
+$del_flagged_snap = (int) adm_val($pdo, "SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Flagged','Rejected','Discrepancy')", [$station_id]);
+$del_validated    = (int) adm_val($pdo, "SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Validated','Approved')", [$station_id]);
+$recent_audit     = adm_rows($pdo, "SELECT al.created_at, u.name, al.action_type, al.entity_type, al.status FROM audit_logs al JOIN users u ON u.id=al.user_id WHERE u.station_id=? ORDER BY al.created_at DESC LIMIT 8", [$station_id]);
+
+$display_name = htmlspecialchars($me['full_name'] ?? trim(($me['first_name']??'').' '.($me['last_name']??'')) ?: ($me['name'] ?? 'Admin'));
 
 require_once __DIR__ . '/../partials/header.php';
 ?>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
-:root{--adm-blue:#00264D;--adm-red:#CC0000;--adm-green:#28A745;--adm-orange:#FFC107;--adm-purple:#6f42c1;--adm-gray:#6c757d;}
-.adm-page{max-width:100%;box-sizing:border-box;overflow-x:hidden;}
-.adm-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;flex-wrap:wrap;gap:10px;}
-.adm-head h1{margin:0;font-size:1.4rem;color:var(--adm-blue);display:flex;align-items:center;gap:8px;}
-.adm-subtitle{font-size:12px;color:var(--adm-gray);margin:3px 0 0;}
-.adm-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
-.adm-btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:none;text-decoration:none;transition:all .2s;}
-.adm-btn-success{background:#28A745;color:#fff;}.adm-btn-success:hover{background:#218838;}
-.adm-btn-danger{background:#CC0000;color:#fff;}.adm-btn-danger:hover{background:#a00000;}
-.adm-btn-primary{background:#00264D;color:#fff;}.adm-btn-primary:hover{background:#001a38;}
-.adm-btn-outline{background:#fff;color:#00264D;border:1px solid #00264D;}.adm-btn-outline:hover{background:#e8f0fe;}
-.adm-btn-sm{padding:5px 10px;font-size:11px;}
-.filter-bar{background:#fff;border-radius:10px;border:1px solid #e9ecef;padding:12px 16px;margin-bottom:18px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;}
-.filter-bar .fg{display:flex;flex-direction:column;gap:3px;}
-.filter-bar label{font-size:10px;font-weight:700;color:var(--adm-gray);text-transform:uppercase;letter-spacing:.4px;}
-.filter-bar input{padding:6px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:12px;min-width:130px;}
-.filter-bar input:focus{border-color:#00264D;outline:none;box-shadow:0 0 0 3px rgba(0,38,77,.1);}
-.qf-wrap{display:flex;gap:5px;flex-wrap:wrap;}
-.qf-btn{padding:5px 12px;border-radius:20px;border:1px solid #dee2e6;background:#fff;font-size:11px;font-weight:600;cursor:pointer;color:var(--adm-gray);transition:all .2s;}
-.qf-btn.active,.qf-btn:hover{background:#00264D;color:#fff;border-color:#00264D;}
-.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(195px,1fr));gap:12px;margin-bottom:20px;}
-.kpi-card{background:#fff;border-radius:12px;border:1px solid #EAEAEA;border-top:4px solid #EAEAEA;padding:16px 14px 12px;display:flex;flex-direction:column;gap:8px;box-shadow:0 1px 5px rgba(0,0,0,.05);transition:transform .15s,box-shadow .15s;}
-.kpi-card:hover{box-shadow:0 5px 18px rgba(0,0,0,.09);transform:translateY(-2px);}
-.kpi-card.c-blue{border-top-color:#00264D;}.kpi-card.c-green{border-top-color:#28A745;}.kpi-card.c-orange{border-top-color:#FFC107;}.kpi-card.c-red{border-top-color:#CC0000;}.kpi-card.c-purple{border-top-color:#6f42c1;}.kpi-card.c-teal{border-top-color:#17a2b8;}
-.kpi-top{display:flex;align-items:center;justify-content:space-between;}
-.kpi-ico{width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
-.kpi-ico.c-blue{background:rgba(0,38,77,.1);color:#00264D;}.kpi-ico.c-green{background:rgba(40,167,69,.1);color:#28A745;}.kpi-ico.c-orange{background:rgba(255,193,7,.15);color:#b8860b;}.kpi-ico.c-red{background:rgba(204,0,0,.1);color:#CC0000;}.kpi-ico.c-purple{background:rgba(111,66,193,.1);color:#6f42c1;}.kpi-ico.c-teal{background:rgba(23,162,184,.1);color:#17a2b8;}
-.kpi-num{font-size:24px;font-weight:800;color:#101828;line-height:1;letter-spacing:-.5px;}
-.kpi-lbl{font-size:11px;font-weight:700;color:var(--adm-gray);text-transform:uppercase;letter-spacing:.4px;}
-.kpi-sub{font-size:11px;color:var(--adm-gray);line-height:1.4;}
-.adm-card{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.07);margin-bottom:18px;overflow:hidden;}
-.adm-card-hd{padding:12px 18px;border-bottom:1px solid #e9ecef;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
-.adm-card-title{font-size:13px;font-weight:700;color:#00264D;display:flex;align-items:center;gap:7px;}
-.adm-card-bd{padding:18px;}
-.charts-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:18px;margin-bottom:18px;}
-.chart-wrap{position:relative;height:230px;}
-.panels-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px;margin-bottom:18px;}
-.alert-list{display:flex;flex-direction:column;gap:7px;}
-.alert-item{display:flex;align-items:center;gap:9px;padding:9px 13px;border-radius:7px;font-size:12px;}
-.alert-item.warning{background:#fff8e1;color:#856404;border-left:3px solid #FFC107;}
-.alert-item.danger{background:#fdf0f0;color:#721c24;border-left:3px solid #CC0000;}
-.alert-item.success{background:#f0fff4;color:#155724;border-left:3px solid #28A745;}
-.adm-table{width:100%;border-collapse:collapse;font-size:12px;}
-.adm-table th{background:#f8f9fa;padding:8px 11px;text-align:left;font-size:10px;font-weight:700;color:var(--adm-gray);text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e9ecef;}
-.adm-table td{padding:8px 11px;border-bottom:1px solid #f0f0f0;vertical-align:middle;}
-.adm-table tr:last-child td{border-bottom:none;}.adm-table tr:hover td{background:#fafafa;}
-.badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:600;}
-.badge-success{background:#d4edda;color:#155724;}.badge-warning{background:#fff3cd;color:#856404;}.badge-danger{background:#f8d7da;color:#721c24;}.badge-info{background:#d1ecf1;color:#0c5460;}.badge-secondary{background:#e2e3e5;color:#383d41;}
-.price-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #f0f0f0;font-size:12px;}
-.price-row:last-child{border-bottom:none;}.price-val{font-weight:700;color:#00264D;}
-.user-snap{display:flex;gap:16px;justify-content:center;padding:8px 0;}
-.user-snap-item{text-align:center;}.user-snap-num{font-size:28px;font-weight:800;line-height:1;}.user-snap-lbl{font-size:11px;color:var(--adm-gray);font-weight:600;text-transform:uppercase;}
-.ql-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:9px;}
-.ql-item{display:flex;flex-direction:column;align-items:center;gap:5px;padding:12px 8px;border-radius:9px;border:1px solid #e9ecef;background:#fff;text-decoration:none;color:#344054;font-size:11px;font-weight:600;text-align:center;transition:all .2s;}
-.ql-item:hover{background:#00264D;color:#fff;border-color:#00264D;}.ql-item i{font-size:18px;}
-@media(max-width:768px){.charts-grid,.panels-grid{grid-template-columns:1fr;}.kpi-grid{grid-template-columns:repeat(2,1fr);}.adm-head{flex-direction:column;}}
+/* ═══════════════════════════════════════════════════════
+   ADMIN DASHBOARD – SCOPED STYLES
+   ═══════════════════════════════════════════════════════ */
+.adm-wrap { padding: 0; }
+
+/* ── Page header ── */
+.adm-head {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 12px; margin-bottom: 18px; flex-wrap: wrap;
+}
+.adm-head h1 {
+    margin: 0 0 3px; font-size: 20px !important; font-weight: 800;
+    color: #00264D; display: flex; align-items: center; gap: 9px;
+}
+.adm-subtitle { font-size: 12px; color: #64748b; }
+.adm-actions  { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
+.adm-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 7px 13px; border-radius: 7px; font-size: 11px; font-weight: 600;
+    cursor: pointer; border: 1px solid #e2e8f0; text-decoration: none; transition: all .13s;
+}
+.adm-btn-primary { background: #00264D; color: #fff; border-color: #00264D; }
+.adm-btn-primary:hover { background: #003a73; color: #fff; }
+.adm-btn-outline { background: #fff; color: #00264D; }
+.adm-btn-outline:hover { background: #f1f5f9; color: #00264D; }
+.adm-btn-sm { padding: 5px 11px; font-size: 11px; }
+
+/* ── Filter bar ── */
+.adm-filter-bar {
+    display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap;
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+    padding: 11px 15px; margin-bottom: 16px;
+}
+.adm-fg { display: flex; flex-direction: column; gap: 3px; }
+.adm-fg label { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .4px; }
+.adm-fg input[type=date] { padding: 5px 9px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; }
+.adm-qf-wrap { display: flex; gap: 4px; }
+.adm-qf-btn {
+    padding: 5px 11px; border-radius: 6px; font-size: 11px; font-weight: 600;
+    border: 1px solid #e2e8f0; background: #fff; color: #64748b; cursor: pointer; transition: all .12s;
+}
+.adm-qf-btn.active, .adm-qf-btn:hover { background: #00264D; color: #fff; border-color: #00264D; }
+
+/* ── KPI row ── */
+.adm-kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+    gap: 11px; margin-bottom: 16px;
+}
+.adm-kpi-card {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 11px;
+    padding: 14px 15px; display: flex; align-items: center; gap: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04); transition: box-shadow .14s;
+}
+.adm-kpi-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,.08); }
+.adm-kpi-card.kc-danger  { border-left: 4px solid #CC0000; }
+.adm-kpi-card.kc-warning { border-left: 4px solid #f59e0b; }
+.adm-kpi-card.kc-success { border-left: 4px solid #22c55e; }
+.adm-kpi-ico {
+    width: 44px; height: 44px; border-radius: 10px; background: #f1f5f9; color: #00264D;
+    display: inline-flex; align-items: center; justify-content: center; font-size: 19px; flex-shrink: 0;
+}
+.adm-kpi-card.kc-danger  .adm-kpi-ico { background: #fef2f2; color: #CC0000; }
+.adm-kpi-card.kc-warning .adm-kpi-ico { background: #fffbeb; color: #d97706; }
+.adm-kpi-card.kc-success .adm-kpi-ico { background: #f0fdf4; color: #16a34a; }
+.adm-kpi-meta h3 { margin: 0; font-size: 9px; color: #64748b; text-transform: uppercase; letter-spacing: .5px; font-weight: 700; }
+.adm-kpi-meta h2 { margin: 3px 0 2px; font-size: 24px; font-weight: 900; color: #00264D; line-height: 1; }
+.adm-kpi-meta span { font-size: 10px; color: #94a3b8; }
+
+/* ── Section card ── */
+.adm-card {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 11px;
+    padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.04);
+}
+.adm-card-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 13px; flex-wrap: wrap; gap: 8px;
+}
+.adm-card-title {
+    font-size: 12px; font-weight: 700; color: #00264D;
+    display: flex; align-items: center; gap: 7px;
+    text-transform: uppercase !important; letter-spacing: .3px; margin: 0;
+}
+
+/* ── Chart tabs ── */
+.adm-chart-tabs {
+    display: flex; gap: 5px; flex-wrap: wrap;
+    border-bottom: 2px solid #e2e8f0; padding-bottom: 9px; margin-bottom: 14px;
+}
+.adm-tab-btn {
+    padding: 5px 13px; border-radius: 20px; font-size: 10px; font-weight: 700;
+    border: 1px solid #e2e8f0; background: #fff; color: #64748b; cursor: pointer;
+    transition: all .12s; text-transform: uppercase; letter-spacing: .3px;
+}
+.adm-tab-btn.active { background: #00264D; color: #fff; border-color: #00264D; }
+.adm-tab-btn:hover:not(.active) { background: #f1f5f9; }
+
+/* ── Chart panels – visibility trick so canvas always has size ── */
+.adm-panels-wrap { position: relative; min-height: 280px; }
+.adm-chart-panel {
+    visibility: hidden; position: absolute; top: 0; left: 0;
+    width: 100%; opacity: 0; pointer-events: none; transition: opacity .18s;
+}
+.adm-chart-panel.active {
+    visibility: visible; position: relative;
+    opacity: 1; pointer-events: auto;
+}
+.adm-chart-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px;
+}
+.adm-chart-box {
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 9px; padding: 13px;
+}
+/* Override global h1-h3 uppercase bleed */
+.adm-chart-box h4 {
+    font-size: 10px !important; font-weight: 700; color: #00264D; margin: 0 0 9px;
+    text-transform: none !important; letter-spacing: .2px;
+}
+.adm-chart-holder { height: 230px; position: relative; }
+
+/* ── Snapshots grid ── */
+.adm-snap-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+    gap: 13px; margin-bottom: 16px;
+}
+.adm-snap-card {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 11px;
+    padding: 15px; box-shadow: 0 1px 3px rgba(0,0,0,.04);
+}
+.adm-snap-title {
+    font-size: 11px; font-weight: 700; color: #00264D; margin-bottom: 10px;
+    display: flex; align-items: center; gap: 7px;
+    text-transform: uppercase !important; letter-spacing: .3px;
+    border-bottom: 1px solid #f1f5f9; padding-bottom: 7px;
+}
+.adm-snap-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 5px 0; border-bottom: 1px solid #f8fafc; font-size: 11px;
+}
+.adm-snap-row:last-of-type { border-bottom: none; }
+.adm-snap-row span { color: #64748b; }
+.adm-snap-row strong { color: #00264D; font-weight: 700; }
+.adm-badge {
+    display: inline-flex; align-items: center; padding: 2px 7px;
+    border-radius: 20px; font-size: 10px; font-weight: 700;
+}
+.adm-badge.bg-green  { background: #dcfce7; color: #16a34a; }
+.adm-badge.bg-red    { background: #fee2e2; color: #dc2626; }
+.adm-badge.bg-amber  { background: #fef9c3; color: #ca8a04; }
+.adm-badge.bg-blue   { background: #dbeafe; color: #1e40af; }
+.adm-snap-link {
+    display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600;
+    color: #00264D; text-decoration: none; margin-top: 9px; padding: 4px 9px;
+    border: 1px solid #e2e8f0; border-radius: 6px; transition: all .12s;
+}
+.adm-snap-link:hover { background: #00264D; color: #fff; border-color: #00264D; }
+
+/* ── Audit list ── */
+.adm-audit-list { display: flex; flex-direction: column; gap: 5px; }
+.adm-audit-item {
+    display: flex; align-items: center; gap: 8px; padding: 6px 9px;
+    background: #f8fafc; border-radius: 7px; font-size: 10px;
+}
+.adm-audit-dot { width: 7px; height: 7px; border-radius: 50%; background: #00264D; flex-shrink: 0; }
+.adm-audit-name   { font-weight: 700; color: #00264D; min-width: 80px; }
+.adm-audit-action { color: #475569; flex: 1; }
+.adm-audit-time   { color: #94a3b8; font-size: 9px; white-space: nowrap; }
+
+/* ── Staff KPI strip ── */
+.adm-staff-kpi {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 9px; margin-bottom: 14px;
+}
+.adm-staff-kpi-item {
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 9px;
+    padding: 11px; text-align: center;
+}
+.adm-staff-kpi-item .sk-rank  { font-size: 9px; color: #94a3b8; font-weight: 700; text-transform: uppercase; }
+.adm-staff-kpi-item .sk-name  { font-size: 11px; font-weight: 700; color: #00264D; margin: 3px 0 2px; }
+.adm-staff-kpi-item .sk-val   { font-size: 20px; font-weight: 900; color: #00264D; }
+.adm-staff-kpi-item .sk-label { font-size: 9px; color: #64748b; }
+
+/* ── Reports snapshot ── */
+.adm-reports-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 14px;
+}
+.adm-report-item {
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 9px; padding: 13px; text-align: center;
+}
+.adm-report-item .ri-val   { font-size: 20px; font-weight: 900; color: #00264D; }
+.adm-report-item .ri-label { font-size: 9px; color: #64748b; text-transform: uppercase; letter-spacing: .4px; font-weight: 700; margin-top: 3px; }
+
+/* ── Export buttons ── */
+.adm-export-row { display: flex; gap: 7px; flex-wrap: wrap; }
+.adm-export-btn {
+    display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px;
+    border-radius: 6px; font-size: 10px; font-weight: 700; text-decoration: none;
+    border: 1px solid #e2e8f0; transition: all .12s; color: #00264D; background: #fff;
+}
+.adm-export-btn:hover { background: #00264D; color: #fff; border-color: #00264D; }
+.adm-export-btn.xls { border-color: #16a34a; color: #16a34a; }
+.adm-export-btn.xls:hover { background: #16a34a; color: #fff; }
+.adm-export-btn.pdf { border-color: #CC0000; color: #CC0000; }
+.adm-export-btn.pdf:hover { background: #CC0000; color: #fff; }
+
+/* ── Quick access grid (bottom) ── */
+.adm-ql-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 9px;
+}
+.adm-ql-card {
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 9px;
+    padding: 13px 8px; text-align: center; text-decoration: none; color: #00264D;
+    font-size: 10px; font-weight: 700; transition: all .14s;
+    display: flex; flex-direction: column; align-items: center; gap: 5px;
+}
+.adm-ql-card i { font-size: 20px; }
+.adm-ql-card:hover {
+    background: #00264D; color: #fff; border-color: #00264D;
+    transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,38,77,.18);
+}
+
+/* ── Calendar ── */
+.adm-cal {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 11px;
+    overflow: hidden; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.04);
+}
+.adm-cal-head {
+    background: #00264D; color: #fff; padding: 13px 16px;
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 9px;
+}
+.adm-cal-head h3 { margin: 0; font-size: 12px; font-weight: 700; color: #fff !important; display: flex; align-items: center; gap: 7px; }
+.adm-cal-nav { display: flex; align-items: center; gap: 5px; }
+.adm-cal-nav-btn {
+    padding: 4px 11px; border-radius: 6px; font-size: 10px; font-weight: 600;
+    background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.25);
+    cursor: pointer; text-decoration: none; transition: background .12s;
+}
+.adm-cal-nav-btn:hover { background: rgba(255,255,255,.28); color: #fff; }
+.adm-cal-filters {
+    display: flex; gap: 5px; padding: 9px 14px;
+    background: #f8fafc; border-bottom: 1px solid #e2e8f0; flex-wrap: wrap;
+}
+.adm-cal-filter-btn {
+    padding: 3px 9px; border-radius: 20px; font-size: 9px; font-weight: 700;
+    border: 1px solid #e2e8f0; background: #fff; color: #64748b; cursor: pointer;
+    text-transform: uppercase; letter-spacing: .3px; transition: all .12s;
+}
+.adm-cal-filter-btn.active { background: #00264D; color: #fff; border-color: #00264D; }
+.adm-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
+@media(max-width:860px) { .adm-cal-grid { grid-template-columns: 1fr; } }
+.adm-cal-cell { border-right: 1px solid #e2e8f0; min-height: 130px; padding: 9px; }
+.adm-cal-cell:last-child { border-right: none; }
+.adm-cal-day-title {
+    font-size: 9px; font-weight: 700; text-transform: uppercase; color: #94a3b8;
+    margin-bottom: 7px; padding-bottom: 4px; border-bottom: 1px solid #f1f5f9;
+    display: flex; justify-content: space-between; letter-spacing: .3px;
+}
+.adm-cal-day-title.today { color: #CC0000; }
+.adm-cal-event {
+    padding: 3px 6px; border-radius: 4px; font-size: 8px; font-weight: 600;
+    margin-bottom: 3px; line-height: 1.4; cursor: default; overflow: hidden;
+    white-space: nowrap; text-overflow: ellipsis;
+}
+.adm-cal-event.pending    { background: #fef9c3; color: #ca8a04; border-left: 3px solid #eab308; }
+.adm-cal-event.approved   { background: #eff6ff; color: #1e40af; border-left: 3px solid #3b82f6; }
+.adm-cal-event.completed  { background: #dcfce7; color: #16a34a; border-left: 3px solid #22c55e; }
+.adm-cal-event.rejected,
+.adm-cal-event.cancelled  { background: #fee2e2; color: #dc2626; border-left: 3px solid #ef4444; }
+.adm-cal-empty { font-size: 8px; color: #cbd5e1; text-align: center; margin-top: 12px; }
 </style>
 
-<div class="dashboard-content adm-page">
+<div class="dashboard-content adm-wrap">
 
+<!-- PAGE HEADER -->
 <div class="adm-head">
   <div>
-    <h1><i class="fas fa-tachometer-alt"></i> MY DASHBOARD</h1>
-    <div class="sub" style="font-size:13px;opacity:.85;color:#6c757d;font-weight:bold;">WELCOME BACK, <?php echo $display_name; ?></div>
-      </div>
+    <h1><i class="fas fa-shield-halved"></i> Admin Oversight Hub</h1>
+    <div class="adm-subtitle">Welcome back, <?php echo $display_name; ?> &mdash; <?php echo htmlspecialchars($station_name); ?> &bull; <?php echo date('l, F j, Y'); ?></div>
+  </div>
   <div class="adm-actions">
-    <a href="?<?php echo http_build_query(array_merge($_GET,['export'=>'excel'])); ?>" class="adm-btn adm-btn-success adm-btn-sm"><i class="fas fa-file-excel"></i> Export Excel</a>
-    <a href="?<?php echo http_build_query(array_merge($_GET,['export'=>'pdf'])); ?>" class="adm-btn adm-btn-danger adm-btn-sm"><i class="fas fa-file-pdf"></i> Export PDF</a>
+    <a href="admin_reports.php" class="adm-btn adm-btn-outline"><i class="fas fa-chart-bar"></i> Reports</a>
+    <a href="admin_audit_trail.php" class="adm-btn adm-btn-outline"><i class="fas fa-list-check"></i> Audit Trail</a>
+    <a href="admin_export_center.php" class="adm-btn adm-btn-primary"><i class="fas fa-file-export"></i> Export</a>
   </div>
 </div>
 
-<form method="GET" action="" class="filter-bar">
-  <div class="fg">
-    <label>Quick Filter</label>
-    <div class="qf-wrap">
-      <?php foreach(['today'=>'Today','week'=>'This Week','month'=>'This Month','last_month'=>'Last Month'] as $k=>$v): ?>
-        <button type="submit" name="quick" value="<?php echo $k; ?>" class="qf-btn <?php echo ($quick===$k)?'active':''; ?>"><?php echo $v; ?></button>
+<!-- DATE FILTER -->
+<form method="GET" class="adm-filter-bar">
+  <div class="adm-fg">
+    <label>Quick Range</label>
+    <div class="adm-qf-wrap">
+      <?php foreach(['today'=>'Today','week'=>'This Week','month'=>'This Month','last_month'=>'Last Month'] as $k=>$lbl): ?>
+      <button type="submit" name="quick" value="<?php echo $k; ?>" class="adm-qf-btn<?php echo ($quick===$k)?' active':''; ?>"><?php echo $lbl; ?></button>
       <?php endforeach; ?>
     </div>
   </div>
-  <div class="fg"><label>From</label><input type="date" name="date_from" value="<?php echo htmlspecialchars($date_from); ?>"></div>
-  <div class="fg"><label>To</label><input type="date" name="date_to" value="<?php echo htmlspecialchars($date_to); ?>"></div>
-  <div class="fg" style="justify-content:flex-end;"><button type="submit" name="quick" value="custom" class="adm-btn adm-btn-primary adm-btn-sm"><i class="fas fa-filter"></i> Apply</button></div>
+  <div class="adm-fg"><label>From</label><input type="date" name="date_from" value="<?php echo htmlspecialchars($date_from); ?>"></div>
+  <div class="adm-fg"><label>To</label><input type="date" name="date_to" value="<?php echo htmlspecialchars($date_to); ?>"></div>
+  <button type="submit" name="quick" value="custom" class="adm-btn adm-btn-primary adm-btn-sm"><i class="fas fa-filter"></i> Apply</button>
 </form>
 
-<!-- KPI CARDS -->
-<div class="kpi-grid">
-
-  <div class="kpi-card c-blue">
-    <div class="kpi-top">
-      <div><div class="kpi-lbl">Total Fuel Sales</div><div class="kpi-num">&#8369;<?php echo number_format($fuel_revenue,0); ?></div></div>
-      <div class="kpi-ico c-blue"><i class="fas fa-gas-pump"></i></div>
-    </div>
-    <div class="kpi-sub"><?php echo number_format($fuel_liters,2); ?> liters sold</div>
+<!-- KPI SUMMARY CARDS -->
+<div class="adm-kpi-row">
+  <div class="adm-kpi-card">
+    <div class="adm-kpi-ico"><i class="fas fa-truck"></i></div>
+    <div class="adm-kpi-meta"><h3>Upcoming Deliveries</h3><h2><?php echo $upcoming_deliveries; ?></h2><span>scheduled</span></div>
   </div>
-
-  <div class="kpi-card c-teal">
-    <div class="kpi-top">
-      <div><div class="kpi-lbl">Merchandise Sales</div><div class="kpi-num">&#8369;<?php echo number_format($merch_revenue,0); ?></div></div>
-      <div class="kpi-ico c-teal"><i class="fas fa-shopping-bag"></i></div>
-    </div>
-    <div class="kpi-sub">Cash &#8369;<?php echo number_format($merch_cash,0); ?> &bull; Credit &#8369;<?php echo number_format($merch_credit,0); ?></div>
+  <div class="adm-kpi-card">
+    <div class="adm-kpi-ico"><i class="fas fa-gauge-high"></i></div>
+    <div class="adm-kpi-meta"><h3>Scheduled Calibrations</h3><h2><?php echo $scheduled_calibrations; ?></h2><span>pumps (7d)</span></div>
   </div>
-
-  <div class="kpi-card <?php echo $total_variance_alerts>0?'c-red':'c-green'; ?>">
-    <div class="kpi-top">
-      <div><div class="kpi-lbl">Variance Alerts</div><div class="kpi-num"><?php echo $total_variance_alerts; ?></div></div>
-      <div class="kpi-ico <?php echo $total_variance_alerts>0?'c-red':'c-green'; ?>"><i class="fas fa-balance-scale"></i></div>
-    </div>
-    <div class="kpi-sub"><?php echo number_format($variance_liters,2); ?> liters discrepancy</div>
+  <div class="adm-kpi-card<?php echo $pending_job_orders>0?' kc-warning':''; ?>">
+    <div class="adm-kpi-ico"><i class="fas fa-wrench"></i></div>
+    <div class="adm-kpi-meta"><h3>Pending Job Orders</h3><h2><?php echo $pending_job_orders; ?></h2><span>awaiting action</span></div>
   </div>
-
-  <div class="kpi-card c-orange">
-    <div class="kpi-top">
-      <div><div class="kpi-lbl">Deliveries</div><div class="kpi-num"><?php echo $del_total; ?></div></div>
-      <div class="kpi-ico c-orange"><i class="fas fa-truck"></i></div>
-    </div>
-    <div class="kpi-sub">
-      <span style="color:#FFC107;"><?php echo $del_pending; ?> pending</span> &bull;
-      <span style="color:#28A745;"><?php echo $del_approved; ?> approved</span> &bull;
-      <span style="color:#CC0000;"><?php echo $del_rejected; ?> rejected</span>
-    </div>
+  <div class="adm-kpi-card<?php echo $active_shifts_today>0?' kc-success':''; ?>">
+    <div class="adm-kpi-ico"><i class="fas fa-user-clock"></i></div>
+    <div class="adm-kpi-meta"><h3>Active Shifts Today</h3><h2><?php echo $active_shifts_today; ?></h2><span>on duty</span></div>
   </div>
-
-  <div class="kpi-card c-purple">
-    <div class="kpi-top">
-      <div><div class="kpi-lbl">Staff Accounts</div><div class="kpi-num"><?php echo $staff_active; ?></div></div>
-      <div class="kpi-ico c-purple"><i class="fas fa-users"></i></div>
-    </div>
-    <div class="kpi-sub"><?php echo $staff_inactive; ?> inactive &bull; <?php echo $mgr_count; ?> manager(s)</div>
+  <div class="adm-kpi-card<?php echo $variance_alerts_open>0?' kc-danger':''; ?>">
+    <div class="adm-kpi-ico"><i class="fas fa-circle-exclamation"></i></div>
+    <div class="adm-kpi-meta"><h3>Variance Alerts</h3><h2><?php echo $variance_alerts_open; ?></h2><span><?php echo number_format($variance_liters,1); ?>L total</span></div>
   </div>
-
-  <div class="kpi-card <?php echo count($compliance_alerts)>0?'c-red':'c-green'; ?>">
-    <div class="kpi-top">
-      <div><div class="kpi-lbl">Compliance Alerts</div><div class="kpi-num"><?php echo count($compliance_alerts); ?></div></div>
-      <div class="kpi-ico <?php echo count($compliance_alerts)>0?'c-red':'c-green'; ?>"><i class="fas fa-shield-alt"></i></div>
-    </div>
-    <div class="kpi-sub"><?php echo count($compliance_alerts)===0?'All clear':'Action required'; ?></div>
+  <div class="adm-kpi-card">
+    <div class="adm-kpi-ico"><i class="fas fa-gas-pump"></i></div>
+    <div class="adm-kpi-meta"><h3>Fuel Revenue</h3><h2>&#8369;<?php echo number_format($fuel_revenue,0); ?></h2><span><?php echo number_format($fuel_liters,0); ?>L sold</span></div>
   </div>
-
+  <div class="adm-kpi-card">
+    <div class="adm-kpi-ico"><i class="fas fa-store"></i></div>
+    <div class="adm-kpi-meta"><h3>Merch Revenue</h3><h2>&#8369;<?php echo number_format($merch_revenue,0); ?></h2><span>&#8369;<?php echo number_format($merch_credit,0); ?> credit</span></div>
+  </div>
+  <div class="adm-kpi-card<?php echo $ar_total>0?' kc-warning':''; ?>">
+    <div class="adm-kpi-ico"><i class="fas fa-file-invoice-dollar"></i></div>
+    <div class="adm-kpi-meta"><h3>Accounts Receivable</h3><h2>&#8369;<?php echo number_format($ar_total,0); ?></h2><span>&#8369;<?php echo number_format($ar_collected,0); ?> collected</span></div>
+  </div>
 </div>
 
-<?php if (!empty($compliance_alerts)): ?>
-<div class="adm-card" style="margin-bottom:18px;">
-  <div class="adm-card-hd">
-    <span class="adm-card-title"><i class="fas fa-exclamation-circle" style="color:#CC0000;"></i> Compliance Alerts</span>
-    <a href="audit_logs.php" class="adm-btn adm-btn-outline adm-btn-sm"><i class="fas fa-external-link-alt"></i> Audit Logs</a>
+<!-- ANALYTICS CHARTS -->
+<div class="adm-card">
+  <div class="adm-card-head">
+    <div class="adm-card-title"><i class="fas fa-chart-mixed"></i> Real-time Analytics</div>
+    <button onclick="admRefreshChart()" class="adm-btn adm-btn-outline adm-btn-sm"><i class="fas fa-sync-alt"></i> Refresh</button>
   </div>
-  <div class="adm-card-bd">
-    <div class="alert-list">
-      <?php foreach($compliance_alerts as $ca): ?>
-        <div class="alert-item <?php echo htmlspecialchars($ca['type']); ?>"><i class="fas <?php echo htmlspecialchars($ca['icon']); ?>"></i><?php echo htmlspecialchars($ca['msg']); ?></div>
+  <div class="adm-chart-tabs">
+    <button class="adm-tab-btn active" onclick="admSwitch('sales',this)"><i class="fas fa-chart-line"></i> Sales</button>
+    <button class="adm-tab-btn" onclick="admSwitch('deliveries',this)"><i class="fas fa-truck"></i> Deliveries</button>
+    <button class="adm-tab-btn" onclick="admSwitch('jobs',this)"><i class="fas fa-wrench"></i> Job Orders</button>
+    <button class="adm-tab-btn" onclick="admSwitch('staff',this)"><i class="fas fa-users"></i> Staff</button>
+    <button class="adm-tab-btn" onclick="admSwitch('variance',this)"><i class="fas fa-triangle-exclamation"></i> Variance</button>
+    <button class="adm-tab-btn" onclick="admSwitch('ar',this)"><i class="fas fa-file-invoice-dollar"></i> Receivable</button>
+  </div>
+  <div class="adm-panels-wrap">
+
+    <!-- SALES -->
+    <div class="adm-chart-panel active" id="adm-panel-sales">
+      <div class="adm-chart-grid">
+        <div class="adm-chart-box"><h4><i class="fas fa-gas-pump"></i> Fuel Liters Sold – Last 7 Days</h4><div class="adm-chart-holder"><canvas id="admFuelBar"></canvas></div></div>
+        <div class="adm-chart-box"><h4><i class="fas fa-store"></i> Merchandise Revenue – Last 14 Days</h4><div class="adm-chart-holder"><canvas id="admMerchLine"></canvas></div></div>
+        <div class="adm-chart-box"><h4><i class="fas fa-chart-pie"></i> Fuel vs Merchandise Revenue Split</h4><div class="adm-chart-holder"><canvas id="admSalesPie"></canvas></div></div>
+        <div class="adm-chart-box"><h4><i class="fas fa-chart-line"></i> 30-Day Consolidated Revenue Trend</h4><div class="adm-chart-holder"><canvas id="admSalesTrend"></canvas></div></div>
+      </div>
+    </div>
+
+    <!-- DELIVERIES -->
+    <div class="adm-chart-panel" id="adm-panel-deliveries">
+      <div class="adm-chart-grid">
+        <div class="adm-chart-box"><h4><i class="fas fa-building"></i> Deliveries by Supplier</h4><div class="adm-chart-holder"><canvas id="admDelSupplier"></canvas></div></div>
+        <div class="adm-chart-box"><h4><i class="fas fa-circle-half-stroke"></i> Expected vs Approved vs Flagged</h4><div class="adm-chart-holder"><canvas id="admDelStatus"></canvas></div></div>
+      </div>
+    </div>
+
+    <!-- JOB ORDERS -->
+    <div class="adm-chart-panel" id="adm-panel-jobs">
+      <div class="adm-chart-grid">
+        <div class="adm-chart-box"><h4><i class="fas fa-list-ol"></i> Pending vs In-Progress vs Completed</h4><div class="adm-chart-holder"><canvas id="admJoStatus"></canvas></div></div>
+        <div class="adm-chart-box"><h4><i class="fas fa-chart-line"></i> Weekly Job Order Volume (8 Weeks)</h4><div class="adm-chart-holder"><canvas id="admJoWeekly"></canvas></div></div>
+      </div>
+    </div>
+
+    <!-- STAFF -->
+    <div class="adm-chart-panel" id="adm-panel-staff">
+      <div class="adm-staff-kpi">
+        <?php foreach(array_slice($staff_perf,0,5) as $idx=>$sp): ?>
+        <div class="adm-staff-kpi-item">
+          <div class="sk-rank">#<?php echo $idx+1; ?> Performer</div>
+          <div class="sk-name"><?php echo htmlspecialchars($sp['name']); ?></div>
+          <div class="sk-val"><?php echo (int)$sp['total_activity']; ?></div>
+          <div class="sk-label">activities</div>
+        </div>
+        <?php endforeach; ?>
+        <?php if(empty($staff_perf)): ?><div class="adm-staff-kpi-item"><div class="sk-name">No staff data</div></div><?php endif; ?>
+      </div>
+      <div class="adm-chart-grid">
+        <div class="adm-chart-box"><h4><i class="fas fa-ranking-star"></i> Transactions per Staff</h4><div class="adm-chart-holder"><canvas id="admStaffActivity"></canvas></div></div>
+        <div class="adm-chart-box"><h4><i class="fas fa-calendar-check"></i> Attendance – Shifts per Staff (30d)</h4><div class="adm-chart-holder"><canvas id="admStaffAttend"></canvas></div></div>
+      </div>
+    </div>
+
+    <!-- VARIANCE -->
+    <div class="adm-chart-panel" id="adm-panel-variance">
+      <div class="adm-chart-grid">
+        <div class="adm-chart-box"><h4><i class="fas fa-chart-line"></i> Pump Readings vs Sales vs Deliveries (7 Days)</h4><div class="adm-chart-holder"><canvas id="admVarLine"></canvas></div></div>
+        <div class="adm-chart-box"><h4><i class="fas fa-oil-can"></i> Variance by Tank / Fuel Type</h4><div class="adm-chart-holder"><canvas id="admVarTank"></canvas></div></div>
+      </div>
+    </div>
+
+    <!-- ACCOUNTS RECEIVABLE -->
+    <div class="adm-chart-panel" id="adm-panel-ar">
+      <div class="adm-chart-grid">
+        <div class="adm-chart-box"><h4><i class="fas fa-chart-pie"></i> Outstanding Balances per Customer</h4><div class="adm-chart-holder"><canvas id="admArPie"></canvas></div></div>
+        <div class="adm-chart-box"><h4><i class="fas fa-chart-bar"></i> Collections vs Pending Balance</h4><div class="adm-chart-holder"><canvas id="admArBar"></canvas></div></div>
+      </div>
+    </div>
+
+  </div><!-- /.adm-panels-wrap -->
+</div><!-- /.adm-card analytics -->
+
+<!-- OVERSIGHT SNAPSHOTS -->
+<div class="adm-snap-grid">
+
+  <!-- User Management -->
+  <div class="adm-snap-card">
+    <div class="adm-snap-title"><i class="fas fa-users-gear"></i> User Management</div>
+    <div class="adm-snap-row"><span>Active Staff</span><span class="adm-badge bg-green"><?php echo $staff_active; ?> Active</span></div>
+    <div class="adm-snap-row"><span>Inactive Staff</span><span class="adm-badge bg-red"><?php echo $staff_inactive; ?> Inactive</span></div>
+    <div class="adm-snap-row"><span>Managers / Supervisors</span><span class="adm-badge bg-blue"><?php echo $mgr_count; ?></span></div>
+    <a href="users.php" class="adm-snap-link"><i class="fas fa-arrow-right"></i> Manage Users</a>
+  </div>
+
+  <!-- Staff Oversight -->
+  <div class="adm-snap-card">
+    <div class="adm-snap-title"><i class="fas fa-id-badge"></i> Staff Oversight</div>
+    <div class="adm-snap-row"><span>Active Shifts Today</span><span class="adm-badge <?php echo $active_shifts_today>0?'bg-green':'bg-amber'; ?>"><?php echo $active_shifts_today; ?></span></div>
+    <div class="adm-snap-row"><span>Top Performer</span><strong><?php echo !empty($staff_perf)?htmlspecialchars($staff_perf[0]['name']):'N/A'; ?></strong></div>
+    <div class="adm-snap-row"><span>Total Staff Tracked</span><strong><?php echo $staff_active+$staff_inactive; ?></strong></div>
+    <a href="admin_staff_oversight.php" class="adm-snap-link"><i class="fas fa-arrow-right"></i> View Staff</a>
+  </div>
+
+  <!-- Transactions Oversight -->
+  <div class="adm-snap-card">
+    <div class="adm-snap-title"><i class="fas fa-receipt"></i> Transactions Oversight</div>
+    <div class="adm-snap-row"><span>Pending Validation</span><span class="adm-badge <?php echo $tx_pending>0?'bg-amber':'bg-green'; ?>"><?php echo $tx_pending; ?> Pending</span></div>
+    <div class="adm-snap-row"><span>Approved</span><span class="adm-badge bg-green"><?php echo $tx_approved; ?> Approved</span></div>
+    <div class="adm-snap-row"><span>Merch Revenue</span><strong>&#8369;<?php echo number_format($merch_revenue,0); ?></strong></div>
+    <a href="admin_transactions_oversight.php" class="adm-snap-link"><i class="fas fa-arrow-right"></i> View Transactions</a>
+  </div>
+
+  <!-- Deliveries Oversight -->
+  <div class="adm-snap-card">
+    <div class="adm-snap-title"><i class="fas fa-truck-ramp-box"></i> Deliveries Oversight</div>
+    <div class="adm-snap-row"><span>Flagged / Discrepancy</span><span class="adm-badge <?php echo $del_flagged_snap>0?'bg-red':'bg-green'; ?>"><?php echo $del_flagged_snap; ?> Flagged</span></div>
+    <div class="adm-snap-row"><span>Validated / Approved</span><span class="adm-badge bg-green"><?php echo $del_validated; ?> Validated</span></div>
+    <div class="adm-snap-row"><span>Upcoming</span><strong><?php echo $upcoming_deliveries; ?></strong></div>
+    <a href="admin_deliveries_oversight.php" class="adm-snap-link"><i class="fas fa-arrow-right"></i> View Deliveries</a>
+  </div>
+
+  <!-- Purchase Orders -->
+  <div class="adm-snap-card">
+    <div class="adm-snap-title"><i class="fas fa-file-circle-plus"></i> Purchase Orders</div>
+    <div class="adm-snap-row"><span>Pending Approval</span><span class="adm-badge <?php echo $po_pending>0?'bg-amber':'bg-green'; ?>"><?php echo $po_pending; ?> Pending</span></div>
+    <div class="adm-snap-row"><span>Finalized / Received</span><span class="adm-badge bg-green"><?php echo $po_finalized; ?> Done</span></div>
+    <div class="adm-snap-row"><span>Job Orders Pending</span><span class="adm-badge <?php echo $jo_pending>0?'bg-amber':'bg-green'; ?>"><?php echo $jo_pending; ?></span></div>
+    <a href="purchase_orders.php" class="adm-snap-link"><i class="fas fa-arrow-right"></i> View POs</a>
+  </div>
+
+  <!-- Audit Trail -->
+  <div class="adm-snap-card">
+    <div class="adm-snap-title"><i class="fas fa-list-check"></i> Recent Audit Trail</div>
+    <?php if(!empty($recent_audit)): ?>
+    <div class="adm-audit-list">
+      <?php foreach(array_slice($recent_audit,0,5) as $au): ?>
+      <div class="adm-audit-item">
+        <div class="adm-audit-dot"></div>
+        <div class="adm-audit-name"><?php echo htmlspecialchars($au['name']??''); ?></div>
+        <div class="adm-audit-action"><?php echo htmlspecialchars(($au['action_type']??'').' '.($au['entity_type']??'')); ?></div>
+        <div class="adm-audit-time"><?php echo date('M j H:i',strtotime($au['created_at']??'now')); ?></div>
+      </div>
       <?php endforeach; ?>
     </div>
-  </div>
-</div>
-<?php endif; ?>
-
-<!-- CHARTS ROW 1 -->
-<div class="charts-grid">
-  <div class="adm-card">
-    <div class="adm-card-hd"><span class="adm-card-title"><i class="fas fa-chart-line"></i> Sales Trend (Last 30 Days)</span></div>
-    <div class="adm-card-bd"><div class="chart-wrap"><canvas id="chartSales"></canvas></div></div>
-  </div>
-  <div class="adm-card">
-    <div class="adm-card-hd"><span class="adm-card-title"><i class="fas fa-truck-loading"></i> Deliveries Trend (Last 14 Days)</span></div>
-    <div class="adm-card-bd"><div class="chart-wrap"><canvas id="chartDeliv"></canvas></div></div>
-  </div>
-</div>
-
-<!-- CHARTS ROW 2 -->
-<div class="charts-grid">
-  <div class="adm-card">
-    <div class="adm-card-hd"><span class="adm-card-title"><i class="fas fa-chart-pie"></i> Variance Distribution by Fuel Type</span></div>
-    <div class="adm-card-bd"><div class="chart-wrap"><canvas id="chartVar"></canvas></div></div>
-  </div>
-  <div class="adm-card">
-    <div class="adm-card-hd"><span class="adm-card-title"><i class="fas fa-chart-bar"></i> Staff Performance (Transactions + Job Orders)</span></div>
-    <div class="adm-card-bd"><div class="chart-wrap"><canvas id="chartPerf"></canvas></div></div>
-  </div>
-</div>
-
-<!-- OVERSIGHT PANELS -->
-<div class="panels-grid">
-
-  <div class="adm-card">
-    <div class="adm-card-hd">
-      <span class="adm-card-title"><i class="fas fa-user-cog"></i> User Management Snapshot</span>
-      <a href="users.php" class="adm-btn adm-btn-outline adm-btn-sm"><i class="fas fa-arrow-right"></i> Manage</a>
-    </div>
-    <div class="adm-card-bd">
-      <div class="user-snap">
-        <div class="user-snap-item"><div class="user-snap-num" style="color:#28A745;"><?php echo $staff_active; ?></div><div class="user-snap-lbl">Active Staff</div></div>
-        <div class="user-snap-item"><div class="user-snap-num" style="color:#CC0000;"><?php echo $staff_inactive; ?></div><div class="user-snap-lbl">Inactive</div></div>
-        <div class="user-snap-item"><div class="user-snap-num" style="color:#6f42c1;"><?php echo $mgr_count; ?></div><div class="user-snap-lbl">Managers</div></div>
-      </div>
-      <?php if (!empty($users_all)): ?>
-      <table class="adm-table" style="margin-top:10px;">
-        <thead><tr><th>Role</th><th>Status</th><th>Count</th></tr></thead>
-        <tbody>
-          <?php foreach($users_all as $ua): ?>
-          <tr>
-            <td><?php echo htmlspecialchars(ucfirst($ua['role'])); ?></td>
-            <td><span class="badge <?php echo $ua['status']==='active'?'badge-success':'badge-secondary'; ?>"><?php echo htmlspecialchars($ua['status']); ?></span></td>
-            <td><strong><?php echo (int)$ua['cnt']; ?></strong></td>
-          </tr>
-          <?php endforeach; ?>
-        </tbody>
-      </table>
-      <?php endif; ?>
-    </div>
+    <?php else: ?><p style="font-size:11px;color:#94a3b8;padding:8px 0;">No recent entries.</p><?php endif; ?>
+    <a href="admin_audit_trail.php" class="adm-snap-link"><i class="fas fa-arrow-right"></i> Full Audit Trail</a>
   </div>
 
-  <div class="adm-card">
-    <div class="adm-card-hd">
-      <span class="adm-card-title"><i class="fas fa-tags"></i> Product &amp; Pricing Overview</span>
-      <a href="admin_set_prices.php" class="adm-btn adm-btn-outline adm-btn-sm"><i class="fas fa-arrow-right"></i> View</a>
-    </div>
-    <div class="adm-card-bd">
-      <?php if (!empty($fuel_prices)): ?>
-        <div style="font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;margin-bottom:6px;">Official Fuel Prices</div>
-        <?php foreach($fuel_prices as $fp): ?>
-          <div class="price-row">
-            <span><?php echo htmlspecialchars($fp['fuel_type']); ?></span>
-            <span class="price-val">&#8369;<?php echo number_format((float)$fp['price_per_liter'],2); ?>/L</span>
-          </div>
-        <?php endforeach; ?>
-      <?php endif; ?>
-      <?php if (!empty($merch_catalog)): ?>
-        <div style="font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;margin:10px 0 6px;">Merchandise Catalog</div>
-        <?php foreach($merch_catalog as $mc): ?>
-          <div class="price-row">
-            <span><?php echo htmlspecialchars($mc['product_name']); ?></span>
-            <span class="price-val">&#8369;<?php echo number_format((float)$mc['price'],2); ?></span>
-          </div>
-        <?php endforeach; ?>
-      <?php endif; ?>
-      <?php if (empty($fuel_prices) && empty($merch_catalog)): ?>
-        <p style="color:#6c757d;font-size:12px;text-align:center;padding:16px 0;">No pricing data available.</p>
-      <?php endif; ?>
-    </div>
-  </div>
+</div><!-- /.adm-snap-grid -->
 
-  <div class="adm-card">
-    <div class="adm-card-hd"><span class="adm-card-title"><i class="fas fa-file-alt"></i> Reports &amp; Audit Quick Links</span></div>
-    <div class="adm-card-bd">
-      <div class="ql-grid">
-        <a href="admin_reports_audit.php?tab=sales" class="ql-item"><i class="fas fa-chart-line"></i>Sales Report</a>
-        <a href="reports.php?section=deliveries" class="ql-item"><i class="fas fa-truck"></i>Deliveries</a>
-        <a href="reports.php?section=staff" class="ql-item"><i class="fas fa-users"></i>Staff Report</a>
-        <a href="admin_reports_audit.php?tab=audit" class="ql-item"><i class="fas fa-history"></i>Audit Logs</a>
-        <a href="admin_anomaly_monitoring.php" class="ql-item"><i class="fas fa-exclamation-triangle"></i>Anomalies</a>
-        <a href="admin_deliveries_oversight.php" class="ql-item"><i class="fas fa-truck-loading"></i>Deliveries</a>
-        <a href="admin_staff_oversight.php" class="ql-item"><i class="fas fa-users-cog"></i>Staff Oversight</a>
-        <a href="admin_export_center.php" class="ql-item"><i class="fas fa-download"></i>Export Center</a>
-      </div>
-    </div>
-  </div>
-
-</div>
-
-<!-- RECENT AUDIT TRAIL -->
+<!-- REPORTS SNAPSHOT + EXPORT -->
 <div class="adm-card">
-  <div class="adm-card-hd">
-    <span class="adm-card-title"><i class="fas fa-shield-alt"></i> Recent Audit Trail</span>
-    <a href="audit_logs.php" class="adm-btn adm-btn-outline adm-btn-sm"><i class="fas fa-external-link-alt"></i> Full Log</a>
+  <div class="adm-card-head">
+    <div class="adm-card-title"><i class="fas fa-chart-bar"></i> Reports Snapshot</div>
   </div>
-  <div class="adm-card-bd" style="padding:0;">
-    <?php if (!empty($audit_rows)): ?>
-    <table class="adm-table">
-      <thead><tr><th>Action</th><th>Details</th><th>User</th><th>Role</th><th>Status</th><th>Time</th></tr></thead>
-      <tbody>
-        <?php foreach($audit_rows as $ar): ?>
-        <tr>
-          <td><?php echo htmlspecialchars($ar['action_type']??'—'); ?></td>
-          <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?php echo htmlspecialchars($ar['action_details']??'—'); ?></td>
-          <td><?php echo htmlspecialchars($ar['user_name']??'System'); ?></td>
-          <td><?php echo htmlspecialchars(ucfirst($ar['user_role']??'')); ?></td>
-          <td><?php $as=strtolower($ar['status']??''); $ab=match($as){'success','approved','completed'=>'badge-success','failed','rejected','error'=>'badge-danger','pending'=>'badge-warning',default=>'badge-secondary'}; ?><span class="badge <?php echo $ab; ?>"><?php echo htmlspecialchars(ucfirst($ar['status']??'N/A')); ?></span></td>
-          <td style="white-space:nowrap;color:#6c757d;"><?php echo date('M j, g:i a', strtotime($ar['created_at'])); ?></td>
-        </tr>
-        <?php endforeach; ?>
-      </tbody>
-    </table>
-    <?php else: ?>
-      <p style="padding:18px;color:#6c757d;text-align:center;font-size:12px;">No audit records found.</p>
-    <?php endif; ?>
+  <div class="adm-reports-grid">
+    <div class="adm-report-item"><div class="ri-val">&#8369;<?php echo number_format($fuel_revenue,0); ?></div><div class="ri-label">Fuel Revenue</div></div>
+    <div class="adm-report-item"><div class="ri-val">&#8369;<?php echo number_format($merch_revenue,0); ?></div><div class="ri-label">Merch Revenue</div></div>
+    <div class="adm-report-item"><div class="ri-val">&#8369;<?php echo number_format($fuel_revenue+$merch_revenue,0); ?></div><div class="ri-label">Total Revenue</div></div>
+    <div class="adm-report-item"><div class="ri-val">&#8369;<?php echo number_format($ar_total,0); ?></div><div class="ri-label">AR Outstanding</div></div>
+    <div class="adm-report-item"><div class="ri-val"><?php echo number_format($variance_liters,1); ?>L</div><div class="ri-label">Variance (Liters)</div></div>
+    <div class="adm-report-item"><div class="ri-val"><?php echo $variance_alerts_open; ?></div><div class="ri-label">Open Variance Alerts</div></div>
+  </div>
+  <div class="adm-export-row">
+    <a href="admin_export_center.php?type=sales&format=excel" class="adm-export-btn xls"><i class="fas fa-file-excel"></i> Sales Excel</a>
+    <a href="admin_export_center.php?type=sales&format=pdf"   class="adm-export-btn pdf"><i class="fas fa-file-pdf"></i> Sales PDF</a>
+    <a href="admin_export_center.php?type=ar&format=excel"    class="adm-export-btn xls"><i class="fas fa-file-excel"></i> AR Excel</a>
+    <a href="admin_export_center.php?type=ar&format=pdf"      class="adm-export-btn pdf"><i class="fas fa-file-pdf"></i> AR PDF</a>
+    <a href="admin_export_center.php?type=variance&format=excel" class="adm-export-btn xls"><i class="fas fa-file-excel"></i> Variance Excel</a>
+    <a href="admin_export_center.php?type=variance&format=pdf"   class="adm-export-btn pdf"><i class="fas fa-file-pdf"></i> Variance PDF</a>
+    <a href="admin_reports.php" class="adm-export-btn"><i class="fas fa-chart-bar"></i> Full Reports</a>
   </div>
 </div>
 
-</div><!-- /page-content adm-page -->
+<!-- CALENDAR OVERSIGHT -->
+<?php
+$today_str  = date('Y-m-d');
+$prev_week  = $week_offset - 1;
+$next_week  = $week_offset + 1;
+$base_url   = '?quick='.urlencode($quick).'&date_from='.urlencode($date_from).'&date_to='.urlencode($date_to);
+$week_label = date('M j',strtotime($start_of_week)).' – '.date('M j, Y',strtotime($end_of_week));
+?>
+<div class="adm-cal">
+  <div class="adm-cal-head">
+    <h3><i class="fas fa-calendar-week"></i> Calendar Oversight &mdash; <?php echo $week_label; ?></h3>
+    <div class="adm-cal-nav">
+      <a href="<?php echo $base_url.'&week='.$prev_week; ?>" class="adm-cal-nav-btn"><i class="fas fa-chevron-left"></i> Prev</a>
+      <a href="<?php echo $base_url.'&week=0'; ?>" class="adm-cal-nav-btn">This Week</a>
+      <a href="<?php echo $base_url.'&week='.$next_week; ?>" class="adm-cal-nav-btn">Next <i class="fas fa-chevron-right"></i></a>
+    </div>
+  </div>
+  <div class="adm-cal-filters">
+    <button class="adm-cal-filter-btn active" onclick="admCalFilter('all',this)">All</button>
+    <button class="adm-cal-filter-btn" onclick="admCalFilter('job_orders',this)">Job Orders</button>
+    <button class="adm-cal-filter-btn" onclick="admCalFilter('deliveries',this)">Deliveries</button>
+    <button class="adm-cal-filter-btn" onclick="admCalFilter('purchase_orders',this)">Purchase Orders</button>
+    <button class="adm-cal-filter-btn" onclick="admCalFilter('fuel_calibration',this)">Calibrations</button>
+    <button class="adm-cal-filter-btn" onclick="admCalFilter('staff_shift',this)">Staff Shifts</button>
+  </div>
+  <div class="adm-cal-grid">
+    <?php
+    $days_short = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    for($di=0;$di<7;$di++):
+      $cdate  = date('Y-m-d',strtotime($start_of_week." +{$di} days"));
+      $clabel = $days_short[$di].' '.date('j',strtotime($cdate));
+      $is_today = ($cdate===$today_str);
+      $devents  = array_filter($cal_events,fn($e)=>$e['date']===$cdate);
+    ?>
+    <div class="adm-cal-cell">
+      <div class="adm-cal-day-title<?php echo $is_today?' today':''; ?>">
+        <span><?php echo $clabel; ?></span>
+        <?php if($is_today): ?><span style="font-size:7px;background:#CC0000;color:#fff;padding:1px 4px;border-radius:8px;">TODAY</span><?php endif; ?>
+      </div>
+      <?php if(empty($devents)): ?>
+        <div class="adm-cal-empty">No events</div>
+      <?php else: foreach($devents as $ev):
+        $sc = in_array($ev['status'],['pending','approved','completed','rejected','cancelled'])?$ev['status']:'pending';
+      ?>
+        <div class="adm-cal-event <?php echo $sc; ?>" data-cal-type="<?php echo htmlspecialchars($ev['type']); ?>"
+             title="<?php echo htmlspecialchars($ev['title']); ?>">
+          <?php echo htmlspecialchars(mb_strimwidth($ev['title'],0,35,'…')); ?>
+        </div>
+      <?php endforeach; endif; ?>
+    </div>
+    <?php endfor; ?>
+  </div>
+</div>
 
+<!-- QUICK ACCESS (bottom) -->
+<div class="adm-card">
+  <div class="adm-card-title" style="margin-bottom:13px;"><i class="fas fa-th"></i> Quick Access</div>
+  <div class="adm-ql-grid">
+    <a href="users.php"                       class="adm-ql-card"><i class="fas fa-users-gear"></i>User Management</a>
+    <a href="admin_staff_oversight.php"       class="adm-ql-card"><i class="fas fa-id-badge"></i>Staff Oversight</a>
+    <a href="admin_transactions_oversight.php" class="adm-ql-card"><i class="fas fa-receipt"></i>Transactions</a>
+    <a href="admin_deliveries_oversight.php"  class="adm-ql-card"><i class="fas fa-truck-ramp-box"></i>Deliveries</a>
+    <a href="purchase_orders.php"             class="adm-ql-card"><i class="fas fa-file-circle-plus"></i>Purchase Orders</a>
+    <a href="admin_reports.php"               class="adm-ql-card"><i class="fas fa-chart-line"></i>Sales Reports</a>
+    <a href="admin_reports.php?tab=receivable" class="adm-ql-card"><i class="fas fa-hand-holding-dollar"></i>Receivables</a>
+    <a href="admin_reports.php?tab=variance"  class="adm-ql-card"><i class="fas fa-triangle-exclamation"></i>Variance Log</a>
+    <a href="joborder.php"                    class="adm-ql-card"><i class="fas fa-screwdriver-wrench"></i>Job Orders</a>
+    <a href="admin_audit_trail.php"           class="adm-ql-card"><i class="fas fa-list-check"></i>Audit Logs</a>
+    <a href="admin_export_center.php"         class="adm-ql-card"><i class="fas fa-file-export"></i>Export Center</a>
+    <a href="admin_calendar.php"              class="adm-ql-card"><i class="fas fa-calendar-days"></i>Calendar</a>
+  </div>
+</div>
+
+</div><!-- /.adm-wrap -->
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 (function(){
-  const B='#00264D',R='#CC0000',G='#28A745',O='#FFC107',P='#6f42c1',T='#17a2b8';
-  const opts={responsive:true,maintainAspectRatio:false};
+'use strict';
 
-  const c1=document.getElementById('chartSales');
-  if(c1) new Chart(c1,{type:'line',data:{labels:<?php echo json_encode($trend_labels);?>,datasets:[{label:'Fuel',data:<?php echo json_encode($trend_fuel);?>,borderColor:B,backgroundColor:'rgba(0,38,77,.07)',fill:true,tension:.4,pointRadius:2,borderWidth:2},{label:'Merchandise',data:<?php echo json_encode($trend_merch);?>,borderColor:R,backgroundColor:'rgba(204,0,0,.05)',fill:true,tension:.4,pointRadius:2,borderWidth:2}]},options:{...opts,plugins:{legend:{position:'top',labels:{font:{size:11}}}},scales:{x:{ticks:{font:{size:10},maxTicksLimit:10}},y:{ticks:{font:{size:10},callback:v=>'₱'+v.toLocaleString()}}}}});
+/* ── PHP data ── */
+const fuelRev    = <?php echo json_encode((float)$fuel_revenue); ?>;
+const merchRev   = <?php echo json_encode((float)$merch_revenue); ?>;
+const trendLbl   = <?php echo json_encode($trend_labels); ?>;
+const trendFuel  = <?php echo json_encode($trend_fuel); ?>;
+const trendMerch = <?php echo json_encode($trend_merch); ?>;
+const fuelBarLbl = <?php echo json_encode($fuel_bar_labels); ?>;
+const fuelBarDat = <?php echo json_encode($fuel_bar_data); ?>;
+const mTrendLbl  = <?php echo json_encode($merch_trend_labels); ?>;
+const mTrendDat  = <?php echo json_encode($merch_trend_data); ?>;
+const delSupLbl  = <?php echo json_encode($del_sup_labels); ?>;
+const delSupDat  = <?php echo json_encode($del_sup_data); ?>;
+const delPend    = <?php echo json_encode((int)$del_pending); ?>;
+const delAppr    = <?php echo json_encode((int)$del_approved); ?>;
+const delFlag    = <?php echo json_encode((int)$del_flagged); ?>;
+const joPend     = <?php echo json_encode((int)$jo_pending); ?>;
+const joInProg   = <?php echo json_encode((int)$jo_in_progress); ?>;
+const joComp     = <?php echo json_encode((int)$jo_completed); ?>;
+const joWkLbl    = <?php echo json_encode($jo_week_labels); ?>;
+const joWkDat    = <?php echo json_encode($jo_week_data); ?>;
+const stNames    = <?php echo json_encode($staff_names); ?>;
+const stAct      = <?php echo json_encode($staff_act); ?>;
+const attNames   = <?php echo json_encode($att_names); ?>;
+const attShifts  = <?php echo json_encode($att_shifts); ?>;
+const varLbl     = <?php echo json_encode($var_labels); ?>;
+const varPump    = <?php echo json_encode($var_pump_data); ?>;
+const varSales   = <?php echo json_encode($var_sales_data); ?>;
+const varDel     = <?php echo json_encode($var_del_data); ?>;
+const varTkLbl   = <?php echo json_encode($var_tank_labels); ?>;
+const varTkVal   = <?php echo json_encode($var_tank_values); ?>;
+const arNames    = <?php echo json_encode($ar_names); ?>;
+const arBal      = <?php echo json_encode($ar_balances); ?>;
+const arTotal    = <?php echo json_encode((float)$ar_total); ?>;
+const arColl     = <?php echo json_encode((float)$ar_collected); ?>;
 
-  const c2=document.getElementById('chartDeliv');
-  if(c2) new Chart(c2,{type:'bar',data:{labels:<?php echo json_encode($del_labels);?>,datasets:[{label:'Deliveries',data:<?php echo json_encode($del_counts);?>,backgroundColor:O,borderRadius:4}]},options:{...opts,plugins:{legend:{display:false}},scales:{x:{ticks:{font:{size:10}}},y:{ticks:{font:{size:10},stepSize:1}}}}});
+/* ── Palette ── */
+const P = {
+  blue:'#00264D', red:'#CC0000', green:'#22c55e',
+  amber:'#f59e0b', purple:'#7c3aed', teal:'#0891b2', sky:'#38bdf8'
+};
+const BASE = { responsive:true, maintainAspectRatio:false, animation:{duration:350} };
 
-  const c3=document.getElementById('chartVar');
-  if(c3) new Chart(c3,{type:'doughnut',data:{labels:<?php echo json_encode($var_labels);?>,datasets:[{data:<?php echo json_encode($var_amounts);?>,backgroundColor:[R,O,B,G,P,T],borderWidth:2,borderColor:'#fff'}]},options:{...opts,plugins:{legend:{position:'right',labels:{font:{size:11},boxWidth:12}}}}});
+/* ── Instance registry ── */
+const CI = {};
+let activeCat = 'sales';
 
-  const c4=document.getElementById('chartPerf');
-  if(c4) new Chart(c4,{type:'bar',data:{labels:<?php echo json_encode($perf_labels);?>,datasets:[{label:'Transactions',data:<?php echo json_encode($perf_txn);?>,backgroundColor:B,borderRadius:4},{label:'Job Orders',data:<?php echo json_encode($perf_jo);?>,backgroundColor:G,borderRadius:4}]},options:{...opts,plugins:{legend:{position:'top',labels:{font:{size:11}}}},scales:{x:{ticks:{font:{size:10}}},y:{ticks:{font:{size:10},stepSize:1}}}}});
+function destroy(id){ if(CI[id]){ CI[id].destroy(); delete CI[id]; } }
+function mk(id, cfg){
+  destroy(id);
+  const el = document.getElementById(id);
+  if(el) CI[id] = new Chart(el, cfg);
+}
+
+/* ── Builders ── */
+function buildSales(){
+  mk('admFuelBar',{type:'bar',data:{labels:fuelBarLbl,datasets:[{label:'Liters',data:fuelBarDat,backgroundColor:P.blue+'cc',borderColor:P.blue,borderWidth:1,borderRadius:4}]},
+    options:{...BASE,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{font:{size:10}}},x:{ticks:{font:{size:10}}}}}});
+
+  mk('admMerchLine',{type:'line',data:{labels:mTrendLbl,datasets:[{label:'Merch ₱',data:mTrendDat,borderColor:P.teal,backgroundColor:P.teal+'22',fill:true,tension:0.4,pointRadius:3}]},
+    options:{...BASE,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{font:{size:10}}},x:{ticks:{font:{size:9},maxRotation:45}}}}});
+
+  mk('admSalesPie',{type:'pie',data:{labels:['Fuel Revenue','Merch Revenue'],datasets:[{data:[fuelRev,merchRev],backgroundColor:[P.blue+'dd',P.teal+'dd'],borderColor:'#fff',borderWidth:2}]},
+    options:{...BASE,plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:12}}}}});
+
+  mk('admSalesTrend',{type:'line',data:{labels:trendLbl,datasets:[
+    {label:'Fuel ₱',data:trendFuel,borderColor:P.blue,backgroundColor:P.blue+'18',fill:true,tension:0.4,pointRadius:2},
+    {label:'Merch ₱',data:trendMerch,borderColor:P.teal,backgroundColor:P.teal+'18',fill:true,tension:0.4,pointRadius:2}]},
+    options:{...BASE,plugins:{legend:{position:'top',labels:{font:{size:10},boxWidth:12}}},scales:{y:{beginAtZero:true,ticks:{font:{size:10}}},x:{ticks:{font:{size:9},maxTicksLimit:10,maxRotation:45}}}}});
+}
+
+function buildDeliveries(){
+  mk('admDelSupplier',{type:'bar',data:{labels:delSupLbl,datasets:[{label:'Deliveries',data:delSupDat,backgroundColor:P.sky+'cc',borderColor:P.sky,borderWidth:1,borderRadius:4}]},
+    options:{...BASE,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{font:{size:10}}},x:{ticks:{font:{size:10}}}}}});
+
+  mk('admDelStatus',{type:'bar',data:{labels:['Pending','Approved','Flagged'],datasets:[{label:'Count',data:[delPend,delAppr,delFlag],backgroundColor:[P.amber+'cc',P.green+'cc',P.red+'cc'],borderColor:[P.amber,P.green,P.red],borderWidth:1,borderRadius:4}]},
+    options:{...BASE,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{font:{size:10}}},x:{ticks:{font:{size:10}}}}}});
+}
+
+function buildJobs(){
+  mk('admJoStatus',{type:'bar',data:{labels:['Pending','In Progress','Completed'],datasets:[{label:'JOs',data:[joPend,joInProg,joComp],backgroundColor:[P.amber+'cc',P.sky+'cc',P.green+'cc'],borderColor:[P.amber,P.sky,P.green],borderWidth:1,borderRadius:4}]},
+    options:{...BASE,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{font:{size:10}}},x:{ticks:{font:{size:10}}}}}});
+
+  mk('admJoWeekly',{type:'line',data:{labels:joWkLbl,datasets:[{label:'Job Orders',data:joWkDat,borderColor:P.purple,backgroundColor:P.purple+'22',fill:true,tension:0.4,pointRadius:4}]},
+    options:{...BASE,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{font:{size:10}}},x:{ticks:{font:{size:10}}}}}});
+}
+
+function buildStaff(){
+  mk('admStaffActivity',{type:'bar',data:{labels:stNames,datasets:[{label:'Activities',data:stAct,backgroundColor:P.blue+'cc',borderColor:P.blue,borderWidth:1,borderRadius:4}]},
+    options:{...BASE,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{font:{size:10}}},y:{ticks:{font:{size:10}}}}}});
+
+  mk('admStaffAttend',{type:'bar',data:{labels:attNames,datasets:[{label:'Shifts',data:attShifts,backgroundColor:P.teal+'cc',borderColor:P.teal,borderWidth:1,borderRadius:4}]},
+    options:{...BASE,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{font:{size:10}}},y:{ticks:{font:{size:10}}}}}});
+}
+
+function buildVariance(){
+  mk('admVarLine',{type:'line',data:{labels:varLbl,datasets:[
+    {label:'Pump Readings (L)',data:varPump,borderColor:P.blue,fill:false,tension:0.4,pointRadius:3},
+    {label:'Sales (L)',data:varSales,borderColor:P.green,fill:false,tension:0.4,pointRadius:3},
+    {label:'Deliveries (L)',data:varDel,borderColor:P.amber,fill:false,tension:0.4,pointRadius:3}]},
+    options:{...BASE,plugins:{legend:{position:'top',labels:{font:{size:10},boxWidth:12}}},scales:{y:{beginAtZero:true,ticks:{font:{size:10}}},x:{ticks:{font:{size:9},maxRotation:30}}}}});
+
+  mk('admVarTank',{type:'bar',data:{labels:varTkLbl,datasets:[{label:'Variance (L)',data:varTkVal,backgroundColor:P.red+'cc',borderColor:P.red,borderWidth:1,borderRadius:4}]},
+    options:{...BASE,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{font:{size:10}}},x:{ticks:{font:{size:10}}}}}});
+}
+
+function buildAR(){
+  mk('admArPie',{type:'pie',data:{labels:arNames,datasets:[{data:arBal,backgroundColor:[P.blue+'dd',P.teal+'dd',P.amber+'dd',P.purple+'dd',P.red+'dd',P.sky+'dd'],borderColor:'#fff',borderWidth:2}]},
+    options:{...BASE,plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:12}}}}});
+
+  mk('admArBar',{type:'bar',data:{labels:['Collected','Outstanding'],datasets:[{label:'₱',data:[arColl,arTotal],backgroundColor:[P.green+'cc',P.red+'cc'],borderColor:[P.green,P.red],borderWidth:1,borderRadius:4}]},
+    options:{...BASE,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{font:{size:10}}},x:{ticks:{font:{size:10}}}}}});
+}
+
+function buildCharts(cat){
+  switch(cat){
+    case 'sales':      buildSales();      break;
+    case 'deliveries': buildDeliveries(); break;
+    case 'jobs':       buildJobs();       break;
+    case 'staff':      buildStaff();      break;
+    case 'variance':   buildVariance();   break;
+    case 'ar':         buildAR();         break;
+  }
+}
+
+/* ── Public API ── */
+window.admSwitch = function(cat, btn){
+  document.querySelectorAll('.adm-chart-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.adm-tab-btn').forEach(b=>b.classList.remove('active'));
+  const panel = document.getElementById('adm-panel-'+cat);
+  if(panel) panel.classList.add('active');
+  if(btn)   btn.classList.add('active');
+  activeCat = cat;
+  buildCharts(cat);
+};
+
+window.admRefreshChart = function(){
+  buildCharts(activeCat);
+};
+
+window.admCalFilter = function(cat, btn){
+  document.querySelectorAll('.adm-cal-filter-btn').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  document.querySelectorAll('.adm-cal-event').forEach(el=>{
+    el.style.display = (cat==='all' || el.dataset.calType===cat) ? '' : 'none';
+  });
+};
+
+window.addEventListener('load', function(){ buildCharts('sales'); });
+
 })();
 </script>
 

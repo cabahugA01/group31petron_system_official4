@@ -420,9 +420,212 @@ switch ($action) {
         $rows = safe_rows($pdo, $sql, $params);
         api_ok($rows);
 
+    // ── VARIANCE REPORTS ─────────────────────────────────────────────────────
+    case 'variance_reports':
+        if (!$has_fvr) { api_ok([]); }
+        $rows = safe_rows($pdo, "
+            SELECT fvr.id,
+                   DATE(fvr.report_date) AS report_date,
+                   fvr.fuel_type,
+                   fvr.expected_stock,
+                   fvr.actual_stock,
+                   fvr.variance_liters,
+                   fvr.variance_percent,
+                   COALESCE(fvr.reason, '—') AS reason,
+                   fvr.status
+            FROM fuel_variance_reports fvr
+            WHERE fvr.station_id = ?
+              AND DATE(fvr.report_date) BETWEEN ? AND ?
+            ORDER BY fvr.report_date DESC
+            LIMIT 500
+        ", [$station_id, $date_from, $date_to]);
+        api_ok($rows);
+
+    // ── ACCOUNTS RECEIVABLE ──────────────────────────────────────────────────
+    case 'accounts_receivable':
+        if (!$has_ar) { api_ok([]); }
+        $rows = safe_rows($pdo, "
+            SELECT ar.id,
+                   ar.transaction_id,
+                   COALESCE(c.name, 'Unknown Customer') AS customer_name,
+                   ar.fuel_type AS type_details,
+                   ar.amount,
+                   ar.status,
+                   ar.due_date,
+                   DATE(ar.created_at) AS created_date
+            FROM accounts_receivable ar
+            LEFT JOIN customers c ON c.id = ar.customer_id
+            WHERE ar.station_id = ?
+              AND DATE(ar.created_at) BETWEEN ? AND ?
+            ORDER BY ar.created_at DESC
+            LIMIT 500
+        ", [$station_id, $date_from, $date_to]);
+        api_ok($rows);
+
     // ══════════════════════════════════════════════════════════════════════════
     // EXPORTS — delegate to existing verified handlers
     // ══════════════════════════════════════════════════════════════════════════
+    case 'export_variance':
+        $rows = safe_rows($pdo, "
+            SELECT DATE(report_date) AS report_date,
+                   fuel_type, expected_stock, actual_stock,
+                   variance_liters, variance_percent, reason, status
+            FROM fuel_variance_reports
+            WHERE station_id = ?
+              AND DATE(report_date) BETWEEN ? AND ?
+            ORDER BY report_date DESC
+        ", [$station_id, $date_from, $date_to]);
+
+        if ($format === 'pdf') {
+            header('Content-Type: text/html; charset=UTF-8');
+            $tbody = '';
+            foreach ($rows as $r) {
+                $v = (float)($r['variance_liters'] ?? 0);
+                $vColor = $v > 0 ? '#dc2626' : ($v < 0 ? '#d97706' : '#16a34a');
+                $vStr = ($v > 0 ? '+' : '') . number_format($v, 2) . ' L';
+                $tbody .= '<tr>
+                    <td>' . htmlspecialchars($r['report_date'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['fuel_type'] ?? '') . '</td>
+                    <td style="text-align:right">' . number_format((float)($r['expected_stock'] ?? 0), 2) . ' L</td>
+                    <td style="text-align:right">' . number_format((float)($r['actual_stock'] ?? 0), 2) . ' L</td>
+                    <td style="text-align:right;color:' . $vColor . ';font-weight:bold">' . $vStr . '</td>
+                    <td style="text-align:right">' . number_format((float)($r['variance_percent'] ?? 0), 2) . '%</td>
+                    <td>' . htmlspecialchars($r['reason'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['status'] ?? '') . '</td>
+                </tr>';
+            }
+            echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Variance Report</title>
+            <style>
+            body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:20px}
+            .hdr{margin-bottom:16px;border-bottom:3px solid #00264D;padding-bottom:10px}
+            .hdr h1{font-size:18px;color:#00264D;margin-bottom:4px}
+            .hdr p{font-size:10px;color:#64748b;margin-top:2px}
+            table{width:100%;border-collapse:collapse}
+            th{background:#00264D;color:#fff;padding:6px 8px;text-align:left;font-size:9px;text-transform:uppercase}
+            td{padding:5px 8px;border-bottom:1px solid #e2e8f0;font-size:10px}
+            tr:nth-child(even) td{background:#f8fafc}
+            .pbtn{margin-bottom:14px}
+            .pbtn button{background:#00264D;color:#fff;border:none;padding:7px 18px;border-radius:5px;font-size:12px;cursor:pointer}
+            @media print{.pbtn{display:none}body{padding:0}}
+            </style></head><body>
+            <div class="pbtn"><button onclick="window.print()">Print / Save as PDF</button></div>
+            <div class="hdr">
+              <h1>Fuel Variance Report</h1>
+              <p><strong>Station:</strong> ' . htmlspecialchars($station_name) . '</p>
+              <p><strong>Date Range:</strong> ' . htmlspecialchars($date_from) . ' &mdash; ' . htmlspecialchars($date_to) . '</p>
+            </div>
+            <table><thead><tr>
+              <th>Date</th><th>Fuel Type</th><th>Expected Stock</th><th>Actual Stock</th><th>Variance (L)</th><th>Variance (%)</th><th>Reason</th><th>Status</th>
+            </tr></thead><tbody>' . ($tbody ?: '<tr><td colspan="8" style="text-align:center">No records found.</td></tr>') . '</tbody></table></body></html>';
+            exit;
+        }
+
+        // CSV
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="variance_report_' . $date_from . '_to_' . $date_to . '.csv"');
+        $out = fopen('php://output', 'w');
+        fputs($out, "\xEF\xBB\xBF");
+        fputcsv($out, ['Fuel Variance Report']);
+        fputcsv($out, ['Station:', $station_name]);
+        fputcsv($out, ['Date Range:', $date_from . ' to ' . $date_to]);
+        fputcsv($out, []);
+        fputcsv($out, ['Date', 'Fuel Type', 'Expected Stock (L)', 'Actual Stock (L)', 'Variance (L)', 'Variance (%)', 'Reason', 'Status']);
+        foreach ($rows as $r) {
+            fputcsv($out, [
+                $r['report_date'] ?? '',
+                $r['fuel_type'] ?? '',
+                $r['expected_stock'] ?? 0,
+                $r['actual_stock'] ?? 0,
+                $r['variance_liters'] ?? 0,
+                $r['variance_percent'] ?? 0,
+                $r['reason'] ?? '',
+                $r['status'] ?? '',
+            ]);
+        }
+        fclose($out);
+        exit;
+
+    case 'export_receivable':
+        $rows = safe_rows($pdo, "
+            SELECT ar.transaction_id,
+                   COALESCE(c.name, \'Unknown Customer\') AS customer_name,
+                   ar.fuel_type AS type_details,
+                   ar.amount,
+                   ar.status,
+                   ar.due_date,
+                   DATE(ar.created_at) AS created_date
+            FROM accounts_receivable ar
+            LEFT JOIN customers c ON c.id = ar.customer_id
+            WHERE ar.station_id = ?
+              AND DATE(ar.created_at) BETWEEN ? AND ?
+            ORDER BY ar.created_at DESC
+        ", [$station_id, $date_from, $date_to]);
+
+        if ($format === 'pdf') {
+            header('Content-Type: text/html; charset=UTF-8');
+            $tbody = '';
+            foreach ($rows as $r) {
+                $statusStyle = strtolower($r['status'] ?? '') === 'paid' ? 'color:#16a34a;font-weight:bold' : 'color:#ca8a04;font-weight:bold';
+                $tbody .= '<tr>
+                    <td>' . htmlspecialchars($r['created_date'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['transaction_id'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['customer_name'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['type_details'] ?? '') . '</td>
+                    <td style="text-align:right">₱' . number_format((float)($r['amount'] ?? 0), 2) . '</td>
+                    <td>' . htmlspecialchars($r['due_date'] ?? '') . '</td>
+                    <td style="' . $statusStyle . '">' . htmlspecialchars(ucfirst($r['status'] ?? '')) . '</td>
+                </tr>';
+            }
+            echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Accounts Receivable Report</title>
+            <style>
+            body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:20px}
+            .hdr{margin-bottom:16px;border-bottom:3px solid #00264D;padding-bottom:10px}
+            .hdr h1{font-size:18px;color:#00264D;margin-bottom:4px}
+            .hdr p{font-size:10px;color:#64748b;margin-top:2px}
+            table{width:100%;border-collapse:collapse}
+            th{background:#00264D;color:#fff;padding:6px 8px;text-align:left;font-size:9px;text-transform:uppercase}
+            td{padding:5px 8px;border-bottom:1px solid #e2e8f0;font-size:10px}
+            tr:nth-child(even) td{background:#f8fafc}
+            .pbtn{margin-bottom:14px}
+            .pbtn button{background:#00264D;color:#fff;border:none;padding:7px 18px;border-radius:5px;font-size:12px;cursor:pointer}
+            @media print{.pbtn{display:none}body{padding:0}}
+            </style></head><body>
+            <div class="pbtn"><button onclick="window.print()">Print / Save as PDF</button></div>
+            <div class="hdr">
+              <h1>Accounts Receivable Report</h1>
+              <p><strong>Station:</strong> ' . htmlspecialchars($station_name) . '</p>
+              <p><strong>Date Range:</strong> ' . htmlspecialchars($date_from) . ' &mdash; ' . htmlspecialchars($date_to) . '</p>
+            </div>
+            <table><thead><tr>
+              <th>Created Date</th><th>Transaction ID</th><th>Customer Name</th><th>Details</th><th>Amount</th><th>Due Date</th><th>Status</th>
+            </tr></thead><tbody>' . ($tbody ?: '<tr><td colspan="7" style="text-align:center">No records found.</td></tr>') . '</tbody></table></body></html>';
+            exit;
+        }
+
+        // CSV
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="accounts_receivable_report_' . $date_from . '_to_' . $date_to . '.csv"');
+        $out = fopen('php://output', 'w');
+        fputs($out, "\xEF\xBB\xBF");
+        fputcsv($out, ['Accounts Receivable Report']);
+        fputcsv($out, ['Station:', $station_name]);
+        fputcsv($out, ['Date Range:', $date_from . ' to ' . $date_to]);
+        fputcsv($out, []);
+        fputcsv($out, ['Created Date', 'Transaction ID', 'Customer Name', 'Details', 'Amount (₱)', 'Due Date', 'Status']);
+        foreach ($rows as $r) {
+            fputcsv($out, [
+                $r['created_date'] ?? '',
+                $r['transaction_id'] ?? '',
+                $r['customer_name'] ?? '',
+                $r['type_details'] ?? '',
+                $r['amount'] ?? 0,
+                $r['due_date'] ?? '',
+                $r['status'] ?? '',
+            ]);
+        }
+        fclose($out);
+        exit;
+
     case 'export_sales':
         require __DIR__ . '/_export_sales_handler.php';
         exit;

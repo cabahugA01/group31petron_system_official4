@@ -1,7 +1,6 @@
-
 <?php
-// Admin Reports & Audit Trail
-$page_id = 'admin_reports_audit';
+// Admin Reports Module
+$page_id = 'reports_admin';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
 require_login();
@@ -26,7 +25,7 @@ try {
 
 // Active tab
 $active_tab = $_GET['tab'] ?? 'sales';
-$allowed_tabs = ['sales','variance','balances','deliveries','staff','audit'];
+$allowed_tabs = ['sales','job_orders','balances','deliveries','staff','variance','receivable'];
 if (!in_array($active_tab, $allowed_tabs)) $active_tab = 'sales';
 
 // Date range defaults
@@ -35,25 +34,11 @@ $date_to   = $_GET['date_to']   ?? date('Y-m-d');
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_from)) $date_from = date('Y-m-01');
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_to))   $date_to   = date('Y-m-d');
 
-// Fetch users for audit filter dropdown — Staff and Manager only (Admin is oversight, not logged)
-$audit_users = [];
-try {
-    $us = $pdo->prepare(
-        "SELECT id, name, role FROM users
-         WHERE station_id = ?
-           AND status = 'active'
-           AND LOWER(TRIM(role)) NOT IN ('admin','superadmin','super admin','super_admin')
-         ORDER BY role, name"
-    );
-    $us->execute([$station_id]);
-    $audit_users = $us->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}
-
 require_once __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-/* ── Reports & Audit Trail Page Styles ─────────────────────────────────── */
+/* ── Reports Page Styles ─────────────────────────────────── */
 .rpt-page { padding: 0; }
 
 .rpt-header {
@@ -88,8 +73,6 @@ require_once __DIR__ . '/../partials/header.php';
 }
 .rpt-filter-bar input[type=date]:focus { border-color: var(--blue); }
 
-/* Section panels — handled by PHP conditionals, no CSS needed */
-
 /* Section heading */
 .rpt-section-head {
     display: flex;
@@ -115,7 +98,7 @@ require_once __DIR__ . '/../partials/header.php';
     color: var(--muted);
 }
 
-/* Sub-tabs (Sales has 3 sub-sections) */
+/* Sub-tabs */
 .sub-tabs {
     display: flex;
     gap: 6px;
@@ -211,13 +194,13 @@ require_once __DIR__ . '/../partials/header.php';
     font-size: 11px;
     font-weight: 600;
 }
-.badge-status.approved, .badge-status.validated, .badge-status.completed, .badge-status.active {
+.badge-status.approved, .badge-status.validated, .badge-status.completed, .badge-status.active, .badge-status.settled {
     background: #dcfce7; color: #16a34a;
 }
 .badge-status.pending {
     background: #fef9c3; color: #ca8a04;
 }
-.badge-status.rejected, .badge-status.failed {
+.badge-status.rejected, .badge-status.failed, .badge-status.overdue, .badge-status.over-limit {
     background: #fee2e2; color: #dc2626;
 }
 .badge-status.in-progress {
@@ -238,25 +221,6 @@ require_once __DIR__ . '/../partials/header.php';
     color: var(--muted);
 }
 .rpt-empty i { font-size: 32px; margin-bottom: 10px; display: block; opacity: .4; }
-
-/* Audit trail specific */
-.audit-filters {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    margin-bottom: 14px;
-    align-items: center;
-}
-.audit-filters select, .audit-filters input {
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    padding: 6px 10px;
-    font-size: 13px;
-    outline: none;
-    background: #fff;
-}
-.audit-filters select:focus, .audit-filters input:focus { border-color: var(--blue); }
-.audit-filters label { font-size: 12px; color: var(--muted); }
 
 /* Variance highlight */
 .var-pos { color: #dc2626; font-weight: 600; }
@@ -279,15 +243,15 @@ require_once __DIR__ . '/../partials/header.php';
 .rpt-summary-card .sc-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
 .rpt-summary-card .sc-value { font-size: 20px; font-weight: 700; color: var(--blue); margin-top: 4px; }
 .rpt-summary-card .sc-sub   { font-size: 11px; color: var(--muted); margin-top: 2px; }
-
+</style>
 
 <div class="page-content rpt-page">
 
   <!-- ── Page Header ──────────────────────────────────────────────────────── -->
   <div class="rpt-header">
     <div class="rpt-header-left">
-      <h1><i class="fas fa-chart-bar" style="color:var(--blue);margin-right:8px"></i>Reports &amp; Audit Trail</h1>
-      <div class="sub"><?php echo htmlspecialchars($station_name); ?> &mdash; Full oversight, exports, and compliance logs</div>
+      <h1><i class="fas fa-chart-bar" style="color:var(--blue);margin-right:8px"></i>Reports Center</h1>
+      <div class="sub"><?php echo htmlspecialchars($station_name); ?> &mdash; Operational and financial reporting hub</div>
     </div>
 
     <!-- Date range filter (shared across all tabs) -->
@@ -307,14 +271,11 @@ require_once __DIR__ . '/../partials/header.php';
     </form>
   </div>
 
-  <!-- Tab navigation removed — use sidebar sub-menu instead -->
-
   <!-- ════════════════════════════════════════════════════════════════════════
        SECTION: SALES REPORTS
   ═══════════════════════════════════════════════════════════════════════════ -->
   <?php if ($active_tab === 'sales'): ?>
 
-    <!-- Section heading -->
     <div class="rpt-section-head">
       <i class="fas fa-gas-pump"></i>
       <div>
@@ -336,7 +297,6 @@ require_once __DIR__ . '/../partials/header.php';
       </button>
     </div>
 
-    <!-- Export bar -->
     <div class="export-bar">
       <span class="lbl"><i class="fas fa-download"></i> Export:</span>
       <a id="salesExcelBtn" href="#" class="btn-export excel" target="_blank">
@@ -347,7 +307,7 @@ require_once __DIR__ . '/../partials/header.php';
       </a>
     </div>
 
-    <!-- Fuel Sales sub-panel -->
+    <!-- Fuel Sales -->
     <div id="sales-fuel" class="sales-section">
       <div class="rpt-summary-cards" id="fuelSummaryCards"></div>
       <div class="rpt-table-wrap">
@@ -370,7 +330,7 @@ require_once __DIR__ . '/../partials/header.php';
       </div>
     </div>
 
-    <!-- Merchandise Sales sub-panel -->
+    <!-- Merchandise Sales -->
     <div id="sales-merch" class="sales-section" style="display:none">
       <div class="rpt-summary-cards" id="merchSummaryCards"></div>
       <div class="rpt-table-wrap">
@@ -397,7 +357,7 @@ require_once __DIR__ . '/../partials/header.php';
       </div>
     </div>
 
-    <!-- Daily Summary sub-panel -->
+    <!-- Daily Summary -->
     <div id="sales-daily" class="sales-section" style="display:none">
       <div class="rpt-summary-cards" id="dailySummaryCards"></div>
       <div class="rpt-table-wrap">
@@ -599,109 +559,84 @@ require_once __DIR__ . '/../partials/header.php';
   <?php endif; ?>
 
   <!-- ════════════════════════════════════════════════════════════════════════
-       SECTION: AUDIT TRAIL
+       SECTION: VARIANCE REPORTS
   ═══════════════════════════════════════════════════════════════════════════ -->
-  <?php if ($active_tab === 'audit'): ?>
+  <?php if ($active_tab === 'variance'): ?>
 
     <div class="rpt-section-head">
-      <i class="fas fa-shield-alt"></i>
+      <i class="fas fa-balance-scale"></i>
       <div>
-        <h2>Audit Trail</h2>
-        <div class="rpt-section-sub">Staff and Manager actions — encoding, validation, approvals, and system events</div>
+        <h2>Variance Reports</h2>
+        <div class="rpt-section-sub">Reconciliation logs for expected vs actual stock levels and fuel pump variance</div>
       </div>
-    </div>
-
-    <!-- Scope notice -->
-    <div style="display:flex;align-items:center;gap:10px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 16px;margin-bottom:14px;font-size:13px;color:#1e40af">
-      <i class="fas fa-info-circle" style="font-size:16px;flex-shrink:0"></i>
-      <span>
-        <strong>Scope:</strong> Shows <strong>Staff</strong> and <strong>Manager</strong> actions only.
-        Admin is an oversight role — Admin actions are not logged here.
-        This ensures accountability at the encoding/validation level and transparency at the oversight level.
-      </span>
-    </div>
-
-    <!-- Filters -->
-    <div class="audit-filters">
-      <label>User:</label>
-      <select id="auditUserFilter">
-        <option value="">All Staff &amp; Managers</option>
-        <?php
-        $last_role = '';
-        foreach ($audit_users as $u):
-            $role_label = ucfirst(strtolower($u['role'] ?? ''));
-            if ($role_label !== $last_role):
-                if ($last_role !== '') echo '</optgroup>';
-                echo '<optgroup label="' . htmlspecialchars($role_label) . '">';
-                $last_role = $role_label;
-            endif;
-        ?>
-          <option value="<?php echo (int)$u['id']; ?>"><?php echo htmlspecialchars($u['name']); ?></option>
-        <?php endforeach; ?>
-        <?php if ($last_role !== '') echo '</optgroup>'; ?>
-      </select>
-
-      <label>Action:</label>
-      <select id="auditActionFilter">
-        <option value="">All Actions</option>
-        <option value="Login">Login</option>
-        <option value="Logout">Logout</option>
-        <option value="Create">Create</option>
-        <option value="Update">Update</option>
-        <option value="Delete">Delete</option>
-        <option value="Approve">Approve</option>
-        <option value="Reject">Reject</option>
-        <option value="Adjust">Adjust</option>
-        <option value="Price Change">Price Change</option>
-        <option value="RBAC Deny">RBAC Deny</option>
-        <option value="View">View</option>
-      </select>
-
-      <label>Module:</label>
-      <select id="auditModuleFilter">
-        <option value="">All Modules</option>
-        <option value="users">Users</option>
-        <option value="transactions">Transactions</option>
-        <option value="job_orders">Job Orders</option>
-        <option value="deliveries">Deliveries</option>
-        <option value="inventory">Inventory</option>
-        <option value="fuel">Fuel</option>
-        <option value="system">System</option>
-      </select>
-
-      <button class="btn primary" style="padding:6px 14px;font-size:13px" onclick="loadAuditTrail()">
-        <i class="fas fa-search"></i> Filter
-      </button>
     </div>
 
     <div class="export-bar">
       <span class="lbl"><i class="fas fa-download"></i> Export:</span>
-      <a id="auditExcelBtn" href="#" class="btn-export excel" target="_blank">
-        <i class="fas fa-file-csv"></i> Excel / CSV
-      </a>
-      <a id="auditPdfBtn" href="#" class="btn-export pdf" target="_blank">
-        <i class="fas fa-file-pdf"></i> PDF (Compliance Copy)
-      </a>
+      <a href="<?php echo '../backend/api/admin_reports_audit_api.php?action=export_variance&format=csv&date_from='.urlencode($date_from).'&date_to='.urlencode($date_to); ?>"
+         class="btn-export excel" target="_blank"><i class="fas fa-file-csv"></i> Excel / CSV</a>
+      <a href="<?php echo '../backend/api/admin_reports_audit_api.php?action=export_variance&format=pdf&date_from='.urlencode($date_from).'&date_to='.urlencode($date_to); ?>"
+         class="btn-export pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
     </div>
-
-    <div class="rpt-summary-cards" id="auditSummaryCards"></div>
-
+    <div class="rpt-summary-cards" id="varSummaryCards"></div>
     <div class="rpt-table-wrap">
       <table class="rpt-table">
         <thead>
           <tr>
-            <th>Date &amp; Time</th>
-            <th>User</th>
-            <th>Role</th>
-            <th>Action</th>
-            <th>Module</th>
-            <th>Details</th>
-            <th>IP Address</th>
+            <th>Report Date</th>
+            <th>Fuel Type</th>
+            <th class="tr">Expected Stock (L)</th>
+            <th class="tr">Actual Stock (L)</th>
+            <th class="tr">Variance (L)</th>
+            <th class="tr">Variance (%)</th>
+            <th>Reason</th>
             <th>Status</th>
           </tr>
         </thead>
-        <tbody id="auditTbody">
+        <tbody id="varTbody">
           <tr><td colspan="8" class="rpt-loading"><i class="fas fa-spinner fa-spin"></i>Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  <?php endif; ?>
+
+  <!-- ════════════════════════════════════════════════════════════════════════
+       SECTION: ACCOUNTS RECEIVABLE
+  ═══════════════════════════════════════════════════════════════════════════ -->
+  <?php if ($active_tab === 'receivable'): ?>
+
+    <div class="rpt-section-head">
+      <i class="fas fa-file-invoice-dollar"></i>
+      <div>
+        <h2>Accounts Receivable Report</h2>
+        <div class="rpt-section-sub">Detailed log of credit transactions, due dates, and settlement status</div>
+      </div>
+    </div>
+
+    <div class="export-bar">
+      <span class="lbl"><i class="fas fa-download"></i> Export:</span>
+      <a href="<?php echo '../backend/api/admin_reports_audit_api.php?action=export_receivable&format=csv&date_from='.urlencode($date_from).'&date_to='.urlencode($date_to); ?>"
+         class="btn-export excel" target="_blank"><i class="fas fa-file-csv"></i> Excel / CSV</a>
+      <a href="<?php echo '../backend/api/admin_reports_audit_api.php?action=export_receivable&format=pdf&date_from='.urlencode($date_from).'&date_to='.urlencode($date_to); ?>"
+         class="btn-export pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
+    </div>
+    <div class="rpt-summary-cards" id="arSummaryCards"></div>
+    <div class="rpt-table-wrap">
+      <table class="rpt-table">
+        <thead>
+          <tr>
+            <th>Created Date</th>
+            <th>Transaction ID</th>
+            <th>Customer Name</th>
+            <th>Details</th>
+            <th class="tr">Amount (&#8369;)</th>
+            <th>Due Date</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="arTbody">
+          <tr><td colspan="7" class="rpt-loading"><i class="fas fa-spinner fa-spin"></i>Loading...</td></tr>
         </tbody>
       </table>
     </div>
@@ -714,13 +649,11 @@ require_once __DIR__ . '/../partials/header.php';
 (function () {
 'use strict';
 
-// ── Config ────────────────────────────────────────────────────────────────────
 const API   = '../backend/api/admin_reports_audit_api.php';
 const FROM  = document.getElementById('dateFrom').value;
 const TO    = document.getElementById('dateTo').value;
 const ACTIVE_TAB = '<?php echo $active_tab; ?>';
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 function fmt(n, dec = 2) {
     return parseFloat(n || 0).toLocaleString('en-PH', {
         minimumFractionDigits: dec,
@@ -736,8 +669,8 @@ function esc(s) {
 function statusBadge(s) {
     const sl = (s || '').toLowerCase();
     let cls = 'pending';
-    if (['approved','validated','completed','active','success','verified'].includes(sl)) cls = 'approved';
-    else if (['rejected','failed','cancelled'].includes(sl)) cls = 'rejected';
+    if (['approved','validated','completed','active','success','verified','settled','paid'].includes(sl)) cls = 'approved';
+    else if (['rejected','failed','cancelled','overdue','over limit','over-limit'].includes(sl)) cls = 'rejected';
     else if (['in progress','in-progress'].includes(sl)) cls = 'in-progress';
     return `<span class="badge-status ${cls}">${esc(s)}</span>`;
 }
@@ -763,27 +696,20 @@ function apiUrl(action, extra = {}) {
     return `${API}?${p}`;
 }
 
-// ── Robust fetch — never leaves a spinner; shows real error if PHP crashes ────
 function apiFetch(url) {
     return fetch(url)
-        .then(r => {
-            // If PHP returned a redirect or error page, r.json() would throw.
-            // Read as text first, then try to parse.
-            return r.text().then(text => {
-                try {
-                    return JSON.parse(text);
-                } catch (e) {
-                    // PHP error / HTML redirect — surface the first meaningful line
-                    const firstLine = text.replace(/<[^>]+>/g, ' ').trim().split('\n')
-                        .map(l => l.trim()).filter(l => l.length > 0)[0] || 'Server error';
-                    return { ok: false, error: firstLine.substring(0, 120) };
-                }
-            });
-        })
+        .then(r => r.text().then(text => {
+            try {
+                return JSON.parse(text);
+            } catch (e) {
+                const firstLine = text.replace(/<[^>]+>/g, ' ').trim().split('\n')
+                    .map(l => l.trim()).filter(l => l.length > 0)[0] || 'Server error';
+                return { ok: false, error: firstLine.substring(0, 120) };
+            }
+        }))
         .catch(err => ({ ok: false, error: err.message || 'Network error' }));
 }
 
-// ── Quick date range buttons ──────────────────────────────────────────────────
 window.setRange = function (range) {
     const today = new Date();
     let from, to = today.toISOString().slice(0, 10);
@@ -801,7 +727,7 @@ window.setRange = function (range) {
     document.getElementById('dateRangeForm').submit();
 };
 
-// ── Sales sub-tab switcher ────────────────────────────────────────────────────
+// Sales Tab handling
 let currentSalesSection = 'fuel';
 window.showSalesSection = function (section, btn) {
     document.querySelectorAll('.sales-section').forEach(el => el.style.display = 'none');
@@ -814,13 +740,12 @@ window.showSalesSection = function (section, btn) {
 function updateSalesExportLinks() {
     const excelBtn = document.getElementById('salesExcelBtn');
     const pdfBtn   = document.getElementById('salesPdfBtn');
-    if (!excelBtn || !pdfBtn) return; // not on sales tab
+    if (!excelBtn || !pdfBtn) return;
     const base = `${API}?action=export_sales&date_from=${FROM}&date_to=${TO}`;
     excelBtn.href = base + '&format=csv';
     pdfBtn.href   = base + '&format=pdf';
 }
 
-// ── LOAD: Fuel Sales ──────────────────────────────────────────────────────────
 function loadFuelSales() {
     apiFetch(apiUrl('sales_fuel'))
         .then(res => {
@@ -861,7 +786,6 @@ function loadFuelSales() {
         .catch(e => { document.getElementById('fuelTbody').innerHTML = emptyRow(6, 'Error: ' + (e.message||e)); });
 }
 
-// ── LOAD: Merchandise Sales ───────────────────────────────────────────────────
 function loadMerchSales() {
     apiFetch(apiUrl('sales_merch'))
         .then(res => {
@@ -913,7 +837,6 @@ function loadMerchSales() {
         .catch(e => { document.getElementById('merchTbody').innerHTML = emptyRow(10, 'Error: ' + (e.message||e)); });
 }
 
-// ── LOAD: Daily Summary ───────────────────────────────────────────────────────
 function loadDailySummary() {
     apiFetch(apiUrl('sales_daily_summary'))
         .then(res => {
@@ -959,7 +882,6 @@ function loadDailySummary() {
         .catch(e => { document.getElementById('dailyTbody').innerHTML = emptyRow(6, 'Error: ' + (e.message||e)); });
 }
 
-// ── LOAD: Job Orders ──────────────────────────────────────────────────────────
 function loadJobOrders() {
     apiFetch(apiUrl('job_orders'))
         .then(res => {
@@ -997,7 +919,6 @@ function loadJobOrders() {
         .catch(e => { document.getElementById('joTbody').innerHTML = emptyRow(9, 'Error: ' + (e.message||e)); });
 }
 
-// ── LOAD: Customer Balances ───────────────────────────────────────────────────
 function loadBalances() {
     apiFetch(apiUrl('customer_balances'))
         .then(res => {
@@ -1039,7 +960,6 @@ function loadBalances() {
         .catch(e => { document.getElementById('balTbody').innerHTML = emptyRow(8, 'Error: ' + (e.message||e)); });
 }
 
-// ── LOAD: Deliveries ──────────────────────────────────────────────────────────
 function loadDeliveries() {
     apiFetch(apiUrl('deliveries'))
         .then(res => {
@@ -1078,7 +998,6 @@ function loadDeliveries() {
         .catch(e => { document.getElementById('delTbody').innerHTML = emptyRow(8, 'Error: ' + (e.message||e)); });
 }
 
-// ── LOAD: Staff Performance ───────────────────────────────────────────────────
 function loadStaffPerformance() {
     apiFetch(apiUrl('staff_performance'))
         .then(res => {
@@ -1113,76 +1032,83 @@ function loadStaffPerformance() {
         .catch(e => { document.getElementById('staffTbody').innerHTML = emptyRow(8, 'Error: ' + (e.message||e)); });
 }
 
-// ── LOAD: Audit Trail ─────────────────────────────────────────────────────────
-window.loadAuditTrail = function () {
-    const userId   = document.getElementById('auditUserFilter').value;
-    const action   = document.getElementById('auditActionFilter').value;
-    const module   = document.getElementById('auditModuleFilter').value;
-
-    const extra = {};
-    if (userId)   extra.user_id     = userId;
-    if (action)   extra.action_type = action;
-    if (module)   extra.module      = module;
-
-    // Update export links with current filters
-    const exportBase = `${API}?date_from=${FROM}&date_to=${TO}` +
-        (userId ? `&user_id=${userId}` : '') +
-        (action ? `&action_type=${encodeURIComponent(action)}` : '') +
-        (module ? `&module=${encodeURIComponent(module)}` : '');
-    const auditExcel = document.getElementById('auditExcelBtn');
-    const auditPdf   = document.getElementById('auditPdfBtn');
-    if (auditExcel) auditExcel.href = exportBase + '&action=export_audit&format=csv';
-    if (auditPdf)   auditPdf.href   = exportBase + '&action=export_audit&format=pdf';
-
-    document.getElementById('auditTbody').innerHTML =
-        `<tr><td colspan="8" class="rpt-loading"><i class="fas fa-spinner fa-spin"></i>Loading...</td></tr>`;
-
-    apiFetch(apiUrl('audit_trail', extra))
+function loadVarianceReports() {
+    apiFetch(apiUrl('variance_reports'))
         .then(res => {
-            if (!res.ok) { document.getElementById('auditTbody').innerHTML = emptyRow(8, res.error); return; }
+            if (!res.ok) { document.getElementById('varTbody').innerHTML = emptyRow(8, res.error); return; }
             const rows = res.data || [];
-            if (!rows.length) { document.getElementById('auditTbody').innerHTML = emptyRow(8, 'No Staff or Manager actions found for this period.'); return; }
+            if (!rows.length) { document.getElementById('varTbody').innerHTML = emptyRow(8, 'No variance records found.'); return; }
 
-            let html = '';
-            let cntLogin = 0, cntCreate = 0, cntUpdate = 0, cntReject = 0;
+            let html = '', totExp = 0, totAct = 0, totVar = 0;
             rows.forEach(r => {
-                const at = (r.action_type || '').toLowerCase();
-                if (at === 'login') cntLogin++;
-                if (at === 'create') cntCreate++;
-                if (at === 'update') cntUpdate++;
-                if (at === 'reject') cntReject++;
+                const exp = parseFloat(r.expected_stock || 0);
+                const act = parseFloat(r.actual_stock || 0);
+                const v = parseFloat(r.variance_liters || 0);
+                totExp += exp;
+                totAct += act;
+                totVar += v;
 
-                const statusColor = (r.status || '').toLowerCase() === 'success' ? '#16a34a' : '#dc2626';
+                const vCls = v > 0 ? 'var-pos' : (v < 0 ? 'var-neg' : 'var-ok');
+                const vStr = (v > 0 ? '+' : '') + fmt(v) + ' L';
+
                 html += `<tr>
-                    <td style="white-space:nowrap">
-                        <strong>${esc((r.created_at||'').slice(0,10))}</strong><br>
-                        <small style="color:var(--muted)">${esc((r.created_at||'').slice(11,19))}</small>
-                    </td>
-                    <td>
-                        ${esc(r.user_name || 'System')}<br>
-                        <small style="color:var(--muted)">ID: ${esc(r.user_id || '—')}</small>
-                    </td>
-                    <td><span class="badge-status approved">${esc(r.role || '—')}</span></td>
-                    <td><strong>${esc(r.action_type || '—')}</strong></td>
-                    <td>${esc(r.module || '—')}</td>
-                    <td style="max-width:220px;word-break:break-word;font-size:12px">${esc(r.details || '—')}</td>
-                    <td><code style="font-size:11px;background:#f1f5f9;padding:2px 6px;border-radius:4px">${esc(r.ip_address || '—')}</code></td>
-                    <td><span style="color:${statusColor};font-weight:600">${esc(r.status || '—')}</span></td>
+                    <td><strong>${esc(r.report_date)}</strong></td>
+                    <td>${esc(r.fuel_type)}</td>
+                    <td class="tr">${fmt(exp)} L</td>
+                    <td class="tr">${fmt(act)} L</td>
+                    <td class="tr ${vCls}">${vStr}</td>
+                    <td class="tr">${fmt(r.variance_percent)}%</td>
+                    <td>${esc(r.reason)}</td>
+                    <td>${statusBadge(r.status)}</td>
                 </tr>`;
             });
-            document.getElementById('auditTbody').innerHTML = html;
-            document.getElementById('auditSummaryCards').innerHTML =
-                summaryCard('Staff &amp; Manager Records', fmtInt(rows.length)) +
-                summaryCard('Logins', fmtInt(cntLogin)) +
-                summaryCard('Creates / Encodes', fmtInt(cntCreate)) +
-                summaryCard('Updates / Adjustments', fmtInt(cntUpdate)) +
-                summaryCard('Rejects', fmtInt(cntReject));
+            document.getElementById('varTbody').innerHTML = html;
+            
+            const openAlerts = rows.filter(r => ['open', 'under investigation'].includes((r.status||'').toLowerCase())).length;
+            document.getElementById('varSummaryCards').innerHTML =
+                summaryCard('Total Logs', fmtInt(rows.length)) +
+                summaryCard('Expected Vol', fmt(totExp) + ' L') +
+                summaryCard('Actual Vol', fmt(totAct) + ' L') +
+                summaryCard('Total Variance', fmt(totVar) + ' L') +
+                summaryCard('Open Inquiries', fmtInt(openAlerts));
         })
-        .catch(e => { document.getElementById('auditTbody').innerHTML = emptyRow(8, 'Error: ' + (e.message||e)); });
-};
+        .catch(e => { document.getElementById('varTbody').innerHTML = emptyRow(8, 'Error: ' + (e.message||e)); });
+}
 
-// ── Init: load data for active tab ────────────────────────────────────────────
-// Only update sales export links when on the sales tab (elements exist in DOM)
+function loadAccountsReceivable() {
+    apiFetch(apiUrl('accounts_receivable'))
+        .then(res => {
+            if (!res.ok) { document.getElementById('arTbody').innerHTML = emptyRow(7, res.error); return; }
+            const rows = res.data || [];
+            if (!rows.length) { document.getElementById('arTbody').innerHTML = emptyRow(7, 'No accounts receivable records.'); return; }
+
+            let html = '', totAmt = 0;
+            rows.forEach(r => {
+                const amt = parseFloat(r.amount || 0);
+                totAmt += amt;
+                html += `<tr>
+                    <td><strong>${esc(r.created_date)}</strong></td>
+                    <td><code>${esc(r.transaction_id)}</code></td>
+                    <td>${esc(r.customer_name)}</td>
+                    <td>${esc(r.type_details)}</td>
+                    <td class="tr"><strong>&#8369;${fmt(amt)}</strong></td>
+                    <td>${esc(r.due_date)}</td>
+                    <td>${statusBadge(r.status)}</td>
+                </tr>`;
+            });
+            document.getElementById('arTbody').innerHTML = html;
+
+            const pendingAmt = rows.reduce((acc, curr) => acc + (['pending','overdue'].includes(curr.status?.toLowerCase()) ? parseFloat(curr.amount||0) : 0), 0);
+            const overdueAmt = rows.reduce((acc, curr) => acc + (curr.status?.toLowerCase() === 'overdue' ? parseFloat(curr.amount||0) : 0), 0);
+
+            document.getElementById('arSummaryCards').innerHTML =
+                summaryCard('Total Receivables', '&#8369;' + fmt(totAmt)) +
+                summaryCard('Pending Collections', '&#8369;' + fmt(pendingAmt)) +
+                summaryCard('Overdue Credit', '&#8369;' + fmt(overdueAmt));
+        })
+        .catch(e => { document.getElementById('arTbody').innerHTML = emptyRow(7, 'Error: ' + (e.message||e)); });
+}
+
 if (ACTIVE_TAB === 'sales') {
     updateSalesExportLinks();
     loadFuelSales();
@@ -1196,8 +1122,10 @@ if (ACTIVE_TAB === 'sales') {
     loadDeliveries();
 } else if (ACTIVE_TAB === 'staff') {
     loadStaffPerformance();
-} else if (ACTIVE_TAB === 'audit') {
-    loadAuditTrail();
+} else if (ACTIVE_TAB === 'variance') {
+    loadVarianceReports();
+} else if (ACTIVE_TAB === 'receivable') {
+    loadAccountsReceivable();
 }
 
 })();

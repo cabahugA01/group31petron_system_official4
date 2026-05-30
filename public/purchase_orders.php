@@ -366,7 +366,7 @@ include __DIR__ . '/../partials/header.php';
                     <span style="background:#dc3545;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;"><?php echo count($fuel_pending); ?></span>
                 <?php endif; ?>
             </div>
-            <span style="font-size:12px;color:#6c757d;">Set final volume, price, and instructions, then Finalize.</span>
+
         </div>
         <div class="po-card-body">
             <?php if (empty($fuel_pending)): ?>
@@ -483,7 +483,7 @@ include __DIR__ . '/../partials/header.php';
                     <span style="background:#dc3545;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;"><?php echo count($merch_pending); ?></span>
                 <?php endif; ?>
             </div>
-            <span style="font-size:12px;color:#6c757d;">Set final qty, price, and instructions, then Finalize.</span>
+
         </div>
         <div class="po-card-body">
             <?php if (empty($merch_pending)): ?>

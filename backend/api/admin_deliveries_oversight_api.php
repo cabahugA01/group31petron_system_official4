@@ -8,12 +8,42 @@ require_once __DIR__ . '/../../public/db_connect.php';
 $me     = current_user();
 $role   = role_key($me['role'] ?? '');
 $action = trim($_GET['action'] ?? $_POST['action'] ?? '');
+
+// ── Schema migration: ensure all needed columns exist ────────────────────────
+$_migrations = [
+    "ALTER TABLE deliveries_oversight ADD COLUMN IF NOT EXISTS remarks TEXT DEFAULT NULL",
+    "ALTER TABLE deliveries_oversight ADD COLUMN IF NOT EXISTS dr_number VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE deliveries_oversight ADD COLUMN IF NOT EXISTS source_ref VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE deliveries_oversight ADD COLUMN IF NOT EXISTS finalized_at DATETIME DEFAULT NULL",
+    "ALTER TABLE deliveries_oversight ADD COLUMN IF NOT EXISTS finalized_by INT(11) DEFAULT NULL",
+];
+foreach($_migrations as $_sql){ try{ $pdo->exec($_sql); }catch(Exception $_e){} }
+// Ensure status column is VARCHAR not ENUM
+try{
+    $ct=$pdo->query("SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='deliveries_oversight' AND COLUMN_NAME='status' LIMIT 1")->fetchColumn();
+    if($ct && stripos($ct,'enum')!==false)
+        $pdo->exec("ALTER TABLE deliveries_oversight MODIFY COLUMN status VARCHAR(60) NOT NULL DEFAULT 'Pending Manager Approval'");
+}catch(Exception $e){}
+// Fix blank statuses
+try{ $pdo->exec("UPDATE deliveries_oversight SET status='Pending Manager Approval' WHERE status='' OR status IS NULL"); }catch(Exception $e){}
 if ($action === 'export_excel' || $action === 'export_pdf') {
     if (!$me || !in_array($role, ['admin','superadmin'])) { http_response_code(403); echo 'Access denied'; exit; }
     $station_id = (int)user_station_id();
     $start=$_GET['start']??date('Y-m-d',strtotime('-30 days')); $end=$_GET['end']??date('Y-m-d'); $sf=$_GET['status']??'';
     $w='WHERE do2.station_id=? AND do2.delivery_date BETWEEN ? AND ?'; $p=[$station_id,$start,$end];
-    if($sf!==''){$w.=' AND do2.status=?';$p[]=$sf;}
+    if($sf!==''){
+        if($sf==='expected'){
+            $w.=" AND do2.status='Expected Delivery'";
+        }elseif($sf==='pending'){
+            $w.=" AND do2.status IN ('Pending Manager Approval','Pending Manager Confirmation','Pending Validation')";
+        }elseif($sf==='approved'){
+            $w.=" AND do2.status IN ('Confirmed','Validated')";
+        }elseif($sf==='flagged'){
+            $w.=" AND do2.status IN ('Discrepancy','Flagged')";
+        }else{
+            $w.=' AND do2.status=?';$p[]=$sf;
+        }
+    }
     $st=$pdo->prepare("SELECT do2.*,u_enc.name AS encoded_by_name,u_adm.name AS admin_name FROM deliveries_oversight do2 LEFT JOIN users u_enc ON do2.encoded_by=u_enc.id LEFT JOIN users u_adm ON do2.admin_id=u_adm.id $w ORDER BY do2.delivery_date DESC");
     $st->execute($p); $rows=$st->fetchAll(PDO::FETCH_ASSOC);
     if($action==='export_excel'){
@@ -46,13 +76,31 @@ try {
             $sf=trim($_GET['status']??''); $tf=trim($_GET['type']??''); $sup=trim($_GET['supplier']??'');
             $start=trim($_GET['start']??date('Y-m-d',strtotime('-30 days'))); $end=trim($_GET['end']??date('Y-m-d'));
             $w='WHERE do2.station_id=? AND do2.delivery_date BETWEEN ? AND ?'; $p=[$station_id,$start,$end];
-            if($sf!==''){if($sf==='Pending Manager Approval'){$w.=" AND do2.status IN ('Pending Manager Approval','Pending Manager Confirmation','Pending Validation')";}elseif($sf==='Confirmed'){$w.=" AND do2.status IN ('Confirmed','Validated')";}elseif($sf==='Discrepancy'){$w.=" AND do2.status IN ('Discrepancy','Flagged')";}else{$w.=' AND do2.status=?';$p[]=$sf;}}
+            if($sf!==''){
+                if($sf==='expected'){
+                    $w.=" AND do2.status='Expected Delivery'";
+                }elseif($sf==='pending'){
+                    $w.=" AND do2.status IN ('Pending Manager Approval','Pending Manager Confirmation','Pending Validation')";
+                }elseif($sf==='approved'){
+                    $w.=" AND do2.status IN ('Confirmed','Validated')";
+                }elseif($sf==='flagged'){
+                    $w.=" AND do2.status IN ('Discrepancy','Flagged')";
+                }else{
+                    $w.=' AND do2.status=?';$p[]=$sf;
+                }
+            }
             if($tf!==''){$w.=' AND do2.delivery_type=?';$p[]=$tf;}
             if($sup!==''){$w.=' AND do2.supplier LIKE ?';$p[]='%'.$sup.'%';}
-            $st=$pdo->prepare("SELECT do2.*,u_enc.name AS encoded_by_name,u_adm.name AS admin_name FROM deliveries_oversight do2 LEFT JOIN users u_enc ON do2.encoded_by=u_enc.id LEFT JOIN users u_adm ON do2.admin_id=u_adm.id {$w} ORDER BY FIELD(do2.status,'Discrepancy','Flagged','Pending Manager Approval','Pending Manager Confirmation','Pending Validation','Confirmed','Validated'),do2.delivery_date DESC");
+            $st=$pdo->prepare("SELECT do2.*,u_enc.name AS encoded_by_name,u_adm.name AS admin_name FROM deliveries_oversight do2 LEFT JOIN users u_enc ON do2.encoded_by=u_enc.id LEFT JOIN users u_adm ON do2.admin_id=u_adm.id {$w} ORDER BY FIELD(do2.status,'Discrepancy','Flagged','Pending Manager Approval','Pending Manager Confirmation','Pending Validation','Expected Delivery','Confirmed','Validated'),do2.delivery_date DESC");
             $st->execute($p); $rows=$st->fetchAll(PDO::FETCH_ASSOC);
-            $counts=['Pending Validation'=>0,'Validated'=>0,'Flagged'=>0];
-            foreach($rows as $r){$s=$r['status'];if(in_array($s,['Pending Manager Approval','Pending Manager Confirmation','Pending Validation']))$counts['Pending Validation']++;elseif(in_array($s,['Confirmed','Validated']))$counts['Validated']++;elseif(in_array($s,['Discrepancy','Flagged']))$counts['Flagged']++;}
+            $counts=['Expected'=>0,'Pending Validation'=>0,'Validated'=>0,'Flagged'=>0];
+            foreach($rows as $r){
+                $s=$r['status'];
+                if($s==='Expected Delivery')$counts['Expected']++;
+                elseif(in_array($s,['Pending Manager Approval','Pending Manager Confirmation','Pending Validation']))$counts['Pending Validation']++;
+                elseif(in_array($s,['Confirmed','Validated']))$counts['Validated']++;
+                elseif(in_array($s,['Discrepancy','Flagged']))$counts['Flagged']++;
+            }
             echo json_encode(['success'=>true,'data'=>$rows,'counts'=>$counts]); break;
         case 'detail':
             $id=(int)($_GET['id']??0); if(!$id){echo json_encode(['success'=>false,'message'=>'ID required']);break;}

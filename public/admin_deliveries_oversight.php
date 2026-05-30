@@ -1,5 +1,7 @@
 <?php
-$page_id = 'admin_deliveries_oversight';
+$page_id = 'deliveries_oversight';
+// Determine active sub-page for sidebar highlighting
+$status_param = $_GET['status'] ?? '';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
@@ -65,7 +67,8 @@ table.dt tr:hover td{background:#f8f9fa;}
 .btn-validate { background:#002F70; color:#fff; }
 .btn-flag    { background:#dc3545; color:#fff; }
 /* ── Badges ── */
-.badge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;white-space:nowrap;}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;white-space:nowrap;}
+.badge-expected{background:#e0f2fe;color:#0369a1;}
 .badge-pending{background:#fff3cd;color:#856404;}
 .badge-validated{background:#d1fae5;color:#065f46;}
 .badge-flagged{background:#fee2e2;color:#991b1b;}
@@ -97,6 +100,17 @@ table.dt tr:hover td{background:#f8f9fa;}
 .toast-success{background:var(--green);}
 .toast-error{background:var(--red);}
 @keyframes tUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+/* ── Compliance Alert Items ── */
+.alert-item{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid #fecaca;}
+.alert-item:last-child{border-bottom:none;}
+.alert-item .ai-icon{width:28px;height:28px;border-radius:50%;background:#fee2e2;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.alert-item .ai-icon i{color:#991b1b;font-size:12px;}
+.alert-item .ai-body{flex:1;}
+.alert-item .ai-title{font-size:13px;font-weight:600;color:#991b1b;}
+.alert-item .ai-sub{font-size:12px;color:var(--gray);margin-top:2px;}
+.alert-item .ai-action{flex-shrink:0;}
+/* ── Action button extra ── */
+.btn-finalize{background:#6f42c1;color:#fff;}.btn-finalize:hover{background:#5a32a3;}
 @media(max-width:768px){
   .filter-bar{flex-direction:column;}
   .detail-grid{grid-template-columns:1fr;}
@@ -106,11 +120,22 @@ table.dt tr:hover td{background:#f8f9fa;}
 <div class="page-head">
   <div>
     <h1><i class="fas fa-truck"></i> Deliveries Oversight</h1>
-    <div class="page-subtitle">Review and validate delivery records from Manager</div>
+    <div class="page-subtitle">
+      Review and validate delivery records, expected shipments, and flagged discrepancies.
+    </div>
   </div>
   <div class="header-actions">
     <button class="btn btn-outline" onclick="loadDeliveries()"><i class="fas fa-sync-alt"></i> Refresh</button>
   </div>
+</div>
+
+<!-- ── Compliance Alerts Panel ─────────────────────────────────────────────── -->
+<div class="card" id="compliancePanel" style="display:none;">
+  <div class="card-header" style="background:#fff5f5;border-bottom-color:#fecaca;">
+    <div class="card-title" style="color:#991b1b;"><i class="fas fa-triangle-exclamation"></i> Compliance Alerts</div>
+    <span id="alertCount" style="font-size:12px;color:#991b1b;font-weight:700;"></span>
+  </div>
+  <div class="card-body" style="padding:12px 20px;" id="alertsList"></div>
 </div>
 
 <!-- Deliveries Table -->
@@ -137,9 +162,10 @@ table.dt tr:hover td{background:#f8f9fa;}
         <label>Status</label>
         <select id="fStatus">
           <option value="">All Statuses</option>
-          <option value="Pending Manager Approval">Pending Validation</option>
-          <option value="Confirmed">Validated</option>
-          <option value="Discrepancy">Flagged</option>
+          <option value="expected">Expected</option>
+          <option value="pending">Pending Validation</option>
+          <option value="approved">Approved</option>
+          <option value="flagged">Flagged</option>
         </select>
       </div>
       <div class="fg">
@@ -193,6 +219,7 @@ table.dt tr:hover td{background:#f8f9fa;}
       <button class="btn btn-outline" onclick="closeModal('detailModal')">Close</button>
       <button class="btn btn-success" id="detailValidateBtn" onclick="validateFromDetail()" style="display:none;"><i class="fas fa-check"></i> Validate</button>
       <button class="btn btn-danger" id="detailFlagBtn" onclick="flagFromDetail()" style="display:none;"><i class="fas fa-flag"></i> Flag</button>
+      <button class="btn btn-primary" id="detailFinalizeBtn" onclick="finalizeFromDetail()" style="display:none;"><i class="fas fa-print"></i> Finalize &amp; Print</button>
     </div>
   </div>
 </div>
@@ -227,6 +254,23 @@ table.dt tr:hover td{background:#f8f9fa;}
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeModal('flagModal')">Cancel</button>
       <button class="btn btn-danger" onclick="submitFlag()"><i class="fas fa-flag"></i> Flag Delivery</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Finalize & Print Modal ─────────────────────────────────────────────── -->
+<div class="modal-overlay" id="finalizeModal">
+  <div class="modal-box">
+    <h3><i class="fas fa-print" style="color:var(--blue);"></i> Finalize &amp; Print</h3>
+    <p style="font-size:13px;color:#555;margin:0 0 12px;">Generate an official delivery record for Petron Corporation. This marks the delivery as finalized.</p>
+    <div id="finalizeDetail" style="background:var(--light);border-radius:6px;padding:12px;font-size:13px;margin-bottom:14px;"></div>
+    <div class="form-group">
+      <label>Final Remarks (optional)</label>
+      <textarea id="finalizeRemarks" rows="2" placeholder="e.g. Verified and finalized for official records."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('finalizeModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitFinalize()"><i class="fas fa-print"></i> Finalize &amp; Print</button>
     </div>
   </div>
 </div>
@@ -284,29 +328,32 @@ async function loadDeliveries(){
 function buildRow(r){
   // Map status to display labels
   const statusMap={
+    'Expected Delivery':'Expected',
     'Pending Manager Approval':'Pending Validation',
     'Pending Manager Confirmation':'Pending Validation',
-    'Confirmed':'Validated',
+    'Pending Validation':'Pending Validation',
+    'Confirmed':'Approved',
+    'Validated':'Approved',
     'Discrepancy':'Flagged',
-    'Validated':'Validated',
     'Flagged':'Flagged',
   };
   const displayStatus=statusMap[r.status]||r.status;
 
   const statusBadge={
-    'Pending Validation':'<span class="badge badge-pending">Pending Validation</span>',
-    'Validated':'<span class="badge badge-validated">Validated</span>',
-    'Flagged':'<span class="badge badge-flagged">Flagged</span>',
+    'Expected':'<span class="badge badge-expected"><i class="fas fa-clock"></i> Expected</span>',
+    'Pending Validation':'<span class="badge badge-pending"><i class="fas fa-hourglass-half"></i> Pending Validation</span>',
+    'Approved':'<span class="badge badge-validated"><i class="fas fa-check-circle"></i> Approved</span>',
+    'Flagged':'<span class="badge badge-flagged"><i class="fas fa-exclamation-triangle"></i> Flagged</span>',
   }[displayStatus]||`<span class="badge">${esc(displayStatus)}</span>`;
 
   const typeBadge=r.delivery_type==='fuel'
     ?'<span class="badge badge-fuel">Fuel</span>'
     :'<span class="badge badge-merch">Merchandise</span>';
 
-  let actions=`<button class="action-btn btn-view" onclick="showDetail(${r.id})" title="View Details"><i class="fas fa-eye"></i> View</button> `;
+  let actions=`<button class="action-btn btn-view" onclick="showDetail(${r.id})" title="View Details"><i class="fas fa-eye"></i> View</button>`;
   if(displayStatus==='Pending Validation'){
-    actions+=`<button class="action-btn btn-validate" onclick="openValidate(${r.id},'${esc(r.supplier)}','${esc(r.product)}','${fmtQty(r.quantity,r.unit)}','${esc(r.dr_number||'')}')"><i class="fas fa-check"></i> Validate</button> `;
-    actions+=`<button class="action-btn btn-flag" onclick="openFlag(${r.id},'${esc(r.supplier)}','${esc(r.product)}')"><i class="fas fa-flag"></i> Flag</button>`;
+    actions+=` <button class="action-btn btn-validate" onclick="openValidate(${r.id},'${esc(r.supplier)}','${esc(r.product)}','${fmtQty(r.quantity,r.unit)}','${esc(r.dr_number||'')}')"><i class="fas fa-check"></i> Validate</button>`;
+    actions+=` <button class="action-btn btn-flag" onclick="openFlag(${r.id},'${esc(r.supplier)}','${esc(r.product)}')"><i class="fas fa-flag"></i> Flag</button>`;
   }
 
   return `<tr>
@@ -336,6 +383,7 @@ async function showDetail(id){
     '<div style="text-align:center;padding:20px;color:var(--gray);"><i class="fas fa-spinner fa-spin"></i> Loading…</div>';
   document.getElementById('detailValidateBtn').style.display='none';
   document.getElementById('detailFlagBtn').style.display='none';
+  document.getElementById('detailFinalizeBtn').style.display='none';
   document.getElementById('detailModal').classList.add('show');
 
   try{
@@ -346,19 +394,22 @@ async function showDetail(id){
     currentRec=r;
 
     const statusMap={
+      'Expected Delivery':'Expected',
       'Pending Manager Approval':'Pending Validation',
       'Pending Manager Confirmation':'Pending Validation',
-      'Confirmed':'Validated',
+      'Pending Validation':'Pending Validation',
+      'Confirmed':'Approved',
+      'Validated':'Approved',
       'Discrepancy':'Flagged',
-      'Validated':'Validated',
       'Flagged':'Flagged',
     };
     const displayStatus=statusMap[r.status]||r.status;
 
     const statusBadge={
-      'Pending Validation':'<span class="badge badge-pending">Pending Validation</span>',
-      'Validated':'<span class="badge badge-validated">Validated</span>',
-      'Flagged':'<span class="badge badge-flagged">Flagged</span>',
+      'Expected':'<span class="badge badge-expected"><i class="fas fa-clock"></i> Expected</span>',
+      'Pending Validation':'<span class="badge badge-pending"><i class="fas fa-hourglass-half"></i> Pending Validation</span>',
+      'Approved':'<span class="badge badge-validated"><i class="fas fa-check-circle"></i> Approved</span>',
+      'Flagged':'<span class="badge badge-flagged"><i class="fas fa-exclamation-triangle"></i> Flagged</span>',
     }[displayStatus]||`<span class="badge">${esc(displayStatus)}</span>`;
 
     document.getElementById('detailContent').innerHTML=`
@@ -452,6 +503,71 @@ function flagFromDetail(){
   openFlag(currentRec.id,currentRec.supplier,currentRec.product);
 }
 
+// ── Finalize & Print ──────────────────────────────────────────────────────────
+function openFinalize(id,supplier,product,qty,dr){
+  currentId=id;
+  document.getElementById('finalizeDetail').innerHTML=
+    `<strong>Supplier:</strong> ${esc(supplier)}<br>
+     <strong>Product:</strong> ${esc(product)}<br>
+     <strong>Quantity:</strong> ${qty}<br>
+     <strong>DR Number:</strong> ${esc(dr||'—')}`;
+  document.getElementById('finalizeRemarks').value='';
+  document.getElementById('finalizeModal').classList.add('show');
+}
+async function submitFinalize(){
+  const remarks=document.getElementById('finalizeRemarks').value.trim();
+  try{
+    const res=await fetch(`${API}?action=finalize`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:currentId,remarks})
+    });
+    const data=await res.json();
+    if(!data.success){toast(data.message,'error');return;}
+    closeModal('finalizeModal');
+    closeModal('detailModal');
+    toast(data.message,'success');
+    loadDeliveries();
+    // Open print window
+    window.open(`${API}?action=print_receipt&id=${currentId}`,'_blank');
+  }catch(e){
+    toast('Error: '+e.message,'error');
+  }
+}
+function finalizeFromDetail(){
+  if(!currentRec)return;
+  openFinalize(currentRec.id,currentRec.supplier,currentRec.product,fmtQty(currentRec.quantity,currentRec.unit),currentRec.dr_number);
+}
+
+// ── Compliance Alerts ─────────────────────────────────────────────────────────
+async function loadComplianceAlerts(){
+  try{
+    const res=await fetch(`${API}?action=compliance_alerts`);
+    const data=await res.json();
+    if(!data.success||!data.alerts||data.alerts.length===0){
+      document.getElementById('compliancePanel').style.display='none';
+      return;
+    }
+    const alerts=data.alerts;
+    document.getElementById('alertCount').textContent=alerts.length+' alert(s)';
+    let html='';
+    alerts.forEach(function(a){
+      html+=`<div class="alert-item">
+        <div class="ai-icon"><i class="fas fa-triangle-exclamation"></i></div>
+        <div class="ai-body">
+          <div class="ai-title">${esc(a.title)}</div>
+          <div class="ai-sub">${esc(a.description)}</div>
+        </div>
+        <div class="ai-action">
+          <button class="btn btn-sm btn-outline" onclick="showDetail(${a.delivery_id})" style="font-size:11px;padding:4px 8px;">View</button>
+        </div>
+      </div>`;
+    });
+    document.getElementById('alertsList').innerHTML=html;
+    document.getElementById('compliancePanel').style.display='block';
+  }catch(e){}
+}
+
 // ── Export ────────────────────────────────────────────────────────────────────
 function exportReport(format){
   const start=document.getElementById('fStart').value;
@@ -463,16 +579,24 @@ function exportReport(format){
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded',function(){
-  ['detailModal','validateModal','flagModal'].forEach(function(id){
+  ['detailModal','validateModal','flagModal','finalizeModal'].forEach(function(id){
     var el=document.getElementById(id);
     if(el&&el.parentNode!==document.body)document.body.appendChild(el);
   });
+
+  // Pre-filter based on URL ?status= param
+  const urlStatus = '<?php echo addslashes($status_param); ?>';
+  if(urlStatus === 'expected' || urlStatus === 'pending' || urlStatus === 'approved' || urlStatus === 'flagged'){
+    document.getElementById('fStatus').value = urlStatus;
+  }
+
   loadDeliveries();
+  loadComplianceAlerts();
 });
 
 // Close modals on overlay click
 document.addEventListener('click',function(e){
-  ['detailModal','validateModal','flagModal'].forEach(function(id){
+  ['detailModal','validateModal','flagModal','finalizeModal'].forEach(function(id){
     var el=document.getElementById(id);
     if(el&&e.target===el)closeModal(id);
   });

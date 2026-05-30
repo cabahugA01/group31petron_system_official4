@@ -17,24 +17,210 @@ if ((int)$station_id <= 0 && in_array($user_role, ['admin'])) {
 }
 $user_id = $me['id'];
 
-// ── Handle POST early (before any output) ────────────────────────────────────
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'flag_event') {
-    $ev_type = $_POST['event_type'] ?? '';
-    $ev_id   = (int)($_POST['event_id'] ?? 0);
-    $reason  = trim($_POST['reason'] ?? '');
-    $wo      = (int)($_GET['week'] ?? 0);
-    if ($ev_id && $reason) {
+// ── Define helper function first ──────────────────────────────────────────────
+function fetch_calendar_events($pdo, $station_id, $start_date, $end_date, $filter_type = '', $filter_status = '') {
+    $events = [];
+
+    // 1. Job Orders
+    if ($filter_type === '' || $filter_type === 'job_order') {
         try {
-            if (function_exists('log_activity')) {
-                log_activity($pdo, $user_id, 'Admin Flagged Event', "Type: $ev_type | ID: $ev_id | Reason: $reason");
+            $stmt = $pdo->prepare("
+                SELECT jo.id, jo.job_order_number, jo.customer_name, jo.service_type,
+                       jo.validation_status, jo.status AS raw_status, jo.created_at, jo.vehicle_plate, jo.total_cost,
+                       u.name AS staff_name,
+                       mu.name AS manager_name
+                FROM job_orders jo
+                LEFT JOIN users u ON COALESCE(jo.created_by, jo.user_id) = u.id
+                LEFT JOIN users mu ON jo.validated_by = mu.id
+                WHERE jo.station_id = ? AND DATE(jo.created_at) BETWEEN ? AND ?
+                ORDER BY jo.created_at DESC");
+            $stmt->execute([$station_id, $start_date, $end_date]);
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $status = strtolower($r['validation_status'] ?? '');
+                if ($status === '') $status = strtolower($r['raw_status'] ?? 'pending');
+                
+                $events[] = [
+                    'id'               => 'jo_'.$r['id'],
+                    'raw_id'           => $r['id'],
+                    'ref_no'           => $r['job_order_number'] ?? ('JO-' . $r['id']),
+                    'type_key'         => 'job_order',
+                    'type_name'        => 'Job Order',
+                    'icon_class'       => 'fas fa-wrench',
+                    'staff_name'       => $r['staff_name'] ?? '—',
+                    'manager_name'     => $r['manager_name'] ?? '—',
+                    'event_date'       => date('Y-m-d', strtotime($r['created_at'])),
+                    'start_time'       => '00:00',
+                    'end_time'         => '00:00',
+                    'work_description' => ($r['service_type'] ?? 'Job Order').' — '.($r['customer_name'] ?? 'Walk-in'),
+                    'status'           => $status,
+                    'customer_name'    => $r['customer_name'] ?? '',
+                    'vehicle_plate'    => $r['vehicle_plate'] ?? '',
+                    'amount'           => $r['total_cost'] ?? 0.00,
+                    'auto_synced'      => true,
+                ];
             }
-            $_SESSION['success'] = "Event #$ev_id flagged successfully.";
-        } catch (Exception $e) {
-            $_SESSION['error'] = 'Flag failed: ' . $e->getMessage();
-        }
+        } catch (Exception $e) {}
     }
-    header("Location: admin_calendar.php?week=$wo");
-    exit;
+
+    // 2. Deliveries
+    if ($filter_type === '' || $filter_type === 'delivery') {
+        try {
+            $stmt = $pdo->prepare("
+                SELECT d.id, d.encoded_by, d.status, d.supplier, d.product, d.quantity, d.unit,
+                       d.delivery_type, d.delivery_date, d.delivery_ref,
+                       u.name AS staff_name,
+                       mu.name AS manager_name
+                FROM deliveries_oversight d
+                LEFT JOIN users u  ON u.id  = d.encoded_by
+                LEFT JOIN users mu ON mu.id = d.admin_id
+                WHERE d.station_id = ? AND d.delivery_date BETWEEN ? AND ?
+                ORDER BY d.created_at DESC");
+            $stmt->execute([$station_id, $start_date, $end_date]);
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $events[] = [
+                    'id'               => 'del_'.$r['id'],
+                    'raw_id'           => $r['id'],
+                    'ref_no'           => $r['delivery_ref'] ?? ('DEL-' . $r['id']),
+                    'type_key'         => 'delivery',
+                    'type_name'        => 'Delivery',
+                    'icon_class'       => 'fas fa-truck',
+                    'staff_name'       => $r['staff_name'] ?? '—',
+                    'manager_name'     => $r['manager_name'] ?? '—',
+                    'event_date'       => $r['delivery_date'],
+                    'start_time'       => '00:00',
+                    'end_time'         => '00:00',
+                    'work_description' => 'Delivery #' . $r['id'] . ' — ' . ($r['supplier'] ?? '') . ' (' . ($r['product'] ?? '') . ': ' . $r['quantity'] . ' ' . $r['unit'] . ')',
+                    'status'           => strtolower($r['status'] ?? 'pending'),
+                    'customer_name'    => '',
+                    'vehicle_plate'    => '',
+                    'amount'           => 0.00,
+                    'auto_synced'      => true,
+                ];
+            }
+        } catch (Exception $e) {}
+    }
+
+    // 3. Purchase Orders
+    if ($filter_type === '' || $filter_type === 'purchase_order') {
+        try {
+            $stmt = $pdo->prepare("
+                SELECT po.id, po.po_number, po.created_by, po.status, po.product_name,
+                       po.quantity, po.total_amount, po.created_at,
+                       u.name AS staff_name
+                FROM purchase_orders po
+                LEFT JOIN users u ON u.id = po.created_by
+                WHERE po.station_id = ? AND DATE(po.created_at) BETWEEN ? AND ?
+                ORDER BY po.created_at DESC");
+            $stmt->execute([$station_id, $start_date, $end_date]);
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $events[] = [
+                    'id'               => 'po_'.$r['id'],
+                    'raw_id'           => $r['id'],
+                    'ref_no'           => $r['po_number'] ?? ('PO-' . $r['id']),
+                    'type_key'         => 'purchase_order',
+                    'type_name'        => 'Purchase Order',
+                    'icon_class'       => 'fas fa-file-invoice-dollar',
+                    'staff_name'       => $r['staff_name'] ?? '—',
+                    'manager_name'     => '—',
+                    'event_date'       => date('Y-m-d', strtotime($r['created_at'])),
+                    'start_time'       => '00:00',
+                    'end_time'         => '00:00',
+                    'work_description' => 'PO #' . $r['id'] . ' — ' . ($r['product_name'] ?? '') . ' (Qty: ' . $r['quantity'] . ')',
+                    'status'           => strtolower($r['status'] ?? 'pending'),
+                    'customer_name'    => '',
+                    'vehicle_plate'    => '',
+                    'amount'           => $r['total_amount'] ?? 0.00,
+                    'auto_synced'      => true,
+                ];
+            }
+        } catch (Exception $e) {}
+    }
+
+    // 4. Fuel Calibration (calibration_logs)
+    if ($filter_type === '' || $filter_type === 'fuel_calibration') {
+        try {
+            $stmt = $pdo->prepare("
+                SELECT fc.id, fc.encoded_by, fc.encoded_at,
+                       fc.pump_number, fc.fuel_type, fc.calibration_value, fc.shift_period,
+                       u.name AS staff_name
+                FROM calibration_logs fc
+                LEFT JOIN users u ON u.id = fc.encoded_by
+                WHERE fc.station_id = ? AND DATE(fc.encoded_at) BETWEEN ? AND ?
+                ORDER BY fc.encoded_at DESC");
+            $stmt->execute([$station_id, $start_date, $end_date]);
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $events[] = [
+                    'id'               => 'fc_'.$r['id'],
+                    'raw_id'           => $r['id'],
+                    'ref_no'           => 'CAL-' . $r['id'],
+                    'type_key'         => 'fuel_calibration',
+                    'type_name'        => 'Fuel Calibration',
+                    'icon_class'       => 'fas fa-tachometer-alt',
+                    'staff_name'       => $r['staff_name'] ?? '—',
+                    'manager_name'     => '—',
+                    'event_date'       => date('Y-m-d', strtotime($r['encoded_at'])),
+                    'start_time'       => '00:00',
+                    'end_time'         => '00:00',
+                    'work_description' => 'Pump #' . $r['pump_number'] . ' — ' . $r['fuel_type'] . ' (' . $r['calibration_value'] . 'L, Shift: ' . $r['shift_period'] . ')',
+                    'status'           => 'completed',
+                    'customer_name'    => '',
+                    'vehicle_plate'    => '',
+                    'amount'           => 0.00,
+                    'auto_synced'      => true,
+                ];
+            }
+        } catch (Exception $e) {}
+    }
+
+    // 5. Staff Shifts (staff_schedules)
+    if ($filter_type === '' || $filter_type === 'staff_shift') {
+        try {
+            $stmt = $pdo->prepare("
+                SELECT ss.id, ss.user_id, ss.shift, ss.scheduled_date, ss.status,
+                       u.name AS staff_name, s.start_time, s.end_time
+                FROM staff_schedules ss
+                JOIN users u ON ss.user_id = u.id
+                LEFT JOIN shifts s ON ss.shift = s.name
+                WHERE u.station_id = ? AND ss.scheduled_date BETWEEN ? AND ?
+                ORDER BY ss.scheduled_date, s.start_time");
+            $stmt->execute([$station_id, $start_date, $end_date]);
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $events[] = [
+                    'id'               => 'shift_'.$r['id'],
+                    'raw_id'           => $r['id'],
+                    'ref_no'           => 'SHIFT-' . $r['id'],
+                    'type_key'         => 'staff_shift',
+                    'type_name'        => 'Staff Shift',
+                    'icon_class'       => 'fas fa-user-clock',
+                    'staff_name'       => $r['staff_name'] ?? '—',
+                    'manager_name'     => '—',
+                    'event_date'       => $r['scheduled_date'],
+                    'start_time'       => $r['start_time'] ?? '00:00',
+                    'end_time'         => $r['end_time'] ?? '00:00',
+                    'work_description' => 'Duty Shift: ' . $r['shift'] . ' (' . ($r['start_time'] ? date('g:i A', strtotime($r['start_time'])) : '—') . ' - ' . ($r['end_time'] ? date('g:i A', strtotime($r['end_time'])) : '—') . ')',
+                    'status'           => strtolower($r['status'] ?? 'completed'),
+                    'customer_name'    => '',
+                    'vehicle_plate'    => '',
+                    'amount'           => 0.00,
+                    'auto_synced'      => true,
+                ];
+            }
+        } catch (Exception $e) {}
+    }
+
+    // Apply status filter if set
+    if ($filter_status !== '') {
+        $events = array_filter($events, function($ev) use ($filter_status) {
+            $st = strtolower($ev['status'] ?? '');
+            if ($filter_status === 'pending')   return in_array($st, ['pending','pending validation','pending manager approval']);
+            if ($filter_status === 'approved')  return in_array($st, ['approved','confirmed','validated']);
+            if ($filter_status === 'completed') return in_array($st, ['completed','done']);
+            if ($filter_status === 'rejected')  return in_array($st, ['rejected','discrepancy','cancelled']);
+            return true;
+        });
+    }
+
+    return $events;
 }
 
 // Station info
@@ -68,175 +254,340 @@ $today_str  = $today->format('Y-m-d');
 $ws_str     = $week_start->format('Y-m-d');
 $we_str     = $week_end->format('Y-m-d');
 
+// ── Handle Export Report request early ────────────────────────────────────────
+if (isset($_GET['export_report'])) {
+    $format = $_GET['export_format'] ?? 'csv';
+    $range  = $_GET['export_range'] ?? 'week';
+    $from   = $_GET['export_from'] ?? '';
+    $to     = $_GET['export_to'] ?? '';
+    $status = $_GET['export_status'] ?? '';
+    $type   = $_GET['export_type'] ?? '';
+    
+    // Calculate dates based on range
+    $start_date = '';
+    $end_date   = '';
+    
+    if ($range === 'week') {
+        $start_date = $ws_str;
+        $end_date   = $we_str;
+    } elseif ($range === 'month') {
+        $start_date = date('Y-m-01');
+        $end_date   = date('Y-m-t');
+    } elseif ($range === 'quarter') {
+        $cur_month = date('n');
+        $cur_year  = date('Y');
+        if ($cur_month <= 3) {
+            $start_date = "$cur_year-01-01";
+            $end_date   = "$cur_year-03-31";
+        } elseif ($cur_month <= 6) {
+            $start_date = "$cur_year-04-01";
+            $end_date = "$cur_year-06-30";
+        } elseif ($cur_month <= 9) {
+            $start_date = "$cur_year-07-01";
+            $end_date   = "$cur_year-09-30";
+        } else {
+            $start_date = "$cur_year-10-01";
+            $end_date   = "$cur_year-12-31";
+        }
+    } elseif ($range === 'custom') {
+        $start_date = $from;
+        $end_date   = $to;
+    }
+    
+    // Fallbacks
+    if (!$start_date) $start_date = date('Y-m-d');
+    if (!$end_date) $end_date = date('Y-m-d');
+    
+    // Fetch events using our helper
+    $export_events = fetch_calendar_events($pdo, $station_id, $start_date, $end_date, $type, $status);
+    
+    if ($format === 'csv') {
+        // Output CSV
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="calendar_oversight_report_' . $start_date . '_to_' . $end_date . '.csv"');
+        $out = fopen('php://output', 'w');
+        fputcsv($out, ['Reference No', 'Category', 'Date', 'Time', 'Description', 'Staff Encoder', 'Validator/Manager', 'Status', 'Cost/Amount']);
+        foreach ($export_events as $ev) {
+            $time_str = ($ev['start_time'] !== '00:00') ? ($ev['start_time'] . ' - ' . $ev['end_time']) : '—';
+            fputcsv($out, [
+                $ev['ref_no'],
+                $ev['type_name'],
+                $ev['event_date'],
+                $time_str,
+                $ev['work_description'],
+                $ev['staff_name'],
+                $ev['manager_name'],
+                ucfirst($ev['status']),
+                ($ev['amount'] > 0) ? money($ev['amount']) : '—'
+            ]);
+        }
+        fclose($out);
+        exit;
+    } elseif ($format === 'print') {
+        // Render print-friendly view
+        ?>
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <title>Calendar Oversight Compliance Report</title>
+            <style>
+                body { font-family: Arial, sans-serif; color: #333; margin: 30px; line-height: 1.5; }
+                .report-header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #00264D; padding-bottom: 15px; }
+                .report-header h1 { color: #00264D; margin: 0 0 5px; font-size: 24px; text-transform: uppercase; }
+                .report-header h3 { margin: 5px 0; font-size: 16px; color: #333; }
+                .report-header p { margin: 5px 0; font-size: 12px; color: #777; }
+                .meta-table { width: 100%; margin-bottom: 25px; font-size: 14px; }
+                .meta-table td { padding: 4px 0; }
+                .meta-table td.label { font-weight: bold; color: #555; width: 15%; }
+                .meta-table td.value { width: 35%; }
+                table.data-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 12px; }
+                table.data-table th, table.data-table td { border: 1px solid #ddd; padding: 10px 8px; text-align: left; }
+                table.data-table th { background-color: #00264D; color: white; text-transform: uppercase; font-size: 11px; }
+                table.data-table tr:nth-child(even) { background-color: #f9f9f9; }
+                .badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; text-transform: uppercase; }
+                .badge-pending { background-color: #fef3c7; color: #d97706; }
+                .badge-approved { background-color: #d1fae5; color: #059669; }
+                .badge-completed { background-color: #dbeafe; color: #2563eb; }
+                .badge-rejected { background-color: #fee2e2; color: #dc2626; }
+                .badge-cancelled { background-color: #f3f4f6; color: #4b5563; }
+                .footer-notes { margin-top: 40px; font-size: 11px; color: #777; text-align: center; border-top: 1px dashed #ccc; padding-top: 15px; }
+                @media print {
+                    .no-print { display: none; }
+                    body { margin: 15px; }
+                    table.data-table th { background-color: #00264D !important; color: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="no-print" style="margin-bottom: 20px; text-align: right;">
+                <button onclick="window.print()" style="background:#00264D; color:white; border:none; padding:10px 20px; border-radius:5px; font-weight:bold; cursor:pointer;">
+                    Print Document
+                </button>
+                <button onclick="window.close()" style="background:#6b7280; color:white; border:none; padding:10px 20px; border-radius:5px; font-weight:bold; cursor:pointer; margin-left:10px;">
+                    Close Window
+                </button>
+            </div>
+            <div class="report-header">
+                <h1>Petron Station Management System</h1>
+                <h3>Calendar Oversight Compliance Report</h3>
+                <p>Generated on <?php echo date('F j, Y, g:i A'); ?></p>
+            </div>
+            
+            <table class="meta-table">
+                <tr>
+                    <td class="label">Station:</td>
+                    <td class="value"><?php echo htmlspecialchars($station_name); ?></td>
+                    <td class="label">Report Period:</td>
+                    <td class="value"><?php echo date('M d, Y', strtotime($start_date)) . ' to ' . date('M d, Y', strtotime($end_date)); ?></td>
+                </tr>
+                <tr>
+                    <td class="label">Category:</td>
+                    <td class="value"><?php echo $type ? htmlspecialchars(ucfirst(str_replace('_', ' ', $type))) : 'All Categories'; ?></td>
+                    <td class="label">Status:</td>
+                    <td class="value"><?php echo $status ? htmlspecialchars(ucfirst($status)) : 'All Statuses'; ?></td>
+                </tr>
+            </table>
+            
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Ref No</th>
+                        <th>Category</th>
+                        <th>Date</th>
+                        <th>Time</th>
+                        <th>Description / Details</th>
+                        <th>Staff Encoder</th>
+                        <th>Validator / Manager</th>
+                        <th>Status</th>
+                        <th>Cost / Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($export_events)): ?>
+                        <tr>
+                            <td colspan="9" style="text-align: center; color: #777; padding: 20px;">No records found matching the criteria.</td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($export_events as $ev): 
+                            $st = strtolower($ev['status'] ?? 'pending');
+                            $badge_cls = 'badge-pending';
+                            if (in_array($st, ['approved','confirmed','validated'])) $badge_cls = 'badge-approved';
+                            elseif (in_array($st, ['completed','done'])) $badge_cls = 'badge-completed';
+                            elseif (in_array($st, ['rejected','discrepancy'])) $badge_cls = 'badge-rejected';
+                            elseif ($st === 'cancelled') $badge_cls = 'badge-cancelled';
+                            
+                            $time_str = ($ev['start_time'] !== '00:00') ? ($ev['start_time'] . ' - ' . $ev['end_time']) : '—';
+                        ?>
+                            <tr>
+                                <td><strong><?php echo htmlspecialchars($ev['ref_no']); ?></strong></td>
+                                <td><?php echo htmlspecialchars($ev['type_name']); ?></td>
+                                <td><?php echo htmlspecialchars($ev['event_date']); ?></td>
+                                <td><?php echo htmlspecialchars($time_str); ?></td>
+                                <td><?php echo htmlspecialchars($ev['work_description']); ?></td>
+                                <td><?php echo htmlspecialchars($ev['staff_name']); ?></td>
+                                <td><?php echo htmlspecialchars($ev['manager_name']); ?></td>
+                                <td><span class="badge <?php echo $badge_cls; ?>"><?php echo htmlspecialchars($ev['status']); ?></span></td>
+                                <td><?php echo ($ev['amount'] > 0) ? '₱' . money($ev['amount']) : '—'; ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+            
+            <div class="footer-notes">
+                <p>This document is an official system-generated audit report for Petron Station Calendar Oversight.</p>
+                <p>Confidential — Internal Use Only</p>
+            </div>
+            
+            <script>
+                window.onload = function() {
+                    window.print();
+                }
+            </script>
+        </body>
+        </html>
+        <?php
+        exit;
+    }
+}
+
+// ── Handle AJAX Audit request early ──────────────────────────────────────────
+if (isset($_GET['ajax_audit'])) {
+    $ev_type = $_GET['event_type'] ?? '';
+    $ev_id   = (int)($_GET['event_id'] ?? 0);
+    $logs    = [];
+    
+    // 1. Fetch from general audit_trail
+    try {
+        $stmt = $pdo->prepare("
+            SELECT at.*, u.name AS user_name, u.role AS user_role
+            FROM audit_trail at
+            LEFT JOIN users u ON at.manager_id = u.id
+            WHERE at.station_id = ? AND (at.transaction_id = ? OR at.transaction_id = ?)
+            ORDER BY at.timestamp DESC
+        ");
+        $prefix = '';
+        if ($ev_type === 'job_order') $prefix = 'JO-' . $ev_id;
+        elseif ($ev_type === 'delivery') $prefix = 'del-' . $ev_id;
+        elseif ($ev_type === 'purchase_order') $prefix = 'po-' . $ev_id;
+        
+        $stmt->execute([$station_id, (string)$ev_id, $prefix]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $logs[] = [
+                'timestamp'   => $r['timestamp'],
+                'user_name'   => $r['user_name'] ?? 'System',
+                'user_role'   => $r['user_role'] ?? '',
+                'action'      => $r['action_type'],
+                'details'     => $r['new_value'] ?? ''
+            ];
+        }
+    } catch (Exception $e) {}
+
+    // 2. If it is a Job Order, also fetch from job_order_audit table
+    if ($ev_type === 'job_order') {
+        try {
+            $stmt = $pdo->prepare("
+                SELECT joa.*, u.name AS user_name, u.role AS user_role
+                FROM job_order_audit joa
+                LEFT JOIN users u ON joa.performed_by = u.id
+                WHERE joa.job_order_id = ?
+                ORDER BY joa.performed_at DESC
+            ");
+            $stmt->execute([$ev_id]);
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $logs[] = [
+                    'timestamp'   => $r['performed_at'],
+                    'user_name'   => $r['user_name'] ?? 'System',
+                    'user_role'   => $r['user_role'] ?? '',
+                    'action'      => $r['action'],
+                    'details'     => ($r['notes'] ? $r['notes'] . ' ' : '') . '[Before: ' . $r['before_status'] . ' -> After: ' . $r['after_status'] . ']'
+                ];
+            }
+        } catch (Exception $e) {}
+    }
+    
+    // Sort logs by timestamp desc
+    usort($logs, function($a, $b) {
+        return strtotime($b['timestamp'] ?? 'now') - strtotime($a['timestamp'] ?? 'now');
+    });
+    
+    header('Content-Type: application/json');
+    echo json_encode($logs);
+    exit;
+}
+
+// ── Handle POST early (before any output) ────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'flag_event') {
+    $ev_type = $_POST['event_type'] ?? '';
+    $ev_id   = (int)($_POST['event_id'] ?? 0);
+    $reason  = trim($_POST['reason'] ?? '');
+    $wo      = (int)($_GET['week'] ?? 0);
+    if ($ev_id && $reason) {
+        try {
+            if (function_exists('log_activity')) {
+                log_activity($pdo, $user_id, 'Admin Flagged Event', "Type: $ev_type | ID: $ev_id | Reason: $reason");
+            }
+            $_SESSION['success'] = "Event #$ev_id flagged successfully.";
+        } catch (Exception $e) {
+            $_SESSION['error'] = 'Flag failed: ' . $e->getMessage();
+        }
+    }
+    header("Location: admin_calendar.php?week=$wo");
+    exit;
+}
+
 // ── Filter params ─────────────────────────────────────────────────────────────
 $filter_status = trim($_GET['filter_status'] ?? '');
 $filter_type   = trim($_GET['filter_type']   ?? '');
 
 // ── Load events ───────────────────────────────────────────────────────────────
-$week_events = []; // [type_key][date][] = event
+$all_events = fetch_calendar_events($pdo, $station_id, $ws_str, $we_str);
 
-// 1. Job Orders
-try {
-    $stmt = $pdo->prepare("
-        SELECT jo.id, jo.created_by, jo.customer_name, jo.service_type,
-               jo.validation_status, jo.created_at,
-               u.name AS staff_name,
-               mu.name AS manager_name
-        FROM job_orders jo
-        JOIN users u ON jo.created_by = u.id
-        LEFT JOIN users mu ON jo.validated_by = mu.id
-        WHERE jo.station_id = ? AND DATE(jo.created_at) BETWEEN ? AND ?
-        ORDER BY jo.created_at DESC");
-    $stmt->execute([$station_id, $ws_str, $we_str]);
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-        $ev_date = date('Y-m-d', strtotime($r['created_at']));
-        $week_events['job_order'][$ev_date][] = [
-            'id'               => 'jo_'.$r['id'],
-            'raw_id'           => $r['id'],
-            'type_key'         => 'job_order',
-            'type_name'        => 'Job Order',
-            'icon_class'       => 'fas fa-wrench',
-            'staff_name'       => $r['staff_name'] ?? '—',
-            'manager_name'     => $r['manager_name'] ?? '—',
-            'event_date'       => $ev_date,
-            'start_time'       => '00:00',
-            'end_time'         => '00:00',
-            'work_description' => ($r['service_type'] ?? 'Job Order').' — '.($r['customer_name'] ?? ''),
-            'status'           => strtolower($r['validation_status'] ?? 'pending'),
-            'customer_name'    => $r['customer_name'] ?? '',
-            'auto_synced'      => true,
-        ];
-    }
-} catch (Exception $e) {}
+// ── Sidebar: today + upcoming events ─────────────────────────────────────────
+$today_events    = [];
+$upcoming_events = [];
+$weekly_stats    = ['pending'=>0,'approved'=>0,'completed'=>0,'rejected'=>0,'total'=>0];
+$three_days      = date('Y-m-d', strtotime('+3 days'));
 
-// 2. Deliveries (deliveries_oversight table)
-try {
-    $stmt = $pdo->prepare("
-        SELECT d.id, d.encoded_by, d.status, d.supplier_name,
-               d.delivery_type, d.delivery_date,
-               u.name AS staff_name,
-               mu.name AS manager_name
-        FROM deliveries_oversight d
-        LEFT JOIN users u  ON u.id  = d.encoded_by
-        LEFT JOIN users mu ON mu.id = d.admin_id
-        WHERE d.station_id = ? AND DATE(COALESCE(d.delivery_date, d.created_at)) BETWEEN ? AND ?
-        ORDER BY d.created_at DESC");
-    $stmt->execute([$station_id, $ws_str, $we_str]);
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-        $ev_date = $r['delivery_date'] ?? date('Y-m-d', strtotime($r['created_at'] ?? 'now'));
-        $week_events['delivery'][$ev_date][] = [
-            'id'               => 'del_'.$r['id'],
-            'raw_id'           => $r['id'],
-            'type_key'         => 'delivery',
-            'type_name'        => 'Delivery',
-            'icon_class'       => 'fas fa-truck',
-            'staff_name'       => $r['staff_name'] ?? '—',
-            'manager_name'     => $r['manager_name'] ?? '—',
-            'event_date'       => $ev_date,
-            'start_time'       => '00:00',
-            'end_time'         => '00:00',
-            'work_description' => 'Delivery #'.$r['id'].' — '.($r['supplier_name'] ?? '').($r['delivery_type'] ? ' ('.$r['delivery_type'].')' : ''),
-            'status'           => strtolower($r['status'] ?? 'pending'),
-            'customer_name'    => '',
-            'auto_synced'      => true,
-        ];
-    }
-} catch (Exception $e) {}
+foreach ($all_events as $ev) {
+    $weekly_stats['total']++;
+    $st = strtolower($ev['status'] ?? 'pending');
+    if (in_array($st, ['pending','pending validation','pending manager approval'])) $weekly_stats['pending']++;
+    elseif (in_array($st, ['approved','confirmed','validated'])) $weekly_stats['approved']++;
+    elseif (in_array($st, ['completed','done'])) $weekly_stats['completed']++;
+    elseif (in_array($st, ['rejected','discrepancy','cancelled'])) $weekly_stats['rejected']++;
 
-// 3. Purchase Orders
-try {
-    $stmt = $pdo->prepare("
-        SELECT po.id, po.created_by, po.status, po.product_name,
-               po.quantity, po.total_amount, po.created_at,
-               u.name AS staff_name
-        FROM purchase_orders po
-        LEFT JOIN users u ON u.id = po.created_by
-        WHERE po.station_id = ? AND DATE(po.created_at) BETWEEN ? AND ?
-        ORDER BY po.created_at DESC");
-    $stmt->execute([$station_id, $ws_str, $we_str]);
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-        $ev_date = date('Y-m-d', strtotime($r['created_at']));
-        $week_events['purchase_order'][$ev_date][] = [
-            'id'               => 'po_'.$r['id'],
-            'raw_id'           => $r['id'],
-            'type_key'         => 'purchase_order',
-            'type_name'        => 'Purchase Order',
-            'icon_class'       => 'fas fa-file-invoice-dollar',
-            'staff_name'       => $r['staff_name'] ?? '—',
-            'manager_name'     => '—',
-            'event_date'       => $ev_date,
-            'start_time'       => '00:00',
-            'end_time'         => '00:00',
-            'work_description' => 'PO #'.$r['id'].' — '.($r['product_name'] ?? '').' (qty: '.($r['quantity'] ?? 0).')',
-            'status'           => strtolower($r['status'] ?? 'pending'),
-            'customer_name'    => '',
-            'auto_synced'      => true,
-        ];
+    if ($ev['event_date'] === $today_str) {
+        $today_events[] = $ev;
+    } elseif ($ev['event_date'] > $today_str && $ev['event_date'] <= $three_days) {
+        $upcoming_events[] = $ev;
     }
-} catch (Exception $e) {}
+}
 
-// 4. Fuel Calibration (fuel_calibration_logs)
-try {
-    $stmt = $pdo->prepare("
-        SELECT fc.id, fc.performed_by, fc.calibration_date,
-               fc.pump_number, fc.status, fc.notes,
-               u.name AS staff_name,
-               mu.name AS manager_name
-        FROM fuel_calibration_logs fc
-        LEFT JOIN users u  ON u.id  = fc.performed_by
-        LEFT JOIN users mu ON mu.id = fc.approved_by
-        WHERE fc.station_id = ? AND fc.calibration_date BETWEEN ? AND ?
-        ORDER BY fc.calibration_date DESC");
-    $stmt->execute([$station_id, $ws_str, $we_str]);
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-        $week_events['fuel_calibration'][$r['calibration_date']][] = [
-            'id'               => 'fc_'.$r['id'],
-            'raw_id'           => $r['id'],
-            'type_key'         => 'fuel_calibration',
-            'type_name'        => 'Fuel Calibration',
-            'icon_class'       => 'fas fa-tachometer-alt',
-            'staff_name'       => $r['staff_name'] ?? '—',
-            'manager_name'     => $r['manager_name'] ?? '—',
-            'event_date'       => $r['calibration_date'],
-            'start_time'       => '00:00',
-            'end_time'         => '00:00',
-            'work_description' => 'Pump #'.($r['pump_number'] ?? '?').' — '.($r['notes'] ?? 'Calibration'),
-            'status'           => strtolower($r['status'] ?? 'pending'),
-            'customer_name'    => '',
-            'auto_synced'      => true,
-        ];
-    }
-} catch (Exception $e) {}
+// Now filter for the visual grid
+$grid_events = $all_events;
+if ($filter_status !== '') {
+    $grid_events = array_filter($grid_events, function($ev) use ($filter_status) {
+        $st = strtolower($ev['status'] ?? '');
+        if ($filter_status === 'pending')   return in_array($st, ['pending','pending validation','pending manager approval']);
+        if ($filter_status === 'approved')  return in_array($st, ['approved','confirmed','validated']);
+        if ($filter_status === 'completed') return in_array($st, ['completed','done']);
+        if ($filter_status === 'rejected')  return in_array($st, ['rejected','discrepancy','cancelled']);
+        return true;
+    });
+}
+if ($filter_type !== '') {
+    $grid_events = array_filter($grid_events, function($ev) use ($filter_type) {
+        return $ev['type_key'] === $filter_type;
+    });
+}
 
-// 5. Staff Shifts
-try {
-    $stmt = $pdo->prepare("
-        SELECT ss.id, ss.staff_id, ss.shift_date, ss.start_time, ss.end_time,
-               u.name AS staff_name
-        FROM staff_shifts ss
-        JOIN users u ON ss.staff_id = u.id
-        WHERE ss.station_id = ? AND ss.shift_date BETWEEN ? AND ?
-        ORDER BY ss.shift_date, ss.start_time");
-    $stmt->execute([$station_id, $ws_str, $we_str]);
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-        $week_events['staff_shift'][$r['shift_date']][] = [
-            'id'               => 'shift_'.$r['id'],
-            'raw_id'           => $r['id'],
-            'type_key'         => 'staff_shift',
-            'type_name'        => 'Staff Shift',
-            'icon_class'       => 'fas fa-user-clock',
-            'staff_name'       => $r['staff_name'] ?? '—',
-            'manager_name'     => '—',
-            'event_date'       => $r['shift_date'],
-            'start_time'       => $r['start_time'],
-            'end_time'         => $r['end_time'],
-            'work_description' => date('g:i A', strtotime($r['start_time'])).' – '.date('g:i A', strtotime($r['end_time'])),
-            'status'           => 'completed',
-            'customer_name'    => '',
-            'auto_synced'      => true,
-        ];
-    }
-} catch (Exception $e) {}
+// Group grid_events by category and date for easy rendering
+$week_events = [];
+foreach ($grid_events as $ev) {
+    $week_events[$ev['type_key']][$ev['event_date']][] = $ev;
+}
 
 // ── Summary widget counts ─────────────────────────────────────────────────────
 function safe_count(PDO $pdo, string $sql, array $p = []): int {
@@ -249,7 +600,7 @@ $upcoming_deliveries = safe_count($pdo,
     [$station_id]);
 
 $scheduled_calibrations = safe_count($pdo,
-    "SELECT COUNT(*) FROM fuel_calibration_logs WHERE station_id=? AND calibration_date >= CURDATE() AND status NOT IN ('completed','approved')",
+    "SELECT COUNT(*) FROM calibration_logs WHERE station_id=? AND DATE(encoded_at) = CURDATE()",
     [$station_id]);
 
 $pending_job_orders = safe_count($pdo,
@@ -257,30 +608,9 @@ $pending_job_orders = safe_count($pdo,
     [$station_id]);
 
 $active_shifts_today = safe_count($pdo,
-    "SELECT COUNT(*) FROM staff_shifts WHERE station_id=? AND shift_date=CURDATE()",
+    "SELECT COUNT(*) FROM staff_schedules ss JOIN users u ON ss.user_id = u.id WHERE u.station_id=? AND ss.scheduled_date=CURDATE()",
     [$station_id]);
 
-// ── Sidebar: today + upcoming events ─────────────────────────────────────────
-$today_events    = [];
-$upcoming_events = [];
-$weekly_stats    = ['pending'=>0,'approved'=>0,'completed'=>0,'rejected'=>0,'total'=>0];
-$three_days      = date('Y-m-d', strtotime('+3 days'));
-
-foreach ($week_events as $type_key => $dates) {
-    foreach ($dates as $date => $evs) {
-        foreach ($evs as $ev) {
-            $weekly_stats['total']++;
-            $st = strtolower($ev['status'] ?? 'pending');
-            if (in_array($st, ['pending','pending validation','pending manager approval'])) $weekly_stats['pending']++;
-            elseif (in_array($st, ['approved','confirmed','validated'])) $weekly_stats['approved']++;
-            elseif (in_array($st, ['completed','done'])) $weekly_stats['completed']++;
-            elseif (in_array($st, ['rejected','discrepancy'])) $weekly_stats['rejected']++;
-
-            if ($date === $today_str) $today_events[] = $ev;
-            elseif ($date > $today_str && $date <= $three_days) $upcoming_events[] = $ev;
-        }
-    }
-}
 
 // ── Helper functions ──────────────────────────────────────────────────────────
 function adm_cal_type_color(string $type_key): string {
@@ -428,9 +758,9 @@ require_once '../partials/header.php';
           <i class="fas fa-chevron-right"></i>
         </a>
         <a href="admin_calendar.php?week=0" class="sc-today-btn">Today</a>
-        <a href="admin_calendar.php?week=<?php echo $week_offset; ?>&export=csv&filter_status=<?php echo urlencode($filter_status); ?>&filter_type=<?php echo urlencode($filter_type); ?>" class="sc-nav-btn" title="Export CSV">
-          <i class="fas fa-download"></i> Export
-        </a>
+        <button type="button" onclick="openExportModal()" class="sc-nav-btn" title="Export Compliance Report">
+          <i class="fas fa-file-export"></i> Export Report
+        </button>
       </div>
     </div>
 
@@ -723,7 +1053,89 @@ require_once '../partials/header.php';
   </div>
 </div>
 
+<!-- ===== EXPORT REPORT MODAL ===== -->
+<div class="sc-modal-overlay" id="exportModal">
+  <div class="sc-modal" style="max-width: 480px;">
+    <div style="background:linear-gradient(135deg,#00264D,#003d7a);color:#fff;padding:20px 24px;border-radius:16px 16px 0 0;display:flex;align-items:center;justify-content:space-between;">
+      <h3 style="margin:0;font-size:17px;font-weight:800;color:#fff;"><i class="fas fa-file-export" style="margin-right:8px;"></i>Export Compliance Report</h3>
+      <button onclick="closeExportModal()" style="background:none;border:none;color:#fff;font-size:24px;cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <form method="GET" action="admin_calendar.php" target="_blank" class="sc-modal-body" style="padding: 24px;">
+      <input type="hidden" name="export_report" value="1">
+      
+      <div style="margin-bottom: 16px;">
+        <label style="display:block;font-size:13px;font-weight:600;color:#344054;margin-bottom:6px;">Report Period Preset</label>
+        <select name="export_range" id="exportRange" onchange="toggleCustomDates()" style="width:100%;padding:10px 12px;border:1px solid #d0d5dd;border-radius:8px;font-size:14px;background:#fff;" required>
+          <option value="week">Current Week (<?php echo htmlspecialchars($week_label); ?>)</option>
+          <option value="month">Current Month (<?php echo date('F Y'); ?>)</option>
+          <option value="quarter">Current Quarter (Q<?php echo ceil(date('n')/3); ?>)</option>
+          <option value="custom">Custom Date Range</option>
+        </select>
+      </div>
+      
+      <div id="customDateFields" style="display:none;margin-bottom: 16px;gap: 12px;">
+        <div style="flex:1;">
+          <label style="display:block;font-size:12px;font-weight:600;color:#344054;margin-bottom:6px;">From Date</label>
+          <input type="date" name="export_from" id="exportFrom" style="width:100%;padding:8px 10px;border:1px solid #d0d5dd;border-radius:8px;font-size:13px;">
+        </div>
+        <div style="flex:1;">
+          <label style="display:block;font-size:12px;font-weight:600;color:#344054;margin-bottom:6px;">To Date</label>
+          <input type="date" name="export_to" id="exportTo" style="width:100%;padding:8px 10px;border:1px solid #d0d5dd;border-radius:8px;font-size:13px;">
+        </div>
+      </div>
+      
+      <div style="margin-bottom: 16px;">
+        <label style="display:block;font-size:13px;font-weight:600;color:#344054;margin-bottom:6px;">Event Category</label>
+        <select name="export_type" style="width:100%;padding:10px 12px;border:1px solid #d0d5dd;border-radius:8px;font-size:14px;background:#fff;">
+          <option value="">All Categories</option>
+          <option value="job_order">Job Orders</option>
+          <option value="delivery">Deliveries</option>
+          <option value="purchase_order">Purchase Orders</option>
+          <option value="fuel_calibration">Fuel Calibration</option>
+          <option value="staff_shift">Staff Shifts</option>
+        </select>
+      </div>
+      
+      <div style="margin-bottom: 16px;">
+        <label style="display:block;font-size:13px;font-weight:600;color:#344054;margin-bottom:6px;">Status Filter</label>
+        <select name="export_status" style="width:100%;padding:10px 12px;border:1px solid #d0d5dd;border-radius:8px;font-size:14px;background:#fff;">
+          <option value="">All Statuses</option>
+          <option value="pending">Pending</option>
+          <option value="approved">Approved / Validated</option>
+          <option value="completed">Completed / Done</option>
+          <option value="rejected">Rejected / Discrepancy</option>
+        </select>
+      </div>
+      
+      <div style="margin-bottom: 24px;">
+        <label style="display:block;font-size:13px;font-weight:600;color:#344054;margin-bottom:6px;">Export Format</label>
+        <div style="display:flex;gap:16px;margin-top:6px;">
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:14px;color:#344054;cursor:pointer;">
+            <input type="radio" name="export_format" value="csv" checked style="accent-color:#00264D;">
+            Excel / CSV Sheet
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:14px;color:#344054;cursor:pointer;">
+            <input type="radio" name="export_format" value="print" style="accent-color:#00264D;">
+            Printable PDF Layout
+          </label>
+        </div>
+      </div>
+      
+      <div style="display:flex;justify-content:flex-end;gap:12px;border-top:1px solid #f0f0f0;padding-top:16px;">
+        <button type="button" onclick="closeExportModal()" style="background:#fff;border:1px solid #d0d5dd;color:#344054;padding:10px 18px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;">Cancel</button>
+        <button type="submit" onclick="closeExportModal()" style="background:#00264D;border:none;color:#fff;padding:10px 18px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;">
+          <i class="fas fa-file-export" style="margin-right:4px;"></i> Generate Report
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
+let currentAuditLogs = [];
+let auditLogsLoaded = false;
+let auditLogsLoading = false;
+
 function openDetailModal(ev) {
   const statusMap = {
     pending:'badge-pending', approved:'badge-approved', confirmed:'badge-approved',
@@ -743,7 +1155,9 @@ function openDetailModal(ev) {
     ? new Date(ev.event_date + 'T00:00:00').toLocaleDateString('en-US',{weekday:'short',year:'numeric',month:'short',day:'numeric'})
     : '—';
 
-  let html = `
+  // Build the info content
+  let infoHtml = `
+    <div class="sc-detail-row"><span class="sc-detail-label">Reference No</span><span class="sc-detail-val"><strong>${ev.ref_no||'—'}</strong></span></div>
     <div class="sc-detail-row"><span class="sc-detail-label">Date</span><span class="sc-detail-val">${evDate}</span></div>
     <div class="sc-detail-row">
       <span class="sc-detail-label">Event Type</span>
@@ -752,23 +1166,29 @@ function openDetailModal(ev) {
     <div class="sc-detail-row"><span class="sc-detail-label">Description</span><span class="sc-detail-val">${ev.work_description||'—'}</span></div>`;
 
   if (ev.staff_name && ev.staff_name !== '—') {
-    html += `<div class="sc-detail-row"><span class="sc-detail-label">Encoded By</span><span class="sc-detail-val"><i class="fas fa-user" style="color:#2563eb;font-size:10px;margin-right:4px;"></i>${ev.staff_name}</span></div>`;
+    infoHtml += `<div class="sc-detail-row"><span class="sc-detail-label">Encoded By</span><span class="sc-detail-val"><i class="fas fa-user" style="color:#2563eb;font-size:10px;margin-right:4px;"></i>${ev.staff_name}</span></div>`;
   }
   if (ev.manager_name && ev.manager_name !== '—') {
-    html += `<div class="sc-detail-row"><span class="sc-detail-label">Validated By</span><span class="sc-detail-val"><i class="fas fa-user-tie" style="color:#dc2626;font-size:10px;margin-right:4px;"></i>${ev.manager_name}</span></div>`;
+    infoHtml += `<div class="sc-detail-row"><span class="sc-detail-label">Validated By</span><span class="sc-detail-val"><i class="fas fa-user-tie" style="color:#dc2626;font-size:10px;margin-right:4px;"></i>${ev.manager_name}</span></div>`;
   }
   if (ev.customer_name) {
-    html += `<div class="sc-detail-row"><span class="sc-detail-label">Customer</span><span class="sc-detail-val">${ev.customer_name}</span></div>`;
+    infoHtml += `<div class="sc-detail-row"><span class="sc-detail-label">Customer</span><span class="sc-detail-val">${ev.customer_name}</span></div>`;
+  }
+  if (ev.vehicle_plate) {
+    infoHtml += `<div class="sc-detail-row"><span class="sc-detail-label">Vehicle Plate</span><span class="sc-detail-val">${ev.vehicle_plate}</span></div>`;
+  }
+  if (Number(ev.amount) > 0) {
+    infoHtml += `<div class="sc-detail-row"><span class="sc-detail-label">Total Cost / Value</span><span class="sc-detail-val">₱${Number(ev.amount).toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>`;
   }
   if (ev.start_time && ev.start_time !== '00:00') {
-    html += `<div class="sc-detail-row"><span class="sc-detail-label">Time</span><span class="sc-detail-val">${ev.start_time} – ${ev.end_time}</span></div>`;
+    infoHtml += `<div class="sc-detail-row"><span class="sc-detail-label">Time</span><span class="sc-detail-val">${ev.start_time} – ${ev.end_time}</span></div>`;
   }
-  html += `<div class="sc-detail-row"><span class="sc-detail-label">Status</span><span class="sc-detail-val">${badge}</span></div>`;
+  infoHtml += `<div class="sc-detail-row"><span class="sc-detail-label">Status</span><span class="sc-detail-val">${badge}</span></div>`;
 
   // Admin flag action
-  html += `
+  infoHtml += `
     <div style="margin-top:16px;padding-top:16px;border-top:1px solid #f0f0f0;">
-      <p style="font-size:12px;font-weight:700;color:#344054;margin:0 0 10px;text-transform:uppercase;letter-spacing:.4px;">Admin Actions</p>
+      <p style="font-size:12px;font-weight:700;color:#344054;margin:0 0 10px;text-transform:uppercase;letter-spacing:.4px;">Compliance Actions</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="sc-flag-btn" onclick="flagEvent('${ev.type_key}',${ev.raw_id})">
           <i class="fas fa-flag"></i> Flag Discrepancy
@@ -776,10 +1196,110 @@ function openDetailModal(ev) {
       </div>
     </div>`;
 
+  // Wrap tab contents
+  const modalBodyHtml = `
+    <div class="sc-modal-tabs" style="display:flex;border-bottom:1px solid #e4e6ea;margin:0 -24px 16px -24px;padding:0 24px;">
+      <button class="sc-modal-tab active" id="tabInfoBtn" onclick="showModalTab('info')" style="padding:10px 16px;background:none;border:none;border-bottom:2px solid #00264D;font-weight:600;font-size:13px;cursor:pointer;color:#00264D;transition:all .2s;">Event Info</button>
+      <button class="sc-modal-tab" id="tabAuditBtn" onclick="showModalTab('audit')" style="padding:10px 16px;background:none;border:none;border-bottom:2px solid transparent;font-weight:600;font-size:13px;cursor:pointer;color:#667085;transition:all .2s;">Audit Trail & Logs</button>
+    </div>
+    <div id="modalTabInfoContent">${infoHtml}</div>
+    <div id="modalTabAuditContent" style="display:none;">
+      <div style="text-align:center;padding:20px 0;color:#6b7280;" id="auditLoader">
+        <i class="fas fa-circle-notch fa-spin"></i> Loading audit history...
+      </div>
+      <div id="auditLogsTimeline" style="display:none;"></div>
+    </div>
+  `;
+
   document.getElementById('modalTitle').innerHTML =
     `<i class="${ev.icon_class||'fas fa-calendar-check'}" style="margin-right:8px;"></i>${ev.type_name||'Event Details'}`;
-  document.getElementById('modalBody').innerHTML = html;
+  document.getElementById('modalBody').innerHTML = modalBodyHtml;
   document.getElementById('detailModal').classList.add('open');
+
+  // Trigger dynamic audit log loading
+  auditLogsLoaded = false;
+  auditLogsLoading = true;
+  currentAuditLogs = [];
+  
+  fetch(`admin_calendar.php?ajax_audit=1&event_type=${ev.type_key}&event_id=${ev.raw_id}`)
+    .then(r => r.json())
+    .then(data => {
+      currentAuditLogs = data;
+      auditLogsLoaded = true;
+      auditLogsLoading = false;
+      renderAuditTimeline();
+    })
+    .catch(err => {
+      document.getElementById('auditLoader').innerHTML = 
+        `<span style="color:#d92d20;"><i class="fas fa-exclamation-triangle"></i> Failed to load audit trail</span>`;
+      auditLogsLoading = false;
+    });
+}
+
+function showModalTab(tab) {
+  const infoBtn = document.getElementById('tabInfoBtn');
+  const auditBtn = document.getElementById('tabAuditBtn');
+  const infoContent = document.getElementById('modalTabInfoContent');
+  const auditContent = document.getElementById('modalTabAuditContent');
+  
+  if (tab === 'info') {
+    infoBtn.style.color = '#00264D';
+    infoBtn.style.borderBottomColor = '#00264D';
+    auditBtn.style.color = '#667085';
+    auditBtn.style.borderBottomColor = 'transparent';
+    infoContent.style.display = 'block';
+    auditContent.style.display = 'none';
+  } else {
+    auditBtn.style.color = '#00264D';
+    auditBtn.style.borderBottomColor = '#00264D';
+    infoBtn.style.color = '#667085';
+    infoBtn.style.borderBottomColor = 'transparent';
+    infoContent.style.display = 'none';
+    auditContent.style.display = 'block';
+    
+    if (auditLogsLoaded) {
+      renderAuditTimeline();
+    }
+  }
+}
+
+function renderAuditTimeline() {
+  const loader = document.getElementById('auditLoader');
+  const timeline = document.getElementById('auditLogsTimeline');
+  
+  if (currentAuditLogs.length === 0) {
+    loader.innerHTML = '<p style="text-align:center;color:#6b7280;font-size:12px;padding:12px 0;">No audit trail logs recorded for this event.</p>';
+    loader.style.display = 'block';
+    timeline.style.display = 'none';
+    return;
+  }
+  
+  loader.style.display = 'none';
+  timeline.style.display = 'block';
+  
+  let html = '<div style="position:relative;padding-left:24px;border-left:2px solid #e4e6ea;margin-left:12px;padding-top:8px;">';
+  
+  currentAuditLogs.forEach((log, index) => {
+    const dateFormatted = new Date(log.timestamp).toLocaleString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric',
+      hour: 'numeric', minute: '2-digit', hour12: true
+    });
+    
+    html += `
+      <div style="position:relative;margin-bottom:20px;">
+        <div style="position:absolute;left:-31px;top:2px;width:12px;height:12px;border-radius:50%;background:#00264D;border:2px solid #fff;box-shadow:0 0 0 2px #e4e6ea;"></div>
+        <div style="font-size:11px;color:#667085;font-weight:500;">${dateFormatted}</div>
+        <div style="font-size:13px;font-weight:700;color:#1d2939;margin-top:2px;">${log.action}</div>
+        <div style="font-size:12px;color:#475467;margin-top:4px;">
+          <span style="font-weight:600;">By:</span> ${log.user_name} (${log.user_role})
+        </div>
+        ${log.details ? `<div style="font-size:12px;color:#667085;background:#f8f9fa;padding:6px 10px;border-radius:6px;border-left:3px solid #00264D;margin-top:6px;font-style:italic;">${log.details}</div>` : ''}
+      </div>
+    `;
+  });
+  
+  html += '</div>';
+  timeline.innerHTML = html;
 }
 
 function closeDetailModal() {
@@ -804,6 +1324,35 @@ function flagEvent(type, id) {
   });
   document.body.appendChild(form);
   form.submit();
+}
+
+function openExportModal() {
+  document.getElementById('exportModal').classList.add('open');
+}
+
+function closeExportModal() {
+  document.getElementById('exportModal').classList.remove('open');
+}
+
+document.getElementById('exportModal').addEventListener('click', function(e) {
+  if (e.target === this) closeExportModal();
+});
+
+function toggleCustomDates() {
+  const range = document.getElementById('exportRange').value;
+  const customFields = document.getElementById('customDateFields');
+  const fromInput = document.getElementById('exportFrom');
+  const toInput = document.getElementById('exportTo');
+  
+  if (range === 'custom') {
+    customFields.style.display = 'flex';
+    fromInput.required = true;
+    toInput.required = true;
+  } else {
+    customFields.style.display = 'none';
+    fromInput.required = false;
+    toInput.required = false;
+  }
 }
 </script>
 

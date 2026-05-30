@@ -161,15 +161,33 @@ try {
     } elseif ($role === 'admin' || $role === 'manager') {
         $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id = ? AND status = 'Pending'");
         $stmt->execute([$myStationId]);
-        $badges['joborder'] = $stmt->fetchColumn();
-        
+        $pending_jo_count = (int)$stmt->fetchColumn();
+        $badges['joborder'] = $pending_jo_count; // manager
+
         // Inventory Shortages
         $stmtInv = $pdo->prepare("SELECT COUNT(*) FROM inventory WHERE station_id = ? AND stock_level <= 20");
         $stmtInv->execute([$myStationId]);
-        $badges['inventory'] = $stmtInv->fetchColumn();
+        $badges['inventory'] = (int)$stmtInv->fetchColumn();
 
-        // Reports Aggregate
-        $badges['reports'] = ($badges['pos'] ?? 0) + ($badges['joborder'] ?? 0) + ($badges['inventory'] ?? 0);
+        if ($role === 'admin') {
+            // Admin-specific badge keys matching sidebar item IDs
+            try {
+                $s = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND validation_status='Pending'");
+                $s->execute([$myStationId]);
+                $pending_tx = (int)$s->fetchColumn();
+            } catch (Exception $e) { $pending_tx = 0; }
+            try {
+                $s = $pdo->prepare("SELECT COUNT(*) FROM purchase_orders WHERE station_id=? AND status IN ('Pending','Pending Approval','Pending Admin Validation')");
+                $s->execute([$myStationId]);
+                $pending_po = (int)$s->fetchColumn();
+            } catch (Exception $e) { $pending_po = 0; }
+            $badges['admin_transactions_oversight'] = $pending_tx + $pending_jo_count;
+            $badges['purchase_orders_admin']        = $pending_po;
+            $badges['reports_admin']                = $pending_tx + $pending_jo_count + ($badges['inventory'] ?? 0);
+        } else {
+            // Reports Aggregate for manager
+            $badges['reports'] = ($badges['pos'] ?? 0) + $pending_jo_count + ($badges['inventory'] ?? 0);
+        }
     } elseif ($role === 'staff') {
         $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE user_id = ? AND status IN ('Pending', 'In Progress', 'Awaiting Parts')");
         $stmt->execute([$user['id']]);
@@ -179,10 +197,18 @@ try {
     // Deliveries Oversight pending badge (admin)
     if ($role === 'admin' || $role === 'superadmin') {
         try {
-            $stmt = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id = ? AND status = 'Pending Validation'");
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id = ? AND status IN ('Pending Validation','Pending Manager Approval','Confirmed')");
             $stmt->execute([$myStationId]);
             $badges['deliveries_oversight'] = (int)$stmt->fetchColumn();
         } catch (Exception $e) { $badges['deliveries_oversight'] = 0; }
+    }
+    // Manager deliveries pending badge
+    if ($role === 'manager') {
+        try {
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id = ? AND status = 'Pending Manager Approval'");
+            $stmt->execute([$myStationId]);
+            $badges['manager_deliveries'] = (int)$stmt->fetchColumn();
+        } catch (Exception $e) { $badges['manager_deliveries'] = 0; }
     }
 
     // Fetch Stations for Header Filter (Super Admin)
@@ -2363,12 +2389,15 @@ require_once __DIR__ . '/rbac_menu.php';
         // Staff/Admin: operational notifications.
         <?php
         $is_superadmin_role = in_array($role, ['superadmin', 'developer']);
+        $is_admin_role      = ($role === 'admin');
         $is_manager_role    = ($role === 'manager');
         $notif_generator    = $is_superadmin_role
             ? '../backend/api/superadmin_notification_generator.php'
-            : ($is_manager_role
-                ? '../backend/api/manager_notification_generator.php'
-                : '../backend/api/staff_notification_generator.php');
+            : ($is_admin_role
+                ? '../backend/api/admin_notifications_seeder.php?action=seed'
+                : ($is_manager_role
+                    ? '../backend/api/manager_notification_generator.php'
+                    : '../backend/api/staff_notification_generator.php'));
         ?>
 
         <?php if ($is_superadmin_role): ?>

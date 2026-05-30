@@ -20,23 +20,30 @@ if ((int)$station_id <= 0 && $role === 'admin') {
 // ── Handle Approvals / Rejections ──────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
+    // Preserve the active tab across POST redirects
+    $redirect_tab = trim($_POST['active_tab'] ?? 'fuel');
+    if (!in_array($redirect_tab, ['fuel', 'merch'])) $redirect_tab = 'fuel';
+
     if ($action === 'approve_price') {
         $approval_id = (int)$_POST['approval_id'];
         $stmt = $pdo->prepare("SELECT * FROM pending_price_approvals WHERE id = ? AND status = 'pending'");
         $stmt->execute([$approval_id]);
         $pending = $stmt->fetch(PDO::FETCH_ASSOC);
-        
+
         if ($pending) {
-            if ($pending['product_type'] === 'merchandise') {
-                $pdo->prepare("UPDATE inventory_products SET unit_cost=?, unit_price=? WHERE id=?")
+            $ptype = $pending['product_type'] ?? '';
+            if ($ptype === 'merchandise') {
+                $pdo->prepare("UPDATE inventory_products SET unit_cost=?, unit_price=?, updated_at=NOW() WHERE id=?")
                     ->execute([$pending['new_cost'], $pending['new_price'], $pending['product_id']]);
             } else {
-                $pdo->prepare("UPDATE fuel_inventory SET price_per_liter=? WHERE id=?")
+                // covers 'fuel' and 'fuel_inventory'
+                $pdo->prepare("UPDATE fuel_inventory SET price_per_liter=?, last_updated=NOW() WHERE id=?")
                     ->execute([$pending['new_price'], $pending['product_id']]);
             }
             $pdo->prepare("UPDATE pending_price_approvals SET status='approved', admin_id=?, updated_at=NOW() WHERE id=?")
                 ->execute([$me['id'], $approval_id]);
-            log_activity($pdo, $me['id'], 'Approve Price', "Admin approved price change for " . $pending['product_type'] . " ID " . $pending['product_id']);
+            log_activity($pdo, $me['id'], 'Approve Price',
+                "Admin approved price change for {$ptype} ID {$pending['product_id']}. New price: {$pending['new_price']}");
             $_SESSION['success'] = "Price change approved successfully!";
         }
     } elseif ($action === 'reject_price') {
@@ -45,11 +52,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $pdo->prepare("UPDATE pending_price_approvals SET status='rejected', remarks=?, admin_id=?, updated_at=NOW() WHERE id=? AND status='pending'");
         $stmt->execute([$remarks, $me['id'], $approval_id]);
         if ($stmt->rowCount() > 0) {
-            log_activity($pdo, $me['id'], 'Reject Price', "Admin rejected price change (Approval ID $approval_id). Remarks: $remarks");
+            log_activity($pdo, $me['id'], 'Reject Price',
+                "Admin rejected price change (Approval ID $approval_id). Remarks: $remarks");
             $_SESSION['success'] = "Price change rejected.";
         }
     }
-    header("Location: admin_set_prices.php");
+    header("Location: admin_set_prices.php?tab=" . urlencode($redirect_tab));
     exit;
 }
 
@@ -69,13 +77,18 @@ try {
     $stmt = $pdo->prepare("
         SELECT f.id, f.fuel_type, f.price_per_liter, f.current_level, f.capacity,
                f.critical_level, f.status, f.last_updated, f.updated_by,
-               p.new_price as pending_price, p.status as approval_status, p.id as approval_id
+               p.new_price as pending_price, p.manager_id as pending_manager_id,
+               p.status as approval_status, p.id as approval_id
         FROM fuel_inventory f
-        LEFT JOIN pending_price_approvals p ON f.id = p.product_id AND p.product_type = 'fuel_inventory' AND p.status = 'pending'
+        LEFT JOIN pending_price_approvals p
+               ON f.id = p.product_id
+              AND p.product_type IN ('fuel', 'fuel_inventory')
+              AND p.status = 'pending'
+              AND p.station_id = ?
         WHERE f.station_id = ?
         ORDER BY f.fuel_type
     ");
-    $stmt->execute([$station_id]);
+    $stmt->execute([$station_id, $station_id]);
     $fuel_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     $fuel_products = [];
@@ -88,15 +101,22 @@ $merch_stats    = ['total' => 0, 'valid_price' => 0, 'below_cost' => 0, 'unprice
 $all_categories = [];
 
 try {
-    $stmt = $pdo->query("
+    $stmt = $pdo->prepare("
         SELECT i.id, i.category, i.product_name, i.sku, i.size, i.unit_cost, i.supplier,
                i.unit_price, i.stock_quantity, i.stock, i.created_at,
-               p.new_cost as pending_cost, p.new_price as pending_price, p.status as approval_status, p.id as approval_id
+               p.new_cost as pending_cost, p.new_price as pending_price,
+               p.status as approval_status, p.id as approval_id
         FROM inventory_products i
-        LEFT JOIN pending_price_approvals p ON i.id = p.product_id AND p.product_type = 'merchandise' AND p.status = 'pending'
+        LEFT JOIN pending_price_approvals p
+               ON i.id = p.product_id
+              AND p.product_type = 'merchandise'
+              AND p.status = 'pending'
+              AND p.station_id = ?
         WHERE i.category != 'Fuel'
+          AND LOWER(COALESCE(i.status,'active')) != 'inactive'
         ORDER BY i.category, i.product_name
     ");
+    $stmt->execute([$station_id]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     foreach ($rows as $row) {
@@ -135,6 +155,10 @@ try {
     log_activity($pdo, $me['id'], 'View Product Pricing',
         "Admin viewed pricing for station {$station_id}");
 } catch (Exception $e) { /* silent */ }
+
+// ── Active tab (persists across refresh via ?tab= query param) ───────────────
+$active_tab = $_GET['tab'] ?? 'fuel';
+if (!in_array($active_tab, ['fuel', 'merch'])) $active_tab = 'fuel';
 
 include __DIR__ . '/../partials/header.php';
 ?>
@@ -247,20 +271,19 @@ include __DIR__ . '/../partials/header.php';
 
 
 <!-- ── Section Tabs ──────────────────────────────────────────────────── -->
-<input type="hidden" id="activeSection" value="fuel">
+<input type="hidden" id="activeSection" value="<?php echo htmlspecialchars($active_tab); ?>">
 <div class="ato-tab-bar">
-    <a onclick="switchTab('fuel')" id="tab-btn-fuel" class="ato-tab active"><i class="fas fa-gas-pump"></i> Fuel Products</a>
-    <a onclick="switchTab('merch')" id="tab-btn-merch" class="ato-tab"><i class="fas fa-box"></i> Merchandise</a>
+    <a onclick="switchTab('fuel')" id="tab-btn-fuel" class="ato-tab <?php echo $active_tab === 'fuel' ? 'active' : ''; ?>"><i class="fas fa-gas-pump"></i> Fuel Products</a>
+    <a onclick="switchTab('merch')" id="tab-btn-merch" class="ato-tab <?php echo $active_tab === 'merch' ? 'active' : ''; ?>"><i class="fas fa-box"></i> Merchandise</a>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════════════
      TAB 1 — FUEL PRODUCTS
      ══════════════════════════════════════════════════════════════════════════ -->
-<div id="tab-fuel" class="tab-panel active">
+<div id="tab-fuel" class="tab-panel <?php echo $active_tab === 'fuel' ? 'active' : ''; ?>">
     <div class="card" style="padding:0;overflow:hidden;">
         <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">
             <strong style="font-size:15px;color:#002F6C;"><i class="fas fa-gas-pump"></i> Fuel Inventory &amp; Pricing</strong>
-            <span class="muted" style="font-size:12px;">Station-scoped &bull; Read-only</span>
         </div>
         <div class="table-wrap" style="overflow-x:auto;">
             <table class="pricing-table">
@@ -348,9 +371,10 @@ include __DIR__ . '/../partials/header.php';
                                         <form method="POST" style="margin:0;">
                                             <input type="hidden" name="action" value="approve_price">
                                             <input type="hidden" name="approval_id" value="<?php echo $f['approval_id']; ?>">
+                                            <input type="hidden" name="active_tab" value="fuel">
                                             <button type="submit" class="btn" style="background:#16a34a;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;display:flex;align-items:center;gap:4px;"><i class="fas fa-check"></i> Approve</button>
                                         </form>
-                                        <button type="button" class="btn" style="background:#dc2626;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;display:flex;align-items:center;gap:4px;" onclick="openRejectModal(<?php echo $f['approval_id']; ?>)"><i class="fas fa-times"></i> Reject</button>
+                                        <button type="button" class="btn" style="background:#dc2626;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;display:flex;align-items:center;gap:4px;" onclick="openRejectModal(<?php echo $f['approval_id']; ?>, 'fuel')"><i class="fas fa-times"></i> Reject</button>
                                     </div>
                                 </div>
                             <?php else: ?>
@@ -369,7 +393,7 @@ include __DIR__ . '/../partials/header.php';
 <!-- ══════════════════════════════════════════════════════════════════════════
      TAB 2 — MERCHANDISE PRODUCTS
      ══════════════════════════════════════════════════════════════════════════ -->
-<div id="tab-merch" class="tab-panel">
+<div id="tab-merch" class="tab-panel <?php echo $active_tab === 'merch' ? 'active' : ''; ?>">
 
     <!-- Toolbar: search + filters -->
     <div class="toolbar">
@@ -388,9 +412,6 @@ include __DIR__ . '/../partials/header.php';
             <option value="noprice">No Price Set</option>
             <option value="belowcost">Price Below Cost</option>
         </select>
-        <span class="muted" style="font-size:12px;margin-left:auto;" id="visibleCount">
-            Showing <?php echo $merch_stats['total']; ?> products
-        </span>
     </div>
 
     <?php if (empty($merch_by_cat)): ?>
@@ -478,9 +499,10 @@ include __DIR__ . '/../partials/header.php';
                                         <form method="POST" style="margin:0;">
                                             <input type="hidden" name="action" value="approve_price">
                                             <input type="hidden" name="approval_id" value="<?php echo $item['approval_id']; ?>">
+                                            <input type="hidden" name="active_tab" value="merch">
                                             <button type="submit" class="btn" style="background:#16a34a;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;"><i class="fas fa-check"></i> Approve</button>
                                         </form>
-                                        <button type="button" class="btn" style="background:#dc2626;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;" onclick="openRejectModal(<?php echo $item['approval_id']; ?>)"><i class="fas fa-times"></i> Reject</button>
+                                        <button type="button" class="btn" style="background:#dc2626;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;" onclick="openRejectModal(<?php echo $item['approval_id']; ?>, 'merch')"><i class="fas fa-times"></i> Reject</button>
                                     </div>
                                 </div>
                             <?php else: ?>
@@ -495,8 +517,6 @@ include __DIR__ . '/../partials/header.php';
         </div>
     </div>
     <?php endif; ?>
-</div>
-
 </div>
 
 <!-- Rejection Modal -->
@@ -519,6 +539,7 @@ include __DIR__ . '/../partials/header.php';
       <div class="modal-body">
           <input type="hidden" name="action" value="reject_price">
           <input type="hidden" name="approval_id" id="rejectApprovalId" value="">
+          <input type="hidden" name="active_tab" id="rejectActiveTab" value="fuel">
           <label style="display:block; margin-bottom:8px; font-weight:600; font-size:13px; color:#374151;">Reason for Rejection <span style="color:#dc2626;">*</span></label>
           <textarea name="remarks" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-family:inherit; resize:vertical; min-height:80px;" placeholder="Provide remarks for the manager..." required></textarea>
       </div>
@@ -531,46 +552,38 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 <script>
-function openRejectModal(id) {
+function openRejectModal(id, tab) {
     document.getElementById('rejectApprovalId').value = id;
+    document.getElementById('rejectActiveTab').value  = tab || 'fuel';
     document.getElementById('rejectModal').classList.add('open');
 }
 function closeRejectModal() {
     document.getElementById('rejectModal').classList.remove('open');
 }
-// ── Section dropdown switching ───────────────────────────────────────────────
+// ── Tab switching — updates URL so refresh stays on same tab ─────────────────
 function switchTab(name) {
-    // Remove active class from all tab panels
-    document.querySelectorAll('.tab-panel').forEach(function(p) { 
-        if (p) p.classList.remove('active'); 
+    document.querySelectorAll('.tab-panel').forEach(function(p) {
+        if (p) p.classList.remove('active');
     });
-    
-    // Add active class to selected tab
     var targetTab = document.getElementById('tab-' + name);
-    if (targetTab) {
-        targetTab.classList.add('active');
-    }
-    
-    // Update active class on tab buttons
+    if (targetTab) targetTab.classList.add('active');
+
     document.querySelectorAll('.ato-tab').forEach(function(btn) {
         btn.classList.remove('active');
     });
     var targetBtn = document.getElementById('tab-btn-' + name);
-    if (targetBtn) {
-        targetBtn.classList.add('active');
-    }
-    
-    // Update hidden input for PDF export
+    if (targetBtn) targetBtn.classList.add('active');
+
     var activeSec = document.getElementById('activeSection');
-    if (activeSec) {
-        activeSec.value = name;
-    }
+    if (activeSec) activeSec.value = name;
+
+    // Update URL without reloading so refresh lands on the same tab
+    var url = new URL(window.location.href);
+    url.searchParams.set('tab', name);
+    window.history.replaceState(null, '', url.toString());
 }
 
-// Show first section on load
-document.addEventListener('DOMContentLoaded', function() {
-    switchTab('fuel');
-});
+// No DOMContentLoaded override — PHP already sets the correct active class server-side
 
 // ── Merchandise filter ───────────────────────────────────────────────────────
 function filterTable() {
