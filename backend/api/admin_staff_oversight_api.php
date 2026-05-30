@@ -4,12 +4,12 @@ require_once __DIR__ . '/../lib.php';
 require_once __DIR__ . '/../../public/db_connect.php';
 require_login();
 
-$me = current_user();
-$role = strtolower(trim($me['role'] ?? 'staff'));
+$me   = current_user();
+$role = role_key($me['role'] ?? ''); // use canonical role_key() — handles "Station Admin", "Admin/Manager", etc.
 
-// Only allow superadmin and admin
-if (!in_array($role, ['superadmin', 'admin'])) {
-    echo json_encode(['success' => false, 'error' => 'Unauthorized access. Admins only.']);
+// Only allow admin and superadmin
+if (!in_array($role, ['admin', 'superadmin'])) {
+    echo json_encode(['success' => false, 'error' => 'Unauthorized access. Admin privileges required.']);
     exit;
 }
 

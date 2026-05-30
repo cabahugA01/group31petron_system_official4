@@ -14,16 +14,8 @@ require_once 'db_connect.php';
 require_once '../backend/lib.php';
 require_once '../backend/fuel_audit_logging.php';
 
-// Check if user is logged in
-if (!isset($_SESSION['user_id'])) {
-    header("Location: login.php");
-    exit;
-}
-
-// Get user info
-$stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
-$stmt->execute([$_SESSION['user_id']]);
-$me = $stmt->fetch(PDO::FETCH_ASSOC);
+require_login();
+$me = current_user();
 
 if (!$me) {
     session_destroy();
@@ -31,15 +23,16 @@ if (!$me) {
     exit;
 }
 
-// Check if user is manager or superadmin
-$isManager = in_array($me['role'], ['manager', 'superadmin']);
+// Check if user is manager or superadmin using canonical role_key()
+$_mfd_role = role_key($me['role'] ?? '');
+$isManager = in_array($_mfd_role, ['manager', 'admin', 'superadmin']);
 if (!$isManager) {
     header("Location: dashboard.php");
     exit;
 }
 
 // Get user's station
-$station_id = user_station_id($pdo, $me['id']);
+$station_id = user_station_id();
 
 // Handle form submissions
 $msg = '';

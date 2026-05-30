@@ -6,7 +6,7 @@ require_once __DIR__ . '/../public/db_connect.php';
 require_login();
 
 $me = current_user();
-$user_role = strtolower(trim($me['role'] ?? ''));
+$user_role = role_key($me['role'] ?? '');
 if (!in_array($user_role, ['admin', 'superadmin'])) {
     header('Location: ../index.php');
     exit();
@@ -604,7 +604,8 @@ $scheduled_calibrations = safe_count($pdo,
     [$station_id]);
 
 $pending_job_orders = safe_count($pdo,
-    "SELECT COUNT(*) FROM job_orders WHERE station_id=? AND (validation_status IS NULL OR validation_status='Pending')",
+    // Admin calendar: show manager-approved JOs (oversight view), not raw Pending Validation staff encodings
+    "SELECT COUNT(*) FROM job_orders WHERE station_id=? AND validation_status='Approved' AND status NOT IN ('Completed','Cancelled','Rejected')",
     [$station_id]);
 
 $active_shifts_today = safe_count($pdo,

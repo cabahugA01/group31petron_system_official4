@@ -8,7 +8,7 @@ $me         = current_user();
 $role       = role_key($me['role'] ?? '');
 $station_id = user_station_id();
 
-if (!in_array($role, ['staff', 'manager', 'admin', 'superadmin'])) {
+if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
     header('Location: dashboard.php');
     exit;
 }
@@ -55,6 +55,9 @@ try {
             encoded_by      INT          DEFAULT NULL,
             station_id      INT          NOT NULL,
             status          VARCHAR(60)  NOT NULL DEFAULT 'Pending Manager Approval',
+            manager_id      INT          DEFAULT NULL,
+            manager_action_at DATETIME   DEFAULT NULL,
+            manager_notes   TEXT         DEFAULT NULL,
             admin_id        INT          DEFAULT NULL,
             admin_action_at DATETIME     DEFAULT NULL,
             admin_notes     TEXT         DEFAULT NULL,
@@ -68,6 +71,9 @@ try {
     ");
     try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN remarks TEXT DEFAULT NULL"); } catch (Exception $e) {}
     try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN dr_number VARCHAR(100) DEFAULT NULL"); } catch (Exception $e) {}
+    try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN manager_id INT DEFAULT NULL"); } catch (Exception $e) {}
+    try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN manager_action_at DATETIME DEFAULT NULL"); } catch (Exception $e) {}
+    try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN manager_notes TEXT DEFAULT NULL"); } catch (Exception $e) {}
 
     $where  = "WHERE do2.station_id = ? AND do2.delivery_type = 'merchandise' AND do2.status != 'Expected Delivery' AND do2.delivery_date BETWEEN ? AND ?";
     $params = [$station_id, $filter_start, $filter_end];
@@ -98,8 +104,8 @@ try {
     $stmt = $pdo->prepare("
         SELECT do2.*, u_enc.name AS encoded_by_name, u_act.name AS action_by_name
         FROM deliveries_oversight do2
-        LEFT JOIN users u_enc ON do2.encoded_by = u_enc.id
-        LEFT JOIN users u_act ON do2.admin_id   = u_act.id
+        LEFT JOIN users u_enc ON do2.encoded_by  = u_enc.id
+        LEFT JOIN users u_act ON do2.manager_id  = u_act.id
         {$where}
         ORDER BY
             FIELD(do2.status,

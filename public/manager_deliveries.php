@@ -32,7 +32,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $pdo->beginTransaction();
 
-                // Fetch the delivery record
+                // Ensure manager_id column exists (separate from admin_id which is for Admin oversight)
+                try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN IF NOT EXISTS manager_id INT DEFAULT NULL"); } catch (Exception $e) {}
+                try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN IF NOT EXISTS manager_action_at DATETIME DEFAULT NULL"); } catch (Exception $e) {}
+                try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN IF NOT EXISTS manager_notes TEXT DEFAULT NULL"); } catch (Exception $e) {}
+
+                // Fetch the delivery record — only act on records pending Manager approval
                 $s = $pdo->prepare("SELECT * FROM deliveries_oversight WHERE id=? AND station_id=? AND status='Pending Manager Approval'");
                 $s->execute([$did, $station_id]);
                 $del = $s->fetch(PDO::FETCH_ASSOC);
@@ -58,20 +63,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
 
-                // Update delivery oversight
+                // Update delivery oversight — use manager_id (not admin_id) for Manager actions.
+                // admin_id is reserved for Admin-level oversight actions.
+                // After Manager approval, status moves to 'Pending Admin Oversight' so Admin can review.
+                $next_status = ($st === 'Approved') ? 'Pending Admin Oversight' : 'Discrepancy';
                 $pdo->prepare("
                     UPDATE deliveries_oversight 
-                    SET status=?, quantity=?, admin_id=?, admin_action_at=NOW(), admin_notes=? 
+                    SET status=?, quantity=?, manager_id=?, manager_action_at=NOW(), manager_notes=? 
                     WHERE id=?
-                ")->execute([$st, $final_qty, $me['id'], $notes, $did]);
+                ")->execute([$next_status, $final_qty, $me['id'], $notes, $did]);
 
                 $pdo->commit();
 
-                $flash_ok = "Delivery #{$did} marked as <strong>{$st}</strong>.";
+                $flash_ok = "Delivery #{$did} marked as <strong>{$st}</strong> and forwarded to Admin oversight.";
 
                 // Audit Log
                 write_audit_log($pdo, $st === 'Approved' ? 'Approve' : 'Reject',
-                    "Delivery {$st}: Batch {$del['batch_id']} | Product: {$del['product']} | Qty: {$final_qty}",
+                    "Manager {$st}: Batch {$del['batch_id']} | Product: {$del['product']} | Qty: {$final_qty}",
                     'deliveries_oversight', $did, 'transaction');
 
             } catch (Exception $e) {
@@ -90,7 +98,7 @@ if ($section === 'manage') {
             SELECT d.*, u.name as staff_name 
             FROM deliveries_oversight d
             LEFT JOIN users u ON d.encoded_by = u.id
-            WHERE d.station_id=? AND d.status='Pending Manager Approval' AND d.delivery_type='merchandise'
+            WHERE d.station_id=? AND d.status='Pending Manager Approval'
             ORDER BY d.created_at ASC
         ");
         $stmt->execute([$station_id]);
@@ -99,12 +107,12 @@ if ($section === 'manage') {
 } else if ($section === 'history') {
     try {
         $stmt = $pdo->prepare("
-            SELECT d.*, u.name as staff_name, a.name as admin_name
+            SELECT d.*, u.name as staff_name, a.name as manager_name
             FROM deliveries_oversight d
-            LEFT JOIN users u ON d.encoded_by = u.id
-            LEFT JOIN users a ON d.admin_id = a.id
-            WHERE d.station_id=? AND d.status != 'Pending Manager Approval' AND d.delivery_type='merchandise'
-            ORDER BY d.admin_action_at DESC
+            LEFT JOIN users u ON d.encoded_by  = u.id
+            LEFT JOIN users a ON d.manager_id  = a.id
+            WHERE d.station_id=? AND d.status != 'Pending Manager Approval'
+            ORDER BY d.manager_action_at DESC
         ");
         $stmt->execute([$station_id]);
         $records = $stmt->fetchAll(PDO::FETCH_ASSOC);

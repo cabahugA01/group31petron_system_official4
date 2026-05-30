@@ -19,7 +19,7 @@ try {
         case 'list':
             // Get current user and their station
             $me = current_user();
-            $role = strtolower(trim($me['role'] ?? 'staff'));
+            $role = role_key($me['role'] ?? '');
             $station_id = $me['station_id'] ?? null;
             
             // Get filter parameters
@@ -92,7 +92,7 @@ try {
             
             // Check if user can access this user
             $me = current_user();
-            $role = strtolower(trim($me['role'] ?? 'staff'));
+            $role = role_key($me['role'] ?? '');
             $my_station_id = $me['station_id'] ?? null;
             
             if ($role !== 'superadmin') {
@@ -130,7 +130,7 @@ try {
             }
             
             $me = current_user();
-            $role = strtolower(trim($me['role'] ?? 'staff'));
+            $role = role_key($me['role'] ?? '');
             $my_station_id = $me['station_id'] ?? null;
             
             // Only admin and superadmin can create users
@@ -240,7 +240,7 @@ try {
             }
             
             $me = current_user();
-            $role = strtolower(trim($me['role'] ?? 'staff'));
+            $role = role_key($me['role'] ?? '');
             $my_station_id = $me['station_id'] ?? null;
             
             $user_id = $_POST['user_id'] ?? 0;
@@ -318,7 +318,7 @@ try {
             }
             
             $me = current_user();
-            $role = strtolower(trim($me['role'] ?? 'staff'));
+            $role = role_key($me['role'] ?? '');
             
             // Only superadmin can delete users
             if ($role !== 'superadmin') {
@@ -375,7 +375,7 @@ try {
             }
             
             $me = current_user();
-            $role = strtolower(trim($me['role'] ?? 'staff'));
+            $role = role_key($me['role'] ?? '');
             $my_station_id = $me['station_id'] ?? null;
             
             $user_id = $_POST['user_id'] ?? 0;
@@ -441,7 +441,7 @@ try {
             }
             
             $me = current_user();
-            $role = strtolower(trim($me['role'] ?? 'staff'));
+            $role = role_key($me['role'] ?? '');
             $my_station_id = $me['station_id'] ?? null;
             
             $user_id = $_POST['user_id'] ?? 0;

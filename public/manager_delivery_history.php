@@ -47,7 +47,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"])) {
 
             $pdo->prepare("
                 UPDATE deliveries_oversight
-                SET status = ?, admin_id = ?, admin_action_at = NOW(), admin_notes = ?, updated_at = NOW()
+                SET status = ?, manager_id = ?, manager_action_at = NOW(), manager_notes = ?, updated_at = NOW()
                 WHERE id = ? AND station_id = ?
             ")->execute([$new_status, $me["id"], $notes ?: null, $del_id, $station_id]);
 
@@ -184,10 +184,17 @@ try {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         ");
     } catch (Exception $ce) {}
-    /* Migrate status column from ENUM to VARCHAR if needed */
     try { $pdo->exec("ALTER TABLE deliveries_oversight MODIFY COLUMN status VARCHAR(60) NOT NULL DEFAULT 'Pending Manager Approval'"); } catch (Exception $ae) {}
     try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN remarks TEXT DEFAULT NULL"); } catch (Exception $ae) {}
     try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN dr_number VARCHAR(100) DEFAULT NULL"); } catch (Exception $ae) {}
+    try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN manager_id INT DEFAULT NULL"); } catch (Exception $ae) {}
+    try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN manager_action_at DATETIME DEFAULT NULL"); } catch (Exception $ae) {}
+    try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN manager_notes TEXT DEFAULT NULL"); } catch (Exception $ae) {}
+
+    // Ensure manager_id and manager_notes columns exist
+    try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN manager_id INT DEFAULT NULL"); } catch (Exception $ae) {}
+    try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN manager_action_at DATETIME DEFAULT NULL"); } catch (Exception $ae) {}
+    try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN manager_notes TEXT DEFAULT NULL"); } catch (Exception $ae) {}
 
     $where  = "WHERE do2.station_id = ? AND do2.delivery_date BETWEEN ? AND ?";
     $params = [$station_id, $filter_start, $filter_end];
@@ -196,7 +203,7 @@ try {
         if ($filter_status === 'Pending') {
             $where .= " AND do2.status IN ('Pending Manager Approval','Pending Manager Confirmation','Pending Validation')";
         } elseif ($filter_status === 'Approved') {
-            $where .= " AND do2.status IN ('Confirmed', 'Approved', 'Validated', 'Adjusted')";
+            $where .= " AND do2.status IN ('Confirmed', 'Approved', 'Validated', 'Adjusted', 'Pending Admin Oversight')";
         } elseif ($filter_status === 'Rejected') {
             $where .= " AND do2.status IN ('Discrepancy', 'Rejected', 'Flagged', 'Pending Resolution', 'Awaiting Replacement', 'Returned to Supplier')";
         } else {
@@ -210,14 +217,14 @@ try {
     $stmt = $pdo->prepare("
         SELECT do2.*, u_enc.name AS encoded_by_name, u_act.name AS action_by_name
         FROM deliveries_oversight do2
-        LEFT JOIN users u_enc ON do2.encoded_by = u_enc.id
-        LEFT JOIN users u_act ON do2.admin_id   = u_act.id
+        LEFT JOIN users u_enc ON do2.encoded_by  = u_enc.id
+        LEFT JOIN users u_act ON do2.manager_id  = u_act.id
         $where
         ORDER BY FIELD(do2.status,
             'Pending Manager Approval','Pending Manager Confirmation','Pending Validation',
             'Pending Resolution','Awaiting Replacement',
             'Discrepancy','Rejected','Flagged',
-            'Confirmed','Approved','Validated','Adjusted',
+            'Confirmed','Approved','Validated','Adjusted','Pending Admin Oversight',
             'Returned to Supplier','Closed'
         ), do2.created_at DESC
     ");

@@ -348,11 +348,11 @@ if ($view === 'deliveries_report') {
                    d.delivery_ref,
                    d.status,
                    COALESCE(d.remarks,'') AS delivery_notes,
-                   COALESCE(d.admin_notes,'') AS admin_notes,
+                   COALESCE(d.manager_notes,'') AS manager_notes,
                    d.created_at,
-                   COALESCE(au.name, au.username, '—') AS admin_name
+                   COALESCE(au.name, au.username, '—') AS manager_name
             FROM deliveries_oversight d
-            LEFT JOIN users au ON d.admin_id = au.id
+            LEFT JOIN users au ON d.manager_id = au.id
             WHERE d.station_id = ? AND d.encoded_by = ?
               AND DATE(d.created_at) BETWEEN ? AND ?
             ORDER BY d.created_at DESC

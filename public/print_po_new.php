@@ -28,40 +28,72 @@ if (!in_array($role, ['admin', 'superadmin'])) {
     die('<p style="font-family:Arial;padding:40px;color:#721c24;">Access denied. Admin privileges required.</p>');
 }
 
-$po_id = (int)($_GET['id'] ?? 0);
+$po_id   = (int)($_GET['id'] ?? 0);
+$po_type = $_GET['type'] ?? 'merch'; // 'fuel' or 'merch'
 if (!$po_id) {
     die('<p style="font-family:Arial;padding:40px;">No Purchase Order ID provided.</p>');
 }
 
 // ── Fetch PO with all related data ────────────────────────────────────────
 try {
-    $stmt = $pdo->prepare("
-        SELECT po.*,
-               st.name       AS station_name,
-               st.location   AS station_location,
-               st.address    AS station_address,
-               st.vat_tin    AS station_vat_tin,
-               sup.name      AS supplier_name,
-               u.name        AS created_by_name,
-               ab.name       AS approved_by_name,
-               sr.staff_id,
-               sr.item_sku,
-               sr.requested_quantity AS sr_requested_qty,
-               sr.approved_quantity  AS sr_approved_qty,
-               sr.manager_notes      AS sr_manager_notes,
-               staff_u.name          AS staff_name,
-               mgr_u.name            AS manager_name
-        FROM purchase_orders po
-        LEFT JOIN stations st     ON po.station_id  = st.id
-        LEFT JOIN suppliers sup   ON po.supplier_id = sup.id
-        LEFT JOIN users u         ON po.created_by  = u.id
-        LEFT JOIN users ab        ON po.approved_by = ab.id
-        LEFT JOIN stock_requests sr   ON po.request_id = sr.id
-        LEFT JOIN users staff_u   ON sr.staff_id    = staff_u.id
-        LEFT JOIN users mgr_u     ON sr.manager_id  = mgr_u.id
-        WHERE po.id = ?
-        LIMIT 1
-    ");
+    if ($po_type === 'fuel') {
+        $stmt = $pdo->prepare("
+            SELECT fpo.*,
+                   fpo.volume        AS quantity,
+                   fpo.notes         AS sr_manager_notes,
+                   ft.name           AS product_name,
+                   st.name           AS station_name,
+                   st.location       AS station_location,
+                   st.address        AS station_address,
+                   st.vat_tin        AS station_vat_tin,
+                   sup.name          AS supplier_name,
+                   u.name            AS created_by_name,
+                   NULL              AS approved_by_name,
+                   NULL              AS staff_id,
+                   NULL              AS item_sku,
+                   NULL              AS sr_requested_qty,
+                   NULL              AS sr_approved_qty,
+                   u.name            AS staff_name,
+                   NULL              AS manager_name,
+                   NULL              AS request_id,
+                   NULL              AS approved_at
+            FROM fuel_purchase_orders fpo
+            LEFT JOIN fuel_types ft   ON fpo.fuel_type_id = ft.id
+            LEFT JOIN stations st     ON fpo.station_id   = st.id
+            LEFT JOIN suppliers sup   ON fpo.supplier_id  = sup.id
+            LEFT JOIN users u         ON fpo.created_by   = u.id
+            WHERE fpo.id = ?
+            LIMIT 1
+        ");
+    } else {
+        $stmt = $pdo->prepare("
+            SELECT po.*,
+                   st.name       AS station_name,
+                   st.location   AS station_location,
+                   st.address    AS station_address,
+                   st.vat_tin    AS station_vat_tin,
+                   sup.name      AS supplier_name,
+                   u.name        AS created_by_name,
+                   ab.name       AS approved_by_name,
+                   sr.staff_id,
+                   sr.item_sku,
+                   sr.requested_quantity AS sr_requested_qty,
+                   sr.approved_quantity  AS sr_approved_qty,
+                   sr.manager_notes      AS sr_manager_notes,
+                   staff_u.name          AS staff_name,
+                   mgr_u.name            AS manager_name
+            FROM purchase_orders po
+            LEFT JOIN stations st     ON po.station_id  = st.id
+            LEFT JOIN suppliers sup   ON po.supplier_id = sup.id
+            LEFT JOIN users u         ON po.created_by  = u.id
+            LEFT JOIN users ab        ON po.approved_by = ab.id
+            LEFT JOIN stock_requests sr   ON po.request_id = sr.id
+            LEFT JOIN users staff_u   ON sr.staff_id    = staff_u.id
+            LEFT JOIN users mgr_u     ON sr.manager_id  = mgr_u.id
+            WHERE po.id = ?
+            LIMIT 1
+        ");
+    }
     $stmt->execute([$po_id]);
     $po = $stmt->fetch(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
@@ -80,16 +112,21 @@ if (!in_array($po['status'], $printable_statuses)) {
 
 // ── Log print action ──────────────────────────────────────────────────────
 try {
+    $po_label = $po_type === 'fuel' ? 'Fuel PO' : 'Purchase Order';
     log_activity(
         $pdo,
         $me['id'],
         'Print Purchase Order',
-        "PO {$po['po_number']} printed by {$me['name']} (Admin). Product: {$po['product_name']} | Qty: {$po['quantity']} | Total: ₱" . number_format($po['total_amount'], 2) . " | Station: {$po['station_name']}"
+        "{$po_label} {$po['po_number']} printed by {$me['name']} (Admin). Product: {$po['product_name']} | Qty: {$po['quantity']} | Total: ₱" . number_format($po['total_amount'], 2) . " | Station: {$po['station_name']}"
     );
 } catch (Exception $e) { /* fail silently */ }
 
 // ── Build display values ──────────────────────────────────────────────────
-$finalized_dt   = $po['approved_at'] ?: $po['created_at'];
+$is_fuel        = ($po_type === 'fuel');
+$qty_unit       = $is_fuel ? 'L' : 'pcs';
+$finalized_dt   = (!empty($po['approved_at']) ? $po['approved_at'] : null)
+                  ?? (!empty($po['updated_at']) ? $po['updated_at'] : null)
+                  ?? $po['created_at'];
 $finalized_date = date('F d, Y', strtotime($finalized_dt));
 $finalized_time = date('g:i A', strtotime($finalized_dt));
 $printed_date   = date('F d, Y g:i A');
@@ -131,7 +168,7 @@ $audit_url = 'activity_logs.php?module=' . urlencode('Purchase Order') . '&start
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Purchase Order — <?php echo $po_number; ?></title>
+<title>Purchase Order — <?php echo $po_number; ?><?php echo $is_fuel ? ' (Fuel)' : ''; ?></title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;color:#1a1a2e;background:#eef1f6}
@@ -288,7 +325,7 @@ body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:12px;line-heigh
 <div class="screen-toolbar">
     <div class="toolbar-left">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        Purchase Order &mdash; <?php echo $po_number; ?>
+        <?php echo $is_fuel ? 'Fuel ' : ''; ?>Purchase Order &mdash; <?php echo $po_number; ?>
         <span class="status-pill" style="background:<?php echo $status_bg; ?>;color:<?php echo $status_color; ?>;">
             <?php echo $status_label; ?>
         </span>
@@ -413,6 +450,40 @@ body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:12px;line-heigh
         <div class="section-title">Approval Chain / Audit Trail</div>
         <div class="audit-chain">
 
+            <?php if ($is_fuel): ?>
+            <!-- Fuel PO: Manager → Admin → Supplier -->
+            <div class="audit-step">
+                <div class="step-name">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/><polyline points="16 11 18 13 22 9"/></svg>
+                    <?php echo $manager_name !== '—' ? $manager_name : $staff_name; ?>
+                </div>
+                <div class="step-role">Manager &mdash; Generated Fuel Purchase Request</div>
+            </div>
+
+            <span class="audit-arrow">&#8594;</span>
+
+            <!-- Step 2: Admin -->
+            <div class="audit-step step-admin">
+                <div class="step-name">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 12h6M9 15h4"/></svg>
+                    <?php echo $admin_name; ?>
+                </div>
+                <div class="step-role">Admin &mdash; Finalized as Official Purchase Order</div>
+            </div>
+
+            <span class="audit-arrow">&#8594;</span>
+
+            <!-- Step 3: Supplier -->
+            <div class="audit-step step-supplier">
+                <div class="step-name">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+                    <?php echo $supplier_name; ?>
+                </div>
+                <div class="step-role">Supplier &mdash; Receives &amp; Arranges Fuel Delivery</div>
+            </div>
+
+            <?php else: ?>
+            <!-- Merch PO: Staff → Manager → Admin → Supplier -->
             <!-- Step 1: Staff -->
             <div class="audit-step">
                 <div class="step-name">
@@ -454,6 +525,7 @@ body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:12px;line-heigh
                 </div>
                 <div class="step-role">Supplier &mdash; Receives &amp; Arranges Delivery</div>
             </div>
+            <?php endif; ?>
 
         </div>
     </div><!-- /audit trail -->
@@ -466,7 +538,7 @@ body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:12px;line-heigh
                 <th style="width:5%">#</th>
                 <th style="width:36%">Product / Item Description</th>
                 <th style="width:16%">SKU / Code</th>
-                <th class="r" style="width:13%">Quantity</th>
+                <th class="r" style="width:13%"><?php echo $is_fuel ? 'Volume (L)' : 'Quantity'; ?></th>
                 <th class="r" style="width:15%">Unit Price</th>
                 <th class="r" style="width:15%">Total Amount</th>
             </tr>
@@ -483,7 +555,7 @@ body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:12px;line-heigh
                 <td style="color:#64748b;">
                     <?php echo $sku ? '<span class="sku-code">' . $sku . '</span>' : '<span style="color:#cbd5e1;">—</span>'; ?>
                 </td>
-                <td class="r"><strong><?php echo number_format($qty, 0); ?></strong></td>
+                <td class="r"><strong><?php echo $is_fuel ? number_format($qty, 2) . ' L' : number_format($qty, 0); ?></strong></td>
                 <td class="r">&#8369;<?php echo number_format($unit_price, 2); ?></td>
                 <td class="r"><strong>&#8369;<?php echo number_format($total_amount, 2); ?></strong></td>
             </tr>
@@ -511,6 +583,31 @@ body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:12px;line-heigh
     <!-- ── Signature Lines ── -->
     <div class="po-bottom">
     <div class="signatures">
+        <?php if ($is_fuel): ?>
+        <!-- Fuel PO: Manager + Admin + Supplier Rep -->
+        <div class="sig-box">
+            <div class="sig-line">
+                <div class="sig-name"><?php echo $manager_name !== '—' ? $manager_name : $staff_name; ?></div>
+                <div class="sig-role">Requested By (Manager)</div>
+                <div class="sig-date">Date: _______________</div>
+            </div>
+        </div>
+        <div class="sig-box">
+            <div class="sig-line">
+                <div class="sig-name"><?php echo $admin_name; ?></div>
+                <div class="sig-role">Finalized By (Admin)</div>
+                <div class="sig-date">Date: <?php echo $finalized_date; ?></div>
+            </div>
+        </div>
+        <div class="sig-box">
+            <div class="sig-line">
+                <div class="sig-name">________________________</div>
+                <div class="sig-role">Received By (Supplier Rep)</div>
+                <div class="sig-date">Date: _______________</div>
+            </div>
+        </div>
+        <?php else: ?>
+        <!-- Merch PO: Staff + Manager + Admin -->
         <div class="sig-box">
             <div class="sig-line">
                 <div class="sig-name"><?php echo $staff_name; ?></div>
@@ -532,6 +629,7 @@ body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:12px;line-heigh
                 <div class="sig-date">Date: <?php echo $finalized_date; ?></div>
             </div>
         </div>
+        <?php endif; ?>
     </div>
 
     <!-- ── Document Footer ── -->

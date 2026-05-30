@@ -6,8 +6,8 @@ require_once __DIR__ . '/../public/db_connect.php';
 require_login();
 
 $me         = current_user();
-$rk         = strtolower(trim($me['role'] ?? ''));
-if (!in_array($rk, ['staff','manager','admin'])) { header('Location: dashboard.php'); exit; }
+$rk         = role_key($me['role'] ?? '');
+if (!in_array($rk, ['staff','manager','admin','superadmin'])) { header('Location: dashboard.php'); exit; }
 $station_id = user_station_id();
 if (!$station_id) { die('Error: Not assigned to a station.'); }
 $user_id    = $me['id'];
@@ -192,7 +192,7 @@ try {
 
     // Auto-sync Deliveries
     try {
-        $dl = $pdo->prepare("SELECT d.id,d.encoded_by,d.admin_id,DATE(d.delivery_date) AS event_date,u.name AS staff_name,mu.name AS manager_name,d.status, d.supplier, d.product, d.quantity, d.unit FROM deliveries_oversight d JOIN users u ON d.encoded_by=u.id LEFT JOIN users mu ON d.admin_id=mu.id WHERE d.station_id=? AND DATE(d.delivery_date) BETWEEN ? AND ?");
+        $dl = $pdo->prepare("SELECT d.id,d.encoded_by,d.manager_id,DATE(d.delivery_date) AS event_date,u.name AS staff_name,mu.name AS manager_name,d.status, d.supplier, d.product, d.quantity, d.unit FROM deliveries_oversight d JOIN users u ON d.encoded_by=u.id LEFT JOIN users mu ON d.manager_id=mu.id WHERE d.station_id=? AND DATE(d.delivery_date) BETWEEN ? AND ?");
         $dl->execute([$station_id,$week_dates[0],$week_dates[6]]);
         foreach ($dl->fetchAll(PDO::FETCH_ASSOC) as $r) {
             $st = strtolower($r['status']??'pending');
@@ -205,7 +205,7 @@ try {
                 'icon_class'=>'fas fa-box',
                 'staff_encoder_id'=>$r['encoded_by'],
                 'staff_encoder_name'=>$r['staff_name'],
-                'manager_assigned_id'=>$r['admin_id'],
+                'manager_assigned_id'=>$r['manager_id'],
                 'manager_assigned_name'=>$r['manager_name']??'--',
                 'event_date'=>$r['event_date'],
                 'start_time'=>'00:00',

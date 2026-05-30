@@ -42,9 +42,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['export'])) {
     };
 
     // ── Approve Merchandise Transaction ──────────────────────────────────────
+    // Admin oversight only acts on records already validated by Manager.
+    // Raw 'Pending' staff encodings must go through Manager first.
     if ($post_action === 'approve_transaction') {
         $row_id = (int)($_POST['transaction_id'] ?? 0);
         try {
+            // Guard: ensure this record has already passed Manager validation
+            $chk = $pdo->prepare("SELECT validation_status FROM merchandise_transactions WHERE id = ? AND station_id = ? LIMIT 1");
+            $chk->execute([$row_id, $station_id]);
+            $cur_status = strtolower(trim($chk->fetchColumn() ?: ''));
+            if (in_array($cur_status, ['pending', ''])) {
+                $_SESSION['error'] = 'Transaction #' . $row_id . ' is still pending Manager validation. Admin cannot act on unvalidated staff encodings.';
+                header('Location: admin_transactions_oversight.php?' . http_build_query(array_filter(['tab'=>$_POST['_tab']??'transactions','start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','status'=>$_POST['_status']??'','type'=>$_POST['_type']??'','search'=>$_POST['_search']??''])));
+                exit;
+            }
             $set_parts = ["validation_status = 'Approved'"];
             $set_vals  = [];
             if ($has_mt('validated_by')) { $set_parts[] = "validated_by = ?"; $set_vals[] = $me['id']; }
@@ -178,11 +189,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['export'])) {
     }
 
     // ── Approve Fuel Transaction ──────────────────────────────────────────────
+    // Admin oversight only acts on fuel transactions already verified by Manager.
+    // Raw 'Pending' staff readings must go through Manager first.
     if ($post_action === 'approve_fuel') {
         $ft_id = (int)($_POST['ft_id'] ?? 0);
         try {
             $pdo->exec("ALTER TABLE fuel_transactions ADD COLUMN IF NOT EXISTS validated_by INT");
             $pdo->exec("ALTER TABLE fuel_transactions ADD COLUMN IF NOT EXISTS validated_at DATETIME");
+            // Guard: ensure this fuel transaction has already been Manager-verified
+            $chk = $pdo->prepare("SELECT status FROM fuel_transactions WHERE id = ? AND station_id = ? LIMIT 1");
+            $chk->execute([$ft_id, $station_id]);
+            $cur_ft_status = strtolower(trim($chk->fetchColumn() ?: ''));
+            if (in_array($cur_ft_status, ['pending', 'pending validation', ''])) {
+                $_SESSION['error'] = 'Fuel transaction #' . $ft_id . ' is still pending Manager verification. Admin cannot act on unverified staff readings.';
+                header('Location: admin_transactions_oversight.php?' . http_build_query(array_filter(['tab'=>'fuel','start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','status'=>$_POST['_status']??'','search'=>$_POST['_search']??''])));
+                exit;
+            }
             $stmt = $pdo->prepare("UPDATE fuel_transactions SET status='Verified', validated_by=?, validated_at=NOW() WHERE id=? AND station_id=?");
             $stmt->execute([$me['id'], $ft_id, $station_id]);
             if ($stmt->rowCount() > 0) {
@@ -293,9 +315,11 @@ if ($active_tab === 'transactions') {
     if ($status_f !== '') {
         $mt_where .= " AND LOWER(TRIM(COALESCE(mt.validation_status,''))) = LOWER(?)";
         $mt_params[] = $status_f;
+    } else {
+        // Admin Oversight: only show manager-validated records (Approved/Adjusted/Rejected).
+        // Raw 'Pending' staff encodings belong to the Manager validation layer, not Admin oversight.
+        $mt_where .= " AND COALESCE(mt.validation_status,'Pending') NOT IN ('Pending')";
     }
-
-    $mt_rows = [];
     if ($type_f === '' || $type_f === 'merchandise' || $type_f === 'job_order') {
         try {
             // Detect if job_order_service column exists for combined detection
@@ -365,6 +389,10 @@ if ($active_tab === 'transactions') {
     if ($status_f !== '') {
         $jo_where .= " AND LOWER(TRIM(COALESCE({$jo_status_col},''))) = LOWER(?)";
         $jo_params[] = $status_f;
+    } else {
+        // Admin Oversight: only show manager-validated job orders (Approved/Adjusted/Rejected/In Progress/Completed).
+        // 'Pending Validation' records belong to the Manager validation layer.
+        $jo_where .= " AND COALESCE(NULLIF(TRIM({$jo_status_col}),''),'Pending Validation') NOT IN ('Pending Validation','Pending')";
     }
 
     $jo_rows = [];
@@ -422,6 +450,9 @@ if ($active_tab === 'transactions') {
     if ($status_f !== '') {
         $ft_where .= " AND LOWER(TRIM(COALESCE(ft.status,''))) = LOWER(?)";
         $ft_params[] = $status_f;
+    } else {
+        // Admin Oversight: only show manager-verified fuel transactions, not raw Pending staff encodings.
+        $ft_where .= " AND COALESCE(ft.status,'Pending') NOT IN ('Pending')";
     }
 
     try {
@@ -569,9 +600,10 @@ include __DIR__ . '/../partials/header.php';
             <select name="status" class="ato-inp ato-select">
                 <option value="">All Statuses</option>
                 <?php
+                // Admin sees only manager-processed records — no raw 'Pending' staff encodings
                 $status_opts = $active_tab === 'fuel'
-                    ? ['Pending','Verified','Rejected']
-                    : ['Pending','Approved','Rejected','Adjusted','In Progress','Completed'];
+                    ? ['Verified','Rejected','Returned']
+                    : ['Approved','Rejected','Adjusted','In Progress','Completed'];
                 foreach ($status_opts as $opt):
                 ?>
                 <option value="<?php echo strtolower($opt); ?>" <?php echo strtolower($status_f) === strtolower($opt) ? 'selected' : ''; ?>>

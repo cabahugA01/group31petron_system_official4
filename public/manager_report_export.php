@@ -5,7 +5,7 @@ require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
 require_login();
 $me = current_user();
-$role = strtolower(trim($me['role'] ?? ''));
+$role = role_key($me['role'] ?? '');
 $station_id = user_station_id();
 if (!in_array($role, ['manager','admin','superadmin'])) { header('Location: dashboard.php'); exit; }
 if (!$station_id) die('No station assigned.');

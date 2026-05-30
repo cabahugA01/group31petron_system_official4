@@ -9,7 +9,8 @@ $master_menu = [
     ['id'=>'manager_dashboard','label'=>'Dashboard','ico'=>'fas fa-gauge-high','href'=>'manager_dashboard.php','permissions'=>['approve_transactions','manage_job_orders'],'station_specific'=>true],
     
     // Transactions & POS - Managers and Staff only (Admin/Owner excluded)
-    ['id'=>'transactions','label'=>'Transactions','ico'=>'fas fa-shopping-cart','href'=>'staff_transactions_hub.php?section=merchandise','permissions'=>['create_transactions', 'view_transactions', 'approve_transactions'],'station_specific'=>true],
+    // Staff → staff_transactions_hub.php | Manager → transactions.php (validation page)
+    ['id'=>'transactions','label'=>'Transactions','ico'=>'fas fa-shopping-cart','href'=>'transactions.php','permissions'=>['create_transactions', 'view_transactions', 'approve_transactions'],'station_specific'=>true],
 
         
     // Job Orders - Managers handle operations, Staff create
@@ -189,9 +190,9 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 'permissions' => ['view_all_reports', 'view_dashboard'],
                 'station_specific' => true,
                 'sub_items' => [
-                    ['id' => 'ato_overview',  'label' => 'Overview & Actions',    'href' => 'admin_transactions_oversight.php',          'permissions' => ['view_all_reports']],
-                    ['id' => 'ato_manage',    'label' => 'Manage Transactions',   'href' => 'transactions.php',                          'permissions' => ['view_all_reports']],
-                    ['id' => 'ato_fuel',      'label' => 'Fuel Transactions',     'href' => 'admin_transactions_oversight.php?tab=fuel',  'permissions' => ['view_all_reports']],
+                    ['id' => 'ato_overview',  'label' => 'Overview & Actions',    'href' => 'admin_transactions_oversight.php',               'permissions' => ['view_all_reports']],
+                    ['id' => 'ato_merch',     'label' => 'Merchandise / Job Orders','href' => 'admin_transactions_oversight.php?tab=transactions','permissions' => ['view_all_reports']],
+                    ['id' => 'ato_fuel',      'label' => 'Fuel Transactions',     'href' => 'admin_transactions_oversight.php?tab=fuel',       'permissions' => ['view_all_reports']],
                 ],
             ],
             // 5. Product & Pricing Management

@@ -6,17 +6,17 @@ require_once __DIR__ . '/../backend/validate_foreign_keys_helper.php';
 require_login();
 
 $me = current_user();
-$userRole = strtolower(trim($me['role'] ?? ''));
+$userRole = role_key($me['role'] ?? '');
 
 // Redirect staff to new fuel management system
 if ($userRole === 'staff') {
     header('Location: fuel_readings_encoding.php');
     exit;
 }
-$isAdmin = in_array($userRole, ['admin', 'superadmin']);
+$isAdmin   = in_array($userRole, ['admin', 'superadmin']);
 $isManager = in_array($userRole, ['manager', 'admin', 'superadmin']);
-$isStaff = in_array($userRole, ['manager', 'admin', 'superadmin']); // Staff removed - use new fuel management system
-$isSuper = $userRole === 'superadmin';
+$isStaff   = in_array($userRole, ['manager', 'admin', 'superadmin']);
+$isSuper   = $userRole === 'superadmin';
 $station_id = $isSuper ? ($_GET['station'] ?? '') : user_station_id();
 $msg = '';
 

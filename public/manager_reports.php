@@ -549,19 +549,19 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
                 // Delivery validations
                 try {
                     $s3 = $pdo->prepare("
-                        SELECT d.admin_action_at AS date_time, COALESCE(u.name,'Unknown') AS manager_name,
+                        SELECT d.manager_action_at AS date_time, COALESCE(u.name,'Unknown') AS manager_name,
                             COALESCE(u.role,'manager') AS manager_role, d.status AS action,
                             'Delivery' AS module,
                             COALESCE(d.delivery_ref,CONCAT('DEL-',d.id)) AS reference_id,
                             CONCAT(COALESCE(d.product,d.delivery_type,'Delivery'),' from ',COALESCE(d.supplier,'Unknown')) AS details,
-                            COALESCE(d.admin_notes,d.remarks,'') AS reason,
+                            COALESCE(d.manager_notes,d.remarks,'') AS reason,
                             COALESCE(enc.name,'Unknown') AS encoded_by
                         FROM deliveries_oversight d
-                        LEFT JOIN users u ON u.id=d.admin_id
+                        LEFT JOIN users u ON u.id=d.manager_id
                         LEFT JOIN users enc ON enc.id=d.encoded_by
-                        WHERE d.station_id=? AND d.admin_id IS NOT NULL AND d.admin_action_at IS NOT NULL
-                          AND DATE(d.admin_action_at) BETWEEN ? AND ?
-                        ORDER BY d.admin_action_at DESC");
+                        WHERE d.station_id=? AND d.manager_id IS NOT NULL AND d.manager_action_at IS NOT NULL
+                          AND DATE(d.manager_action_at) BETWEEN ? AND ?
+                        ORDER BY d.manager_action_at DESC");
                     $s3->execute([$station_id,$date_start,$date_end]);
                     $val_exp = array_merge($val_exp, $s3->fetchAll(PDO::FETCH_ASSOC) ?: []);
                 } catch(Exception $e3){}

@@ -6,7 +6,7 @@ require_once __DIR__ . '/../public/db_connect.php';
 require_login();
 
 $me = current_user();
-$user_role = strtolower(trim($me['role'] ?? ''));
+$user_role = role_key($me['role'] ?? '');
 if (!in_array($user_role, ['manager', 'admin', 'superadmin'])) {
     header('Location: ../index.php');
     exit();
@@ -211,7 +211,7 @@ try {
                mu.name AS manager_assigned_name
         FROM deliveries_oversight d
         JOIN users u ON d.encoded_by = u.id AND u.role IN ('staff','cashier','pump_attendant')
-        LEFT JOIN users mu ON d.admin_id = mu.id
+        LEFT JOIN users mu ON d.manager_id = mu.id
         WHERE d.station_id = ? AND DATE(d.delivery_date) BETWEEN ? AND ?
         ORDER BY d.delivery_date DESC");
     $stmt->execute([$station_id, $week_start_str, $week_end_str]);

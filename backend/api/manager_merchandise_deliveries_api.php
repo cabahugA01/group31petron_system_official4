@@ -66,7 +66,17 @@ try {
 } catch (Exception $e) {}
 
 // Add any missing columns from older installs
-foreach (['remarks TEXT DEFAULT NULL', 'dr_number VARCHAR(100) DEFAULT NULL'] as $col_def) {
+foreach ([
+    'remarks TEXT DEFAULT NULL',
+    'dr_number VARCHAR(100) DEFAULT NULL',
+    'manager_id INT DEFAULT NULL',
+    'manager_action_at DATETIME DEFAULT NULL',
+    'manager_notes TEXT DEFAULT NULL',
+    'discrepancy_type VARCHAR(50) DEFAULT NULL',
+    'resolution_action VARCHAR(50) DEFAULT NULL',
+    'resolved_at DATETIME DEFAULT NULL',
+    'resolved_by INT DEFAULT NULL',
+] as $col_def) {
     try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN {$col_def}"); } catch (Exception $e) {}
 }
 
@@ -168,15 +178,15 @@ try {
                     do2.admin_notes     AS manager_reason,
                     do2.remarks,
                     do2.encoded_by,
-                    do2.admin_id        AS manager_id,
-                    do2.admin_action_at AS manager_action_at,
+                    do2.manager_id,
+                    do2.manager_action_at,
                     do2.created_at,
                     u_enc.name          AS encoded_by_name,
                     u_mgr.name          AS manager_name,
                     '' AS category
                 FROM deliveries_oversight do2
-                LEFT JOIN users u_enc ON do2.encoded_by = u_enc.id
-                LEFT JOIN users u_mgr ON do2.admin_id   = u_mgr.id
+                LEFT JOIN users u_enc ON do2.encoded_by  = u_enc.id
+                LEFT JOIN users u_mgr ON do2.manager_id  = u_mgr.id
                 {$where}
                 ORDER BY
                     FIELD(do2.status,
@@ -233,15 +243,15 @@ try {
                     do2.supplier        AS supplier_name,
                     do2.product         AS product_name,
                     do2.quantity        AS quantity_delivered,
-                    do2.admin_notes     AS manager_reason,
-                    do2.admin_id        AS manager_id,
-                    do2.admin_action_at AS manager_action_at,
+                    do2.manager_notes   AS manager_reason,
+                    do2.manager_id,
+                    do2.manager_action_at,
                     u_enc.name          AS encoded_by_name,
                     u_mgr.name          AS manager_name,
                     '' AS category
                 FROM deliveries_oversight do2
-                LEFT JOIN users u_enc ON do2.encoded_by = u_enc.id
-                LEFT JOIN users u_mgr ON do2.admin_id   = u_mgr.id
+                LEFT JOIN users u_enc ON do2.encoded_by  = u_enc.id
+                LEFT JOIN users u_mgr ON do2.manager_id  = u_mgr.id
                 WHERE do2.id = ? AND do2.station_id = ?
             ");
             $stmt->execute([$id, $station_id]);
@@ -283,13 +293,14 @@ try {
                 break;
             }
 
-            // Update status to Confirmed
+            // Update status to Pending Admin Oversight (Manager approved → now awaits Admin final oversight)
+            // Use manager_id column (not admin_id) to correctly attribute the Manager's action.
             $pdo->prepare("
                 UPDATE deliveries_oversight
-                SET status = 'Confirmed',
-                    admin_id = ?,
-                    admin_action_at = NOW(),
-                    admin_notes = ?,
+                SET status = 'Pending Admin Oversight',
+                    manager_id = ?,
+                    manager_action_at = NOW(),
+                    manager_notes = ?,
                     updated_at = NOW()
                 WHERE id = ?
             ")->execute([$me['id'], $reason ?: null, $id]);
@@ -412,18 +423,18 @@ try {
             $pdo->commit();
 
             try_log_merch($pdo, $me['id'], 'Approve Delivery',
-                "Approved delivery #{$id} ref:{$del['delivery_ref']} ({$del['product']}, qty:{$del['quantity']}) — inventory updated");
+                "Manager approved delivery #{$id} ref:{$del['delivery_ref']} ({$del['product']}, qty:{$del['quantity']}) — forwarded to Admin oversight");
 
             // ── Audit log ──
             try {
                 $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
                 $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
-                $detail = "Delivery approved | Ref: {$del['delivery_ref']} | Product: {$del['product']} | Qty: {$del['quantity']} | Supplier: {$del['supplier']}" . ($reason ? " | Notes: {$reason}" : '');
+                $detail = "Manager approved delivery | Ref: {$del['delivery_ref']} | Product: {$del['product']} | Qty: {$del['quantity']} | Supplier: {$del['supplier']} | Status → Pending Admin Oversight" . ($reason ? " | Notes: {$reason}" : '');
                 $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'transaction', 'Approve', ?, 'deliveries', ?, 'Success', ?, ?, NOW())")
                     ->execute([$me['id'], $detail, $id, $ip, $ua]);
             } catch (Exception $e) {}
 
-            echo json_encode(['success' => true, 'message' => 'Delivery approved and inventory updated.']);
+            echo json_encode(['success' => true, 'message' => 'Delivery approved and forwarded to Admin for final oversight.']);
             break;
 
         // ── POST: reject delivery → return to staff for correction ───────────
@@ -451,9 +462,9 @@ try {
             $pdo->prepare("
                 UPDATE deliveries_oversight
                 SET status = 'Discrepancy',
-                    admin_id = ?,
-                    admin_action_at = NOW(),
-                    admin_notes = ?,
+                    manager_id = ?,
+                    manager_action_at = NOW(),
+                    manager_notes = ?,
                     updated_at = NOW()
                 WHERE id = ?
             ")->execute([$me['id'], $reason, $id]);
@@ -502,9 +513,9 @@ try {
             $pdo->prepare("
                 UPDATE deliveries_oversight
                 SET status = 'Pending Resolution',
-                    admin_id = ?,
-                    admin_action_at = NOW(),
-                    admin_notes = ?,
+                    manager_id = ?,
+                    manager_action_at = NOW(),
+                    manager_notes = ?,
                     discrepancy_type = ?,
                     updated_at = NOW()
                 WHERE id = ?
@@ -649,7 +660,7 @@ try {
                     resolution_action = ?,
                     resolved_at = NOW(),
                     resolved_by = ?,
-                    admin_notes = CONCAT(COALESCE(admin_notes,''), '\n[Resolution: ', ?, ']'),
+                    manager_notes = CONCAT(COALESCE(manager_notes,''), '\n[Resolution: ', ?, ']'),
                     quantity = ?,
                     updated_at = NOW()
                 WHERE id = ?
@@ -712,7 +723,7 @@ try {
             $pdo->prepare("
                 UPDATE deliveries_oversight
                 SET status = 'Confirmed',
-                    admin_notes = CONCAT(COALESCE(admin_notes,''), '\n[Replacement received: ', ?, ']'),
+                    manager_notes = CONCAT(COALESCE(manager_notes,''), '\n[Replacement received: ', ?, ']'),
                     updated_at = NOW()
                 WHERE id = ?
             ")->execute([$note ?: 'Replacement received from supplier', $id]);
@@ -744,7 +755,7 @@ try {
 
             if (!$del) { echo json_encode(['success' => false, 'message' => 'Delivery not found']); break; }
 
-            $fields = ['quantity = ?', 'admin_id = ?', 'admin_action_at = NOW()', 'admin_notes = ?', 'updated_at = NOW()'];
+            $fields = ['quantity = ?', 'manager_id = ?', 'manager_action_at = NOW()', 'manager_notes = ?', 'updated_at = NOW()'];
             $vals   = [$qty, $me['id'], $reason];
 
             if ($supplier !== '') { $fields[] = 'supplier = ?'; $vals[] = $supplier; }
@@ -792,11 +803,11 @@ try {
                     d.remarks,
                     u.username as encoded_by_name,
                     m.username as manager_name,
-                    d.admin_action_at,
-                    d.admin_notes
+                    d.manager_action_at,
+                    d.manager_notes
                 FROM deliveries_oversight d
-                LEFT JOIN users u ON d.encoded_by = u.id
-                LEFT JOIN users m ON d.admin_id = m.id
+                LEFT JOIN users u ON d.encoded_by  = u.id
+                LEFT JOIN users m ON d.manager_id  = m.id
                 WHERE " . implode(' AND ', $where) . "
                 ORDER BY d.delivery_date DESC, d.id DESC
             ";
@@ -871,11 +882,11 @@ try {
                     d.remarks,
                     u.username as encoded_by_name,
                     m.username as manager_name,
-                    d.admin_action_at,
-                    d.admin_notes
+                    d.manager_action_at,
+                    d.manager_notes
                 FROM deliveries_oversight d
-                LEFT JOIN users u ON d.encoded_by = u.id
-                LEFT JOIN users m ON d.admin_id = m.id
+                LEFT JOIN users u ON d.encoded_by  = u.id
+                LEFT JOIN users m ON d.manager_id  = m.id
                 WHERE " . implode(' AND ', $where) . "
                 ORDER BY d.delivery_date DESC, d.id DESC
             ";

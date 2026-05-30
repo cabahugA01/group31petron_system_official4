@@ -45,6 +45,8 @@ $stats = [
 
 try {
     // Overall transaction statistics
+    // For Admin: 'Pending' means awaiting Manager validation (informational only — Admin doesn't act on these)
+    // For Manager: 'Pending' means awaiting their validation action
     $stmt = $pdo->prepare("
         SELECT 
             COUNT(*) as total_transactions,

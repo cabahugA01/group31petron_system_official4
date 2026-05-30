@@ -52,7 +52,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
                     dr_number       VARCHAR(100) DEFAULT NULL,
                     encoded_by      INT          DEFAULT NULL,
                     station_id      INT          NOT NULL,
-                    status          ENUM('Pending Manager Confirmation','Confirmed','Discrepancy','Closed','Pending Validation','Validated','Flagged') NOT NULL DEFAULT 'Pending Manager Confirmation',
+                    status          VARCHAR(60)  NOT NULL DEFAULT 'Pending Manager Approval',
+                    manager_id      INT          DEFAULT NULL,
+                    manager_action_at DATETIME   DEFAULT NULL,
+                    manager_notes   TEXT         DEFAULT NULL,
                     admin_id        INT          DEFAULT NULL,
                     admin_action_at DATETIME     DEFAULT NULL,
                     admin_notes     TEXT         DEFAULT NULL,
@@ -65,6 +68,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             ");
             try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN remarks TEXT DEFAULT NULL"); } catch (Exception $ae) {}
+            try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN manager_id INT DEFAULT NULL"); } catch (Exception $ae) {}
+            try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN manager_action_at DATETIME DEFAULT NULL"); } catch (Exception $ae) {}
+            try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN manager_notes TEXT DEFAULT NULL"); } catch (Exception $ae) {}
 
             /* INSERT delivery record */
             $pdo->prepare("

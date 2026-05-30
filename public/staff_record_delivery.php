@@ -8,7 +8,7 @@ $me         = current_user();
 $role       = role_key($me['role'] ?? '');
 $station_id = user_station_id();
 
-if (!in_array($role, ['staff', 'manager', 'admin', 'superadmin'])) {
+if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
     header('Location: dashboard.php');
     exit;
 }

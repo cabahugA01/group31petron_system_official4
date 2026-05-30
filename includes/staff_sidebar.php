@@ -10,14 +10,20 @@ function getStaffSidebar($current_page = 'dashboard') {
         'transactions' => [
             'icon' => 'fas fa-shopping-cart',
             'title' => 'Transactions',
-            'url' => 'staff_transactions.php',
+            'url' => 'staff_transactions_hub.php',
             'description' => 'Fuel & Merchandise transactions with auto-pull and auto-compute'
         ],
         'job_orders' => [
             'icon' => 'fas fa-wrench',
             'title' => 'Job Orders',
-            'url' => 'joborder.php',
+            'url' => 'staff_transactions_hub.php?section=merchandise&active_tab=encode_jo',
             'description' => 'Encode, track status, link to receivables'
+        ],
+        'purchase_orders' => [
+            'icon' => 'fas fa-file-invoice-dollar',
+            'title' => 'Purchase Orders',
+            'url' => 'purchase_orders.php',
+            'description' => 'Encode purchase orders — sent to Manager for validation'
         ],
                 'fuel_management' => [
             'icon' => 'fas fa-gas-pump',

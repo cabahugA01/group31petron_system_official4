@@ -12,7 +12,7 @@ header('Content-Type: application/json');
 require_login();
 
 $me         = current_user();
-$role       = strtolower(trim($me['role'] ?? 'staff'));
+$role       = role_key($me['role'] ?? '');
 $station_id = user_station_id();
 
 // Allow manager, admin, superadmin

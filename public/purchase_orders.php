@@ -441,12 +441,14 @@ include __DIR__ . '/../partials/header.php';
                             <th>Total</th>
                             <th>Status</th>
                             <th>Date</th>
+                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
                     <?php foreach ($fuel_processed as $po):
                         $st = $po['status'] ?? '';
                         $st_key = strtolower(str_replace([' ', '/'], ['-', '-'], $st));
+                        $is_printable = in_array($st, ['Approved PO', 'Official', 'Approved']);
                     ?>
                     <tr>
                         <td><strong style="color:#002F70;"><?php echo htmlspecialchars($po['po_number']); ?></strong></td>
@@ -458,6 +460,16 @@ include __DIR__ . '/../partials/header.php';
                         <td><span class="sbadge sbadge-<?php echo $st_key; ?>"><?php echo htmlspecialchars($st); ?></span></td>
                         <td style="font-size:12px;color:#6c757d;">
                             <?php echo date('M d, Y', strtotime($po['updated_at'] ?? $po['created_at'])); ?>
+                        </td>
+                        <td>
+                            <?php if ($is_printable): ?>
+                            <a href="print_po_new.php?id=<?php echo (int)$po['id']; ?>&type=fuel&print=1" target="_blank"
+                               style="font-size:12px;color:#002F70;text-decoration:none;display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border:1px solid #c5d3f0;border-radius:5px;background:#f0f4ff;font-weight:600;">
+                                <i class="fas fa-print"></i> Print
+                            </a>
+                            <?php else: ?>
+                            <span style="font-size:11px;color:#adb5bd;">—</span>
+                            <?php endif; ?>
                         </td>
                     </tr>
                     <?php endforeach; ?>

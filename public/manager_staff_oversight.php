@@ -1,9 +1,24 @@
 <?php
-require_once '../partials/header.php';
+// ── Auth & role gate MUST run before any output ──────────────────────────────
+$page_id = 'manager_staff_oversight';
+require_once __DIR__ . '/../backend/lib.php';
+require_once __DIR__ . '/../public/db_connect.php';
 require_login();
-require_permission('manage_staff_oversight');
-$user = current_user();
+
+$user       = current_user();
+$role       = role_key($user['role'] ?? '');
 $station_id = user_station_id();
+
+if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
+    $_SESSION['error'] = 'Access denied. Manager privileges required.';
+    header('Location: dashboard.php');
+    exit;
+}
+
+require_permission('manage_staff_oversight');
+
+// Header included AFTER auth is confirmed
+require_once __DIR__ . '/../partials/header.php';
 ?>
 
 <style>

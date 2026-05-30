@@ -135,11 +135,11 @@ $msg = '';
 
 // Determine role and access level
 // Staff can record, Manager can verify/approve, Admin/Superadmin can finalize and override
-$userRole = strtolower(trim($me['role'] ?? ''));
-$isAdmin = in_array($userRole, ['admin', 'superadmin']);
+$userRole  = role_key($me['role'] ?? '');
+$isAdmin   = in_array($userRole, ['admin', 'superadmin']);
 $isManager = in_array($userRole, ['manager', 'admin', 'superadmin']);
-$isStaff = in_array($userRole, ['staff', 'admin', 'superadmin']);
-$isSuper = $userRole === 'superadmin';
+$isStaff   = in_array($userRole, ['staff', 'manager', 'admin', 'superadmin']);
+$isSuper   = $userRole === 'superadmin';
 
 // Superadmin can view any station
 if ($isSuper && !$station_id) {

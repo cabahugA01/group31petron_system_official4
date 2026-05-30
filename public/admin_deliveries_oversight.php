@@ -161,11 +161,11 @@ table.dt tr:hover td{background:#f8f9fa;}
       <div class="fg">
         <label>Status</label>
         <select id="fStatus">
-          <option value="">All Statuses</option>
-          <option value="expected">Expected</option>
-          <option value="pending">Pending Validation</option>
-          <option value="approved">Approved</option>
-          <option value="flagged">Flagged</option>
+          <option value="">All (Manager-Validated)</option>
+          <option value="approved">Approved / Confirmed</option>
+          <option value="flagged">Flagged / Discrepancy</option>
+          <option value="expected">Expected Delivery</option>
+          <option value="pending">Pending Admin Oversight</option>
         </select>
       </div>
       <div class="fg">
@@ -305,7 +305,10 @@ async function loadDeliveries(){
     '<tr><td colspan="11"><div class="empty-state"><i class="fas fa-spinner fa-spin"></i> Loading…</div></td></tr>';
 
   try{
-    const url=`${API}?action=list&start=${start}&end=${end}&status=${encodeURIComponent(status)}&type=${encodeURIComponent(type)}&supplier=${encodeURIComponent(supplier)}`;
+    // Admin Oversight: when no status filter selected, default to manager-validated records only.
+    // 'pending' filter explicitly requested by admin to review unprocessed items.
+    const effectiveStatus = status === '' ? 'approved' : status;
+    const url=`${API}?action=list&start=${start}&end=${end}&status=${encodeURIComponent(effectiveStatus)}&type=${encodeURIComponent(type)}&supplier=${encodeURIComponent(supplier)}`;
     const res=await fetch(url);
     const data=await res.json();
     if(!data.success){toast(data.message,'error');return;}
@@ -351,6 +354,11 @@ function buildRow(r){
     :'<span class="badge badge-merch">Merchandise</span>';
 
   let actions=`<button class="action-btn btn-view" onclick="showDetail(${r.id})" title="View Details"><i class="fas fa-eye"></i> View</button>`;
+  // Admin final oversight: can validate (finalize) manager-approved records, or flag discrepancies
+  if(displayStatus==='Approved'){
+    actions+=` <button class="action-btn btn-validate" onclick="openValidate(${r.id},'${esc(r.supplier)}','${esc(r.product)}','${fmtQty(r.quantity,r.unit)}','${esc(r.dr_number||'')}')"><i class="fas fa-check"></i> Finalize</button>`;
+    actions+=` <button class="action-btn btn-flag" onclick="openFlag(${r.id},'${esc(r.supplier)}','${esc(r.product)}')"><i class="fas fa-flag"></i> Flag</button>`;
+  }
   if(displayStatus==='Pending Validation'){
     actions+=` <button class="action-btn btn-validate" onclick="openValidate(${r.id},'${esc(r.supplier)}','${esc(r.product)}','${fmtQty(r.quantity,r.unit)}','${esc(r.dr_number||'')}')"><i class="fas fa-check"></i> Validate</button>`;
     actions+=` <button class="action-btn btn-flag" onclick="openFlag(${r.id},'${esc(r.supplier)}','${esc(r.product)}')"><i class="fas fa-flag"></i> Flag</button>`;

@@ -120,15 +120,33 @@ $action = $_GET['action'] ?? 'seed';
 // ══════════════════════════════════════════════════════════════
 if ($action === 'seed') {
 
-    // ── 1. Flagged Deliveries ─────────────────────────────────
+    // ── 1. Deliveries Awaiting Admin Oversight ───────────────
+    // Only notify Admin about deliveries that have PASSED Manager validation.
+    // 'Pending Manager Approval' records are still in the Manager queue — not Admin's concern yet.
+    $pending_admin_del = adm_count($pdo,
+        "SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status='Pending Admin Oversight'",
+        [$station_id]);
+    if ($pending_admin_del > 0) {
+        upsert_notif($pdo, $user_id, [
+            'type'        => 'warning',
+            'title'       => 'Deliveries Awaiting Your Oversight',
+            'message'     => "{$pending_admin_del} delivery(ies) have been validated by Manager and are now awaiting your final oversight.",
+            'event_type'  => 'delivery',
+            'severity'    => 'high',
+            'source_key'  => "admin_del_oversight_{$station_id}",
+            'redirect_url'=> '/public/admin_deliveries_oversight.php',
+        ]);
+    }
+
+    // ── 1b. Flagged Deliveries ────────────────────────────────
     $flagged_del = adm_count($pdo,
-        "SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Flagged','Rejected','Discrepancy')",
+        "SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Flagged','Discrepancy')",
         [$station_id]);
     if ($flagged_del > 0) {
         upsert_notif($pdo, $user_id, [
             'type'        => 'error',
             'title'       => 'Flagged Deliveries',
-            'message'     => "{$flagged_del} delivery(ies) flagged with discrepancies or wrong PO reference. Immediate review required.",
+            'message'     => "{$flagged_del} delivery(ies) flagged with discrepancies. Immediate review required.",
             'event_type'  => 'delivery',
             'severity'    => 'critical',
             'source_key'  => "flagged_del_{$station_id}",
@@ -136,18 +154,20 @@ if ($action === 'seed') {
         ]);
     }
 
-    // ── 2. Pending Transaction Validations ────────────────────
-    $pending_tx = adm_count($pdo,
-        "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND validation_status='Pending'",
+    // ── 2. Transactions Awaiting Admin Oversight ──────────────
+    // Admin only sees manager-validated transactions (Approved/Adjusted/Rejected).
+    // Raw 'Pending' staff encodings belong to Manager — do NOT notify Admin about those.
+    $admin_tx = adm_count($pdo,
+        "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND validation_status IN ('Approved','Adjusted') AND DATE(COALESCE(validated_at,created_at))=CURDATE()",
         [$station_id]);
-    if ($pending_tx > 0) {
+    if ($admin_tx > 0) {
         upsert_notif($pdo, $user_id, [
-            'type'        => 'warning',
-            'title'       => 'Pending Transaction Validations',
-            'message'     => "{$pending_tx} merchandise transaction(s) pending manager validation.",
+            'type'        => 'info',
+            'title'       => 'Manager-Validated Transactions Today',
+            'message'     => "{$admin_tx} transaction(s) validated by Manager today. Available for your oversight review.",
             'event_type'  => 'transaction',
-            'severity'    => 'high',
-            'source_key'  => "pending_tx_{$station_id}",
+            'severity'    => 'low',
+            'source_key'  => "admin_tx_today_{$station_id}_".date('Y-m-d'),
             'redirect_url'=> '/public/admin_transactions_oversight.php',
         ]);
     }
@@ -168,19 +188,20 @@ if ($action === 'seed') {
         ]);
     }
 
-    // ── 4. Pending Job Orders ─────────────────────────────────
-    $pending_jo = adm_count($pdo,
-        "SELECT COUNT(*) FROM job_orders WHERE station_id=? AND LOWER(status)='pending'",
+    // ── 4. Job Orders Awaiting Admin Oversight ────────────────
+    // Admin sees manager-validated JOs (Approved/In Progress/Completed), not raw Pending Validation.
+    $admin_jo = adm_count($pdo,
+        "SELECT COUNT(*) FROM job_orders WHERE station_id=? AND validation_status='Approved' AND DATE(validated_at)=CURDATE()",
         [$station_id]);
-    if ($pending_jo > 0) {
+    if ($admin_jo > 0) {
         upsert_notif($pdo, $user_id, [
-            'type'        => 'warning',
-            'title'       => 'Pending Job Orders',
-            'message'     => "{$pending_jo} job order(s) awaiting scheduling or approval.",
+            'type'        => 'info',
+            'title'       => 'Manager-Approved Job Orders Today',
+            'message'     => "{$admin_jo} job order(s) approved by Manager today. Available for your oversight review.",
             'event_type'  => 'joborder',
-            'severity'    => 'medium',
-            'source_key'  => "pending_jo_{$station_id}",
-            'redirect_url'=> '/public/joborder.php',
+            'severity'    => 'low',
+            'source_key'  => "admin_jo_today_{$station_id}_".date('Y-m-d'),
+            'redirect_url'=> '/public/admin_transactions_oversight.php',
         ]);
     }
 

@@ -35,7 +35,8 @@ if ($action === 'export_excel' || $action === 'export_pdf') {
         if($sf==='expected'){
             $w.=" AND do2.status='Expected Delivery'";
         }elseif($sf==='pending'){
-            $w.=" AND do2.status IN ('Pending Manager Approval','Pending Manager Confirmation','Pending Validation')";
+            // Admin 'pending' = records awaiting Admin oversight (already passed Manager)
+            $w.=" AND do2.status IN ('Pending Admin Oversight','Pending Manager Confirmation','Pending Validation')";
         }elseif($sf==='approved'){
             $w.=" AND do2.status IN ('Confirmed','Validated')";
         }elseif($sf==='flagged'){
@@ -43,8 +44,11 @@ if ($action === 'export_excel' || $action === 'export_pdf') {
         }else{
             $w.=' AND do2.status=?';$p[]=$sf;
         }
+    } else {
+        // Default export: exclude raw Manager-queue records from Admin exports
+        $w.=" AND do2.status NOT IN ('Pending Manager Approval')";
     }
-    $st=$pdo->prepare("SELECT do2.*,u_enc.name AS encoded_by_name,u_adm.name AS admin_name FROM deliveries_oversight do2 LEFT JOIN users u_enc ON do2.encoded_by=u_enc.id LEFT JOIN users u_adm ON do2.admin_id=u_adm.id $w ORDER BY do2.delivery_date DESC");
+    $st=$pdo->prepare("SELECT do2.*,u_enc.name AS encoded_by_name,u_adm.name AS admin_name,u_mgr.name AS manager_name FROM deliveries_oversight do2 LEFT JOIN users u_enc ON do2.encoded_by=u_enc.id LEFT JOIN users u_adm ON do2.admin_id=u_adm.id LEFT JOIN users u_mgr ON do2.manager_id=u_mgr.id $w ORDER BY do2.delivery_date DESC");
     $st->execute($p); $rows=$st->fetchAll(PDO::FETCH_ASSOC);
     if($action==='export_excel'){
         header('Content-Type: application/vnd.ms-excel; charset=utf-8');
@@ -66,11 +70,14 @@ if (!$me || !in_array($role, ['admin','superadmin'])) { http_response_code(403);
 $station_id=(int)user_station_id();
 try{$ct=$pdo->query("SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='deliveries_oversight' AND COLUMN_NAME='status' LIMIT 1")->fetchColumn();if($ct&&stripos($ct,'enum')!==false)$pdo->exec("ALTER TABLE deliveries_oversight MODIFY COLUMN status VARCHAR(60) NOT NULL DEFAULT 'Pending Validation'");}catch(Exception $e){}
 try{$pdo->exec("UPDATE deliveries_oversight SET status='Pending Manager Approval' WHERE status='' OR status IS NULL");}catch(Exception $e){}
-foreach(["ALTER TABLE deliveries_oversight ADD COLUMN remarks TEXT DEFAULT NULL","ALTER TABLE deliveries_oversight ADD COLUMN dr_number VARCHAR(100) DEFAULT NULL","ALTER TABLE deliveries_oversight ADD COLUMN source_ref VARCHAR(100) DEFAULT NULL"] as $sql){try{$pdo->exec($sql);}catch(Exception $e){}}
+foreach(["ALTER TABLE deliveries_oversight ADD COLUMN remarks TEXT DEFAULT NULL","ALTER TABLE deliveries_oversight ADD COLUMN dr_number VARCHAR(100) DEFAULT NULL","ALTER TABLE deliveries_oversight ADD COLUMN source_ref VARCHAR(100) DEFAULT NULL","ALTER TABLE deliveries_oversight ADD COLUMN manager_id INT DEFAULT NULL","ALTER TABLE deliveries_oversight ADD COLUMN manager_action_at DATETIME DEFAULT NULL","ALTER TABLE deliveries_oversight ADD COLUMN manager_notes TEXT DEFAULT NULL"] as $sql){try{$pdo->exec($sql);}catch(Exception $e){}}
 try {
     switch ($action) {
         case 'pending_count':
-            $st=$pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Pending Validation','Pending Manager Approval','Pending Manager Confirmation')");
+            // Admin pending count = records that have passed Manager validation
+            // and are now awaiting Admin oversight. 'Pending Manager Approval' records
+            // are still in the Manager queue — Admin should not see those as their pending items.
+            $st=$pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Pending Admin Oversight','Pending Validation','Pending Manager Confirmation')");
             $st->execute([$station_id]); echo json_encode(['success'=>true,'count'=>(int)$st->fetchColumn()]); break;
         case 'list':
             $sf=trim($_GET['status']??''); $tf=trim($_GET['type']??''); $sup=trim($_GET['supplier']??'');
@@ -80,7 +87,8 @@ try {
                 if($sf==='expected'){
                     $w.=" AND do2.status='Expected Delivery'";
                 }elseif($sf==='pending'){
-                    $w.=" AND do2.status IN ('Pending Manager Approval','Pending Manager Confirmation','Pending Validation')";
+                    // Admin 'pending' = records awaiting Admin oversight (already passed Manager)
+                    $w.=" AND do2.status IN ('Pending Admin Oversight','Pending Manager Confirmation','Pending Validation')";
                 }elseif($sf==='approved'){
                     $w.=" AND do2.status IN ('Confirmed','Validated')";
                 }elseif($sf==='flagged'){
@@ -91,20 +99,25 @@ try {
             }
             if($tf!==''){$w.=' AND do2.delivery_type=?';$p[]=$tf;}
             if($sup!==''){$w.=' AND do2.supplier LIKE ?';$p[]='%'.$sup.'%';}
-            $st=$pdo->prepare("SELECT do2.*,u_enc.name AS encoded_by_name,u_adm.name AS admin_name FROM deliveries_oversight do2 LEFT JOIN users u_enc ON do2.encoded_by=u_enc.id LEFT JOIN users u_adm ON do2.admin_id=u_adm.id {$w} ORDER BY FIELD(do2.status,'Discrepancy','Flagged','Pending Manager Approval','Pending Manager Confirmation','Pending Validation','Expected Delivery','Confirmed','Validated'),do2.delivery_date DESC");
+            // When no status filter is set, Admin sees all records EXCEPT those still in the
+            // Manager queue ('Pending Manager Approval'). Those belong to Manager, not Admin.
+            if($sf===''){
+                $w.=" AND do2.status NOT IN ('Pending Manager Approval')";
+            }
+            $st=$pdo->prepare("SELECT do2.*,u_enc.name AS encoded_by_name,u_adm.name AS admin_name,u_mgr.name AS manager_name FROM deliveries_oversight do2 LEFT JOIN users u_enc ON do2.encoded_by=u_enc.id LEFT JOIN users u_adm ON do2.admin_id=u_adm.id LEFT JOIN users u_mgr ON do2.manager_id=u_mgr.id {$w} ORDER BY FIELD(do2.status,'Discrepancy','Flagged','Pending Admin Oversight','Pending Manager Confirmation','Pending Validation','Expected Delivery','Confirmed','Validated'),do2.delivery_date DESC");
             $st->execute($p); $rows=$st->fetchAll(PDO::FETCH_ASSOC);
             $counts=['Expected'=>0,'Pending Validation'=>0,'Validated'=>0,'Flagged'=>0];
             foreach($rows as $r){
                 $s=$r['status'];
                 if($s==='Expected Delivery')$counts['Expected']++;
-                elseif(in_array($s,['Pending Manager Approval','Pending Manager Confirmation','Pending Validation']))$counts['Pending Validation']++;
+                elseif(in_array($s,['Pending Admin Oversight','Pending Manager Confirmation','Pending Validation']))$counts['Pending Validation']++;
                 elseif(in_array($s,['Confirmed','Validated']))$counts['Validated']++;
                 elseif(in_array($s,['Discrepancy','Flagged']))$counts['Flagged']++;
             }
             echo json_encode(['success'=>true,'data'=>$rows,'counts'=>$counts]); break;
         case 'detail':
             $id=(int)($_GET['id']??0); if(!$id){echo json_encode(['success'=>false,'message'=>'ID required']);break;}
-            $st=$pdo->prepare("SELECT do2.*,u_enc.name AS encoded_by_name,u_adm.name AS admin_name FROM deliveries_oversight do2 LEFT JOIN users u_enc ON do2.encoded_by=u_enc.id LEFT JOIN users u_adm ON do2.admin_id=u_adm.id WHERE do2.id=? AND do2.station_id=?");
+            $st=$pdo->prepare("SELECT do2.*,u_enc.name AS encoded_by_name,u_adm.name AS admin_name,u_mgr.name AS manager_name FROM deliveries_oversight do2 LEFT JOIN users u_enc ON do2.encoded_by=u_enc.id LEFT JOIN users u_adm ON do2.admin_id=u_adm.id LEFT JOIN users u_mgr ON do2.manager_id=u_mgr.id WHERE do2.id=? AND do2.station_id=?");
             $st->execute([$id,$station_id]); $rec=$st->fetch(PDO::FETCH_ASSOC);
             if(!$rec){echo json_encode(['success'=>false,'message'=>'Not found']);break;}
             try{$st2=$pdo->prepare("SELECT at.*,u.name AS actor_name FROM audit_trail at LEFT JOIN users u ON at.manager_id=u.id WHERE at.transaction_id=? AND at.entity_type='delivery' ORDER BY at.timestamp DESC");$st2->execute([$id]);$rec['audit']=$st2->fetchAll(PDO::FETCH_ASSOC);}catch(Exception $e){$rec['audit']=[];}
@@ -114,6 +127,8 @@ try {
             if(!$id){echo json_encode(['success'=>false,'message'=>'ID required']);break;}
             $st=$pdo->prepare("SELECT * FROM deliveries_oversight WHERE id=? AND station_id=?"); $st->execute([$id,$station_id]); $rec=$st->fetch(PDO::FETCH_ASSOC);
             if(!$rec){echo json_encode(['success'=>false,'message'=>'Not found']);break;}
+            // Guard: Admin cannot validate a delivery still in the Manager queue
+            if($rec['status']==='Pending Manager Approval'){echo json_encode(['success'=>false,'message'=>'This delivery is still pending Manager approval. Admin cannot validate it until the Manager has reviewed it first.']);break;}
             if(in_array($rec['status'],['Validated','Confirmed'])){echo json_encode(['success'=>false,'message'=>'Already validated']);break;}
             $pdo->beginTransaction();
             $pdo->prepare("UPDATE deliveries_oversight SET status='Validated',admin_id=?,admin_action_at=NOW(),admin_notes=?,updated_at=NOW() WHERE id=?")->execute([$me['id'],$notes?:null,$id]);

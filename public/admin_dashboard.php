@@ -59,9 +59,10 @@ $fuel_liters   = (float) adm_val($pdo, "SELECT COALESCE(SUM(liters_sold),0) FROM
 $merch_revenue = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM merchandise_transactions WHERE station_id=? AND DATE(COALESCE(transaction_date,created_at)) BETWEEN ? AND ?", [$station_id,$date_from,$date_to]);
 $merch_credit  = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM merchandise_transactions WHERE station_id=? AND payment_method='Credit' AND DATE(COALESCE(transaction_date,created_at)) BETWEEN ? AND ?", [$station_id,$date_from,$date_to]);
 
-$upcoming_deliveries    = (int) adm_val($pdo, "SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND DATE(COALESCE(delivery_date,created_at)) >= CURDATE() AND status NOT IN ('Validated','Approved')", [$station_id]);
+$upcoming_deliveries    = (int) adm_val($pdo, "SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND DATE(COALESCE(delivery_date,created_at)) >= CURDATE() AND status NOT IN ('Validated','Confirmed','Flagged','Discrepancy')", [$station_id]);
 $scheduled_calibrations = (int) adm_val($pdo, "SELECT COUNT(DISTINCT pump_number) FROM calibration_logs WHERE station_id=? AND DATE(encoded_at) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)", [$station_id]);
-$pending_job_orders     = (int) adm_val($pdo, "SELECT COUNT(*) FROM job_orders WHERE station_id=? AND LOWER(status)='pending'", [$station_id]);
+// Admin JO KPI: manager-approved JOs (oversight view), NOT raw Pending Validation staff encodings
+$pending_job_orders     = (int) adm_val($pdo, "SELECT COUNT(*) FROM job_orders WHERE station_id=? AND validation_status='Approved' AND status NOT IN ('Completed','Cancelled','Rejected')", [$station_id]);
 $active_shifts_today    = (int) adm_val($pdo, "SELECT COUNT(*) FROM labor_sessions WHERE station_id=? AND DATE(start_time)=CURDATE()", [$station_id]);
 $variance_alerts_open   = (int) adm_val($pdo, "SELECT COUNT(*) FROM variance_alerts WHERE station_id=? AND status='open'", [$station_id]);
 $variance_liters        = (float) adm_val($pdo, "SELECT COALESCE(SUM(ABS(variance_liters)),0) FROM fuel_variance_reports WHERE station_id=? AND DATE(created_at) BETWEEN ? AND ?", [$station_id,$date_from,$date_to]);
@@ -75,12 +76,18 @@ if ($variance_alerts_open > 0)
 $flagged_del = (int) adm_val($pdo, "SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Rejected','Flagged','Discrepancy')", [$station_id]);
 if ($flagged_del > 0)
     $compliance_alerts[] = ['type'=>'danger','icon'=>'fa-circle-xmark','msg'=>"{$flagged_del} delivery(ies) flagged with discrepancies."];
-$pending_val = (int) adm_val($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND validation_status='Pending'", [$station_id]);
-if ($pending_val > 0)
-    $compliance_alerts[] = ['type'=>'warning','icon'=>'fa-clock','msg'=>"{$pending_val} merchandise transaction(s) pending manager validation."];
-$pending_jo_alert = (int) adm_val($pdo, "SELECT COUNT(*) FROM job_orders WHERE station_id=? AND LOWER(status)='pending'", [$station_id]);
-if ($pending_jo_alert > 0)
-    $compliance_alerts[] = ['type'=>'warning','icon'=>'fa-wrench','msg'=>"{$pending_jo_alert} job order(s) awaiting scheduling."];
+// Admin compliance: show deliveries awaiting Admin oversight (already passed Manager), NOT raw Manager-queue items
+$pending_admin_oversight = (int) adm_val($pdo, "SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status='Pending Admin Oversight'", [$station_id]);
+if ($pending_admin_oversight > 0)
+    $compliance_alerts[] = ['type'=>'warning','icon'=>'fa-truck','msg'=>"{$pending_admin_oversight} delivery(ies) awaiting your final oversight (Manager-validated)."];
+// Admin compliance: show manager-validated transactions needing oversight, NOT raw Pending staff encodings
+$admin_tx_oversight = (int) adm_val($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND validation_status IN ('Approved','Adjusted') AND DATE(COALESCE(validated_at,created_at))=CURDATE()", [$station_id]);
+if ($admin_tx_oversight > 0)
+    $compliance_alerts[] = ['type'=>'info','icon'=>'fa-eye','msg'=>"{$admin_tx_oversight} manager-validated transaction(s) today available for your oversight review."];
+// Admin compliance: show manager-approved JOs needing oversight, NOT raw Pending Validation
+$admin_jo_oversight = (int) adm_val($pdo, "SELECT COUNT(*) FROM job_orders WHERE station_id=? AND validation_status='Approved' AND DATE(COALESCE(validated_at,created_at))=CURDATE()", [$station_id]);
+if ($admin_jo_oversight > 0)
+    $compliance_alerts[] = ['type'=>'info','icon'=>'fa-wrench','msg'=>"{$admin_jo_oversight} manager-approved job order(s) today available for your oversight review."];
 
 // ══════════════════════════════════════════════════════════
 // 3. CALENDAR OVERSIGHT (Weekly)
@@ -202,10 +209,12 @@ $staff_inactive   = (int) adm_val($pdo, "SELECT COUNT(*) FROM users WHERE statio
 $mgr_count        = (int) adm_val($pdo, "SELECT COUNT(*) FROM users WHERE station_id=? AND status='active' AND role IN ('manager','supervisor')", [$station_id]);
 $po_pending       = (int) adm_val($pdo, "SELECT COUNT(*) FROM purchase_orders WHERE station_id=? AND status IN ('Pending','Pending Approval','Pending Admin Validation')", [$station_id]);
 $po_finalized     = (int) adm_val($pdo, "SELECT COUNT(*) FROM purchase_orders WHERE station_id=? AND status IN ('Official','Received','Approved PO','Approved')", [$station_id]);
-$tx_pending       = (int) adm_val($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND validation_status='Pending'", [$station_id]);
+// Admin KPIs: show manager-validated transactions (oversight view), NOT raw Pending staff encodings
+$tx_pending       = (int) adm_val($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND validation_status='Pending Admin Oversight'", [$station_id]);
 $tx_approved      = (int) adm_val($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND validation_status='Approved'", [$station_id]);
-$del_flagged_snap = (int) adm_val($pdo, "SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Flagged','Rejected','Discrepancy')", [$station_id]);
-$del_validated    = (int) adm_val($pdo, "SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Validated','Approved')", [$station_id]);
+// Admin delivery KPIs: pending = awaiting Admin oversight; validated = confirmed by Admin
+$del_flagged_snap = (int) adm_val($pdo, "SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Flagged','Discrepancy')", [$station_id]);
+$del_validated    = (int) adm_val($pdo, "SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Validated','Confirmed')", [$station_id]);
 $recent_audit     = adm_rows($pdo, "SELECT al.created_at, u.name, al.action_type, al.entity_type, al.status FROM audit_logs al JOIN users u ON u.id=al.user_id WHERE u.station_id=? ORDER BY al.created_at DESC LIMIT 8", [$station_id]);
 
 $display_name = htmlspecialchars($me['full_name'] ?? trim(($me['first_name']??'').' '.($me['last_name']??'')) ?: ($me['name'] ?? 'Admin'));

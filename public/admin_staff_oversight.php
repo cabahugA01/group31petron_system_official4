@@ -1,11 +1,15 @@
 <?php
-require_once '../partials/header.php';
+// ── Auth & role gate MUST run before any output ──────────────────────────────
+$page_id = 'staff_oversight_admin';
+require_once __DIR__ . '/../backend/lib.php';
+require_once __DIR__ . '/../public/db_connect.php';
 require_login();
 
 $user = current_user();
-$role = strtolower(trim($user['role'] ?? 'staff'));
+$role = role_key($user['role'] ?? ''); // use canonical role_key(), not raw strtolower
 
 if (!in_array($role, ['admin', 'superadmin'])) {
+    $_SESSION['error'] = 'Access denied. Admin privileges required.';
     header('Location: dashboard.php');
     exit;
 }
@@ -14,6 +18,9 @@ $station_id = user_station_id();
 if ((int)$station_id <= 0 && $role === 'admin') {
     render_no_station_page('admin_dashboard.php');
 }
+
+// Header included AFTER auth is confirmed
+require_once __DIR__ . '/../partials/header.php';
 ?>
 
 <style>

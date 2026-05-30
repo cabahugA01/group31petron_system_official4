@@ -117,8 +117,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } catch (Exception $e) { /* Fail silently if logs table missing */ }
 
                 // Auto Clock In for staff roles on login
-                $role = strtolower(trim($user['role'] ?? 'staff'));
-                $staff_roles = ['staff', 'cashier', 'pump_attendant'];
+                $role = role_key($user['role'] ?? '');
+                $staff_roles = ['staff'];
                 if (in_array($role, $staff_roles)) {
                     try {
                         $station_id = $user['station_id'] ?? null;

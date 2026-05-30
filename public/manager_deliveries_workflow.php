@@ -1,18 +1,22 @@
 ﻿<?php
 // Manager Deliveries Workflow System
 session_start();
+require_once '../backend/lib.php';
 require_once '../config/database_config.php';
 require_once '../public/db_connect.php';
 
 // Check if user is logged in and has appropriate role
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['manager', 'admin', 'superadmin'])) {
-    header('Location: ../login.php');
+require_login();
+$_wf_user = current_user();
+$_wf_role = role_key($_wf_user['role'] ?? '');
+if (!in_array($_wf_role, ['manager', 'admin', 'superadmin'])) {
+    header('Location: ../public/login.php');
     exit;
 }
 
-$station_id = $_SESSION['station_id'] ?? 1;
-$user_id = $_SESSION['user_id'];
-$user_name = $_SESSION['name'] ?? 'Manager';
+$station_id = user_station_id() ?? ($_SESSION['station_id'] ?? 1);
+$user_id    = $_wf_user['id'];
+$user_name  = $_wf_user['name'] ?? 'Manager';
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

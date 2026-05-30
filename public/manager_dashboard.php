@@ -103,10 +103,10 @@ if (isset($_GET['refresh']) && $_GET['refresh'] == '1') {
         $ls_fuel  = $pdo->prepare("SELECT COUNT(*) FROM fuel_inventory WHERE station_id=? AND COALESCE(current_level,current_stock,0)<=2000");
         $ls_fuel->execute([$station_id]); $low_fuel = (int)$ls_fuel->fetchColumn();
         $low_stock = $low_merch + $low_fuel;
-        // Deliveries — pending, approved, rejected
-        $pd = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Pending Validation','Pending Manager Approval','Pending Manager Confirmation')");
+        // Deliveries — pending Manager approval, approved by Manager, flagged
+        $pd = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status='Pending Manager Approval'");
         $pd->execute([$station_id]); $pend_del = (int)$pd->fetchColumn();
-        $da = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Validated','Confirmed','Approved')");
+        $da = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Validated','Confirmed','Pending Admin Oversight')");
         $da->execute([$station_id]); $del_approved = (int)$da->fetchColumn();
         $dr = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Rejected','Flagged','Discrepancy')");
         $dr->execute([$station_id]); $del_rejected = (int)$dr->fetchColumn();
@@ -213,8 +213,9 @@ $low_stock_count = 0;
 try { $ls=$pdo->prepare("SELECT COUNT(*) FROM station_inventory WHERE station_id=? AND status='active' AND stock_level<=reorder_level"); $ls->execute([$station_id]); $low_stock_count=(int)$ls->fetchColumn(); } catch (Exception $e) {}
 
 // --- Pending Deliveries ---
+// Manager sees only records in the Manager queue (Pending Manager Approval)
 $pending_deliveries = 0;
-try { $pd=$pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Pending Validation','Pending Manager Approval','Pending Manager Confirmation')"); $pd->execute([$station_id]); $pending_deliveries=(int)$pd->fetchColumn(); } catch (Exception $e) {}
+try { $pd=$pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status='Pending Manager Approval'"); $pd->execute([$station_id]); $pending_deliveries=(int)$pd->fetchColumn(); } catch (Exception $e) {}
 
 // --- Fuel Inventory / Tank Levels ---
 $fuel_stock_levels = [];
@@ -308,10 +309,11 @@ $staff_active_count = count(array_filter($attendance_rows, fn($r) => empty($r['e
 $staff_total_today  = count($attendance_rows);
 
 // --- Deliveries Summary ---
+// Manager sees: pending = their queue only; approved = forwarded to Admin or validated; rejected = flagged/discrepancy
 $del_pending = $del_approved = $del_rejected = 0;
 try {
-    $dp=$pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Pending Validation','Pending Manager Approval','Pending Manager Confirmation')"); $dp->execute([$station_id]); $del_pending=(int)$dp->fetchColumn();
-    $da=$pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Validated','Confirmed','Approved')"); $da->execute([$station_id]); $del_approved=(int)$da->fetchColumn();
+    $dp=$pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status='Pending Manager Approval'"); $dp->execute([$station_id]); $del_pending=(int)$dp->fetchColumn();
+    $da=$pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Validated','Confirmed','Pending Admin Oversight')"); $da->execute([$station_id]); $del_approved=(int)$da->fetchColumn();
     $dr=$pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Rejected','Flagged','Discrepancy')"); $dr->execute([$station_id]); $del_rejected=(int)$dr->fetchColumn();
 } catch (Exception $e) {}
 // Deliveries trend 14 days

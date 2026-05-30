@@ -1,8 +1,21 @@
 <?php
-require_once '../includes/header.php';
+$page_id = 'manager_oversight_dashboard';
+require_once __DIR__ . '/../backend/lib.php';
+require_once __DIR__ . '/../public/db_connect.php';
 require_login();
-require_permission('manage_staff_oversight');
+
+$me         = current_user();
+$role       = role_key($me['role'] ?? '');
 $station_id = user_station_id();
+
+if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
+    $_SESSION['error'] = 'Access denied. Manager privileges required.';
+    header('Location: dashboard.php');
+    exit;
+}
+
+require_permission('manage_staff_oversight');
+require_once __DIR__ . '/../partials/header.php';
 ?>
 
 <div class="container-fluid">

@@ -8,8 +8,8 @@ require_once __DIR__ . '/../public/db_connect.php';
 require_once __DIR__ . '/../backend/lib.php';
 
 require_login();
-$me = current_user();
-$userRole = strtolower(trim($me['role'] ?? ''));
+$me        = current_user();
+$userRole  = role_key($me['role'] ?? '');
 $isManager = in_array($userRole, ['manager', 'admin', 'superadmin']);
 
 if (!$isManager) {
