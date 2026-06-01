@@ -3,7 +3,6 @@
 // Manager Reports — public/manager_reports.php
 // ============================================================
 if (session_status() === PHP_SESSION_NONE) session_start();
-$page_id = 'manager_reports';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
 require_login();
@@ -31,6 +30,17 @@ if (!$station_id) {
 $valid_sections = ['sales', 'job_orders', 'balances', 'deliveries', 'staff', 'validation', 'audit_trail', 'variance', 'meter_readings', 'inventory', 'price_logs'];
 $section = trim($_GET['section'] ?? 'sales');
 if (!in_array($section, $valid_sections)) $section = 'sales';
+
+$page_id = match($section) {
+    'job_orders' => 'mgr_report_joborders',
+    'balances'   => 'mgr_report_balances',
+    'deliveries' => 'mgr_report_deliveries',
+    'staff'      => 'mgr_report_staff',
+    'validation' => 'mgr_report_validation',
+    'variance'   => 'mgr_report_variance',
+    'inventory'  => 'mgr_report_inventory',
+    default      => 'mgr_report_sales',
+};
 
 $range = strtolower(trim($_GET['range'] ?? 'month'));
 if (!in_array($range, ['today', 'week', 'month', 'custom'])) $range = 'month';

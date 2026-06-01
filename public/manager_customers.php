@@ -1,5 +1,4 @@
 <?php
-$page_id = 'mgr_customers';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
@@ -7,6 +6,11 @@ require_login();
 $valid_sections = ['records','balances','validation','transactions'];
 $section = isset($_GET['section']) && in_array($_GET['section'], $valid_sections)
     ? $_GET['section'] : 'records';
+
+$page_id = match($section) {
+    'balances' => 'mgr_cust_balances',
+    default    => 'mgr_cust_list',
+};
 
 $me         = current_user();
 $role       = role_key($me['role'] ?? '');
@@ -343,7 +347,7 @@ include __DIR__ . '/../partials/header.php';
 .mgrc-table th{background:#f8f9fa;padding:10px 12px;text-align:left;font-weight:700;color:#495057;border-bottom:2px solid #dee2e6;}
 .mgrc-table td{padding:10px 12px;border-bottom:1px solid #f0f0f0;vertical-align:middle;}
 .mgrc-table tr:hover td{background:#f8f9fa;}
-.badge-pending{background:#fef3c7;color:#92400e;padding:3px 9px;border-radius:10px;font-size:11px;font-weight:700;}
+.badge-pending{background:#002F70;color:#fff;padding:3px 9px;border-radius:10px;font-size:11px;font-weight:700;}
 .badge-approved{background:#d1fae5;color:#065f46;padding:3px 9px;border-radius:10px;font-size:11px;font-weight:700;}
 .badge-rejected{background:#fee2e2;color:#991b1b;padding:3px 9px;border-radius:10px;font-size:11px;font-weight:700;}
 .badge-active{background:#d1fae5;color:#065f46;padding:3px 9px;border-radius:10px;font-size:11px;font-weight:700;}
@@ -391,13 +395,6 @@ include __DIR__ . '/../partials/header.php';
 <!-- ===== SECTION: CUSTOMER RECORDS ===== -->
 <?php if ($section === 'records'): ?>
 <style>
-.enc-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
-@media(max-width:600px){.enc-form-grid{grid-template-columns:1fr;}}
-.enc-label{display:block;font-size:12px;font-weight:700;color:#6c757d;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;}
-.enc-input{width:100%;padding:9px 12px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;box-sizing:border-box;}
-.enc-input:focus{border-color:#002F70;outline:none;box-shadow:0 0 0 3px rgba(0,47,112,.1);}
-.enc-btn-primary{padding:10px 22px;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;background:#002F70;color:#fff;transition:all .2s;}
-.enc-btn-primary:hover{background:#0040a0;}
 .upd-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
 @media(max-width:600px){.upd-form-grid{grid-template-columns:1fr;}}
 .upd-label{display:block;font-size:12px;font-weight:700;color:#6c757d;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;}
@@ -490,61 +487,6 @@ include __DIR__ . '/../partials/header.php';
   </div>
 </div>
 <?php else: ?>
-
-<!-- Add New Customer Form -->
-<div class="mgrc-card">
-  <div class="mgrc-head">
-    <h2 class="mgrc-title"><i class="fas fa-user-plus"></i> Add New Customer</h2>
-  </div>
-  <div class="mgrc-body">
-    <form method="POST" action="manager_customers.php?section=records" enctype="multipart/form-data">
-      <input type="hidden" name="action" value="encode_customer">
-      <div class="enc-form-grid">
-        <div>
-          <label class="enc-label">First Name <span style="color:red">*</span></label>
-          <input type="text" name="first_name" class="enc-input" placeholder="Enter first name" required>
-        </div>
-        <div>
-          <label class="enc-label">Last Name <span style="color:red">*</span></label>
-          <input type="text" name="last_name" class="enc-input" placeholder="Enter last name" required>
-        </div>
-        <div>
-          <label class="enc-label">Contact Number</label>
-          <input type="text" name="contact" class="enc-input" placeholder="e.g. 09XX-XXX-XXXX">
-        </div>
-        <div>
-          <label class="enc-label">Type of ID</label>
-          <select name="id_type" class="enc-input">
-            <option value="">— Select ID Type —</option>
-            <?php foreach ($gov_id_types as $idt): ?>
-            <option value="<?php echo htmlspecialchars($idt); ?>"><?php echo htmlspecialchars($idt); ?></option>
-            <?php endforeach; ?>
-          </select>
-        </div>
-        <div>
-          <label class="enc-label">Upload Selected ID (Front/Copy)</label>
-          <input type="file" name="id_image" class="enc-input" accept="image/*,.pdf" style="padding:6px 10px;">
-          <span style="font-size:11px;color:#9ca3af;margin-top:3px;display:block;">JPG, PNG, PDF accepted</span>
-        </div>
-        <div>
-          <label class="enc-label">Credit Limit (₱)</label>
-          <input type="number" name="credit_limit" class="enc-input" placeholder="0.00" min="0" step="0.01" value="0">
-        </div>
-      </div>
-      <!-- CR / Certificate of Registration -->
-      <div style="margin-top:18px;padding:16px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:8px;">
-        <label class="enc-label" style="font-size:13px;color:#002F70;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-          <i class="fas fa-file-alt"></i> CR / Certificate of Registration
-        </label>
-        <input type="file" name="cr_image" class="enc-input" accept="image/*,.pdf" style="padding:6px 10px;background:#fff;">
-        <span style="font-size:11px;color:#9ca3af;margin-top:4px;display:block;">Upload the vehicle's Certificate of Registration (CR). JPG, PNG, PDF accepted.</span>
-      </div>
-      <div style="margin-top:18px;">
-        <button type="submit" class="enc-btn-primary"><i class="fas fa-save"></i> Save Customer</button>
-      </div>
-    </form>
-  </div>
-</div>
 
 <!-- Customer List (Picker for Edit) -->
 <div class="mgrc-card">

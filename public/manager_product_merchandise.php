@@ -4,7 +4,7 @@
  * Manager/Admin view: list, add, edit, activate/deactivate merchandise products.
  * Batch IDs are auto-generated from approved deliveries (no manual batch creation here).
  */
-$page_id = 'pm_merchandise';
+$page_id = 'mgr_prod_merchandise';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();

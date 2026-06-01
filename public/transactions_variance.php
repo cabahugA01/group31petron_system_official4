@@ -3,7 +3,7 @@
  * Variance Alerts — Full Anomaly-Handling Workflow
  * Merchandise & Job Orders only. Fuel has its own reconciliation flow.
  */
-$page_id = 'variance_alerts';
+$page_id = 'mgr_txn_variance';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
 require_login();

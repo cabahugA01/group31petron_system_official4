@@ -5,6 +5,7 @@ ob_start(); // Buffer output to prevent "headers already sent" errors
 
 // Include database connection
 require_once __DIR__ . '/db_connect.php';
+require_once __DIR__ . '/../backend/lib.php';
 
 // Configuration variables
 $system_name = "Petron Station & Service Center Management System";

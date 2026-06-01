@@ -409,33 +409,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                     $pdo->prepare("
                         UPDATE fuel_deliveries
-                        SET status = 'Verified', verified_by = ?, verified_at = NOW(),
+                        SET status = 'Awaiting Stock-In', verified_by = ?, verified_at = NOW(),
                             notes = CONCAT(IFNULL(notes,''), ' | Manager Approved: ', ?)
                         WHERE id = ?
                     ")->execute([$me['id'], $val_notes, $delivery_id]);
-
-                    // Update tank — try by station+fuel_type first
-                    $upd = $pdo->prepare("
-                        UPDATE fuel_inventory
-                        SET current_level = COALESCE(current_level, 0) + ?,
-                            current_stock = COALESCE(current_stock, 0) + ?,
-                            last_updated  = NOW()
-                        WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
-                    ");
-                    $upd->execute([$liters_to_add, $liters_to_add, $station_id, $fuel_type]);
-
-                    // If no row matched, insert a new one (requires fuel_type_id)
-                    if ($upd->rowCount() === 0 && $fuel_type_id) {
-                        $pdo->prepare("
-                            INSERT INTO fuel_inventory
-                                (station_id, fuel_type_id, fuel_type, current_level, current_stock, last_updated)
-                            VALUES (?, ?, ?, ?, ?, NOW())
-                            ON DUPLICATE KEY UPDATE
-                                current_level = COALESCE(current_level, 0) + VALUES(current_level),
-                                current_stock = COALESCE(current_stock, 0) + VALUES(current_stock),
-                                last_updated  = NOW()
-                        ")->execute([$station_id, $fuel_type_id, $fuel_type, $liters_to_add, $liters_to_add]);
-                    }
 
                 } elseif ($action === 'adjust') {
                     if ($adj_liters <= 0) throw new Exception('Adjusted volume must be greater than 0.');
@@ -444,31 +421,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                     $pdo->prepare("
                         UPDATE fuel_deliveries
-                        SET status = 'Verified', delivery_liters = ?, verified_by = ?, verified_at = NOW(),
+                        SET status = 'Awaiting Stock-In', delivery_liters = ?, verified_by = ?, verified_at = NOW(),
                             notes = CONCAT(IFNULL(notes,''), ?)
                         WHERE id = ?
                     ")->execute([$adj_liters, $me['id'], $full_notes, $delivery_id]);
-
-                    $upd2 = $pdo->prepare("
-                        UPDATE fuel_inventory
-                        SET current_level = COALESCE(current_level, 0) + ?,
-                            current_stock = COALESCE(current_stock, 0) + ?,
-                            last_updated  = NOW()
-                        WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
-                    ");
-                    $upd2->execute([$liters_to_add, $liters_to_add, $station_id, $fuel_type]);
-
-                    if ($upd2->rowCount() === 0 && $fuel_type_id) {
-                        $pdo->prepare("
-                            INSERT INTO fuel_inventory
-                                (station_id, fuel_type_id, fuel_type, current_level, current_stock, last_updated)
-                            VALUES (?, ?, ?, ?, ?, NOW())
-                            ON DUPLICATE KEY UPDATE
-                                current_level = COALESCE(current_level, 0) + VALUES(current_level),
-                                current_stock = COALESCE(current_stock, 0) + VALUES(current_stock),
-                                last_updated  = NOW()
-                        ")->execute([$station_id, $fuel_type_id, $fuel_type, $liters_to_add, $liters_to_add]);
-                    }
 
                 } elseif ($action === 'reject') {
                     $pdo->prepare("
@@ -478,35 +434,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         WHERE id = ?
                     ")->execute([$me['id'], $val_notes, $delivery_id]);
                     // Do NOT update stock on reject
-                }
-
-                // Fetch new tank level for success message
-                $new_tank_level = null;
-                try {
-                    $tStmt = $pdo->prepare("
-                        SELECT COALESCE(current_level, current_stock, 0) AS tank_level
-                        FROM fuel_inventory
-                        WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
-                        LIMIT 1
-                    ");
-                    $tStmt->execute([$station_id, $fuel_type]);
-                    $tRow = $tStmt->fetch(PDO::FETCH_ASSOC);
-                    if ($tRow) $new_tank_level = (float)$tRow['tank_level'];
-                } catch (Exception $te) {}
-
-                // Audit log (non-fatal)
-                if ($fuel_type_id && in_array($action, ['approve', 'adjust'])) {
-                    try {
-                        $tank_note    = $new_tank_level !== null ? " New tank: {$new_tank_level}L." : '';
-                        $audit_reason = substr("Delivery #{$delivery_id} {$action}d. Added {$liters_to_add}L of {$fuel_type}.{$tank_note} Notes: {$val_notes}", 0, 255);
-                        $pdo->prepare("
-                            INSERT INTO fuel_adjustments
-                                (station_id, fuel_type_id, adjustment_type, liters, reason, user_id, adjustment_date)
-                            VALUES (?, ?, 'delivery', ?, ?, ?, CURDATE())
-                        ")->execute([$station_id, $fuel_type_id, $liters_to_add, $audit_reason, $me['id']]);
-                    } catch (Exception $ae) {
-                        error_log("fuel_adjustments insert failed: " . $ae->getMessage());
-                    }
                 }
 
                 log_activity($pdo, $me['id'], 'Validate Delivery',
@@ -526,8 +453,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         default   => ucfirst($action),
                     };
                     $at_detail = match($action) {
-                        'approve' => "Delivery #DEL-{$delivery_id} approved | Fuel: {$fuel_type} | Volume: " . number_format($liters_to_add, 2) . " L | Invoice: " . ($del['invoice_no'] ?? '—') . " | Supplier: " . ($del['supplier'] ?? '—') . " | Encoded by: " . ($del['staff_name'] ?? '—') . " | Notes: {$val_notes}",
-                        'adjust'  => "Delivery #DEL-{$delivery_id} adjusted | Fuel: {$fuel_type} | Original: " . number_format($original_liters, 2) . " L → Adjusted: " . number_format($liters_to_add, 2) . " L | Invoice: " . ($del['invoice_no'] ?? '—') . " | Notes: {$val_notes}",
+                        'approve' => "Delivery #DEL-{$delivery_id} approved and forwarded to Stock-In | Fuel: {$fuel_type} | Volume: " . number_format($liters_to_add, 2) . " L | Invoice: " . ($del['invoice_no'] ?? '—') . " | Supplier: " . ($del['supplier'] ?? '—') . " | Encoded by: " . ($del['staff_name'] ?? '—') . " | Notes: {$val_notes}",
+                        'adjust'  => "Delivery #DEL-{$delivery_id} adjusted and forwarded to Stock-In | Fuel: {$fuel_type} | Original: " . number_format($original_liters, 2) . " L → Adjusted: " . number_format($liters_to_add, 2) . " L | Invoice: " . ($del['invoice_no'] ?? '—') . " | Notes: {$val_notes}",
                         'reject'  => "Delivery #DEL-{$delivery_id} returned to staff | Fuel: {$fuel_type} | Volume: " . number_format($original_liters, 2) . " L | Invoice: " . ($del['invoice_no'] ?? '—') . " | Supplier: " . ($del['supplier'] ?? '—') . " | Reason: {$val_notes}",
                         default   => "Delivery #DEL-{$delivery_id} {$action} | {$val_notes}",
                     };
@@ -550,10 +477,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $pdo->commit();
 
                 if (in_array($action, ['approve', 'adjust'])) {
-                    $tank_msg = $new_tank_level !== null
-                        ? " Tank level updated to <strong>" . number_format($new_tank_level, 0) . " L</strong>."
-                        : '';
-                    $_SESSION['success'] = "Delivery #{$delivery_id} approved. Added " . number_format($liters_to_add, 0) . "L of {$fuel_type} to inventory.{$tank_msg}";
+                    $_SESSION['success'] = "Delivery #{$delivery_id} approved & forwarded to Stock-In. No inventory change was made yet.";
                 } else {
                     $_SESSION['success'] = "Delivery #{$delivery_id} returned to staff for correction.";
                 }
@@ -1166,7 +1090,7 @@ function adjustColor($hex,$pct) {
         <tbody>
         <?php foreach ($deliveries as $d):
             $st = strtolower($d['status'] ?? 'pending');
-            $is_pending = str_contains($st, 'pending');
+            $is_pending = ($st === 'pending' || $st === 'pending review');
         ?>
         <tr style="<?php echo $is_pending ? 'background:#fffbea;' : ''; ?>">
             <td><strong>#<?php echo $d['id']; ?></strong></td>
@@ -1205,8 +1129,10 @@ function adjustColor($hex,$pct) {
                 </span>
             </td>
             <td>
-                <?php if ($st === 'verified'): ?>
-                    <span class="tag-resolved"><i class="fas fa-check"></i> Verified</span>
+                <?php if ($st === 'stock-in complete' || $st === 'verified' || $st === 'stock_in_done'): ?>
+                    <span class="tag-resolved"><i class="fas fa-check-circle"></i> Stocked In</span>
+                <?php elseif ($st === 'awaiting stock-in'): ?>
+                    <span class="tag-resolved" style="background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;"><i class="fas fa-dolly"></i> Awaiting Stock-In</span>
                 <?php elseif ($st === 'rejected'): ?>
                     <span class="tag-investigate"><i class="fas fa-times"></i> Rejected</span>
                 <?php else: ?>

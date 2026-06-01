@@ -1,5 +1,5 @@
-﻿<?php
-$page_id = "mgr_inv_requests";
+<?php
+$page_id = 'mgr_inv_stock_request';
 require_once __DIR__ . "/../backend/lib.php";
 require_once __DIR__ . "/db_connect.php";
 require_login();
@@ -283,7 +283,7 @@ include __DIR__ . "/../partials/header.php";
                             <tr>
                                 <th>#</th><th>Date</th><th>Staff</th><th>Product</th>
                                 <th>Qty Requested</th><th>Qty Approved</th><th>Status</th>
-                                <th>PO Generated</th><th>Manager Notes</th><th>Processed On</th>
+                                <th>PO Number</th><th>Pipeline</th><th>Manager Notes</th><th>Processed On</th>
                             </tr>
                         </thead>
                         <tbody id="historyBody">
@@ -647,7 +647,7 @@ function renderPending(rows) {
 function renderHistory(rows) {
     var tbody = document.getElementById("historyBody");
     if (rows.length === 0) {
-        tbody.innerHTML = "<tr><td colspan=\"10\" style=\"text-align:center;padding:28px;color:#6c757d;\">No processed requests yet.</td></tr>";
+        tbody.innerHTML = "<tr><td colspan=\"11\" style=\"text-align:center;padding:28px;color:#6c757d;\">No processed requests yet.</td></tr>";
         return;
     }
     tbody.innerHTML = rows.map(function(r) {
@@ -657,7 +657,25 @@ function renderHistory(rows) {
             ? "<strong style=\"color:#28a745;font-size:14px;\">" + r.approved_quantity + "</strong>" +
               (parseInt(r.approved_quantity) !== parseInt(r.requested_quantity) ? " <span style=\"font-size:10px;color:#fd7e14;\">adjusted</span>" : "")
             : "<span style=\"color:#adb5bd;\">—</span>";
-        var poCol = r.po_number ? "<code style=\"font-size:11px;\">" + esc(r.po_number) + "</code>" : "<span style=\"color:#adb5bd;\">—</span>";
+        var poCol = r.po_number ? "<code style=\"font-size:11px;color:#002F70;\">" + esc(r.po_number) + "</code>" : "<span style=\"color:#adb5bd;\">—</span>";
+
+        // Pipeline status column
+        var pipeCol = "";
+        if (r.stock_in_done == 1 || r.stock_in_done === "1") {
+            pipeCol = "<span class=\"sbadge\" style=\"background:#d4edda;color:#155724;\"><i class=\"fas fa-check-double\"></i> Stocked In</span>";
+            if (r.stock_in_at) pipeCol += "<br><small style=\"color:#6c757d;\">" + fmtDate(r.stock_in_at) + "</small>";
+        } else if ((r.admin_finalized == 1 || r.admin_finalized === "1") && (r.delivery_validated == 1 || r.delivery_validated === "1")) {
+            pipeCol = "<span class=\"sbadge\" style=\"background:#cce5ff;color:#004085;\"><i class=\"fas fa-dolly\"></i> Awaiting Stock-In</span>";
+        } else if (r.admin_finalized == 1 || r.admin_finalized === "1") {
+            pipeCol = "<span class=\"sbadge\" style=\"background:#fff3cd;color:#856404;\"><i class=\"fas fa-clipboard-check\"></i> Awaiting Delivery Validation</span>";
+        } else if (r.po_number) {
+            pipeCol = "<span class=\"sbadge\" style=\"background:#e6e6fa;color:#5f5f9c;\"><i class=\"fas fa-file-invoice\"></i> PO Pending Admin</span>";
+        } else if (st === "Rejected") {
+            pipeCol = "<span class=\"sbadge sbadge-rejected\"><i class=\"fas fa-times\"></i> Rejected</span>";
+        } else {
+            pipeCol = "<span style=\"color:#adb5bd;\">—</span>";
+        }
+
         return "<tr>" +
             "<td style=\"color:#6c757d;font-size:12px;\">#" + r.id + "</td>" +
             "<td style=\"font-size:12px;\">" + fmtDate(r.created_at) + "</td>" +
@@ -667,6 +685,7 @@ function renderHistory(rows) {
             "<td style=\"text-align:center;\">" + qtyApproved + "</td>" +
             "<td><span class=\"" + cls + "\">" + esc(st) + "</span></td>" +
             "<td style=\"font-size:11px;\">" + poCol + "</td>" +
+            "<td>" + pipeCol + "</td>" +
             "<td style=\"font-size:12px;color:#495057;max-width:180px;\">" + (r.manager_notes ? esc(r.manager_notes) : "<span style=\"color:#adb5bd;\">—</span>") + "</td>" +
             "<td style=\"font-size:12px;color:#6c757d;\">" + (r.processed_at ? fmtDate(r.processed_at) : fmtDate(r.updated_at || r.created_at)) + "</td>" +
         "</tr>";

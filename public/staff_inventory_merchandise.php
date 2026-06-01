@@ -1,8 +1,7 @@
 <?php
 /**
  * Staff Merchandise Inventory
- * Shows all merchandise with stock levels.
- * Staff can submit Stock Requests for any item (required for Low/Out of Stock).
+ * One "Stock Request" button → modal with checkboxes to pick items → submit (no qty, manager sets it).
  */
 $page_id = 'inv_merch';
 require_once __DIR__ . '/../backend/lib.php';
@@ -42,134 +41,84 @@ try {
     $msg = 'Error loading merchandise: ' . $e->getMessage();
 }
 
+$js_items  = [];
+foreach ($merch_inventory as $item) {
+    $stock = (float)($item['stock_level'] ?? 0);
+    $reord = (float)($item['reorder_level'] ?? 10);
+    if ($stock <= 0)         { $st = 'OUT OF STOCK'; $sc = '#dc3545'; $st_cls = 'out'; }
+    elseif ($stock <= $reord){ $st = 'LOW STOCK';    $sc = '#fd7e14'; $st_cls = 'low'; }
+    else                     { $st = 'AVAILABLE';    $sc = '#28a745'; $st_cls = 'ok';  }
+    $js_items[] = [
+        'id'       => (int)$item['id'],
+        'name'     => $item['name'],
+        'sku'      => $item['sku'] ?? '',
+        'category' => $item['category_name'] ?? '',
+        'stock'    => (int)$stock,
+        'status'   => $st,
+        'color'    => $sc,
+        'stCls'    => $st_cls,
+    ];
+}
+
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
-/* ── Page layout ── */
-.inv-card {
-    background:#fff; border-radius:12px;
-    box-shadow:0 2px 8px rgba(0,0,0,.06);
-    border:1px solid #e9ecef; margin-bottom:20px;
-}
-.inv-card-head {
-    display:flex; align-items:center; justify-content:space-between;
-    padding:16px 20px; border-bottom:1px solid #e9ecef; flex-wrap:wrap; gap:8px;
-}
+.inv-card { background:#fff; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.06); border:1px solid #e9ecef; margin-bottom:20px; }
+.inv-card-head { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #e9ecef; flex-wrap:wrap; gap:8px; }
 .inv-card-title { font-size:1rem; font-weight:700; color:#002F70; display:flex; align-items:center; gap:8px; }
 .inv-card-body  { padding:20px; }
-
-/* ── Table ── */
-.cat-header td {
-    font-weight:700; background:#e9ecef !important; color:#495057 !important;
-    text-transform:uppercase; font-size:.8em; letter-spacing:.5px;
-    border-bottom:2px solid #dee2e6; padding:8px 12px;
-}
-.merch-row:hover { background:#f8f9fa; }
+.cat-header td { font-weight:700; background:#e9ecef !important; color:#495057 !important; text-transform:uppercase; font-size:.8em; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px; }
 .cost-col  { color:#6c757d; font-size:.9em; }
 .price-col { color:#28a745; font-weight:700; }
 .profit-sm { font-size:.76em; color:#17a2b8; margin-left:3px; }
-
-/* ── Stock Request button ── */
-.sr-btn {
-    border:none; padding:5px 12px; font-size:12px; border-radius:4px;
-    cursor:pointer; transition:background .15s; font-weight:600;
-    display:inline-flex; align-items:center; gap:5px;
-}
-.sr-btn.urgent {
-    background:#dc3545; color:#fff;
-}
-.sr-btn.urgent:hover { background:#b02a37; }
-.sr-btn.warn {
-    background:#fd7e14; color:#fff;
-}
-.sr-btn.warn:hover { background:#d96a0e; }
-.sr-btn.normal {
-    background:#002F70; color:#fff;
-}
-.sr-btn.normal:hover { background:#001F4F; }
-
-/* ── Search ── */
-#merchSearch {
-    padding:8px 12px; border:1px solid #ced4da;
-    border-radius:4px; font-size:14px; width:100%;
-}
+#merchSearch { padding:8px 12px; border:1px solid #ced4da; border-radius:4px; font-size:14px; width:100%; }
 #merchSearch:focus { border-color:#80bdff; outline:0; box-shadow:0 0 0 .2rem rgba(0,123,255,.25); }
 .search-wrap { max-width:300px; margin-bottom:14px; }
 
 /* ── Modal ── */
-.sr-modal-overlay {
-    display:none; position:fixed; inset:0;
-    background:rgba(0,0,0,.55); z-index:9999;
-    align-items:center; justify-content:center;
-}
+.sr-modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:9999; align-items:center; justify-content:center; }
 .sr-modal-overlay.open { display:flex; }
-.sr-modal-box {
-    background:#fff; border-radius:14px; padding:28px;
-    width:600px; max-width:calc(100vw - 32px);
-    max-height:calc(100vh - 40px); overflow-y:auto;
-    box-shadow:0 24px 80px rgba(0,0,0,.3);
-    animation:srModalIn .2s ease;
-    position:relative; z-index:10000;
-}
-@keyframes srModalIn { from{opacity:0;transform:scale(.96)} to{opacity:1;transform:scale(1)} }
-.sr-modal-head {
-    display:flex; justify-content:space-between; align-items:center;
-    margin-bottom:20px; padding-bottom:14px; border-bottom:2px solid #e9ecef;
-}
+.sr-modal-box { background:#fff; border-radius:14px; padding:28px; width:680px; max-width:calc(100vw - 32px); max-height:calc(100vh - 40px); overflow-y:auto; box-shadow:0 24px 80px rgba(0,0,0,.3); animation:srIn .2s ease; }
+@keyframes srIn { from{opacity:0;transform:scale(.96)} to{opacity:1;transform:scale(1)} }
+.sr-modal-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; padding-bottom:14px; border-bottom:2px solid #e9ecef; }
 .sr-modal-title { font-size:1.05rem; font-weight:700; color:#002F70; display:flex; align-items:center; gap:8px; }
-.sr-modal-close { background:none; border:none; font-size:22px; cursor:pointer; color:#adb5bd; line-height:1; }
+.sr-modal-close { background:none; border:none; font-size:22px; cursor:pointer; color:#adb5bd; }
 .sr-modal-close:hover { color:#333; }
+.sr-modal-footer { display:flex; gap:10px; justify-content:flex-end; align-items:center; margin-top:16px; padding-top:14px; border-top:1px solid #e9ecef; }
+.sr-info-box { background:#e8f4fd; border-left:4px solid #002F70; border-radius:6px; padding:10px 14px; margin-bottom:14px; font-size:12px; color:#002F70; line-height:1.6; }
 
-/* ── Form grid ── */
-.sr-field-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px; }
-.sr-field label { display:block; margin-bottom:5px; font-weight:700; font-size:12px; color:#495057; text-transform:uppercase; letter-spacing:.4px; }
-.sr-field input[type=text],
-.sr-field input[type=number],
-.sr-field textarea {
-    width:100%; padding:9px 11px; border:1px solid #dee2e6;
-    border-radius:6px; font-size:13px; box-sizing:border-box;
-}
-.sr-field input[readonly] { background:#f8f9fa; color:#6c757d; }
-.sr-field input[type=number]:focus,
-.sr-field textarea:focus {
-    border-color:#002F70; outline:none;
-    box-shadow:0 0 0 3px rgba(0,47,112,.12);
-}
-.sr-field textarea { resize:vertical; }
+/* ── Modal search ── */
+#srModalSearch { width:100%; padding:8px 12px; border:1px solid #ced4da; border-radius:6px; font-size:13px; margin-bottom:10px; box-sizing:border-box; }
+#srModalSearch:focus { border-color:#002F70; outline:none; box-shadow:0 0 0 2px rgba(0,47,112,.12); }
 
-/* ── Status chip inside modal ── */
-.sr-status-chip {
-    display:inline-block; padding:4px 12px; border-radius:20px;
-    font-size:12px; font-weight:700; text-transform:uppercase;
-}
-.sr-status-chip.out  { background:#fee2e2; color:#dc3545; }
-.sr-status-chip.low  { background:#fff3cd; color:#856404; }
-.sr-status-chip.ok   { background:#d4edda; color:#155724; }
+/* ── Select-all bar ── */
+.sr-select-bar { display:flex; align-items:center; gap:8px; padding:8px 14px; background:#f8f9fa; border-radius:6px; margin-bottom:10px; font-size:12px; color:#495057; font-weight:600; }
+.sr-select-bar input { width:16px; height:16px; accent-color:#002F70; cursor:pointer; }
 
-/* ── Info box ── */
-.sr-info-box {
-    background:#e8f4fd; border-left:4px solid #002F70;
-    border-radius:6px; padding:10px 14px; margin-bottom:16px;
-    font-size:12px; color:#002F70; line-height:1.6;
-}
+/* ── Checkbox rows ── */
+.sr-cb-row { display:flex; align-items:center; gap:12px; padding:9px 14px; border-radius:8px; border:1px solid #dee2e6; margin-bottom:6px; cursor:pointer; transition:background .1s; user-select:none; }
+.sr-cb-row:hover   { background:#f0f4ff; }
+.sr-cb-row.checked { background:#eef2ff; border-color:#90a8e0; }
+.sr-cb-row.out { border-left:4px solid #dc3545; }
+.sr-cb-row.low { border-left:4px solid #fd7e14; }
+.sr-cb-row.ok  { border-left:4px solid #28a745; }
+.sr-cb { width:17px; height:17px; accent-color:#002F70; cursor:pointer; flex-shrink:0; }
+.sr-cb-info { flex:1; min-width:0; }
+.sr-cb-name { font-weight:700; font-size:13px; color:#212529; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sr-cb-meta { font-size:11px; color:#6c757d; margin-top:1px; }
 
-/* ── Modal footer ── */
-.sr-modal-footer { display:flex; gap:10px; justify-content:flex-end; margin-top:18px; padding-top:14px; border-top:1px solid #e9ecef; }
+/* ── Category label inside modal ── */
+.sr-cat-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#6c757d; padding:6px 4px 3px; }
 
 /* ── Success popup ── */
 .sr-success-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:10998; }
-.sr-success-popup {
-    display:none; position:fixed; top:50%; left:50%;
-    transform:translate(-50%,-50%); z-index:10999;
-    background:#fff; padding:28px; border-radius:12px;
-    box-shadow:0 10px 30px rgba(0,0,0,.25); text-align:center; min-width:300px;
-}
+.sr-success-popup { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:10999; background:#fff; padding:28px; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.25); text-align:center; min-width:300px; }
 </style>
 
 <div class="page-head">
     <div>
         <h1 class="h1"><i class="fas fa-boxes"></i> Merchandise Inventory</h1>
-        <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; Submit Stock Requests for any item</div>
+        <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; Submit stock requests for any item</div>
     </div>
     <div class="header-actions">
         <button onclick="location.reload()" class="btn ghost"><i class="fas fa-sync-alt"></i> Refresh</button>
@@ -184,35 +133,18 @@ include __DIR__ . '/../partials/header.php';
 
 <div class="inv-card">
     <div class="inv-card-head">
-        <div class="inv-card-title">
-            <i class="fas fa-box"></i> Merchandise Stock
-        </div>
+        <div class="inv-card-title"><i class="fas fa-box"></i> Merchandise Stock</div>
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-            <?php
-            $low_count = 0; $out_count = 0;
-            foreach ($merch_inventory as $it) {
-                $sl = (int)($it['stock_level'] ?? 0);
-                $rl = (int)($it['reorder_level'] ?? 10);
-                if ($sl <= 0) $out_count++;
-                elseif ($sl <= $rl) $low_count++;
-            }
-            if ($out_count > 0): ?>
-                <span style="background:#fee2e2;color:#dc3545;border-radius:20px;padding:3px 10px;font-size:12px;font-weight:700;">
-                    <i class="fas fa-exclamation-circle"></i> <?php echo $out_count; ?> Out of Stock
-                </span>
-            <?php endif; if ($low_count > 0): ?>
-                <span style="background:#fff3cd;color:#856404;border-radius:20px;padding:3px 10px;font-size:12px;font-weight:700;">
-                    <i class="fas fa-exclamation-triangle"></i> <?php echo $low_count; ?> Low Stock
-                </span>
-            <?php endif; ?>
-            <span style="font-size:13px;color:#6c757d;"><?php echo count($merch_inventory); ?> products</span>
+            <button onclick="openSrModal()"
+                    style="display:inline-flex;align-items:center;gap:7px;padding:7px 18px;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;background:#002F70;color:#fff;">
+                <i class="fas fa-box"></i> Stock Request
+            </button>
         </div>
     </div>
     <div class="inv-card-body">
         <div class="search-wrap">
             <input id="merchSearch" placeholder="&#128269; Search products..." autocomplete="off" />
         </div>
-
         <div class="table-wrap">
             <table class="table" id="merchTable">
                 <thead>
@@ -223,85 +155,51 @@ include __DIR__ . '/../partials/header.php';
                         <th>Stock</th>
                         <th>Cost</th>
                         <th>Price</th>
-                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody id="merchTableBody">
                 <?php
                 $categories = [];
-                foreach ($merch_inventory as $item) {
+                foreach ($merch_inventory as $gidx => $item) {
                     $cat = $item['category_name'] ?? 'Uncategorized';
-                    $categories[$cat][] = $item;
+                    $categories[$cat][] = ['item' => $item, 'gidx' => $gidx];
                 }
-                $cat_order = [
-                    'Oils / Lubes / Grease','Car Accessories','Brake System',
-                    'Tire','Maintenance','Oil / Fuel Filters','Others (Snacks / Drinks)'
-                ];
+                $cat_order = ['Oils / Lubes / Grease','Car Accessories','Brake System','Tire','Maintenance','Oil / Fuel Filters','Others (Snacks / Drinks)'];
                 $sorted = [];
                 foreach ($cat_order as $k) { if (isset($categories[$k])) $sorted[$k] = $categories[$k]; }
                 foreach ($categories as $k => $v) { if (!in_array($k, $cat_order)) $sorted[$k] = $v; }
 
-                foreach ($sorted as $cat_label => $items): ?>
-                    <tr class="cat-header">
-                        <td colspan="7"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td>
-                    </tr>
-                    <?php foreach ($items as $item):
+                foreach ($sorted as $cat_label => $entries): ?>
+                    <tr class="cat-header"><td colspan="6"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
+                    <?php foreach ($entries as $entry):
+                        $item   = $entry['item'];
                         $stock  = (float)($item['stock_level'] ?? 0);
                         $reord  = (float)($item['reorder_level'] ?? 10);
                         $profit = (float)($item['price'] ?? 0) - (float)($item['cost'] ?? 0);
-
-                        if ($stock <= 0) {
-                            $st_label = 'OUT OF STOCK';
-                            $st_color = '#dc3545';
-                            $btn_cls  = 'urgent';
-                            $btn_icon = 'fa-exclamation-circle';
-                        } elseif ($stock <= $reord) {
-                            $st_label = 'LOW STOCK';
-                            $st_color = '#fd7e14';
-                            $btn_cls  = 'warn';
-                            $btn_icon = 'fa-exclamation-triangle';
-                        } else {
-                            $st_label = 'AVAILABLE';
-                            $st_color = '#28a745';
-                            $btn_cls  = 'normal';
-                            $btn_icon = 'fa-box';
-                        }
+                        if ($stock <= 0)         { $st_color = '#dc3545'; $st_label = 'OUT OF STOCK'; }
+                        elseif ($stock <= $reord) { $st_color = '#fd7e14'; $st_label = 'LOW STOCK'; }
+                        else                     { $st_color = '#28a745'; $st_label = 'AVAILABLE'; }
                     ?>
                     <tr class="merch-row" data-name="<?php echo strtolower(htmlspecialchars($item['name'])); ?>">
-                        <td><strong><?php echo htmlspecialchars($item['name']); ?></strong></td>
+                        <td>
+                            <strong><?php echo htmlspecialchars($item['name']); ?></strong>
+                            <span style="margin-left:6px;display:inline-block;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:700;background:<?php echo $st_color; ?>20;color:<?php echo $st_color; ?>;border:1px solid <?php echo $st_color; ?>40;">
+                                <?php echo $st_label; ?>
+                            </span>
+                        </td>
                         <td><code style="font-size:11px;"><?php echo htmlspecialchars($item['sku'] ?? ''); ?></code></td>
                         <td><?php echo htmlspecialchars($item['category_name'] ?? ''); ?></td>
                         <td style="font-weight:700;color:<?php echo $st_color; ?>;"><?php echo number_format($stock, 0); ?></td>
                         <td class="cost-col">&#8369;<?php echo number_format((float)($item['cost'] ?? 0), 2); ?></td>
                         <td class="price-col">
                             &#8369;<?php echo number_format((float)($item['price'] ?? 0), 2); ?>
-                            <?php if ($profit > 0): ?>
-                                <span class="profit-sm">(+<?php echo number_format($profit, 2); ?>)</span>
-                            <?php endif; ?>
-                        </td>
-                        <td>
-                            <button class="sr-btn <?php echo $btn_cls; ?> stock-request-btn"
-                                    data-item-id="<?php echo (int)($item['id'] ?? 0); ?>"
-                                    data-sku="<?php echo htmlspecialchars($item['sku'] ?? ''); ?>"
-                                    data-name="<?php echo htmlspecialchars($item['name']); ?>"
-                                    data-category="<?php echo htmlspecialchars($item['category_name'] ?? ''); ?>"
-                                    data-current-stock="<?php echo (int)$stock; ?>"
-                                    data-status="<?php echo $st_label; ?>"
-                                    data-status-color="<?php echo $st_color; ?>">
-                                <i class="fas <?php echo $btn_icon; ?>"></i> Stock Request
-                            </button>
+                            <?php if ($profit > 0): ?><span class="profit-sm">(+<?php echo number_format($profit, 2); ?>)</span><?php endif; ?>
                         </td>
                     </tr>
                     <?php endforeach; ?>
                 <?php endforeach; ?>
-
                 <?php if (empty($merch_inventory)): ?>
-                    <tr><td colspan="7" style="text-align:center;padding:28px;color:#6c757d;">No merchandise data available.</td></tr>
-                <?php else: ?>
-                    <tr style="background:#f8f9fa;font-weight:700;border-top:2px solid #dee2e6;">
-                        <td colspan="4">TOTAL</td>
-                        <td colspan="3"><?php echo count($merch_inventory); ?> items &mdash; <?php echo count($categories); ?> categories</td>
-                    </tr>
+                    <tr><td colspan="6" style="text-align:center;padding:28px;color:#6c757d;">No merchandise data available.</td></tr>
                 <?php endif; ?>
                 </tbody>
             </table>
@@ -309,9 +207,7 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
-<!-- ══════════════════════════════════════════
-     STOCK REQUEST MODAL
-══════════════════════════════════════════ -->
+<!-- ══ STOCK REQUEST MODAL ══ -->
 <div class="sr-modal-overlay" id="srModal">
     <div class="sr-modal-box">
         <div class="sr-modal-head">
@@ -322,71 +218,35 @@ include __DIR__ . '/../partials/header.php';
             <button class="sr-modal-close" id="srModalClose">&times;</button>
         </div>
 
-        <form id="srForm">
-            <!-- Hidden fields -->
-            <input type="hidden" id="srItemId">
-            <input type="hidden" id="srSku">
-            <input type="hidden" id="srName">
-            <input type="hidden" id="srCategory">
-            <input type="hidden" id="srCurStock">
+        <div class="sr-info-box">
+            <i class="fas fa-info-circle"></i>
+            <strong>Select the items you want to request, then click Submit.</strong><br>
+            &bull; Manager will review and set the approved quantity<br>
+            &bull; Audit trail logged: Staff ID, Item, Timestamp
+        </div>
 
-            <!-- Auto-populated read-only info -->
-            <div class="sr-field-grid">
-                <div class="sr-field">
-                    <label>Product Name</label>
-                    <input type="text" id="srNameD" readonly>
-                </div>
-                <div class="sr-field">
-                    <label>SKU</label>
-                    <input type="text" id="srSkuD" readonly>
-                </div>
-                <div class="sr-field">
-                    <label>Category</label>
-                    <input type="text" id="srCategoryD" readonly>
-                </div>
-                <div class="sr-field">
-                    <label>Current Stock</label>
-                    <input type="text" id="srCurStockD" readonly>
-                </div>
-                <div class="sr-field">
-                    <label>Status</label>
-                    <div id="srStatusChipWrap" style="padding-top:4px;"></div>
-                </div>
-                <div class="sr-field">
-                    <label>Quantity Requested <span style="color:#dc3545;">*</span></label>
-                    <input type="number" id="srQty" min="1" required
-                           placeholder="Enter quantity..."
-                           style="font-size:15px;font-weight:700;color:#002F70;">
-                </div>
-            </div>
+        <input type="text" id="srModalSearch" placeholder="&#128269; Filter items..." autocomplete="off">
 
-            <div class="sr-field" style="margin-bottom:16px;">
-                <label>Remarks <span style="color:#6c757d;font-weight:400;text-transform:none;">(optional)</span></label>
-                <textarea id="srRemarks" rows="3"
-                          placeholder="e.g. Need for brake pad replacement, running low on shelf..."></textarea>
-            </div>
+        <div class="sr-select-bar">
+            <input type="checkbox" id="srSelectAll">
+            <label for="srSelectAll" style="cursor:pointer;margin:0;">Select All</label>
+            <span id="srSelectedCount" style="margin-left:auto;color:#002F70;font-weight:700;"></span>
+        </div>
 
-            <div class="sr-info-box">
-                <i class="fas fa-info-circle"></i>
-                <strong>What happens next:</strong><br>
-                &bull; Request status → <strong>Pending</strong> (Manager review)<br>
-                &bull; Manager will Approve or Reject with notes<br>
-                &bull; Audit trail logged: Staff ID, Item, Quantity, Timestamp
-            </div>
+        <div id="srCheckList" style="max-height:380px;overflow-y:auto;padding-right:4px;"></div>
 
-            <div id="srError" style="display:none;background:#fee2e2;color:#dc3545;padding:10px 14px;border-radius:6px;margin-bottom:12px;font-size:13px;"></div>
+        <div id="srError" style="display:none;background:#fee2e2;color:#dc3545;padding:10px 14px;border-radius:6px;margin-top:10px;font-size:13px;"></div>
 
-            <div class="sr-modal-footer">
-                <button type="button" id="srCancelBtn"
-                        style="padding:9px 22px;background:#6c757d;color:#fff;border:none;border-radius:6px;cursor:pointer;">
-                    Cancel
-                </button>
-                <button type="submit" id="srSubmitBtn"
-                        style="padding:9px 22px;background:#002F70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">
-                    <i class="fas fa-paper-plane"></i> Submit Request
-                </button>
-            </div>
-        </form>
+        <div class="sr-modal-footer">
+            <button type="button" id="srCancelBtn"
+                    style="padding:9px 22px;background:#6c757d;color:#fff;border:none;border-radius:6px;cursor:pointer;">
+                Cancel
+            </button>
+            <button type="button" id="srSubmitBtn"
+                    style="padding:9px 22px;background:#002F70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">
+                <i class="fas fa-paper-plane"></i> Submit Request
+            </button>
+        </div>
     </div>
 </div>
 
@@ -400,22 +260,13 @@ include __DIR__ . '/../partials/header.php';
     <p style="margin:0 0 18px;color:#333;font-size:14px;line-height:1.5;" id="srSuccessMsg">
         Your stock request is now <strong>Pending</strong> Manager review.
     </p>
-    <button onclick="closeSrSuccess()"
-            style="background:#002F70;color:#fff;border:none;padding:9px 26px;border-radius:6px;cursor:pointer;font-weight:600;">
-        OK
-    </button>
+    <button onclick="closeSrSuccess()" style="background:#002F70;color:#fff;border:none;padding:9px 26px;border-radius:6px;cursor:pointer;font-weight:600;">OK</button>
 </div>
 
 <script>
-// ── Move modal to body so it's never clipped ──────────────────────────────────
-document.addEventListener('DOMContentLoaded', function() {
-    ['srModal','srSuccessOverlay','srSuccessPopup'].forEach(function(id) {
-        var el = document.getElementById(id);
-        if (el && el.parentNode !== document.body) document.body.appendChild(el);
-    });
-});
+var allMerchData = <?php echo json_encode(array_values($js_items)); ?>;
 
-// ── Search ────────────────────────────────────────────────────────────────────
+// ── Table search ──────────────────────────────────────────────────────────────
 document.getElementById('merchSearch').addEventListener('input', function() {
     var q = this.value.toLowerCase();
     document.querySelectorAll('#merchTableBody .merch-row').forEach(function(r) {
@@ -424,124 +275,169 @@ document.getElementById('merchSearch').addEventListener('input', function() {
 });
 
 // ── Open modal ────────────────────────────────────────────────────────────────
-document.addEventListener('click', function(e) {
-    var btn = e.target.closest('.stock-request-btn');
-    if (!btn) return;
-
-    var stock  = parseInt(btn.dataset.currentStock) || 0;
-    var status = btn.dataset.status || '';
-    var color  = btn.dataset.statusColor || '#002F70';
-
-    document.getElementById('srItemId').value   = btn.dataset.itemId    || '';
-    document.getElementById('srSku').value      = btn.dataset.sku       || '';
-    document.getElementById('srName').value     = btn.dataset.name      || '';
-    document.getElementById('srCategory').value = btn.dataset.category  || '';
-    document.getElementById('srCurStock').value = stock;
-
-    document.getElementById('srNameD').value     = btn.dataset.name     || '';
-    document.getElementById('srSkuD').value      = btn.dataset.sku      || '';
-    document.getElementById('srCategoryD').value = btn.dataset.category || '';
-    document.getElementById('srCurStockD').value = stock + ' units';
-
-    // Status chip
-    var chipCls = stock <= 0 ? 'out' : (stock <= 10 ? 'low' : 'ok');
-    document.getElementById('srStatusChipWrap').innerHTML =
-        '<span class="sr-status-chip ' + chipCls + '">' + status + '</span>';
-
-    // Reset form state
-    document.getElementById('srQty').value     = '';
-    document.getElementById('srRemarks').value = '';
+function openSrModal() {
+    document.getElementById('srModalSearch').value = '';
+    renderSrCheckList('');
+    syncSrSelectAll();
     document.getElementById('srError').style.display = 'none';
-    document.getElementById('srSubmitBtn').disabled = false;
+    document.getElementById('srSubmitBtn').disabled  = false;
     document.getElementById('srSubmitBtn').innerHTML = '<i class="fas fa-paper-plane"></i> Submit Request';
-
     document.getElementById('srModal').classList.add('open');
-    setTimeout(function() { document.getElementById('srQty').focus(); }, 120);
+    setTimeout(function() { document.getElementById('srModalSearch').focus(); }, 120);
+}
+
+function renderSrCheckList(filter) {
+    var q = (filter || '').toLowerCase();
+    // Group by category
+    var cats = {};
+    allMerchData.forEach(function(it, idx) {
+        if (q && it.name.toLowerCase().indexOf(q) === -1 &&
+                 it.sku.toLowerCase().indexOf(q) === -1 &&
+                 it.category.toLowerCase().indexOf(q) === -1) return;
+        if (!cats[it.category]) cats[it.category] = [];
+        cats[it.category].push({ it: it, idx: idx });
+    });
+
+    // Snapshot currently checked idxs before re-render
+    var checkedIdxs = {};
+    document.querySelectorAll('.sr-item-cb:checked').forEach(function(cb) {
+        checkedIdxs[cb.dataset.idx] = true;
+    });
+
+    var html = '';
+    Object.keys(cats).forEach(function(cat) {
+        html += '<div class="sr-cat-label">' + escHtml(cat) + '</div>';
+        cats[cat].forEach(function(entry) {
+            var it  = entry.it;
+            var idx = entry.idx;
+            var badge = '<span style="background:' + it.color + '20;color:' + it.color + ';border:1px solid ' + it.color + '40;border-radius:20px;padding:1px 6px;font-size:10px;font-weight:700;">' + escHtml(it.status) + '</span>';
+            var wasChecked = !!checkedIdxs[idx];
+            html += '<label class="sr-cb-row ' + it.stCls + (wasChecked ? ' checked' : '') + '" data-idx="' + idx + '">' +
+                '<input type="checkbox" class="sr-cb sr-item-cb" data-idx="' + idx + '" ' + (wasChecked ? 'checked' : '') + '>' +
+                '<div class="sr-cb-info">' +
+                    '<div class="sr-cb-name">' + escHtml(it.name) + '</div>' +
+                    '<div class="sr-cb-meta">' + escHtml(it.sku) + ' &bull; Stock: ' + it.stock + ' &bull; ' + badge + '</div>' +
+                '</div>' +
+            '</label>';
+        });
+    });
+
+    if (!html) html = '<div style="text-align:center;padding:24px;color:#6c757d;">No items match your search.</div>';
+    document.getElementById('srCheckList').innerHTML = html;
+
+    // Highlight row when checkbox changes
+    document.querySelectorAll('.sr-item-cb').forEach(function(cb) {
+        cb.addEventListener('change', function() {
+            this.closest('.sr-cb-row').classList.toggle('checked', this.checked);
+            syncSrSelectAll();
+        });
+    });
+
+    syncSrSelectAll();
+}
+
+function syncSrSelectAll() {
+    var all     = document.querySelectorAll('.sr-item-cb');
+    var checked = document.querySelectorAll('.sr-item-cb:checked');
+    var sa = document.getElementById('srSelectAll');
+    sa.indeterminate = checked.length > 0 && checked.length < all.length;
+    sa.checked       = all.length > 0 && checked.length === all.length;
+    document.getElementById('srSelectedCount').textContent =
+        checked.length > 0 ? checked.length + ' selected' : '';
+}
+
+document.getElementById('srSelectAll').addEventListener('change', function() {
+    var c = this.checked;
+    document.querySelectorAll('.sr-item-cb').forEach(function(cb) { cb.checked = c; });
+    document.querySelectorAll('.sr-cb-row').forEach(function(row) { row.classList.toggle('checked', c); });
+    syncSrSelectAll();
 });
 
-// ── Close modal ───────────────────────────────────────────────────────────────
-function closeSrModal() {
-    document.getElementById('srModal').classList.remove('open');
-}
+// Modal search filter
+document.getElementById('srModalSearch').addEventListener('input', function() {
+    renderSrCheckList(this.value);
+});
+
+// ── Close ─────────────────────────────────────────────────────────────────────
+function closeSrModal() { document.getElementById('srModal').classList.remove('open'); }
 document.getElementById('srModalClose').addEventListener('click', closeSrModal);
 document.getElementById('srCancelBtn').addEventListener('click', closeSrModal);
-document.getElementById('srModal').addEventListener('click', function(e) {
-    if (e.target === this) closeSrModal();
-});
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') closeSrModal();
-});
+document.getElementById('srModal').addEventListener('click', function(e) { if (e.target === this) closeSrModal(); });
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeSrModal(); });
 
 // ── Submit ────────────────────────────────────────────────────────────────────
-document.getElementById('srForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-
-    var qty = parseInt(document.getElementById('srQty').value) || 0;
-    if (qty <= 0) {
-        showSrError('Please enter a valid quantity (minimum 1).');
+document.getElementById('srSubmitBtn').addEventListener('click', function() {
+    var checked = document.querySelectorAll('.sr-item-cb:checked');
+    if (checked.length === 0) {
+        var el = document.getElementById('srError');
+        el.textContent = 'Please select at least one item.';
+        el.style.display = 'block';
         return;
     }
 
-    var payload = {
-        item_id:            document.getElementById('srItemId').value,
-        sku:                document.getElementById('srSku').value,
-        item_name:          document.getElementById('srName').value,
-        item_category:      document.getElementById('srCategory').value,
-        current_stock:      document.getElementById('srCurStock').value,
-        requested_quantity: qty,
-        remarks:            document.getElementById('srRemarks').value.trim()
-    };
-
-    var btn = document.getElementById('srSubmitBtn');
+    var btn = this;
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
     document.getElementById('srError').style.display = 'none';
 
-    fetch('../backend/api/stock_request.php?action=create', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(payload)
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(res) {
-        if (res.success) {
+    var queue = [];
+    checked.forEach(function(cb) { queue.push(allMerchData[parseInt(cb.dataset.idx)]); });
+
+    var results = { ok: 0, fail: 0, errors: [] };
+
+    function submitNext() {
+        if (queue.length === 0) {
             closeSrModal();
-            document.getElementById('srSuccessMsg').innerHTML =
-                'Your stock request for <strong>' + escHtml(res.item_name) + '</strong> (' +
-                res.requested_quantity + ' units) is now <strong>Pending</strong> Manager review.';
+            var msg = results.ok + ' request' + (results.ok !== 1 ? 's' : '') + ' submitted successfully.';
+            if (results.fail > 0) msg += ' ' + results.fail + ' failed: ' + results.errors.join('; ');
+            document.getElementById('srSuccessMsg').innerHTML = msg;
             document.getElementById('srSuccessPopup').style.display  = 'block';
             document.getElementById('srSuccessOverlay').style.display = 'block';
             setTimeout(closeSrSuccess, 6000);
-        } else {
-            showSrError(res.message || 'Failed to submit request.');
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Request';
+            return;
         }
-    })
-    .catch(function() {
-        showSrError('Network error. Please try again.');
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Request';
-    });
+        var it = queue.shift();
+        fetch('../backend/api/stock_request.php?action=create', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({
+                item_id:            it.id,
+                sku:                it.sku,
+                item_name:          it.name,
+                item_category:      it.category,
+                current_stock:      it.stock,
+                requested_quantity: 0,
+                remarks:            ''
+            })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+            if (res.success) results.ok++;
+            else { results.fail++; results.errors.push(it.name + ': ' + (res.message || 'error')); }
+            submitNext();
+        })
+        .catch(function() {
+            results.fail++;
+            results.errors.push(it.name + ': network error');
+            submitNext();
+        });
+    }
+    submitNext();
 });
-
-function showSrError(msg) {
-    var el = document.getElementById('srError');
-    el.textContent = msg;
-    el.style.display = 'block';
-}
 
 function closeSrSuccess() {
     document.getElementById('srSuccessPopup').style.display  = 'none';
     document.getElementById('srSuccessOverlay').style.display = 'none';
     location.reload();
 }
+function escHtml(str) { var d = document.createElement('div'); d.appendChild(document.createTextNode(str)); return d.innerHTML; }
 
-function escHtml(str) {
-    var d = document.createElement('div');
-    d.appendChild(document.createTextNode(str));
-    return d.innerHTML;
-}
+document.addEventListener('DOMContentLoaded', function() {
+    ['srModal','srSuccessOverlay','srSuccessPopup'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el && el.parentNode !== document.body) document.body.appendChild(el);
+    });
+});
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

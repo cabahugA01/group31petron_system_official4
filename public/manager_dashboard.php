@@ -673,6 +673,21 @@ require_once __DIR__ . '/../partials/header.php';
 <div class="flash-card flash-error"><i class="fas fa-exclamation-circle"></i><?= htmlspecialchars($flash_error) ?></div>
 <?php endif; ?>
 
+<?php
+// ── Manager inventory flow alerts ─────────────────────────────────────────────
+$mgr_pending_sr = 0;
+try {
+    $s = $pdo->prepare("SELECT COUNT(*) FROM stock_requests WHERE station_id=? AND status='Pending'");
+    $s->execute([$station_id]);
+    $mgr_pending_sr = (int)$s->fetchColumn();
+} catch (Exception $e) {}
+$mgr_pending_po = 0;
+try {
+    $s = $pdo->prepare("SELECT COUNT(*) FROM purchase_orders WHERE station_id=? AND status='Pending Admin Validation' AND type='merch' AND admin_finalized=0");
+    $s->execute([$station_id]);
+    $mgr_pending_po = (int)$s->fetchColumn();
+} catch (Exception $e) {}
+?>
 <!-- ============================================================
      TOP SECTION: 10 KPI Cards — vertical layout, always-visible labels
      ============================================================ -->

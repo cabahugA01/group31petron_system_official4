@@ -135,10 +135,10 @@ try {
     $stmt = $pdo->prepare("
         SELECT jo.id, jo.created_by, jo.customer_name, jo.service_type,
                jo.validation_status, jo.created_at,
-               u.name AS staff_name,
-               mu.name AS manager_assigned_name
+               COALESCE(u.name, 'Unknown') AS staff_name,
+               COALESCE(mu.name, '—') AS manager_assigned_name
         FROM job_orders jo
-        JOIN users u ON jo.created_by = u.id AND u.role IN ('staff','cashier','pump_attendant')
+        LEFT JOIN users u ON jo.created_by = u.id
         LEFT JOIN users mu ON jo.validated_by = mu.id
         WHERE jo.station_id = ? AND DATE(jo.created_at) BETWEEN ? AND ?
         ORDER BY jo.created_at DESC");
@@ -169,12 +169,14 @@ try {
 
 // Auto-sync Credit/Utang Transactions
 try {
+    // Check table exists before querying
+    $pdo->query("SELECT 1 FROM credit_transactions LIMIT 1");
     $stmt = $pdo->prepare("
         SELECT ct.id, ct.staff_id, ct.customer_name, ct.total_amount,
                ct.validation_status, ct.created_at,
-               u.name AS staff_name
+               COALESCE(u.name, 'Unknown') AS staff_name
         FROM credit_transactions ct
-        JOIN users u ON ct.staff_id = u.id AND u.role IN ('staff','cashier','pump_attendant')
+        LEFT JOIN users u ON ct.staff_id = u.id
         WHERE ct.station_id = ? AND DATE(ct.created_at) BETWEEN ? AND ?
         ORDER BY ct.created_at DESC");
     $stmt->execute([$station_id, $week_start_str, $week_end_str]);
@@ -207,10 +209,10 @@ try {
     $stmt = $pdo->prepare("
         SELECT d.id, d.encoded_by as created_by, d.status, d.supplier,
                DATE(d.delivery_date) AS event_date,
-               u.name AS staff_name,
-               mu.name AS manager_assigned_name
+               COALESCE(u.name, 'Unknown') AS staff_name,
+               COALESCE(mu.name, '—') AS manager_assigned_name
         FROM deliveries_oversight d
-        JOIN users u ON d.encoded_by = u.id AND u.role IN ('staff','cashier','pump_attendant')
+        LEFT JOIN users u ON d.encoded_by = u.id
         LEFT JOIN users mu ON d.manager_id = mu.id
         WHERE d.station_id = ? AND DATE(d.delivery_date) BETWEEN ? AND ?
         ORDER BY d.delivery_date DESC");
@@ -242,10 +244,10 @@ try {
 try {
     $stmt = $pdo->prepare("
         SELECT ss.id, ss.staff_id, ss.shift_date, ss.start_time, ss.end_time,
-               u.name AS staff_name, ss.validation_status, ss.validated_by,
-               mu.name AS manager_assigned_name
+               COALESCE(u.name, 'Unknown') AS staff_name, ss.validation_status, ss.validated_by,
+               COALESCE(mu.name, '—') AS manager_assigned_name
         FROM staff_shifts ss
-        JOIN users u ON ss.staff_id = u.id
+        LEFT JOIN users u ON ss.staff_id = u.id
         LEFT JOIN users mu ON ss.validated_by = mu.id
         WHERE ss.station_id = ? AND ss.shift_date BETWEEN ? AND ?
         ORDER BY ss.shift_date, ss.start_time");
@@ -320,10 +322,16 @@ foreach ($week_events as $uid => $dates) {
         foreach ($evs as $ev) {
             $weekly_stats['total_events']++;
             $vs = strtolower($ev['validation_status'] ?? $ev['status'] ?? 'pending');
-            if (in_array($vs, ['pending','pending validation'])) $weekly_stats['pending_validations']++;
-            elseif ($vs === 'approved')  $weekly_stats['approved']++;
-            elseif ($vs === 'rejected')  $weekly_stats['rejected']++;
-            elseif ($vs === 'adjusted')  $weekly_stats['adjusted']++;
+            // Normalise varied status strings into buckets
+            if (in_array($vs, ['pending','pending validation','pending manager approval','pending manager confirmation','pending review','awaiting validation'])) {
+                $weekly_stats['pending_validations']++;
+            } elseif (in_array($vs, ['approved','confirmed','validated','verified','completed','done'])) {
+                $weekly_stats['approved']++;
+            } elseif (in_array($vs, ['rejected','discrepancy','flagged','returned','returned to supplier'])) {
+                $weekly_stats['rejected']++;
+            } elseif (in_array($vs, ['adjusted','adjusted & approved','partial'])) {
+                $weekly_stats['adjusted']++;
+            }
 
             if ($date === $today_str)                                  $today_events[]    = $ev;
             elseif ($date > $today_str && $date <= $three_days_ahead) $upcoming_events[] = $ev;
@@ -362,15 +370,33 @@ function cal_type_color($type_key) {
 }
 
 function cal_status_badge($status) {
-    $badges = [
-        'pending' => '<span class="cal-badge badge-pending">Pending</span>',
-        'approved' => '<span class="cal-badge badge-approved">Approved</span>',
-        'completed' => '<span class="cal-badge badge-completed">Completed</span>',
-        'cancelled' => '<span class="cal-badge badge-cancelled">Cancelled</span>',
-        'rejected' => '<span class="cal-badge badge-rejected">Rejected</span>',
-        'adjusted' => '<span class="cal-badge badge-adjusted">Adjusted</span>'
-    ];
-    return $badges[$status] ?? $badges['pending'];
+    $s = strtolower(trim($status));
+    // Pending bucket
+    if (in_array($s, ['pending','pending validation','pending manager approval','pending manager confirmation','pending review','awaiting validation','awaiting'])) {
+        return '<span class="cal-badge badge-pending">Pending</span>';
+    }
+    // Approved bucket
+    if (in_array($s, ['approved','confirmed','validated','verified','done'])) {
+        return '<span class="cal-badge badge-approved">Approved</span>';
+    }
+    // Completed bucket
+    if ($s === 'completed') {
+        return '<span class="cal-badge badge-completed">Completed</span>';
+    }
+    // Adjusted bucket
+    if (in_array($s, ['adjusted','adjusted & approved','partial'])) {
+        return '<span class="cal-badge badge-adjusted">Adjusted</span>';
+    }
+    // Rejected bucket
+    if (in_array($s, ['rejected','discrepancy','flagged','returned','returned to supplier'])) {
+        return '<span class="cal-badge badge-rejected">Rejected</span>';
+    }
+    // Cancelled
+    if ($s === 'cancelled') {
+        return '<span class="cal-badge badge-cancelled">Cancelled</span>';
+    }
+    // Fallback — show the raw status with pending style
+    return '<span class="cal-badge badge-pending">' . htmlspecialchars(ucfirst($status)) . '</span>';
 }
 
 require_once '../partials/header.php';
@@ -378,9 +404,9 @@ require_once '../partials/header.php';
 
 <style>
 /* Staff Calendar Styling - Same as staff_calendar.php */
-.sc-wrap { display:flex; gap:20px; padding:20px; max-width:100%; }
-.sc-main { flex:1; min-width:0; }
-.sc-sidebar { width:300px; flex-shrink:0; display:flex; flex-direction:column; gap:16px; }
+.sc-wrap { display:flex; gap:16px; padding:0 0 60px 0; max-width:100%; box-sizing:border-box; }
+.sc-main { flex:1; min-width:0; overflow:hidden; }
+.sc-sidebar { width:260px; flex-shrink:0; display:flex; flex-direction:column; gap:16px; }
 
 /* Header */
 .sc-header { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; background:#fff; border:1px solid #EAEAEA; margin-bottom:18px; border-radius:14px; box-shadow:0 1px 4px rgba(0,0,0,.04); }
@@ -394,8 +420,8 @@ require_once '../partials/header.php';
 .sc-today-btn:hover { background:#003d7a; color:#fff; }
 
 /* Grid */
-.sc-grid-wrap { background:#e9eaec; border-radius:14px; border:1px solid #d8dadf; overflow-x:auto; box-shadow:0 2px 12px rgba(0,0,0,.06); }
-.sc-grid { display:grid; grid-template-columns:180px repeat(7,minmax(100px,1fr)); min-width:900px; }
+.sc-grid-wrap { background:#e9eaec; border-radius:14px; border:1px solid #d8dadf; overflow-x:auto; box-shadow:0 2px 12px rgba(0,0,0,.06); width:100%; }
+.sc-grid { display:grid; grid-template-columns:160px repeat(7,minmax(90px,1fr)); min-width:820px; width:100%; }
 .sc-col-head-label { background:#eef0f3; padding:10px 12px; border-bottom:2px solid #d8dadf; border-right:1px solid #d8dadf; font-size:11px; font-weight:700; color:#667085; text-transform:uppercase; letter-spacing:.5px; display:flex; align-items:center; }
 .sc-col-head { background:#eef0f3; padding:10px 8px; text-align:center; border-bottom:2px solid #d8dadf; border-right:1px solid #d8dadf; }
 .sc-col-head:last-child { border-right:none; }
@@ -433,7 +459,7 @@ require_once '../partials/header.php';
 
 /* Badges */
 .cal-badge { font-size:9px; font-weight:700; padding:2px 6px; border-radius:12px; text-transform:uppercase; }
-.badge-pending { background:#fef3c7; color:#92400e; }
+.badge-pending { background:#002F70; color:#fff; }
 .badge-approved { background:#d1fae5; color:#065f46; }
 .badge-completed { background:#dbeafe; color:#1e40af; }
 .badge-cancelled { background:#f3f4f6; color:#374151; }
@@ -489,14 +515,11 @@ require_once '../partials/header.php';
 @media(max-width:900px){
   .sc-wrap { flex-direction:column; }
   .sc-sidebar { width:100%; flex:none; }
-  .sc-grid { grid-template-columns:120px repeat(7,minmax(80px,1fr)); }
+  .sc-grid { grid-template-columns:100px repeat(7,minmax(70px,1fr)); }
 }
-
-/* sc-wrap handles its own padding; grid scroll is handled by .sc-grid-wrap */
-.sc-wrap { padding-bottom: 60px; }
 </style>
 
-<div class="sc-wrap" style="width: 100%; box-sizing: border-box;">
+<div class="sc-wrap">
   <!-- ===== MAIN CALENDAR AREA ===== -->
   <div class="sc-main">
 
@@ -698,7 +721,7 @@ require_once '../partials/header.php';
     <div class="sc-card">
       <p class="sc-card-title"><i class="fas fa-chart-pie"></i> This Week Status</p>
       <div class="sc-status-row">
-        <span class="sc-status-label"><span style="width:10px;height:10px;border-radius:50%;background:#856404;display:inline-block"></span> Pending</span>
+        <span class="sc-status-label"><span style="width:10px;height:10px;border-radius:50%;background:#002F70;display:inline-block"></span> Pending</span>
         <span class="sc-status-count"><?php echo $weekly_stats['pending_validations']; ?></span>
       </div>
       <div class="sc-status-row">

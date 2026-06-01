@@ -351,6 +351,34 @@ if (isset($_GET['refresh_stock_charts']) && $_GET['refresh_stock_charts'] == '1'
     exit;
 }
 
+// ============================================================
+// AJAX ENDPOINT: ?refresh_fuel=1  — live fuel level monitor
+// ============================================================
+if (isset($_GET['refresh_fuel']) && $_GET['refresh_fuel'] == '1') {
+    header('Content-Type: application/json');
+    try {
+        $fsl = $pdo->prepare("
+            SELECT COALESCE(ft.name, fi.fuel_type) AS fuel_type_name,
+                   COALESCE(fi.current_level, fi.current_stock, 0) AS current_stock,
+                   COALESCE(fi.capacity, 0) AS capacity,
+                   COALESCE(fi.price_per_liter, 0) AS price_per_liter
+            FROM fuel_inventory fi
+            LEFT JOIN fuel_types ft ON fi.fuel_type_id = ft.id
+            WHERE fi.station_id = ?
+            ORDER BY fuel_type_name ASC
+        ");
+        $fsl->execute([$station_id]);
+        $fuel_levels = $fsl->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        echo json_encode([
+            'success'      => true,
+            'fuel_levels'  => $fuel_levels,
+            'refreshed_at' => date('h:i:s A'),
+        ]);
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
+    exit;
+}
 
 // ============================================================
 // PHP DATA QUERIES
@@ -781,6 +809,21 @@ try {
 } catch (Exception $e) {}
 
 require_once __DIR__ . '/../partials/header.php';
+
+// ── Inventory flow alerts for staff ──────────────────────────────────────────
+$staff_pending_stock_in = 0;
+$staff_pending_sr       = 0;
+try {
+    // Only count POs that are both admin-finalized AND manager-validated — those are truly ready for stock-in
+    $s = $pdo->prepare("SELECT COUNT(*) FROM purchase_orders WHERE station_id=? AND admin_finalized=1 AND delivery_validated=1 AND stock_in_done=0 AND type='merch'");
+    $s->execute([$station_id]);
+    $staff_pending_stock_in = (int)$s->fetchColumn();
+} catch (Exception $e) {}
+try {
+    $s = $pdo->prepare("SELECT COUNT(*) FROM stock_requests WHERE staff_id=? AND status='Pending'");
+    $s->execute([$me['id']]);
+    $staff_pending_sr = (int)$s->fetchColumn();
+} catch (Exception $e) {}
 ?>
 <div class="dashboard-content" style="max-width:100%;box-sizing:border-box;overflow-x:hidden;padding-bottom:100px;">
 <style>
@@ -886,6 +929,8 @@ require_once __DIR__ . '/../partials/header.php';
 <div class="flash-card flash-error"><i class="fas fa-exclamation-circle"></i><?= htmlspecialchars($flash_error) ?></div>
 <?php endif; ?>
 
+
+
 <!-- Range Selector -->
 <div class="range-selector">
   <a href="staff_dashboard.php?range=today" class="range-btn <?= $range==='today'?'active':'' ?>"><i class="fas fa-calendar-day"></i> Today</a>
@@ -961,6 +1006,151 @@ require_once __DIR__ . '/../partials/header.php';
 
   </div>
 </div>
+<!-- ===== WIDGET 2b: Payment Breakdown & Fuel Sales (side by side) ===== -->
+<div class="widget-card widget-full">
+  <h3>
+    <i class="fas fa-coins"></i> Sales Breakdown
+    <span style="margin-left:auto;font-size:11px;font-weight:500;color:#667085" id="last-refreshed"></span>
+  </h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+
+    <!-- Payment Method Breakdown -->
+    <div>
+      <div style="font-size:12px;font-weight:700;color:#344054;margin-bottom:10px;display:flex;align-items:center;gap:6px">
+        <i class="fas fa-money-bill-wave" style="color:#22c55e"></i> Payment Method Breakdown
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead>
+            <tr style="background:#f8fafc;border-bottom:2px solid #EAEAEA">
+              <th style="text-align:left;padding:9px 10px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">Method</th>
+              <th style="text-align:right;padding:9px 10px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">Amount</th>
+              <th style="text-align:right;padding:9px 10px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">Share</th>
+            </tr>
+          </thead>
+          <tbody id="merch-tbody">
+            <?php
+              $pay_rows = [
+                ['label'=>'Cash',         'color'=>'#22c55e','icon'=>'fa-money-bill-wave','val'=>$merch_cash+$jo_cash],
+                ['label'=>'Card',         'color'=>'#3b82f6','icon'=>'fa-credit-card',    'val'=>$merch_card+$jo_card],
+                ['label'=>'E-Wallet',     'color'=>'#a855f7','icon'=>'fa-mobile-alt',     'val'=>$merch_ewallet+$jo_ewallet],
+                ['label'=>'E-Fuel Card',  'color'=>'#f59e0b','icon'=>'fa-gas-pump',       'val'=>$merch_efuel+$jo_efuel],
+                ['label'=>'Credit/Utang', 'color'=>'#ef4444','icon'=>'fa-file-invoice',   'val'=>$merch_credit+$jo_credit],
+              ];
+              $pay_total = array_sum(array_column($pay_rows,'val'));
+              foreach ($pay_rows as $p):
+                $share = $pay_total > 0 ? number_format($p['val']/$pay_total*100,1) : '0.0';
+            ?>
+            <tr style="border-bottom:1px solid #f5f5f5" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+              <td style="padding:9px 10px">
+                <span style="display:inline-flex;align-items:center;gap:7px">
+                  <span style="width:8px;height:8px;border-radius:50%;background:<?= $p['color'] ?>;display:inline-block"></span>
+                  <i class="fas <?= $p['icon'] ?>" style="color:<?= $p['color'] ?>;font-size:12px"></i>
+                  <span style="font-weight:600;color:#344054"><?= $p['label'] ?></span>
+                </span>
+              </td>
+              <td style="padding:9px 10px;text-align:right;font-weight:700;color:#101828">&#8369;<?= number_format($p['val'],2) ?></td>
+              <td style="padding:9px 10px;text-align:right">
+                <span style="background:<?= $p['color'] ?>22;color:<?= $p['color'] ?>;font-size:11px;font-weight:700;padding:2px 7px;border-radius:20px"><?= $share ?>%</span>
+              </td>
+            </tr>
+            <?php endforeach; ?>
+          </tbody>
+          <tfoot id="merch-tfoot">
+            <tr style="background:#f0f4ff;border-top:2px solid #EAEAEA">
+              <td style="padding:10px;font-weight:800;color:#00264D;font-size:13px"><i class="fas fa-sigma" style="margin-right:5px"></i>Total</td>
+              <td style="padding:10px;text-align:right;font-weight:800;color:#00264D;font-size:14px">&#8369;<?= number_format($pay_total,2) ?></td>
+              <td style="padding:10px;text-align:right;font-size:12px;color:#667085"><?= $merch_txns ?> txn<?= $merch_txns!=1?'s':'' ?></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- Fuel Sales by Type -->
+    <div>
+      <div style="font-size:12px;font-weight:700;color:#344054;margin-bottom:10px;display:flex;align-items:center;gap:6px">
+        <i class="fas fa-gas-pump" style="color:#dc2626"></i> Fuel Sales by Type
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead>
+            <tr style="background:#f8fafc;border-bottom:2px solid #EAEAEA">
+              <th style="text-align:left;padding:9px 12px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">Fuel Type</th>
+              <th style="text-align:right;padding:9px 12px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">Liters</th>
+              <th style="text-align:right;padding:9px 12px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">Revenue</th>
+              <th style="text-align:right;padding:9px 12px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">Avg Price</th>
+              <th style="text-align:right;padding:9px 12px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">Txns</th>
+              <th style="text-align:center;padding:9px 12px;color:#667085;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px">Status</th>
+            </tr>
+          </thead>
+          <tbody id="fuel-tbody">
+            <?php if (empty($fuel_by_type)): ?>
+            <tr><td colspan="6" style="text-align:center;padding:20px;color:#9ca3af;font-size:13px">
+              <i class="fas fa-inbox"></i> No fuel readings recorded for this period.
+            </td></tr>
+            <?php else: ?>
+            <?php foreach ($fuel_by_type as $ft):
+              $hasVar = abs(($ft['total_variance_liters'] ?? 0)) >= 2;
+            ?>
+            <tr style="border-bottom:1px solid #f5f5f5" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+              <td style="padding:10px 12px">
+                <span style="display:inline-flex;align-items:center;gap:8px">
+                  <span style="width:10px;height:10px;border-radius:50%;background:#3b82f6;display:inline-block"></span>
+                  <strong style="color:#00264D"><?= htmlspecialchars($ft['fuel_type']) ?></strong>
+                </span>
+              </td>
+              <td style="padding:10px 12px;text-align:right;font-weight:700;color:#101828"><?= number_format((float)$ft['total_liters'],2) ?> <span style="font-size:11px;color:#667085">L</span></td>
+              <td style="padding:10px 12px;text-align:right;font-weight:700;color:#101828">&#8369;<?= number_format((float)$ft['total_revenue'],2) ?></td>
+              <td style="padding:10px 12px;text-align:right;color:#667085">&#8369;<?= number_format((float)$ft['avg_price'],2) ?></td>
+              <td style="padding:10px 12px;text-align:right;color:#667085"><?= (int)$ft['txn_count'] ?></td>
+              <td style="padding:10px 12px;text-align:center">
+                <?php if ($hasVar): ?>
+                <span style="background:#FEF3C7;color:#92400E;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;display:inline-flex;align-items:center;gap:4px">
+                  <i class="fas fa-exclamation-triangle"></i> Variance
+                </span>
+                <?php else: ?>
+                <span style="background:#D1FAE5;color:#065F46;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;display:inline-flex;align-items:center;gap:4px">
+                  <i class="fas fa-check"></i> OK
+                </span>
+                <?php endif; ?>
+              </td>
+            </tr>
+            <?php endforeach; ?>
+            <?php endif; ?>
+          </tbody>
+          <tfoot id="fuel-tfoot">
+            <?php
+              $totalL = array_sum(array_column($fuel_by_type,'total_liters'));
+              $totalR = array_sum(array_column($fuel_by_type,'total_revenue'));
+              $anyVar = !empty(array_filter(array_column($fuel_by_type,'has_discrepancy')));
+            ?>
+            <tr style="background:#f0f4ff;border-top:2px solid #EAEAEA">
+              <td style="padding:10px 12px;font-weight:800;color:#00264D"><i class="fas fa-sigma" style="margin-right:5px"></i>Total</td>
+              <td style="padding:10px 12px;text-align:right;font-weight:800;color:#00264D"><?= number_format($totalL,2) ?> L</td>
+              <td style="padding:10px 12px;text-align:right;font-weight:800;color:#00264D">&#8369;<?= number_format($totalR,2) ?></td>
+              <td style="padding:10px 12px;text-align:right;color:#667085">&mdash;</td>
+              <td style="padding:10px 12px;text-align:right;font-weight:700;color:#00264D">&mdash;</td>
+              <td style="padding:10px 12px;text-align:center">
+                <?php if ($anyVar): ?>
+                <span style="background:#FEE2E2;color:#991B1B;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px">
+                  <i class="fas fa-exclamation-circle"></i> Check Readings
+                </span>
+                <?php else: ?>
+                <span style="background:#D1FAE5;color:#065F46;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px">
+                  <i class="fas fa-check-circle"></i> All OK
+                </span>
+                <?php endif; ?>
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
 <!-- ===== WIDGET 3: Job Orders Status ===== -->
 <div class="widget-card widget-full">
   <h3><i class="fas fa-wrench"></i> Job Orders Status
@@ -968,6 +1158,30 @@ require_once __DIR__ . '/../partials/header.php';
       <i class="fas fa-plus"></i> New Job Order
     </a>
   </h3>
+
+  <!-- Status Summary Cards -->
+  <div class="status-grid" style="margin-bottom:16px">
+    <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker" class="status-card" style="background:#FFF3CD;border-color:#FDE68A">
+      <div class="count" style="color:#92400E" id="jo-pending"><?= $pending_validation ?></div>
+      <div class="label" style="color:#92400E"><i class="fas fa-hourglass-half"></i> Pending</div>
+    </a>
+    <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker" class="status-card" style="background:#D1FAE5;border-color:#A7F3D0">
+      <div class="count" style="color:#065F46" id="jo-approved"><?= $approved_validated ?></div>
+      <div class="label" style="color:#065F46"><i class="fas fa-check-circle"></i> Approved</div>
+    </a>
+    <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker" class="status-card" style="background:#DBEAFE;border-color:#BFDBFE">
+      <div class="count" style="color:#1E40AF" id="jo-inprogress"><?= $in_progress ?></div>
+      <div class="label" style="color:#1E40AF"><i class="fas fa-spinner"></i> In Progress</div>
+    </a>
+    <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker" class="status-card" style="background:#DCFCE7;border-color:#BBF7D0">
+      <div class="count" style="color:#14532D" id="jo-completed"><?= $completed ?></div>
+      <div class="label" style="color:#14532D"><i class="fas fa-flag-checkered"></i> Completed</div>
+    </a>
+    <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker" class="status-card" style="background:#FEE2E2;border-color:#FECACA">
+      <div class="count" style="color:#991B1B" id="jo-rejected"><?= $rejected ?></div>
+      <div class="label" style="color:#991B1B"><i class="fas fa-times-circle"></i> Rejected</div>
+    </a>
+  </div>
 
   <!-- Detail Table -->
   <?php
@@ -1440,14 +1654,9 @@ require_once __DIR__ . '/../partials/header.php';
     <span style="margin-left:8px;font-size:11px;font-weight:500;color:#667085">Your personal reports — scoped to your station &amp; activity</span>
   </h3>
   <div class="reports-grid">
-    <a href="staff_reports.php?view=job_order_report" class="report-btn">
-      <i class="fas fa-clipboard-list"></i>
-      <span>Job Orders Report</span>
-      <span class="qa-desc">Your encoded job orders</span>
-    </a>
-    <a href="staff_reports.php?view=deliveries_report" class="report-btn">
+    <a href="staff_reports.php?view=inventory_report" class="report-btn">
       <i class="fas fa-truck"></i>
-      <span>Deliveries Report</span>
+      <span>Inventory Report</span>
       <span class="qa-desc">Received &amp; encoded deliveries</span>
     </a>
     <a href="staff_reports.php?view=customer_report" class="report-btn">
@@ -1455,7 +1664,7 @@ require_once __DIR__ . '/../partials/header.php';
       <span>Customer Report</span>
       <span class="qa-desc">Basic info + your transactions</span>
     </a>
-    <a href="staff_reports.php?view=transaction_report" class="report-btn">
+    <a href="staff_reports.php?view=daily_sales" class="report-btn">
       <i class="fas fa-receipt"></i>
       <span>Transaction Report</span>
       <span class="qa-desc">Merchandise &amp; credit sales</span>
@@ -1464,11 +1673,6 @@ require_once __DIR__ . '/../partials/header.php';
       <i class="fas fa-user-clock"></i>
       <span>Personal Activity</span>
       <span class="qa-desc">Clock-in/out &amp; action logs</span>
-    </a>
-    <a href="staff_reports.php?view=audit_trail" class="report-btn">
-      <i class="fas fa-history"></i>
-      <span>Audit Trail Report</span>
-      <span class="qa-desc">View action history</span>
     </a>
   </div>
 </div>

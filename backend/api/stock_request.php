@@ -351,11 +351,21 @@ function handle_get_requests($pdo, $me, $role, $station_id) {
                COALESCE(sr.purchase_request_id, '') AS purchase_request_id,
                u.name  AS staff_name,
                m.name  AS manager_name,
-               s.name  AS station_name
+               s.name  AS station_name,
+               po.po_number,
+               po.status        AS po_status,
+               po.admin_finalized,
+               po.admin_finalized_at,
+               po.delivery_validated,
+               po.delivery_validated_at,
+               po.delivery_flag,
+               po.stock_in_done,
+               po.stock_in_at
         FROM stock_requests sr
         JOIN users u    ON sr.staff_id    = u.id
         LEFT JOIN users m ON sr.manager_id = m.id
         LEFT JOIN stations s ON sr.station_id = s.id
+        LEFT JOIN purchase_orders po ON po.request_id = sr.id AND po.type = 'merch'
     ";
     if ($where) $sql .= ' WHERE ' . implode(' AND ', $where);
     $sql .= ' ORDER BY sr.created_at DESC';
@@ -395,15 +405,18 @@ function handle_approve($pdo, $me, $role, $station_id) {
         echo json_encode(['success' => false, 'message' => 'Request is not pending']); return;
     }
 
+    // Ensure purchase_request_id column exists BEFORE starting the transaction.
+    // ALTER TABLE causes an implicit commit in MySQL/MariaDB, which would
+    // silently end any open transaction and cause "There is no active transaction"
+    // when rollBack() is later called on error.
+    try {
+        $pdo->exec("ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS purchase_request_id VARCHAR(50) NULL DEFAULT NULL");
+    } catch (Exception $ignored) {}
+
     $pdo->beginTransaction();
     try {
         // Generate Purchase Request ID: PR-YYYYMMDD-XXXX
         $pr_id = 'PR-' . date('Ymd') . '-' . str_pad($request_id, 4, '0', STR_PAD_LEFT);
-
-        // Ensure purchase_request_id column exists (add if missing)
-        try {
-            $pdo->exec("ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS purchase_request_id VARCHAR(50) NULL DEFAULT NULL");
-        } catch (Exception $ignored) {}
 
         // Update request → Forwarded to Admin
         $pdo->prepare("
@@ -483,7 +496,9 @@ function handle_approve($pdo, $me, $role, $station_id) {
                 ->execute([$me['id'], $detail, $request_id, $ip, $ua]);
         } catch (Exception $e) {}
     } catch (Exception $e) {
-        $pdo->rollBack();
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         throw $e;
     }
 }

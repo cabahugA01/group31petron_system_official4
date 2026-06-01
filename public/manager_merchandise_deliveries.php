@@ -1,5 +1,5 @@
-﻿<?php
-$page_id = 'mgr_merch_deliveries';
+<?php
+$page_id = 'manager_deliveries';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
@@ -113,8 +113,8 @@ include __DIR__ . '/../partials/header.php';
 
 <div class="page-head">
     <div>
-        <h1 class="h1"><i class="fas fa-truck"></i> Deliveries Management</h1>
-        <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; Fuel &amp; Merchandise deliveries &mdash; Approve, Flag Discrepancy, or Resolve</div>
+        <h1 class="h1"><i class="fas fa-truck"></i> Merchandise Deliveries</h1>
+        <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; Merchandise deliveries &mdash; Approve, Flag Discrepancy, or Resolve</div>
     </div>
     <div class="header-actions">
         <button onclick="exportExcel()" class="btn" style="background:#28a745;color:#fff;"><i class="fas fa-file-excel"></i> Excel</button>
@@ -133,14 +133,6 @@ include __DIR__ . '/../partials/header.php';
 
 <!-- Filters -->
 <div class="filter-row" style="margin-bottom:16px;">
-    <div class="fg">
-        <label>Type</label>
-        <select id="f-type" onchange="loadDeliveries()">
-            <option value="">All Types</option>
-            <option value="fuel">⛽ Fuel</option>
-            <option value="merchandise">📦 Merchandise</option>
-        </select>
-    </div>
     <div class="fg">
         <label>Status</label>
         <select id="f-status" onchange="loadDeliveries()">
@@ -170,7 +162,7 @@ include __DIR__ . '/../partials/header.php';
 
 <div class="inv-card">
     <div class="inv-card-head">
-        <div class="inv-card-title"><i class="fas fa-boxes"></i> All Deliveries (Fuel &amp; Merchandise)</div>
+        <div class="inv-card-title"><i class="fas fa-boxes"></i> Merchandise Deliveries</div>
         <span id="rec-count" style="font-size:12px;color:#6c757d;"></span>
     </div>
     <div class="inv-card-body">
@@ -477,14 +469,12 @@ function getDisplayStatus(raw) {
 
 // ── Load deliveries ───────────────────────────────────────────────────────────
 function loadDeliveries() {
-    var type     = document.getElementById('f-type').value;
     var status   = document.getElementById('f-status').value;
     var supplier = document.getElementById('f-supplier').value;
     var start    = document.getElementById('f-start').value;
     var end      = document.getElementById('f-end').value;
 
     var url = API + '?action=list&start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end);
-    if (type)     url += '&type='     + encodeURIComponent(type);
     if (status)   url += '&status='   + encodeURIComponent(status);
     if (supplier) url += '&supplier=' + encodeURIComponent(supplier);
 

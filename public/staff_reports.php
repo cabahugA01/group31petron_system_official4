@@ -24,10 +24,12 @@ if (!in_array($role, ['superadmin','developer']) && !is_module_enabled('reports'
 }
 
 // Filters
-$view = $_GET['view'] ?? 'daily_sales';
-$date_from = $_GET['date_from'] ?? date('Y-m-d', strtotime('-1 year')); // Expanded to -1 year to ensure data visibility
-$date_to   = $_GET['date_to']   ?? date('Y-m-d');
-$export    = $_GET['export']    ?? '';
+$view      = is_array($_GET['view']      ?? '') ? 'daily_sales'                        : (string)($_GET['view']      ?? 'daily_sales');
+$sub       = is_array($_GET['sub']       ?? '') ? 'all'                                 : (string)($_GET['sub']       ?? 'all');
+$date_from = is_array($_GET['date_from'] ?? '') ? date('Y-m-d', strtotime('-1 year'))   : (string)($_GET['date_from'] ?? date('Y-m-d', strtotime('-1 year')));
+$date_to   = is_array($_GET['date_to']   ?? '') ? date('Y-m-d')                         : (string)($_GET['date_to']   ?? date('Y-m-d'));
+$export    = is_array($_GET['export']    ?? '') ? ''                                     : (string)($_GET['export']    ?? '');
+if (!in_array($sub, ['all','merchandise','fuel'])) $sub = 'all';
 
 // Station name
 $station_name = 'Station';
@@ -46,14 +48,20 @@ function has_col(PDO $pdo, string $table, string $col): bool {
 $jo_enc = has_col($pdo, 'job_orders', 'created_by') ? 'created_by' : 'user_id';
 
 // =====================================================================================
-// DATA FETCHING SECTION
+// DATA FETCHING SECTION — each view has its own try/catch, no single point of failure
 // =====================================================================================
-$report_data = [];
+$report_data  = [];
+$_report_error = '';
 
-try {
-    if ($view === 'daily_sales') {
-        // Daily Sales Summary: Merch + Job Orders
-        $stmt_merch = $pdo->prepare("
+// Safety check — if user not logged in properly, bail early
+if (!$user_id || !$station_id) {
+    $_report_error = "Session error: user_id=$user_id, station_id=$station_id. Please log out and log in again.";
+} elseif ($view === 'daily_sales') {
+    try {
+        $jo_id_col = has_col($pdo,'job_orders','job_order_id') ? "COALESCE(NULLIF(jo.job_order_id,''), CONCAT('JO-',jo.id))" : "CONCAT('JO-',jo.id)";
+        $cost_col  = has_col($pdo,'job_orders','total_cost')   ? 'COALESCE(jo.total_cost, jo.estimated_cost, 0)' : 'COALESCE(jo.estimated_cost, 0)';
+
+        $s1 = $pdo->prepare("
             SELECT 'Merchandise' AS txn_type,
                    COALESCE(NULLIF(mt.transaction_id,''), CONCAT('MT-',mt.id)) AS txn_ref,
                    COALESCE(NULLIF(TRIM(mt.customer_name),''), 'Walk-in') AS customer_name,
@@ -67,12 +75,9 @@ try {
             FROM merchandise_transactions mt
             WHERE mt.station_id = ? AND mt.staff_id = ? AND DATE(mt.created_at) BETWEEN ? AND ?
         ");
-        $stmt_merch->execute([$station_id, $user_id, $date_from, $date_to]);
-        
-        $jo_id_col = has_col($pdo,'job_orders','job_order_id') ? "COALESCE(NULLIF(jo.job_order_id,''), CONCAT('JO-',jo.id))" : "CONCAT('JO-',jo.id)";
-        $cost_col = has_col($pdo,'job_orders','total_cost') ? 'COALESCE(jo.total_cost, jo.estimated_cost, 0)' : 'COALESCE(jo.estimated_cost, 0)';
-        
-        $stmt_jo = $pdo->prepare("
+        $s1->execute([$station_id, $user_id, $date_from, $date_to]);
+
+        $s2 = $pdo->prepare("
             SELECT 'Job Order' AS txn_type,
                    $jo_id_col AS txn_ref,
                    COALESCE(jo.customer_name,'Walk-in') AS customer_name,
@@ -84,206 +89,382 @@ try {
             FROM job_orders jo
             WHERE jo.station_id = ? AND jo.$jo_enc = ? AND DATE(jo.created_at) BETWEEN ? AND ?
         ");
-        $stmt_jo->execute([$station_id, $user_id, $date_from, $date_to]);
-        
-        $report_data = array_merge($stmt_merch->fetchAll(PDO::FETCH_ASSOC), $stmt_jo->fetchAll(PDO::FETCH_ASSOC));
+        $s2->execute([$station_id, $user_id, $date_from, $date_to]);
+
+        $report_data = array_merge($s1->fetchAll(PDO::FETCH_ASSOC), $s2->fetchAll(PDO::FETCH_ASSOC));
         usort($report_data, fn($a,$b) => strtotime($b['txn_date']) - strtotime($a['txn_date']));
-    }
-    
-    elseif ($view === 'jo_tracker') {
-        $jo_id_col = has_col($pdo,'job_orders','job_order_id') ? "COALESCE(NULLIF(jo.job_order_id,''), CONCAT('JO-',jo.id))" : "CONCAT('JO-',jo.id)";
-        $cost_col = has_col($pdo,'job_orders','total_cost') ? 'COALESCE(jo.total_cost, jo.estimated_cost, 0)' : 'COALESCE(jo.estimated_cost, 0)';
-        $pay_col = has_col($pdo,'job_orders','payment_status') ? "COALESCE(jo.payment_status,'Unpaid')" : "'Unpaid'";
-        
-        $stmt = $pdo->prepare("
-            SELECT $jo_id_col AS job_order_id,
+    } catch (Exception $e) { $_report_error = $e->getMessage(); }
+
+} elseif ($view === 'personal_activity') {
+    try {
+        $active_dates = [];
+        $s = $pdo->prepare("SELECT DISTINCT DATE(created_at) AS d FROM merchandise_transactions WHERE station_id=? AND staff_id=? AND DATE(created_at) BETWEEN ? AND ?");
+        $s->execute([$station_id, $user_id, $date_from, $date_to]);
+        foreach ($s->fetchAll(PDO::FETCH_COLUMN) as $d) $active_dates[$d] = true;
+
+        $s = $pdo->prepare("SELECT DISTINCT DATE(created_at) AS d FROM job_orders WHERE station_id=? AND $jo_enc=? AND DATE(created_at) BETWEEN ? AND ?");
+        $s->execute([$station_id, $user_id, $date_from, $date_to]);
+        foreach ($s->fetchAll(PDO::FETCH_COLUMN) as $d) $active_dates[$d] = true;
+
+        try {
+            $s = $pdo->prepare("SELECT DISTINCT DATE(created_at) AS d FROM deliveries_oversight WHERE station_id=? AND encoded_by=? AND DATE(created_at) BETWEEN ? AND ?");
+            $s->execute([$station_id, $user_id, $date_from, $date_to]);
+            foreach ($s->fetchAll(PDO::FETCH_COLUMN) as $d) $active_dates[$d] = true;
+        } catch (Exception $e) {}
+
+        try {
+            $s = $pdo->prepare("SELECT DISTINCT DATE(encoded_at) AS d FROM fuel_readings WHERE station_id=? AND encoded_by=? AND DATE(encoded_at) BETWEEN ? AND ?");
+            $s->execute([$station_id, $user_id, $date_from, $date_to]);
+            foreach ($s->fetchAll(PDO::FETCH_COLUMN) as $d) $active_dates[$d] = true;
+        } catch (Exception $e) {}
+
+        try {
+            $s = $pdo->prepare("SELECT DISTINCT DATE(created_at) AS d FROM audit_logs WHERE user_id=? AND DATE(created_at) BETWEEN ? AND ?");
+            $s->execute([$user_id, $date_from, $date_to]);
+            foreach ($s->fetchAll(PDO::FETCH_COLUMN) as $d) $active_dates[$d] = true;
+        } catch (Exception $e) {}
+
+        krsort($active_dates);
+        foreach (array_keys($active_dates) as $d) {
+            $q1 = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND staff_id=? AND DATE(created_at)=?");
+            $q1->execute([$station_id, $user_id, $d]);
+            $txn_count = (int)$q1->fetchColumn();
+
+            $q2 = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id=? AND $jo_enc=? AND DATE(created_at)=?");
+            $q2->execute([$station_id, $user_id, $d]);
+            $jo_count = (int)$q2->fetchColumn();
+
+            $del_count = 0;
+            try {
+                $q3 = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND encoded_by=? AND DATE(created_at)=?");
+                $q3->execute([$station_id, $user_id, $d]);
+                $del_count = (int)$q3->fetchColumn();
+            } catch (Exception $e) {}
+
+            $fuel_count = 0;
+            try {
+                $q4 = $pdo->prepare("SELECT COUNT(*) FROM fuel_readings WHERE station_id=? AND encoded_by=? AND DATE(encoded_at)=?");
+                $q4->execute([$station_id, $user_id, $d]);
+                $fuel_count = (int)$q4->fetchColumn();
+            } catch (Exception $e) {}
+
+            $audit_count = 0;
+            try {
+                $q5 = $pdo->prepare("SELECT COUNT(*) FROM audit_logs WHERE user_id=? AND DATE(created_at)=?");
+                $q5->execute([$user_id, $d]);
+                $audit_count = (int)$q5->fetchColumn();
+            } catch (Exception $e) {}
+
+            $report_data[] = [
+                'date'          => $d,
+                'merch_txns'    => $txn_count,
+                'job_orders'    => $jo_count,
+                'fuel_readings' => $fuel_count,
+                'deliveries'    => $del_count,
+                'audit_actions' => $audit_count,
+            ];
+        }
+    } catch (Exception $e) { $_report_error = $e->getMessage(); }
+
+} elseif ($view === 'customer_report') {
+    try {
+        $cost_col  = has_col($pdo,'job_orders','total_cost') ? 'COALESCE(jo.total_cost,jo.estimated_cost,0)' : 'COALESCE(jo.estimated_cost,0)';
+        $jo_id_col = has_col($pdo,'job_orders','job_order_id') ? "COALESCE(NULLIF(jo.job_order_id,''),jo.job_order_number,CONCAT('JO-',jo.id))" : "COALESCE(jo.job_order_number,CONCAT('JO-',jo.id))";
+
+        $s1 = $pdo->prepare("
+            SELECT $jo_id_col AS reference, 'Job Order' AS txn_type,
                    COALESCE(jo.customer_name,'Walk-in') AS customer_name,
                    COALESCE(jo.vehicle_plate,'—') AS vehicle_plate,
-                   COALESCE(jo.service_type,'—') AS service_type,
-                   COALESCE(jo.status,'Pending') AS workflow_status,
-                   $pay_col AS payment_status,
-                   $cost_col AS total_cost,
+                   COALESCE(jo.service_type,'—') AS service_detail,
+                   COALESCE(jo.payment_method,'—') AS payment_method,
+                   $cost_col AS amount,
+                   COALESCE(jo.status,'—') AS workflow_status,
+                   COALESCE(jo.validation_status,'—') AS validation_status,
                    jo.created_at
             FROM job_orders jo
-            WHERE jo.station_id = ? AND jo.$jo_enc = ? AND DATE(jo.created_at) BETWEEN ? AND ?
+            WHERE jo.station_id=? AND jo.$jo_enc=? AND DATE(jo.created_at) BETWEEN ? AND ?
+            ORDER BY jo.created_at DESC
+        ");
+        $s1->execute([$station_id, $user_id, $date_from, $date_to]);
+
+        $s2 = $pdo->prepare("
+            SELECT COALESCE(NULLIF(mt.transaction_id,''),CONCAT('MT-',mt.id)) AS reference,
+                   'Merchandise' AS txn_type,
+                   COALESCE(NULLIF(TRIM(mt.customer_name),''),'Walk-in') AS customer_name,
+                   '—' AS vehicle_plate,
+                   COALESCE((SELECT GROUP_CONCAT(i.product_name ORDER BY i.id SEPARATOR ', ')
+                             FROM merchandise_transaction_items i WHERE i.transaction_id=mt.id),
+                            mt.item_sku,'—') AS service_detail,
+                   COALESCE(mt.payment_method,'—') AS payment_method,
+                   COALESCE(mt.total_amount,0) AS amount,
+                   COALESCE(mt.validation_status,'Pending') AS workflow_status,
+                   COALESCE(mt.validation_status,'Pending') AS validation_status,
+                   mt.created_at
+            FROM merchandise_transactions mt
+            WHERE mt.station_id=? AND mt.staff_id=? AND DATE(mt.created_at) BETWEEN ? AND ?
+            ORDER BY mt.created_at DESC
+        ");
+        $s2->execute([$station_id, $user_id, $date_from, $date_to]);
+
+        $report_data = array_merge($s1->fetchAll(PDO::FETCH_ASSOC), $s2->fetchAll(PDO::FETCH_ASSOC));
+        usort($report_data, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['created_at']));
+    } catch (Exception $e) { $_report_error = $e->getMessage(); }
+
+} elseif ($view === 'inventory_report') {
+    $sr_rows = []; $si_rows = []; $fsr_rows = []; $fd_rows = []; $fr_rows = [];
+
+    try {
+        $sr_staff_col    = has_col($pdo,'stock_requests','staff_id') ? 'staff_id' : (has_col($pdo,'stock_requests','requested_by') ? 'requested_by' : 'user_id');
+        $sr_prod_col     = has_col($pdo,'stock_requests','item_name') ? 'sr.item_name' : (has_col($pdo,'stock_requests','product_name') ? 'sr.product_name' : "COALESCE(ip.product_name,'Unknown')");
+        $sr_qty_col      = has_col($pdo,'stock_requests','requested_quantity') ? 'sr.requested_quantity' : (has_col($pdo,'stock_requests','quantity') ? 'sr.quantity' : 'sr.qty');
+        $sr_approved_col = has_col($pdo,'stock_requests','approved_quantity') ? 'sr.approved_quantity' : 'NULL';
+        $sr_notes_col    = has_col($pdo,'stock_requests','remarks') ? 'sr.remarks' : (has_col($pdo,'stock_requests','notes') ? 'sr.notes' : "''");
+        $sr_sku_col      = has_col($pdo,'stock_requests','item_sku') ? 'sr.item_sku' : (has_col($pdo,'stock_requests','sku') ? 'sr.sku' : "''");
+        $sr_cat_col      = has_col($pdo,'stock_requests','item_category') ? 'sr.item_category' : (has_col($pdo,'stock_requests','category') ? 'sr.category' : "''");
+
+        $stmt = $pdo->prepare("
+            SELECT CONCAT('SR-',sr.id) AS reference, 'Merchandise' AS type, 'Stock Request' AS record_type,
+                   $sr_prod_col AS product_name, $sr_sku_col AS sku, $sr_cat_col AS category,
+                   CONCAT(CASE WHEN $sr_qty_col>0 THEN $sr_qty_col ELSE COALESCE($sr_approved_col,0) END,' pcs') AS quantity,
+                   sr.status, sr.created_at AS encoded_at, $sr_notes_col AS remarks
+            FROM stock_requests sr LEFT JOIN inventory_products ip ON ip.id=sr.item_id
+            WHERE sr.station_id=? AND sr.$sr_staff_col=? AND DATE(sr.created_at) BETWEEN ? AND ?
+            ORDER BY sr.created_at DESC
+        ");
+        $stmt->execute([$station_id, $user_id, $date_from, $date_to]);
+        $sr_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {}
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT CONCAT('MSI-',si.id) AS reference, 'Merchandise' AS type, 'Stock-In' AS record_type,
+                   COALESCE(si.product_name,'—') AS product_name, COALESCE(si.sku,'—') AS sku,
+                   COALESCE(si.category,'—') AS category,
+                   CONCAT(COALESCE(si.qty_received,0),' pcs') AS quantity,
+                   'Done' AS status, si.encoded_at, COALESCE(si.remarks,'') AS remarks
+            FROM merchandise_stock_in si
+            WHERE si.station_id=? AND si.encoded_by=? AND DATE(si.encoded_at) BETWEEN ? AND ?
+            ORDER BY si.encoded_at DESC
+        ");
+        $stmt->execute([$station_id, $user_id, $date_from, $date_to]);
+        $si_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {}
+
+    try {
+        $fsr_qty_col      = has_col($pdo,'fuel_stock_requests','requested_liters') ? 'fsr.requested_liters' : (has_col($pdo,'fuel_stock_requests','quantity') ? 'fsr.quantity' : '0');
+        $fsr_approved_col = has_col($pdo,'fuel_stock_requests','approved_liters') ? 'fsr.approved_liters' : 'NULL';
+        $fsr_notes_col    = has_col($pdo,'fuel_stock_requests','remarks') ? 'fsr.remarks' : (has_col($pdo,'fuel_stock_requests','notes') ? 'fsr.notes' : "''");
+        $stmt = $pdo->prepare("
+            SELECT CONCAT('FSR-',fsr.id) AS reference, 'Fuel' AS type, 'Fuel Stock Request' AS record_type,
+                   COALESCE(fsr.fuel_type,'—') AS product_name, '—' AS sku, 'Fuel' AS category,
+                   CONCAT(CASE WHEN $fsr_qty_col>0 THEN $fsr_qty_col ELSE COALESCE($fsr_approved_col,0) END,' L') AS quantity,
+                   fsr.status, fsr.created_at AS encoded_at, $fsr_notes_col AS remarks
+            FROM fuel_stock_requests fsr
+            WHERE fsr.station_id=? AND fsr.staff_id=? AND DATE(fsr.created_at) BETWEEN ? AND ?
+            ORDER BY fsr.created_at DESC
+        ");
+        $stmt->execute([$station_id, $user_id, $date_from, $date_to]);
+        $fsr_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {}
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT CONCAT('FD-',fd.id) AS reference, 'Fuel' AS type, 'Fuel Delivery' AS record_type,
+                   COALESCE(ft.name,fd.fuel_type,'—') AS product_name, '—' AS sku, 'Fuel' AS category,
+                   CONCAT(COALESCE(fd.delivery_liters,0),' L') AS quantity,
+                   COALESCE(fd.status,'—') AS status, fd.created_at AS encoded_at,
+                   COALESCE(fd.notes,'') AS remarks
+            FROM fuel_deliveries fd LEFT JOIN fuel_types ft ON ft.id=fd.fuel_type
+            WHERE fd.station_id=? AND fd.received_by=? AND DATE(fd.created_at) BETWEEN ? AND ?
+            ORDER BY fd.created_at DESC
+        ");
+        $stmt->execute([$station_id, $user_id, $date_from, $date_to]);
+        $fd_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {}
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT CONCAT('FR-',fr.id) AS reference, 'Fuel' AS type, 'Fuel Reading' AS record_type,
+                   CONCAT(COALESCE(fr.fuel_type,'—'),' (Pump ',fr.pump_number,')') AS product_name,
+                   '—' AS sku, 'Fuel' AS category,
+                   CONCAT(COALESCE(fr.difference,0),' L sold') AS quantity,
+                   COALESCE(fr.status,'—') AS status, fr.encoded_at,
+                   COALESCE(fr.shift_period,'') AS remarks
+            FROM fuel_readings fr
+            WHERE fr.station_id=? AND fr.encoded_by=? AND DATE(fr.encoded_at) BETWEEN ? AND ?
+            ORDER BY fr.encoded_at DESC
+        ");
+        $stmt->execute([$station_id, $user_id, $date_from, $date_to]);
+        $fr_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {}
+
+    $all_inv = array_merge($sr_rows, $si_rows, $fsr_rows, $fd_rows, $fr_rows);
+    usort($all_inv, fn($a,$b) => strtotime($b['encoded_at']) - strtotime($a['encoded_at']));
+
+    if ($sub === 'fuel')            $report_data = array_values(array_filter($all_inv, fn($r) => $r['type'] === 'Fuel'));
+    elseif ($sub === 'merchandise') $report_data = array_values(array_filter($all_inv, fn($r) => $r['type'] === 'Merchandise'));
+    else                            $report_data = $all_inv;
+
+} elseif ($view === 'jo_tracker') {
+    try {
+        $jo_id_col = has_col($pdo,'job_orders','job_order_id') ? "COALESCE(NULLIF(jo.job_order_id,''),CONCAT('JO-',jo.id))" : "CONCAT('JO-',jo.id)";
+        $cost_col  = has_col($pdo,'job_orders','total_cost') ? 'COALESCE(jo.total_cost,jo.estimated_cost,0)' : 'COALESCE(jo.estimated_cost,0)';
+        $pay_col   = has_col($pdo,'job_orders','payment_status') ? "COALESCE(jo.payment_status,'Unpaid')" : "'Unpaid'";
+        $stmt = $pdo->prepare("
+            SELECT $jo_id_col AS job_order_id, COALESCE(jo.customer_name,'Walk-in') AS customer_name,
+                   COALESCE(jo.vehicle_plate,'—') AS vehicle_plate, COALESCE(jo.service_type,'—') AS service_type,
+                   COALESCE(jo.status,'Pending') AS workflow_status, $pay_col AS payment_status,
+                   $cost_col AS total_cost, jo.created_at
+            FROM job_orders jo
+            WHERE jo.station_id=? AND jo.$jo_enc=? AND DATE(jo.created_at) BETWEEN ? AND ?
             ORDER BY jo.created_at DESC
         ");
         $stmt->execute([$station_id, $user_id, $date_from, $date_to]);
         $report_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-    
-    elseif ($view === 'personal_activity') {
-        // We'll generate a summary per date
-        $begin = new DateTime($date_from);
-        $end = new DateTime($date_to);
-        $end->modify('+1 day');
-        $interval = DateInterval::createFromDateString('1 day');
-        $period = new DatePeriod($begin, $interval, $end);
-        
-        foreach ($period as $dt) {
-            $d = $dt->format('Y-m-d');
-            
-            $jo_cnt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id=? AND $jo_enc=? AND DATE(created_at)=?");
-            $jo_cnt->execute([$station_id, $user_id, $d]);
-            
-            $del_cnt = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND encoded_by=? AND DATE(created_at)=?");
-            $del_cnt->execute([$station_id, $user_id, $d]);
-            
-            $txn_cnt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND staff_id=? AND DATE(created_at)=?");
-            $txn_cnt->execute([$station_id, $user_id, $d]);
-            
-            $audit_cnt = $pdo->prepare("SELECT COUNT(*) FROM audit_logs WHERE user_id=? AND DATE(created_at)=?");
-            $audit_cnt->execute([$user_id, $d]);
-            
-            $report_data[] = [
-                'date' => $d,
-                'job_orders' => $jo_cnt->fetchColumn(),
-                'deliveries' => $del_cnt->fetchColumn(),
-                'transactions' => $txn_cnt->fetchColumn(),
-                'audit_actions' => $audit_cnt->fetchColumn()
-            ];
-        }
-        $report_data = array_reverse($report_data); // Latest first
-    }
-    
-    elseif ($view === 'meter_readings') {
+    } catch (Exception $e) { $_report_error = $e->getMessage(); }
+
+} elseif ($view === 'meter_readings') {
+    try {
         $stmt = $pdo->prepare("
-            SELECT r.id AS reading_id,
-                   COALESCE(p.pump_name, CONCAT('Pump ', r.pump_number)) AS pump_name,
-                   r.fuel_type,
-                   COALESCE(r.shift_period, '—') AS shift,
-                   r.previous_reading AS opening_reading,
-                   r.present_reading AS closing_reading,
-                   r.difference AS liters_sold,
-                   r.status,
-                   r.encoded_at AS transaction_date
-            FROM fuel_readings r
-            LEFT JOIN fuel_pumps p ON r.pump_number = p.id
-            WHERE r.station_id = ? AND DATE(r.encoded_at) BETWEEN ? AND ?
+            SELECT r.id AS reading_id, COALESCE(p.pump_name,CONCAT('Pump ',r.pump_number)) AS pump_name,
+                   r.fuel_type, COALESCE(r.shift_period,'—') AS shift,
+                   r.previous_reading AS opening_reading, r.present_reading AS closing_reading,
+                   r.difference AS liters_sold, r.status, r.encoded_at AS transaction_date
+            FROM fuel_readings r LEFT JOIN fuel_pumps p ON r.pump_number=p.id
+            WHERE r.station_id=? AND DATE(r.encoded_at) BETWEEN ? AND ?
             ORDER BY r.encoded_at DESC
         ");
         $stmt->execute([$station_id, $date_from, $date_to]);
         $report_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-    
-    elseif ($view === 'fuel_deliveries') {
+    } catch (Exception $e) { $_report_error = $e->getMessage(); }
+
+} elseif ($view === 'fuel_deliveries') {
+    try {
         $stmt = $pdo->prepare("
-            SELECT CONCAT('FD-', fd.id) AS delivery_ref, 
-                   fd.supplier, 
-                   COALESCE(ft.name, fd.fuel_type, 'Unknown Fuel') AS product, 
-                   fd.delivery_liters AS quantity, 
-                   'Liters' AS unit, 
-                   fd.status, 
-                   fd.created_at
-            FROM fuel_deliveries fd
-            LEFT JOIN fuel_types ft ON fd.fuel_type = ft.id
-            WHERE fd.station_id = ? AND DATE(fd.created_at) BETWEEN ? AND ?
+            SELECT CONCAT('FD-',fd.id) AS delivery_ref, fd.supplier,
+                   COALESCE(ft.name,fd.fuel_type,'Unknown Fuel') AS product,
+                   fd.delivery_liters AS quantity, 'Liters' AS unit, fd.status, fd.created_at
+            FROM fuel_deliveries fd LEFT JOIN fuel_types ft ON fd.fuel_type=ft.id
+            WHERE fd.station_id=? AND DATE(fd.created_at) BETWEEN ? AND ?
             ORDER BY fd.created_at DESC
         ");
         $stmt->execute([$station_id, $date_from, $date_to]);
         $report_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-    
-    elseif ($view === 'merch_deliveries') {
+    } catch (Exception $e) { $_report_error = $e->getMessage(); }
+
+} elseif ($view === 'merch_deliveries') {
+    try {
         $stmt = $pdo->prepare("
-            SELECT COALESCE(batch_id, delivery_ref) AS identifier,
+            SELECT COALESCE(batch_id,delivery_ref) AS identifier,
                    supplier, product, quantity, unit, status, created_at
             FROM deliveries_oversight
-            WHERE station_id = ? AND encoded_by = ? AND delivery_type = 'merchandise' AND DATE(created_at) BETWEEN ? AND ?
+            WHERE station_id=? AND encoded_by=? AND delivery_type='merchandise' AND DATE(created_at) BETWEEN ? AND ?
             ORDER BY created_at DESC
         ");
         $stmt->execute([$station_id, $user_id, $date_from, $date_to]);
         $report_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-    
-    elseif ($view === 'inventory_movement') {
+    } catch (Exception $e) { $_report_error = $e->getMessage(); }
+
+} elseif ($view === 'inventory_movement') {
+    try {
         $stmt = $pdo->prepare("
-            SELECT il.action,
-                   COALESCE(p.product_name, 'Unknown Product') AS product_name,
-                   il.quantity_change,
-                   il.reference_type,
-                   il.created_at
-            FROM inventory_logs il
-            LEFT JOIN inventory_products p ON il.product_id = p.id
-            WHERE il.station_id = ? AND DATE(il.created_at) BETWEEN ? AND ?
+            SELECT il.action, COALESCE(p.product_name,'Unknown Product') AS product_name,
+                   il.quantity_change, il.reference_type, il.created_at
+            FROM inventory_logs il LEFT JOIN inventory_products p ON il.product_id=p.id
+            WHERE il.station_id=? AND DATE(il.created_at) BETWEEN ? AND ?
             ORDER BY il.created_at DESC
         ");
         $stmt->execute([$station_id, $date_from, $date_to]);
         $report_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-    
-    elseif ($view === 'payment_status') {
-        $jo_id_col = has_col($pdo,'job_orders','job_order_id') ? "COALESCE(NULLIF(jo.job_order_id,''), CONCAT('JO-',jo.id))" : "CONCAT('JO-',jo.id)";
-        $cost_col = has_col($pdo,'job_orders','total_cost') ? 'COALESCE(jo.total_cost, jo.estimated_cost, 0)' : 'COALESCE(jo.estimated_cost, 0)';
-        $pay_col = has_col($pdo,'job_orders','payment_status') ? "COALESCE(jo.payment_status,'Unpaid')" : "'Unpaid'";
-        
+    } catch (Exception $e) { $_report_error = $e->getMessage(); }
+
+} elseif ($view === 'payment_status') {
+    try {
+        $jo_id_col = has_col($pdo,'job_orders','job_order_id') ? "COALESCE(NULLIF(jo.job_order_id,''),CONCAT('JO-',jo.id))" : "CONCAT('JO-',jo.id)";
+        $cost_col  = has_col($pdo,'job_orders','total_cost') ? 'COALESCE(jo.total_cost,jo.estimated_cost,0)' : 'COALESCE(jo.estimated_cost,0)';
+        $pay_col   = has_col($pdo,'job_orders','payment_status') ? "COALESCE(jo.payment_status,'Unpaid')" : "'Unpaid'";
         $stmt = $pdo->prepare("
-            SELECT 'Job Order' AS entity_type,
-                   $jo_id_col AS reference_id,
+            SELECT 'Job Order' AS entity_type, $jo_id_col AS reference_id,
                    COALESCE(jo.customer_name,'Walk-in') AS customer_name,
-                   $pay_col AS payment_status,
-                   $cost_col AS total_amount,
-                   jo.created_at
+                   $pay_col AS payment_status, $cost_col AS total_amount, jo.created_at
             FROM job_orders jo
-            WHERE jo.station_id = ? AND jo.$jo_enc = ? AND DATE(jo.created_at) BETWEEN ? AND ?
+            WHERE jo.station_id=? AND jo.$jo_enc=? AND DATE(jo.created_at) BETWEEN ? AND ?
             ORDER BY jo.created_at DESC
         ");
         $stmt->execute([$station_id, $user_id, $date_from, $date_to]);
         $report_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-    
-    elseif ($view === 'customer_linkage') {
-        // Showing Job Orders linked to specific Customer Profiles (customer_id IS NOT NULL)
-        $jo_id_col = has_col($pdo,'job_orders','job_order_id') ? "COALESCE(NULLIF(jo.job_order_id,''), CONCAT('JO-',jo.id))" : "CONCAT('JO-',jo.id)";
-        
+    } catch (Exception $e) { $_report_error = $e->getMessage(); }
+
+} elseif ($view === 'customer_linkage') {
+    try {
+        $jo_id_col = has_col($pdo,'job_orders','job_order_id') ? "COALESCE(NULLIF(jo.job_order_id,''),CONCAT('JO-',jo.id))" : "CONCAT('JO-',jo.id)";
         $stmt = $pdo->prepare("
-            SELECT $jo_id_col AS transaction_id,
-                   'Job Order' AS transaction_type,
-                   c.name AS linked_customer,
-                   jo.created_at
-            FROM job_orders jo
-            JOIN customers c ON jo.customer_id = c.id
-            WHERE jo.station_id = ? AND DATE(jo.created_at) BETWEEN ? AND ?
+            SELECT $jo_id_col AS transaction_id, 'Job Order' AS transaction_type,
+                   c.name AS linked_customer, jo.created_at
+            FROM job_orders jo JOIN customers c ON jo.customer_id=c.id
+            WHERE jo.station_id=? AND DATE(jo.created_at) BETWEEN ? AND ?
             ORDER BY jo.created_at DESC
         ");
         $stmt->execute([$station_id, $date_from, $date_to]);
         $report_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-    
-    elseif ($view === 'audit_trail') {
+    } catch (Exception $e) { $_report_error = $e->getMessage(); }
+
+} elseif ($view === 'audit_trail') {
+    try {
         $stmt = $pdo->prepare("
-            SELECT action_type,
-                   action_details,
-                   entity_type,
-                   status,
-                   created_at
+            SELECT action_type, action_details, entity_type, status, created_at
             FROM audit_logs
-            WHERE user_id = ? AND DATE(created_at) BETWEEN ? AND ?
+            WHERE user_id=? AND DATE(created_at) BETWEEN ? AND ?
             ORDER BY created_at DESC
         ");
         $stmt->execute([$user_id, $date_from, $date_to]);
         $report_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-} catch (Exception $e) {
-    // Graceful fail
+    } catch (Exception $e) { $_report_error = $e->getMessage(); }
 }
 
 // =====================================================================================
 // EXPORT HANDLERS (EXCEL & PDF)
+// =====================================================================================// EXPORT HANDLERS (EXCEL & PDF)
 // =====================================================================================
-$report_titles = [
-    'daily_sales' => 'Daily Sales Summary',
-    'jo_tracker' => 'Job Order Tracker Report',
+$all_report_titles = [
+    'daily_sales'       => 'Transaction Report',
     'personal_activity' => 'Personal Activity Report',
-    'meter_readings' => 'Meter Reading Report',
-    'fuel_deliveries' => 'Fuel Deliveries Report',
-    'merch_deliveries' => 'Merchandise Deliveries Report',
-    'inventory_movement' => 'Inventory Movement Report',
-    'payment_status' => 'Payment Status Report',
-    'customer_linkage' => 'Customer Transaction Linkage Report',
-    'audit_trail' => 'Audit Trail Report'
+    'customer_report'   => 'Customer Report',
+    'inventory_report'  => 'Inventory Report',
+    'jo_tracker'        => 'Job Order Tracker Report',
+    'meter_readings'    => 'Meter Reading Report',
+    'fuel_deliveries'   => 'Fuel Deliveries Report',
+    'merch_deliveries'  => 'Merchandise Deliveries Report',
+    'inventory_movement'=> 'Inventory Movement Report',
+    'payment_status'    => 'Payment Status Report',
+    'customer_linkage'  => 'Customer Transaction Linkage Report',
+    'audit_trail'       => 'Audit Trail Report',
 ];
+
+// Staff sees exactly 4 reports
+$staff_report_keys = ['daily_sales', 'personal_activity', 'customer_report', 'inventory_report'];
+
+// Dynamic filtering based on role/permissions
+$report_titles = [];
+if (in_array($role, ['manager', 'admin', 'superadmin'])) {
+    $report_titles = $all_report_titles;
+} else {
+    foreach ($staff_report_keys as $k) {
+        if (isset($all_report_titles[$k])) {
+            $report_titles[$k] = $all_report_titles[$k];
+        }
+    }
+}
+
+// If selected view is not allowed for current role, fallback to first allowed view
+if (!array_key_exists($view, $report_titles)) {
+    $view = !empty($report_titles) ? array_key_first($report_titles) : 'daily_sales';
+}
+
 $report_title_display = $report_titles[$view] ?? 'Staff Report';
+// Append sub-tab label to title when filtered
+if ($sub === 'fuel') $report_title_display .= ' — Fuel';
+elseif ($sub === 'merchandise') $report_title_display .= ' — Merchandise';
 
 if ($export !== '') {
     // Generate HTML Table string dynamically based on the view
@@ -414,6 +595,12 @@ main.main, .main-content { padding-top: 0 !important; }
 .empty-state { padding: 60px 20px; text-align: center; color: #9ca3af; }
 .empty-state i { font-size: 40px; margin-bottom: 16px; opacity: 0.5; }
 
+/* Sub-tabs */
+.sub-tabs { display: flex; gap: 4px; margin-bottom: 16px; background: #f1f5f9; padding: 4px; border-radius: 10px; width: fit-content; }
+.sub-tab { padding: 7px 20px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none; color: #64748b; transition: 0.15s; border: none; background: transparent; }
+.sub-tab:hover { color: #00264D; background: #e2e8f0; }
+.sub-tab.active { background: #fff; color: #00264D; box-shadow: 0 1px 4px rgba(0,0,0,0.10); }
+
 .pagination-wrapper { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; background: #fff; border: 1px solid #EAEAEA; border-radius: 12px; margin-top: 12px; margin-bottom: 40px; box-shadow: 0 2px 5px rgba(0,0,0,0.02); flex-wrap: wrap; gap: 10px; }
 .rows-per-page { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #6b7280; }
 .rows-per-page select { padding: 6px; border: 1px solid #e5e7eb; border-radius: 4px; outline: none; cursor: pointer; }
@@ -459,14 +646,29 @@ main.main, .main-content { padding-top: 0 !important; }
         </div>
         
         <div class="action-buttons">
-            <a href="?view=<?php echo urlencode($view); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&export=excel" class="btn-export-excel">
+            <a href="?view=<?php echo urlencode($view); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&sub=<?php echo urlencode($sub); ?>&export=excel" class="btn-export-excel">
                 <i class="fas fa-file-excel"></i> Export Excel
             </a>
-            <a href="?view=<?php echo urlencode($view); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&export=pdf" class="btn-export-pdf" target="_blank">
+            <a href="?view=<?php echo urlencode($view); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&sub=<?php echo urlencode($sub); ?>&export=pdf" class="btn-export-pdf" target="_blank">
                 <i class="fas fa-file-pdf"></i> Print / PDF
             </a>
         </div>
     </form>
+
+    <!-- SUB-TABS (only for Inventory Report — fuel vs merchandise split) -->
+    <?php if ($view === 'inventory_report'): ?>
+    <?php
+        $sub_base = '?view='.urlencode($view).'&date_from='.urlencode($date_from).'&date_to='.urlencode($date_to).'&limit='.$limit;
+        $sub_labels = ['all' => '<i class="fas fa-layer-group"></i> All', 'merchandise' => '<i class="fas fa-box"></i> Merchandise', 'fuel' => '<i class="fas fa-gas-pump"></i> Fuel'];
+    ?>
+    <div class="sub-tabs">
+        <?php foreach ($sub_labels as $sk => $sl): ?>
+            <a href="<?php echo $sub_base.'&sub='.urlencode($sk); ?>" class="sub-tab <?php echo $sub === $sk ? 'active' : ''; ?>">
+                <?php echo $sl; ?>
+            </a>
+        <?php endforeach; ?>
+    </div>
+    <?php endif; ?>
 
     <!-- DATA TABLE -->
     <div class="table-container">
@@ -500,10 +702,20 @@ main.main, .main-content { padding-top: 0 !important; }
                             <?php foreach ($row as $key => $val): ?>
                                 <td>
                                     <?php 
-                                        if (strpos($key, 'amount') !== false || strpos($key, 'cost') !== false) {
+                                        if ($key === 'type' || $key === 'txn_type') {
+                                            $v_lower = strtolower($val);
+                                            if ($v_lower === 'fuel') {
+                                                $bg = '#fef3c7'; $clr = '#92400e';
+                                            } elseif (in_array($v_lower, ['merchandise', 'job order'])) {
+                                                $bg = '#dbeafe'; $clr = '#1e40af';
+                                            } else {
+                                                $bg = '#f3f4f6'; $clr = '#374151';
+                                            }
+                                            echo '<span style="background:'.$bg.';color:'.$clr.';padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;">'.htmlspecialchars((string)$val).'</span>';
+                                        } elseif (strpos($key, 'amount') !== false || strpos($key, 'cost') !== false) {
                                             echo '<strong>₱' . number_format((float)$val, 2) . '</strong>';
                                         } else if (strpos($key, 'status') !== false) {
-                                            $color = in_array(strtolower($val), ['completed', 'approved', 'paid']) ? '#15803d' : '#856404';
+                                            $color = in_array(strtolower($val), ['completed', 'approved', 'paid', 'done', 'verified']) ? '#15803d' : '#856404';
                                             echo '<span style="color:'.$color.'; font-weight:700;">'.htmlspecialchars((string)$val).'</span>';
                                         } else {
                                             echo htmlspecialchars((string)$val);
@@ -534,7 +746,7 @@ main.main, .main-content { padding-top: 0 !important; }
         </div>
         <div class="pagination-controls">
             <?php if ($page > 1): ?>
-                <a href="?view=<?php echo urlencode($view); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&limit=<?php echo $limit; ?>&page=<?php echo $page - 1; ?>" class="btn-page" title="Previous Page"><i class="fas fa-chevron-left"></i></a>
+                <a href="?view=<?php echo urlencode($view); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&sub=<?php echo urlencode($sub); ?>&limit=<?php echo $limit; ?>&page=<?php echo $page - 1; ?>" class="btn-page" title="Previous Page"><i class="fas fa-chevron-left"></i></a>
             <?php else: ?>
                 <span class="btn-page disabled"><i class="fas fa-chevron-left"></i></span>
             <?php endif; ?>
@@ -542,7 +754,7 @@ main.main, .main-content { padding-top: 0 !important; }
             <span class="current-page">Page <?php echo $page; ?> of <?php echo max(1, $total_pages); ?></span>
             
             <?php if ($page < $total_pages): ?>
-                <a href="?view=<?php echo urlencode($view); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&limit=<?php echo $limit; ?>&page=<?php echo $page + 1; ?>" class="btn-page" title="Next Page"><i class="fas fa-chevron-right"></i></a>
+                <a href="?view=<?php echo urlencode($view); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&sub=<?php echo urlencode($sub); ?>&limit=<?php echo $limit; ?>&page=<?php echo $page + 1; ?>" class="btn-page" title="Next Page"><i class="fas fa-chevron-right"></i></a>
             <?php else: ?>
                 <span class="btn-page disabled"><i class="fas fa-chevron-right"></i></span>
             <?php endif; ?>
@@ -555,6 +767,8 @@ function changeLimit(select) {
     let url = new URL(window.location.href);
     url.searchParams.set('limit', select.value);
     url.searchParams.set('page', 1);
+    // preserve sub param
+    if (!url.searchParams.has('sub')) url.searchParams.set('sub', 'all');
     window.location.href = url.toString();
 }
 </script>

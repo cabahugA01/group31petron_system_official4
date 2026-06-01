@@ -105,7 +105,7 @@ if (!$po) {
 }
 
 // Only allow printing of finalized POs
-$printable_statuses = ['Official', 'Approved', 'official', 'approved', 'Approved PO', 'approved po'];
+$printable_statuses = ['Official', 'Approved', 'official', 'approved', 'Approved PO', 'approved po', 'Admin Finalized', 'admin finalized', 'Pending Admin Validation', 'pending admin validation'];
 if (!in_array($po['status'], $printable_statuses)) {
     die('<p style="font-family:Arial;padding:40px;color:#856404;">This PO has not been finalized yet. Only Official/Approved POs can be printed.</p>');
 }
@@ -147,18 +147,18 @@ $supplier_name  = htmlspecialchars($po['supplier_name']    ?? 'Not Assigned');
 
 // Status display
 $raw_status = $po['status'] ?? 'Approved';
-$status_label = in_array(strtolower($raw_status), ['approved po', 'official', 'approved']) ? 'Approved' : ucfirst($raw_status);
+$status_label = in_array(strtolower($raw_status), ['approved po', 'official', 'approved', 'admin finalized']) ? 'Approved' : ucfirst($raw_status);
 $status_color = match(strtolower($raw_status)) {
-    'approved', 'official', 'approved po' => '#16a34a',
-    'pending', 'pending admin validation'  => '#d97706',
-    'cancelled', 'rejected'               => '#dc2626',
-    default                               => '#475569',
+    'approved', 'official', 'approved po', 'admin finalized' => '#16a34a',
+    'pending', 'pending admin validation'                    => '#d97706',
+    'cancelled', 'rejected'                                  => '#dc2626',
+    default                                                  => '#475569',
 };
 $status_bg = match(strtolower($raw_status)) {
-    'approved', 'official', 'approved po' => '#dcfce7',
-    'pending', 'pending admin validation'  => '#fef3c7',
-    'cancelled', 'rejected'               => '#fee2e2',
-    default                               => '#f1f5f9',
+    'approved', 'official', 'approved po', 'admin finalized' => '#dcfce7',
+    'pending', 'pending admin validation'                    => '#fef3c7',
+    'cancelled', 'rejected'                                  => '#fee2e2',
+    default                                                  => '#f1f5f9',
 };
 
 $audit_url = 'activity_logs.php?module=' . urlencode('Purchase Order') . '&start=' . date('Y-m-01') . '&end=' . date('Y-m-d');

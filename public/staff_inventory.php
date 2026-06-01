@@ -245,7 +245,6 @@ include __DIR__ . '/../partials/header.php';
             <i class="fas fa-gas-pump"></i> Fuel Inventory
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <span class="readonly-badge"><i class="fas fa-lock"></i> Read-only monitoring</span>
             <button id="fuelStockRequestBtn" class="sr-btn" style="background:#c0392b;padding:7px 16px;font-size:13px;border-radius:6px;display:inline-flex;align-items:center;gap:6px;">
                 <i class="fas fa-gas-pump"></i> Stock Request
             </button>
@@ -295,12 +294,6 @@ include __DIR__ . '/../partials/header.php';
                 </tbody>
             </table>
         </div>
-        <p style="margin-top:12px;font-size:12px;color:#6c757d;">
-            <i class="fas fa-info-circle"></i>
-            Fuel levels are auto-pulled from Manager/Admin deliveries and validated readings.
-            To encode fuel readings, go to <strong>Fuel Management</strong>.
-            Use <strong>Stock Request</strong> to notify the manager of low/critical fuel levels.
-        </p>
     </div>
 </div>
 
@@ -394,8 +387,7 @@ include __DIR__ . '/../partials/header.php';
     </div>
     <h3 style="margin:0 0 8px;color:#c0392b;">Requests Submitted!</h3>
     <div style="margin:0 0 16px;color:#333;font-size:13px;line-height:1.6;text-align:left;" id="fsrSuccessMsg"></div>
-    <p style="margin:0 0 18px;font-size:12px;color:#6c757d;">Track them in <strong>Inventory History</strong>.</p>
-    <button onclick="closeFuelSuccess()" style="background:#c0392b;color:#fff;border:none;padding:9px 28px;border-radius:6px;cursor:pointer;font-weight:700;">OK</button>
+    <p style="margin:0 0 18px;font-size:12px;color:#6c757d;">Track them in <a href="staff_stock_requests.php" style="color:#c0392b;font-weight:700;">Stock Requests</a>.</p>
 </div>
 
 <!-- ══════════════════════════════════════════════════════
@@ -408,7 +400,6 @@ include __DIR__ . '/../partials/header.php';
             <i class="fas fa-box"></i> Merchandise Inventory
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <span style="font-size:13px;color:#6c757d;"><?php echo count($merch_inventory); ?> products</span>
             <button id="merchStockRequestBtn" class="sr-btn" style="background:#002F70;padding:7px 16px;font-size:13px;border-radius:6px;display:inline-flex;align-items:center;gap:6px;">
                 <i class="fas fa-box"></i> Stock Request
             </button>
@@ -484,16 +475,6 @@ include __DIR__ . '/../partials/header.php';
 
                 <?php if (empty($merch_inventory)): ?>
                     <tr><td colspan="7" style="text-align:center;padding:24px;color:#6c757d;">No merchandise data available.</td></tr>
-                <?php else: ?>
-                    <tr style="background:#f8f9fa;font-weight:700;border-top:2px solid #dee2e6;">
-                        <td colspan="4">TOTAL</td>
-                        <td colspan="3">
-                            <span style="font-size:15px;color:#00264D;"><?php echo count($merch_inventory); ?></span>
-                            <span style="font-weight:500;color:#667085;"> items &mdash; </span>
-                            <span style="font-size:15px;color:#00264D;"><?php echo count($categories); ?></span>
-                            <span style="font-weight:500;color:#667085;"> categories</span>
-                        </td>
-                    </tr>
                 <?php endif; ?>
                 </tbody>
             </table>
@@ -502,105 +483,9 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 <!-- ══════════════════════════════════════════════════════
-     SECTION 3 — INVENTORY HISTORY  (id="history")
-     Consolidated lifecycle view. Read-only tracking.
+     SECTION 3 — removed: Stock Requests moved to staff_stock_requests.php
+     The sidebar "Stock Requests" link goes directly to that page.
 ══════════════════════════════════════════════════════ -->
-<div id="history" class="inv-section">
-    <div class="inv-section-head">
-        <div class="inv-section-title">
-            <i class="fas fa-history"></i> Inventory History
-            <?php if ($pending_count > 0): ?>
-                <span style="background:#dc3545;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;"><?php echo $pending_count; ?> Pending</span>
-            <?php endif; ?>
-        </div>
-        <span style="font-size:12px;color:#6c757d;">Read-only &mdash; transparency &amp; tracking only</span>
-    </div>
-    <div class="inv-section-body">
-
-        <!-- Filters row -->
-        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:14px;">
-            <div style="display:flex;align-items:center;gap:6px;">
-                <label style="font-size:12px;color:#6c757d;white-space:nowrap;">Status:</label>
-                <select id="histStatusFilter" style="font-size:12px;padding:5px 8px;border:1px solid #dee2e6;border-radius:5px;color:#495057;">
-                    <option value="">All</option>
-                    <option value="Pending">Pending</option>
-                    <option value="Approved">Approved</option>
-                    <option value="Validated">Validated</option>
-                    <option value="Rejected">Rejected</option>
-                </select>
-            </div>
-            <div style="display:flex;align-items:center;gap:6px;">
-                <label style="font-size:12px;color:#6c757d;white-space:nowrap;">From:</label>
-                <input type="date" id="histDateFrom" style="font-size:12px;padding:5px 8px;border:1px solid #dee2e6;border-radius:5px;color:#495057;">
-            </div>
-            <div style="display:flex;align-items:center;gap:6px;">
-                <label style="font-size:12px;color:#6c757d;white-space:nowrap;">To:</label>
-                <input type="date" id="histDateTo" style="font-size:12px;padding:5px 8px;border:1px solid #dee2e6;border-radius:5px;color:#495057;">
-            </div>
-            <button id="histFilterBtn" onclick="histApplyFilters()" style="font-size:12px;padding:5px 14px;background:#002F70;color:#fff;border:none;border-radius:5px;cursor:pointer;">
-                <i class="fas fa-filter"></i> Filter
-            </button>
-            <button onclick="histResetFilters()" style="font-size:12px;padding:5px 12px;background:#6c757d;color:#fff;border:none;border-radius:5px;cursor:pointer;">
-                Reset
-            </button>
-            <span id="histTotalLabel" style="margin-left:auto;font-size:12px;color:#6c757d;"></span>
-        </div>
-
-        <!-- Table -->
-        <div class="table-wrap">
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>Date Submitted</th>
-                        <th>SKU</th>
-                        <th>Product</th>
-                        <th>Category</th>
-                        <th>Qty Requested</th>
-                        <th>Qty Approved</th>
-                        <th>Status</th>
-                        <th>Manager Notes</th>
-                        <th>Last Updated</th>
-                    </tr>
-                </thead>
-                <tbody id="histTableBody">
-                    <tr><td colspan="10" style="text-align:center;padding:32px;color:#6c757d;">
-                        <i class="fas fa-spinner fa-spin" style="font-size:1.5em;display:block;margin-bottom:8px;"></i>
-                        Loading...
-                    </td></tr>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- Pagination controls -->
-        <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;">
-            <!-- Rows per page -->
-            <div style="display:flex;align-items:center;gap:7px;">
-                <label style="font-size:12px;color:#6c757d;white-space:nowrap;">Rows per page:</label>
-                <select id="histPerPage" onchange="histChangePerPage()" style="font-size:12px;padding:5px 8px;border:1px solid #dee2e6;border-radius:5px;color:#495057;">
-                    <option value="10" selected>10</option>
-                    <option value="20">20</option>
-                    <option value="30">30</option>
-                    <option value="40">40</option>
-                    <option value="50">50</option>
-                </select>
-            </div>
-            <!-- Page indicator + arrows -->
-            <div style="display:flex;align-items:center;gap:8px;">
-                <button id="histPrevBtn" onclick="histGoPage(histState.page - 1)"
-                    style="padding:5px 12px;border:1px solid #dee2e6;border-radius:5px;background:#fff;cursor:pointer;font-size:13px;color:#495057;">
-                    <i class="fas fa-chevron-left"></i>
-                </button>
-                <span id="histPageLabel" style="font-size:13px;color:#495057;white-space:nowrap;">Page 1 of 1</span>
-                <button id="histNextBtn" onclick="histGoPage(histState.page + 1)"
-                    style="padding:5px 12px;border:1px solid #dee2e6;border-radius:5px;background:#fff;cursor:pointer;font-size:13px;color:#495057;">
-                    <i class="fas fa-chevron-right"></i>
-                </button>
-            </div>
-        </div>
-
-    </div>
-</div>
 
 <!-- ══════════════════════════════════════════════════════
      MERCHANDISE STOCK REQUEST MODAL  (multi-select)
@@ -625,12 +510,6 @@ include __DIR__ . '/../partials/header.php';
 
         <!-- Content -->
         <div id="msrContent" style="display:none;">
-
-            <!-- Info banner -->
-            <div style="background:#e8f0fe;border:1px solid #b3c8f5;border-radius:8px;padding:9px 13px;margin-bottom:14px;font-size:12px;color:#1a3a6b;display:flex;align-items:flex-start;gap:7px;">
-                <i class="fas fa-info-circle" style="margin-top:1px;flex-shrink:0;"></i>
-                <span>Only <strong>Low Stock and Out of Stock</strong> items are listed. Check the box next to each item you want to request and submit — the manager will set the quantity.</span>
-            </div>
 
             <!-- All-stocked message -->
             <div id="msrNoLow" style="display:none;text-align:center;padding:32px;color:#28a745;">
@@ -703,7 +582,7 @@ include __DIR__ . '/../partials/header.php';
     </div>
     <h3 style="margin:0 0 8px;color:#002F70;">Requests Submitted!</h3>
     <div style="margin:0 0 16px;color:#333;font-size:13px;line-height:1.6;text-align:left;" id="msrSuccessMsg"></div>
-    <p style="margin:0 0 18px;font-size:12px;color:#6c757d;">Track them in <strong>Inventory History</strong>.</p>
+    <p style="margin:0 0 18px;font-size:12px;color:#6c757d;">Track them in <a href="staff_stock_requests.php" style="color:#002F70;font-weight:700;">Stock Requests</a>.</p>
     <button onclick="closeMsrSuccess()" style="background:#002F70;color:#fff;border:none;padding:9px 28px;border-radius:6px;cursor:pointer;font-weight:700;">OK</button>
 </div>
 
@@ -716,7 +595,7 @@ include __DIR__ . '/../partials/header.php';
     <h3 style="margin:0 0 8px;color:#28a745;">Request Submitted!</h3>
     <p style="margin:0 0 18px;color:#333;font-size:14px;line-height:1.5;">
         Your stock request is now <strong>Pending</strong> Manager validation.<br>
-        Track it in <strong>Inventory History</strong>.
+        Track it in <a href="staff_stock_requests.php" style="color:#002F70;font-weight:700;">Stock Requests</a>.
     </p>
     <button onclick="closeSuccess()" style="background:#002F70;color:#fff;border:none;padding:9px 26px;border-radius:6px;cursor:pointer;font-weight:600;">OK</button>
 </div>
@@ -1027,32 +906,33 @@ function closeMsrSuccess() {
 
 /* ── Tab switching functionality ── */
 function switchTab(tabName) {
+    // If someone navigates to #history, redirect to the dedicated page
+    if (tabName === 'history') {
+        window.location.href = 'staff_stock_requests.php';
+        return;
+    }
+
     // Hide all sections
     document.querySelectorAll('.inv-section').forEach(function(section) {
         section.style.display = 'none';
     });
-    
+
     // Show selected section
     var targetSection = document.getElementById(tabName);
     if (targetSection) {
         targetSection.style.display = 'block';
     }
-    
+
     // Update active states in sidebar
     document.querySelectorAll('.sidebar-sub-item').forEach(function(item) {
         item.classList.remove('active');
     });
-    
+
     // Find and activate the corresponding sidebar item
     var sidebarLinks = document.querySelectorAll('a[href*="#' + tabName + '"]');
     sidebarLinks.forEach(function(link) {
         link.classList.add('active');
     });
-
-    // Load history data when switching to history tab
-    if (tabName === 'history') {
-        histLoad();
-    }
 }
 
 /* ── Scroll to anchor on load (sidebar sub-item navigation) ── */
@@ -1372,170 +1252,6 @@ function escHtml(str) {
 function number_format(n) {
     return parseFloat(n || 0).toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
-
-// ══════════════════════════════════════════════════════
-//  INVENTORY HISTORY — Paginated, server-driven
-// ══════════════════════════════════════════════════════
-var histState = {
-    page:     1,
-    per_page: 10,
-    status:   '',
-    date_from:'',
-    date_to:  ''
-};
-
-function histLoad() {
-    var tbody = document.getElementById('histTableBody');
-    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:32px;color:#6c757d;">' +
-        '<i class="fas fa-spinner fa-spin" style="font-size:1.5em;display:block;margin-bottom:8px;"></i>Loading...</td></tr>';
-
-    var params = new URLSearchParams({
-        action:    'my_requests',
-        page:      histState.page,
-        per_page:  histState.per_page
-    });
-    if (histState.status)    params.append('status',    histState.status);
-    if (histState.date_from) params.append('date_from', histState.date_from);
-    if (histState.date_to)   params.append('date_to',   histState.date_to);
-
-    fetch('../backend/api/stock_request.php?' + params.toString())
-        .then(function(r) { return r.json(); })
-        .then(function(res) {
-            if (!res.success) {
-                tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:#dc3545;">' +
-                    '<i class="fas fa-exclamation-circle"></i> ' + escHtml(res.message || 'Failed to load history.') + '</td></tr>';
-                return;
-            }
-            histRender(res);
-        })
-        .catch(function(err) {
-            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:#dc3545;">' +
-                '<i class="fas fa-exclamation-circle"></i> Network error. Please refresh and try again.</td></tr>';
-        });
-}
-
-function histRender(res) {
-    var tbody      = document.getElementById('histTableBody');
-    var requests   = res.requests || [];
-    var total      = res.total      || 0;
-    var page       = res.page       || 1;
-    var totalPages = res.total_pages || 1;
-
-    // Update state
-    histState.page = page;
-
-    // Total label
-    var start = total === 0 ? 0 : (page - 1) * histState.per_page + 1;
-    var end   = Math.min(page * histState.per_page, total);
-    document.getElementById('histTotalLabel').textContent =
-        total === 0 ? '0 records' : 'Showing ' + start + '–' + end + ' of ' + total + ' records';
-
-    // Page indicator
-    document.getElementById('histPageLabel').textContent = 'Page ' + page + ' of ' + totalPages;
-
-    // Prev / Next buttons
-    document.getElementById('histPrevBtn').disabled = (page <= 1);
-    document.getElementById('histPrevBtn').style.opacity = (page <= 1) ? '0.4' : '1';
-    document.getElementById('histNextBtn').disabled = (page >= totalPages);
-    document.getElementById('histNextBtn').style.opacity = (page >= totalPages) ? '0.4' : '1';
-
-    if (requests.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:32px;color:#6c757d;">' +
-            '<i class="fas fa-inbox" style="font-size:2em;display:block;margin-bottom:8px;"></i>' +
-            'No stock requests found.</td></tr>';
-        return;
-    }
-
-    var statusColors = {
-        'pending':   { bg:'#fff3cd', color:'#856404' },
-        'approved':  { bg:'#d1ecf1', color:'#0c5460' },
-        'validated': { bg:'#cce5ff', color:'#004085' },
-        'rejected':  { bg:'#f8d7da', color:'#721c24' }
-    };
-
-    var html = '';
-    requests.forEach(function(req) {
-        var st      = req.status || 'Pending';
-        var stKey   = st.toLowerCase();
-        var clr     = statusColors[stKey] || { bg:'#e9ecef', color:'#495057' };
-        var badge   = '<span style="background:' + clr.bg + ';color:' + clr.color +
-                      ';padding:2px 9px;border-radius:8px;font-size:11px;font-weight:700;">' +
-                      escHtml(st) + '</span>';
-
-        var approvedQty = (req.approved_quantity !== null && req.approved_quantity !== undefined && req.approved_quantity !== '')
-            ? '<strong style="color:#28a745;">' + parseInt(req.approved_quantity) + '</strong>'
-            : '<span style="color:#adb5bd;">&#8212;</span>';
-
-        var notes = req.manager_notes
-            ? escHtml(req.manager_notes)
-            : '<span style="color:#adb5bd;">&#8212;</span>';
-
-        var createdAt = req.created_at ? histFmtDate(req.created_at) : '—';
-        var updatedAt = req.updated_at ? histFmtDate(req.updated_at) : '—';
-
-        html +=
-            '<tr>' +
-            '<td style="color:#6c757d;font-size:12px;">#' + parseInt(req.id) + '</td>' +
-            '<td>' + createdAt + '</td>' +
-            '<td><code>' + escHtml(req.item_sku || '') + '</code></td>' +
-            '<td>' + escHtml(req.item_name || '') + '</td>' +
-            '<td>' + escHtml(req.item_category || '') + '</td>' +
-            '<td style="text-align:center;font-weight:600;">' + parseInt(req.requested_quantity || 0) + '</td>' +
-            '<td style="text-align:center;">' + approvedQty + '</td>' +
-            '<td>' + badge + '</td>' +
-            '<td style="font-size:13px;color:#495057;">' + notes + '</td>' +
-            '<td style="font-size:12px;color:#6c757d;">' + updatedAt + '</td>' +
-            '</tr>';
-    });
-    tbody.innerHTML = html;
-}
-
-function histFmtDate(dtStr) {
-    var d = new Date(dtStr.replace(' ', 'T'));
-    if (isNaN(d)) return dtStr;
-    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    var hh = String(d.getHours()).padStart(2,'0');
-    var mm = String(d.getMinutes()).padStart(2,'0');
-    return months[d.getMonth()] + ' ' + String(d.getDate()).padStart(2,'0') + ', ' + d.getFullYear() + ' ' + hh + ':' + mm;
-}
-
-function histApplyFilters() {
-    histState.page      = 1;
-    histState.status    = document.getElementById('histStatusFilter').value;
-    histState.date_from = document.getElementById('histDateFrom').value;
-    histState.date_to   = document.getElementById('histDateTo').value;
-    histLoad();
-}
-
-function histResetFilters() {
-    document.getElementById('histStatusFilter').value = '';
-    document.getElementById('histDateFrom').value     = '';
-    document.getElementById('histDateTo').value       = '';
-    histState.page      = 1;
-    histState.status    = '';
-    histState.date_from = '';
-    histState.date_to   = '';
-    histLoad();
-}
-
-function histChangePerPage() {
-    histState.per_page = parseInt(document.getElementById('histPerPage').value);
-    histState.page     = 1;
-    histLoad();
-}
-
-function histGoPage(p) {
-    if (p < 1) return;
-    histState.page = p;
-    histLoad();
-}
-
-// Auto-load when the history tab is the default active tab on page load
-(function() {
-    if (window.location.hash === '#history') {
-        histLoad();
-    }
-})();
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

@@ -1,5 +1,5 @@
 <?php
-$page_id = 'pm_fuel';
+$page_id = 'mgr_prod_fuel';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();

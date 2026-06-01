@@ -1,5 +1,5 @@
 <?php
-$page_id = 'manager_fuel_management';
+$page_id = 'mgr_prod_adjustment';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
 require_once __DIR__ . '/../backend/manager_fuel_config.php';

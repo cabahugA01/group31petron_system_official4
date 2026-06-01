@@ -1,5 +1,5 @@
 <?php
-$page_id = 'mgr_customer_history';
+$page_id = 'mgr_cust_history';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
 require_login();

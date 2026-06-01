@@ -130,14 +130,13 @@ try {
             $start      = $_GET['start'] ?? date('Y-m-d', strtotime('-30 days'));
             $end        = $_GET['end']   ?? date('Y-m-d');
 
-            // Show ALL delivery types by default
-            $where  = "WHERE do2.station_id = ? AND do2.delivery_date BETWEEN ? AND ?";
+            // Default to merchandise only — fuel deliveries are managed under Fuel Management
+            $where  = "WHERE do2.station_id = ? AND do2.delivery_date BETWEEN ? AND ? AND do2.delivery_type = 'merchandise'";
             $params = [$station_id, $start, $end];
 
-            // Optional type filter
-            if ($type_f !== '') {
-                $where   .= " AND do2.delivery_type = ?";
-                $params[] = $type_f;
+            // Optional type filter override (kept for API flexibility, but UI should not expose fuel here)
+            if ($type_f !== '' && $type_f !== 'fuel') {
+                // already locked to merchandise above; ignore any non-fuel override
             }
 
             // Map UI filter bucket → actual DB status values
@@ -220,11 +219,12 @@ try {
             echo json_encode(['success' => true, 'data' => $rows, 'counts' => $counts]);
             break;
 
-        // ── GET: pending badge count (fuel + merchandise) ────────────────────
+        // ── GET: pending badge count (merchandise only) ─────────────────────
         case 'pending_count':
             $stmt = $pdo->prepare("
                 SELECT COUNT(*) FROM deliveries_oversight
                 WHERE station_id = ?
+                  AND delivery_type = 'merchandise'
                   AND status IN ('Pending Manager Approval','Pending Manager Confirmation','Pending Validation')
             ");
             $stmt->execute([$station_id]);

@@ -96,8 +96,8 @@ $current_time_only = date('H:i:s');
 
         <!-- Navigation -->
         <div class="text-center mt-4">
-            <a href="staff_transactions.php" class="btn btn-primary btn-lg">
-                <i class="fas fa-cash-register"></i> Back to Staff Transactions
+            <a href="staff_transactions_hub.php" class="btn-back">
+                <i class="fas fa-cash-register"></i> Back to Transactions
             </a>
         </div>
     </div>

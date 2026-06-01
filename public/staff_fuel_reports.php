@@ -474,7 +474,7 @@ require_once __DIR__ . '/../partials/header.php';
                 </p>
             </div>
         </div>
-        <a href="staff_transactions_hub.php?section=fuel" class="sfr-btn secondary">
+        <a href="staff_transactions_hub.php?section=fuel" class="btn-back">
             <i class="fas fa-arrow-left"></i> Back to Fuel Transactions
         </a>
     </div>

@@ -1,5 +1,5 @@
 <?php
-$page_id = 'pending_transactions';
+$page_id = ($_GET['tab'] ?? 'pending') === 'validated' ? 'mgr_txn_validated' : 'mgr_txn_pending';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
 require_once __DIR__ . '/../backend/transaction_schema_fix.php';
@@ -100,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (Exception $e) {
             $_SESSION['error'] = 'Error approving: ' . $e->getMessage();
         }
-        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','status'=>$_POST['_status']??''])));
+        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','status'=>$_POST['_status']??'','tab'=>'validated'])));
         exit;
     }
 
@@ -132,7 +132,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (Exception $e) {
             $_SESSION['error'] = 'Error returning transaction: ' . $e->getMessage();
         }
-        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','status'=>$_POST['_status']??'','type'=>$_POST['_type']??''])));
+        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'validated'])));
         exit;
     }
 
@@ -160,7 +160,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (Exception $e) {
             $_SESSION['error'] = 'Error adjusting: ' . $e->getMessage();
         }
-        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','status'=>$_POST['_status']??'','type'=>$_POST['_type']??''])));
+        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'validated'])));
         exit;
     }
 
@@ -190,7 +190,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($pdo->inTransaction()) $pdo->rollBack();
             $_SESSION['error'] = 'Error approving JO: ' . $e->getMessage();
         }
-        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'merch'])));
+        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'validated'])));
         exit;
     }
 
@@ -219,7 +219,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($pdo->inTransaction()) $pdo->rollBack();
             $_SESSION['error'] = 'Error rejecting JO: ' . $e->getMessage();
         }
-        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'merch'])));
+        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'validated'])));
         exit;
     }
 
@@ -248,7 +248,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($pdo->inTransaction()) $pdo->rollBack();
             $_SESSION['error'] = 'Error adjusting JO: ' . $e->getMessage();
         }
-        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','status'=>$_POST['_status']??'','type'=>'jo'])));
+        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'validated'])));
         exit;
     }
 
@@ -269,7 +269,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (Exception $e) {
             $_SESSION['error'] = 'Error marking paid: ' . $e->getMessage();
         }
-        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'jo'])));
+        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'validated'])));
         exit;
     }
 
@@ -322,7 +322,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($pdo->inTransaction()) $pdo->rollBack();
             $_SESSION['error'] = 'Error setting payment: ' . $e->getMessage();
         }
-        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','status'=>$_POST['_status']??'','type'=>$_POST['_type']??''])));
+        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'validated'])));
         exit;
     }
 
@@ -343,7 +343,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (Exception $e) {
             $_SESSION['error'] = 'Error: ' . $e->getMessage();
         }
-        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','status'=>$_POST['_status']??'','type'=>$_POST['_type']??''])));
+        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'validated'])));
         exit;
     }
 
@@ -364,7 +364,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (Exception $e) {
             $_SESSION['error'] = 'Error: ' . $e->getMessage();
         }
-        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','status'=>$_POST['_status']??'','type'=>$_POST['_type']??''])));
+        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'validated'])));
         exit;
     }
 }
@@ -584,7 +584,7 @@ try {
     error_log('transactions.php JO query: ' . $e->getMessage());
 }
 
-// ── Merge based on type filter ────────────────────────────────────────────────
+// ── Merge & sort all ─────────────────────────────────────────────────────────
 $all_transactions = array_merge($transactions, $job_orders);
 usort($all_transactions, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['created_at']));
 
@@ -596,17 +596,40 @@ if ($type_f !== '') {
         if ($type_f === 'combined')    return $type === 'combined';
         return true;
     });
+    $all_transactions = array_values($all_transactions);
 }
 
-// ── Summary counts ────────────────────────────────────────────────────────────
-$totalCount = count($all_transactions);
-$pendingCount = $verifiedCount = $rejectedCount = 0;
-$grandTotal = 0.0;
+// ── Split into Pending vs Validated ──────────────────────────────────────────
+// Pending  = needs manager action (pending/pending validation)
+// Validated = already processed (approved, adjusted, rejected, completed, in progress)
+$pending_transactions   = [];
+$validated_transactions = [];
 foreach ($all_transactions as $t) {
     $ns = normalise_status($t['status'] ?? '');
-    if ($ns === 'pending')  $pendingCount++;
-    if ($ns === 'verified') $verifiedCount++;
-    if ($ns === 'rejected') $rejectedCount++;
+    if ($ns === 'pending') {
+        $pending_transactions[] = $t;
+    } else {
+        $validated_transactions[] = $t;
+    }
+}
+
+// Active tab: default to 'pending', switch to 'validated' when ?tab=validated
+$active_tab = ($_GET['tab'] ?? 'pending') === 'validated' ? 'validated' : 'pending';
+
+// The table rendered depends on active tab
+$display_transactions = ($active_tab === 'validated') ? $validated_transactions : $pending_transactions;
+
+// ── Summary counts ────────────────────────────────────────────────────────────
+$pendingCount   = count($pending_transactions);
+$verifiedCount  = 0;
+$rejectedCount  = 0;
+$adjustedCount  = 0;
+$grandTotal     = 0.0;
+foreach ($validated_transactions as $t) {
+    $ns = normalise_status($t['status'] ?? '');
+    if ($ns === 'verified')  $verifiedCount++;
+    if ($ns === 'returned')  $rejectedCount++;
+    if ($ns === 'adjusted')  $adjustedCount++;
     $grandTotal += (float)($t['total'] ?? 0);
 }
 
@@ -617,8 +640,20 @@ include __DIR__ . '/../partials/header.php';
 
 <div class="page-head">
     <div>
-        <h1 class="h1">Pending Merchandise/Service Transactions</h1>
-        <div class="sub">Validation queue — Approve, Reject, or Adjust all Merchandise &amp; Job Order entries</div>
+        <h1 class="h1">
+            <?php if ($active_tab === 'validated'): ?>
+                <i class="fas fa-check-circle" style="color:#22c55e;"></i> Validated Transactions
+            <?php else: ?>
+                <i class="fas fa-hourglass-half" style="color:#f59e0b;"></i> Pending Transactions
+            <?php endif; ?>
+        </h1>
+        <div class="sub">
+            <?php if ($active_tab === 'validated'): ?>
+                Read-only history — all approved, adjusted &amp; rejected transactions
+            <?php else: ?>
+                Validation queue — Approve, Reject, or Adjust all Merchandise &amp; Job Order entries
+            <?php endif; ?>
+        </div>
     </div>
 </div>
 
@@ -662,6 +697,7 @@ try {
     </div>
 
     <form method="get" id="filterForm">
+        <input type="hidden" name="tab" value="<?= htmlspecialchars($active_tab) ?>">
         <!-- Row 1: Date Range + Customer + Payment + Type + Status -->
         <div class="flt-row">
 
@@ -742,7 +778,7 @@ try {
                     <button type="submit" class="flt-btn flt-btn-search">
                         <i class="fas fa-search"></i> Search
                     </button>
-                    <a href="transactions.php" class="flt-btn flt-btn-reset">
+                    <a href="transactions.php?tab=<?= $active_tab ?>" class="flt-btn flt-btn-reset">
                         <i class="fas fa-rotate-left"></i> Reset
                     </a>
                 </div>
@@ -779,8 +815,9 @@ try {
                 </tr>
             </thead>
             <tbody>
-                <?php foreach($all_transactions as $t): ?>
+                <?php foreach($display_transactions as $t): ?>
                 <?php
+                    $ns         = normalise_status($t['status'] ?? '');
                     $isJO       = ($t['txn_type'] ?? '') === 'job_order';
                     $isCombined = ($t['txn_type'] ?? '') === 'combined';
                     $status     = $t['status'] ?? 'Pending Validation';
@@ -1038,8 +1075,12 @@ try {
                 <?php if(empty($all_transactions)): ?>
                 <tr>
                     <td colspan="14" style="text-align:center;padding:48px;color:#888;">
-                        <i class="fas fa-inbox" style="font-size:36px;display:block;margin-bottom:12px;opacity:0.3;"></i>
-                        No transactions found for the selected filters.
+                        <i class="fas fa-<?php echo $active_tab==='validated'?'check-circle':'inbox'; ?>" style="font-size:36px;display:block;margin-bottom:12px;opacity:0.3;"></i>
+                        <?php if ($active_tab === 'validated'): ?>
+                            No validated transactions found for the selected date range.
+                        <?php else: ?>
+                            No pending transactions — all caught up! <a href="transactions.php?tab=validated" style="color:#22c55e;font-weight:700;">View validated history →</a>
+                        <?php endif; ?>
                     </td>
                 </tr>
                 <?php endif; ?>

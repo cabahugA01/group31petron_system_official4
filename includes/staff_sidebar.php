@@ -1,98 +1,187 @@
 <?php
-// Staff Sidebar Navigation - Only includes modules specified by user
+/**
+ * Staff Sidebar Navigation
+ * Matches the RBAC menu spec exactly:
+ *   Dashboard | Transactions | Fuel Management | Inventory |
+ *   Customers | Merchandise Deliveries | Calendar | Reports
+ *
+ * NOTE: This file is a legacy helper. The canonical sidebar is rendered
+ * by partials/header.php via partials/rbac_menu.php.
+ * Keep this in sync with rbac_menu.php.
+ */
 function getStaffSidebar($current_page = 'dashboard') {
     $sidebar = [
         'dashboard' => [
-            'icon' => 'fas fa-tachometer-alt',
+            'icon'  => 'fas fa-tachometer-alt',
             'title' => 'Dashboard',
-            'url' => 'staff_dashboard.php'
+            'url'   => 'staff_dashboard.php',
         ],
         'transactions' => [
-            'icon' => 'fas fa-shopping-cart',
+            'icon'  => 'fas fa-exchange-alt',
             'title' => 'Transactions',
-            'url' => 'staff_transactions_hub.php',
-            'description' => 'Fuel & Merchandise transactions with auto-pull and auto-compute'
+            'url'   => 'staff_transactions_hub.php?section=merchandise',
         ],
-        'job_orders' => [
-            'icon' => 'fas fa-wrench',
-            'title' => 'Job Orders',
-            'url' => 'staff_transactions_hub.php?section=merchandise&active_tab=encode_jo',
-            'description' => 'Encode, track status, link to receivables'
-        ],
-        'purchase_orders' => [
-            'icon' => 'fas fa-file-invoice-dollar',
-            'title' => 'Purchase Orders',
-            'url' => 'purchase_orders.php',
-            'description' => 'Encode purchase orders — sent to Manager for validation'
-        ],
-                'fuel_management' => [
-            'icon' => 'fas fa-gas-pump',
+        'fuel' => [
+            'icon'  => 'fas fa-gas-pump',
             'title' => 'Fuel Management',
-            'url' => 'fuel_readings_encoding.php',
-            'description' => 'Fuel readings validation, inventory oversight, reconciliation'
+            'url'   => '#',
+            'submenu' => [
+                'staff_fuel_deliveries_sub' => [
+                    'icon'  => 'fas fa-truck',
+                    'title' => 'Fuel Deliveries',
+                    'url'   => 'staff_fuel_deliveries.php',
+                ],
+                'staff_fuel_transactions' => [
+                    'icon'  => 'fas fa-tachometer-alt',
+                    'title' => 'Fuel Transactions (pump readings)',
+                    'url'   => 'staff_transactions_hub.php?section=fuel',
+                ],
+            ],
         ],
-                'calendar' => [
-            'icon' => 'fas fa-calendar-alt',
+        'inventory' => [
+            'icon'  => 'fas fa-warehouse',
+            'title' => 'Inventory',
+            'url'   => 'staff_inventory_merchandise.php',
+            'submenu' => [
+                'inv_merch' => [
+                    'icon'  => 'fas fa-boxes',
+                    'title' => 'Merchandise Inventory',
+                    'url'   => 'staff_inventory_merchandise.php',
+                ],
+                'inv_fuel' => [
+                    'icon'  => 'fas fa-database',
+                    'title' => 'Fuel Inventory',
+                    'url'   => 'staff_inventory_fuel.php',
+                ],
+                'inv_stock_request' => [
+                    'icon'  => 'fas fa-clipboard-list',
+                    'title' => 'Stock Request',
+                    'url'   => 'staff_stock_requests.php',
+                ],
+                'staff_stock_in' => [
+                    'icon'  => 'fas fa-dolly',
+                    'title' => 'Stock-In',
+                    'url'   => 'staff_stock_in.php',
+                ],
+                'inv_history' => [
+                    'icon'  => 'fas fa-history',
+                    'title' => 'Inventory History',
+                    'url'   => 'staff_inventory_history.php',
+                ],
+            ],
+        ],
+        'customers' => [
+            'icon'  => 'fas fa-users',
+            'title' => 'Customers',
+            'url'   => 'customers.php',
+            'submenu' => [
+                'customer_add' => [
+                    'icon'  => 'fas fa-user-plus',
+                    'title' => 'Add New Customer',
+                    'url'   => 'customers.php?section=add',
+                ],
+                'customer_list' => [
+                    'icon'  => 'fas fa-list',
+                    'title' => 'Customer List (basic info only)',
+                    'url'   => 'customers.php?section=list',
+                ],
+                'customer_history' => [
+                    'icon'  => 'fas fa-history',
+                    'title' => 'Customer History (own transactions)',
+                    'url'   => 'customers.php?section=history',
+                ],
+            ],
+        ],
+        'staff_deliveries' => [
+            'icon'  => 'fas fa-boxes',
+            'title' => 'Merchandise Deliveries',
+            'url'   => '#',
+            'submenu' => [
+                'staff_record_del' => [
+                    'icon'  => 'fas fa-plus-circle',
+                    'title' => 'Record Merchandise Delivery',
+                    'url'   => 'staff_record_delivery.php',
+                ],
+                'staff_del_manage' => [
+                    'icon'  => 'fas fa-history',
+                    'title' => 'Merchandise Delivery History',
+                    'url'   => 'staff_delivery_history.php',
+                ],
+            ],
+        ],
+        'calendar' => [
+            'icon'  => 'fas fa-calendar-alt',
             'title' => 'Calendar',
-            'url' => 'staff_calendar.php',
-            'description' => 'Staff schedules, color coding, tasks/events, sync with transactions'
+            'url'   => 'staff_calendar.php',
         ],
         'reports' => [
-            'icon' => 'fas fa-chart-bar',
+            'icon'  => 'fas fa-chart-bar',
             'title' => 'Reports',
-            'url' => 'staff_reports.php',
-            'description' => 'Station performance, staff reports, compliance reports'
+            'url'   => 'staff_reports.php',
+            'submenu' => [
+                'report_activity' => [
+                    'icon'  => 'fas fa-user-clock',
+                    'title' => 'Personal Activity Report',
+                    'url'   => 'staff_reports.php?view=personal_activity',
+                ],
+                'report_daily_sales' => [
+                    'icon'  => 'fas fa-receipt',
+                    'title' => 'Transaction Report (own sales/services)',
+                    'url'   => 'staff_reports.php?view=daily_sales',
+                ],
+                'report_customer' => [
+                    'icon'  => 'fas fa-users',
+                    'title' => 'Customer Report',
+                    'url'   => 'staff_reports.php?view=customer_report',
+                ],
+                'report_inventory' => [
+                    'icon'  => 'fas fa-boxes',
+                    'title' => 'Inventory Report',
+                    'url'   => 'staff_reports.php?view=inventory_report',
+                ],
+            ],
         ],
-            ];
-    
+    ];
+
     echo '<nav class="staff-sidebar" id="staffSidebar">';
     echo '<div class="sidebar-header">';
-    echo '<button class="sidebar-toggle" id="sidebarToggle">';
+    echo '<button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle sidebar">';
     echo '<i class="fas fa-bars"></i>';
     echo '</button>';
     echo '<h4><i class="fas fa-user-tie"></i> Staff Portal</h4>';
     echo '</div>';
-    
+
     echo '<ul class="sidebar-menu">';
     foreach ($sidebar as $key => $item) {
-        $active = ($current_page === $key) ? 'active' : '';
+        $active     = ($current_page === $key) ? 'active' : '';
         $hasSubmenu = isset($item['submenu']) && !empty($item['submenu']);
-        
+
         echo '<li class="' . $active . '">';
-        
+
         if ($hasSubmenu) {
-            echo '<a href="' . $item['url'] . '" class="has-submenu" onclick="toggleSubmenu(event, \'' . $key . '\')">';
-            echo '<i class="' . $item['icon'] . '"></i>';
-            echo '<span>' . $item['title'] . '</span>';
+            echo '<a href="' . htmlspecialchars($item['url']) . '" class="has-submenu" onclick="toggleSubmenu(event,\'' . $key . '\')">';
+            echo '<i class="' . htmlspecialchars($item['icon']) . '"></i>';
+            echo '<span>' . htmlspecialchars($item['title']) . '</span>';
             echo '<i class="fas fa-chevron-down submenu-arrow"></i>';
-            if (isset($item['description'])) {
-                echo '<small>' . $item['description'] . '</small>';
-            }
             echo '</a>';
-            
+
             echo '<ul class="submenu" id="submenu-' . $key . '">';
             foreach ($item['submenu'] as $subKey => $subItem) {
                 echo '<li>';
-                echo '<a href="' . $subItem['url'] . '">';
-                echo '<i class="' . $subItem['icon'] . '"></i>';
-                echo '<span>' . $subItem['title'] . '</span>';
-                if (isset($subItem['description'])) {
-                    echo '<small>' . $subItem['description'] . '</small>';
-                }
+                echo '<a href="' . htmlspecialchars($subItem['url']) . '">';
+                echo '<i class="' . htmlspecialchars($subItem['icon']) . '"></i>';
+                echo '<span>' . htmlspecialchars($subItem['title']) . '</span>';
                 echo '</a>';
                 echo '</li>';
             }
             echo '</ul>';
         } else {
-            echo '<a href="' . $item['url'] . '">';
-            echo '<i class="' . $item['icon'] . '"></i>';
-            echo '<span>' . $item['title'] . '</span>';
-            if (isset($item['description'])) {
-                echo '<small>' . $item['description'] . '</small>';
-            }
+            echo '<a href="' . htmlspecialchars($item['url']) . '">';
+            echo '<i class="' . htmlspecialchars($item['icon']) . '"></i>';
+            echo '<span>' . htmlspecialchars($item['title']) . '</span>';
             echo '</a>';
         }
-        
+
         echo '</li>';
     }
     echo '</ul>';
@@ -104,7 +193,7 @@ function getStaffSidebar($current_page = 'dashboard') {
 .staff-sidebar {
     width: 280px;
     height: 100vh;
-    background: #2c3e50;
+    background: var(--petron-blue, #00264D);
     color: white;
     position: fixed;
     left: 0;
@@ -121,8 +210,8 @@ function getStaffSidebar($current_page = 'dashboard') {
 .sidebar-toggle {
     position: absolute;
     right: 15px;
-    top: 15px !important;
-    background: #3498db;
+    top: 15px;
+    background: rgba(255,255,255,0.15);
     border: none;
     color: white;
     width: 35px;
@@ -132,32 +221,30 @@ function getStaffSidebar($current_page = 'dashboard') {
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
     transition: all 0.3s ease;
     z-index: 1001;
 }
 
 .sidebar-toggle:hover {
-    background: #2980b9;
+    background: rgba(255,255,255,0.25);
     transform: scale(1.1);
-}
-
-.sidebar-toggle i {
-    font-size: 16px;
 }
 
 .sidebar-header {
     padding: 20px;
-    background: #34495e;
-    border-bottom: 1px solid #4a5f7a;
+    background: rgba(0,0,0,0.2);
+    border-bottom: 1px solid rgba(255,255,255,0.1);
     position: relative;
 }
 
 .sidebar-header h4 {
     margin: 0;
     color: white;
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .sidebar-menu {
@@ -167,101 +254,64 @@ function getStaffSidebar($current_page = 'dashboard') {
 }
 
 .sidebar-menu > li {
-    border-bottom: 1px solid #4a5f7a;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 
 .sidebar-menu a {
-    display: block;
-    padding: 15px 20px;
-    color: #bdc3c7;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 18px;
+    color: rgba(255,255,255,0.85);
     text-decoration: none;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
     position: relative;
+    font-size: 13px;
+    font-weight: 500;
 }
 
 .sidebar-menu a:hover {
-    background: #34495e;
+    background: rgba(255,255,255,0.1);
     color: white;
 }
 
-.sidebar-menu a i {
-    width: 20px;
-    margin-right: 10px;
+.sidebar-menu a i:first-child {
+    width: 18px;
     text-align: center;
-}
-
-.sidebar-menu a span {
-    display: block;
-    font-weight: 500;
-    font-size: 13px;
-    line-height: 1.2;
-}
-
-.sidebar-menu a small {
-    display: block;
-    font-size: 11px;
-    color: #95a5a6;
-    margin-top: 3px;
-    line-height: 1.3;
+    font-size: 14px;
+    flex-shrink: 0;
 }
 
 .sidebar-menu li.active > a {
-    background: #3498db;
+    background: var(--petron-red, #CC0000);
     color: white;
 }
 
-.sidebar-menu li.active a {
-    background: #3498db;
-    color: white;
-}
-
-.sidebar-menu li.active a i {
-    color: white;
-}
-
-/* Submenu styles */
+/* Submenu */
 .submenu {
     list-style: none;
     margin: 0;
     padding: 0;
-    background: #34495e;
+    background: rgba(0,0,0,0.15);
+    border-left: 3px solid rgba(255,255,255,0.2);
     display: none;
-    border-left: 3px solid #3498db;
 }
 
 .submenu li {
-    border-bottom: 1px solid #4a5f7a;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 
 .submenu a {
-    padding: 12px 20px 12px 50px;
-    color: #bdc3c7;
-    text-decoration: none;
-    display: block;
-    transition: all 0.3s ease;
+    padding: 9px 18px 9px 42px;
     font-size: 12px;
+    font-weight: 400;
+    color: rgba(255,255,255,0.75);
 }
 
 .submenu a:hover {
-    background: #2c3e50;
+    background: rgba(255,255,255,0.08);
     color: white;
-    padding-left: 55px;
-}
-
-.submenu a i {
-    width: 18px;
-    margin-right: 8px;
-    font-size: 11px;
-}
-
-.submenu a span {
-    font-weight: 400;
-}
-
-.submenu a small {
-    font-size: 10px;
-    color: #95a5a6;
-    margin-top: 2px;
+    padding-left: 46px;
 }
 
 .has-submenu {
@@ -269,19 +319,20 @@ function getStaffSidebar($current_page = 'dashboard') {
 }
 
 .submenu-arrow {
-    position: absolute;
-    right: 20px;
+    position: absolute !important;
+    right: 16px;
     top: 50%;
     transform: translateY(-50%);
+    font-size: 10px !important;
     transition: transform 0.3s ease;
-    font-size: 10px;
+    width: auto !important;
 }
 
 .submenu-open .submenu-arrow {
     transform: translateY(-50%) rotate(180deg);
 }
 
-/* Main content adjustment */
+/* Main content offset */
 .main-content {
     margin-left: 280px;
     min-height: 100vh;
@@ -294,83 +345,46 @@ function getStaffSidebar($current_page = 'dashboard') {
 }
 
 @media (max-width: 768px) {
-    .staff-sidebar {
-        width: 100%;
-        height: auto;
-        position: relative;
-    }
-    
-    .main-content {
-        margin-left: 0;
-    }
-    
-    .sidebar-toggle {
-        right: 10px;
-        top: 10px;
-    }
+    .staff-sidebar { width: 100%; height: auto; position: relative; }
+    .main-content  { margin-left: 0; }
 }
 </style>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const sidebarToggle = document.getElementById('sidebarToggle');
-    const staffSidebar = document.getElementById('staffSidebar');
-    const mainContent = document.querySelector('.main-content');
-    
-    if (sidebarToggle && staffSidebar) {
-        sidebarToggle.addEventListener('click', function() {
-            staffSidebar.classList.toggle('collapsed');
-            
-            if (mainContent) {
-                mainContent.classList.toggle('expanded');
-            }
-            
-            // Toggle icon between bars and times
+document.addEventListener('DOMContentLoaded', function () {
+    const toggle  = document.getElementById('sidebarToggle');
+    const sidebar = document.getElementById('staffSidebar');
+    const main    = document.querySelector('.main-content');
+
+    if (toggle && sidebar) {
+        toggle.addEventListener('click', function () {
+            sidebar.classList.toggle('collapsed');
+            if (main) main.classList.toggle('expanded');
             const icon = this.querySelector('i');
-            if (staffSidebar.classList.contains('collapsed')) {
-                icon.classList.remove('fa-bars');
-                icon.classList.add('fa-times');
-            } else {
-                icon.classList.remove('fa-times');
-                icon.classList.add('fa-bars');
-            }
+            icon.classList.toggle('fa-bars');
+            icon.classList.toggle('fa-times');
         });
     }
-    
-    // Handle submenu toggle
-    window.toggleSubmenu = function(event, menuKey) {
+
+    window.toggleSubmenu = function (event, key) {
         event.preventDefault();
-        
-        const submenu = document.getElementById('submenu-' + menuKey);
-        const menuItem = event.target.closest('li');
-        const arrow = menuItem.querySelector('.submenu-arrow');
-        
-        if (submenu) {
-            const isVisible = submenu.style.display === 'block';
-            
-            // Close all other submenus
-            document.querySelectorAll('.submenu').forEach(function(otherSubmenu) {
-                if (otherSubmenu !== submenu) {
-                    otherSubmenu.style.display = 'none';
-                    otherSubmenu.closest('li').classList.remove('submenu-open');
-                }
-            });
-            
-            // Toggle current submenu
-            if (isVisible) {
-                submenu.style.display = 'none';
-                menuItem.classList.remove('submenu-open');
-            } else {
-                submenu.style.display = 'block';
-                menuItem.classList.add('submenu-open');
+        const sub  = document.getElementById('submenu-' + key);
+        const item = event.target.closest('li');
+        if (!sub) return false;
+
+        const open = sub.style.display === 'block';
+
+        // Close all other submenus
+        document.querySelectorAll('.submenu').forEach(function (s) {
+            if (s !== sub) {
+                s.style.display = 'none';
+                s.closest('li').classList.remove('submenu-open');
             }
-        }
-        
+        });
+
+        sub.style.display = open ? 'none' : 'block';
+        item.classList.toggle('submenu-open', !open);
         return false;
     };
-
-        
-        
-        
-    });
+});
 </script>

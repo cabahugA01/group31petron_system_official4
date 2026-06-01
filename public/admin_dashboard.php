@@ -80,6 +80,15 @@ if ($flagged_del > 0)
 $pending_admin_oversight = (int) adm_val($pdo, "SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status='Pending Admin Oversight'", [$station_id]);
 if ($pending_admin_oversight > 0)
     $compliance_alerts[] = ['type'=>'warning','icon'=>'fa-truck','msg'=>"{$pending_admin_oversight} delivery(ies) awaiting your final oversight (Manager-validated)."];
+
+// Inventory flow alerts
+$pending_po_admin = (int) adm_val($pdo, "SELECT COUNT(*) FROM purchase_orders WHERE station_id=? AND status='Pending Admin Validation' AND type='merch' AND admin_finalized=0", [$station_id]);
+if ($pending_po_admin > 0)
+    $compliance_alerts[] = ['type'=>'warning','icon'=>'fa-file-invoice-dollar','msg'=>"{$pending_po_admin} Purchase Order(s) awaiting your finalization. <a href='admin_purchase_orders.php' style='color:inherit;font-weight:700;text-decoration:underline;'>Review POs &rarr;</a>"];
+
+$pending_stock_in = (int) adm_val($pdo, "SELECT COUNT(*) FROM purchase_orders WHERE station_id=? AND admin_finalized=1 AND delivery_validated=1 AND stock_in_done=0 AND type='merch'", [$station_id]);
+if ($pending_stock_in > 0)
+    $compliance_alerts[] = ['type'=>'info','icon'=>'fa-dolly','msg'=>"{$pending_stock_in} manager-validated PO(s) awaiting Stock-In encoding. <a href='staff_stock_in.php' style='color:inherit;font-weight:700;text-decoration:underline;'>Go to Stock-In &rarr;</a>"];
 // Admin compliance: show manager-validated transactions needing oversight, NOT raw Pending staff encodings
 $admin_tx_oversight = (int) adm_val($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND validation_status IN ('Approved','Adjusted') AND DATE(COALESCE(validated_at,created_at))=CURDATE()", [$station_id]);
 if ($admin_tx_oversight > 0)

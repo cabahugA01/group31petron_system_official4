@@ -138,6 +138,15 @@ table.dt tr:hover td{background:#f8f9fa;}
   <div class="card-body" style="padding:12px 20px;" id="alertsList"></div>
 </div>
 
+<!-- ── Merchandise PO Stock-In Tracker ──────────────────────────────────────── -->
+<div class="card" id="stockInPanel" style="display:none;">
+  <div class="card-header" style="background:#f0f4ff;border-bottom-color:#c5d3f0;">
+    <div class="card-title" style="color:#002F70;"><i class="fas fa-dolly"></i> Merchandise POs Awaiting Stock-In</div>
+    <span id="stockInCount" style="font-size:12px;color:#002F70;font-weight:700;"></span>
+  </div>
+  <div class="card-body" style="padding:12px 20px;" id="stockInList"></div>
+</div>
+
 <!-- Deliveries Table -->
 <div class="card">
   <div class="card-header">
@@ -576,6 +585,34 @@ async function loadComplianceAlerts(){
   }catch(e){}
 }
 
+// ── Stock-In Tracker ─────────────────────────────────────────────────────────
+async function loadStockInTracker(){
+  try{
+    const res=await fetch('../backend/api/merchandise_stock_in.php?action=get_pending_deliveries');
+    const data=await res.json();
+    if(!data.success||!data.deliveries||data.deliveries.length===0){
+      document.getElementById('stockInPanel').style.display='none';
+      return;
+    }
+    const items=data.deliveries;
+    document.getElementById('stockInCount').textContent=items.length+' PO(s) awaiting stock-in';
+    let html='<div style="display:flex;flex-wrap:wrap;gap:10px;">';
+    items.forEach(function(d){
+      html+=`<div style="background:#fff;border:1px solid #c5d3f0;border-radius:8px;padding:12px 14px;min-width:220px;flex:1;">
+        <div style="font-size:12px;font-weight:700;color:#002F70;">${esc(d.po_number||'Manual')}</div>
+        <div style="font-size:13px;font-weight:700;color:#222;margin:3px 0;">${esc(d.product_name||'')}</div>
+        <div style="font-size:11px;color:#6c757d;">Qty: <strong>${d.qty_ordered}</strong> &nbsp;|&nbsp; Finalized by: ${esc(d.admin_name||'—')}</div>
+        <a href="staff_stock_in.php" style="display:inline-flex;align-items:center;gap:5px;margin-top:8px;padding:5px 12px;background:#002F70;color:#fff;border-radius:5px;font-size:12px;font-weight:600;text-decoration:none;">
+          <i class="fas fa-dolly"></i> Go to Stock-In
+        </a>
+      </div>`;
+    });
+    html+='</div>';
+    document.getElementById('stockInList').innerHTML=html;
+    document.getElementById('stockInPanel').style.display='block';
+  }catch(e){}
+}
+
 // ── Export ────────────────────────────────────────────────────────────────────
 function exportReport(format){
   const start=document.getElementById('fStart').value;
@@ -600,6 +637,7 @@ document.addEventListener('DOMContentLoaded',function(){
 
   loadDeliveries();
   loadComplianceAlerts();
+  loadStockInTracker();
 });
 
 // Close modals on overlay click

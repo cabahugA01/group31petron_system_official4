@@ -13,13 +13,21 @@ if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
 }
 
 // ── Resolve active section (driven by sidebar sub-menu) ───────────────────────
-$valid_sections = ['encode', 'history', 'linkage'];
+// 'add'     → Add New Customer form
+// 'list'    → Customer List (basic info)
+// 'history' → Customer History (own transactions)
+// 'encode'  → legacy alias for 'list'
+// 'linkage' → legacy Transaction Linkage (kept for backward compat)
+$valid_sections = ['add', 'list', 'encode', 'history', 'linkage'];
 $section = isset($_GET['section']) && in_array($_GET['section'], $valid_sections)
-    ? $_GET['section'] : 'encode';
+    ? $_GET['section'] : 'list';
+
+// Normalize legacy alias
+if ($section === 'encode') $section = 'list';
 
 // Block any direct attempt to access removed sections
 if (isset($_GET['section']) && in_array($_GET['section'], ['update', 'balances'])) {
-    header('Location: customers.php?section=encode'); exit;
+    header('Location: customers.php?section=list'); exit;
 }
 
 // ── Government ID types ───────────────────────────────────────────────────────
@@ -117,7 +125,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'encod
             $placeholders = implode(',', array_fill(0, count($col_list), '?'));
             $pdo->prepare("INSERT INTO customers (" . implode(',', $col_list) . ") VALUES ($placeholders)")
                 ->execute($val_list);
-            $flash_success = "Customer \"$name\" encoded successfully.";
+            $_SESSION['success'] = "Customer \"$name\" added successfully.";
+            header('Location: customers.php?section=list'); exit;
         } catch (Exception $e) {
             $flash_error = 'Error saving customer: ' . $e->getMessage();
         }
@@ -238,7 +247,9 @@ $hist_customers      = [];
 $hist_selected_id    = isset($_GET['cust_id']) ? (int)$_GET['cust_id'] : 0;
 $hist_filter_type    = $_GET['hist_type']   ?? '';   // 'job_order' | 'merchandise' | ''
 $hist_filter_status  = $_GET['hist_status'] ?? '';   // 'Paid' | 'Unpaid' | 'Partial' | ''
-$hist_filter_date    = $_GET['hist_date']   ?? '';
+$hist_filter_date    = $_GET['hist_date']      ?? '';
+$hist_filter_date_from = $_GET['hist_date_from'] ?? $hist_filter_date;
+$hist_filter_date_to   = $_GET['hist_date_to']   ?? '';
 $hist_records        = [];
 $hist_customer_info  = null;
 if ($section === 'history') {
@@ -312,11 +323,17 @@ if ($section === 'history') {
             
             $mt_cust_cond = empty($mt_cond_parts) ? '1=0' : '(' . implode(' OR ', $mt_cond_parts) . ')';
 
-            // Date filter
+            // Date filter (supports single date legacy + from/to range)
             $jo_date_filter = $mt_date_filter = '';
-            if ($hist_filter_date) {
-                $jo_date_filter  = " AND DATE(jo.created_at) = " . $pdo->quote($hist_filter_date);
-                $mt_date_filter  = " AND DATE($mt_date_col) = " . $pdo->quote($hist_filter_date);
+            if ($hist_filter_date_from && $hist_filter_date_to) {
+                $jo_date_filter = " AND DATE(jo.created_at) BETWEEN " . $pdo->quote($hist_filter_date_from) . " AND " . $pdo->quote($hist_filter_date_to);
+                $mt_date_filter = " AND DATE($mt_date_col) BETWEEN " . $pdo->quote($hist_filter_date_from) . " AND " . $pdo->quote($hist_filter_date_to);
+            } elseif ($hist_filter_date_from) {
+                $jo_date_filter = " AND DATE(jo.created_at) >= " . $pdo->quote($hist_filter_date_from);
+                $mt_date_filter = " AND DATE($mt_date_col) >= " . $pdo->quote($hist_filter_date_from);
+            } elseif ($hist_filter_date_to) {
+                $jo_date_filter = " AND DATE(jo.created_at) <= " . $pdo->quote($hist_filter_date_to);
+                $mt_date_filter = " AND DATE($mt_date_col) <= " . $pdo->quote($hist_filter_date_to);
             }
 
             // ── Job Orders ──
@@ -421,11 +438,18 @@ if ($section === 'history') {
 
 // Section titles for page header
 $section_titles = [
-    'encode'   => ['fas fa-list',       'Customer List'],
+    'add'      => ['fas fa-user-plus',  'Add New Customer'],
+    'list'     => ['fas fa-list',       'Customer List'],
     'history'  => ['fas fa-history',    'Customer History'],
     'linkage'  => ['fas fa-link',       'Transaction Linkage'],
 ];
 [$sec_ico, $sec_title] = $section_titles[$section];
+
+// Flash from redirect
+if (!empty($_SESSION['success'])) {
+    $flash_success = $_SESSION['success'];
+    unset($_SESSION['success']);
+}
 
 include __DIR__ . '/../partials/header.php';
 ?>
@@ -467,8 +491,19 @@ include __DIR__ . '/../partials/header.php';
 <div class="page-head">
     <div>
         <h1><i class="<?= $sec_ico ?>"></i> <?= $sec_title ?></h1>
-        <div class="page-subtitle">Station #<?= (int)$station_id ?> &mdash; Staff: encode, update, link transactions, view balances only</div>
+        <div class="page-subtitle">
+            Station #<?= (int)$station_id ?>
+            <?php if ($section === 'add'): ?>&mdash; Fill in the form below to register a new customer.
+            <?php elseif ($section === 'list'): ?>&mdash; All customers registered at this station.
+            <?php elseif ($section === 'history'): ?>&mdash; View a customer's own transaction history.
+            <?php endif; ?>
+        </div>
     </div>
+    <?php if ($section === 'list'): ?>
+    <a href="customers.php?section=add" class="cust-btn cust-btn-primary" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none;">
+        <i class="fas fa-user-plus"></i> Add New Customer
+    </a>
+    <?php endif; ?>
 </div>
 
 <?php if ($flash_success): ?>
@@ -482,43 +517,135 @@ include __DIR__ . '/../partials/header.php';
 </div>
 <?php endif; ?>
 
-<!-- ══ SECTION: ENCODE ════════════════════════════════════════════════════════ -->
-<?php if ($section === 'encode'): ?>
+<!-- ══ SECTION: ADD NEW CUSTOMER ═════════════════════════════════════════════ -->
+<?php if ($section === 'add'): ?>
+
+<div class="cust-card">
+    <div class="cust-card-head">
+        <h2 class="cust-card-title"><i class="fas fa-user-plus"></i> New Customer Registration</h2>
+        <a href="customers.php?section=list" class="btn-back">
+            <i class="fas fa-arrow-left"></i> Back to Customer List
+        </a>
+    </div>
+    <div class="cust-card-body">
+        <form method="POST" action="customers.php?section=add" enctype="multipart/form-data">
+            <input type="hidden" name="action" value="encode_customer">
+
+            <div class="cust-form-grid" style="margin-bottom:14px;">
+                <!-- Customer Name -->
+                <div style="grid-column:1/-1;">
+                    <label class="cust-label">Customer Name <span style="color:#dc3545;">*</span></label>
+                    <input type="text" name="name" class="cust-input" placeholder="Full name or company name"
+                           required maxlength="200" value="<?= htmlspecialchars($_POST['name'] ?? '') ?>">
+                </div>
+
+                <!-- Contact Number -->
+                <div>
+                    <label class="cust-label">Contact Number</label>
+                    <input type="text" name="contact" class="cust-input" placeholder="e.g. 09XX-XXX-XXXX"
+                           maxlength="50" value="<?= htmlspecialchars($_POST['contact'] ?? '') ?>">
+                </div>
+
+                <!-- Government ID Type -->
+                <div>
+                    <label class="cust-label">Government ID Type</label>
+                    <select name="id_type" class="cust-input">
+                        <option value="">— Select ID type —</option>
+                        <?php foreach ($gov_id_types as $gid): ?>
+                        <option value="<?= htmlspecialchars($gid) ?>"
+                            <?= ($_POST['id_type'] ?? '') === $gid ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($gid) ?>
+                        </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <!-- Credit Limit -->
+                <div>
+                    <label class="cust-label">Credit Limit (₱)</label>
+                    <input type="number" name="credit_limit" class="cust-input" placeholder="0.00"
+                           min="0" step="0.01" value="<?= htmlspecialchars($_POST['credit_limit'] ?? '0') ?>">
+                    <small style="color:#6c757d;font-size:11px;">Leave 0 for cash-only customers.</small>
+                </div>
+
+                <!-- ID Image Upload -->
+                <div>
+                    <label class="cust-label">Government ID Image <span style="color:#6c757d;font-weight:400;">(optional)</span></label>
+                    <input type="file" name="id_image" class="cust-input" accept="image/*,.pdf"
+                           style="padding:6px 10px;">
+                    <small style="color:#6c757d;font-size:11px;">JPG, PNG, PDF — max 5MB</small>
+                </div>
+
+                <!-- CR Image Upload -->
+                <div>
+                    <label class="cust-label">Certificate of Registration (CR) <span style="color:#6c757d;font-weight:400;">(optional)</span></label>
+                    <input type="file" name="cr_image" class="cust-input" accept="image/*,.pdf"
+                           style="padding:6px 10px;">
+                    <small style="color:#6c757d;font-size:11px;">JPG, PNG, PDF — max 5MB</small>
+                </div>
+            </div>
+
+            <div style="display:flex;gap:10px;align-items:center;padding-top:8px;border-top:1px solid #f0f0f0;margin-top:4px;">
+                <button type="submit" class="cust-btn cust-btn-primary">
+                    <i class="fas fa-save"></i> Save Customer
+                </button>
+                <a href="customers.php?section=list" class="cust-btn"
+                   style="background:#f1f5f9;color:#475569;text-decoration:none;">
+                    <i class="fas fa-times"></i> Cancel
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ══ SECTION: CUSTOMER LIST ════════════════════════════════════════════════ -->
+<?php elseif ($section === 'list'): ?>
 
 <div class="cust-card">
     <div class="cust-card-head">
         <h2 class="cust-card-title"><i class="fas fa-list"></i> Customer List</h2>
-        <span style="font-size:13px;color:#6c757d;"><?= count($customers) ?> customers</span>
+        <span style="font-size:13px;color:#6c757d;"><?= count($customers) ?> customer<?= count($customers) !== 1 ? 's' : '' ?></span>
     </div>
     <div class="cust-card-body">
-        <div class="readonly-notice">
-            <i class="fas fa-info-circle"></i>
-            <span>Customer records are managed by the manager. Contact your manager to add or edit customers.</span>
-        </div>
-        <input type="text" class="cust-search" id="encodeSearch" placeholder="&#128269; Search customers..." oninput="filterTable('encodeSearch','encodeTable')">
+        <input type="text" class="cust-search" id="encodeSearch" placeholder="&#128269; Search by name..." oninput="filterTable('encodeSearch','encodeTable')">
         <div style="overflow-x:auto;">
             <table class="cust-table" id="encodeTable">
                 <thead><tr>
-                    <th>ID</th><th>Name</th><th>Contact</th><th>ID Type</th><th>Credit Limit</th><th>Remaining Balance</th><th>Status</th>
+                    <th>#</th><th>Name</th><th>Contact</th><th>ID Type</th><th>Credit Limit</th><th>Balance Used</th><th>Status</th><th></th>
                 </tr></thead>
                 <tbody>
                 <?php if (empty($customers)): ?>
-                    <tr><td colspan="7" class="empty-state"><i class="fas fa-users"></i>No customers yet.</td></tr>
+                    <tr><td colspan="8">
+                        <div class="empty-state">
+                            <i class="fas fa-users"></i>
+                            No customers yet.
+                            <br><a href="customers.php?section=add" style="color:#002F70;font-weight:700;font-size:13px;margin-top:8px;display:inline-block;">
+                                <i class="fas fa-user-plus"></i> Add the first customer
+                            </a>
+                        </div>
+                    </td></tr>
                 <?php else: foreach ($customers as $c): ?>
                     <tr data-search="<?= strtolower(htmlspecialchars($c['name'])) ?>">
-                        <td style="color:#6c757d;font-size:12px;">#<?= (int)$c['id'] ?></td>
+                        <td style="color:#9ca3af;font-size:11px;">#<?= (int)$c['id'] ?></td>
                         <td><strong><?= htmlspecialchars($c['name']) ?></strong></td>
-                        <td><?= htmlspecialchars($c['contact_number'] ?? '—') ?></td>
+                        <td style="font-size:12px;"><?= htmlspecialchars($c['contact_number'] ?? '—') ?></td>
                         <td style="font-size:12px;color:#6c757d;"><?= htmlspecialchars($c['id_type'] ?? '—') ?></td>
-                        <td>₱<?= number_format((float)$c['credit_limit'], 2) ?></td>
+                        <td style="font-weight:600;">₱<?= number_format((float)$c['credit_limit'], 2) ?></td>
                         <?php
-                            $remaining = (float)$c['credit_limit'] - (float)$c['balance'];
-                            $rem_color = $remaining <= 0 ? '#dc3545' : ($remaining < (float)$c['credit_limit'] * 0.2 ? '#e67e22' : '#28a745');
+                            $used  = (float)$c['balance'];
+                            $limit = (float)$c['credit_limit'];
+                            $used_color = ($limit > 0 && $used >= $limit) ? '#dc3545' : ($used > 0 ? '#e67e22' : '#28a745');
                         ?>
-                        <td style="color:<?= $rem_color ?>;font-weight:700;">
-                            ₱<?= number_format($remaining, 2) ?>
+                        <td style="color:<?= $used_color ?>;font-weight:700;">
+                            ₱<?= number_format($used, 2) ?>
                         </td>
                         <td><span class="badge-<?= $c['status']==='active'?'active':'inactive' ?>"><?= htmlspecialchars($c['status']) ?></span></td>
+                        <td>
+                            <a href="customers.php?section=history&cust_id=<?= (int)$c['id'] ?>"
+                               class="edit-link" title="View history">
+                                <i class="fas fa-history"></i> History
+                            </a>
+                        </td>
                     </tr>
                 <?php endforeach; endif; ?>
                 </tbody>
@@ -630,257 +757,492 @@ include __DIR__ . '/../partials/header.php';
 <?php elseif ($section === 'history'): ?>
 
 <style>
-/* ── Customer History Styles ─────────────────────────────── */
-.ch-selector-card { background:#fff; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,.07); border:1px solid #e9ecef; margin-bottom:18px; padding:18px 20px; }
-.ch-filter-bar { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:18px; }
-.ch-filter-bar .ch-field { display:flex; flex-direction:column; gap:4px; }
-.ch-filter-bar label { font-size:11px; font-weight:700; color:#6c757d; text-transform:uppercase; letter-spacing:.4px; }
-.ch-filter-bar select, .ch-filter-bar input { padding:8px 12px; border:1px solid #dee2e6; border-radius:6px; font-size:13px; min-width:150px; }
-.ch-filter-bar select:focus, .ch-filter-bar input:focus { border-color:#002F70; outline:none; }
-.ch-info-bar { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
-.ch-info-pill { background:#f0f4ff; border:1px solid #c7d7f9; border-radius:8px; padding:10px 16px; display:flex; flex-direction:column; gap:2px; min-width:140px; }
-.ch-info-pill .pill-label { font-size:10px; font-weight:700; color:#6c757d; text-transform:uppercase; letter-spacing:.4px; }
-.ch-info-pill .pill-value { font-size:16px; font-weight:800; color:#002F70; }
-.ch-info-pill.danger .pill-value { color:#dc3545; }
-.ch-info-pill.success .pill-value { color:#16a34a; }
-.ch-table-wrap { overflow-x:auto; }
-.ch-table { width:100%; border-collapse:collapse; font-size:13px; }
-.ch-table th { background:#f8f9fa; padding:10px 12px; text-align:left; font-weight:700; color:#495057; border-bottom:2px solid #dee2e6; white-space:nowrap; }
-.ch-table td { padding:10px 12px; border-bottom:1px solid #f0f0f0; vertical-align:middle; }
-.ch-table tr:hover td { background:#fafbff; }
-.ch-badge { display:inline-block; padding:3px 9px; border-radius:20px; font-size:10px; font-weight:700; white-space:nowrap; }
-.ch-badge-jo   { background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }
-.ch-badge-merch{ background:#f0fdf4; color:#15803d; border:1px solid #86efac; }
-.ch-badge-paid  { background:#d1fae5; color:#065f46; }
-.ch-badge-unpaid{ background:#fee2e2; color:#991b1b; }
-.ch-badge-partial{ background:#fef3c7; color:#92400e; }
-.ch-badge-pending{ background:#f1f5f9; color:#475569; }
-.ch-badge-approved{ background:#d1fae5; color:#065f46; }
-.ch-badge-rejected{ background:#fee2e2; color:#991b1b; }
-.ch-empty { text-align:center; padding:40px; color:#9ca3af; }
-.ch-empty i { font-size:2rem; display:block; margin-bottom:8px; }
-.ch-select-prompt { text-align:center; padding:48px 20px; color:#9ca3af; }
-.ch-select-prompt i { font-size:2.5rem; display:block; margin-bottom:12px; color:#c7d7f9; }
-.ch-select-prompt p { font-size:14px; margin:0; }
+/* ── Customer History — Professional Redesign ───────────────────────────── */
+
+/* Filter panel */
+.ch-filter-panel {
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.05);
+}
+.ch-filter-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+}
+.ch-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.ch-field label {
+    font-size: 11px;
+    font-weight: 700;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    white-space: nowrap;
+}
+.ch-field select,
+.ch-field input[type="date"] {
+    padding: 8px 11px;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #212529;
+    background: #fff;
+    height: 36px;
+    box-sizing: border-box;
+}
+.ch-field select:focus,
+.ch-field input[type="date"]:focus {
+    border-color: #002F70;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(0,47,112,.08);
+}
+.ch-field-customer { flex: 1; min-width: 220px; max-width: 340px; }
+.ch-field-type     { min-width: 160px; }
+.ch-field-status   { min-width: 150px; }
+.ch-field-date     { min-width: 140px; }
+.ch-filter-actions {
+    display: flex;
+    gap: 6px;
+    align-items: flex-end;
+    padding-bottom: 1px;
+}
+.ch-btn-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    background: #002F70;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    height: 36px;
+    white-space: nowrap;
+    transition: background .15s;
+}
+.ch-btn-filter:hover { background: #001f4d; }
+.ch-btn-clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background: #f1f5f9;
+    color: #64748b;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background .15s;
+}
+.ch-btn-clear:hover { background: #e2e8f0; color: #374151; }
+
+/* Customer info inline header */
+.ch-customer-header {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    background: #f8faff;
+    border: 1px solid #dbe8ff;
+    border-radius: 8px;
+    padding: 11px 18px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    flex-wrap: wrap;
+    gap: 0;
+}
+.ch-cust-name {
+    font-weight: 800;
+    color: #002F70;
+    font-size: 14px;
+    margin-right: 6px;
+}
+.ch-cust-sep {
+    color: #cbd5e1;
+    margin: 0 10px;
+    font-size: 15px;
+    font-weight: 300;
+}
+.ch-cust-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+.ch-cust-item-label {
+    color: #6c757d;
+    font-size: 12px;
+}
+.ch-cust-item-value {
+    font-weight: 700;
+    color: #002F70;
+    font-size: 13px;
+}
+.ch-cust-item-value.danger  { color: #dc3545; }
+.ch-cust-item-value.success { color: #16a34a; }
+.ch-cust-item-value.neutral { color: #374151; }
+
+/* Main table card */
+.ch-table-card {
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.05);
+    overflow: hidden;
+}
+.ch-table-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 13px 18px;
+    border-bottom: 1px solid #f0f0f0;
+    background: #fff;
+}
+.ch-table-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #002F70;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin: 0;
+}
+.ch-record-count {
+    font-size: 12px;
+    color: #9ca3af;
+    font-weight: 500;
+}
+.ch-table-wrap { overflow-x: auto; }
+.ch-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+.ch-table th {
+    background: #f8f9fa;
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 700;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    border-bottom: 1px solid #e9ecef;
+    white-space: nowrap;
+}
+.ch-table td {
+    padding: 11px 14px;
+    border-bottom: 1px solid #f4f4f4;
+    vertical-align: middle;
+    color: #374151;
+}
+.ch-table tbody tr:last-child td { border-bottom: none; }
+.ch-table tbody tr:hover td { background: #fafbff; }
+
+/* Badges */
+.ch-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.ch-badge-fuel    { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
+.ch-badge-jo      { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.ch-badge-merch   { background: #f0fdf4; color: #15803d; border: 1px solid #86efac; }
+.ch-badge-paid    { background: #d1fae5; color: #065f46; }
+.ch-badge-unpaid  { background: #fee2e2; color: #991b1b; }
+.ch-badge-partial { background: #fef3c7; color: #92400e; }
+
+/* Empty / prompt states */
+.ch-empty-row td {
+    text-align: center;
+    padding: 48px 20px;
+    color: #9ca3af;
+    font-size: 13px;
+    border-bottom: none !important;
+}
+.ch-prompt {
+    text-align: center;
+    padding: 52px 20px;
+    color: #9ca3af;
+}
+.ch-prompt i {
+    font-size: 2rem;
+    display: block;
+    margin-bottom: 10px;
+    color: #c7d7f9;
+}
+.ch-prompt p { font-size: 13px; margin: 0; }
+
+@media (max-width: 640px) {
+    .ch-filter-row { flex-direction: column; }
+    .ch-field-customer,
+    .ch-field-type,
+    .ch-field-status,
+    .ch-field-date { min-width: 100%; max-width: 100%; }
+    .ch-customer-header { flex-direction: column; align-items: flex-start; gap: 6px; }
+    .ch-cust-sep { display: none; }
+}
 </style>
 
-<div class="cust-card">
-    <div class="cust-card-head">
-        <h2 class="cust-card-title"><i class="fas fa-history"></i> Customer History</h2>
-        <?php if ($hist_customer_info): ?>
-        <span style="font-size:13px;color:#6c757d;"><?= count($hist_records) ?> record<?= count($hist_records) !== 1 ? 's' : '' ?> found</span>
-        <?php endif; ?>
-    </div>
-    <div class="cust-card-body">
+<?php
+/* ── Pre-compute customer info values ─────────────────────────────────────── */
+$ci_balance   = 0; $ci_limit = 0; $ci_remaining = 0;
+$ci_total_txns = 0; $ci_unpaid_count = 0;
+if ($hist_customer_info) {
+    $ci_balance      = (float)$hist_customer_info['balance'];
+    $ci_limit        = (float)$hist_customer_info['credit_limit'];
+    $ci_remaining    = $ci_limit - $ci_balance;
+    $ci_total_txns   = count($hist_records);
+    $ci_unpaid_count = count(array_filter($hist_records, fn($r) => $r['payment_status'] === 'Unpaid'));
+}
+?>
 
-        <!-- Customer Selector + Filters -->
-        <form method="GET" action="customers.php">
-            <input type="hidden" name="section" value="history">
-            <div class="ch-filter-bar">
-                <div class="ch-field" style="flex:1;min-width:200px;">
-                    <label>Select Customer</label>
-                    <select name="cust_id" onchange="this.form.submit()" style="min-width:220px;">
-                        <option value="">— Choose a customer —</option>
-                        <?php foreach ($hist_customers as $hc): ?>
-                        <option value="<?= (int)$hc['id'] ?>" <?= $hist_selected_id === (int)$hc['id'] ? 'selected' : '' ?>>
-                            <?= htmlspecialchars($hc['name']) ?>
-                            <?php $hc_rem = (float)$hc['credit_limit'] - (float)$hc['balance']; ?>
-                            <?php if ($hc_rem < (float)$hc['credit_limit']): ?> · ₱<?= number_format($hc_rem, 2) ?> remaining<?php endif; ?>
-                        </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+<!-- ── FILTER PANEL ──────────────────────────────────────────────────────── -->
+<div class="ch-filter-panel">
+    <form method="GET" action="customers.php" id="chFilterForm">
+        <input type="hidden" name="section" value="history">
+        <div class="ch-filter-row">
+
+            <!-- Select Customer -->
+            <div class="ch-field ch-field-customer">
+                <label>Select Customer</label>
+                <select name="cust_id" id="chCustSelect">
+                    <option value="">— Choose a customer —</option>
+                    <?php foreach ($hist_customers as $hc): ?>
+                    <option value="<?= (int)$hc['id'] ?>"
+                        <?= $hist_selected_id === (int)$hc['id'] ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($hc['name']) ?>
+                    </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <!-- Type -->
+            <div class="ch-field ch-field-type">
+                <label>Type</label>
+                <select name="hist_type">
+                    <option value=""           <?= $hist_filter_type === ''            ? 'selected' : '' ?>>All Types</option>
+                    <option value="fuel"       <?= $hist_filter_type === 'fuel'        ? 'selected' : '' ?>>Fuel</option>
+                    <option value="merchandise"<?= $hist_filter_type === 'merchandise' ? 'selected' : '' ?>>Merchandise</option>
+                    <option value="job_order"  <?= $hist_filter_type === 'job_order'   ? 'selected' : '' ?>>Job Order</option>
+                </select>
+            </div>
+
+            <!-- Payment Status -->
+            <div class="ch-field ch-field-status">
+                <label>Payment Status</label>
+                <select name="hist_status">
+                    <option value=""        <?= $hist_filter_status === ''        ? 'selected' : '' ?>>All Statuses</option>
+                    <option value="Paid"    <?= $hist_filter_status === 'Paid'    ? 'selected' : '' ?>>Paid</option>
+                    <option value="Unpaid"  <?= $hist_filter_status === 'Unpaid'  ? 'selected' : '' ?>>Unpaid</option>
+                    <option value="Partial" <?= $hist_filter_status === 'Partial' ? 'selected' : '' ?>>Partial</option>
+                </select>
+            </div>
+
+            <!-- Date Range: From -->
+            <div class="ch-field ch-field-date">
+                <label>From</label>
+                <input type="date" name="hist_date_from"
+                       value="<?= htmlspecialchars($_GET['hist_date_from'] ?? $hist_filter_date) ?>">
+            </div>
+
+            <!-- Date Range: To -->
+            <div class="ch-field ch-field-date">
+                <label>To</label>
+                <input type="date" name="hist_date_to"
+                       value="<?= htmlspecialchars($_GET['hist_date_to'] ?? '') ?>">
+            </div>
+
+            <!-- Actions -->
+            <div class="ch-filter-actions">
+                <button type="submit" class="ch-btn-filter">
+                    <i class="fas fa-filter"></i> Filter
+                </button>
                 <?php if ($hist_selected_id): ?>
-                <div class="ch-field">
-                    <label>Type</label>
-                    <select name="hist_type">
-                        <option value="" <?= $hist_filter_type === '' ? 'selected' : '' ?>>All Types</option>
-                        <option value="job_order"   <?= $hist_filter_type === 'job_order'   ? 'selected' : '' ?>>Job Order Only</option>
-                        <option value="merchandise" <?= $hist_filter_type === 'merchandise' ? 'selected' : '' ?>>Merchandise Only</option>
-                    </select>
-                </div>
-                <div class="ch-field">
-                    <label>Payment Status</label>
-                    <select name="hist_status">
-                        <option value="" <?= $hist_filter_status === '' ? 'selected' : '' ?>>All Statuses</option>
-                        <option value="Paid"    <?= $hist_filter_status === 'Paid'    ? 'selected' : '' ?>>Paid</option>
-                        <option value="Unpaid"  <?= $hist_filter_status === 'Unpaid'  ? 'selected' : '' ?>>Unpaid</option>
-                        <option value="Partial" <?= $hist_filter_status === 'Partial' ? 'selected' : '' ?>>Partial</option>
-                    </select>
-                </div>
-                <div class="ch-field">
-                    <label>Date</label>
-                    <input type="date" name="hist_date" value="<?= htmlspecialchars($hist_filter_date) ?>">
-                </div>
-                <div class="ch-field" style="justify-content:flex-end;">
-                    <label>&nbsp;</label>
-                    <div style="display:flex;gap:6px;">
-                        <button type="submit" class="cust-btn cust-btn-primary" style="padding:8px 16px;">
-                            <i class="fas fa-filter"></i> Filter
-                        </button>
-                        <a href="customers.php?section=history&cust_id=<?= $hist_selected_id ?>"
-                           class="cust-btn" style="background:#f1f5f9;color:#475569;padding:8px 14px;">
-                            <i class="fas fa-times"></i>
-                        </a>
-                    </div>
-                </div>
+                <a href="customers.php?section=history&cust_id=<?= $hist_selected_id ?>"
+                   class="ch-btn-clear" title="Clear filters">
+                    <i class="fas fa-times"></i>
+                </a>
                 <?php endif; ?>
             </div>
-        </form>
 
-        <?php if (!$hist_selected_id): ?>
-        <!-- No customer selected yet -->
-        <div class="ch-select-prompt">
-            <i class="fas fa-user-clock"></i>
-            <p>Select a customer above to view their full transaction history.</p>
         </div>
+    </form>
+</div>
 
-        <?php else: ?>
+<?php if (!$hist_selected_id): ?>
+<!-- ── No customer selected ─────────────────────────────────────────────── -->
+<div class="ch-table-card">
+    <div class="ch-prompt">
+        <i class="fas fa-user-clock"></i>
+        <p>Select a customer above to view their transaction history.</p>
+    </div>
+</div>
 
-        <!-- Customer Info Bar -->
-        <?php if ($hist_customer_info): ?>
-        <?php
-            $ci_balance   = (float)$hist_customer_info['balance'];
-            $ci_limit     = (float)$hist_customer_info['credit_limit'];
-            $ci_remaining = $ci_limit - $ci_balance;   // remaining credit left
-            // Compute totals from records
-            $ci_total_txns   = count($hist_records);
-            $ci_total_amount = array_sum(array_column($hist_records, 'total_amount'));
-            $ci_unpaid_count = count(array_filter($hist_records, fn($r) => $r['payment_status'] === 'Unpaid'));
-        ?>
-        <div class="ch-info-bar">
-            <div class="ch-info-pill">
-                <span class="pill-label">Customer</span>
-                <span class="pill-value" style="font-size:14px;"><?= htmlspecialchars($hist_customer_info['name']) ?></span>
-            </div>
-            <div class="ch-info-pill">
-                <span class="pill-label">Credit Limit</span>
-                <span class="pill-value">₱<?= number_format($ci_limit, 2) ?></span>
-            </div>
-            <div class="ch-info-pill <?= $ci_balance > 0 ? 'danger' : '' ?>">
-                <span class="pill-label">Amount Used</span>
-                <span class="pill-value">₱<?= number_format($ci_balance, 2) ?></span>
-            </div>
-            <div class="ch-info-pill <?= $ci_remaining <= 0 ? 'danger' : 'success' ?>">
-                <span class="pill-label">Remaining Balance</span>
-                <span class="pill-value">₱<?= number_format($ci_remaining, 2) ?></span>
-            </div>
-            <div class="ch-info-pill">
-                <span class="pill-label">Total Transactions</span>
-                <span class="pill-value"><?= $ci_total_txns ?></span>
-            </div>
-            <?php if ($ci_unpaid_count > 0): ?>
-            <div class="ch-info-pill danger">
-                <span class="pill-label">Unpaid Transactions</span>
-                <span class="pill-value"><?= $ci_unpaid_count ?></span>
-            </div>
-            <?php endif; ?>
-        </div>
-        <?php endif; ?>
+<?php else: ?>
 
-        <!-- History Table -->
-        <?php if (empty($hist_records)): ?>
-        <div class="ch-empty">
-            <i class="fas fa-receipt"></i>
-            No records found<?= ($hist_filter_type || $hist_filter_status || $hist_filter_date) ? ' for the selected filters.' : ' for this customer.' ?>
-        </div>
-        <?php else: ?>
-        <div class="ch-table-wrap">
-            <table class="ch-table">
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>Reference</th>
-                        <th>Type</th>
-                        <th>Service / Items</th>
-                        <th>Vehicle</th>
-                        <th style="text-align:right;">Total</th>
-                        <th>Payment</th>
-                        <th>Pay Status</th>
-                        <th>Txn Status</th>
-                        <th>Date</th>
-                    </tr>
-                </thead>
-                <tbody>
-                <?php foreach ($hist_records as $idx => $hr):
+<?php if ($hist_customer_info): ?>
+<!-- ── Customer Info Inline Header ──────────────────────────────────────── -->
+<div class="ch-customer-header">
+    <span class="ch-cust-name"><?= htmlspecialchars($hist_customer_info['name']) ?></span>
+    <span class="ch-cust-sep">|</span>
+    <span class="ch-cust-item">
+        <span class="ch-cust-item-label">Credit Limit</span>
+        <span class="ch-cust-item-value">₱<?= number_format($ci_limit, 2) ?></span>
+    </span>
+    <span class="ch-cust-sep">|</span>
+    <span class="ch-cust-item">
+        <span class="ch-cust-item-label">Used</span>
+        <span class="ch-cust-item-value <?= $ci_balance > 0 ? 'danger' : 'neutral' ?>">
+            ₱<?= number_format($ci_balance, 2) ?>
+        </span>
+    </span>
+    <span class="ch-cust-sep">|</span>
+    <span class="ch-cust-item">
+        <span class="ch-cust-item-label">Balance</span>
+        <span class="ch-cust-item-value <?= $ci_remaining <= 0 ? 'danger' : 'success' ?>">
+            ₱<?= number_format($ci_remaining, 2) ?>
+        </span>
+    </span>
+    <span class="ch-cust-sep">|</span>
+    <span class="ch-cust-item">
+        <span class="ch-cust-item-label">Transactions:</span>
+        <span class="ch-cust-item-value neutral"><?= $ci_total_txns ?></span>
+    </span>
+    <?php if ($ci_unpaid_count > 0): ?>
+    <span class="ch-cust-sep">|</span>
+    <span class="ch-cust-item">
+        <span class="ch-cust-item-label">Unpaid:</span>
+        <span class="ch-cust-item-value danger"><?= $ci_unpaid_count ?></span>
+    </span>
+    <?php endif; ?>
+</div>
+<?php endif; ?>
+
+<!-- ── Transaction Table ────────────────────────────────────────────────── -->
+<div class="ch-table-card">
+    <div class="ch-table-head">
+        <h3 class="ch-table-title">
+            <i class="fas fa-receipt"></i> Transaction History
+        </h3>
+        <span class="ch-record-count">
+            <?= $ci_total_txns ?> record<?= $ci_total_txns !== 1 ? 's' : '' ?>
+        </span>
+    </div>
+    <div class="ch-table-wrap">
+        <table class="ch-table">
+            <thead>
+                <tr>
+                    <th>Transaction Date</th>
+                    <th>Type</th>
+                    <th>Reference No.</th>
+                    <th>Amount</th>
+                    <th>Payment Status</th>
+                    <th>Remarks</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php if (empty($hist_records)): ?>
+                <tr class="ch-empty-row">
+                    <td colspan="6">No records found for this customer.</td>
+                </tr>
+            <?php else:
+                foreach ($hist_records as $hr):
                     $ps = $hr['payment_status'];
                     $ps_class = match($ps) {
                         'Paid'    => 'ch-badge-paid',
                         'Partial' => 'ch-badge-partial',
                         default   => 'ch-badge-unpaid',
                     };
-                    $ts = strtolower($hr['txn_status'] ?? '');
-                    $ts_class = match(true) {
-                        str_contains($ts, 'approved') || str_contains($ts, 'completed') || str_contains($ts, 'verified') => 'ch-badge-approved',
-                        str_contains($ts, 'rejected') || str_contains($ts, 'cancelled') => 'ch-badge-rejected',
-                        default => 'ch-badge-pending',
+                    $ps_icon = match($ps) {
+                        'Paid'    => 'fa-check-circle',
+                        'Partial' => 'fa-adjust',
+                        default   => 'fa-clock',
                     };
-                    $is_jo    = $hr['record_type'] === 'job_order';
-                    $svc_text = $is_jo
-                        ? htmlspecialchars($hr['service_label'] ?: '—')
-                        : ($hr['merch_items_summary'] ?: (htmlspecialchars($hr['service_label'] ?: '—')));
-                ?>
+                    $rec_type   = $hr['record_type'] ?? 'merchandise';
+                    $type_class = match($rec_type) {
+                        'job_order' => 'ch-badge-jo',
+                        'fuel'      => 'ch-badge-fuel',
+                        default     => 'ch-badge-merch',
+                    };
+                    $type_icon  = match($rec_type) {
+                        'job_order' => 'fa-tools',
+                        'fuel'      => 'fa-gas-pump',
+                        default     => 'fa-shopping-cart',
+                    };
+                    $type_label = match($rec_type) {
+                        'job_order' => 'Job Order',
+                        'fuel'      => 'Fuel',
+                        default     => 'Merchandise',
+                    };
+                    $remarks = '';
+                    if ($rec_type === 'job_order') {
+                        $remarks = $hr['service_label'] ?: '—';
+                        if (!empty($hr['vehicle_plate'])) $remarks .= ' · ' . $hr['vehicle_plate'];
+                    } else {
+                        $remarks = $hr['merch_items_summary'] ?: ($hr['service_label'] ?: '—');
+                    }
+            ?>
                 <tr>
-                    <td style="color:#9ca3af;font-size:11px;"><?= count($hist_records) - $idx ?></td>
+                    <td style="white-space:nowrap;">
+                        <?= date('M j, Y', strtotime($hr['txn_date'])) ?>
+                        <span style="display:block;font-size:11px;color:#9ca3af;">
+                            <?= date('h:i A', strtotime($hr['txn_date'])) ?>
+                        </span>
+                    </td>
                     <td>
-                        <span style="font-family:monospace;font-size:11px;font-weight:700;color:#002F70;">
+                        <span class="ch-badge <?= $type_class ?>">
+                            <i class="fas <?= $type_icon ?>"></i> <?= $type_label ?>
+                        </span>
+                    </td>
+                    <td>
+                        <span style="font-family:monospace;font-size:12px;font-weight:700;color:#002F70;">
                             <?= htmlspecialchars($hr['ref_number']) ?>
                         </span>
                     </td>
-                    <td>
-                        <span class="ch-badge <?= $is_jo ? 'ch-badge-jo' : 'ch-badge-merch' ?>">
-                            <i class="fas <?= $is_jo ? 'fa-tools' : 'fa-shopping-cart' ?>" style="margin-right:3px;"></i>
-                            <?= $is_jo ? 'Job Order' : 'Merchandise' ?>
-                        </span>
-                    </td>
-                    <td style="max-width:220px;font-size:12px;color:#374151;">
-                        <?= $svc_text ?>
-                    </td>
-                    <td style="font-size:12px;color:#6c757d;">
-                        <?= $hr['vehicle_plate'] ? htmlspecialchars($hr['vehicle_plate']) : '—' ?>
-                    </td>
-                    <td style="text-align:right;font-weight:700;color:#002F70;white-space:nowrap;">
+                    <td style="font-weight:700;color:#002F70;white-space:nowrap;">
                         ₱<?= number_format((float)$hr['total_amount'], 2) ?>
-                    </td>
-                    <td style="font-size:12px;color:#6c757d;">
-                        <?= htmlspecialchars($hr['payment_method'] ?: '—') ?>
                     </td>
                     <td>
                         <span class="ch-badge <?= $ps_class ?>">
-                            <?php if ($ps === 'Paid'): ?><i class="fas fa-check-circle" style="margin-right:3px;"></i>
-                            <?php elseif ($ps === 'Partial'): ?><i class="fas fa-adjust" style="margin-right:3px;"></i>
-                            <?php else: ?><i class="fas fa-clock" style="margin-right:3px;"></i><?php endif; ?>
-                            <?= $ps ?>
+                            <i class="fas <?= $ps_icon ?>"></i> <?= $ps ?>
                         </span>
                     </td>
-                    <td>
-                        <span class="ch-badge <?= $ts_class ?>">
-                            <?= htmlspecialchars(ucfirst($hr['txn_status'] ?? 'Pending')) ?>
-                        </span>
-                    </td>
-                    <td style="font-size:11px;color:#6c757d;white-space:nowrap;">
-                        <?= date('M j, Y', strtotime($hr['txn_date'])) ?><br>
-                        <span style="color:#9ca3af;"><?= date('h:i A', strtotime($hr['txn_date'])) ?></span>
+                    <td style="font-size:12px;color:#6c757d;max-width:240px;">
+                        <?= htmlspecialchars($remarks) ?>
                     </td>
                 </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-        <!-- Summary footer -->
-        <div style="display:flex;justify-content:flex-end;padding:12px 4px 0;gap:24px;font-size:13px;border-top:1px solid #f0f0f0;margin-top:4px;">
-            <span style="color:#6c757d;">
-                <?= count($hist_records) ?> record<?= count($hist_records) !== 1 ? 's' : '' ?>
-            </span>
-            <span style="font-weight:700;color:#002F70;">
-                Total: ₱<?= number_format(array_sum(array_column($hist_records, 'total_amount')), 2) ?>
-            </span>
-        </div>
-        <?php endif; ?>
-
-        <?php endif; // end $hist_selected_id ?>
+            <?php endforeach; endif; ?>
+            </tbody>
+        </table>
     </div>
+    <?php if (!empty($hist_records)): ?>
+    <div style="display:flex;justify-content:flex-end;align-items:center;padding:10px 18px;border-top:1px solid #f0f0f0;gap:20px;font-size:13px;">
+        <span style="color:#6c757d;"><?= $ci_total_txns ?> record<?= $ci_total_txns !== 1 ? 's' : '' ?></span>
+        <span style="font-weight:700;color:#002F70;">
+            Total: ₱<?= number_format(array_sum(array_column($hist_records, 'total_amount')), 2) ?>
+        </span>
+    </div>
+    <?php endif; ?>
 </div>
+
+<?php endif; // end $hist_selected_id ?>
 
 <!-- ══ SECTION: OUTSTANDING BALANCES ════════════════════════════════════════ -->
 <?php elseif ($section === 'balances'): ?>

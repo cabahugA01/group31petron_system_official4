@@ -1519,3 +1519,35 @@ canvas{width:100%;padding:0 16px 16px 16px}
   text-align: center;
   color: #6b7280;
 }
+
+/* ── Global Back Button — used across all staff pages ─────────────────────── */
+.btn-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    background: #002F6C;
+    color: #fff !important;
+    text-decoration: none !important;
+    padding: 8px 16px;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .18s, transform .12s;
+    line-height: 1.4;
+}
+.btn-back:hover {
+    background: #001f4d;
+    color: #fff !important;
+    text-decoration: none !important;
+    transform: translateX(-2px);
+}
+.btn-back:active {
+    transform: translateX(0);
+}
+.btn-back i {
+    font-size: 12px;
+    flex-shrink: 0;
+}

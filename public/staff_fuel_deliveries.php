@@ -534,21 +534,7 @@ require_once __DIR__ . '/../partials/header.php';
     gap: 12px;
     margin-bottom: 24px;
 }
-.back-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: #002F6C;
-    color: #fff;
-    text-decoration: none;
-    padding: 9px 18px;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 600;
-    transition: background .18s;
-    white-space: nowrap;
-}
-.back-link:hover { background: #001f4d; color: #fff; text-decoration: none; }
+/* .back-link replaced by global .btn-back in style.css */
 
 /* ── Record New Delivery card ── */
 .del-card {
@@ -809,7 +795,7 @@ require_once __DIR__ . '/../partials/header.php';
         <h1 class="h1"><i class="fas fa-truck" style="color:#003d82;margin-right:8px;"></i>Fuel Deliveries</h1>
         <div class="sub">Record fuel deliveries received from suppliers — pending manager validation</div>
     </div>
-    <a href="staff_transactions_hub.php?section=fuel" class="back-link">
+    <a href="staff_transactions_hub.php?section=fuel" class="btn-back">
         <i class="fas fa-arrow-left"></i> Back to Fuel Transactions
     </a>
 </div>
@@ -857,7 +843,6 @@ if (isset($_GET['period']) || isset($_GET['fuel_type_filter']) || isset($_GET['s
                 <span style="background:#dc3545;color:#fff;border-radius:10px;padding:2px 8px;font-size:11px;"><?php echo count($expected_fuel_deliveries); ?></span>
             <?php endif; ?>
         </div>
-        <span style="font-size:12px;color:#6c757d;">Based on Admin-Finalized POs</span>
     </div>
     <div class="exp-card-body">
         <?php if (!empty($expected_fuel_fetch_error)): ?>
@@ -935,9 +920,6 @@ if (isset($_GET['period']) || isset($_GET['fuel_type_filter']) || isset($_GET['s
     <div class="del-card-header">
         <i class="fas fa-truck" style="color:#003d82;"></i>
         <h3>Record New Delivery</h3>
-        <span style="margin-left:auto;font-size:11px;color:#64748b;font-weight:500;">
-            <?= date('F j, Y') ?> &nbsp;|&nbsp; Pending Manager Validation
-        </span>
     </div>
 
     <!-- Shared fields: Date & Supplier (apply to all rows) -->

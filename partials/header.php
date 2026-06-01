@@ -177,12 +177,18 @@ try {
                 $pending_tx = (int)$s->fetchColumn();
             } catch (Exception $e) { $pending_tx = 0; }
             try {
-                $s = $pdo->prepare("SELECT COUNT(*) FROM purchase_orders WHERE station_id=? AND status IN ('Pending','Pending Approval','Pending Admin Validation')");
+                $s = $pdo->prepare("SELECT COUNT(*) FROM purchase_orders WHERE station_id=? AND status IN ('Pending','Pending Approval','Pending Admin Validation') AND type='merch'");
                 $s->execute([$myStationId]);
                 $pending_po = (int)$s->fetchColumn();
             } catch (Exception $e) { $pending_po = 0; }
             $badges['admin_transactions_oversight'] = $pending_tx + $pending_jo_count;
             $badges['purchase_orders_admin']        = $pending_po;
+            // Badge for Stock-In: POs admin-finalized AND manager-validated, awaiting stock-in
+            try {
+                $s2 = $pdo->prepare("SELECT COUNT(*) FROM purchase_orders WHERE station_id=? AND admin_finalized=1 AND delivery_validated=1 AND stock_in_done=0 AND type='merch'");
+                $s2->execute([$myStationId]);
+                $badges['admin_stock_in'] = (int)$s2->fetchColumn();
+            } catch (Exception $e) { $badges['admin_stock_in'] = 0; }
             $badges['reports_admin']                = $pending_tx + $pending_jo_count + ($badges['inventory'] ?? 0);
         } else {
             // Reports Aggregate for manager
@@ -192,6 +198,18 @@ try {
         $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE user_id = ? AND status IN ('Pending', 'In Progress', 'Awaiting Parts')");
         $stmt->execute([$user['id']]);
         $badges['joborder'] = $stmt->fetchColumn();
+        // Stock-In badge: POs admin-finalized AND manager-validated, awaiting stock-in
+        try {
+            $s = $pdo->prepare("SELECT COUNT(*) FROM purchase_orders WHERE station_id=? AND admin_finalized=1 AND delivery_validated=1 AND stock_in_done=0 AND type='merch'");
+            $s->execute([$myStationId]);
+            $badges['staff_stock_in'] = (int)$s->fetchColumn();
+        } catch (Exception $e) { $badges['staff_stock_in'] = 0; }
+        // Stock requests badge: pending requests submitted by this staff
+        try {
+            $s = $pdo->prepare("SELECT COUNT(*) FROM stock_requests WHERE staff_id=? AND status='Pending'");
+            $s->execute([$user['id']]);
+            $badges['staff_stock_requests'] = (int)$s->fetchColumn();
+        } catch (Exception $e) { $badges['staff_stock_requests'] = 0; }
     }
 
     // Deliveries Oversight pending badge (admin)
@@ -1701,8 +1719,27 @@ require_once __DIR__ . '/rbac_menu.php';
                 if ($match) $sub_active = 'active';
             }
             // Direct file navigation (Manager Inventory) — exact filename match only
+            // Skip if any sibling sub-item has a query string that matches the current URL's query params
+            // (prevents both "Pending Transactions" and "Validated Transactions" lighting up simultaneously)
             elseif ($sub_fragment === '' && $sub_query === '' && $current_url !== '' && $current_url === $sub_file) {
-                $sub_active = 'active';
+                // Check if any sibling sub-item with a query string matches the current request
+                $sibling_matches = false;
+                foreach (($it['sub_items'] ?? []) as $sibling) {
+                    if (($sibling['id'] ?? '') === ($sub['id'] ?? '')) continue; // skip self
+                    $sib_query = parse_url($sibling['href'], PHP_URL_QUERY) ?? '';
+                    $sib_file  = basename(parse_url($sibling['href'], PHP_URL_PATH) ?? '');
+                    if ($sib_file === $sub_file && $sib_query !== '') {
+                        parse_str($sib_query, $sib_params);
+                        $sib_match = true;
+                        foreach ($sib_params as $k => $v) {
+                            if (($_GET[$k] ?? '') !== $v) { $sib_match = false; break; }
+                        }
+                        if ($sib_match) { $sibling_matches = true; break; }
+                    }
+                }
+                if (!$sibling_matches) {
+                    $sub_active = 'active';
+                }
             }
             $sub_badge    = $fuel_sub_badges[$sub['id'] ?? ''] ?? 0;
             $sub_desc     = $fuel_sub_desc[$sub['id'] ?? ''] ?? '';

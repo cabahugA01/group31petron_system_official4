@@ -19,7 +19,17 @@ $end        = $_GET['end']        ?? date('Y-m-d');
 $action_f   = trim($_GET['action_f'] ?? '');
 $txn_search = trim($_GET['txn_search'] ?? '');
 
+// ── Ensure optional columns exist (safe migration) ───────────────────────────
+foreach ([
+    "ALTER TABLE audit_trail ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT NULL",
+    "ALTER TABLE audit_trail ADD COLUMN IF NOT EXISTS reason TEXT DEFAULT NULL",
+    "ALTER TABLE audit_trail ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+] as $sql) { try { $pdo->exec($sql); } catch (Exception $e) {} }
+// Backfill created_at from timestamp for rows created before migration
+try { $pdo->exec("UPDATE audit_trail SET created_at = `timestamp` WHERE created_at IS NULL AND `timestamp` IS NOT NULL"); } catch (Exception $e) {}
+
 // ── Export CSV ────────────────────────────────────────────────────────────────
+// Manager sees ONLY their own actions (accountability — not other managers' logs)
 if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="audit_trail_' . date('Y-m-d') . '.csv"');
@@ -28,15 +38,16 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
 
     $sql = "SELECT at.id, at.transaction_id, at.manager_id, u.name AS manager_name,
                    at.action_type, COALESCE(at.new_value, at.notes, at.reason, '') AS details,
-                   at.created_at
+                   COALESCE(at.created_at, at.timestamp) AS created_at
             FROM audit_trail at
             LEFT JOIN users u ON at.manager_id = u.id
             WHERE at.station_id = ?
-              AND DATE(at.created_at) BETWEEN ? AND ?";
-    $params = [$station_id, $start, $end];
+              AND at.manager_id = ?
+              AND DATE(COALESCE(at.created_at, at.timestamp)) BETWEEN ? AND ?";
+    $params = [$station_id, $me['id'], $start, $end];
     if ($action_f !== '') { $sql .= " AND LOWER(at.action_type) LIKE ?"; $params[] = '%' . strtolower($action_f) . '%'; }
     if ($txn_search !== '') { $sql .= " AND at.transaction_id LIKE ?"; $params[] = '%' . $txn_search . '%'; }
-    $sql .= " ORDER BY at.created_at DESC";
+    $sql .= " ORDER BY COALESCE(at.created_at, at.timestamp) DESC";
 
     try {
         $stmt = $pdo->prepare($sql); $stmt->execute($params);
@@ -48,20 +59,23 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
 }
 
 // ── Fetch audit trail ─────────────────────────────────────────────────────────
+// Scoped to THIS manager only — shows own Approve/Reject/Return/Adjust actions.
+// Admin sees full logs via admin_audit_trail.php (separation of duties).
 $audit_logs = [];
 $total_logs = 0;
 try {
     $sql = "SELECT at.id, at.transaction_id, at.manager_id, u.name AS manager_name,
                    at.action_type, COALESCE(at.new_value, at.notes, at.reason, '') AS details,
-                   at.created_at
+                   COALESCE(at.created_at, at.timestamp) AS created_at
             FROM audit_trail at
             LEFT JOIN users u ON at.manager_id = u.id
             WHERE at.station_id = ?
-              AND DATE(at.created_at) BETWEEN ? AND ?";
-    $params = [$station_id, $start, $end];
+              AND at.manager_id = ?
+              AND DATE(COALESCE(at.created_at, at.timestamp)) BETWEEN ? AND ?";
+    $params = [$station_id, $me['id'], $start, $end];
     if ($action_f !== '') { $sql .= " AND LOWER(at.action_type) LIKE ?"; $params[] = '%' . strtolower($action_f) . '%'; }
     if ($txn_search !== '') { $sql .= " AND at.transaction_id LIKE ?"; $params[] = '%' . $txn_search . '%'; }
-    $sql .= " ORDER BY at.created_at DESC LIMIT 500";
+    $sql .= " ORDER BY COALESCE(at.created_at, at.timestamp) DESC LIMIT 500";
     $stmt = $pdo->prepare($sql); $stmt->execute($params);
     $audit_logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
     $total_logs = count($audit_logs);
@@ -205,7 +219,7 @@ include __DIR__ . '/../partials/header.php';
 <div class="page-head">
     <div>
         <h1 class="h1"><i class="fas fa-shield-halved" style="color:#002F6C;"></i> Audit Trail</h1>
-        <div class="sub">Auto-logged compliance record of all manager actions — Transaction ID / JO ID, Manager ID, Action, Timestamp</div>
+        <div class="sub">Your personal compliance record — Approve, Reject, Return, Adjust actions logged with Transaction ID, Timestamp &amp; Full Details</div>
     </div>
 </div>
 
@@ -279,16 +293,17 @@ if (isset($_GET['export']) && $_GET['export'] === 'fd_csv') {
     $out = fopen('php://output', 'w');
     fputcsv($out, ['Audit ID', 'Delivery ID', 'Manager ID', 'Manager Name', 'Action', 'Details / Notes', 'Timestamp']);
     $fd_sql = "SELECT at.id, at.transaction_id, at.manager_id, u.name AS manager_name,
-                      at.action_type, COALESCE(at.new_value, at.old_value, '') AS details,
-                      at.timestamp AS created_at
+                      at.action_type, COALESCE(at.new_value, at.old_value, at.notes, at.reason, '') AS details,
+                      COALESCE(at.created_at, at.timestamp) AS created_at
                FROM audit_trail at
                LEFT JOIN users u ON at.manager_id = u.id
                WHERE at.station_id = ? AND at.entity_type = 'fuel_delivery'
-                 AND DATE(at.timestamp) BETWEEN ? AND ?";
-    $fd_params = [$station_id, $fd_audit_start, $fd_audit_end];
+                 AND at.manager_id = ?
+                 AND DATE(COALESCE(at.created_at, at.timestamp)) BETWEEN ? AND ?";
+    $fd_params = [$station_id, $me['id'], $fd_audit_start, $fd_audit_end];
     if ($fd_action_f !== '') { $fd_sql .= " AND LOWER(at.action_type) LIKE ?"; $fd_params[] = '%' . strtolower($fd_action_f) . '%'; }
     if ($fd_search !== '')   { $fd_sql .= " AND (at.transaction_id LIKE ? OR at.new_value LIKE ?)"; $fd_params[] = '%'.$fd_search.'%'; $fd_params[] = '%'.$fd_search.'%'; }
-    $fd_sql .= " ORDER BY at.timestamp DESC";
+    $fd_sql .= " ORDER BY COALESCE(at.created_at, at.timestamp) DESC";
     try {
         $fd_stmt = $pdo->prepare($fd_sql); $fd_stmt->execute($fd_params);
         while ($row = $fd_stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -304,8 +319,8 @@ $fd_total = 0;
 try {
     $fd_sql = "SELECT at.id, at.transaction_id, at.manager_id,
                       u.name AS manager_name,
-                      at.action_type, COALESCE(at.new_value, at.old_value, '') AS details,
-                      at.timestamp AS created_at,
+                      at.action_type, COALESCE(at.new_value, at.old_value, at.notes, at.reason, '') AS details,
+                      COALESCE(at.created_at, at.timestamp) AS created_at,
                       fd.fuel_type, fd.delivery_liters, fd.invoice_no, fd.supplier,
                       fd.status AS delivery_status,
                       enc.name AS encoded_by_name
@@ -314,11 +329,12 @@ try {
                LEFT JOIN fuel_deliveries fd ON fd.id = CAST(REPLACE(at.transaction_id, 'DEL-', '') AS UNSIGNED) AND fd.station_id = at.station_id
                LEFT JOIN users enc ON enc.id = fd.received_by
                WHERE at.station_id = ? AND at.entity_type = 'fuel_delivery'
-                 AND DATE(at.timestamp) BETWEEN ? AND ?";
-    $fd_params = [$station_id, $fd_audit_start, $fd_audit_end];
+                 AND at.manager_id = ?
+                 AND DATE(COALESCE(at.created_at, at.timestamp)) BETWEEN ? AND ?";
+    $fd_params = [$station_id, $me['id'], $fd_audit_start, $fd_audit_end];
     if ($fd_action_f !== '') { $fd_sql .= " AND LOWER(at.action_type) LIKE ?"; $fd_params[] = '%' . strtolower($fd_action_f) . '%'; }
     if ($fd_search !== '')   { $fd_sql .= " AND (at.transaction_id LIKE ? OR at.new_value LIKE ? OR fd.invoice_no LIKE ?)"; $fd_params[] = '%'.$fd_search.'%'; $fd_params[] = '%'.$fd_search.'%'; $fd_params[] = '%'.$fd_search.'%'; }
-    $fd_sql .= " ORDER BY at.timestamp DESC LIMIT 500";
+    $fd_sql .= " ORDER BY COALESCE(at.created_at, at.timestamp) DESC LIMIT 500";
     $fd_stmt = $pdo->prepare($fd_sql); $fd_stmt->execute($fd_params);
     $fd_audit_logs = $fd_stmt->fetchAll(PDO::FETCH_ASSOC);
     $fd_total = count($fd_audit_logs);

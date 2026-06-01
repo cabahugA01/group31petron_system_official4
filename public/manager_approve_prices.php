@@ -1,5 +1,5 @@
 <?php
-$page_id = 'manager_approve_prices';
+$page_id = 'mgr_prod_prices';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();

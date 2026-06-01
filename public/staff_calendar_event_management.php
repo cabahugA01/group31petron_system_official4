@@ -409,7 +409,7 @@ try {
                 <div class="sub">Create and manage staff calendar events</div>
             </div>
             <div>
-                <a href="staff_calendar.php" class="btn btn-light">
+                <a href="staff_calendar.php" class="btn-back">
                     <i class="fas fa-arrow-left"></i> Back to Calendar
                 </a>
             </div>
