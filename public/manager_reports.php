@@ -1596,7 +1596,7 @@ require_once __DIR__ . '/../partials/header.php';
     --petron-blue: #00264D;
     --petron-red:  #CC0000;
     --success:     #22c55e;
-    --warning:     #f59e0b;
+    --warning:     #002F70;
     --info:        #3b82f6;
     --purple:      #8b5cf6;
 }
@@ -1631,7 +1631,7 @@ require_once __DIR__ . '/../partials/header.php';
 .stat-blue   { border-left-color: var(--petron-blue); } .stat-blue   .stat-icon { background: #e8f0f8; color: var(--petron-blue); }
 .stat-red    { border-left-color: var(--petron-red);  } .stat-red    .stat-icon { background: #fee2e2; color: var(--petron-red); }
 .stat-green  { border-left-color: #22c55e; }            .stat-green  .stat-icon { background: #dcfce7; color: #16a34a; }
-.stat-orange { border-left-color: #f59e0b; }            .stat-orange .stat-icon { background: #fef3c7; color: #d97706; }
+.stat-orange { border-left-color: #002F70; }            .stat-orange .stat-icon { background: #e8f0fb; color: #002F70; }
 .stat-purple { border-left-color: #8b5cf6; }            .stat-purple .stat-icon { background: #ede9fe; color: #7c3aed; }
 .stat-teal   { border-left-color: #14b8a6; }            .stat-teal   .stat-icon { background: #ccfbf1; color: #0d9488; }
 
@@ -1647,24 +1647,57 @@ require_once __DIR__ . '/../partials/header.php';
 .chart-wrap    { position: relative; height: 240px; }
 .chart-wrap-sm { position: relative; height: 200px; }
 
-/* Tables */
-.mgr-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.mgr-table thead tr { background: #f8fafc; border-bottom: 2px solid #EAEAEA; }
-.mgr-table th { text-align: left; padding: 10px 12px; font-size: 11px; font-weight: 700; color: #667085; text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; }
-.mgr-table td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #374151; vertical-align: middle; }
-.mgr-table tbody tr:hover { background: #f8fafc; }
-.mgr-table tbody tr:last-child td { border-bottom: none; }
-.table-scroll { overflow-x: auto; }
+/* Tables - Standardized Design */
+.mgr-table { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; }
+.mgr-table thead tr { background: #002F70 !important; border: none; }
+.mgr-table th { 
+    background: #002F70 !important; 
+    color: #fff !important; 
+    text-align: left; 
+    padding: 14px 12px !important; 
+    font-size: 11px; 
+    font-weight: 600; 
+    text-transform: uppercase; 
+    letter-spacing: .3px; 
+    white-space: nowrap; 
+    border: none !important;
+}
+.mgr-table th:last-child { text-align: center !important; }
+.mgr-table td { 
+    padding: 12px !important; 
+    border-bottom: 1px solid #e9ecef !important; 
+    color: #212529; 
+    vertical-align: middle; 
+    font-size: 13px;
+}
+.mgr-table td:last-child { text-align: center !important; }
+.mgr-table tbody tr:hover td { background: #e3f2fd !important; }
+.mgr-table tbody tr { transition: background 0.2s ease; }
+.mgr-table tbody tr:last-child td { border-bottom: 1px solid #e9ecef !important; }
+.table-scroll { overflow-x: auto; width: 100%; -webkit-overflow-scrolling: touch; }
 
-/* Badges */
-.badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; }
-.badge-pending   { background: #fef3c7; color: #92400e; }
-.badge-approved  { background: #dcfce7; color: #166534; }
-.badge-inprog    { background: #dbeafe; color: #1e40af; }
-.badge-completed { background: #d1fae5; color: #065f46; }
-.badge-rejected  { background: #fee2e2; color: #991b1b; }
-.badge-cancelled { background: #f3f4f6; color: #374151; }
-.badge-default   { background: #f3f4f6; color: #374151; }
+/* Badges - Plain Text Only (No Backgrounds) */
+.badge { 
+    display: inline-block; 
+    padding: 0 !important; 
+    margin: 0 !important;
+    background: transparent !important; 
+    border: none !important;
+    font-size: 12px; 
+    font-weight: 600; 
+    text-transform: uppercase; 
+    letter-spacing: .3px; 
+}
+.badge-pending   { color: #4338ca !important; background: transparent !important; }
+.badge-approved  { color: #0d7d3e !important; background: transparent !important; }
+.badge-inprog    { color: #1976d2 !important; background: transparent !important; }
+.badge-completed { color: #0d7d3e !important; background: transparent !important; }
+.badge-rejected  { color: #c62828 !important; background: transparent !important; }
+.badge-cancelled { color: #616161 !important; background: transparent !important; }
+.badge-default   { color: #616161 !important; background: transparent !important; }
+.badge-hold      { color: #b45309 !important; background: transparent !important; }
+.badge-validated { color: #0d7d3e !important; background: transparent !important; }
+.badge-ok        { color: #0d7d3e !important; background: transparent !important; }
 
 /* Empty state */
 .empty-state { text-align: center; padding: 48px 20px; color: #9ca3af; }
@@ -2153,7 +2186,7 @@ require_once __DIR__ . '/../partials/header.php';
                     $total_outstanding  += $outstanding;
                     $total_credit_limit += $credit_limit;
                     $util = $credit_limit > 0 ? min(100, ($outstanding / $credit_limit) * 100) : 100;
-                    $util_color = $util >= 90 ? '#dc3545' : ($util >= 70 ? '#f59e0b' : '#22c55e');
+                    $util_color = $util >= 90 ? '#dc3545' : ($util >= 70 ? '#dc3545' : '#22c55e');
                     $acct_status = strtolower($row['status'] ?? 'active');
                     $status_color = $acct_status === 'suspended' ? '#dc3545' : ($acct_status === 'inactive' ? '#9ca3af' : '#22c55e');
                 ?>
@@ -2470,7 +2503,7 @@ require_once __DIR__ . '/../partials/header.php';
                 <?php foreach ($staff_performance as $row):
                     $score = ((int)$row['total_transactions'] * 1) + ((int)$row['job_orders_encoded'] * 2) + ((int)$row['deliveries_encoded'] * 3);
                     $level = $score >= 30 ? 'High' : ($score >= 10 ? 'Medium' : 'Low');
-                    $lc    = $level === 'High' ? '#22c55e' : ($level === 'Medium' ? '#f59e0b' : '#9ca3af');
+                    $lc    = $level === 'High' ? '#22c55e' : ($level === 'Medium' ? '#002F70' : '#9ca3af');
                 ?>
                 <tr>
                     <td>
@@ -3040,8 +3073,8 @@ require_once __DIR__ . '/../partials/header.php';
                     </td>
                     <td>
                         <span style="font-size:.72rem; padding:2px 8px; border-radius:10px; font-weight:600;
-                            background:<?= $is_rollback ? '#fff3cd' : '#e8f4fd' ?>;
-                            color:<?= $is_rollback ? '#856404' : '#0056b3' ?>;">
+                            background:<?= $is_rollback ? '#002F70' : '#e8f4fd' ?>;
+                            color:<?= $is_rollback ? '#fff' : '#0056b3' ?>;">
                             <?= htmlspecialchars($row['change_type'] ?? 'Price Update') ?>
                         </span>
                     </td>
@@ -3070,7 +3103,7 @@ require_once __DIR__ . '/../partials/header.php';
     const BLUE   = '#00264D';
     const RED    = '#CC0000';
     const GREEN  = '#22c55e';
-    const ORANGE = '#f59e0b';
+    const ORANGE = '#002F70';
     const PURPLE = '#8b5cf6';
     const TEAL   = '#14b8a6';
     const INDIGO = '#6366f1';

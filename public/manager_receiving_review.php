@@ -182,7 +182,7 @@ include __DIR__ . '/../partials/header.php';
             <p style="color: var(--muted); margin-top: 4px; font-size: 14px;">
                 <strong>Admin:</strong> Validate encoded data, compare physical items vs. encoded request, flag discrepancies
             </p>
-            <div style="margin-top: 8px; padding: 8px 12px; background: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 4px; font-size: 12px; color: #92400e;">
+            <div style="margin-top: 8px; padding: 8px 12px; background: #e8f0fb; border-left: 4px solid #002F70; border-radius: 4px; font-size: 12px; color: #002F70;">
                 <i class="fas fa-shield-alt"></i> 
                 <strong>Validation Checks:</strong> Physical count ✓ | Product codes ✓ | Batch numbers ✓ | Supplier match ✓ | Flag discrepancies ❌
             </div>
@@ -218,7 +218,7 @@ include __DIR__ . '/../partials/header.php';
                         <div><i class="fas fa-clock"></i> <strong>Created:</strong> <?php echo date('M d, Y H:i', strtotime($batch_details['created_at'])); ?></div>
                     </div>
                 </div>
-                <span style="background: #fef3c7; color: #92400e; padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; text-transform: uppercase;">
+                <span style="background: #002F70; color: #fff; padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; text-transform: uppercase;">
                     Pending Review
                 </span>
             </div>
@@ -306,7 +306,7 @@ include __DIR__ . '/../partials/header.php';
                                 <div style="font-size: 16px; font-weight: 700; color: #0f172a; margin-bottom: 4px;"><?php echo htmlspecialchars($batch['batch_number']); ?></div>
                                 <div style="font-size: 13px; color: #64748b;"><i class="fas fa-truck"></i> <?php echo htmlspecialchars($batch['supplier']); ?></div>
                             </div>
-                            <span style="background: <?php echo $batch['status'] === 'pending' ? '#fef3c7' : '#bfdbfe'; ?>; color: <?php echo $batch['status'] === 'pending' ? '#92400e' : '#1e3a8a'; ?>; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; text-transform: uppercase;">
+                            <span style="background: <?php echo $batch['status'] === 'pending' ? '#002F70' : '#bfdbfe'; ?>; color: <?php echo $batch['status'] === 'pending' ? '#fff' : '#1e3a8a'; ?>; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; text-transform: uppercase;">
                                 <?php echo $batch['status']; ?>
                             </span>
                         </div>

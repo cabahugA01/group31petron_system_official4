@@ -6,7 +6,7 @@ Implement `public/manager_customers.php` as a single-file, three-section manager
 
 ## Tasks
 
-- [ ] 1. Bootstrap the page file and shared infrastructure
+- [x] 1. Bootstrap the page file and shared infrastructure
   - Replace the existing stub in `public/manager_customers.php` with the full page skeleton: `require_once` for `backend/lib.php` and `public/db_connect.php`, `require_login()`, `current_user()`, `user_station_id()`, role gate (redirect non-managers to `dashboard.php`), no-station guard via `render_no_station_page()`, and `$section` routing (`records` / `balances` / `history`, defaulting to `records`)
   - Set `$page_id` via `match($section)` to `mgr_cust_list`, `mgr_cust_balances`, or `mgr_cust_history`
   - Add `ALTER TABLE customers ADD COLUMN IF NOT EXISTS` guards for `contact_number`, `id_number`, `credit_limit`, `current_balance` (matching the pattern in `manager_delivery_validation.php`)
@@ -16,8 +16,8 @@ Implement `public/manager_customers.php` as a single-file, three-section manager
   - Add the inline `<style>` block with all CSS variables, `.dv-card`, `.dv-card-head`, `.dv-card-body`, `.tab-nav`, `.tab-btn`, `.badge-*`, `.row-over-limit`, `.row-near-limit`, `.flash-ok`, `.flash-err`, `.empty-state`, `.modal-overlay`, `.modal-box`, `.btn`, `.btn-validate`, `.btn-sm`, `.data-table` rules (mirror `manager_delivery_validation.php` conventions)
   - _Requirements: 7.1, 7.2, 7.3, 7.4_
 
-- [ ] 2. Implement the Customer List section (`?section=records`)
-  - [ ] 2.1 Write the Customer List data query and PHP rendering
+- [x] 2. Implement the Customer List section (`?section=records`)
+  - [x] 2.1 Write the Customer List data query and PHP rendering
     - Build the parameterized, station-scoped `SELECT` query with `COALESCE` for `current_balance`/`balance` and `created_at`/`registration_date`, supporting `:search_like`, `:status_filter`, and `:type_filter` bind parameters
     - Execute a separate `COUNT(*)` query with the same `WHERE` clause for pagination; compute `$total_pages = ceil($total / 50)` and clamp `$page` to valid range
     - Render the filter bar inside a `.dv-card`: text search input (with `data-debounce="300"` attribute for JS), status `<select>` (`all` / `active` / `inactive`), type `<select>` (`all` / `credit` / `walk-in`), Clear Filters `<a>` button that resets to `?section=records`
@@ -52,7 +52,7 @@ Implement `public/manager_customers.php` as a single-file, three-section manager
     - **Validates: Requirements 1.5**
     - Generate N > 50 matching records; assert page 1 returns exactly 50 rows and `total_pages = ceil(N / 50)`
 
-- [ ] 3. Checkpoint — Ensure all tests pass, ask the user if questions arise.
+- [x] 3. Checkpoint — Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 4. Implement the Customer Balances section (`?section=balances`)
   - [ ] 4.1 Write the Customer Balances data query and PHP rendering

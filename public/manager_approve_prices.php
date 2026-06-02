@@ -160,22 +160,33 @@ include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-  .pm-table th { background:#f1f3f4; font-weight:600; color:#333; border-bottom:2px solid #dee2e6; white-space:nowrap; }
-  .pm-table td { vertical-align:middle; padding: 12px; }
+  /* === Manager Approve Prices - Clean Table Design === */
+  .card { background:#fff; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.08); border:1px solid #e9ecef; margin-bottom:20px; overflow:hidden; }
+  .card-header { padding:16px 20px; border-bottom:1px solid #e9ecef; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+  .card-header h3 { font-size:16px; font-weight:700; color:#002F70; margin:0; display:flex; align-items:center; gap:8px; }
+  .card-body { padding:20px; overflow-x:hidden; }
+  .table-wrap { overflow-x:auto; width:100%; }
+  .pm-table { width:100%; border-collapse:collapse; table-layout:auto; }
+  .pm-table thead th { background:#002F70 !important; color:#fff !important; font-weight:600; padding:14px 12px !important; text-align:left !important; text-transform:uppercase; letter-spacing:0.3px; border:none !important; white-space:nowrap; font-size:11px; }
+  .pm-table thead th:last-child { text-align:center !important; }
+  .pm-table tbody td { vertical-align:middle; padding:12px !important; border-bottom:1px solid #e9ecef !important; font-size:13px; }
+  .pm-table tbody td:last-child { text-align:center !important; }
+  .pm-table tbody tr:hover td { background:#e3f2fd !important; }
+  .pm-table tbody tr { transition:background 0.2s ease; }
   
-  .action-col { display:flex; flex-direction:column; gap:6px; align-items:center; }
-  .action-col .btn { width:90px; padding:6px 14px; border:none; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer; transition:all .2s; display:inline-flex; align-items:center; justify-content:center; gap:5px; margin:0; }
+  .action-col { display:flex; flex-direction:column; gap:6px; align-items:center; width:90px; min-width:90px; justify-content:center; }
+  .action-col .btn { width:90px; padding:6px 14px; border:none; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer; transition:all .2s; display:inline-flex; align-items:center; justify-content:center; gap:5px; margin:0; }
   .btn-approve { background:#28a745; color:#fff; }
   .btn-approve:hover { background:#218838; }
-  .btn-hold { background:#ffc107; color:#212529; }
-  .btn-hold:hover { background:#e0a800; }
+  .btn-hold { background:#002F70; color:#fff; }
+  .btn-hold:hover { background:#001f4d; }
   .btn-reject { background:#dc3545; color:#fff; }
   .btn-reject:hover { background:#c82333; }
   
-  .badge-pending { background: #e0e7ff; color: #4338ca; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; display: inline-block; }
-  .badge-hold { background: #fef3c7; color: #b45309; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; display: inline-block; }
+  .badge-pending { background:transparent !important; color:#4338ca; padding:4px 8px; border-radius:6px; font-size:11px; font-weight:700; display:inline-block; }
+  .badge-hold { background:transparent !important; color:#b45309; padding:4px 8px; border-radius:6px; font-size:11px; font-weight:700; display:inline-block; }
   
-  .empty-state { text-align: center; padding: 40px; color: #6c757d; }
+  .empty-state { text-align:center; padding:40px; color:#6c757d; }
   
   /* Modals */
   .modal { display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,.5); align-items:center; justify-content:center; }
@@ -234,10 +245,10 @@ include __DIR__ . '/../partials/header.php';
             <tr>
               <td><strong><?php echo htmlspecialchars($p['name']); ?></strong></td>
               <td><?php echo $p['sku']; ?></td>
-              <td>₱<?php echo number_format($p['current_cost'], 2); ?></td>
-              <td style="background: #fef3c7;"><strong>₱<?php echo number_format($p['proposed_cost'], 2); ?></strong></td>
-              <td>₱<?php echo number_format($p['current_price'], 2); ?></td>
-              <td style="background: #fef3c7;"><strong>₱<?php echo number_format($p['proposed_price'], 2); ?></strong></td>
+              <td style="color:#6c757d;">₱<?php echo number_format($p['current_cost'], 2); ?></td>
+              <td><strong style="color:#b45309;">₱<?php echo number_format($p['proposed_cost'], 2); ?></strong></td>
+              <td style="color:#6c757d;">₱<?php echo number_format($p['current_price'], 2); ?></td>
+              <td><strong style="color:#b45309;">₱<?php echo number_format($p['proposed_price'], 2); ?></strong></td>
               <td>
                 <span class="<?php echo $p['status'] === 'On Hold' ? 'badge-hold' : 'badge-pending'; ?>">
                   <?php echo $p['status']; ?>

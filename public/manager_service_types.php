@@ -79,13 +79,16 @@ include __DIR__ . '/../partials/header.php';
 
 <style>
 .st-card { background:#fff; border-radius:10px; border:1px solid #e2e8f0; overflow:hidden; margin-bottom:24px; }
-.st-table { width:100%; border-collapse:collapse; font-size:13px; }
-.st-table th { padding:10px 14px; text-align:left; font-size:11px; font-weight:700; color:#64748b;
-               text-transform:uppercase; letter-spacing:.4px; border-bottom:2px solid #e2e8f0; background:#f8fafc; }
-.st-table td { padding:11px 14px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
-.st-table tr:last-child td { border-bottom:none; }
-.st-table tr:hover td { background:#f8fafc; }
-.badge-pending  { background:#fffbeb; color:#92400e; border:1px solid #fde68a; padding:3px 10px; border-radius:20px; font-size:10px; font-weight:700; }
+.st-table { width:100%; border-collapse:collapse; font-size:13px; background:#fff; }
+.st-table th { padding:14px 14px !important; text-align:left; font-size:11px; font-weight:600; color:#fff !important;
+               text-transform:uppercase; letter-spacing:.3px; border:none !important; background:#002F70 !important; white-space:nowrap; }
+.st-table th:last-child { text-align:center !important; }
+.st-table td { padding:12px 14px !important; border-bottom:1px solid #e9ecef !important; vertical-align:middle; color:#212529; }
+.st-table td:last-child { text-align:center !important; }
+.st-table tr:last-child td { border-bottom:1px solid #e9ecef !important; }
+.st-table tbody tr:hover td { background:#e3f2fd !important; }
+.st-table tbody tr { transition:background 0.2s ease; }
+.badge-pending  { background:#002F70; color:#fff; border:1px solid #001a4d; padding:3px 10px; border-radius:20px; font-size:10px; font-weight:700; }
 .badge-approved { background:#f0fdf4; color:#166534; border:1px solid #86efac; padding:3px 10px; border-radius:20px; font-size:10px; font-weight:700; }
 .badge-rejected { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; padding:3px 10px; border-radius:20px; font-size:10px; font-weight:700; }
 .filter-tab { padding:9px 18px; border:none; background:#f8fafc; border-bottom:2px solid transparent;
@@ -113,7 +116,7 @@ include __DIR__ . '/../partials/header.php';
             <p style="font-size:12px;color:#64748b;margin:3px 0 0;">Review and validate service types submitted by staff</p>
         </div>
         <?php if ($pending_count > 0): ?>
-        <span style="background:#f59e0b;color:#fff;font-size:11px;font-weight:800;
+        <span style="background:#002F70;color:#fff;font-size:11px;font-weight:800;
                      padding:3px 10px;border-radius:20px;margin-left:4px;">
             <?= $pending_count ?> pending
         </span>
@@ -139,7 +142,7 @@ include __DIR__ . '/../partials/header.php';
         <a href="?filter=<?= $k ?>" class="filter-tab <?= $filter === $k ? 'active' : '' ?>">
             <?= $label ?>
             <?php if ($k === 'pending' && $pending_count > 0): ?>
-            <span style="background:#f59e0b;color:#fff;font-size:9px;font-weight:800;
+            <span style="background:#002F70;color:#fff;font-size:9px;font-weight:800;
                          padding:1px 6px;border-radius:20px;margin-left:4px;"><?= $pending_count ?></span>
             <?php endif; ?>
         </a>

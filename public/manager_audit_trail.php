@@ -268,7 +268,7 @@ include __DIR__ . '/../partials/header.php';
             $msr_pending = (int)$msr_stmt->fetchColumn();
         } catch (Exception $e) { $msr_pending = 0; }
         if ($msr_pending > 0): ?>
-            <span style="background:#fd7e14;color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;margin-left:4px;"><?php echo $msr_pending; ?></span>
+            <span style="background:#002F70;color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;margin-left:4px;"><?php echo $msr_pending; ?></span>
         <?php endif; ?>
     </button>
     <button id="tab-customer-transparency" onclick="switchAuditTab('customer-transparency')"
@@ -382,8 +382,8 @@ try {
         <div class="at-card-num"><?php echo $fd_adjust_cnt; ?></div>
         <div class="at-card-lbl">Adjusted</div>
     </div>
-    <div class="at-card" style="border-left:4px solid #fd7e14;">
-        <div class="at-card-num" style="color:#fd7e14;"><?php echo $fd_pending_cnt ?? 0; ?></div>
+    <div class="at-card" style="border-left:4px solid #002F70;">
+        <div class="at-card-num" style="color:#002F70;"><?php echo $fd_pending_cnt ?? 0; ?></div>
         <div class="at-card-lbl">Pending Review</div>
     </div>
 </div>
@@ -529,7 +529,7 @@ try {
                 $dst = strtolower($fdel['status'] ?? 'pending');
                 if ($dst === 'verified') { $dsc = '#28a745'; $dsbg = '#d4edda'; $dsl = 'Verified'; }
                 elseif ($dst === 'rejected') { $dsc = '#dc3545'; $dsbg = '#f8d7da'; $dsl = 'Returned'; }
-                else { $dsc = '#856404'; $dsbg = '#fff3cd'; $dsl = 'Pending Review'; }
+                else { $dsc = '#fff'; $dsbg = '#002F70'; $dsl = 'Pending Review'; }
             ?>
             <tr>
                 <td style="font-weight:700;color:#002F6C;">#<?php echo $fdel['id']; ?></td>
@@ -601,8 +601,8 @@ try {
             <div class="at-card-num"><?php echo count($fuel_requests); ?></div>
             <div class="at-card-lbl">Total Requests</div>
         </div>
-        <div class="at-card" style="border-left:4px solid #fd7e14;">
-            <div class="at-card-num" style="color:#fd7e14;"><?php echo count(array_filter($fuel_requests, fn($r) => $r['status'] === 'Pending')); ?></div>
+        <div class="at-card" style="border-left:4px solid #002F70;">
+            <div class="at-card-num" style="color:#002F70;"><?php echo count(array_filter($fuel_requests, fn($r) => $r['status'] === 'Pending')); ?></div>
             <div class="at-card-lbl">Pending</div>
         </div>
         <div class="at-card at-card-approve">
@@ -652,10 +652,10 @@ try {
                     <?php foreach ($fuel_requests as $req): ?>
                     <?php
                         $st = $req['status'] ?? 'Pending';
-                        $stColor = $st === 'Approved' ? '#28a745' : ($st === 'Rejected' ? '#dc3545' : '#fd7e14');
-                        $stBg    = $st === 'Approved' ? '#d4edda' : ($st === 'Rejected' ? '#f8d7da' : '#fff3cd');
+                        $stColor = $st === 'Approved' ? '#28a745' : ($st === 'Rejected' ? '#dc3545' : '#fff');
+                        $stBg    = $st === 'Approved' ? '#d4edda' : ($st === 'Rejected' ? '#f8d7da' : '#002F70');
                         $stockSt = $req['stock_status'] ?? 'LOW';
-                        $stockColor = in_array($stockSt, ['OUT OF STOCK','CRITICAL']) ? '#dc3545' : '#fd7e14';
+                        $stockColor = in_array($stockSt, ['OUT OF STOCK','CRITICAL']) ? '#dc3545' : '#dc3545';
                     ?>
                     <tr>
                         <td style="font-family:monospace;font-size:11px;color:#888;">#<?php echo $req['id']; ?></td>
@@ -727,8 +727,8 @@ try {
             <div class="at-card-num"><?php echo count($merch_requests); ?></div>
             <div class="at-card-lbl">Total Requests</div>
         </div>
-        <div class="at-card" style="border-left:4px solid #fd7e14;">
-            <div class="at-card-num" style="color:#fd7e14;"><?php echo count(array_filter($merch_requests, fn($r) => $r['status'] === 'Pending')); ?></div>
+        <div class="at-card" style="border-left:4px solid #002F70;">
+            <div class="at-card-num" style="color:#002F70;"><?php echo count(array_filter($merch_requests, fn($r) => $r['status'] === 'Pending')); ?></div>
             <div class="at-card-lbl">Pending</div>
         </div>
         <div class="at-card at-card-approve">
@@ -779,8 +779,8 @@ try {
                     <?php foreach ($merch_requests as $req): ?>
                     <?php
                         $st = $req['status'] ?? 'Pending';
-                        $stColor = $st === 'Approved' ? '#28a745' : ($st === 'Rejected' ? '#dc3545' : '#fd7e14');
-                        $stBg    = $st === 'Approved' ? '#d4edda' : ($st === 'Rejected' ? '#f8d7da' : '#fff3cd');
+                        $stColor = $st === 'Approved' ? '#28a745' : ($st === 'Rejected' ? '#dc3545' : '#fff');
+                        $stBg    = $st === 'Approved' ? '#d4edda' : ($st === 'Rejected' ? '#f8d7da' : '#002F70');
                     ?>
                     <tr>
                         <td style="font-family:monospace;font-size:11px;color:#888;">#<?php echo $req['id']; ?></td>
@@ -1048,7 +1048,7 @@ document.addEventListener('DOMContentLoaded', function() {
 .at-ch-badge-merch{background:#f0fdf4;color:#15803d;border:1px solid #86efac;}
 .at-ch-badge-paid{background:#d1fae5;color:#065f46;}
 .at-ch-badge-unpaid{background:#fee2e2;color:#991b1b;}
-.at-ch-badge-partial{background:#fef3c7;color:#92400e;}
+.at-ch-badge-partial{background:#002F70;color:#fff;}
 .at-ch-badge-pending{background:#f1f5f9;color:#475569;}
 .at-ch-badge-approved{background:#d1fae5;color:#065f46;}
 .at-ch-badge-rejected{background:#fee2e2;color:#991b1b;}

@@ -225,17 +225,28 @@ try {
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
-.pm-table th { background:#f1f3f4; font-weight:600; color:#333; border-bottom:2px solid #dee2e6; white-space:nowrap; }
-.pm-table td { vertical-align:middle; }
-.action-col { display:flex; flex-direction:column; gap:4px; }
-.action-col .btn { width:100%; font-size:12px; padding:5px 8px; border:none; border-radius:4px; cursor:pointer; display:flex; align-items:center; gap:5px; justify-content:center; transition:all .15s; }
-.action-col .btn:hover { filter:brightness(.9); transform:translateY(-1px); }
+/* === Merchandise Product Management - Clean Table Design === */
+.card { background:#fff; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.08); border:1px solid #e9ecef; margin-bottom:20px; overflow:hidden; }
+.card-header { padding:16px 20px; border-bottom:1px solid #e9ecef; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+.card-header h3 { font-size:16px; font-weight:700; color:#002F70; margin:0; display:flex; align-items:center; gap:8px; }
+.card-body { padding:20px; overflow-x:hidden; }
+.pm-table-wrap { overflow-x:auto; width:100%; }
+.pm-table { min-width:100%; width:100%; border-collapse:collapse; table-layout:auto; }
+.pm-table thead th { background:#002F70 !important; color:#fff !important; font-weight:600; padding:14px 12px !important; text-align:left !important; text-transform:uppercase; letter-spacing:0.3px; border:none !important; white-space:nowrap; font-size:11px; }
+.pm-table thead th:last-child { text-align:center !important; }
+.pm-table tbody td { vertical-align:middle; padding:12px !important; border-bottom:1px solid #e9ecef !important; font-size:13px; }
+.pm-table tbody td:last-child { text-align:center !important; }
+.pm-table tbody tr:hover td { background:#e3f2fd !important; }
+.pm-table tbody tr { transition:background 0.2s ease; }
+.action-col { display:flex; flex-direction:column; gap:3px; min-width:90px; width:90px; align-items:center; justify-content:center; }
+.action-col .btn { font-size:11px; padding:5px 8px; border:none; border-radius:4px; cursor:pointer; display:flex; align-items:center; gap:4px; justify-content:center; transition:all .15s; white-space:nowrap; width:100%; }
+.action-col .btn:hover { filter:brightness(.9); }
 .btn-view    { background:#28a745; color:#fff; }
 .btn-edit    { background:#002F70; color:#fff; }
 .btn-danger  { background:#dc3545; color:#fff; }
 .btn-success { background:#28a745; color:#fff; }
-.badge-status { padding:4px 10px; border-radius:4px; font-size:12px; font-weight:600; color:#fff; }
-.badge-cat    { padding:3px 9px; border-radius:4px; font-size:11px; font-weight:600; color:#fff; background:#6c757d; }
+.badge-status { padding:4px 10px; border-radius:4px; font-size:12px; font-weight:700; background:transparent !important; color:#28a745; }
+.badge-cat    { padding:3px 9px; border-radius:4px; font-size:11px; font-weight:600; color:#6c757d !important; background:transparent !important; border:1px solid #e9ecef; }
 /* Batch ID column */
 .batch-id-list { display:flex; flex-direction:column; gap:3px; cursor:pointer; }
 .batch-id-tag  { display:inline-flex; align-items:center; gap:5px; border:1px solid; border-radius:6px; padding:3px 8px; font-size:11px; font-weight:700; font-family:monospace; white-space:nowrap; transition:filter .15s; }
@@ -262,7 +273,7 @@ include __DIR__ . '/../partials/header.php';
 .batch-status-active   { color:#059669; font-weight:700; }
 .batch-status-depleted { color:#9ca3af; }
 .batch-status-cancelled{ color:#dc3545; }
-.batch-fifo-tag { font-size:10px; background:#fef3c7; color:#92400e; border:1px solid #fcd34d; border-radius:8px; padding:1px 6px; font-weight:700; }
+.batch-fifo-tag { font-size:10px; background:#002F70; color:#fff; border:1px solid #001a4d; border-radius:8px; padding:1px 6px; font-weight:700; }
 /* Modals */
 .modal { display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,.5); align-items:center; justify-content:center; }
 .modal.open { display:flex; }
@@ -330,7 +341,7 @@ include __DIR__ . '/../partials/header.php';
         </div>
     </div>
     <div class="card-body">
-        <div class="table-wrap">
+        <div class="table-wrap pm-table-wrap">
             <table class="table pm-table" id="mainTable">
                 <thead>
                     <tr>
@@ -343,7 +354,7 @@ include __DIR__ . '/../partials/header.php';
                         <th>Stock</th>
                         <th>Batch ID</th>
                         <th>Status</th>
-                        <th>Actions</th>
+                        <th style="min-width:120px;">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="merchTableBody">
@@ -381,7 +392,7 @@ include __DIR__ . '/../partials/header.php';
 
                     <!-- 7. Stock -->
                     <td>
-                        <span class="badge-status" style="background:<?php echo $stockColor; ?>;"><?php echo number_format($stock); ?></span>
+                        <span style="color:<?php echo $stockColor; ?>;font-weight:700;"><?php echo number_format($stock); ?></span>
                     </td>
 
                     <!-- 8. Batch ID -->
@@ -408,7 +419,7 @@ include __DIR__ . '/../partials/header.php';
 
                     <!-- 9. Status -->
                     <td>
-                        <span class="badge-status" style="background:<?php echo $statusColor; ?>;">
+                        <span style="color:<?php echo $statusColor; ?>;font-weight:700;">
                             <?php echo $isActive ? 'Active' : 'Inactive'; ?>
                         </span>
                     </td>

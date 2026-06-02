@@ -339,27 +339,32 @@ if ($section === 'transactions' && isset($_GET['customer_id'])) {
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
-.mgrc-card{background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.07);border:1px solid #e9ecef;margin-bottom:20px;}
+/* === Clean Manager Design === */
+.mgrc-card{background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.08);border:1px solid #e9ecef;margin-bottom:20px;overflow:hidden;}
 .mgrc-head{padding:16px 20px;border-bottom:1px solid #e9ecef;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
 .mgrc-title{font-size:16px;font-weight:700;color:#002F70;margin:0;display:flex;align-items:center;gap:8px;}
-.mgrc-body{padding:20px;}
-.mgrc-table{width:100%;border-collapse:collapse;font-size:13px;}
-.mgrc-table th{background:#f8f9fa;padding:10px 12px;text-align:left;font-weight:700;color:#495057;border-bottom:2px solid #dee2e6;}
-.mgrc-table td{padding:10px 12px;border-bottom:1px solid #f0f0f0;vertical-align:middle;}
-.mgrc-table tr:hover td{background:#f8f9fa;}
-.badge-pending{background:#002F70;color:#fff;padding:3px 9px;border-radius:10px;font-size:11px;font-weight:700;}
-.badge-approved{background:#d1fae5;color:#065f46;padding:3px 9px;border-radius:10px;font-size:11px;font-weight:700;}
-.badge-rejected{background:#fee2e2;color:#991b1b;padding:3px 9px;border-radius:10px;font-size:11px;font-weight:700;}
-.badge-active{background:#d1fae5;color:#065f46;padding:3px 9px;border-radius:10px;font-size:11px;font-weight:700;}
-.badge-inactive{background:#fee2e2;color:#991b1b;padding:3px 9px;border-radius:10px;font-size:11px;font-weight:700;}
-.badge-overdue{background:#fde8d8;color:#9a3412;padding:3px 9px;border-radius:10px;font-size:11px;font-weight:700;}
-.mgrc-btn{padding:6px 14px;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:5px;}
+.mgrc-body{padding:20px;overflow-x:hidden;}
+.mgrc-table{width:100%;border-collapse:collapse;font-size:0.875rem;}
+.mgrc-table th{background:#002F70 !important;color:#fff !important;padding:14px 16px;text-align:left;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;border:none !important;}
+.mgrc-table td{padding:12px 16px;border-bottom:1px solid #e9ecef;vertical-align:middle;color:#212529;}
+.mgrc-table tr:hover td{background:#e3f2fd;}
+.mgrc-table tbody tr:last-child td{border-bottom:none;}
+
+/* Plain text badges - NO backgrounds */
+.badge-pending{color:#fd7e14 !important;font-weight:700 !important;background:none !important;padding:0 !important;}
+.badge-approved{color:#28a745 !important;font-weight:700 !important;background:none !important;padding:0 !important;}
+.badge-rejected{color:#dc3545 !important;font-weight:700 !important;background:none !important;padding:0 !important;}
+.badge-active{color:#28a745 !important;font-weight:700 !important;background:none !important;padding:0 !important;}
+.badge-inactive{color:#6c757d !important;font-weight:700 !important;background:none !important;padding:0 !important;}
+.badge-overdue{color:#dc3545 !important;font-weight:700 !important;background:none !important;padding:0 !important;}
+
+.mgrc-btn{padding:6px 12px;border:none;border-radius:6px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:4px;min-width:85px;justify-content:center;}
 .mgrc-btn-approve{background:#28a745;color:#fff;} .mgrc-btn-approve:hover{background:#218838;}
 .mgrc-btn-reject{background:#dc3545;color:#fff;} .mgrc-btn-reject:hover{background:#c82333;}
-.mgrc-btn-view{background:#002F70;color:#fff;text-decoration:none;} .mgrc-btn-view:hover{background:#0040a0;}
+.mgrc-btn-view{background:#002F70;color:#fff;text-decoration:none;} .mgrc-btn-view:hover{background:#001a4d;}
 .mgrc-empty{text-align:center;padding:40px;color:#9ca3af;}
 .mgrc-empty i{font-size:2.5rem;display:block;margin-bottom:10px;opacity:.4;}
-.mgrc-search{width:100%;padding:9px 12px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;margin-bottom:14px;box-sizing:border-box;}
+.mgrc-search{width:100%;padding:10px 12px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;margin-bottom:14px;box-sizing:border-box;}
 .mgrc-search:focus{border-color:#002F70;outline:none;box-shadow:0 0 0 3px rgba(0,47,112,.1);}
 .mgrc-info-box{background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 16px;font-size:12px;color:#1e40af;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
 .mgrc-bal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;}
@@ -380,6 +385,10 @@ include __DIR__ . '/../partials/header.php';
 .flash-ok{background:#d1fae5;border:1px solid #6ee7b7;border-radius:8px;padding:12px 16px;margin-bottom:16px;color:#065f46;font-weight:600;}
 .flash-err{background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:12px 16px;margin-bottom:16px;color:#991b1b;font-weight:600;}
 .cust-sel{padding:9px 12px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;min-width:260px;}
+
+/* Prevent horizontal scroll */
+body{overflow-x:hidden !important;max-width:100vw !important;}
+.mgrc-table-wrap{overflow-x:auto !important;-webkit-overflow-scrolling:touch;}
 @media(max-width:640px){.mgrc-bal-grid{grid-template-columns:1fr;}}
 </style>
 <div class="page-head">
@@ -625,8 +634,10 @@ include __DIR__ . '/../partials/header.php';
             <td style="font-size:12px;color:#6c757d;"><?php echo htmlspecialchars($c['id_type'] ?? '—'); ?></td>
             <td><?php echo date('M d, Y h:i A', strtotime($c['created_at'])); ?></td>
             <td>
-              <button class="mgrc-btn mgrc-btn-approve" onclick="openModal('validate', <?php echo $c['id']; ?>, '<?php echo addslashes(htmlspecialchars($c['name'])); ?>', 'approved')">Approve</button>
-              <button class="mgrc-btn mgrc-btn-reject" onclick="openModal('validate', <?php echo $c['id']; ?>, '<?php echo addslashes(htmlspecialchars($c['name'])); ?>', 'rejected')">Reject</button>
+              <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
+                <button class="mgrc-btn mgrc-btn-approve" onclick="openModal('validate', <?php echo $c['id']; ?>, '<?php echo addslashes(htmlspecialchars($c['name'])); ?>', 'approved')"><i class="fas fa-check"></i> Approve</button>
+                <button class="mgrc-btn mgrc-btn-reject" onclick="openModal('validate', <?php echo $c['id']; ?>, '<?php echo addslashes(htmlspecialchars($c['name'])); ?>', 'rejected')"><i class="fas fa-times"></i> Reject</button>
+              </div>
             </td>
           </tr>
         <?php endforeach; endif; ?>
@@ -660,8 +671,10 @@ include __DIR__ . '/../partials/header.php';
             <td style="color:#28a745;font-weight:700;"><?php echo htmlspecialchars($r['new_value']); ?></td>
             <td><?php echo date('M d, Y h:i A', strtotime($r['created_at'])); ?></td>
             <td>
-              <button class="mgrc-btn mgrc-btn-approve" onclick="openModal('review', <?php echo $r['id']; ?>, 'Update for <?php echo addslashes(htmlspecialchars($r['customer_name'])); ?>', 'approved')">Approve</button>
-              <button class="mgrc-btn mgrc-btn-reject" onclick="openModal('review', <?php echo $r['id']; ?>, 'Update for <?php echo addslashes(htmlspecialchars($r['customer_name'])); ?>', 'rejected')">Reject</button>
+              <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
+                <button class="mgrc-btn mgrc-btn-approve" onclick="openModal('review', <?php echo $r['id']; ?>, 'Update for <?php echo addslashes(htmlspecialchars($r['customer_name'])); ?>', 'approved')"><i class="fas fa-check"></i> Approve</button>
+                <button class="mgrc-btn mgrc-btn-reject" onclick="openModal('review', <?php echo $r['id']; ?>, 'Update for <?php echo addslashes(htmlspecialchars($r['customer_name'])); ?>', 'rejected')"><i class="fas fa-times"></i> Reject</button>
+              </div>
             </td>
           </tr>
         <?php endforeach; endif; ?>

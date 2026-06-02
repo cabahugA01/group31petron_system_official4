@@ -995,8 +995,8 @@ function adjustColor($hex,$pct) {
 /* Tables */
 .data-table { width:100%; border-collapse:collapse; font-size:.85rem; }
 .data-table th, .data-table td { padding:10px 12px; text-align:left; border-bottom:1px solid #e9ecef; }
-.data-table th { background:linear-gradient(135deg,<?php echo $colors['primary']; ?>,<?php echo adjustColor($colors['primary'],-20); ?>); color:#fff; font-weight:600; font-size:.78rem; text-transform:uppercase; letter-spacing:.5px; }
-.data-table tr:hover { background:rgba(<?php echo hex2rgb($colors['primary']); ?>,.04); }
+.data-table th { background:#002F70 !important; color:#fff !important; font-weight:600; font-size:.78rem; text-transform:uppercase; letter-spacing:.5px; }
+.data-table tbody tr:hover { background:#e3f2fd !important; }
 
 /* Variance Tags */
 .tag-investigate { background:#dc3545; color:#fff; padding:3px 8px; border-radius:4px; font-size:.72rem; font-weight:700; animation:pulse 1.5s infinite; }

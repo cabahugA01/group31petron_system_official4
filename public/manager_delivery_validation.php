@@ -61,49 +61,77 @@ include __DIR__ . "/../partials/header.php";
 ?>
 
 <style>
-:root{--blue:#002F70;--green:#28a745;--red:#dc3545;--orange:#fd7e14;--gray:#6c757d;}
-.dv-card{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.07);border:1px solid #e9ecef;margin-bottom:20px;overflow:hidden;}
-.dv-card-head{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #e9ecef;flex-wrap:wrap;gap:8px;}
-.dv-card-title{font-size:1rem;font-weight:700;color:var(--blue);display:flex;align-items:center;gap:8px;}
-.dv-card-body{padding:18px 20px;}
-.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;white-space:nowrap;}
-.badge-ok{background:#d4edda;color:#155724;}
-.badge-short{background:#fff3cd;color:#856404;}
-.badge-damaged{background:#f8d7da;color:#721c24;}
-.badge-excess{background:#cce5ff;color:#004085;}
-.badge-mixed{background:#e2d9f3;color:#5a32a3;}
-.badge-pending{background:#fff3cd;color:#856404;}
-.badge-validated{background:#d4edda;color:#155724;}
-.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .2s;text-decoration:none;}
-.btn-validate{background:var(--blue);color:#fff;}.btn-validate:hover{background:#001F4F;}
-.btn-flag{background:var(--red);color:#fff;}.btn-flag:hover{background:#b02a37;}
-.btn-sm{padding:5px 12px;font-size:12px;}
-.flash-ok{background:#d4edda;color:#155724;border:1px solid #c3e6cb;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
-.flash-err{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
-.empty-state{text-align:center;padding:48px;color:var(--gray);}
-.empty-state i{font-size:3rem;display:block;margin-bottom:12px;opacity:.3;}
-.tab-nav{display:flex;gap:0;border-bottom:2px solid #e9ecef;margin-bottom:22px;}
-.tab-btn{padding:10px 24px;background:none;border:none;border-bottom:3px solid transparent;font-size:14px;font-weight:600;color:var(--gray);cursor:pointer;margin-bottom:-2px;transition:all .15s;text-decoration:none;display:inline-flex;align-items:center;gap:6px;}
-.tab-btn.active{color:var(--blue);border-bottom-color:var(--blue);}
-.tab-btn:hover{color:var(--blue);}
-.po-item{background:#fff;border:1px solid #dee2e6;border-radius:10px;padding:18px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.04);}
-.po-item-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;flex-wrap:wrap;gap:8px;}
-.po-meta{font-size:12px;color:var(--gray);margin-bottom:12px;display:flex;flex-wrap:wrap;gap:12px;}
-.info-box{background:#e8f4fd;border-left:4px solid var(--blue);border-radius:6px;padding:10px 14px;font-size:12px;color:var(--blue);line-height:1.6;margin-bottom:14px;}
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;align-items:center;justify-content:center;}
-.modal-overlay.show{display:flex;}
-.modal-box{background:#fff;border-radius:12px;padding:28px;width:520px;max-width:96vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2);}
-.modal-box h3{margin:0 0 16px;font-size:1.05rem;color:var(--blue);display:flex;align-items:center;gap:8px;}
-.form-group{margin-bottom:14px;}
-.form-group label{display:block;font-size:12px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;}
-.form-group input,.form-group select,.form-group textarea{width:100%;padding:9px 11px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;box-sizing:border-box;}
-.form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:var(--blue);}
-.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px;}
+/* ── Table wrapper ── */
+.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow-x:auto; }
+/* ── Table ── */
+.po-table { width:100%; border-collapse:collapse; font-size:0.88rem; }
+.po-table thead th { background:#002F70; color:#fff; padding:12px 14px; text-align:left; font-weight:600; white-space:nowrap; }
+.po-table tbody tr { border-bottom:1px solid #f0f0f0; transition:background 0.15s; }
+.po-table tbody tr:hover { background:#f5f8ff; }
+.po-table tbody td { padding:11px 14px; vertical-align:middle; color:#333; }
+/* ── Status badges — plain text, no background color ── */
+.status-badge { display:inline-block; font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; color:#333; }
+.badge-pending   { color:#002F70; }
+.badge-approved  { color:#28a745; }
+.badge-rejected  { color:#dc3545; }
+.badge-other     { color:#6c757d; }
+/* Delivery flag badges */
+.badge-ok      { color:#28a745; }
+.badge-short   { color:#dc3545; }
+.badge-damaged { color:#dc3545; }
+.badge-excess  { color:#6c757d; }
+.badge-mixed   { color:#6c757d; }
+.badge-validated { color:#28a745; }
+/* ── Action buttons ── */
+.btn-action { display:inline-flex; align-items:center; gap:5px; padding:6px 14px; border:none; border-radius:6px; cursor:pointer; font-size:0.82rem; font-weight:600; text-decoration:none; transition:opacity 0.2s; white-space:nowrap; margin-bottom:3px; }
+.btn-action:hover { opacity:0.85; }
+.btn-approve { background:#28a745; color:#fff; }
+.btn-reject  { background:#dc3545; color:#fff; }
+.btn-view    { background:#6c757d; color:#fff; }
+.btn-primary { background:#002F70; color:#fff; }
+/* ── Page header ── */
+.page-head { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; flex-wrap:wrap; gap:6px; }
+.page-head h1 { margin:0 0 2px; font-size:1.4rem; font-weight:700; color:#002F70; }
+.page-head .sub { font-size:0.8rem; color:#6c757d; }
+/* ── Alerts ── */
+.alert { padding:12px 18px; border-radius:8px; margin-bottom:20px; font-size:0.9rem; font-weight:500; }
+.alert-success { background:#d4edda; color:#155724; border:1px solid #c3e6cb; }
+.alert-error   { background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; }
+.flash-ok  { display:flex; align-items:center; gap:8px; padding:12px 18px; border-radius:8px; margin-bottom:20px; font-size:0.9rem; font-weight:500; background:#d4edda; color:#155724; border:1px solid #c3e6cb; }
+.flash-err { display:flex; align-items:center; gap:8px; padding:12px 18px; border-radius:8px; margin-bottom:20px; font-size:0.9rem; font-weight:500; background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; }
+/* ── Empty state ── */
+.empty-state { text-align:center; padding:70px 20px; color:#666; }
+.empty-state i { font-size:3.5rem; color:#002F70; margin-bottom:18px; display:block; opacity:0.5; }
+.empty-state h3 { font-size:1.2rem; font-weight:700; color:#333; margin:0 0 8px; }
+.empty-state p { font-size:0.9rem; max-width:420px; margin:0 auto; line-height:1.6; }
+/* ── Tabs ── */
+.tab-nav { display:flex; gap:0; border-bottom:2px solid #e9ecef; margin-bottom:22px; }
+.tab-btn { padding:10px 24px; background:none; border:none; border-bottom:3px solid transparent; font-size:14px; font-weight:600; color:#6c757d; cursor:pointer; margin-bottom:-2px; transition:all .15s; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
+.tab-btn.active { color:#002F70; border-bottom-color:#002F70; }
+.tab-btn:hover { color:#002F70; }
+/* ── Card wrapper ── */
+.dv-card { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); margin-bottom:20px; overflow:hidden; }
+.dv-card-head { display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid #e9ecef; flex-wrap:wrap; gap:8px; }
+.dv-card-title { font-size:1rem; font-weight:700; color:#002F70; display:flex; align-items:center; gap:8px; }
+.dv-card-body { padding:0; }
+/* ── Actions cell: stacked buttons ── */
+.actions-cell { display:flex; flex-direction:column; gap:4px; min-width:130px; }
+.actions-cell .btn-action { width:100%; justify-content:center; margin-bottom:0; }
+/* ── Modal ── */
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1050; align-items:center; justify-content:center; }
+.modal-overlay.show { display:flex; }
+.modal-box { background:#fff; border-radius:12px; width:90%; max-width:540px; max-height:90vh; overflow-y:auto; box-shadow:0 8px 32px rgba(0,0,0,0.18); padding:28px; }
+.modal-box h3 { margin:0 0 16px; font-size:1.05rem; color:#002F70; display:flex; align-items:center; gap:8px; }
+.form-group { margin-bottom:14px; }
+.form-group label { display:block; font-size:12px; font-weight:700; color:#6c757d; text-transform:uppercase; letter-spacing:.4px; margin-bottom:5px; }
+.form-group input, .form-group select, .form-group textarea { width:100%; padding:9px 11px; border:1px solid #ced4da; border-radius:6px; font-size:0.9rem; box-sizing:border-box; }
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline:none; border-color:#002F70; box-shadow:0 0 0 3px rgba(0,47,112,0.1); }
+.modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; }
 </style>
 
 <div class="page-head">
   <div>
-    <h1 class="h1"><i class="fas fa-truck-loading"></i> Delivery Validation</h1>
+    <h1><i class="fas fa-truck-loading"></i> Delivery Validation</h1>
     <div class="sub">Validate actual delivery vs PO when supplier arrives. Flag shortages, damages, or excess.</div>
   </div>
   <div class="header-actions">
@@ -145,50 +173,52 @@ include __DIR__ . "/../partials/header.php";
     <div class="dv-card-title"><i class="fas fa-clock"></i> Awaiting Validation</div>
     <span style="font-size:12px;color:#6c757d;"><?= count($pending_pos) ?> record(s)</span>
   </div>
-  <div class="dv-card-body" style="padding:0;">
-    <div style="overflow-x:auto;">
-      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+  <div class="dv-card-body">
+    <div class="po-table-wrap">
+      <table class="po-table">
         <thead>
-          <tr style="background:#f8f9fa;">
-            <th style="padding:11px 14px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#495057;border-bottom:2px solid #dee2e6;white-space:nowrap;text-align:left;">PO Number</th>
-            <th style="padding:11px 14px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#495057;border-bottom:2px solid #dee2e6;white-space:nowrap;text-align:left;">Product</th>
-            <th style="padding:11px 14px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#495057;border-bottom:2px solid #dee2e6;white-space:nowrap;text-align:left;">SKU / Category</th>
-            <th style="padding:11px 14px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#495057;border-bottom:2px solid #dee2e6;white-space:nowrap;text-align:right;">PO Qty</th>
-            <th style="padding:11px 14px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#495057;border-bottom:2px solid #dee2e6;white-space:nowrap;text-align:right;">Unit Price</th>
-            <th style="padding:11px 14px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#495057;border-bottom:2px solid #dee2e6;white-space:nowrap;text-align:right;">Total</th>
-            <th style="padding:11px 14px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#495057;border-bottom:2px solid #dee2e6;white-space:nowrap;text-align:left;">Manager</th>
-            <th style="padding:11px 14px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#495057;border-bottom:2px solid #dee2e6;white-space:nowrap;text-align:left;">Admin</th>
-            <th style="padding:11px 14px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#495057;border-bottom:2px solid #dee2e6;white-space:nowrap;text-align:left;">Finalized</th>
-            <th style="padding:11px 14px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#495057;border-bottom:2px solid #dee2e6;white-space:nowrap;text-align:center;">Status</th>
-            <th style="padding:11px 14px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#495057;border-bottom:2px solid #dee2e6;white-space:nowrap;text-align:center;">Actions</th>
+          <tr>
+            <th>PO Number</th>
+            <th>Product</th>
+            <th>SKU / Category</th>
+            <th style="text-align:right;">PO Qty</th>
+            <th style="text-align:right;">Unit Price</th>
+            <th style="text-align:right;">Total</th>
+            <th>Manager</th>
+            <th>Admin</th>
+            <th>Finalized</th>
+            <th style="text-align:center;">Status</th>
+            <th style="text-align:center;">Actions</th>
           </tr>
         </thead>
         <tbody>
           <?php foreach ($pending_pos as $po): ?>
-          <tr style="border-bottom:1px solid #f0f0f0;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background=''">
-            <td style="padding:11px 14px;"><strong style="color:var(--blue);font-family:monospace;"><?= htmlspecialchars($po['po_number'] ?? 'N/A') ?></strong></td>
-            <td style="padding:11px 14px;font-weight:600;"><?= htmlspecialchars($po['product_name'] ?? '—') ?></td>
-            <td style="padding:11px 14px;">
+          <tr>
+            <td><strong style="color:#002F70;font-family:monospace;"><?= htmlspecialchars($po['po_number'] ?? 'N/A') ?></strong></td>
+            <td style="font-weight:600;"><?= htmlspecialchars($po['product_name'] ?? '—') ?></td>
+            <td>
               <?php if (!empty($po['item_sku'])): ?><span style="font-family:monospace;font-size:11px;background:#e8f4fd;color:#002F70;padding:2px 6px;border-radius:4px;"><?= htmlspecialchars($po['item_sku']) ?></span><?php endif; ?>
               <?php if (!empty($po['item_category'])): ?><span style="display:block;font-size:11px;color:#6c757d;margin-top:3px;"><?= htmlspecialchars($po['item_category']) ?></span><?php endif; ?>
               <?php if (empty($po['item_sku']) && empty($po['item_category'])): ?><span style="color:#adb5bd;">—</span><?php endif; ?>
             </td>
-            <td style="padding:11px 14px;text-align:right;font-weight:700;"><?= (int)$po['quantity'] ?></td>
-            <td style="padding:11px 14px;text-align:right;">&#8369;<?= number_format((float)$po['unit_price'], 2) ?></td>
-            <td style="padding:11px 14px;text-align:right;font-weight:700;color:#155724;">&#8369;<?= number_format((float)$po['total_amount'], 2) ?></td>
-            <td style="padding:11px 14px;font-size:12px;"><?= htmlspecialchars($po['manager_name'] ?? '—') ?></td>
-            <td style="padding:11px 14px;font-size:12px;"><?= htmlspecialchars($po['admin_name'] ?? '—') ?></td>
-            <td style="padding:11px 14px;font-size:12px;white-space:nowrap;"><?= !empty($po['admin_finalized_at']) ? date('M d, Y', strtotime($po['admin_finalized_at'])) : '—' ?></td>
-            <td style="padding:11px 14px;text-align:center;"><span class="badge badge-pending"><i class="fas fa-clock"></i> Awaiting</span></td>
-            <td style="padding:11px 14px;text-align:center;white-space:nowrap;">
-              <button class="btn btn-validate btn-sm"
-                onclick="openValidate(<?= $po['id'] ?>, '<?= htmlspecialchars($po['po_number'] ?? '', ENT_QUOTES) ?>', '<?= htmlspecialchars($po['product_name'] ?? '', ENT_QUOTES) ?>', <?= (int)$po['quantity'] ?>)">
-                <i class="fas fa-check-double"></i> Validate
-              </button>
-              <button class="btn btn-flag btn-sm" style="margin-top:4px;"
-                onclick="openFlag(<?= $po['id'] ?>, '<?= htmlspecialchars($po['po_number'] ?? '', ENT_QUOTES) ?>')">
-                <i class="fas fa-exclamation-triangle"></i> Flag Issue
-              </button>
+            <td style="text-align:right;font-weight:700;"><?= (int)$po['quantity'] ?></td>
+            <td style="text-align:right;">&#8369;<?= number_format((float)$po['unit_price'], 2) ?></td>
+            <td style="text-align:right;font-weight:700;color:#155724;">&#8369;<?= number_format((float)$po['total_amount'], 2) ?></td>
+            <td style="font-size:12px;"><?= htmlspecialchars($po['manager_name'] ?? '—') ?></td>
+            <td style="font-size:12px;"><?= htmlspecialchars($po['admin_name'] ?? '—') ?></td>
+            <td style="font-size:12px;white-space:nowrap;"><?= !empty($po['admin_finalized_at']) ? date('M d, Y', strtotime($po['admin_finalized_at'])) : '—' ?></td>
+            <td style="text-align:center;"><span class="status-badge badge-pending"><i class="fas fa-clock"></i> Awaiting</span></td>
+            <td>
+              <div class="actions-cell">
+                <button class="btn-action btn-approve"
+                  onclick="openValidate(<?= $po['id'] ?>, '<?= htmlspecialchars($po['po_number'] ?? '', ENT_QUOTES) ?>', '<?= htmlspecialchars($po['product_name'] ?? '', ENT_QUOTES) ?>', <?= (int)$po['quantity'] ?>)">
+                  <i class="fas fa-check-double"></i> Validate Delivery
+                </button>
+                <button class="btn-action btn-reject"
+                  onclick="openFlag(<?= $po['id'] ?>, '<?= htmlspecialchars($po['po_number'] ?? '', ENT_QUOTES) ?>')">
+                  <i class="fas fa-exclamation-triangle"></i> Flag Issue
+                </button>
+              </div>
             </td>
           </tr>
           <?php endforeach; ?>
@@ -212,8 +242,8 @@ include __DIR__ . "/../partials/header.php";
         <strong>No validated deliveries yet.</strong>
       </div>
     <?php else: ?>
-      <div class="table-wrap">
-        <table class="table">
+      <div class="po-table-wrap">
+        <table class="po-table">
           <thead>
             <tr>
               <th>PO Number</th><th>Product</th><th>PO Qty</th><th>Actual Received</th>
@@ -223,24 +253,24 @@ include __DIR__ . "/../partials/header.php";
           <tbody>
             <?php foreach ($validated_pos as $po):
               $flag = $po['delivery_flag'] ?? 'OK';
-              $flag_cls = strtolower($flag);
+              $flag_cls = 'status-badge badge-' . strtolower($flag);
             ?>
             <tr>
-              <td><strong><?= htmlspecialchars($po['po_number'] ?? '') ?></strong></td>
+              <td><strong style="font-family:monospace;color:#002F70;"><?= htmlspecialchars($po['po_number'] ?? '') ?></strong></td>
               <td><?= htmlspecialchars($po['product_name'] ?? '') ?></td>
               <td style="text-align:center;"><?= (int)$po['quantity'] ?></td>
               <td style="text-align:center;font-weight:700;">
                 <?= $po['actual_qty_received'] !== null ? (int)$po['actual_qty_received'] : '<span style="color:#adb5bd;">—</span>' ?>
               </td>
-              <td><span class="badge badge-<?= $flag_cls ?>"><?= htmlspecialchars($flag) ?></span></td>
+              <td><span class="<?= $flag_cls ?>"><?= htmlspecialchars($flag) ?></span></td>
               <td><?= htmlspecialchars($po['validated_by_name'] ?? '—') ?></td>
               <td style="font-size:12px;"><?= $po['delivery_validated_at'] ? date('M d, Y H:i', strtotime($po['delivery_validated_at'])) : '—' ?></td>
               <td style="font-size:12px;color:#6c757d;max-width:160px;"><?= htmlspecialchars($po['delivery_notes'] ?? '') ?: '<span style="color:#adb5bd;">—</span>' ?></td>
               <td>
                 <?php if ($po['stock_in_done']): ?>
-                  <span class="badge badge-ok"><i class="fas fa-check"></i> Done</span>
+                  <span class="status-badge badge-approved"><i class="fas fa-check"></i> Done</span>
                 <?php else: ?>
-                  <a href="staff_stock_in.php" class="badge" style="background:#cce5ff;color:#004085;border:1px solid #b8daff;text-decoration:none;"><i class="fas fa-arrow-right"></i> Stock-In</a>
+                  <a href="staff_stock_in.php" class="status-badge badge-other" style="text-decoration:none;"><i class="fas fa-arrow-right"></i> Stock-In</a>
                 <?php endif; ?>
               </td>
             </tr>
@@ -280,8 +310,8 @@ include __DIR__ . "/../partials/header.php";
         <textarea name="delivery_notes" rows="3" placeholder="e.g. Delivery matches DR. 2 units damaged on arrival."></textarea>
       </div>
       <div class="modal-actions">
-        <button type="button" onclick="closeModal('validateModal')" style="padding:9px 20px;background:#6c757d;color:#fff;border:none;border-radius:6px;cursor:pointer;">Cancel</button>
-        <button type="submit" class="btn btn-validate"><i class="fas fa-check-double"></i> Confirm Validation</button>
+        <button type="button" onclick="closeModal('validateModal')" style="padding:9px 20px;background:#e9ecef;color:#333;border:none;border-radius:6px;cursor:pointer;font-weight:600;">Cancel</button>
+        <button type="submit" class="btn-action btn-approve"><i class="fas fa-check-double"></i> Confirm Validation</button>
       </div>
     </form>
   </div>
@@ -291,7 +321,7 @@ include __DIR__ . "/../partials/header.php";
 <div class="modal-overlay" id="flagModal">
   <div class="modal-box">
     <h3><i class="fas fa-exclamation-triangle" style="color:var(--red);"></i> Flag Delivery Issue</h3>
-    <div id="flagPoInfo" style="background:#fff3cd;border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px;"></div>
+    <div id="flagPoInfo" style="background:#f8f9fa;border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px;border:1px solid #e9ecef;"></div>
     <form method="post" action="manager_delivery_validation.php">
       <input type="hidden" name="action" value="flag_issue">
       <input type="hidden" name="po_id" id="flagPoId">
@@ -309,8 +339,8 @@ include __DIR__ . "/../partials/header.php";
         <textarea name="delivery_notes" rows="3" required placeholder="Required: describe the issue in detail..."></textarea>
       </div>
       <div class="modal-actions">
-        <button type="button" onclick="closeModal('flagModal')" style="padding:9px 20px;background:#6c757d;color:#fff;border:none;border-radius:6px;cursor:pointer;">Cancel</button>
-        <button type="submit" class="btn btn-flag"><i class="fas fa-exclamation-triangle"></i> Flag Issue</button>
+        <button type="button" onclick="closeModal('flagModal')" style="padding:9px 20px;background:#e9ecef;color:#333;border:none;border-radius:6px;cursor:pointer;font-weight:600;">Cancel</button>
+        <button type="submit" class="btn-action btn-reject"><i class="fas fa-exclamation-triangle"></i> Flag Issue</button>
       </div>
     </form>
   </div>

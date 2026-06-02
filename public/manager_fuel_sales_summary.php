@@ -274,42 +274,55 @@ require_once __DIR__ . '/../partials/header.php';
     width: 100%;
     border-collapse: collapse;
     font-size: 13px;
+    background: #fff;
 }
 
 .mfss-table th {
-    background: #f8fafc;
-    color: #475569;
+    background: #002F70 !important;
+    color: #fff !important;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: .4px;
-    padding: 11px 13px;
+    letter-spacing: .3px;
+    padding: 14px 13px !important;
     text-align: left;
-    border-bottom: 2px solid #e2e8f0;
+    border: none !important;
     white-space: nowrap;
 }
 
+.mfss-table th.num {
+    text-align: right !important;
+}
+
 .mfss-table td {
-    padding: 11px 13px;
-    border-bottom: 1px solid #f1f5f9;
-    color: #1e293b;
+    padding: 12px 13px !important;
+    border-bottom: 1px solid #e9ecef !important;
+    color: #212529;
     vertical-align: middle;
 }
 
-.mfss-table tr:last-child td {
-    border-bottom: none;
+.mfss-table td.num {
+    text-align: right;
 }
 
-.mfss-table tr:hover td {
-    background: #f8fafc;
+.mfss-table tr:last-child td {
+    border-bottom: 1px solid #e9ecef !important;
+}
+
+.mfss-table tbody tr:hover td {
+    background: #e3f2fd !important;
+}
+
+.mfss-table tbody tr {
+    transition: background 0.2s ease;
 }
 
 .mfss-table .total-row td {
-    background: #eff6ff;
+    background: #e3f2fd !important;
     font-weight: 800;
-    color: var(--petron-blue);
-    border-top: 2px solid #bfdbfe;
-    border-bottom: none;
+    color: #002F70 !important;
+    border-top: 2px solid #002F70 !important;
+    border-bottom: none !important;
 }
 
 .mfss-table .num {
@@ -349,12 +362,12 @@ require_once __DIR__ . '/../partials/header.php';
 }
 
 .status-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 3px 10px;
-    border-radius: 20px;
-    font-size: 10px;
+    display: inline-block;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: .4px;
@@ -503,16 +516,16 @@ function liters(n) {
 
 function statusBadge(s) {
     const map = {
-        'pending validation': {bg:'#fef9c3',color:'#854d0e',label:'Pending'},
-        'pending':            {bg:'#fef9c3',color:'#854d0e',label:'Pending'},
-        'approved':           {bg:'#dcfce7',color:'#166534',label:'Approved'},
-        'verified':           {bg:'#dcfce7',color:'#166534',label:'Verified'},
-        'adjusted':           {bg:'#dbeafe',color:'#1d4ed8',label:'Adjusted'},
-        'rejected':           {bg:'#fee2e2',color:'#991b1b',label:'Rejected'},
+        'pending validation': {color:'#4338ca',label:'Pending'},
+        'pending':            {color:'#4338ca',label:'Pending'},
+        'approved':           {color:'#0d7d3e',label:'Approved'},
+        'verified':           {color:'#0d7d3e',label:'Verified'},
+        'adjusted':           {color:'#1976d2',label:'Adjusted'},
+        'rejected':           {color:'#c62828',label:'Rejected'},
     };
     const k = (s||'').toLowerCase().trim();
-    const c = map[k] || {bg:'#f1f5f9',color:'#64748b',label:s||'—'};
-    return `<span class="status-badge" style="background:${c.bg};color:${c.color};">${c.label}</span>`;
+    const c = map[k] || {color:'#616161',label:s||'—'};
+    return `<span class="status-badge" style="color:${c.color};">${c.label}</span>`;
 }
 
 function resetFilters() {

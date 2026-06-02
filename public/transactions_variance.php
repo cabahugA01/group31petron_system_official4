@@ -262,7 +262,7 @@ include __DIR__ . '/../partials/header.php';
 <div class="page-head" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:18px;">
     <div>
         <h1 class="h1" style="margin:0 0 4px 0;">Variance Alerts</h1>
-        <div class="sub">Anomaly Detection &amp; Resolution — Merchandise &amp; Job Orders Only &nbsp;|&nbsp; Fuel monitoring is handled separately</div>
+        <div class="sub">Variance alerts for merchandise and job orders.</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <a href="?<?= http_build_query(array_merge($_GET, ['export'=>'csv'])); ?>" class="va-hdr-btn" style="background:#28a745;">
@@ -274,45 +274,6 @@ include __DIR__ . '/../partials/header.php';
         <a href="transactions.php" class="va-hdr-btn" style="background:#6c757d;">
             <i class="fas fa-arrow-left"></i> Back
         </a>
-    </div>
-</div>
-
-<!-- ── SUMMARY STAT CARDS ─────────────────────────────────────────────────── -->
-<div class="va-stat-row">
-    <div class="va-stat-card" onclick="applyFilter('status','')" style="cursor:pointer;">
-        <div class="va-stat-icon" style="background:#e8f0fe;color:#002F6C;"><i class="fas fa-list-alt"></i></div>
-        <div class="va-stat-body">
-            <div class="va-stat-num"><?= $counts['total']; ?></div>
-            <div class="va-stat-lbl">Total Active</div>
-        </div>
-    </div>
-    <div class="va-stat-card va-stat-open" onclick="applyFilter('status','open')" style="cursor:pointer;">
-        <div class="va-stat-icon" style="background:#fff3cd;color:#856404;"><i class="fas fa-exclamation-circle"></i></div>
-        <div class="va-stat-body">
-            <div class="va-stat-num"><?= $counts['open']; ?></div>
-            <div class="va-stat-lbl">Open</div>
-        </div>
-    </div>
-    <div class="va-stat-card" onclick="applyFilter('status','investigating')" style="cursor:pointer;">
-        <div class="va-stat-icon" style="background:#cfe2ff;color:#084298;"><i class="fas fa-search"></i></div>
-        <div class="va-stat-body">
-            <div class="va-stat-num"><?= $counts['investigating']; ?></div>
-            <div class="va-stat-lbl">Investigating</div>
-        </div>
-    </div>
-    <div class="va-stat-card" onclick="applyFilter('status','escalated')" style="cursor:pointer;">
-        <div class="va-stat-icon" style="background:#f8d7da;color:#842029;"><i class="fas fa-arrow-up"></i></div>
-        <div class="va-stat-body">
-            <div class="va-stat-num"><?= $counts['escalated']; ?></div>
-            <div class="va-stat-lbl">Escalated</div>
-        </div>
-    </div>
-    <div class="va-stat-card" onclick="applyFilter('status','resolved')" style="cursor:pointer;">
-        <div class="va-stat-icon" style="background:#d1e7dd;color:#0a3622;"><i class="fas fa-check-circle"></i></div>
-        <div class="va-stat-body">
-            <div class="va-stat-num"><?= $counts['resolved']; ?></div>
-            <div class="va-stat-lbl">Resolved</div>
-        </div>
     </div>
 </div>
 
@@ -330,7 +291,7 @@ include __DIR__ . '/../partials/header.php';
             <tbody>
             <?php foreach ($detected_anomalies as $a): ?>
             <tr>
-                <td><span class="va-type-badge" style="background:<?= $a['type']==='Job Order'?'#fd7e14':'#0d6efd'; ?>;"><?= $a['type']==='Job Order'?'JO':'Merch'; ?></span></td>
+                <td><span class="va-type-badge type-<?= strtolower($a['type']==='Job Order'?'jo':'merch'); ?>"><?= $a['type']==='Job Order'?'JO':'MERCH'; ?></span></td>
                 <td style="color:#842029;font-weight:600;"><?= htmlspecialchars($a['subtype']); ?></td>
                 <td style="font-family:monospace;font-size:11px;"><?= htmlspecialchars($a['ref']); ?></td>
                 <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($a['item']); ?>"><?= htmlspecialchars($a['item']); ?></td>
@@ -403,9 +364,8 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 <!-- ── VARIANCE ALERTS TABLE ─────────────────────────────────────────────── -->
-<div class="card" style="padding:0;overflow:hidden;">
-    <div style="overflow-x:auto;">
-        <table class="va-table">
+<div class="po-table-wrap">
+    <table class="po-table">
             <thead>
                 <tr>
                     <th>Alert ID</th><th>Type</th><th>Product / SKU / Service</th>
@@ -437,12 +397,12 @@ include __DIR__ . '/../partials/header.php';
                 $dispItem = $isArch ? substr($v['item_identifier'], 11) : ($v['item_identifier'] ?? '—');
 
                 $statusMeta = [
-                    'open'          => ['bg'=>'#ffc107','color'=>'#212529','label'=>'Open'],
-                    'investigating' => ['bg'=>'#0d6efd','color'=>'#fff',   'label'=>'Investigating'],
-                    'resolved'      => ['bg'=>'#28a745','color'=>'#fff',   'label'=>'Resolved'],
-                    'escalated'     => ['bg'=>'#dc3545','color'=>'#fff',   'label'=>'Escalated'],
+                    'open'          => ['label'=>'Open'],
+                    'investigating' => ['label'=>'Investigating'],
+                    'resolved'      => ['label'=>'Resolved'],
+                    'escalated'     => ['label'=>'Escalated'],
                 ];
-                $sm = $statusMeta[$status] ?? ['bg'=>'#6c757d','color'=>'#fff','label'=>ucfirst($status)];
+                $sm = $statusMeta[$status] ?? ['label'=>ucfirst($status)];
 
                 $jVid     = htmlspecialchars(json_encode($vid),                                              ENT_QUOTES);
                 $jType    = htmlspecialchars(json_encode($txnType),                                          ENT_QUOTES);
@@ -456,48 +416,48 @@ include __DIR__ . '/../partials/header.php';
             ?>
             <tr <?= $isArch ? 'style="opacity:.6;"' : ''; ?>>
                 <td style="font-weight:700;color:#002F6C;">#<?= $vid; ?><?= $isArch ? ' <span style="font-size:9px;background:#6c757d;color:#fff;padding:1px 5px;border-radius:8px;">ARCHIVED</span>' : ''; ?></td>
-                <td><span class="va-type-badge" style="background:<?= strtolower($txnType)==='job order'?'#fd7e14':'#0d6efd'; ?>;"><?= strtolower($txnType)==='job order'?'JO':'Merch'; ?></span></td>
+                <td><span class="va-type-badge type-<?= strtolower($txnType)==='job order'?'jo':'merch'; ?>"><?= strtolower($txnType)==='job order'?'JO':'MERCH'; ?></span></td>
                 <td style="max-width:200px;word-break:break-word;"><?= htmlspecialchars($dispItem); ?></td>
-                <td style="font-weight:700;color:<?= $varAmt>0?'#dc3545':($varAmt<0?'#fd7e14':'#28a745'); ?>;"><?= ($varAmt>0?'+':'').number_format($varAmt,2); ?></td>
+                <td style="font-weight:700;color:<?= $varAmt>0?'#28a745':($varAmt<0?'#dc3545':'#28a745'); ?>;"><?= ($varAmt>0?'+':'').number_format($varAmt,2); ?></td>
                 <td style="font-size:12px;color:#555;"><?= htmlspecialchars($v['staff_name']??'—'); ?></td>
                 <td style="white-space:nowrap;font-size:12px;"><?= date('M d, Y H:i', strtotime($v['created_at'])); ?></td>
-                <td><span class="va-status-badge" style="background:<?= $sm['bg']; ?>;color:<?= $sm['color']; ?>;"><?= $sm['label']; ?></span></td>
+                <td><span class="status-badge badge-<?= $status; ?>"><?= $sm['label']; ?></span></td>
                 <td>
-                    <div class="va-action-col">
+                    <div class="actions-cell">
                         <!-- VIEW — always visible -->
-                        <button type="button" class="va-act-btn va-act-view"
+                        <button type="button" class="btn-action btn-view"
                             onclick="openViewModal(<?= $jVid; ?>,<?= $jType; ?>,<?= $jItem; ?>,<?= $jVar; ?>,<?= $jStaff; ?>,<?= $jStaffId; ?>,<?= $jDate; ?>,<?= $jStatus; ?>,<?= $jNotes; ?>)">
                             <i class="fas fa-eye"></i> View
                         </button>
                         <?php if (!$isArch && $status !== 'resolved'): ?>
                         <!-- INVESTIGATE -->
-                        <button type="button" class="va-act-btn va-act-investigate"
+                        <button type="button" class="btn-action btn-view"
                             onclick="openInvestigateModal(<?= $jVid; ?>,<?= $jNotes; ?>)">
                             <i class="fas fa-search"></i> Investigate
                         </button>
                         <!-- RESOLVE -->
-                        <button type="button" class="va-act-btn va-act-resolve"
+                        <button type="button" class="btn-action btn-approve"
                             onclick="openResolveModal(<?= $jVid; ?>,<?= $jNotes; ?>)">
                             <i class="fas fa-check"></i> Resolve
                         </button>
                         <?php endif; ?>
                         <?php if (!$isArch && $status !== 'escalated' && $status !== 'resolved'): ?>
                         <!-- ESCALATE -->
-                        <button type="button" class="va-act-btn va-act-escalate"
+                        <button type="button" class="btn-action btn-reject"
                             onclick="openEscalateModal(<?= $jVid; ?>,<?= $jNotes; ?>)">
                             <i class="fas fa-arrow-up"></i> Escalate
                         </button>
                         <?php endif; ?>
                         <?php if (!$isArch && $status === 'resolved'): ?>
                         <!-- ARCHIVE -->
-                        <button type="button" class="va-act-btn va-act-archive"
+                        <button type="button" class="btn-action btn-archive"
                             onclick="openArchiveModal(<?= $jVid; ?>)">
                             <i class="fas fa-archive"></i> Archive
                         </button>
                         <?php endif; ?>
                         <?php if (!$isArch && in_array($status, ['resolved','escalated'])): ?>
                         <!-- RE-OPEN -->
-                        <button type="button" class="va-act-btn va-act-reopen"
+                        <button type="button" class="btn-action btn-reopen"
                             onclick="openReopenModal(<?= $jVid; ?>)">
                             <i class="fas fa-undo"></i> Re-open
                         </button>
@@ -509,7 +469,6 @@ include __DIR__ . '/../partials/header.php';
             <?php endif; ?>
             </tbody>
         </table>
-    </div>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════════════
@@ -658,9 +617,9 @@ include __DIR__ . '/../partials/header.php';
 <!-- RE-OPEN MODAL -->
 <div id="reopenModal" class="va-modal" onclick="if(event.target===this)closeModal('reopenModal')">
     <div class="va-modal-box" style="max-width:440px;">
-        <div class="va-modal-head" style="background:linear-gradient(135deg,#856404,#ffc107);">
-            <h3 style="color:#212529;"><i class="fas fa-undo"></i> Re-open Alert</h3>
-            <button class="va-modal-close" style="color:#212529;" onclick="closeModal('reopenModal')">&times;</button>
+        <div class="va-modal-head" style="background:linear-gradient(135deg,#842029,#dc3545);">
+            <h3 style="color:#fff;"><i class="fas fa-undo"></i> Re-open Alert</h3>
+            <button class="va-modal-close" style="color:#fff;" onclick="closeModal('reopenModal')">&times;</button>
         </div>
         <form method="POST" id="reopenForm">
             <div class="va-modal-body">
@@ -670,11 +629,11 @@ include __DIR__ . '/../partials/header.php';
                 <input type="hidden" name="_type"   value="<?= htmlspecialchars($filter_type); ?>">
                 <input type="hidden" name="_date"   value="<?= htmlspecialchars($filter_date); ?>">
                 <input type="hidden" name="_q"      value="<?= htmlspecialchars($search_q); ?>">
-                <p class="va-modal-hint"><i class="fas fa-exclamation-circle" style="color:#856404;"></i>
+                <p class="va-modal-hint"><i class="fas fa-exclamation-circle" style="color:#dc3545;"></i>
                     This will set the alert status back to <strong>Open</strong> for further investigation.</p>
             </div>
             <div class="va-modal-foot">
-                <button type="submit" class="va-btn" style="background:#ffc107;color:#212529;"><i class="fas fa-undo"></i> Confirm Re-open</button>
+                <button type="submit" class="va-btn va-btn-danger"><i class="fas fa-undo"></i> Confirm Re-open</button>
                 <button type="button" class="va-btn va-btn-secondary" onclick="closeModal('reopenModal')">Cancel</button>
             </div>
         </form>
@@ -744,18 +703,18 @@ function openModal(id) {
 
 // ── View ──────────────────────────────────────────────────────────────────────
 function openViewModal(id, type, item, variance, staff, staffId, date, status, notes) {
-    var sc = {open:'#ffc107',investigating:'#0d6efd',resolved:'#28a745',escalated:'#dc3545'}[status]||'#6c757d';
-    var sf = {open:'#212529',investigating:'#fff',resolved:'#fff',escalated:'#fff'}[status]||'#fff';
-    var typeBg = (type==='Job Order'||type==='job order') ? '#fd7e14' : '#0d6efd';
-    var typeLabel = (type==='Job Order'||type==='job order') ? 'Job Order' : 'Merchandise';
+    var sc = {open:'#002F70',investigating:'#002F70',resolved:'#28a745',escalated:'#dc3545'}[status]||'#6c757d';
+    var typeColor = (type==='Job Order'||type==='job order') ? '#28a745' : '#002F70';
+    var typeLabel = (type==='Job Order'||type==='job order') ? 'JO' : 'MERCH';
+    var varColor  = parseFloat(variance) >= 0 ? '#28a745' : '#dc3545';
     document.getElementById('vm_grid').innerHTML =
         di('Alert ID',         '<strong style="color:#002F6C;">#'+esc(id)+'</strong>') +
-        di('Transaction Type', '<span style="background:'+typeBg+';color:#fff;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;">'+esc(typeLabel)+'</span>') +
+        di('Transaction Type', '<span style="color:'+typeColor+';font-weight:700;font-size:12px;">'+esc(typeLabel)+'</span>') +
         '<div class="va-detail-item" style="grid-column:1/-1;">'+dl('Product / SKU / Service')+'<span class="va-detail-val">'+esc(item)+'</span></div>' +
-        di('Variance Amount',  '<strong style="color:#dc3545;">'+esc(variance)+'</strong>') +
+        di('Variance Amount',  '<strong style="color:'+varColor+';">'+esc(variance)+'</strong>') +
         di('Staff',            esc(staff)+(staffId&&staffId!=='—'?' <span style="font-size:10px;color:#888;">(ID: '+esc(String(staffId))+')</span>':'')) +
         di('Date Flagged',     esc(date)) +
-        di('Status',           '<span style="background:'+sc+';color:'+sf+';padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;">'+esc(status.charAt(0).toUpperCase()+status.slice(1))+'</span>') +
+        di('Status',           '<span style="color:'+sc+';font-weight:700;font-size:12px;text-transform:uppercase;">'+esc(status.charAt(0).toUpperCase()+status.slice(1))+'</span>') +
         '<div class="va-detail-item" style="grid-column:1/-1;">'+dl('Investigation Notes')+'<span class="va-detail-val" style="white-space:pre-wrap;min-height:32px;">'+esc(notes||'(no notes yet)')+'</span></div>';
     openModal('viewModal');
 }
@@ -806,9 +765,10 @@ function openFlagModal(a) {
     document.getElementById('flag_variance').value = a.variance;
     document.getElementById('flag_staff_id').value = a.staff_id || '';
     document.getElementById('flag_notes').value    = '';
-    var typeBg = (a.type==='Job Order') ? '#fd7e14' : '#0d6efd';
+    var typeColor = (a.type==='Job Order') ? '#28a745' : '#002F70';
+    var typeLabel = (a.type==='Job Order') ? 'JO' : 'MERCH';
     document.getElementById('flag_detail_grid').innerHTML =
-        di('Type',    '<span style="background:'+typeBg+';color:#fff;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700;">'+esc(a.type)+'</span>') +
+        di('Type',    '<span style="color:'+typeColor+';font-weight:700;font-size:12px;">'+esc(typeLabel)+'</span>') +
         di('Anomaly', '<strong style="color:#842029;">'+esc(a.subtype)+'</strong>') +
         '<div class="va-detail-item" style="grid-column:1/-1;">'+dl('Reference / Item')+'<span class="va-detail-val">'+esc(a.ref+' — '+a.item)+'</span></div>' +
         di('Variance','<strong style="color:#dc3545;">'+parseFloat(a.variance||0).toFixed(2)+'</strong>') +
@@ -865,12 +825,12 @@ document.addEventListener('DOMContentLoaded', function() {
 .va-hdr-btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:7px; font-size:13px; font-weight:600; color:#fff; text-decoration:none; transition:filter .15s; }
 .va-hdr-btn:hover { filter:brightness(.88); }
 
-/* ── Stat cards ── */
+/* ── Stat cards — white background, no colored icon circles ── */
 .va-stat-row { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
 .va-stat-card { display:flex; align-items:center; gap:12px; background:#fff; border:1px solid #e9ecef; border-radius:10px; padding:14px 18px; flex:1; min-width:130px; transition:box-shadow .15s, transform .15s; }
 .va-stat-card:hover { box-shadow:0 4px 14px rgba(0,0,0,.1); transform:translateY(-2px); }
-.va-stat-icon { width:40px; height:40px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
-.va-stat-num  { font-size:22px; font-weight:800; color:#002F6C; line-height:1; }
+.va-stat-icon { width:40px; height:40px; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; color:#002F70; }
+.va-stat-num  { font-size:22px; font-weight:800; color:#002F70; line-height:1; }
 .va-stat-lbl  { font-size:11px; font-weight:700; color:#6c757d; text-transform:uppercase; letter-spacing:.4px; margin-top:2px; }
 
 /* ── Anomaly banner ── */
@@ -883,7 +843,7 @@ document.addEventListener('DOMContentLoaded', function() {
 .va-select { padding:8px 12px; border:1px solid #ced4da; border-radius:6px; font-size:13px; background:#fff; min-width:140px; transition:border-color .2s; }
 .va-select:focus { outline:none; border-color:#002F70; box-shadow:0 0 0 2px rgba(0,47,112,.15); }
 
-/* ── Buttons ── */
+/* ── Generic modal buttons ── */
 .va-btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border:none; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; text-decoration:none; transition:filter .15s; white-space:nowrap; }
 .va-btn:hover { filter:brightness(.88); }
 .va-btn-primary   { background:#002F70; color:#fff; }
@@ -891,32 +851,56 @@ document.addEventListener('DOMContentLoaded', function() {
 .va-btn-success   { background:#28a745; color:#fff; }
 .va-btn-danger    { background:#dc3545; color:#fff; }
 
-/* ── Table ── */
+/* ── Main table — purchase-order style ── */
+.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow-x:auto; }
+.po-table { width:100%; border-collapse:collapse; font-size:0.88rem; }
+.po-table thead th { background:#002F70; color:#fff; padding:12px 14px; text-align:left; font-weight:600; white-space:nowrap; }
+.po-table tbody tr { border-bottom:1px solid #f0f0f0; transition:background 0.15s; }
+.po-table tbody tr:hover { background:#f5f8ff; }
+.po-table tbody td { padding:11px 14px; vertical-align:middle; color:#333; }
+
+/* keep va-table for the anomaly banner inner table */
 .va-table { width:100%; border-collapse:collapse; font-size:13px; }
 .va-table th { background:#f8f9fa; color:#2c3e50; font-weight:700; padding:10px 14px; text-align:left; border-bottom:2px solid #dee2e6; white-space:nowrap; }
 .va-table td { padding:10px 14px; border-bottom:1px solid #f0f2f5; vertical-align:middle; }
 .va-table tbody tr:hover { background:#f8f9fa; }
-.va-type-badge   { display:inline-block; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700; color:#fff; text-transform:uppercase; }
-.va-status-badge { display:inline-block; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:700; white-space:nowrap; }
+
+/* ── Status badges — plain text, no background ── */
+.status-badge { display:inline-block; font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; }
+.badge-open          { color:#002F70; }
+.badge-resolved      { color:#28a745; }
+.badge-closed        { color:#6c757d; }
+.badge-escalated     { color:#dc3545; }
+.badge-investigating { color:#002F70; }
+.badge-other         { color:#6c757d; }
+
+/* ── Type badges — plain text, no background ── */
+.va-type-badge { display:inline-block; font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; }
+.type-merch { color:#002F70; }
+.type-jo    { color:#28a745; }
+
+/* ── Action buttons — colored ── */
+.btn-action { display:inline-flex; align-items:center; gap:5px; padding:6px 14px; border:none; border-radius:6px; cursor:pointer; font-size:0.82rem; font-weight:600; text-decoration:none; transition:opacity 0.2s; white-space:nowrap; margin-bottom:3px; }
+.btn-action:hover { opacity:0.85; }
+.btn-view    { background:#6c757d; color:#fff; }
+.btn-archive { background:#002F70; color:#fff; }
+.btn-reopen  { background:#dc3545; color:#fff; }
+.btn-approve { background:#28a745; color:#fff; }
+.btn-reject  { background:#dc3545; color:#fff; }
+.actions-cell { display:flex; flex-direction:column; gap:4px; min-width:110px; }
+.actions-cell .btn-action { width:100%; justify-content:center; margin-bottom:0; }
+
+/* ── Anomaly banner flag button ── */
+.va-act-btn { display:inline-flex; align-items:center; justify-content:center; gap:5px; padding:5px 10px; border:none; border-radius:5px; font-size:11px; font-weight:700; cursor:pointer; color:#fff; transition:opacity .15s, transform .1s; }
+.va-act-btn:hover  { opacity:.85; transform:translateY(-1px); }
+.va-act-btn:active { transform:translateY(0); }
+.va-act-flag { background:#dc3545; }
 
 /* ── Empty state ── */
 .va-empty-state { text-align:center; padding:48px 20px; }
 .va-empty-icon  { font-size:48px; color:#28a745; margin-bottom:12px; opacity:.7; }
 .va-empty-title { font-size:16px; font-weight:700; color:#002F6C; margin-bottom:6px; }
 .va-empty-sub   { font-size:13px; color:#6c757d; max-width:400px; margin:0 auto; }
-
-/* ── Action column ── */
-.va-action-col { display:flex; flex-direction:column; gap:4px; min-width:110px; }
-.va-act-btn { display:inline-flex; align-items:center; justify-content:center; gap:5px; padding:5px 10px; border:none; border-radius:5px; font-size:11px; font-weight:700; cursor:pointer; color:#fff; width:100%; transition:opacity .15s, transform .1s; }
-.va-act-btn:hover  { opacity:.85; transform:translateY(-1px); }
-.va-act-btn:active { transform:translateY(0); }
-.va-act-view        { background:#002F6C; }
-.va-act-investigate { background:#0d6efd; }
-.va-act-resolve     { background:#28a745; }
-.va-act-escalate    { background:#dc3545; }
-.va-act-archive     { background:#495057; }
-.va-act-reopen      { background:#856404; }
-.va-act-flag        { background:#842029; }
 
 /* ── Modals ── */
 .va-modal { display:none; position:fixed; inset:0; z-index:99999; background:rgba(0,0,0,.55); align-items:center; justify-content:center; }

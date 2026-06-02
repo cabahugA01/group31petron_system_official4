@@ -152,7 +152,7 @@ include __DIR__ . '/../partials/header.php';
 .pr-card    { flex:1; min-width:110px; background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px 18px; text-align:center; box-shadow:0 1px 4px rgba(0,0,0,.05); }
 .pr-card-num { font-size:26px; font-weight:800; color:#002F6C; }
 .pr-card-lbl { font-size:11px; color:#888; text-transform:uppercase; letter-spacing:.5px; margin-top:2px; }
-.pr-card-pending  .pr-card-num { color:#fd7e14; }
+.pr-card-pending  .pr-card-num { color:#002F70; }
 .pr-card-forwarded .pr-card-num { color:#6f42c1; }
 .pr-card-rejected .pr-card-num { color:#721c24; }
 .pr-table-wrap { overflow-x:auto; }
@@ -161,7 +161,7 @@ include __DIR__ . '/../partials/header.php';
 .pr-table tbody td { padding:8px 10px; border-bottom:1px solid #f0f0f0; vertical-align:middle; }
 .pr-table tbody tr:hover td { background:#f8fbff; }
 .pr-sbadge { display:inline-block; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:600; white-space:nowrap; }
-.pr-sbadge-pending  { background:#fff3cd; color:#856404; }
+.pr-sbadge-pending  { background:#002F70; color:#fff; }
 .pr-sbadge-approved { background:#d1ecf1; color:#0c5460; }
 .pr-sbadge-forwarded-to-admin { background:#e6e6fa; color:#5f5f9c; border:1px solid #d8d8ff; }
 .pr-sbadge-rejected { background:#f8d7da; color:#721c24; }
@@ -317,7 +317,7 @@ include __DIR__ . '/../partials/header.php';
                     <?php foreach ($fuel_requests as $req):
                         $st  = $req['status'] ?? 'Pending';
                         $cls = 'pr-sbadge pr-sbadge-' . strtolower($st);
-                        $stockClr = in_array($req['stock_status'] ?? '', ['OUT OF STOCK','CRITICAL']) ? '#dc3545' : '#fd7e14';
+                        $stockClr = in_array($req['stock_status'] ?? '', ['OUT OF STOCK','CRITICAL']) ? '#dc3545' : '#dc3545';
                     ?>
                     <tr>
                         <td style="font-family:monospace;font-size:11px;color:#888;">#<?php echo $req['id']; ?></td>
@@ -571,7 +571,7 @@ function renderMerchPending(rows) {
     }
     tbody.innerHTML = rows.map(function(r) {
         var stockStatus = r.current_stock <= 0 ? 'OUT OF STOCK' : 'LOW STOCK';
-        var stockClr = r.current_stock <= 0 ? '#dc3545' : '#fd7e14';
+        var stockClr = r.current_stock <= 0 ? '#dc3545' : '#dc3545';
         return '<tr>' +
             '<td style="color:#6c757d;font-size:12px;">#' + r.id + '</td>' +
             '<td style="font-size:12px;">' + fmtDate(r.created_at) + '</td>' +

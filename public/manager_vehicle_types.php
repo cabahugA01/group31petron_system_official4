@@ -94,15 +94,18 @@ include __DIR__ . '/../partials/header.php';
 <style>
 .vt-card { background:#fff; border-radius:10px; border:1px solid #e2e8f0; overflow:hidden; margin-bottom:24px; }
 .vt-card-header { padding:14px 20px; border-bottom:1px solid #f1f5f9; display:flex; align-items:center; gap:10px; }
-.vt-table { width:100%; border-collapse:collapse; font-size:13px; }
-.vt-table th { padding:10px 14px; text-align:left; font-size:11px; font-weight:700; color:#64748b;
-               text-transform:uppercase; letter-spacing:.4px; border-bottom:2px solid #e2e8f0; background:#f8fafc; }
-.vt-table td { padding:11px 14px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
-.vt-table tr:last-child td { border-bottom:none; }
-.vt-table tr:hover td { background:#f8fafc; }
-.badge-pending  { background:#fffbeb; color:#92400e; border:1px solid #fde68a; padding:3px 10px; border-radius:20px; font-size:10px; font-weight:700; }
-.badge-approved { background:#f0fdf4; color:#166534; border:1px solid #86efac; padding:3px 10px; border-radius:20px; font-size:10px; font-weight:700; }
-.badge-rejected { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; padding:3px 10px; border-radius:20px; font-size:10px; font-weight:700; }
+.vt-table { width:100%; border-collapse:collapse; font-size:13px; background:#fff; }
+.vt-table th { padding:14px 14px !important; text-align:left; font-size:11px; font-weight:600; color:#fff !important;
+               text-transform:uppercase; letter-spacing:.3px; border:none !important; background:#002F70 !important; white-space:nowrap; }
+.vt-table th:last-child { text-align:center !important; }
+.vt-table td { padding:12px 14px !important; border-bottom:1px solid #e9ecef !important; vertical-align:middle; color:#212529; }
+.vt-table td:last-child { text-align:center !important; border-bottom:1px solid #e9ecef !important; }
+.vt-table tr:last-child td { border-bottom:1px solid #e9ecef !important; }
+.vt-table tbody tr:hover td { background:#e3f2fd !important; }
+.vt-table tbody tr { transition:background 0.2s ease; }
+.badge-pending  { color:#4338ca !important; background:transparent !important; border:none !important; padding:0 !important; font-size:11px; font-weight:600; }
+.badge-approved { color:#0d7d3e !important; background:transparent !important; border:none !important; padding:0 !important; font-size:11px; font-weight:600; }
+.badge-rejected { color:#c62828 !important; background:transparent !important; border:none !important; padding:0 !important; font-size:11px; font-weight:600; }
 .filter-tab { padding:9px 18px; border:none; background:#f8fafc; border-bottom:2px solid transparent;
               font-size:13px; font-weight:500; color:#64748b; cursor:pointer; transition:all .15s; }
 .filter-tab.active { background:#fff; font-weight:700; color:#003d7a; border-bottom-color:#003d7a; }
@@ -128,7 +131,7 @@ include __DIR__ . '/../partials/header.php';
             <p style="font-size:12px;color:#64748b;margin:3px 0 0;">Review and validate vehicle types submitted by staff</p>
         </div>
         <?php if ($pending_count > 0): ?>
-        <span style="background:#f59e0b;color:#fff;font-size:11px;font-weight:800;
+        <span style="background:#002F70;color:#fff;font-size:11px;font-weight:800;
                      padding:3px 10px;border-radius:20px;margin-left:4px;">
             <?= $pending_count ?> pending
         </span>
@@ -156,7 +159,7 @@ include __DIR__ . '/../partials/header.php';
            style="text-decoration:none;">
             <?= $label ?>
             <?php if ($k === 'pending' && $pending_count > 0): ?>
-            <span style="background:#f59e0b;color:#fff;font-size:9px;font-weight:800;
+            <span style="background:#002F70;color:#fff;font-size:9px;font-weight:800;
                          padding:1px 6px;border-radius:20px;margin-left:4px;"><?= $pending_count ?></span>
             <?php endif; ?>
         </a>

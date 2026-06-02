@@ -483,23 +483,23 @@ Fuel Products
                                     <td><?php echo $product['id'] ? '#' . $product['id'] : 'N/A'; ?></td>
                                     <td><?php echo htmlspecialchars($product['product_name']); ?></td>
                                     <td>
-                                        <span class="badge" style="background: #f8f9fa; color: #333; border: 1px solid #dee2e6;">
+                                        <span class="badge">
                                             <?php echo htmlspecialchars($product['category']); ?>
                                         </span>
                                     </td>
                                     <td><?php echo number_format($product['unit_cost'], 2); ?></td>
                                     <td>
-                                        <?php 
+                                        <span style="<?php 
                                         // Use appropriate stock level thresholds for fuel (in liters)
                                         $stockLevel = $product['quantity'];
                                         $stockColor = '#28a745'; // Green for normal
                                         if ($stockLevel <= 500) {
                                             $stockColor = '#dc3545'; // Red for critical
                                         } elseif ($stockLevel <= 2000) {
-                                            $stockColor = '#ff9500'; // Orange for low
+                                            $stockColor = '#fd7e14'; // Orange for low
                                         }
-                                        ?>
-                                        <span class="badge" style="background: <?php echo $stockColor; ?>; color: white;">
+                                        echo 'color:' . $stockColor . ';font-weight:700;';
+                                        ?>">
                                             <?php echo number_format($stockLevel, 2); ?> L
                                         </span>
                                     </td>
@@ -510,12 +510,12 @@ Fuel Products
                                             $isActive = strtolower($product['status']) === 'active' || strtolower($displayStatus) === 'normal';
                                             $statusColor = $isActive ? '#28a745' : '#dc3545';
                                             if (stripos($displayStatus, 'low') !== false) {
-                                                $statusColor = '#ff9500';
+                                                $statusColor = '#fd7e14';
                                             } elseif (stripos($displayStatus, 'critical') !== false) {
                                                 $statusColor = '#dc3545';
                                             }
                                         ?>
-                                        <span class="badge" style="background: <?php echo $statusColor; ?>; color: white;">
+                                        <span class="badge" style="color:<?php echo $statusColor; ?>;font-weight:700;">
                                             <?php echo htmlspecialchars($displayStatus); ?>
                                         </span>
                                     </td>
@@ -542,14 +542,14 @@ Fuel Products
                                                     </button>
                                                 </div>
                                             <?php else: ?>
-                                                <span class="badge" style="background:#6c757d; color:white;">Missing Data</span>
+                                                <span class="badge" style="color:#6c757d;font-weight:700;">Missing Data</span>
                                             <?php endif; ?>
                                         <?php else: ?>
                                             <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
-                                                <button class="btn btn-sm btn-info" style="width:100%;" onclick="viewProduct(<?php echo $product['id']; ?>)">
+                                                <button class="btn btn-sm" style="width:100%;background:#28a745;color:white;border:none;" onclick="viewProduct(<?php echo $product['id']; ?>)">
                                                     <i class="fas fa-eye"></i> View
                                                 </button>
-                                                <button class="btn btn-sm btn-warning" style="width:100%;" onclick="editProduct(<?php echo $product['id']; ?>)">
+                                                <button class="btn btn-sm" style="width:100%;background:#002F70;color:white;border:none;" onclick="editProduct(<?php echo $product['id']; ?>)">
                                                     <i class="fas fa-edit"></i> Edit
                                                 </button>
                                                 <button class="btn btn-sm <?php echo $product['status'] == 'active' ? 'btn-danger' : 'btn-success'; ?>" style="width:100%;"
@@ -605,19 +605,19 @@ Fuel Products
                                     <td>#<?php echo $product['id']; ?></td>
                                     <td><?php echo htmlspecialchars($product['product_name']); ?></td>
                                     <td>
-                                        <span class="badge" style="background: #f8f9fa; color: #333; border: 1px solid #dee2e6;">
+                                        <span class="badge">
                                             <?php echo htmlspecialchars($product['category']); ?>
                                         </span>
                                     </td>
-                                    <td style="color:#6c757d;"><?php echo number_format($cost, 2); ?></td>
+                                    <td style="color:#6c757d;">₱<?php echo number_format($cost, 2); ?></td>
                                     <td style="color:#28a745;font-weight:700;">
-                                        <?php echo number_format($price, 2); ?>
+                                        ₱<?php echo number_format($price, 2); ?>
                                         <?php if ($profit > 0): ?>
-                                            <span style="font-size:11px;color:#002F70;">(+<?php echo number_format($profit,2); ?>)</span>
+                                            <span style="font-size:11px;color:#002F70;">(+₱<?php echo number_format($profit,2); ?>)</span>
                                         <?php endif; ?>
                                     </td>
                                     <td>
-                                        <span class="badge" style="background:<?php echo $qcolor; ?>;color:white;">
+                                        <span style="color:<?php echo $qcolor; ?>;font-weight:700;">
                                             <?php echo $qty; ?>
                                         </span>
                                         <?php if (!($product['in_station'] ?? 0)): ?>
@@ -626,7 +626,7 @@ Fuel Products
                                     </td>
                                     <td><?php echo htmlspecialchars($product['supplier'] ?? 'Petron Corporation'); ?></td>
                                     <td>
-                                        <span class="badge" style="background:<?php echo $product['status'] == 'active' ? '#28a745' : '#dc3545'; ?>;color:white;">
+                                        <span class="badge" style="color:<?php echo $product['status'] == 'active' ? '#28a745' : '#dc3545'; ?>;font-weight:700;">
                                             <?php echo $product['status'] == 'active' ? 'Active' : 'Inactive'; ?>
                                         </span>
                                     </td>
@@ -968,47 +968,119 @@ Fuel Products
 </form>
 
 <style>
-.product-stats-grid{display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:20px;margin:24px 0}
-.stat-card{background:#fff;border-radius:12px;padding:20px;display:flex;align-items:center;gap:16px;box-shadow:0 2px 8px rgba(0,0,0,.08);border:1px solid #e9ecef}
-.stat-icon{width:56px;height:56px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;color:#fff}
-.bg-primary{background:#6c757d}.bg-success{background:#28a745}.bg-info{background:#002F70}.bg-warning{background:#ff9500}.bg-danger{background:#dc3545}.bg-secondary{background:#6c757d}
-.stat-content{flex:1}
-.stat-value{font-size:28px;font-weight:700;color:#1a1a1a;line-height:1}
-.stat-label{font-size:14px;color:#666;margin-top:4px}
-.category-section{margin-bottom:30px}
-.category-header{display:flex;align-items:center;gap:12px;margin:0 0 16px 0;padding:12px 16px;background:#f8f9fa;border-radius:8px;border-left:4px solid #6c757d;font-size:16px;font-weight:600;color:#333}
-.category-header i{color:#6c757d}
-.category-count{margin-left:auto;background:#6c757d;color:white;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:500}
-.category-table{margin-bottom:0}
-.category-table th{background:#f1f3f4;font-weight:600;color:#333;border-bottom:2px solid #dee2e6}
-.tab-navigation{display:flex;gap:8px;margin-right:20px}
-.tab-btn{display:flex;align-items:center;gap:8px;padding:8px 16px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:6px;font-size:14px;font-weight:500;color:#333;cursor:pointer;transition:all 0.2s}
-.tab-btn:hover{background:#e9ecef;border-color:#adb5bd}
-.tab-btn.active{background:#6c757d;color:white;border-color:#6c757d}
-.tab-btn i{font-size:14px}
-.tab-count{background:rgba(255,255,255,0.2);color:inherit;padding:2px 6px;border-radius:10px;font-size:12px;font-weight:600}
-.tab-btn.active .tab-count{background:rgba(255,255,255,0.3)}
-.tab-content{display:none}
-.tab-content.active{display:block}
-.modal{display:none;position:fixed;z-index:9999;left:0;top:0;width:100%;height:100%;background-color:rgba(0,0,0,0.5);align-items:center;justify-content:center}
-.modal.open{display:flex}
-.modal-content{background-color:#fff;margin:0;padding:0;border-radius:12px;width:90%;max-width:520px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.25)}
-.modal-header{display:flex;justify-content:space-between;align-items:center;padding:20px 24px;border-bottom:1px solid #e9ecef}
-.modal-header h3{margin:0;font-size:18px;font-weight:600;color:#333}
-.close{color:#aaa;font-size:28px;font-weight:bold;cursor:pointer;background:none;border:none}
-.close:hover{color:#000}
-.modal-body{padding:24px}
-.form-group{margin-bottom:20px}
-.form-group label{display:block;margin-bottom:8px;font-weight:500;color:#333}
-.form-control{width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px}
-.form-control:focus{outline:none;border-color:#6c757d;box-shadow:0 0 0 2px rgba(108,117,125,0.2)}
-.modal-footer{display:flex;justify-content:flex-end;gap:12px;padding:20px 24px;border-top:1px solid #e9ecef}
-.product-detail-grid{display:grid;grid-template-columns:1fr;gap:16px}
-.detail-item{display:flex;flex-direction:column}
-.detail-item label{font-weight:600;color:#666;margin-bottom:4px}
-.detail-value{padding:8px 12px;background:#f8f9fa;border-radius:6px;font-size:14px}
-.badge{padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600}
-@media (max-width:768px){.product-stats-grid{grid-template-columns:1fr;gap:15px}.modal-content{width:95%;margin:10% auto}}
+/* === Clean Product Management Design === */
+body{overflow-x:hidden !important;max-width:100vw !important;}
+
+/* Table styles */
+.table-wrap{overflow-x:auto;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.08);border:1px solid #e9ecef;overflow:hidden;}
+.table{width:100%;border-collapse:collapse;font-size:0.875rem;}
+.table th{background:#002F70 !important;color:#fff !important;padding:14px 16px;text-align:left;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;border:none !important;}
+.table td{padding:12px 16px;border-bottom:1px solid #e9ecef;vertical-align:middle;color:#212529;}
+.table tbody tr:hover td{background:#e3f2fd;}
+.table tbody tr:last-child td{border-bottom:none;}
+
+/* Plain text badges - NO backgrounds */
+.badge{color:#6c757d !important;font-weight:700 !important;font-size:0.813rem !important;background:none !important;padding:0 !important;border:none !important;}
+
+/* Tab Navigation */
+.tab-navigation{display:flex;gap:8px;margin-right:20px;}
+.tab-btn{display:flex;align-items:center;gap:8px;padding:10px 18px;background:transparent;border:none;border-bottom:3px solid transparent;font-size:14px;font-weight:600;color:#6c757d;cursor:pointer;transition:all 0.2s;margin-bottom:-2px;}
+.tab-btn:hover{color:#002F70;background:rgba(0,47,108,0.05);}
+.tab-btn.active{color:#002F70;border-bottom-color:#002F70;background:rgba(0,47,108,0.05);}
+.tab-btn i{font-size:14px;}
+.tab-count{background:rgba(0,47,108,0.1);color:#002F70;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;}
+.tab-btn.active .tab-count{background:rgba(0,47,108,0.15);}
+.tab-content{display:none;}
+.tab-content.active{display:block;}
+
+/* Buttons */
+.btn{padding:8px 16px;border:none;border-radius:6px;font-size:0.813rem;font-weight:600;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:6px;text-decoration:none;}
+.btn-sm{padding:6px 12px;font-size:0.75rem;min-width:85px;justify-content:center;}
+.btn.primary{background:#002F70;color:#fff;}.btn.primary:hover{background:#001a4d;}
+.btn.ghost{background:#f8f9fa;color:#495057;border:1px solid #dee2e6;}.btn.ghost:hover{background:#e9ecef;}
+.btn-success{background:#28a745;color:#fff;}.btn-success:hover{background:#218838;}
+.btn-danger{background:#dc3545;color:#fff;}.btn-danger:hover{background:#c82333;}
+.btn-warning{background:#002F70;color:#fff;}.btn-warning:hover{background:#001a4d;}
+.btn-info{background:#002F70;color:#fff;}.btn-info:hover{background:#001a4d;}
+
+/* Modal */
+.modal{display:none;position:fixed;z-index:9999;left:0;top:0;width:100%;height:100%;background-color:rgba(0,0,0,0.5);align-items:center;justify-content:center;}
+.modal.open{display:flex;}
+.modal-content{background-color:#fff;margin:0;padding:0;border-radius:12px;width:90%;max-width:520px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.25);}
+.modal-header{display:flex;justify-content:space-between;align-items:center;padding:20px 24px;border-bottom:1px solid #e9ecef;}
+.modal-header h3{margin:0;font-size:18px;font-weight:600;color:#002F70;}
+.close{color:#aaa;font-size:28px;font-weight:bold;cursor:pointer;background:none;border:none;}
+.close:hover{color:#000;}
+.modal-body{padding:24px;}
+.form-group{margin-bottom:20px;}
+.form-group label{display:block;margin-bottom:8px;font-weight:600;color:#495057;font-size:0.813rem;text-transform:uppercase;letter-spacing:0.3px;}
+.form-control{width:100%;padding:10px 12px;border:1px solid #dee2e6;border-radius:6px;font-size:14px;box-sizing:border-box;}
+.form-control:focus{outline:none;border-color:#002F70;box-shadow:0 0 0 3px rgba(0,47,108,0.1);}
+.modal-footer{display:flex;justify-content:flex-end;gap:12px;padding:20px 24px;border-top:1px solid #e9ecef;}
+.product-detail-grid{display:grid;grid-template-columns:1fr;gap:16px;}
+.detail-item{display:flex;flex-direction:column;}
+.detail-item label{font-weight:600;color:#6c757d;margin-bottom:4px;font-size:0.75rem;text-transform:uppercase;}
+.detail-value{padding:8px 12px;background:#f8f9fa;border-radius:6px;font-size:14px;color:#212529;}
+
+@media (max-width:768px){.modal-content{width:95%;margin:10% auto;}}
+</style>
+
+<style>
+/* === Product Management - Clean Table Design v2.0 === */
+/* Last Updated: <?php echo date('Y-m-d H:i:s'); ?> */
+
+body .card{background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.08);border:1px solid #e9ecef;margin-bottom:20px;overflow:hidden;}
+body .card-header{padding:16px 20px;border-bottom:1px solid #e9ecef;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+body .card-header h3{font-size:16px;font-weight:700;color:#002F70;margin:0;display:flex;align-items:center;gap:8px;}
+body .card-body{padding:20px;overflow-x:hidden;}
+body .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+body .table{width:100%;border-collapse:collapse;font-size:0.875rem;background:#fff;}
+body .table thead th{background:#002F70 !important;color:#fff !important;padding:14px 16px !important;text-align:left !important;font-weight:600 !important;text-transform:uppercase !important;letter-spacing:0.3px !important;border:none !important;}
+body .table tbody td{padding:12px 16px !important;border-bottom:1px solid #e9ecef !important;vertical-align:middle !important;color:#212529 !important;background:#fff !important;}
+body .table tbody tr:hover td{background:#e3f2fd !important;}
+body .table tbody tr{transition:background 0.2s ease;}
+body .badge{display:inline-block !important;padding:0 !important;margin:0 !important;background:transparent !important;border:none !important;font-size:12px !important;font-weight:600 !important;}
+body .header-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+body .tab-navigation{display:flex;gap:8px;}
+body .tab-btn{padding:8px 16px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;color:#495057;transition:all 0.2s;}
+body .tab-btn:hover{background:#e9ecef;}
+body .tab-btn.active{background:#002F70 !important;color:#fff !important;border-color:#002F70 !important;}
+body .tab-count{display:inline-block;margin-left:6px;padding:2px 6px;background:rgba(255,255,255,0.2);border-radius:10px;font-size:11px;}
+
+/* Modal Styling */
+.modal{display:none;position:fixed;z-index:10000;left:0;top:0;width:100%;height:100%;overflow:auto;background-color:rgba(0,0,0,0.5);}
+.modal.open{display:flex !important;align-items:center;justify-content:center;}
+.modal-content{background-color:#fff;margin:auto;padding:0;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.15);width:90%;max-width:600px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;}
+.modal-header{padding:20px;border-bottom:1px solid #e9ecef;display:flex;justify-content:space-between;align-items:center;}
+.modal-header h3{margin:0;font-size:18px;font-weight:700;color:#002F70;}
+.modal-body{padding:20px;overflow-y:auto;flex:1;}
+.modal-footer{padding:16px 20px;border-top:1px solid #e9ecef;display:flex;justify-content:flex-end;gap:10px;}
+.close{color:#aaa;font-size:28px;font-weight:bold;cursor:pointer;border:none;background:none;padding:0;line-height:1;}
+.close:hover,.close:focus{color:#000;}
+
+/* Form Styling */
+.form-group{margin-bottom:16px;}
+.form-group label{display:block;margin-bottom:6px;font-weight:600;font-size:13px;color:#495057;}
+.form-control{width:100%;padding:10px 12px;border:1px solid #ced4da;border-radius:6px;font-size:14px;box-sizing:border-box;}
+.form-control:focus{outline:none;border-color:#002F70;box-shadow:0 0 0 3px rgba(0,47,112,0.1);}
+
+/* Product Detail Grid */
+.product-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.detail-item{display:flex;flex-direction:column;gap:4px;}
+.detail-item label{font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;letter-spacing:0.5px;}
+.detail-value{font-size:14px;color:#212529;font-weight:600;}
+
+/* Button Styling */
+.btn{padding:10px 16px;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;display:inline-flex;align-items:center;gap:6px;border:none;text-decoration:none;}
+.btn.primary{background:#002F70;color:#fff;}
+.btn.primary:hover{background:#001f4d;}
+.btn.ghost{background:#f8f9fa;color:#495057;border:1px solid #dee2e6;}
+.btn.ghost:hover{background:#e9ecef;}
+.btn-sm{padding:6px 10px !important;font-size:12px !important;}
+.btn-success{background:#28a745 !important;color:#fff !important;}
+.btn-success:hover{background:#218838 !important;}
+.btn-danger{background:#dc3545 !important;color:#fff !important;}
+.btn-danger:hover{background:#c82333 !important;}
 </style>
 
 <script>

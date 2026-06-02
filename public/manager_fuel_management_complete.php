@@ -1310,7 +1310,9 @@ function adjustColor($hex,$pct) {
 ?>
 <style>
 /* -- MANAGER FUEL MANAGEMENT ENHANCED STYLES -- */
-.mfm-wrap { max-width:1400px; margin:0 auto; padding:10px; }
+body { overflow-x: hidden !important; max-width: 100vw !important; }
+.mfm-wrap { max-width:1400px; margin:0 auto; padding:10px; overflow-x:hidden; }
+.content-area, .main-content { overflow-x:hidden !important; max-width:100% !important; }
 
 /* Notification Banner */
 .mfm-alert { display:flex; align-items:center; gap:12px; padding:14px 20px; border-radius:10px; margin-bottom:16px; font-weight:600; font-size:.9rem; animation:slideDown .3s ease; }
@@ -1320,8 +1322,8 @@ function adjustColor($hex,$pct) {
 .mfm-alert .close-alert:hover { opacity:1; }
 @keyframes slideDown { from{opacity:0;transform:translateY(-10px)} to{opacity:1;transform:translateY(0)} }
 
-.fuel-section { background:#fff; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.06); border:1px solid #e9ecef; margin-bottom:20px; scroll-margin-top:20px; transition:opacity 0.3s ease, transform 0.3s ease; display:none; }
-.fuel-section-inner { padding:20px; }
+.fuel-section { background:#fff; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.06); border:1px solid #e9ecef; margin-bottom:20px; scroll-margin-top:20px; transition:opacity 0.3s ease, transform 0.3s ease; display:none; overflow-x:hidden; max-width:100%; }
+.fuel-section-inner { padding:20px; overflow-x:hidden; max-width:100%; }
 .tab-content.active { display:block; }
 .tab-inner { padding:20px; }
 
@@ -1348,10 +1350,10 @@ function adjustColor($hex,$pct) {
 .tank-card:hover { border-color:<?php echo $colors['primary']; ?>; box-shadow:0 4px 12px rgba(<?php echo hex2rgb($colors['primary']); ?>,.15); }
 .tank-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
 .tank-name { font-size:1rem; font-weight:700; color:#333; }
-.tank-status { padding:3px 10px; border-radius:16px; font-size:.7rem; font-weight:700; text-transform:uppercase; }
-.status-available { background:#d4edda; color:#155724; border:1px solid #c3e6cb; }
-.status-low-stock, .status-low { background:#fff3cd; color:#CC8800; border:1px solid #ffeaa7; }
-.status-out-of-stock, .status-out { background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; }
+.tank-status { font-size:.78rem; font-weight:700; }
+.status-available { color:#28a745; }
+.status-low-stock, .status-low { color:#dc3545; }
+.status-out-of-stock, .status-out { color:#dc3545; }
 .tank-level { font-size:1.6rem; font-weight:700; color:<?php echo $colors['primary']; ?>; }
 .tank-capacity { font-size:.8rem; color:#666; }
 .tank-progress { width:100%; height:10px; background:#e9ecef; border-radius:5px; overflow:hidden; margin:10px 0; }
@@ -1365,21 +1367,25 @@ function adjustColor($hex,$pct) {
 .tank-detail-value { font-weight:600; color:#333; }
 
 /* Tables */
-.data-table { width:100%; border-collapse:collapse; font-size:.80rem; margin-top:8px; table-layout:fixed; }
-.data-table th, .data-table td { padding:6px 7px; text-align:left; border-bottom:1px solid #f1f3f5; vertical-align:middle; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.data-table th { background:#f8f9fa; color:#555; font-weight:700; font-size:.70rem; text-transform:uppercase; letter-spacing:.4px; border-bottom:2px solid #dee2e6; padding-top:9px; padding-bottom:9px; }
-.data-table tr { transition:background-color 0.2s ease; }
-.data-table tr:hover { background:rgba(<?php echo hex2rgb($colors['primary']); ?>,.03); }
+.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow-x:auto; }
+.data-table { width:100%; border-collapse:collapse; font-size:.88rem; margin-top:8px; }
+.data-table th, .data-table td { padding:9px 10px; text-align:left; border-bottom:1px solid #f0f0f0; vertical-align:middle; }
+.data-table th { background:#002F70; color:#fff; font-weight:600; font-size:.82rem; padding:10px; white-space:nowrap; border-bottom:2px solid #002F70; }
+.data-table tbody tr { transition:background-color 0.15s ease; }
+.data-table tbody tr:hover { background:#f5f8ff; }
+.data-table tbody td { color:#333; }
 
 /* Actions column — labeled buttons stacked vertically */
 .data-table th.col-actions,
 .data-table td.col-actions {
-    width: 100px;
-    min-width: 100px;
-    max-width: 100px;
+    width: 110px;
+    min-width: 110px;
     text-align: center;
     white-space: nowrap;
     overflow: visible;
+}
+.data-table td.col-actions {
+    background: inherit;
 }
 
 /* Labeled action buttons — stacked, full width */
@@ -1387,67 +1393,62 @@ function adjustColor($hex,$pct) {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 4px;
-    width: 88px;
+    gap: 3px;
+    width: 95px;
     height: 24px;
-    border-radius: 5px;
+    border-radius: 4px;
     border: none;
     cursor: pointer;
-    font-size: .70rem;
+    font-size: .68rem;
     font-weight: 600;
     transition: opacity .15s, transform .1s;
+    color: #fff;
     color: #fff;
     margin: 2px auto;
     white-space: nowrap;
 }
 .act-btn:hover { opacity: .85; transform: scale(1.02); }
-.act-btn.approve     { background: #22c55e; }
-.act-btn.reject      { background: #ef4444; }
-.act-btn.adjust      { background: #00264D; }
-.act-btn.view        { background: #6b7280; }
-.act-btn.investigate { background: #f59e0b; }
+.act-btn.approve     { background: #28a745; }
+.act-btn.reject      { background: #dc3545; }
+.act-btn.adjust      { background: #002F70; }
+.act-btn.view        { background: #6c757d; }
+.act-btn.investigate { background: #002F70; }
 
-/* Modern Status Pills */
+/* Modern Status Pills - Plain text, NO background */
 .status-pill-pending {
-    background-color: #fffbeb;
-    color: #b45309;
-    padding: 5px 12px;
-    border-radius: 16px;
+    color: #002F70;
     font-size: 0.78rem;
     font-weight: 700;
     display: inline-block;
     text-align: center;
-    border: 1px solid #fef3c7;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
 }
 .status-pill-verified {
-    background-color: #e6f7ed;
-    color: #137333;
-    padding: 5px 12px;
-    border-radius: 16px;
+    color: #28a745;
     font-size: 0.78rem;
     font-weight: 700;
     display: inline-block;
     text-align: center;
-    border: 1px solid #c6f6d5;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
 }
 .status-pill-rejected {
-    background-color: #fef2f2;
-    color: #991b1b;
-    padding: 5px 12px;
-    border-radius: 16px;
+    color: #dc3545;
     font-size: 0.78rem;
     font-weight: 700;
     display: inline-block;
     text-align: center;
-    border: 1px solid #fee2e2;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
 }
 
-/* Variance Tags */
-.tag-investigate { background:#dc3545; color:#fff; padding:3px 8px; border-radius:4px; font-size:.72rem; font-weight:700; animation:pulse 1.5s infinite; }
+/* Variance Tags - Plain text, NO background */
+.tag-investigate { color:#dc3545; font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; animation:pulse 1.5s infinite; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.7} }
-.tag-open { background:#ffc107; color:#212529; padding:3px 8px; border-radius:4px; font-size:.72rem; font-weight:700; }
-.tag-resolved { background:#28a745; color:#fff; padding:3px 8px; border-radius:4px; font-size:.72rem; font-weight:700; }
-.tag-investigating { background:#17a2b8; color:#fff; padding:3px 8px; border-radius:4px; font-size:.72rem; font-weight:700; }
+.tag-open { color:#002F70; font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; }
+.tag-resolved { color:#28a745; font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; }
+.tag-investigating { color:#6c757d; font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; }
 
 /* Buttons */
 .btn { padding:6px 14px; border:none; border-radius:6px; cursor:pointer; font-size:.8rem; font-weight:600; transition:all .2s; display:inline-flex; align-items:center; gap:5px; text-decoration:none; }
@@ -1481,7 +1482,7 @@ function adjustColor($hex,$pct) {
 .form-group { margin-bottom:14px; }
 .form-label { display:block; margin-bottom:5px; font-weight:600; color:#333; font-size:.88rem; }
 .form-label .required { color:<?php echo $colors['danger']; ?>; }
-.form-control { width:100%; padding:8px 12px; border:1px solid #ddd; border-radius:6px; font-size:.88rem; transition:border-color .2s; box-sizing:border-box; }
+.form-control { width:100%; padding:8px 12px; border:1px solid #ddd; border-radius:6px; font-size:.88rem; transition:border-color .2s; box-sizing:border-box; background:#fff; }
 .form-control:focus { outline:none; border-color:<?php echo $colors['primary']; ?>; box-shadow:0 0 0 3px rgba(<?php echo hex2rgb($colors['primary']); ?>,.15); }
 .form-hint { font-size:.75rem; color:#888; margin-top:3px; }
 
@@ -1564,20 +1565,20 @@ function adjustColor($hex,$pct) {
     <?php if (empty($pending_readings)): ?>
         <div class="empty-state"><i class="fas fa-check-circle"></i><p>No pending staff readings to validate.</p></div>
     <?php else: ?>
-    <div style="overflow-x:auto; width:100%; border-radius:8px; border:1px solid #eef0f2; margin-top:12px; background:#fff; position:relative;">
-    <table class="data-table" style="font-size:0.82rem; width:100%;">
+    <div class="po-table-wrap">
+    <table class="data-table" style="font-size:0.78rem; width:100%;">
         <thead><tr>
-            <th style="width:130px; max-width:130px;">TXN ID</th>
-            <th style="width:80px; max-width:80px;">Pump / Fuel</th>
-            <th style="width:95px; max-width:95px;">Meter Reading<br><small style="font-weight:normal;opacity:0.8">Prev → Present</small></th>
-            <th style="width:75px; max-width:75px;">Liters Sold</th>
-            <th style="width:90px; max-width:90px;">Revenue (₱)</th>
-            <th style="width:130px; max-width:130px;">Shift</th>
-            <th style="width:100px; max-width:100px;">Staff</th>
-            <th style="width:90px; max-width:90px;">Submitted</th>
-            <th style="width:70px; max-width:70px;">Variance</th>
-            <th style="width:80px; max-width:80px;">Status</th>
-            <th class="col-actions" style="width:90px; min-width:90px; max-width:90px;">Actions</th>
+            <th style="width:95px;">TXN ID</th>
+            <th style="width:60px;">Fuel</th>
+            <th style="width:75px;">Reading<br><small style="font-weight:normal;opacity:0.8">Prev→Now</small></th>
+            <th style="width:60px;">Liters</th>
+            <th style="width:70px;">Revenue</th>
+            <th style="width:85px;">Shift</th>
+            <th style="width:75px;">Staff</th>
+            <th style="width:65px;">Date</th>
+            <th style="width:50px;">Var%</th>
+            <th style="width:65px;">Status</th>
+            <th class="col-actions" style="width:110px;">Actions</th>
         </tr></thead>
         <tbody>
         <?php foreach ($pending_readings as $r):
@@ -1756,7 +1757,7 @@ function adjustColor($hex,$pct) {
         <th>Variance %</th>
         <th>Staff</th>
         <th>Status</th>
-        <th class="col-actions">Actions</th>
+        <th class="col-actions" style="width:110px;">Actions</th>
     </tr></thead>
     <tbody>
     <?php foreach ($shift_history as $h):
@@ -1895,7 +1896,7 @@ function adjustColor($hex,$pct) {
         <div class="empty-state"><i class="fas fa-truck"></i><p>No deliveries recorded yet.</p></div>
     <?php else: ?>
 
-    <div style="overflow-x:auto; width:100%; border-radius:8px; border:1px solid #eef0f2; margin-top:12px; background:#fff; position:relative;">
+    <div class="po-table-wrap" style="margin-top:12px;">
     <table class="data-table" style="font-size:0.82rem; width:100%;">
         <thead><tr>
             <th style="width:50px;">#</th>
@@ -1908,7 +1909,7 @@ function adjustColor($hex,$pct) {
             <th style="width:110px;">Encoded By</th>
             <th style="width:120px;">Date &amp; Time</th>
             <th style="width:120px;">Validated By</th>
-            <th class="col-actions">Actions</th>
+            <th class="col-actions" style="width:110px;">Actions</th>
         </tr></thead>
         <tbody>
         <?php foreach ($deliveries as $d):
@@ -2129,7 +2130,7 @@ try {
         <!-- -- Tank Level Adjustment -- -->
         <div class="info-box" style="padding: 20px;">
             <h4 style="margin:0 0 14px;color:<?php echo $colors['primary']; ?>;"><i class="fas fa-database"></i> Tank Level Adjustment</h4>
-            <div style="overflow-x:auto; border-radius:8px; border:1px solid #eef0f2; background:#fff; margin-top:8px;">
+            <div class="po-table-wrap" style="margin-top:8px;">
                 <table class="data-table" style="font-size:0.82rem;  margin:0;">
                     <thead>
                         <tr style="background:#f8f9fa;">
@@ -2225,7 +2226,7 @@ try {
 
             <!-- Panel: Update -->
             <div id="ppanel-update" style="padding:20px;">
-                <div style="overflow-x:auto; border-radius:8px; border:1px solid #eef0f2; background:#fff;">
+                <div class="po-table-wrap">
                     <table class="data-table" style="font-size:0.82rem;  margin:0;">
                         <thead>
                             <tr style="background:#f8f9fa;">
@@ -2292,7 +2293,7 @@ try {
                     No price changes recorded yet.
                 </div>
                 <?php else: ?>
-                <div style="overflow-x:auto; border-radius:8px; border:1px solid #eef0f2; background:#fff;">
+                <div class="po-table-wrap">
                     <table class="data-table" style="font-size:0.78rem; min-width:700px; margin:0;">
                         <thead>
                             <tr style="background:#f8f9fa;">
@@ -2496,13 +2497,6 @@ try {
     $stmt->execute([$station_id]);
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) $last_reading_map[$r['ft_key']] = $r;
 } catch (Exception $e) { error_log("last_reading_map: ".$e->getMessage()); }
-
-// -- Critical low fuels --
-$critical_fuels = [];
-foreach ($reconciliation_data as $rec) {
-    $fp = $rec['capacity'] > 0 ? ($rec['current_stock'] / $rec['capacity']) * 100 : 0;
-    if ($fp <= 15) $critical_fuels[] = htmlspecialchars($rec['fuel_type_name']);
-}
 ?>
 
     <div class="section-head">
@@ -2510,25 +2504,12 @@ foreach ($reconciliation_data as $rec) {
         <span class="audit-badge"><i class="fas fa-calendar-day"></i> <?php echo date('M j, Y'); ?></span>
     </div>
 
-    <?php if (!empty($critical_fuels)): ?>
-    <div style="border-left:4px solid <?php echo $colors['danger']; ?>;background:#fff8f8;border-radius:0 8px 8px 0;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-        <i class="fas fa-bell" style="color:<?php echo $colors['danger']; ?>;font-size:1rem;"></i>
-        <div style="flex:1;">
-            <strong style="color:<?php echo $colors['danger']; ?>;font-size:.88rem;">Critical Low Stock:</strong>
-            <span style="color:#555;font-size:.85rem;"> <?php echo implode(', ', $critical_fuels); ?>  -  below 15%. Coordinate with Admin to trigger Purchase Order.</span>
-        </div>
-        <span class="audit-badge" style="background:<?php echo $colors['danger']; ?>;color:#fff;white-space:nowrap;">
-            <i class="fas fa-user-tie"></i> Manager + Admin
-        </span>
-    </div>
-    <?php endif; ?>
-
     <!-- Today's Pump Sales vs Tank Summary -->
     <?php if (!empty($reconciliation_data)): ?>
     <div class="section-head" style="margin-top:4px;">
         <div class="section-title"><i class="fas fa-chart-bar"></i> Today's Pump Sales vs Tank Summary</div>
     </div>
-    <div style="overflow-x:auto; width:100%; border-radius:8px; border:1px solid #eef0f2; margin-top:12px; background:#fff; position:relative;">
+    <div class="po-table-wrap" style="margin-top:12px;">
     <table class="data-table" style="font-size:0.82rem; ">
         <thead><tr>
             <th>Fuel Type</th><th>Current Stock</th><th>Capacity</th>
@@ -2618,7 +2599,7 @@ foreach ($reconciliation_data as $rec) {
     <?php if (empty($variance_reports)): ?>
         <div class="empty-state"><i class="fas fa-check-circle"></i><p>No discrepancies found. All reconciled.</p></div>
     <?php else: ?>
-    <div style="overflow-x:auto; width:100%; border-radius:8px; border:1px solid #eef0f2; margin-top:12px; background:#fff; position:relative;">
+    <div class="po-table-wrap" style="margin-top:12px;">
     <table class="data-table" style="font-size:0.82rem; ">
         <thead><tr>
             <th>#</th><th>Date</th><th>Fuel Type</th>
@@ -2787,7 +2768,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
     <?php if (empty($variance_reports)): ?>
         <div class="empty-state"><i class="fas fa-chart-line"></i><p>No variance reports found for this station.</p></div>
     <?php else: ?>
-    <div style="overflow-x:auto; width:100%; border-radius:8px; border:1px solid #eef0f2; margin-top:12px; background:#fff; position:relative;">
+    <div class="po-table-wrap" style="margin-top:12px;">
     <table class="data-table" style="font-size:0.82rem; ">
         <thead><tr>
             <th>#</th>
@@ -3271,58 +3252,58 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
     </div>
 
     <!-- Update Calibration Table Form -->
-    <div class="info-box">
-        <h4 style="margin:0 0 14px;color:<?php echo $colors['primary']; ?>;"><i class="fas fa-edit"></i> Update Calibration Value</h4>
-        <?php if (empty($pump_master_fuel_types)): ?>
-            <div class="empty-state"><i class="fas fa-cog"></i><p>No fuel types found.</p></div>
-        <?php else: ?>
-        <div style="overflow-x:auto;">
-        <table class="data-table" style="font-size:0.85rem;">
-            <thead><tr>
-                <th>Fuel Type</th>
-                <th>Current Calibration</th>
-                <th>New Calibration Value (Liters)</th>
-                <th>Action</th>
-            </tr></thead>
-            <tbody>
-            <?php foreach ($pump_master_fuel_types as $f):
-                $cur_cal = $f['latest_calibration'] ?? 0;
-                $safe_ft = htmlspecialchars($f['fuel_type']);
-                $row_id  = 'calRow_' . preg_replace('/\W+/', '_', $f['fuel_type']);
-            ?>
-            <tr>
-                <td><strong><?php echo $safe_ft; ?></strong></td>
-                <td>
-                    <span style="font-weight:700;color:<?php echo $cur_cal>0?$colors['success']:$colors['danger']; ?>;">
-                        <?php echo number_format($cur_cal,2); ?> L
-                    </span>
-                    <?php if ($cur_cal == 0): ?>
-                    <div style="font-size:.72rem;color:<?php echo $colors['danger']; ?>;font-weight:700;">- NEEDS UPDATE</div>
-                    <?php endif; ?>
-                </td>
-                <td>
-                    <form method="post" action="manager_fuel_management_complete.php" id="<?php echo $row_id; ?>" style="margin:0;">
-                        <input type="hidden" name="action" value="update_calibration">
-                        <input type="hidden" name="fuel_type" value="<?php echo $safe_ft; ?>">
-                        <input type="number" name="new_calibration"
-                            class="form-control" style="width:160px;display:inline-block;"
-                            step="0.01" min="0" max="50" required
-                            placeholder="0.00 - 50.00 L">
-                    </form>
-                </td>
-                <td>
-                    <button type="submit" form="<?php echo $row_id; ?>" class="btn btn-success btn-sm">
-                        <i class="fas fa-save"></i> Save
-                    </button>
-                </td>
-            </tr>
-            <?php endforeach; ?>
-            </tbody>
-        </table>
-        </div>
-        <div class="form-hint" style="margin-top:8px;"><i class="fas fa-info-circle"></i> Range: 0 - 50 liters per row. Values auto-pull to staff transaction forms on save.</div>
-        <?php endif; ?>
+    <div class="section-head">
+        <div class="section-title"><i class="fas fa-edit"></i> Update Calibration Value</div>
     </div>
+    <?php if (empty($pump_master_fuel_types)): ?>
+        <div class="empty-state"><i class="fas fa-cog"></i><p>No fuel types found.</p></div>
+    <?php else: ?>
+    <div class="po-table-wrap" style="margin-top:12px;">
+    <table class="data-table" style="font-size:0.78rem;">
+        <thead><tr>
+            <th style="width:120px;">Fuel Type</th>
+            <th style="width:140px;">Current Calibration</th>
+            <th style="width:200px;">New Calibration Value (Liters)</th>
+            <th class="col-actions" style="width:110px;">Action</th>
+        </tr></thead>
+        <tbody>
+        <?php foreach ($pump_master_fuel_types as $f):
+            $cur_cal = $f['latest_calibration'] ?? 0;
+            $safe_ft = htmlspecialchars($f['fuel_type']);
+            $row_id  = 'calRow_' . preg_replace('/\W+/', '_', $f['fuel_type']);
+        ?>
+        <tr>
+            <td><strong><?php echo $safe_ft; ?></strong></td>
+            <td>
+                <span style="font-weight:700;color:<?php echo $cur_cal>0?$colors['success']:$colors['danger']; ?>;">
+                    <?php echo number_format($cur_cal,2); ?> L
+                </span>
+                <?php if ($cur_cal == 0): ?>
+                <div style="font-size:.72rem;color:<?php echo $colors['danger']; ?>;font-weight:700;">⚠ NEEDS UPDATE</div>
+                <?php endif; ?>
+            </td>
+            <td>
+                <form method="post" action="manager_fuel_management_complete.php" id="<?php echo $row_id; ?>" style="margin:0;">
+                    <input type="hidden" name="action" value="update_calibration">
+                    <input type="hidden" name="fuel_type" value="<?php echo $safe_ft; ?>">
+                    <input type="number" name="new_calibration"
+                        class="form-control" style="width:160px;display:inline-block;"
+                        step="0.01" min="0" max="50" required
+                        placeholder="0.00 - 50.00 L">
+                </form>
+            </td>
+            <td>
+                <button type="submit" form="<?php echo $row_id; ?>" class="act-btn approve">
+                    <i class="fas fa-save"></i> Save
+                </button>
+            </td>
+        </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+    </div>
+    <div class="form-hint" style="margin-top:8px;"><i class="fas fa-info-circle"></i> Range: 0 - 50 liters per row. Values auto-pull to staff transaction forms on save.</div>
+    <?php endif; ?>
 
     <!-- Calibration Values Table -->
     <div class="section-head">
@@ -3331,11 +3312,15 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
     <?php if (empty($pump_master_fuel_types)): ?>
         <div class="empty-state"><i class="fas fa-cog"></i><p>No fuel types found.</p></div>
     <?php else: ?>
-    <div style="overflow-x:auto; width:100%; border-radius:8px; border:1px solid #eef0f2; margin-top:12px; background:#fff; position:relative;">
-    <table class="data-table" style="font-size:0.82rem; ">
+    <div class="po-table-wrap" style="margin-top:12px;">
+    <table class="data-table" style="font-size:0.78rem;">
         <thead><tr>
-            <th>Fuel Type</th><th>Available Stock</th><th>Calibration Value</th>
-            <th>Price/Liter</th><th>Last Updated</th><th>Quick Edit</th>
+            <th style="width:110px;">Fuel Type</th>
+            <th style="width:120px;">Stock</th>
+            <th style="width:110px;">Calibration</th>
+            <th style="width:90px;">Price/L</th>
+            <th style="width:130px;">Last Updated</th>
+            <th class="col-actions" style="width:110px;">Action</th>
         </tr></thead>
         <tbody>
         <?php foreach ($pump_master_fuel_types as $f):
@@ -3360,7 +3345,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
             <td>?<?php echo number_format($f['price_per_liter']??0,2); ?></td>
             <td style="font-size:.8rem;color:#555;"><?php echo date('M j, Y H:i',strtotime($f['last_updated'])); ?></td>
             <td>
-                <button class="btn btn-primary"
+                <button class="act-btn adjust"
                     onclick="openCalEditModal(
                         '<?php echo htmlspecialchars($f['fuel_type']); ?>',
                         <?php echo (float)($f['latest_calibration'] ?? 0); ?>,

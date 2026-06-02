@@ -24,50 +24,59 @@ foreach ([
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
-/* ── Badges ── */
-.sbadge{display:inline-block;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;text-transform:uppercase;letter-spacing:.3px;}
-.sbadge-pending{background:#fff3cd;color:#856404;border:1px solid #f0d43a;}
-.sbadge-approved,.sbadge-confirmed,.sbadge-validated{background:#d4edda;color:#155724;border:1px solid #28a745;}
-.sbadge-rejected,.sbadge-discrepancy{background:#f8d7da;color:#721c24;border:1px solid #dc3545;}
-.sbadge-pending-resolution{background:#ffe5b4;color:#7d4e00;border:1px solid #fd7e14;}
-.sbadge-awaiting-replacement{background:#cce5ff;color:#004085;border:1px solid #004085;}
-.sbadge-returned-to-supplier{background:#e2e3e5;color:#383d41;border:1px solid #6c757d;}
-.sbadge-adjusted{background:#d1ecf1;color:#0c5460;border:1px solid #17a2b8;}
-.sbadge-closed{background:#e2e3e5;color:#383d41;border:1px solid #6c757d;}/* ── Delivery ref chip ── */
+/* === Clean Merchandise Deliveries Design === */
+/* ── Plain text badges - NO backgrounds ── */
+.sbadge{color:#6c757d !important;font-weight:700 !important;font-size:0.813rem !important;background:none !important;padding:0 !important;border:none !important;text-transform:uppercase;}
+.sbadge-pending{color:#fd7e14 !important;}
+.sbadge-approved,.sbadge-confirmed,.sbadge-validated{color:#28a745 !important;}
+.sbadge-rejected,.sbadge-discrepancy{color:#dc3545 !important;}
+.sbadge-pending-resolution{color:#fd7e14 !important;}
+.sbadge-awaiting-replacement{color:#17a2b8 !important;}
+.sbadge-returned-to-supplier{color:#6c757d !important;}
+.sbadge-adjusted{color:#17a2b8 !important;}
+.sbadge-closed{color:#6c757d !important;}
+
+/* ── Delivery ref chip ── */
 .del-ref{font-family:monospace;font-size:11px;background:#e8f4fd;color:#002F70;padding:3px 7px;border-radius:5px;font-weight:700;display:inline-block;border:1px solid #b8d4f1;}
 .cat-tag{font-size:10px;color:#6c757d;display:block;margin-top:2px;}
+
 /* ── Action buttons ── */
-.act-wrap{display:flex;gap:4px;flex-wrap:wrap;align-items:center;}
-.btn-act{padding:5px 9px;border:none;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px;transition:all .15s;white-space:nowrap;}
-.btn-act:hover{filter:brightness(.9);transform:translateY(-1px);}
-.btn-approve{background:#28a745;color:#fff;}
-.btn-flag{background:#fd7e14;color:#fff;}
-.btn-reject{background:#dc3545;color:#fff;}
-.btn-adjust{background:#002F70;color:#fff;}
-.btn-resolve{background:#17a2b8;color:#fff;}
-.btn-replacement{background:#6f42c1;color:#fff;}
-.btn-view{background:#f0f4ff;color:#002F70;border:1px solid #c5d3f0;}
+.act-wrap{display:flex;gap:6px;flex-wrap:wrap;align-items:center;flex-direction:column;}
+.btn-act{padding:6px 12px;border:none;border-radius:6px;cursor:pointer;font-size:0.75rem;font-weight:600;display:inline-flex;align-items:center;gap:4px;transition:all .2s;white-space:nowrap;width:90px;justify-content:center;}
+.btn-act:hover{opacity:0.85;transform:translateY(-1px);}
+.btn-approve{background:#28a745;color:#fff;} .btn-approve:hover{background:#218838;}
+.btn-flag{background:#002F70;color:#fff;} .btn-flag:hover{background:#001a4d;}
+.btn-reject{background:#dc3545;color:#fff;} .btn-reject:hover{background:#c82333;}
+.btn-adjust{background:#002F70;color:#fff;} .btn-adjust:hover{background:#001a4d;}
+.btn-resolve{background:#002F70;color:#fff;} .btn-resolve:hover{background:#001a4d;}
+.btn-replacement{background:#002F70;color:#fff;} .btn-replacement:hover{background:#001a4d;}
+.btn-view{background:#f0f4ff;color:#002F70;border:1px solid #c5d3f0;} .btn-view:hover{background:#e0e8ff;}
+
 /* ── Table ── */
-.table-wrap{overflow-x:auto;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.07);border:1px solid #e9ecef;}
-#del-table{width:100%;border-collapse:collapse;font-size:13px;}
-#del-table th{background:#f8f9fa;padding:11px 10px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#495057;border-bottom:2px solid #dee2e6;white-space:nowrap;}
-#del-table td{padding:10px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle;}
-#del-table tr:hover td{background:#f8f9fa;}
+.table-wrap{overflow-x:auto;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.08);border:1px solid #e9ecef;overflow:hidden;}
+#del-table{width:100%;border-collapse:collapse;font-size:0.875rem;}
+#del-table th{background:#002F70 !important;color:#fff !important;padding:14px 16px !important;font-weight:600 !important;font-size:0.813rem !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;white-space:nowrap;}
+#del-table td{padding:12px 16px;border-bottom:1px solid #e9ecef;vertical-align:middle;color:#212529;}
+#del-table tbody tr:hover td{background:#e3f2fd;}
+#del-table tbody tr:last-child td{border-bottom:none;}
+
 /* ── Filter bar ── */
 .filter-row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:16px;}
 .filter-row .fg{display:flex;flex-direction:column;gap:3px;}
 .filter-row .fg label{font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;letter-spacing:.4px;}
-.filter-row select,.filter-row input{padding:7px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;min-width:130px;}
+.filter-row select,.filter-row input{padding:10px 12px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;min-width:130px;}
 .filter-row select:focus,.filter-row input:focus{border-color:#002F70;outline:none;box-shadow:0 0 0 3px rgba(0,47,112,.1);}
+
 /* ── Summary cards ── */
 .sum-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin-bottom:20px;}
 .sum-card{background:#fff;border-radius:10px;padding:14px 16px;box-shadow:0 2px 6px rgba(0,0,0,.06);border:1px solid #e9ecef;display:flex;flex-direction:column;gap:3px;}
 .sum-card .sc-num{font-size:1.8rem;font-weight:700;line-height:1;}
 .sum-card .sc-lbl{font-size:11px;color:#6c757d;font-weight:500;}
-.sc-pending .sc-num{color:#856404;}
+.sc-pending .sc-num{color:#002F70;}
 .sc-discrepancy .sc-num{color:#fd7e14;}
 .sc-approved .sc-num{color:#155724;}
 .sc-closed .sc-num{color:#383d41;}
+
 /* ── Modals ── */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;}
 .modal-overlay.open{display:flex;}
@@ -93,6 +102,7 @@ include __DIR__ . '/../partials/header.php';
 .drow:last-child{border-bottom:none;}
 .dlbl{font-weight:600;color:#6c757d;min-width:140px;font-size:11px;text-transform:uppercase;letter-spacing:.3px;}
 .dval{color:#212529;flex:1;}
+
 /* ── Resolution option cards ── */
 .res-options{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
 .res-opt{border:2px solid #dee2e6;border-radius:8px;padding:12px;cursor:pointer;transition:all .15s;text-align:center;}
@@ -101,14 +111,19 @@ include __DIR__ . '/../partials/header.php';
 .res-opt .ro-icon{font-size:1.4rem;margin-bottom:6px;display:block;}
 .res-opt .ro-title{font-size:12px;font-weight:700;color:#002F70;}
 .res-opt .ro-desc{font-size:11px;color:#6c757d;margin-top:3px;}
+
 /* ── Toast ── */
 .toast{position:fixed;bottom:24px;right:24px;padding:12px 18px;border-radius:8px;color:#fff;font-weight:600;font-size:13px;z-index:99999;box-shadow:0 4px 16px rgba(0,0,0,.2);display:none;animation:tUp .22s ease;max-width:340px;}
 .toast.show{display:block;}
 .toast-success{background:#28a745;}
 .toast-error{background:#dc3545;}
 @keyframes tUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+
 /* ── Discrepancy banner in detail ── */
 .disc-banner{background:#fff3e0;border:1px solid #fd7e14;border-radius:8px;padding:11px 14px;margin-bottom:14px;font-size:13px;color:#7d4e00;display:flex;align-items:flex-start;gap:10px;}
+
+/* Prevent horizontal scroll */
+body{overflow-x:hidden !important;max-width:100vw !important;}
 </style>
 
 <div class="page-head">
@@ -117,18 +132,8 @@ include __DIR__ . '/../partials/header.php';
         <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; Merchandise deliveries &mdash; Approve, Flag Discrepancy, or Resolve</div>
     </div>
     <div class="header-actions">
-        <button onclick="exportExcel()" class="btn" style="background:#28a745;color:#fff;"><i class="fas fa-file-excel"></i> Excel</button>
-        <button onclick="exportPDF()" class="btn" style="background:#dc3545;color:#fff;"><i class="fas fa-file-pdf"></i> PDF</button>
         <button onclick="loadDeliveries()" class="btn ghost"><i class="fas fa-sync-alt"></i> Refresh</button>
     </div>
-</div>
-
-<!-- Summary Cards -->
-<div class="sum-grid" id="sumCards">
-    <div class="sum-card sc-pending"><div class="sc-num" id="cnt-pending">—</div><div class="sc-lbl"><i class="fas fa-clock"></i> Pending Approval</div></div>
-    <div class="sum-card sc-discrepancy"><div class="sc-num" id="cnt-discrepancy">—</div><div class="sc-lbl"><i class="fas fa-exclamation-triangle"></i> Pending Resolution</div></div>
-    <div class="sum-card sc-approved"><div class="sc-num" id="cnt-approved">—</div><div class="sc-lbl"><i class="fas fa-check-circle"></i> Approved / Confirmed</div></div>
-    <div class="sum-card sc-closed"><div class="sc-num" id="cnt-other">—</div><div class="sc-lbl"><i class="fas fa-archive"></i> Other / Closed</div></div>
 </div>
 
 <!-- Filters -->
@@ -490,19 +495,19 @@ function loadDeliveries() {
         var rows = res.data || [];
         document.getElementById('rec-count').textContent = rows.length + ' record(s)';
 
-        // Update summary counts
-        var cPending = 0, cDisc = 0, cApproved = 0, cOther = 0;
-        rows.forEach(function(d) {
-            var ds = getDisplayStatus(d.status);
-            if (ds === 'Pending') cPending++;
-            else if (ds === 'Pending Resolution' || ds === 'Awaiting Replacement') cDisc++;
-            else if (ds === 'Approved' || ds === 'Adjusted') cApproved++;
-            else cOther++;
-        });
-        document.getElementById('cnt-pending').textContent     = cPending;
-        document.getElementById('cnt-discrepancy').textContent = cDisc;
-        document.getElementById('cnt-approved').textContent    = cApproved;
-        document.getElementById('cnt-other').textContent       = cOther;
+        // Remove summary count updates since cards are removed
+        // var cPending = 0, cDisc = 0, cApproved = 0, cOther = 0;
+        // rows.forEach(function(d) {
+        //     var ds = getDisplayStatus(d.status);
+        //     if (ds === 'Pending') cPending++;
+        //     else if (ds === 'Pending Resolution' || ds === 'Awaiting Replacement') cDisc++;
+        //     else if (ds === 'Approved' || ds === 'Adjusted') cApproved++;
+        //     else cOther++;
+        // });
+        // document.getElementById('cnt-pending').textContent     = cPending;
+        // document.getElementById('cnt-discrepancy').textContent = cDisc;
+        // document.getElementById('cnt-approved').textContent    = cApproved;
+        // document.getElementById('cnt-other').textContent       = cOther;
 
         if (!rows.length) {
             tb.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:48px;color:#6c757d;"><i class="fas fa-truck" style="font-size:2.5rem;display:block;margin-bottom:12px;opacity:.3;"></i><strong>No deliveries found</strong><br><span style="font-size:12px;">Try adjusting the filters above.</span></td></tr>';

@@ -644,7 +644,7 @@ include __DIR__ . '/../partials/header.php';
             <?php if ($active_tab === 'validated'): ?>
                 <i class="fas fa-check-circle" style="color:#22c55e;"></i> Validated Transactions
             <?php else: ?>
-                <i class="fas fa-hourglass-half" style="color:#f59e0b;"></i> Pending Transactions
+                <i class="fas fa-hourglass-half" style="color:#002F70;"></i> Pending Transactions
             <?php endif; ?>
         </h1>
         <div class="sub">
@@ -794,8 +794,8 @@ try {
 <!-- Transactions Table -->
 <div class="card" style="padding:0;" id="printableTable">
     <!-- Summary bar removed -->
-    <div class="txn-table-wrap">
-        <table class="table txn-table" id="txnTable">
+    <div class="po-table-wrap">
+        <table class="po-table" id="txnTable" style="min-width:860px;table-layout:fixed;font-size:12px;">
             <thead>
                 <tr>
                     <th class="col-txnid">Transaction / JO ID</th>
@@ -822,21 +822,21 @@ try {
                     $isCombined = ($t['txn_type'] ?? '') === 'combined';
                     $status     = $t['status'] ?? 'Pending Validation';
                     // Refined status display for JO lifecycle: Pending -> Approved -> In Progress -> Completed
-                    $statusColor = '#6c757d';
+                    $statusClass = 'badge-other';
                     $statusLabel = htmlspecialchars($status);
                     $stLower     = strtolower(trim($status));
                     if (in_array($stLower, ['pending', 'pending validation', 'pendingvalidation'])) {
-                        $statusColor = '#e6a817'; $statusLabel = 'Pending';
+                        $statusClass = 'badge-pending'; $statusLabel = 'Pending';
                     } elseif (in_array($stLower, ['approved', 'validated', 'verified'])) {
-                        $statusColor = '#28a745'; $statusLabel = 'Approved';
+                        $statusClass = 'badge-approved'; $statusLabel = 'Approved';
                     } elseif ($stLower === 'in progress') {
-                        $statusColor = '#17a2b8'; $statusLabel = 'In Progress';
+                        $statusClass = 'badge-other'; $statusLabel = 'In Progress';
                     } elseif (in_array($stLower, ['complete', 'completed'])) {
-                        $statusColor = '#28a745'; $statusLabel = 'Completed';
+                        $statusClass = 'badge-approved'; $statusLabel = 'Completed';
                     } elseif (in_array($stLower, ['rejected', 'returned', 'cancelled'])) {
-                        $statusColor = '#dc3545'; $statusLabel = 'Rejected';
+                        $statusClass = 'badge-rejected'; $statusLabel = 'Rejected';
                     } elseif ($stLower === 'adjusted') {
-                        $statusColor = '#6f42c1'; $statusLabel = 'Adjusted';
+                        $statusClass = 'badge-adjusted'; $statusLabel = 'Adjusted';
                     }
 
                     $rowId      = (int)$t['row_id'];
@@ -876,11 +876,11 @@ try {
                     </td>
                     <td class="col-type" style="text-align:center;">
                         <?php if ($isCombined): ?>
-                        <span style="background:#6f42c1;color:#fff;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700;">JO+M</span>
+                        <span style="font-size:10px;font-weight:700;color:#6f42c1;">JO+M</span>
                         <?php elseif ($isJO): ?>
-                        <span style="background:#fd7e14;color:#fff;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700;">JO</span>
+                        <span style="font-size:10px;font-weight:700;color:#002F70;">JO</span>
                         <?php else: ?>
-                        <span style="background:#0d6efd;color:#fff;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700;">Merch</span>
+                        <span style="font-size:10px;font-weight:700;color:#28a745;">Merch</span>
                         <?php endif; ?>
                     </td>
                     <td class="col-customer">
@@ -916,11 +916,11 @@ try {
                             if ($ps === 'paid') {
                                 $psc = '#166534'; $pst = '#fff';
                             } elseif (in_array($ps, ['partial payment','partial'])) {
-                                $psc = '#92400e'; $pst = '#fef9c3';
+                                $psc = '#495057'; $pst = '#fff';
                             } elseif (in_array($ps, ['pending payment','pending'])) {
-                                $psc = '#9a3412'; $pst = '#ffedd5';
+                                $psc = '#9a3412'; $pst = '#fff';
                             } elseif (in_array($ps, ['credit transaction','credit'])) {
-                                $psc = '#6b21a8'; $pst = '#f3e8ff';
+                                $psc = '#6b21a8'; $pst = '#fff';
                             } else {
                                 $psc = '#dc3545'; $pst = '#fff'; // Unpaid
                             }
@@ -930,7 +930,7 @@ try {
                     <td class="col-date"><?php echo date('M d, H:i', strtotime($t['created_at'])); ?></td>
                     <!-- Validation Status -->
                     <td class="col-status">
-                        <span style="background:<?php echo $statusColor; ?>;color:<?php echo $statusColor==='#e6a817'?'#212529':'#fff'; ?>;font-weight:700;padding:2px 8px;border-radius:10px;font-size:10px;white-space:nowrap;">
+                        <span class="status-badge <?php echo $statusClass; ?>">
                             <?php echo $statusLabel; ?>
                         </span>
                     </td>
@@ -1126,10 +1126,6 @@ try {
                 <input type="hidden" name="_end" value="<?php echo htmlspecialchars($end); ?>">
                 <input type="hidden" name="_status" value="<?php echo htmlspecialchars($status_f); ?>">
                 <input type="hidden" name="_type" value="<?php echo htmlspecialchars($type_f); ?>">
-                <p style="color:#555;font-size:13px;margin-bottom:14px;">
-                    <i class="fas fa-info-circle" style="color:#dc3545;"></i>
-                    Status will be set to <strong>Rejected</strong>. Staff will need to correct and resubmit.
-                </p>
                 <div class="form-group">
                     <label class="form-label">Reason for Rejection <span style="color:red;">*</span></label>
                     <textarea id="reject_reason" name="reason" class="form-control" rows="4"
@@ -1193,10 +1189,6 @@ try {
                 <input type="hidden" name="_end" value="<?php echo htmlspecialchars($end); ?>">
                 <input type="hidden" name="_status" value="<?php echo htmlspecialchars($status_f); ?>">
                 <input type="hidden" name="_type" value="<?php echo htmlspecialchars($type_f); ?>">
-                <p style="color:#555;font-size:13px;margin-bottom:14px;">
-                    <i class="fas fa-info-circle" style="color:#dc3545;"></i>
-                    Job Order will be set to <strong>Rejected / Cancelled</strong>.
-                </p>
                 <div class="form-group">
                     <label class="form-label">Reason for Rejection <span style="color:red;">*</span></label>
                     <textarea id="jo_reject_reason" name="reason" class="form-control" rows="4"
@@ -1342,11 +1334,11 @@ function viewDetails(d) {
 
     let typeBadge = '';
     if (isCombined) {
-        typeBadge = `<span style="background:#6f42c1;color:#fff;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;">JO with Merch</span>`;
+        typeBadge = `<span style="font-size:11px;font-weight:700;color:#6f42c1;">JO with Merch</span>`;
     } else if (isJO) {
-        typeBadge = `<span style="background:#fd7e14;color:#fff;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;">Job Order</span>`;
+        typeBadge = `<span style="font-size:11px;font-weight:700;color:#002F70;">Job Order</span>`;
     } else {
-        typeBadge = `<span style="background:#0d6efd;color:#fff;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;">Merchandise</span>`;
+        typeBadge = `<span style="font-size:11px;font-weight:700;color:#28a745;">Merchandise</span>`;
     }
 
     let html = `
@@ -1567,6 +1559,30 @@ function validatePaymentModal() {
 
 <style>
 
+/* ── Uniform table design ── */
+.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow-x:auto; }
+.po-table { width:100%; border-collapse:collapse; font-size:0.78rem; }
+.po-table thead th { background:#002F70; color:#fff; padding:10px; text-align:left; font-weight:600; font-size:0.82rem; white-space:nowrap; border-bottom:2px solid #002F70; }
+.po-table tbody tr { border-bottom:1px solid #f0f0f0; transition:background 0.15s; }
+.po-table tbody tr:hover { background:#f5f8ff; }
+.po-table tbody td { padding:9px 10px; vertical-align:middle; color:#333; }
+/* Status — plain text, NO background color */
+.status-badge { display:inline-block; font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; }
+.badge-pending   { color:#002F70; }
+.badge-approved, .badge-verified, .badge-validated { color:#28a745; }
+.badge-rejected, .badge-returned { color:#dc3545; }
+.badge-adjusted  { color:#6c757d; }
+.badge-other     { color:#6c757d; }
+/* Action buttons — ONLY these have colors */
+.btn-action { display:inline-flex; align-items:center; justify-content:center; gap:3px; width:95px; height:24px; border:none; border-radius:4px; cursor:pointer; font-size:0.68rem; font-weight:600; text-decoration:none; transition:opacity 0.15s, transform 0.1s; white-space:nowrap; color:#fff; }
+.btn-action:hover { opacity:0.85; transform:scale(1.02); }
+.btn-approve { background:#28a745; }
+.btn-reject  { background:#dc3545; }
+.btn-adjust  { background:#002F70; }
+.btn-view    { background:#6c757d; }
+/* Actions cell stacked */
+.actions-cell { display:flex; flex-direction:column; gap:3px; min-width:110px; }
+.actions-cell .btn-action { width:100%; justify-content:center; }
 
 /* ══ JO TRACKER STYLES ══════════════════════════════════════════════════════════ */
 .jo-stat-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:20px}
@@ -1757,7 +1773,7 @@ function validatePaymentModal() {
 }
 
 .flt-sum-item     { color: #555; }
-.flt-sum-pending  { color: #856404; font-weight: 600; }
+.flt-sum-pending  { color: #002F70; font-weight: 600; }
 .flt-sum-verified { color: #155724; font-weight: 600; }
 .flt-sum-returned { color: #721c24; font-weight: 600; }
 .flt-sum-total    { margin-left: auto; font-weight: 700; color: #002F6C; font-size: 14px; }
@@ -1779,14 +1795,14 @@ function validatePaymentModal() {
 }
 
 .txn-table thead th {
-    background: #f8f9fa;
-    color: #495057;
+    background: #002F70;
+    color: #fff;
     font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: .4px;
     padding: 9px 8px;
-    border-bottom: 2px solid #dee2e6;
+    border-bottom: 2px solid #001a50;
     white-space: nowrap;
     position: sticky;
     top: 0;
@@ -1832,7 +1848,7 @@ function validatePaymentModal() {
 }
 .txn-table thead .sticky-col {
     z-index: 3;
-    background: #f8f9fa;
+    background: #002F70;
 }
 .txn-table tbody tr:hover .sticky-col { background: #f8fbff; }
 
@@ -1862,29 +1878,29 @@ function validatePaymentModal() {
 }
 .ab:hover { filter: brightness(.88); }
 
-/* Exact colors from product_management.php */
-.ab-view    { background: #28a745; color: #fff; }   /* green     — View Details */
-.ab-approve { background: #002F70; color: #fff; }   /* dark blue — Approve      */
-.ab-reject  { background: #E3001F; color: #fff; }   /* petron red — Reject      */
-.ab-receipt { background: #6c757d; color: #fff; }   /* grey      — Receipt      */
-.ab-adjust  { background: #6f42c1; color: #fff; }   /* purple    — Adjust       */
+/* Uniform button colors matching design system */
+.ab-view    { background: #6c757d; color: #fff; }   /* gray      — View Details */
+.ab-approve { background: #28a745; color: #fff; }   /* green     — Approve      */
+.ab-reject  { background: #dc3545; color: #fff; }   /* red       — Reject       */
+.ab-receipt { background: #6c757d; color: #fff; }   /* gray      — Receipt      */
+.ab-adjust  { background: #002F70; color: #fff; }   /* dark blue — Adjust       */
 
 .col-actions { width: 110px; }
 
-/* Row type coloring */
-.row-jo   td { background: #fffbf0; }
-.row-merch td { background: #f8fbff; }
-.txn-table tbody tr:hover td { background: #f0f4ff !important; }
+/* Remove row type coloring — clean white rows only */
+.row-jo   td { background: transparent; }
+.row-merch td { background: transparent; }
+.txn-table tbody tr:hover td { background: #f5f8ff !important; }
 
 /* ══ MODALS ════════════════════════════════════════════════════════════════════ */
-.txn-modal { display:none; position:fixed; z-index:1050; inset:0; background:rgba(0,0,0,.55); align-items:center; justify-content:center; }
-.txn-modal-content { background:#fff; border-radius:12px; width:92%; max-width:640px; box-shadow:0 8px 32px rgba(0,0,0,.22); overflow:hidden; max-height:90vh; display:flex; flex-direction:column; }
-.txn-modal-header { display:flex; justify-content:space-between; align-items:center; padding:16px 22px; background:#fff; color:#212529; border-bottom:2px solid #e9ecef; flex-shrink:0; }
-.txn-modal-header h3 { margin:0; font-size:16px; color:#002F6C; }
-.txn-close { background:none; border:none; color:#6c757d; font-size:26px; cursor:pointer; line-height:1; padding:0; }
-.txn-close:hover { color:#212529; }
-.txn-modal-body { padding:22px; overflow-y:auto; flex:1; }
-.txn-modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:14px 22px; background:#f8f9fa; border-top:1px solid #dee2e6; flex-shrink:0; }
+.txn-modal { display:none; position:fixed; z-index:1050; inset:0; background:rgba(0,0,0,.5); align-items:center; justify-content:center; }
+.txn-modal-content { background:#fff; border-radius:12px; width:92%; max-width:640px; box-shadow:0 8px 32px rgba(0,0,0,.18); overflow:hidden; max-height:90vh; display:flex; flex-direction:column; }
+.txn-modal-header { display:flex; justify-content:space-between; align-items:center; padding:18px 24px; background:#fff; color:#212529; border-bottom:1px solid #e9ecef; flex-shrink:0; }
+.txn-modal-header h3 { margin:0; font-size:1.05rem; font-weight:700; color:#002F70; display:flex; align-items:center; gap:8px; }
+.txn-close { background:none; border:none; color:#888; font-size:1.4rem; cursor:pointer; line-height:1; padding:0 4px; }
+.txn-close:hover { color:#333; }
+.txn-modal-body { padding:20px 24px; overflow-y:auto; flex:1; }
+.txn-modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:16px 24px; background:#fff; border-top:1px solid #e9ecef; flex-shrink:0; }
 
 /* ── Detail grid ── */
 .detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
@@ -1894,19 +1910,21 @@ function validatePaymentModal() {
 
 /* ── Form ── */
 .form-group { margin-bottom:14px; }
-.form-label { display:block; font-weight:600; color:#495057; margin-bottom:6px; font-size:13px; }
-.form-control { width:100%; padding:9px 12px; border:1px solid #ced4da; border-radius:6px; font-size:13px; box-sizing:border-box; resize:vertical; }
-.form-control:focus { outline:none; border-color:#002F6C; box-shadow:0 0 0 2px rgba(0,47,108,.18); }
+.form-label { display:block; font-weight:600; color:#333; margin-bottom:6px; font-size:0.88rem; }
+.form-control { width:100%; padding:9px 12px; border:1px solid #ced4da; border-radius:6px; font-size:0.9rem; box-sizing:border-box; resize:vertical; }
+.form-control:focus { outline:none; border-color:#002F70; box-shadow:0 0 0 3px rgba(0,47,112,.1); }
 
-/* ── Modal footer buttons ── */
-.btn-danger { padding:9px 20px; background:#dc3545; color:#fff; border:none; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
-.btn-danger:hover { background:#c82333; }
-.btn-secondary { padding:9px 18px; background:#6c757d; color:#fff; border:none; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
-.btn-secondary:hover { background:#545b62; }
-.btn-receipt-lg { padding:9px 18px; background:#002F6C; color:#fff; border:none; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
-.btn-receipt-lg:hover { background:#003d8a; }
-.btn-adjust { padding:9px 20px; background:#6f42c1; color:#fff; border:none; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
-.btn-adjust:hover { background:#5a32a3; }
+/* ── Modal footer buttons — match PO design ── */
+.btn-danger    { padding:9px 20px; background:#dc3545; color:#fff; border:none; border-radius:6px; font-size:0.9rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
+.btn-danger:hover { background:#b02a37; }
+.btn-secondary { padding:9px 18px; background:#e9ecef; color:#333; border:none; border-radius:6px; font-size:0.9rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
+.btn-secondary:hover { background:#d3d7db; }
+.btn-receipt-lg { padding:9px 18px; background:#6c757d; color:#fff; border:none; border-radius:6px; font-size:0.9rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
+.btn-receipt-lg:hover { background:#545b62; }
+.btn-adjust { padding:9px 20px; background:#002F70; color:#fff; border:none; border-radius:6px; font-size:0.9rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
+.btn-adjust:hover { background:#001f50; }
+.btn-approve-lg { padding:9px 20px; background:#28a745; color:#fff; border:none; border-radius:6px; font-size:0.9rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
+.btn-approve-lg:hover { background:#1e7e34; }
 </style>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

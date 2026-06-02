@@ -132,43 +132,73 @@ $flash_error   = $_SESSION['error']   ?? null; unset($_SESSION['error']);
 include __DIR__ . "/../partials/header.php";
 ?>
 <style>
-.inv-card { background:#fff; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.06); border:1px solid #e9ecef; margin-bottom:24px; }
-.inv-card-head { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #e9ecef; flex-wrap:wrap; gap:8px; }
-.inv-card-title { font-size:1rem; font-weight:700; color:#002F70; display:flex; align-items:center; gap:8px; }
-.inv-card-body { padding:20px; }
-.sbadge { display:inline-block; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:600; white-space:nowrap; }
-.sbadge-pending   { background:#fff3cd; color:#856404; }
-.sbadge-approved  { background:#d4edda; color:#155724; }
-.sbadge-rejected  { background:#f8d7da; color:#721c24; }
-.sbadge-forwarded-to-admin { background:#e6e6fa; color:#5f5f9c; border:1px solid #d8d8ff; }
-.inv-alert { display:flex; align-items:center; gap:10px; padding:13px 16px; border-radius:8px; margin-bottom:18px; font-size:14px; }
+/* ── Table wrapper ── */
+.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow-x:auto; }
+/* ── Table ── */
+.po-table { width:100%; border-collapse:collapse; font-size:0.88rem; }
+.po-table thead th { background:#002F70; color:#fff; padding:12px 14px; text-align:left; font-weight:600; white-space:nowrap; }
+.po-table tbody tr { border-bottom:1px solid #f0f0f0; transition:background 0.15s; }
+.po-table tbody tr:hover { background:#f5f8ff; }
+.po-table tbody td { padding:11px 14px; vertical-align:middle; color:#333; }
+/* ── Status badges — plain text, no background color ── */
+.status-badge { display:inline-block; font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; color:#333; }
+.badge-pending          { color:#002F70; }
+.badge-pending-delivery { color:#002F70; }
+.badge-approved         { color:#28a745; }
+.badge-rejected         { color:#dc3545; }
+.badge-other            { color:#6c757d; }
+/* Legacy sbadge aliases (used in JS-rendered rows) */
+.sbadge { display:inline-block; font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; }
+.sbadge-pending              { color:#002F70; }
+.sbadge-approved             { color:#28a745; }
+.sbadge-rejected             { color:#dc3545; }
+.sbadge-forwarded-to-admin   { color:#6c757d; }
+/* ── Action buttons ── */
+.btn-action { display:inline-flex; align-items:center; gap:5px; padding:6px 14px; border:none; border-radius:6px; cursor:pointer; font-size:0.82rem; font-weight:600; text-decoration:none; transition:opacity 0.2s; white-space:nowrap; margin-bottom:3px; }
+.btn-action:hover { opacity:0.85; }
+.btn-approve { background:#28a745; color:#fff; }
+.btn-reject  { background:#dc3545; color:#fff; }
+.btn-view    { background:#6c757d; color:#fff; }
+.btn-primary { background:#002F70; color:#fff; }
+/* ── Page header ── */
+.page-head { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; flex-wrap:wrap; gap:6px; }
+.page-head h1 { margin:0 0 2px; font-size:1.4rem; font-weight:700; color:#002F70; }
+.page-head .sub { font-size:0.8rem; color:#6c757d; }
+/* ── Alerts ── */
+.inv-alert { display:flex; align-items:center; gap:10px; padding:12px 18px; border-radius:8px; margin-bottom:20px; font-size:0.9rem; font-weight:500; }
 .inv-alert-success { background:#d4edda; color:#155724; border:1px solid #c3e6cb; }
 .inv-alert-error   { background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; }
-.btn-action { border:none; padding:6px 14px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; display:inline-flex; align-items:center; gap:5px; transition:background .15s; }
-.btn-approve { background:#28a745; color:#fff; }
-.btn-approve:hover { background:#1e7e34; }
-.btn-reject  { background:#dc3545; color:#fff; }
-.btn-reject:hover  { background:#b02a37; }
-/* Main type tabs */
+/* ── Empty state ── */
+.empty-state { text-align:center; padding:70px 20px; color:#666; }
+.empty-state i { font-size:3.5rem; color:#002F70; margin-bottom:18px; display:block; opacity:0.5; }
+.empty-state h3 { font-size:1.2rem; font-weight:700; color:#333; margin:0 0 8px; }
+.empty-state p { font-size:0.9rem; max-width:420px; margin:0 auto; line-height:1.6; }
+/* ── Main type tabs ── */
 .main-tab-nav { display:flex; gap:0; border-bottom:2px solid #e9ecef; margin-bottom:22px; }
 .main-tab-btn { padding:11px 26px; background:none; border:none; border-bottom:3px solid transparent; font-size:14px; font-weight:600; color:#6c757d; cursor:pointer; margin-bottom:-2px; transition:all .15s; display:flex; align-items:center; gap:7px; }
 .main-tab-btn.active { color:#002F70; border-bottom-color:#002F70; }
 .main-tab-btn:hover  { color:#002F70; }
 .main-tab-badge { background:#dc3545; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; }
-/* Sub tabs */
+/* ── Sub tabs ── */
 .tab-nav { display:flex; gap:0; border-bottom:2px solid #e9ecef; margin-bottom:20px; }
 .tab-btn { padding:10px 22px; background:none; border:none; border-bottom:3px solid transparent; font-size:14px; font-weight:600; color:#6c757d; cursor:pointer; margin-bottom:-2px; transition:all .15s; }
 .tab-btn.active { color:#002F70; border-bottom-color:#002F70; }
 .tab-btn:hover { color:#002F70; }
-/* Modals */
-.modal-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; width:100vw; height:100vh; background:rgba(0,0,0,.6); z-index:9999; align-items:center; justify-content:center; margin:0; padding:0; }
+/* ── Card wrapper (kept for layout) ── */
+.inv-card { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); margin-bottom:24px; overflow:hidden; }
+.inv-card-head { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #e9ecef; flex-wrap:wrap; gap:8px; }
+.inv-card-title { font-size:1rem; font-weight:700; color:#002F70; display:flex; align-items:center; gap:8px; }
+.inv-card-body { padding:0; }
+/* ── Modals ── */
+.modal-overlay { display:none; position:fixed; z-index:1050; inset:0; background:rgba(0,0,0,0.5); align-items:center; justify-content:center; margin:0; padding:0; }
 .modal-overlay.open { display:flex; }
-.modal-box { background:#fff; border-radius:14px; padding:28px; width:600px; max-width:calc(100vw - 32px); max-height:calc(100vh - 40px); overflow-y:auto; box-shadow:0 24px 80px rgba(0,0,0,.3); animation:modalIn .2s ease; position:relative; z-index:10000; }
+.modal-box { background:#fff; border-radius:12px; width:90%; max-width:600px; max-height:90vh; overflow-y:auto; box-shadow:0 8px 32px rgba(0,0,0,0.18); animation:modalIn .2s ease; position:relative; z-index:10000; padding:28px; }
 @keyframes modalIn { from{opacity:0;transform:scale(.96)} to{opacity:1;transform:scale(1)} }
-.modal-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; padding-bottom:14px; border-bottom:2px solid #e9ecef; }
+.modal-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; padding-bottom:14px; border-bottom:1px solid #e9ecef; }
 .modal-title { font-size:1.05rem; font-weight:700; color:#002F70; display:flex; align-items:center; gap:8px; }
-.modal-close { background:none; border:none; font-size:22px; cursor:pointer; color:#adb5bd; line-height:1; }
+.modal-close { background:none; border:none; font-size:1.4rem; cursor:pointer; color:#888; line-height:1; padding:0 4px; }
 .modal-close:hover { color:#333; }
+.modal-footer { display:flex; justify-content:flex-end; gap:10px; margin-top:18px; padding-top:14px; border-top:1px solid #e9ecef; }
 .field-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px; }
 .field-group label { display:block; margin-bottom:5px; font-weight:700; font-size:12px; color:#495057; text-transform:uppercase; letter-spacing:.4px; }
 .field-group input[type=text], .field-group input[type=number], .field-group textarea { width:100%; padding:9px 11px; border:1px solid #dee2e6; border-radius:6px; font-size:13px; box-sizing:border-box; }
@@ -180,25 +210,21 @@ include __DIR__ . "/../partials/header.php";
 .qty-old { color:#6c757d; text-decoration:line-through; }
 .qty-new { color:#002F70; font-weight:700; font-size:15px; }
 .info-box { background:#e8f4fd; border-left:4px solid #002F70; border-radius:6px; padding:10px 14px; margin-bottom:16px; font-size:12px; color:#002F70; line-height:1.6; }
-.modal-footer { display:flex; gap:10px; justify-content:flex-end; margin-top:18px; padding-top:14px; border-top:1px solid #e9ecef; }
-/* Fuel table */
-.fsr-table { width:100%; border-collapse:collapse; font-size:12px; min-width:900px; }
-.fsr-table thead th { background:#f8f9fa; color:#495057; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; padding:9px 10px; border-bottom:2px solid #dee2e6; white-space:nowrap; }
-.fsr-table tbody td { padding:8px 10px; border-bottom:1px solid #f0f0f0; vertical-align:middle; }
-.fsr-table tbody tr:hover td { background:#f8fbff; }
-/* Summary cards */
+/* ── Summary cards ── */
 .summary-row { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
 .sum-card { flex:1; min-width:110px; background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px 18px; text-align:center; box-shadow:0 1px 4px rgba(0,0,0,.05); }
-.sum-card-num { font-size:26px; font-weight:800; color:#002F6C; }
+.sum-card-num { font-size:26px; font-weight:800; color:#002F70; }
 .sum-card-lbl { font-size:11px; color:#888; text-transform:uppercase; letter-spacing:.5px; margin-top:2px; }
-.sum-pending .sum-card-num  { color:#fd7e14; }
-.sum-approved .sum-card-num { color:#155724; }
-.sum-rejected .sum-card-num { color:#721c24; }
+.sum-approved .sum-card-num { color:#28a745; }
+.sum-rejected .sum-card-num { color:#dc3545; }
+/* ── Actions cell: stacked buttons ── */
+.actions-cell { display:flex; flex-direction:column; gap:4px; min-width:110px; }
+.actions-cell .btn-action { width:100%; justify-content:center; margin-bottom:0; }
 </style>
 
 <div class="page-head">
     <div>
-        <h1 class="h1"><i class="fas fa-shopping-cart"></i> Purchase Requests</h1>
+        <h1><i class="fas fa-shopping-cart"></i> Purchase Requests</h1>
         <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; Review, approve or reject staff purchase requests</div>
     </div>
     <div class="header-actions">
@@ -252,8 +278,8 @@ include __DIR__ . "/../partials/header.php";
                 <span style="font-size:12px;color:#6c757d;">Click <strong>Approve</strong> or <strong>Reject</strong> to process each request.</span>
             </div>
             <div class="inv-card-body">
-                <div class="table-wrap">
-                    <table class="table" id="pendingTable">
+                <div class="po-table-wrap">
+                    <table class="po-table" id="pendingTable">
                         <thead>
                             <tr>
                                 <th>#</th><th>Date</th><th>Staff</th><th>SKU</th><th>Product</th>
@@ -277,8 +303,8 @@ include __DIR__ . "/../partials/header.php";
                 <div class="inv-card-title"><i class="fas fa-history"></i> Processed Requests</div>
             </div>
             <div class="inv-card-body">
-                <div class="table-wrap">
-                    <table class="table" id="historyTable">
+                <div class="po-table-wrap">
+                    <table class="po-table" id="historyTable">
                         <thead>
                             <tr>
                                 <th>#</th><th>Date</th><th>Staff</th><th>Product</th>
@@ -323,8 +349,8 @@ $fuel_rejected_cnt  = count(array_filter($fuel_requests, fn($r) => $r['status'] 
     <!-- Fuel Pending -->
     <div id="fuel-pending-tab">
         <div class="inv-card" style="padding:0;">
-            <div style="overflow-x:auto;">
-                <table class="fsr-table">
+            <div class="po-table-wrap">
+                <table class="po-table">
                     <thead>
                         <tr>
                             <th>#</th><th>Date</th><th>Staff</th><th>Fuel Type</th>
@@ -333,7 +359,7 @@ $fuel_rejected_cnt  = count(array_filter($fuel_requests, fn($r) => $r['status'] 
                     </thead>
                     <tbody>
                         <?php foreach ($fuel_pending_rows as $req):
-                            $stockClr = in_array($req['stock_status'] ?? '', ['OUT OF STOCK','CRITICAL']) ? '#dc3545' : '#fd7e14';
+                            $stockClr = in_array($req['stock_status'] ?? '', ['OUT OF STOCK','CRITICAL']) ? '#dc3545' : '#6c757d';
                         ?>
                         <tr>
                             <td style="font-family:monospace;font-size:11px;color:#888;">#<?php echo $req['id']; ?></td>
@@ -348,13 +374,15 @@ $fuel_rejected_cnt  = count(array_filter($fuel_requests, fn($r) => $r['status'] 
                             <td style="font-size:12px;color:#6c757d;max-width:160px;">
                                 <?php echo $req['remarks'] ? htmlspecialchars($req['remarks']) : '<span style="color:#adb5bd;">—</span>'; ?>
                             </td>
-                            <td style="white-space:nowrap;">
-                                <button class="btn-action btn-approve" onclick="openFuelApprove(<?php echo $req['id']; ?>, '<?php echo htmlspecialchars($req['fuel_type'], ENT_QUOTES); ?>', <?php echo $req['requested_liters']; ?>)">
-                                    <i class="fas fa-check"></i> Approve
-                                </button>
-                                <button class="btn-action btn-reject" onclick="openFuelReject(<?php echo $req['id']; ?>, '<?php echo htmlspecialchars($req['fuel_type'], ENT_QUOTES); ?>')">
-                                    <i class="fas fa-times"></i> Reject
-                                </button>
+                            <td>
+                                <div class="actions-cell">
+                                    <button class="btn-action btn-approve" onclick="openFuelApprove(<?php echo $req['id']; ?>, '<?php echo htmlspecialchars($req['fuel_type'], ENT_QUOTES); ?>', <?php echo $req['requested_liters']; ?>)">
+                                        <i class="fas fa-check"></i> Approve
+                                    </button>
+                                    <button class="btn-action btn-reject" onclick="openFuelReject(<?php echo $req['id']; ?>, '<?php echo htmlspecialchars($req['fuel_type'], ENT_QUOTES); ?>')">
+                                        <i class="fas fa-times"></i> Reject
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                         <?php endforeach; ?>
@@ -373,8 +401,8 @@ $fuel_rejected_cnt  = count(array_filter($fuel_requests, fn($r) => $r['status'] 
     <!-- Fuel History -->
     <div id="fuel-history-tab" style="display:none;">
         <div class="inv-card" style="padding:0;">
-            <div style="overflow-x:auto;">
-                <table class="fsr-table">
+            <div class="po-table-wrap">
+                <table class="po-table">
                     <thead>
                         <tr>
                             <th>#</th><th>Date</th><th>Staff</th><th>Fuel Type</th>
@@ -385,7 +413,7 @@ $fuel_rejected_cnt  = count(array_filter($fuel_requests, fn($r) => $r['status'] 
                     <tbody>
                         <?php foreach ($fuel_history_rows as $req):
                             $st  = $req['status'] ?? 'Unknown';
-                            $cls = 'sbadge sbadge-' . strtolower($st);
+                            $badgeCls = 'status-badge badge-' . strtolower($st);
                         ?>
                         <tr>
                             <td style="font-family:monospace;font-size:11px;color:#888;">#<?php echo $req['id']; ?></td>
@@ -398,7 +426,7 @@ $fuel_rejected_cnt  = count(array_filter($fuel_requests, fn($r) => $r['status'] 
                                     <strong style="color:#28a745;font-size:14px;"><?php echo number_format($req['approved_liters'], 2); ?></strong>
                                 <?php else: ?><span style="color:#adb5bd;">—</span><?php endif; ?>
                             </td>
-                            <td><span class="<?php echo $cls; ?>"><?php echo htmlspecialchars($st); ?></span></td>
+                            <td><span class="<?php echo $badgeCls; ?>"><?php echo htmlspecialchars($st); ?></span></td>
                             <td style="font-size:12px;color:#495057;max-width:200px;">
                                 <?php echo $req['manager_notes'] ? htmlspecialchars($req['manager_notes']) : '<span style="color:#adb5bd;">—</span>'; ?>
                             </td>
@@ -636,10 +664,10 @@ function renderPending(rows) {
             "<td style=\"text-align:center;\">" + r.current_stock + "</td>" +
             "<td style=\"text-align:center;font-weight:700;color:#002F70;font-size:15px;\">" + r.requested_quantity + "</td>" +
             "<td style=\"font-size:12px;color:#6c757d;max-width:150px;\">" + (r.remarks ? esc(r.remarks) : "<span style=\"color:#adb5bd;\">—</span>") + "</td>" +
-            "<td style=\"white-space:nowrap;\">" +
-                "<button class=\"btn-action btn-approve\" onclick=\"openApprove(" + r.id + ",\'" + esc(r.item_name) + "\',\'" + esc(r.item_sku||"") + "\',\'" + esc(r.item_category||"") + "\'," + r.current_stock + "," + r.requested_quantity + ",\'" + esc(r.staff_name||"") + "\')\"><i class=\"fas fa-check\"></i> Approve</button> " +
+            "<td><div class=\"actions-cell\">" +
+                "<button class=\"btn-action btn-approve\" onclick=\"openApprove(" + r.id + ",\'" + esc(r.item_name) + "\',\'" + esc(r.item_sku||"") + "\',\'" + esc(r.item_category||"") + "\'," + r.current_stock + "," + r.requested_quantity + ",\'" + esc(r.staff_name||"") + "\')\"><i class=\"fas fa-check\"></i> Approve</button>" +
                 "<button class=\"btn-action btn-reject\" onclick=\"openReject(" + r.id + ",\'" + esc(r.item_name) + "\')\"><i class=\"fas fa-times\"></i> Reject</button>" +
-            "</td>" +
+            "</div></td>" +
         "</tr>";
     }).join("");
 }
@@ -652,26 +680,26 @@ function renderHistory(rows) {
     }
     tbody.innerHTML = rows.map(function(r) {
         var st  = r.status || "Unknown";
-        var cls = "sbadge sbadge-" + st.toLowerCase().replace(/ /g,"-");
+        var badgeCls = "status-badge badge-" + st.toLowerCase().replace(/ /g,"-");
         var qtyApproved = (r.approved_quantity !== null && r.approved_quantity !== undefined)
             ? "<strong style=\"color:#28a745;font-size:14px;\">" + r.approved_quantity + "</strong>" +
-              (parseInt(r.approved_quantity) !== parseInt(r.requested_quantity) ? " <span style=\"font-size:10px;color:#fd7e14;\">adjusted</span>" : "")
+              (parseInt(r.approved_quantity) !== parseInt(r.requested_quantity) ? " <span style=\"font-size:10px;color:#6c757d;\">adjusted</span>" : "")
             : "<span style=\"color:#adb5bd;\">—</span>";
         var poCol = r.po_number ? "<code style=\"font-size:11px;color:#002F70;\">" + esc(r.po_number) + "</code>" : "<span style=\"color:#adb5bd;\">—</span>";
 
         // Pipeline status column
         var pipeCol = "";
         if (r.stock_in_done == 1 || r.stock_in_done === "1") {
-            pipeCol = "<span class=\"sbadge\" style=\"background:#d4edda;color:#155724;\"><i class=\"fas fa-check-double\"></i> Stocked In</span>";
+            pipeCol = "<span class=\"status-badge badge-approved\"><i class=\"fas fa-check-double\"></i> Stocked In</span>";
             if (r.stock_in_at) pipeCol += "<br><small style=\"color:#6c757d;\">" + fmtDate(r.stock_in_at) + "</small>";
         } else if ((r.admin_finalized == 1 || r.admin_finalized === "1") && (r.delivery_validated == 1 || r.delivery_validated === "1")) {
-            pipeCol = "<span class=\"sbadge\" style=\"background:#cce5ff;color:#004085;\"><i class=\"fas fa-dolly\"></i> Awaiting Stock-In</span>";
+            pipeCol = "<span class=\"status-badge badge-other\"><i class=\"fas fa-dolly\"></i> Awaiting Stock-In</span>";
         } else if (r.admin_finalized == 1 || r.admin_finalized === "1") {
-            pipeCol = "<span class=\"sbadge\" style=\"background:#fff3cd;color:#856404;\"><i class=\"fas fa-clipboard-check\"></i> Awaiting Delivery Validation</span>";
+            pipeCol = "<span class=\"status-badge badge-pending\"><i class=\"fas fa-clipboard-check\"></i> Awaiting Delivery</span>";
         } else if (r.po_number) {
-            pipeCol = "<span class=\"sbadge\" style=\"background:#e6e6fa;color:#5f5f9c;\"><i class=\"fas fa-file-invoice\"></i> PO Pending Admin</span>";
+            pipeCol = "<span class=\"status-badge badge-other\"><i class=\"fas fa-file-invoice\"></i> PO Pending Admin</span>";
         } else if (st === "Rejected") {
-            pipeCol = "<span class=\"sbadge sbadge-rejected\"><i class=\"fas fa-times\"></i> Rejected</span>";
+            pipeCol = "<span class=\"status-badge badge-rejected\"><i class=\"fas fa-times\"></i> Rejected</span>";
         } else {
             pipeCol = "<span style=\"color:#adb5bd;\">—</span>";
         }
@@ -683,7 +711,7 @@ function renderHistory(rows) {
             "<td><strong>" + esc(r.item_name) + "</strong></td>" +
             "<td style=\"text-align:center;color:#6c757d;\">" + r.requested_quantity + "</td>" +
             "<td style=\"text-align:center;\">" + qtyApproved + "</td>" +
-            "<td><span class=\"" + cls + "\">" + esc(st) + "</span></td>" +
+            "<td><span class=\"" + badgeCls + "\">" + esc(st) + "</span></td>" +
             "<td style=\"font-size:11px;\">" + poCol + "</td>" +
             "<td>" + pipeCol + "</td>" +
             "<td style=\"font-size:12px;color:#495057;max-width:180px;\">" + (r.manager_notes ? esc(r.manager_notes) : "<span style=\"color:#adb5bd;\">—</span>") + "</td>" +

@@ -1,0 +1,272 @@
+/**
+ * Manager Module - Clean Table Design
+ * Standardized table styling for all manager pages
+ * Applied globally to ensure consistency across all modules
+ */
+
+/* === Card & Container Styling === */
+.card { 
+    background: #fff; 
+    border-radius: 8px; 
+    box-shadow: 0 2px 8px rgba(0,0,0,.08); 
+    border: 1px solid #e9ecef; 
+    margin-bottom: 20px; 
+    overflow: hidden; 
+}
+
+.card-header { 
+    padding: 16px 20px; 
+    border-bottom: 1px solid #e9ecef; 
+    display: flex; 
+    align-items: center; 
+    justify-content: space-between; 
+    flex-wrap: wrap; 
+    gap: 8px; 
+}
+
+.card-header h3 { 
+    font-size: 16px; 
+    font-weight: 700; 
+    color: #002F70; 
+    margin: 0; 
+    display: flex; 
+    align-items: center; 
+    gap: 8px; 
+}
+
+.card-body { 
+    padding: 20px; 
+    overflow-x: hidden; 
+}
+
+/* === Table Wrapper === */
+.table-wrap, 
+.pm-table-wrap,
+.data-table-wrapper,
+.po-table-wrap { 
+    overflow-x: auto; 
+    width: 100%; 
+    -webkit-overflow-scrolling: touch;
+}
+
+/* === Universal Table Styling === */
+.table, 
+.data-table, 
+.pm-table, 
+.mgrc-table,
+.mfm-table {
+    width: 100%; 
+    border-collapse: collapse; 
+    font-size: 0.875rem;
+    background: #fff;
+}
+
+/* === Blue Table Headers === */
+.table thead th, 
+.data-table thead th, 
+.pm-table thead th, 
+.mgrc-table thead th,
+.mfm-table thead th,
+.table th,
+.data-table th {
+    background: #002F70 !important; 
+    color: #fff !important; 
+    font-weight: 600; 
+    padding: 14px 12px !important; 
+    text-align: left !important; 
+    text-transform: uppercase; 
+    letter-spacing: 0.3px; 
+    border: none !important; 
+    white-space: nowrap; 
+    font-size: 11px;
+}
+
+/* Center-align last column (Actions) */
+.table thead th:last-child,
+.data-table thead th:last-child,
+.pm-table thead th:last-child,
+.mgrc-table thead th:last-child {
+    text-align: center !important;
+}
+
+/* === Table Body === */
+.table tbody td, 
+.data-table tbody td, 
+.pm-table tbody td, 
+.mgrc-table tbody td,
+.mfm-table tbody td,
+.table td,
+.data-table td {
+    vertical-align: middle; 
+    padding: 12px !important; 
+    border-bottom: 1px solid #e9ecef !important; 
+    font-size: 13px;
+    color: #212529;
+}
+
+/* Center-align last column cells (Actions) */
+.table tbody td:last-child,
+.data-table tbody td:last-child,
+.pm-table tbody td:last-child,
+.mgrc-table tbody td:last-child {
+    text-align: center !important;
+}
+
+/* === Light Blue Hover Effect === */
+.table tbody tr:hover td, 
+.data-table tbody tr:hover td, 
+.pm-table tbody tr:hover td, 
+.mgrc-table tbody tr:hover td,
+.mfm-table tbody tr:hover td,
+.table tr:hover td,
+.data-table tr:hover td {
+    background: #e3f2fd !important;
+}
+
+.table tbody tr, 
+.data-table tbody tr, 
+.pm-table tbody tr, 
+.mgrc-table tbody tr,
+.mfm-table tbody tr,
+.table tr,
+.data-table tr {
+    transition: background 0.2s ease;
+}
+
+/* === Plain Text Badges (No Backgrounds) === */
+.badge,
+.badge-status,
+.badge-cat {
+    display: inline-block;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* Specific badge colors */
+.badge-pending { color: #4338ca !important; background: transparent !important; }
+.badge-hold { color: #b45309 !important; background: transparent !important; }
+.badge-credit { color: #1976d2 !important; background: transparent !important; }
+.badge-walkin { color: #616161 !important; background: transparent !important; }
+.badge-ok, .badge-validated { color: #0d7d3e !important; background: transparent !important; }
+.badge-short { color: #c62828 !important; background: transparent !important; }
+.badge-excess { color: #e65100 !important; background: transparent !important; }
+
+/* === Action Button Column === */
+.action-col {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 90px;
+    width: 90px;
+    align-items: center;
+    justify-content: center;
+}
+
+.action-col .btn {
+    font-size: 11px;
+    padding: 5px 8px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    justify-content: center;
+    transition: all 0.15s;
+    white-space: nowrap;
+    width: 100%;
+}
+
+.action-col .btn:hover {
+    filter: brightness(0.9);
+}
+
+/* === Standardized Button Colors === */
+/* View/Approve - Green */
+.btn-view,
+.btn-approve {
+    background: #28a745 !important;
+    color: #fff !important;
+}
+
+/* Edit/Hold - Blue */
+.btn-edit,
+.btn-hold,
+.btn-primary:not(.btn-danger):not(.btn-success) {
+    background: #002F70 !important;
+    color: #fff !important;
+}
+
+/* Delete/Reject/Deactivate - Red */
+.btn-danger,
+.btn-reject {
+    background: #dc3545 !important;
+    color: #fff !important;
+}
+
+/* Activate - Green */
+.btn-success {
+    background: #28a745 !important;
+    color: #fff !important;
+}
+
+/* === Responsive Adjustments === */
+@media (max-width: 768px) {
+    .table thead th,
+    .data-table thead th,
+    .pm-table thead th {
+        font-size: 10px;
+        padding: 10px 8px !important;
+    }
+
+    .table tbody td,
+    .data-table tbody td,
+    .pm-table tbody td {
+        font-size: 12px;
+        padding: 10px 8px !important;
+    }
+
+    .action-col {
+        min-width: 80px;
+        width: 80px;
+    }
+
+    .action-col .btn {
+        font-size: 10px;
+        padding: 4px 6px;
+    }
+}
+
+/* === Empty State === */
+.empty-state {
+    text-align: center;
+    padding: 40px;
+    color: #6c757d;
+    font-size: 14px;
+}
+
+/* === Header Actions === */
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+/* === Form Controls === */
+.form-control {
+    padding: 8px 12px;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: #002F70;
+    box-shadow: 0 0 0 3px rgba(0,47,112,0.1);
+}

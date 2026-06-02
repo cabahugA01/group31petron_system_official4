@@ -26,7 +26,7 @@ require_once __DIR__ . '/../partials/header.php';
     .action-btn:hover { filter:brightness(.9); transform:translateY(-1px); }
     .btn-view    { background:#28a745; color:#fff; }
     .btn-edit    { background:#002F70; color:#fff; }
-    .btn-reset   { background:#ffc107; color:#333; }
+    .btn-reset   { background:#002F70; color:#fff; }
     .btn-danger  { background:#dc3545; color:#fff; }
     .btn-success { background:#28a745; color:#fff; }
 </style>

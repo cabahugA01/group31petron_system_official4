@@ -184,15 +184,26 @@ try {
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
-.pm-table th { background:#f1f3f4; font-weight:600; color:#333; border-bottom:2px solid #dee2e6; }
-.pm-table td { vertical-align:middle; }
-.action-col { display:flex; flex-direction:column; gap:4px; }
-.action-col .btn { width:100%; font-size:12px; padding:5px 8px; border:none; border-radius:4px; cursor:pointer; display:flex; align-items:center; gap:5px; justify-content:center; }
+/* === Fuel Product Management - Clean Table Design === */
+.card { background:#fff; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.08); border:1px solid #e9ecef; margin-bottom:20px; overflow:hidden; }
+.card-header { padding:16px 20px; border-bottom:1px solid #e9ecef; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+.card-header h3 { font-size:16px; font-weight:700; color:#002F70; margin:0; display:flex; align-items:center; gap:8px; }
+.card-body { padding:20px; overflow-x:hidden; }
+.table-wrap { overflow-x:auto; width:100%; }
+.pm-table { width:100%; border-collapse:collapse; table-layout:auto; }
+.pm-table thead th { background:#002F70 !important; color:#fff !important; font-weight:600; padding:14px 12px !important; text-align:left !important; text-transform:uppercase; letter-spacing:0.3px; border:none !important; font-size:11px; }
+.pm-table thead th:last-child { text-align:center !important; }
+.pm-table tbody td { vertical-align:middle; padding:12px !important; border-bottom:1px solid #e9ecef !important; font-size:13px; }
+.pm-table tbody td:last-child { text-align:center !important; }
+.pm-table tbody tr:hover td { background:#e3f2fd !important; }
+.pm-table tbody tr { transition:background 0.2s ease; }
+.action-col { display:flex; flex-direction:column; gap:4px; width:90px; min-width:90px; align-items:center; justify-content:center; }
+.action-col .btn { width:100%; font-size:11px; padding:5px 8px; border:none; border-radius:4px; cursor:pointer; display:flex; align-items:center; gap:5px; justify-content:center; }
 .btn-view   { background:#28a745; color:#fff; }
 .btn-edit   { background:#002F70; color:#fff; }
 .btn-danger { background:#dc3545; color:#fff; }
 .btn-success{ background:#28a745; color:#fff; }
-.badge-status { padding:4px 10px; border-radius:4px; font-size:12px; font-weight:600; color:#fff; }
+.badge-status { padding:4px 10px; border-radius:4px; font-size:12px; font-weight:700; background:transparent !important; }
 </style>
 
 <div class="page-head">
@@ -259,11 +270,11 @@ include __DIR__ . '/../partials/header.php';
                 <tr data-name="<?php echo strtolower(htmlspecialchars($p['product_name'])); ?>">
                     <td><?php echo $p['id'] ? '#'.$p['id'] : 'N/A'; ?></td>
                     <td><?php echo htmlspecialchars($p['product_name']); ?></td>
-                    <td><span class="badge-status" style="background:#ff6b35;">Fuel</span></td>
+                    <td><span style="color:#ff6b35;font-weight:700;">Fuel</span></td>
                     <td>₱<?php echo number_format($p['unit_cost'], 2); ?></td>
-                    <td><span class="badge-status" style="background:<?php echo $stockColor; ?>;"><?php echo number_format($stockLevel, 2); ?> L</span></td>
+                    <td><span style="color:<?php echo $stockColor; ?>;font-weight:700;"><?php echo number_format($stockLevel, 2); ?> L</span></td>
                     <td>Petron Corporation</td>
-                    <td><span class="badge-status" style="background:<?php echo $statusColor; ?>;"><?php echo htmlspecialchars($p['display_status']); ?></span></td>
+                    <td><span style="color:<?php echo $statusColor; ?>;font-weight:700;"><?php echo htmlspecialchars($p['display_status']); ?></span></td>
                     <td>
                         <?php if ($p['id']): ?>
                         <div class="action-col">
@@ -274,7 +285,7 @@ include __DIR__ . '/../partials/header.php';
                             </button>
                         </div>
                         <?php else: ?>
-                            <span style="color:#6c757d;font-size:12px;">Missing Data</span>
+                            <span style="color:#6c757d;font-size:12px;font-weight:700;">Missing Data</span>
                         <?php endif; ?>
                     </td>
                 </tr>

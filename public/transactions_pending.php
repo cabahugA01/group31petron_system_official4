@@ -223,17 +223,17 @@ include __DIR__ . '/../partials/header.php';
 
 <div class="card" style="padding:20px;margin-bottom:20px;">
     <div style="display:flex;justify-content:space-between;align-items:center;">
-        <h3 style="margin:0;"><i class="fas fa-clock" style="color:#ffc107;"></i> Pending Validation Summary</h3>
-        <div style="text-align:center;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px 24px;">
-            <span style="font-size:36px;font-weight:700;color:#856404;display:block;"><?php echo count($pending_transactions); ?></span>
-            <span style="font-size:14px;color:#856404;font-weight:600;"><?php echo count($pending_transactions) == 1 ? 'Transaction' : 'Transactions'; ?> Pending Validation</span>
+        <h3 style="margin:0;"><i class="fas fa-clock" style="color:#002F70;"></i> Pending Validation Summary</h3>
+        <div style="text-align:center;background:#f0f4ff;border:1px solid #002F70;border-radius:8px;padding:12px 24px;">
+            <span style="font-size:36px;font-weight:700;color:#002F70;display:block;"><?php echo count($pending_transactions); ?></span>
+            <span style="font-size:14px;color:#002F70;font-weight:600;"><?php echo count($pending_transactions) == 1 ? 'Transaction' : 'Transactions'; ?> Pending Validation</span>
         </div>
     </div>
 </div>
 
 <div class="card" style="padding:0;">
-    <div class="table-wrap">
-        <table class="table">
+    <div class="po-table-wrap">
+        <table class="po-table">
             <thead>
                 <tr>
                     <th>Transaction ID</th>
@@ -264,7 +264,7 @@ include __DIR__ . '/../partials/header.php';
                     <td>#<?php echo htmlspecialchars($t['transaction_id']); ?></td>
                     <td><?php echo htmlspecialchars($t['staff_name']); ?></td>
                     <td>
-                        <span class="badge" style="background:<?php echo $isFuel ? '#dc3545' : '#007bff'; ?>;color:white;padding:4px 8px;border-radius:4px;font-weight:600;">
+                        <span style="background:<?php echo $isFuel ? '#dc3545' : '#0d6efd'; ?>;color:white;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;">
                             <?php echo $isFuel ? 'Fuel' : 'Merchandise'; ?>
                         </span>
                     </td>
@@ -274,11 +274,11 @@ include __DIR__ . '/../partials/header.php';
                     <td style="font-weight:bold;">&#8369;<?php echo number_format($t['total_amount'], 2); ?></td>
                     <td><?php echo date('M d, H:i', strtotime($t['created_at'])); ?></td>
                     <td>
-                        <div style="display:flex;flex-wrap:wrap;gap:4px;">
+                        <div class="actions-cell">
                             <button class="btn-action btn-view" onclick="viewDetails('<?php echo $txnIdJs; ?>','<?php echo $txnTypeJs; ?>','<?php echo $productJs; ?>','<?php echo $qtyJs; ?>','<?php echo $unitJs; ?>','<?php echo $totalJs; ?>','<?php echo $staffJs; ?>','<?php echo $dateJs; ?>')">
                                 <i class="fas fa-search"></i> View
                             </button>
-                            <form method="POST" style="display:inline;" onsubmit="return confirm('Approve this transaction?');">
+                            <form method="POST" style="display:contents;" onsubmit="return confirm('Approve this transaction?');">
                                 <input type="hidden" name="action" value="approve_transaction">
                                 <input type="hidden" name="transaction_id" value="<?php echo htmlspecialchars($t['transaction_id']); ?>">
                                 <input type="hidden" name="transaction_type" value="<?php echo $txnTypeJs; ?>">
@@ -295,10 +295,12 @@ include __DIR__ . '/../partials/header.php';
                 </tr>
                 <?php endforeach; ?>
                 <?php if(empty($pending_transactions)): ?>
-                <tr><td colspan="9" style="text-align:center;padding:40px;color:#666;">
-                    <i class="fas fa-check-circle" style="font-size:40px;display:block;margin-bottom:10px;color:#28a745;"></i>
-                    No pending transactions found.<br>
-                    <small>All transactions have been processed and validated.</small>
+                <tr><td colspan="9">
+                    <div class="empty-state">
+                        <i class="fas fa-check-circle"></i>
+                        <h3>No Pending Transactions</h3>
+                        <p>All transactions have been processed and validated.</p>
+                    </div>
                 </td></tr>
                 <?php endif; ?>
             </tbody>
@@ -360,7 +362,7 @@ include __DIR__ . '/../partials/header.php';
 <div id="adjustModal" class="txn-modal" onclick="if(event.target===this)closeAdjustModal()">
     <div class="txn-modal-content" style="max-width:500px;">
         <div class="txn-modal-header" style="background:#fff;border-color:#e9ecef;">
-            <h3 style="color:#212529;"><i class="fas fa-edit" style="color:#fd7e14;margin-right:7px;"></i> Adjust Transaction</h3>
+            <h3 style="color:#002F70;"><i class="fas fa-edit" style="margin-right:7px;"></i> Adjust Transaction</h3>
             <button class="txn-close" style="color:#6c757d;" onclick="closeAdjustModal()">&times;</button>
         </div>
         <form method="POST" onsubmit="return validateAdjust()">
@@ -445,34 +447,63 @@ function validateAdjust() {
 </script>
 
 <style>
+/* ── Design System ── */
+.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow-x:auto; }
+.po-table { width:100%; border-collapse:collapse; font-size:0.88rem; }
+.po-table thead th { background:#002F70; color:#fff; padding:12px 14px; text-align:left; font-weight:600; white-space:nowrap; }
+.po-table tbody tr { border-bottom:1px solid #f0f0f0; transition:background 0.15s; }
+.po-table tbody tr:hover { background:#f5f8ff; }
+.po-table tbody td { padding:11px 14px; vertical-align:middle; color:#333; }
+.status-badge { display:inline-block; font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; color:#333; }
+.badge-pending   { color:#002F70; }
+.badge-approved  { color:#28a745; }
+.badge-rejected  { color:#dc3545; }
+.badge-validated { color:#28a745; }
+.badge-adjusted  { color:#6c757d; }
+.badge-other     { color:#6c757d; }
+.btn-action { display:inline-flex; align-items:center; gap:5px; padding:6px 14px; border:none; border-radius:6px; cursor:pointer; font-size:0.82rem; font-weight:600; text-decoration:none; transition:opacity 0.2s; white-space:nowrap; margin-bottom:3px; }
+.btn-action:hover { opacity:0.85; }
+.btn-approve { background:#28a745; color:#fff; }
+.btn-reject  { background:#dc3545; color:#fff; }
+.btn-adjust  { background:#002F70; color:#fff; }
+.btn-view    { background:#6c757d; color:#fff; }
+.page-head { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; flex-wrap:wrap; gap:6px; }
+.page-head h1 { margin:0 0 2px; font-size:1.4rem; font-weight:700; color:#002F70; }
+.page-head .sub { font-size:0.8rem; color:#6c757d; }
+.alert { padding:12px 18px; border-radius:8px; margin-bottom:20px; font-size:0.9rem; font-weight:500; }
+.alert-success { background:#d4edda; color:#155724; border:1px solid #c3e6cb; }
+.alert-error   { background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; }
+.actions-cell { display:flex; flex-direction:column; gap:4px; min-width:110px; }
+.actions-cell .btn-action { width:100%; justify-content:center; margin-bottom:0; }
+.empty-state { text-align:center; padding:60px 20px; color:#666; }
+.empty-state i { font-size:3rem; color:#002F70; margin-bottom:16px; display:block; opacity:0.4; }
+.empty-state h3 { font-size:1.1rem; font-weight:700; color:#333; margin:0 0 6px; }
+/* Modal */
 .txn-modal { display:none; position:fixed; z-index:1050; inset:0; background:rgba(0,0,0,0.55); align-items:center; justify-content:center; }
 .txn-modal-content { background:#fff; border-radius:12px; width:90%; max-width:640px; box-shadow:0 8px 32px rgba(0,0,0,0.2); overflow:hidden; }
 .txn-modal-header { display:flex; justify-content:space-between; align-items:center; padding:16px 24px; background:#fff; color:#212529; border-bottom:1px solid #e9ecef; }
-.txn-modal-header h3 { margin:0; font-size:17px; color:#212529; }
-.txn-close { background:none; border:none; color:#6c757d; font-size:26px; cursor:pointer; line-height:1; }
-.txn-close:hover { color:#212529; }
-.txn-modal-body { padding:24px; }
-.txn-modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:16px 24px; background:#f8f9fa; border-top:1px solid #dee2e6; }
+.txn-modal { display:none; position:fixed; z-index:1050; inset:0; background:rgba(0,0,0,.5); align-items:center; justify-content:center; }
+.txn-modal-content { background:#fff; border-radius:12px; width:92%; max-width:640px; box-shadow:0 8px 32px rgba(0,0,0,.18); overflow:hidden; max-height:90vh; display:flex; flex-direction:column; }
+.txn-modal-header { display:flex; justify-content:space-between; align-items:center; padding:18px 24px; background:#fff; border-bottom:1px solid #e9ecef; flex-shrink:0; }
+.txn-modal-header h3 { margin:0; font-size:1.05rem; font-weight:700; color:#002F70; }
+.txn-close { background:none; border:none; color:#888; font-size:1.4rem; cursor:pointer; line-height:1; }
+.txn-close:hover { color:#333; }
+.txn-modal-body { padding:20px 24px; overflow-y:auto; flex:1; }
+.txn-modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:16px 24px; background:#fff; border-top:1px solid #e9ecef; }
 .detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
 .detail-item { background:#f8f9fa; padding:12px; border-radius:8px; border:1px solid #e9ecef; }
 .detail-label { display:block; font-size:11px; font-weight:700; color:#6c757d; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px; }
-.detail-value { display:block; font-size:14px; color:#212529; }
+.detail-value { display:block; font-size:0.9rem; color:#212529; }
 .form-group { margin-bottom:16px; }
-.form-label { display:block; font-weight:600; color:#495057; margin-bottom:6px; }
-.form-control { width:100%; padding:10px 12px; border:1px solid #ced4da; border-radius:6px; font-size:14px; box-sizing:border-box; }
-.form-control:focus { outline:none; border-color:#0056b3; box-shadow:0 0 0 2px rgba(0,86,179,0.2); }
-.btn-action { padding:5px 10px; border:none; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap; }
-.btn-view { background:#0056b3; color:white; }
-.btn-approve { background:#28a745; color:white; }
-.btn-reject { background:#dc3545; color:white; }
-.btn-adjust { background:#fd7e14; color:white; }
-.btn-danger { padding:10px 20px; background:#dc3545; color:white; border:none; border-radius:6px; font-size:14px; font-weight:600; cursor:pointer; }
-.btn-warning { padding:10px 20px; background:#fd7e14; color:white; border:none; border-radius:6px; font-size:14px; font-weight:600; cursor:pointer; }
-.btn-secondary { padding:10px 20px; background:#6c757d; color:white; border:none; border-radius:6px; font-size:14px; font-weight:600; cursor:pointer; }
-.table-wrap{overflow-x:auto;}
-.table{width:100%;border-collapse:collapse;font-size:13px;}
-.table th,.table td{padding:8px 12px;border-bottom:1px solid #eef1f4;text-align:center;}
-.table th{font-weight:700;background:#f8f9fa;color:#2c3e50;}
+.form-label { display:block; font-weight:600; color:#333; margin-bottom:6px; font-size:0.88rem; }
+.form-control { width:100%; padding:9px 12px; border:1px solid #ced4da; border-radius:6px; font-size:0.9rem; box-sizing:border-box; }
+.form-control:focus { outline:none; border-color:#002F70; box-shadow:0 0 0 3px rgba(0,47,112,0.1); }
+.btn-danger    { padding:9px 20px; background:#dc3545; color:#fff; border:none; border-radius:6px; font-size:0.9rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
+.btn-danger:hover { background:#b02a37; }
+.btn-warning   { padding:9px 20px; background:#002F70; color:#fff; border:none; border-radius:6px; font-size:0.9rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
+.btn-warning:hover { background:#001f50; }
+.btn-secondary { padding:9px 20px; background:#e9ecef; color:#333; border:none; border-radius:6px; font-size:0.9rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
+.btn-secondary:hover { background:#d3d7db; }
 </style>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>
