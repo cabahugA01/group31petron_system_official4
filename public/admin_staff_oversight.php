@@ -154,8 +154,8 @@ require_once __DIR__ . '/../partials/header.php';
                     <select class="inp full" id="editUserStatus" name="status" required>
                         <option value="active">Active</option>
                         <option value="inactive">Inactive</option>
-                        <option value="suspended">Suspended</option>
                     </select>
+                    <small class="text-muted">Note: "Suspended" status will be available after database update.</small>
                 </div>
             </form>
         </div>
@@ -185,13 +185,26 @@ require_once __DIR__ . '/../partials/header.php';
 </div>
 
 <script>
+// ── HTML Escaping Function (XSS Protection) ──────────────────────────────────
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     loadStaffOversight();
 });
 
 function loadStaffOversight() {
     fetch('../backend/api/admin_staff_oversight_api.php?action=fetch_staff_oversight')
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.success) {
                 const tbody = document.getElementById('staffOversightBody');
@@ -223,7 +236,10 @@ function loadStaffOversight() {
                     const reqLabel = isManager ? 'Requests Validated' : 'Requests Encoded';
                     const delLabel = isManager ? 'Deliveries Validated' : 'Deliveries Encoded';
                     
-                    const remarks = staff.remarks || '<span class="text-muted fst-italic">No remarks</span>';
+                    // XSS Protection: Escape HTML in remarks before displaying
+                    const remarks = staff.remarks 
+                        ? escapeHtml(staff.remarks)
+                        : '<span class="text-muted fst-italic">No remarks</span>';
                     const staffJson = encodeURIComponent(JSON.stringify(staff)).replace(/'/g, "%27");
                     
                     const tr = document.createElement('tr');
@@ -277,11 +293,20 @@ function loadStaffOversight() {
         })
         .catch(err => {
             console.error('Fetch error:', err);
-            alert('An error occurred while fetching staff data.');
+            alert('An error occurred while fetching staff data: ' + err.message);
         });
 }
 
 function toggleStatus(staffId, newStatus) {
+    // Get the button that triggered this action
+    const btn = event.target.closest('button');
+    if (!btn) return;
+    
+    // Disable button and show loading state
+    btn.disabled = true;
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ...';
+    
     const formData = new FormData();
     formData.append('action', 'update_status');
     formData.append('staff_id', staffId);
@@ -291,17 +316,26 @@ function toggleStatus(staffId, newStatus) {
         method: 'POST',
         body: formData
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
     .then(data => {
         if (data.success) {
             loadStaffOversight();
         } else {
             alert('Failed to update status: ' + data.error);
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
         }
     })
     .catch(err => {
         console.error(err);
-        alert('Network error while updating status.');
+        alert('Network error while updating status: ' + err.message);
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
     });
 }
 
@@ -338,7 +372,12 @@ function saveEditUser() {
         method: 'POST',
         body: formData
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
     .then(data => {
         if (data.success) {
             closeModal('editUserModal');
@@ -349,7 +388,7 @@ function saveEditUser() {
     })
     .catch(err => {
         console.error(err);
-        alert('Network error while saving user.');
+        alert('Network error while saving user: ' + err.message);
     });
 }
 
@@ -370,7 +409,12 @@ function confirmDeactivate() {
         method: 'POST',
         body: formData
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
     .then(data => {
         if (data.success) {
             closeModal('deactivateUserModal');
@@ -381,7 +425,7 @@ function confirmDeactivate() {
     })
     .catch(err => {
         console.error(err);
-        alert('Network error while deactivating user.');
+        alert('Network error while deactivating user: ' + err.message);
     });
 }
 
@@ -404,7 +448,12 @@ function saveRemark() {
         method: 'POST',
         body: formData
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
     .then(data => {
         if (data.success) {
             closeModal('remarkModal');
@@ -415,7 +464,7 @@ function saveRemark() {
     })
     .catch(err => {
         console.error(err);
-        alert('Network error while saving remarks.');
+        alert('Network error while saving remarks: ' + err.message);
     });
 }
 

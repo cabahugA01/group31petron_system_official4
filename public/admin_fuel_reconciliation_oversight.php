@@ -147,7 +147,7 @@ html,body{max-width:100vw;overflow-x:hidden}
 <div class="afao-head">
     <div>
         <h1><i class="fas fa-balance-scale"></i> Fuel Reconciliation Oversight</h1>
-        <div class="afao-subtitle">Admin view of all fuel variance reports from manager reconciliation</div>
+        <div class="afao-subtitle">AUDIT RECONCILIATIONS OF PUMP READINGS, DELIVERIES, AND STOCK BALANCES TO DETECT AND RESOLVE INCONSISTENCIES.</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <a href="?<?= http_build_query(['date_from'=>$date_from,'date_to'=>$date_to,'station'=>$filter_station,'status'=>$filter_status,'export'=>'excel']) ?>" class="afao-btn afao-btn-excel"><i class="fas fa-file-excel"></i> Export Excel</a>

@@ -1702,7 +1702,7 @@ require_once __DIR__ . '/rbac_menu.php';
 
         // Sub-menu
         $display = $parent_active ? 'block' : 'none';
-        echo '<div id="sub-'.htmlspecialchars($it['id']).'" style="display:'.$display.';background:rgba(0,0,0,.15);border-left:3px solid rgba(255,255,255,.2);margin-left:0;">';
+        echo '<div id="sub-'.htmlspecialchars($it['id']).'" style="display:'.$display.';background:rgba(0,0,0,.15);border-left:3px solid rgba(255,255,255,.2);margin-left:0;padding-left:0;">';
         foreach ($it['sub_items'] as $sub) {
             // Active if hash matches this sub-item's fragment OR if current page matches the sub-item href
             $sub_fragment = ltrim(parse_url($sub['href'], PHP_URL_FRAGMENT) ?? '', '#');
@@ -1756,7 +1756,7 @@ require_once __DIR__ . '/rbac_menu.php';
             $sub_badge    = $fuel_sub_badges[$sub['id'] ?? ''] ?? 0;
             $sub_desc     = $fuel_sub_desc[$sub['id'] ?? ''] ?? '';
 
-            echo '<a class="nav-item sidebar-sub-item '.$sub_active.'" href="'.htmlspecialchars($sub['href']).'" style="padding:8px 12px 8px 36px;min-height:auto;" data-tooltip="'.htmlspecialchars($sub['label'] ?? '').'" data-tab="'.htmlspecialchars($sub_fragment).'">';
+            echo '<a class="nav-item sidebar-sub-item '.$sub_active.'" href="'.htmlspecialchars($sub['href']).'" style="padding:8px 15px 8px 47px;min-height:auto;" data-tooltip="'.htmlspecialchars($sub['label'] ?? '').'" data-tab="'.htmlspecialchars($sub_fragment).'">';
             echo '<span class="ico" style="margin-right:8px;width:14px;text-align:center;flex-shrink:0;"><i class="fas fa-circle" style="font-size:4px;opacity:.5;"></i></span>';
             echo '<span style="flex-grow:1;line-height:1.3;">';
             echo '<span style="display:block;font-size:12px;font-weight:500;">'.htmlspecialchars($sub['label'] ?? '').'</span>';

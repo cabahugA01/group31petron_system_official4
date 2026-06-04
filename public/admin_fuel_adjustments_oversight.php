@@ -274,7 +274,7 @@ html, body { max-width:100vw; overflow-x:hidden; }
 <div class="afao-head">
     <div>
         <h1><i class="fas fa-sliders-h"></i> Fuel Adjustments Oversight</h1>
-        <div class="afao-subtitle">Manager-logged manual adjustments and reconciled variances</div>
+        <div class="afao-subtitle">REVIEW AND APPROVE CORRECTIONS MADE TO FUEL RECORDS, ENSURING PROPER DOCUMENTATION OF VARIANCES.</div>
     </div>
     <div class="afao-actions">
         <a href="admin_dashboard.php" class="afao-btn afao-btn-back"><i class="fas fa-arrow-left"></i> Back</a>

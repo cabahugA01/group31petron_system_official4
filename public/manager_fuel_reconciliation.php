@@ -355,47 +355,31 @@ html, body {
 }
 .table-wrap { 
     width: 100%;
-    max-width: 100%;
-    overflow-x: hidden;
+    overflow-x: auto;
     box-sizing: border-box;
-    display: block;
 }
 .data-table {
     width: 100%; 
     border-collapse: collapse; 
     font-size: 13px;
-    table-layout: fixed;
-    box-sizing: border-box;
-    display: table;
+    table-layout: auto;
 }
 .data-table thead th {
-    background: #002F70; padding: 10px 6px; text-align: left;
+    background: #002F70; padding: 10px 10px; text-align: left;
     font-size: 11px; font-weight: 700; color: #fff;
     text-transform: uppercase; border-bottom: 2px solid #002F70;
-    white-space: normal;
-    word-wrap: break-word;
-    overflow: hidden;
-    line-height: 1.3;
+    white-space: nowrap;
 }
-/* Column widths - adjusted to prevent cutoff */
-.data-table th:nth-child(1), .data-table td:nth-child(1) { width: 4%; } /* ID */
-.data-table th:nth-child(2), .data-table td:nth-child(2) { width: 8%; } /* Date */
-.data-table th:nth-child(3), .data-table td:nth-child(3) { width: 8%; } /* Fuel Type */
-.data-table th:nth-child(4), .data-table td:nth-child(4) { width: 8%; } /* Expected */
-.data-table th:nth-child(5), .data-table td:nth-child(5) { width: 8%; } /* Actual */
-.data-table th:nth-child(6), .data-table td:nth-child(6) { width: 8%; } /* Variance L */
-.data-table th:nth-child(7), .data-table td:nth-child(7) { width: 8%; } /* Variance % */
-.data-table th:nth-child(8), .data-table td:nth-child(8) { width: 9%; } /* Status */
-.data-table th:nth-child(9), .data-table td:nth-child(9) { width: 11%; } /* Resolved By */
-.data-table th:nth-child(10), .data-table td:nth-child(10) { width: 28%; } /* Actions - increased */
+/* Remove fixed column widths — let the browser auto-size them */
+.data-table th, .data-table td {
+    padding: 10px 10px;
+    white-space: nowrap;
+}
 .data-table tbody tr { border-bottom: 1px solid #f1f5f9; }
 .data-table tbody tr:hover { background: #e3f2fd; }
 .data-table tbody td { 
-    padding: 10px 6px; 
     color: #334155; 
     vertical-align: middle;
-    word-wrap: break-word;
-    overflow: hidden;
     font-size: 13px;
     line-height: 1.4;
 }
@@ -417,14 +401,11 @@ html, body {
 
 /* Action Buttons */
 .action-btn {
-    padding: 7px 10px; border-radius: 5px; font-size: 12px; font-weight: 600;
+    padding: 5px 10px; border-radius: 5px; font-size: 12px; font-weight: 600;
     border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
     transition: all .15s;
-    margin: 3px 0;
     white-space: nowrap;
-    line-height: 1.3;
-    width: 100%;
-    justify-content: center;
+    margin: 2px 0;
 }
 .action-btn i { font-size: 11px; }
 .btn-resolve { background: #28a745; color: #fff; }
@@ -432,12 +413,17 @@ html, body {
 .btn-investigate { background: #002F70; color: #fff; }
 .btn-investigate:hover { background: #001a42; }
 
-/* Actions cell layout */
-.data-table tbody td:last-child {
+/* Actions cell: stack buttons vertically */
+.actions-cell {
     display: flex;
     flex-direction: column;
-    gap: 3px;
-    position: relative;
+    gap: 4px;
+    align-items: flex-start;
+}
+
+/* Actions cell layout */
+.data-table tbody td:last-child {
+    vertical-align: middle;
 }
 
 /* Modal */
@@ -478,7 +464,7 @@ html, body {
     <div class="page-head">
         <div>
             <h1>Fuel Reconciliation</h1>
-            <div class="sub">Pag-compare sa pump sales vs tank levels ug pag-resolve sa variances.</div>
+            <div class="sub">RECONCILE PUMP READINGS, DELIVERIES, AND STOCK RECORDS TO DETECT VARIANCES AND ENSURE ACCURACY.</div>
         </div>
         <div class="actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
             <!-- Excel -->
@@ -605,16 +591,20 @@ html, body {
                         <td><?= htmlspecialchars($v['resolved_by_name'] ?? 'Pending') ?></td>
                         <td>
                             <?php if ($status_lower === 'open'): ?>
-                                <button class="action-btn btn-resolve" onclick="resolveVariance(<?= $v['id'] ?>)">
-                                    <i class="fas fa-check"></i> Resolve
-                                </button>
-                                <button class="action-btn btn-investigate" onclick="investigateVariance(<?= $v['id'] ?>)">
-                                    <i class="fas fa-search"></i> Investigate
-                                </button>
+                                <div class="actions-cell">
+                                    <button class="action-btn btn-resolve" onclick="resolveVariance(<?= $v['id'] ?>)">
+                                        <i class="fas fa-check"></i> Resolve
+                                    </button>
+                                    <button class="action-btn btn-investigate" onclick="investigateVariance(<?= $v['id'] ?>)">
+                                        <i class="fas fa-search"></i> Investigate
+                                    </button>
+                                </div>
                             <?php elseif ($status_lower === 'under investigation'): ?>
-                                <button class="action-btn btn-resolve" onclick="resolveVariance(<?= $v['id'] ?>)">
-                                    <i class="fas fa-check"></i> Resolve
-                                </button>
+                                <div class="actions-cell">
+                                    <button class="action-btn btn-resolve" onclick="resolveVariance(<?= $v['id'] ?>)">
+                                        <i class="fas fa-check"></i> Resolve
+                                    </button>
+                                </div>
                             <?php else: ?>
                                 <span style="color:#94a3b8;font-size:11px;">Resolved</span>
                             <?php endif; ?>

@@ -265,7 +265,7 @@ html, body { max-width:100vw; overflow-x:hidden; }
 <div class="apmo-head">
     <div>
         <h1><i class="fas fa-cog"></i> Pump Master Oversight</h1>
-        <div class="apmo-subtitle">Calibration records and adjustment logs from Manager Pump Master module</div>
+        <div class="apmo-subtitle">SUPERVISE PUMP ASSIGNMENTS, OPERATIONAL STATUS, AND ENSURE ALIGNMENT WITH VALIDATED TRANSACTIONS.</div>
     </div>
     <div class="apmo-actions">
         <a href="?tab=<?= htmlspecialchars($tab) ?>&<?= http_build_query(array_merge(array_diff_key($_GET,['export'=>'']),['export'=>'excel'])) ?>" class="apmo-btn apmo-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>

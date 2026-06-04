@@ -404,7 +404,7 @@ include __DIR__ . '/../partials/header.php';
     <div class="page-head">
         <div>
             <h1 class="h1">Purchase Orders</h1>
-            <div class="sub">Auto-generated from approved stock requests — Finalize supplier, qty, price &amp; expected delivery</div>
+            <div class="sub">CREATE DRAFT PURCHASE ORDERS BASED ON VALIDATED REQUESTS FOR ADMIN APPROVAL.</div>
         </div>
     </div>
 

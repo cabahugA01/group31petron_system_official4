@@ -1179,7 +1179,7 @@ function adjustColor($hex,$pct) {
 <div class="mfm-wrap">
     <div class="page-head">
         <div>
-            <h1 class="h1">Pump Master</h1><div class="sub" style="margin-top:6px; color:#555; font-size:0.9rem;">Management of Pump Calibration and Records</div>
+            <h1 class="h1">Pump Master</h1><div class="sub">MONITOR AND MANAGE PUMP ASSIGNMENTS, READINGS, AND OPERATIONAL STATUS.</div>
         </div>
         
     </div>

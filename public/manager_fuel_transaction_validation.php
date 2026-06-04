@@ -388,10 +388,21 @@ html, body {
 
 /* Actions cell layout */
 .data-table tbody td:last-child {
+    padding: 8px 6px !important;
+    vertical-align: middle;
+}
+
+.action-buttons-wrapper {
     display: flex;
     flex-direction: column;
     gap: 3px;
-    position: relative;
+    width: 100%;
+}
+
+/* ACTION header alignment */
+.data-table thead th:last-child {
+    text-align: center;
+    vertical-align: middle;
 }
 
 /* Modal */
@@ -432,7 +443,7 @@ html, body {
     <div class="page-head">
         <div>
             <h1>Fuel Transaction Validation</h1>
-            <div class="sub">Pag-validate sa pump readings nga gi-encode sa Staff.</div>
+            <div class="sub">REVIEW AND VALIDATE FUEL TRANSACTIONS ENCODED BY STAFF FOR ACCURACY AND COMPLIANCE.</div>
         </div>
         <div class="actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
             <!-- Excel -->
@@ -539,15 +550,17 @@ html, body {
                         <td><?= htmlspecialchars($tx['staff_name'] ?? 'N/A') ?></td>
                         <td><span class="badge badge-amber">PENDING</span></td>
                         <td>
-                            <button class="action-btn btn-approve" onclick="approveTransaction(<?= $tx['id'] ?>)">
-                                <i class="fas fa-check"></i> Approve
-                            </button>
-                            <button class="action-btn btn-reject" onclick="rejectTransaction(<?= $tx['id'] ?>)">
-                                <i class="fas fa-times"></i> Reject
-                            </button>
-                            <button class="action-btn btn-adjust" onclick="adjustTransaction(<?= $tx['id'] ?>, <?= $tx['liters_sold'] ?? 0 ?>, <?= $tx['total_amount'] ?? 0 ?>)">
-                                <i class="fas fa-edit"></i> Adjust
-                            </button>
+                            <div class="action-buttons-wrapper">
+                                <button class="action-btn btn-approve" onclick="approveTransaction(<?= $tx['id'] ?>)">
+                                    <i class="fas fa-check"></i> Approve
+                                </button>
+                                <button class="action-btn btn-reject" onclick="rejectTransaction(<?= $tx['id'] ?>)">
+                                    <i class="fas fa-times"></i> Reject
+                                </button>
+                                <button class="action-btn btn-adjust" onclick="adjustTransaction(<?= $tx['id'] ?>, <?= $tx['liters_sold'] ?? 0 ?>, <?= $tx['total_amount'] ?? 0 ?>)">
+                                    <i class="fas fa-edit"></i> Adjust
+                                </button>
+                            </div>
                         </td>
                     </tr>
                     <?php endforeach; ?>

@@ -4,12 +4,12 @@
  * print_po_new.php
  *
  * Features:
- *  - Auto-generated PO Number display
+ *  - Auto-generated PO Number display (Grouped by Date)
  *  - Status badge (Approved / Pending / Cancelled)
  *  - Date Finalized + Finalized By (Admin)
  *  - Station Name, Address, Supplier
  *  - Approval Chain / Audit Trail: Staff → Manager → Admin → Supplier
- *  - Order Details Table: #, Product, SKU, Qty, Unit Price, Total Amount
+ *  - Order Details Table: #, Product, SKU, Qty, Unit Price, Total Amount (Grouped items)
  *  - Subtotal + Total Order Amount (₱ formatted)
  *  - Date Finalized + Printed Date
  *  - "OFFICIAL" watermark stamp
@@ -29,85 +29,169 @@ if (!in_array($role, ['admin', 'superadmin'])) {
 }
 
 $po_id   = (int)($_GET['id'] ?? 0);
+$po_date = $_GET['date'] ?? null;
 $po_type = $_GET['type'] ?? 'merch'; // 'fuel' or 'merch'
-if (!$po_id) {
-    die('<p style="font-family:Arial;padding:40px;">No Purchase Order ID provided.</p>');
+
+if (!$po_id && !$po_date) {
+    die('<p style="font-family:Arial;padding:40px;">No Purchase Order ID or Date provided.</p>');
 }
+
+$station_id = (int)user_station_id();
+$po_items = [];
 
 // ── Fetch PO with all related data ────────────────────────────────────────
 try {
-    if ($po_type === 'fuel') {
-        $stmt = $pdo->prepare("
-            SELECT fpo.*,
-                   fpo.volume        AS quantity,
-                   fpo.notes         AS sr_manager_notes,
-                   ft.name           AS product_name,
-                   st.name           AS station_name,
-                   st.location       AS station_location,
-                   st.address        AS station_address,
-                   st.vat_tin        AS station_vat_tin,
-                   sup.name          AS supplier_name,
-                   u.name            AS created_by_name,
-                   NULL              AS approved_by_name,
-                   NULL              AS staff_id,
-                   NULL              AS item_sku,
-                   NULL              AS sr_requested_qty,
-                   NULL              AS sr_approved_qty,
-                   u.name            AS staff_name,
-                   NULL              AS manager_name,
-                   NULL              AS request_id,
-                   NULL              AS approved_at
-            FROM fuel_purchase_orders fpo
-            LEFT JOIN fuel_types ft   ON fpo.fuel_type_id = ft.id
-            LEFT JOIN stations st     ON fpo.station_id   = st.id
-            LEFT JOIN suppliers sup   ON fpo.supplier_id  = sup.id
-            LEFT JOIN users u         ON fpo.created_by   = u.id
-            WHERE fpo.id = ?
-            LIMIT 1
-        ");
+    if ($po_date) {
+        if ($po_type === 'fuel') {
+            $stmt = $pdo->prepare("
+                SELECT fpo.*,
+                       fpo.volume        AS quantity,
+                       fpo.notes         AS sr_manager_notes,
+                       ft.name           AS product_name,
+                       st.name           AS station_name,
+                       st.location       AS station_location,
+                       st.address        AS station_address,
+                       st.vat_tin        AS station_vat_tin,
+                       sup.name          AS supplier_name,
+                       u.name            AS created_by_name,
+                       ab.name           AS approved_by_name,
+                       NULL              AS staff_id,
+                       NULL              AS item_sku,
+                       NULL              AS sr_requested_qty,
+                       NULL              AS sr_approved_qty,
+                       u.name            AS staff_name,
+                       NULL              AS manager_name,
+                       NULL              AS request_id,
+                       fpo.approved_at   AS approved_at
+                FROM fuel_purchase_orders fpo
+                LEFT JOIN fuel_types ft   ON fpo.fuel_type_id = ft.id
+                LEFT JOIN stations st     ON fpo.station_id   = st.id
+                LEFT JOIN suppliers sup   ON fpo.supplier_id  = sup.id
+                LEFT JOIN users u         ON fpo.created_by   = u.id
+                LEFT JOIN users ab        ON fpo.approved_by  = ab.id
+                WHERE fpo.station_id = ? AND DATE(fpo.created_at) = ? AND fpo.status = 'Approved PO'
+                ORDER BY fpo.id ASC
+            ");
+            $stmt->execute([$station_id, $po_date]);
+        } else {
+            $stmt = $pdo->prepare("
+                SELECT po.*,
+                       st.name       AS station_name,
+                       st.location   AS station_location,
+                       st.address    AS station_address,
+                       st.vat_tin    AS station_vat_tin,
+                       sup.name      AS supplier_name,
+                       u.name        AS created_by_name,
+                       ab.name       AS approved_by_name,
+                       sr.staff_id,
+                       sr.item_sku,
+                       sr.requested_quantity AS sr_requested_qty,
+                       sr.approved_quantity  AS sr_approved_qty,
+                       sr.manager_notes      AS sr_manager_notes,
+                       staff_u.name          AS staff_name,
+                       mgr_u.name            AS manager_name
+                FROM purchase_orders po
+                LEFT JOIN stations st     ON po.station_id  = st.id
+                LEFT JOIN suppliers sup   ON po.supplier_id = sup.id
+                LEFT JOIN users u         ON po.created_by  = u.id
+                LEFT JOIN users ab        ON po.approved_by = ab.id
+                LEFT JOIN stock_requests sr   ON po.request_id = sr.id
+                LEFT JOIN users staff_u   ON sr.staff_id    = staff_u.id
+                LEFT JOIN users mgr_u     ON sr.manager_id  = mgr_u.id
+                WHERE po.station_id = ? AND DATE(po.created_at) = ? AND po.type = 'merch' AND po.admin_finalized = 1
+                ORDER BY po.id ASC
+            ");
+            $stmt->execute([$station_id, $po_date]);
+        }
+        $po_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if ($po_items) {
+            $po = $po_items[0];
+        } else {
+            $po = false;
+        }
     } else {
-        $stmt = $pdo->prepare("
-            SELECT po.*,
-                   st.name       AS station_name,
-                   st.location   AS station_location,
-                   st.address    AS station_address,
-                   st.vat_tin    AS station_vat_tin,
-                   sup.name      AS supplier_name,
-                   u.name        AS created_by_name,
-                   ab.name       AS approved_by_name,
-                   sr.staff_id,
-                   sr.item_sku,
-                   sr.requested_quantity AS sr_requested_qty,
-                   sr.approved_quantity  AS sr_approved_qty,
-                   sr.manager_notes      AS sr_manager_notes,
-                   staff_u.name          AS staff_name,
-                   mgr_u.name            AS manager_name
-            FROM purchase_orders po
-            LEFT JOIN stations st     ON po.station_id  = st.id
-            LEFT JOIN suppliers sup   ON po.supplier_id = sup.id
-            LEFT JOIN users u         ON po.created_by  = u.id
-            LEFT JOIN users ab        ON po.approved_by = ab.id
-            LEFT JOIN stock_requests sr   ON po.request_id = sr.id
-            LEFT JOIN users staff_u   ON sr.staff_id    = staff_u.id
-            LEFT JOIN users mgr_u     ON sr.manager_id  = mgr_u.id
-            WHERE po.id = ?
-            LIMIT 1
-        ");
+        if ($po_type === 'fuel') {
+            $stmt = $pdo->prepare("
+                SELECT fpo.*,
+                       fpo.volume        AS quantity,
+                       fpo.notes         AS sr_manager_notes,
+                       ft.name           AS product_name,
+                       st.name           AS station_name,
+                       st.location       AS station_location,
+                       st.address        AS station_address,
+                       st.vat_tin        AS station_vat_tin,
+                       sup.name          AS supplier_name,
+                       u.name            AS created_by_name,
+                       ab.name           AS approved_by_name,
+                       NULL              AS staff_id,
+                       NULL              AS item_sku,
+                       NULL              AS sr_requested_qty,
+                       NULL              AS sr_approved_qty,
+                       u.name            AS staff_name,
+                       NULL              AS manager_name,
+                       NULL              AS request_id,
+                       fpo.approved_at   AS approved_at
+                FROM fuel_purchase_orders fpo
+                LEFT JOIN fuel_types ft   ON fpo.fuel_type_id = ft.id
+                LEFT JOIN stations st     ON fpo.station_id   = st.id
+                LEFT JOIN suppliers sup   ON fpo.supplier_id  = sup.id
+                LEFT JOIN users u         ON fpo.created_by   = u.id
+                LEFT JOIN users ab        ON fpo.approved_by  = ab.id
+                WHERE fpo.id = ?
+                LIMIT 1
+            ");
+        } else {
+            $stmt = $pdo->prepare("
+                SELECT po.*,
+                       st.name       AS station_name,
+                       st.location   AS station_location,
+                       st.address    AS station_address,
+                       st.vat_tin    AS station_vat_tin,
+                       sup.name      AS supplier_name,
+                       u.name        AS created_by_name,
+                       ab.name       AS approved_by_name,
+                       sr.staff_id,
+                       sr.item_sku,
+                       sr.requested_quantity AS sr_requested_qty,
+                       sr.approved_quantity  AS sr_approved_qty,
+                       sr.manager_notes      AS sr_manager_notes,
+                       staff_u.name          AS staff_name,
+                       mgr_u.name            AS manager_name
+                FROM purchase_orders po
+                LEFT JOIN stations st     ON po.station_id  = st.id
+                LEFT JOIN suppliers sup   ON po.supplier_id = sup.id
+                LEFT JOIN users u         ON po.created_by  = u.id
+                LEFT JOIN users ab        ON po.approved_by = ab.id
+                LEFT JOIN stock_requests sr   ON po.request_id = sr.id
+                LEFT JOIN users staff_u   ON sr.staff_id    = staff_u.id
+                LEFT JOIN users mgr_u     ON sr.manager_id  = mgr_u.id
+                WHERE po.id = ?
+                LIMIT 1
+            ");
+        }
+        $stmt->execute([$po_id]);
+        $po = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($po) {
+            $po_items = [$po];
+        } else {
+            $po_items = [];
+        }
     }
-    $stmt->execute([$po_id]);
-    $po = $stmt->fetch(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     die('<p style="font-family:Arial;padding:40px;">Database error: ' . htmlspecialchars($e->getMessage()) . '</p>');
 }
 
 if (!$po) {
-    die('<p style="font-family:Arial;padding:40px;">Purchase Order #' . $po_id . ' not found.</p>');
+    die('<p style="font-family:Arial;padding:40px;">Purchase Order not found.</p>');
 }
 
-// Only allow printing of finalized POs
-$printable_statuses = ['Official', 'Approved', 'official', 'approved', 'Approved PO', 'approved po', 'Admin Finalized', 'admin finalized', 'Pending Admin Validation', 'pending admin validation'];
-if (!in_array($po['status'], $printable_statuses)) {
-    die('<p style="font-family:Arial;padding:40px;color:#856404;">This PO has not been finalized yet. Only Official/Approved POs can be printed.</p>');
+// Block printing only for explicitly rejected/cancelled records.
+// When fetching by date, the SQL already guarantees finalization
+// (admin_finalized=1 for merch, status='Approved PO' for fuel),
+// so we skip the status gate in that path.
+$blocked_statuses = ['Rejected', 'rejected', 'Rejected by Admin', 'Cancelled', 'cancelled', 'Draft', 'draft'];
+if (!$po_date && in_array($po['status'] ?? '', $blocked_statuses)) {
+    die('<p style="font-family:Arial;padding:40px;color:#856404;">This PO has been rejected or cancelled and cannot be printed.</p>');
 }
 
 // ── Log print action ──────────────────────────────────────────────────────
@@ -117,7 +201,7 @@ try {
         $pdo,
         $me['id'],
         'Print Purchase Order',
-        "{$po_label} {$po['po_number']} printed by {$me['name']} (Admin). Product: {$po['product_name']} | Qty: {$po['quantity']} | Total: ₱" . number_format($po['total_amount'], 2) . " | Station: {$po['station_name']}"
+        "{$po_label} {$po['po_number']} printed by {$me['name']} (Admin). Date Group: " . ($po_date ?? 'Individual') . " | Total Amount: ₱" . number_format($po['total_amount'], 2) . " | Station: {$po['station_name']}"
     );
 } catch (Exception $e) { /* fail silently */ }
 
@@ -131,11 +215,6 @@ $finalized_date = date('F d, Y', strtotime($finalized_dt));
 $finalized_time = date('g:i A', strtotime($finalized_dt));
 $printed_date   = date('F d, Y g:i A');
 $po_number      = htmlspecialchars($po['po_number']);
-$product_name   = htmlspecialchars($po['product_name'] ?? '—');
-$qty            = (float)($po['quantity'] ?? 0);
-$unit_price     = (float)($po['unit_price'] ?? 0);
-$total_amount   = (float)($po['total_amount'] ?? round($qty * $unit_price, 2));
-$sku            = htmlspecialchars($po['item_sku'] ?? '');
 $staff_name     = htmlspecialchars($po['staff_name']       ?? $po['created_by_name'] ?? '—');
 $manager_name   = htmlspecialchars($po['manager_name']     ?? '—');
 $admin_name     = htmlspecialchars($po['approved_by_name'] ?? $me['name'] ?? '—');
@@ -331,14 +410,18 @@ body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:12px;line-heigh
         </span>
     </div>
     <div class="toolbar-right">
-        <a href="<?php echo $audit_url; ?>" class="btn-toolbar btn-ghost">
+        <a href="<?php echo $audit_url; ?>" class="btn-toolbar btn-ghost" target="_blank">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
             View in Audit Log
         </a>
-        <a href="purchase_orders.php" class="btn-toolbar btn-ghost">
+        <a href="admin_purchase_orders.php" class="btn-toolbar btn-ghost">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
             Back to POs
         </a>
+        <button onclick="window.print()" class="btn-toolbar btn-print">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            Print PO
+        </button>
     </div>
 </div>
 <?php endif; ?>
@@ -544,21 +627,28 @@ body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:12px;line-heigh
             </tr>
         </thead>
         <tbody>
+            <?php
+            $total_amount = 0;
+            foreach ($po_items as $idx => $item):
+                $item_qty = (float)($item['quantity'] ?? 0);
+                $item_price = (float)($item['unit_price'] ?? 0);
+                $item_total = (float)($item['total_amount'] ?? round($item_qty * $item_price, 2));
+                $total_amount += $item_total;
+                $item_sku = htmlspecialchars($item['item_sku'] ?? '');
+            ?>
             <tr>
-                <td style="color:#94a3b8;font-size:11px;">1</td>
+                <td style="color:#94a3b8;font-size:11px;"><?php echo $idx + 1; ?></td>
                 <td>
-                    <strong><?php echo $product_name; ?></strong>
-                    <?php if ($sku): ?>
-                        <br><span class="sku-code"><?php echo $sku; ?></span>
-                    <?php endif; ?>
+                    <strong><?php echo htmlspecialchars($item['product_name'] ?? '—'); ?></strong>
                 </td>
                 <td style="color:#64748b;">
-                    <?php echo $sku ? '<span class="sku-code">' . $sku . '</span>' : '<span style="color:#cbd5e1;">—</span>'; ?>
+                    <?php echo $item_sku ? '<span class="sku-code">' . $item_sku . '</span>' : '<span style="color:#cbd5e1;">—</span>'; ?>
                 </td>
-                <td class="r"><strong><?php echo $is_fuel ? number_format($qty, 2) . ' L' : number_format($qty, 0); ?></strong></td>
-                <td class="r">&#8369;<?php echo number_format($unit_price, 2); ?></td>
-                <td class="r"><strong>&#8369;<?php echo number_format($total_amount, 2); ?></strong></td>
+                <td class="r"><strong><?php echo $is_fuel ? number_format($item_qty, 2) . ' L' : number_format($item_qty, 0); ?></strong></td>
+                <td class="r">&#8369;<?php echo number_format($item_price, 2); ?></td>
+                <td class="r"><strong>&#8369;<?php echo number_format($item_total, 2); ?></strong></td>
             </tr>
+            <?php endforeach; ?>
         </tbody>
         <tfoot>
             <tr class="subtotal-row">
@@ -588,14 +678,14 @@ body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:12px;line-heigh
         <div class="sig-box">
             <div class="sig-line">
                 <div class="sig-name"><?php echo $manager_name !== '—' ? $manager_name : $staff_name; ?></div>
-                <div class="sig-role">Requested By (Manager)</div>
+                <div class="sig-role">Prepared By (Manager)</div>
                 <div class="sig-date">Date: _______________</div>
             </div>
         </div>
         <div class="sig-box">
             <div class="sig-line">
                 <div class="sig-name"><?php echo $admin_name; ?></div>
-                <div class="sig-role">Finalized By (Admin)</div>
+                <div class="sig-role">Approved By (Admin)</div>
                 <div class="sig-date">Date: <?php echo $finalized_date; ?></div>
             </div>
         </div>
@@ -631,6 +721,7 @@ body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:12px;line-heigh
         </div>
         <?php endif; ?>
     </div>
+</div>
 
     <!-- ── Document Footer ── -->
     <div class="doc-footer">
@@ -658,7 +749,7 @@ window.addEventListener('load', function () {
 });
 // After print dialog closes (Save or Cancel) — go back to Purchase Orders
 window.addEventListener('afterprint', function () {
-    window.location.href = 'purchase_orders.php';
+    window.location.href = 'admin_purchase_orders.php';
 });
 <?php endif; ?>
 </script>

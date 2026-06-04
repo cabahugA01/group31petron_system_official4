@@ -238,7 +238,7 @@ html, body { max-width:100vw; overflow-x:hidden; }
 <div class="afdo-head">
     <div>
         <h1><i class="fas fa-truck"></i> Fuel Deliveries Oversight</h1>
-        <div class="afdo-subtitle">Staff-recorded deliveries verified by the Manager</div>
+        <div class="afdo-subtitle">OVERSEE SUPPLIER FUEL DELIVERIES, CROSS-CHECK AGAINST PURCHASE ORDERS, AND FLAG DISCREPANCIES.</div>
     </div>
     <div class="afdo-actions">
         <a href="?<?= http_build_query(array_merge($_GET,['export'=>'excel'])) ?>" class="afdo-btn afdo-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>

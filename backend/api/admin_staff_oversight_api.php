@@ -45,8 +45,14 @@ try {
             
             // If admin, only show staff from their station
             $params = [];
-            $my_station_id = $me['station_id'] ?? 0;
+            $my_station_id = (int)($me['station_id'] ?? 0);
+            
             if ($role === 'admin') {
+                // Validate station ID
+                if ($my_station_id <= 0) {
+                    echo json_encode(['success' => false, 'error' => 'Invalid station assignment. Please contact system administrator.']);
+                    exit;
+                }
                 $sql .= " AND u.station_id = ?";
                 $params[] = $my_station_id;
             }
@@ -90,8 +96,9 @@ try {
             $staff_id = $_POST['staff_id'] ?? 0;
             $status = $_POST['status'] ?? '';
             
-            if (!$staff_id || !in_array($status, ['active', 'inactive', 'suspended'])) {
-                echo json_encode(['success' => false, 'error' => 'Invalid parameters']);
+            // Only allow 'active' and 'inactive' until database enum includes 'suspended'
+            if (!$staff_id || !in_array($status, ['active', 'inactive'])) {
+                echo json_encode(['success' => false, 'error' => 'Invalid parameters. Status must be active or inactive.']);
                 exit;
             }
             
@@ -146,8 +153,9 @@ try {
             $edit_role = strtolower(trim($_POST['role'] ?? ''));
             $status = trim($_POST['status'] ?? '');
             
-            if (!$staff_id || !$name || !$email || !in_array($edit_role, ['manager', 'staff']) || !in_array($status, ['active', 'inactive', 'suspended'])) {
-                echo json_encode(['success' => false, 'error' => 'All fields are required and must be valid.']);
+            // Only allow 'active' and 'inactive' until database enum includes 'suspended'
+            if (!$staff_id || !$name || !$email || !in_array($edit_role, ['manager', 'staff']) || !in_array($status, ['active', 'inactive'])) {
+                echo json_encode(['success' => false, 'error' => 'All fields are required and must be valid. Status must be active or inactive.']);
                 exit;
             }
             

@@ -36,6 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if ($action === 'finalize_po') {
         $final_qty    = (float)($_POST['final_quantity']  ?? 0);
         $final_price  = (float)($_POST['final_unit_price'] ?? 0);
+        $batch_id     = trim($_POST['batch_id']           ?? '');
         $total_amount = round($final_qty * $final_price, 2);
 
         if ($po_id > 0 && $final_qty > 0 && $final_price >= 0) {
@@ -71,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     ")->execute([$final_qty, $final_price, $total_amount, $sup_id, $remarks, $me['id'], $po_id]);
 
                     // Sync to deliveries oversight
-                    $batch_id = 'BATCH-' . date('Ymd') . '-001';
+                    $eff_batch_id = $batch_id ?: ('BATCH-' . date('Ymd') . '-' . str_pad(rand(1,999), 3, '0', STR_PAD_LEFT));
                     $pdo->prepare("
                         INSERT INTO deliveries_oversight (
                             delivery_type, delivery_ref, batch_id, supplier, product, quantity, unit,
@@ -82,7 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         )
                     ")->execute([
                         'MDR-' . date('Ymd') . '-' . rand(1000, 9999),
-                        $batch_id,
+                        $eff_batch_id,
                         $po_record['product_name'],
                         $final_qty,
                         $po_record['station_id'] ?: $station_id,
@@ -115,7 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     ")->execute([$final_qty, $final_price, $total_amount, $sup_id, $remarks, $po_id]);
 
                     // Sync to deliveries oversight
-                    $batch_id = 'BATCH-' . date('Ymd') . '-001';
+                    $eff_batch_id = $batch_id ?: ('FBATCH-' . date('Ymd') . '-' . str_pad(rand(1,999), 3, '0', STR_PAD_LEFT));
                     $pdo->prepare("
                         INSERT INTO deliveries_oversight (
                             delivery_type, delivery_ref, batch_id, supplier, product, quantity, unit,
@@ -126,7 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         )
                     ")->execute([
                         'FDR-' . date('Ymd') . '-' . rand(1000, 9999),
-                        $batch_id,
+                        $eff_batch_id,
                         $po_record['product_name'],
                         $final_qty,
                         $po_record['station_id'] ?: $station_id,
@@ -664,6 +665,16 @@ include __DIR__ . '/../partials/header.php';
                 <input type="text" value="Petron Corporation" readonly style="background:#f0f8ff; color:#002F70; font-weight:bold;">
             </div>
 
+            <div class="field-group">
+                <label>Batch ID <span style="color:red;">*</span>
+                    <span style="font-weight:400;color:#888;font-size:0.78rem;"> — unique identifier for this delivery batch (e.g. FB-001, APR2026-DIESEL-A)</span>
+                </label>
+                <input type="text" name="batch_id" id="finBatchId"
+                       placeholder="e.g. FB-001" maxlength="80"
+                       style="font-family:monospace;font-size:0.92rem;letter-spacing:0.5px;text-transform:uppercase;"
+                       oninput="this.value=this.value.toUpperCase()">
+            </div>
+
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
                 <div class="field-group">
                     <label>Final Quantity / Volume <span style="color:red;">*</span></label>
@@ -754,10 +765,15 @@ function openFinalize(id, type, poNum, product, qty, price, prId) {
         prRow.style.display = 'none';
     }
 
+    // Clear Batch ID for each new open
+    var batchEl = document.getElementById('finBatchId');
+    if (batchEl) batchEl.value = '';
+
     computeTotal();
     document.getElementById('finalizeModal').classList.add('open');
     setTimeout(function () {
-        document.getElementById('finQty').focus();
+        var first = document.getElementById('finBatchId') || document.getElementById('finQty');
+        if (first) first.focus();
     }, 150);
 }
 

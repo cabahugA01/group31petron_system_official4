@@ -25,6 +25,111 @@ include __DIR__ . '/../partials/header.php';
 ?>
 <style>
 /* === Clean Merchandise Deliveries Design === */
+/* ── Workflow Steps Guide ── */
+.workflow-container {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+}
+.workflow-steps {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+.workflow-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #495057;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.step {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #888;
+}
+.step-num {
+    background: #dee2e6;
+    color: #6c757d;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 700;
+}
+.step-arrow {
+    color: #ccc;
+    font-size: 10px;
+}
+.step.active {
+    color: #002F70;
+}
+.step.active .step-num {
+    background: #002F70;
+    color: #fff;
+}
+.step.done {
+    color: #28a745;
+}
+.step.done .step-num {
+    background: #28a745;
+    color: #fff;
+}
+
+/* ── Modern Tabs ── */
+.tab-container {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 16px;
+    border-bottom: 2px solid #e9ecef;
+}
+.tab-btn {
+    background: none;
+    border: none;
+    padding: 10px 20px;
+    font-weight: 700;
+    color: #6c757d;
+    border-bottom: 3px solid transparent;
+    cursor: pointer;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.tab-btn:hover {
+    color: #002F70;
+    border-bottom-color: #dee2e6;
+}
+.tab-btn.active {
+    color: #002F70;
+    border-bottom-color: #002F70;
+}
+.tab-btn .badge {
+    background: #fd7e14;
+    color: #fff;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-weight: 700;
+}
+
 /* ── Plain text badges - NO backgrounds ── */
 .sbadge{color:#6c757d !important;font-weight:700 !important;font-size:0.813rem !important;background:none !important;padding:0 !important;border:none !important;text-transform:uppercase;}
 .sbadge-pending{color:#fd7e14 !important;}
@@ -136,19 +241,35 @@ body{overflow-x:hidden !important;max-width:100vw !important;}
     </div>
 </div>
 
+<!-- Workflow Integration Guide -->
+<div class="workflow-container">
+    <div class="workflow-title"><i class="fas fa-project-diagram" style="color:#002F70;"></i> Merchandise Flow Guide (Merchandise Only)</div>
+    <div class="workflow-steps">
+        <div class="step done"><span class="step-num">1</span> Inventory Alert</div>
+        <div class="step-arrow"><i class="fas fa-chevron-right"></i></div>
+        <div class="step done"><span class="step-num">2</span> PO Creation</div>
+        <div class="step-arrow"><i class="fas fa-chevron-right"></i></div>
+        <div class="step done"><span class="step-num">3</span> Admin Forward</div>
+        <div class="step-arrow"><i class="fas fa-chevron-right"></i></div>
+        <div class="step done"><span class="step-num">4</span> Supplier Delivery</div>
+        <div class="step-arrow"><i class="fas fa-chevron-right"></i></div>
+        <div class="step active"><span class="step-num">5</span> Manager Confirmation</div>
+        <div class="step-arrow"><i class="fas fa-chevron-right"></i></div>
+        <div class="step"><span class="step-num">6</span> Inventory Update</div>
+        <div class="step-arrow"><i class="fas fa-chevron-right"></i></div>
+        <div class="step"><span class="step-num">7</span> Close</div>
+    </div>
+</div>
+
 <!-- Filters -->
 <div class="filter-row" style="margin-bottom:16px;">
     <div class="fg">
         <label>Status</label>
         <select id="f-status" onchange="loadDeliveries()">
-            <option value="">All Statuses</option>
-            <option value="Pending">Pending Approval</option>
+            <option value="active">All Active</option>
+            <option value="Pending">Pending Verification</option>
             <option value="Pending Resolution">Pending Resolution</option>
             <option value="Awaiting Replacement">Awaiting Replacement</option>
-            <option value="Approved">Approved / Confirmed</option>
-            <option value="Adjusted">Adjusted</option>
-            <option value="Returned to Supplier">Returned to Supplier</option>
-            <option value="Rejected">Rejected</option>
         </select>
     </div>
     <div class="fg">
@@ -163,6 +284,16 @@ body{overflow-x:hidden !important;max-width:100vw !important;}
         <label>To</label>
         <input type="date" id="f-end" value="<?php echo date('Y-m-d'); ?>" onchange="loadDeliveries()">
     </div>
+</div>
+
+<!-- Tabs for Manage vs History -->
+<div class="tab-container">
+    <button class="tab-btn active" id="tab-manage" onclick="switchTab('manage')">
+        <i class="fas fa-clipboard-check"></i> Manage Deliveries <span class="badge" id="badge-pending">0</span>
+    </button>
+    <button class="tab-btn" id="tab-history" onclick="switchTab('history')">
+        <i class="fas fa-history"></i> Delivery History
+    </button>
 </div>
 
 <div class="inv-card">
@@ -473,6 +604,34 @@ function getDisplayStatus(raw) {
 }
 
 // ── Load deliveries ───────────────────────────────────────────────────────────
+[ignoring loop detection]
+var currentTab = 'manage';
+
+function switchTab(tab) {
+    currentTab = tab;
+    document.querySelectorAll('.tab-btn').forEach(function(el) {
+        el.classList.remove('active');
+    });
+    var activeBtn = document.getElementById('tab-' + tab);
+    if (activeBtn) activeBtn.classList.add('active');
+    
+    // Update status filter dropdown options
+    var sf = document.getElementById('f-status');
+    if (tab === 'manage') {
+        sf.innerHTML = '<option value="active">All Active</option>'
+                     + '<option value="Pending">Pending Verification</option>'
+                     + '<option value="Pending Resolution">Pending Resolution</option>'
+                     + '<option value="Awaiting Replacement">Awaiting Replacement</option>';
+    } else {
+        sf.innerHTML = '<option value="history">All Processed</option>'
+                     + '<option value="Approved">Approved / Confirmed</option>'
+                     + '<option value="Adjusted">Adjusted</option>'
+                     + '<option value="Returned to Supplier">Returned to Supplier</option>'
+                     + '<option value="Rejected">Rejected</option>';
+    }
+    loadDeliveries();
+}
+
 function loadDeliveries() {
     var status   = document.getElementById('f-status').value;
     var supplier = document.getElementById('f-supplier').value;
@@ -480,7 +639,6 @@ function loadDeliveries() {
     var end      = document.getElementById('f-end').value;
 
     var url = API + '?action=list&start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end);
-    if (status)   url += '&status='   + encodeURIComponent(status);
     if (supplier) url += '&supplier=' + encodeURIComponent(supplier);
 
     var tb = document.getElementById('del-tbody');
@@ -492,22 +650,38 @@ function loadDeliveries() {
             return;
         }
 
-        var rows = res.data || [];
-        document.getElementById('rec-count').textContent = rows.length + ' record(s)';
+        var allRows = res.data || [];
+        
+        // Count active pending items for tab badge
+        var pendingCount = 0;
+        allRows.forEach(function(d) {
+            var ds = getDisplayStatus(d.status);
+            if (ds === 'Pending' || ds === 'Pending Resolution' || ds === 'Awaiting Replacement') {
+                pendingCount++;
+            }
+        });
+        document.getElementById('badge-pending').textContent = pendingCount;
 
-        // Remove summary count updates since cards are removed
-        // var cPending = 0, cDisc = 0, cApproved = 0, cOther = 0;
-        // rows.forEach(function(d) {
-        //     var ds = getDisplayStatus(d.status);
-        //     if (ds === 'Pending') cPending++;
-        //     else if (ds === 'Pending Resolution' || ds === 'Awaiting Replacement') cDisc++;
-        //     else if (ds === 'Approved' || ds === 'Adjusted') cApproved++;
-        //     else cOther++;
-        // });
-        // document.getElementById('cnt-pending').textContent     = cPending;
-        // document.getElementById('cnt-discrepancy').textContent = cDisc;
-        // document.getElementById('cnt-approved').textContent    = cApproved;
-        // document.getElementById('cnt-other').textContent       = cOther;
+        // Filter rows based on active tab and selected status dropdown value
+        var rows = allRows.filter(function(d) {
+            var ds = getDisplayStatus(d.status);
+            
+            if (currentTab === 'manage') {
+                if (ds !== 'Pending' && ds !== 'Pending Resolution' && ds !== 'Awaiting Replacement') {
+                    return false;
+                }
+                if (status === 'active') return true;
+                return ds === status;
+            } else {
+                if (ds !== 'Approved' && ds !== 'Adjusted' && ds !== 'Returned to Supplier' && ds !== 'Rejected' && ds !== 'Closed') {
+                    return false;
+                }
+                if (status === 'history') return true;
+                return ds === status;
+            }
+        });
+
+        document.getElementById('rec-count').textContent = rows.length + ' record(s)';
 
         if (!rows.length) {
             tb.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:48px;color:#6c757d;"><i class="fas fa-truck" style="font-size:2.5rem;display:block;margin-bottom:12px;opacity:.3;"></i><strong>No deliveries found</strong><br><span style="font-size:12px;">Try adjusting the filters above.</span></td></tr>';

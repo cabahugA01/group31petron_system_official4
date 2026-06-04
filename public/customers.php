@@ -1,5 +1,4 @@
 <?php
-$page_id = 'customers';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
@@ -29,6 +28,13 @@ if ($section === 'encode') $section = 'list';
 if (isset($_GET['section']) && in_array($_GET['section'], ['update', 'balances'])) {
     header('Location: customers.php?section=list'); exit;
 }
+
+// ── Page ID for sidebar sub-item highlighting ─────────────────────────────────
+$page_id = match($section) {
+    'add'     => 'customer_add',
+    'history' => 'customer_history',
+    default   => 'customer_list',
+};
 
 // ── Government ID types ───────────────────────────────────────────────────────
 $gov_id_types = [
@@ -77,7 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'encod
     $name    = trim($_POST['name']    ?? '');
     $contact = trim($_POST['contact'] ?? '');
     $id_type = trim($_POST['id_type'] ?? '');
-    $credit  = (float)($_POST['credit_limit'] ?? 0);
+    // credit_limit intentionally omitted — Manager sets this, not Staff
 
     // Handle ID image upload
     $id_image_path = null;
@@ -120,7 +126,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'encod
             if (in_array('id_type',        $ins_cols)) { $col_list[] = 'id_type';        $val_list[] = $id_type; }
             if (in_array('id_image',       $ins_cols)) { $col_list[] = 'id_image';       $val_list[] = $id_image_path; }
             if (in_array('cr_image',       $ins_cols)) { $col_list[] = 'cr_image';       $val_list[] = $cr_image_path; }
-            if (in_array('credit_limit',   $ins_cols)) { $col_list[] = 'credit_limit';   $val_list[] = $credit; }
+            // credit_limit intentionally omitted — Manager only sets this
             if (in_array('balance',        $ins_cols)) { $col_list[] = 'balance';         $val_list[] = 0; }
             $placeholders = implode(',', array_fill(0, count($col_list), '?'));
             $pdo->prepare("INSERT INTO customers (" . implode(',', $col_list) . ") VALUES ($placeholders)")
@@ -141,10 +147,8 @@ try {
     $sel_id_type  = in_array('id_type',        $avail) ? 'id_type'        : "'' AS id_type";
     $sel_id_image = in_array('id_image',       $avail) ? 'id_image'       : "'' AS id_image";
     $sel_cr_image = in_array('cr_image',       $avail) ? 'cr_image'       : "'' AS cr_image";
-    $sel_balance  = in_array('balance',        $avail) ? 'balance'        : (in_array('current_balance', $avail) ? 'current_balance AS balance' : "0 AS balance");
-    $sel_credit   = in_array('credit_limit',   $avail) ? 'credit_limit'   : "0 AS credit_limit";
     $sel_status   = in_array('status',         $avail) ? 'status'         : "'active' AS status";
-    $s = $pdo->prepare("SELECT id, name, $sel_contact, $sel_id_type, $sel_id_image, $sel_cr_image, $sel_credit, $sel_balance, $sel_status FROM customers WHERE station_id=? ORDER BY name");
+    $s = $pdo->prepare("SELECT id, name, $sel_contact, $sel_id_type, $sel_id_image, $sel_cr_image, $sel_status FROM customers WHERE station_id=? ORDER BY name");
     $s->execute([$station_id]);
     $customers = $s->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
@@ -255,7 +259,7 @@ $hist_customer_info  = null;
 if ($section === 'history') {
     try {
         // All customers for this station (for the selector)
-        $s = $pdo->prepare("SELECT id, name, balance, credit_limit, status FROM customers WHERE station_id=? ORDER BY name ASC");
+        $s = $pdo->prepare("SELECT id, name, status FROM customers WHERE station_id=? ORDER BY name ASC");
         $s->execute([$station_id]);
         $hist_customers = $s->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {}
@@ -454,38 +458,291 @@ if (!empty($_SESSION['success'])) {
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
-.cust-panel { display:none; }
-.cust-panel.active { display:block; }
-.cust-card { background:#fff; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,.07); border:1px solid #e9ecef; margin-bottom:20px; }
-.cust-card-head { padding:16px 20px; border-bottom:1px solid #e9ecef; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
-.cust-card-title { font-size:16px; font-weight:700; color:#002F70; margin:0; display:flex; align-items:center; gap:8px; }
-.cust-card-body { padding:20px; }
-.cust-form-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-@media(max-width:600px){ .cust-form-grid { grid-template-columns:1fr; } }
-.cust-label { display:block; font-size:12px; font-weight:700; color:#6c757d; text-transform:uppercase; letter-spacing:.4px; margin-bottom:5px; }
-.cust-input { width:100%; padding:9px 12px; border:1px solid #dee2e6; border-radius:6px; font-size:13px; box-sizing:border-box; }
-.cust-input:focus { border-color:#002F70; outline:none; box-shadow:0 0 0 3px rgba(0,47,112,.1); }
-.cust-btn { padding:10px 22px; border:none; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer; transition:all .2s; }
-.cust-btn-primary { background:#002F70; color:#fff; }
-.cust-btn-primary:hover { background:#0040a0; }
-.cust-table { width:100%; border-collapse:collapse; font-size:13px; }
-.cust-table th { background:#f8f9fa; padding:10px 12px; text-align:left; font-weight:700; color:#495057; border-bottom:2px solid #dee2e6; }
-.cust-table td { padding:10px 12px; border-bottom:1px solid #f0f0f0; vertical-align:middle; }
-.cust-table tr:hover td { background:#f8f9fa; }
-.badge-active   { background:#d1fae5; color:#065f46; padding:3px 8px; border-radius:10px; font-size:11px; font-weight:700; }
-.badge-inactive { background:#fee2e2; color:#991b1b; padding:3px 8px; border-radius:10px; font-size:11px; font-weight:700; }
-.badge-pending  { background:#fef3c7; color:#92400e; padding:3px 8px; border-radius:10px; font-size:11px; font-weight:700; }
-.badge-completed{ background:#d1fae5; color:#065f46; padding:3px 8px; border-radius:10px; font-size:11px; font-weight:700; }
-.readonly-notice { background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px 14px; font-size:12px; color:#1e40af; margin-bottom:16px; display:flex; align-items:center; gap:8px; }
-.section-head { font-size:14px; font-weight:700; color:#002F70; margin:18px 0 10px; display:flex; align-items:center; gap:6px; border-bottom:2px solid #e9ecef; padding-bottom:8px; }
-.empty-state { text-align:center; padding:32px; color:#9ca3af; }
-.empty-state i { font-size:2rem; display:block; margin-bottom:8px; }
-.cust-search { width:100%; padding:9px 12px; border:1px solid #dee2e6; border-radius:6px; font-size:13px; margin-bottom:14px; box-sizing:border-box; }
-.edit-link { color:#002F70; font-size:12px; font-weight:600; text-decoration:none; padding:4px 10px; border:1px solid #002F70; border-radius:5px; white-space:nowrap; }
-.edit-link:hover { background:#002F70; color:#fff; }
-.cust-tab { padding:10px 16px; border:none; background:transparent; font-size:14px; font-weight:700; color:#6c757d; cursor:pointer; border-bottom:3px solid transparent; margin-bottom:-1px; }
-.cust-tab.active { color:#002F70; border-bottom-color:#002F70; }
-.cust-tab:hover:not(.active) { color:#343a40; border-bottom-color:#dee2e6; }
+/* ── Staff Customer Module — Clean Design Standards ────────────────────── */
+:root {
+    --staff-blue: #002F70;
+    --staff-blue-hover: #f0f4ff;
+}
+
+/* Card containers */
+.cust-card {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    border: 1px solid #e5e7eb;
+    margin-bottom: 20px;
+    overflow: hidden;
+}
+
+.cust-card-head {
+    padding: 16px 20px;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    background: #fff;
+}
+
+.cust-card-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--staff-blue);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.cust-card-body {
+    padding: 20px;
+    background: #fff;
+}
+
+/* Form elements */
+.cust-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+@media(max-width:768px) {
+    .cust-form-grid { grid-template-columns: 1fr; }
+}
+
+.cust-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 6px;
+}
+
+.cust-input,
+.cust-search {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 13px;
+    box-sizing: border-box;
+    background: #fff;
+    transition: all 0.15s;
+}
+
+.cust-input:focus,
+.cust-search:focus {
+    border-color: var(--staff-blue);
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(0,47,112,.08);
+}
+
+.cust-search {
+    margin-bottom: 16px;
+}
+
+/* Buttons */
+.cust-btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.cust-btn-primary {
+    background: var(--staff-blue);
+    color: #fff;
+}
+
+.cust-btn-primary:hover {
+    background: #001f4d;
+    transform: translateY(-1px);
+}
+
+.btn-back {
+    color: #6b7280;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    transition: all 0.15s;
+}
+
+.btn-back:hover {
+    background: #f3f4f6;
+    color: var(--staff-blue);
+}
+
+/* Tables — Staff Standard: Blue headers, white body, no horizontal scroll */
+.cust-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.cust-table th {
+    background: var(--staff-blue);
+    color: #fff;
+    padding: 11px 14px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border: none;
+    white-space: nowrap;
+}
+
+.cust-table td {
+    padding: 11px 14px;
+    border-bottom: 1px solid #f3f4f6;
+    vertical-align: middle;
+    background: #fff;
+    color: #374151;
+}
+
+.cust-table tbody tr:hover td {
+    background: var(--staff-blue-hover);
+}
+
+.cust-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Prevent horizontal scroll */
+.cust-card-body,
+.cust-table-wrap {
+    overflow-x: auto;
+    max-width: 100%;
+}
+
+/* Status badges — Plain text style */
+.badge-active,
+.badge-inactive,
+.badge-pending,
+.badge-completed {
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    display: inline-block;
+}
+
+.badge-active {
+    background: #ecfdf5;
+    color: #065f46;
+    border: 1px solid #d1fae5;
+}
+
+.badge-inactive {
+    background: #fef2f2;
+    color: #991b1b;
+    border: 1px solid #fee2e2;
+}
+
+.badge-pending {
+    background: #fffbeb;
+    color: #92400e;
+    border: 1px solid #fef3c7;
+}
+
+.badge-completed {
+    background: #ecfdf5;
+    color: #065f46;
+    border: 1px solid #d1fae5;
+}
+
+/* Action links */
+.edit-link {
+    color: var(--staff-blue);
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration: none;
+    padding: 5px 12px;
+    border: 1px solid var(--staff-blue);
+    border-radius: 5px;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.15s;
+}
+
+.edit-link:hover {
+    background: var(--staff-blue);
+    color: #fff;
+}
+
+/* Info notices */
+.readonly-notice {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 6px;
+    padding: 12px 16px;
+    font-size: 12px;
+    color: #1e40af;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Empty states */
+.empty-state {
+    text-align: center;
+    padding: 48px 20px;
+    color: #9ca3af;
+}
+
+.empty-state i {
+    font-size: 2.5rem;
+    display: block;
+    margin-bottom: 12px;
+    color: #d1d5db;
+}
+
+/* Tabs (for linkage section) */
+.cust-tab {
+    padding: 10px 16px;
+    border: none;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 600;
+    color: #6b7280;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all 0.15s;
+}
+
+.cust-tab.active {
+    color: var(--staff-blue);
+    border-bottom-color: var(--staff-blue);
+}
+
+.cust-tab:hover:not(.active) {
+    color: #374151;
+    background: #f9fafb;
+}
+
+.linkage-tab-content {
+    padding-top: 8px;
+}
 </style>
 
 <div class="page-head">
@@ -560,14 +817,6 @@ include __DIR__ . '/../partials/header.php';
                     </select>
                 </div>
 
-                <!-- Credit Limit -->
-                <div>
-                    <label class="cust-label">Credit Limit (₱)</label>
-                    <input type="number" name="credit_limit" class="cust-input" placeholder="0.00"
-                           min="0" step="0.01" value="<?= htmlspecialchars($_POST['credit_limit'] ?? '0') ?>">
-                    <small style="color:#6c757d;font-size:11px;">Leave 0 for cash-only customers.</small>
-                </div>
-
                 <!-- ID Image Upload -->
                 <div>
                     <label class="cust-label">Government ID Image <span style="color:#6c757d;font-weight:400;">(optional)</span></label>
@@ -583,6 +832,11 @@ include __DIR__ . '/../partials/header.php';
                            style="padding:6px 10px;">
                     <small style="color:#6c757d;font-size:11px;">JPG, PNG, PDF — max 5MB</small>
                 </div>
+            </div>
+
+            <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin:14px 0;font-size:12px;color:#1e40af;display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-info-circle"></i>
+                <span>Credit line, suki status, and other confidential info are set by the <strong>Manager</strong> — not encoded here.</span>
             </div>
 
             <div style="display:flex;gap:10px;align-items:center;padding-top:8px;border-top:1px solid #f0f0f0;margin-top:4px;">
@@ -611,11 +865,11 @@ include __DIR__ . '/../partials/header.php';
         <div style="overflow-x:hidden;">
             <table class="cust-table" id="encodeTable">
                 <thead><tr>
-                    <th>#</th><th>Name</th><th>Contact</th><th>ID Type</th><th>Credit Limit</th><th>Balance Used</th><th>Status</th><th></th>
+                    <th>#</th><th>Name</th><th>Contact</th><th>ID Type</th><th>Status</th><th></th>
                 </tr></thead>
                 <tbody>
                 <?php if (empty($customers)): ?>
-                    <tr><td colspan="8">
+                    <tr><td colspan="6">
                         <div class="empty-state">
                             <i class="fas fa-users"></i>
                             No customers yet.
@@ -630,15 +884,6 @@ include __DIR__ . '/../partials/header.php';
                         <td><strong><?= htmlspecialchars($c['name']) ?></strong></td>
                         <td style="font-size:12px;"><?= htmlspecialchars($c['contact_number'] ?? '—') ?></td>
                         <td style="font-size:12px;color:#6c757d;"><?= htmlspecialchars($c['id_type'] ?? '—') ?></td>
-                        <td style="font-weight:600;">₱<?= number_format((float)$c['credit_limit'], 2) ?></td>
-                        <?php
-                            $used  = (float)$c['balance'];
-                            $limit = (float)$c['credit_limit'];
-                            $used_color = ($limit > 0 && $used >= $limit) ? '#dc3545' : ($used > 0 ? '#e67e22' : '#28a745');
-                        ?>
-                        <td style="color:<?= $used_color ?>;font-weight:700;">
-                            ₱<?= number_format($used, 2) ?>
-                        </td>
                         <td><span class="badge-<?= $c['status']==='active'?'active':'inactive' ?>"><?= htmlspecialchars($c['status']) ?></span></td>
                         <td>
                             <a href="customers.php?section=history&cust_id=<?= (int)$c['id'] ?>"
@@ -757,218 +1002,291 @@ include __DIR__ . '/../partials/header.php';
 <?php elseif ($section === 'history'): ?>
 
 <style>
-/* ── Customer History — Professional Redesign ───────────────────────────── */
+/* ── Customer History — Clean Staff Design ─────────────────────────────── */
 
 /* Filter panel */
 .ch-filter-panel {
     background: #fff;
-    border: 1px solid #e9ecef;
-    border-radius: 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
     padding: 18px 20px;
     margin-bottom: 16px;
-    box-shadow: 0 1px 4px rgba(0,0,0,.05);
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
 }
+
 .ch-filter-row {
     display: flex;
     gap: 12px;
     flex-wrap: wrap;
     align-items: flex-end;
 }
+
 .ch-field {
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: 6px;
 }
+
 .ch-field label {
     font-size: 11px;
-    font-weight: 700;
-    color: #6c757d;
+    font-weight: 600;
+    color: #374151;
     text-transform: uppercase;
-    letter-spacing: .5px;
+    letter-spacing: 0.3px;
     white-space: nowrap;
 }
+
 .ch-field select,
 .ch-field input[type="date"] {
-    padding: 8px 11px;
-    border: 1px solid #dee2e6;
+    padding: 9px 12px;
+    border: 1px solid #d1d5db;
     border-radius: 6px;
     font-size: 13px;
-    color: #212529;
+    color: #1f2937;
     background: #fff;
-    height: 36px;
+    height: 38px;
     box-sizing: border-box;
+    transition: all 0.15s;
 }
+
 .ch-field select:focus,
 .ch-field input[type="date"]:focus {
-    border-color: #002F70;
+    border-color: var(--staff-blue);
     outline: none;
     box-shadow: 0 0 0 3px rgba(0,47,112,.08);
 }
-.ch-field-customer { flex: 1;  max-width: 340px; }
-.ch-field-type     {  }
-.ch-field-status   {  }
-.ch-field-date     {  }
+
+.ch-field-customer { flex: 1; min-width: 220px; max-width: 340px; }
+.ch-field-type,
+.ch-field-status,
+.ch-field-date { min-width: 140px; }
+
 .ch-filter-actions {
     display: flex;
-    gap: 6px;
+    gap: 8px;
     align-items: flex-end;
-    padding-bottom: 1px;
 }
+
 .ch-btn-filter {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 8px 18px;
-    background: #002F70;
+    padding: 9px 18px;
+    background: var(--staff-blue);
     color: #fff;
     border: none;
     border-radius: 6px;
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;
-    height: 36px;
+    height: 38px;
     white-space: nowrap;
-    transition: background .15s;
+    transition: all 0.15s;
 }
-.ch-btn-filter:hover { background: #001f4d; }
+
+.ch-btn-filter:hover {
+    background: #001f4d;
+    transform: translateY(-1px);
+}
+
 .ch-btn-clear {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
-    background: #f1f5f9;
-    color: #64748b;
-    border: 1px solid #dee2e6;
+    width: 38px;
+    height: 38px;
+    background: #f3f4f6;
+    color: #6b7280;
+    border: 1px solid #d1d5db;
     border-radius: 6px;
     font-size: 13px;
     cursor: pointer;
     text-decoration: none;
-    transition: background .15s;
+    transition: all 0.15s;
 }
-.ch-btn-clear:hover { background: #e2e8f0; color: #374151; }
 
-/* Customer info inline header */
+.ch-btn-clear:hover {
+    background: #e5e7eb;
+    color: #374151;
+}
+
+/* Customer info header — Clean minimal style */
 .ch-customer-header {
     display: flex;
     align-items: center;
     gap: 0;
-    background: #f8faff;
-    border: 1px solid #dbe8ff;
-    border-radius: 8px;
-    padding: 11px 18px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 12px 18px;
     margin-bottom: 16px;
     font-size: 13px;
     flex-wrap: wrap;
-    gap: 0;
 }
+
 .ch-cust-name {
-    font-weight: 800;
-    color: #002F70;
+    font-weight: 700;
+    color: var(--staff-blue);
     font-size: 14px;
-    margin-right: 6px;
+    margin-right: 8px;
 }
+
 .ch-cust-sep {
-    color: #cbd5e1;
-    margin: 0 10px;
-    font-size: 15px;
+    color: #d1d5db;
+    margin: 0 12px;
+    font-size: 14px;
     font-weight: 300;
 }
+
 .ch-cust-item {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
     white-space: nowrap;
 }
+
 .ch-cust-item-label {
-    color: #6c757d;
+    color: #6b7280;
     font-size: 12px;
 }
+
 .ch-cust-item-value {
-    font-weight: 700;
-    color: #002F70;
+    font-weight: 600;
+    color: #1f2937;
     font-size: 13px;
 }
-.ch-cust-item-value.danger  { color: #dc3545; }
+
+.ch-cust-item-value.danger  { color: #dc2626; }
 .ch-cust-item-value.success { color: #16a34a; }
 .ch-cust-item-value.neutral { color: #374151; }
 
-/* Main table card */
+/* Table card */
 .ch-table-card {
     background: #fff;
-    border: 1px solid #e9ecef;
-    border-radius: 10px;
-    box-shadow: 0 1px 4px rgba(0,0,0,.05);
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
     overflow: hidden;
 }
+
 .ch-table-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 13px 18px;
-    border-bottom: 1px solid #f0f0f0;
+    padding: 14px 18px;
+    border-bottom: 1px solid #e5e7eb;
     background: #fff;
 }
+
 .ch-table-title {
     font-size: 14px;
     font-weight: 700;
-    color: #002F70;
+    color: var(--staff-blue);
     display: flex;
     align-items: center;
-    gap: 7px;
+    gap: 8px;
     margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
 }
+
 .ch-record-count {
     font-size: 12px;
     color: #9ca3af;
     font-weight: 500;
 }
-.ch-table-wrap { overflow-x:hidden; }
+
+.ch-table-wrap {
+    overflow-x: auto;
+    max-width: 100%;
+}
+
 .ch-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 13px;
 }
+
 .ch-table th {
-    background: #f8f9fa;
-    padding: 10px 14px;
+    background: var(--staff-blue);
+    color: #fff;
+    padding: 11px 14px;
     text-align: left;
     font-size: 11px;
     font-weight: 700;
-    color: #6c757d;
     text-transform: uppercase;
-    letter-spacing: .4px;
-    border-bottom: 1px solid #e9ecef;
+    letter-spacing: 0.5px;
+    border: none;
     white-space: nowrap;
 }
+
 .ch-table td {
     padding: 11px 14px;
-    border-bottom: 1px solid #f4f4f4;
+    border-bottom: 1px solid #f3f4f6;
     vertical-align: middle;
     color: #374151;
+    background: #fff;
 }
-.ch-table tbody tr:last-child td { border-bottom: none; }
-.ch-table tbody tr:hover td { background: #fafbff; }
 
-/* Badges */
+.ch-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.ch-table tbody tr:hover td {
+    background: var(--staff-blue-hover);
+}
+
+/* Badges — Clean staff style */
 .ch-badge {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 3px 9px;
-    border-radius: 20px;
+    padding: 3px 10px;
+    border-radius: 4px;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
     white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
 }
-.ch-badge-fuel    { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
-.ch-badge-jo      { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
-.ch-badge-merch   { background: #f0fdf4; color: #15803d; border: 1px solid #86efac; }
-.ch-badge-paid    { background: #d1fae5; color: #065f46; }
-.ch-badge-unpaid  { background: #fee2e2; color: #991b1b; }
-.ch-badge-partial { background: #fef3c7; color: #92400e; }
 
-/* Empty / prompt states */
+.ch-badge-fuel {
+    background: #fff7ed;
+    color: #c2410c;
+    border: 1px solid #fed7aa;
+}
+
+.ch-badge-jo {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+}
+
+.ch-badge-merch {
+    background: #f0fdf4;
+    color: #15803d;
+    border: 1px solid #bbf7d0;
+}
+
+.ch-badge-paid {
+    background: #ecfdf5;
+    color: #065f46;
+    border: 1px solid #d1fae5;
+}
+
+.ch-badge-unpaid {
+    background: #fef2f2;
+    color: #991b1b;
+    border: 1px solid #fee2e2;
+}
+
+.ch-badge-partial {
+    background: #fffbeb;
+    color: #92400e;
+    border: 1px solid #fef3c7;
+}
+
+/* Empty states */
 .ch-empty-row td {
     text-align: center;
     padding: 48px 20px;
@@ -976,27 +1294,44 @@ include __DIR__ . '/../partials/header.php';
     font-size: 13px;
     border-bottom: none !important;
 }
+
 .ch-prompt {
     text-align: center;
-    padding: 52px 20px;
+    padding: 64px 20px;
     color: #9ca3af;
 }
-.ch-prompt i {
-    font-size: 2rem;
-    display: block;
-    margin-bottom: 10px;
-    color: #c7d7f9;
-}
-.ch-prompt p { font-size: 13px; margin: 0; }
 
-@media (max-width: 640px) {
-    .ch-filter-row { flex-direction: column; }
+.ch-prompt i {
+    font-size: 3rem;
+    display: block;
+    margin-bottom: 12px;
+    color: #d1d5db;
+}
+
+.ch-prompt p {
+    font-size: 13px;
+    margin: 0;
+}
+
+@media (max-width: 768px) {
+    .ch-filter-row {
+        flex-direction: column;
+    }
     .ch-field-customer,
     .ch-field-type,
     .ch-field-status,
-    .ch-field-date { min-width: 100%; max-width: 100%; }
-    .ch-customer-header { flex-direction: column; align-items: flex-start; gap: 6px; }
-    .ch-cust-sep { display: none; }
+    .ch-field-date {
+        min-width: 100%;
+        max-width: 100%;
+    }
+    .ch-customer-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    .ch-cust-sep {
+        display: none;
+    }
 }
 </style>
 
@@ -1103,21 +1438,9 @@ if ($hist_customer_info) {
     <span class="ch-cust-name"><?= htmlspecialchars($hist_customer_info['name']) ?></span>
     <span class="ch-cust-sep">|</span>
     <span class="ch-cust-item">
-        <span class="ch-cust-item-label">Credit Limit</span>
-        <span class="ch-cust-item-value">₱<?= number_format($ci_limit, 2) ?></span>
-    </span>
-    <span class="ch-cust-sep">|</span>
-    <span class="ch-cust-item">
-        <span class="ch-cust-item-label">Used</span>
-        <span class="ch-cust-item-value <?= $ci_balance > 0 ? 'danger' : 'neutral' ?>">
-            ₱<?= number_format($ci_balance, 2) ?>
-        </span>
-    </span>
-    <span class="ch-cust-sep">|</span>
-    <span class="ch-cust-item">
-        <span class="ch-cust-item-label">Balance</span>
-        <span class="ch-cust-item-value <?= $ci_remaining <= 0 ? 'danger' : 'success' ?>">
-            ₱<?= number_format($ci_remaining, 2) ?>
+        <span class="ch-cust-item-label">Status</span>
+        <span class="ch-cust-item-value <?= strtolower($hist_customer_info['status'] ?? 'active') === 'active' ? 'success' : 'danger' ?>">
+            <?= ucfirst(htmlspecialchars($hist_customer_info['status'] ?? 'active')) ?>
         </span>
     </span>
     <span class="ch-cust-sep">|</span>
@@ -1125,13 +1448,6 @@ if ($hist_customer_info) {
         <span class="ch-cust-item-label">Transactions:</span>
         <span class="ch-cust-item-value neutral"><?= $ci_total_txns ?></span>
     </span>
-    <?php if ($ci_unpaid_count > 0): ?>
-    <span class="ch-cust-sep">|</span>
-    <span class="ch-cust-item">
-        <span class="ch-cust-item-label">Unpaid:</span>
-        <span class="ch-cust-item-value danger"><?= $ci_unpaid_count ?></span>
-    </span>
-    <?php endif; ?>
 </div>
 <?php endif; ?>
 

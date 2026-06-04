@@ -272,7 +272,7 @@ html, body { max-width:100vw; overflow-x:hidden; }
 <div class="afto-head">
     <div>
         <h1><i class="fas fa-gas-pump"></i> Fuel Transactions Oversight</h1>
-        <div class="afto-subtitle">Staff-encoded pump readings validated by the Manager</div>
+        <div class="afto-subtitle">MONITOR AND AUDIT ALL FUEL TRANSACTIONS VALIDATED BY MANAGERS, ENSURING COMPLIANCE AND ACCURACY.</div>
     </div>
     <div class="afto-actions">
         <a href="?<?= http_build_query(array_merge($_GET,['export'=>'excel'])) ?>" class="afto-btn afto-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>

@@ -225,7 +225,7 @@ include __DIR__ . "/../partials/header.php";
 <div class="page-head">
     <div>
         <h1><i class="fas fa-shopping-cart"></i> Stock Requests Validation</h1>
-        <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; Review, validate, edit quantity/liters of staff stock requests</div>
+        <div class="sub">VALIDATE STAFF-SUBMITTED STOCK REQUESTS AND ADJUST QUANTITIES IF NEEDED.</div>
     </div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto;">
         <?php

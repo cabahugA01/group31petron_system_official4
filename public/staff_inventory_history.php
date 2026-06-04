@@ -80,7 +80,7 @@ include __DIR__ . '/../partials/header.php';
 <div class="page-head">
     <div>
         <h1 class="h1"><i class="fas fa-history"></i> Inventory History</h1>
-        <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; Your stock request lifecycle</div>
+        <div class="sub">TRACK THE LIFECYCLE OF REQUESTS, DELIVERIES, AND STOCK UPDATES.</div>
     </div>
 </div>
 

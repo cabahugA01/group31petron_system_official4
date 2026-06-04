@@ -793,7 +793,7 @@ require_once __DIR__ . '/../partials/header.php';
 <div class="page-head" data-rendering="php" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:18px;">
     <div>
         <h1 class="h1" style="margin:0 0 4px 0;"><i class="fas fa-truck" style="color:#003d82;margin-right:8px;"></i>Fuel Deliveries</h1>
-        <div class="sub">Record fuel deliveries received from suppliers — pending manager validation</div>
+        <div class="sub">ENCODE SUPPLIER FUEL DELIVERIES WITH BATCH ID, QUANTITY, AND COST.</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <!-- Export buttons: only shown on My Delivery Records tab -->

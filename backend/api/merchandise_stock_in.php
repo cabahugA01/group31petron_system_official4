@@ -83,6 +83,35 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 } catch (Exception $e) {}
 
+// Bootstrap fuel_batches table — mirrors merchandise_batches but for fuel
+try {
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS fuel_batches (
+            id                INT AUTO_INCREMENT PRIMARY KEY,
+            fuel_type_id      INT          NOT NULL,
+            station_id        INT          NOT NULL,
+            batch_number      VARCHAR(50)  NOT NULL,
+            delivery_id       INT          DEFAULT NULL COMMENT 'fuel_deliveries.id',
+            quantity_received DECIMAL(12,2) NOT NULL DEFAULT 0,
+            remaining_qty     DECIMAL(12,2) NOT NULL DEFAULT 0,
+            unit_cost         DECIMAL(12,4) NOT NULL DEFAULT 0,
+            supplier          VARCHAR(200) DEFAULT NULL,
+            date_received     DATE         NOT NULL,
+            encoded_by        INT          DEFAULT NULL,
+            status            ENUM('active','depleted','cancelled') NOT NULL DEFAULT 'active',
+            notes             TEXT         DEFAULT NULL,
+            created_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_fuel_type  (fuel_type_id),
+            INDEX idx_station    (station_id),
+            INDEX idx_status     (status),
+            INDEX idx_date       (date_received)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ");
+} catch (Exception $e) {
+    error_log('fuel_batches bootstrap: ' . $e->getMessage());
+}
+
 // Ensure purchase_orders has required columns
 foreach ([
     "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS admin_finalized TINYINT(1) NOT NULL DEFAULT 0",
@@ -90,6 +119,14 @@ foreach ([
     "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS stock_in_at     DATETIME NULL",
     "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS stock_in_by     INT NULL",
 ] as $sql) { try { $pdo->exec($sql); } catch (Exception $e) {} }
+
+// Ensure stock_requests table has updated_at column (defensive schema check)
+try {
+    $pdo->exec("ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
+} catch (Exception $e) {
+    // Column may already exist or table may not exist yet
+    error_log("stock_requests updated_at column check: " . $e->getMessage());
+}
 
 try {
     switch ($action) {
@@ -239,13 +276,13 @@ function handle_submit_stock_in($pdo, $me, $role, $station_id) {
                     $pdo->prepare("
                         UPDATE station_inventory
                         SET stock_level = stock_level + ?,
-                            updated_at  = NOW()
+                            last_updated  = NOW()
                         WHERE product_id = ? AND station_id = ?
                     ")->execute([$qty_to_add, $item_product_id, $station_id]);
                 } else {
                     $pdo->prepare("
-                        INSERT INTO station_inventory (product_id, station_id, stock_level, status, created_at, updated_at)
-                        VALUES (?, ?, ?, 'active', NOW(), NOW())
+                        INSERT INTO station_inventory (product_id, station_id, stock_level, status, last_updated)
+                        VALUES (?, ?, ?, 'active', NOW())
                     ")->execute([$item_product_id, $station_id, $qty_to_add]);
                 }
 
@@ -352,7 +389,7 @@ function handle_submit_stock_in($pdo, $me, $role, $station_id) {
         // Update stock_requests status to 'Received' if linked
         if (!empty($po['request_id'])) {
             try {
-                $pdo->prepare("UPDATE stock_requests SET status = 'Received', updated_at = NOW() WHERE id = ?")
+                $pdo->prepare("UPDATE stock_requests SET status = 'Received' WHERE id = ?")
                     ->execute([$po['request_id']]);
             } catch (Exception $e) {}
         }
@@ -435,10 +472,12 @@ function handle_submit_fuel_stock_in($pdo, $me, $role, $station_id) {
         return;
     }
 
-    $delivery_id  = (int)($input['delivery_id']  ?? 0);
-    $qty_received = (float)($input['qty_received'] ?? 0);
-    $condition    = $input['condition']          ?? 'Good';
-    $remarks      = trim($input['remarks']       ?? '');
+    $delivery_id  = (int)($input['delivery_id']    ?? 0);
+    $qty_received = (float)($input['qty_received']  ?? 0);
+    $condition    = $input['condition']             ?? 'Good';
+    $remarks      = trim($input['remarks']          ?? '');
+    $batch_id     = trim($input['batch_id']         ?? '');
+    $unit_cost    = (float)($input['unit_cost']     ?? 0);
 
     if ($delivery_id <= 0) {
         echo json_encode(['success' => false, 'message' => 'Delivery ID is required']);
@@ -497,9 +536,10 @@ function handle_submit_fuel_stock_in($pdo, $me, $role, $station_id) {
     }
     // Short/Damaged: do NOT add to inventory (flag only)
 
-    $level_after = $level_before + $qty_to_add;
+    $level_after  = $level_before + $qty_to_add;
     $qty_variance = $qty_received - $qty_expected;
-    $batch_ref = 'FI-SI-' . date('Ymd-His') . '-DEL' . str_pad($delivery_id, 4, '0', STR_PAD_LEFT);
+    // Use provided batch_id as batch_ref if supplied, otherwise auto-generate
+    $batch_ref    = $batch_id ?: 'FI-SI-' . date('Ymd-His') . '-DEL' . str_pad($delivery_id, 4, '0', STR_PAD_LEFT);
 
     $pdo->beginTransaction();
     try {
@@ -579,6 +619,51 @@ function handle_submit_fuel_stock_in($pdo, $me, $role, $station_id) {
             $batch_ref
         ]);
 
+        // ── Create / Update fuel_batches record (FIFO tracking) ───────────────
+        if ($fuel_type_id && in_array($condition, ['Good', 'Excess'])) {
+            try {
+                // Check if this batch_ref already exists (idempotency guard)
+                $existStmt = $pdo->prepare(
+                    "SELECT id, remaining_qty FROM fuel_batches WHERE batch_number = ? AND station_id = ? LIMIT 1"
+                );
+                $existStmt->execute([$batch_ref, $station_id]);
+                $existBatch = $existStmt->fetch(PDO::FETCH_ASSOC);
+
+                if ($existBatch) {
+                    // Increment remaining_qty on the existing batch
+                    $pdo->prepare("
+                        UPDATE fuel_batches
+                        SET remaining_qty     = remaining_qty + ?,
+                            quantity_received = quantity_received + ?,
+                            updated_at        = NOW()
+                        WHERE id = ?
+                    ")->execute([$qty_to_add, $qty_to_add, $existBatch['id']]);
+                } else {
+                    // Insert new batch record
+                    $pdo->prepare("
+                        INSERT INTO fuel_batches
+                            (fuel_type_id, station_id, batch_number, delivery_id,
+                             quantity_received, remaining_qty, unit_cost,
+                             supplier, date_received, encoded_by, notes)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), ?, ?)
+                    ")->execute([
+                        $fuel_type_id,
+                        $station_id,
+                        $batch_ref,
+                        $delivery_id,
+                        $qty_to_add,
+                        $qty_to_add,
+                        $unit_cost ?: 0,
+                        $del['supplier'] ?? null,
+                        $me['id'],
+                        $remarks ?: null
+                    ]);
+                }
+            } catch (Exception $be) {
+                error_log('fuel_batches insert/update failed: ' . $be->getMessage());
+            }
+        }
+
         // Audit log
         $detail = "Fuel Stock-In | Delivery #{$delivery_id} | Fuel: {$fuel_type} | Received: {$qty_received} L | Batch: {$batch_ref}";
         if ($remarks) $detail .= " | Note: {$remarks}";
@@ -601,9 +686,10 @@ function handle_submit_fuel_stock_in($pdo, $me, $role, $station_id) {
         $pdo->commit();
 
         echo json_encode([
-            'success'   => true,
-            'message'   => "Stock-In complete. Tank level updated for {$fuel_type}.",
-            'batch_ref' => $batch_ref,
+            'success'    => true,
+            'message'    => "Stock-In complete. Tank level updated for {$fuel_type}.",
+            'batch_ref'  => $batch_ref,
+            'batch_id'   => $batch_id ?: $batch_ref,
         ]);
 
     } catch (Exception $e) {

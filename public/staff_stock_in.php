@@ -181,7 +181,8 @@ include __DIR__ . '/../partials/header.php';
 .po-item{background:#fff;border:1px solid #dee2e6;border-radius:10px;padding:18px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.04);}
 .po-item-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;flex-wrap:wrap;gap:8px;}
 .po-meta{font-size:12px;color:var(--gray);margin-bottom:12px;display:flex;flex-wrap:wrap;gap:12px;}
-.si-table{width:100%;border-collapse:collapse;font-size:13px;}
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+.si-table{width:100%;border-collapse:collapse;font-size:13px;min-width:760px;}
 .si-table th{background:#f8f9fa;padding:9px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--gray);border-bottom:2px solid #dee2e6;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;}
 .si-table td{padding:8px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle;}
 .si-table input[type=number]{width:80px;padding:6px 8px;border:1px solid #dee2e6;border-radius:5px;font-size:13px;text-align:center;}
@@ -202,7 +203,7 @@ include __DIR__ . '/../partials/header.php';
 <div class="page-head">
   <div>
     <h1 class="h1"><i class="fas fa-dolly"></i> Stock-In</h1>
-    <div class="sub">Encode actual received items &mdash; this is the only step that updates inventory.</div>
+    <div class="sub">ENCODE ACTUAL DELIVERIES RECEIVED WITH BATCH ID TO UPDATE INVENTORY.</div>
   </div>
 </div>
 
@@ -295,7 +296,8 @@ include __DIR__ . '/../partials/header.php';
         <table class="si-table">
           <thead>
             <tr>
-              <th>Fuel Product</th><th>Supplier</th><th>Expected Liters</th>
+              <th>Fuel Product</th><th>Supplier</th><th>Batch ID <span style="color:#dc3545;">*</span></th>
+              <th>Unit Cost (₱/L)</th><th>Expected Liters</th>
               <th>Actual Received Liters *</th><th>Condition *</th>
               <th>Variance (L)</th><th>Remarks</th>
             </tr>
@@ -304,6 +306,16 @@ include __DIR__ . '/../partials/header.php';
             <tr>
               <td><strong><?= htmlspecialchars($fd['fuel_type'] ?? '') ?></strong></td>
               <td><?= htmlspecialchars($fd['supplier'] ?? '') ?></td>
+              <td>
+                <input type="text" id="fuel-batch-<?= $fd['id'] ?>" placeholder="e.g. FB-001" maxlength="50"
+                       style="width:130px;font-family:monospace;font-weight:700;font-size:12px;text-transform:uppercase;border:1px solid #dee2e6;border-radius:5px;padding:6px 8px;"
+                       oninput="this.value=this.value.toUpperCase()">
+              </td>
+              <td>
+                <input type="number" id="fuel-cost-<?= $fd['id'] ?>" min="0" step="0.01" value="0.00"
+                       placeholder="0.00" style="width:90px;"
+                       title="Unit cost per litre for this batch (for FIFO costing)">
+              </td>
               <td style="text-align:center;font-weight:700;"><?= number_format($qty_expected, 2) ?> L</td>
               <td>
                 <input type="number" id="fuel-qty-<?= $fd['id'] ?>" min="0" step="0.01" value="<?= $qty_expected ?>"
@@ -318,7 +330,7 @@ include __DIR__ . '/../partials/header.php';
                 </select>
               </td>
               <td id="fuel-var-<?= $fd['id'] ?>" class="variance-zero">0.00 L</td>
-              <td><input type="text" id="fuel-rem-<?= $fd['id'] ?>" placeholder="Optional notes..." style="width: 200px;"></td>
+              <td><input type="text" id="fuel-rem-<?= $fd['id'] ?>" placeholder="Optional notes..." style="width: 160px;"></td>
             </tr>
           </tbody>
         </table>
@@ -584,7 +596,7 @@ include __DIR__ . '/../partials/header.php';
 </div>
 <?php endif; ?>
 
-<div id="flashMsg" style="display:none;position:fixed;bottom:24px;right:24px;padding:13px 20px;border-radius:8px;color:#fff;font-weight:600;font-size:13px;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.2);max-width:340px;"></div>
+<div id="flashMsg" style="display:none;position:fixed;top:24px;right:24px;padding:13px 20px;border-radius:8px;color:#fff;font-weight:600;font-size:13px;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.2);max-width:340px;"></div>
 
 <script>
 function updateVariance(poId, qtyOrdered) {
@@ -670,10 +682,16 @@ function submitFuelStockIn(fdId, qtyExpected) {
     var qtyReceived = parseFloat(document.getElementById('fuel-qty-' + fdId).value) || 0;
     var condition   = document.getElementById('fuel-cond-' + fdId).value;
     var remarks     = document.getElementById('fuel-rem-' + fdId).value.trim();
+    var batchIdEl   = document.getElementById('fuel-batch-' + fdId);
+    var batchId     = batchIdEl ? batchIdEl.value.trim().toUpperCase() : '';
+    var unitCostEl  = document.getElementById('fuel-cost-' + fdId);
+    var unitCost    = unitCostEl ? (parseFloat(unitCostEl.value) || 0) : 0;
 
+    if (!batchId) { showToast('Batch ID is required before submitting.', 'err'); if (batchIdEl) batchIdEl.focus(); return; }
     if (qtyReceived < 0) { showToast('Quantity received cannot be negative.', 'err'); return; }
 
-    var msg = 'Submit Fuel Stock-In?\n\nActual Received: ' + qtyReceived.toFixed(2) + ' L\nCondition: ' + condition;
+    var msg = 'Submit Fuel Stock-In?\n\nBatch ID: ' + batchId + '\nActual Received: ' + qtyReceived.toFixed(2) + ' L\nCondition: ' + condition;
+    if (unitCost > 0) msg += '\nUnit Cost: ₱' + unitCost.toFixed(2) + '/L';
     if (condition === 'Damaged' || condition === 'Short') {
         msg += '\n\nNOTE: ' + condition + ' fuel losses will NOT be added to inventory tank levels.';
     }
@@ -687,10 +705,12 @@ function submitFuelStockIn(fdId, qtyExpected) {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-            delivery_id: fdId,
+            delivery_id:  fdId,
             qty_received: qtyReceived,
-            condition: condition,
-            remarks: remarks
+            condition:    condition,
+            remarks:      remarks,
+            batch_id:     batchId,
+            unit_cost:    unitCost
         })
     })
     .then(function(r) { return r.json(); })

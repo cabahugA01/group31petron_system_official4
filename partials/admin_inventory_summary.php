@@ -1,7 +1,7 @@
 <?php
 /**
  * Admin Inventory Summary partial file
- * Flat-table summary panel for admin inventory oversight.
+ * Clean, modern card design matching staff/manager style
  */
 if (!isset($pdo) || !isset($me) || !isset($station_id)) { return; }
 
@@ -58,34 +58,186 @@ try {
     $s->execute([$station_id]); $admin_utang = (float)$s->fetchColumn();
 } catch (Exception $e) {}
 ?>
-<div class="card" style="margin-bottom:20px;border-left:4px solid #002F6C;border-radius:8px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.06);">
-  <div class="card-hd" style="background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:10px 16px;">
-    <div class="card-hd-title" style="font-size:13px;font-weight:700;color:#002F6C;text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:6px;">
-      <i class="fas fa-chart-line"></i> Admin Inventory Summary
+<style>
+/* Admin Summary Cards - Modern Design */
+.admin-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.admin-stat-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 18px 20px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.admin-stat-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    transform: translateY(-2px);
+}
+
+.admin-stat-card-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    margin-bottom: 12px;
+}
+
+.admin-stat-card-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+
+.admin-stat-card-value {
+    font-size: 26px;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 4px;
+}
+
+.admin-stat-card-subtitle {
+    font-size: 11px;
+    color: #94a3b8;
+    font-weight: 500;
+}
+
+/* Color variants */
+.admin-stat-card.blue .admin-stat-card-icon {
+    background: linear-gradient(135deg, #002F70 0%, #004aad 100%);
+    color: #fff;
+}
+.admin-stat-card.blue .admin-stat-card-value {
+    color: #002F70;
+}
+
+.admin-stat-card.orange .admin-stat-card-icon {
+    background: linear-gradient(135deg, #ea580c 0%, #f97316 100%);
+    color: #fff;
+}
+.admin-stat-card.orange .admin-stat-card-value {
+    color: #ea580c;
+}
+
+.admin-stat-card.green .admin-stat-card-icon {
+    background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);
+    color: #fff;
+}
+.admin-stat-card.green .admin-stat-card-value {
+    color: #16a34a;
+}
+
+.admin-stat-card.yellow .admin-stat-card-icon {
+    background: linear-gradient(135deg, #ca8a04 0%, #eab308 100%);
+    color: #fff;
+}
+.admin-stat-card.yellow .admin-stat-card-value {
+    color: #ca8a04;
+}
+
+.admin-stat-card.red .admin-stat-card-icon {
+    background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+    color: #fff;
+}
+.admin-stat-card.red .admin-stat-card-value {
+    color: #dc2626;
+}
+
+.admin-stat-card.purple .admin-stat-card-icon {
+    background: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%);
+    color: #fff;
+}
+.admin-stat-card.purple .admin-stat-card-value {
+    color: #7c3aed;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .admin-summary-grid {
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 12px;
+    }
+    .admin-stat-card {
+        padding: 14px 16px;
+    }
+    .admin-stat-card-icon {
+        width: 38px;
+        height: 38px;
+        font-size: 18px;
+        margin-bottom: 10px;
+    }
+    .admin-stat-card-value {
+        font-size: 22px;
+    }
+}
+</style>
+
+<div class="admin-summary-grid">
+    <div class="admin-stat-card blue">
+        <div class="admin-stat-card-icon">
+            <i class="fas fa-file-invoice"></i>
+        </div>
+        <div class="admin-stat-card-label">Pending POs</div>
+        <div class="admin-stat-card-value"><?= number_format($admin_pending_pos) ?></div>
+        <div class="admin-stat-card-subtitle">Awaiting Stock-In</div>
     </div>
-  </div>
-  <div class="card-body" style="padding:0;overflow-x:auto;">
-    <table style="width:100%;border-collapse:collapse;text-align:center;font-size:13px;min-width:750px;">
-      <thead>
-        <tr style="background:#f1f5f9;border-bottom:1px solid #cbd5e1;">
-          <th style="padding:10px;color:#475569;font-weight:700;border-right:1px solid #cbd5e1;">Pending POs</th>
-          <th style="padding:10px;color:#475569;font-weight:700;border-right:1px solid #cbd5e1;">Pending Stock Requests</th>
-          <th style="padding:10px;color:#475569;font-weight:700;border-right:1px solid #cbd5e1;">Active Products</th>
-          <th style="padding:10px;color:#475569;font-weight:700;border-right:1px solid #cbd5e1;">Low Stock Items</th>
-          <th style="padding:10px;color:#475569;font-weight:700;border-right:1px solid #cbd5e1;">Out of Stock Items</th>
-          <th style="padding:10px;color:#475569;font-weight:700;">Outstanding Utang</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr style="font-size:16px;font-weight:800;">
-          <td style="padding:12px;color:#002F6C;border-right:1px solid #e2e8f0;"><?= number_format($admin_pending_pos) ?></td>
-          <td style="padding:12px;color:#ea580c;border-right:1px solid #e2e8f0;"><?= number_format($admin_pending_sr) ?></td>
-          <td style="padding:12px;color:#16a34a;border-right:1px solid #e2e8f0;"><?= number_format($admin_active_products) ?></td>
-          <td style="padding:12px;color:#ca8a04;border-right:1px solid #e2e8f0;"><?= number_format($admin_low_stock) ?></td>
-          <td style="padding:12px;color:#dc2626;border-right:1px solid #e2e8f0;"><?= number_format($admin_out_of_stock) ?></td>
-          <td style="padding:12px;color:#7c3aed;">&#8369;<?= number_format($admin_utang, 2) ?></td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
+
+    <div class="admin-stat-card orange">
+        <div class="admin-stat-card-icon">
+            <i class="fas fa-clipboard-list"></i>
+        </div>
+        <div class="admin-stat-card-label">Pending Requests</div>
+        <div class="admin-stat-card-value"><?= number_format($admin_pending_sr) ?></div>
+        <div class="admin-stat-card-subtitle">Stock Requests</div>
+    </div>
+
+    <div class="admin-stat-card green">
+        <div class="admin-stat-card-icon">
+            <i class="fas fa-box-open"></i>
+        </div>
+        <div class="admin-stat-card-label">Active Products</div>
+        <div class="admin-stat-card-value"><?= number_format($admin_active_products) ?></div>
+        <div class="admin-stat-card-subtitle">Total Items</div>
+    </div>
+
+    <div class="admin-stat-card yellow">
+        <div class="admin-stat-card-icon">
+            <i class="fas fa-exclamation-circle"></i>
+        </div>
+        <div class="admin-stat-card-label">Low Stock</div>
+        <div class="admin-stat-card-value"><?= number_format($admin_low_stock) ?></div>
+        <div class="admin-stat-card-subtitle">Need Reorder</div>
+    </div>
+
+    <div class="admin-stat-card red">
+        <div class="admin-stat-card-icon">
+            <i class="fas fa-times-circle"></i>
+        </div>
+        <div class="admin-stat-card-label">Out of Stock</div>
+        <div class="admin-stat-card-value"><?= number_format($admin_out_of_stock) ?></div>
+        <div class="admin-stat-card-subtitle">Critical</div>
+    </div>
+
+    <div class="admin-stat-card purple">
+        <div class="admin-stat-card-icon">
+            <i class="fas fa-coins"></i>
+        </div>
+        <div class="admin-stat-card-label">Outstanding Utang</div>
+        <div class="admin-stat-card-value">₱<?= number_format($admin_utang, 2) ?></div>
+        <div class="admin-stat-card-subtitle">Customer Balances</div>
+    </div>
 </div>

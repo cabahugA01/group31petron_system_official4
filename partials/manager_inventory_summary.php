@@ -1,7 +1,7 @@
 <?php
 /**
  * Manager Inventory Summary partial file
- * Renders a simple, clean, tabular row of operational metrics for older users.
+ * Clean, modern card design matching staff inventory style
  */
 if (!isset($pdo) || !isset($me) || !isset($station_id)) {
     return;
@@ -67,32 +67,169 @@ try {
     $out_of_stock = (int)$s_oos->fetchColumn();
 } catch (Exception $e) {}
 ?>
-<div class="card" style="margin-bottom: 20px; border-left: 4px solid #002F6C; border-radius: 8px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.06);">
-  <div class="card-hd" style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 10px 16px;">
-    <div class="card-hd-title" style="font-size: 13px; font-weight: 700; color: #002F6C; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
-      <i class="fas fa-chart-line"></i> Manager Summary Panel
+<style>
+/* Manager Summary Cards - Modern Design */
+.manager-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.mgr-stat-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 18px 20px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.mgr-stat-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    transform: translateY(-2px);
+}
+
+.mgr-stat-card-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    margin-bottom: 12px;
+}
+
+.mgr-stat-card-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+
+.mgr-stat-card-value {
+    font-size: 26px;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 4px;
+}
+
+.mgr-stat-card-subtitle {
+    font-size: 11px;
+    color: #94a3b8;
+    font-weight: 500;
+}
+
+/* Color variants */
+.mgr-stat-card.blue .mgr-stat-card-icon {
+    background: linear-gradient(135deg, #002F70 0%, #004aad 100%);
+    color: #fff;
+}
+.mgr-stat-card.blue .mgr-stat-card-value {
+    color: #002F70;
+}
+
+.mgr-stat-card.orange .mgr-stat-card-icon {
+    background: linear-gradient(135deg, #ea580c 0%, #f97316 100%);
+    color: #fff;
+}
+.mgr-stat-card.orange .mgr-stat-card-value {
+    color: #ea580c;
+}
+
+.mgr-stat-card.green .mgr-stat-card-icon {
+    background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);
+    color: #fff;
+}
+.mgr-stat-card.green .mgr-stat-card-value {
+    color: #16a34a;
+}
+
+.mgr-stat-card.yellow .mgr-stat-card-icon {
+    background: linear-gradient(135deg, #ca8a04 0%, #eab308 100%);
+    color: #fff;
+}
+.mgr-stat-card.yellow .mgr-stat-card-value {
+    color: #ca8a04;
+}
+
+.mgr-stat-card.red .mgr-stat-card-icon {
+    background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+    color: #fff;
+}
+.mgr-stat-card.red .mgr-stat-card-value {
+    color: #dc2626;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .manager-summary-grid {
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 12px;
+    }
+    .mgr-stat-card {
+        padding: 14px 16px;
+    }
+    .mgr-stat-card-icon {
+        width: 38px;
+        height: 38px;
+        font-size: 18px;
+        margin-bottom: 10px;
+    }
+    .mgr-stat-card-value {
+        font-size: 22px;
+    }
+}
+</style>
+
+<div class="manager-summary-grid">
+    <div class="mgr-stat-card blue">
+        <div class="mgr-stat-card-icon">
+            <i class="fas fa-file-invoice"></i>
+        </div>
+        <div class="mgr-stat-card-label">Outstanding POs</div>
+        <div class="mgr-stat-card-value"><?= number_format($outstanding_pos) ?></div>
+        <div class="mgr-stat-card-subtitle">Pending Delivery</div>
     </div>
-  </div>
-  <div class="card-body" style="padding: 0; overflow-x: auto;">
-    <table style="width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; min-width: 700px;">
-      <thead>
-        <tr style="background: #f1f5f9; border-bottom: 1px solid #cbd5e1;">
-          <th style="padding: 10px; color: #475569; font-weight: 700; border-right: 1px solid #cbd5e1;">Outstanding POs</th>
-          <th style="padding: 10px; color: #475569; font-weight: 700; border-right: 1px solid #cbd5e1;">Pending Stock Requests</th>
-          <th style="padding: 10px; color: #475569; font-weight: 700; border-right: 1px solid #cbd5e1;">Total Active Products</th>
-          <th style="padding: 10px; color: #475569; font-weight: 700; border-right: 1px solid #cbd5e1;">Total Low Stock Items</th>
-          <th style="padding: 10px; color: #475569; font-weight: 700;">Total Out of Stock Items</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr style="font-size: 16px; font-weight: 800;">
-          <td style="padding: 12px; color: #002F6C; border-right: 1px solid #e2e8f0;"><?= number_format($outstanding_pos) ?></td>
-          <td style="padding: 12px; color: #ea580c; border-right: 1px solid #e2e8f0;"><?= number_format($pending_sr) ?></td>
-          <td style="padding: 12px; color: #16a34a; border-right: 1px solid #e2e8f0;"><?= number_format($active_products) ?></td>
-          <td style="padding: 12px; color: #ca8a04; border-right: 1px solid #e2e8f0;"><?= number_format($low_stock) ?></td>
-          <td style="padding: 12px; color: #dc2626;"><?= number_format($out_of_stock) ?></td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
+
+    <div class="mgr-stat-card orange">
+        <div class="mgr-stat-card-icon">
+            <i class="fas fa-clipboard-list"></i>
+        </div>
+        <div class="mgr-stat-card-label">Pending Stock Requests</div>
+        <div class="mgr-stat-card-value"><?= number_format($pending_sr) ?></div>
+        <div class="mgr-stat-card-subtitle">Awaiting Validation</div>
+    </div>
+
+    <div class="mgr-stat-card green">
+        <div class="mgr-stat-card-icon">
+            <i class="fas fa-box-open"></i>
+        </div>
+        <div class="mgr-stat-card-label">Active Products</div>
+        <div class="mgr-stat-card-value"><?= number_format($active_products) ?></div>
+        <div class="mgr-stat-card-subtitle">Total Merchandise</div>
+    </div>
+
+    <div class="mgr-stat-card yellow">
+        <div class="mgr-stat-card-icon">
+            <i class="fas fa-exclamation-circle"></i>
+        </div>
+        <div class="mgr-stat-card-label">Low Stock Items</div>
+        <div class="mgr-stat-card-value"><?= number_format($low_stock) ?></div>
+        <div class="mgr-stat-card-subtitle">Need Reorder</div>
+    </div>
+
+    <div class="mgr-stat-card red">
+        <div class="mgr-stat-card-icon">
+            <i class="fas fa-times-circle"></i>
+        </div>
+        <div class="mgr-stat-card-label">Out of Stock</div>
+        <div class="mgr-stat-card-value"><?= number_format($out_of_stock) ?></div>
+        <div class="mgr-stat-card-subtitle">Critical Items</div>
+    </div>
 </div>

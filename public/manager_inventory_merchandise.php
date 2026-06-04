@@ -99,7 +99,7 @@ include __DIR__ . '/../partials/header.php';
 <div class="page-head">
     <div>
         <h1 class="h1"><i class="fas fa-box"></i> Merchandise Inventory</h1>
-        <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; Oversight of merchandise stock levels &amp; categories</div>
+        <div class="sub">REVIEW AND UPDATE MERCHANDISE PRICING AND PRODUCT DETAILS.</div>
     </div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto;">
         <?php

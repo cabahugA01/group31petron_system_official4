@@ -189,7 +189,7 @@ body, html { overflow-x: hidden !important; }
 <div class="page-head">
     <div>
         <h1 class="h1"><i class="fas fa-gas-pump"></i> Fuel Inventory</h1>
-        <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; Monitor levels &amp; submit stock requests</div>
+        <div class="sub">RECORD FUEL PUMP READINGS AND DELIVERIES WITH BATCH ID.</div>
     </div>
     <div class="header-actions" style="display:flex;gap:8px;align-items:center;">
         <?php if ($pending_fuel_sr > 0): ?>

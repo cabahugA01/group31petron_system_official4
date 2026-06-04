@@ -140,7 +140,7 @@ table {
 
 .page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:18px}
 .h1{margin:0;font-size:28px;letter-spacing:-.02em}
-.sub{color:var(--muted);margin-top:4px}
+.sub{color:var(--muted);margin-top:4px;font-size:13px}
 
 .card{background:var(--card);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow)}
 .card-head{display:flex;align-items:center;justify-content:space-between;padding:16px 16px 0 16px}

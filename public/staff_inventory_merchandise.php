@@ -213,7 +213,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
 <div class="page-head">
     <div>
         <h1 class="h1"><i class="fas fa-boxes"></i> Merchandise Inventory</h1>
-        <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; Submit stock requests for any item</div>
+        <div class="sub">MANAGE MERCHANDISE ITEMS AND MONITOR STOCK LEVELS.</div>
     </div>
 </div>
 

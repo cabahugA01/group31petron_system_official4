@@ -156,7 +156,7 @@ include __DIR__ . '/../partials/header.php';
   <!-- Header -->
   <div class="ssr-header">
     <h1><i class="fas fa-boxes" style="margin-right:9px;"></i>Stock Request History</h1>
-    <p>History of stock replenishment requests for fuel and merchandise products</p>
+    <p>VIEW SYSTEM-GENERATED REQUESTS FOR LOW OR OUT-OF-STOCK ITEMS.</p>
   </div>
 
   <!-- Summary Row -->

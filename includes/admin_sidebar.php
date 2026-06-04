@@ -13,10 +13,10 @@ function getAdminSidebar($current_page = 'transactions') {
             'url' => 'joborder.php',
             'description' => 'Full transparency view, audit trail, compliance reports'
         ],
-                'purchase_orders' => [
+        'purchase_orders' => [
             'icon' => 'fas fa-file-invoice-dollar',
             'title' => 'Purchase Orders',
-            'url' => 'purchase_orders.php',
+            'url' => 'admin_purchase_orders.php',
             'description' => 'Validate and finalize POs to suppliers'
         ],
         'customers' => [

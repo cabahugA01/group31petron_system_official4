@@ -150,14 +150,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new Exception("As an Admin, you can only create Staff or Manager users.");
                 }
                 
-                // Additional validation: One manager per admin's station (since Manager is auto-assigned)
+                // ═══════════════════════════════════════════════════════════
+                // STRICT VALIDATION: One Manager per Station ONLY
+                // ═══════════════════════════════════════════════════════════
                 if ($role === 'manager') {
-                    $checkManager = $pdo->prepare("SELECT COUNT(*) FROM users WHERE role = 'manager' AND station_id = ? AND status = 'active' AND is_deleted = 0");
-                    $checkManager->execute([$my_station_id]); // Check admin's station, not selected station
-                    $managerCount = $checkManager->fetchColumn();
+                    // Check for ANY existing manager (active OR inactive) at this station
+                    $checkManager = $pdo->prepare("
+                        SELECT COUNT(*) 
+                        FROM users 
+                        WHERE role = 'manager' 
+                          AND station_id = ? 
+                          AND (is_deleted = 0 OR is_deleted IS NULL)
+                    ");
+                    $checkManager->execute([$my_station_id]);
+                    $managerCount = (int)$checkManager->fetchColumn();
                     
                     if ($managerCount > 0) {
-                        throw new Exception("Your station already has a Manager. Only one Manager is allowed per station.");
+                        // Get existing manager name for better error message
+                        $existingMgr = $pdo->prepare("
+                            SELECT name, status 
+                            FROM users 
+                            WHERE role = 'manager' 
+                              AND station_id = ? 
+                              AND (is_deleted = 0 OR is_deleted IS NULL)
+                            LIMIT 1
+                        ");
+                        $existingMgr->execute([$my_station_id]);
+                        $mgrInfo = $existingMgr->fetch(PDO::FETCH_ASSOC);
+                        $mgrName = $mgrInfo['name'] ?? 'Unknown';
+                        $mgrStatus = $mgrInfo['status'] ?? 'active';
+                        
+                        throw new Exception("❌ Cannot create Manager. Your station already has a Manager: {$mgrName} (Status: {$mgrStatus}). Only ONE Manager is allowed per station. Please deactivate the existing Manager first if you need to replace them.");
                     }
                 }
                 
@@ -168,25 +191,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new Exception("Invalid role selected.");
                 }
                 
-                // Additional validation: One admin per station
+                // ═══════════════════════════════════════════════════════════
+                // STRICT VALIDATION: One Admin per Station ONLY
+                // ═══════════════════════════════════════════════════════════
                 if ($role === 'admin') {
-                    $checkAdmin = $pdo->prepare("SELECT COUNT(*) FROM users WHERE role = 'admin' AND station_id = ? AND status = 'active' AND is_deleted = 0");
+                    $checkAdmin = $pdo->prepare("
+                        SELECT COUNT(*) 
+                        FROM users 
+                        WHERE role = 'admin' 
+                          AND station_id = ? 
+                          AND (is_deleted = 0 OR is_deleted IS NULL)
+                    ");
                     $checkAdmin->execute([$station_target]);
-                    $adminCount = $checkAdmin->fetchColumn();
+                    $adminCount = (int)$checkAdmin->fetchColumn();
                     
                     if ($adminCount > 0) {
-                        throw new Exception("This station already has an Admin. Only one Admin is allowed per station.");
+                        // Get existing admin name
+                        $existingAdm = $pdo->prepare("
+                            SELECT name, status 
+                            FROM users 
+                            WHERE role = 'admin' 
+                              AND station_id = ? 
+                              AND (is_deleted = 0 OR is_deleted IS NULL)
+                            LIMIT 1
+                        ");
+                        $existingAdm->execute([$station_target]);
+                        $admInfo = $existingAdm->fetch(PDO::FETCH_ASSOC);
+                        $admName = $admInfo['name'] ?? 'Unknown';
+                        $admStatus = $admInfo['status'] ?? 'active';
+                        
+                        throw new Exception("❌ Cannot create Admin. This station already has an Admin: {$admName} (Status: {$admStatus}). Only ONE Admin is allowed per station.");
                     }
                 }
                 
-                // Additional validation: One manager per station
+                // ═══════════════════════════════════════════════════════════
+                // STRICT VALIDATION: One Manager per Station ONLY
+                // ═══════════════════════════════════════════════════════════
                 if ($role === 'manager') {
-                    $checkManager = $pdo->prepare("SELECT COUNT(*) FROM users WHERE role = 'manager' AND station_id = ? AND status = 'active' AND is_deleted = 0");
+                    $checkManager = $pdo->prepare("
+                        SELECT COUNT(*) 
+                        FROM users 
+                        WHERE role = 'manager' 
+                          AND station_id = ? 
+                          AND (is_deleted = 0 OR is_deleted IS NULL)
+                    ");
                     $checkManager->execute([$station_target]);
-                    $managerCount = $checkManager->fetchColumn();
+                    $managerCount = (int)$checkManager->fetchColumn();
                     
                     if ($managerCount > 0) {
-                        throw new Exception("This station already has a Manager. Only one Manager is allowed per station.");
+                        // Get existing manager name
+                        $existingMgr = $pdo->prepare("
+                            SELECT name, status 
+                            FROM users 
+                            WHERE role = 'manager' 
+                              AND station_id = ? 
+                              AND (is_deleted = 0 OR is_deleted IS NULL)
+                            LIMIT 1
+                        ");
+                        $existingMgr->execute([$station_target]);
+                        $mgrInfo = $existingMgr->fetch(PDO::FETCH_ASSOC);
+                        $mgrName = $mgrInfo['name'] ?? 'Unknown';
+                        $mgrStatus = $mgrInfo['status'] ?? 'active';
+                        
+                        throw new Exception("❌ Cannot create Manager. This station already has a Manager: {$mgrName} (Status: {$mgrStatus}). Only ONE Manager is allowed per station. Please contact system administrator if you need to replace the existing Manager.");
                     }
                 }
             }
@@ -256,6 +323,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!can_manage_role($my_role, (string)($target_user['role'] ?? 'staff'))) {
                     throw new Exception("You cannot modify this user role.");
                 }
+                
+                // ═══════════════════════════════════════════════════════════
+                // PREVENT CHANGING STAFF TO MANAGER if Manager already exists
+                // ═══════════════════════════════════════════════════════════
+                $old_role = strtolower($target_user['role'] ?? 'staff');
+                if ($old_role !== 'manager' && $role === 'manager') {
+                    // User is being promoted to Manager - check if station already has one
+                    $checkManager = $pdo->prepare("
+                        SELECT COUNT(*) 
+                        FROM users 
+                        WHERE role = 'manager' 
+                          AND station_id = ? 
+                          AND id != ?
+                          AND (is_deleted = 0 OR is_deleted IS NULL)
+                    ");
+                    $checkManager->execute([$my_station_id, $id]);
+                    $managerCount = (int)$checkManager->fetchColumn();
+                    
+                    if ($managerCount > 0) {
+                        throw new Exception("❌ Cannot change role to Manager. This station already has a Manager. Only ONE Manager is allowed per station.");
+                    }
+                }
+            } else {
+                // Superadmin editing
+                $chk = $pdo->prepare("SELECT id, station_id, role FROM users WHERE id = ?");
+                $chk->execute([$id]);
+                $target_user = $chk->fetch(PDO::FETCH_ASSOC);
+                if (!$target_user) throw new Exception("User not found.");
+                
+                // Check manager limit for superadmin too
+                $old_role = strtolower($target_user['role'] ?? 'staff');
+                if ($old_role !== 'manager' && $role === 'manager') {
+                    $station_id_to_check = $target_user['station_id'];
+                    $checkManager = $pdo->prepare("
+                        SELECT COUNT(*) 
+                        FROM users 
+                        WHERE role = 'manager' 
+                          AND station_id = ? 
+                          AND id != ?
+                          AND (is_deleted = 0 OR is_deleted IS NULL)
+                    ");
+                    $checkManager->execute([$station_id_to_check, $id]);
+                    $managerCount = (int)$checkManager->fetchColumn();
+                    
+                    if ($managerCount > 0) {
+                        throw new Exception("❌ Cannot change role to Manager. This station already has a Manager. Only ONE Manager is allowed per station.");
+                    }
+                }
             }
             
             // Check email uniqueness
@@ -316,18 +431,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $id = $_POST['user_id'];
             $new_status = $_POST['new_status']; // 'active' or 'inactive'
             
+            // Get target user info first
+            $target_user = null;
             if ($my_role !== 'superadmin') {
-                $chk = $pdo->prepare("SELECT id, role FROM users WHERE id = ? AND station_id = ?");
+                $chk = $pdo->prepare("SELECT id, role, station_id, status FROM users WHERE id = ? AND station_id = ?");
                 $chk->execute([$id, $my_station_id]);
                 $target_user = $chk->fetch(PDO::FETCH_ASSOC);
                 if (!$target_user) throw new Exception("Unauthorized access to user.");
                 if (!can_manage_role($my_role, (string)($target_user['role'] ?? 'staff'))) {
                     throw new Exception("You cannot change status for this user.");
                 }
+            } else {
+                $chk = $pdo->prepare("SELECT id, role, station_id, status FROM users WHERE id = ?");
+                $chk->execute([$id]);
+                $target_user = $chk->fetch(PDO::FETCH_ASSOC);
+                if (!$target_user) throw new Exception("User not found.");
             }
             
             // Prevent deactivating self
             if ($id == $me['id']) throw new Exception("You cannot deactivate your own account.");
+            
+            // ═══════════════════════════════════════════════════════════
+            // PREVENT REACTIVATING MANAGER if another Manager is active
+            // ═══════════════════════════════════════════════════════════
+            if ($new_status === 'active' && strtolower($target_user['role']) === 'manager') {
+                $station_to_check = $target_user['station_id'];
+                
+                // Check if station already has an active manager
+                $checkActiveManager = $pdo->prepare("
+                    SELECT COUNT(*), MAX(name) as existing_name
+                    FROM users 
+                    WHERE role = 'manager' 
+                      AND station_id = ? 
+                      AND id != ?
+                      AND status = 'active'
+                      AND (is_deleted = 0 OR is_deleted IS NULL)
+                ");
+                $checkActiveManager->execute([$station_to_check, $id]);
+                $result = $checkActiveManager->fetch(PDO::FETCH_ASSOC);
+                $activeManagerCount = (int)$result['COUNT(*)'];
+                $existingName = $result['existing_name'] ?? 'Unknown';
+                
+                if ($activeManagerCount > 0) {
+                    throw new Exception("❌ Cannot reactivate this Manager. Station already has an active Manager: {$existingName}. Only ONE active Manager is allowed per station. Please deactivate the existing Manager first.");
+                }
+            }
             
             $stmt = $pdo->prepare("UPDATE users SET status = ? WHERE id = ?");
             $stmt->execute([$new_status, $id]);
@@ -1205,6 +1353,37 @@ document.addEventListener('DOMContentLoaded', function () {
         background: #3b82f6;
         border-radius: 50%;
         margin-right: 6px;
+    }
+    
+    /* ===================================================================
+       BADGE STYLING - BLACK TEXT FOR ROLE & STATUS
+       =================================================================== */
+    
+    /* Role and Status Badges - BLACK text with light backgrounds */
+    .badge {
+        color: #000000 !important;
+        font-weight: 600 !important;
+        border: 1px solid #dee2e6 !important;
+    }
+    
+    .badge.bg-primary {
+        background: #cfe2ff !important; /* Light blue background */
+        border-color: #b6d4fe !important;
+    }
+    
+    .badge.bg-secondary {
+        background: #e2e3e5 !important; /* Light gray background */
+        border-color: #d3d4d5 !important;
+    }
+    
+    .badge.bg-success {
+        background: #d1e7dd !important; /* Light green background */
+        border-color: #badbcc !important;
+    }
+    
+    .badge.bg-danger {
+        background: #f8d7da !important; /* Light red background */
+        border-color: #f5c2c7 !important;
     }
 </style>
 

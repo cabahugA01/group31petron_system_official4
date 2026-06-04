@@ -1286,6 +1286,7 @@ main.main {
             <div class="txn-section-title">
                 <div>
                     <h1>Fuel Transaction</h1>
+                    <p style="font-size:14px;color:#666666;margin:3px 0 0;text-transform:uppercase;letter-spacing:0.3px;font-weight:500;">ENCODE DAILY PUMP READINGS AND FUEL TRANSACTIONS FOR MONITORING.</p>
                 </div>
             </div>
             <div>

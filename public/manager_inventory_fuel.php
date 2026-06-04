@@ -57,7 +57,7 @@ include __DIR__ . '/../partials/header.php';
 <div class="page-head">
     <div>
         <h1 class="h1"><i class="fas fa-gas-pump"></i> Fuel Inventory</h1>
-        <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; Monitoring fuel stock levels &amp; variances</div>
+        <div class="sub">SET AND ADJUST FUEL PRICING, MONITOR FUEL STOCK LEVELS.</div>
     </div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto;">
         <?php

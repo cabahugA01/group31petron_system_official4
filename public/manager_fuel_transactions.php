@@ -1076,7 +1076,7 @@ function adjustColor($hex,$pct) {
 <div class="mfm-wrap">
     <div class="page-head">
         <div>
-            <h1 class="h1">Fuel Transactions</h1><div class="sub" style="margin-top:6px; color:#555; font-size:0.9rem;">Validation of Pump Readings and Reconciliation</div>
+            <h1 class="h1">Fuel Transactions</h1><div class="sub">Validation of Pump Readings and Reconciliation</div>
         </div>
         
     </div>
