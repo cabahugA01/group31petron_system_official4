@@ -328,7 +328,7 @@ try {
             background: white;
             padding: 30px;
             border-radius: 8px;
-            min-width: 400px;
+            
             max-width: 600px;
         }
         

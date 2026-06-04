@@ -78,7 +78,7 @@ function getAdminSidebar($current_page = 'transactions') {
 
 <style>
 .admin-sidebar {
-    width: 280px;
+    width: 250px;
     height: 100vh;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
@@ -336,7 +336,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 /* Main content adjustment */
 .admin-main-content {
-    margin-left: 280px;
+    margin-left: 250px;
     min-height: 100vh;
     background: #f8f9fa;
 }

@@ -1151,6 +1151,106 @@ try {
   </div>
 </div>
 
+<!-- ===== TRANSACTION MODULE SECTION ===== -->
+<div class="widget-card widget-full" id="transaction-module-section" style="margin-top:20px">
+  <h3>
+    <i class="fas fa-receipt"></i> Transaction Module - My Performance
+    <span style="margin-left:8px;font-size:11px;font-weight:500;color:#667085">Your transaction encoding metrics</span>
+  </h3>
+
+  <!-- Summary Cards Row -->
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px">
+    
+    <!-- Transactions Encoded Card -->
+    <div style="background:linear-gradient(135deg,#eff6ff,#dbeafe);border-radius:12px;padding:16px;border:1px solid#bfdbfe">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="width:48px;height:48px;border-radius:10px;background:#2563eb;display:flex;align-items:center;justify-content:center">
+          <i class="fas fa-list-check" style="font-size:22px;color:#fff"></i>
+        </div>
+        <div style="flex:1">
+          <div style="font-size:10px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:.4px">Transactions Encoded</div>
+          <div style="font-size:28px;font-weight:900;color:#1e3a8a" id="txn-encoded-value">--</div>
+          <div style="font-size:10px;color:#3b82f6;margin-top:2px">Job Orders + Merchandise</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pending Payments Card -->
+    <div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border-radius:12px;padding:16px;border:1px solid#fbbf24">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="width:48px;height:48px;border-radius:10px;background:#f59e0b;display:flex;align-items:center;justify-content:center">
+          <i class="fas fa-wallet" style="font-size:22px;color:#fff"></i>
+        </div>
+        <div style="flex:1">
+          <div style="font-size:10px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.4px">Pending Payments</div>
+          <div style="font-size:28px;font-weight:900;color:#78350f" id="pending-payments-value">₱--</div>
+          <div style="font-size:10px;color:#ca8a04;margin-top:2px">Unpaid balances</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Completed Job Orders Card -->
+    <div style="background:linear-gradient(135deg,#d1fae5,#bbf7d0);border-radius:12px;padding:16px;border:1px solid#86efac">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="width:48px;height:48px;border-radius:10px;background:#16a34a;display:flex;align-items:center;justify-content:center">
+          <i class="fas fa-check-circle" style="font-size:22px;color:#fff"></i>
+        </div>
+        <div style="flex:1">
+          <div style="font-size:10px;font-weight:700;color:#14532d;text-transform:uppercase;letter-spacing:.4px">Completed Jobs</div>
+          <div style="font-size:28px;font-weight:900;color:#15803d" id="completed-jo-value">--</div>
+          <div style="font-size:10px;color:#22c55e;margin-top:2px">Finished services</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Charts Row -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+
+    <!-- Job Order Status Chart -->
+    <div style="background:#f8fafc;border-radius:10px;padding:16px;border:1px solid#e2e8f0">
+      <div style="font-size:12px;font-weight:700;color:#002F70;margin-bottom:12px;display:flex;align-items:center;gap:6px">
+        <i class="fas fa-chart-pie"></i> Job Order Status Distribution
+      </div>
+      <div style="position:relative;height:240px">
+        <canvas id="txnModuleJoStatusChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Merchandise Sales Snapshot Chart -->
+    <div style="background:#f8fafc;border-radius:10px;padding:16px;border:1px solid#e2e8f0">
+      <div style="font-size:12px;font-weight:700;color:#002F70;margin-bottom:12px;display:flex;align-items:center;gap:6px">
+        <i class="fas fa-chart-bar"></i> Merchandise Sales Snapshot
+      </div>
+      <div style="position:relative;height:240px">
+        <canvas id="txnModuleMerchSalesChart"></canvas>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Export Buttons Row -->
+  <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:18px;padding-top:18px;border-top:1px solid#e2e8f0">
+    <button onclick="exportStaffTransactionData('job_orders','excel')" style="background:#16a34a;color:#fff;padding:9px 20px;border-radius:8px;border:none;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;min-width:140px;transition:background 0.2s ease" onmouseover="this.style.background='#15803d'" onmouseout="this.style.background='#16a34a'">
+      <i class="fas fa-file-excel"></i> Export JO (Excel)
+    </button>
+    <button onclick="exportStaffTransactionData('job_orders','csv')" style="background:#16a34a;color:#fff;padding:9px 20px;border-radius:8px;border:none;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;min-width:140px;transition:background 0.2s ease" onmouseover="this.style.background='#15803d'" onmouseout="this.style.background='#16a34a'">
+      <i class="fas fa-file-csv"></i> Export JO (CSV)
+    </button>
+    <button onclick="exportStaffTransactionData('job_orders','pdf')" style="background:#dc2626;color:#fff;padding:9px 20px;border-radius:8px;border:none;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;min-width:140px;transition:background 0.2s ease" onmouseover="this.style.background='#b91c1c'" onmouseout="this.style.background='#dc2626'">
+      <i class="fas fa-file-pdf"></i> Export JO (PDF)
+    </button>
+    <button onclick="exportStaffTransactionData('merchandise','excel')" style="background:#16a34a;color:#fff;padding:9px 20px;border-radius:8px;border:none;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;min-width:140px;transition:background 0.2s ease" onmouseover="this.style.background='#15803d'" onmouseout="this.style.background='#16a34a'">
+      <i class="fas fa-boxes"></i> Export Merch (Excel)
+    </button>
+    <button onclick="exportStaffTransactionData('merchandise','csv')" style="background:#16a34a;color:#fff;padding:9px 20px;border-radius:8px;border:none;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;min-width:140px;transition:background 0.2s ease" onmouseover="this.style.background='#15803d'" onmouseout="this.style.background='#16a34a'">
+      <i class="fas fa-boxes"></i> Export Merch (CSV)
+    </button>
+  </div>
+
+</div>
+
 <!-- ===== WIDGET 3: Job Orders Status ===== -->
 <div class="widget-card widget-full">
   <h3><i class="fas fa-wrench"></i> Job Orders Status
@@ -1264,9 +1364,6 @@ try {
 <div class="widget-card" id="fuel-stock-chart-card">
   <h3>
     <i class="fas fa-gas-pump"></i> Fuel Inventory Status
-    <button onclick="refreshStockCharts()" title="Refresh" style="margin-left:auto;background:none;border:1px solid #e5e7eb;border-radius:6px;padding:3px 8px;cursor:pointer;color:#667085;font-size:11px;flex-shrink:0">
-      <i class="fas fa-sync-alt" id="fuel-stock-refresh-icon"></i>
-    </button>
   </h3>
 
   <!-- Color legend -->
@@ -1298,9 +1395,6 @@ try {
 <div class="widget-card" id="stock-charts-card">
   <h3>
     <i class="fas fa-boxes"></i> Merchandise Inventory Status
-    <button onclick="refreshStockCharts()" title="Refresh" style="margin-left:auto;background:none;border:1px solid #e5e7eb;border-radius:6px;padding:3px 8px;cursor:pointer;color:#667085;font-size:11px;flex-shrink:0">
-      <i class="fas fa-sync-alt" id="stock-refresh-icon"></i>
-    </button>
   </h3>
 
   <!-- Color legend -->
@@ -2675,11 +2769,103 @@ function showSrFeedback(type, msg) {
     fb.textContent = msg;
 }
 
+// ============================================================
+// Transaction Module: Fetch and Display Metrics
+// ============================================================
+let txnModuleJoStatusChartInstance = null;
+let txnModuleMerchSalesChartInstance = null;
+
+function loadTransactionModuleMetrics() {
+  fetch('../backend/api/staff_transaction_metrics.php')
+    .then(response => response.json())
+    .then(result => {
+      if (result.success) {
+        const data = result.data;
+        
+        // Update summary cards
+        document.getElementById('txn-encoded-value').textContent = data.transactions_encoded;
+        document.getElementById('pending-payments-value').textContent = '₱' + data.pending_payments.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('completed-jo-value').textContent = data.completed_job_orders;
+        
+        // Render Job Order Status Chart (Doughnut)
+        const joCtx = document.getElementById('txnModuleJoStatusChart').getContext('2d');
+        if (txnModuleJoStatusChartInstance) txnModuleJoStatusChartInstance.destroy();
+        txnModuleJoStatusChartInstance = new Chart(joCtx, {
+          type: 'doughnut',
+          data: {
+            labels: ['Pending', 'Ongoing', 'Completed'],
+            datasets: [{
+              data: [
+                data.job_order_status.Pending,
+                data.job_order_status.Ongoing,
+                data.job_order_status.Completed
+              ],
+              backgroundColor: ['#fbbf24', '#3b82f6', '#22c55e'],
+              borderWidth: 0
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'bottom', labels: { font: { size: 11 } } }
+            }
+          }
+        });
+        
+        // Render Merchandise Sales Chart (Bar)
+        const merchCtx = document.getElementById('txnModuleMerchSalesChart').getContext('2d');
+        if (txnModuleMerchSalesChartInstance) txnModuleMerchSalesChartInstance.destroy();
+        txnModuleMerchSalesChartInstance = new Chart(merchCtx, {
+          type: 'bar',
+          data: {
+            labels: ['Today', 'This Week'],
+            datasets: [{
+              label: 'Sales (₱)',
+              data: [data.merchandise_sales.daily, data.merchandise_sales.weekly],
+              backgroundColor: ['#3b82f6', '#2563eb'],
+              borderRadius: 6
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              y: { beginAtZero: true, ticks: { callback: value => '₱' + value.toLocaleString() } }
+            },
+            plugins: {
+              legend: { display: false }
+            }
+          }
+        });
+        
+      } else {
+        console.error('Failed to load transaction metrics:', result.error);
+        document.getElementById('txn-encoded-value').textContent = 'Error';
+        document.getElementById('pending-payments-value').textContent = 'Error';
+        document.getElementById('completed-jo-value').textContent = 'Error';
+      }
+    })
+    .catch(error => {
+      console.error('Transaction module API error:', error);
+    });
+}
+
+// Export function for Transaction Module
+function exportStaffTransactionData(type, format) {
+  const endpoint = type === 'job_orders' ? 
+    '../backend/export/export_job_orders.php' : 
+    '../backend/export/export_merchandise.php';
+  
+  window.location.href = `${endpoint}?format=${format}`;
+}
+
 // Init charts on page load (after Chart.js is available)
 (function waitForChartJs() {
     if (typeof Chart !== 'undefined') {
         buildSalesCharts();
         initStockCharts();
+        loadTransactionModuleMetrics();
     } else {
         setTimeout(waitForChartJs, 100);
     }
@@ -2687,6 +2873,9 @@ function showSrFeedback(type, msg) {
 
 // Auto-refresh stock charts every 30 seconds
 setInterval(refreshStockCharts, 30000);
+
+// Auto-refresh transaction module metrics every 30 seconds
+setInterval(loadTransactionModuleMetrics, 30000);
 
 // ============================================================
 // Elapsed time counter for active clock-in session

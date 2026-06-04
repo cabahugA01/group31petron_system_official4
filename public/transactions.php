@@ -795,7 +795,7 @@ try {
 <div class="card" style="padding:0;" id="printableTable">
     <!-- Summary bar removed -->
     <div class="po-table-wrap">
-        <table class="po-table" id="txnTable" style="min-width:860px;table-layout:fixed;font-size:12px;">
+        <table class="po-table" id="txnTable" style="table-layout:fixed;font-size:12px;">
             <thead>
                 <tr>
                     <th class="col-txnid">Transaction / JO ID</th>
@@ -1581,7 +1581,7 @@ function validatePaymentModal() {
 .btn-adjust  { background:#002F70; }
 .btn-view    { background:#6c757d; }
 /* Actions cell stacked */
-.actions-cell { display:flex; flex-direction:column; gap:3px; min-width:110px; }
+.actions-cell { display:flex; flex-direction:column; gap:3px;  }
 .actions-cell .btn-action { width:100%; justify-content:center; }
 
 /* ══ JO TRACKER STYLES ══════════════════════════════════════════════════════════ */
@@ -1603,7 +1603,7 @@ function validatePaymentModal() {
 .jo-badge{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;display:inline-block}
 .jo-act-btn{padding:5px 10px;border-radius:4px;font-size:12px;font-weight:600;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:4px;color:#fff;width:100%;justify-content:center}
 .jo-act-btn:hover{opacity:.88}
-.action-col{display:flex;flex-direction:column;gap:4px;min-width:90px}
+.action-col{display:flex;flex-direction:column;gap:4px;}
 .filter-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 
 /* ══ FILTER CARD ═══════════════════════════════════════════════════════════════ */
@@ -1653,11 +1653,11 @@ function validatePaymentModal() {
     display: flex;
     flex-direction: column;
     gap: 5px;
-    min-width: 130px;
+    
 }
 
-.flt-group-date { min-width: 240px; }
-.flt-group-btns { min-width: 160px; }
+.flt-group-date {  }
+.flt-group-btns {  }
 
 .flt-lbl {
     font-size: 11px;
@@ -1788,7 +1788,7 @@ function validatePaymentModal() {
 
 .txn-table {
     width: 100%;
-    min-width: 860px;       /* ensures scroll kicks in before columns collapse */
+           /* ensures scroll kicks in before columns collapse */
     border-collapse: collapse;
     font-size: 12px;
     table-layout: fixed;

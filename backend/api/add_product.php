@@ -76,14 +76,19 @@ try {
         exit;
     }
 
+    $status = 'active';
+    if (in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+        $status = 'pending';
+    }
+
     $pdo->beginTransaction();
 
-    // Insert into inventory_products
+    // Insert into inventory_products with status and stock
     $stmt = $pdo->prepare("
-        INSERT INTO inventory_products (product_name, sku, category, size, unit_cost, unit_price, stock_quantity, created_at, updated_at) 
-        VALUES (?, ?, ?, ?, ?, ?, 0, NOW(), NOW())
+        INSERT INTO inventory_products (product_name, sku, category, size, unit_cost, unit_price, stock_quantity, stock, status, created_at, updated_at) 
+        VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, NOW(), NOW())
     ");
-    $stmt->execute([$product_name, $sku, $category, $size, $unit_cost, $unit_price]);
+    $stmt->execute([$product_name, $sku, $category, $size, $unit_cost, $unit_price, $status]);
     $product_id = $pdo->lastInsertId();
 
     // Insert zero-stock entry into station_inventory

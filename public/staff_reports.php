@@ -441,8 +441,8 @@ $all_report_titles = [
     'audit_trail'       => 'Audit Trail Report',
 ];
 
-// Staff sees exactly 4 reports
-$staff_report_keys = ['daily_sales', 'personal_activity', 'customer_report', 'inventory_report'];
+// Staff sees exactly 5 reports
+$staff_report_keys = ['daily_sales', 'personal_activity', 'customer_report', 'inventory_report', 'payment_status'];
 
 // Dynamic filtering based on role/permissions
 $report_titles = [];
@@ -616,7 +616,15 @@ main.main, .main-content { padding-top: 0 !important; }
     <div class="page-head">
         <div>
             <h1 class="h1"><i class="fas fa-file-alt"></i> Staff Reports</h1>
-            <div class="sub">View and export your encoded records</div>
+            <div class="sub">
+                <?php
+                if ($view === 'payment_status') {
+                    echo 'View downpayment, pending, and utang accounts for customers.';
+                } else {
+                    echo 'View and export your encoded records';
+                }
+                ?>
+            </div>
         </div>
     </div>
 

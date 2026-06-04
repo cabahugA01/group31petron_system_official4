@@ -22,6 +22,7 @@ foreach ([
     "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS expected_delivery DATE NULL",
     "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS notes TEXT NULL",
     "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'merch'",
+    "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS batch_id VARCHAR(100) NULL COMMENT 'Batch ID assigned by Manager per delivery batch'",
 ] as $sql) {
     try { $pdo->exec($sql); } catch (Exception $e) {}
 }
@@ -48,6 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $unit_price   = (float)($_POST['unit_price'] ?? 0);
         $exp_delivery = trim($_POST['expected_delivery'] ?? '');
         $notes        = trim($_POST['notes'] ?? '');
+        $batch_id     = trim($_POST['batch_id'] ?? '');
         $total        = $quantity * $unit_price;
 
         try {
@@ -78,13 +80,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $pdo->prepare("
                 UPDATE purchase_orders
                 SET supplier_name = ?, quantity = ?, unit_price = ?, total_amount = ?,
-                    expected_delivery = ?, notes = ?, status = 'Pending Delivery',
+                    expected_delivery = ?, notes = ?, batch_id = ?,
+                    status = 'Pending Delivery',
                     admin_finalized = 0, updated_at = NOW()
                 WHERE id = ? AND station_id = ?
             ");
-            $stmt->execute([$supplier, $quantity, $unit_price, $total, $exp_delivery, $notes, $po_id, $station_id]);
+            $stmt->execute([$supplier, $quantity, $unit_price, $total, $exp_delivery, $notes, $batch_id ?: null, $po_id, $station_id]);
 
-            log_activity($pdo, $me['id'], 'Finalize PO', "Finalized PO #{$po['po_number']} — Supplier: $supplier, Qty: $quantity, Unit Price: ₱$unit_price, Total: ₱$total, Expected: $exp_delivery");
+            log_activity($pdo, $me['id'], 'Finalize PO', "Finalized PO #{$po['po_number']} — Supplier: $supplier, Qty: $quantity, Unit Price: ₱$unit_price, Total: ₱$total, Expected: $exp_delivery" . ($batch_id ? ", Batch: $batch_id" : ''));
             $_SESSION['success'] = "Purchase Order #{$po['po_number']} finalized successfully. Status set to Pending Delivery.";
         } catch (Exception $e) {
             $_SESSION['error'] = 'Error finalizing PO: ' . $e->getMessage();
@@ -420,6 +423,7 @@ include __DIR__ . '/../partials/header.php';
                 <tr>
                     <th>PO Number</th>
                     <th>Product</th>
+                    <th>Batch ID</th>
                     <th>Supplier</th>
                     <th>Qty</th>
                     <th>Unit Price</th>
@@ -468,6 +472,11 @@ include __DIR__ . '/../partials/header.php';
                 <tr>
                     <td><strong><?php echo htmlspecialchars($po['po_number'] ?? '—'); ?></strong></td>
                     <td><?php echo $product_display; ?></td>
+                    <td>
+                        <?php if (!empty($po['batch_id'])): ?>
+                        <span style="font-family:monospace;font-size:12px;background:#e8f4fd;color:#002F70;padding:2px 8px;border-radius:4px;font-weight:700;"><?php echo htmlspecialchars($po['batch_id']); ?></span>
+                        <?php else: ?><span style="color:#adb5bd;">—</span><?php endif; ?>
+                    </td>
                     <td><?php echo $supplier_display; ?></td>
                     <td><?php echo $qty_display; ?></td>
                     <td><?php echo $unit_price_display; ?></td>
@@ -484,6 +493,7 @@ include __DIR__ . '/../partials/header.php';
                                         'id'               => $po['id'],
                                         'po_number'        => $po['po_number'] ?? '',
                                         'product_name'     => $po['product_name'] ?? '',
+                                        'batch_id'         => $po['batch_id'] ?? '',
                                         'supplier_name'    => $po['supplier_name'] ?? '',
                                         'quantity'         => $po['quantity'] ?? '',
                                         'unit_price'       => $po['unit_price'] ?? '',
@@ -542,6 +552,13 @@ include __DIR__ . '/../partials/header.php';
                 <p style="font-size:0.85rem;color:#555;margin:0 0 16px;">
                     PO: <strong id="finalize_po_number"></strong> &mdash; Product: <strong id="finalize_product_name"></strong>
                 </p>
+
+                <div class="form-group">
+                    <label class="form-label" for="finalize_batch_id">Batch ID <span class="req">*</span> <span style="font-weight:400;color:#888;font-size:0.78rem;">— unique per delivery batch (e.g. BATCH-001, APR2026-A)</span></label>
+                    <input type="text" id="finalize_batch_id" name="batch_id" class="form-control"
+                           placeholder="e.g. BATCH-001" required maxlength="100"
+                           style="font-family:monospace;font-size:0.95rem;letter-spacing:0.5px;">
+                </div>
 
                 <div class="form-group">
                     <label class="form-label" for="finalize_supplier">Supplier Name <span class="req">*</span></label>
@@ -626,6 +643,7 @@ function openFinalizeModal(data) {
     document.getElementById('finalize_po_id').value        = data.id;
     document.getElementById('finalize_po_number').textContent  = data.po_number;
     document.getElementById('finalize_product_name').textContent = data.product_name;
+    document.getElementById('finalize_batch_id').value     = data.batch_id || '';
     document.getElementById('finalize_supplier').value     = data.supplier_name || '';
     document.getElementById('finalize_qty').value          = data.quantity || '';
     document.getElementById('finalize_unit_price').value   = data.unit_price || '';
@@ -637,7 +655,7 @@ function openFinalizeModal(data) {
     document.getElementById('finalize_delivery').min = today;
 
     document.getElementById('finalizeModal').classList.add('active');
-    document.getElementById('finalize_supplier').focus();
+    document.getElementById('finalize_batch_id').focus();
 }
 
 // ── View Modal ────────────────────────────────────────────

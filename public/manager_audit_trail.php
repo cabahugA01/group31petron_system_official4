@@ -456,10 +456,10 @@ try {
             <tbody>
             <?php foreach ($fd_audit_logs as $fdl):
                 $act = strtolower($fdl['action_type'] ?? '');
-                if ($act === 'approve') { $ac = '#28a745'; $al = 'Approve'; $ai = 'fa-check-circle'; }
-                elseif ($act === 'return') { $ac = '#dc3545'; $al = 'Return'; $ai = 'fa-undo'; }
-                elseif ($act === 'adjust') { $ac = '#6f42c1'; $al = 'Adjust'; $ai = 'fa-sliders'; }
-                else { $ac = '#6c757d'; $al = htmlspecialchars($fdl['action_type']); $ai = 'fa-circle-dot'; }
+                if ($act === 'approve') { $ac = '#0d7d3e'; $al = 'Approve'; $ai = 'fa-check-circle'; }
+                elseif ($act === 'return') { $ac = '#c62828'; $al = 'Return'; $ai = 'fa-undo'; }
+                elseif ($act === 'adjust') { $ac = '#1976d2'; $al = 'Adjust'; $ai = 'fa-sliders'; }
+                else { $ac = '#616161'; $al = htmlspecialchars($fdl['action_type']); $ai = 'fa-circle-dot'; }
             ?>
             <tr>
                 <td style="font-family:monospace;font-size:11px;color:#888;">#<?php echo $fdl['id']; ?></td>
@@ -467,7 +467,7 @@ try {
                 <td style="font-size:11px;color:#888;"><?php echo htmlspecialchars($fdl['manager_id'] ?? '—'); ?></td>
                 <td style="font-size:12px;font-weight:600;"><?php echo htmlspecialchars($fdl['manager_name'] ?? 'System'); ?></td>
                 <td>
-                    <span style="background:<?php echo $ac; ?>;color:#fff;padding:2px 9px;border-radius:8px;font-size:11px;font-weight:700;white-space:nowrap;">
+                    <span style="color:<?php echo $ac; ?>;padding:0;font-size:12px;font-weight:600;white-space:nowrap;">
                         <i class="fas <?php echo $ai; ?>"></i> <?php echo $al; ?>
                     </span>
                 </td>
@@ -527,9 +527,9 @@ try {
             <tbody>
             <?php foreach ($fd_all_deliveries as $fdel):
                 $dst = strtolower($fdel['status'] ?? 'pending');
-                if ($dst === 'verified') { $dsc = '#28a745'; $dsbg = '#d4edda'; $dsl = 'Verified'; }
-                elseif ($dst === 'rejected') { $dsc = '#dc3545'; $dsbg = '#f8d7da'; $dsl = 'Returned'; }
-                else { $dsc = '#fff'; $dsbg = '#002F70'; $dsl = 'Pending Review'; }
+                if ($dst === 'verified') { $dsc = '#0d7d3e'; $dsl = 'Verified'; }
+                elseif ($dst === 'rejected') { $dsc = '#c62828'; $dsl = 'Returned'; }
+                else { $dsc = '#4338ca'; $dsl = 'Pending Review'; }
             ?>
             <tr>
                 <td style="font-weight:700;color:#002F6C;">#<?php echo $fdel['id']; ?></td>
@@ -540,7 +540,7 @@ try {
                 <td style="font-size:11px;font-family:monospace;"><?php echo htmlspecialchars($fdel['invoice_no'] ?? '—'); ?></td>
                 <td style="font-size:12px;"><?php echo htmlspecialchars($fdel['encoded_by_name'] ?? '—'); ?></td>
                 <td>
-                    <span style="background:<?php echo $dsbg; ?>;color:<?php echo $dsc; ?>;padding:2px 9px;border-radius:8px;font-size:11px;font-weight:700;">
+                    <span style="color:<?php echo $dsc; ?>;padding:0;font-size:12px;font-weight:600;">
                         <?php echo $dsl; ?>
                     </span>
                 </td>
@@ -652,8 +652,7 @@ try {
                     <?php foreach ($fuel_requests as $req): ?>
                     <?php
                         $st = $req['status'] ?? 'Pending';
-                        $stColor = $st === 'Approved' ? '#28a745' : ($st === 'Rejected' ? '#dc3545' : '#fff');
-                        $stBg    = $st === 'Approved' ? '#d4edda' : ($st === 'Rejected' ? '#f8d7da' : '#002F70');
+                        $stColor = $st === 'Approved' ? '#0d7d3e' : ($st === 'Rejected' ? '#c62828' : '#4338ca');
                         $stockSt = $req['stock_status'] ?? 'LOW';
                         $stockColor = in_array($stockSt, ['OUT OF STOCK','CRITICAL']) ? '#dc3545' : '#dc3545';
                     ?>
@@ -673,7 +672,7 @@ try {
                             <?php endif; ?>
                         </td>
                         <td>
-                            <span style="background:<?php echo $stBg; ?>;color:<?php echo $stColor; ?>;padding:2px 9px;border-radius:8px;font-size:11px;font-weight:700;">
+                            <span style="color:<?php echo $stColor; ?>;padding:0;font-size:12px;font-weight:600;">
                                 <?php echo htmlspecialchars($st); ?>
                             </span>
                         </td>
@@ -779,8 +778,7 @@ try {
                     <?php foreach ($merch_requests as $req): ?>
                     <?php
                         $st = $req['status'] ?? 'Pending';
-                        $stColor = $st === 'Approved' ? '#28a745' : ($st === 'Rejected' ? '#dc3545' : '#fff');
-                        $stBg    = $st === 'Approved' ? '#d4edda' : ($st === 'Rejected' ? '#f8d7da' : '#002F70');
+                        $stColor = $st === 'Approved' ? '#0d7d3e' : ($st === 'Rejected' ? '#c62828' : '#4338ca');
                     ?>
                     <tr>
                         <td style="font-family:monospace;font-size:11px;color:#888;">#<?php echo $req['id']; ?></td>
@@ -799,7 +797,7 @@ try {
                             <?php endif; ?>
                         </td>
                         <td>
-                            <span style="background:<?php echo $stBg; ?>;color:<?php echo $stColor; ?>;padding:2px 9px;border-radius:8px;font-size:11px;font-weight:700;">
+                            <span style="color:<?php echo $stColor; ?>;padding:0;font-size:12px;font-weight:600;">
                                 <?php echo htmlspecialchars($st); ?>
                             </span>
                         </td>
@@ -921,10 +919,10 @@ try {
                 <?php foreach ($audit_logs as $log): ?>
                 <?php
                     $act = strtolower($log['action_type'] ?? '');
-                    if (str_contains($act, 'approve')) { $ac = '#28a745'; $al = 'Approve'; $ai = 'fa-check-circle'; }
-                    elseif (str_contains($act, 'reject') || str_contains($act, 'return')) { $ac = '#dc3545'; $al = 'Reject'; $ai = 'fa-times-circle'; }
-                    elseif (str_contains($act, 'adjust')) { $ac = '#6f42c1'; $al = 'Adjust'; $ai = 'fa-sliders'; }
-                    else { $ac = '#6c757d'; $al = htmlspecialchars($log['action_type']); $ai = 'fa-circle-dot'; }
+                    if (str_contains($act, 'approve')) { $ac = '#0d7d3e'; $al = 'Approve'; $ai = 'fa-check-circle'; }
+                    elseif (str_contains($act, 'reject') || str_contains($act, 'return')) { $ac = '#c62828'; $al = 'Reject'; $ai = 'fa-times-circle'; }
+                    elseif (str_contains($act, 'adjust')) { $ac = '#1976d2'; $al = 'Adjust'; $ai = 'fa-sliders'; }
+                    else { $ac = '#616161'; $al = htmlspecialchars($log['action_type']); $ai = 'fa-circle-dot'; }
                 ?>
                 <tr>
                     <td style="font-family:monospace;font-size:11px;color:#888;">#<?php echo $log['id']; ?></td>
@@ -932,7 +930,7 @@ try {
                     <td style="font-size:11px;color:#888;"><?php echo htmlspecialchars($log['manager_id'] ?? '—'); ?></td>
                     <td><?php echo htmlspecialchars($log['manager_name'] ?? 'System'); ?></td>
                     <td>
-                        <span style="background:<?php echo $ac; ?>;color:#fff;padding:2px 9px;border-radius:8px;font-size:11px;font-weight:700;white-space:nowrap;">
+                        <span style="color:<?php echo $ac; ?>;padding:0;font-size:12px;font-weight:600;white-space:nowrap;">
                             <i class="fas <?php echo $ai; ?>"></i> <?php echo $al; ?>
                         </span>
                     </td>
@@ -993,12 +991,30 @@ try {
 /* Notice bar */
 .at-notice { display:flex;align-items:center;gap:10px;padding:10px 18px;background:#f0f4ff;border-bottom:1px solid #e2e8f0;font-size:12px;color:#444; }
 
-/* Table */
-.at-table-wrap { overflow-x:auto; }
-.at-table { width:100%;border-collapse:collapse;font-size:12px;min-width:700px; }
-.at-table thead th { background:#f8f9fa;color:#495057;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:9px 10px;border-bottom:2px solid #dee2e6;white-space:nowrap; }
-.at-table tbody td { padding:8px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle; }
-.at-table tbody tr:hover td { background:#f8fbff; }
+/* Table - Clean Blue Header Design */
+.at-table-wrap { overflow-x:auto; width: 100%; -webkit-overflow-scrolling: touch; }
+.at-table { width:100%;border-collapse:collapse;font-size:13px;min-width:700px;background:#fff; }
+.at-table thead th { 
+    background:#002F70 !important;
+    color:#fff !important;
+    font-size:11px;
+    font-weight:600;
+    text-transform:uppercase;
+    letter-spacing:.3px;
+    padding:14px 10px !important;
+    border:none !important;
+    white-space:nowrap;
+}
+.at-table thead th:last-child { text-align:center !important; }
+.at-table tbody td { 
+    padding:12px 10px !important;
+    border-bottom:1px solid #e9ecef !important;
+    vertical-align:middle;
+    color:#212529;
+}
+.at-table tbody td:last-child { text-align:center !important; }
+.at-table tbody tr:hover td { background:#e3f2fd !important; }
+.at-table tbody tr { transition:background 0.2s ease; }
 </style>
 
 </div><!-- end section-general -->
@@ -1039,20 +1055,52 @@ document.addEventListener('DOMContentLoaded', function() {
 .at-cust-head{padding:16px 20px;border-bottom:1px solid #e9ecef;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
 .at-cust-title{font-size:15px;font-weight:700;color:#002F70;margin:0;display:flex;align-items:center;gap:8px;}
 .at-cust-body{padding:20px;}
-.at-cust-table{width:100%;border-collapse:collapse;font-size:13px;}
-.at-cust-table th{background:#f8f9fa;padding:10px 12px;text-align:left;font-weight:700;color:#495057;border-bottom:2px solid #dee2e6;white-space:nowrap;}
-.at-cust-table td{padding:10px 12px;border-bottom:1px solid #f0f0f0;vertical-align:middle;}
-.at-cust-table tr:hover td{background:#fafbff;}
-.at-ch-badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;}
-.at-ch-badge-jo{background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;}
-.at-ch-badge-merch{background:#f0fdf4;color:#15803d;border:1px solid #86efac;}
-.at-ch-badge-paid{background:#d1fae5;color:#065f46;}
-.at-ch-badge-unpaid{background:#fee2e2;color:#991b1b;}
-.at-ch-badge-partial{background:#002F70;color:#fff;}
-.at-ch-badge-pending{background:#f1f5f9;color:#475569;}
-.at-ch-badge-approved{background:#d1fae5;color:#065f46;}
-.at-ch-badge-rejected{background:#fee2e2;color:#991b1b;}
-.at-info-pill{background:#f0f4ff;border:1px solid #c7d7f9;border-radius:8px;padding:10px 16px;display:flex;flex-direction:column;gap:2px;min-width:130px;}
+
+/* Customer Table - Clean Blue Header Design */
+.at-cust-table{width:100%;border-collapse:collapse;font-size:13px;background:#fff;}
+.at-cust-table th{
+    background:#002F70 !important;
+    color:#fff !important;
+    padding:14px 12px !important;
+    text-align:left;
+    font-weight:600;
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.3px;
+    border:none !important;
+    white-space:nowrap;
+}
+.at-cust-table th:last-child { text-align:center !important; }
+.at-cust-table td{
+    padding:12px !important;
+    border-bottom:1px solid #e9ecef !important;
+    vertical-align:middle;
+    color:#212529;
+}
+.at-cust-table td:last-child { text-align:center !important; }
+.at-cust-table tr:hover td{background:#e3f2fd !important;}
+.at-cust-table tr { transition:background 0.2s ease; }
+
+/* Badges - Plain Text Only */
+.at-ch-badge{
+    display:inline-block;
+    padding:0 !important;
+    background:transparent !important;
+    border:none !important;
+    font-size:11px;
+    font-weight:600;
+    white-space:nowrap;
+}
+.at-ch-badge-jo{color:#1976d2 !important;}
+.at-ch-badge-merch{color:#0d7d3e !important;}
+.at-ch-badge-paid{color:#0d7d3e !important;}
+.at-ch-badge-unpaid{color:#c62828 !important;}
+.at-ch-badge-partial{color:#002F70 !important;}
+.at-ch-badge-pending{color:#4338ca !important;}
+.at-ch-badge-approved{color:#0d7d3e !important;}
+.at-ch-badge-rejected{color:#c62828 !important;}
+
+.at-info-pill{background:#f8f9fa;border:1px solid #e9ecef;border-radius:8px;padding:10px 16px;display:flex;flex-direction:column;gap:2px;min-width:130px;}
 .at-info-pill .pill-label{font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;letter-spacing:.4px;}
 .at-info-pill .pill-value{font-size:15px;font-weight:800;color:#002F70;}
 .at-info-pill.danger .pill-value{color:#dc3545;}

@@ -806,12 +806,12 @@ main.main {
 }
 
 .txn-section-title p {
-    font-size: 12px;
-    color: #64748b;
+    font-size: 14px;
+    color: #666666;
     margin: 3px 0 0;
-    text-transform: none !important;
-    font-weight: 400 !important;
-    letter-spacing: 0 !important;
+    text-transform: uppercase;
+    font-weight: 500;
+    letter-spacing: 0.3px;
 }
 
 /* ── Status badge ────────────────────────────────────────────── */
@@ -1284,10 +1284,15 @@ main.main {
         <!-- ── Page Header ───────────────────────────────────────────── -->
         <div class="txn-section-header">
             <div class="txn-section-title">
-                <div class="txn-section-icon fuel"><i class="fas fa-gas-pump"></i></div>
                 <div>
                     <h1>Fuel Transaction</h1>
                 </div>
+            </div>
+            <div>
+                <button type="button" onclick="window.location.href='staff_dashboard.php'" 
+                        style="display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;background:#6c757d;color:#fff;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;" title="Back to Staff Dashboard">
+                    <i class="fas fa-arrow-left"></i> <span>Back</span>
+                </button>
             </div>
         </div>
 
@@ -1309,7 +1314,7 @@ main.main {
                 <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
 
                     <!-- Date From -->
-                    <div style="display:flex;flex-direction:column;gap:4px;min-width:140px;">
+                    <div style="display:flex;flex-direction:column;gap:4px;">
                         <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">
                             <i class="fas fa-calendar-day" style="margin-right:3px;"></i>From
                         </label>
@@ -1319,7 +1324,7 @@ main.main {
                     </div>
 
                     <!-- Date To -->
-                    <div style="display:flex;flex-direction:column;gap:4px;min-width:140px;">
+                    <div style="display:flex;flex-direction:column;gap:4px;">
                         <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">
                             <i class="fas fa-calendar-day" style="margin-right:3px;"></i>To
                         </label>
@@ -1329,7 +1334,7 @@ main.main {
                     </div>
 
                     <!-- Fuel Type -->
-                    <div style="display:flex;flex-direction:column;gap:4px;min-width:150px;">
+                    <div style="display:flex;flex-direction:column;gap:4px;">
                         <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">
                             <i class="fas fa-gas-pump" style="margin-right:3px;"></i>Fuel Type
                         </label>
@@ -1346,7 +1351,7 @@ main.main {
                     </div>
 
                     <!-- Staff Name / Cashier -->
-                    <div style="display:flex;flex-direction:column;gap:4px;min-width:160px;">
+                    <div style="display:flex;flex-direction:column;gap:4px;">
                         <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">
                             <i class="fas fa-user" style="margin-right:3px;"></i>Staff / Cashier
                         </label>
@@ -1363,7 +1368,7 @@ main.main {
                     </div>
 
                     <!-- Status — pulled from DB distinct values -->
-                    <div style="display:flex;flex-direction:column;gap:4px;min-width:150px;">
+                    <div style="display:flex;flex-direction:column;gap:4px;">
                         <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">
                             <i class="fas fa-flag" style="margin-right:3px;"></i>Status
                         </label>
@@ -1391,7 +1396,7 @@ main.main {
                     </div>
 
                     <!-- Shift Period — from DB only -->
-                    <div style="display:flex;flex-direction:column;gap:4px;min-width:200px;">
+                    <div style="display:flex;flex-direction:column;gap:4px;">
                         <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">
                             <i class="fas fa-clock" style="margin-right:3px;"></i>Shift Period
                         </label>
@@ -1465,13 +1470,13 @@ main.main {
 
         <style>
         /* ── Fuel Encoding Table ─────────────────────────────────── */
-        .fet-wrap { overflow-x: auto; }
+        .fet-wrap { overflow-x:hidden; }
 
         .fet {
             width: 100%;
             border-collapse: collapse;
             font-size: 13px;
-            min-width: 780px;
+            
         }
 
         /* Header */
@@ -1541,7 +1546,7 @@ main.main {
             color: #1e293b;
             background: #fff;
             width: 100%;
-            min-width: 120px;
+            
             transition: border-color .15s, box-shadow .15s;
             letter-spacing: .3px;
         }
@@ -1550,12 +1555,12 @@ main.main {
             box-shadow: 0 0 0 3px rgba(0,47,108,.1);
         }
         .fet-input.calib {
-            min-width: 90px;
+            
             font-weight: 500;
             color: #475569;
         }
         .fet-input.notes-input {
-            min-width: 140px;
+            
             font-weight: 400;
             font-size: 12px;
         }
@@ -1659,10 +1664,10 @@ main.main {
                         <tr>
                             <th>Fuel Type</th>
                             <th class="num">Prev. Reading</th>
-                            <th style="min-width:150px;">Present Reading <span style="color:#dc2626;font-weight:800;">*</span></th>
-                            <th style="min-width:110px;">Calibration</th>
-                            <th style="min-width:160px;">Notes</th>
-                            <th style="min-width:160px;">Actions</th>
+                            <th style="">Present Reading <span style="color:#dc2626;font-weight:800;">*</span></th>
+                            <th style="">Calibration</th>
+                            <th style="">Notes</th>
+                            <th style="">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1789,16 +1794,12 @@ main.main {
 
         <!-- ── TODAY'S ENTRIES — Meter Reading Table (Table A) ──────────── -->
         <div class="txn-card" id="todayEntriesCard" style="margin-top:8px; margin-bottom:80px;">
-            <div class="txn-card-header" style="background:#f0f4ff;">
+            <div class="txn-card-header" style="background:#fff; border-bottom:1px solid #e2e8f0;">
                 <i class="fas fa-tachometer-alt" style="color:var(--petron-blue);"></i>
                 <h3>Today's Meter Readings</h3>
                 <span style="margin-left:auto;font-size:11px;color:#64748b;font-weight:500;">
                     Your submissions for <?= date('F j, Y') ?> — pending manager validation
                 </span>
-                <button type="button" onclick="refreshTodayEntries()"
-                        style="margin-left:12px;background:none;border:1px solid #e2e8f0;border-radius:6px;padding:4px 10px;font-size:11px;color:#64748b;cursor:pointer;display:flex;align-items:center;gap:4px;">
-                    <i class="fas fa-sync" id="refreshIcon"></i> Refresh
-                </button>
             </div>
             <div id="todayEntriesBody" style="padding:0;">
                 <div style="text-align:center;padding:32px;color:#94a3b8;font-size:13px;">
@@ -2152,33 +2153,33 @@ main.main {
             const pageRows = rows.slice(startIdx, endIdx);
 
             const statusMap = {
-                'pending validation': {bg:'#fef9c3',color:'#854d0e',label:'Pending'},
-                'pending':            {bg:'#fef9c3',color:'#854d0e',label:'Pending'},
-                'approved':           {bg:'#dcfce7',color:'#166534',label:'Approved'},
-                'verified':           {bg:'#dcfce7',color:'#166534',label:'Verified'},
-                'adjusted':           {bg:'#dbeafe',color:'#1d4ed8',label:'Adjusted'},
-                'rejected':           {bg:'#fee2e2',color:'#991b1b',label:'Rejected'},
+                'pending validation': {color:'#b45309',label:'Pending'},
+                'pending':            {color:'#b45309',label:'Pending'},
+                'approved':           {color:'#15803d',label:'Approved'},
+                'verified':           {color:'#15803d',label:'Verified'},
+                'adjusted':           {color:'#1d4ed8',label:'Adjusted'},
+                'rejected':           {color:'#b91c1c',label:'Rejected'},
             };
             function badge(s) {
                 const k = (s||'').toLowerCase().trim();
-                const c = statusMap[k] || {bg:'#f1f5f9',color:'#64748b',label:s||'—'};
-                return `<span style="background:${c.bg};color:${c.color};padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;">${c.label}</span>`;
+                const c = statusMap[k] || {color:'#64748b',label:s||'—'};
+                return `<span style="color:${c.color};font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">${c.label}</span>`;
             }
             function fmt(n,d=2){ return Number(n||0).toLocaleString('en-PH',{minimumFractionDigits:d,maximumFractionDigits:d}); }
 
-            let html = `<div style="max-height:450px; overflow-y:auto; overflow-x:auto; border-bottom:1px solid #e2e8f0;">
-                <table style="width:100%;border-collapse:collapse;font-size:13px;">
-                    <thead style="position:sticky; top:0; z-index:10; background:#f8fafc;">
+            let html = `<div style="max-height:450px; overflow-y:auto; overflow-x:hidden; border-bottom:1px solid #e2e8f0;">
+                <table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed;">
+                    <thead style="position:sticky; top:0; z-index:10; background:#002F70;">
                         <tr>
-                            <th style="padding:10px 13px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Fuel Type</th>
-                            <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Beginning</th>
-                            <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Ending</th>
-                            <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Cal</th>
-                            <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Liters Sold</th>
-                            <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Price/L</th>
-                            <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Amount</th>
-                            <th style="padding:10px 13px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Shift</th>
-                            <th style="padding:10px 13px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Status</th>
+                            <th style="padding:10px 13px;text-align:left;font-size:11px;font-weight:700;color:#ffffff;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #002255;white-space:nowrap;">Fuel Type</th>
+                            <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#ffffff;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #002255;white-space:nowrap;">Beginning</th>
+                            <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#ffffff;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #002255;white-space:nowrap;">Ending</th>
+                            <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#ffffff;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #002255;white-space:nowrap;">Cal</th>
+                            <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#ffffff;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #002255;white-space:nowrap;">Liters Sold</th>
+                            <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#ffffff;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #002255;white-space:nowrap;">Price/L</th>
+                            <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#ffffff;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #002255;white-space:nowrap;">Amount</th>
+                            <th style="padding:10px 13px;text-align:left;font-size:11px;font-weight:700;color:#ffffff;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #002255;white-space:nowrap;width:20%;">Shift</th>
+                            <th style="padding:10px 13px;text-align:left;font-size:11px;font-weight:700;color:#ffffff;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #002255;white-space:nowrap;">Status</th>
                         </tr>
                     </thead>
                     <tbody>`;
@@ -2254,13 +2255,18 @@ main.main {
         <!-- ── Page Header ───────────────────────────────────────────── -->
         <div class="txn-section-header">
             <div class="txn-section-title">
-                <div class="txn-section-icon merch"><i class="fas fa-shopping-cart"></i></div>
                 <div>
                     <h1>Transactions</h1>
-                    <p style="font-size:12px;color:#64748b;margin:3px 0 0;">Merchandise sales, job order encoding, and status tracking.</p>
+                    <p id="txnSectionDesc" style="font-size:14px;color:#666666;margin:3px 0 0;text-transform:uppercase;letter-spacing:0.3px;font-weight:500;"><?= $active_tab === 'tracker' ? 'Monitor service progress and pending balances in real time.' : 'Merchandise sales, job order encoding, and status tracking.' ?></p>
                 </div>
             </div>
-            <span class="status-badge customer" style="display:none;"></span>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <span class="status-badge customer" style="display:none;"></span>
+                <button type="button" onclick="window.location.href='staff_dashboard.php'" 
+                        style="display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;background:#6c757d;color:#fff;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;" title="Back to Staff Dashboard">
+                    <i class="fas fa-arrow-left"></i> <span>Back</span>
+                </button>
+            </div>
         </div>
 
         <!-- ── Inner Tabs ─────────────────────────────────────────────── -->
@@ -2687,12 +2693,12 @@ main.main {
                             <form method="GET" action="staff_transactions_hub.php" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
                                 <input type="hidden" name="section" value="merchandise">
                                 <input type="hidden" name="mh_open" value="1">
-                                <div style="display:flex;flex-direction:column;gap:4px;min-width:130px;">
+                                <div style="display:flex;flex-direction:column;gap:4px;">
                                     <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Date</label>
                                     <input type="date" name="date" value="<?= htmlspecialchars($filter_date) ?>"
                                            style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;">
                                 </div>
-                                <div style="display:flex;flex-direction:column;gap:4px;min-width:140px;">
+                                <div style="display:flex;flex-direction:column;gap:4px;">
                                     <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Shift</label>
                                     <select name="shift" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;">
                                         <option value="">All Shifts</option>
@@ -2709,6 +2715,30 @@ main.main {
                                 <a href="staff_transactions_hub.php?section=merchandise&mh_open=1" class="txn-btn secondary" style="padding:7px 12px;font-size:12px;">
                                     <i class="fas fa-times"></i> Clear
                                 </a>
+                                <!-- Export buttons -->
+                                <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                                    <a href="../backend/export_staff_transactions.php?type=merchandise&format=excel"
+                                       title="Export to Excel"
+                                       style="background:#1d6f42;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;">
+                                        <i class="fas fa-file-excel"></i> Excel
+                                    </a>
+                                    <a href="../backend/export_staff_transactions.php?type=merchandise&format=csv"
+                                       title="Export to CSV"
+                                       style="background:#003d7a;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;">
+                                        <i class="fas fa-file-csv"></i> CSV
+                                    </a>
+                                    <a href="../backend/export_staff_transactions.php?type=merchandise&format=pdf"
+                                       target="_blank"
+                                       title="Export to PDF"
+                                       style="background:#dc2626;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;">
+                                        <i class="fas fa-file-pdf"></i> PDF
+                                    </a>
+                                    <a href="staff_transactions_hub.php?section=merchandise&active_tab=merchandise"
+                                       title="Back to Merchandise Form"
+                                       style="background:#6c7280;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;">
+                                        <i class="fas fa-arrow-left"></i> Back
+                                    </a>
+                                </div>
                             </form>
                         </div>
                         <!-- Table -->
@@ -2719,34 +2749,34 @@ main.main {
                                 No merchandise transactions found.
                             </div>
                             <?php else: ?>
-                            <div style="width:100%;">
+                            <div style="width:100%;overflow-x:hidden;">
                             <style>
                             #mhHistoryTable th { padding: 8px 6px; }
                             #mhHistoryTable td { padding: 8px 6px; }
                             </style>
                             <table class="txn-table" id="mhHistoryTable" style="width:100%;table-layout:fixed;">
                                 <colgroup>
-                                    <col style="width:10%;"><!-- Txn ID -->
-                                    <col style="width:13%;"><!-- Customer -->
-                                    <col style="width:9%;"><!-- Total -->
-                                    <col style="width:9%;"><!-- Method -->
-                                    <col style="width:10%;"><!-- Balance Due -->
-                                    <col style="width:16%;"><!-- Shift -->
-                                    <col style="width:14%;"><!-- Date -->
+                                    <col style="width:9%;"><!-- Txn ID -->
+                                    <col style="width:12%;"><!-- Customer -->
+                                    <col style="width:8%;"><!-- Total -->
+                                    <col style="width:8%;"><!-- Method -->
+                                    <col style="width:9%;"><!-- Balance Due -->
+                                    <col style="width:14%;"><!-- Shift -->
+                                    <col style="width:13%;"><!-- Date -->
                                     <col style="width:12%;"><!-- Payment Status -->
-                                    <col style="width:7%;"><!-- Actions -->
+                                    <col style="width:15%;"><!-- Actions (increased width) -->
                                 </colgroup>
                                 <thead>
                                     <tr>
-                                        <th style="font-size:11px;">Txn ID</th>
-                                        <th style="font-size:11px;">Customer</th>
-                                        <th style="font-size:11px;">Total</th>
-                                        <th style="font-size:11px;">Method</th>
-                                        <th style="font-size:11px;">Balance Due</th>
-                                        <th style="font-size:11px;">Shift</th>
-                                        <th style="font-size:11px;">Date</th>
-                                        <th style="font-size:11px;">Payment Status</th>
-                                        <th style="font-size:11px;">Actions</th>
+                                        <th style="font-size:14px;">Txn ID</th>
+                                        <th style="font-size:14px;">Customer</th>
+                                        <th style="font-size:14px;">Total</th>
+                                        <th style="font-size:14px;">Method</th>
+                                        <th style="font-size:14px;">Balance Due</th>
+                                        <th style="font-size:14px;">Shift</th>
+                                        <th style="font-size:14px;">Date</th>
+                                        <th style="font-size:14px;">Payment Status</th>
+                                        <th style="font-size:14px;">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="mhTableBody">
@@ -2759,27 +2789,48 @@ main.main {
                                     $mh_can_settle = !in_array(strtolower($mh_pay_status), ['paid']) && $mh_balance > 0.009;
                                 ?>
                                 <tr class="mh-row">
-                                    <td style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><strong style="color:var(--petron-blue);"><?= htmlspecialchars($txn['transaction_id'] ?? ('#'.$txn['id'])) ?></strong></td>
-                                    <td style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($txn['customer_name'] ?? '') ?>"><?= htmlspecialchars($txn['customer_name'] ?? '—') ?></td>
-                                    <td style="font-size:11px;font-weight:700;color:var(--petron-blue);white-space:nowrap;">₱<?= number_format($mh_total, 2) ?></td>
-                                    <td style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= htmlspecialchars($txn['payment_method'] ?? '—') ?></td>
-                                    <td style="font-size:11px;white-space:nowrap;">
+                                    <td style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><strong style="color:var(--petron-blue);"><?= htmlspecialchars($txn['transaction_id'] ?? ('#'.$txn['id'])) ?></strong></td>
+                                    <td style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($txn['customer_name'] ?? '') ?>"><?= htmlspecialchars($txn['customer_name'] ?? '—') ?></td>
+                                    <td style="font-size:14px;font-weight:700;color:var(--petron-blue);white-space:nowrap;">₱<?= number_format($mh_total, 2) ?></td>
+                                    <td style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= htmlspecialchars($txn['payment_method'] ?? '—') ?></td>
+                                    <td style="font-size:13px;white-space:nowrap;">
                                         <?= $mh_balance > 0 ? '<span style="color:#9a3412;font-weight:700;">₱' . number_format($mh_balance, 2) . '</span>' : '<span style="color:#166534;">—</span>' ?>
                                     </td>
-                                    <td style="font-size:11px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($txn['shift_name'] ?? $txn['shift_period'] ?? '') ?>"><?= htmlspecialchars($txn['shift_name'] ?? $txn['shift_period'] ?? '—') ?></td>
-                                    <td style="font-size:11px;color:#64748b;white-space:nowrap;"><?= date('M j, Y h:i A', strtotime($txn['transaction_date'] ?? 'now')) ?></td>
+                                    <td style="font-size:13px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($txn['shift_name'] ?? $txn['shift_period'] ?? '') ?>"><?= htmlspecialchars($txn['shift_name'] ?? $txn['shift_period'] ?? '—') ?></td>
+                                    <td style="font-size:13px;color:#64748b;white-space:nowrap;"><?= date('M j, Y h:i A', strtotime($txn['transaction_date'] ?? 'now')) ?></td>
                                     <td><?= status_badge($mh_pay_status) ?></td>
                                     <td>
-                                        <?php if ($mh_can_settle): ?>
-                                        <button type="button"
-                                                onclick="openPaymentModal(<?= (int)$txn['id'] ?>,'merchandise_transactions',<?= $mh_total ?>,<?= $mh_paid ?>,<?= $mh_balance ?>,'<?= addslashes($txn['customer_name'] ?? '') ?>',false,'merchandise')"
-                                                style="padding:3px 7px;font-size:10px;border:1px solid #7dd3fc;background:#e0f2fe;color:#0369a1;border-radius:6px;cursor:pointer;white-space:nowrap;font-weight:600;">
-                                            <i class="fas fa-coins"></i>
-                                            <?= strtolower($mh_pay_status) === 'partial payment' ? 'Settle' : 'Paid' ?>
-                                        </button>
-                                        <?php else: ?>
-                                        <span style="font-size:11px;color:#94a3b8;">—</span>
-                                        <?php endif; ?>
+                                        <div style="display:flex;flex-direction:column;gap:4px;">
+                                            <!-- View Button (Always visible) - DARK BLUE -->
+                                            <button type="button"
+                                                    onclick="viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? '') ?>')"
+                                                    style="padding:6px 12px;font-size:13px;border:none;background:#002F70;color:#fff;border-radius:6px;cursor:pointer;white-space:nowrap;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px;transition:background 0.2s ease;"
+                                                    onmouseover="this.style.background='#001a3d'"
+                                                    onmouseout="this.style.background='#002F70'">
+                                                <i class="fas fa-eye"></i> View
+                                            </button>
+                                            
+                                            <?php if ($mh_can_settle): ?>
+                                            <!-- Settle / Paid Button - GREEN -->
+                                            <button type="button"
+                                                    onclick="openPaymentModal(<?= (int)$txn['id'] ?>,'merchandise_transactions',<?= $mh_total ?>,<?= $mh_paid ?>,<?= $mh_balance ?>,'<?= addslashes($txn['customer_name'] ?? '') ?>',false,'merchandise')"
+                                                    style="padding:6px 12px;font-size:13px;border:none;background:#16a34a;color:#fff;border-radius:6px;cursor:pointer;white-space:nowrap;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px;transition:background 0.2s ease;"
+                                                    onmouseover="this.style.background='#15803d'"
+                                                    onmouseout="this.style.background='#16a34a'">
+                                                <i class="fas fa-coins"></i>
+                                                <?= strtolower($mh_pay_status) === 'partial payment' ? 'Settle' : 'Paid' ?>
+                                            </button>
+                                            <?php elseif (strtolower($mh_pay_status) === 'paid'): ?>
+                                            <!-- Print Receipt (When fully paid) - GRAY -->
+                                            <button type="button"
+                                                    onclick="printMerchandiseReceipt('<?= addslashes($txn['transaction_id'] ?? '') ?>')"
+                                                    style="padding:6px 12px;font-size:13px;border:none;background:#6b7280;color:#fff;border-radius:6px;cursor:pointer;white-space:nowrap;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px;transition:background 0.2s ease;"
+                                                    onmouseover="this.style.background='#4b5563'"
+                                                    onmouseout="this.style.background='#6b7280'">
+                                                <i class="fas fa-print"></i> Print Receipt
+                                            </button>
+                                            <?php endif; ?>
+                                        </div>
                                     </td>
                                 </tr>
                                 <?php endforeach; ?>
@@ -4000,10 +4051,10 @@ main.main {
                     </div>
                     <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
                         <button type="button" onclick="cartQty(${idx},-1)" style="width:22px;height:22px;border:1px solid #e2e8f0;background:#f8fafc;border-radius:4px;cursor:pointer;font-size:13px;line-height:1;padding:0;">−</button>
-                        <span style="font-size:12px;font-weight:700;min-width:20px;text-align:center;">${item.quantity}</span>
+                        <span style="font-size:12px;font-weight:700;text-align:center;">${item.quantity}</span>
                         <button type="button" onclick="cartQty(${idx},+1)" style="width:22px;height:22px;border:1px solid #e2e8f0;background:#f8fafc;border-radius:4px;cursor:pointer;font-size:13px;line-height:1;padding:0;">+</button>
                     </div>
-                    <div style="font-size:12px;font-weight:700;color:var(--petron-blue);min-width:60px;text-align:right;flex-shrink:0;">₱${fmtNum(subtotal)}</div>
+                    <div style="font-size:12px;font-weight:700;color:var(--petron-blue);text-align:right;flex-shrink:0;">₱${fmtNum(subtotal)}</div>
                     <button type="button" onclick="cartRemove(${idx})" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:13px;padding:0 2px;flex-shrink:0;" title="Remove">×</button>
                 </div>`;
             }).join('');
@@ -4464,18 +4515,42 @@ main.main {
 
         <!-- Filter bar -->
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
-            <span style="font-size:12px;color:#64748b;font-weight:600;">Filter:</span>
+            <span style="font-size:15px;color:#64748b;font-weight:600;">Filter:</span>
             <button onclick="joFilterTable('all')"    id="joFilter_all"       class="jo-filter-btn jo-filter-active">All</button>
             <button onclick="joFilterTable('pending')"  id="joFilter_pending"   class="jo-filter-btn">Pending</button>
             <button onclick="joFilterTable('approved')" id="joFilter_approved"  class="jo-filter-btn">Approved</button>
             <button onclick="joFilterTable('inprogress')" id="joFilter_inprogress" class="jo-filter-btn">In Progress</button>
             <button onclick="joFilterTable('completed')" id="joFilter_completed" class="jo-filter-btn">Completed</button>
             <button onclick="joFilterTable('rejected')" id="joFilter_rejected"  class="jo-filter-btn">Rejected</button>
+            <!-- Export buttons -->
+            <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <a href="../backend/export_staff_transactions.php?type=job_orders&format=excel"
+                   title="Export to Excel"
+                   style="background:#1d6f42;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;">
+                    <i class="fas fa-file-excel"></i> Excel
+                </a>
+                <a href="../backend/export_staff_transactions.php?type=job_orders&format=csv"
+                   title="Export to CSV"
+                   style="background:#003d7a;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;">
+                    <i class="fas fa-file-csv"></i> CSV
+                </a>
+                <a href="../backend/export_staff_transactions.php?type=job_orders&format=pdf"
+                   target="_blank"
+                   title="Export to PDF"
+                   style="background:#dc2626;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;">
+                    <i class="fas fa-file-pdf"></i> PDF
+                </a>
+                <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker"
+                   title="Back to Job Order Tracker"
+                   style="background:#6c7280;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;">
+                    <i class="fas fa-arrow-left"></i> Back
+                </a>
+            </div>
         </div>
         <style>
         .jo-filter-btn {
-            padding:5px 14px;border:1px solid #e2e8f0;border-radius:20px;
-            background:#f8fafc;color:#64748b;font-size:11px;font-weight:600;
+            padding:7px 16px;border:1px solid #e2e8f0;border-radius:20px;
+            background:#f8fafc;color:#64748b;font-size:14px;font-weight:600;
             cursor:pointer;transition:all .15s;
         }
         .jo-filter-btn:hover { background:#e2e8f0; }
@@ -4497,20 +4572,32 @@ main.main {
                     No job orders found.
                 </div>
                 <?php else: ?>
-                <div style="overflow-x:auto;">
-                <table class="txn-table" id="joUnifiedTable" style="min-width:1000px;">
+                <div style="overflow-x:hidden;">
+                <table class="txn-table" id="joUnifiedTable" style="table-layout:fixed; word-wrap:break-word;width:100%;">
+                    <colgroup>
+                        <col style="width:6%;"  ><!-- JO ID -->
+                        <col style="width:9%;"  ><!-- Customer -->
+                        <col style="width:14%;"><!-- Vehicle / Service -->
+                        <col style="width:10%;"><!-- Items / Parts -->
+                        <col style="width:9%;" ><!-- Mechanic -->
+                        <col style="width:9%;" ><!-- Workflow Status -->
+                        <col style="width:10%;"><!-- Payment Status -->
+                        <col style="width:8%;" ><!-- Remarks -->
+                        <col style="width:9%;" ><!-- Date/Time -->
+                        <col style="width:16%;"><!-- Actions -->
+                    </colgroup>
                     <thead>
                         <tr>
-                            <th>JO ID</th>
-                            <th>Customer</th>
-                            <th>Vehicle / Service</th>
-                            <th>Items / Parts</th>
-                            <th>Mechanic</th>
-                            <th>Workflow Status</th>
-                            <th>Payment Status</th>
-                            <th>Remarks</th>
-                            <th>Date/Time</th>
-                            <th>Actions</th>
+                            <th style="font-size:11px;">JO ID</th>
+                            <th style="font-size:11px;">Customer</th>
+                            <th style="font-size:11px;">Vehicle / Service</th>
+                            <th style="font-size:11px;">Items / Parts</th>
+                            <th style="font-size:11px;">Mechanic</th>
+                            <th style="font-size:11px;">Status</th>
+                            <th style="font-size:11px;">Payment</th>
+                            <th style="font-size:11px;">Remarks</th>
+                            <th style="font-size:11px;">Date</th>
+                            <th style="font-size:11px;">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -4567,7 +4654,7 @@ main.main {
                             </strong>
                         </td>
                         <td><?= htmlspecialchars($job['customer_name'] ?? '—') ?></td>
-                        <td style="font-size:12px;">
+                        <td style="font-size:14px;">
                             <?php if (!empty($job['vehicle_plate'])): ?>
                             <strong><?= htmlspecialchars($job['vehicle_plate']) ?></strong>
                             <?php if (!empty($job['vehicle_type'])): ?>
@@ -4575,95 +4662,183 @@ main.main {
                             <?php endif; ?>
                             <br>
                             <?php endif; ?>
-                            <span style="color:#475569;max-width:140px;display:inline-block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+                            <span style="color:#475569;"
                                   title="<?= htmlspecialchars($job['service_type'] ?? '') ?>">
                                 <?= htmlspecialchars($job['service_type'] ?? '—') ?>
                             </span>
                         </td>
-                        <td style="font-size:11px;color:#475569;max-width:140px;">
+                        <td style="font-size:13px;color:#475569;">
                             <?= htmlspecialchars($parts_display) ?>
                         </td>
-                        <td style="font-size:12px;"><?= htmlspecialchars($job['mechanic_name'] ?? 'Unassigned') ?></td>
+                        <td style="font-size:14px;"><?= htmlspecialchars($job['mechanic_name'] ?? 'Unassigned') ?></td>
                         <td>
                             <span style="background:<?= $wf_bg ?>;color:<?= $wf_color ?>;border:1px solid <?= $wf_bg ?>;
-                                         padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;">
+                                         padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap;">
                                 <?= $wf_label ?>
                             </span>
                         </td>
                         <td>
                             <span style="background:<?= $pay_bg ?>;color:<?= $pay_color ?>;border:1px solid <?= $pay_bg ?>;
-                                         padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;">
+                                         padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap;">
                                 <?= $pay_label ?>
                             </span>
                         </td>
-                        <td style="font-size:11px;color:#64748b;max-width:150px;">
+                        <td style="font-size:13px;color:#64748b;max-width:150px;">
                             <?= !empty($remarks) ? htmlspecialchars($remarks) : '<span style="color:#cbd5e1;">—</span>' ?>
                         </td>
-                        <td style="font-size:11px;color:#64748b;white-space:nowrap;">
+                        <td style="font-size:13px;color:#64748b;white-space:nowrap;">
                             <?= date('M j, Y', strtotime($job['created_at'])) ?><br>
                             <?= date('h:i A', strtotime($job['created_at'])) ?>
                         </td>
-                        <td>
-                            <?php if ($wf_status === 'Rejected'): ?>
-                                <!-- Rejected: re-encode -->
-                                <a href="joborder.php" class="txn-btn secondary" style="padding:5px 11px;font-size:11px;white-space:nowrap;">
-                                    <i class="fas fa-redo"></i> Re-encode
-                                </a>
-                            <?php elseif ($val_status === 'Pending Validation'): ?>
-                                <!-- Pending: view only -->
-                                <span style="font-size:11px;color:#94a3b8;font-style:italic;">Awaiting approval</span>
-                            <?php elseif ($wf_status === 'Completed'): ?>
-                                <!-- Completed: payment settlement -->
-                                <?php if ($pay_status === 'Paid'): ?>
-                                <span style="font-size:11px;color:#16a34a;font-weight:700;"><i class="fas fa-check-circle"></i> Paid</span>
-                                <?php else:
-                                    $jo_total   = (float)($job['total_cost'] ?? $job['estimated_cost'] ?? 0);
-                                    $jo_paid    = (float)($job['amount_paid'] ?? 0);
-                                    $jo_balance = (float)($job['balance_due'] ?? 0);
-                                    // If balance_due is 0 but not paid, compute from total - paid
-                                    if ($jo_balance <= 0.009 && $jo_total > 0) $jo_balance = max(0, $jo_total - $jo_paid);
-                                ?>
-                                <button type="button"
-                                        onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',false,'tracker')"
-                                        class="txn-btn success" style="padding:5px 11px;font-size:11px;white-space:nowrap;">
-                                    <i class="fas fa-money-bill-wave"></i>
-                                    <?= $pay_status === 'Partial Payment' ? 'Settle Balance' : 'Mark Paid' ?>
-                                </button>
-                                <?php endif; ?>
-                            <?php else: ?>
-                                <!-- Approved / In Progress: workflow + payment actions -->
-                                <?php
-                                    $jo_total   = (float)($job['total_cost'] ?? $job['estimated_cost'] ?? 0);
-                                    $jo_paid    = (float)($job['amount_paid'] ?? 0);
-                                    $jo_balance = (float)($job['balance_due'] ?? 0);
-                                    if ($jo_balance <= 0.009 && $jo_total > 0) $jo_balance = max(0, $jo_total - $jo_paid);
-                                ?>
-                                <div style="display:flex;flex-direction:column;gap:4px;min-width:120px;">
-                                    <?php if ($wf_status !== 'In Progress'): ?>
-                                    <form method="POST" action="staff_transactions_hub.php?section=merchandise" style="margin:0;">
-                                        <input type="hidden" name="jo_action" value="set_in_progress">
-                                        <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
-                                        <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
-                                        <button type="submit" class="txn-btn primary" style="padding:5px 11px;font-size:11px;width:100%;white-space:nowrap;">
-                                            <i class="fas fa-play"></i> In Progress
-                                        </button>
-                                    </form>
-                                    <?php endif; ?>
-                                    <!-- Complete opens payment modal (mark complete + settle payment together) -->
+                        <td style="padding:8px 10px;">
+                            <?php
+                                $jo_total   = (float)($job['total_cost'] ?? $job['estimated_cost'] ?? 0);
+                                $jo_paid    = (float)($job['amount_paid'] ?? 0);
+                                $jo_balance = (float)($job['balance_due'] ?? 0);
+                                if ($jo_balance <= 0.009 && $jo_total > 0) $jo_balance = max(0, $jo_total - $jo_paid);
+                                
+                                // Prepare JO data for modals (JSON-encoded)
+                                $jo_data = json_encode([
+                                    'id' => (int)$job['id'],
+                                    'jo_ref' => $job['job_order_id'] ?? ('#'.$job['id']),
+                                    'customer' => $job['customer_name'] ?? '—',
+                                    'vehicle_plate' => $job['vehicle_plate'] ?? '',
+                                    'vehicle_type' => $job['vehicle_type'] ?? '',
+                                    'service_type' => $job['service_type'] ?? '',
+                                    'service_description' => $job['service_description'] ?? '',
+                                    'parts' => $parts_display,
+                                    'mechanic' => $job['mechanic_name'] ?? 'Unassigned',
+                                    'workflow_status' => $wf_label,
+                                    'payment_status' => $pay_label,
+                                    'total' => $jo_total,
+                                    'paid' => $jo_paid,
+                                    'balance' => $jo_balance,
+                                    'remarks' => $remarks,
+                                    'created_at' => $job['created_at'],
+                                    'source' => $job['_source'] ?? 'job_orders'
+                                ]);
+                            ?>
+                            <div style="display:flex;flex-direction:column;gap:4px;">
+                                <!-- Row 1: View + Update Status + Adjust -->
+                                <div style="display:flex;gap:3px;flex-wrap:wrap;">
+                                    <!-- View Button (Always visible) - DARK BLUE -->
                                     <button type="button"
-                                            onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',true,'tracker')"
-                                            class="txn-btn success" style="padding:5px 11px;font-size:11px;width:100%;white-space:nowrap;">
-                                        <i class="fas fa-check"></i> Complete
+                                            onclick='viewJobOrderDetails(<?= htmlspecialchars($jo_data, ENT_QUOTES) ?>)'
+                                            class="txn-btn" 
+                                            style="padding:6px 12px;font-size:13px;flex:1;background:#002F70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px;transition:background 0.2s ease;"
+                                            onmouseover="this.style.background='#001a3d'"
+                                            onmouseout="this.style.background='#002F70'">
+                                        <i class="fas fa-eye"></i> View
                                     </button>
-                                    <?php if (in_array($pay_status, ['Partial Payment','Partial','Unpaid','Pending Payment','Pending']) && $wf_status === 'In Progress'): ?>
+                                    
+                                    <?php if (!in_array($wf_status, ['Completed', 'Rejected', 'Cancelled'])): ?>
+                                    <!-- Update Status Button - DARK BLUE -->
                                     <button type="button"
-                                            onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',false,'tracker')"
-                                            class="txn-btn" style="padding:5px 11px;font-size:11px;width:100%;white-space:nowrap;background:#fef9c3;color:#92400e;border:1px solid #fde68a;">
-                                        <i class="fas fa-coins"></i> Downpayment
+                                            onclick="openUpdateStatusModal(<?= (int)$job['id'] ?>,'<?= addslashes($wf_status) ?>','<?= addslashes($job['_source'] ?? 'job_orders') ?>')"
+                                            class="txn-btn primary" 
+                                            style="padding:6px 12px;font-size:13px;flex:1;background:#002F70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px;transition:background 0.2s ease;"
+                                            onmouseover="this.style.background='#001a3d'"
+                                            onmouseout="this.style.background='#002F70'">
+                                        <i class="fas fa-sync-alt"></i> Update
+                                    </button>
+                                    <?php endif; ?>
+                                    
+                                    <?php if (in_array($val_status, ['Pending Validation', 'Approved']) && !in_array($wf_status, ['In Progress', 'Completed', 'Rejected'])): ?>
+                                    <!-- Adjust Button (only before In Progress) - GRAY -->
+                                    <button type="button"
+                                            onclick='openAdjustJobOrderModal(<?= htmlspecialchars($jo_data, ENT_QUOTES) ?>)'
+                                            class="txn-btn" 
+                                            style="padding:6px 12px;font-size:13px;flex:1;background:#6b7280;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px;transition:background 0.2s ease;"
+                                            onmouseover="this.style.background='#4b5563'"
+                                            onmouseout="this.style.background='#6b7280'">
+                                        <i class="fas fa-edit"></i> Adjust
                                     </button>
                                     <?php endif; ?>
                                 </div>
-                            <?php endif; ?>
+                                
+                                <!-- Row 2: Workflow Actions -->
+                                <?php if ($wf_status === 'Rejected'): ?>
+                                    <!-- Rejected: Re-encode - GRAY -->
+                                    <a href="joborder.php" 
+                                       class="txn-btn secondary" 
+                                       style="padding:7px 14px;font-size:13px;text-align:center;text-decoration:none;background:#6b7280;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px;transition:background 0.2s ease;"
+                                       onmouseover="this.style.background='#4b5563'"
+                                       onmouseout="this.style.background='#6b7280'">
+                                        <i class="fas fa-redo"></i> Re-encode
+                                    </a>
+                                    
+                                <?php elseif ($val_status === 'Pending Validation'): ?>
+                                    <!-- Pending: Awaiting approval -->
+                                    <span style="font-size:12px;color:#94a3b8;font-style:italic;text-align:center;padding:4px 0;">
+                                        <i class="fas fa-clock"></i> Awaiting manager approval
+                                    </span>
+                                    
+                                <?php elseif ($wf_status === 'Completed'): ?>
+                                    <!-- Completed: Payment or Print Receipt -->
+                                    <?php if ($pay_status === 'Paid'): ?>
+                                        <!-- Print Receipt - GRAY -->
+                                        <button type="button"
+                                                onclick="printJobOrderReceipt(<?= (int)$job['id'] ?>,'<?= addslashes($job['job_order_id'] ?? ('#'.$job['id'])) ?>')"
+                                                class="txn-btn" 
+                                                style="padding:7px 14px;font-size:13px;background:#6b7280;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px;transition:background 0.2s ease;"
+                                                onmouseover="this.style.background='#4b5563'"
+                                                onmouseout="this.style.background='#6b7280'">
+                                            <i class="fas fa-print"></i> Print Receipt
+                                        </button>
+                                    <?php else: ?>
+                                        <!-- Mark Paid / Settle Balance - GREEN -->
+                                        <button type="button"
+                                                onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',false,'tracker')"
+                                                class="txn-btn success" 
+                                                style="padding:7px 14px;font-size:13px;background:#16a34a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px;transition:background 0.2s ease;"
+                                                onmouseover="this.style.background='#15803d'"
+                                                onmouseout="this.style.background='#16a34a'">
+                                            <i class="fas fa-money-bill-wave"></i>
+                                            <?= $pay_status === 'Partial Payment' ? 'Settle Balance' : 'Mark Paid' ?>
+                                        </button>
+                                    <?php endif; ?>
+                                    
+                                <?php else: ?>
+                                    <!-- Approved / In Progress: Workflow progression -->
+                                    <?php if ($wf_status !== 'In Progress'): ?>
+                                    <!-- Start In Progress - DARK BLUE -->
+                                    <form method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="margin:0;">
+                                        <input type="hidden" name="jo_action" value="set_in_progress">
+                                        <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
+                                        <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
+                                        <button type="submit" 
+                                                class="txn-btn primary" 
+                                                style="padding:7px 14px;font-size:13px;width:100%;background:#002F70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px;transition:background 0.2s ease;"
+                                                onmouseover="this.style.background='#001a3d'"
+                                                onmouseout="this.style.background='#002F70'">
+                                            <i class="fas fa-play"></i> Start In Progress
+                                        </button>
+                                    </form>
+                                    <?php endif; ?>
+                                    
+                                    <!-- Complete with payment - GREEN -->
+                                    <button type="button"
+                                            onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',true,'tracker')"
+                                            class="txn-btn success" 
+                                            style="padding:7px 14px;font-size:13px;width:100%;background:#16a34a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px;transition:background 0.2s ease;"
+                                            onmouseover="this.style.background='#15803d'"
+                                            onmouseout="this.style.background='#16a34a'">
+                                        <i class="fas fa-check"></i> Complete & Settle
+                                    </button>
+                                    
+                                    <?php if (in_array($pay_status, ['Partial Payment','Partial','Unpaid','Pending Payment','Pending']) && $wf_status === 'In Progress'): ?>
+                                    <!-- Downpayment option - GREEN -->
+                                    <button type="button"
+                                            onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',false,'tracker')"
+                                            class="txn-btn" 
+                                            style="padding:7px 14px;font-size:13px;width:100%;background:#16a34a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px;transition:background 0.2s ease;"
+                                            onmouseover="this.style.background='#15803d'"
+                                            onmouseout="this.style.background='#16a34a'">
+                                        <i class="fas fa-coins"></i> Accept Downpayment
+                                    </button>
+                                    <?php endif; ?>
+                                <?php endif; ?>
+                            </div>
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -4794,7 +4969,7 @@ main.main {
         ══════════════════════════════════════════════════════════ -->
         <style>
         @keyframes pmSlideIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
-        .pm-method-btn{flex:1;min-width:70px;padding:8px 4px;border:1.5px solid #e2e8f0;border-radius:8px;
+        .pm-method-btn{flex:1;padding:8px 4px;border:1.5px solid #e2e8f0;border-radius:8px;
             background:#f8fafc;font-size:11px;font-weight:600;color:#64748b;cursor:pointer;text-align:center;
             transition:all .15s;line-height:1.4;}
         .pm-method-btn.active{border-color:#003d7a;background:#eff6ff;color:#003d7a;}
@@ -5116,6 +5291,546 @@ main.main {
         });
         </script>
 
+        <!-- ══════════════════════════════════════════════════════════
+             JOB ORDER DETAIL MODALS (View / Update Status / Adjust)
+        ══════════════════════════════════════════════════════════ -->
+        
+        <!-- View Job Order Details Modal -->
+        <div id="viewJobOrderModal" style="display:none;position:fixed;inset:0;z-index:9999;
+             background:rgba(0,0,0,.5);align-items:center;justify-content:center;">
+          <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
+                      width:100%;max-width:600px;margin:16px;overflow:hidden;animation:pmSlideIn .18s ease;">
+            <div style="background:linear-gradient(135deg,#0ea5e9,#0284c7);padding:15px 20px;
+                        display:flex;align-items:center;justify-content:space-between;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:34px;height:34px;background:rgba(255,255,255,.15);border-radius:8px;
+                            display:flex;align-items:center;justify-content:center;">
+                  <i class="fas fa-clipboard-list" style="color:#fff;font-size:15px;"></i>
+                </div>
+                <div>
+                  <div style="color:#fff;font-weight:700;font-size:14px;">Job Order Details</div>
+                  <div id="viewJORef" style="color:#bae6fd;font-size:11px;margin-top:1px;"></div>
+                </div>
+              </div>
+              <button onclick="closeViewJobOrderModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;
+                      width:28px;height:28px;border-radius:6px;font-size:17px;cursor:pointer;
+                      display:flex;align-items:center;justify-content:center;"
+                      onmouseover="this.style.background='rgba(255,255,255,.28)'"
+                      onmouseout="this.style.background='rgba(255,255,255,.15)'">&times;</button>
+            </div>
+            <div style="padding:20px;max-height:70vh;overflow-y:auto;">
+              <div style="display:grid;gap:14px;">
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Customer:</span>
+                  <span id="viewJOCustomer" style="font-size:13px;color:#1e293b;font-weight:600;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Vehicle:</span>
+                  <span id="viewJOVehicle" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Service Type:</span>
+                  <span id="viewJOService" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Parts / Items:</span>
+                  <span id="viewJOParts" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Mechanic:</span>
+                  <span id="viewJOMechanic" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Workflow Status:</span>
+                  <span id="viewJOWorkflow" style="font-size:11px;font-weight:700;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Payment Status:</span>
+                  <span id="viewJOPayment" style="font-size:11px;font-weight:700;">—</span>
+                </div>
+                <div style="border-top:1px solid #e2e8f0;padding-top:14px;display:grid;gap:8px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:12px;color:#64748b;font-weight:600;">Total Cost:</span>
+                    <span id="viewJOTotal" style="font-size:16px;font-weight:800;color:#003d7a;">₱0.00</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:12px;color:#64748b;font-weight:600;">Amount Paid:</span>
+                    <span id="viewJOPaid" style="font-size:14px;font-weight:700;color:#166534;">₱0.00</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:12px;color:#64748b;font-weight:600;">Balance Due:</span>
+                    <span id="viewJOBalance" style="font-size:14px;font-weight:700;color:#dc2626;">₱0.00</span>
+                  </div>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Remarks:</span>
+                  <span id="viewJORemarks" style="font-size:12px;color:#475569;font-style:italic;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Created:</span>
+                  <span id="viewJOCreated" style="font-size:12px;color:#64748b;">—</span>
+                </div>
+              </div>
+            </div>
+            <div style="padding:15px 20px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;">
+              <button onclick="closeViewJobOrderModal()" style="padding:9px 18px;background:#f1f5f9;color:#475569;
+                      border:1px solid #e2e8f0;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- View Merchandise Transaction Modal -->
+        <div id="viewMerchandiseModal" style="display:none;position:fixed;inset:0;z-index:9999;
+             background:rgba(0,0,0,.5);align-items:center;justify-content:center;">
+          <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
+                      width:100%;max-width:700px;margin:16px;overflow:hidden;animation:pmSlideIn .18s ease;">
+            <div style="background:linear-gradient(135deg,#16a34a,#15803d);padding:15px 20px;
+                        display:flex;align-items:center;justify-content:space-between;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:34px;height:34px;background:rgba(255,255,255,.15);border-radius:8px;
+                            display:flex;align-items:center;justify-content:center;">
+                  <i class="fas fa-shopping-cart" style="color:#fff;font-size:15px;"></i>
+                </div>
+                <div>
+                  <div style="color:#fff;font-weight:700;font-size:14px;">Merchandise Transaction Details</div>
+                  <div id="viewMTxnRef" style="color:#bbf7d0;font-size:11px;margin-top:1px;"></div>
+                </div>
+              </div>
+              <button onclick="closeViewMerchandiseModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;
+                      width:28px;height:28px;border-radius:6px;font-size:17px;cursor:pointer;
+                      display:flex;align-items:center;justify-content:center;"
+                      onmouseover="this.style.background='rgba(255,255,255,.28)'"
+                      onmouseout="this.style.background='rgba(255,255,255,.15)'">&times;</button>
+            </div>
+            <div style="padding:20px;max-height:70vh;overflow-y:auto;">
+              <div style="display:grid;gap:14px;">
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Customer:</span>
+                  <span id="viewMTCustomer" style="font-size:13px;color:#1e293b;font-weight:600;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Shift:</span>
+                  <span id="viewMTShift" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Transaction Date:</span>
+                  <span id="viewMTDate" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                
+                <!-- Items Table -->
+                <div style="border-top:1px solid #e2e8f0;padding-top:14px;">
+                  <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Items Purchased:</div>
+                  <div id="viewMTItems" style="max-height:200px;overflow-y:auto;">
+                    <table style="width:100%;font-size:12px;border-collapse:collapse;">
+                      <thead style="background:#f8fafc;position:sticky;top:0;">
+                        <tr>
+                          <th style="text-align:left;padding:6px 8px;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:600;">Item</th>
+                          <th style="text-align:center;padding:6px 8px;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:600;width:60px;">Qty</th>
+                          <th style="text-align:right;padding:6px 8px;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:600;width:90px;">Unit Price</th>
+                          <th style="text-align:right;padding:6px 8px;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:600;width:100px;">Subtotal</th>
+                        </tr>
+                      </thead>
+                      <tbody id="viewMTItemsBody">
+                        <tr><td colspan="4" style="text-align:center;padding:12px;color:#94a3b8;">Loading items...</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Payment Method:</span>
+                  <span id="viewMTPayMethod" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Payment Status:</span>
+                  <span id="viewMTPayStatus" style="font-size:11px;font-weight:700;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Validation Status:</span>
+                  <span id="viewMTValStatus" style="font-size:11px;font-weight:700;">—</span>
+                </div>
+                
+                <div style="border-top:1px solid #e2e8f0;padding-top:14px;display:grid;gap:8px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:12px;color:#64748b;font-weight:600;">Subtotal:</span>
+                    <span id="viewMTSubtotal" style="font-size:14px;font-weight:700;color:#475569;">₱0.00</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:12px;color:#64748b;font-weight:600;">VAT (12%):</span>
+                    <span id="viewMTVAT" style="font-size:14px;font-weight:700;color:#475569;">₱0.00</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:2px solid #e2e8f0;">
+                    <span style="font-size:13px;color:#1e293b;font-weight:700;">Total Amount:</span>
+                    <span id="viewMTTotal" style="font-size:18px;font-weight:800;color:#003d7a;">₱0.00</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:12px;color:#64748b;font-weight:600;">Amount Paid:</span>
+                    <span id="viewMTPaid" style="font-size:14px;font-weight:700;color:#166534;">₱0.00</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:12px;color:#64748b;font-weight:600;">Balance Due:</span>
+                    <span id="viewMTBalance" style="font-size:14px;font-weight:700;color:#dc2626;">₱0.00</span>
+                  </div>
+                </div>
+                
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Remarks:</span>
+                  <span id="viewMTRemarks" style="font-size:12px;color:#475569;font-style:italic;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Staff:</span>
+                  <span id="viewMTStaff" style="font-size:12px;color:#64748b;">—</span>
+                </div>
+              </div>
+            </div>
+            <div style="padding:15px 20px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:10px;">
+              <button onclick="closeViewMerchandiseModal()" style="padding:9px 18px;background:#f1f5f9;color:#475569;
+                      border:1px solid #e2e8f0;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Update Status Modal -->
+        <div id="updateStatusModal" style="display:none;position:fixed;inset:0;z-index:9999;
+             background:rgba(0,0,0,.5);align-items:center;justify-content:center;">
+          <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
+                      width:100%;max-width:480px;margin:16px;overflow:hidden;animation:pmSlideIn .18s ease;">
+            <div style="background:linear-gradient(135deg,#003d7a,#0369a1);padding:15px 20px;
+                        display:flex;align-items:center;justify-content:space-between;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:34px;height:34px;background:rgba(255,255,255,.15);border-radius:8px;
+                            display:flex;align-items:center;justify-content:center;">
+                  <i class="fas fa-sync-alt" style="color:#fff;font-size:15px;"></i>
+                </div>
+                <div>
+                  <div style="color:#fff;font-weight:700;font-size:14px;">Update Workflow Status</div>
+                  <div id="updateStatusJORef" style="color:#93c5fd;font-size:11px;margin-top:1px;"></div>
+                </div>
+              </div>
+              <button onclick="closeUpdateStatusModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;
+                      width:28px;height:28px;border-radius:6px;font-size:17px;cursor:pointer;
+                      display:flex;align-items:center;justify-content:center;"
+                      onmouseover="this.style.background='rgba(255,255,255,.28)'"
+                      onmouseout="this.style.background='rgba(255,255,255,.15)'">&times;</button>
+            </div>
+            <form id="updateStatusForm" method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker">
+              <div style="padding:20px;">
+                <input type="hidden" name="jo_action" value="update_status">
+                <input type="hidden" name="jo_id" id="updateStatusJOId" value="">
+                <input type="hidden" name="jo_source" id="updateStatusJOSource" value="">
+                
+                <div style="margin-bottom:14px;">
+                  <label style="font-size:11px;color:#374151;font-weight:700;text-transform:uppercase;letter-spacing:.3px;display:block;margin-bottom:6px;">
+                    Current Status: <span id="updateStatusCurrent" style="color:#003d7a;">—</span>
+                  </label>
+                </div>
+                
+                <div style="margin-bottom:14px;">
+                  <label style="font-size:11px;color:#374151;font-weight:700;text-transform:uppercase;letter-spacing:.3px;display:block;margin-bottom:6px;">
+                    New Status <span style="color:#dc2626;">*</span>
+                  </label>
+                  <select name="new_status" id="updateStatusSelect" required
+                          style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
+                                 color:#1e293b;background:#fff;outline:none;cursor:pointer;">
+                    <option value="">Select new status...</option>
+                    <option value="Approved">✓ Approved</option>
+                    <option value="In Progress">▶ In Progress</option>
+                    <option value="Completed">✓✓ Completed</option>
+                    <option value="Rejected">✗ Rejected</option>
+                  </select>
+                </div>
+                
+                <div id="updateStatusRemarksDiv" style="display:none;margin-bottom:14px;">
+                  <label style="font-size:11px;color:#374151;font-weight:700;text-transform:uppercase;letter-spacing:.3px;display:block;margin-bottom:6px;">
+                    Reason for Rejection <span style="color:#dc2626;">*</span>
+                  </label>
+                  <textarea name="rejection_remarks" id="updateStatusRemarks" rows="3"
+                            style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
+                                   color:#1e293b;background:#fff;outline:none;resize:vertical;font-family:inherit;"
+                            placeholder="Explain why this job order is being rejected..."></textarea>
+                </div>
+              </div>
+              <div style="padding:15px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end;">
+                <button type="button" onclick="closeUpdateStatusModal()" style="padding:9px 18px;background:#f1f5f9;color:#475569;
+                        border:1px solid #e2e8f0;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
+                  Cancel
+                </button>
+                <button type="submit" style="padding:9px 18px;background:#003d7a;color:#fff;border:none;
+                        border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;">
+                  <i class="fas fa-check"></i> Update Status
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Adjust Job Order Modal -->
+        <div id="adjustJobOrderModal" style="display:none;position:fixed;inset:0;z-index:9999;
+             background:rgba(0,0,0,.5);align-items:center;justify-content:center;">
+          <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
+                      width:100%;max-width:600px;margin:16px;overflow:hidden;animation:pmSlideIn .18s ease;">
+            <div style="background:linear-gradient(135deg,#f59e0b,#d97706);padding:15px 20px;
+                        display:flex;align-items:center;justify-content:space-between;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:34px;height:34px;background:rgba(255,255,255,.15);border-radius:8px;
+                            display:flex;align-items:center;justify-content:center;">
+                  <i class="fas fa-edit" style="color:#fff;font-size:15px;"></i>
+                </div>
+                <div>
+                  <div style="color:#fff;font-weight:700;font-size:14px;">Adjust Job Order</div>
+                  <div id="adjustJORef" style="color:#fef3c7;font-size:11px;margin-top:1px;"></div>
+                </div>
+              </div>
+              <button onclick="closeAdjustJobOrderModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;
+                      width:28px;height:28px;border-radius:6px;font-size:17px;cursor:pointer;
+                      display:flex;align-items:center;justify-content:center;"
+                      onmouseover="this.style.background='rgba(255,255,255,.28)'"
+                      onmouseout="this.style.background='rgba(255,255,255,.15)'">&times;</button>
+            </div>
+            <form id="adjustJobOrderForm" method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker">
+              <div style="padding:20px;max-height:65vh;overflow-y:auto;">
+                <input type="hidden" name="jo_action" value="adjust_job_order">
+                <input type="hidden" name="jo_id" id="adjustJOId" value="">
+                <input type="hidden" name="jo_source" id="adjustJOSource" value="">
+                
+                <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:16px;
+                            font-size:12px;color:#92400e;">
+                  <i class="fas fa-info-circle"></i> You can adjust job order details before the service begins (In Progress).
+                </div>
+                
+                <div style="display:grid;gap:12px;">
+                  <div>
+                    <label style="font-size:11px;color:#374151;font-weight:700;display:block;margin-bottom:4px;">Customer Name</label>
+                    <input type="text" name="customer_name" id="adjustJOCustomer" required
+                           style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
+                                  color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
+                  </div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                    <div>
+                      <label style="font-size:11px;color:#374151;font-weight:700;display:block;margin-bottom:4px;">Vehicle Plate</label>
+                      <input type="text" name="vehicle_plate" id="adjustJOPlate"
+                             style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
+                                    color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
+                    </div>
+                    <div>
+                      <label style="font-size:11px;color:#374151;font-weight:700;display:block;margin-bottom:4px;">Vehicle Type</label>
+                      <input type="text" name="vehicle_type" id="adjustJOType"
+                             style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
+                                    color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
+                    </div>
+                  </div>
+                  <div>
+                    <label style="font-size:11px;color:#374151;font-weight:700;display:block;margin-bottom:4px;">Service Type</label>
+                    <input type="text" name="service_type" id="adjustJOService" required
+                           style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
+                                  color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
+                  </div>
+                  <div>
+                    <label style="font-size:11px;color:#374151;font-weight:700;display:block;margin-bottom:4px;">Service Description</label>
+                    <textarea name="service_description" id="adjustJODescription" rows="2"
+                              style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
+                                     color:#1e293b;background:#fff;outline:none;resize:vertical;font-family:inherit;box-sizing:border-box;"></textarea>
+                  </div>
+                  <div>
+                    <label style="font-size:11px;color:#374151;font-weight:700;display:block;margin-bottom:4px;">Mechanic</label>
+                    <input type="text" name="mechanic_name" id="adjustJOMechanic"
+                           style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
+                                  color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
+                  </div>
+                  <div>
+                    <label style="font-size:11px;color:#374151;font-weight:700;display:block;margin-bottom:4px;">Estimated Cost (₱)</label>
+                    <input type="number" name="estimated_cost" id="adjustJOCost" step="0.01" min="0"
+                           style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
+                                  color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
+                  </div>
+                </div>
+              </div>
+              <div style="padding:15px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end;">
+                <button type="button" onclick="closeAdjustJobOrderModal()" style="padding:9px 18px;background:#f1f5f9;color:#475569;
+                        border:1px solid #e2e8f0;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
+                  Cancel
+                </button>
+                <button type="submit" style="padding:9px 18px;background:#f59e0b;color:#fff;border:none;
+                        border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;">
+                  <i class="fas fa-save"></i> Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <script>
+        // ── Job Order Modal Functions ───────────────────────────────────────
+        
+        // View Job Order Details Modal
+        function viewJobOrderDetails(joData) {
+            var fmt = function(n){ return '₱' + parseFloat(n).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2}); };
+            
+            document.getElementById('viewJORef').textContent = joData.jo_ref || '—';
+            document.getElementById('viewJOCustomer').textContent = joData.customer || '—';
+            document.getElementById('viewJOVehicle').textContent = (joData.vehicle_plate || '') + 
+                (joData.vehicle_type ? ' (' + joData.vehicle_type + ')' : '') || '—';
+            document.getElementById('viewJOService').textContent = joData.service_type || '—';
+            document.getElementById('viewJOParts').textContent = joData.parts || '—';
+            document.getElementById('viewJOMechanic').textContent = joData.mechanic || 'Unassigned';
+            document.getElementById('viewJOWorkflow').textContent = joData.workflow_status || '—';
+            document.getElementById('viewJOPayment').textContent = joData.payment_status || '—';
+            document.getElementById('viewJOTotal').textContent = fmt(joData.total || 0);
+            document.getElementById('viewJOPaid').textContent = fmt(joData.paid || 0);
+            document.getElementById('viewJOBalance').textContent = fmt(joData.balance || 0);
+            document.getElementById('viewJORemarks').textContent = joData.remarks || 'None';
+            document.getElementById('viewJOCreated').textContent = joData.created_at 
+                ? new Date(joData.created_at).toLocaleString('en-PH', {dateStyle:'medium', timeStyle:'short'}) 
+                : '—';
+            
+            document.getElementById('viewJobOrderModal').style.display = 'flex';
+        }
+        
+        function closeViewJobOrderModal() {
+            document.getElementById('viewJobOrderModal').style.display = 'none';
+        }
+        
+        // Update Status Modal
+        function openUpdateStatusModal(joId, currentStatus, source) {
+            document.getElementById('updateStatusJOId').value = joId;
+            document.getElementById('updateStatusJOSource').value = source;
+            document.getElementById('updateStatusJORef').textContent = 'JO #' + joId;
+            document.getElementById('updateStatusCurrent').textContent = currentStatus || 'Pending';
+            
+            var select = document.getElementById('updateStatusSelect');
+            select.value = '';
+            
+            // Show/hide rejection remarks based on selection
+            select.onchange = function() {
+                var remarksDiv = document.getElementById('updateStatusRemarksDiv');
+                var remarksField = document.getElementById('updateStatusRemarks');
+                if (this.value === 'Rejected') {
+                    remarksDiv.style.display = 'block';
+                    remarksField.required = true;
+                } else {
+                    remarksDiv.style.display = 'none';
+                    remarksField.required = false;
+                }
+            };
+            
+            document.getElementById('updateStatusModal').style.display = 'flex';
+        }
+        
+        function closeUpdateStatusModal() {
+            document.getElementById('updateStatusModal').style.display = 'none';
+        }
+        
+        // Adjust Job Order Modal
+        function openAdjustJobOrderModal(joData) {
+            document.getElementById('adjustJOId').value = joData.id || '';
+            document.getElementById('adjustJOSource').value = joData.source || 'job_orders';
+            document.getElementById('adjustJORef').textContent = joData.jo_ref || '';
+            document.getElementById('adjustJOCustomer').value = joData.customer || '';
+            document.getElementById('adjustJOPlate').value = joData.vehicle_plate || '';
+            document.getElementById('adjustJOType').value = joData.vehicle_type || '';
+            document.getElementById('adjustJOService').value = joData.service_type || '';
+            document.getElementById('adjustJODescription').value = joData.service_description || '';
+            document.getElementById('adjustJOMechanic').value = joData.mechanic || '';
+            document.getElementById('adjustJOCost').value = joData.total || '';
+            
+            document.getElementById('adjustJobOrderModal').style.display = 'flex';
+        }
+        
+        function closeAdjustJobOrderModal() {
+            document.getElementById('adjustJobOrderModal').style.display = 'none';
+        }
+        
+        // Print Job Order Receipt
+        function printJobOrderReceipt(joId, joRef) {
+            // joRef may be '#688' (fragment) if job_order_id is null in DB.
+            // Browsers strip '#...' from URLs, so use numeric joId in that case.
+            var rid = (joRef && joRef.charAt(0) !== '#') ? encodeURIComponent(joRef) : joId;
+            window.open('receipt.php?id=' + rid + '&type=job_order', '_blank', 'width=520,height=800,scrollbars=yes');
+        }
+        
+        // Print Merchandise Receipt
+        function printMerchandiseReceipt(txnId) {
+            window.open('receipt.php?id=' + txnId + '&type=merchandise', '_blank', 'width=520,height=800,scrollbars=yes');
+        }
+        
+        // View Merchandise Transaction Details
+        function viewMerchandiseDetails(txnId) {
+            if (!txnId) {
+                showTxnAlert('Invalid transaction ID', 'error');
+                return;
+            }
+            
+            // Fetch transaction details via AJAX
+            fetch('../backend/get_merchandise_transaction_details.php?id=' + encodeURIComponent(txnId))
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const txn = data.transaction;
+                        
+                        // Populate modal fields
+                        document.getElementById('viewMTxnRef').textContent = txn.transaction_id || '—';
+                        document.getElementById('viewMTCustomer').textContent = txn.customer_name || 'Walk-in Customer';
+                        document.getElementById('viewMTShift').textContent = (txn.shift_name || txn.shift_period) || '—';
+                        document.getElementById('viewMTDate').textContent = txn.transaction_date || '—';
+                        document.getElementById('viewMTPayMethod').textContent = txn.payment_method || '—';
+                        document.getElementById('viewMTPayStatus').innerHTML = txn.payment_status_badge || '—';
+                        document.getElementById('viewMTValStatus').innerHTML = txn.validation_status_badge || '—';
+                        document.getElementById('viewMTSubtotal').textContent = txn.subtotal_display || '₱0.00';
+                        document.getElementById('viewMTVAT').textContent = txn.vat_display || '₱0.00';
+                        document.getElementById('viewMTTotal').textContent = txn.total_display || '₱0.00';
+                        document.getElementById('viewMTPaid').textContent = txn.paid_display || '₱0.00';
+                        document.getElementById('viewMTBalance').textContent = txn.balance_display || '₱0.00';
+                        document.getElementById('viewMTRemarks').textContent = txn.remarks || '—';
+                        document.getElementById('viewMTStaff').textContent = txn.staff_name || '—';
+                        
+                        // Populate items table
+                        const itemsBody = document.getElementById('viewMTItemsBody');
+                        if (txn.items && txn.items.length > 0) {
+                            itemsBody.innerHTML = txn.items.map(item => `
+                                <tr style="border-bottom:1px solid #f1f5f9;">
+                                    <td style="padding:8px;">
+                                        <div style="font-weight:600;color:#1e293b;">${item.product_name || '—'}</div>
+                                        ${item.category ? `<div style="font-size:10px;color:#94a3b8;margin-top:2px;">${item.category}${item.size_variant ? ' • ' + item.size_variant : ''}</div>` : ''}
+                                    </td>
+                                    <td style="padding:8px;text-align:center;color:#475569;">${item.quantity || 0}</td>
+                                    <td style="padding:8px;text-align:right;color:#475569;">₱${parseFloat(item.unit_price || 0).toFixed(2)}</td>
+                                    <td style="padding:8px;text-align:right;color:#003d7a;font-weight:700;">₱${parseFloat(item.subtotal || 0).toFixed(2)}</td>
+                                </tr>
+                            `).join('');
+                        } else {
+                            itemsBody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:12px;color:#94a3b8;">No items found</td></tr>';
+                        }
+                        
+                        // Show modal
+                        document.getElementById('viewMerchandiseModal').style.display = 'flex';
+                    } else {
+                        showTxnAlert(data.error || 'Failed to load transaction details', 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching merchandise details:', error);
+                    showTxnAlert('Network error: ' + error.message, 'error');
+                });
+        }
+        
+        function closeViewMerchandiseModal() {
+            document.getElementById('viewMerchandiseModal').style.display = 'none';
+        }
+        
+        // Close modals on outside click
+        ['viewJobOrderModal', 'viewMerchandiseModal', 'updateStatusModal', 'adjustJobOrderModal'].forEach(function(modalId) {
+            document.getElementById(modalId).addEventListener('click', function(e) {
+                if (e.target === this) {
+                    this.style.display = 'none';
+                }
+            });
+        });
+        </script>
+
         <script>
         function switchInnerTab(tab) {
             ['merchandise','tracker'].forEach(function(t) {
@@ -5130,6 +5845,10 @@ main.main {
                 btn.style.background   = active ? '#fff' : '#f8fafc';
                 btn.style.borderBottom = active ? '2px solid ' + colors[t] : '2px solid transparent';
             });
+            var descElem = document.getElementById('txnSectionDesc');
+            if (descElem) {
+                descElem.textContent = (tab === 'tracker') ? 'Monitor service progress and pending balances in real time.' : 'Merchandise sales, job order encoding, and status tracking.';
+            }
             var url = new URL(window.location.href);
             url.searchParams.set('active_tab', tab);
             history.replaceState(null, '', url.toString());
@@ -5143,15 +5862,17 @@ main.main {
 
         <div class="txn-section-header">
             <div class="txn-section-title">
-                <div class="txn-section-icon hist"><i class="fas fa-history"></i></div>
                 <div>
                     <h1>Shift History</h1>
                     <p>Your shift log history</p>
                 </div>
             </div>
-            <a href="staff_transactions_hub.php?section=merchandise" class="btn-back">
-                <i class="fas fa-arrow-left"></i> Back to Transactions
-            </a>
+            <div>
+                <button type="button" onclick="window.location.href='staff_dashboard.php'" 
+                        style="display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;background:#6c757d;color:#fff;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;" title="Back to Staff Dashboard">
+                    <i class="fas fa-arrow-left"></i> <span>Back</span>
+                </button>
+            </div>
         </div>
 
         <!-- Shift Log -->
@@ -5162,8 +5883,8 @@ main.main {
                 <h3>Shift Log</h3>
             </div>
             <div class="txn-card-body" style="padding:0;">
-                <div style="overflow-x:auto;">
-                <table class="txn-table" style="min-width:500px;">
+                <div style="overflow-x:hidden;">
+                <table class="txn-table" style="width:100%; table-layout:fixed; word-wrap:break-word;">
                     <thead>
                         <tr>
                             <th>Shift</th>
@@ -5270,15 +5991,17 @@ main.main {
 
         <div class="txn-section-header">
             <div class="txn-section-title">
-                <div class="txn-section-icon fuel"><i class="fas fa-gas-pump"></i></div>
                 <div>
                     <h1>Fuel Transaction History</h1>
                     <p>Your fuel transaction records</p>
                 </div>
             </div>
-            <a href="staff_transactions_hub.php?section=fuel" class="btn-back">
-                <i class="fas fa-arrow-left"></i> Back to Fuel
-            </a>
+            <div>
+                <button type="button" onclick="window.location.href='staff_dashboard.php'" 
+                        style="display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;background:#6c757d;color:#fff;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;" title="Back to Staff Dashboard">
+                    <i class="fas fa-arrow-left"></i> <span>Back</span>
+                </button>
+            </div>
         </div>
 
         <div class="txn-card">
@@ -5293,8 +6016,8 @@ main.main {
                     No fuel transactions found.
                 </div>
                 <?php else: ?>
-                <div style="overflow-x:auto;">
-                <table class="txn-table" style="min-width:700px;">
+                <div style="overflow-x:hidden;">
+                <table class="txn-table" style="width:100%; table-layout:fixed; word-wrap:break-word;">
                     <thead>
                         <tr>
                             <th>Txn ID</th>

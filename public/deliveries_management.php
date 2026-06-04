@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // Deliveries Management System
 session_start();
 require_once '../config/database_config.php';
@@ -333,7 +333,7 @@ $pending_discrepancies = $pdo->query("
                                                     <td><?= htmlspecialchars($delivery['supplier_name']) ?></td>
                                                     <td><?= date('M j, Y', strtotime($delivery['delivery_date'])) ?></td>
                                                     <td><?= number_format($delivery['item_count']) ?> items</td>
-                                                    <td>₱<?= number_format($delivery['total_amount'], 2) ?></td>
+                                                    <td>?<?= number_format($delivery['total_amount'], 2) ?></td>
                                                     <td>
                                                         <span class="badge bg-<?= 
                                                             $delivery['status'] == 'confirmed' ? 'success' : 
@@ -446,7 +446,7 @@ $pending_discrepancies = $pdo->query("
                                 <div class="row">
                                     <div class="col-md-4">
                                         <label class="form-label">${item.product_name}</label>
-                                        <small class="text-muted d-block">Ordered: ${item.quantity_ordered} @ ₱${item.unit_price}</small>
+                                        <small class="text-muted d-block">Ordered: ${item.quantity_ordered} @ ?${item.unit_price}</small>
                                     </div>
                                     <div class="col-md-3">
                                         <label class="form-label">Quantity Received</label>

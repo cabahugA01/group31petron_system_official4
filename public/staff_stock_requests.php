@@ -159,6 +159,9 @@ include __DIR__ . '/../partials/header.php';
     <p>History of stock replenishment requests for fuel and merchandise products</p>
   </div>
 
+  <!-- Summary Row -->
+  <?php require_once __DIR__ . '/../partials/staff_inventory_summary.php'; ?>
+
   <!-- Tabs -->
   <div class="ssr-tabs">
     <div class="ssr-tab active" onclick="switchTab('fuel')" id="tab-fuel">
@@ -176,7 +179,16 @@ include __DIR__ . '/../partials/header.php';
     <div class="ssr-card">
       <div class="ssr-card-head">
         <div class="ssr-card-title"><i class="fas fa-gas-pump"></i> Fuel Stock Requests</div>
-        <button onclick="location.reload()" class="btn ghost" style="font-size:12px;"><i class="fas fa-sync-alt"></i> Refresh</button>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <?php
+            $export_table_id       = 'fuelSrTable';
+            $export_filename       = 'fuel_stock_requests_' . date('Ymd');
+            $export_title          = 'Fuel Stock Requests';
+            $export_rows_select_id = 'fuelSrRowsLimit';
+            $export_default_rows   = 10;
+            require __DIR__ . '/../partials/export_buttons.php';
+            ?>
+        </div>
       </div>
       <div class="ssr-card-body">
         <?php if (empty($fuel_requests)): ?>
@@ -186,7 +198,7 @@ include __DIR__ . '/../partials/header.php';
           </div>
         <?php else: ?>
         <div class="table-wrap">
-          <table class="table">
+          <table class="table" id="fuelSrTable">
             <thead>
               <tr>
                 <th>#</th>
@@ -236,6 +248,7 @@ include __DIR__ . '/../partials/header.php';
             </tbody>
           </table>
         </div>
+        <div id="fuelSrPagination"></div>
         <?php endif; ?>
       </div>
     </div>
@@ -246,7 +259,16 @@ include __DIR__ . '/../partials/header.php';
     <div class="ssr-card">
       <div class="ssr-card-head">
         <div class="ssr-card-title"><i class="fas fa-shopping-basket"></i> Merchandise Stock Requests</div>
-        <button onclick="location.reload()" class="btn ghost" style="font-size:12px;"><i class="fas fa-sync-alt"></i> Refresh</button>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <?php
+            $export_table_id       = 'merchSrTable';
+            $export_filename       = 'merch_stock_requests_' . date('Ymd');
+            $export_title          = 'Merchandise Stock Requests';
+            $export_rows_select_id = 'merchSrRowsLimit';
+            $export_default_rows   = 10;
+            require __DIR__ . '/../partials/export_buttons.php';
+            ?>
+        </div>
       </div>
       <div class="ssr-card-body">
         <?php if (empty($merch_requests)): ?>
@@ -256,7 +278,7 @@ include __DIR__ . '/../partials/header.php';
           </div>
         <?php else: ?>
         <div class="table-wrap">
-          <table class="table">
+          <table class="table" id="merchSrTable">
             <thead>
               <tr>
                 <th>#</th>
@@ -330,6 +352,7 @@ include __DIR__ . '/../partials/header.php';
             </tbody>
           </table>
         </div>
+        <div id="merchSrPagination"></div>
         <?php endif; ?>
       </div>
     </div>
@@ -356,6 +379,8 @@ document.addEventListener('DOMContentLoaded', function() {
         // Default: fuel tab
         switchTab('fuel');
     }
+    setupTablePagination('fuelSrTable', 'fuelSrRowsLimit', 'fuelSrPagination', 10);
+    setupTablePagination('merchSrTable', 'merchSrRowsLimit', 'merchSrPagination', 10);
 });
 </script>
 

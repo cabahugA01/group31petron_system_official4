@@ -7,7 +7,197 @@ $type = $_GET['type'] ?? 'sale';
 
 $sale = null;
 
-if ($type === 'merchandise') {
+if ($type === 'job_order') {
+    require_once __DIR__ . '/db_connect.php';
+    try {
+        // Fetch by job_order_id string (JO-xxx) OR numeric db id
+        $stmt = $pdo->prepare("
+            SELECT jo.*,
+                   u.name  AS mechanic_name,
+                   cb.name AS staff_name,
+                   s.name  AS station_name,
+                   s.location AS station_location,
+                   s.address  AS station_address,
+                   s.vat_tin  AS station_vat_tin
+            FROM job_orders jo
+            LEFT JOIN users    u  ON u.id  = jo.assigned_mechanic_id
+            LEFT JOIN users    cb ON cb.id = jo.created_by
+            LEFT JOIN stations s  ON s.id  = jo.station_id
+            WHERE jo.job_order_id = ? OR jo.job_order_number = ? OR jo.id = ?
+            LIMIT 1
+        ");
+        $numeric_id = is_numeric($id) ? (int)$id : 0;
+        $stmt->execute([$id, $id, $numeric_id]);
+        $jo = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        // ── FALLBACK: Try merchandise_transactions table for JO/combined types ──
+        if (!$jo && $numeric_id > 0) {
+            try {
+                $stmt_mt = $pdo->prepare("
+                    SELECT mt.*,
+                           u.name AS staff_name,
+                           s.name AS station_name,
+                           s.location AS station_location,
+                           s.address AS station_address,
+                           s.vat_tin AS station_vat_tin
+                    FROM merchandise_transactions mt
+                    LEFT JOIN users u ON u.id = mt.staff_id
+                    LEFT JOIN stations s ON s.id = mt.station_id
+                    WHERE mt.id = ?
+                      AND mt.transaction_type IN ('job_order', 'combined')
+                    LIMIT 1
+                ");
+                $stmt_mt->execute([$numeric_id]);
+                $jo_mt = $stmt_mt->fetch(PDO::FETCH_ASSOC);
+                
+                if ($jo_mt) {
+                    // Map merchandise_transaction fields to job_order structure
+                    $jo_total = (float)($jo_mt['total_amount'] ?? 0);
+                    $jo_paid = (float)($jo_mt['amount_paid'] ?? 0);
+                    $jo_balance = (float)($jo_mt['balance_due'] ?? max(0, $jo_total - $jo_paid));
+                    
+                    $jo = [
+                        'id' => $jo_mt['id'],
+                        'job_order_id' => $jo_mt['job_order_id'] ?? null,
+                        'job_order_number' => null,
+                        'service_type' => $jo_mt['job_order_service'] ?? 'Service',
+                        'service_description' => $jo_mt['job_order_description'] ?? '',
+                        'customer_name' => $jo_mt['customer_name'] ?? 'Walk-in Customer',
+                        'vehicle_plate' => $jo_mt['job_order_vehicle_plate'] ?? '',
+                        'vehicle_type' => $jo_mt['job_order_vehicle_type'] ?? '',
+                        'contact_number' => $jo_mt['job_order_contact'] ?? '',
+                        'assigned_mechanic' => $jo_mt['job_order_mechanic_name'] ?? null,
+                        'mechanic_name' => $jo_mt['job_order_mechanic_name'] ?? null,
+                        'total_cost' => $jo_total,
+                        'labor_cost' => 0,
+                        'service_cost' => $jo_total,
+                        'total_amount' => $jo_total,
+                        'amount_paid' => $jo_paid,
+                        'balance_due' => $jo_balance,
+                        'payment_method' => $jo_mt['payment_method'] ?? 'Cash',
+                        'payment_status' => $jo_mt['payment_status'] ?? 'Pending Payment',
+                        'status' => $jo_mt['validation_status'] ?? 'Pending',
+                        'notes' => $jo_mt['remarks'] ?? '',
+                        'remarks' => $jo_mt['remarks'] ?? '',
+                        'created_at' => $jo_mt['created_at'] ?? date('Y-m-d H:i:s'),
+                        'order_date' => $jo_mt['transaction_date'] ?? $jo_mt['created_at'],
+                        'staff_name' => $jo_mt['staff_name'] ?? 'N/A',
+                        'shift_name' => $jo_mt['shift_name'] ?? '',
+                        'shift_period' => $jo_mt['shift_period'] ?? '',
+                        'station_name' => $jo_mt['station_name'] ?? 'Petron Station',
+                        'station_location' => $jo_mt['station_location'] ?? '',
+                        'station_address' => $jo_mt['station_address'] ?? '',
+                        'station_vat_tin' => $jo_mt['station_vat_tin'] ?? '',
+                        'card_reference' => $jo_mt['card_reference'] ?? '',
+                        'parts_used' => null,
+                        '_source' => 'merchandise_transactions'
+                    ];
+                }
+            } catch (Exception $e) {
+                error_log("Receipt MT fallback error: " . $e->getMessage());
+            }
+        }
+
+        if ($jo) {
+            // Ensure stations columns exist
+            try {
+                $cols = $pdo->query("SHOW COLUMNS FROM stations")->fetchAll(PDO::FETCH_COLUMN);
+                if (!in_array('address', $cols))
+                    $pdo->exec("ALTER TABLE stations ADD COLUMN address VARCHAR(500) NULL AFTER location");
+                if (!in_array('vat_tin', $cols))
+                    $pdo->exec("ALTER TABLE stations ADD COLUMN vat_tin VARCHAR(50) NULL AFTER address");
+            } catch (Exception $e) {}
+
+            // Map job_order fields into the $sale shape used by the receipt template
+            $jo_total   = (float)($jo['total_amount'] ?? $jo['service_cost'] ?? $jo['labor_cost'] ?? 0);
+            $jo_paid    = (float)($jo['amount_paid'] ?? 0);
+            $jo_balance = (float)($jo['balance_due'] ?? max(0, $jo_total - $jo_paid));
+
+            // Build a synthetic items array from service info
+            $jo_items = [];
+            if (!empty($jo['service_type']) || !empty($jo['service_description'])) {
+                $jo_items[] = [
+                    'product_name' => $jo['service_type'] ?? 'Service',
+                    'category'     => 'Job Order Service',
+                    'size_variant' => '',
+                    'quantity'     => 1,
+                    'unit_price'   => $jo_total,
+                    'subtotal'     => $jo_total,
+                    'item_type'    => 'service',
+                ];
+            }
+
+            // Parts used
+            if (!empty($jo['parts_used'])) {
+                $parts = is_array($jo['parts_used'])
+                    ? $jo['parts_used']
+                    : json_decode($jo['parts_used'], true);
+                if (is_array($parts)) {
+                    foreach ($parts as $p) {
+                        $jo_items[] = [
+                            'product_name' => $p['name'] ?? $p['part_name'] ?? 'Part',
+                            'category'     => 'Parts',
+                            'size_variant' => '',
+                            'quantity'     => (float)($p['quantity'] ?? $p['qty'] ?? 1),
+                            'unit_price'   => (float)($p['unit_price'] ?? $p['price'] ?? 0),
+                            'subtotal'     => (float)($p['subtotal'] ?? $p['amount'] ?? 0),
+                            'item_type'    => 'merchandise',
+                        ];
+                    }
+                }
+            }
+
+            // Payment status
+            $raw_pay_status = strtolower(trim($jo['payment_status'] ?? ''));
+            if (!$raw_pay_status || $raw_pay_status === 'pending payment') $raw_pay_status = 'pending';
+
+            $sale = [
+                'transaction_id'      => $jo['job_order_id'] ?? $jo['job_order_number'] ?? ('#'.$jo['id']),
+                'id'                  => $jo['job_order_id'] ?? $jo['job_order_number'] ?? ('#'.$jo['id']),
+                'created_at'          => $jo['created_at'] ?? $jo['order_date'] ?? date('Y-m-d H:i:s'),
+                'staff_name'          => $jo['staff_name'] ?? 'N/A',
+                'shift_name'          => $jo['shift_name'] ?? $jo['shift_period'] ?? '',
+                'customer_name'       => $jo['customer_name'] ?? 'Walk-in Customer',
+                'customer_first_name' => '',
+                'customer_last_name'  => '',
+                'payment_method'      => $jo['payment_method'] ?? 'Cash',
+                'payment_status'      => $raw_pay_status,
+                'amount_paid'         => $jo_paid,
+                'balance_due'         => $jo_balance,
+                'total_amount'        => $jo_total,
+                'subtotal_amount'     => 0,
+                'vat_amount'          => 0,
+                'amount_tendered'     => $jo_paid,
+                'change_amount'       => 0,
+                'card_reference'      => $jo['card_reference'] ?? '',
+                'card_type'           => '',
+                'ewallet_reference'   => '',
+                'ewallet_provider'    => '',
+                'efuel_card_number'   => '',
+                'remarks'             => $jo['notes'] ?? $jo['remarks'] ?? '',
+                'validation_status'   => $jo['status'] ?? 'Pending',
+                'station_name'        => $jo['station_name']    ?? 'Petron Station',
+                'station_address'     => $jo['station_address'] ?? '',
+                'station_location'    => $jo['station_location'] ?? '',
+                'station_vat_tin'     => $jo['station_vat_tin'] ?? '',
+                'items'               => $jo_items,
+                'transaction_type'    => 'job_order',
+                'job_order'           => [
+                    'job_order_id'        => $jo['job_order_id'] ?? $jo['job_order_number'] ?? null,
+                    'service_type'        => $jo['service_type'] ?? $jo['job_type'] ?? '',
+                    'service_description' => $jo['service_description'] ?? $jo['notes'] ?? '',
+                    'mechanic_name'       => $jo['mechanic_name'] ?? $jo['assigned_mechanic'] ?? null,
+                    'vehicle_plate'       => $jo['vehicle_plate'] ?? $jo['plate_number'] ?? null,
+                    'vehicle_type'        => $jo['vehicle_type'] ?? null,
+                    'contact_number'      => $jo['contact_number'] ?? $jo['customer_contact'] ?? null,
+                ],
+            ];
+        }
+    } catch (Exception $e) {
+        error_log("Receipt JO fetch error: " . $e->getMessage());
+    }
+
+} elseif ($type === 'merchandise') {
     require_once __DIR__ . '/db_connect.php';
 
     // ── Ensure stations table has address & vat_tin columns ──────────────────
@@ -207,13 +397,41 @@ if ($type === 'merchandise') {
 
 if (!$sale) {
     http_response_code(404);
+    
+    // Debug info (only show in development - remove in production)
+    $debug_info = '';
+    if (isset($pdo)) {
+        try {
+            // Check if record exists in job_orders
+            $debug_stmt = $pdo->prepare("SELECT id, job_order_id, job_order_number, customer_name, status FROM job_orders WHERE id = ? OR job_order_id = ? OR job_order_number = ? LIMIT 1");
+            $debug_stmt->execute([$id, $id, $id]);
+            $debug_jo = $debug_stmt->fetch(PDO::FETCH_ASSOC);
+            
+            // Check if record exists in merchandise_transactions
+            $debug_stmt2 = $pdo->prepare("SELECT id, transaction_id, customer_name, transaction_type, validation_status FROM merchandise_transactions WHERE id = ? OR transaction_id = ? LIMIT 1");
+            $debug_stmt2->execute([$id, $id]);
+            $debug_mt = $debug_stmt2->fetch(PDO::FETCH_ASSOC);
+            
+            if ($debug_jo) {
+                $debug_info = '<p style="font-size:12px;color:#666;margin-top:10px;">Debug: Found in job_orders table (ID: '.$debug_jo['id'].', Status: '.$debug_jo['status'].')</p>';
+            } elseif ($debug_mt) {
+                $debug_info = '<p style="font-size:12px;color:#666;margin-top:10px;">Debug: Found in merchandise_transactions table (ID: '.$debug_mt['id'].', Type: '.$debug_mt['transaction_type'].', Status: '.$debug_mt['validation_status'].')</p>';
+            } else {
+                $debug_info = '<p style="font-size:12px;color:#666;margin-top:10px;">Debug: Transaction not found in database (searched ID: '.htmlspecialchars($id).', Type: '.htmlspecialchars($type).')</p>';
+            }
+        } catch (Exception $e) {
+            $debug_info = '<p style="font-size:12px;color:#999;margin-top:10px;">Debug error: '.$e->getMessage().'</p>';
+        }
+    }
+    
     ?><!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><title>Receipt Not Found</title>
 <style>body{font-family:Arial,sans-serif;text-align:center;padding:60px;color:#555}
-h2{color:#c0392b}a{color:#002F6C}</style></head><body>
+h2{color:#c0392b}a{color:#002F6C}.debug{font-size:11px;color:#999;margin-top:15px;padding:10px;background:#f5f5f5;border-radius:5px}</style></head><body>
 <h2>Receipt Not Found</h2>
 <p>Transaction <strong><?php echo htmlspecialchars($id); ?></strong> could not be located.</p>
 <p><a href="javascript:window.close()">Close this window</a></p>
+<?php echo $debug_info; ?>
 </body></html><?php
     exit;
 }

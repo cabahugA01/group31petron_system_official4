@@ -9,7 +9,7 @@ $master_menu = [
     ['id'=>'manager_dashboard','label'=>'Dashboard','ico'=>'fas fa-gauge-high','href'=>'manager_dashboard.php','permissions'=>['approve_transactions','manage_job_orders'],'station_specific'=>true],
     
     // Transactions & POS - Managers and Staff only (Admin/Owner excluded)
-    // Staff → staff_transactions_hub.php | Manager → transactions.php (validation page)
+    // Staff → staff_transactions_hub.php | Manager → pending_transactions.php (NEW validation page)
     ['id'=>'transactions','label'=>'Transactions','ico'=>'fas fa-exchange-alt','href'=>'staff_transactions_hub.php?section=merchandise','permissions'=>['create_transactions', 'view_transactions', 'approve_transactions'],'station_specific'=>true],
 
     // Job Orders - Managers handle operations, Staff create
@@ -184,48 +184,55 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 'permissions' => ['manage_staff_oversight', 'view_all_reports', 'view_dashboard'],
                 'station_specific' => true,
             ],
-            // 4. Transactions Oversight (read-only: Fuel, Merchandise, Job Orders) — tabs handled inside the page
+            // 4. Transactions — Oversight Dashboard & Variance Reports
             [
-                'id' => 'admin_transactions_oversight',
-                'label' => 'Transactions Oversight',
-                'ico' => 'fas fa-eye',
+                'id' => 'admin_transactions',
+                'label' => 'Transactions',
+                'ico' => 'fas fa-receipt',
                 'href' => 'admin_transactions_oversight.php',
                 'permissions' => ['view_all_reports', 'view_dashboard'],
                 'station_specific' => true,
                 'sub_items' => [
-                    ['id' => 'ato_overview',  'label' => 'Overview & Actions',    'href' => 'admin_transactions_oversight.php',               'permissions' => ['view_all_reports']],
-                    ['id' => 'ato_merch',     'label' => 'Merchandise / Job Orders','href' => 'admin_transactions_oversight.php?tab=transactions','permissions' => ['view_all_reports']],
-                    ['id' => 'ato_fuel',      'label' => 'Fuel Transactions',     'href' => 'admin_transactions_oversight.php?tab=fuel',       'permissions' => ['view_all_reports']],
+                    ['id' => 'ato_oversight_dashboard', 'label' => 'Oversight Dashboard', 'href' => 'admin_transactions_oversight.php', 'ico' => 'fas fa-eye', 'permissions' => ['view_all_reports'], 'desc' => 'System‑wide monitoring of validated transactions and receivables.'],
+                    ['id' => 'ato_variance_reports', 'label' => 'Variance Reports', 'href' => 'admin_variance_reports.php', 'ico' => 'fas fa-chart-line', 'permissions' => ['view_all_reports'], 'desc' => 'System‑wide anomalies flagged for compliance review.'],
                 ],
             ],
-            // 5. Product & Pricing Management
+            // 5. Fuel Management — Admin Oversight Module
             [
-                'id' => 'product_pricing',
-                'label' => 'Product & Pricing Management',
-                'ico' => 'fas fa-tags',
-                'href' => 'admin_set_prices.php',
-                'permissions' => ['manage_system_settings', 'view_all_reports', 'view_dashboard'],
-                'station_specific' => false,
+                'id' => 'admin_fuel_management',
+                'label' => 'Fuel Management',
+                'ico' => 'fas fa-gas-pump',
+                'href' => 'admin_fuel_transactions_oversight.php',
+                'permissions' => ['view_all_reports', 'view_dashboard'],
+                'station_specific' => true,
+                'sub_items' => [
+                    ['id' => 'admin_fuel_transactions_oversight', 'label' => 'Fuel Transactions Oversight', 'href' => 'admin_fuel_transactions_oversight.php', 'permissions' => ['view_all_reports'], 'desc' => 'Monitor validated pump readings for compliance.'],
+                    ['id' => 'admin_fuel_deliveries_oversight', 'label' => 'Fuel Deliveries Oversight', 'href' => 'admin_fuel_deliveries_oversight.php', 'permissions' => ['view_all_reports'], 'desc' => 'Oversee validated supplier deliveries and stock updates.'],
+                    ['id' => 'admin_fuel_adjustments_oversight', 'label' => 'Adjustments Oversight', 'href' => 'admin_fuel_adjustments_oversight.php', 'permissions' => ['view_all_reports'], 'desc' => 'Track manager adjustments for audit and transparency.'],
+                    ['id' => 'admin_fuel_reconciliation_oversight', 'label' => 'Reconciliation Oversight', 'href' => 'admin_fuel_reconciliation_oversight.php', 'permissions' => ['view_all_reports'], 'desc' => 'System-wide reconciliation logs and variance reports for compliance oversight.'],
+                    ['id' => 'admin_pump_master_oversight', 'label' => 'Pump Master Oversight', 'href' => 'admin_pump_master_oversight.php', 'permissions' => ['view_all_reports'], 'desc' => 'View calibration records and audit trail logs.'],
+                ],
             ],
-            // 6. Purchase Orders — Admin finalizes Manager-approved POs
+            // 6. Inventory Management — Admin Oversight Module
             [
-                'id' => 'purchase_orders_admin',
-                'label' => 'Purchase Orders',
-                'ico' => 'fas fa-file-invoice-dollar',
-                'href' => 'admin_purchase_orders.php',
+                'id' => 'admin_inventory',
+                'label' => 'Inventory',
+                'ico' => 'fas fa-boxes',
+                'href' => 'admin_inventory_merchandise.php',
                 'permissions' => ['view_all_reports', 'view_operational_reports', 'view_dashboard'],
                 'station_specific' => true,
+                'sub_items' => [
+                    ['id' => 'admin_inventory_merchandise', 'label' => 'Merchandise Inventory', 'href' => 'admin_inventory_merchandise.php', 'ico' => 'fas fa-box', 'permissions' => ['view_all_reports'], 'desc' => 'Monitor merchandise stock, pricing, and stock alerts.'],
+                    ['id' => 'admin_inventory_fuel', 'label' => 'Fuel Inventory', 'href' => 'admin_inventory_fuel.php', 'ico' => 'fas fa-gas-pump', 'permissions' => ['view_all_reports'], 'desc' => 'Monitor fuel levels and submit discrepancy corrections.'],
+                    ['id' => 'admin_purchase_orders', 'label' => 'Purchase Orders Oversight', 'href' => 'admin_purchase_orders.php', 'ico' => 'fas fa-file-invoice-dollar', 'permissions' => ['view_all_reports', 'view_operational_reports'], 'desc' => 'Review, validate, approve/reject POs.'],
+                    ['id' => 'admin_stock_requests_monitor', 'label' => 'Stock Request Monitoring', 'href' => 'admin_stock_requests_monitor.php', 'ico' => 'fas fa-eye', 'permissions' => ['view_all_reports'], 'desc' => 'Monitor staff stock replenishment requests.'],
+                    ['id' => 'admin_stock_in_oversight', 'label' => 'Stock-In Oversight', 'href' => 'admin_stock_in_oversight.php', 'ico' => 'fas fa-clipboard-check', 'permissions' => ['view_all_reports'], 'desc' => 'Cross-check actual stock-in deliveries against POs.'],
+                    ['id' => 'admin_inventory_history', 'label' => 'Inventory History', 'href' => 'admin_inventory_history.php', 'ico' => 'fas fa-history', 'permissions' => ['view_all_reports'], 'desc' => 'Audit logs of pipeline changes and inventory movements.'],
+                    ['id' => 'admin_product_pricing', 'label' => 'Product & Pricing Overview', 'href' => 'admin_set_prices.php', 'ico' => 'fas fa-tags', 'permissions' => ['manage_system_settings', 'view_all_reports'], 'desc' => 'Consolidated product list, current prices, price change validation, inventory snapshot.'],
+                    ['id' => 'admin_deliveries_oversight', 'label' => 'Deliveries Oversight', 'href' => 'admin_deliveries_oversight.php', 'ico' => 'fas fa-truck', 'permissions' => ['view_all_reports', 'view_operational_reports'], 'desc' => 'Monitor supplier deliveries (Fuel + Merchandise), validate or flag anomalies.'],
+                ],
             ],
-            // 7. Deliveries Oversight (single page view)
-            [
-                'id' => 'deliveries_oversight',
-                'label' => 'Deliveries Oversight',
-                'ico' => 'fas fa-truck',
-                'href' => 'admin_deliveries_oversight.php',
-                'permissions' => ['view_all_reports', 'view_operational_reports', 'view_dashboard'],
-                'station_specific' => true,
-            ],
-            // 8. Calendar
+            // 7. Calendar
             [
                 'id' => 'admin_calendar',
                 'label' => 'Calendar',
@@ -234,7 +241,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 'permissions' => ['view_all_reports', 'view_dashboard'],
                 'station_specific' => true,
             ],
-            // 9. Reports
+            // 8. Reports
             [
                 'id' => 'reports_admin',
                 'label' => 'Reports',
@@ -252,7 +259,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                     ['id' => 'rpt_receivable',  'label' => 'Accounts Receivable', 'href' => 'admin_reports.php?tab=receivable',  'permissions' => ['view_all_reports']],
                 ],
             ],
-            // 10. Audit Trail — standalone direct link for quick access
+            // 9. Audit Trail — standalone direct link for quick access
             [
                 'id'               => 'admin_audit_trail',
                 'label'            => 'Audit Trail',
@@ -329,8 +336,11 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 $filtered_item['href'] = 'staff_dashboard.php';
             }
 
-            // Staff Transactions: master menu already has correct sub_items — no override needed
-            // Staff Fuel Management: master menu already has correct sub_items — no override needed
+            // Staff Transactions: Link directly to the hub page with no sub-items in the sidebar
+            if ($user_role === 'staff' && ($item['id'] ?? '') === 'transactions') {
+                $filtered_item['href']      = 'staff_transactions_hub.php?section=merchandise';
+                $filtered_item['label']     = 'Transactions';
+            }
 
             // Job Orders sidebar item removed for staff — encode & tracker live inside Transactions
             if ($user_role === 'staff' && ($item['id'] ?? '') === 'job_orders') {
@@ -346,12 +356,12 @@ function filter_menu_by_permissions($menu_items, $user_role) {
 
 
             if ($user_role === 'manager' && ($item['id'] ?? '') === 'transactions') {
-                $filtered_item['href']  = 'transactions.php';
+                $filtered_item['href']  = 'pending_transactions.php';
                 $filtered_item['label'] = 'Transactions';
                 $filtered_item['sub_items'] = [
-                    ['id'=>'mgr_txn_pending',    'label'=>'Pending Transactions',    'href'=>'transactions.php',                                  'permissions'=>['view_transactions','approve_transactions']],
-                    ['id'=>'mgr_txn_validated',  'label'=>'Validated Transactions',  'href'=>'transactions.php?tab=validated',                    'permissions'=>['view_transactions','approve_transactions']],
-                    ['id'=>'mgr_txn_variance',   'label'=>'Variance Reports',        'href'=>'transactions_variance.php',                         'permissions'=>['view_transactions','approve_transactions']],
+                    ['id'=>'pending_transactions_manager',  'label'=>'Pending Transactions',   'href'=>'pending_transactions.php',           'permissions'=>['view_transactions','approve_transactions'], 'desc'=>'Review staff-encoded records awaiting validation.'],
+                    ['id'=>'validated_transactions_manager','label'=>'Validated Transactions', 'href'=>'manager_validated_transactions.php', 'permissions'=>['view_transactions','approve_transactions'], 'desc'=>'Approved transactions stored with updated balances.'],
+                    ['id'=>'mgr_txn_variance',              'label'=>'Variance Reports',       'href'=>'transactions_variance.php',          'permissions'=>['view_transactions','approve_transactions'], 'desc'=>'Check anomalies flagged by system.'],
                 ];
             }
 
@@ -375,13 +385,13 @@ function filter_menu_by_permissions($menu_items, $user_role) {
             }
 
             if ($user_role === 'manager' && ($item['id'] ?? '') === 'fuel') {
-                $filtered_item['href'] = 'manager_fuel_management_complete.php';
+                $filtered_item['href'] = 'manager_fuel_transaction_validation.php';
                 $filtered_item['sub_items'] = [
-                    ['id'=>'fuel_deliveries_validation', 'label'=>'Fuel Deliveries Validation',  'href'=>'manager_fuel_management_complete.php?tab=deliveries',    'permissions'=>['manage_fuel']],
-                    ['id'=>'fuel_transactions_oversight','label'=>'Fuel Transactions Oversight', 'href'=>'manager_fuel_management_complete.php?tab=transactions',   'permissions'=>['manage_fuel']],
-                    ['id'=>'fuel_reconciliation',        'label'=>'Reconciliation',              'href'=>'manager_fuel_management_complete.php?tab=reconciliation', 'permissions'=>['manage_fuel']],
-                    ['id'=>'fuel_adjustments',           'label'=>'Adjustment',                  'href'=>'manager_fuel_management_complete.php?tab=adjustments',   'permissions'=>['manage_fuel']],
-                    ['id'=>'fuel_pump_master',           'label'=>'Pump Master',                 'href'=>'manager_fuel_pump_master.php',                           'permissions'=>['manage_fuel']],
+                    ['id'=>'fuel_transactions_validation', 'label'=>'Fuel Transaction Validation',  'href'=>'manager_fuel_transaction_validation.php',         'permissions'=>['manage_fuel'], 'desc'=>'Review and validate staff‑encoded pump readings.'],
+                    ['id'=>'fuel_deliveries_validation',   'label'=>'Fuel Deliveries Validation',   'href'=>'manager_fuel_deliveries_validation.php',          'permissions'=>['manage_fuel'], 'desc'=>'Approve or return supplier delivery receipts.'],
+                    ['id'=>'fuel_adjustments',              'label'=>'Adjustments',                  'href'=>'manager_fuel_adjustments.php',                    'permissions'=>['manage_fuel'], 'desc'=>'Apply corrections for tank levels, stock, or price changes.'],
+                    ['id'=>'fuel_pump_master',              'label'=>'Pump Master',                  'href'=>'manager_fuel_pump_master.php',                    'permissions'=>['manage_fuel'], 'desc'=>'Manage calibration values for accurate pump readings.'],
+                    ['id'=>'fuel_reconciliation',           'label'=>'Fuel Reconciliation',          'href'=>'manager_fuel_reconciliation.php',                 'permissions'=>['manage_fuel'], 'desc'=>'Compare pump sales with tank levels and resolve variances.'],
                 ];
                 // Add directly — skip the generic sub-item filter below
                 $filtered_menu[] = $filtered_item;

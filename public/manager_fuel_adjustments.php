@@ -668,7 +668,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 /* Anti-scroll / Compress Tables */
 .data-table {
     width: 100% !important;
-    table-layout: auto !important;
+    table-layout:fixed; word-wrap:break-word; !important;
 }
 .data-table th, .data-table td {
     white-space: normal !important;
@@ -1052,7 +1052,7 @@ function adjustColor($hex,$pct) {
 /* Anti-scroll / Compress Tables */
 .data-table {
     width: 100% !important;
-    table-layout: auto !important;
+    table-layout:fixed; word-wrap:break-word; !important;
 }
 .data-table th, .data-table td {
     white-space: normal !important;
@@ -1102,8 +1102,8 @@ function adjustColor($hex,$pct) {
 
         <div class="info-box" style="margin-bottom:20px;">
         <h4 style="margin:0 0 14px;color:<?php echo $colors['primary']; ?>;"><i class="fas fa-database"></i> Tank Level Adjustments</h4>
-        <div style="overflow-x:auto;">
-        <table class="data-table" style="min-width: 900px; margin: 0;">
+        <div style="overflow-x:hidden;">
+        <table class="data-table" style=" margin: 0;">
             <thead>
                 <tr>
                     <th style="width:15%">Fuel Type</th>
@@ -1152,8 +1152,8 @@ function adjustColor($hex,$pct) {
 
     <div class="info-box">
         <h4 style="margin:0 0 14px;color:<?php echo $colors['primary']; ?>;"><i class="fas fa-tag"></i> Price Per Liter Update</h4>
-        <div style="overflow-x:auto;">
-        <table class="data-table" style="min-width: 800px; margin: 0;">
+        <div style="overflow-x:hidden;">
+        <table class="data-table" style=" margin: 0;">
             <thead>
                 <tr>
                     <th style="width:20%">Fuel Type</th>
@@ -1195,7 +1195,7 @@ function adjustColor($hex,$pct) {
     <?php if (empty($recent_adjustments)): ?>
         <div class="empty-state"><i class="fas fa-history"></i><p>No adjustments recorded yet.</p></div>
     <?php else: ?>
-    <div style="overflow-x:auto;">
+    <div style="overflow-x:hidden;">
     <table class="data-table">
         <thead><tr>
             <th>Date</th>
@@ -1324,12 +1324,12 @@ function adjustColor($hex,$pct) {
             <input type="hidden" name="action" value="update_price">
             <input type="hidden" name="fuel_type_id" id="calEditFuelTypeId">
             <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
-                <div class="form-group" style="margin:0;flex:1;min-width:120px;">
+                <div class="form-group" style="margin:0;flex:1;">
                     <label class="form-label" style="font-size:.82rem;">New Price (?/L)</label>
                     <input type="number" name="new_price" id="calEditNewPrice"
                         class="form-control" step="0.01" min="0.01" placeholder="e.g. 58.50">
                 </div>
-                <div class="form-group" style="margin:0;flex:2;min-width:160px;">
+                <div class="form-group" style="margin:0;flex:2;">
                     <label class="form-label" style="font-size:.82rem;">Reason <span class="required">*</span></label>
                     <input type="text" name="reason" class="form-control"
                         placeholder="e.g. Petron price update" minlength="10">

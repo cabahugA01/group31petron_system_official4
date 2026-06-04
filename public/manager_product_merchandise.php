@@ -159,6 +159,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         header('Location: manager_product_merchandise.php'); exit;
     }
+
+    // ── Validate product ────────────────────────────────────────────────
+    if ($action === 'validate_product') {
+        $id = (int)($_POST['product_id'] ?? 0);
+        if ($id) {
+            try {
+                // Fetch product name
+                $stmt = $pdo->prepare("SELECT product_name FROM inventory_products WHERE id=?");
+                $stmt->execute([$id]);
+                $pname = $stmt->fetchColumn();
+
+                $pdo->prepare("UPDATE inventory_products SET status='active' WHERE id=?")->execute([$id]);
+                log_activity($pdo, $me['id'], 'Product Validated', "Pending merchandise product '$pname' (ID:$id) validated by {$me['name']}");
+                $_SESSION['success'] = "Product '$pname' has been validated and is now active.";
+            } catch (Exception $e) {
+                $_SESSION['error'] = 'Error validating product: ' . $e->getMessage();
+            }
+        }
+        header('Location: manager_product_merchandise.php'); exit;
+    }
 }
 
 // ── Load products with batch summary ──────────────────────────────────────
@@ -362,8 +382,9 @@ include __DIR__ . '/../partials/header.php';
                     $stock       = (int)($p['stock'] ?? 0);
                     $status      = $p['status'] ?? 'active';
                     $isActive    = ($status === 'active');
+                    $isPending   = ($status === 'pending' || $status === 'pending_validation');
                     $stockColor  = $stock <= 0 ? '#dc3545' : ($stock <= (int)($p['min_stock'] ?? 10) ? '#ff9500' : '#28a745');
-                    $statusColor = $isActive ? '#28a745' : '#dc3545';
+                    $statusColor = $isActive ? '#28a745' : ($isPending ? '#fd7e14' : '#dc3545');
                     $pid_batches = $product_batches[(int)$p['id']] ?? [];
                 ?>
                 <tr class="product-row"
@@ -419,9 +440,13 @@ include __DIR__ . '/../partials/header.php';
 
                     <!-- 9. Status -->
                     <td>
-                        <span style="color:<?php echo $statusColor; ?>;font-weight:700;">
-                            <?php echo $isActive ? 'Active' : 'Inactive'; ?>
-                        </span>
+                        <?php if ($isPending): ?>
+                            <span style="color:#fd7e14;font-weight:700;">Pending Validation</span>
+                        <?php else: ?>
+                            <span style="color:<?php echo $statusColor; ?>;font-weight:700;">
+                                <?php echo $isActive ? 'Active' : 'Inactive'; ?>
+                            </span>
+                        <?php endif; ?>
                     </td>
 
                     <!-- 10. Actions -->
@@ -433,7 +458,11 @@ include __DIR__ . '/../partials/header.php';
                             <button class="btn btn-edit" onclick="editProduct(<?php echo (int)$p['id']; ?>)">
                                 <i class="fas fa-edit"></i> Edit
                             </button>
-                            <?php if ($isActive): ?>
+                            <?php if ($isPending): ?>
+                            <button class="btn btn-success" onclick="validateProduct(<?php echo (int)$p['id']; ?>, '<?php echo htmlspecialchars(addslashes($p['product_name'])); ?>')" style="background:#28a745;color:#fff;">
+                                <i class="fas fa-check-double"></i> Validate
+                            </button>
+                            <?php elseif ($isActive): ?>
                             <button class="btn btn-danger" onclick="toggleStatus(<?php echo (int)$p['id']; ?>, 'inactive', '<?php echo htmlspecialchars(addslashes($p['product_name'])); ?>')">
                                 <i class="fas fa-times"></i> Deactivate
                             </button>
@@ -682,6 +711,27 @@ function toggleStatus(id, newStatus, name) {
     document.getElementById('tProductId').value = id;
     document.getElementById('tNewStatus').value = newStatus;
     document.getElementById('toggleForm').submit();
+}
+
+function validateProduct(id, name) {
+    if (!confirm(`Are you sure you want to validate and approve the product "${name}"?`)) return;
+    
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.style.display = 'none';
+    
+    const actInput = document.createElement('input');
+    actInput.name = 'action';
+    actInput.value = 'validate_product';
+    form.appendChild(actInput);
+    
+    const idInput = document.createElement('input');
+    idInput.name = 'product_id';
+    idInput.value = id;
+    form.appendChild(idInput);
+    
+    document.body.appendChild(form);
+    form.submit();
 }
 
 // --- Populate Edit Modal ---

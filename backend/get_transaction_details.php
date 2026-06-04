@@ -1,54 +1,203 @@
 <?php
+/**
+ * GET TRANSACTION DETAILS
+ * 
+ * Fetches complete transaction details for View modal
+ * Supports both merchandise_transactions and job_orders
+ * 
+ * Parameters:
+ * - $_GET['type'] - 'merchandise_transactions' or 'job_orders'
+ * - $_GET['id'] - Transaction ID
+ * 
+ * Returns: JSON
+ */
+
+header('Content-Type: application/json');
 require_once __DIR__ . '/../public/db_connect.php';
 require_once __DIR__ . '/lib.php';
 
-header('Content-Type: application/json');
-
-if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
-    echo json_encode(['error' => 'Invalid transaction ID']);
+// Verify login
+session_start();
+if (!isset($_SESSION['user_id'])) {
+    echo json_encode(['success' => false, 'error' => 'Unauthorized']);
     exit;
 }
 
-$transaction_id = (int)$_GET['id'];
+// Get parameters
+$type = trim($_GET['type'] ?? '');
+$id = (int)($_GET['id'] ?? 0);
+
+if ($id <= 0) {
+    echo json_encode(['success' => false, 'error' => 'Invalid ID']);
+    exit;
+}
 
 try {
-    // Get transaction details
-    $stmt = $pdo->prepare("SELECT s.*, u.name as staff_name FROM sales s LEFT JOIN users u ON s.user_id = u.id WHERE s.id = ?");
-    $stmt->execute([$transaction_id]);
-    $transaction = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if (!$transaction) {
-        echo json_encode(['error' => 'Transaction not found']);
-        exit;
+    if ($type === 'merchandise_transactions') {
+        // Fetch merchandise transaction details
+        $stmt = $pdo->prepare("
+            SELECT 
+                mt.id,
+                mt.transaction_id,
+                mt.customer_name,
+                mt.item_sku,
+                mt.quantity,
+                mt.unit_price,
+                mt.total_amount,
+                mt.payment_method,
+                mt.transaction_date,
+                mt.created_at,
+                mt.validation_status,
+                mt.validated_at,
+                mt.rejection_reason,
+                mt.adjustment_reason,
+                mt.remarks,
+                mt.shift_period,
+                mt.shift_name,
+                mt.amount_tendered,
+                mt.change_amount,
+                mt.card_reference,
+                mt.card_type,
+                mt.ewallet_reference,
+                mt.ewallet_provider,
+                mt.subtotal_amount,
+                mt.vat_amount,
+                u_staff.name AS staff_name,
+                u_validated.name AS validated_by_name
+            FROM merchandise_transactions mt
+            LEFT JOIN users u_staff ON u_staff.id = mt.staff_id
+            LEFT JOIN users u_validated ON u_validated.id = mt.validated_by
+            WHERE mt.id = ?
+        ");
+        $stmt->execute([$id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$row) {
+            echo json_encode(['success' => false, 'error' => 'Transaction not found']);
+            exit;
+        }
+        
+        // Format response for merchandise transaction
+        echo json_encode([
+            'success' => true,
+            'type' => 'merchandise',
+            'transaction_id' => $row['transaction_id'],
+            'customer_name' => $row['customer_name'] ?: 'Walk-in',
+            'item_sku' => $row['item_sku'],
+            'quantity' => $row['quantity'],
+            'unit_price' => number_format((float)$row['unit_price'], 2),
+            'total_amount' => number_format((float)$row['total_amount'], 2),
+            'payment_method' => $row['payment_method'],
+            'transaction_date' => date('M d, Y h:i A', strtotime($row['transaction_date'] > '2000-01-01' ? $row['transaction_date'] : $row['created_at'])),
+            'validation_status' => $row['validation_status'],
+            'validated_at' => $row['validated_at'] ? date('M d, Y h:i A', strtotime($row['validated_at'])) : 'N/A',
+            'rejection_reason' => $row['rejection_reason'] ?: 'N/A',
+            'adjustment_reason' => $row['adjustment_reason'] ?: 'N/A',
+            'remarks' => $row['remarks'] ?: 'N/A',
+            'shift' => $row['shift_name'] ?: $row['shift_period'] ?: 'N/A',
+            'amount_tendered' => $row['amount_tendered'] ? number_format((float)$row['amount_tendered'], 2) : 'N/A',
+            'change_amount' => $row['change_amount'] ? number_format((float)$row['change_amount'], 2) : 'N/A',
+            'card_reference' => $row['card_reference'] ?: 'N/A',
+            'card_type' => $row['card_type'] ?: 'N/A',
+            'ewallet_reference' => $row['ewallet_reference'] ?: 'N/A',
+            'ewallet_provider' => $row['ewallet_provider'] ?: 'N/A',
+            'subtotal_amount' => $row['subtotal_amount'] ? number_format((float)$row['subtotal_amount'], 2) : 'N/A',
+            'vat_amount' => $row['vat_amount'] ? number_format((float)$row['vat_amount'], 2) : 'N/A',
+            'staff_name' => $row['staff_name'] ?: 'Unknown',
+            'validated_by' => $row['validated_by_name'] ?: 'N/A'
+        ]);
+        
+    } elseif ($type === 'job_orders') {
+        // Fetch job order details
+        $stmt = $pdo->prepare("
+            SELECT 
+                jo.id,
+                jo.job_order_number,
+                jo.customer_name,
+                jo.vehicle_plate,
+                jo.vehicle_type,
+                jo.service_type,
+                jo.service_description,
+                jo.required_parts,
+                jo.additional_notes,
+                jo.estimated_cost,
+                jo.total_cost,
+                jo.amount_paid,
+                jo.sukli,
+                jo.payment_method,
+                jo.payment_status,
+                jo.validation_status,
+                jo.created_at,
+                jo.validated_at,
+                jo.adjustment_reason,
+                jo.status,
+                jo.notes,
+                jo.service_price_details,
+                u_staff.name AS staff_name,
+                u_validated.name AS validated_by_name,
+                mech.name AS mechanic_name
+            FROM job_orders jo
+            LEFT JOIN users u_staff ON u_staff.id = COALESCE(jo.created_by, jo.user_id)
+            LEFT JOIN users u_validated ON u_validated.id = jo.validated_by
+            LEFT JOIN users mech ON mech.id = jo.assigned_mechanic_id
+            WHERE jo.id = ?
+        ");
+        $stmt->execute([$id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$row) {
+            echo json_encode(['success' => false, 'error' => 'Job order not found']);
+            exit;
+        }
+        
+        // Parse required parts JSON
+        $required_parts = 'N/A';
+        if ($row['required_parts']) {
+            $parts = json_decode($row['required_parts'], true);
+            if (is_array($parts) && count($parts) > 0) {
+                $parts_list = [];
+                foreach ($parts as $part) {
+                    $part_name = $part['name'] ?? 'Unknown';
+                    $part_qty = $part['qty'] ?? 1;
+                    $parts_list[] = "{$part_name} (Qty: {$part_qty})";
+                }
+                $required_parts = implode(', ', $parts_list);
+            }
+        }
+        
+        // Format response for job order
+        echo json_encode([
+            'success' => true,
+            'type' => 'job_order',
+            'transaction_id' => $row['job_order_number'] ?: "JO-{$id}",
+            'customer_name' => $row['customer_name'] ?: 'Walk-in',
+            'vehicle_plate' => $row['vehicle_plate'] ?: 'N/A',
+            'vehicle_type' => $row['vehicle_type'] ?: 'N/A',
+            'service_type' => $row['service_type'],
+            'service_description' => $row['service_description'] ?: 'N/A',
+            'required_parts' => $required_parts,
+            'additional_notes' => $row['additional_notes'] ?: $row['notes'] ?: 'N/A',
+            'estimated_cost' => number_format((float)($row['estimated_cost'] ?: 0), 2),
+            'total_amount' => number_format((float)($row['total_cost'] ?: $row['estimated_cost'] ?: 0), 2),
+            'amount_paid' => number_format((float)($row['amount_paid'] ?: 0), 2),
+            'change_amount' => number_format((float)($row['sukli'] ?: 0), 2),
+            'payment_method' => $row['payment_method'],
+            'payment_status' => $row['payment_status'],
+            'validation_status' => $row['validation_status'],
+            'job_status' => $row['status'] ?: 'Pending',
+            'transaction_date' => date('M d, Y h:i A', strtotime($row['created_at'])),
+            'validated_at' => $row['validated_at'] ? date('M d, Y h:i A', strtotime($row['validated_at'])) : 'N/A',
+            'adjustment_reason' => $row['adjustment_reason'] ?: 'N/A',
+            'staff_name' => $row['staff_name'] ?: 'Unknown',
+            'validated_by' => $row['validated_by_name'] ?: 'N/A',
+            'mechanic_name' => $row['mechanic_name'] ?: 'Not assigned'
+        ]);
+        
+    } else {
+        echo json_encode(['success' => false, 'error' => 'Invalid transaction type']);
     }
-
-    // Get sale items with product names
-    $itemsStmt = $pdo->prepare("
-        SELECT si.*, p.name as product_name 
-        FROM sale_items si 
-        LEFT JOIN products p ON si.product_id = p.id 
-        WHERE si.sale_id = ?
-    ");
-    $itemsStmt->execute([$transaction_id]);
-    $items = $itemsStmt->fetchAll(PDO::FETCH_ASSOC);
-
-    // Get audit logs
-    $logsStmt = $pdo->prepare("SELECT * FROM activity_logs WHERE details LIKE ? ORDER BY created_at DESC");
-    $logsStmt->execute(["%#$transaction_id%"]);
-    $logs = $logsStmt->fetchAll(PDO::FETCH_ASSOC);
-
-    echo json_encode([
-        'id' => $transaction['id'],
-        'customer' => $transaction['customer'],
-        'staff_name' => $transaction['staff_name'],
-        'payment_method' => $transaction['payment_method'],
-        'status' => $transaction['status'],
-        'created_at' => $transaction['created_at'],
-        'total' => $transaction['total'],
-        'items' => $items,
-        'logs' => $logs
-    ]);
+    
 } catch (Exception $e) {
-    echo json_encode(['error' => $e->getMessage()]);
+    error_log("Transaction details error: " . $e->getMessage());
+    echo json_encode(['success' => false, 'error' => 'Database error']);
 }
-?>

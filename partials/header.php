@@ -254,8 +254,9 @@ if (!isset($pdo) || !$pdo) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Petron Management System</title>
-  <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/style.css" />
-  <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/manager_table_design.css" />
+  <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/style.css?v=2.0.2" />
+  <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/manager_table_design.css?v=2.0.2" />
+  <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/manager_customer_management.css?v=2.0.2" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
     /* Global FontAwesome Icon Visibility Fix */
@@ -294,7 +295,7 @@ if (!isset($pdo) || !$pdo) {
         --accent: #CC0000;
         --petron-green: #28A745;
     }
-    /* Sidebar Navigation */
+    html, body { max-width: 100vw; overflow-x: hidden; } /* Sidebar Navigation */
     .sidebar { 
         background-color: var(--petron-blue) !important; 
         color: #ffffff !important;
@@ -324,7 +325,7 @@ if (!isset($pdo) || !$pdo) {
             top: 70px;
             left: 0;
             bottom: 0;
-            width: 280px;
+            width: 250px;
             z-index: 1001;
             overflow: hidden;
             background: var(--sidebar-bg);
@@ -487,27 +488,37 @@ if (!isset($pdo) || !$pdo) {
         }
 
         .sidebar.collapsed .nav-item span:not(.ico) {
-            display: none; /* Hide text labels */
+            display: none !important; /* Hide text labels */
         }
 
         .sidebar.collapsed .nav-item {
-            justify-content: center; /* Center icons */
-            padding: 12px 8px;
+            justify-content: center !important; /* Center icons */
+            padding: 12px 8px !important;
         }
 
         .sidebar.collapsed .nav-item .ico {
-            margin-right: 0; /* Remove icon margin */
+            margin-right: 0 !important; /* Remove icon margin */
         }
 
-        .sidebar.collapsed .nav-item .badge {
-            display: none; /* Hide badges in collapsed state */
+        .sidebar.collapsed .nav-item .badge,
+        .sidebar.collapsed .nav-item span[style*="background:#E30613"] {
+            display: none !important; /* Hide badges in collapsed state */
         }
+
+        .sidebar.collapsed .nav-item i.fa-chevron-down {
+            display: none !important; /* Hide chevron dropdown icon in collapsed state */
+        }
+
+        .sidebar.collapsed [id^="sub-"] {
+            display: none !important; /* Hide submenu items in collapsed state */
+        }
+
 
         /* Main content adjustments */
         .main {
             position: fixed;
             top: 70px;
-            left: 280px;
+            left: 250px;
             right: 0;
             bottom: 0;
             overflow-y: auto;
@@ -530,7 +541,7 @@ if (!isset($pdo) || !$pdo) {
         
         /* Sidebar state classes for main content alignment */
         body.sidebar-expanded .main {
-            left: 280px !important;
+            left: 250px !important;
         }
         
         body.sidebar-collapsed .main {
@@ -658,8 +669,8 @@ if (!isset($pdo) || !$pdo) {
         position: absolute; 
         top: -8px; 
         right: -8px; 
-        background: #002f70; 
-        color: white; 
+        background: #dc3545 !important; 
+        color: white !important; 
         border-radius: 50%; 
         width: 20px; 
         height: 20px; 
@@ -2229,7 +2240,7 @@ require_once __DIR__ . '/rbac_menu.php';
                 sidebarToggleIcon.className = 'fas fa-bars';
                 
                 if (mainContent) {
-                    mainContent.style.left = '280px';
+                    mainContent.style.left = '250px';
                     mainContent.style.marginLeft = '';
                     mainContent.classList.remove('sidebar-collapsed');
                     document.body.classList.add('sidebar-expanded');
@@ -2249,7 +2260,7 @@ require_once __DIR__ . '/rbac_menu.php';
                     localStorage.setItem('sidebarState', 'expanded');
                     
                     if (mainContent) {
-                        mainContent.style.left = '280px';
+                        mainContent.style.left = '250px';
                         mainContent.style.marginLeft = '';
                         mainContent.classList.remove('sidebar-collapsed');
                         document.body.classList.add('sidebar-expanded');
@@ -2792,6 +2803,26 @@ require_once __DIR__ . '/rbac_menu.php';
     function toggleSidebarSub(e, subId) {
         e.preventDefault();
         e.stopPropagation();
+        
+        // If sidebar is collapsed, expand it first
+        const mainSidebar = document.getElementById('mainSidebar');
+        const sidebarToggleIcon = document.getElementById('sidebarToggleIcon');
+        const mainContent = document.querySelector('.main');
+        
+        if (mainSidebar && mainSidebar.classList.contains('collapsed')) {
+            mainSidebar.classList.remove('collapsed');
+            if (sidebarToggleIcon) sidebarToggleIcon.className = 'fas fa-bars';
+            localStorage.setItem('sidebarState', 'expanded');
+            
+            if (mainContent) {
+                mainContent.style.left = '250px';
+                mainContent.style.marginLeft = '';
+                mainContent.classList.remove('sidebar-collapsed');
+                document.body.classList.add('sidebar-expanded');
+                document.body.classList.remove('sidebar-collapsed');
+            }
+        }
+
         const sub = document.getElementById(subId);
         if (!sub) return;
 

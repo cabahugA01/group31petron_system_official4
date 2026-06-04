@@ -31,6 +31,29 @@ $msg_type = 'success';
 if (isset($_SESSION['success'])) { $msg = $_SESSION['success']; $msg_type = 'success'; unset($_SESSION['success']); }
 if (isset($_SESSION['error']))   { $msg = $_SESSION['error'];   $msg_type = 'error';   unset($_SESSION['error']); }
 
+// ── Ensure pump_calibration_history table exists ──────────────
+try {
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS pump_calibration_history (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            station_id INT NOT NULL,
+            fuel_type VARCHAR(100) NOT NULL,
+            previous_calibration DECIMAL(12,3) DEFAULT 0,
+            new_calibration DECIMAL(12,3) NOT NULL,
+            updated_by INT NOT NULL,
+            updated_at DATETIME NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_station (station_id),
+            INDEX idx_fuel (fuel_type),
+            INDEX idx_date (updated_at),
+            FOREIGN KEY (station_id) REFERENCES stations(id) ON DELETE CASCADE,
+            FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+} catch (Exception $e) {
+    error_log("Error creating pump_calibration_history table: " . $e->getMessage());
+}
+
 /* -------------------------------------------------------------
    POST HANDLERS
 ------------------------------------------------------------- */
@@ -144,9 +167,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             
             try {
                 if (empty($fuel_type)) throw new Exception('Fuel type is required.');
-                if ($new_calibration < 0 || $new_calibration > 50) throw new Exception('Calibration value must be between 0 and 50 liters.');
+                if ($new_calibration < 0) throw new Exception('Calibration value must be a positive number.');
 
                 $pdo->beginTransaction();
+
+                // Get current calibration value for history
+                $current_cal_stmt = $pdo->prepare("
+                    SELECT latest_calibration 
+                    FROM fuel_inventory 
+                    WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                ");
+                $current_cal_stmt->execute([$station_id, $fuel_type]);
+                $current_cal = $current_cal_stmt->fetchColumn() ?: 0;
+                
+                $adjustment_amount = $new_calibration - $current_cal;
 
                 // 1. Update fuel_inventory (for general lookup)
                 $stmt = $pdo->prepare("
@@ -164,7 +198,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ");
                 $stmt2->execute([$new_calibration, $me['id'], $station_id, $fuel_type]);
 
-                log_activity($pdo, $me['id'], 'Update Calibration', "Updated calibration for {$fuel_type} to {$new_calibration} L.");
+                // 3. Log to pump_calibration_history for Manager and Admin oversight
+                $history_stmt = $pdo->prepare("
+                    INSERT INTO pump_calibration_history 
+                    (station_id, fuel_type, previous_calibration, new_calibration, updated_by, updated_at, created_at)
+                    VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+                ");
+                $history_stmt->execute([$station_id, $fuel_type, $current_cal, $new_calibration, $me['id']]);
+
+                // 4. CRITICAL: Insert into fuel_adjustments for Admin oversight visibility
+                $adjustment_reason = "Pump calibration updated from " . number_format($current_cal, 2) . "L to " . number_format($new_calibration, 2) . "L (adjustment: " . ($adjustment_amount >= 0 ? '+' : '') . number_format($adjustment_amount, 2) . "L)";
+                
+                $fuel_adjustments_stmt = $pdo->prepare("
+                    INSERT INTO fuel_adjustments 
+                    (station_id, adjustment_date, fuel_type, adjustment_type, liters, reason, user_id, status, created_at)
+                    VALUES (?, CURDATE(), ?, 'Calibration', ?, ?, ?, 'Completed', NOW())
+                ");
+                $fuel_adjustments_stmt->execute([
+                    $station_id, 
+                    $fuel_type, 
+                    $adjustment_amount, 
+                    $adjustment_reason, 
+                    $me['id']
+                ]);
+
+                log_activity($pdo, $me['id'], 'Update Calibration', $adjustment_reason);
                 $pdo->commit();
 
                 $_SESSION['success'] = "✔ Calibration for {$fuel_type} updated to " . number_format($new_calibration, 2) . " L successfully.";
@@ -705,7 +763,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 /* Anti-scroll / Compress Tables */
 .data-table {
     width: 100% !important;
-    table-layout: auto !important;
+    table-layout: fixed !important;
 }
 .data-table th, .data-table td {
     white-space: normal !important;
@@ -782,7 +840,15 @@ foreach ($tank_data as $td) {
 }
 
 try {
-    $stmt = $pdo->prepare("SELECT fp.*, ft.name as fuel_type_name, u.name as updated_by_name FROM fuel_pumps fp JOIN fuel_types ft ON fp.fuel_type_id=ft.id LEFT JOIN users u ON fp.calibration_updated_by=u.id WHERE fp.station_id=? ORDER BY COALESCE(fp.calibration_updated_at,fp.created_at) DESC LIMIT 10");
+    $stmt = $pdo->prepare("
+        SELECT pch.id, pch.fuel_type as fuel_type_name, 
+               pch.previous_calibration, pch.new_calibration as calibration_value, 
+               u.name as updated_by_name, pch.updated_at as calibration_updated_at
+        FROM pump_calibration_history pch
+        LEFT JOIN users u ON pch.updated_by = u.id
+        WHERE pch.station_id=? 
+        ORDER BY pch.updated_at DESC LIMIT 30
+    ");
     $stmt->execute([$station_id]);
     $calibration_logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) { error_log("calibration_logs: ".$e->getMessage()); }
@@ -993,7 +1059,7 @@ function adjustColor($hex,$pct) {
 .tank-detail-value { font-weight:600; color:#333; }
 
 /* Tables */
-.data-table { width:100%; border-collapse:collapse; font-size:.85rem; }
+.data-table { width:100%; border-collapse:collapse; table-layout:fixed; word-wrap:break-word; font-size:.85rem; }
 .data-table th, .data-table td { padding:10px 12px; text-align:left; border-bottom:1px solid #e9ecef; }
 .data-table th { background:#002F70 !important; color:#fff !important; font-weight:600; font-size:.78rem; text-transform:uppercase; letter-spacing:.5px; }
 .data-table tbody tr:hover { background:#e3f2fd !important; }
@@ -1089,7 +1155,7 @@ function adjustColor($hex,$pct) {
 /* Anti-scroll / Compress Tables */
 .data-table {
     width: 100% !important;
-    table-layout: auto !important;
+    table-layout: fixed !important;
 }
 .data-table th, .data-table td {
     white-space: normal !important;
@@ -1143,8 +1209,8 @@ function adjustColor($hex,$pct) {
         <?php if (empty($pump_master_fuel_types)): ?>
             <div class="empty-state"><i class="fas fa-cog"></i><p>No fuel types found.</p></div>
         <?php else: ?>
-        <div style="overflow-x:auto;">
-        <table class="data-table" style="min-width: 900px; margin: 0;">
+        <div style="overflow-x:hidden;">
+        <table class="data-table" style="width: 100%; table-layout: fixed; word-wrap: break-word;; margin: 0;">
             <thead><tr>
                 <th style="width:20%">Fuel Type</th>
                 <th style="width:15%">Available Stock</th>
@@ -1179,7 +1245,7 @@ function adjustColor($hex,$pct) {
                     <?php endif; ?>
                 </td>
                 <td>
-                    <input form="<?php echo $cFormId; ?>" type="number" name="new_calibration" class="form-control" step="0.01" min="0" max="50" required placeholder="e.g. 10.00" style="padding:6px 10px; height:auto; margin:0;" value="<?php echo $cal>0 ? $cal : ''; ?>">
+                    <input form="<?php echo $cFormId; ?>" type="number" name="new_calibration" class="form-control" step="0.01" min="0" required placeholder="e.g. 500.00" style="padding:6px 10px; height:auto; margin:0;" value="<?php echo $cal>0 ? $cal : ''; ?>">
                 </td>
                 <td style="font-size:.8rem;color:#555;"><?php echo date('M j, Y H:i',strtotime($f['last_updated'])); ?></td>
                 <td style="text-align:center; padding: 4px;">
@@ -1196,14 +1262,15 @@ function adjustColor($hex,$pct) {
     <!-- Calibration Log -->
     <?php if (!empty($calibration_logs)): ?>
     </div>
-    <div style="overflow-x:auto;">
+    <div style="overflow-x:hidden;">
     <table class="data-table">
-        <thead><tr><th>Pump</th><th>Fuel Type</th><th>Calibration Value</th><th>Updated By</th><th>Updated At</th></tr></thead>
+        <thead><tr><th>Log #</th><th>Fuel Type</th><th>Previous Cal.</th><th>New Calibration</th><th>Updated By</th><th>Updated At</th></tr></thead>
         <tbody>
         <?php foreach ($calibration_logs as $cl): ?>
         <tr>
-            <td>Pump #<?php echo htmlspecialchars($cl['pump_number']??$cl['id']); ?></td>
+            <td><strong>#<?php echo htmlspecialchars($cl['id']); ?></strong></td>
             <td><?php echo htmlspecialchars($cl['fuel_type_name']); ?></td>
+            <td style="color:#6c757d;"><?php echo number_format($cl['previous_calibration']??0,2); ?> L</td>
             <td><strong><?php echo number_format($cl['calibration_value']??0,2); ?> L</strong></td>
             <td><span class="audit-badge"><i class="fas fa-user-tie"></i> <?php echo htmlspecialchars($cl['updated_by_name']??'System'); ?></span></td>
             <td style="font-size:.8rem;"><?php echo $cl['calibration_updated_at'] ? date('M j, Y H:i',strtotime($cl['calibration_updated_at'])) : '-'; ?></td>
@@ -1253,9 +1320,9 @@ function adjustColor($hex,$pct) {
         <div class="form-group">
             <label class="form-label">New Calibration Value (Liters) <span class="required">*</span></label>
             <input type="number" name="new_calibration" id="calEditNewCal"
-                class="form-control" step="0.01" min="0" max="50" required
-                placeholder="0.00 - 50.00 L">
-            <div class="form-hint"><i class="fas fa-info-circle"></i> Range: 0-50 L. Auto-pulls to staff transaction forms on save.</div>
+                class="form-control" step="0.01" min="0" required
+                placeholder="Enter calibration value in liters">
+            <div class="form-hint"><i class="fas fa-info-circle"></i> Enter the actual calibration reading from dipstick or pump meter.</div>
         </div>
 
         <div class="modal-footer">

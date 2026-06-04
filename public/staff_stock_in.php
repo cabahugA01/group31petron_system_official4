@@ -31,6 +31,7 @@ foreach ([
     "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS delivery_flag ENUM('OK','Short','Damaged','Excess','Mixed') NULL",
     "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS delivery_notes TEXT NULL",
     "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS actual_qty_received INT NULL",
+    "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS batch_id VARCHAR(100) NULL",
 ] as $sql) { try { $pdo->exec($sql); } catch (Exception $e) {} }
 
 // Ensure merchandise_stock_in table exists
@@ -71,6 +72,7 @@ try {
                po.unit_price, po.total_amount, po.admin_notes, po.admin_finalized_at,
                po.delivery_validated, po.delivery_validated_at, po.delivery_flag,
                po.delivery_notes, po.actual_qty_received,
+               po.batch_id,
                ip.id AS product_id, ip.sku, ip.category, ip.unit_cost,
                COALESCE(si.stock_level, ip.stock, 0) AS current_stock,
                u_mgr.name AS manager_name, u_adm.name AS admin_name,
@@ -202,10 +204,9 @@ include __DIR__ . '/../partials/header.php';
     <h1 class="h1"><i class="fas fa-dolly"></i> Stock-In</h1>
     <div class="sub">Encode actual received items &mdash; this is the only step that updates inventory.</div>
   </div>
-  <div class="header-actions">
-    <a href="staff_stock_in.php" class="btn ghost"><i class="fas fa-sync-alt"></i> Refresh</a>
-  </div>
 </div>
+
+<?php require_once __DIR__ . '/../partials/staff_inventory_summary.php'; ?>
 
 <?php if ($flash_ok): ?>
 <div class="flash-ok"><i class="fas fa-check-circle"></i> <?= htmlspecialchars($flash_ok) ?></div>
@@ -392,6 +393,18 @@ include __DIR__ . '/../partials/header.php';
         <i class="fas fa-exclamation-triangle"></i>
         <strong>Manual Encode Required:</strong> Enter the <em>actual</em> quantity received. Capture shortages, damages, or excess accurately.
       </div>
+      <!-- Batch ID display / override -->
+      <div style="background:#e8f4fd;border-left:4px solid #002F70;border-radius:6px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+        <label style="font-size:12px;font-weight:700;color:#002F70;white-space:nowrap;margin:0;"><i class="fas fa-tag"></i> Batch ID:</label>
+        <input type="text" id="batch-<?= $po['id'] ?>" value="<?= htmlspecialchars($po['batch_id'] ?? '') ?>"
+               placeholder="Enter Batch ID (e.g. BATCH-001)"
+               style="font-family:monospace;font-size:0.9rem;padding:5px 10px;border:1px solid #bcd2ee;border-radius:5px;min-width:180px;color:#002F70;font-weight:700;">
+        <?php if (!empty($po['batch_id'])): ?>
+        <span style="font-size:11px;color:#6c757d;"><i class="fas fa-info-circle"></i> Pre-filled from PO. Edit if different from actual delivery.</span>
+        <?php else: ?>
+        <span style="font-size:11px;color:#dc3545;"><i class="fas fa-exclamation-circle"></i> No Batch ID on PO — please enter one below.</span>
+        <?php endif; ?>
+      </div>
       <div class="table-wrap" style="margin-bottom:12px;">
         <table class="si-table">
           <thead>
@@ -431,7 +444,7 @@ include __DIR__ . '/../partials/header.php';
           <i class="fas fa-check-circle"></i> Submit Stock-In
         </button>
         <span style="font-size:12px;color:var(--gray);">
-          <i class="fas fa-lock"></i> Updates inventory immediately &amp; logs audit trail.
+          <i class="fas fa-lock"></i> Updates inventory &amp; creates batch record.
         </span>
       </div>
     </div>
@@ -444,16 +457,26 @@ include __DIR__ . '/../partials/header.php';
 <div class="si-card">
   <div class="si-card-head">
     <div class="si-card-title"><i class="fas fa-history"></i> Stock-In History</div>
-    <form method="get" action="staff_stock_in.php" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-      <input type="hidden" name="tab" value="history">
-      <input type="hidden" name="type" value="<?= htmlspecialchars($type_filter) ?>">
-      <input type="date" name="date_from" value="<?= htmlspecialchars($hist_date_from) ?>"
-             style="padding:6px 10px;border:1px solid #dee2e6;border-radius:5px;font-size:12px;">
-      <span style="font-size:12px;color:var(--gray);">to</span>
-      <input type="date" name="date_to" value="<?= htmlspecialchars($hist_date_to) ?>"
-             style="padding:6px 10px;border:1px solid #dee2e6;border-radius:5px;font-size:12px;">
-      <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-filter"></i> Filter</button>
-    </form>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-left:auto;">
+      <form method="get" action="staff_stock_in.php" style="display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0;">
+        <input type="hidden" name="tab" value="history">
+        <input type="hidden" name="type" value="<?= htmlspecialchars($type_filter) ?>">
+        <input type="date" name="date_from" value="<?= htmlspecialchars($hist_date_from) ?>"
+               style="padding:6px 10px;border:1px solid #dee2e6;border-radius:5px;font-size:12px;height:36px;">
+        <span style="font-size:12px;color:var(--gray);">to</span>
+        <input type="date" name="date_to" value="<?= htmlspecialchars($hist_date_to) ?>"
+               style="padding:6px 10px;border:1px solid #dee2e6;border-radius:5px;font-size:12px;height:36px;">
+        <button type="submit" class="btn btn-primary" style="height:36px;padding:8px 14px;"><i class="fas fa-filter"></i> Filter</button>
+      </form>
+      <?php
+      $export_table_id       = ($type_filter === 'fuel') ? 'fuelStockInHistoryTable' : 'merchStockInHistoryTable';
+      $export_filename       = (($type_filter === 'fuel') ? 'fuel_stock_in_' : 'merch_stock_in_') . date('Ymd');
+      $export_title          = ($type_filter === 'fuel') ? 'Fuel Stock-In History' : 'Merchandise Stock-In History';
+      $export_rows_select_id = ($type_filter === 'fuel') ? 'fuelSiRowsLimit' : 'merchSiRowsLimit';
+      $export_default_rows   = 25;
+      require __DIR__ . '/../partials/export_buttons.php';
+      ?>
+    </div>
   </div>
   <div class="si-card-body">
     <?php if ($type_filter === 'fuel'): ?>
@@ -466,7 +489,7 @@ include __DIR__ . '/../partials/header.php';
         </div>
       <?php else: ?>
         <div class="table-wrap">
-          <table class="hist-table">
+          <table class="hist-table" id="fuelStockInHistoryTable">
             <thead>
               <tr>
                 <th>Batch Ref</th><th>Date & Time</th><th>Delivery ID</th><th>Invoice / DR</th><th>Fuel Product</th>
@@ -500,6 +523,7 @@ include __DIR__ . '/../partials/header.php';
             </tbody>
           </table>
         </div>
+        <div id="fuelStockInHistoryPagination" style="margin-top:10px;"></div>
         <div style="margin-top:10px;font-size:12px;color:var(--gray);">
           Showing <?= count($fuel_history) ?> record(s) from <?= htmlspecialchars($hist_date_from) ?> to <?= htmlspecialchars($hist_date_to) ?>.
           <a href="staff_stock_in.php?tab=history&type=fuel&date_from=<?= date('Y-m-01') ?>&date_to=<?= date('Y-m-d') ?>" style="margin-left:8px;">This month</a>
@@ -515,7 +539,7 @@ include __DIR__ . '/../partials/header.php';
         </div>
       <?php else: ?>
         <div class="table-wrap">
-          <table class="hist-table">
+          <table class="hist-table" id="merchStockInHistoryTable">
             <thead>
               <tr>
                 <th>Batch Ref</th><th>Date</th><th>PO Number</th><th>Product</th>
@@ -549,6 +573,7 @@ include __DIR__ . '/../partials/header.php';
             </tbody>
           </table>
         </div>
+        <div id="merchStockInHistoryPagination" style="margin-top:10px;"></div>
         <div style="margin-top:10px;font-size:12px;color:var(--gray);">
           Showing <?= count($history_rows) ?> record(s) from <?= htmlspecialchars($hist_date_from) ?> to <?= htmlspecialchars($hist_date_to) ?>.
           <a href="staff_stock_in.php?tab=history&type=merch&date_from=<?= date('Y-m-01') ?>&date_to=<?= date('Y-m-d') ?>" style="margin-left:8px;">This month</a>
@@ -574,10 +599,14 @@ function submitStockIn(poId, productId, qtyOrdered, unitCost) {
     var qtyReceived = parseInt(document.getElementById('qty-' + poId).value) || 0;
     var condition   = document.getElementById('cond-' + poId).value;
     var remarks     = document.getElementById('rem-' + poId).value.trim();
+    var batchId     = (document.getElementById('batch-' + poId) || {}).value || '';
 
     if (qtyReceived < 0) { showToast('Quantity received cannot be negative.', 'err'); return; }
+    if (!batchId.trim()) {
+        if (!confirm('No Batch ID entered. Submit anyway?')) return;
+    }
 
-    var msg = 'Submit Stock-In?\n\nActual Received: ' + qtyReceived + '\nCondition: ' + condition;
+    var msg = 'Submit Stock-In?\n\nBatch ID: ' + (batchId || '(none)') + '\nActual Received: ' + qtyReceived + '\nCondition: ' + condition;
     if (condition === 'Damaged' || condition === 'Short') {
         msg += '\n\nNOTE: ' + condition + ' items will NOT be added to inventory.';
     }
@@ -592,6 +621,7 @@ function submitStockIn(poId, productId, qtyOrdered, unitCost) {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
             po_id: poId,
+            batch_id: batchId,
             items: [{
                 product_id:   productId,
                 qty_received: qtyReceived,
@@ -606,7 +636,7 @@ function submitStockIn(poId, productId, qtyOrdered, unitCost) {
     .then(function(r) { return r.json(); })
     .then(function(data) {
         if (data.success) {
-            showToast(data.message, 'ok');
+            showToast('Stock-In submitted! Batch: ' + (data.batch_ref || batchId || 'N/A'), 'ok');
             var item = document.getElementById('po-item-' + poId);
             if (item) {
                 item.style.opacity = '0.4';
@@ -695,6 +725,14 @@ function showToast(msg, type) {
     el.style.display = 'block';
     if (type === 'ok') setTimeout(function() { el.style.display = 'none'; }, 5000);
 }
+document.addEventListener('DOMContentLoaded', function() {
+    if (document.getElementById('fuelStockInHistoryTable')) {
+        setupTablePagination('fuelStockInHistoryTable', 'fuelSiRowsLimit', 'fuelStockInHistoryPagination', 25);
+    }
+    if (document.getElementById('merchStockInHistoryTable')) {
+        setupTablePagination('merchStockInHistoryTable', 'merchSiRowsLimit', 'merchStockInHistoryPagination', 25);
+    }
+});
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

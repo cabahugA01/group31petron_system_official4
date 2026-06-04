@@ -205,7 +205,6 @@ include __DIR__ . '/../partials/header.php';
         <div class="sub">Transactions awaiting manager approval and validation</div>
     </div>
     <div class="actions">
-        <button onclick="location.reload()" class="btn-secondary"><i class="fas fa-sync"></i> Refresh</button>
         <a href="transactions.php" class="btn-primary"><i class="fas fa-arrow-left"></i> Back to Transactions</a>
     </div>
 </div>

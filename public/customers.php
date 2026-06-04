@@ -608,7 +608,7 @@ include __DIR__ . '/../partials/header.php';
     </div>
     <div class="cust-card-body">
         <input type="text" class="cust-search" id="encodeSearch" placeholder="&#128269; Search by name..." oninput="filterTable('encodeSearch','encodeTable')">
-        <div style="overflow-x:auto;">
+        <div style="overflow-x:hidden;">
             <table class="cust-table" id="encodeTable">
                 <thead><tr>
                     <th>#</th><th>Name</th><th>Contact</th><th>ID Type</th><th>Credit Limit</th><th>Balance Used</th><th>Status</th><th></th>
@@ -700,7 +700,7 @@ include __DIR__ . '/../partials/header.php';
                 <?php if (empty($job_orders_linked)): ?>
                     <div class="empty-state"><i class="fas fa-wrench"></i>No job orders found for this customer.</div>
                 <?php else: ?>
-                <div style="overflow-x:auto;margin-bottom:24px;">
+                <div style="overflow-x:hidden;margin-bottom:24px;">
                     <table class="cust-table">
                         <thead><tr><th>JO Ref</th><th>Service</th><th>Date</th><th>Status</th></tr></thead>
                         <tbody>
@@ -727,7 +727,7 @@ include __DIR__ . '/../partials/header.php';
                 <?php if (empty($merch_linked)): ?>
                     <div class="empty-state"><i class="fas fa-shopping-cart"></i>No merchandise transactions found for this customer.</div>
                 <?php else: ?>
-                <div style="overflow-x:auto;">
+                <div style="overflow-x:hidden;">
                     <table class="cust-table">
                         <thead><tr><th>#</th><th>Customer</th><th>Item / Product</th><th>Qty</th><th>Amount</th><th>Payment</th><th>Date</th></tr></thead>
                         <tbody>
@@ -804,10 +804,10 @@ include __DIR__ . '/../partials/header.php';
     outline: none;
     box-shadow: 0 0 0 3px rgba(0,47,112,.08);
 }
-.ch-field-customer { flex: 1; min-width: 220px; max-width: 340px; }
-.ch-field-type     { min-width: 160px; }
-.ch-field-status   { min-width: 150px; }
-.ch-field-date     { min-width: 140px; }
+.ch-field-customer { flex: 1;  max-width: 340px; }
+.ch-field-type     {  }
+.ch-field-status   {  }
+.ch-field-date     {  }
 .ch-filter-actions {
     display: flex;
     gap: 6px;
@@ -923,7 +923,7 @@ include __DIR__ . '/../partials/header.php';
     color: #9ca3af;
     font-weight: 500;
 }
-.ch-table-wrap { overflow-x: auto; }
+.ch-table-wrap { overflow-x:hidden; }
 .ch-table {
     width: 100%;
     border-collapse: collapse;

@@ -735,14 +735,14 @@ require_once __DIR__ . '/../partials/header.php';
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     margin-bottom: 24px;
 }
-.table-wrapper { overflow-x: auto; }
+.table-wrapper { overflow-x:hidden; }
 .deliveries-table table { width: 100%; border-collapse: collapse; }
 .deliveries-table th,
 .deliveries-table td { padding: 10px 13px; text-align: left; border-bottom: 1px solid #f1f5f9; font-size: 12px; }
 .deliveries-table th {
-    background: #f8fafc;
+    background: #002F70;
     font-weight: 700;
-    color: #64748b;
+    color: #ffffff;
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: .4px;
@@ -752,11 +752,11 @@ require_once __DIR__ . '/../partials/header.php';
 .deliveries-table tbody tr:hover td { background: #f8fafc; }
 
 /* ── Status badges ───────────────────────────────────────────── */
-.status-badge { padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: 700; display: inline-block; white-space: nowrap; }
-.status-badge.pending         { background: #fef9c3; color: #854d0e; }
-.status-badge.verified        { background: #dcfce7; color: #166534; }
-.status-badge.rejected        { background: #fee2e2; color: #991b1b; }
-.status-badge.pending_review  { background: #fef9c3; color: #854d0e; }
+.status-badge { font-size: 11px; font-weight: 700; display: inline-block; white-space: nowrap; text-transform: uppercase; letter-spacing: .5px; }
+.status-badge.pending         { color: #b45309; }
+.status-badge.verified        { color: #15803d; }
+.status-badge.rejected        { color: #b91c1c; }
+.status-badge.pending_review  { color: #b45309; }
 
 /* ── Tabs Styling ────────────────────────────────────────────── */
 .tabs-container { display: flex; gap: 4px; border-bottom: 2px solid #e2e8f0; margin-bottom: 20px; padding-bottom: 1px; }
@@ -790,21 +790,42 @@ require_once __DIR__ . '/../partials/header.php';
 .layout-grid .del-card { height: 100%; margin-bottom: 0; }
 </style>
 
-<div class="page-head" data-rendering="php">
+<div class="page-head" data-rendering="php" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:18px;">
     <div>
-        <h1 class="h1"><i class="fas fa-truck" style="color:#003d82;margin-right:8px;"></i>Fuel Deliveries</h1>
+        <h1 class="h1" style="margin:0 0 4px 0;"><i class="fas fa-truck" style="color:#003d82;margin-right:8px;"></i>Fuel Deliveries</h1>
         <div class="sub">Record fuel deliveries received from suppliers — pending manager validation</div>
     </div>
-    <a href="staff_transactions_hub.php?section=fuel" class="btn-back">
-        <i class="fas fa-arrow-left"></i> Back to Fuel Transactions
-    </a>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <!-- Export buttons: only shown on My Delivery Records tab -->
+        <div id="exportBtns" style="display:none;gap:8px;flex-wrap:wrap;align-items:center;">
+            <button type="button" onclick="exportDeliveries('excel')" title="Export to Excel"
+                    style="background:#1d6f42;color:#fff;height:38px;padding:9px 20px;border-radius:8px;border:none;font-size:14px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                <i class="fas fa-file-excel"></i> Excel
+            </button>
+            <button type="button" onclick="exportDeliveries('csv')" title="Export to CSV"
+                    style="background:#003d7a;color:#fff;height:38px;padding:9px 20px;border-radius:8px;border:none;font-size:14px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                <i class="fas fa-file-csv"></i> CSV
+            </button>
+            <button type="button" onclick="exportDeliveries('pdf')" title="Export to PDF"
+                    style="background:#dc2626;color:#fff;height:38px;padding:9px 20px;border-radius:8px;border:none;font-size:14px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                <i class="fas fa-file-pdf"></i> PDF
+            </button>
+        </div>
+        <a href="staff_transactions_hub.php?section=fuel"
+           style="background:#6c757d;color:#fff;text-decoration:none;height:38px;padding:9px 20px;border-radius:8px;font-size:14px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">
+            <i class="fas fa-arrow-left"></i> Back
+        </a>
+    </div>
 </div>
 
 <!-- Message Alert -->
 <?php if ($msg): ?>
-<div class="alert alert-<?= $msg_type === 'error' ? 'danger' : 'success' ?> alert-dismissible fade show" style="margin-bottom:20px;">
+<div class="alert alert-<?= $msg_type === 'error' ? 'danger' : 'success' ?> alert-dismissible fade show" 
+     style="margin-bottom:20px;padding:14px 18px;border-radius:8px;border:1px solid;<?= $msg_type === 'error' ? 'background:#fee2e2;border-color:#fca5a5;color:#991b1b;' : 'background:#d1fae5;border-color:#6ee7b7;color:#065f46;' ?>">
+    <i class="fas <?= $msg_type === 'error' ? 'fa-exclamation-circle' : 'fa-check-circle' ?>"></i>
     <?= $msg ?>
-    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    <button type="button" class="btn-close" onclick="this.parentElement.style.display='none'" 
+            style="float:right;background:transparent;border:none;font-size:20px;font-weight:bold;cursor:pointer;opacity:0.5;padding:0;margin-left:10px;">&times;</button>
 </div>
 <?php endif; ?>
 
@@ -1067,6 +1088,25 @@ if (isset($_GET['period']) || isset($_GET['fuel_type_filter']) || isset($_GET['s
 </div><!-- /record-tab -->
 
 <div id="history-tab" class="tab-content" style="display: <?= $active_tab === 'history-tab' ? 'block' : 'none' ?>;">
+
+<!-- SUMMARY CARDS -->
+<div style="display:flex; gap:16px; margin-bottom:20px; flex-wrap:wrap;">
+    <div style="flex:1; min-width:200px; background:#fff; border:1px solid #e2e8f0; border-left:4px solid #002f6c; border-radius:8px; padding:16px; display:flex; align-items:center; gap:12px; box-shadow:0 1px 3px rgba(0,0,0,.05);">
+        <i class="fas fa-truck-loading" style="font-size:24px; color:#002f6c;"></i>
+        <div>
+            <div style="font-size:24px; font-weight:700; color:#1e293b; line-height:1;"><?= $summary_count ?></div>
+            <div style="font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase; margin-top:4px;">Deliveries Encoded</div>
+        </div>
+    </div>
+    <div style="flex:1; min-width:200px; background:#fff; border:1px solid #e2e8f0; border-left:4px solid #b45309; border-radius:8px; padding:16px; display:flex; align-items:center; gap:12px; box-shadow:0 1px 3px rgba(0,0,0,.05);">
+        <i class="fas fa-clock" style="font-size:24px; color:#b45309;"></i>
+        <div>
+            <div style="font-size:24px; font-weight:700; color:#1e293b; line-height:1;"><?= $pending_count ?></div>
+            <div style="font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase; margin-top:4px;">Pending Manager Validation</div>
+        </div>
+    </div>
+</div>
+
 <!-- ═══════════════════════════════════════════════════════════
      DELIVERY RECORDS — Filter Bar + Summary + Table
 ═══════════════════════════════════════════════════════════ -->
@@ -1170,7 +1210,7 @@ if (isset($_GET['period']) || isset($_GET['fuel_type_filter']) || isset($_GET['s
                 </div>
 
                 <!-- Action buttons -->
-                <div style="display:flex;gap:8px;align-items:flex-end;padding-bottom:1px;">
+                <div style="display:flex;gap:8px;align-items:flex-end;padding-bottom:1px;margin-left:auto;">
                     <button type="submit"
                             style="padding:8px 18px;background:#002f6c;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;transition:background .15s;"
                             onmouseover="this.style.background='#001f4d'" onmouseout="this.style.background='#002f6c'">
@@ -1232,7 +1272,7 @@ if (isset($_GET['period']) || isset($_GET['fuel_type_filter']) || isset($_GET['s
                     elseif ($is_discrepancy) $badge = 'rejected';
                     else                  $badge = 'pending';
                 ?>
-                <tr style="<?= $is_pending ? 'background:#fffbea;' : ($is_discrepancy ? 'background:#fff5f5;' : '') ?>">
+                <tr>
                     <td><strong>#<?= (int)$delivery['id'] ?></strong></td>
                     <td><?= date('M d, Y', strtotime($delivery['delivery_date'])) ?></td>
                     <td><strong><?= htmlspecialchars($delivery['fuel_type']) ?></strong></td>
@@ -1321,6 +1361,12 @@ function switchTab(tabId) {
     
     document.getElementById(tabId).style.display = 'block';
     document.getElementById('tab_' + tabId).classList.add('active');
+
+    // Show export buttons only on My Delivery Records tab
+    var exportBtns = document.getElementById('exportBtns');
+    if (exportBtns) {
+        exportBtns.style.display = (tabId === 'history-tab') ? 'flex' : 'none';
+    }
 }
 
 // ── Pagination Logic ─────────────────────────────────────────
@@ -1330,6 +1376,13 @@ var totalDelRows = 0;
 var allDelRows = [];
 
 document.addEventListener('DOMContentLoaded', function() {
+    // Set initial export button visibility based on server-rendered active tab
+    var exportBtns = document.getElementById('exportBtns');
+    if (exportBtns) {
+        var historyTab = document.getElementById('history-tab');
+        exportBtns.style.display = (historyTab && historyTab.style.display !== 'none') ? 'flex' : 'none';
+    }
+
     var tbody = document.getElementById('deliveriesTableBody');
     if (tbody) {
         allDelRows = Array.from(tbody.querySelectorAll('tr'));
@@ -1629,6 +1682,32 @@ document.addEventListener('click', function(e) {
     var modal = document.getElementById('fuelReceiveModal');
     if (modal && e.target === modal) closeFuelReceiveModal();
 });
+
+// Export function for deliveries
+function exportDeliveries(format) {
+    const formatNames = {
+        'excel': 'Excel (.xls)',
+        'csv': 'CSV (.csv)',
+        'pdf': 'PDF (Print/Save)'
+    };
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    let exportUrl = '../backend/export_staff_fuel_deliveries.php?format=' + format;
+    
+    // Add current filter parameters
+    const params = ['period', 'date_from', 'date_to', 'fuel_type_filter', 'supplier_filter', 'keyword'];
+    params.forEach(param => {
+        if (urlParams.has(param)) {
+            exportUrl += '&' + param + '=' + encodeURIComponent(urlParams.get(param));
+        }
+    });
+    
+    if (format === 'pdf') {
+        window.open(exportUrl, '_blank');
+    } else {
+        window.location.href = exportUrl;
+    }
+}
 
 </script>
 

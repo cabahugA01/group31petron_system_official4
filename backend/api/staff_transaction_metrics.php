@@ -1,0 +1,122 @@
+<?php
+/**
+ * Staff Transaction Metrics API
+ * Returns transaction module metrics for Staff Dashboard
+ */
+header('Content-Type: application/json');
+if (session_status() === PHP_SESSION_NONE) session_start();
+
+require_once __DIR__ . '/../lib.php';
+require_once __DIR__ . '/../../public/db_connect.php';
+require_login();
+
+$me = current_user();
+$role = role_key($me['role'] ?? '');
+$staff_id = (int)$me['id'];
+$station_id = (int)user_station_id();
+
+// Only staff roles can access
+if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+    echo json_encode(['success' => false, 'error' => 'Access denied']);
+    exit;
+}
+
+try {
+    // ── Transactions Encoded (Job Orders + Merchandise) ──
+    $txn_encoded_query = $pdo->prepare("
+        SELECT 
+            (SELECT COUNT(*) FROM merchandise_transactions WHERE staff_id = ?) +
+            (SELECT COUNT(*) FROM job_orders WHERE created_by = ?) AS transactions_encoded
+    ");
+    $txn_encoded_query->execute([$staff_id, $staff_id]);
+    $transactions_encoded = (int)$txn_encoded_query->fetchColumn();
+
+    // ── Pending Payments (Unpaid balances) ──
+    $pending_payments_query = $pdo->prepare("
+        SELECT COALESCE(SUM(balance), 0) AS pending_payments
+        FROM (
+            SELECT (total_amount - COALESCE(amount_paid, 0)) AS balance
+            FROM merchandise_transactions 
+            WHERE staff_id = ? 
+              AND (total_amount - COALESCE(amount_paid, 0)) > 0
+            UNION ALL
+            SELECT (total_cost - COALESCE(amount_paid, 0)) AS balance
+            FROM job_orders 
+            WHERE created_by = ? 
+              AND (total_cost - COALESCE(amount_paid, 0)) > 0
+        ) AS combined
+    ");
+    $pending_payments_query->execute([$staff_id, $staff_id]);
+    $pending_payments = (float)$pending_payments_query->fetchColumn();
+
+    // ── Completed Job Orders ──
+    $completed_jo_query = $pdo->prepare("
+        SELECT COUNT(*) 
+        FROM job_orders 
+        WHERE created_by = ? AND LOWER(status) = 'completed'
+    ");
+    $completed_jo_query->execute([$staff_id]);
+    $completed_job_orders = (int)$completed_jo_query->fetchColumn();
+
+    // ── Job Order Status Distribution (for chart) ──
+    $jo_status_query = $pdo->prepare("
+        SELECT 
+            CASE 
+                WHEN LOWER(status) IN ('pending', 'pending validation') THEN 'Pending'
+                WHEN LOWER(status) IN ('in progress', 'ongoing', 'approved') THEN 'Ongoing'
+                WHEN LOWER(status) = 'completed' THEN 'Completed'
+                ELSE 'Other'
+            END AS status_group,
+            COUNT(*) AS count
+        FROM job_orders 
+        WHERE created_by = ?
+        GROUP BY status_group
+    ");
+    $jo_status_query->execute([$staff_id]);
+    $jo_status_data = $jo_status_query->fetchAll(PDO::FETCH_ASSOC);
+
+    $jo_status_distribution = [
+        'Pending' => 0,
+        'Ongoing' => 0,
+        'Completed' => 0
+    ];
+    foreach ($jo_status_data as $row) {
+        if (isset($jo_status_distribution[$row['status_group']])) {
+            $jo_status_distribution[$row['status_group']] = (int)$row['count'];
+        }
+    }
+
+    // ── Merchandise Sales Snapshot (Daily & Weekly) ──
+    $merch_sales_query = $pdo->prepare("
+        SELECT 
+            COALESCE(SUM(CASE WHEN DATE(COALESCE(transaction_date, created_at)) = CURDATE() 
+                THEN total_amount ELSE 0 END), 0) AS daily_sales,
+            COALESCE(SUM(CASE WHEN DATE(COALESCE(transaction_date, created_at)) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) 
+                THEN total_amount ELSE 0 END), 0) AS weekly_sales
+        FROM merchandise_transactions 
+        WHERE staff_id = ?
+    ");
+    $merch_sales_query->execute([$staff_id]);
+    $merch_sales = $merch_sales_query->fetch(PDO::FETCH_ASSOC);
+
+    echo json_encode([
+        'success' => true,
+        'data' => [
+            'transactions_encoded' => $transactions_encoded,
+            'pending_payments' => $pending_payments,
+            'completed_job_orders' => $completed_job_orders,
+            'job_order_status' => $jo_status_distribution,
+            'merchandise_sales' => [
+                'daily' => (float)($merch_sales['daily_sales'] ?? 0),
+                'weekly' => (float)($merch_sales['weekly_sales'] ?? 0)
+            ]
+        ],
+        'timestamp' => date('Y-m-d H:i:s')
+    ]);
+
+} catch (Exception $e) {
+    echo json_encode([
+        'success' => false,
+        'error' => 'Failed to fetch metrics: ' . $e->getMessage()
+    ]);
+}

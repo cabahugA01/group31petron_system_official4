@@ -21,6 +21,7 @@ foreach ([
     "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS stock_in_done TINYINT(1) NOT NULL DEFAULT 0",
     "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS stock_in_at DATETIME NULL",
     "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS stock_in_by INT NULL",
+    "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS batch_id VARCHAR(100) NULL COMMENT 'Batch ID assigned by Manager per delivery batch'",
 ] as $sql) { try { $pdo->exec($sql); } catch (Exception $e) {} }
 
 $flash_ok  = $_SESSION['ok']  ?? null; unset($_SESSION['ok']);
@@ -33,15 +34,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($act === 'finalize' && $po_id > 0) {
         $admin_notes = trim($_POST['admin_notes'] ?? '');
+        $batch_id_override = trim($_POST['batch_id_override'] ?? '');
         try {
             $stmt = $pdo->prepare("SELECT * FROM purchase_orders WHERE id=? AND station_id=? AND status='Pending Admin Validation' AND admin_finalized=0");
             $stmt->execute([$po_id, $station_id]);
             $po = $stmt->fetch(PDO::FETCH_ASSOC);
             if (!$po) throw new Exception('PO not found or already finalized.');
-            $pdo->prepare("UPDATE purchase_orders SET admin_finalized=1, admin_id=?, admin_notes=?, admin_finalized_at=NOW(), status='Admin Finalized' WHERE id=?")
-                ->execute([$me['id'], $admin_notes, $po_id]);
+            // Build update — allow admin to override batch_id if provided
+            $new_batch = $batch_id_override ?: ($po['batch_id'] ?? null);
+            $pdo->prepare("UPDATE purchase_orders SET admin_finalized=1, admin_id=?, admin_notes=?, admin_finalized_at=NOW(), batch_id=?, status='Admin Finalized' WHERE id=?")
+                ->execute([$me['id'], $admin_notes, $new_batch, $po_id]);
             if (function_exists('log_activity'))
-                log_activity($pdo, $me['id'], 'Admin Finalize PO', 'PO #'.$po['po_number'].' finalized. Ready for delivery & stock-in.');
+                log_activity($pdo, $me['id'], 'Admin Finalize PO', 'PO #'.$po['po_number'].' finalized. Batch: '.($new_batch ?: 'N/A').'. Ready for delivery & stock-in.');
             $_SESSION['ok'] = 'PO #'.$po['po_number'].' finalized. Forwarded to Deliveries & Stock-In.';
         } catch (Exception $e) { $_SESSION['err'] = $e->getMessage(); }
         header('Location: admin_purchase_orders.php'); exit;
@@ -113,7 +117,7 @@ include __DIR__ . '/../partials/header.php';
 .po-number{font-size:1rem;font-weight:700;color:var(--blue);}
 .po-meta{display:grid;gap:6px;font-size:13px;margin-bottom:14px;}
 .po-meta-row{display:flex;gap:8px;}
-.po-meta-label{color:var(--gray);min-width:110px;font-weight:600;}
+.po-meta-label{color:var(--gray);font-weight:600;}
 .po-meta-val{color:#222;}
 .badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;white-space:nowrap;}
 .badge-pending{background:#fff3cd;color:#856404;}
@@ -194,6 +198,14 @@ include __DIR__ . '/../partials/header.php';
           <div class="po-meta-row"><span class="po-meta-label">Product:</span><span class="po-meta-val"><strong><?= htmlspecialchars($po['product_name']) ?></strong></span></div>
           <div class="po-meta-row"><span class="po-meta-label">SKU:</span><span class="po-meta-val"><?= htmlspecialchars($po['item_sku'] ?? '&mdash;') ?></span></div>
           <div class="po-meta-row"><span class="po-meta-label">Category:</span><span class="po-meta-val"><?= htmlspecialchars($po['item_category'] ?? '&mdash;') ?></span></div>
+          <div class="po-meta-row">
+            <span class="po-meta-label">Batch ID:</span>
+            <span class="po-meta-val">
+              <?php if (!empty($po['batch_id'])): ?>
+              <span style="font-family:monospace;font-size:12px;background:#e8f4fd;color:#002F70;padding:2px 8px;border-radius:4px;font-weight:700;"><?= htmlspecialchars($po['batch_id']) ?></span>
+              <?php else: ?><span style="color:#adb5bd;font-style:italic;">Not set by manager</span><?php endif; ?>
+            </span>
+          </div>
           <div class="po-meta-row"><span class="po-meta-label">Qty Ordered:</span><span class="po-meta-val"><strong><?= (int)$po['quantity'] ?></strong> units</span></div>
           <div class="po-meta-row"><span class="po-meta-label">Unit Price:</span><span class="po-meta-val">&#8369;<?= number_format((float)$po['unit_price'],2) ?></span></div>
           <div class="po-meta-row"><span class="po-meta-label">Total Amount:</span><span class="po-meta-val" style="color:#28a745;font-weight:700;">&#8369;<?= number_format((float)$po['total_amount'],2) ?></span></div>
@@ -205,7 +217,7 @@ include __DIR__ . '/../partials/header.php';
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn btn-finalize btn-sm"
-            onclick="openFinalize(<?= $po['id'] ?>, '<?= htmlspecialchars($po['po_number'],ENT_QUOTES) ?>', '<?= htmlspecialchars($po['product_name'],ENT_QUOTES) ?>', <?= (int)$po['quantity'] ?>)">
+            onclick="openFinalize(<?= $po['id'] ?>, '<?= htmlspecialchars($po['po_number'],ENT_QUOTES) ?>', '<?= htmlspecialchars($po['product_name'],ENT_QUOTES) ?>', <?= (int)$po['quantity'] ?>, '<?= htmlspecialchars($po['batch_id'] ?? '',ENT_QUOTES) ?>')">
             <i class="fas fa-check-double"></i> Finalize &amp; Forward
           </button>
           <button class="btn btn-reject btn-sm"
@@ -286,6 +298,12 @@ include __DIR__ . '/../partials/header.php';
       <input type="hidden" name="action" value="finalize">
       <input type="hidden" name="po_id" id="finalizePOId">
       <div class="form-group">
+        <label>Batch ID <span style="color:#dc3545;">*</span> <span style="font-weight:400;color:#6c757d;font-size:11px;">— verify or override the manager-assigned batch</span></label>
+        <input type="text" name="batch_id_override" id="finalizeBatchId"
+               placeholder="e.g. BATCH-001" maxlength="100"
+               style="font-family:monospace;font-size:0.95rem;letter-spacing:0.5px;width:100%;padding:9px 11px;border:1px solid #dee2e6;border-radius:6px;box-sizing:border-box;">
+      </div>
+      <div class="form-group">
         <label>Admin Notes (Optional)</label>
         <textarea name="admin_notes" rows="3" placeholder="e.g., Approved for delivery. Contact supplier for schedule."></textarea>
       </div>
@@ -324,11 +342,14 @@ function switchTab(tab, btn) {
     document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.remove('active'); });
     btn.classList.add('active');
 }
-function openFinalize(id, poNum, product, qty) {
+function openFinalize(id, poNum, product, qty, batchId) {
     document.getElementById('finalizePOId').value = id;
+    document.getElementById('finalizeBatchId').value = batchId || '';
     document.getElementById('finalizePoInfo').innerHTML =
-        '<strong>PO:</strong> ' + poNum + ' &nbsp;|&nbsp; <strong>Product:</strong> ' + product + ' &nbsp;|&nbsp; <strong>Qty:</strong> ' + qty + ' units';
+        '<strong>PO:</strong> ' + poNum + ' &nbsp;|&nbsp; <strong>Product:</strong> ' + product + ' &nbsp;|&nbsp; <strong>Qty:</strong> ' + qty + ' units'
+        + (batchId ? ' &nbsp;|&nbsp; <strong>Batch:</strong> <span style="font-family:monospace;color:#002F70;font-weight:700;">' + batchId + '</span>' : '');
     document.getElementById('finalizeModal').classList.add('show');
+    setTimeout(function(){ document.getElementById('finalizeBatchId').focus(); }, 120);
 }
 function openReject(id, poNum) {
     document.getElementById('rejectPOId').value = id;

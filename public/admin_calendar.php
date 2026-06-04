@@ -655,7 +655,7 @@ require_once '../partials/header.php';
 .sc-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .sc-nav-btn{background:#f8fafc;border:1px solid #EAEAEA;color:#344054;padding:7px 14px;border-radius:8px;font-size:13px;cursor:pointer;transition:.2s;text-decoration:none;display:inline-flex;align-items:center;gap:5px;}
 .sc-nav-btn:hover{background:#f0f4ff;border-color:#c7d7f5;color:#00264D;}
-.sc-week-label{font-weight:700;font-size:14px;min-width:160px;text-align:center;color:#101828;}
+.sc-week-label{font-weight:700;font-size:14px;text-align:center;color:#101828;}
 .sc-today-btn{background:#00264D;color:#fff;border:none;padding:7px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;}
 .sc-today-btn:hover{background:#003d7a;color:#fff;}
 .sc-filter-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;background:#fff;border:1px solid #EAEAEA;border-radius:10px;padding:10px 14px;}
@@ -664,8 +664,8 @@ require_once '../partials/header.php';
 .sc-filter-bar .fg{display:flex;flex-direction:column;gap:3px;}
 .sc-filter-btn{background:#00264D;color:#fff;border:none;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;}
 .sc-filter-clear{background:#f8fafc;color:#344054;border:1px solid #dee2e6;padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;}
-.sc-grid-wrap{background:#e9eaec;border-radius:14px;border:1px solid #d8dadf;overflow-x:auto;box-shadow:0 2px 12px rgba(0,0,0,.06);}
-.sc-grid{display:grid;grid-template-columns:180px repeat(7,minmax(100px,1fr));min-width:900px;}
+.sc-grid-wrap{background:#e9eaec;border-radius:14px;border:1px solid #d8dadf;overflow-x:hidden;box-shadow:0 2px 12px rgba(0,0,0,.06);}
+.sc-grid{display:grid;grid-template-columns:180px repeat(7,minmax(100px,1fr));}
 .sc-col-head-label{background:#eef0f3;padding:10px 12px;border-bottom:2px solid #d8dadf;border-right:1px solid #d8dadf;font-size:11px;font-weight:700;color:#667085;text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;}
 .sc-col-head{background:#eef0f3;padding:10px 8px;text-align:center;border-bottom:2px solid #d8dadf;border-right:1px solid #d8dadf;}
 .sc-col-head:last-child{border-right:none;}

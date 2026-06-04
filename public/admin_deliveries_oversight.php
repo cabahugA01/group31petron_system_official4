@@ -43,7 +43,7 @@ include __DIR__ . '/../partials/header.php';
 .filter-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:16px;}
 .filter-bar .fg{display:flex;flex-direction:column;gap:3px;}
 .filter-bar label{font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.4px;}
-.filter-bar input,.filter-bar select{padding:7px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;min-width:130px;}
+.filter-bar input,.filter-bar select{padding:7px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;}
 .filter-bar input:focus,.filter-bar select:focus{border-color:var(--blue);outline:none;box-shadow:0 0 0 3px rgba(0,47,112,.1);}
 /* ── Buttons ── */
 .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .2s;text-decoration:none;}
@@ -55,7 +55,7 @@ include __DIR__ . '/../partials/header.php';
 .btn-sm{padding:5px 10px;font-size:12px;}
 .btn:disabled{opacity:.5;cursor:not-allowed;}
 /* ── Table ── */
-.table-wrap{overflow-x:auto;}
+.table-wrap{overflow-x:hidden;}
 table.dt{width:100%;border-collapse:collapse;font-size:13px;}
 table.dt th{background:var(--light);padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray);border-bottom:2px solid #dee2e6;white-space:nowrap;text-transform:uppercase;letter-spacing:.4px;}
 table.dt td{padding:10px 12px;border-bottom:1px solid #f0f0f0;vertical-align:middle;}
@@ -598,7 +598,7 @@ async function loadStockInTracker(){
     document.getElementById('stockInCount').textContent=items.length+' PO(s) awaiting stock-in';
     let html='<div style="display:flex;flex-wrap:wrap;gap:10px;">';
     items.forEach(function(d){
-      html+=`<div style="background:#fff;border:1px solid #c5d3f0;border-radius:8px;padding:12px 14px;min-width:220px;flex:1;">
+      html+=`<div style="background:#fff;border:1px solid #c5d3f0;border-radius:8px;padding:12px 14px;flex:1;">
         <div style="font-size:12px;font-weight:700;color:#002F70;">${esc(d.po_number||'Manual')}</div>
         <div style="font-size:13px;font-weight:700;color:#222;margin:3px 0;">${esc(d.product_name||'')}</div>
         <div style="font-size:11px;color:#6c757d;">Qty: <strong>${d.qty_ordered}</strong> &nbsp;|&nbsp; Finalized by: ${esc(d.admin_name||'—')}</div>

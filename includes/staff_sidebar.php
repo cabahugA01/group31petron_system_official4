@@ -191,7 +191,7 @@ function getStaffSidebar($current_page = 'dashboard') {
 
 <style>
 .staff-sidebar {
-    width: 280px;
+    width: 250px;
     height: 100vh;
     background: var(--petron-blue, #00264D);
     color: white;
@@ -204,7 +204,7 @@ function getStaffSidebar($current_page = 'dashboard') {
 }
 
 .staff-sidebar.collapsed {
-    transform: translateX(-280px);
+    transform: translateX(-250px);
 }
 
 .sidebar-toggle {
@@ -334,7 +334,7 @@ function getStaffSidebar($current_page = 'dashboard') {
 
 /* Main content offset */
 .main-content {
-    margin-left: 280px;
+    margin-left: 250px;
     min-height: 100vh;
     background: #f8f9fa;
     transition: margin-left 0.3s ease;

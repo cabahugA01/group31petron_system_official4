@@ -201,7 +201,7 @@ include __DIR__ . '/../partials/header.php';
     padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px;
     font-size: 13px; color: #334155; background: #fff;
 }
-.toolbar input[type="text"] { min-width: 220px; }
+.toolbar input[type="text"] {  }
 .toolbar input[type="text"]:focus,
 .toolbar select:focus { outline: none; border-color: #002F6C; box-shadow: 0 0 0 2px rgba(0,47,108,.12); }
 
@@ -285,7 +285,7 @@ include __DIR__ . '/../partials/header.php';
         <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">
             <strong style="font-size:15px;color:#002F6C;"><i class="fas fa-gas-pump"></i> Fuel Inventory &amp; Pricing</strong>
         </div>
-        <div class="table-wrap" style="overflow-x:auto;">
+        <div class="table-wrap" style="overflow-x:hidden;">
             <table class="pricing-table">
                 <thead>
                     <tr>
@@ -421,7 +421,7 @@ include __DIR__ . '/../partials/header.php';
         </div>
     <?php else: ?>
     <div class="card" style="padding:0;overflow:hidden;">
-        <div class="table-wrap" style="overflow-x:auto;">
+        <div class="table-wrap" style="overflow-x:hidden;">
             <table class="pricing-table" id="merchTable">
                 <thead>
                     <tr>

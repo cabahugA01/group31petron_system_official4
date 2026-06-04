@@ -80,17 +80,32 @@ include __DIR__ . '/../partials/header.php';
 <style>
 .st-card { background:#fff; border-radius:10px; border:1px solid #e2e8f0; overflow:hidden; margin-bottom:24px; }
 .st-table { width:100%; border-collapse:collapse; font-size:13px; background:#fff; }
-.st-table th { padding:14px 14px !important; text-align:left; font-size:11px; font-weight:600; color:#fff !important;
-               text-transform:uppercase; letter-spacing:.3px; border:none !important; background:#002F70 !important; white-space:nowrap; }
+.st-table th { 
+    padding:14px 14px !important; 
+    text-align:left; 
+    font-size:11px; 
+    font-weight:600; 
+    color:#fff !important;
+    text-transform:uppercase; 
+    letter-spacing:.3px; 
+    border:none !important; 
+    background:#002F70 !important; 
+    white-space:nowrap; 
+}
 .st-table th:last-child { text-align:center !important; }
-.st-table td { padding:12px 14px !important; border-bottom:1px solid #e9ecef !important; vertical-align:middle; color:#212529; }
+.st-table td { 
+    padding:12px 14px !important; 
+    border-bottom:1px solid #e9ecef !important; 
+    vertical-align:middle; 
+    color:#212529;
+}
 .st-table td:last-child { text-align:center !important; }
 .st-table tr:last-child td { border-bottom:1px solid #e9ecef !important; }
 .st-table tbody tr:hover td { background:#e3f2fd !important; }
 .st-table tbody tr { transition:background 0.2s ease; }
-.badge-pending  { background:#002F70; color:#fff; border:1px solid #001a4d; padding:3px 10px; border-radius:20px; font-size:10px; font-weight:700; }
-.badge-approved { background:#f0fdf4; color:#166534; border:1px solid #86efac; padding:3px 10px; border-radius:20px; font-size:10px; font-weight:700; }
-.badge-rejected { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; padding:3px 10px; border-radius:20px; font-size:10px; font-weight:700; }
+.badge-pending  { color:#4338ca !important; background:transparent !important; border:none !important; padding:0 !important; font-size:11px; font-weight:600; }
+.badge-approved { color:#0d7d3e !important; background:transparent !important; border:none !important; padding:0 !important; font-size:11px; font-weight:600; }
+.badge-rejected { color:#c62828 !important; background:transparent !important; border:none !important; padding:0 !important; font-size:11px; font-weight:600; }
 .filter-tab { padding:9px 18px; border:none; background:#f8fafc; border-bottom:2px solid transparent;
               font-size:13px; font-weight:500; color:#64748b; cursor:pointer; transition:all .15s; text-decoration:none; display:inline-block; }
 .filter-tab.active { background:#fff; font-weight:700; color:#b45309; border-bottom-color:#b45309; }

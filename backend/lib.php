@@ -826,4 +826,85 @@ function write_audit_log($pdo, $action_type, $action_details, $entity_type = nul
     } catch (Exception $e) { /* silent — never block the main action */ }
 }
 
+/**
+ * FIFO-based stock level deduction from merchandise batches and inventory
+ */
+function fifo_deduct_stock(PDO $pdo, int $station_id, $product_id_or_name, float $qty): void {
+    if ($qty <= 0) return;
+
+    $product_id = 0;
+    if (is_numeric($product_id_or_name) && (int)$product_id_or_name > 0) {
+        $product_id = (int)$product_id_or_name;
+    } else {
+        // Look up by product_name
+        try {
+            $stmt = $pdo->prepare("SELECT id FROM inventory_products WHERE product_name = ? LIMIT 1");
+            $stmt->execute([$product_id_or_name]);
+            $product_id = (int)$stmt->fetchColumn();
+        } catch (Exception $e) {}
+    }
+
+    if ($product_id <= 0) {
+        // If we still can't find a product ID, fallback to name-based direct deduction on station_inventory
+        if (is_string($product_id_or_name) && $product_id_or_name !== '') {
+            try {
+                $pdo->prepare("UPDATE station_inventory SET stock_level = GREATEST(stock_level - ?, 0), last_updated = NOW() WHERE product_name = ? AND station_id = ?")
+                    ->execute([$qty, $product_id_or_name, $station_id]);
+            } catch (Exception $e) {}
+        }
+        return;
+    }
+
+    // 1. Deduct from station_inventory.stock_level
+    $deductStmt = $pdo->prepare("
+        UPDATE station_inventory
+        SET stock_level = GREATEST(stock_level - ?, 0),
+            last_updated = NOW()
+        WHERE station_id = ? AND product_id = ?
+    ");
+    $deductStmt->execute([$qty, $station_id, $product_id]);
+
+    // 2. Deduct from inventory_products.stock (fallback table)
+    try {
+        $deductGlobalStmt = $pdo->prepare("
+            UPDATE inventory_products
+            SET stock = GREATEST(stock - ?, 0)
+            WHERE id = ?
+        ");
+        $deductGlobalStmt->execute([$qty, $product_id]);
+    } catch (Exception $e) {}
+
+    // 3. Deduct from merchandise_batches using FIFO
+    try {
+        $qty_needed = $qty;
+        $batchesStmt = $pdo->prepare("
+            SELECT id, remaining_qty 
+            FROM merchandise_batches 
+            WHERE product_id = ? AND station_id = ? AND status = 'active' AND remaining_qty > 0 
+            ORDER BY date_received ASC, id ASC
+        ");
+        $batchesStmt->execute([$product_id, $station_id]);
+        $batches = $batchesStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($batches as $batch) {
+            if ($qty_needed <= 0) break;
+            $batch_id = $batch['id'];
+            $remaining = (float)$batch['remaining_qty'];
+
+            if ($remaining > $qty_needed) {
+                $new_remaining = $remaining - $qty_needed;
+                $pdo->prepare("UPDATE merchandise_batches SET remaining_qty = ?, updated_at = NOW() WHERE id = ?")
+                    ->execute([$new_remaining, $batch_id]);
+                $qty_needed = 0;
+            } else {
+                $qty_needed -= $remaining;
+                $pdo->prepare("UPDATE merchandise_batches SET remaining_qty = 0, status = 'depleted', updated_at = NOW() WHERE id = ?")
+                    ->execute([$batch_id]);
+            }
+        }
+    } catch (Exception $e) {
+        error_log("FIFO batch deduction failed for product $product_id: " . $e->getMessage());
+    }
+}
+
 ?>

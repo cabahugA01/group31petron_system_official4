@@ -3182,6 +3182,16 @@ require_once __DIR__ . '/../partials/header.php';
   </main>
 
   <style>
+    /* Strip all underlines from footer */
+    .fixed-footer,
+    .fixed-footer *,
+    .fixed-footer a,
+    .fixed-footer a:hover,
+    .fixed-footer a:visited,
+    .fixed-footer a:focus {
+        text-decoration: none !important;
+    }
+
     .fixed-footer {
         position: fixed !important;
         bottom: 0 !important;
@@ -3212,7 +3222,7 @@ require_once __DIR__ . '/../partials/header.php';
     }
     
     .footer-sidebar-area {
-        width: 280px !important;
+        width: 250px !important;
         height: 100% !important;
         background-color: #ffffff !important;
         display: flex !important;

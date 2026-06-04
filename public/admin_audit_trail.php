@@ -153,7 +153,7 @@ require_once __DIR__ . '/../partials/header.php';
 
 /* Table styles */
 .aud-table-wrap {
-    overflow-x: auto;
+    overflow-x:hidden;
     border-radius: 12px;
     border: 1px solid var(--line);
 }

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * COMPREHENSIVE DELIVERY MANAGEMENT SYSTEM
  * 
@@ -625,12 +625,12 @@ $recent_deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                         
                                         <div class="action-section">
                                             <h6><i class="fas fa-tasks me-2"></i>2. Manager Actions</h6>
-                                            <p class="mb-0"><small>Encode Delivery Receipt → Confirm Delivery → Update Inventory → Log Discrepancies → Close Delivery</small></p>
+                                            <p class="mb-0"><small>Encode Delivery Receipt ? Confirm Delivery ? Update Inventory ? Log Discrepancies ? Close Delivery</small></p>
                                         </div>
                                         
                                         <div class="output-section">
                                             <h6><i class="fas fa-chart-line me-2"></i>3. Output/Flow</h6>
-                                            <p class="mb-0"><small>Confirm Status → Inventory Update → Audit Trail → PO Status Update → Workflow Complete</small></p>
+                                            <p class="mb-0"><small>Confirm Status ? Inventory Update ? Audit Trail ? PO Status Update ? Workflow Complete</small></p>
                                         </div>
                                     </div>
                                 </div>
@@ -763,8 +763,8 @@ $recent_deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                             <td class="<?= ($item['variance'] ?? 0) > 0 ? 'variance-positive' : (($item['variance'] ?? 0) < 0 ? 'variance-negative' : 'variance-zero') ?>">
                                                                 <?= number_format($item['variance'] ?? 0, 2) ?>
                                                             </td>
-                                                            <td>₱<?= number_format($item['unit_price'], 2) ?></td>
-                                                            <td>₱<?= number_format(($item['quantity_actual'] ?? $item['quantity_ordered']) * $item['unit_price'], 2) ?></td>
+                                                            <td>?<?= number_format($item['unit_price'], 2) ?></td>
+                                                            <td>?<?= number_format(($item['quantity_actual'] ?? $item['quantity_ordered']) * $item['unit_price'], 2) ?></td>
                                                         </tr>
                                                         <?php endforeach; ?>
                                                     </tbody>
@@ -870,7 +870,7 @@ $recent_deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <option value="<?= $po['id'] ?>">
                                     <?= htmlspecialchars($po['po_number']) ?> - 
                                     <?= htmlspecialchars($po['supplier_name']) ?> - 
-                                    ₱<?= number_format($po['total_amount'], 2) ?> 
+                                    ?<?= number_format($po['total_amount'], 2) ?> 
                                     (<?= $po['item_count'] ?> items)
                                 </option>
                                 <?php endforeach; ?>

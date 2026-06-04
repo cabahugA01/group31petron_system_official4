@@ -52,6 +52,102 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     $req_id = (int)($_POST['request_id'] ?? 0);
 
+    if ($action === 'generate_po' && $req_id > 0) {
+        try {
+            // Load validated stock request
+            $stmt = $pdo->prepare("
+                SELECT sr.*, u.name AS staff_name
+                FROM stock_requests sr
+                LEFT JOIN users u ON sr.staff_id = u.id
+                WHERE sr.id = ? AND sr.station_id = ? AND sr.status = 'Validated'
+            ");
+            $stmt->execute([$req_id, $station_id]);
+            $request = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$request) {
+                throw new Exception('Validated stock request not found.');
+            }
+
+            // Check if PO already exists for this request
+            $check_stmt = $pdo->prepare("SELECT id FROM purchase_orders WHERE request_id = ?");
+            $check_stmt->execute([$req_id]);
+            if ($check_stmt->fetch()) {
+                throw new Exception('Purchase Order already exists for this stock request.');
+            }
+
+            $pdo->beginTransaction();
+
+            // Generate unique PO number
+            $po_number = 'PO-' . date('Ymd') . '-SR' . str_pad($request['id'], 4, '0', STR_PAD_LEFT);
+
+            // Get item price from station_inventory or use approved_price
+            $price_stmt = $pdo->prepare("
+                SELECT COALESCE(cost, 0) as unit_cost
+                FROM station_inventory
+                WHERE station_id = ? AND sku = ?
+                LIMIT 1
+            ");
+            $price_stmt->execute([$station_id, $request['item_sku']]);
+            $price_row = $price_stmt->fetch(PDO::FETCH_ASSOC);
+            $unit_price = $price_row ? (float)$price_row['unit_cost'] : (float)($request['approved_price'] ?? 0);
+
+            $approved_qty = $request['approved_quantity'] ?? $request['requested_quantity'];
+            $total_amount = $unit_price * $approved_qty;
+
+            // Create Purchase Order
+            $po_stmt = $pdo->prepare("
+                INSERT INTO purchase_orders
+                    (request_id, product_name, quantity, unit_price, total_amount, type,
+                     po_number, station_id, created_by, status, remarks, created_at)
+                VALUES (?, ?, ?, ?, ?, 'merch', ?, ?, ?, 'Pending Admin Validation', ?, NOW())
+            ");
+            $remarks = "Auto-generated from Stock Request #{$request['id']}. Manager: {$me['name']}.";
+            $po_stmt->execute([
+                $request['id'],
+                $request['item_name'],
+                $approved_qty,
+                $unit_price,
+                $total_amount,
+                $po_number,
+                $station_id,
+                $me['id'],
+                $remarks
+            ]);
+
+            $po_id = $pdo->lastInsertId();
+
+            // Add PO line item
+            $item_stmt = $pdo->prepare("
+                INSERT INTO purchase_order_items
+                    (po_id, item_name, quantity, product_id, unit_price, total_price)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ");
+            $item_stmt->execute([
+                $po_id,
+                $request['item_name'],
+                $approved_qty,
+                $request['item_id'],
+                $unit_price,
+                $total_amount
+            ]);
+
+            // Log activity
+            try {
+                log_activity($pdo, $me['id'], 'Generate PO',
+                    "PO {$po_number} created from Stock Request #{$request['id']}. Item: {$request['item_name']}, Qty: {$approved_qty}");
+            } catch (Exception $ignored) {}
+
+            $pdo->commit();
+            $_SESSION['success'] = "✓ Purchase Order {$po_number} generated successfully! Pending Admin validation.";
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            $_SESSION['error'] = '✗ Error generating PO: ' . $e->getMessage();
+        }
+
+        header('Location: manager_fuel_stock_requests.php');
+        exit;
+    }
+
     if ($action === 'approve' && $req_id > 0) {
         $approved_liters = (float)($_POST['approved_liters'] ?? 0);
         $manager_notes   = trim($_POST['manager_notes'] ?? '');
@@ -151,7 +247,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 
-// Fetch requests
+// Fetch fuel stock requests
 $requests = [];
 try {
     $stmt = $pdo->prepare("
@@ -174,15 +270,40 @@ try {
     $_SESSION['error'] = 'Could not load requests: ' . $e->getMessage();
 }
 
+// Fetch merchandise stock requests (validated, ready for PO)
+$merch_requests = [];
+try {
+    $stmt = $pdo->prepare("
+        SELECT sr.*, u.name AS staff_name, m.name AS manager_name,
+               po.id as po_id, po.po_number
+        FROM stock_requests sr
+        JOIN users u ON sr.staff_id = u.id
+        LEFT JOIN users m ON sr.manager_id = m.id
+        LEFT JOIN purchase_orders po ON po.request_id = sr.id
+        WHERE sr.station_id = ?
+        ORDER BY
+            CASE sr.status
+                WHEN 'Pending' THEN 1
+                WHEN 'Validated' THEN 2
+            END,
+            sr.created_at DESC
+    ");
+    $stmt->execute([$station_id]);
+    $merch_requests = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    $_SESSION['error'] = 'Could not load merchandise requests: ' . $e->getMessage();
+}
+
 $pending_count = count(array_filter($requests, fn($r) => $r['status'] === 'Pending'));
+$validated_merch_count = count(array_filter($merch_requests, fn($r) => $r['status'] === 'Validated' && empty($r['po_id'])));
 
 include __DIR__ . '/../partials/header.php';
 ?>
 
 <div class="page-head">
     <div>
-        <h1 class="h1"><i class="fas fa-gas-pump" style="color:#c0392b;"></i> Fuel Stock Requests</h1>
-        <div class="sub">Review and approve/reject staff fuel stock requests</div>
+        <h1 class="h1"><i class="fas fa-clipboard-list" style="color:#667eea;"></i> Stock Requests Management</h1>
+        <div class="sub">Review fuel and merchandise stock requests, approve/reject, and generate Purchase Orders</div>
     </div>
 </div>
 
@@ -196,7 +317,7 @@ include __DIR__ . '/../partials/header.php';
 <div class="fsr-summary-row">
     <div class="fsr-card fsr-card-total">
         <div class="fsr-card-num"><?php echo count($requests); ?></div>
-        <div class="fsr-card-lbl">Total Requests</div>
+        <div class="fsr-card-lbl">Total Fuel Requests</div>
     </div>
     <div class="fsr-card fsr-card-pending">
         <div class="fsr-card-num"><?php echo $pending_count; ?></div>
@@ -210,9 +331,105 @@ include __DIR__ . '/../partials/header.php';
         <div class="fsr-card-num"><?php echo count(array_filter($requests, fn($r) => $r['status'] === 'Rejected')); ?></div>
         <div class="fsr-card-lbl">Rejected</div>
     </div>
+    <div class="fsr-card fsr-card-validated">
+        <div class="fsr-card-num"><?php echo $validated_merch_count; ?></div>
+        <div class="fsr-card-lbl">Ready for PO</div>
+    </div>
 </div>
 
+<!-- Merchandise Stock Requests - Validated (Ready for PO Generation) -->
+<?php if (!empty($merch_requests)): ?>
+<div class="card" style="padding:0;margin-bottom:24px;">
+    <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;padding:16px 24px;border-radius:12px 12px 0 0;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;"><i class="fas fa-box" style="margin-right:8px;"></i> Merchandise Stock Requests</h3>
+        <p style="margin:6px 0 0 0;font-size:12px;opacity:0.9;">Validated requests ready for Purchase Order generation</p>
+    </div>
+    <div class="fsr-table-wrap">
+        <table class="fsr-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Date</th>
+                    <th>Staff</th>
+                    <th>Item</th>
+                    <th>Category</th>
+                    <th>Current Stock</th>
+                    <th>Status</th>
+                    <th>Requested Qty</th>
+                    <th>Approved Qty</th>
+                    <th>Manager Notes</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($merch_requests as $req): ?>
+                <?php
+                    $st  = $req['status'] ?? 'Pending';
+                    $cls = 'fsr-badge-' . strtolower($st);
+                    $has_po = !empty($req['po_id']);
+                ?>
+                <tr>
+                    <td style="font-family:monospace;font-size:11px;color:#888;">#<?php echo $req['id']; ?></td>
+                    <td style="font-size:12px;"><?php echo date('M d, Y H:i', strtotime($req['created_at'])); ?></td>
+                    <td><?php echo htmlspecialchars($req['staff_name']); ?></td>
+                    <td>
+                        <strong><?php echo htmlspecialchars($req['item_name']); ?></strong>
+                        <div style="font-size:10px;color:#888;font-family:monospace;"><?php echo htmlspecialchars($req['item_sku']); ?></div>
+                    </td>
+                    <td style="font-size:11px;"><?php echo htmlspecialchars($req['item_category']); ?></td>
+                    <td style="text-align:center;">
+                        <?php echo number_format($req['current_stock']); ?>
+                        <?php if ($req['current_stock'] <= 10): ?>
+                            <span style="color:#dc3545;font-size:11px;font-weight:700;display:block;">LOW</span>
+                        <?php endif; ?>
+                    </td>
+                    <td><span class="fsr-badge <?php echo $cls; ?>"><?php echo htmlspecialchars($st); ?></span></td>
+                    <td style="font-weight:700;text-align:center;"><?php echo number_format($req['requested_quantity']); ?></td>
+                    <td style="text-align:center;">
+                        <?php if ($req['approved_quantity'] !== null): ?>
+                            <strong style="color:#28a745;"><?php echo number_format($req['approved_quantity']); ?></strong>
+                        <?php else: ?>
+                            <span style="color:#adb5bd;">—</span>
+                        <?php endif; ?>
+                    </td>
+                    <td style="font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?php echo htmlspecialchars($req['manager_notes'] ?? ''); ?>">
+                        <?php echo $req['manager_notes'] ? htmlspecialchars($req['manager_notes']) : '<span style="color:#adb5bd;">—</span>'; ?>
+                    </td>
+                    <td>
+                        <?php if ($st === 'Validated' && !$has_po): ?>
+                            <button class="fsr-btn fsr-btn-generate-po" onclick="openGeneratePOModal(<?php echo $req['id']; ?>, '<?php echo htmlspecialchars($req['item_name'], ENT_QUOTES); ?>', <?php echo $req['approved_quantity'] ?? $req['requested_quantity']; ?>)">
+                                <i class="fas fa-file-invoice"></i> Generate PO
+                            </button>
+                        <?php elseif ($has_po): ?>
+                            <span style="font-size:11px;color:#28a745;font-weight:600;">
+                                <i class="fas fa-check-circle"></i> PO: <?php echo htmlspecialchars($req['po_number']); ?>
+                            </span>
+                        <?php else: ?>
+                            <span style="font-size:11px;color:#6c757d;">Not ready</span>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+                <?php if (empty($merch_requests)): ?>
+                <tr>
+                    <td colspan="11" style="text-align:center;padding:48px;color:#888;">
+                        <i class="fas fa-box" style="font-size:36px;display:block;margin-bottom:12px;opacity:0.2;"></i>
+                        No merchandise stock requests yet.
+                    </td>
+                </tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+<?php endif; ?>
+
+<!-- Fuel Stock Requests -->
 <div class="card" style="padding:0;">
+    <div style="background:linear-gradient(135deg,#f093fb 0%,#f5576c 100%);color:#fff;padding:16px 24px;border-radius:12px 12px 0 0;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;"><i class="fas fa-gas-pump" style="margin-right:8px;"></i> Fuel Stock Requests</h3>
+        <p style="margin:6px 0 0 0;font-size:12px;opacity:0.9;">Pending fuel requests awaiting approval/rejection</p>
+    </div>
     <div class="fsr-table-wrap">
         <table class="fsr-table">
             <thead>
@@ -346,6 +563,36 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
+<!-- Generate PO Modal -->
+<div id="generatePOModal" class="modal">
+    <div class="modal-box" style="max-width:480px;">
+        <div class="modal-header">
+            <div class="modal-title"><i class="fas fa-file-invoice" style="color:#667eea;margin-right:7px;"></i> Generate Purchase Order</div>
+            <button class="modal-close" onclick="closeModal('generatePOModal')" title="Close">×</button>
+        </div>
+        <form method="post">
+            <input type="hidden" name="action" value="generate_po">
+            <input type="hidden" name="request_id" id="po_request_id">
+            <div style="background:#f8f9fa;border:1px solid #e9ecef;border-radius:8px;padding:12px;margin-bottom:14px;text-align:center;">
+                <div style="font-size:12px;color:#888;margin-bottom:6px;text-transform:uppercase;">Item Name</div>
+                <div style="font-weight:700;color:#212529;font-size:16px;" id="po_item_name">—</div>
+            </div>
+            <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px;margin-bottom:14px;">
+                <div style="font-size:12px;color:#856404;margin-bottom:6px;"><i class="fas fa-info-circle"></i> <strong>Approved Quantity</strong></div>
+                <div style="font-weight:700;color:#212529;font-size:20px;text-align:center;" id="po_quantity">—</div>
+            </div>
+            <div style="padding:12px;background:#e7f3ff;border-radius:8px;font-size:13px;color:#004085;margin-bottom:14px;">
+                <i class="fas fa-lightbulb" style="margin-right:6px;"></i>
+                This will create a Purchase Order with status "Pending Admin Validation" and send it to the Admin for final approval.
+            </div>
+            <div class="modal-footer">
+                <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-file-invoice"></i> Generate PO</button>
+                <button type="button" onclick="closeModal('generatePOModal')" class="btn btn-secondary">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <style>
 .alert-success { background:#d4edda;color:#155724;padding:12px 16px;border-radius:8px;margin-bottom:16px; }
 .alert-error   { background:#f8d7da;color:#721c24;padding:12px 16px;border-radius:8px;margin-bottom:16px; }
@@ -357,7 +604,10 @@ include __DIR__ . '/../partials/header.php';
 .fsr-card-total .fsr-card-num { color:#002F6C; }
 .fsr-card-pending .fsr-card-num { color:#fd7e14; }
 .fsr-card-approved .fsr-card-num { color:#155724; }
-.fsr-card-rejected .fsr-card-num { color:#721c24; }
+.fsr-card-validated .fsr-card-num { color:#667eea; }
+
+.fsr-btn-generate-po { background:#667eea;color:#fff; }
+.fsr-btn-generate-po:hover { background:#5568d3; }
 
 .fsr-table-wrap { overflow-x:auto; }
 .fsr-table { width:100%;border-collapse:collapse;font-size:12px;min-width:900px; }
@@ -399,6 +649,13 @@ function openRejectModal(id, fuel) {
     document.getElementById('reject_id').value = id;
     document.getElementById('reject_fuel').textContent = fuel;
     openModal('rejectModal');
+}
+
+function openGeneratePOModal(id, itemName, quantity) {
+    document.getElementById('po_request_id').value = id;
+    document.getElementById('po_item_name').textContent = itemName;
+    document.getElementById('po_quantity').textContent = quantity;
+    openModal('generatePOModal');
 }
 
 function openModal(id) {

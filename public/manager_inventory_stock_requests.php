@@ -224,11 +224,19 @@ include __DIR__ . "/../partials/header.php";
 
 <div class="page-head">
     <div>
-        <h1><i class="fas fa-shopping-cart"></i> Purchase Requests</h1>
-        <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; Review, approve or reject staff purchase requests</div>
+        <h1><i class="fas fa-shopping-cart"></i> Stock Requests Validation</h1>
+        <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; Review, validate, edit quantity/liters of staff stock requests</div>
     </div>
-    <div class="header-actions">
-        <button onclick="location.reload()" class="btn ghost"><i class="fas fa-sync-alt"></i> Refresh</button>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto;">
+        <?php
+        $export_table_id       = 'pendingTable'; // Default, will change dynamically in JS
+        $export_filename       = 'stock_requests_' . date('Ymd');
+        $export_title          = 'Stock Requests';
+        $export_rows_select_id = 'mgrStockReqRowsLimit';
+        $export_default_rows   = 25;
+        $export_back_url       = 'manager_dashboard.php';
+        require __DIR__ . '/../partials/export_buttons.php';
+        ?>
     </div>
 </div>
 
@@ -239,6 +247,8 @@ include __DIR__ . "/../partials/header.php";
 <div class="inv-alert inv-alert-error"><i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($flash_error); ?></div>
 <?php endif; ?>
 <div id="flashMsg" style="display:none;" class="inv-alert"></div>
+
+<?php require_once __DIR__ . '/../partials/manager_inventory_summary.php'; ?>
 
 <!-- ── MAIN TYPE TABS ── -->
 <div class="main-tab-nav">
@@ -292,6 +302,7 @@ include __DIR__ . "/../partials/header.php";
                         </tbody>
                     </table>
                 </div>
+                <div id="mgrMerchSrPendingPagination" style="margin-top:10px;padding:0 20px 10px 20px;"></div>
             </div>
         </div>
     </div>
@@ -317,6 +328,7 @@ include __DIR__ . "/../partials/header.php";
                         </tbody>
                     </table>
                 </div>
+                <div id="mgrMerchSrHistoryPagination" style="margin-top:10px;padding:0 20px 10px 20px;"></div>
             </div>
         </div>
     </div>
@@ -350,7 +362,7 @@ $fuel_rejected_cnt  = count(array_filter($fuel_requests, fn($r) => $r['status'] 
     <div id="fuel-pending-tab">
         <div class="inv-card" style="padding:0;">
             <div class="po-table-wrap">
-                <table class="po-table">
+                <table class="po-table" id="fuelPendingTable">
                     <thead>
                         <tr>
                             <th>#</th><th>Date</th><th>Staff</th><th>Fuel Type</th>
@@ -394,6 +406,7 @@ $fuel_rejected_cnt  = count(array_filter($fuel_requests, fn($r) => $r['status'] 
                         <?php endif; ?>
                     </tbody>
                 </table>
+                <div id="mgrFuelSrPendingPagination" style="margin-top:10px;padding:0 20px 10px 20px;"></div>
             </div>
         </div>
     </div>
@@ -402,7 +415,7 @@ $fuel_rejected_cnt  = count(array_filter($fuel_requests, fn($r) => $r['status'] 
     <div id="fuel-history-tab" style="display:none;">
         <div class="inv-card" style="padding:0;">
             <div class="po-table-wrap">
-                <table class="po-table">
+                <table class="po-table" id="fuelHistoryTable">
                     <thead>
                         <tr>
                             <th>#</th><th>Date</th><th>Staff</th><th>Fuel Type</th>
@@ -440,6 +453,7 @@ $fuel_rejected_cnt  = count(array_filter($fuel_requests, fn($r) => $r['status'] 
                         <?php endif; ?>
                     </tbody>
                 </table>
+                <div id="mgrFuelSrHistoryPagination" style="margin-top:10px;padding:0 20px 10px 20px;"></div>
             </div>
         </div>
     </div>
@@ -620,6 +634,8 @@ function switchFuelSub(tab, btn) {
     document.getElementById("fuel-history-tab").style.display = tab === "history" ? "block" : "none";
     document.querySelectorAll("#tab-fuel .tab-btn").forEach(function(b) { b.classList.remove("active"); });
     btn.classList.add("active");
+    if (tab === "pending") setupTablePagination('fuelPendingTable', 'mgrStockReqRowsLimit', 'mgrFuelSrPendingPagination', 25);
+    if (tab === "history") setupTablePagination('fuelHistoryTable', 'mgrStockReqRowsLimit', 'mgrFuelSrHistoryPagination', 25);
 }
 
 // ── Load merchandise requests via AJAX ────────────────────────────────────────
@@ -641,6 +657,8 @@ function loadMerchRequests() {
 
         renderPending(pending);
         renderHistory(history);
+        setupTablePagination('pendingTable', 'mgrStockReqRowsLimit', 'mgrMerchSrPendingPagination', 25);
+        setupTablePagination('historyTable', 'mgrStockReqRowsLimit', 'mgrMerchSrHistoryPagination', 25);
     })
     .catch(function() {
         document.getElementById("pendingBody").innerHTML = "<tr><td colspan=\"10\" style=\"text-align:center;padding:30px;color:#dc3545;\">Error loading requests.</td></tr>";
@@ -870,6 +888,10 @@ function fmtDate(ds) {
 }
 document.addEventListener("keydown", function(e) {
     if (e.key === "Escape") { closeApprove(); closeReject(); closeFuelApprove(); closeFuelReject(); }
+});
+document.addEventListener("DOMContentLoaded", function() {
+    setupTablePagination('fuelPendingTable', 'mgrStockReqRowsLimit', 'mgrFuelSrPendingPagination', 25);
+    setupTablePagination('fuelHistoryTable', 'mgrStockReqRowsLimit', 'mgrFuelSrHistoryPagination', 25);
 });
 </script>
 

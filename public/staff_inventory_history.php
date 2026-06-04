@@ -82,9 +82,6 @@ include __DIR__ . '/../partials/header.php';
         <h1 class="h1"><i class="fas fa-history"></i> Inventory History</h1>
         <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; Your stock request lifecycle</div>
     </div>
-    <div class="header-actions">
-        <button onclick="location.reload()" class="btn ghost"><i class="fas fa-sync-alt"></i> Refresh</button>
-    </div>
 </div>
 
 <?php if ($msg): ?>
@@ -93,16 +90,24 @@ include __DIR__ . '/../partials/header.php';
 </div>
 <?php endif; ?>
 
-<!-- Summary cards -->
-<div class="summary-grid">
-    <div class="summary-card s-pending">
-        <div class="s-val"><?php echo $pending_count; ?></div>
-        <div class="s-lbl">Pending</div>
-    </div>
-    <div class="summary-card s-approved">
-        <div class="s-val"><?php echo $validated_count; ?></div>
-        <div class="s-lbl">Validated</div>
-    </div>
+<?php require_once __DIR__ . '/../partials/staff_inventory_summary.php'; ?>
+
+<!-- Flat Summary Table of Requests -->
+<div style="background:#fff;border:1px solid #dee2e6;border-radius:8px;margin-bottom:20px;overflow:hidden;">
+    <table style="width:100%;border-collapse:collapse;font-size:13px;text-align:center;">
+        <thead>
+            <tr style="background:#f8f9fa;border-bottom:1px solid #dee2e6;">
+                <th style="padding:10px;font-weight:700;color:#555;border-right:1px solid #dee2e6;">Pending Requests</th>
+                <th style="padding:10px;font-weight:700;color:#555;">Validated Requests</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr style="font-size:16px;font-weight:800;">
+                <td style="padding:12px;color:#856404;border-right:1px solid #dee2e6;"><?php echo $pending_count; ?></td>
+                <td style="padding:12px;color:#155724;"><?php echo $validated_count; ?></td>
+            </tr>
+        </tbody>
+    </table>
 </div>
 
 <div class="inv-card">
@@ -113,7 +118,16 @@ include __DIR__ . '/../partials/header.php';
                 <span style="background:#dc3545;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;"><?php echo $pending_count; ?> Pending</span>
             <?php endif; ?>
         </div>
-        <span style="font-size:12px;color:#6c757d;">Read-only &mdash; transparency &amp; tracking only</span>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <?php
+            $export_table_id       = 'requestsHistoryTable';
+            $export_filename       = 'stock_requests_history_' . date('Ymd');
+            $export_title          = 'Stock Requests History';
+            $export_rows_select_id = 'historyRowsLimit';
+            $export_default_rows   = 25;
+            require __DIR__ . '/../partials/export_buttons.php';
+            ?>
+        </div>
     </div>
     <div class="inv-card-body">
 
@@ -123,7 +137,7 @@ include __DIR__ . '/../partials/header.php';
         </div>
 
         <div class="table-wrap">
-            <table class="table">
+            <table class="table" id="requestsHistoryTable">
                 <thead>
                     <tr>
                         <th>#</th>
@@ -179,7 +193,14 @@ include __DIR__ . '/../partials/header.php';
                 </tbody>
             </table>
         </div>
+        <div id="requestsHistoryPagination" style="margin-top:10px;"></div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    setupTablePagination('requestsHistoryTable', 'historyRowsLimit', 'requestsHistoryPagination', 25);
+});
+</script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

@@ -4,6 +4,7 @@ $page_id = match($_GET['tab'] ?? '') {
     'transactions'  => 'fuel_transactions_oversight',
     'reconciliation'=> 'fuel_reconciliation',
     'adjustments'   => 'fuel_adjustments',
+    'stock_requests'=> 'fuel_stock_requests',
     default         => 'fuel_transactions_oversight',
 };
 require_once __DIR__ . '/../backend/lib.php';
@@ -376,6 +377,98 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $_SESSION['error'] = '? ' . $e->getMessage();
             }
             header('Location: manager_fuel_management_complete.php#daily-ops'); exit;
+
+        /* -- GENERATE PO FROM STOCK REQUEST -- */
+        case 'generate_po_from_request':
+            $request_id = (int)($_POST['request_id'] ?? 0);
+            try {
+                if (!$request_id) throw new Exception('Invalid stock request ID.');
+
+                // Load validated stock request
+                $stmt = $pdo->prepare("
+                    SELECT sr.*, u.name AS staff_name
+                    FROM stock_requests sr
+                    LEFT JOIN users u ON sr.staff_id = u.id
+                    WHERE sr.id = ? AND sr.station_id = ? AND sr.status = 'Validated'
+                ");
+                $stmt->execute([$request_id, $station_id]);
+                $request = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                if (!$request) throw new Exception('Validated stock request not found.');
+
+                // Check if PO already exists for this request
+                $check_stmt = $pdo->prepare("SELECT id FROM purchase_orders WHERE request_id = ?");
+                $check_stmt->execute([$request_id]);
+                if ($check_stmt->fetch()) {
+                    throw new Exception('Purchase Order already exists for this stock request.');
+                }
+
+                $pdo->beginTransaction();
+
+                // Generate unique PO number
+                $po_number = 'PO-' . date('Ymd') . '-SR' . str_pad($request_id, 4, '0', STR_PAD_LEFT);
+
+                // Get item price from station_inventory or products table
+                $price_stmt = $pdo->prepare("
+                    SELECT COALESCE(cost, 0) as unit_cost
+                    FROM station_inventory
+                    WHERE station_id = ? AND sku = ?
+                    LIMIT 1
+                ");
+                $price_stmt->execute([$station_id, $request['item_sku']]);
+                $price_row = $price_stmt->fetch(PDO::FETCH_ASSOC);
+                $unit_price = $price_row ? (float)$price_row['unit_cost'] : (float)($request['approved_price'] ?? 0);
+
+                $approved_qty = $request['approved_quantity'] ?? $request['requested_quantity'];
+                $total_amount = $unit_price * $approved_qty;
+
+                // Create Purchase Order
+                $po_stmt = $pdo->prepare("
+                    INSERT INTO purchase_orders
+                        (request_id, product_name, quantity, unit_price, total_amount, type,
+                         po_number, station_id, created_by, status, remarks, created_at)
+                    VALUES (?, ?, ?, ?, ?, 'merch', ?, ?, ?, 'Pending Admin Validation', ?, NOW())
+                ");
+                $remarks = "Auto-generated from Stock Request #{$request_id}. Manager: {$me['name']}.";
+                $po_stmt->execute([
+                    $request_id,
+                    $request['item_name'],
+                    $approved_qty,
+                    $unit_price,
+                    $total_amount,
+                    $po_number,
+                    $station_id,
+                    $me['id'],
+                    $remarks
+                ]);
+
+                $po_id = $pdo->lastInsertId();
+
+                // Add PO line item
+                $item_stmt = $pdo->prepare("
+                    INSERT INTO purchase_order_items
+                        (po_id, item_name, quantity, product_id, unit_price, total_price)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ");
+                $item_stmt->execute([
+                    $po_id,
+                    $request['item_name'],
+                    $approved_qty,
+                    $request['item_id'],
+                    $unit_price,
+                    $total_amount
+                ]);
+
+                log_activity($pdo, $me['id'], 'Generate PO',
+                    "PO {$po_number} created from Stock Request #{$request_id}. Item: {$request['item_name']}, Qty: {$approved_qty}");
+
+                $pdo->commit();
+                $_SESSION['success'] = "✓ Purchase Order {$po_number} generated successfully. Pending Admin validation.";
+            } catch (Exception $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                $_SESSION['error'] = '✗ Error generating PO: ' . $e->getMessage();
+            }
+            header('Location: manager_fuel_management_complete.php?tab=stock_requests'); exit;
 
         /* -- RECORD DELIVERY -- */
         case 'record_delivery':
@@ -913,6 +1006,286 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
             header('Location: manager_fuel_management_complete.php#reconciliation'); exit;
 
+        /* -- EXPORT FUEL TRANSACTIONS -- */
+        case 'export_transactions':
+            $format = $_GET['format'] ?? 'excel';
+            $date_from = $_GET['date_from'] ?? date('Y-m-01');
+            $date_to = $_GET['date_to'] ?? date('Y-m-d');
+            $status_filter = $_GET['status'] ?? '';
+            try {
+                $sql = "
+                    SELECT ft.transaction_id, ft.transaction_date, ft.fuel_type, ft.liters_sold,
+                           ft.price_per_liter, ft.total_amount, ft.status, ft.shift_period,
+                           ft.pump_id, ft.previous_reading, ft.present_reading,
+                           u.name as staff_name, v.name as validated_by_name
+                    FROM fuel_transactions ft
+                    LEFT JOIN users u ON ft.staff_id = u.id
+                    LEFT JOIN users v ON ft.validated_by = v.id
+                    WHERE ft.station_id = ? AND DATE(ft.transaction_date) BETWEEN ? AND ?
+                ";
+                $params = [$station_id, $date_from, $date_to];
+                if ($status_filter) {
+                    $sql .= " AND LOWER(ft.status) LIKE ?";
+                    $params[] = '%' . strtolower($status_filter) . '%';
+                }
+                $sql .= " ORDER BY ft.transaction_date DESC";
+
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
+                $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                if ($format === 'excel' || $format === 'csv') {
+                    header('Content-Type: text/csv');
+                    header('Content-Disposition: attachment; filename="fuel_transactions_' . date('Y-m-d') . '.csv"');
+                    $out = fopen('php://output', 'w');
+                    fputcsv($out, ['TXN ID', 'Date', 'Fuel Type', 'Liters', 'Price/L', 'Total Amount', 'Status', 'Shift', 'Pump', 'Prev Reading', 'Current Reading', 'Staff', 'Validated By']);
+                    foreach ($transactions as $t) {
+                        fputcsv($out, [
+                            $t['transaction_id'],
+                            $t['transaction_date'],
+                            $t['fuel_type'],
+                            number_format($t['liters_sold'], 2),
+                            number_format($t['price_per_liter'], 2),
+                            number_format($t['total_amount'], 2),
+                            $t['status'],
+                            $t['shift_period'] ?? '-',
+                            $t['pump_id'] ?? '-',
+                            $t['previous_reading'] ?? '-',
+                            $t['present_reading'] ?? '-',
+                            $t['staff_name'] ?? '-',
+                            $t['validated_by_name'] ?? 'Pending'
+                        ]);
+                    }
+                    fclose($out);
+                    exit;
+                } elseif ($format === 'pdf') {
+                    header('Content-Type: text/html');
+                    echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Fuel Transactions Report</title>';
+                    echo '<style>body{font-family:Arial,sans-serif;margin:20px}h1{color:#002F70}table{border-collapse:collapse;width:100%;margin-top:20px}th,td{border:1px solid #ddd;padding:8px;text-align:left;font-size:11px}th{background:#002F70;color:#fff}tr:nth-child(even){background:#f9f9f9}.header-info{margin:15px 0;font-size:13px}</style>';
+                    echo '</head><body>';
+                    echo '<h1>Fuel Transactions Report</h1>';
+                    echo '<div class="header-info"><strong>Station ID:</strong> ' . $station_id . ' | <strong>Period:</strong> ' . $date_from . ' to ' . $date_to . ' | <strong>Generated:</strong> ' . date('Y-m-d H:i:s') . '</div>';
+                    echo '<table><thead><tr><th>TXN ID</th><th>Date</th><th>Fuel</th><th>Liters</th><th>Price/L</th><th>Amount</th><th>Status</th><th>Staff</th><th>Validated By</th></tr></thead><tbody>';
+                    foreach ($transactions as $t) {
+                        echo '<tr>';
+                        echo '<td>' . htmlspecialchars($t['transaction_id']) . '</td>';
+                        echo '<td>' . htmlspecialchars($t['transaction_date']) . '</td>';
+                        echo '<td>' . htmlspecialchars($t['fuel_type']) . '</td>';
+                        echo '<td>' . number_format($t['liters_sold'], 2) . '</td>';
+                        echo '<td>₱' . number_format($t['price_per_liter'], 2) . '</td>';
+                        echo '<td>₱' . number_format($t['total_amount'], 2) . '</td>';
+                        echo '<td>' . htmlspecialchars($t['status']) . '</td>';
+                        echo '<td>' . htmlspecialchars($t['staff_name'] ?? '-') . '</td>';
+                        echo '<td>' . htmlspecialchars($t['validated_by_name'] ?? 'Pending') . '</td>';
+                        echo '</tr>';
+                    }
+                    echo '</tbody></table></body></html>';
+                    exit;
+                }
+            } catch (Exception $e) {
+                $_SESSION['error'] = 'Export error: ' . $e->getMessage();
+            }
+            header('Location: manager_fuel_management_complete.php?tab=transactions');
+            exit;
+
+        /* -- EXPORT DELIVERIES -- */
+        case 'export_deliveries':
+            $format = $_GET['format'] ?? 'excel';
+            $date_from = $_GET['date_from'] ?? date('Y-m-01');
+            $date_to = $_GET['date_to'] ?? date('Y-m-d');
+            try {
+                $stmt = $pdo->prepare("
+                    SELECT fd.id, fd.delivery_date, fd.fuel_type, fd.supplier, fd.invoice_no,
+                           fd.delivery_liters, fd.tanker_number, fd.status,
+                           u.name as recorded_by, v.name as verified_by
+                    FROM fuel_deliveries fd
+                    LEFT JOIN users u ON fd.received_by = u.id
+                    LEFT JOIN users v ON fd.verified_by = v.id
+                    WHERE fd.station_id = ? AND fd.delivery_date BETWEEN ? AND ?
+                    ORDER BY fd.delivery_date DESC
+                ");
+                $stmt->execute([$station_id, $date_from, $date_to]);
+                $deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                if ($format === 'excel' || $format === 'csv') {
+                    header('Content-Type: text/csv');
+                    header('Content-Disposition: attachment; filename="fuel_deliveries_' . date('Y-m-d') . '.csv"');
+                    $out = fopen('php://output', 'w');
+                    fputcsv($out, ['Delivery ID', 'Date', 'Fuel Type', 'Supplier', 'Invoice No', 'Liters', 'Tanker No', 'Status', 'Recorded By', 'Verified By']);
+                    foreach ($deliveries as $d) {
+                        fputcsv($out, [
+                            $d['id'],
+                            $d['delivery_date'],
+                            $d['fuel_type'],
+                            $d['supplier'],
+                            $d['invoice_no'],
+                            number_format($d['delivery_liters'], 2),
+                            $d['tanker_number'] ?? '-',
+                            $d['status'],
+                            $d['recorded_by'] ?? '-',
+                            $d['verified_by'] ?? 'Pending'
+                        ]);
+                    }
+                    fclose($out);
+                    exit;
+                } elseif ($format === 'pdf') {
+                    header('Content-Type: text/html');
+                    echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Fuel Deliveries Report</title>';
+                    echo '<style>body{font-family:Arial,sans-serif;margin:20px}h1{color:#002F70}table{border-collapse:collapse;width:100%;margin-top:20px}th,td{border:1px solid #ddd;padding:8px;text-align:left;font-size:11px}th{background:#002F70;color:#fff}tr:nth-child(even){background:#f9f9f9}.header-info{margin:15px 0;font-size:13px}</style>';
+                    echo '</head><body>';
+                    echo '<h1>Fuel Deliveries Validation Report</h1>';
+                    echo '<div class="header-info"><strong>Station ID:</strong> ' . $station_id . ' | <strong>Period:</strong> ' . $date_from . ' to ' . $date_to . ' | <strong>Generated:</strong> ' . date('Y-m-d H:i:s') . '</div>';
+                    echo '<table><thead><tr><th>ID</th><th>Date</th><th>Fuel</th><th>Supplier</th><th>Invoice</th><th>Liters</th><th>Status</th><th>Verified By</th></tr></thead><tbody>';
+                    foreach ($deliveries as $d) {
+                        echo '<tr>';
+                        echo '<td>DEL-' . $d['id'] . '</td>';
+                        echo '<td>' . htmlspecialchars($d['delivery_date']) . '</td>';
+                        echo '<td>' . htmlspecialchars($d['fuel_type']) . '</td>';
+                        echo '<td>' . htmlspecialchars($d['supplier']) . '</td>';
+                        echo '<td>' . htmlspecialchars($d['invoice_no']) . '</td>';
+                        echo '<td>' . number_format($d['delivery_liters'], 2) . ' L</td>';
+                        echo '<td>' . htmlspecialchars($d['status']) . '</td>';
+                        echo '<td>' . htmlspecialchars($d['verified_by'] ?? 'Pending') . '</td>';
+                        echo '</tr>';
+                    }
+                    echo '</tbody></table></body></html>';
+                    exit;
+                }
+            } catch (Exception $e) {
+                $_SESSION['error'] = 'Export error: ' . $e->getMessage();
+            }
+            header('Location: manager_fuel_management_complete.php?tab=deliveries');
+            exit;
+
+        /* -- EXPORT ADJUSTMENTS -- */
+        case 'export_adjustments':
+            $format = $_GET['format'] ?? 'excel';
+            $date_from = $_GET['date_from'] ?? date('Y-m-01');
+            $date_to = $_GET['date_to'] ?? date('Y-m-d');
+            try {
+                $stmt = $pdo->prepare("
+                    SELECT fa.id, fa.adjustment_date, fa.fuel_type, fa.adjustment_type,
+                           fa.liters, fa.reason, u.name as adjusted_by,
+                           COALESCE(fa.created_at, fa.adjustment_date) as created_at
+                    FROM fuel_adjustments fa
+                    LEFT JOIN users u ON fa.user_id = u.id
+                    WHERE fa.station_id = ? AND fa.adjustment_date BETWEEN ? AND ?
+                    ORDER BY fa.adjustment_date DESC, fa.created_at DESC
+                ");
+                $stmt->execute([$station_id, $date_from, $date_to]);
+                $adjustments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                if ($format === 'excel' || $format === 'csv') {
+                    header('Content-Type: text/csv');
+                    header('Content-Disposition: attachment; filename="fuel_adjustments_' . date('Y-m-d') . '.csv"');
+                    $out = fopen('php://output', 'w');
+                    fputcsv($out, ['Adjustment ID', 'Date', 'Fuel Type', 'Type', 'Liters', 'Reason', 'Adjusted By']);
+                    foreach ($adjustments as $a) {
+                        fputcsv($out, [
+                            $a['id'],
+                            $a['adjustment_date'],
+                            $a['fuel_type'] ?? '-',
+                            $a['adjustment_type'],
+                            number_format($a['liters'], 2),
+                            $a['reason'],
+                            $a['adjusted_by'] ?? '-'
+                        ]);
+                    }
+                    fclose($out);
+                    exit;
+                } elseif ($format === 'pdf') {
+                    header('Content-Type: text/html');
+                    echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Fuel Adjustments Report</title>';
+                    echo '<style>body{font-family:Arial,sans-serif;margin:20px}h1{color:#002F70}table{border-collapse:collapse;width:100%;margin-top:20px}th,td{border:1px solid #ddd;padding:8px;text-align:left;font-size:11px}th{background:#002F70;color:#fff}tr:nth-child(even){background:#f9f9f9}.header-info{margin:15px 0;font-size:13px}</style>';
+                    echo '</head><body>';
+                    echo '<h1>Fuel Adjustments Report</h1>';
+                    echo '<div class="header-info"><strong>Station ID:</strong> ' . $station_id . ' | <strong>Period:</strong> ' . $date_from . ' to ' . $date_to . ' | <strong>Generated:</strong> ' . date('Y-m-d H:i:s') . '</div>';
+                    echo '<table><thead><tr><th>ID</th><th>Date</th><th>Fuel</th><th>Type</th><th>Liters</th><th>Reason</th><th>Adjusted By</th></tr></thead><tbody>';
+                    foreach ($adjustments as $a) {
+                        echo '<tr>';
+                        echo '<td>ADJ-' . $a['id'] . '</td>';
+                        echo '<td>' . htmlspecialchars($a['adjustment_date']) . '</td>';
+                        echo '<td>' . htmlspecialchars($a['fuel_type'] ?? '-') . '</td>';
+                        echo '<td>' . htmlspecialchars($a['adjustment_type']) . '</td>';
+                        echo '<td>' . number_format($a['liters'], 2) . ' L</td>';
+                        echo '<td>' . htmlspecialchars($a['reason']) . '</td>';
+                        echo '<td>' . htmlspecialchars($a['adjusted_by'] ?? '-') . '</td>';
+                        echo '</tr>';
+                    }
+                    echo '</tbody></table></body></html>';
+                    exit;
+                }
+            } catch (Exception $e) {
+                $_SESSION['error'] = 'Export error: ' . $e->getMessage();
+            }
+            header('Location: manager_fuel_management_complete.php?tab=adjustments');
+            exit;
+
+        /* -- EXPORT PUMP MASTER CALIBRATION -- */
+        case 'export_calibration':
+            $format = $_GET['format'] ?? 'excel';
+            try {
+                $stmt = $pdo->prepare("
+                    SELECT fi.fuel_type, fi.latest_calibration, fi.price_per_liter,
+                           fi.current_level, fi.capacity, fi.last_updated,
+                           fp.pump_number, fp.calibration_value, fp.calibration_updated_at,
+                           u.name as calibration_updated_by
+                    FROM fuel_inventory fi
+                    LEFT JOIN fuel_pumps fp ON fp.station_id = fi.station_id AND fp.fuel_type_id = fi.fuel_type_id
+                    LEFT JOIN users u ON fp.calibration_updated_by = u.id
+                    WHERE fi.station_id = ?
+                    ORDER BY fi.fuel_type, fp.pump_number
+                ");
+                $stmt->execute([$station_id]);
+                $calibrations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                if ($format === 'excel' || $format === 'csv') {
+                    header('Content-Type: text/csv');
+                    header('Content-Disposition: attachment; filename="pump_calibration_' . date('Y-m-d') . '.csv"');
+                    $out = fopen('php://output', 'w');
+                    fputcsv($out, ['Fuel Type', 'Pump Number', 'Calibration Value', 'Price/Liter', 'Current Level', 'Capacity', 'Last Updated', 'Updated By']);
+                    foreach ($calibrations as $c) {
+                        fputcsv($out, [
+                            $c['fuel_type'],
+                            $c['pump_number'] ?? 'Tank',
+                            $c['calibration_value'] ?? $c['latest_calibration'],
+                            number_format($c['price_per_liter'], 2),
+                            number_format($c['current_level'], 2),
+                            number_format($c['capacity'], 2),
+                            $c['calibration_updated_at'] ?? $c['last_updated'],
+                            $c['calibration_updated_by'] ?? '-'
+                        ]);
+                    }
+                    fclose($out);
+                    exit;
+                } elseif ($format === 'pdf') {
+                    header('Content-Type: text/html');
+                    echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Pump Calibration Report</title>';
+                    echo '<style>body{font-family:Arial,sans-serif;margin:20px}h1{color:#002F70}table{border-collapse:collapse;width:100%;margin-top:20px}th,td{border:1px solid #ddd;padding:8px;text-align:left;font-size:11px}th{background:#002F70;color:#fff}tr:nth-child(even){background:#f9f9f9}.header-info{margin:15px 0;font-size:13px}</style>';
+                    echo '</head><body>';
+                    echo '<h1>Pump Calibration Master Report</h1>';
+                    echo '<div class="header-info"><strong>Station ID:</strong> ' . $station_id . ' | <strong>Generated:</strong> ' . date('Y-m-d H:i:s') . '</div>';
+                    echo '<table><thead><tr><th>Fuel Type</th><th>Pump</th><th>Calibration</th><th>Price/L</th><th>Current Level</th><th>Capacity</th><th>Last Updated</th></tr></thead><tbody>';
+                    foreach ($calibrations as $c) {
+                        echo '<tr>';
+                        echo '<td>' . htmlspecialchars($c['fuel_type']) . '</td>';
+                        echo '<td>' . ($c['pump_number'] ? 'Pump ' . $c['pump_number'] : 'Tank') . '</td>';
+                        echo '<td>' . ($c['calibration_value'] ?? $c['latest_calibration']) . ' L</td>';
+                        echo '<td>₱' . number_format($c['price_per_liter'], 2) . '</td>';
+                        echo '<td>' . number_format($c['current_level'], 2) . ' L</td>';
+                        echo '<td>' . number_format($c['capacity'], 2) . ' L</td>';
+                        echo '<td>' . ($c['calibration_updated_at'] ?? $c['last_updated']) . '</td>';
+                        echo '</tr>';
+                    }
+                    echo '</tbody></table></body></html>';
+                    exit;
+                }
+            } catch (Exception $e) {
+                $_SESSION['error'] = 'Export error: ' . $e->getMessage();
+            }
+            header('Location: manager_fuel_management_complete.php?tab=pump-master');
+            exit;
+
         /* -- EXPORT VARIANCE REPORT -- */
         case 'export_variance':
             $format    = $_POST['format'] ?? 'excel';
@@ -1310,9 +1683,45 @@ function adjustColor($hex,$pct) {
 ?>
 <style>
 /* -- MANAGER FUEL MANAGEMENT ENHANCED STYLES -- */
-body { overflow-x: hidden !important; max-width: 100vw !important; }
-.mfm-wrap { max-width:1400px; margin:0 auto; padding:10px; overflow-x:hidden; }
-.content-area, .main-content { overflow-x:hidden !important; max-width:100% !important; }
+/* UNIVERSAL NO HORIZONTAL SCROLL FIX */
+html, body { 
+    overflow-x: hidden !important; 
+    max-width: 100vw !important; 
+    width: 100% !important;
+    margin: 0;
+    padding: 0;
+}
+* { 
+    box-sizing: border-box !important; 
+}
+/* Prevent any element from exceeding viewport */
+*:not(.modal):not(.modal *) {
+    max-width: 100% !important;
+}
+.mfm-wrap { 
+    max-width: 100% !important; 
+    width: 100% !important; 
+    margin: 0 auto !important; 
+    padding: 10px !important; 
+    overflow-x: hidden !important; 
+}
+.content-area, .main-content { 
+    overflow-x: hidden !important; 
+    max-width: 100% !important; 
+    width: 100% !important; 
+}
+.fuel-section, .fuel-section-inner { 
+    overflow-x: hidden !important; 
+    max-width: 100% !important; 
+    width: 100% !important; 
+}
+/* Ensure all containers respect viewport */
+.page-head, .section-head, .stats-grid, .tank-grid, 
+.fuel-section, 
+.fuel-section-inner, .tab-content, .tab-inner {
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+}
 
 /* Notification Banner */
 .mfm-alert { display:flex; align-items:center; gap:12px; padding:14px 20px; border-radius:10px; margin-bottom:16px; font-weight:600; font-size:.9rem; animation:slideDown .3s ease; }
@@ -1322,8 +1731,8 @@ body { overflow-x: hidden !important; max-width: 100vw !important; }
 .mfm-alert .close-alert:hover { opacity:1; }
 @keyframes slideDown { from{opacity:0;transform:translateY(-10px)} to{opacity:1;transform:translateY(0)} }
 
-.fuel-section { background:#fff; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.06); border:1px solid #e9ecef; margin-bottom:20px; scroll-margin-top:20px; transition:opacity 0.3s ease, transform 0.3s ease; display:none; overflow-x:hidden; max-width:100%; }
-.fuel-section-inner { padding:20px; overflow-x:hidden; max-width:100%; }
+.fuel-section { background:#fff; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.06); border:1px solid #e9ecef; margin-bottom:20px; scroll-margin-top:20px; transition:opacity 0.3s ease, transform 0.3s ease; display:none; overflow-x:hidden; max-width:100%; width:100%; }
+.fuel-section-inner { padding:20px; overflow-x:hidden; max-width:100%; width:100%; }
 .tab-content.active { display:block; }
 .tab-inner { padding:20px; }
 
@@ -1332,7 +1741,7 @@ body { overflow-x: hidden !important; max-width: 100vw !important; }
 .fuel-section.visible { display:block !important; opacity:1; transform:translateY(0); }
 
 /* Stats Grid */
-.stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:20px; }
+.stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:20px; max-width:100%; width:100%; overflow-x:hidden; }
 .stat-card { background:linear-gradient(135deg,#f8f9fa,#e9ecef); border-radius:10px; padding:16px; text-align:center; border-left:4px solid <?php echo $colors['primary']; ?>; transition:transform .2s; }
 .stat-card:hover { transform:translateY(-2px); }
 .stat-card.danger { border-left-color:<?php echo $colors['danger']; ?>; }
@@ -1345,7 +1754,7 @@ body { overflow-x: hidden !important; max-width: 100vw !important; }
 .stat-label { font-size:.75rem; color:#666; text-transform:uppercase; letter-spacing:.5px; margin-top:4px; }
 
 /* Tank Cards */
-.tank-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px; margin-bottom:20px; }
+.tank-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px; margin-bottom:20px; max-width:100%; width:100%; overflow-x:hidden; }
 .tank-card { background:#fff; border:2px solid #e9ecef; border-radius:12px; padding:16px; transition:all .3s; }
 .tank-card:hover { border-color:<?php echo $colors['primary']; ?>; box-shadow:0 4px 12px rgba(<?php echo hex2rgb($colors['primary']); ?>,.15); }
 .tank-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
@@ -1367,13 +1776,80 @@ body { overflow-x: hidden !important; max-width: 100vw !important; }
 .tank-detail-value { font-weight:600; color:#333; }
 
 /* Tables */
-.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow-x:auto; }
-.data-table { width:100%; border-collapse:collapse; font-size:.88rem; margin-top:8px; }
-.data-table th, .data-table td { padding:9px 10px; text-align:left; border-bottom:1px solid #f0f0f0; vertical-align:middle; }
-.data-table th { background:#002F70; color:#fff; font-weight:600; font-size:.82rem; padding:10px; white-space:nowrap; border-bottom:2px solid #002F70; }
+.po-table-wrap { 
+    background:#fff; 
+    border-radius:12px; 
+    box-shadow:0 2px 12px rgba(0,0,0,0.07); 
+    overflow-x: auto; 
+    max-width: 100%; 
+    width: 100%; 
+    -webkit-overflow-scrolling: touch;
+}
+.data-table { 
+    width:100%; 
+    max-width:100%; 
+    border-collapse:collapse; 
+    font-size:.88rem; 
+    margin-top:8px; 
+    table-layout: auto;
+}
+.data-table th, .data-table td { 
+    padding:9px 10px; 
+    text-align:left; 
+    border-bottom:1px solid #f0f0f0; 
+    vertical-align:middle;
+    white-space: normal;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    max-width: 200px;
+}
+.data-table th { 
+    background:#002F70; 
+    color:#fff; 
+    font-weight:600; 
+    font-size:.82rem; 
+    padding:10px; 
+    white-space:nowrap; 
+    border-bottom:2px solid #002F70;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
 .data-table tbody tr { transition:background-color 0.15s ease; }
 .data-table tbody tr:hover { background:#f5f8ff; }
 .data-table tbody td { color:#333; }
+
+/* Mobile responsive table adjustments */
+@media (max-width: 1200px) {
+    .data-table { font-size: .8rem; }
+    .data-table th, .data-table td { 
+        padding: 7px 8px;
+        font-size: .78rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .po-table-wrap {
+        border-radius: 8px;
+        margin: 0 -10px;
+        width: calc(100% + 20px);
+    }
+    .data-table { 
+        font-size: .75rem;
+    }
+    .data-table th, .data-table td {
+        padding: 6px;
+        font-size: .72rem;
+        max-width: 120px;
+    }
+    .stats-grid {
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 8px;
+    }
+    .tank-grid {
+        grid-template-columns: 1fr;
+    }
+}
 
 /* Actions column — labeled buttons stacked vertically */
 .data-table th.col-actions,
@@ -1568,17 +2044,17 @@ body { overflow-x: hidden !important; max-width: 100vw !important; }
     <div class="po-table-wrap">
     <table class="data-table" style="font-size:0.78rem; width:100%;">
         <thead><tr>
-            <th style="width:95px;">TXN ID</th>
-            <th style="width:60px;">Fuel</th>
-            <th style="width:75px;">Reading<br><small style="font-weight:normal;opacity:0.8">Prev→Now</small></th>
-            <th style="width:60px;">Liters</th>
-            <th style="width:70px;">Revenue</th>
-            <th style="width:85px;">Shift</th>
-            <th style="width:75px;">Staff</th>
-            <th style="width:65px;">Date</th>
-            <th style="width:50px;">Var%</th>
-            <th style="width:65px;">Status</th>
-            <th class="col-actions" style="width:110px;">Actions</th>
+            <th style="min-width:90px;">TXN ID</th>
+            <th style="min-width:55px;">Fuel</th>
+            <th style="min-width:70px;">Reading<br><small style="font-weight:normal;opacity:0.8">Prev→Now</small></th>
+            <th style="min-width:55px;">Liters</th>
+            <th style="min-width:65px;">Revenue</th>
+            <th style="min-width:80px;">Shift</th>
+            <th style="min-width:70px;">Staff</th>
+            <th style="min-width:60px;">Date</th>
+            <th style="min-width:45px;">Var%</th>
+            <th style="min-width:60px;">Status</th>
+            <th class="col-actions" style="min-width:100px;">Actions</th>
         </tr></thead>
         <tbody>
         <?php foreach ($pending_readings as $r):
@@ -1839,13 +2315,7 @@ body { overflow-x: hidden !important; max-width: 100vw !important; }
             <span class="audit-badge"><i class="fas fa-user"></i> <?php echo htmlspecialchars($h['staff_name']); ?></span>
         </td>
         <td>
-            <?php if ($st_norm === 'verified'): ?>
-                <span class="tag-resolved"><i class="fas fa-check"></i> Approved</span>
-            <?php elseif ($st_norm === 'rejected'): ?>
-                <span class="tag-investigate"><i class="fas fa-times"></i> Rejected</span>
-            <?php else: ?>
-                <span class="tag-open"><i class="fas fa-clock"></i> Pending</span>
-            <?php endif; ?>
+            <?php echo status_badge($r['status'] ?? 'pending'); ?>
         </td>
         <td class="col-actions" style="white-space:nowrap;">
             <?php if ($st_norm === 'pending'): ?>
@@ -1899,17 +2369,17 @@ body { overflow-x: hidden !important; max-width: 100vw !important; }
     <div class="po-table-wrap" style="margin-top:12px;">
     <table class="data-table" style="font-size:0.82rem; width:100%;">
         <thead><tr>
-            <th style="width:50px;">#</th>
-            <th style="width:90px;">Fuel Type</th>
-            <th style="width:80px;">Status</th>
-            <th style="width:130px;">Supplier</th>
-            <th style="width:110px;">Invoice No.</th>
-            <th style="width:80px;">Volume (L)</th>
-            <th style="width:110px;">Tank Level</th>
-            <th style="width:110px;">Encoded By</th>
-            <th style="width:120px;">Date &amp; Time</th>
-            <th style="width:120px;">Validated By</th>
-            <th class="col-actions" style="width:110px;">Actions</th>
+            <th style="min-width:45px;">#</th>
+            <th style="min-width:85px;">Fuel Type</th>
+            <th style="min-width:75px;">Status</th>
+            <th style="min-width:120px;">Supplier</th>
+            <th style="min-width:100px;">Invoice No.</th>
+            <th style="min-width:75px;">Volume (L)</th>
+            <th style="min-width:100px;">Tank Level</th>
+            <th style="min-width:100px;">Encoded By</th>
+            <th style="min-width:110px;">Date &amp; Time</th>
+            <th style="min-width:110px;">Validated By</th>
+            <th class="col-actions" style="min-width:100px;">Actions</th>
         </tr></thead>
         <tbody>
         <?php foreach ($deliveries as $d):
@@ -2134,12 +2604,12 @@ try {
                 <table class="data-table" style="font-size:0.82rem;  margin:0;">
                     <thead>
                         <tr style="background:#f8f9fa;">
-                            <th style="width: 15%; padding: 12px 14px;">Fuel Type</th>
-                            <th style="width: 15%; padding: 12px 14px;">Current Level</th>
-                            <th style="width: 18%; padding: 12px 14px;">New Level (L)</th>
-                            <th style="width: 18%; padding: 12px 14px;">Adjustment Type</th>
-                            <th style="width: 24%; padding: 12px 14px;">Detailed Reason <span style="font-weight:400;color:#aaa;font-size:.75rem;">(Optional)</span></th>
-                            <th style="width: 10%; padding: 12px 14px; text-align: center;">Action</th>
+                            <th style="min-width: 15%; padding: 12px 14px;">Fuel Type</th>
+                            <th style="min-width: 15%; padding: 12px 14px;">Current Level</th>
+                            <th style="min-width: 18%; padding: 12px 14px;">New Level (L)</th>
+                            <th style="min-width: 18%; padding: 12px 14px;">Adjustment Type</th>
+                            <th style="min-width: 24%; padding: 12px 14px;">Detailed Reason <span style="font-weight:400;color:#aaa;font-size:.75rem;">(Optional)</span></th>
+                            <th style="min-width: 10%; padding: 12px 14px; text-align: center;">Action</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -2230,11 +2700,11 @@ try {
                     <table class="data-table" style="font-size:0.82rem;  margin:0;">
                         <thead>
                             <tr style="background:#f8f9fa;">
-                                <th style="width: 18%; padding: 12px 14px;">Fuel Type</th>
-                                <th style="width: 18%; padding: 12px 14px;">Current Price</th>
-                                <th style="width: 20%; padding: 12px 14px;">New Price (&#8369;/L)</th>
-                                <th style="width: 32%; padding: 12px 14px;">Reason for Change <span style="font-weight:400;color:#aaa;font-size:.75rem;">(Optional)</span></th>
-                                <th style="width: 12%; padding: 12px 14px; text-align: center;">Action</th>
+                                <th style="min-width: 18%; padding: 12px 14px;">Fuel Type</th>
+                                <th style="min-width: 18%; padding: 12px 14px;">Current Price</th>
+                                <th style="min-width: 20%; padding: 12px 14px;">New Price (&#8369;/L)</th>
+                                <th style="min-width: 32%; padding: 12px 14px;">Reason for Change <span style="font-weight:400;color:#aaa;font-size:.75rem;">(Optional)</span></th>
+                                <th style="min-width: 12%; padding: 12px 14px; text-align: center;">Action</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -2294,7 +2764,7 @@ try {
                 </div>
                 <?php else: ?>
                 <div class="po-table-wrap">
-                    <table class="data-table" style="font-size:0.78rem; min-width:700px; margin:0;">
+                    <table class="data-table" style="font-size:0.78rem; margin:0; width:100%; max-width:100%;">
                         <thead>
                             <tr style="background:#f8f9fa;">
                                 <th style="padding:10px 12px;">Date &amp; Time</th>
@@ -2942,11 +3412,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
             <td><strong>?<?php echo number_format(($h['liters_sold'] ?? 0) * ($h['price_per_liter'] ?? 0), 2); ?></strong></td>
             <td><span class="audit-badge"><i class="fas fa-user"></i> <?php echo htmlspecialchars($h['staff_name']); ?></span></td>
             <td>
-                <?php
-                if ($st==='approved' || $st==='verified') echo '<span class="tag-resolved"><i class="fas fa-check"></i> Approved</span>';
-                elseif ($st==='rejected') echo '<span class="tag-investigate"><i class="fas fa-times"></i> Rejected</span>';
-                else echo '<span class="tag-open"><i class="fas fa-clock"></i> Pending</span>';
-                ?>
+                <?php echo status_badge($adj['status'] ?? 'pending'); ?>
             </td>
             <td>
                 <?php echo !empty($h['validated_by_name']) ? '<span class="audit-badge"><i class="fas fa-user-tie"></i> '.htmlspecialchars($h['validated_by_name']).'</span>' : ' - '; ?>
@@ -3258,13 +3724,13 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
     <?php if (empty($pump_master_fuel_types)): ?>
         <div class="empty-state"><i class="fas fa-cog"></i><p>No fuel types found.</p></div>
     <?php else: ?>
-    <div class="po-table-wrap" style="margin-top:12px;">
-    <table class="data-table" style="font-size:0.78rem;">
+    <div class="po-table-wrap" style="margin-top:12px;overflow-x:auto;">
+    <table class="data-table" style="font-size:0.78rem;width:100%;table-layout:auto;">
         <thead><tr>
-            <th style="width:120px;">Fuel Type</th>
-            <th style="width:140px;">Current Calibration</th>
-            <th style="width:200px;">New Calibration Value (Liters)</th>
-            <th class="col-actions" style="width:110px;">Action</th>
+            <th style="min-width:110px;">Fuel Type</th>
+            <th style="min-width:130px;">Current Calibration</th>
+            <th style="min-width:180px;">New Calibration Value (Liters)</th>
+            <th class="col-actions" style="min-width:100px;">Action</th>
         </tr></thead>
         <tbody>
         <?php foreach ($pump_master_fuel_types as $f):
@@ -3312,15 +3778,15 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
     <?php if (empty($pump_master_fuel_types)): ?>
         <div class="empty-state"><i class="fas fa-cog"></i><p>No fuel types found.</p></div>
     <?php else: ?>
-    <div class="po-table-wrap" style="margin-top:12px;">
-    <table class="data-table" style="font-size:0.78rem;">
+    <div class="po-table-wrap" style="margin-top:12px;overflow-x:auto;">
+    <table class="data-table" style="font-size:0.78rem;width:100%;table-layout:auto;">
         <thead><tr>
-            <th style="width:110px;">Fuel Type</th>
-            <th style="width:120px;">Stock</th>
-            <th style="width:110px;">Calibration</th>
-            <th style="width:90px;">Price/L</th>
-            <th style="width:130px;">Last Updated</th>
-            <th class="col-actions" style="width:110px;">Action</th>
+            <th style="min-width:100px;">Fuel Type</th>
+            <th style="min-width:110px;">Stock</th>
+            <th style="min-width:100px;">Calibration</th>
+            <th style="min-width:80px;">Price/L</th>
+            <th style="min-width:120px;">Last Updated</th>
+            <th class="col-actions" style="min-width:100px;">Action</th>
         </tr></thead>
         <tbody>
         <?php foreach ($pump_master_fuel_types as $f):

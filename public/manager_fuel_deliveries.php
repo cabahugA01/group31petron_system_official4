@@ -627,7 +627,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 /* Anti-scroll / Compress Tables */
 .data-table {
     width: 100% !important;
-    table-layout: auto !important;
+    table-layout: fixed !important;
 }
 .data-table th, .data-table td {
     white-space: normal !important;
@@ -1011,7 +1011,7 @@ function adjustColor($hex,$pct) {
 /* Anti-scroll / Compress Tables */
 .data-table {
     width: 100% !important;
-    table-layout: auto !important;
+    table-layout: fixed !important;
 }
 .data-table th, .data-table td {
     white-space: normal !important;

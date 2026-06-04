@@ -197,7 +197,7 @@ include __DIR__ . '/../partials/header.php';
         </div>
 
         <!-- Inventory Table -->
-        <div style="overflow-x: auto;">
+        <div style="overflow-x:hidden;">
             <table style="width: 100%; border-collapse: collapse;">
                 <thead>
                     <tr style="background: #002F6C; color: white;">

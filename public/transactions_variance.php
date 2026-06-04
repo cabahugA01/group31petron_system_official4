@@ -103,8 +103,8 @@ $search_q        = trim($_GET['q']             ?? '');
 $show_archived   = isset($_GET['show_archived']);
 if (!in_array($filter_status, ['open','investigating','resolved','escalated'])) $filter_status = '';
 
-// ── CSV EXPORT ────────────────────────────────────────────────────────────────
-if (isset($_GET['export']) && $_GET['export'] === 'csv') {
+// ── EXPORT WORKFLOW ───────────────────────────────────────────────────────────
+if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel', 'pdf'])) {
     try {
         $exp_where  = ["va.station_id = ?", "va.transaction_type != 'Fuel'"];
         $exp_params = [$station_id];
@@ -123,19 +123,91 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
                     u.name AS staff_name
              FROM variance_alerts va LEFT JOIN users u ON va.user_id = u.id
              WHERE " . implode(' AND ', $exp_where) . " ORDER BY va.created_at DESC"
-        );
+         );
         $stmt->execute($exp_params);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        header('Content-Type: text/csv');
-        header('Content-Disposition: attachment; filename="variance_alerts_' . date('Ymd_His') . '.csv"');
-        $out = fopen('php://output', 'w');
-        fputcsv($out, ['Alert ID','Type','Product/SKU/Service','Variance Amount','Status','Staff','Notes','Flagged At','Last Updated']);
-        foreach ($rows as $r) {
-            fputcsv($out, ['#'.$r['id'],$r['transaction_type'],$r['item_identifier'],
-                $r['variance_amount'],ucfirst($r['status']),$r['staff_name']??'—',
-                $r['investigation_notes']??'',$r['created_at'],$r['updated_at']]);
+
+        $export_fmt = $_GET['export'];
+
+        if ($export_fmt === 'csv') {
+            header('Content-Type: text/csv');
+            header('Content-Disposition: attachment; filename="variance_alerts_' . date('Ymd_His') . '.csv"');
+            $out = fopen('php://output', 'w');
+            fputcsv($out, ['Alert ID','Type','Product/SKU/Service','Variance Amount','Status','Staff','Notes','Flagged At','Last Updated']);
+            foreach ($rows as $r) {
+                fputcsv($out, ['#'.$r['id'],$r['transaction_type'],$r['item_identifier'],
+                    $r['variance_amount'],ucfirst($r['status']),$r['staff_name']??'—',
+                    $r['investigation_notes']??'',$r['created_at'],$r['updated_at']]);
+            }
+            fclose($out); exit;
+        } elseif ($export_fmt === 'excel') {
+            header('Content-Type: application/vnd.ms-excel; charset=utf-8');
+            header('Content-Disposition: attachment; filename="variance_alerts_' . date('Ymd_His') . '.xls');
+            echo '<html xmlns:x="urn:schemas-microsoft-com:office:excel">';
+            echo '<head><meta charset="UTF-8"><style>table { border-collapse: collapse; } td, th { border: 1px solid #ddd; padding: 8px; } th { background-color: #002F70; color: white; font-weight: bold; }</style></head>';
+            echo '<body>';
+            echo '<table>';
+            echo '<thead><tr>';
+            echo '<th>Alert ID</th><th>Type</th><th>Product/SKU/Service</th><th>Variance Amount</th><th>Status</th><th>Staff</th><th>Notes</th><th>Flagged At</th><th>Last Updated</th>';
+            echo '</tr></thead>';
+            echo '<tbody>';
+            foreach ($rows as $r) {
+                echo '<tr>';
+                echo '<td>#' . htmlspecialchars($r['id']) . '</td>';
+                echo '<td>' . htmlspecialchars($r['transaction_type']) . '</td>';
+                echo '<td>' . htmlspecialchars($r['item_identifier']) . '</td>';
+                echo '<td style="text-align:right;">' . number_format((float)$r['variance_amount'], 2) . '</td>';
+                echo '<td>' . htmlspecialchars(ucfirst($r['status'])) . '</td>';
+                echo '<td>' . htmlspecialchars($r['staff_name'] ?? '—') . '</td>';
+                echo '<td>' . htmlspecialchars($r['investigation_notes'] ?? '') . '</td>';
+                echo '<td>' . htmlspecialchars($r['created_at']) . '</td>';
+                echo '<td>' . htmlspecialchars($r['updated_at']) . '</td>';
+                echo '</tr>';
+            }
+            echo '</tbody></table>';
+            echo '</body></html>';
+            exit;
+        } elseif ($export_fmt === 'pdf') {
+            header('Content-Type: text/html; charset=utf-8');
+            echo '<!DOCTYPE html>';
+            echo '<html><head>';
+            echo '<meta charset="UTF-8">';
+            echo '<title>Variance Alerts - ' . date('Y-m-d') . '</title>';
+            echo '<style>';
+            echo 'body { font-family: Arial, sans-serif; font-size: 12px; margin: 20px; }';
+            echo 'h1 { color: #002F70; font-size: 18px; margin-bottom: 10px; }';
+            echo 'table { width: 100%; border-collapse: collapse; margin-top: 10px; }';
+            echo 'th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }';
+            echo 'th { background-color: #002F70; color: white; font-weight: bold; font-size: 11px; }';
+            echo 'td { font-size: 10px; }';
+            echo '.amount { text-align: right; font-weight: bold; color: #dc3545; }';
+            echo '@media print { button { display: none; } }';
+            echo '</style>';
+            echo '</head><body>';
+            echo '<h1>Variance Alerts Report</h1>';
+            echo '<p>Generated: ' . date('F d, Y h:i A') . ' | Total Records: ' . count($rows) . '</p>';
+            echo '<button onclick="window.print()" style="padding:10px 20px;background:#002F70;color:white;border:none;border-radius:6px;cursor:pointer;margin-bottom:10px;">Print / Save as PDF</button>';
+            echo '<table>';
+            echo '<thead><tr>';
+            echo '<th>Alert ID</th><th>Type</th><th>Product/SKU/Service</th><th>Variance</th><th>Status</th><th>Staff</th><th>Notes</th><th>Flagged At</th>';
+            echo '</tr></thead>';
+            echo '<tbody>';
+            foreach ($rows as $r) {
+                echo '<tr>';
+                echo '<td>#' . htmlspecialchars($r['id']) . '</td>';
+                echo '<td>' . htmlspecialchars($r['transaction_type']) . '</td>';
+                echo '<td>' . htmlspecialchars($r['item_identifier']) . '</td>';
+                echo '<td class="amount">₱' . number_format((float)$r['variance_amount'], 2) . '</td>';
+                echo '<td>' . htmlspecialchars(ucfirst($r['status'])) . '</td>';
+                echo '<td>' . htmlspecialchars($r['staff_name'] ?? '—') . '</td>';
+                echo '<td>' . htmlspecialchars($r['investigation_notes'] ?? '') . '</td>';
+                echo '<td>' . date('M d, Y H:i', strtotime($r['created_at'])) . '</td>';
+                echo '</tr>';
+            }
+            echo '</tbody></table>';
+            echo '</body></html>';
+            exit;
         }
-        fclose($out); exit;
     } catch (Exception $e) {
         $_SESSION['error'] = 'Export failed: ' . $e->getMessage();
         header('Location: transactions_variance.php'); exit;
@@ -262,19 +334,23 @@ include __DIR__ . '/../partials/header.php';
 <div class="page-head" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:18px;">
     <div>
         <h1 class="h1" style="margin:0 0 4px 0;">Variance Alerts</h1>
-        <div class="sub">Variance alerts for merchandise and job orders.</div>
+        <div class="sub">Check flagged anomalies in stock, pump readings, or service fees.</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <a href="?<?= http_build_query(array_merge($_GET, ['export'=>'csv'])); ?>" class="va-hdr-btn" style="background:#28a745;">
-            <i class="fas fa-file-csv"></i> Export Report
+        <a href="?<?= http_build_query(array_merge($_GET, ['export'=>'excel'])); ?>" class="va-hdr-btn" style="background:#1d6f42;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:8px;color:#fff;font-size:13px;font-weight:600;">
+            <i class="fas fa-file-excel"></i> Excel
         </a>
-        <button onclick="location.reload()" class="va-hdr-btn" style="background:#002F70;border:none;cursor:pointer;">
-            <i class="fas fa-sync"></i> Refresh
-        </button>
-        <a href="transactions.php" class="va-hdr-btn" style="background:#6c757d;">
+        <a href="?<?= http_build_query(array_merge($_GET, ['export'=>'csv'])); ?>" class="va-hdr-btn" style="background:#003d7a;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:8px;color:#fff;font-size:13px;font-weight:600;">
+            <i class="fas fa-file-csv"></i> CSV
+        </a>
+        <a href="?<?= http_build_query(array_merge($_GET, ['export'=>'pdf'])); ?>" class="va-hdr-btn" style="background:#dc2626;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:8px;color:#fff;font-size:13px;font-weight:600;" target="_blank">
+            <i class="fas fa-file-pdf"></i> PDF
+        </a>
+        <a href="<?= in_array($role, ['admin', 'superadmin']) ? 'admin_dashboard.php' : 'manager_dashboard.php'; ?>" class="va-hdr-btn" style="background:#6c757d;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:8px;color:#fff;font-size:13px;font-weight:600;">
             <i class="fas fa-arrow-left"></i> Back
         </a>
     </div>
+
 </div>
 
 <!-- ── LIVE ANOMALY BANNER ────────────────────────────────────────────────── -->

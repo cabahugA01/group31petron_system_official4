@@ -199,7 +199,7 @@ $beginning_stock = $product['current_stock'] - $total_in + $total_out;
         }
         .product-details {
             flex: 1;
-            min-width: 200px;
+            
         }
         .product-name {
             font-size: 18px;

@@ -59,8 +59,16 @@ include __DIR__ . '/../partials/header.php';
         <h1 class="h1"><i class="fas fa-gas-pump"></i> Fuel Inventory</h1>
         <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; Monitoring fuel stock levels &amp; variances</div>
     </div>
-    <div class="header-actions">
-        <button onclick="location.reload()" class="btn ghost"><i class="fas fa-sync-alt"></i> Refresh</button>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto;">
+        <?php
+        $export_table_id       = 'mgrFuelTable';
+        $export_filename       = 'manager_fuel_inventory_' . date('Ymd');
+        $export_title          = 'Fuel Inventory';
+        $export_rows_select_id = 'mgrFuelRowsLimit';
+        $export_default_rows   = 10;
+        $export_back_url       = 'manager_dashboard.php';
+        require __DIR__ . '/../partials/export_buttons.php';
+        ?>
     </div>
 </div>
 
@@ -70,13 +78,15 @@ include __DIR__ . '/../partials/header.php';
 </div>
 <?php endif; ?>
 
+<?php require_once __DIR__ . '/../partials/manager_inventory_summary.php'; ?>
+
 <div class="mb-3">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h4 class="mb-0"><i class="fas fa-gas-pump"></i> Current Fuel Levels</h4>
         <span class="readonly-badge"><i class="fas fa-eye"></i> Read-only monitoring</span>
     </div>
     <div class="table-wrap">
-            <table class="table">
+            <table class="table" id="mgrFuelTable">
                 <thead>
                     <tr>
                         <th>Fuel Type</th>
@@ -122,11 +132,18 @@ include __DIR__ . '/../partials/header.php';
                 </tbody>
             </table>
         </div>
+        <div id="mgrFuelPagination" style="margin-top:10px;"></div>
         <p style="margin-top:14px;font-size:12px;color:#6c757d;">
             <i class="fas fa-info-circle"></i>
             For detailed fuel operations (deliveries, adjustments, reconciliation), go to
             <a href="manager_fuel_management_complete.php" style="color:#002F70;font-weight:600;">Fuel Management</a>.
         </p>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    setupTablePagination('mgrFuelTable', 'mgrFuelRowsLimit', 'mgrFuelPagination', 10);
+});
+</script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

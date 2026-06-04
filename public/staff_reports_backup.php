@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * STAFF REPORTS MODULE - Fixed & Complete
  * All 5 staff report views: Job Orders, Deliveries, Customers, Transactions, Personal Activity
@@ -19,7 +19,7 @@ if (!in_array($role, ['staff','manager','admin','superadmin'])) {
     header('Location: dashboard.php'); exit;
 }
 
-// ── Module gate ───────────────────────────────────────────────
+// -- Module gate -----------------------------------------------
 if (!in_array($role, ['superadmin','developer']) && !is_module_enabled('reports')) {
     render_module_disabled_page('Reports');
 }
@@ -27,7 +27,7 @@ if (!in_array($role, ['superadmin','developer']) && !is_module_enabled('reports'
 // Default view per role
 $view = $_GET['view'] ?? 'daily_sales_summary';
 
-// Date filter — widen default to last 90 days so data always shows
+// Date filter � widen default to last 90 days so data always shows
 $date_from = $_GET['date_from'] ?? date('Y-m-d', strtotime('-90 days'));
 $date_to   = $_GET['date_to']   ?? date('Y-m-d');
 
@@ -40,7 +40,7 @@ try {
     if ($st) $station_name = $st['name'];
 } catch (Exception $e) {}
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// -- Helpers -------------------------------------------------------------------
 function has_col(PDO $pdo, string $table, string $col): bool {
     try { $r = $pdo->query("SHOW COLUMNS FROM `$table` LIKE '$col'"); return $r && $r->rowCount() > 0; }
     catch (Exception $e) { return false; }
@@ -51,25 +51,25 @@ function tbl_exists(PDO $pdo, string $table): bool {
 }
 $jo_enc = has_col($pdo, 'job_orders', 'created_by') ? 'created_by' : 'user_id';
 
-// ── EARLY EXPORT HANDLER — must run before header.php outputs anything ────────
+// -- EARLY EXPORT HANDLER � must run before header.php outputs anything --------
 $export_param = $_GET['export'] ?? '';
 if ($export_param !== '' && in_array($view, ['daily_sales_summary','jo_tracker_report'])) {
 
-    // ── Load data needed for export ───────────────────────────────────────────
+    // -- Load data needed for export -------------------------------------------
     if ($view === 'daily_sales_summary') {
         $daily_sales_merch = []; $daily_sales_jo = [];
         try {
             $stmt = $pdo->prepare("
                 SELECT COALESCE(NULLIF(mt.transaction_id,''),CONCAT('MT-',mt.id)) AS txn_ref,
                        COALESCE(NULLIF(TRIM(mt.customer_name),''),'Walk-in')      AS customer_name,
-                       COALESCE(mt.payment_method,'—')                            AS payment_method,
+                       COALESCE(mt.payment_method,'�')                            AS payment_method,
                        COALESCE(mt.total_amount,0)                                AS total_amount,
                        COALESCE(mt.validation_status,'Pending')                   AS status,
-                       COALESCE(mt.shift_name,mt.shift_period,'—')                AS shift_ref,
+                       COALESCE(mt.shift_name,mt.shift_period,'�')                AS shift_ref,
                        mt.created_at                                               AS txn_date,
                        COALESCE((SELECT GROUP_CONCAT(i.product_name ORDER BY i.id SEPARATOR ', ')
                                  FROM merchandise_transaction_items i WHERE i.transaction_id=mt.id),
-                                mt.item_sku,mt.job_order_service,'—')             AS items_summary
+                                mt.item_sku,mt.job_order_service,'�')             AS items_summary
                 FROM merchandise_transactions mt
                 WHERE mt.station_id=? AND mt.staff_id=? AND DATE(mt.created_at) BETWEEN ? AND ?
                 ORDER BY mt.created_at DESC");
@@ -85,9 +85,9 @@ if ($export_param !== '' && in_array($view, ['daily_sales_summary','jo_tracker_r
             $stmt = $pdo->prepare("
                 SELECT $jo_id_col AS txn_ref,
                        COALESCE(jo.customer_name,'Walk-in') AS customer_name,
-                       COALESCE(jo.service_type,'—')        AS service_type,
-                       COALESCE(jo.vehicle_plate,'—')       AS vehicle_plate,
-                       COALESCE(jo.payment_method,'—')      AS payment_method,
+                       COALESCE(jo.service_type,'�')        AS service_type,
+                       COALESCE(jo.vehicle_plate,'�')       AS vehicle_plate,
+                       COALESCE(jo.payment_method,'�')      AS payment_method,
                        $cost_col                            AS total_amount,
                        COALESCE(jo.validation_status,jo.status,'Pending') AS status,
                        jo.created_at                        AS txn_date
@@ -191,18 +191,18 @@ tr:nth-child(even) td{background:#f8fafc;}
             $stmt = $pdo->prepare("
                 SELECT jo.id, $jo_id_col AS job_order_id,
                        COALESCE(jo.customer_name,'Walk-in') AS customer_name,
-                       COALESCE(jo.vehicle_plate,'—')       AS vehicle_plate,
-                       COALESCE(jo.vehicle_type,'—')        AS vehicle_type,
-                       COALESCE(jo.service_type,'—')        AS service_type,
+                       COALESCE(jo.vehicle_plate,'�')       AS vehicle_plate,
+                       COALESCE(jo.vehicle_type,'�')        AS vehicle_type,
+                       COALESCE(jo.service_type,'�')        AS service_type,
                        $mech_col                            AS mechanic_name,
                        COALESCE(jo.validation_status,'Pending Validation') AS validation_status,
                        COALESCE(jo.status,'Pending')        AS workflow_status,
                        $pay_col                             AS payment_status,
                        $cost_col                            AS total_cost,
-                       COALESCE(jo.payment_method,'—')      AS payment_method,
-                       COALESCE(jo.additional_notes,jo.notes,jo.admin_remarks,'—') AS remarks,
+                       COALESCE(jo.payment_method,'�')      AS payment_method,
+                       COALESCE(jo.additional_notes,jo.notes,jo.admin_remarks,'�') AS remarks,
                        $parts_col                           AS required_parts_raw,
-                       COALESCE(su.name,su.username,'—')    AS encoded_by,
+                       COALESCE(su.name,su.username,'�')    AS encoded_by,
                        jo.created_at
                 FROM job_orders jo $mech_join
                 LEFT JOIN users su ON su.id=jo.created_by
@@ -214,11 +214,11 @@ tr:nth-child(even) td{background:#f8fafc;}
 
         // Helper: decode parts
         $decode_parts = function(string $raw, int $max=80): string {
-            if (empty($raw)) return '—';
+            if (empty($raw)) return '�';
             $dec = json_decode($raw, true);
             if (is_array($dec)) $pd = implode(', ', array_filter(array_map(fn($p) => is_array($p) ? ($p['name'] ?? $p['part_name'] ?? '') : $p, $dec)));
             else $pd = $raw;
-            return strlen($pd) > $max ? substr($pd, 0, $max-3).'…' : $pd;
+            return strlen($pd) > $max ? substr($pd, 0, $max-3).'�' : $pd;
         };
         // Helper: workflow label
         $wf_label = function(string $ws, string $vs): string {
@@ -288,17 +288,17 @@ tr:nth-child(even) td{background:#f8fafc;}
         }
     }
 }
-// ── END EARLY EXPORT HANDLER ──────────────────────────────────────────────────
+// -- END EARLY EXPORT HANDLER --------------------------------------------------
 
-// ── 1. JOB ORDER REPORT ───────────────────────────────────────────────────────
+// -- 1. JOB ORDER REPORT -------------------------------------------------------
 $job_orders = [];
 if ($view === 'job_order_report') {
     try {
-        // validated_by may not exist — check
+        // validated_by may not exist � check
         $has_vby = has_col($pdo, 'job_orders', 'validated_by');
         $vby_join  = $has_vby ? "LEFT JOIN users mu ON jo.validated_by = mu.id" : "";
-        $vby_sel   = $has_vby ? "COALESCE(mu.name, mu.username, 'Not yet validated') AS validated_by_name" : "'—' AS validated_by_name";
-        // actual_cost / total_cost — use whichever exists
+        $vby_sel   = $has_vby ? "COALESCE(mu.name, mu.username, 'Not yet validated') AS validated_by_name" : "'�' AS validated_by_name";
+        // actual_cost / total_cost � use whichever exists
         $cost_col  = has_col($pdo, 'job_orders', 'actual_cost')   ? 'jo.actual_cost'
                    : (has_col($pdo, 'job_orders', 'total_cost')   ? 'jo.total_cost' : 'NULL');
         $ecost_col = has_col($pdo, 'job_orders', 'estimated_cost') ? 'jo.estimated_cost' : 'NULL';
@@ -306,16 +306,16 @@ if ($view === 'job_order_report') {
             SELECT jo.id,
                    COALESCE(jo.job_order_id, jo.job_order_number, CONCAT('JO-',jo.id)) AS job_order_id,
                    jo.customer_name,
-                   COALESCE(jo.vehicle_plate,'—') AS vehicle_plate,
-                   COALESCE(jo.vehicle_type,'—')  AS vehicle_type,
-                   COALESCE(jo.service_type,'—')  AS service_type,
-                   COALESCE(jo.service_description,'—') AS service_description,
+                   COALESCE(jo.vehicle_plate,'�') AS vehicle_plate,
+                   COALESCE(jo.vehicle_type,'�')  AS vehicle_type,
+                   COALESCE(jo.service_type,'�')  AS service_type,
+                   COALESCE(jo.service_description,'�') AS service_description,
                    $ecost_col AS estimated_cost,
                    $cost_col  AS actual_cost,
-                   COALESCE(jo.status,'—')            AS status,
-                   COALESCE(jo.validation_status,'—') AS validation_status,
-                   COALESCE(jo.payment_method,'—')    AS payment_method,
-                   COALESCE(jo.priority_level,'—')    AS priority_level,
+                   COALESCE(jo.status,'�')            AS status,
+                   COALESCE(jo.validation_status,'�') AS validation_status,
+                   COALESCE(jo.payment_method,'�')    AS payment_method,
+                   COALESCE(jo.priority_level,'�')    AS priority_level,
                    jo.created_at, jo.completed_at,
                    $vby_sel
             FROM job_orders jo
@@ -329,7 +329,7 @@ if ($view === 'job_order_report') {
     } catch (Exception $e) { $job_orders = []; }
 }
 
-// ── 2. DELIVERIES REPORT — actual table: deliveries_oversight ─────────────────
+// -- 2. DELIVERIES REPORT � actual table: deliveries_oversight -----------------
 $deliveries = [];
 if ($view === 'deliveries_report') {
     try {
@@ -350,7 +350,7 @@ if ($view === 'deliveries_report') {
                    COALESCE(d.remarks,'') AS delivery_notes,
                    COALESCE(d.manager_notes,'') AS manager_notes,
                    d.created_at,
-                   COALESCE(au.name, au.username, '—') AS manager_name
+                   COALESCE(au.name, au.username, '�') AS manager_name
             FROM deliveries_oversight d
             LEFT JOIN users au ON d.manager_id = au.id
             WHERE d.station_id = ? AND d.encoded_by = ?
@@ -362,7 +362,7 @@ if ($view === 'deliveries_report') {
     } catch (Exception $e) { $deliveries = []; }
 }
 
-// ── 3. CUSTOMER REPORT ────────────────────────────────────────────────────────
+// -- 3. CUSTOMER REPORT --------------------------------------------------------
 // customers table: current_balance (not outstanding_balance), no account_type
 $customer_records = [];
 if ($view === 'customer_report') {
@@ -374,17 +374,17 @@ if ($view === 'customer_report') {
                    COALESCE(jo.job_order_id, jo.job_order_number, CONCAT('JO-',jo.id)) AS job_order_id,
                    jo.customer_name,
                    jo.customer_id,
-                   COALESCE(jo.vehicle_plate,'—') AS vehicle_plate,
-                   COALESCE(jo.vehicle_type,'—')  AS vehicle_type,
-                   COALESCE(jo.payment_method,'—') AS payment_method,
+                   COALESCE(jo.vehicle_plate,'�') AS vehicle_plate,
+                   COALESCE(jo.vehicle_type,'�')  AS vehicle_type,
+                   COALESCE(jo.payment_method,'�') AS payment_method,
                    COALESCE(jo.estimated_cost,0)  AS estimated_cost,
                    COALESCE(jo.actual_cost, jo.total_cost, 0) AS actual_cost,
-                   COALESCE(jo.status,'—')            AS status,
-                   COALESCE(jo.validation_status,'—') AS validation_status,
+                   COALESCE(jo.status,'�')            AS status,
+                   COALESCE(jo.validation_status,'�') AS validation_status,
                    jo.created_at,
                    c.credit_limit,
                    $bal_col AS outstanding_balance,
-                   COALESCE(c.type, c.account_status, '—') AS account_type
+                   COALESCE(c.type, c.account_status, '�') AS account_type
             FROM job_orders jo
             LEFT JOIN customers c ON jo.customer_id = c.id
             WHERE jo.station_id = ? AND jo.$jo_enc = ?
@@ -396,20 +396,20 @@ if ($view === 'customer_report') {
     } catch (Exception $e) { $customer_records = []; }
 }
 
-// ── 4. TRANSACTION REPORT ─────────────────────────────────────────────────────
+// -- 4. TRANSACTION REPORT -----------------------------------------------------
 // merchandise_transactions: staff_id, transaction_date (can be 0000), created_at
 // sales: user_id, created_at, total
 $transactions = [];
 if ($view === 'transaction_report') {
     try {
-        // Merchandise transactions — use created_at as fallback when transaction_date is zero
+        // Merchandise transactions � use created_at as fallback when transaction_date is zero
         $stmt = $pdo->prepare("
             SELECT mt.id,
                    'Merchandise' AS txn_type,
                    CASE WHEN mt.transaction_date > '1970-01-01' THEN mt.transaction_date
                         ELSE mt.created_at END AS txn_date,
                    mt.total_amount AS total,
-                   COALESCE(mt.payment_method,'—') AS payment_method,
+                   COALESCE(mt.payment_method,'�') AS payment_method,
                    COALESCE(mt.validation_status, 'Completed') AS status,
                    COALESCE(mt.shift_name, mt.shift_period, '') AS shift_ref,
                    COALESCE(mt.remarks,'') AS description
@@ -429,7 +429,7 @@ if ($view === 'transaction_report') {
                        'Sale' AS txn_type,
                        s.created_at AS txn_date,
                        s.total AS total,
-                       COALESCE(s.payment_method,'—') AS payment_method,
+                       COALESCE(s.payment_method,'�') AS payment_method,
                        COALESCE(s.status,'Completed') AS status,
                        '' AS shift_ref,
                        '' AS description
@@ -445,7 +445,7 @@ if ($view === 'transaction_report') {
     } catch (Exception $e) { $transactions = []; }
 }
 
-// ── 5. PERSONAL ACTIVITY REPORT ───────────────────────────────────────────────
+// -- 5. PERSONAL ACTIVITY REPORT -----------------------------------------------
 $activity = [];
 if ($view === 'personal_activity') {
     try {
@@ -464,7 +464,7 @@ if ($view === 'personal_activity') {
         $s->execute([$station_id, $user_id, $date_from, $date_to]);
         $activity['job_orders'] = $s->fetch(PDO::FETCH_ASSOC) ?: [];
 
-        // Deliveries summary — deliveries_oversight table
+        // Deliveries summary � deliveries_oversight table
         $s = $pdo->prepare("SELECT COUNT(*) AS total,
             SUM(CASE WHEN LOWER(status) IN ('validated','confirmed','closed') THEN 1 ELSE 0 END) AS closed,
             SUM(CASE WHEN LOWER(status) = 'pending validation' THEN 1 ELSE 0 END) AS encoded,
@@ -508,7 +508,7 @@ if ($view === 'personal_activity') {
     } catch (Exception $e) { $activity = []; }
 }
 
-// ── NEW A. DAILY SALES SUMMARY ────────────────────────────────────────────────
+// -- NEW A. DAILY SALES SUMMARY ------------------------------------------------
 $daily_sales_merch = [];
 $daily_sales_jo    = [];
 $daily_sales_total_merch = 0.0;
@@ -518,23 +518,23 @@ if ($view === 'daily_sales_summary') {
     if (!isset($_GET['date_from'])) $date_from = date('Y-m-d', strtotime('-90 days'));
     if (!isset($_GET['date_to']))   $date_to   = date('Y-m-d');
 
-    // Merchandise transactions — transaction_date is always 0000, use created_at
+    // Merchandise transactions � transaction_date is always 0000, use created_at
     try {
         $stmt = $pdo->prepare("
             SELECT mt.id,
                    COALESCE(NULLIF(mt.transaction_id,''), CONCAT('MT-',mt.id))  AS txn_ref,
                    COALESCE(NULLIF(TRIM(mt.customer_name),''), 'Walk-in')       AS customer_name,
-                   COALESCE(mt.payment_method,'—')                              AS payment_method,
+                   COALESCE(mt.payment_method,'�')                              AS payment_method,
                    COALESCE(mt.total_amount, 0)                                 AS total_amount,
                    COALESCE(mt.validation_status, 'Pending')                    AS status,
-                   COALESCE(mt.shift_name, mt.shift_period, '—')                AS shift_ref,
+                   COALESCE(mt.shift_name, mt.shift_period, '�')                AS shift_ref,
                    mt.created_at                                                 AS txn_date,
                    COALESCE(
                        (SELECT GROUP_CONCAT(i.product_name ORDER BY i.id SEPARATOR ', ')
                         FROM merchandise_transaction_items i WHERE i.transaction_id = mt.id),
                        mt.item_sku,
                        mt.job_order_service,
-                       '—'
+                       '�'
                    )                                                             AS items_summary
             FROM merchandise_transactions mt
             WHERE mt.station_id = ?
@@ -559,9 +559,9 @@ if ($view === 'daily_sales_summary') {
             SELECT jo.id,
                    $jo_id_col                                                    AS txn_ref,
                    COALESCE(jo.customer_name,'Walk-in')                          AS customer_name,
-                   COALESCE(jo.service_type,'—')                                 AS service_type,
-                   COALESCE(jo.vehicle_plate,'—')                                AS vehicle_plate,
-                   COALESCE(jo.payment_method,'—')                               AS payment_method,
+                   COALESCE(jo.service_type,'�')                                 AS service_type,
+                   COALESCE(jo.vehicle_plate,'�')                                AS vehicle_plate,
+                   COALESCE(jo.payment_method,'�')                               AS payment_method,
                    $cost_col                                                      AS total_amount,
                    COALESCE(jo.validation_status, jo.status, 'Pending')          AS status,
                    jo.created_at                                                  AS txn_date
@@ -577,7 +577,7 @@ if ($view === 'daily_sales_summary') {
     } catch (Exception $e) { $daily_sales_jo = []; }
 }
 
-// ── NEW B. JOB ORDER TRACKER REPORT ──────────────────────────────────────────
+// -- NEW B. JOB ORDER TRACKER REPORT ------------------------------------------
 $jo_tracker_report    = [];
 $filter_staff_id      = $user_id;
 $staff_list_for_filter = [];
@@ -614,18 +614,18 @@ if ($view === 'jo_tracker_report') {
             SELECT jo.id,
                    $jo_id_col                                                    AS job_order_id,
                    COALESCE(jo.customer_name,'Walk-in')                          AS customer_name,
-                   COALESCE(jo.vehicle_plate,'—')                                AS vehicle_plate,
-                   COALESCE(jo.vehicle_type,'—')                                 AS vehicle_type,
-                   COALESCE(jo.service_type,'—')                                 AS service_type,
+                   COALESCE(jo.vehicle_plate,'�')                                AS vehicle_plate,
+                   COALESCE(jo.vehicle_type,'�')                                 AS vehicle_type,
+                   COALESCE(jo.service_type,'�')                                 AS service_type,
                    $mech_col                                                      AS mechanic_name,
                    COALESCE(jo.validation_status,'Pending Validation')           AS validation_status,
                    COALESCE(jo.status,'Pending')                                 AS workflow_status,
                    $pay_col                                                       AS payment_status,
                    $cost_col                                                      AS total_cost,
-                   COALESCE(jo.payment_method,'—')                               AS payment_method,
-                   COALESCE(jo.additional_notes, jo.notes, jo.admin_remarks,'—') AS remarks,
+                   COALESCE(jo.payment_method,'�')                               AS payment_method,
+                   COALESCE(jo.additional_notes, jo.notes, jo.admin_remarks,'�') AS remarks,
                    $parts_col                                                     AS required_parts_raw,
-                   COALESCE(su.name, su.username,'—')                            AS encoded_by,
+                   COALESCE(su.name, su.username,'�')                            AS encoded_by,
                    jo.created_at
             FROM job_orders jo
             $mech_join
@@ -655,7 +655,7 @@ if ($view === 'jo_tracker_report') {
     }
 }
 
-// ── Status badge helper ───────────────────────────────────────────────────────
+// -- Status badge helper -------------------------------------------------------
 function sr_badge(string $status): string {
     $map = [
         'completed'          => ['#D1FAE5','#065F46'],
@@ -682,7 +682,7 @@ include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-/* ── Staff Reports page overrides ── */
+/* -- Staff Reports page overrides -- */
 main.main, .main-content { padding-top: 0 !important; }
 .sr-wrap { padding: 0 20px 20px 20px; max-width: 1300px; }
 .page-head { margin-top: 0 !important; margin-bottom: 16px; }
@@ -738,13 +738,13 @@ main.main, .main-content { padding-top: 0 !important; }
   [$vico, $vtitle] = $view_titles[$view] ?? ['fas fa-chart-bar','Staff Reports'];
   ?>
 
-﻿
+?
   <!-- ===== A. DAILY SALES SUMMARY ===== -->
   <?php if ($view === "daily_sales_summary"):
     $grand_total = $daily_sales_total_merch + $daily_sales_total_jo;
     $all_rows = [];
     foreach ($daily_sales_merch as $r) {
-        $all_rows[] = ["type"=>"Merchandise","ref"=>$r["txn_ref"],"customer"=>$r["customer_name"],"detail"=>$r["items_summary"],"vehicle"=>"—","payment"=>$r["payment_method"],"amount"=>$r["total_amount"],"status"=>$r["status"],"date"=>$r["txn_date"]];
+        $all_rows[] = ["type"=>"Merchandise","ref"=>$r["txn_ref"],"customer"=>$r["customer_name"],"detail"=>$r["items_summary"],"vehicle"=>"�","payment"=>$r["payment_method"],"amount"=>$r["total_amount"],"status"=>$r["status"],"date"=>$r["txn_date"]];
     }
     foreach ($daily_sales_jo as $r) {
         $all_rows[] = ["type"=>"Job Order","ref"=>$r["txn_ref"],"customer"=>$r["customer_name"],"detail"=>$r["service_type"],"vehicle"=>$r["vehicle_plate"],"payment"=>$r["payment_method"],"amount"=>$r["total_amount"],"status"=>$r["status"],"date"=>$r["txn_date"]];
@@ -752,7 +752,7 @@ main.main, .main-content { padding-top: 0 !important; }
     usort($all_rows, fn($a,$b) => strtotime($b["date"]) - strtotime($a["date"]));
     $export = $_GET["export"] ?? "";
 
-    // ── EXCEL EXPORT ─────────────────────────────────────────────────────────
+    // -- EXCEL EXPORT ---------------------------------------------------------
     if ($export === "excel") {
         header("Content-Type: application/vnd.ms-excel; charset=utf-8");
         header("Content-Disposition: attachment; filename=\"daily_sales_" . date("Y-m-d") . ".xls\"");
@@ -789,7 +789,7 @@ main.main, .main-content { padding-top: 0 !important; }
         exit;
     }
 
-    // ── PDF / PRINT EXPORT ────────────────────────────────────────────────────
+    // -- PDF / PRINT EXPORT ----------------------------------------------------
     if ($export === "pdf") {
         header("Content-Type: text/html; charset=utf-8");
         $gt = array_sum(array_column($all_rows,"amount"));
@@ -921,7 +921,7 @@ main.main, .main-content { padding-top: 0 !important; }
   <?php if ($view === "jo_tracker_report"):
     $export_jot = $_GET["export"] ?? "";
 
-    // ── EXCEL EXPORT ─────────────────────────────────────────────────────────
+    // -- EXCEL EXPORT ---------------------------------------------------------
     if ($export_jot === "excel") {
         header("Content-Type: application/vnd.ms-excel; charset=utf-8");
         header("Content-Disposition: attachment; filename=\"jo_tracker_" . date("Y-m-d") . ".xls\"");
@@ -948,12 +948,12 @@ main.main, .main-content { padding-top: 0 !important; }
             elseif ($ws==="rejected"||$ws==="cancelled")       $wl = "Rejected";
             elseif ($vs==="approved")                          $wl = "Approved";
             else                                               $wl = "Pending";
-            $pd = "—"; $raw = $r["required_parts_raw"] ?? "";
+            $pd = "�"; $raw = $r["required_parts_raw"] ?? "";
             if (!empty($raw)) {
                 $dec = json_decode($raw, true);
                 if (is_array($dec)) $pd = implode(", ", array_filter(array_map(fn($p) => is_array($p) ? ($p["name"] ?? $p["part_name"] ?? "") : $p, $dec)));
                 else $pd = $raw;
-                if (strlen($pd) > 80) $pd = substr($pd, 0, 77) . "…";
+                if (strlen($pd) > 80) $pd = substr($pd, 0, 77) . "�";
             }
             echo '<tr><td>' . $n++ . '</td><td>' . htmlspecialchars($r["job_order_id"]) . '</td><td>' . htmlspecialchars($r["customer_name"]) . '</td><td>' . htmlspecialchars($r["vehicle_plate"]) . '</td><td>' . htmlspecialchars($r["service_type"]) . '</td><td>' . htmlspecialchars($pd) . '</td><td>' . htmlspecialchars($r["mechanic_name"]) . '</td><td>' . htmlspecialchars($r["encoded_by"]) . '</td><td>' . $wl . '</td><td>' . htmlspecialchars($r["payment_status"]) . '</td><td style="text-align:right;font-weight:bold;">&#8369;' . number_format((float)$r["total_cost"], 2) . '</td><td>' . htmlspecialchars($r["remarks"]) . '</td><td>' . date("M j, Y h:i A", strtotime($r["created_at"])) . '</td></tr>';
         }
@@ -961,7 +961,7 @@ main.main, .main-content { padding-top: 0 !important; }
         exit;
     }
 
-    // ── PDF / PRINT EXPORT ────────────────────────────────────────────────────
+    // -- PDF / PRINT EXPORT ----------------------------------------------------
     if ($export_jot === "pdf") {
         header("Content-Type: text/html; charset=utf-8");
         echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>JO Tracker Report</title>
@@ -991,12 +991,12 @@ main.main, .main-content { padding-top: 0 !important; }
             elseif ($ws==="rejected"||$ws==="cancelled")       $wl = "Rejected";
             elseif ($vs==="approved")                          $wl = "Approved";
             else                                               $wl = "Pending";
-            $pd = "—"; $raw = $r["required_parts_raw"] ?? "";
+            $pd = "�"; $raw = $r["required_parts_raw"] ?? "";
             if (!empty($raw)) {
                 $dec = json_decode($raw, true);
                 if (is_array($dec)) $pd = implode(", ", array_filter(array_map(fn($p) => is_array($p) ? ($p["name"] ?? $p["part_name"] ?? "") : $p, $dec)));
                 else $pd = $raw;
-                if (strlen($pd) > 60) $pd = substr($pd, 0, 57) . "…";
+                if (strlen($pd) > 60) $pd = substr($pd, 0, 57) . "�";
             }
             echo '<tr><td>' . $n++ . '</td><td style="font-family:monospace;">' . htmlspecialchars($r["job_order_id"]) . '</td><td>' . htmlspecialchars($r["customer_name"]) . '</td><td>' . htmlspecialchars($r["vehicle_plate"]) . '</td><td>' . htmlspecialchars($r["service_type"]) . '</td><td>' . htmlspecialchars($pd) . '</td><td>' . htmlspecialchars($r["mechanic_name"]) . '</td><td>' . htmlspecialchars($r["encoded_by"]) . '</td><td>' . $wl . '</td><td>' . htmlspecialchars($r["payment_status"]) . '</td><td style="text-align:right;font-weight:bold;">&#8369;' . number_format((float)$r["total_cost"], 2) . '</td><td>' . htmlspecialchars($r["remarks"]) . '</td><td>' . date("M j, Y", strtotime($r["created_at"])) . '</td></tr>';
         }
@@ -1050,20 +1050,20 @@ main.main, .main-content { padding-top: 0 !important; }
     <div class="sr-empty"><i class="fas fa-clipboard-list"></i>No job orders found for the selected filters.</div>
     <?php else: ?>
     <div style="overflow-x:auto;">
-    <table class="sr-table" style="min-width:1100px;table-layout:auto;">
+    <table class="sr-table" style="table-layout:fixed; word-wrap:break-word;">
       <thead><tr>
-        <th style="min-width:30px;">#</th>
-        <th style="min-width:140px;">JO ID</th>
-        <th style="min-width:110px;">Customer</th>
-        <th style="min-width:130px;">Vehicle / Service</th>
-        <th style="min-width:120px;">Items / Parts</th>
-        <th style="min-width:100px;">Mechanic</th>
-        <th style="min-width:100px;">Encoded By</th>
-        <th style="min-width:110px;">Workflow Status</th>
-        <th style="min-width:100px;">Payment Status</th>
-        <th style="min-width:80px;">Amount</th>
-        <th style="min-width:120px;">Remarks</th>
-        <th style="min-width:90px;">Date / Time</th>
+        <th style="">#</th>
+        <th style="">JO ID</th>
+        <th style="">Customer</th>
+        <th style="">Vehicle / Service</th>
+        <th style="">Items / Parts</th>
+        <th style="">Mechanic</th>
+        <th style="">Encoded By</th>
+        <th style="">Workflow Status</th>
+        <th style="">Payment Status</th>
+        <th style="">Amount</th>
+        <th style="">Remarks</th>
+        <th style="">Date / Time</th>
       </tr></thead>
       <tbody>
       <?php $n=1; foreach($jo_tracker_report as $row):
@@ -1077,21 +1077,21 @@ main.main, .main-content { padding-top: 0 !important; }
         if($ps==="paid"){$pay_bg="#D1FAE5";$pay_c="#065F46";$pay_lbl="Paid";}
         elseif($ps==="partial"){$pay_bg="#FFF3CD";$pay_c="#856404";$pay_lbl="Partial";}
         else{$pay_bg="#FEE2E2";$pay_c="#991B1B";$pay_lbl="Unpaid";}
-        $pd="—"; $raw=$row["required_parts_raw"]??"";
-        if(!empty($raw)){$dec=json_decode($raw,true);if(is_array($dec)){$pd=implode(", ",array_filter(array_map(fn($p)=>is_array($p)?($p["name"]??$p["part_name"]??""): $p,$dec)));}else{$pd=$raw;}if(strlen($pd)>60)$pd=substr($pd,0,57)."…";}
+        $pd="�"; $raw=$row["required_parts_raw"]??"";
+        if(!empty($raw)){$dec=json_decode($raw,true);if(is_array($dec)){$pd=implode(", ",array_filter(array_map(fn($p)=>is_array($p)?($p["name"]??$p["part_name"]??""): $p,$dec)));}else{$pd=$raw;}if(strlen($pd)>60)$pd=substr($pd,0,57)."�";}
       ?>
       <tr>
         <td style="color:#9ca3af;font-size:11px;"><?php echo $n++; ?></td>
         <td><strong style="color:#00264D;font-family:monospace;font-size:11px;"><?php echo htmlspecialchars($row["job_order_id"]); ?></strong></td>
         <td><?php echo htmlspecialchars($row["customer_name"]); ?></td>
-        <td style="font-size:11px;"><strong><?php echo htmlspecialchars($row["vehicle_plate"]); ?></strong><?php if($row["vehicle_type"]!=="—"): ?> <span style="color:#9ca3af;">&middot; <?php echo htmlspecialchars($row["vehicle_type"]); ?></span><?php endif; ?><br><?php echo htmlspecialchars($row["service_type"]); ?></td>
+        <td style="font-size:11px;"><strong><?php echo htmlspecialchars($row["vehicle_plate"]); ?></strong><?php if($row["vehicle_type"]!=="�"): ?> <span style="color:#9ca3af;">&middot; <?php echo htmlspecialchars($row["vehicle_type"]); ?></span><?php endif; ?><br><?php echo htmlspecialchars($row["service_type"]); ?></td>
         <td style="font-size:11px;color:#475569;"><?php echo htmlspecialchars($pd); ?></td>
         <td style="font-size:11px;"><?php echo htmlspecialchars($row["mechanic_name"]); ?></td>
         <td style="font-size:11px;color:#667085;"><?php echo htmlspecialchars($row["encoded_by"]); ?></td>
         <td><span style="background:<?php echo $wf_bg; ?>;color:<?php echo $wf_c; ?>;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;"><?php echo $wf_lbl; ?></span></td>
         <td><span style="background:<?php echo $pay_bg; ?>;color:<?php echo $pay_c; ?>;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;"><?php echo $pay_lbl; ?></span></td>
         <td style="font-weight:700;color:#00264D;white-space:nowrap;">&#8369;<?php echo number_format((float)$row["total_cost"],2); ?></td>
-        <td style="font-size:11px;color:#667085;"><?php echo $row["remarks"]!=="—"?htmlspecialchars($row["remarks"]):"<span style=\"color:#d1d5db;\">—</span>"; ?></td>
+        <td style="font-size:11px;color:#667085;"><?php echo $row["remarks"]!=="�"?htmlspecialchars($row["remarks"]):"<span style=\"color:#d1d5db;\">�</span>"; ?></td>
         <td style="font-size:11px;color:#667085;white-space:nowrap;"><?php echo date("M j, Y",strtotime($row["created_at"])); ?><br><span style="color:#9ca3af;"><?php echo date("h:i A",strtotime($row["created_at"])); ?></span></td>
       </tr>
       <?php endforeach; ?>
@@ -1131,7 +1131,7 @@ main.main, .main-content { padding-top: 0 !important; }
           <td><?php echo htmlspecialchars($jo['service_type']); ?></td>
           <td><span style="font-size:11px;background:#f0f4ff;color:#00264D;padding:2px 8px;border-radius:6px;font-weight:600"><?php echo htmlspecialchars($jo['payment_method']); ?></span></td>
           <td style="text-align:right">&#8369;<?php echo number_format((float)$jo['estimated_cost'],2); ?></td>
-          <td style="text-align:right;font-weight:700;color:#065F46"><?php echo $jo['actual_cost'] ? '&#8369;'.number_format((float)$jo['actual_cost'],2) : '<span style="color:#9ca3af">—</span>'; ?></td>
+          <td style="text-align:right;font-weight:700;color:#065F46"><?php echo $jo['actual_cost'] ? '&#8369;'.number_format((float)$jo['actual_cost'],2) : '<span style="color:#9ca3af">�</span>'; ?></td>
           <td><?php echo sr_badge($jo['status']); ?></td>
           <td><?php echo sr_badge($jo['validation_status']); ?></td>
           <td style="font-size:12px;color:#667085"><?php echo htmlspecialchars($jo['validated_by_name']); ?></td>
@@ -1185,18 +1185,18 @@ main.main, .main-content { padding-top: 0 !important; }
           <td><strong style="color:#00264D">#<?php echo $d['id']; ?></strong></td>
           <td style="white-space:nowrap"><?php echo date('M j, Y', strtotime($d['delivery_date'])); ?></td>
           <td>
-            <?php $dtype = ucfirst($d['delivery_type'] ?? '—');
+            <?php $dtype = ucfirst($d['delivery_type'] ?? '�');
             $dtc = $d['delivery_type']==='fuel' ? ['#FFF3CD','#856404'] : ['#DBEAFE','#1E40AF'];
             ?>
             <span style="background:<?php echo $dtc[0]; ?>;color:<?php echo $dtc[1]; ?>;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700"><?php echo $dtype; ?></span>
           </td>
-          <td><?php echo htmlspecialchars($d['supplier'] ?: '—'); ?></td>
-          <td><?php echo htmlspecialchars($d['product'] ?: '—'); ?></td>
+          <td><?php echo htmlspecialchars($d['supplier'] ?: '�'); ?></td>
+          <td><?php echo htmlspecialchars($d['product'] ?: '�'); ?></td>
           <td style="text-align:right;font-weight:700"><?php echo number_format((float)$d['quantity'],2); ?> <?php echo htmlspecialchars($d['unit']); ?></td>
-          <td style="font-size:12px;color:#667085"><?php echo htmlspecialchars($d['dr_number'] ?: '—'); ?></td>
-          <td><?php echo sr_badge($d['status'] ?? '—'); ?></td>
-          <td style="font-size:12px;color:#667085"><?php echo htmlspecialchars($d['admin_name'] ?: '—'); ?></td>
-          <td style="font-size:12px;color:#667085;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?php echo htmlspecialchars($d['delivery_notes'] ?: '—'); ?></td>
+          <td style="font-size:12px;color:#667085"><?php echo htmlspecialchars($d['dr_number'] ?: '�'); ?></td>
+          <td><?php echo sr_badge($d['status'] ?? '�'); ?></td>
+          <td style="font-size:12px;color:#667085"><?php echo htmlspecialchars($d['admin_name'] ?: '�'); ?></td>
+          <td style="font-size:12px;color:#667085;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?php echo htmlspecialchars($d['delivery_notes'] ?: '�'); ?></td>
           <td style="font-size:12px;color:#667085;white-space:nowrap"><?php echo date('M j, Y g:ia', strtotime($d['created_at'])); ?></td>
         </tr>
         <?php endforeach; ?>
@@ -1210,7 +1210,7 @@ main.main, .main-content { padding-top: 0 !important; }
   <?php elseif($view === 'customer_report'): ?>
   <div class="sr-card">
     <div class="sr-card-head">
-      <div class="sr-card-title"><i class="fas fa-users"></i> Customer Linkage — My Job Orders</div>
+      <div class="sr-card-title"><i class="fas fa-users"></i> Customer Linkage � My Job Orders</div>
       <form method="get" class="sr-filter">
         <input type="hidden" name="view" value="customer_report">
         <label>From</label><input type="date" name="date_from" value="<?php echo $date_from; ?>">
@@ -1248,15 +1248,15 @@ main.main, .main-content { padding-top: 0 !important; }
             <?php echo htmlspecialchars($cr['customer_name']); ?>
             <?php if($cr['customer_id']): ?><span style="font-size:10px;background:#D1FAE5;color:#065F46;padding:1px 6px;border-radius:4px;margin-left:4px">Linked</span><?php endif; ?>
           </td>
-          <td style="font-size:12px"><?php echo htmlspecialchars($cr['account_type'] ?: '—'); ?></td>
+          <td style="font-size:12px"><?php echo htmlspecialchars($cr['account_type'] ?: '�'); ?></td>
           <td style="font-size:12px"><?php echo htmlspecialchars($cr['vehicle_plate']); ?></td>
           <td><span style="font-size:11px;background:#f0f4ff;color:#00264D;padding:2px 8px;border-radius:6px;font-weight:600"><?php echo htmlspecialchars($cr['payment_method']); ?></span></td>
-          <td style="text-align:right">₱<?php echo number_format((float)$cr['estimated_cost'],2); ?></td>
-          <td style="text-align:right;font-weight:700;color:#065F46"><?php echo $cr['actual_cost'] ? '₱'.number_format((float)$cr['actual_cost'],2) : '<span style="color:#9ca3af">—</span>'; ?></td>
+          <td style="text-align:right">?<?php echo number_format((float)$cr['estimated_cost'],2); ?></td>
+          <td style="text-align:right;font-weight:700;color:#065F46"><?php echo $cr['actual_cost'] ? '?'.number_format((float)$cr['actual_cost'],2) : '<span style="color:#9ca3af">�</span>'; ?></td>
           <td style="text-align:right;font-weight:700;color:<?php echo (float)($cr['outstanding_balance']??0)>0?'#991B1B':'#065F46'; ?>">
-            <?php echo $cr['outstanding_balance'] !== null ? '₱'.number_format((float)$cr['outstanding_balance'],2) : '—'; ?>
+            <?php echo $cr['outstanding_balance'] !== null ? '?'.number_format((float)$cr['outstanding_balance'],2) : '�'; ?>
           </td>
-          <td style="text-align:right;font-size:12px;color:#667085"><?php echo $cr['credit_limit'] !== null ? '₱'.number_format((float)$cr['credit_limit'],2) : '—'; ?></td>
+          <td style="text-align:right;font-size:12px;color:#667085"><?php echo $cr['credit_limit'] !== null ? '?'.number_format((float)$cr['credit_limit'],2) : '�'; ?></td>
           <td><?php echo sr_badge($cr['status']); ?></td>
           <td style="font-size:12px;color:#667085;white-space:nowrap"><?php echo date('M j, Y', strtotime($cr['created_at'])); ?></td>
         </tr>
@@ -1288,7 +1288,7 @@ main.main, .main-content { padding-top: 0 !important; }
     ?>
     <div style="padding:14px 18px;background:#f5f6f8;border-bottom:1px solid #EAEAEA;display:flex;gap:20px;flex-wrap:wrap">
       <div><span style="font-size:12px;color:#667085;font-weight:700">TOTAL TRANSACTIONS</span><br><strong style="font-size:20px;color:#101828"><?php echo count($transactions); ?></strong></div>
-      <div><span style="font-size:12px;color:#667085;font-weight:700">GRAND TOTAL</span><br><strong style="font-size:20px;color:#065F46">₱<?php echo number_format($txn_grand_total,2); ?></strong></div>
+      <div><span style="font-size:12px;color:#667085;font-weight:700">GRAND TOTAL</span><br><strong style="font-size:20px;color:#065F46">?<?php echo number_format($txn_grand_total,2); ?></strong></div>
     </div>
     <div style="overflow-x:auto">
     <table class="sr-table">
@@ -1316,11 +1316,11 @@ main.main, .main-content { padding-top: 0 !important; }
             <span style="background:<?php echo $tbg; ?>;color:<?php echo $tfg; ?>;padding:2px 10px;border-radius:6px;font-size:11px;font-weight:700"><?php echo htmlspecialchars($t['txn_type']); ?></span>
           </td>
           <td style="font-size:12px;white-space:nowrap"><?php echo date('M j, Y g:ia', strtotime($t['txn_date'])); ?></td>
-          <td style="font-size:12px"><?php echo htmlspecialchars($t['payment_method'] ?: '—'); ?></td>
-          <td style="font-size:12px;color:#667085"><?php echo htmlspecialchars($t['shift_ref'] ?: '—'); ?></td>
-          <td style="font-size:12px;color:#667085;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?php echo htmlspecialchars($t['description'] ?: '—'); ?></td>
+          <td style="font-size:12px"><?php echo htmlspecialchars($t['payment_method'] ?: '�'); ?></td>
+          <td style="font-size:12px;color:#667085"><?php echo htmlspecialchars($t['shift_ref'] ?: '�'); ?></td>
+          <td style="font-size:12px;color:#667085;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?php echo htmlspecialchars($t['description'] ?: '�'); ?></td>
           <td><?php echo sr_badge($t['status']); ?></td>
-          <td style="text-align:right;font-weight:700;color:#065F46">₱<?php echo number_format((float)$t['total'],2); ?></td>
+          <td style="text-align:right;font-weight:700;color:#065F46">?<?php echo number_format((float)$t['total'],2); ?></td>
         </tr>
         <?php endforeach; ?>
       </tbody>
@@ -1350,7 +1350,7 @@ main.main, .main-content { padding-top: 0 !important; }
         <button type="submit" class="sr-filter-btn"><i class="fas fa-filter"></i> Filter</button>
         <a href="?view=personal_activity" style="font-size:12px;color:#667085;text-decoration:none">Reset</a>
       </form>
-      <span style="font-size:12px;color:#667085"><?php echo date('M j', strtotime($date_from)); ?> – <?php echo date('M j, Y', strtotime($date_to)); ?></span>
+      <span style="font-size:12px;color:#667085"><?php echo date('M j', strtotime($date_from)); ?> � <?php echo date('M j, Y', strtotime($date_to)); ?></span>
     </div>
     <div class="sr-stat-grid">
       <div class="sr-stat blue">
@@ -1374,7 +1374,7 @@ main.main, .main-content { padding-top: 0 !important; }
         <div class="sr-stat-lbl">Transactions</div>
       </div>
       <div class="sr-stat green">
-        <div class="sr-stat-num" style="font-size:18px">₱<?php echo number_format((float)($txn['total']??0),0); ?></div>
+        <div class="sr-stat-num" style="font-size:18px">?<?php echo number_format((float)($txn['total']??0),0); ?></div>
         <div class="sr-stat-lbl">Txn Value</div>
       </div>
     </div>
@@ -1403,7 +1403,7 @@ main.main, .main-content { padding-top: 0 !important; }
         <div class="sr-stat-lbl">Cancelled</div>
       </div>
       <div class="sr-stat green">
-        <div class="sr-stat-num" style="font-size:18px">₱<?php echo number_format((float)($jo['total_value']??0),0); ?></div>
+        <div class="sr-stat-num" style="font-size:18px">?<?php echo number_format((float)($jo['total_value']??0),0); ?></div>
         <div class="sr-stat-lbl">Total Value</div>
       </div>
       <?php if((int)($jo['total']??0) > 0): ?>
@@ -1455,7 +1455,7 @@ main.main, .main-content { padding-top: 0 !important; }
         <div class="sr-stat-lbl">Linked Customers</div>
       </div>
       <div class="sr-stat amber">
-        <div class="sr-stat-num" style="font-size:18px">₱<?php echo number_format((float)($cus['ar_total']??0),0); ?></div>
+        <div class="sr-stat-num" style="font-size:18px">?<?php echo number_format((float)($cus['ar_total']??0),0); ?></div>
         <div class="sr-stat-lbl">A/R Total</div>
       </div>
     </div>

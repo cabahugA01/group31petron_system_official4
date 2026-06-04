@@ -395,7 +395,7 @@ require_once __DIR__ . '/../partials/header.php';
     background: #f8fafc; border-radius: 7px; font-size: 10px;
 }
 .adm-audit-dot { width: 7px; height: 7px; border-radius: 50%; background: #00264D; flex-shrink: 0; }
-.adm-audit-name   { font-weight: 700; color: #00264D; min-width: 80px; }
+.adm-audit-name   { font-weight: 700; color: #00264D;  }
 .adm-audit-action { color: #475569; flex: 1; }
 .adm-audit-time   { color: #94a3b8; font-size: 9px; white-space: nowrap; }
 

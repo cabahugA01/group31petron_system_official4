@@ -301,7 +301,7 @@ require_once __DIR__ . '/../partials/header.php';
     <div class="pump-card">
         <h3>Fuel Pumps</h3>
         <?php if (!empty($pumps)): ?>
-            <div style="overflow-x: auto;">
+            <div style="overflow-x:hidden;">
                 <table class="pump-table">
                     <thead>
                         <tr>

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'fuel_staff';
 
@@ -236,7 +236,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     // STAFF: Record Daily Pump Reading
     if ($action === 'record_pump_reading') {
         if (!$isStaff) {
-            $msg = "❌ Error: Only authorized users can record pump readings.";
+            $msg = "? Error: Only authorized users can record pump readings.";
         } else {
             $pump_id = $_POST['pump_id'] ?? '';
             $reading_date = $_POST['reading_date'];
@@ -254,13 +254,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
             // Validation & error prevention
             if ($present_reading < $previous_reading) {
-              $msg = "❌ Error: Present reading must be greater than or equal to previous reading.";
+              $msg = "? Error: Present reading must be greater than or equal to previous reading.";
             } elseif ($calibration > $difference) {
-              $msg = "❌ Error: Calibration cannot exceed the difference between present and previous readings.";
+              $msg = "? Error: Calibration cannot exceed the difference between present and previous readings.";
             } elseif ($price_per_liter <= 0) {
-              $msg = "❌ Error: Price per liter must be greater than zero.";
+              $msg = "? Error: Price per liter must be greater than zero.";
             } elseif ($sales_liters < 0) {
-              $msg = "❌ Error: Negative liters computed. Please review present, previous, and calibration values.";
+              $msg = "? Error: Negative liters computed. Please review present, previous, and calibration values.";
             }
             
             if (!$msg && $pump_id && $reading_date && $shift) {
@@ -272,23 +272,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     // time (verify_reading action) so rejected readings don't affect inventory.
                     
                     log_activity($pdo, $me['id'], 'Record Pump Reading', "Recorded reading for pump #$pump_id ($shift shift). Sales: $sales_liters L (Calibration: $calibration L excluded)", 'fuel_management');
-                    $msg = "Pump reading recorded successfully. Net liters sold: " . number_format($sales_liters, 2) . " L | Peso sales: ₱" . number_format($sales_amount, 2) . " (Calibration: " . number_format($calibration, 2) . " L excluded). Awaiting manager review.";
+                    $msg = "Pump reading recorded successfully. Net liters sold: " . number_format($sales_liters, 2) . " L | Peso sales: ?" . number_format($sales_amount, 2) . " (Calibration: " . number_format($calibration, 2) . " L excluded). Awaiting manager review.";
                 } catch (PDOException $e) {
                     if ($e->errorInfo[1] == 1062) { // Duplicate entry
-                        $msg = "❌ Error: Reading already recorded for this pump, date, and shift.";
+                        $msg = "? Error: Reading already recorded for this pump, date, and shift.";
                     } else {
-                        $msg = "❌ Error: " . $e->getMessage();
+                        $msg = "? Error: " . $e->getMessage();
                     }
                 }
             } else {
-                $msg = "❌ Error: Please fill all required fields.";
+                $msg = "? Error: Please fill all required fields.";
             }
         }
     
     // STAFF: Record Fuel Delivery
     } elseif ($action === 'record_delivery') {
         if (!$isStaff) {
-            $msg = "❌ Error: Only authorized users can record deliveries.";
+            $msg = "? Error: Only authorized users can record deliveries.";
         } else {
             $delivery_date = $_POST['delivery_date'];
             $fuel_type = $_POST['fuel_type'];
@@ -304,19 +304,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $stmt->execute([$station_id, $delivery_date, $fuel_type, $supplier, $invoice_no, $delivery_liters, $tanker_number, $me['id'], $notes]);
                     
                     log_activity($pdo, $me['id'], 'Record Delivery', "Recorded delivery of " . number_format($delivery_liters, 2) . " liters of $fuel_type", 'fuel_management');
-                    $msg = "✅ Fuel delivery recorded successfully.";
+                    $msg = "? Fuel delivery recorded successfully.";
                 } catch (PDOException $e) {
-                    $msg = "❌ Error: " . $e->getMessage();
+                    $msg = "? Error: " . $e->getMessage();
                 }
             } else {
-                $msg = "❌ Error: Please fill all required fields.";
+                $msg = "? Error: Please fill all required fields.";
             }
         }
     
     // STAFF: Record Adjustment
     } elseif ($action === 'record_adjustment') {
         if (!$isStaff) {
-            $msg = "❌ Error: Only authorized users can record adjustments.";
+            $msg = "? Error: Only authorized users can record adjustments.";
         } else {
             $adjustment_date = $_POST['adjustment_date'];
             $fuel_type = $_POST['fuel_type'];
@@ -332,12 +332,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     
                     $adj_type = ucfirst($adjustment_type);
                     log_activity($pdo, $me['id'], 'Record Adjustment', "$adj_type of " . number_format($liters, 2) . " liters ($fuel_type)", 'fuel_management');
-                    $msg = "✅ Adjustment recorded successfully.";
+                    $msg = "? Adjustment recorded successfully.";
                 } catch (PDOException $e) {
-                    $msg = "❌ Error: " . $e->getMessage();
+                    $msg = "? Error: " . $e->getMessage();
                 }
             } else {
-                $msg = "❌ Error: Please fill all required fields.";
+                $msg = "? Error: Please fill all required fields.";
             }
         }
     
@@ -346,7 +346,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     // MANAGER: Verify Pump Reading
     } elseif ($action === 'verify_reading') {
         if (!$isManager) {
-            $msg = "❌ Error: Only managers can verify readings.";
+            $msg = "? Error: Only managers can verify readings.";
         } else {
             $id = $_POST['id'];
             $status = $_POST['status'];
@@ -396,14 +396,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $msg = "Error: Reading not found.";
                 }
             } catch (PDOException $e) {
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "? Error: " . $e->getMessage();
             }
         }
     
     // MANAGER: Verify Delivery
     } elseif ($action === 'verify_delivery') {
         if (!$isManager) {
-            $msg = "❌ Error: Only managers can verify deliveries.";
+            $msg = "? Error: Only managers can verify deliveries.";
         } else {
             $id = $_POST['id'];
             $status = $_POST['status'];
@@ -442,26 +442,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                                 );
                                 
                                 if (!$stock_result['success']) {
-                                    $msg .= " ⚠️ Warning: " . $stock_result['message'];
+                                    $msg .= " ?? Warning: " . $stock_result['message'];
                                 }
                             }
                         }
                     }
                     
                     log_activity($pdo, $me['id'], 'Verify Delivery', "Verified delivery #$id as $status", 'fuel_management');
-                    $msg = "✅ Delivery #$id has been $status.";
+                    $msg = "? Delivery #$id has been $status.";
                 } else {
-                    $msg = "❌ Error: Delivery not found.";
+                    $msg = "? Error: Delivery not found.";
                 }
             } catch (PDOException $e) {
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "? Error: " . $e->getMessage();
             }
         }
     
     // MANAGER: Approve Adjustment
     } elseif ($action === 'approve_adjustment') {
         if (!$isManager) {
-            $msg = "❌ Error: Only managers can approve adjustments.";
+            $msg = "? Error: Only managers can approve adjustments.";
         } else {
             $id = $_POST['id'];
             $status = $_POST['status'];
@@ -474,7 +474,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 if ($stmt->rowCount() > 0) {
                     // If adjustment is approved, update inventory in real-time
                     if ($status === 'Approved' || $status === 'approved') {
-                        // Get adjustment details — fuel_type (string) and liters
+                        // Get adjustment details � fuel_type (string) and liters
                         $stmtAdj = $pdo->prepare("SELECT fuel_type, fuel_type_id, adjustment_type, liters FROM fuel_adjustments WHERE id = ?");
                         $stmtAdj->execute([$id]);
                         $adjustment = $stmtAdj->fetch(PDO::FETCH_ASSOC);
@@ -521,14 +521,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $msg = "Error: Adjustment not found.";
                 }
             } catch (PDOException $e) {
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "? Error: " . $e->getMessage();
             }
         }
     
     // MANAGER: Run Reconciliation
     } elseif ($action === 'investigate_variance') {
         if (!$isManager) {
-            $msg = "❌ Error: Only managers can investigate variances.";
+            $msg = "? Error: Only managers can investigate variances.";
         } else {
             $id = $_POST['id'];
             $status = $_POST['status'] ?? '';
@@ -537,9 +537,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $corrective_actions = $_POST['corrective_actions'] ?? '';
             
             if (!$id || !in_array($status, ['Under Investigation', 'Resolved'])) {
-                $msg = "❌ Error: Invalid parameters provided.";
+                $msg = "? Error: Invalid parameters provided.";
             } elseif (!$notes) {
-                $msg = "❌ Error: Investigation notes are required.";
+                $msg = "? Error: Investigation notes are required.";
             } else {
                 try {
                     // Build investigation notes
@@ -559,12 +559,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     
                     if ($stmt->rowCount() > 0) {
                         log_activity($pdo, $me['id'], 'Variance Investigation', "Updated variance #$id to $status" . ($root_cause ? " (Root Cause: $root_cause)" : ''), 'fuel_management');
-                        $msg = "✅ Variance report #$id has been updated to $status.";
+                        $msg = "? Variance report #$id has been updated to $status.";
                     } else {
-                        $msg = "❌ Error: Variance report not found.";
+                        $msg = "? Error: Variance report not found.";
                     }
                 } catch (PDOException $e) {
-                    $msg = "❌ Error: " . $e->getMessage();
+                    $msg = "? Error: " . $e->getMessage();
                 }
             }
         }
@@ -572,7 +572,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     // MANAGER: Run Reconciliation
     } elseif ($action === 'run_reconciliation') {
         if (!$isManager) {
-            $msg = "❌ Error: Only managers can run reconciliation.";
+            $msg = "? Error: Only managers can run reconciliation.";
         } else {
             $reconciliation_date = $_POST['reconciliation_date'];
             $fuel_type = $_POST['fuel_type'];
@@ -623,23 +623,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     }
                     
                     log_activity($pdo, $me['id'], 'Run Reconciliation', "Reconciliation for $fuel_type on $reconciliation_date", 'fuel_management');
-                    $msg = "✅ Reconciliation completed. Variance: " . number_format($variance, 2) . " liters (" . number_format($variance_percent, 2) . "%)";
+                    $msg = "? Reconciliation completed. Variance: " . number_format($variance, 2) . " liters (" . number_format($variance_percent, 2) . "%)";
                 } catch (PDOException $e) {
                     if ($e->errorInfo[1] == 1062) { // Duplicate entry
-                        $msg = "❌ Error: Reconciliation already done for this date and fuel type.";
+                        $msg = "? Error: Reconciliation already done for this date and fuel type.";
                     } else {
-                        $msg = "❌ Error: " . $e->getMessage();
+                        $msg = "? Error: " . $e->getMessage();
                     }
                 }
             } else {
-                $msg = "❌ Error: Please fill all required fields.";
+                $msg = "? Error: Please fill all required fields.";
             }
         }
     
     // MANAGER: Approve Reconciliation (changes status from Pending to Approved)
     } elseif ($action === 'approve_reconciliation') {
         if (!$isManager) {
-            $msg = "❌ Error: Only managers can approve reconciliations.";
+            $msg = "? Error: Only managers can approve reconciliations.";
         } else {
             $recon_id = (int)($_POST['recon_id'] ?? 0);
             $manager_notes = trim($_POST['manager_notes'] ?? '');
@@ -652,22 +652,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $recon = $stmt->fetch();
                     
                     if (!$recon) {
-                        $msg = "❌ Error: Reconciliation record not found.";
+                        $msg = "? Error: Reconciliation record not found.";
                     } elseif ($recon['status'] !== 'Pending') {
-                        $msg = "❌ Error: Only Pending reconciliations can be approved.";
+                        $msg = "? Error: Only Pending reconciliations can be approved.";
                     } else {
                         // Update status to Approved
                         $stmt = $pdo->prepare("UPDATE fuel_reconciliation SET status = 'approved', manager_notes = ?, approved_by = ?, approved_at = NOW() WHERE id = ?");
                         $stmt->execute([$manager_notes, $me['id'], $recon_id]);
                         
                         log_activity($pdo, $me['id'], 'Approve Reconciliation', "Approved reconciliation #{$recon_id} for {$recon['fuel_type']} on {$recon['reconciliation_date']}", 'fuel_management');
-                        $msg = "✅ Reconciliation approved! Admin can now finalize it.";
+                        $msg = "? Reconciliation approved! Admin can now finalize it.";
                     }
                 } catch (Exception $e) {
-                    $msg = "❌ Error: " . $e->getMessage();
+                    $msg = "? Error: " . $e->getMessage();
                 }
             } else {
-                $msg = "❌ Error: Invalid reconciliation ID.";
+                $msg = "? Error: Invalid reconciliation ID.";
             }
         }
     
@@ -676,7 +676,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     // ADD PUMP
      } elseif ($action === 'add_pump') {
          if (!$isAdmin) {
-             $msg = "❌ Error: Only admins can manage pumps.";
+             $msg = "? Error: Only admins can manage pumps.";
          } else {
              $pump_number = trim($_POST['pump_number'] ?? '');
              $status = $_POST['status'] ?? 'active';
@@ -687,27 +687,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                      $stmt = $pdo->prepare("SELECT id FROM fuel_pumps WHERE station_id = ? AND pump_number = ?");
                      $stmt->execute([$station_id, $pump_number]);
                      if ($stmt->rowCount() > 0) {
-                         $msg = "❌ Error: Pump number already exists for this station.";
+                         $msg = "? Error: Pump number already exists for this station.";
                      } else {
                          // Insert new pump with fuel_type_id = 1 as placeholder
                          $stmt = $pdo->prepare("INSERT INTO fuel_pumps (station_id, pump_number, fuel_type_id, status) VALUES (?, ?, ?, ?)");
                          $stmt->execute([$station_id, $pump_number, 1, $status]);
                          
                          log_activity($pdo, $me['id'], 'Add Pump', "Created Pump $pump_number at station $station_id", 'fuel_management');
-                         $msg = "✅ Pump $pump_number created successfully. Now add nozzles to this pump.";
+                         $msg = "? Pump $pump_number created successfully. Now add nozzles to this pump.";
                      }
                  } catch (PDOException $e) {
-                     $msg = "❌ Error: " . $e->getMessage();
+                     $msg = "? Error: " . $e->getMessage();
                  }
              } else {
-                 $msg = "❌ Error: Please fill all required fields.";
+                 $msg = "? Error: Please fill all required fields.";
              }
          }
     
      // EDIT PUMP
      } elseif ($action === 'edit_pump') {
          if (!$isAdmin) {
-             $msg = "❌ Error: Only admins can manage pumps.";
+             $msg = "? Error: Only admins can manage pumps.";
          } else {
               $pump_id = $_POST['pump_id'] ?? '';
               $status = $_POST['status'] ?? 'active';
@@ -720,7 +720,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                       $pump = $stmt->fetch();
                       
                       if (!$pump) {
-                          $msg = "❌ Error: Pump not found.";
+                          $msg = "? Error: Pump not found.";
                       } else {
                               // Update pump status
                               $stmt = $pdo->prepare("UPDATE fuel_pumps SET status = ? WHERE id = ?");
@@ -728,20 +728,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                               
                               $log_msg = "Updated Pump " . $pump['pump_number'] . " - Status: $status";
                               log_activity($pdo, $me['id'], 'Edit Pump', $log_msg, 'fuel_management');
-                              $msg = "✅ Pump " . $pump['pump_number'] . " updated successfully.";
+                              $msg = "? Pump " . $pump['pump_number'] . " updated successfully.";
                      }
                  } catch (PDOException $e) {
-                     $msg = "❌ Error: " . $e->getMessage();
+                     $msg = "? Error: " . $e->getMessage();
                  }
              } else {
-                 $msg = "❌ Error: Please fill all required fields.";
+                 $msg = "? Error: Please fill all required fields.";
              }
          }
     
     // DELETE PUMP (Superadmin only)
     } elseif ($action === 'delete_pump') {
         if (!$isSuper) {
-            $msg = "❌ Error: Only superadmin can delete pumps.";
+            $msg = "? Error: Only superadmin can delete pumps.";
         } else {
             $pump_id = $_POST['pump_id'] ?? '';
             
@@ -753,20 +753,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $pump = $stmt->fetch();
                     
                     if (!$pump) {
-                        $msg = "❌ Error: Pump not found.";
+                        $msg = "? Error: Pump not found.";
                     } else {
                         // Delete pump
                         $stmt = $pdo->prepare("DELETE FROM fuel_pumps WHERE id = ?");
                         $stmt->execute([$pump_id]);
                         
                         log_activity($pdo, $me['id'], 'Delete Pump', "Deleted Pump " . $pump['pump_number'], 'fuel_management');
-                        $msg = "✅ Pump " . $pump['pump_number'] . " deleted successfully.";
+                        $msg = "? Pump " . $pump['pump_number'] . " deleted successfully.";
                     }
                 } catch (PDOException $e) {
-                    $msg = "❌ Error: " . $e->getMessage();
+                    $msg = "? Error: " . $e->getMessage();
                 }
             } else {
-                  $msg = "❌ Error: Pump ID is required.";
+                  $msg = "? Error: Pump ID is required.";
               }
           }
       }
@@ -779,7 +779,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $status = $_POST['status'] ?? 'active';
         
         if (!$pump_id || !$nozzle_number || !$fuel_type_id) {
-            $msg = "❌ Error: Pump, nozzle number, and fuel type are required.";
+            $msg = "? Error: Pump, nozzle number, and fuel type are required.";
         } else {
             try {
                 // Validate pump exists and belongs to this station
@@ -788,7 +788,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $pump = $stmt->fetch();
                 
                 if (!$pump) {
-                    $msg = "❌ Error: Pump not found.";
+                    $msg = "? Error: Pump not found.";
                 } else {
                     // Check max 6 nozzles per pump
                     $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM nozzles WHERE pump_id = ?");
@@ -796,21 +796,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $result = $stmt->fetch();
                     
                     if ($result['count'] >= 6) {
-                        $msg = "❌ Error: Maximum 6 nozzles per pump. Cannot add more.";
+                        $msg = "? Error: Maximum 6 nozzles per pump. Cannot add more.";
                     } else {
                         // Check for duplicate nozzle number in this pump
                         $stmt = $pdo->prepare("SELECT id FROM nozzles WHERE pump_id = ? AND nozzle_number = ?");
                         $stmt->execute([$pump_id, $nozzle_number]);
                         
                         if ($stmt->rowCount() > 0) {
-                            $msg = "❌ Error: Nozzle number already exists for this pump.";
+                            $msg = "? Error: Nozzle number already exists for this pump.";
                         } else {
                             // Validate fuel type exists
                             $stmt = $pdo->prepare("SELECT id FROM fuel_types WHERE id = ?");
                             $stmt->execute([$fuel_type_id]);
                             
                             if ($stmt->rowCount() === 0) {
-                                $msg = "❌ Error: Invalid fuel type selected.";
+                                $msg = "? Error: Invalid fuel type selected.";
                             } else {
                                 // Insert nozzle
                                 $stmt = $pdo->prepare("INSERT INTO nozzles (pump_id, nozzle_number, fuel_type_id, status) VALUES (?, ?, ?, ?)");
@@ -822,13 +822,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                                 $fuelType = $stmt->fetch();
                                 
                                 log_activity($pdo, $me['id'], 'Add Nozzle', "Added nozzle $nozzle_number to pump " . $pump['pump_number'] . " - Fuel Type: " . $fuelType['name'], 'fuel_management');
-                                $msg = "✅ Nozzle $nozzle_number added successfully.";
+                                $msg = "? Nozzle $nozzle_number added successfully.";
                             }
                         }
                     }
                 }
             } catch (PDOException $e) {
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "? Error: " . $e->getMessage();
             }
         }
     
@@ -841,7 +841,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $notes = trim($_POST['notes'] ?? '');
         
         if (!$nozzle_id || !$nozzle_number || !$fuel_type_id) {
-            $msg = "❌ Error: Nozzle ID, number, and fuel type are required.";
+            $msg = "? Error: Nozzle ID, number, and fuel type are required.";
         } else {
             try {
                 // Get nozzle details
@@ -850,14 +850,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $nozzle = $stmt->fetch();
                 
                 if (!$nozzle) {
-                    $msg = "❌ Error: Nozzle not found.";
+                    $msg = "? Error: Nozzle not found.";
                 } else {
                     // Check for duplicate nozzle number in same pump (excluding current nozzle)
                     $stmt = $pdo->prepare("SELECT id FROM nozzles WHERE pump_id = ? AND nozzle_number = ? AND id != ?");
                     $stmt->execute([$nozzle['pump_id'], $nozzle_number, $nozzle_id]);
                     
                     if ($stmt->rowCount() > 0) {
-                        $msg = "❌ Error: Another nozzle with this number already exists for this pump.";
+                        $msg = "? Error: Another nozzle with this number already exists for this pump.";
                     } else {
                         // Validate fuel type exists
                         $stmt = $pdo->prepare("SELECT name FROM fuel_types WHERE id = ?");
@@ -865,19 +865,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         $fuelType = $stmt->fetch();
                         
                         if (!$fuelType) {
-                            $msg = "❌ Error: Invalid fuel type selected.";
+                            $msg = "? Error: Invalid fuel type selected.";
                         } else {
                             // Update nozzle
                             $stmt = $pdo->prepare("UPDATE nozzles SET nozzle_number = ?, fuel_type_id = ?, status = ?, notes = ? WHERE id = ?");
                             $stmt->execute([$nozzle_number, $fuel_type_id, $status, $notes, $nozzle_id]);
                             
                             log_activity($pdo, $me['id'], 'Edit Nozzle', "Updated nozzle $nozzle_number - Fuel Type: " . $fuelType['name'] . ", Status: $status", 'fuel_management');
-                            $msg = "✅ Nozzle $nozzle_number updated successfully.";
+                            $msg = "? Nozzle $nozzle_number updated successfully.";
                         }
                     }
                 }
             } catch (PDOException $e) {
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "? Error: " . $e->getMessage();
             }
         }
     }
@@ -1307,7 +1307,7 @@ input[name="calibration"]:hover {
           <small style="color: #6c757d; font-size: 11px; margin-top: 2px; display: block;">Enter calibration amount (auto-loaded from pump, editable)</small>
         </div>
         <div>
-          <label class="pay-label">Price/Liter (₱) *</label>
+          <label class="pay-label">Price/Liter (?) *</label>
           <input type="number" step="0.01" min="0" name="price_per_liter" id="price_per_liter" class="input" placeholder="0.00" required readonly style="background-color:#f8f9fa;">
           <small style="color: #6c757d; font-size: 11px; margin-top: 2px; display: block;">
             Auto-loaded from active fuel pricing.
@@ -1322,7 +1322,7 @@ input[name="calibration"]:hover {
         <input class="input" id="salesCalc" readonly disabled placeholder="Auto-calculated">
       </div>
       <div class="pay-section" style="padding:0 16px 10px;">
-        <label class="pay-label">Calculated Peso Sales (₱)</label>
+        <label class="pay-label">Calculated Peso Sales (?)</label>
         <input class="input" id="amountCalc" readonly disabled placeholder="Auto-calculated">
       </div>
       <div class="pay-section" style="padding:0 16px 10px;">
@@ -2676,7 +2676,7 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(() => DataHelper.populateAdjustmentTypes('adjustment_type_fuel', '-- Select Type --'))
         .catch(error => console.error('Failed to load fuel types/shifts/adjustment types:', error));
 
-    // ── Tab switching (data-fueltab) ──
+    // -- Tab switching (data-fueltab) --
     const fuelTabs = document.querySelectorAll('.tab[data-fueltab]');
     const tabKeys = ['pump','delivery','adjustment','myentries','operations','reconciliation','variances','history','manage_pumps'];
 
@@ -2708,7 +2708,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const activeTab = urlParams.get('tab') || 'pump';
     showFuelTab(activeTab);
 
-    // ── Auto-calculate net liters sold ──
+    // -- Auto-calculate net liters sold --
     function calculateSales() {
         const prev = parseFloat(document.querySelector('input[name="previous_reading"]')?.value) || 0;
       const present = parseFloat(document.querySelector('input[name="present_reading"]')?.value) || 0;
@@ -2719,7 +2719,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const el = document.getElementById('salesCalc');
         const amountEl = document.getElementById('amountCalc');
       if (el) el.value = sales.toFixed(2) + ' L';
-      if (amountEl) amountEl.value = '₱' + amount.toFixed(2);
+      if (amountEl) amountEl.value = '?' + amount.toFixed(2);
     }
 
     ['previous_reading', 'present_reading', 'calibration', 'price_per_liter'].forEach(name => {
@@ -2743,7 +2743,7 @@ document.addEventListener('DOMContentLoaded', function() {
       setPriceLockState();
     }
 
-    // ── Fetch previous reading and calibration when pump is selected ──
+    // -- Fetch previous reading and calibration when pump is selected --
     const pumpSelect = document.getElementById('pump_id');
     if (pumpSelect) {
         pumpSelect.addEventListener('change', function() {
@@ -2764,7 +2764,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // ── Fetch calibration value function ──
+    // -- Fetch calibration value function --
     function fetchCalibrationValue() {
         const pumpSelect = document.getElementById('pump_id');
         const pumpId = pumpSelect ? pumpSelect.value : null;
@@ -2813,7 +2813,7 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     }
 
-    // ── Manual fetch previous reading function ──
+    // -- Manual fetch previous reading function --
     function fetchPreviousReading() {
         const pumpSelect = document.getElementById('pump_id');
         const pumpId = pumpSelect ? pumpSelect.value : null;
@@ -2846,14 +2846,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
     calculateSales();
 
-    // ── Modal backdrop click to close ──
+    // -- Modal backdrop click to close --
     document.querySelectorAll('.modal').forEach(modal => {
         modal.addEventListener('click', function(e) {
             if (e.target === this) this.classList.remove('show');
         });
     });
 
-    // ── Escape key closes all modals ──
+    // -- Escape key closes all modals --
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
             document.querySelectorAll('.modal.show').forEach(m => m.classList.remove('show'));
@@ -2861,7 +2861,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-// ── Filter Functions ──
+// -- Filter Functions --
 function applyFilters() {
     const date = document.getElementById('filterDate')?.value;
     const shift = document.getElementById('filterShift')?.value;
@@ -2879,12 +2879,12 @@ function resetFilters() {
     window.location.href = 'fuel_staff.php?tab=operations';
 }
 
-// ── Helper: close modal ──
+// -- Helper: close modal --
 function closeModal(id) {
     document.getElementById(id).classList.remove('show');
 }
 
-// ── View Reading Modal (Staff - Read Only) ──
+// -- View Reading Modal (Staff - Read Only) --
 function openViewReadingModal(id) {
     fetch(`../backend/fuel_reading_view.php?id=${id}`)
         .then(response => response.text())
@@ -2895,7 +2895,7 @@ function openViewReadingModal(id) {
         });
 }
 
-// ── Review Reading Modal (Manager - Approve/Reject) ──
+// -- Review Reading Modal (Manager - Approve/Reject) --
 function openReviewReadingModal(id) {
     fetch(`../backend/fuel_reading_review.php?id=${id}`)
         .then(response => response.text())
@@ -2940,7 +2940,7 @@ document.getElementById('verifyReadingForm')?.addEventListener('submit', functio
     }
 });
 
-// ── Verify Delivery Modal ──
+// -- Verify Delivery Modal --
 function openVerifyDeliveryModal(id, date, fuelType, supplier, liters, tanker, receiver) {
     document.getElementById('verifyDeliveryId').value = id;
     document.getElementById('verifyDeliveryFuelType').value = fuelType;
@@ -3002,7 +3002,7 @@ document.getElementById('verifyDeliveryForm')?.addEventListener('submit', functi
     }
 });
 
-// ── Approve Adjustment Modal ──
+// -- Approve Adjustment Modal --
 function openApproveAdjustmentModal(id, date, fuelType, adjType, liters, reason, staff) {
     document.getElementById('approveAdjustmentId').value = id;
 
@@ -3064,7 +3064,7 @@ document.getElementById('approveAdjustmentForm')?.addEventListener('submit', fun
     }
 });
 
-// ── Investigate Variance Modal ──
+// -- Investigate Variance Modal --
 function openInvestigateVarianceModal(id, date, fuelType, expected, actual, variance, variancePct, currentStatus) {
     document.getElementById('investigateVarianceId').value = id;
 
@@ -3122,7 +3122,7 @@ document.getElementById('investigateVarianceForm')?.addEventListener('submit', f
     }
 });
 
-// ── View Detail Modals (read-only) ──
+// -- View Detail Modals (read-only) --
 function viewReadingDetails(id, date, pump, shift, prev, curr, sales, staff, status) {
     const details = document.getElementById('verifyReadingDetails');
     const fmtDate = new Date(date + 'T00:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
@@ -3264,7 +3264,7 @@ function viewVarianceDetails(id, date, fuelType, expected, actual, variance, var
     closeBtn.onclick = function() { modal.classList.remove('show'); restoreForm(); closeBtn.onclick = origOnclick; };
 }
 
-// ── Pump Reading Filters ──
+// -- Pump Reading Filters --
 function applyPumpFilters() {
     const date = document.getElementById('pumpFilterDate')?.value;
     const shift = document.getElementById('pumpFilterShift')?.value;
@@ -3281,7 +3281,7 @@ function resetPumpFilters() {
     window.location.href = 'fuel_staff.php?tab=pump';
 }
 
-// ── Pump Management ──
+// -- Pump Management --
 function openEditPumpModal(pumpId, pumpNumber, status) {
     document.getElementById('editPumpId').value = pumpId;
     document.getElementById('editPumpNumber').value = pumpNumber;
@@ -3296,7 +3296,7 @@ function openDeletePumpModal(pumpId, pumpNumber) {
     document.getElementById('modalDeletePump').classList.add('show');
 }
 
-// ── Nozzle Management ──
+// -- Nozzle Management --
 function openAddNozzleModal(pumpId, pumpNumber) {
     document.querySelector('#modalAddNozzle form').reset();
     document.getElementById('addNozzlePumpId').value = pumpId;
@@ -3334,7 +3334,7 @@ function loadFuelTypesForNozzle(selectId, selectedId) {
     }
 }
 
-// ── Approve Reconciliation Modal ──
+// -- Approve Reconciliation Modal --
 function showApproveModal(reconId, fuelType, reconDate) {
     document.getElementById('approveReconId').value = reconId;
     document.getElementById('approveFuelType').textContent = fuelType;

@@ -136,6 +136,7 @@ function handle_submit_stock_in($pdo, $me, $role, $station_id) {
     $po_id      = (int)($input['po_id']     ?? 0);
     $items      = $input['items']           ?? [];
     $batch_note = trim($input['batch_note'] ?? '');
+    $batch_id   = trim($input['batch_id']   ?? '');  // Staff-entered or PO batch_id
 
     if ($po_id <= 0) {
         echo json_encode(['success' => false, 'message' => 'PO ID is required']);
@@ -177,6 +178,12 @@ function handle_submit_stock_in($pdo, $me, $role, $station_id) {
     if ($product_id <= 0) {
         echo json_encode(['success' => false, 'message' => 'Product not found in inventory_products. Cannot update stock.']);
         return;
+    }
+
+    // Use staff-entered batch_id, fall back to PO batch_id, then auto-generate
+    $effective_batch_id = $batch_id ?: ($po['batch_id'] ?? '');
+    if (empty($effective_batch_id)) {
+        $effective_batch_id = 'B-' . date('Ymd') . '-PO' . str_pad($po_id, 4, '0', STR_PAD_LEFT);
     }
 
     $batch_ref = 'SI-' . date('Ymd-His') . '-PO' . str_pad($po_id, 4, '0', STR_PAD_LEFT);
@@ -278,6 +285,48 @@ function handle_submit_stock_in($pdo, $me, $role, $station_id) {
                 $batch_ref
             ]);
 
+            // ── AUTO-CREATE MERCHANDISE BATCH RECORD (FIFO) ──────────────────
+            // Only create a batch for Good/Excess deliveries that increase stock
+            if ($qty_to_add > 0) {
+                try {
+                    // Check if this exact batch_number already exists for this product/station
+                    $batchCheck = $pdo->prepare("SELECT id FROM merchandise_batches WHERE product_id = ? AND station_id = ? AND batch_number = ? LIMIT 1");
+                    $batchCheck->execute([$item_product_id, $station_id, $effective_batch_id]);
+                    if (!$batchCheck->fetch()) {
+                        $pdo->prepare("
+                            INSERT INTO merchandise_batches
+                                (product_id, station_id, batch_number, delivery_id, quantity_received,
+                                 remaining_qty, unit_cost, supplier, date_received, encoded_by, status,
+                                 notes, created_at, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), ?, 'active', ?, NOW(), NOW())
+                        ")->execute([
+                            $item_product_id,
+                            $station_id,
+                            $effective_batch_id,
+                            $po_id,              // delivery_id = po_id for traceability
+                            $qty_received,
+                            $qty_to_add,         // remaining = qty added to stock
+                            $unit_cost,
+                            $po['supplier_name'] ?? '',
+                            $me['id'],
+                            ($remarks ?: ('Stock-In from PO ' . ($po['po_number'] ?? '')))
+                        ]);
+                    } else {
+                        // Batch already exists — update remaining_qty (cumulative delivery)
+                        $pdo->prepare("
+                            UPDATE merchandise_batches
+                            SET remaining_qty = remaining_qty + ?,
+                                quantity_received = quantity_received + ?,
+                                updated_at = NOW()
+                            WHERE product_id = ? AND station_id = ? AND batch_number = ?
+                        ")->execute([$qty_to_add, $qty_received, $item_product_id, $station_id, $effective_batch_id]);
+                    }
+                } catch (Exception $be) {
+                    // Non-fatal: batch table error should not fail the whole stock-in
+                    error_log("merchandise_batches insert error: " . $be->getMessage());
+                }
+            }
+
             $total_received += $qty_received;
             $si_records[] = [
                 'product'      => $po['product_name'],
@@ -285,6 +334,7 @@ function handle_submit_stock_in($pdo, $me, $role, $station_id) {
                 'condition'    => $condition,
                 'stock_before' => $stock_before,
                 'stock_after'  => $stock_after,
+                'batch_id'     => $effective_batch_id,
             ];
         }
 
@@ -308,7 +358,7 @@ function handle_submit_stock_in($pdo, $me, $role, $station_id) {
         }
 
         // Audit log
-        $detail = "Stock-In | PO: {$po['po_number']} | Product: {$po['product_name']} | Received: {$total_received} | Batch: {$batch_ref}";
+        $detail = "Stock-In | PO: {$po['po_number']} | Product: {$po['product_name']} | Received: {$total_received} | Batch: {$effective_batch_id} | Ref: {$batch_ref}";
         if ($batch_note) $detail .= " | Note: {$batch_note}";
         try {
             $pdo->prepare("
@@ -332,6 +382,7 @@ function handle_submit_stock_in($pdo, $me, $role, $station_id) {
             'success'    => true,
             'message'    => "Stock-In complete. Inventory updated for {$po['product_name']}.",
             'batch_ref'  => $batch_ref,
+            'batch_id'   => $effective_batch_id,
             'records'    => $si_records,
         ]);
 

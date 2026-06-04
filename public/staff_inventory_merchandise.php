@@ -2,6 +2,8 @@
 /**
  * Staff Merchandise Inventory
  * One "Stock Request" button → modal with checkboxes to pick items → submit (no qty, manager sets it).
+ * 
+ * NOTE: Profit margin display is hidden from staff view (only price is shown, not the +profit).
  */
 $page_id = 'inv_merch';
 require_once __DIR__ . '/../backend/lib.php';
@@ -32,7 +34,7 @@ try {
         FROM inventory_products ip
         LEFT JOIN station_inventory si
                ON si.product_id = ip.id AND si.station_id = ?
-        WHERE ip.category NOT IN ('Fuel')
+        WHERE ip.category NOT IN ('Fuel') AND ip.status = 'active'
         ORDER BY ip.category, ip.product_name
     ");
     $stmt->execute([$station_id]);
@@ -40,6 +42,12 @@ try {
 } catch (Exception $e) {
     $msg = 'Error loading merchandise: ' . $e->getMessage();
 }
+
+$all_categories = [];
+try {
+    $catStmt = $pdo->query("SELECT DISTINCT category FROM inventory_products WHERE LOWER(COALESCE(category,'')) NOT IN ('fuel') AND category IS NOT NULL AND category <> '' ORDER BY category");
+    $all_categories = $catStmt->fetchAll(PDO::FETCH_COLUMN);
+} catch (Exception $e) {}
 
 $js_items  = [];
 foreach ($merch_inventory as $item) {
@@ -63,17 +71,104 @@ foreach ($merch_inventory as $item) {
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
-.inv-card { background:#fff; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.06); border:1px solid #e9ecef; margin-bottom:20px; }
+/* Prevent page overflow */
+body, html { overflow-x: hidden; max-width: 100%; }
+.page-head { max-width: 100%; overflow: hidden; }
+.inv-card { background:#fff; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.06); border:1px solid #e9ecef; margin-bottom:20px; max-width: 100%; overflow: hidden; }
 .inv-card-head { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #e9ecef; flex-wrap:wrap; gap:8px; }
 .inv-card-title { font-size:1rem; font-weight:700; color:#002F70; display:flex; align-items:center; gap:8px; }
 .inv-card-body  { padding:20px; }
 .cat-header td { font-weight:700; background:#e9ecef !important; color:#495057 !important; text-transform:uppercase; font-size:.8em; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px; }
 .cost-col  { color:#6c757d; font-size:.9em; }
 .price-col { color:#28a745; font-weight:700; }
-.profit-sm { font-size:.76em; color:#17a2b8; margin-left:3px; }
-#merchSearch { padding:8px 12px; border:1px solid #ced4da; border-radius:4px; font-size:14px; width:100%; }
+#merchSearch { padding:8px 12px; border:1px solid #ced4da; border-radius:4px; font-size:14px; width:100%; max-width:100%; }
 #merchSearch:focus { border-color:#80bdff; outline:0; box-shadow:0 0 0 .2rem rgba(0,123,255,.25); }
 .search-wrap { max-width:300px; margin-bottom:14px; }
+
+/* ══ FIX: Remove horizontal scrolling ══ */
+.table-wrap { 
+    padding: 0; 
+    overflow-x: auto;
+    overflow-y: visible;
+    width: 100%;
+    max-width: 100%;
+}
+#merchTable { 
+    width: 100%; 
+    table-layout: fixed;
+    border-collapse: collapse;
+}
+#merchTable thead th,
+#merchTable tbody td {
+    padding: 10px 8px;
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#merchTable thead th {
+    white-space: nowrap;
+}
+#merchTable tbody td {
+    border: none;
+    border-bottom: 1px solid #e9ecef;
+    white-space: normal;
+    word-wrap: break-word;
+}
+/* Column widths - 6 columns total */
+#merchTable th:nth-child(1),
+#merchTable td:nth-child(1) { width: 30%; }
+#merchTable th:nth-child(2),
+#merchTable td:nth-child(2) { width: 12%; }
+#merchTable th:nth-child(3),
+#merchTable td:nth-child(3) { width: 20%; }
+#merchTable th:nth-child(4),
+#merchTable td:nth-child(4) { width: 10%; text-align: center; }
+#merchTable th:nth-child(5),
+#merchTable td:nth-child(5) { width: 14%; text-align: right; }
+#merchTable th:nth-child(6),
+#merchTable td:nth-child(6) { width: 14%; text-align: right; }
+
+/* Tablet optimization */
+@media (max-width: 1024px) {
+    #merchTable th:nth-child(5),
+    #merchTable td:nth-child(5) {
+        display: none; /* Hide Cost on tablets */
+    }
+    #merchTable th:nth-child(1),
+    #merchTable td:nth-child(1) { width: 35%; }
+    #merchTable th:nth-child(2),
+    #merchTable td:nth-child(2) { width: 15%; }
+    #merchTable th:nth-child(3),
+    #merchTable td:nth-child(3) { width: 25%; }
+    #merchTable th:nth-child(4),
+    #merchTable td:nth-child(4) { width: 10%; }
+    #merchTable th:nth-child(6),
+    #merchTable td:nth-child(6) { width: 15%; }
+}
+
+/* Mobile optimization */
+@media (max-width: 768px) {
+    #merchTable th:nth-child(2),
+    #merchTable td:nth-child(2),
+    #merchTable th:nth-child(5),
+    #merchTable td:nth-child(5) {
+        display: none; /* Hide SKU and Cost columns on mobile */
+    }
+    #merchTable th:nth-child(1),
+    #merchTable td:nth-child(1) { width: 40%; }
+    #merchTable th:nth-child(3),
+    #merchTable td:nth-child(3) { width: 30%; }
+    #merchTable th:nth-child(4),
+    #merchTable td:nth-child(4) { width: 12%; }
+    #merchTable th:nth-child(6),
+    #merchTable td:nth-child(6) { width: 18%; }
+    .inv-card-body { padding: 12px; }
+    #merchTable thead th,
+    #merchTable tbody td {
+        padding: 8px 6px;
+        font-size: 12px;
+    }
+}
 
 /* ── Modal ── */
 .sr-modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:9999; align-items:center; justify-content:center; }
@@ -120,9 +215,6 @@ include __DIR__ . '/../partials/header.php';
         <h1 class="h1"><i class="fas fa-boxes"></i> Merchandise Inventory</h1>
         <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; Submit stock requests for any item</div>
     </div>
-    <div class="header-actions">
-        <button onclick="location.reload()" class="btn ghost"><i class="fas fa-sync-alt"></i> Refresh</button>
-    </div>
 </div>
 
 <?php if ($msg): ?>
@@ -131,12 +223,22 @@ include __DIR__ . '/../partials/header.php';
 </div>
 <?php endif; ?>
 
+<?php require_once __DIR__ . '/../partials/staff_inventory_summary.php'; ?>
+
 <div class="inv-card">
     <div class="inv-card-head">
         <div class="inv-card-title"><i class="fas fa-box"></i> Merchandise Stock</div>
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <?php
+            $export_table_id      = 'merchTable';
+            $export_filename      = 'merch_inventory_' . date('Ymd');
+            $export_title         = 'Merchandise Inventory';
+            $export_rows_select_id = 'merchRowsLimit';
+            $export_default_rows  = 25;
+            require __DIR__ . '/../partials/export_buttons.php';
+            ?>
             <button onclick="openSrModal()"
-                    style="display:inline-flex;align-items:center;gap:7px;padding:7px 18px;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;background:#002F70;color:#fff;">
+                    style="background:#002F70;color:#fff;border:none;display:inline-flex;align-items:center;gap:7px;height:36px;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">
                 <i class="fas fa-box"></i> Stock Request
             </button>
         </div>
@@ -158,24 +260,12 @@ include __DIR__ . '/../partials/header.php';
                     </tr>
                 </thead>
                 <tbody id="merchTableBody">
-                <?php
-                $categories = [];
-                foreach ($merch_inventory as $gidx => $item) {
-                    $cat = $item['category_name'] ?? 'Uncategorized';
-                    $categories[$cat][] = ['item' => $item, 'gidx' => $gidx];
-                }
-                $cat_order = ['Oils / Lubes / Grease','Car Accessories','Brake System','Tire','Maintenance','Oil / Fuel Filters','Others (Snacks / Drinks)'];
-                $sorted = [];
-                foreach ($cat_order as $k) { if (isset($categories[$k])) $sorted[$k] = $categories[$k]; }
-                foreach ($categories as $k => $v) { if (!in_array($k, $cat_order)) $sorted[$k] = $v; }
-
-                foreach ($sorted as $cat_label => $entries): ?>
-                    <tr class="cat-header"><td colspan="6"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
-                    <?php foreach ($entries as $entry):
-                        $item   = $entry['item'];
+                <?php if (empty($merch_inventory)): ?>
+                    <tr><td colspan="6" style="text-align:center;padding:28px;color:#6c757d;">No merchandise data available.</td></tr>
+                <?php else: ?>
+                    <?php foreach ($merch_inventory as $item):
                         $stock  = (float)($item['stock_level'] ?? 0);
                         $reord  = (float)($item['reorder_level'] ?? 10);
-                        $profit = (float)($item['price'] ?? 0) - (float)($item['cost'] ?? 0);
                         if ($stock <= 0)         { $st_color = '#dc3545'; $st_label = 'OUT OF STOCK'; }
                         elseif ($stock <= $reord) { $st_color = '#fd7e14'; $st_label = 'LOW STOCK'; }
                         else                     { $st_color = '#28a745'; $st_label = 'AVAILABLE'; }
@@ -191,19 +281,14 @@ include __DIR__ . '/../partials/header.php';
                         <td><?php echo htmlspecialchars($item['category_name'] ?? ''); ?></td>
                         <td style="font-weight:700;color:<?php echo $st_color; ?>;"><?php echo number_format($stock, 0); ?></td>
                         <td class="cost-col">&#8369;<?php echo number_format((float)($item['cost'] ?? 0), 2); ?></td>
-                        <td class="price-col">
-                            &#8369;<?php echo number_format((float)($item['price'] ?? 0), 2); ?>
-                            <?php if ($profit > 0): ?><span class="profit-sm">(+<?php echo number_format($profit, 2); ?>)</span><?php endif; ?>
-                        </td>
+                        <td class="price-col">&#8369;<?php echo number_format((float)($item['price'] ?? 0), 2); ?></td>
                     </tr>
                     <?php endforeach; ?>
-                <?php endforeach; ?>
-                <?php if (empty($merch_inventory)): ?>
-                    <tr><td colspan="6" style="text-align:center;padding:28px;color:#6c757d;">No merchandise data available.</td></tr>
                 <?php endif; ?>
                 </tbody>
             </table>
         </div>
+        <div id="merchPagination"></div>
     </div>
 </div>
 
@@ -221,6 +306,7 @@ include __DIR__ . '/../partials/header.php';
         <div class="sr-info-box">
             <i class="fas fa-info-circle"></i>
             <strong>Select the items you want to request, then click Submit.</strong><br>
+            &bull; Only LOW STOCK and OUT OF STOCK items are shown<br>
             &bull; Manager will review and set the approved quantity<br>
             &bull; Audit trail logged: Staff ID, Item, Timestamp
         </div>
@@ -263,6 +349,7 @@ include __DIR__ . '/../partials/header.php';
     <button onclick="closeSrSuccess()" style="background:#002F70;color:#fff;border:none;padding:9px 26px;border-radius:6px;cursor:pointer;font-weight:600;">OK</button>
 </div>
 
+
 <script>
 var allMerchData = <?php echo json_encode(array_values($js_items)); ?>;
 
@@ -288,9 +375,12 @@ function openSrModal() {
 
 function renderSrCheckList(filter) {
     var q = (filter || '').toLowerCase();
-    // Group by category
+    // Group by category - FILTER OUT AVAILABLE ITEMS (only show OUT OF STOCK and LOW STOCK)
     var cats = {};
     allMerchData.forEach(function(it, idx) {
+        // Skip items with 'ok' status (AVAILABLE) - only show 'out' (OUT OF STOCK) and 'low' (LOW STOCK)
+        if (it.stCls === 'ok') return;
+        
         if (q && it.name.toLowerCase().indexOf(q) === -1 &&
                  it.sku.toLowerCase().indexOf(q) === -1 &&
                  it.category.toLowerCase().indexOf(q) === -1) return;
@@ -322,7 +412,7 @@ function renderSrCheckList(filter) {
         });
     });
 
-    if (!html) html = '<div style="text-align:center;padding:24px;color:#6c757d;">No items match your search.</div>';
+    if (!html) html = '<div style="text-align:center;padding:24px;color:#6c757d;"><i class="fas fa-check-circle" style="font-size:32px;color:#28a745;margin-bottom:8px;"></i><br><strong>All items are in stock!</strong><br>No LOW STOCK or OUT OF STOCK items to request.</div>';
     document.getElementById('srCheckList').innerHTML = html;
 
     // Highlight row when checkbox changes
@@ -363,7 +453,11 @@ function closeSrModal() { document.getElementById('srModal').classList.remove('o
 document.getElementById('srModalClose').addEventListener('click', closeSrModal);
 document.getElementById('srCancelBtn').addEventListener('click', closeSrModal);
 document.getElementById('srModal').addEventListener('click', function(e) { if (e.target === this) closeSrModal(); });
-document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeSrModal(); });
+document.addEventListener('keydown', function(e) { 
+    if (e.key === 'Escape') {
+        closeSrModal();
+    }
+});
 
 // ── Submit ────────────────────────────────────────────────────────────────────
 document.getElementById('srSubmitBtn').addEventListener('click', function() {
@@ -437,6 +531,7 @@ document.addEventListener('DOMContentLoaded', function() {
         var el = document.getElementById(id);
         if (el && el.parentNode !== document.body) document.body.appendChild(el);
     });
+    setupTablePagination('merchTable', 'merchRowsLimit', 'merchPagination', 50);
 });
 </script>
 

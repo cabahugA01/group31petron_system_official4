@@ -28,7 +28,7 @@ function renderStaffLayout($title, $content, $current_page = 'dashboard') {
             }
             
             .staff-sidebar {
-                width: 280px;
+                width: 250px;
                 background: #2c3e50;
                 color: white;
                 position: fixed;
@@ -132,7 +132,7 @@ function renderStaffLayout($title, $content, $current_page = 'dashboard') {
             }
             
             .main-content {
-                margin-left: 280px;
+                margin-left: 250px;
                 flex: 1;
                 background: #f8f9fa;
                 position: relative;

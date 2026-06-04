@@ -2,6 +2,21 @@
   </main>
 
   <style>
+    /* ── Footer: strip ALL underlines (Bootstrap 5 sets a { text-decoration: underline } globally) ── */
+    .fixed-footer,
+    .fixed-footer *,
+    .fixed-footer a,
+    .fixed-footer a:hover,
+    .fixed-footer a:visited,
+    .fixed-footer a:focus,
+    .fixed-footer span,
+    .fixed-footer .footer-text,
+    .fixed-footer .footer-clock,
+    .fixed-footer .footer-identity,
+    .fixed-footer .footer-identity-text {
+        text-decoration: none !important;
+    }
+
     .fixed-footer {
         position: fixed !important;
         bottom: 0 !important;
@@ -32,7 +47,7 @@
     }
     
     .footer-sidebar-area {
-        width: 280px !important;
+        width: 250px !important;
         height: 100% !important;
         background-color: #ffffff !important;
         display: flex !important;
@@ -446,6 +461,242 @@
         setTimeout(update, 150);
         setTimeout(update, 600);
     })();
+
+    // ══ Universal Export & Pagination Helpers ══
+    function exportTableToCSV(tableId, filename) {
+        var table = document.getElementById(tableId);
+        if (!table) return;
+        var csv = [];
+        var headers = [];
+        var ths = table.querySelectorAll('thead th');
+        ths.forEach(function(th) {
+            if (th.textContent.trim().toLowerCase() === 'actions' || th.textContent.trim() === '') return;
+            headers.push('"' + th.textContent.trim().replace(/"/g, '""') + '"');
+        });
+        csv.push(headers.join(','));
+        
+        var rows = table.querySelectorAll('tbody tr');
+        rows.forEach(function(row) {
+            if (row.style.display === 'none' || row.classList.contains('search-hidden')) return;
+            var cols = row.querySelectorAll('td');
+            if (cols.length === 0) return;
+            var rowData = [];
+            var skipIdx = -1;
+            ths.forEach(function(th, idx) {
+                if (th.textContent.trim().toLowerCase() === 'actions' || th.textContent.trim() === '') {
+                    skipIdx = idx;
+                }
+            });
+            cols.forEach(function(col, idx) {
+                if (idx === skipIdx) return;
+                var text = col.innerText || col.textContent;
+                text = text.trim().replace(/\s+/g, ' ');
+                rowData.push('"' + text.replace(/"/g, '""') + '"');
+            });
+            csv.push(rowData.join(','));
+        });
+        
+        var blob = new Blob([csv.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        var link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.setAttribute("download", filename || 'export.csv');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    function exportTableToExcel(tableId, filename) {
+        var table = document.getElementById(tableId);
+        if (!table) return;
+        
+        // Clone table and strip off action column
+        var clone = table.cloneNode(true);
+        var headers = clone.querySelectorAll('thead th');
+        var skipIdx = -1;
+        headers.forEach(function(th, idx) {
+            if (th.textContent.trim().toLowerCase() === 'actions' || th.textContent.trim() === '') {
+                skipIdx = idx;
+                th.remove();
+            }
+        });
+        if (skipIdx !== -1) {
+            clone.querySelectorAll('tbody tr').forEach(function(tr) {
+                var tds = tr.querySelectorAll('td');
+                if (tds[skipIdx]) tds[skipIdx].remove();
+            });
+        }
+        
+        var html = clone.outerHTML;
+        var blob = new Blob(['\ufeff' + html], {
+            type: 'application/vnd.ms-excel'
+        });
+        var link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.setAttribute("download", filename || 'export.xls');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    function exportTableToPDF(tableId, title) {
+        var table = document.getElementById(tableId);
+        if (!table) return;
+        
+        var win = window.open('', '', 'height=700,width=900');
+        win.document.write('<html><head><title>' + (title || 'Export') + '</title>');
+        win.document.write('<style>');
+        win.document.write('body { font-family: sans-serif; padding: 20px; color: #333; }');
+        win.document.write('h1 { color: #002F6C; font-size: 20px; margin-bottom: 20px; text-align: center; }');
+        win.document.write('table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }');
+        win.document.write('th { background-color: #002F6C; color: #fff; text-align: left; padding: 8px; font-weight: bold; text-transform: uppercase; }');
+        win.document.write('td { border-bottom: 1px solid #ddd; padding: 8px; }');
+        win.document.write('tr:nth-child(even) { background-color: #f9f9f9; }');
+        win.document.write('.badge, .sbadge { font-weight: bold; text-transform: uppercase; font-size: 9px; padding: 2px 6px; border-radius: 4px; display: inline-block; }');
+        win.document.write('.no-print { display: none !important; }');
+        win.document.write('</style></head><body>');
+        win.document.write('<h1>' + (title || 'Petron Inventory Report') + '</h1>');
+        win.document.write('<p style="text-align:center;font-size:11px;color:#666;">Generated on: ' + new Date().toLocaleString() + '</p>');
+        
+        var clone = table.cloneNode(true);
+        var headers = clone.querySelectorAll('thead th');
+        var skipIdx = -1;
+        headers.forEach(function(th, idx) {
+            if (th.textContent.trim().toLowerCase() === 'actions' || th.textContent.trim() === '') {
+                skipIdx = idx;
+                th.classList.add('no-print');
+            }
+        });
+        if (skipIdx !== -1) {
+            clone.querySelectorAll('tbody tr').forEach(function(tr) {
+                var tds = tr.querySelectorAll('td');
+                if (tds[skipIdx]) tds[skipIdx].classList.add('no-print');
+            });
+        }
+        
+        win.document.write(clone.outerHTML);
+        win.document.write('</body></html>');
+        win.document.close();
+        
+        // Wait a tiny bit for the content to render in the popup window before printing
+        setTimeout(function() {
+            win.print();
+        }, 300);
+    }
+
+    function setupTablePagination(tableId, selectId, paginationContainerId, defaultRows) {
+        var table = document.getElementById(tableId);
+        if (!table) return;
+        var tbody = table.querySelector('tbody');
+        if (!tbody) return;
+        
+        var container = document.getElementById(paginationContainerId);
+        if (!container) return;
+        
+        var rowsPerPage = defaultRows || 10;
+        var currentPage = 1;
+        
+        function updatePagination() {
+            var allRows = Array.from(tbody.querySelectorAll('tr'));
+            var visibleRows = allRows.filter(function(row) {
+                return !row.classList.contains('search-hidden') && !row.classList.contains('no-paginate');
+            });
+            
+            var totalRows = visibleRows.length;
+            var totalPages = Math.ceil(totalRows / rowsPerPage) || 1;
+            
+            if (currentPage > totalPages) currentPage = totalPages;
+            
+            allRows.forEach(function(row) {
+                if (row.classList.contains('no-paginate')) return;
+                row.style.display = 'none';
+            });
+            
+            var start = (currentPage - 1) * rowsPerPage;
+            var end = start + rowsPerPage;
+            
+            var pageRows = visibleRows.slice(start, end);
+            pageRows.forEach(function(row) {
+                row.style.display = '';
+            });
+            
+            var html = '';
+            html += '<button class="cust-btn" style="padding:4px 8px;margin:2px;font-size:11px;background:#f1f5f9;color:#333;border:1px solid #ccc;border-radius:4px;cursor:pointer;" ' + (currentPage === 1 ? 'disabled' : '') + ' onclick="setTablePage(\''+tableId+'\',' + (currentPage - 1) + ')">Prev</button>';
+            
+            for (var i = 1; i <= totalPages; i++) {
+                if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
+                    var isActive = (i === currentPage);
+                    html += '<button class="cust-btn" style="padding:4px 8px;margin:2px;font-size:11px;border-radius:4px;cursor:pointer;' + (isActive ? 'background:#002F6C;color:#fff;font-weight:bold;border:1px solid #002F6C;' : 'background:#f1f5f9;color:#333;border:1px solid #ccc;') + '" onclick="setTablePage(\''+tableId+'\',' + i + ')">' + i + '</button>';
+                } else if (i === currentPage - 3 || i === currentPage + 3) {
+                    html += '<span style="padding:4px 8px;margin:2px;font-size:11px;color:#6c757d;">...</span>';
+                }
+            }
+            
+            html += '<button class="cust-btn" style="padding:4px 8px;margin:2px;font-size:11px;background:#f1f5f9;color:#333;border:1px solid #ccc;border-radius:4px;cursor:pointer;" ' + (currentPage === totalPages ? 'disabled' : '') + ' onclick="setTablePage(\''+tableId+'\',' + (currentPage + 1) + ')">Next</button>';
+            
+            var selectHtml = '<select class="rows-select" style="padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:11px;color:#333;background:#fff;cursor:pointer;margin-right:12px;">';
+            var options = [10, 20, 25, 50, 100];
+            options.forEach(function(opt) {
+                var selectedAttr = (opt === rowsPerPage) ? 'selected' : '';
+                selectHtml += '<option value="' + opt + '" ' + selectedAttr + '>' + opt + ' rows</option>';
+            });
+            selectHtml += '</select>';
+            
+            container.innerHTML = '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:10px;justify-content:flex-end;">' + selectHtml + html + '</div>';
+            
+            var freshSelect = container.querySelector('.rows-select');
+            if (freshSelect) {
+                freshSelect.addEventListener('change', function() {
+                    rowsPerPage = parseInt(this.value);
+                    currentPage = 1;
+                    updatePagination();
+                });
+            }
+        }
+        
+        window.setTablePage = function(tId, page) {
+            if (tId === tableId) {
+                currentPage = page;
+                updatePagination();
+            }
+        };
+        
+        // Re-run setup check regularly to integrate search filter classes
+        var searchInput = document.querySelector('input[type="text"][oninput*="ft"], input[id="sq"], input[id="encodeSearch"]');
+        if (searchInput) {
+            searchInput.addEventListener('input', function() {
+                setTimeout(function() {
+                    tbody.querySelectorAll('tr').forEach(function(row) {
+                        if (row.style.display === 'none') {
+                            row.classList.add('search-hidden');
+                        } else {
+                            row.classList.remove('search-hidden');
+                        }
+                    });
+                    currentPage = 1;
+                    updatePagination();
+                }, 10);
+            });
+        }
+        
+        var selectFilters = document.querySelectorAll('select[onchange*="ft"], select[id="cf"], select[id="sf"]');
+        selectFilters.forEach(function(sel) {
+            sel.addEventListener('change', function() {
+                setTimeout(function() {
+                    tbody.querySelectorAll('tr').forEach(function(row) {
+                        if (row.style.display === 'none') {
+                            row.classList.add('search-hidden');
+                        } else {
+                            row.classList.remove('search-hidden');
+                        }
+                    });
+                    currentPage = 1;
+                    updatePagination();
+                }, 10);
+            });
+        });
+        
+        updatePagination();
+    }
   </script>
 </body>
 </html>

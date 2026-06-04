@@ -299,7 +299,7 @@ try {
 }
 
 .table-container {
-    overflow-x: auto;
+    overflow-x:hidden;
 }
 
 .audit-table table {

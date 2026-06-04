@@ -225,13 +225,17 @@
 /* ========== TABLE ENHANCEMENTS ========== */
 
 .data-table-wrapper {
-    overflow-x: auto;
+    overflow-x: visible;
+    overflow-y: visible;
     -webkit-overflow-scrolling: touch;
+    max-width: 100%;
 }
 
 .po-table-wrap {
-    overflow-x: auto;
+    overflow-x: visible;
+    overflow-y: visible;
     -webkit-overflow-scrolling: touch;
+    max-width: 100%;
 }
 
 #customer-management-module .data-table thead th {

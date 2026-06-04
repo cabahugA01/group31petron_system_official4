@@ -402,6 +402,22 @@ $merchandise_products = $merchandise_products ?? [];
 $fuel_inventory_product_count = count($fuel_products);
 $merchandise_product_count = count($merchandise_products);
 
+// ── Pre-load merchandise batches (grouped by product_id) ─────────────────────
+$merch_batches_by_product = [];
+try {
+    $bStmt = $pdo->prepare("
+        SELECT mb.*, u.name AS encoded_by_name
+        FROM merchandise_batches mb
+        LEFT JOIN users u ON mb.encoded_by = u.id
+        WHERE mb.station_id = ? AND mb.status = 'active' AND mb.remaining_qty > 0
+        ORDER BY mb.date_received ASC, mb.id ASC
+    ");
+    $bStmt->execute([$station_id]);
+    foreach ($bStmt->fetchAll(PDO::FETCH_ASSOC) as $b) {
+        $merch_batches_by_product[(int)$b['product_id']][] = $b;
+    }
+} catch (Exception $e) {}
+
 // Read and clear flash messages BEFORE header include so they render in page body
 $flash_success = $_SESSION['success'] ?? ''; unset($_SESSION['success']);
 $flash_error   = $_SESSION['error']   ?? ''; unset($_SESSION['error']);
@@ -586,23 +602,27 @@ Fuel Products
                                 <th>Cost (unit_cost)</th>
                                 <th>Price (unit_price)</th>
                                 <th>Stock</th>
+                                <th>Batches</th>
                                 <th>Supplier</th>
                                 <th>Status</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <?php 
+                            <?php
                             // Use separated merchandise products array
                             foreach ($merchandise_products as $product):
-                                $cost   = (float)($product['unit_cost']  ?? 0);
-                                $price  = (float)($product['unit_price'] ?? $cost);
-                                $profit = $price - $cost;
-                                $qty    = (int)($product['quantity'] ?? 0);
-                                $qcolor = $qty <= 0 ? '#dc3545' : ($qty <= 10 ? '#ff9500' : '#28a745');
+                                $cost    = (float)($product['unit_cost']  ?? 0);
+                                $price   = (float)($product['unit_price'] ?? $cost);
+                                $profit  = $price - $cost;
+                                $qty     = (int)($product['quantity'] ?? 0);
+                                $qcolor  = $qty <= 0 ? '#dc3545' : ($qty <= 10 ? '#ff9500' : '#28a745');
+                                $pid     = (int)$product['id'];
+                                $batches = $merch_batches_by_product[$pid] ?? [];
+                                $batch_count = count($batches);
                             ?>
                                 <tr>
-                                    <td>#<?php echo $product['id']; ?></td>
+                                    <td>#<?php echo $pid; ?></td>
                                     <td><?php echo htmlspecialchars($product['product_name']); ?></td>
                                     <td>
                                         <span class="badge">
@@ -624,6 +644,17 @@ Fuel Products
                                         <br><span style="font-size:10px;color:#6c757d;font-style:italic;">catalog only</span>
                                         <?php endif; ?>
                                     </td>
+                                    <td>
+                                        <?php if ($batch_count > 0): ?>
+                                        <button type="button" onclick="toggleBatches(<?= $pid ?>)"
+                                            style="background:none;border:none;cursor:pointer;color:#002F70;font-size:12px;font-weight:700;padding:2px 6px;border-radius:4px;border:1px solid #bcd2ee;">
+                                            <i class="fas fa-layer-group" id="batch-icon-<?= $pid ?>"></i>
+                                            <?= $batch_count ?> batch<?= $batch_count > 1 ? 'es' : '' ?>
+                                        </button>
+                                        <?php else: ?>
+                                        <span style="color:#adb5bd;font-size:11px;font-style:italic;">No batches</span>
+                                        <?php endif; ?>
+                                    </td>
                                     <td><?php echo htmlspecialchars($product['supplier'] ?? 'Petron Corporation'); ?></td>
                                     <td>
                                         <span class="badge" style="color:<?php echo $product['status'] == 'active' ? '#28a745' : '#dc3545'; ?>;font-weight:700;">
@@ -632,23 +663,69 @@ Fuel Products
                                     </td>
                                     <td>
                                         <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
-                                            <button class="btn btn-sm" style="width:100%;background:#28a745;color:white;border:none;" onclick="viewProduct(<?php echo $product['id']; ?>)">
+                                            <button class="btn btn-sm" style="width:100%;background:#28a745;color:white;border:none;" onclick="viewProduct(<?php echo $pid; ?>)">
                                                 <i class="fas fa-eye"></i> View
                                             </button>
-                                            <button class="btn btn-sm" style="width:100%;background:#002F70;color:white;border:none;" onclick="editProduct(<?php echo $product['id']; ?>)">
+                                            <button class="btn btn-sm" style="width:100%;background:#002F70;color:white;border:none;" onclick="editProduct(<?php echo $pid; ?>)">
                                                 <i class="fas fa-edit"></i> Edit
                                             </button>
                                             <button class="btn btn-sm <?php echo $product['status'] == 'active' ? 'btn-danger' : 'btn-success'; ?>" style="width:100%;"
-                                                    onclick="toggleProductStatus(<?php echo $product['id']; ?>, '<?php echo $product['status'] == 'active' ? 'inactive' : 'active'; ?>')">
+                                                    onclick="toggleProductStatus(<?php echo $pid; ?>, '<?php echo $product['status'] == 'active' ? 'inactive' : 'active'; ?>')">
                                                 <i class="fas <?php echo $product['status'] == 'active' ? 'fa-times' : 'fa-check'; ?>"></i>
                                                 <?php echo $product['status'] == 'active' ? 'Deactivate' : 'Activate'; ?>
                                             </button>
                                         </div>
                                     </td>
                                 </tr>
+                                <?php if ($batch_count > 0): ?>
+                                <tr id="batch-rows-<?= $pid ?>" style="display:none;">
+                                    <td colspan="10" style="padding:0;background:#f8faff;border-left:4px solid #002F70;">
+                                        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                                            <thead>
+                                                <tr style="background:#e8f4fd;">
+                                                    <th style="padding:7px 12px;color:#002F70;font-weight:700;text-align:left;">Batch ID</th>
+                                                    <th style="padding:7px 12px;color:#002F70;font-weight:700;text-align:right;">Rcvd Qty</th>
+                                                    <th style="padding:7px 12px;color:#002F70;font-weight:700;text-align:right;">Remaining</th>
+                                                    <th style="padding:7px 12px;color:#002F70;font-weight:700;text-align:right;">Unit Cost</th>
+                                                    <th style="padding:7px 12px;color:#002F70;font-weight:700;">Supplier</th>
+                                                    <th style="padding:7px 12px;color:#002F70;font-weight:700;">Date Received</th>
+                                                    <th style="padding:7px 12px;color:#002F70;font-weight:700;">Encoded By</th>
+                                                    <th style="padding:7px 12px;color:#002F70;font-weight:700;">Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <?php foreach ($batches as $i => $b):
+                                                    $is_fifo_next = ($i === 0); // first = oldest = consumed first
+                                                    $rem = (int)$b['remaining_qty'];
+                                                ?>
+                                                <tr style="<?= $is_fifo_next ? 'background:#fff9e6;' : '' ?>">
+                                                    <td style="padding:6px 12px;">
+                                                        <span style="font-family:monospace;font-weight:700;color:#002F70;background:#e8f4fd;padding:2px 8px;border-radius:4px;">
+                                                            <?= htmlspecialchars($b['batch_number']) ?>
+                                                        </span>
+                                                        <?php if ($is_fifo_next): ?>
+                                                        <span style="font-size:10px;background:#fd7e14;color:#fff;padding:1px 5px;border-radius:3px;margin-left:4px;">NEXT FIFO</span>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <td style="padding:6px 12px;text-align:right;"><?= number_format((int)$b['quantity_received']) ?></td>
+                                                    <td style="padding:6px 12px;text-align:right;font-weight:700;color:<?= $rem <= 0 ? '#dc3545' : '#28a745' ?>;"><?= number_format($rem) ?></td>
+                                                    <td style="padding:6px 12px;text-align:right;">₱<?= number_format((float)$b['unit_cost'], 2) ?></td>
+                                                    <td style="padding:6px 12px;"><?= htmlspecialchars($b['supplier'] ?? '—') ?></td>
+                                                    <td style="padding:6px 12px;white-space:nowrap;"><?= $b['date_received'] ? date('M d, Y', strtotime($b['date_received'])) : '—' ?></td>
+                                                    <td style="padding:6px 12px;"><?= htmlspecialchars($b['encoded_by_name'] ?? '—') ?></td>
+                                                    <td style="padding:6px 12px;">
+                                                        <span style="color:<?= $b['status'] === 'active' ? '#28a745' : '#6c757d' ?>;font-weight:700;text-transform:uppercase;font-size:10px;"><?= htmlspecialchars($b['status']) ?></span>
+                                                    </td>
+                                                </tr>
+                                                <?php endforeach; ?>
+                                            </tbody>
+                                        </table>
+                                    </td>
+                                </tr>
+                                <?php endif; ?>
                             <?php endforeach; ?>
                             <?php if (empty($merchandise_products)): ?>
-                                <tr><td colspan="9" style="text-align:center;padding:40px;color:#666;">No merchandise products found.</td></tr>
+                                <tr><td colspan="10" style="text-align:center;padding:40px;color:#666;">No merchandise products found.</td></tr>
                             <?php endif; ?>
                         </tbody>
                     </table>
@@ -1416,6 +1493,22 @@ document.addEventListener('keydown', function(event) {
         });
     }
 });
+
+function toggleBatches(productId) {
+    const row = document.getElementById('batch-rows-' + productId);
+    const icon = document.getElementById('batch-icon-' + productId);
+    if (row.style.display === 'none' || !row.style.display) {
+        row.style.display = 'table-row';
+        if (icon) {
+            icon.className = 'fas fa-chevron-up';
+        }
+    } else {
+        row.style.display = 'none';
+        if (icon) {
+            icon.className = 'fas fa-layer-group';
+        }
+    }
+}
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // Inventory system - same as manager view with sidebar
 error_reporting(E_ALL);
 ini_set("display_errors", 1);
@@ -165,7 +165,7 @@ include __DIR__ . '/../partials/header.php';
 .btn-sm {
   padding: 4px 8px;
   font-size: 0.75rem;
-  min-width: 60px;
+  
 }
 
 @media (max-width: 768px) {
@@ -177,7 +177,7 @@ include __DIR__ . '/../partials/header.php';
   .btn-sm {
     font-size: 0.7rem;
     padding: 3px 6px;
-    min-width: 50px;
+    
   }
 }
 
@@ -363,7 +363,7 @@ include __DIR__ . '/../partials/header.php';
 <div class="page-head">
     <div>
         <h1 class="h1">Inventory Management</h1>
-        <div class="sub">Stock monitoring • Fuel levels • Merchandise tracking</div>
+        <div class="sub">Stock monitoring � Fuel levels � Merchandise tracking</div>
     </div>
     <div class="header-actions">
         <button onclick="location.reload()" class="btn ghost"><i class="fas fa-sync-alt"></i> Refresh</button>
@@ -409,7 +409,7 @@ include __DIR__ . '/../partials/header.php';
                             echo "<span style='color: $status_color; font-weight: bold;'>$status</span>";
                             ?>
                         </td>
-                        <td>₱<?php echo number_format($fuel['price'] ?? 0, 2); ?></td>
+                        <td>?<?php echo number_format($fuel['price'] ?? 0, 2); ?></td>
                     </tr>
                 <?php endforeach; ?>
                 <?php if (empty($fuel_inventory)): ?>
@@ -424,7 +424,7 @@ include __DIR__ . '/../partials/header.php';
 <section class="card hidden" id="merchInv">
     <div class="card-head">
         <div class="card-title">Merchandise Inventory</div>
-        <div class="muted">View-only monitoring • <?php echo count($merch_inventory); ?> total products</div>
+        <div class="muted">View-only monitoring � <?php echo count($merch_inventory); ?> total products</div>
     </div>
 
     <div class="table-tools">
@@ -523,8 +523,8 @@ include __DIR__ . '/../partials/header.php';
                                     <?php echo $status; ?>
                                 </span>
                             </td>
-                            <td>₱<?php echo number_format($item['cost'], 2); ?></td>
-                            <td>₱<?php echo number_format($item['price'], 2); ?></td>
+                            <td>?<?php echo number_format($item['cost'], 2); ?></td>
+                            <td>?<?php echo number_format($item['price'], 2); ?></td>
                             <td>
                                 <?php if (in_array($role, ['staff', 'cashier', 'pump_attendant'])): ?>
                                     <div class="action-buttons">

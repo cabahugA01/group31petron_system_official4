@@ -70,6 +70,84 @@ include __DIR__ . '/../partials/header.php';
 .inv-card-title { font-size:1rem; font-weight:700; color:#002F70; display:flex; align-items:center; gap:8px; }
 .inv-card-body  { padding:20px; }
 
+/* ══ No-Scroll Fixed-Layout Table ══ */
+body, html { overflow-x: hidden !important; }
+
+.table-wrap {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;   /* no scroll at all */
+    padding: 0;
+}
+.fuel-table {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed !important;
+    border-collapse: collapse;
+    border-spacing: 0;
+}
+/* Column widths via colgroup — percentages sum to 100% */
+.fuel-table col.c-fuel   { width: 30%; }
+.fuel-table col.c-level  { width: 18%; }
+.fuel-table col.c-cap    { width: 18%; }
+.fuel-table col.c-fill   { width: 22%; }
+.fuel-table col.c-price  { width: 12%; }
+
+.fuel-table thead th {
+    background: #002F6C;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    padding: 11px 10px;
+    white-space: normal;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    vertical-align: middle;
+}
+.fuel-table thead th.r { text-align: right; }
+.fuel-table tbody td {
+    padding: 11px 10px;
+    font-size: 13px;
+    border-bottom: 1px solid #e9ecef;
+    vertical-align: middle;
+    white-space: normal;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    min-width: 0 !important;
+}
+.fuel-table tbody td.r { text-align: right; }
+.fuel-table tbody tr:hover { background: #f0f4ff; }
+
+/* Fill bar — always fits in its column */
+.fill-bar-wrap { background:#e9ecef; border-radius:4px; height:8px; overflow:hidden; margin-bottom:3px; width:100%; }
+.fill-bar-inner { height:100%; border-radius:4px; }
+
+/* Status pill */
+.fuel-status-pill {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    white-space: nowrap;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
+/* Mobile: hide Capacity, redistribute widths */
+@media (max-width: 768px) {
+    .fuel-table col.c-fuel  { width: 36%; }
+    .fuel-table col.c-level { width: 22%; }
+    .fuel-table col.c-cap   { width: 0;   }
+    .fuel-table col.c-fill  { width: 28%; }
+    .fuel-table col.c-price { width: 14%; }
+    .fuel-table .col-cap    { display: none; }
+    .inv-card-body          { padding: 10px; }
+}
+
 /* ── Modal ── */
 .sr-modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:9999; align-items:center; justify-content:center; }
 .sr-modal-overlay.open { display:flex; }
@@ -119,7 +197,6 @@ include __DIR__ . '/../partials/header.php';
             <i class="fas fa-clock"></i> <?= $pending_fuel_sr ?> Pending Request<?= $pending_fuel_sr > 1 ? 's' : '' ?>
         </a>
         <?php endif; ?>
-        <button onclick="location.reload()" class="btn ghost"><i class="fas fa-sync-alt"></i> Refresh</button>
     </div>
 </div>
 
@@ -129,26 +206,43 @@ include __DIR__ . '/../partials/header.php';
 </div>
 <?php endif; ?>
 
+<?php require_once __DIR__ . '/../partials/staff_inventory_summary.php'; ?>
+
 <div class="inv-card">
     <div class="inv-card-head">
         <div class="inv-card-title"><i class="fas fa-gas-pump"></i> Fuel Inventory</div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <?php
+            $export_table_id       = 'fuelTable';
+            $export_filename       = 'fuel_inventory_' . date('Ymd');
+            $export_title          = 'Fuel Inventory';
+            $export_rows_select_id = 'fuelRowsLimit';
+            $export_default_rows   = 10;
+            require __DIR__ . '/../partials/export_buttons.php';
+            ?>
             <button onclick="openFuelSrModal()"
-                    style="display:inline-flex;align-items:center;gap:7px;padding:7px 18px;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;background:#002F70;color:#fff;">
+                    style="background:#002F70;color:#fff;border:none;display:inline-flex;align-items:center;gap:7px;height:36px;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">
                 <i class="fas fa-gas-pump"></i> Stock Request
             </button>
         </div>
     </div>
     <div class="inv-card-body">
         <div class="table-wrap">
-            <table class="table">
+            <table class="fuel-table" id="fuelTable">
+                <colgroup>
+                    <col class="c-fuel">
+                    <col class="c-level">
+                    <col class="c-cap">
+                    <col class="c-fill">
+                    <col class="c-price">
+                </colgroup>
                 <thead>
                     <tr>
                         <th>Fuel Type</th>
-                        <th>Current Level</th>
-                        <th>Capacity</th>
+                        <th class="r">Current Level</th>
+                        <th class="r col-cap">Capacity</th>
                         <th>Fill %</th>
-                        <th>Price / L</th>
+                        <th class="r">Price / L</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -171,26 +265,26 @@ include __DIR__ . '/../partials/header.php';
                     <tr>
                         <td>
                             <strong><?php echo htmlspecialchars($fuel['name']); ?></strong>
-                            <span style="margin-left:6px;display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;background:<?php echo $sc; ?>20;color:<?php echo $sc; ?>;border:1px solid <?php echo $sc; ?>40;">
+                            <span class="fuel-status-pill" style="background:<?php echo $sc; ?>20;color:<?php echo $sc; ?>;border:1px solid <?php echo $sc; ?>40;">
                                 <?php echo $st; ?>
                             </span>
                         </td>
-                        <td><?php echo number_format($fl, 2); ?> L</td>
-                        <td><?php echo number_format($cap, 2); ?> L</td>
-                        <td style="min-width:140px;">
-                            <div style="background:#e9ecef;border-radius:4px;height:8px;overflow:hidden;margin-bottom:3px;">
-                                <div style="width:<?php echo min(100, round($pct)); ?>%;height:100%;background:<?php echo $sc; ?>;border-radius:4px;"></div>
+                        <td class="r"><?php echo number_format($fl, 2); ?> L</td>
+                        <td class="r col-cap"><?php echo number_format($cap, 2); ?> L</td>
+                        <td>
+                            <div class="fill-bar-wrap">
+                                <div class="fill-bar-inner" style="width:<?php echo min(100, round($pct)); ?>%;background:<?php echo $sc; ?>;"></div>
                             </div>
-                            <small style="color:#6c757d;"><?php echo round($pct, 1); ?>%</small>
+                            <small style="color:#6c757d;font-size:11px;"><?php echo round($pct, 1); ?>%</small>
                         </td>
-                        <td>&#8369;<?php echo number_format($fuel['price'] ?? 0, 2); ?></td>
+                        <td class="r">&#8369;<?php echo number_format($fuel['price'] ?? 0, 2); ?></td>
                     </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
                 </tbody>
             </table>
         </div>
-
+        <div id="fuelPagination"></div>
     </div>
 </div>
 
@@ -264,7 +358,27 @@ function openFuelSrModal() {
 }
 
 function renderFsrCheckList() {
-    var html = allFuelData.map(function(it, idx) {
+    // Only show fuels that need replenishment — exclude AVAILABLE status
+    var needsRestock = allFuelData.filter(function(it) {
+        var s = (it.status || '').toUpperCase();
+        return s === 'CRITICAL' || s === 'LOW' || s === 'LOW STOCK' || s === 'OUT OF STOCK';
+    });
+
+    if (needsRestock.length === 0) {
+        document.getElementById('fsrCheckList').innerHTML =
+            '<div style="text-align:center;padding:28px 16px;color:#6c757d;">' +
+            '<i class="fas fa-check-circle" style="font-size:2.5em;display:block;margin-bottom:10px;color:#28a745;opacity:.5;"></i>' +
+            '<strong>All fuel tanks are at sufficient levels.</strong><br>' +
+            '<small>Stock requests are only needed for Critical, Low, or Out-of-Stock fuels.</small></div>';
+        document.getElementById('fsrSubmitBtn').disabled = true;
+        return;
+    }
+
+    document.getElementById('fsrSubmitBtn').disabled = false;
+
+    var html = needsRestock.map(function(it) {
+        // Find the original index in allFuelData so submission still works
+        var idx = allFuelData.indexOf(it);
         var bar = '<div style="background:#e9ecef;border-radius:3px;height:6px;width:70px;display:inline-block;vertical-align:middle;margin:0 5px;">' +
                   '<div style="width:' + Math.min(100, it.pct) + '%;height:100%;background:' + it.color + ';border-radius:3px;"></div></div>';
         var badge = '<span style="background:' + it.color + '20;color:' + it.color + ';border:1px solid ' + it.color + '40;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;">' + esc(it.status) + '</span>';
@@ -386,6 +500,7 @@ document.addEventListener('DOMContentLoaded', function() {
         var el = document.getElementById(id);
         if (el && el.parentNode !== document.body) document.body.appendChild(el);
     });
+    setupTablePagination('fuelTable', 'fuelRowsLimit', 'fuelPagination', 10);
 });
 </script>
 
