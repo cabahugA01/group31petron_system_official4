@@ -50,24 +50,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         // 1. Add User
         if ($action === 'add_user') {
-            $first_name     = trim($_POST['first_name'] ?? '');
-            $last_name      = trim($_POST['last_name'] ?? '');
-            $name           = trim($first_name . ' ' . $last_name);
+            $name           = trim($_POST['full_name'] ?? trim(($_POST['first_name'] ?? '') . ' ' . ($_POST['last_name'] ?? '')));
+            $login_id       = trim($_POST['login_id'] ?? $_POST['email'] ?? '');
             $role_key_input = $_POST['role'] ?? '';
             $role           = role_key($role_key_input);
-            $phone          = trim($_POST['phone'] ?? '');
-            $email          = trim($_POST['email']);
             $raw_password   = trim($_POST['password'] ?? '');
             $confirmPassword = trim($_POST['confirm_password'] ?? '');
 
-            // Email IS the username
-            $username = $email;
+            // Parse Login ID into email/phone/username
+            $email    = null;
+            $phone    = null;
+            $username = $login_id;
+
+            if (strpos($login_id, '@') !== false) {
+                $email = $login_id;
+                if (!filter_var($email, FILTER_VALIDATE_EMAIL)) throw new Exception('Invalid email address format.');
+            } elseif (preg_match('/^\d{11}$/', $login_id)) {
+                $phone = $login_id;
+            }
 
             // Validate required fields
-            if (empty($first_name) || empty($last_name)) throw new Exception("First Name and Last Name are required.");
-            if (empty($email))          throw new Exception("Email address is required.");
-            if (empty($role_key_input)) throw new Exception("Role is required.");
-            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) throw new Exception("Invalid email address format.");
+            if (empty($name))           throw new Exception('Full Name is required.');
+            if (empty($login_id))       throw new Exception('Login ID is required.');
+            if (empty($role_key_input)) throw new Exception('Role is required.');
 
             // Password handling
             if (empty($raw_password)) {
@@ -76,7 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 // Manual password validation
                 if ($raw_password !== $confirmPassword) throw new Exception("Passwords do not match.");
-                $allowed_symbol_regex = '/[_.\-!@#]/';
+                $allowed_symbol_regex = '/[!@#$%^&*(),.?":{}|<>_\-]/';
                 if (
                     strlen($raw_password) < 8 ||
                     !preg_match('/[A-Z]/', $raw_password) ||
@@ -84,15 +89,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     !preg_match('/[0-9]/', $raw_password) ||
                     !preg_match($allowed_symbol_regex, $raw_password)
                 ) {
-                    throw new Exception("Password must be at least 8 characters and contain at least one uppercase letter, one lowercase letter, one number, and one symbol (_ . - ! @ #).");
+                    throw new Exception("Password must be at least 8 characters and contain at least one uppercase letter, one lowercase letter, one number, and one symbol.");
                 }
                 $password = $raw_password;
             }
 
-            // Check email/username uniqueness
-            $stmt = $pdo->prepare("SELECT id FROM users WHERE username = ? OR email = ?");
-            $stmt->execute([$username, $email]);
-            if ($stmt->fetch()) throw new Exception("Email address is already in use.");
+            // Check login_id uniqueness
+            $dup_sql = 'SELECT id FROM users WHERE username = ?';
+            $dup_params = [$username];
+            if (!empty($email)) { $dup_sql .= ' OR email = ?'; $dup_params[] = $email; }
+            if (!empty($phone)) { $dup_sql .= ' OR phone = ?'; $dup_params[] = $phone; }
+            $stmt = $pdo->prepare($dup_sql);
+            $stmt->execute($dup_params);
+            if ($stmt->fetch()) throw new Exception('Login ID (Email, Phone, or Username) is already in use.');
 
             // Handle station assignment based on role and creator
             $station_target = null;
@@ -260,8 +269,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $hashed = password_hash($password, PASSWORD_DEFAULT);
 
-            $stmt = $pdo->prepare("INSERT INTO users (name, username, role, email, phone, password, station_id, status, must_change_password, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 1, NOW())");
-            $stmt->execute([$name, $username, $role, $email, $phone, $hashed, $station_target]);
+            // Split full name into first_name and last_name for legacy database compatibility
+            $name_parts = explode(' ', trim($name));
+            if (count($name_parts) > 1) {
+                $last_name_val = array_pop($name_parts);
+                $first_name_val = implode(' ', $name_parts);
+            } else {
+                $first_name_val = $name;
+                $last_name_val = '';
+            }
+
+            $stmt = $pdo->prepare("INSERT INTO users (name, first_name, last_name, username, role, email, phone, password, station_id, status, must_change_password, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 1, NOW())");
+            $stmt->execute([$name, $first_name_val, $last_name_val, $username, $role, $email, $phone, $hashed, $station_target]);
 
             // Get station name for email
             $station_name_for_email = 'Unknown Station';
@@ -272,28 +291,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($stn_row) $station_name_for_email = $stn_row['name'];
             }
 
-            // Always send credential email for manager and staff
-            $email_sent = sendAdminCredentialsEmail($email, $name, $station_name_for_email, $username, $password, $me['role']) ? 1 : 0;
+            // Send credentials via email and/or SMS
+            $cred_sent = false;
+            if (!empty($email)) {
+                $cred_sent = sendAdminCredentialsEmail($email, $name, $station_name_for_email, $username, $password, $me['role']) ? true : false;
+            }
+            if (!empty($phone)) {
+                sendSMS($phone, "Your Petron account has been created. Login: {$username} | Temp Password: {$password} | Station: {$station_name_for_email}");
+                $cred_sent = true;
+            }
 
             log_activity($pdo, $me['id'], 'Add User', "Created user $username ($role)");
 
-            if ($email_sent) {
-                $msg = "✅ User created successfully. Credentials have been sent to $email.";
+            if ($cred_sent) {
+                $dest = $email ?? $phone ?? $username;
+                $msg = "✅ User created successfully. Credentials sent to {$dest}.";
             } else {
-                $msg = "✅ User created successfully. Account created but email delivery failed. Please share credentials manually.";
+                $msg = "✅ User created successfully. Temp Password: {$password} — share manually.";
             }
         }
         
         // 2. Edit User
         elseif ($action === 'edit_user') {
-            $id = $_POST['user_id'];
-            $first_name = trim($_POST['first_name'] ?? '');
-            $last_name = trim($_POST['last_name'] ?? '');
-            $name = trim($first_name . ' ' . $last_name);
-            $role = trim($_POST['role'] ?? 'staff');
-            $phone = trim($_POST['phone']);
-            $email = trim($_POST['email']);
+            $id       = $_POST['user_id'];
+            $name     = trim($_POST['full_name'] ?? trim(($_POST['first_name'] ?? '') . ' ' . ($_POST['last_name'] ?? '')));
+            $login_id = trim($_POST['login_id'] ?? $_POST['email'] ?? '');
+            $role     = trim($_POST['role'] ?? 'staff');
             $changePassword = isset($_POST['changePassword']) && $_POST['changePassword'] === 'on';
+
+            if (empty($name))     throw new Exception('Full Name is required.');
+            if (empty($login_id)) throw new Exception('Login ID is required.');
+
+            // Parse Login ID
+            $email    = null;
+            $phone    = null;
+            $username = $login_id;
+            if (strpos($login_id, '@') !== false) {
+                $email = $login_id;
+                if (!filter_var($email, FILTER_VALIDATE_EMAIL)) throw new Exception('Invalid email address format.');
+            } elseif (preg_match('/^\d{11}$/', $login_id)) {
+                $phone = $login_id;
+            }
             
             // Normalize role to standard format
             $role = strtolower($role);
@@ -373,14 +411,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
             
-            // Check email uniqueness
-            $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ? AND id != ?");
-            $stmt->execute([$email, $id]);
-            if ($stmt->fetch()) throw new Exception("This email address is already registered to another account.");
+            // Check login_id uniqueness against other accounts
+            $dup_sql = 'SELECT id FROM users WHERE username = ? AND id != ?';
+            $dup_params = [$username, $id];
+            if (!empty($email)) { $dup_sql .= ' OR (email = ? AND id != ?)'; $dup_params[] = $email; $dup_params[] = $id; }
+            if (!empty($phone)) { $dup_sql .= ' OR (phone = ? AND id != ?)'; $dup_params[] = $phone; $dup_params[] = $id; }
+            $stmt = $pdo->prepare($dup_sql);
+            $stmt->execute($dup_params);
+            if ($stmt->fetch()) throw new Exception('This Login ID is already registered to another account.');
+
+            // Split full name into first_name and last_name for legacy database compatibility
+            $name_parts_edit = explode(' ', trim($name));
+            if (count($name_parts_edit) > 1) {
+                $last_name_edit  = array_pop($name_parts_edit);
+                $first_name_edit = implode(' ', $name_parts_edit);
+            } else {
+                $first_name_edit = $name;
+                $last_name_edit  = '';
+            }
 
             // Update user details
-            $stmt = $pdo->prepare("UPDATE users SET name = ?, role = ?, email = ?, phone = ? WHERE id = ?");
-            $stmt->execute([$name, $role, $email, $phone, $id]);
+            $stmt = $pdo->prepare('UPDATE users SET name = ?, first_name = ?, last_name = ?, role = ?, username = ?, email = ?, phone = ? WHERE id = ?');
+            $stmt->execute([$name, $first_name_edit, $last_name_edit, $role, $username, $email, $phone, $id]);
             
              // Update password if checkbox is checked
              if ($changePassword) {
@@ -388,7 +440,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  
                  // If no password provided, generate one
                  if (empty($new_password)) {
-                     $new_password = generate_random_password();
+                     $new_password = generateSecurePassword();
                  }
                  
                  $hashed = password_hash($new_password, PASSWORD_DEFAULT);
@@ -666,21 +718,15 @@ include __DIR__ . '/../partials/header.php';
             <div class="modal-body">
                 <input type="hidden" name="action" value="add_user">
                 
-                <div class="grid-2 mb-3" style="gap:10px;">
-                    <div class="form-group">
-                        <label class="lbl">First Name <span style="color:red;">*</span></label>
-                        <input type="text" name="first_name" class="inp full" required placeholder="e.g. Juan">
-                    </div>
-                    <div class="form-group">
-                        <label class="lbl">Last Name <span style="color:red;">*</span></label>
-                        <input type="text" name="last_name" class="inp full" required placeholder="e.g. Dela Cruz">
-                    </div>
+                <div class="form-group mb-3">
+                    <label class="lbl">Full Name <span style="color:red;">*</span></label>
+                    <input type="text" name="full_name" class="inp full" required placeholder="e.g. Juan Dela Cruz">
                 </div>
 
                 <div class="form-group mb-3">
-                    <label class="lbl">Email Address <span style="color:red;">*</span></label>
-                    <input type="email" name="email" class="inp full" required placeholder="e.g. juan@email.com">
-                    <small class="muted">This will also serve as the username for login.</small>
+                    <label class="lbl">Login ID <span style="color:red;">*</span></label>
+                    <input type="text" name="login_id" class="inp full" required placeholder="Email, Phone Number, or Username">
+                    <small class="muted">Enter email (e.g. juan@email.com), 11-digit phone, or a username. Credentials will be sent via email or SMS.</small>
                 </div>
                 
                 <div class="form-group mb-3">
@@ -737,12 +783,7 @@ include __DIR__ . '/../partials/header.php';
                 <!-- Hidden auto-assignment for Manager/Staff creation -->
                 <input type="hidden" name="auto_station_id" id="auto_station_id" value="<?php echo $my_station_id; ?>">
                 
-                <div class="grid-2 mb-3" style="gap:10px;">
-                    <div class="form-group">
-                        <label class="lbl">Phone</label>
-                        <input type="text" name="phone" class="inp full" placeholder="e.g. 09095332320">
-                    </div>
-                </div>
+
                 
                 <div class="form-group mb-3">
                     <label class="lbl">Password</label>
@@ -780,23 +821,21 @@ include __DIR__ . '/../partials/header.php';
                 <input type="hidden" name="action" value="edit_user">
                 <input type="hidden" name="user_id" id="edit_user_id">
                 
-                <div class="grid-2 mb-3" style="gap:10px;">
-                    <div class="form-group">
-                        <label class="lbl">First Name <span style="color:red;">*</span></label>
-                        <input type="text" name="first_name" id="edit_first_name" class="inp full" required>
-                    </div>
-                    <div class="form-group">
-                        <label class="lbl">Last Name <span style="color:red;">*</span></label>
-                        <input type="text" name="last_name" id="edit_last_name" class="inp full" required>
-                    </div>
+                <div class="form-group mb-3">
+                    <label class="lbl">Full Name <span style="color:red;">*</span></label>
+                    <input type="text" name="full_name" id="edit_full_name" class="inp full" required>
                 </div>
+                <div class="form-group mb-3">
+                    <label class="lbl">Login ID <span style="color:red;">*</span></label>
+                    <input type="text" name="login_id" id="edit_login_id" class="inp full" required placeholder="Email, Phone Number, or Username">
+                    <small class="muted">Current login credential. Change to update the login method.</small>
+                </div>
+
                 <div class="form-group mb-3">
                     <label class="lbl">Role</label>
                     <select name="role" id="user_role_edit" class="inp full" required>
                         <option value="">-- Select Role --</option>
-                        <?php 
-                        // Show only roles that current user can assign
-                        if ($my_role === 'superadmin'): ?>
+                        <?php if ($my_role === 'superadmin'): ?>
                             <option value="staff">Staff</option>
                             <option value="manager">Manager</option>
                             <option value="admin">Admin</option>
@@ -808,16 +847,6 @@ include __DIR__ . '/../partials/header.php';
                             <option value="staff">Staff</option>
                         <?php endif; ?>
                     </select>
-                </div>
-                <div class="grid-2 mb-3" style="gap:10px;">
-                    <div>
-                        <label class="lbl">Phone</label>
-                        <input type="text" name="phone" id="edit_phone" class="inp full">
-                    </div>
-                    <div>
-                        <label class="lbl">Email</label>
-                        <input type="email" name="email" id="edit_email" class="inp full">
-                    </div>
                 </div>
                 
                 <!-- Password Change Section -->
@@ -1068,20 +1097,18 @@ function openAddModal() {
 
 function openEditModal(user) {
     document.getElementById('edit_user_id').value = user.id;
-    
-    let parts = (user.name || '').trim().split(' ');
-    let firstName = parts[0] || '';
-    let lastName = parts.slice(1).join(' ') || '';
-    
-    document.getElementById('edit_first_name').value = firstName;
-    document.getElementById('edit_last_name').value = lastName;
 
+    // Full name
+    document.getElementById('edit_full_name').value = (user.name || '').trim();
+
+    // Login ID: prefer email, then phone, then username
+    var loginId = user.email || user.phone || user.username || '';
+    document.getElementById('edit_login_id').value = loginId;
+
+    // Role
     const normalizedRole = (user.role || '').toLowerCase().trim();
     const roleSelect = document.getElementById('user_role_edit');
     roleSelect.value = normalizedRole;
-
-    document.getElementById('edit_phone').value = user.phone || '';
-    document.getElementById('edit_email').value = user.email || '';
 
     // Reset password checkbox and fields
     document.getElementById('changePassword').checked = false;

@@ -1792,7 +1792,7 @@ require_once __DIR__ . '/rbac_menu.php';
     if ($sid_first !== '' || $sid_last !== '') {
         $sid_name = strtoupper(trim("$sid_first $sid_last"));
     } else {
-        $sid_name = strtoupper($user['name'] ?? $user['username'] ?? 'USER');
+        $sid_name = strtoupper($user['username'] ?? 'USER');
     }
     $sid_role = strtoupper(normalize_role($user['role'] ?? 'Staff'));
     ?>
@@ -1901,13 +1901,13 @@ require_once __DIR__ . '/rbac_menu.php';
 
             <!-- Profile Dropdown -->
             <?php
-            // Build display name: prefer first_name + last_name, fall back to name/username
+            // Build display name from first_name and last_name
             $hdr_first = trim($user['first_name'] ?? '');
             $hdr_last  = trim($user['last_name']  ?? '');
             if ($hdr_first !== '' || $hdr_last !== '') {
                 $hdr_display = strtoupper(trim("$hdr_first $hdr_last"));
             } else {
-                $hdr_display = strtoupper($user['name'] ?? $user['username'] ?? 'USER');
+                $hdr_display = strtoupper($user['username'] ?? 'USER');
             }
             $hdr_role = strtoupper(normalize_role($user['role'] ?? 'Staff'));
             // Profile picture: stored in users.profile_picture as relative path

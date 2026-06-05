@@ -33,12 +33,10 @@ header("Pragma: no-cache");
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email = trim($_POST['email'] ?? '');
+    $recovery_id = trim($_POST['recovery_id'] ?? '');
     
-    if (empty($email)) {
-        $error = "Please enter your email address.";
-    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $error = "Please enter a valid email address.";
+    if (empty($recovery_id)) {
+        $error = "Please enter your Email, Phone Number, or Username.";
     } else {
         try {
             // Check if database connection is available
@@ -46,45 +44,91 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception("Database connection not available");
             }
 
-            // Check if user exists in the existing users table
-            $stmt = $pdo->prepare("SELECT id, username, email FROM users WHERE email = ? AND status = 'active' AND is_deleted = 0 LIMIT 1");
-            $stmt->execute([$email]);
+            // Detect format
+            $detected_type = 'username';
+            $sql = "SELECT id, username, email, phone FROM users WHERE username = ? AND status = 'active' AND (is_deleted = 0 OR is_deleted IS NULL) LIMIT 1";
+            
+            if (strpos($recovery_id, '@') !== false) {
+                $detected_type = 'email';
+                $sql = "SELECT id, username, email, phone FROM users WHERE email = ? AND status = 'active' AND (is_deleted = 0 OR is_deleted IS NULL) LIMIT 1";
+            } elseif (preg_match('/^\d{11}$/', $recovery_id)) {
+                $detected_type = 'phone';
+                $sql = "SELECT id, username, email, phone FROM users WHERE phone = ? AND status = 'active' AND (is_deleted = 0 OR is_deleted IS NULL) LIMIT 1";
+            }
+
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([$recovery_id]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
             // Log attempt regardless of whether user exists
             try {
                 $logStmt = $pdo->prepare("INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, 'Password Reset Request', ?, ?)");
-                $logStmt->execute([($user['id'] ?? 0), "Password reset requested for email: " . $email, $_SERVER['REMOTE_ADDR']]);
+                $logStmt->execute([($user['id'] ?? 0), "Password reset requested for recovery ID: " . $recovery_id, $_SERVER['REMOTE_ADDR']]);
             } catch (PDOException $logError) {
-                // Continue even if logging fails
                 error_log("Logging error: " . $logError->getMessage());
             }
 
             if ($user) {
-                // Generate secure 6-digit OTP
-                $token = sprintf("%06d", random_int(0, 999999));
-                $expires_at = date('Y-m-d H:i:s', strtotime('+5 minutes'));
+                // Determine recovery method based on user and fallback logic
+                $method = '';
+                $target = '';
 
-                // Delete any existing tokens for this user
-                $deleteStmt = $pdo->prepare("DELETE FROM password_reset_tokens WHERE user_id = ?");
-                $deleteStmt->execute([$user['id']]);
-
-                // Store new OTP
-                $tokenStmt = $pdo->prepare("INSERT INTO password_reset_tokens (user_id, token, token_type, expires_at, ip_address) VALUES (?, ?, 'reset', ?, ?)");
-                $tokenStmt->execute([$user['id'], $token, $expires_at, $_SERVER['REMOTE_ADDR']]);
-
-                // Send OTP email
-                $email_sent = sendPasswordResetOTP($email, $token);
-
-                if ($email_sent) {
-                    header("Location: verify_otp.php?email=" . urlencode($email));
-                    exit;
+                if ($detected_type === 'email') {
+                    $method = 'email';
+                    $target = $user['email'];
+                } elseif ($detected_type === 'phone') {
+                    $method = 'sms';
+                    $target = $user['phone'];
                 } else {
-                    $error = "Failed to send reset email. Please try again later.";
+                    // Username fallback
+                    if (!empty($user['email'])) {
+                        $method = 'email';
+                        $target = $user['email'];
+                    } elseif (!empty($user['phone'])) {
+                        $method = 'sms';
+                        $target = $user['phone'];
+                    } else {
+                        // Neither linked
+                        $error = "This account has no linked email or phone for password recovery.";
+                    }
+                }
+
+                if (empty($error) && !empty($method)) {
+                    // Generate secure 6-digit OTP
+                    $token = sprintf("%06d", random_int(0, 999999));
+                    $expires_at = date('Y-m-d H:i:s', strtotime('+5 minutes'));
+
+                    // Delete any existing tokens for this user
+                    $deleteStmt = $pdo->prepare("DELETE FROM password_reset_tokens WHERE user_id = ?");
+                    $deleteStmt->execute([$user['id']]);
+
+                    // Store new OTP
+                    $tokenStmt = $pdo->prepare("INSERT INTO password_reset_tokens (user_id, token, token_type, expires_at, ip_address) VALUES (?, ?, 'reset', ?, ?)");
+                    $tokenStmt->execute([$user['id'], $token, $expires_at, $_SERVER['REMOTE_ADDR']]);
+
+                    if ($method === 'email') {
+                        // Send OTP email
+                        $email_sent = sendPasswordResetOTP($target, $token);
+                        if ($email_sent) {
+                            header("Location: verify_otp.php?email=" . urlencode($target));
+                            exit;
+                        } else {
+                            $error = "Failed to send reset email. Please try again later.";
+                        }
+                    } else {
+                        // SMS OTP
+                        $sms_sent = sendSMS($target, "Your Petron OTP code is {$token}. It will expire in 5 minutes.");
+                        if ($sms_sent) {
+                            header("Location: verify_otp.php?phone=" . urlencode($target));
+                            exit;
+                        } else {
+                            $error = "Failed to send OTP SMS. Please try again later.";
+                        }
+                    }
                 }
             } else {
-                // Vague message for security — don't reveal if email exists or not
-                $error = "If that email is registered, you will receive a reset code shortly.";
+                // Vague message for security
+                $error = "If that recovery ID is registered, you will receive a reset code shortly.";
             }
         } catch (PDOException $e) {
             error_log("Password reset error: " . $e->getMessage());
@@ -102,235 +146,280 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Forgot Password | Petron Management System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
     <style>
         :root {
-            --petron-blue: #002F6C;
-            --petron-red: #E30613;
-            --petron-gray: #CCCCCC;
-            --bg-color: #f4f6f9;
+            --blue-glow: rgba(0, 100, 255, 0.45);
+            --red-glow: rgba(227, 6, 19, 0.35);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
         }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: url('../assets/img/background.jpg') center center/cover no-repeat, linear-gradient(135deg, var(--petron-blue) 0%, #001a4d 100%);
-            margin: 0;
-            height: 100vh;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: url('../assets/img/background.jpg') center center / cover no-repeat;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        .login-wrap {
+            width: 100%;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
+            padding: 20px;
+            z-index: 2;
         }
 
-        .forgot-card {
-            background: #ffffff;
+        .login-card {
+            background: rgba(0, 15, 45, 0.9);
+            backdrop-filter: blur(24px) saturate(1.8) brightness(1.05);
+            -webkit-backdrop-filter: blur(24px) saturate(1.8) brightness(1.05);
             width: 100%;
-            max-width: 420px;
-            padding: 40px;
-            border-radius: 8px;
-            border: 3px solid var(--petron-blue);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            max-width: 520px;
+            border-radius: 28px;
+            padding: 48px 40px 36px;
+            box-shadow: 
+                0 4px 0 rgba(255,255,255,.05) inset, 
+                0 -2px 0 rgba(0,0,0,.6) inset, 
+                0 12px 40px rgba(0,0,0,.6), 
+                0 32px 80px rgba(0,0,0,.65), 
+                0 0 0 1px rgba(255,255,255,.08), 
+                0 0 50px var(--blue-glow);
+            position: relative;
+            animation: cardGlowFlow 8s linear infinite;
+        }
+
+        .login-card::before {
+            content: '';
+            position: absolute;
+            inset: -1.5px;
+            border-radius: 29px;
+            background: linear-gradient(90deg, #002F6C, #E30613, #002F6C);
+            background-size: 200% auto;
+            animation: borderFlow 6s linear infinite;
+            z-index: -1;
+            opacity: 0.85;
+        }
+
+        @keyframes borderFlow {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        @keyframes cardGlowFlow {
+            0%, 100% { box-shadow: 0 4px 0 rgba(255,255,255,.05) inset, 0 -2px 0 rgba(0,0,0,.6) inset, 0 12px 40px rgba(0,0,0,.6), 0 32px 80px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.08), 0 0 50px var(--blue-glow); }
+            50% { box-shadow: 0 4px 0 rgba(255,255,255,.05) inset, 0 -2px 0 rgba(0,0,0,.6) inset, 0 12px 40px rgba(0,0,0,.6), 0 32px 80px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.08), 0 0 60px var(--red-glow); }
+        }
+
+        .brand {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 32px;
             text-align: center;
-            animation: borderAnimation 3s ease-in-out infinite;
         }
 
-        @keyframes borderAnimation {
-            0% {
-                border-color: var(--petron-blue);
-                box-shadow: 0 10px 25px rgba(0, 47, 108, 0.1);
-            }
-            25% {
-                border-color: var(--petron-blue);
-                box-shadow: 0 10px 25px rgba(0, 47, 108, 0.2);
-            }
-            50% {
-                border-color: var(--petron-red);
-                box-shadow: 0 10px 25px rgba(227, 6, 19, 0.3);
-            }
-            75% {
-                border-color: var(--petron-red);
-                box-shadow: 0 10px 25px rgba(227, 6, 19, 0.2);
-            }
-            100% {
-                border-color: var(--petron-blue);
-                box-shadow: 0 10px 25px rgba(0, 47, 108, 0.1);
-            }
-        }
-
-        /* Branding */
         .brand-logo {
-            max-width: 120px;
+            width: 88px;
             height: auto;
-            margin-bottom: 15px;
+            object-fit: contain;
+            margin-bottom: 16px;
+            filter: drop-shadow(0 4px 16px rgba(227,6,19,.4));
+            animation: logoFloat 3s ease-in-out infinite;
         }
 
-        .brand-title {
-            color: var(--petron-blue);
-            font-size: 14px;
+        @keyframes logoFloat {
+            0%, 100% { transform: translateY(0); }
+            50%       { transform: translateY(-5px); }
+        }
+
+        .brand-tagline {
+            display: block;
+            margin-top: 10px;
+            font-size: 11px;
             font-weight: 700;
-            margin-bottom: 5px;
-        }
-
-        .brand-subtitle {
-            color: #666;
-            font-size: 12px;
-            margin-bottom: 30px;
+            letter-spacing: 2.8px;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            color: rgba(180,210,255,.9);
+            text-shadow: 0 0 12px rgba(100,160,255,.4);
         }
 
-        /* Form Elements */
-        .form-group {
-            margin-bottom: 20px;
-            text-align: left;
+        .field-group {
+            margin-bottom: 24px;
+            position: relative;
         }
 
-        .input-group {
+        .field-label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 12.5px;
+            font-weight: 700;
+            color: rgba(255,255,255,.9);
+            letter-spacing: .8px;
+            text-transform: uppercase;
+            text-shadow: 0 1px 3px rgba(0,0,0,.5);
+        }
+
+        .input-wrap {
             position: relative;
             display: flex;
             align-items: center;
+            border-radius: 14px;
+            background: rgba(0,0,0,.45);
+            border: 1.5px solid rgba(255,255,255,.15);
+            box-shadow: 0 2px 6px rgba(0,0,0,.35) inset;
+            transition: border-color .25s, box-shadow .25s;
+        }
+
+        .input-wrap:focus-within {
+            border-color: #3b82f6;
+            box-shadow: 0 0 14px rgba(59,130,246,.5), 0 2px 6px rgba(0,0,0,.3) inset;
         }
 
         .input-icon {
             position: absolute;
-            left: 15px;
-            color: #999;
-            font-size: 18px;
-            z-index: 10;
-        }
-
-        .form-control {
-            width: 100%;
-            padding: 12px 15px 12px 45px;
+            left: 16px;
+            color: rgba(255,255,255,.92);
             font-size: 16px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            transition: border-color 0.2s, box-shadow 0.2s;
-            box-sizing: border-box;
+            pointer-events: none;
+            transition: color .2s, text-shadow .2s;
+            z-index: 2;
+            text-shadow: 0 0 10px rgba(255,255,255,.5), 0 1px 3px rgba(0,0,0,.6);
         }
 
-        .form-control:focus {
-            border-color: var(--petron-blue);
-            box-shadow: 0 0 0 3px rgba(0, 47, 108, 0.1);
+        .input-wrap:focus-within .input-icon {
+            color: #ffffff;
+            text-shadow: 0 0 16px rgba(96,165,250,.9), 0 1px 3px rgba(0,0,0,.6);
+        }
+
+        .field-input {
+            width: 100%;
+            height: 48px;
+            background: transparent;
+            border: none;
             outline: none;
+            padding: 0 16px 0 46px;
+            color: #ffffff;
+            font-family: inherit;
+            font-size: 14.5px;
+            font-weight: 500;
+            text-shadow: 0 1px 2px rgba(0,0,0,.4);
         }
 
-        /* Checkbox */
-        .checkbox-group {
-            display: flex;
-            align-items: center;
-            font-size: 14px;
-            color: #555;
-            margin-bottom: 20px;
+        .field-input::placeholder {
+            color: rgba(255,255,255,.45);
         }
 
-        .checkbox-group input {
-            margin-right: 10px;
-            width: 16px;
-            height: 16px;
-        }
-
-        /* Button */
         .btn-submit {
             width: 100%;
-            padding: 14px;
-            background-color: var(--petron-blue);
-            color: #fff;
-            border: none;
-            border-radius: 5px;
-            font-size: 16px;
-            font-weight: 600;
+            height: 50px;
+            background: linear-gradient(135deg, #002F6C, #0050b3);
+            border: 1px solid rgba(255,255,255,.15);
+            border-radius: 14px;
+            color: #ffffff;
+            font-family: inherit;
+            font-size: 15px;
+            font-weight: 700;
             cursor: pointer;
-            transition: background-color 0.2s;
+            transition: transform .15s, box-shadow .2s;
+            box-shadow: 0 4px 15px rgba(0,47,108,.4), 0 1px 0 rgba(255,255,255,.15) inset;
             display: flex;
-            justify-content: center;
             align-items: center;
+            justify-content: center;
             gap: 10px;
         }
 
         .btn-submit:hover {
-            background-color: #001f4d;
+            box-shadow: 0 6px 20px rgba(0,47,108,.6), 0 1px 0 rgba(255,255,255,.25) inset;
+            transform: translateY(-1px);
+        }
+
+        .btn-submit:active {
+            transform: translateY(1px);
+            box-shadow: 0 2px 10px rgba(0,47,108,.4);
         }
 
         .btn-submit:disabled {
-            background-color: #99aab5;
+            background: #4a5568;
+            border-color: rgba(255,255,255,.05);
             cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
         }
 
-        /* Utilities */
-        .error-banner {
-            background-color: #fde8e8;
-            color: var(--petron-red);
-            padding: 12px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            font-size: 14px;
-            border: 1px solid #fbd5d5;
-            text-align: left;
+        .error-banner, .success-banner {
+            border-radius: 12px;
+            padding: 12px 16px;
+            font-size: 13.5px;
+            font-weight: 600;
+            margin-bottom: 24px;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,.25);
+            text-align: left;
+        }
+
+        .error-banner {
+            background: rgba(220,38,38,.25);
+            border: 1.5px solid rgba(220,38,38,.45);
+            color: #fca5a5;
         }
 
         .success-banner {
-            background-color: #e8f5e8;
-            color: #2d5a2d;
-            padding: 12px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            font-size: 14px;
-            border: 1px solid #d5e8d5;
-            text-align: left;
-            display: flex;
-            align-items: center;
-            gap: 10px;
+            background: rgba(16,185,129,.2);
+            border: 1.5px solid rgba(16,185,129,.45);
+            color: #a7f3d0;
         }
 
-        .links {
-            margin-top: 25px;
+        .links-wrap {
+            margin-top: 24px;
             display: flex;
-            flex-direction: column;
-            gap: 10px;
-            font-size: 14px;
+            justify-content: center;
         }
 
-        .links a {
-            color: var(--petron-blue);
+        .forgot-link {
+            color: rgba(255,255,255,.8);
+            font-size: 13.5px;
+            font-weight: 600;
             text-decoration: none;
+            transition: color .2s, text-shadow .2s;
+            text-shadow: 0 1px 2px rgba(0,0,0,.5);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .forgot-link:hover {
+            color: #93c5fd;
+            text-shadow: 0 0 8px rgba(147,197,253,.5);
+        }
+
+        .page-footer {
+            margin-top: 28px;
+            font-size: 12px;
             font-weight: 500;
+            color: #ffffff;
+            letter-spacing: .5px;
+            text-align: center;
+            text-shadow: 0 1px 6px rgba(0,0,0,.9), 0 2px 12px rgba(0,0,0,.8);
+            cursor: default;
+            user-select: none;
+            pointer-events: none;
         }
 
-        .links a:hover {
-            text-decoration: underline;
-        }
-
-        .footer {
-            margin-top: 40px;
-            color: var(--petron-blue);
-            font-size: 16px;
-            font-weight: bold;
-            animation: footerColorAnimation 3s ease-in-out infinite;
-        }
-
-        @keyframes footerColorAnimation {
-            0% {
-                color: var(--petron-blue);
-            }
-            25% {
-                color: var(--petron-blue);
-            }
-            50% {
-                color: var(--petron-red);
-            }
-            75% {
-                color: var(--petron-red);
-            }
-            100% {
-                color: var(--petron-blue);
-            }
-        }
-
-        /* Spinner Animation */
         .spinner {
             width: 18px;
             height: 18px;
@@ -345,171 +434,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             to { transform: rotate(360deg); }
         }
 
-        /* Modal Styles */
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.6);
-            animation: fadeIn 0.3s ease;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-
-        .modal-content {
-            background-color: #fff;
-            margin: 5% auto;
-            border-radius: 10px;
-            width: 90%;
-            max-width: 500px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-            animation: slideIn 0.3s ease;
-            max-height: 80vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        @keyframes slideIn {
-            from {
-                transform: translateY(-50px);
-                opacity: 0;
-            }
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
-        }
-
-        .modal-header {
-            background-color: var(--petron-blue);
-            color: white;
-            padding: 20px;
-            border-radius: 10px 10px 0 0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .modal-header h2 {
-            margin: 0;
-            font-size: 18px;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .modal-close {
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-            color: rgba(255, 255, 255, 0.8);
-            transition: color 0.2s;
-        }
-
-        .modal-close:hover {
-            color: white;
-        }
-
-        .modal-body {
-            padding: 20px;
-            overflow-y: auto;
-            flex: 1;
-            max-height: 50vh;
-        }
-
-        .modal-body h3 {
-            color: var(--petron-blue);
-            font-size: 14px;
-            margin-top: 15px;
-            margin-bottom: 8px;
-        }
-
-        .modal-body h3:first-child {
-            margin-top: 0;
-        }
-
-        .modal-body p {
-            font-size: 13px;
-            line-height: 1.6;
-            color: #555;
-            margin: 0 0 12px 0;
-        }
-
-        .modal-footer {
-            padding: 15px 20px;
-            border-top: 1px solid #eee;
-            display: flex;
-            justify-content: flex-end;
-            gap: 10px;
-            border-radius: 0 0 10px 10px;
-        }
-
-        .btn-modal {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .btn-close {
-            background-color: #f0f0f0;
-            color: #555;
-        }
-
-        .btn-close:hover {
-            background-color: #e0e0e0;
-        }
-
-        .btn-agree {
-            background-color: var(--petron-blue);
-            color: white;
-        }
-
-        .btn-agree:hover {
-            background-color: #001f4d;
-        }
-
-        /* Responsive */
-        @media (max-width: 600px) {
-            .forgot-card {
-                width: 95%;
-                padding: 30px 20px;
-            }
-            
-            .modal-content {
-                width: 95%;
-                margin: 10% auto;
-            }
-            
-            .modal-body {
-                max-height: 60vh;
-            }
+        @media (max-width: 540px) {
+            .login-wrap { padding: 0 12px; }
+            .login-card { padding: 38px 28px 32px; }
         }
     </style>
 </head>
 <body>
 
-    <div class="forgot-card">
+<div class="login-wrap">
+    <div class="login-card">
         <!-- Branding -->
-        <img src="../assets/img/Petron Logo.png" alt="Petron logo" class="brand-logo">
-        <h1 class="brand-title">Forgot Password</h1>
-        <p class="brand-subtitle">Reset Your Password</p>
+        <div class="brand">
+            <img src="../assets/img/Petron Logo.png" alt="Petron" class="brand-logo">
+            <span class="brand-tagline">Station Management System</span>
+        </div>
 
         <!-- Error Message -->
         <?php if ($error): ?>
             <div class="error-banner" role="alert">
-                <span><i class="fas fa-exclamation-triangle"></i></span>
+                <i class="fas fa-exclamation-triangle"></i>
                 <span><?php echo htmlspecialchars($error); ?></span>
             </div>
         <?php endif; ?>
@@ -517,7 +461,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <!-- Success Message -->
         <?php if ($message): ?>
             <div class="success-banner" role="status">
-                <span><i class="fas fa-check-circle"></i></span>
+                <i class="fas fa-check-circle"></i>
                 <span><?php echo $message; ?></span>
             </div>
         <?php endif; ?>
@@ -525,14 +469,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php if (!$message): ?>
         <!-- Forgot Password Form -->
         <form method="POST" action="" id="forgotForm">
-            <div class="form-group">
-                <label for="email" style="display: block; margin-bottom: 5px; font-weight: 600; color: #333;">Email Address</label>
-                <div class="input-group">
-                    <span class="input-icon"><i class="fas fa-envelope"></i></span>
-                    <input type="email" name="email" id="email" class="form-control" placeholder="Enter your email address" required autofocus aria-label="Email Address">
+            <div class="field-group">
+                <label for="recovery_id" class="field-label">Account ID</label>
+                <div class="input-wrap">
+                    <i class="fas fa-id-badge input-icon"></i>
+                    <input type="text" name="recovery_id" id="recovery_id" class="field-input" placeholder="Enter Account" required autofocus aria-label="Recovery ID">
                 </div>
             </div>
-
             
             <button type="submit" class="btn-submit" id="submitBtn">
                 <div class="spinner" id="spinner"></div>
@@ -542,38 +485,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php endif; ?>
 
         <!-- Secondary Links -->
-        <div class="links">
-            <a href="login.php"><i class="fas fa-arrow-left"></i> Back to Login</a>
+        <div class="links-wrap">
+            <a href="login.php" class="forgot-link"><i class="fas fa-arrow-left"></i> Back to Login</a>
         </div>
     </div>
 
-    <div class="footer">
+    <div class="page-footer">
         <?php echo $footer_text; ?>
     </div>
+</div>
 
-    <script>
-        // Simple form loading state
-        document.addEventListener('DOMContentLoaded', function() {
-            const form = document.getElementById('forgotForm');
-            const submitBtn = document.getElementById('submitBtn');
-            const spinner = document.getElementById('spinner');
-            const btnText = document.getElementById('btnText');
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('forgotForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const spinner = document.getElementById('spinner');
+        const btnText = document.getElementById('btnText');
 
-            if (form) {
-                form.addEventListener('submit', (e) => {
-                    // Disable button and show loading state
-                    submitBtn.disabled = true;
-                    if (spinner) {
-                        spinner.style.display = 'block';
-                    }
-                    if (btnText) {
-                        btnText.textContent = 'Sending...';
-                    }
-                });
-            }
-        });
-    </script>
+        if (form) {
+            form.addEventListener('submit', () => {
+                submitBtn.disabled = true;
+                if (spinner) {
+                    spinner.style.display = 'block';
+                }
+                if (btnText) {
+                    btnText.textContent = 'Sending...';
+                }
+            });
+        }
+    });
+</script>
 
-    
 </body>
 </html>

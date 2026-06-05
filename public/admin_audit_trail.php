@@ -44,14 +44,14 @@ try {
 
 $action_types = [];
 try {
-    $sa = $pdo->prepare("SELECT DISTINCT al.action_type FROM audit_logs al JOIN users u ON u.id = al.user_id WHERE u.station_id=? ORDER BY al.action_type");
+    $sa = $pdo->prepare("SELECT DISTINCT al.action_type FROM audit_logs al LEFT JOIN users u ON u.id = al.user_id WHERE u.station_id=? ORDER BY al.action_type");
     $sa->execute([$station_id]);
     $action_types = $sa->fetchAll(PDO::FETCH_COLUMN) ?: [];
 } catch (Exception $e) {}
 
 $modules = [];
 try {
-    $sm = $pdo->prepare("SELECT DISTINCT al.entity_type FROM audit_logs al JOIN users u ON u.id = al.user_id WHERE u.station_id=? ORDER BY al.entity_type");
+    $sm = $pdo->prepare("SELECT DISTINCT al.entity_type FROM audit_logs al LEFT JOIN users u ON u.id = al.user_id WHERE u.station_id=? ORDER BY al.entity_type");
     $sm->execute([$station_id]);
     $modules = $sm->fetchAll(PDO::FETCH_COLUMN) ?: [];
 } catch (Exception $e) {}

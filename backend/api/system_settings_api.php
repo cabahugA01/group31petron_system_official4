@@ -74,7 +74,7 @@ function log_settings_audit(PDO $pdo, string $key, ?string $old, ?string $new, a
         $old,
         $new,
         $user['id'] ?? 0,
-        $user['name'] ?? (($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? '')),
+        trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? '')) ?: ($user['username'] ?? 'Unknown'),
         $type,
         $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1'
     ]);

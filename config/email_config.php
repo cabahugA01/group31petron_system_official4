@@ -221,4 +221,16 @@ function generateSecurePassword($length = 12) {
     return str_shuffle($password);
 }
 }
+
+// Function to send simulated SMS
+if (!function_exists('sendSMS')) {
+function sendSMS($to_phone, $message) {
+    $log_file = __DIR__ . '/../sms_sent.log';
+    $timestamp = date('Y-m-d H:i:s');
+    $log_entry = "[{$timestamp}] TO: {$to_phone} | MSG: {$message}\n";
+    @file_put_contents($log_file, $log_entry, FILE_APPEND);
+    error_log("SMS Sent to {$to_phone}: {$message}");
+    return true;
+}
+}
 ?>

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 // ============================================================
 // SuperAdmin – Admin Management
@@ -34,7 +34,7 @@ try {
 $admins = [];
 try {
     $admins = $pdo->query(
-        "SELECT u.id, u.name, u.email, u.status, u.station_id, u.created_at,
+        "SELECT u.id, u.name, u.email, u.phone, u.username, u.status, u.station_id, u.created_at,
                 s.name AS station_name,
                 (SELECT MAX(created_at) FROM activity_logs WHERE user_id = u.id AND action LIKE '%Login%') AS last_login
          FROM users u
@@ -276,13 +276,13 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
         <?php else: ?>
         <?php foreach ($admins as $i => $adm): ?>
         <tr data-name="<?php echo strtolower(htmlspecialchars($adm['name'])); ?>"
-            data-email="<?php echo strtolower(htmlspecialchars($adm['email'] ?? '')); ?>"
+            data-email="<?php echo strtolower(htmlspecialchars($adm['email'] ?? $adm['phone'] ?? $adm['username'] ?? '')); ?>"
             data-station="<?php echo htmlspecialchars($adm['station_name'] ?? ''); ?>"
             data-status="<?php echo strtolower($adm['status']); ?>">
             <td style="color:#999;font-size:12px;"><?php echo $i + 1; ?></td>
             <td>
                 <div class="name"><?php echo htmlspecialchars($adm['name']); ?></div>
-                <div class="email"><?php echo htmlspecialchars($adm['email'] ?? '—'); ?></div>
+                <div class="email"><?php echo htmlspecialchars($adm['email'] ?? $adm['phone'] ?? $adm['username'] ?? '—'); ?></div>
             </td>
             <td>
                 <?php if ($adm['station_name']): ?>
@@ -343,22 +343,18 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
       <div class="am-modal-body">
         <div id="createAlert" style="display:none;" class="am-flash error"></div>
 
-        <div class="am-form-row">
+        <div class="am-form-row full">
           <div class="am-form-group">
-            <label>First Name <span style="color:#cc0000;">*</span></label>
-            <input type="text" name="first_name" id="c_first_name" placeholder="e.g. Juan" required>
-          </div>
-          <div class="am-form-group">
-            <label>Last Name <span style="color:#cc0000;">*</span></label>
-            <input type="text" name="last_name" id="c_last_name" placeholder="e.g. Dela Cruz" required>
+            <label>Full Name <span style="color:#cc0000;">*</span></label>
+            <input type="text" name="full_name" id="c_full_name" placeholder="e.g. Juan Dela Cruz" required>
           </div>
         </div>
 
         <div class="am-form-row full">
           <div class="am-form-group">
-            <label>Email Address <span style="color:#cc0000;">*</span></label>
-            <input type="email" name="email" id="c_email" placeholder="admin@petron.com" required>
-            <span class="am-form-hint">Used as login credential. Must be unique. Cannot be changed after creation.</span>
+            <label>Login ID <span style="color:#cc0000;">*</span></label>
+            <input type="text" name="login_id" id="c_login_id" placeholder="Email, 11-digit Phone, or Username" required>
+            <span class="am-form-hint">Enter email (e.g. admin@petron.com), 11-digit phone, or a username. Credentials will be sent via email or SMS. Cannot be changed after creation.</span>
           </div>
         </div>
 
@@ -391,7 +387,7 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
 
         <div style="background:#f8fafc;border:1px solid #e8edf2;border-radius:10px;padding:14px 16px;margin-top:6px;font-size:12px;color:#555;">
           <i class="fas fa-info-circle" style="color:var(--petron-blue);margin-right:6px;"></i>
-          A secure password will be <strong>auto-generated</strong> and sent to the admin's email via Gmail.
+          A secure password will be <strong>auto-generated</strong> and sent to the admin's email or phone.
           The admin will be required to change their password upon first login.
           SuperAdmin cannot manually set or reset passwords.
         </div>
@@ -420,22 +416,18 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
       <div class="am-modal-body">
         <div id="editAlert" style="display:none;" class="am-flash error"></div>
 
-        <div class="am-form-row">
+        <div class="am-form-row full">
           <div class="am-form-group">
-            <label>First Name <span style="color:#cc0000;">*</span></label>
-            <input type="text" name="first_name" id="e_first_name" required>
-          </div>
-          <div class="am-form-group">
-            <label>Last Name <span style="color:#cc0000;">*</span></label>
-            <input type="text" name="last_name" id="e_last_name" required>
+            <label>Full Name <span style="color:#cc0000;">*</span></label>
+            <input type="text" name="full_name" id="e_full_name" placeholder="e.g. Juan Dela Cruz" required>
           </div>
         </div>
 
         <div class="am-form-row full">
           <div class="am-form-group">
-            <label>Email Address</label>
-            <input type="email" id="e_email_display" readonly style="background:#f5f5f5;color:#888;cursor:not-allowed;border-color:#e0e0e0;">
-            <span class="am-form-hint"><i class="fas fa-lock" style="font-size:10px;"></i> Email is fixed and cannot be changed. It is the admin's login credential.</span>
+            <label>Login ID</label>
+            <input type="text" id="e_login_id_display" readonly style="background:#f5f5f5;color:#888;cursor:not-allowed;border-color:#e0e0e0;">
+            <span class="am-form-hint"><i class="fas fa-lock" style="font-size:10px;"></i> Login ID is fixed and cannot be changed. It is the admin's login credential.</span>
           </div>
         </div>
 
@@ -656,15 +648,15 @@ async function submitCreate(e) {
     const alert = document.getElementById('createAlert');
     alert.style.display = 'none';
 
-    // Validate first/last name
-    const firstName = document.getElementById('c_first_name').value.trim();
-    const lastName  = document.getElementById('c_last_name').value.trim();
-    if (!firstName) {
-        alert.innerHTML = '<i class="fas fa-exclamation-circle"></i> First name is required.';
+    const fullName = document.getElementById('c_full_name').value.trim();
+    const loginId  = document.getElementById('c_login_id').value.trim();
+
+    if (!fullName) {
+        alert.innerHTML = '<i class="fas fa-exclamation-circle"></i> Full name is required.';
         alert.style.display = 'flex'; return;
     }
-    if (!lastName) {
-        alert.innerHTML = '<i class="fas fa-exclamation-circle"></i> Last name is required.';
+    if (!loginId) {
+        alert.innerHTML = '<i class="fas fa-exclamation-circle"></i> Login ID is required.';
         alert.style.display = 'flex'; return;
     }
 
@@ -678,8 +670,8 @@ async function submitCreate(e) {
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating…';
 
     const fd = new FormData(document.getElementById('createForm'));
-    // Combine first + last name into full_name for the backend
-    fd.set('full_name', firstName + ' ' + lastName);
+    fd.set('full_name', fullName);
+    fd.set('login_id',  loginId);
     fd.append('action', 'create_admin');
     fd.append('csrf_token', '<?php echo $csrf; ?>');
 
@@ -708,15 +700,11 @@ function openEditModal(adm) {
     document.getElementById('editAlert').style.display = 'none';
     document.getElementById('e_admin_id').value  = adm.id;
 
-    // Split name into first/last
-    const nameParts = (adm.name || '').trim().split(/\s+/);
-    const lastName  = nameParts.length > 1 ? nameParts.pop() : '';
-    const firstName = nameParts.join(' ');
-    document.getElementById('e_first_name').value = firstName;
-    document.getElementById('e_last_name').value  = lastName;
+    // Full name
+    document.getElementById('e_full_name').value = adm.name || '';
 
-    // Email is read-only — show in display field only
-    document.getElementById('e_email_display').value = adm.email || '';
+    // Login ID is read-only — show in display field only (prefer email, then phone, then username)
+    document.getElementById('e_login_id_display').value = adm.email || adm.phone || adm.username || '';
 
     document.getElementById('e_status').value = adm.status || 'active';
 
@@ -737,14 +725,9 @@ async function submitEdit(e) {
     const alert = document.getElementById('editAlert');
     alert.style.display = 'none';
 
-    const firstName = document.getElementById('e_first_name').value.trim();
-    const lastName  = document.getElementById('e_last_name').value.trim();
-    if (!firstName) {
-        alert.innerHTML = '<i class="fas fa-exclamation-circle"></i> First name is required.';
-        alert.style.display = 'flex'; return;
-    }
-    if (!lastName) {
-        alert.innerHTML = '<i class="fas fa-exclamation-circle"></i> Last name is required.';
+    const fullName = document.getElementById('e_full_name').value.trim();
+    if (!fullName) {
+        alert.innerHTML = '<i class="fas fa-exclamation-circle"></i> Full name is required.';
         alert.style.display = 'flex'; return;
     }
 
@@ -757,8 +740,7 @@ async function submitEdit(e) {
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
 
     const fd = new FormData(document.getElementById('editForm'));
-    // Combine first + last name into full_name for the backend
-    fd.set('full_name', firstName + ' ' + lastName);
+    fd.set('full_name', fullName);
     fd.append('action', 'edit_admin');
     fd.append('csrf_token', '<?php echo $csrf; ?>');
 

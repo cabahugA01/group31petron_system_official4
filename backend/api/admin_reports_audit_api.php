@@ -406,10 +406,10 @@ switch ($action) {
                        al.ip_address,
                        al.status
                 FROM audit_logs al
-                INNER JOIN users u ON u.id = al.user_id
+                LEFT JOIN users u ON u.id = al.user_id
                 WHERE u.station_id = ?
                   AND DATE(al.created_at) BETWEEN ? AND ?
-                  AND LOWER(TRIM(u.role)) NOT IN ('admin','superadmin','super admin','super_admin')";
+                  AND (u.role IS NULL OR LOWER(TRIM(u.role)) NOT IN ('admin','superadmin','super admin','super_admin'))";
         $params = [$station_id, $date_from, $date_to];
 
         if ($user_filter)   { $sql .= " AND al.user_id = ?";     $params[] = $user_filter; }
@@ -663,10 +663,10 @@ switch ($action) {
                        al.ip_address,
                        al.status
                 FROM audit_logs al
-                INNER JOIN users u ON u.id = al.user_id
+                LEFT JOIN users u ON u.id = al.user_id
                 WHERE u.station_id = ?
                   AND DATE(al.created_at) BETWEEN ? AND ?
-                  AND LOWER(TRIM(u.role)) NOT IN ('admin','superadmin','super admin','super_admin')";
+                  AND (u.role IS NULL OR LOWER(TRIM(u.role)) NOT IN ('admin','superadmin','super admin','super_admin'))";
         $params = [$station_id, $date_from, $date_to];
         if ($user_filter)   { $sql .= " AND al.user_id = ?";     $params[] = $user_filter; }
         if ($action_filter) { $sql .= " AND al.action_type = ?"; $params[] = $action_filter; }

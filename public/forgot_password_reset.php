@@ -16,24 +16,38 @@ header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Cache-Control: post-check=0, pre-check=0", false);
 header("Pragma: no-cache");
 
-// Get token and email from URL
+// Get token, email and phone from URL
 $token = $_GET['token'] ?? '';
 $email = $_GET['email'] ?? '';
+$phone = $_GET['phone'] ?? '';
 
-if (empty($token) || empty($email)) {
+if (empty($token) || (empty($email) && empty($phone))) {
     $error = "Invalid reset request. Please request a new password reset.";
 } else {
     try {
-        // Validate token against existing password_reset_tokens table
-        $stmt = $pdo->prepare("
-            SELECT prt.user_id, prt.token, prt.expires_at, prt.is_used, prt.used_at,
-                   u.username, u.email 
-            FROM password_reset_tokens prt
-            JOIN users u ON prt.user_id = u.id
-            WHERE prt.token = ? AND u.email = ? AND prt.token_type = 'reset' AND u.status = 'active' AND u.is_deleted = 0
-            LIMIT 1
-        ");
-        $stmt->execute([$token, $email]);
+        if (!empty($email)) {
+            // Validate token against email
+            $stmt = $pdo->prepare("
+                SELECT prt.user_id, prt.token, prt.expires_at, prt.is_used, prt.used_at,
+                       u.username, u.email, u.phone 
+                FROM password_reset_tokens prt
+                JOIN users u ON prt.user_id = u.id
+                WHERE prt.token = ? AND u.email = ? AND prt.token_type = 'reset' AND u.status = 'active' AND (u.is_deleted = 0 OR u.is_deleted IS NULL)
+                LIMIT 1
+            ");
+            $stmt->execute([$token, $email]);
+        } else {
+            // Validate token against phone
+            $stmt = $pdo->prepare("
+                SELECT prt.user_id, prt.token, prt.expires_at, prt.is_used, prt.used_at,
+                       u.username, u.email, u.phone 
+                FROM password_reset_tokens prt
+                JOIN users u ON prt.user_id = u.id
+                WHERE prt.token = ? AND u.phone = ? AND prt.token_type = 'reset' AND u.status = 'active' AND (u.is_deleted = 0 OR u.is_deleted IS NULL)
+                LIMIT 1
+            ");
+            $stmt->execute([$token, $phone]);
+        }
         $token_data = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$token_data) {
@@ -122,238 +136,334 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reset Password | Petron Management System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
     <style>
         :root {
-            --petron-blue: #002F6C;
-            --petron-red: #E30613;
-            --petron-gray: #CCCCCC;
-            --bg-color: #f4f6f9;
+            --blue-glow: rgba(0, 100, 255, 0.45);
+            --red-glow: rgba(227, 6, 19, 0.35);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
         }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: url('../assets/img/background.jpg') center center/cover no-repeat, linear-gradient(135deg, var(--petron-blue) 0%, #001a4d 100%);
-            margin: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: url('../assets/img/background.jpg') center center / cover no-repeat;
             min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        .login-wrap {
+            width: 100%;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
+            padding: 20px;
+            z-index: 2;
         }
 
-        .reset-card {
-            background: #ffffff;
+        .login-card {
+            background: rgba(0, 15, 45, 0.9);
+            backdrop-filter: blur(24px) saturate(1.8) brightness(1.05);
+            -webkit-backdrop-filter: blur(24px) saturate(1.8) brightness(1.05);
             width: 100%;
-            max-width: 420px;
-            padding: 40px;
-            border-radius: 8px;
-            border: 3px solid var(--petron-blue);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            max-width: 520px;
+            border-radius: 28px;
+            padding: 48px 40px 36px;
+            box-shadow: 
+                0 4px 0 rgba(255,255,255,.05) inset, 
+                0 -2px 0 rgba(0,0,0,.6) inset, 
+                0 12px 40px rgba(0,0,0,.6), 
+                0 32px 80px rgba(0,0,0,.65), 
+                0 0 0 1px rgba(255,255,255,.08), 
+                0 0 50px var(--blue-glow);
+            position: relative;
+            animation: cardGlowFlow 8s linear infinite;
+        }
+
+        .login-card::before {
+            content: '';
+            position: absolute;
+            inset: -1.5px;
+            border-radius: 29px;
+            background: linear-gradient(90deg, #002F6C, #E30613, #002F6C);
+            background-size: 200% auto;
+            animation: borderFlow 6s linear infinite;
+            z-index: -1;
+            opacity: 0.85;
+        }
+
+        @keyframes borderFlow {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        @keyframes cardGlowFlow {
+            0%, 100% { box-shadow: 0 4px 0 rgba(255,255,255,.05) inset, 0 -2px 0 rgba(0,0,0,.6) inset, 0 12px 40px rgba(0,0,0,.6), 0 32px 80px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.08), 0 0 50px var(--blue-glow); }
+            50% { box-shadow: 0 4px 0 rgba(255,255,255,.05) inset, 0 -2px 0 rgba(0,0,0,.6) inset, 0 12px 40px rgba(0,0,0,.6), 0 32px 80px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.08), 0 0 60px var(--red-glow); }
+        }
+
+        .brand {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 32px;
             text-align: center;
-            animation: borderAnimation 3s ease-in-out infinite;
         }
 
-        @keyframes borderAnimation {
-            0%   { border-color: var(--petron-blue); box-shadow: 0 10px 25px rgba(0, 47, 108, 0.1); }
-            25%  { border-color: var(--petron-blue); box-shadow: 0 10px 25px rgba(0, 47, 108, 0.2); }
-            50%  { border-color: var(--petron-red);  box-shadow: 0 10px 25px rgba(227, 6, 19, 0.3); }
-            75%  { border-color: var(--petron-red);  box-shadow: 0 10px 25px rgba(227, 6, 19, 0.2); }
-            100% { border-color: var(--petron-blue); box-shadow: 0 10px 25px rgba(0, 47, 108, 0.1); }
-        }
-
-        /* Branding */
         .brand-logo {
-            max-width: 120px;
+            width: 88px;
             height: auto;
-            margin-bottom: 15px;
+            object-fit: contain;
+            margin-bottom: 16px;
+            filter: drop-shadow(0 4px 16px rgba(227,6,19,.4));
+            animation: logoFloat 3s ease-in-out infinite;
         }
 
-        .brand-title {
-            color: var(--petron-blue);
-            font-size: 14px;
+        @keyframes logoFloat {
+            0%, 100% { transform: translateY(0); }
+            50%       { transform: translateY(-5px); }
+        }
+
+        .brand-tagline {
+            display: block;
+            margin-top: 10px;
+            font-size: 11px;
             font-weight: 700;
-            margin-bottom: 5px;
-        }
-
-        .brand-subtitle {
-            color: #666;
-            font-size: 12px;
-            margin-bottom: 30px;
+            letter-spacing: 2.8px;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            color: rgba(180,210,255,.9);
+            text-shadow: 0 0 12px rgba(100,160,255,.4);
         }
 
-        /* Form Elements */
-        .form-group {
-            margin-bottom: 20px;
-            text-align: left;
+        .field-group {
+            margin-bottom: 24px;
+            position: relative;
         }
 
-        .input-group {
+        .field-label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 12.5px;
+            font-weight: 700;
+            color: rgba(255,255,255,.9);
+            letter-spacing: .8px;
+            text-transform: uppercase;
+            text-shadow: 0 1px 3px rgba(0,0,0,.5);
+        }
+
+        .input-wrap {
             position: relative;
             display: flex;
             align-items: center;
+            border-radius: 14px;
+            background: rgba(0,0,0,.45);
+            border: 1.5px solid rgba(255,255,255,.15);
+            box-shadow: 0 2px 6px rgba(0,0,0,.35) inset;
+            transition: border-color .25s, box-shadow .25s;
+        }
+
+        .input-wrap:focus-within {
+            border-color: #3b82f6;
+            box-shadow: 0 0 14px rgba(59,130,246,.5), 0 2px 6px rgba(0,0,0,.3) inset;
         }
 
         .input-icon {
             position: absolute;
-            left: 15px;
-            color: #999;
-            font-size: 18px;
-            z-index: 10;
-        }
-
-        .form-control {
-            width: 100%;
-            padding: 12px 40px 12px 45px;
+            left: 16px;
+            color: rgba(255,255,255,.92);
             font-size: 16px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            transition: border-color 0.2s, box-shadow 0.2s;
-            box-sizing: border-box;
+            pointer-events: none;
+            transition: color .2s, text-shadow .2s;
+            z-index: 2;
+            text-shadow: 0 0 10px rgba(255,255,255,.5), 0 1px 3px rgba(0,0,0,.6);
         }
 
-        .form-control:focus {
-            border-color: var(--petron-blue);
-            box-shadow: 0 0 0 3px rgba(0, 47, 108, 0.1);
+        .input-wrap:focus-within .input-icon {
+            color: #ffffff;
+            text-shadow: 0 0 16px rgba(96,165,250,.9), 0 1px 3px rgba(0,0,0,.6);
+        }
+
+        .field-input {
+            width: 100%;
+            height: 48px;
+            background: transparent;
+            border: none;
             outline: none;
+            padding: 0 46px;
+            color: #ffffff;
+            font-family: inherit;
+            font-size: 14.5px;
+            font-weight: 500;
+            text-shadow: 0 1px 2px rgba(0,0,0,.4);
         }
 
-        .toggle-password {
+        .field-input::placeholder {
+            color: rgba(255,255,255,.45);
+        }
+
+        .pw-toggle {
             position: absolute;
-            right: 0px;
-            top: 50%;
-            transform: translateY(-50%);
+            right: 0;
+            width: 46px;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             background: none;
             border: none;
-            color: #999;
+            color: rgba(180,210,255,.65);
             cursor: pointer;
-            font-size: 16px;
-            padding: 8px;
-            z-index: 10;
-            width: 32px;
-            height: 32px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 0 4px 4px 0;
-            transition: all 0.2s ease;
+            font-size: 14px;
+            transition: color .2s, text-shadow .2s;
+            border-radius: 0 13px 13px 0;
+            z-index: 2;
+        }
+        .pw-toggle:hover { color: #93c5fd; text-shadow: 0 0 10px rgba(96,165,250,.6); }
+
+        /* Hide browser native password reveal eye (Chrome/Edge/IE) */
+        .field-input[type="password"]::-ms-reveal,
+        .field-input[type="password"]::-ms-clear,
+        input[type="password"]::-ms-reveal,
+        input[type="password"]::-ms-clear {
+            display: none !important;
+        }
+        input[type="password"]::-webkit-contacts-auto-fill-button,
+        input[type="password"]::-webkit-credentials-auto-fill-button,
+        input[type="password"]::-webkit-strong-password-auto-fill-button {
+            display: none !important;
+            visibility: hidden;
+            pointer-events: none;
         }
 
-        .toggle-password:hover {
-            color: var(--petron-blue);
-            background-color: rgba(0, 47, 108, 0.1);
-        }
-
-        /* Password Strength Indicator */
+        /* Password Strength */
         .password-strength {
-            margin-top: 6px;
+            margin-top: 8px;
             font-size: 12px;
+            font-weight: 600;
+            text-shadow: 0 1px 2px rgba(0,0,0,.5);
         }
 
-        .strength-weak   { color: var(--petron-red); }
-        .strength-medium { color: #f39c12; }
-        .strength-strong { color: #27ae60; }
+        .strength-weak   { color: #f87171; }
+        .strength-medium { color: #fbbf24; }
+        .strength-strong { color: #34d399; }
 
-        /* Button */
         .btn-submit {
             width: 100%;
-            padding: 14px;
-            background-color: var(--petron-blue);
-            color: #fff;
-            border: none;
-            border-radius: 5px;
-            font-size: 16px;
-            font-weight: 600;
+            height: 50px;
+            background: linear-gradient(135deg, #002F6C, #0050b3);
+            border: 1px solid rgba(255,255,255,.15);
+            border-radius: 14px;
+            color: #ffffff;
+            font-family: inherit;
+            font-size: 15px;
+            font-weight: 700;
             cursor: pointer;
-            transition: background-color 0.2s;
+            transition: transform .15s, box-shadow .2s;
+            box-shadow: 0 4px 15px rgba(0,47,108,.4), 0 1px 0 rgba(255,255,255,.15) inset;
             display: flex;
-            justify-content: center;
             align-items: center;
+            justify-content: center;
             gap: 10px;
         }
 
-        .btn-submit:hover    { background-color: #001f4d; }
-        .btn-submit:disabled { background-color: #99aab5; cursor: not-allowed; }
+        .btn-submit:hover {
+            box-shadow: 0 6px 20px rgba(0,47,108,.6), 0 1px 0 rgba(255,255,255,.25) inset;
+            transform: translateY(-1px);
+        }
 
-        /* Banners */
-        .error-banner {
-            background-color: #fde8e8;
-            color: var(--petron-red);
-            padding: 12px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            font-size: 14px;
-            border: 1px solid #fbd5d5;
-            text-align: left;
+        .btn-submit:active {
+            transform: translateY(1px);
+            box-shadow: 0 2px 10px rgba(0,47,108,.4);
+        }
+
+        .btn-submit:disabled {
+            background: #4a5568;
+            border-color: rgba(255,255,255,.05);
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+
+        .error-banner, .success-banner, .info-banner {
+            border-radius: 12px;
+            padding: 12px 16px;
+            font-size: 13.5px;
+            font-weight: 600;
+            margin-bottom: 24px;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,.25);
+            text-align: left;
+        }
+
+        .error-banner {
+            background: rgba(220,38,38,.25);
+            border: 1.5px solid rgba(220,38,38,.45);
+            color: #fca5a5;
         }
 
         .success-banner {
-            background-color: #e8f5e8;
-            color: #2d5a2d;
-            padding: 12px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            font-size: 14px;
-            border: 1px solid #d5e8d5;
-            text-align: left;
-            display: flex;
-            align-items: center;
-            gap: 10px;
+            background: rgba(16,185,129,.2);
+            border: 1.5px solid rgba(16,185,129,.45);
+            color: #a7f3d0;
         }
 
         .info-banner {
-            background-color: #ebf5ff;
-            color: var(--petron-blue);
-            padding: 12px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            font-size: 14px;
-            border: 1px solid #cce5ff;
-            text-align: left;
-            display: flex;
-            align-items: center;
-            gap: 10px;
+            background: rgba(59,130,246,.2);
+            border: 1.5px solid rgba(59,130,246,.45);
+            color: #bfdbfe;
         }
 
-        .links {
-            margin-top: 25px;
+        .links-wrap {
+            margin-top: 24px;
             display: flex;
             flex-direction: column;
-            gap: 10px;
-            font-size: 14px;
+            gap: 12px;
+            align-items: center;
         }
 
-        .links a {
-            color: var(--petron-blue);
+        .forgot-link {
+            color: rgba(255,255,255,.8);
+            font-size: 13.5px;
+            font-weight: 600;
             text-decoration: none;
+            transition: color .2s, text-shadow .2s;
+            text-shadow: 0 1px 2px rgba(0,0,0,.5);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .forgot-link:hover {
+            color: #93c5fd;
+            text-shadow: 0 0 8px rgba(147,197,253,.5);
+        }
+
+        .page-footer {
+            margin-top: 28px;
+            font-size: 12px;
             font-weight: 500;
+            color: #ffffff;
+            letter-spacing: .5px;
+            text-align: center;
+            text-shadow: 0 1px 6px rgba(0,0,0,.9), 0 2px 12px rgba(0,0,0,.8);
+            cursor: default;
+            user-select: none;
+            pointer-events: none;
         }
 
-        .links a:hover { text-decoration: underline; }
-
-        /* Footer */
-        .footer {
-            margin-top: 40px;
-            color: var(--petron-blue);
-            font-size: 16px;
-            font-weight: bold;
-            animation: footerColorAnimation 3s ease-in-out infinite;
-        }
-
-        @keyframes footerColorAnimation {
-            0%   { color: var(--petron-blue); }
-            25%  { color: var(--petron-blue); }
-            50%  { color: var(--petron-red);  }
-            75%  { color: var(--petron-red);  }
-            100% { color: var(--petron-blue); }
-        }
-
-        /* Spinner */
         .spinner {
             width: 18px;
             height: 18px;
@@ -364,26 +474,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
             display: none;
         }
 
-        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
 
-        /* Responsive */
-        @media (max-width: 600px) {
-            .reset-card { width: 95%; padding: 30px 20px; }
+        @media (max-width: 540px) {
+            .login-wrap { padding: 0 12px; }
+            .login-card { padding: 38px 28px 32px; }
         }
     </style>
 </head>
 <body>
 
-    <div class="reset-card">
+<div class="login-wrap">
+    <div class="login-card">
         <!-- Branding -->
-        <img src="../assets/img/Petron Logo.png" alt="Petron logo" class="brand-logo">
-        <h1 class="brand-title">Reset Password</h1>
-        <p class="brand-subtitle">Create New Password</p>
+        <div class="brand">
+            <img src="../assets/img/Petron Logo.png" alt="Petron" class="brand-logo">
+            <span class="brand-tagline">Station Management System</span>
+        </div>
 
         <!-- Error Message -->
         <?php if ($error): ?>
             <div class="error-banner" role="alert">
-                <span><i class="fas fa-exclamation-triangle"></i></span>
+                <i class="fas fa-exclamation-triangle"></i>
                 <span><?php echo htmlspecialchars($error); ?></span>
             </div>
         <?php endif; ?>
@@ -391,7 +505,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
         <!-- Success Message -->
         <?php if ($message): ?>
             <div class="success-banner" role="status">
-                <span><i class="fas fa-check-circle"></i></span>
+                <i class="fas fa-check-circle"></i>
                 <span><?php echo $message; ?></span>
             </div>
         <?php endif; ?>
@@ -399,30 +513,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
         <?php if ($token_valid): ?>
             <!-- Info Message -->
             <div class="info-banner">
-                <span><i class="fas fa-info-circle"></i></span>
-                <span>Resetting password for: <strong><?php echo htmlspecialchars($user_data['email']); ?></strong></span>
+                <i class="fas fa-info-circle"></i>
+                <span>Resetting password for: <strong><?php echo htmlspecialchars($user_data['email'] ?: ($user_data['phone'] ?: $user_data['username'])); ?></strong></span>
             </div>
 
             <!-- Reset Password Form -->
             <form method="POST" action="" id="resetForm">
-                <div class="form-group">
-                    <label for="password" style="display:block;margin-bottom:5px;font-weight:600;color:#333;">New Password</label>
-                    <div class="input-group">
-                        <span class="input-icon"><i class="fas fa-lock"></i></span>
-                        <input type="password" name="password" id="password" class="form-control" placeholder="Enter new password" required autofocus aria-label="New Password">
-                        <button type="button" class="toggle-password" id="togglePassword" aria-label="Show password">
+                <div class="field-group">
+                    <label for="password" class="field-label">New Password</label>
+                    <div class="input-wrap">
+                        <i class="fas fa-lock input-icon"></i>
+                        <input type="password" name="password" id="password" class="field-input" placeholder="Enter password" required autofocus aria-label="New Password">
+                        <button type="button" class="pw-toggle" id="togglePassword" aria-label="Show password">
                             <i class="fas fa-eye"></i>
                         </button>
                     </div>
                     <div class="password-strength" id="passwordStrength"></div>
                 </div>
 
-                <div class="form-group">
-                    <label for="confirm_password" style="display:block;margin-bottom:5px;font-weight:600;color:#333;">Confirm Password</label>
-                    <div class="input-group">
-                        <span class="input-icon"><i class="fas fa-lock"></i></span>
-                        <input type="password" name="confirm_password" id="confirm_password" class="form-control" placeholder="Confirm new password" required aria-label="Confirm Password">
-                        <button type="button" class="toggle-password" id="toggleConfirmPassword" aria-label="Show confirm password">
+                <div class="field-group">
+                    <label for="confirm_password" class="field-label">Confirm Password</label>
+                    <div class="input-wrap">
+                        <i class="fas fa-lock input-icon"></i>
+                        <input type="password" name="confirm_password" id="confirm_password" class="field-input" placeholder="Enter password" required aria-label="Confirm Password">
+                        <button type="button" class="pw-toggle" id="toggleConfirmPassword" aria-label="Show confirm password">
                             <i class="fas fa-eye"></i>
                         </button>
                     </div>
@@ -436,69 +550,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
         <?php endif; ?>
 
         <!-- Secondary Links -->
-        <div class="links">
-            <a href="login.php"><i class="fas fa-arrow-left"></i> Back to Login</a>
+        <div class="links-wrap">
+            <a href="login.php" class="forgot-link"><i class="fas fa-arrow-left"></i> Back to Login</a>
             <?php if (!$token_valid && !$message): ?>
-                <a href="forgot_password.php"><i class="fas fa-redo"></i> Request New Reset Link</a>
+                <a href="forgot_password.php" class="forgot-link"><i class="fas fa-redo"></i> Request New Reset Link</a>
             <?php endif; ?>
         </div>
     </div>
 
-    <div class="footer">
+    <div class="page-footer">
         &copy; <?php echo date('Y'); ?> Petron Station &amp; Service Center Management System. All Rights Reserved.
     </div>
+</div>
 
-    <?php if ($token_valid): ?>
-    <script>
-        const togglePassword        = document.getElementById('togglePassword');
-        const toggleConfirmPassword = document.getElementById('toggleConfirmPassword');
-        const passwordInput         = document.getElementById('password');
-        const confirmPasswordInput  = document.getElementById('confirm_password');
-        const passwordStrength      = document.getElementById('passwordStrength');
+<?php if ($token_valid): ?>
+<script>
+    const togglePassword        = document.getElementById('togglePassword');
+    const toggleConfirmPassword = document.getElementById('toggleConfirmPassword');
+    const passwordInput         = document.getElementById('password');
+    const confirmPasswordInput  = document.getElementById('confirm_password');
+    const passwordStrength      = document.getElementById('passwordStrength');
 
-        togglePassword.addEventListener('click', () => {
-            const type = passwordInput.type === 'password' ? 'text' : 'password';
-            passwordInput.type = type;
-            togglePassword.innerHTML = type === 'password' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
-        });
+    togglePassword.addEventListener('click', () => {
+        const type = passwordInput.type === 'password' ? 'text' : 'password';
+        passwordInput.type = type;
+        togglePassword.innerHTML = type === 'password' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
+    });
 
-        toggleConfirmPassword.addEventListener('click', () => {
-            const type = confirmPasswordInput.type === 'password' ? 'text' : 'password';
-            confirmPasswordInput.type = type;
-            toggleConfirmPassword.innerHTML = type === 'password' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
-        });
+    toggleConfirmPassword.addEventListener('click', () => {
+        const type = confirmPasswordInput.type === 'password' ? 'text' : 'password';
+        confirmPasswordInput.type = type;
+        toggleConfirmPassword.innerHTML = type === 'password' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
+    });
 
-        passwordInput.addEventListener('input', () => {
-            const p = passwordInput.value;
-            let strength = 0;
-            if (p.length >= 8)           strength++;
-            if (/[a-z]/.test(p))         strength++;
-            if (/[A-Z]/.test(p))         strength++;
-            if (/[0-9]/.test(p))         strength++;
-            if (/[$@#&!^*(),.?]/.test(p)) strength++;
+    passwordInput.addEventListener('input', () => {
+        const p = passwordInput.value;
+        let strength = 0;
+        if (p.length >= 8)           strength++;
+        if (/[a-z]/.test(p))         strength++;
+        if (/[A-Z]/.test(p))         strength++;
+        if (/[0-9]/.test(p))         strength++;
+        if (/[$@#&!^*(),.?]/.test(p)) strength++;
 
-            const map = {
-                0: '', 1: '<span class="strength-weak">Weak password</span>',
-                2: '<span class="strength-weak">Weak password</span>',
-                3: '<span class="strength-medium">Medium strength</span>',
-                4: '<span class="strength-medium">Medium strength</span>',
-                5: '<span class="strength-strong">Strong password</span>'
-            };
-            passwordStrength.innerHTML = map[strength] ?? '';
-        });
+        const map = {
+            0: '', 1: '<span class="strength-weak">Weak password</span>',
+            2: '<span class="strength-weak">Weak password</span>',
+            3: '<span class="strength-medium">Medium strength</span>',
+            4: '<span class="strength-medium">Medium strength</span>',
+            5: '<span class="strength-strong">Strong password</span>'
+        };
+        passwordStrength.innerHTML = map[strength] ?? '';
+    });
 
-        const form      = document.getElementById('resetForm');
-        const submitBtn = document.getElementById('submitBtn');
-        const spinner   = document.getElementById('spinner');
-        const btnText   = document.getElementById('btnText');
+    const form      = document.getElementById('resetForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const spinner   = document.getElementById('spinner');
+    const btnText   = document.getElementById('btnText');
 
-        form.addEventListener('submit', () => {
-            submitBtn.disabled = true;
-            spinner.style.display = 'block';
-            btnText.textContent = 'Resetting...';
-        });
-    </script>
-    <?php endif; ?>
+    form.addEventListener('submit', () => {
+        submitBtn.disabled = true;
+        spinner.style.display = 'block';
+        btnText.textContent = 'Resetting...';
+    });
+</script>
+<?php endif; ?>
 
 </body>
 </html>

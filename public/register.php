@@ -33,8 +33,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $role = 'staff'; 
 
     if (!empty($username) && !empty($password) && !empty($email) && !empty($full_name)) {
-        if ($password !== $confirm_password) {
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $msg = "Invalid email address format.";
+        } elseif ($password !== $confirm_password) {
             $msg = "Passwords do not match.";
+        } elseif (strlen($password) < 8 || !preg_match('/[A-Z]/', $password) || !preg_match('/[a-z]/', $password) || !preg_match('/[0-9]/', $password) || !preg_match('/[!@#$%^&*(),.?":{}|<>_\-]/', $password)) {
+            $msg = "Password must be at least 8 characters and contain at least one uppercase letter, one lowercase letter, one number, and one symbol.";
         } elseif (empty($terms)) {
             $msg = "You must agree to the Terms & Conditions.";
         } else {
