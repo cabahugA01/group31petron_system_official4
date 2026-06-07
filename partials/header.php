@@ -294,11 +294,439 @@ if (!isset($pdo) || !$pdo) {
         --primary: #00264D;
         --accent: #CC0000;
         --petron-green: #28A745;
+        
+        /* Light Theme (Default) */
+        --bg-main: #f8f9fa;
+        --bg-card: #ffffff;
+        --text-main: #333333;
+        --text-secondary: #666666;
+        --border-color: #e0e0e0;
+        --sidebar-bg: #00264D;
+        --sidebar-text: #ffffff;
+        --header-bg: #ffffff;
+        --header-text: #00264D;
+    }
+    
+    /* ══════════════════════════════════════════════════════════════════
+       DARK THEME — Full proper dark mode
+       ══════════════════════════════════════════════════════════════════ */
+
+    /* Dark theme CSS variable overrides */
+    body.dark-theme {
+        --bg-main:        #0f1117;
+        --bg-card:        #1e2130;
+        --bg-card-hover:  #252840;
+        --text-main:      #e2e8f0;
+        --text-secondary: #94a3b8;
+        --border-color:   #2d3748;
+        --sidebar-bg:     #111827;
+        --sidebar-text:   #cbd5e1;
+        --header-bg:      #1a1f2e;
+        --header-text:    #e2e8f0;
+        --input-bg:       #252840;
+        --input-border:   #3d4a5c;
+        --input-text:     #e2e8f0;
+        --table-header:   #1a2035;
+        --table-row-odd:  #1e2130;
+        --table-row-even: #22273a;
+        --table-hover:    #2a3150;
+        --shadow-dark:    0 4px 24px rgba(0,0,0,0.5);
+    }
+
+    /* ── Body & Main ── */
+    body.dark-theme {
+        background-color: var(--bg-main) !important;
+        color: var(--text-main) !important;
+    }
+    body.dark-theme .main {
+        background-color: var(--bg-main) !important;
+    }
+
+    /* ── Top Header ── */
+    body.dark-theme .top-header {
+        background-color: var(--header-bg) !important;
+        border-bottom: 1px solid var(--border-color) !important;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.4) !important;
+    }
+    body.dark-theme .brand-title {
+        color: #e2e8f0 !important;
+    }
+    body.dark-theme .top-header .brand-text div {
+        color: #94a3b8 !important;
+    }
+
+    /* ── Sidebar ── */
+    body.dark-theme .sidebar {
+        background-color: var(--sidebar-bg) !important;
+        border-right: 1px solid var(--border-color) !important;
+    }
+    body.dark-theme .nav-item {
+        color: var(--sidebar-text) !important;
+    }
+    body.dark-theme .nav-item:hover {
+        background: rgba(255,255,255,0.06) !important;
+        color: #ffffff !important;
+    }
+    body.dark-theme .nav-item.active {
+        background: rgba(204,0,0,0.25) !important;
+        color: #ffffff !important;
+    }
+    body.dark-theme .sidebar-identity-footer {
+        background: rgba(0,0,0,0.4) !important;
+        border-top: 1px solid rgba(255,255,255,0.08) !important;
+    }
+
+    /* ── Cards & Panels ── */
+    body.dark-theme .widget-card,
+    body.dark-theme .card,
+    body.dark-theme .petron-card,
+    body.dark-theme .panel,
+    body.dark-theme .pcard,
+    body.dark-theme .mini {
+        background-color: var(--bg-card) !important;
+        color: var(--text-main) !important;
+        border-color: var(--border-color) !important;
+        box-shadow: var(--shadow-dark) !important;
+    }
+    body.dark-theme .widget-card h1,
+    body.dark-theme .widget-card h2,
+    body.dark-theme .widget-card h3,
+    body.dark-theme .widget-card h4,
+    body.dark-theme .widget-card h5,
+    body.dark-theme .card h1,
+    body.dark-theme .card h2,
+    body.dark-theme .card h3,
+    body.dark-theme .card h4,
+    body.dark-theme .card h5,
+    body.dark-theme .petron-card h1,
+    body.dark-theme .petron-card h2,
+    body.dark-theme .petron-card h3,
+    body.dark-theme .petron-card h4 {
+        color: #93c5fd !important;
+    }
+    body.dark-theme .status-card,
+    body.dark-theme .metric-card,
+    body.dark-theme .quick-action-btn,
+    body.dark-theme .report-btn {
+        background-color: var(--bg-card) !important;
+        color: var(--text-main) !important;
+        border-color: var(--border-color) !important;
+    }
+
+    /* Card-header sections */
+    body.dark-theme .card-header,
+    body.dark-theme .petron-card-header {
+        background-color: var(--table-header) !important;
+        border-bottom: 1px solid var(--border-color) !important;
+        color: var(--text-main) !important;
+    }
+    body.dark-theme .card-body {
+        background-color: var(--bg-card) !important;
+        color: var(--text-main) !important;
+    }
+
+    /* ── Tables ── */
+    body.dark-theme table,
+    body.dark-theme .table {
+        background-color: var(--bg-card) !important;
+        color: var(--text-main) !important;
+        border-color: var(--border-color) !important;
+    }
+    body.dark-theme table thead th,
+    body.dark-theme .table thead th {
+        background-color: var(--table-header) !important;
+        color: #93c5fd !important;
+        border-color: var(--border-color) !important;
+    }
+    body.dark-theme table tbody tr:nth-child(odd) td,
+    body.dark-theme .table tbody tr:nth-child(odd) td {
+        background-color: var(--table-row-odd) !important;
+        color: var(--text-main) !important;
+        border-color: var(--border-color) !important;
+    }
+    body.dark-theme table tbody tr:nth-child(even) td,
+    body.dark-theme .table tbody tr:nth-child(even) td {
+        background-color: var(--table-row-even) !important;
+        color: var(--text-main) !important;
+        border-color: var(--border-color) !important;
+    }
+    body.dark-theme table tbody tr:hover td,
+    body.dark-theme .table tbody tr:hover td {
+        background-color: var(--table-hover) !important;
+    }
+    body.dark-theme table td,
+    body.dark-theme table th {
+        border-color: var(--border-color) !important;
+    }
+
+    /* ── Inputs, Selects, Textareas ── */
+    body.dark-theme input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([type="reset"]),
+    body.dark-theme select,
+    body.dark-theme textarea {
+        background-color: var(--input-bg) !important;
+        color: var(--input-text) !important;
+        border-color: var(--input-border) !important;
+    }
+    body.dark-theme input::placeholder,
+    body.dark-theme textarea::placeholder {
+        color: #64748b !important;
+    }
+    body.dark-theme select option {
+        background-color: #252840;
+        color: #e2e8f0;
+    }
+    body.dark-theme .form-control,
+    body.dark-theme .form-select {
+        background-color: var(--input-bg) !important;
+        color: var(--input-text) !important;
+        border-color: var(--input-border) !important;
+    }
+    body.dark-theme .form-label,
+    body.dark-theme label {
+        color: var(--text-secondary) !important;
+    }
+
+    /* ── Buttons ── */
+    body.dark-theme .btn-light,
+    body.dark-theme .btn-outline-secondary,
+    body.dark-theme .btn-secondary {
+        background-color: #2d3748 !important;
+        color: #e2e8f0 !important;
+        border-color: #3d4a5c !important;
+    }
+    body.dark-theme .btn-light:hover,
+    body.dark-theme .btn-outline-secondary:hover {
+        background-color: #3d4a5c !important;
+    }
+    /* Keep primary/danger/success buttons their original colors */
+    body.dark-theme .btn-primary  { background-color: #2563eb !important; border-color: #1d4ed8 !important; color: #fff !important; }
+    body.dark-theme .btn-danger   { background-color: #dc2626 !important; border-color: #b91c1c !important; color: #fff !important; }
+    body.dark-theme .btn-success  { background-color: #16a34a !important; border-color: #15803d !important; color: #fff !important; }
+    body.dark-theme .btn-warning  { background-color: #d97706 !important; border-color: #b45309 !important; color: #fff !important; }
+    body.dark-theme .btn-info     { background-color: #0891b2 !important; border-color: #0e7490 !important; color: #fff !important; }
+
+    /* custom petron buttons — keep them as-is or slightly darken */
+    body.dark-theme .cust-btn {
+        background: #252840 !important;
+        color: #e2e8f0 !important;
+        border-color: #3d4a5c !important;
+    }
+
+    /* ── Header icons & controls ── */
+    body.dark-theme .notification-bell {
+        background: rgba(255,255,255,0.07) !important;
+    }
+    body.dark-theme .notification-bell:hover { background: rgba(255,255,255,0.14) !important; }
+    body.dark-theme .notification-bell i,
+    body.dark-theme .theme-toggle-btn i { color: #e2e8f0 !important; }
+    body.dark-theme .theme-toggle-btn {
+        background: rgba(255,255,255,0.07) !important;
+    }
+    body.dark-theme .theme-toggle-btn:hover { background: rgba(255,255,255,0.14) !important; }
+
+    /* ── Profile area in header ── */
+    body.dark-theme .profile-access { color: var(--text-main) !important; }
+    body.dark-theme .profile-access > div > div:first-child { color: #93c5fd !important; }
+    body.dark-theme .profile-access > div > div:last-child  { color: #64748b !important; }
+
+    /* ── Dropdowns ── */
+    body.dark-theme .notif-dropdown,
+    body.dark-theme .profile-dropdown {
+        background-color: #1e2130 !important;
+        border: 1px solid var(--border-color) !important;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
+        color: var(--text-main) !important;
+    }
+    body.dark-theme .notif-dropdown-header {
+        background: linear-gradient(135deg, #1a2035 0%, #1e2130 100%) !important;
+        border-bottom: 1px solid var(--border-color) !important;
+        color: #93c5fd !important;
+    }
+    body.dark-theme .notif-dropdown-header span,
+    body.dark-theme .notif-dropdown-header button { color: #93c5fd !important; }
+    body.dark-theme .notif-item {
+        border-bottom: 1px solid var(--border-color) !important;
+        color: var(--text-main) !important;
+    }
+    body.dark-theme .notif-item:hover { background-color: #252840 !important; }
+    body.dark-theme .profile-dropdown a {
+        color: var(--text-main) !important;
+    }
+    body.dark-theme .profile-dropdown a:hover {
+        background-color: #252840 !important;
+        color: #93c5fd !important;
+    }
+    body.dark-theme .dropdown-divider {
+        border-color: var(--border-color) !important;
+    }
+
+    /* ── Footer ── */
+    body.dark-theme .fixed-footer {
+        background-color: #1a1f2e !important;
+        border-top: 1px solid var(--border-color) !important;
+        color: var(--text-secondary) !important;
+    }
+    body.dark-theme .footer-sidebar-area {
+        background-color: #111827 !important;
+        border-right: 1px solid var(--border-color) !important;
+        color: var(--text-secondary) !important;
+    }
+    body.dark-theme .footer-text,
+    body.dark-theme .footer-clock { color: var(--text-secondary) !important; }
+    body.dark-theme .footer-identity { color: #93c5fd !important; }
+
+    /* ── Welcome Banner / Page headers ── */
+    body.dark-theme .welcome-banner {
+        background: linear-gradient(135deg, #1e2130 0%, #1a2035 100%) !important;
+        border-color: var(--border-color) !important;
+        color: var(--text-main) !important;
+    }
+    body.dark-theme .welcome-banner h2,
+    body.dark-theme .welcome-banner h3,
+    body.dark-theme .welcome-banner p { color: var(--text-main) !important; }
+    body.dark-theme .page-head h1,
+    body.dark-theme .page-header h1,
+    body.dark-theme .page-title { color: #93c5fd !important; }
+    body.dark-theme .page-subtitle { color: var(--text-secondary) !important; }
+
+    /* ── Generic text overrides ── */
+    body.dark-theme h1, body.dark-theme h2, body.dark-theme h3,
+    body.dark-theme h4, body.dark-theme h5, body.dark-theme h6 {
+        color: var(--text-main) !important;
+    }
+    body.dark-theme p, body.dark-theme span, body.dark-theme li,
+    body.dark-theme td, body.dark-theme th { color: inherit; }
+    body.dark-theme a:not(.btn):not(.nav-item) { color: #60a5fa !important; }
+    body.dark-theme a:not(.btn):not(.nav-item):hover { color: #93c5fd !important; }
+
+    /* ── Flash messages — keep original alert colors but on dark bg ── */
+    body.dark-theme .petron-flash.flash-success {
+        background: #14532d !important; color: #bbf7d0 !important; border-left-color: #16a34a !important;
+    }
+    body.dark-theme .petron-flash.flash-error {
+        background: #450a0a !important; color: #fca5a5 !important; border-left-color: #dc2626 !important;
+    }
+    body.dark-theme .petron-flash.flash-warning {
+        background: #451a03 !important; color: #fde68a !important; border-left-color: #d97706 !important;
+    }
+    body.dark-theme .petron-flash.flash-info {
+        background: #0c1a3a !important; color: #93c5fd !important; border-left-color: #2563eb !important;
+    }
+
+    /* ── Modals ── */
+    body.dark-theme .modal-card,
+    body.dark-theme .modal-card-wide,
+    body.dark-theme .modal-card-xl {
+        background-color: var(--bg-card) !important;
+        border-color: var(--border-color) !important;
+        color: var(--text-main) !important;
+    }
+    body.dark-theme .modal-head {
+        background-color: var(--table-header) !important;
+        border-bottom: 1px solid var(--border-color) !important;
+        color: #93c5fd !important;
+    }
+    body.dark-theme .modal-actions {
+        background-color: var(--bg-card) !important;
+        border-top: 1px solid var(--border-color) !important;
+    }
+    body.dark-theme .modal-backdrop,
+    body.dark-theme .modal-overlay { background: rgba(0,0,0,0.75) !important; }
+
+    /* ── Badges ── */
+    body.dark-theme .badge:not([style*="background"]) {
+        background-color: #252840 !important;
+        color: #e2e8f0 !important;
+        border-color: var(--border-color) !important;
+    }
+    body.dark-theme .sbadge { opacity: 0.9 !important; }
+
+    /* ── Scrollbars in dark mode ── */
+    body.dark-theme ::-webkit-scrollbar { width: 6px; height: 6px; }
+    body.dark-theme ::-webkit-scrollbar-track { background: #0f1117; }
+    body.dark-theme ::-webkit-scrollbar-thumb { background: #3d4a5c; border-radius: 3px; }
+    body.dark-theme ::-webkit-scrollbar-thumb:hover { background: #4d5a6c; }
+
+    /* ── Misc overrides ── */
+    body.dark-theme hr                      { border-color: var(--border-color) !important; }
+    body.dark-theme .text-muted             { color: #64748b !important; }
+    body.dark-theme .border                 { border-color: var(--border-color) !important; }
+    body.dark-theme .bg-white               { background-color: var(--bg-card) !important; }
+    body.dark-theme .bg-light               { background-color: #252840 !important; }
+    body.dark-theme .text-dark              { color: var(--text-main) !important; }
+    body.dark-theme .shadow, body.dark-theme .shadow-sm { box-shadow: var(--shadow-dark) !important; }
+    body.dark-theme .list-group-item {
+        background-color: var(--bg-card) !important;
+        border-color: var(--border-color) !important;
+        color: var(--text-main) !important;
+    }
+    body.dark-theme .list-group-item:hover  { background-color: var(--bg-card-hover) !important; }
+
+    /* Page content wrappers */
+    body.dark-theme .page-content,
+    body.dark-theme .content-wrapper,
+    body.dark-theme .section-wrapper,
+    body.dark-theme .petron-section {
+        background-color: var(--bg-main) !important;
+        color: var(--text-main) !important;
+    }
+
+    /* Search bar on header in dark mode */
+    body.dark-theme #searchInput {
+        background: rgba(255,255,255,0.08) !important;
+        border-color: rgba(255,255,255,0.15) !important;
+        color: #e2e8f0 !important;
+    }
+    body.dark-theme #searchInput::placeholder { color: #64748b !important; }
+    body.dark-theme #searchInput:focus {
+        background: rgba(255,255,255,0.12) !important;
+        border-color: #3b82f6 !important;
+        box-shadow: 0 0 0 3px rgba(59,130,246,0.2) !important;
+    }
+    body.dark-theme #searchSuggestions {
+        background: #1e2130 !important;
+        border: 1px solid var(--border-color) !important;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
+        color: var(--text-main) !important;
+    }
+
+    /* Toggle scroll button in dark mode */
+    body.dark-theme .toggle-scroll-btn {
+        background: #2563eb !important;
+        border-color: #1e2130 !important;
+    }
+    
+    /* Apply theme variables to elements — with smooth transitions */
+    body {
+        background-color: var(--bg-main);
+        color: var(--text-main);
+        transition: background-color 0.3s ease, color 0.3s ease;
+    }
+    .top-header,
+    .sidebar,
+    .main,
+    .fixed-footer,
+    .footer-sidebar-area,
+    .widget-card, .card, .petron-card {
+        transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
     }
     html, body { max-width: 100vw; overflow-x: hidden; } /* Sidebar Navigation */
-    .sidebar { 
-        background-color: var(--petron-blue) !important; 
-        color: #ffffff !important;
+    /* Base variable-driven colours for all major surfaces */
+    .top-header {
+        background-color: var(--header-bg);
+        color: var(--header-text);
+    }
+    .sidebar {
+        background-color: var(--sidebar-bg) !important;
+        color: var(--sidebar-text) !important;
+    }
+    .main {
+        background-color: var(--bg-main);
+    }
+    .widget-card, .card, .petron-card {
+        background-color: var(--bg-card);
+        color: var(--text-main);
+        border-color: var(--border-color);
     }
     
     /* Desktop Sidebar Layout (Header + Sidebar Integration, Fixed Footer) */
@@ -311,7 +739,7 @@ if (!isset($pdo) || !$pdo) {
             width: 100%;
             height: 70px;
             z-index: 1002;
-            background-color: #ffffff;
+            background-color: var(--header-bg);
             padding: 0; /* Reset padding to handle split bg */
             display: flex;
             justify-content: space-between;
@@ -336,7 +764,7 @@ if (!isset($pdo) || !$pdo) {
             flex: 1 1 auto; 
             overflow-y: auto;
             overflow-x: hidden;
-            padding-top: 52px; /* clear the floating hamburger button */
+            padding-top: 8px; /* removed the 52px padding for hamburger button */
             padding-bottom: 8px;
             scrollbar-width: thin;
             scrollbar-color: rgba(255,255,255,0.3) transparent;
@@ -989,7 +1417,8 @@ if (!isset($pdo) || !$pdo) {
         display: flex;
         align-items: center;
         background-color: #ffffff;
-        padding: 0 20px;
+        padding: 0 20px;  /* Equal left and right padding */
+        overflow: visible;  /* Ensure nothing gets clipped */
     }
     .header-left {
         display: flex;
@@ -1002,12 +1431,15 @@ if (!isset($pdo) || !$pdo) {
         display: flex;
         justify-content: center;
         align-items: center;
+        padding: 0 5px;  /* Minimal padding */
     }
     .header-right {
         display: flex;
         align-items: center;
-        gap: 20px;
+        gap: 5px;  /* Ultra compact gap */
         flex-shrink: 0;
+        padding-right: 0;  /* No extra padding - balanced with left */
+        overflow: visible;  /* Ensure content not clipped */
     }
     .profile-access {
         position: relative;
@@ -1017,6 +1449,9 @@ if (!isset($pdo) || !$pdo) {
         gap: 8px;
         font-weight: 600;
         color: var(--petron-blue);
+        padding-right: 0;  /* Removed extra padding */
+        flex-shrink: 0;  /* Don't let it shrink */
+        min-width: fit-content;  /* Ensure it doesn't compress */
     }
     .profile-dropdown {
         display: none;
@@ -1143,12 +1578,11 @@ if (!isset($pdo) || !$pdo) {
         }
     }
 
-    /* Sidebar Collapse Button Styling */
+    /* Sidebar Collapse Button Styling - ICON ONLY, NO TEXT */
     .sidebar-collapse-btn {
         background: var(--petron-blue) !important;
         border: none !important;
-        color: #ffffff !important;
-        font-size: 16px !important;
+        color: transparent !important; /* Make text transparent */
         cursor: pointer !important;
         padding: 0 !important;
         border-radius: 50% !important;
@@ -1157,10 +1591,21 @@ if (!isset($pdo) || !$pdo) {
         align-items: center !important;
         justify-content: center !important;
         margin: 0 !important;
-        width: 40px !important;
-        height: 40px !important;
+        width: 32px !important;  /* Match notification & theme toggle */
+        height: 32px !important;
         position: relative !important;
         box-shadow: 0 2px 6px rgba(0, 47, 112, 0.3) !important;
+        flex-shrink: 0 !important;
+        font-size: 0 !important; /* Hide any text */
+        overflow: hidden !important; /* Hide overflow text */
+        text-indent: -9999px !important; /* Push text way off screen */
+        line-height: 0 !important; /* Collapse text height */
+    }
+    
+    /* Ensure no text content visible */
+    .sidebar-collapse-btn::before,
+    .sidebar-collapse-btn::after {
+        content: none !important;
     }
 
     .sidebar-collapse-btn:hover {
@@ -1184,10 +1629,17 @@ if (!isset($pdo) || !$pdo) {
         box-shadow: 0 0 0 3px rgba(255,255,255,0.3) !important;
     }
     
+    /* ICON IS VISIBLE */
     .sidebar-collapse-btn i {
-        font-size: 16px !important;
+        font-size: 15px !important;  /* Match notification & theme toggle icons */
         margin: 0 !important;
         transition: transform 0.3s ease !important;
+        color: #ffffff !important;
+        position: relative !important;
+        z-index: 10 !important;
+        display: block !important;
+        text-indent: 0 !important; /* Reset text-indent for icon */
+        line-height: normal !important; /* Reset line-height for icon */
     }
     
     .sidebar-collapse-btn:hover i {
@@ -1196,7 +1648,7 @@ if (!isset($pdo) || !$pdo) {
     
     /* Sidebar Collapsed State */
     .sidebar.collapsed {
-        width: 60px !important;
+        width: 70px !important;
     }
     
     .sidebar.collapsed .nav-item span:not(.ico) {
@@ -1409,26 +1861,7 @@ if (!isset($pdo) || !$pdo) {
         display: none;
     }
 
-    /* Toggle row — floats over sidebar, takes no flow space */
-    .sidebar-toggle-row {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 52px;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 10;
-        pointer-events: none;
-        border-bottom: 1px solid rgba(255,255,255,0.15);
-        background: transparent !important;
-    }
-    .sidebar-toggle-row .sidebar-collapse-btn {
-        pointer-events: auto;
-        background: var(--petron-blue) !important;
-        background-color: var(--petron-blue) !important;
-    }
+    /* Toggle row removed - button moved to header */
     
     /* Header Search Bar Styling */
     .header-center form input[type="text"]:focus {
@@ -1449,17 +1882,122 @@ if (!isset($pdo) || !$pdo) {
     .notification-bell {
         position: relative;
         cursor: pointer;
-        padding: 8px;
+        padding: 6px;
         border-radius: 50%;
         transition: all 0.3s ease;
         background: rgba(0, 47, 112, 0.05);
         z-index: 1000;
         pointer-events: auto;
+        flex-shrink: 0;
+        width: 32px;  /* Ultra compact */
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
     
     .notification-bell:hover {
         background: rgba(0, 47, 112, 0.1);
         transform: scale(1.1);
+    }
+    
+    .notification-bell .badge {
+        position: absolute;
+        top: -2px;
+        right: -2px;
+        background: #E30613;
+        color: white;
+        font-size: 10px;
+        font-weight: bold;
+        padding: 2px 6px;
+        border-radius: 10px;
+        min-width: 16px;
+        text-align: center;
+        border: 2px solid white;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        pointer-events: none;
+        z-index: 1001;
+    }
+
+    /* ── Theme Toggle Button (icon only) ── */
+    .theme-toggle-btn {
+        position: relative;
+        cursor: pointer;
+        padding: 0;
+        border-radius: 50%;
+        transition: all 0.3s ease;
+        background: rgba(0, 47, 112, 0.07);
+        border: 1.5px solid rgba(0, 47, 112, 0.12);
+        z-index: 1000;
+        pointer-events: auto;
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        user-select: none;
+    }
+    .theme-toggle-btn:hover {
+        background: rgba(0, 47, 112, 0.13);
+        border-color: rgba(0, 47, 112, 0.3);
+        transform: scale(1.1);
+    }
+    .theme-toggle-btn i {
+        font-size: 15px;
+        color: var(--petron-blue);
+        transition: all 0.3s ease;
+    }
+    .theme-toggle-btn:hover i {
+        color: var(--petron-red);
+        transform: rotate(20deg);
+    }
+
+    /* Dark mode — glowing indigo circle */
+    body.dark-theme .theme-toggle-btn {
+        background: rgba(99, 102, 241, 0.18) !important;
+        border: 1.5px solid rgba(99, 102, 241, 0.55) !important;
+        box-shadow: 0 0 10px rgba(99, 102, 241, 0.35), inset 0 0 6px rgba(99, 102, 241, 0.1) !important;
+    }
+    body.dark-theme .theme-toggle-btn:hover {
+        background: rgba(99, 102, 241, 0.28) !important;
+        box-shadow: 0 0 16px rgba(99, 102, 241, 0.55) !important;
+        transform: scale(1.12) !important;
+    }
+    body.dark-theme .theme-toggle-btn i {
+        color: #a5b4fc !important;
+    }
+    body.dark-theme .theme-toggle-btn:hover i {
+        color: #c7d2fe !important;
+    }
+
+    /* ── Dark Mode Accent Bar (thin glow line at very top of page) ── */
+    body::before {
+        content: '';
+        position: fixed;
+        top: 0; left: 0; right: 0;
+        height: 3px;
+        background: transparent;
+        z-index: 9999;
+        transition: background 0.3s ease;
+        pointer-events: none;
+    }
+    body.dark-theme::before {
+        background: linear-gradient(90deg, #6366f1, #8b5cf6, #3b82f6, #6366f1);
+        background-size: 200% 100%;
+        animation: darkModeBarShimmer 3s linear infinite;
+        box-shadow: 0 0 12px rgba(99,102,241,0.7);
+    }
+    @keyframes darkModeBarShimmer {
+        0%   { background-position: 0% 50%; }
+        100% { background-position: 200% 50%; }
+    }
+
+
+    
+    .notification-bell i {
+        font-size: 15px;  /* Smaller icon */
+        color: var(--petron-blue);
     }
     
     .notification-bell .badge {
@@ -1502,11 +2040,6 @@ if (!isset($pdo) || !$pdo) {
 <body class="app" data-page="<?php echo htmlspecialchars($page_id); ?>" data-role="<?php echo htmlspecialchars($role); ?>">
   <!-- Debug Info (remove after fixing) -->
   <aside class="sidebar" id="mainSidebar">
-    <div class="sidebar-toggle-row">
-        <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" title="Toggle Sidebar">
-            <i class="fas fa-bars" id="sidebarToggleIcon"></i>
-        </button>
-    </div>
     <div class="sidebar-menu">
             <nav class="nav">
 <?php
@@ -1819,6 +2352,10 @@ require_once __DIR__ . '/rbac_menu.php';
     <!-- GLOBAL TOP HEADER -->
     <header class="top-header">
         <div class="header-left">
+            <!-- Sidebar Toggle Button -->
+            <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" aria-label="Toggle Sidebar" style="margin-right: 15px;">
+                <i class="fas fa-bars" id="sidebarToggleIcon"></i>
+            </button>
             <img src="../assets/img/Petron Logo.png" alt="Petron Logo" class="brand-mark" id="petronLogo">
             <div class="brand-text">
                 <div class="brand-title">Petron Station Management System</div>
@@ -1857,9 +2394,9 @@ require_once __DIR__ . '/rbac_menu.php';
                                elseif ($role === 'manager') echo 'Search Transactions / Job Orders / Fuel / Products…';
                                else echo 'Search Transactions / Customers / Products…';
                            ?>"
-                           style="padding:8px 15px;border-radius:25px 0 0 25px;border:2px solid rgba(0,47,112,0.2);border-right:none;font-size:14px;width:300px;background:rgba(255,255,255,0.9);transition:all 0.3s ease;outline:none;">
+                           style="padding:6px 12px;border-radius:25px 0 0 25px;border:2px solid rgba(0,47,112,0.2);border-right:none;font-size:13px;width:220px;background:rgba(255,255,255,0.9);transition:all 0.3s ease;outline:none;">
                     <button type="submit"
-                            style="padding:8px 15px;border-radius:0 25px 25px 0;border:2px solid rgba(0,47,112,0.2);border-left:none;background:var(--petron-blue);color:white;font-size:14px;cursor:pointer;transition:all 0.3s ease;">
+                            style="padding:6px 12px;border-radius:0 25px 25px 0;border:2px solid rgba(0,47,112,0.2);border-left:none;background:var(--petron-blue);color:white;font-size:13px;cursor:pointer;transition:all 0.3s ease;">
                         <i class="fas fa-search"></i>
                     </button>
                 </form>
@@ -1899,6 +2436,11 @@ require_once __DIR__ . '/rbac_menu.php';
             </div>
             <?php endif; ?>
 
+            <!-- Theme Toggle Button -->
+            <div class="theme-toggle-btn" id="themeToggle" title="Switch to Dark Mode" aria-label="Toggle theme">
+                <i class="fas fa-moon" id="themeIcon"></i>
+            </div>
+
             <!-- Profile Dropdown -->
             <?php
             // Build display name from first_name and last_name
@@ -1916,21 +2458,21 @@ require_once __DIR__ . '/rbac_menu.php';
             <div class="profile-access" id="profileMenu">
                 <?php if ($hdr_pic): ?>
                 <img src="<?php echo htmlspecialchars($hdr_pic); ?>" alt="Profile"
-                     style="width:34px;height:34px;border-radius:50%;object-fit:cover;border:2px solid var(--petron-blue);flex-shrink:0;">
+                     style="width:30px;height:30px;border-radius:50%;object-fit:cover;border:2px solid var(--petron-blue);flex-shrink:0;">
                 <?php else: ?>
-                <div style="width:34px;height:34px;border-radius:50%;background:var(--petron-blue);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                    <i class="fas fa-user" style="color:#fff;font-size:15px;"></i>
+                <div style="width:30px;height:30px;border-radius:50%;background:var(--petron-blue);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-user" style="color:#fff;font-size:13px;"></i>
                 </div>
                 <?php endif; ?>
-                <div style="text-align: right; margin-left: 8px;">
-                    <div style="font-weight: 700; font-size: 13px; color: var(--petron-blue); letter-spacing: 0.3px;">
+                <div style="text-align: right; margin-left: 6px;">
+                    <div style="font-weight: 700; font-size: 12px; color: var(--petron-blue); letter-spacing: 0.3px;">
                         <?php echo htmlspecialchars($hdr_display); ?>
                     </div>
-                    <div style="font-size: 11px; color: #888; margin-top: 1px; letter-spacing: 0.5px;">
+                    <div style="font-size: 10px; color: #888; margin-top: 1px; letter-spacing: 0.5px;">
                         <?php echo htmlspecialchars($hdr_role); ?>
                     </div>
                 </div>
-                <i class="fas fa-caret-down" style="font-size:0.8em; color:#888; margin-left: 5px;"></i>
+                <i class="fas fa-caret-down" style="font-size:0.7em; color:#888; margin-left: 4px;"></i>
 
                 <div class="profile-dropdown" id="profileDropdown">
                     <a href="<?php echo htmlspecialchars($public_base_url . '/profile.php'); ?>">
@@ -2179,6 +2721,55 @@ require_once __DIR__ . '/rbac_menu.php';
 
         // Close dropdowns when clicking outside
         document.addEventListener('click', function(e) {
+            if (notifBell && notifDropdown && !notifBell.contains(e.target) && !notifDropdown.contains(e.target)) {
+                notifDropdown.classList.remove('show');
+            }
+            if (profileAccess && profileDropdown && !profileAccess.contains(e.target) && !profileDropdown.contains(e.target)) {
+                profileDropdown.classList.remove('show');
+            }
+        });
+
+        // Theme Toggle Functionality
+        const themeToggle = document.getElementById('themeToggle');
+        const themeIcon   = document.getElementById('themeIcon');
+
+        // Helper — apply dark/light state visually
+        function applyTheme(isDark) {
+            if (isDark) {
+                document.body.classList.add('dark-theme');
+                if (themeIcon)  themeIcon.className = 'fas fa-sun';
+                if (themeToggle) themeToggle.title = 'Switch to Light Mode';
+            } else {
+                document.body.classList.remove('dark-theme');
+                if (themeIcon)  themeIcon.className = 'fas fa-moon';
+                if (themeToggle) themeToggle.title = 'Switch to Dark Mode';
+            }
+        }
+
+        // Load saved theme from localStorage on page init
+        const savedTheme = localStorage.getItem('petronTheme') || 'light';
+        applyTheme(savedTheme === 'dark');
+
+        // Toggle theme on button click
+        if (themeToggle) {
+            themeToggle.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const goingDark = !document.body.classList.contains('dark-theme');
+                applyTheme(goingDark);
+                localStorage.setItem('petronTheme', goingDark ? 'dark' : 'light');
+
+                // Toast notification
+                if (typeof showPetronFlash === 'function') {
+                    showPetronFlash(goingDark ? 'Switched to Dark Mode' : 'Switched to Light Mode', 'info', 2000);
+                }
+            });
+        }
+
+
+        // Close dropdowns when clicking outside
+        document.addEventListener('click', function(e) {
             if (!e.target.closest('#notificationBell') && !e.target.closest('#notificationDropdown')) {
                 if (notifDropdown) notifDropdown.classList.remove('show');
             }
@@ -2288,19 +2879,6 @@ require_once __DIR__ . '/rbac_menu.php';
                 e.stopPropagation();
                 toggleSidebar();
             });
-            
-            // Update tooltip based on state
-            function updateTooltip() {
-                const isCollapsed = mainSidebar.classList.contains('collapsed');
-                sidebarCollapseBtn.title = isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar';
-            }
-            
-            // Initialize tooltip
-            updateTooltip();
-            
-            // Update tooltip when sidebar state changes
-            const observer = new MutationObserver(updateTooltip);
-            observer.observe(mainSidebar, { attributes: true, attributeFilter: ['class'] });
         }
 
             });
@@ -2863,6 +3441,3 @@ require_once __DIR__ . '/rbac_menu.php';
         });
     });
     </script>
-    
-</body>
-</html>

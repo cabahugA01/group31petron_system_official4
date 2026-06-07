@@ -17,7 +17,7 @@ if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
 // 'history' → Customer History (own transactions)
 // 'encode'  → legacy alias for 'list'
 // 'linkage' → legacy Transaction Linkage (kept for backward compat)
-$valid_sections = ['add', 'list', 'encode', 'history', 'linkage'];
+$valid_sections = ['add', 'list', 'encode', 'history', 'linkage', 'edit'];
 $section = isset($_GET['section']) && in_array($_GET['section'], $valid_sections)
     ? $_GET['section'] : 'list';
 
@@ -33,6 +33,7 @@ if (isset($_GET['section']) && in_array($_GET['section'], ['update', 'balances']
 $page_id = match($section) {
     'add'     => 'customer_add',
     'history' => 'customer_history',
+    'edit'    => 'customer_list',
     default   => 'customer_list',
 };
 
@@ -80,9 +81,12 @@ try {
 // ── Handle POST: encode new customer ─────────────────────────────────────────
 $flash_success = $flash_error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'encode_customer') {
-    $name    = trim($_POST['name']    ?? '');
-    $contact = trim($_POST['contact'] ?? '');
-    $id_type = trim($_POST['id_type'] ?? '');
+    $first_name = trim($_POST['first_name'] ?? '');
+    $last_name  = trim($_POST['last_name']  ?? '');
+    $name       = trim($first_name . ' ' . $last_name);
+    $contact    = trim($_POST['contact']    ?? '');
+    $address    = trim($_POST['address']    ?? '');
+    $id_type    = trim($_POST['id_type']    ?? '');
     // credit_limit intentionally omitted — Manager sets this, not Staff
 
     // Handle ID image upload
@@ -116,13 +120,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'encod
     }
 
     if (!$name) {
-        $flash_error = 'Customer name is required.';
+        $flash_error = 'First name and Last name are required.';
     } else {
         try {
             $ins_cols = $pdo->query("SHOW COLUMNS FROM customers")->fetchAll(PDO::FETCH_COLUMN);
             $col_list = ['name', 'station_id', 'status', 'created_at'];
             $val_list = [$name, $station_id, 'active', date('Y-m-d H:i:s')];
             if (in_array('contact_number', $ins_cols)) { $col_list[] = 'contact_number'; $val_list[] = $contact; }
+            if (in_array('address',        $ins_cols)) { $col_list[] = 'address';        $val_list[] = $address; }
             if (in_array('id_type',        $ins_cols)) { $col_list[] = 'id_type';        $val_list[] = $id_type; }
             if (in_array('id_image',       $ins_cols)) { $col_list[] = 'id_image';       $val_list[] = $id_image_path; }
             if (in_array('cr_image',       $ins_cols)) { $col_list[] = 'cr_image';       $val_list[] = $cr_image_path; }
@@ -131,6 +136,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'encod
             $placeholders = implode(',', array_fill(0, count($col_list), '?'));
             $pdo->prepare("INSERT INTO customers (" . implode(',', $col_list) . ") VALUES ($placeholders)")
                 ->execute($val_list);
+            
+            write_audit_log($pdo, 'Create', "Staff registered new customer: $name under Station #$station_id", 'customers', $pdo->lastInsertId(), 'success');
+            
             $_SESSION['success'] = "Customer \"$name\" added successfully.";
             header('Location: customers.php?section=list'); exit;
         } catch (Exception $e) {
@@ -138,17 +146,206 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'encod
         }
     }
 }
+
+// ── Handle POST: update customer (Staff General Info) ───────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_customer') {
+    $cid        = (int)($_POST['customer_id'] ?? 0);
+    $first_name = trim($_POST['first_name'] ?? '');
+    $last_name  = trim($_POST['last_name']  ?? '');
+    $name       = trim($first_name . ' ' . $last_name);
+    $contact    = trim($_POST['contact']    ?? '');
+    $address    = trim($_POST['address']    ?? '');
+    $cust_status= trim($_POST['status']     ?? 'active');
+
+    if (!$name) {
+        $flash_error = 'First name and Last name are required.';
+    } else {
+        try {
+            $stmt = $pdo->prepare("UPDATE customers SET name=?, contact_number=?, address=?, status=? WHERE id=? AND station_id=?");
+            $stmt->execute([$name, $contact, $address, $cust_status, $cid, $station_id]);
+            
+            write_audit_log($pdo, 'Update', "Staff updated customer #$cid: $name general info", 'customers', $cid, 'success');
+            
+            $_SESSION['success'] = "Customer \"$name\" updated successfully.";
+            header('Location: customers.php?section=list'); exit;
+        } catch (Exception $e) {
+            $flash_error = 'Error updating customer: ' . $e->getMessage();
+        }
+    }
+}
+
+// ── Fetch Edit Customer Info if applicable ──────────────────────────────────
+$edit_customer = null;
+if ($section === 'edit') {
+    $edit_id = (int)($_GET['customer_id'] ?? 0);
+    if ($edit_id > 0) {
+        try {
+            $s = $pdo->prepare("SELECT * FROM customers WHERE id=? AND station_id=?");
+            $s->execute([$edit_id, $station_id]);
+            $edit_customer = $s->fetch(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {}
+    }
+    if (!$edit_customer) {
+        header('Location: customers.php?section=list'); exit;
+    }
+}
+
+// ── CSV Export Handler ─────────────────────────────────────────────────────
+$_hist_export_id = isset($_GET['cust_id']) ? (int)$_GET['cust_id'] : 0;
+if ($section === 'history' && isset($_GET['export']) && $_GET['export'] === 'csv' && $_hist_export_id) {
+    // We need to re-run the history query here since it hasn't been run yet
+    $exp_params = [':station_id' => $station_id, ':customer_id' => $_hist_export_id];
+    $exp_where = "cct.station_id = :station_id AND cct.customer_id = :customer_id";
+    if (!empty($_GET['hist_date_from'])) { $exp_where .= " AND cct.created_at >= :date_from"; $exp_params[':date_from'] = $_GET['hist_date_from'] . ' 00:00:00'; }
+    if (!empty($_GET['hist_date_to']))   { $exp_where .= " AND cct.created_at <= :date_to";   $exp_params[':date_to']   = $_GET['hist_date_to'] . ' 23:59:59'; }
+    try {
+        $exp_name_s = $pdo->prepare("SELECT name FROM customers WHERE id=? AND station_id=?");
+        $exp_name_s->execute([$_hist_export_id, $station_id]);
+        $exp_cust_name = $exp_name_s->fetchColumn() ?: 'Customer';
+        $exp_s = $pdo->prepare("SELECT cct.created_at, cct.transaction_id, cct.transaction_type, cct.amount, cct.running_balance, cct.description, COALESCE(u.full_name, u.name, '—') AS recorded_by FROM customer_credit_transactions cct LEFT JOIN users u ON u.id = cct.created_by WHERE $exp_where ORDER BY cct.created_at DESC LIMIT 500");
+        $exp_s->execute($exp_params);
+        $exp_rows = $exp_s->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) { $exp_rows = []; $exp_cust_name = 'Customer'; }
+    ob_end_clean();
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="customer_history_' . date('Ymd') . '.csv"');
+    $out = fopen('php://output', 'w');
+    fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF));
+    fputcsv($out, ['Customer Transaction History']);
+    fputcsv($out, ['Customer:', $exp_cust_name]);
+    fputcsv($out, ['Station:', 'Station #' . $station_id]);
+    fputcsv($out, ['Exported:', date('F d, Y h:i A')]);
+    fputcsv($out, ['Total Records:', count($exp_rows)]);
+    fputcsv($out, []);
+    fputcsv($out, ['Date', 'Reference No.', 'Type', 'Amount (₱)', 'Running Balance (₱)', 'Remarks', 'Recorded By']);
+    foreach ($exp_rows as $er) {
+        fputcsv($out, [
+            date('M d, Y h:i A', strtotime($er['created_at'])),
+            $er['transaction_id'],
+            $er['transaction_type'],
+            number_format((float)$er['amount'], 2),
+            number_format((float)$er['running_balance'], 2),
+            $er['description'] ?? '—',
+            $er['recorded_by']
+        ]);
+    }
+    fclose($out);
+    exit;
+}
+
+// ── History Excel Export Handler ─────────────────────────────────────────────
+$hist_selected_id_pre = isset($_GET['cust_id']) ? (int)$_GET['cust_id'] : 0;
+if ($section === 'history' && isset($_GET['export']) && $_GET['export'] === 'excel' && $hist_selected_id_pre) {
+    $exp_params = [':station_id' => $station_id, ':customer_id' => $hist_selected_id_pre];
+    $exp_where = "cct.station_id = :station_id AND cct.customer_id = :customer_id";
+    if (!empty($_GET['hist_date_from'])) { $exp_where .= " AND cct.created_at >= :date_from"; $exp_params[':date_from'] = $_GET['hist_date_from'] . ' 00:00:00'; }
+    if (!empty($_GET['hist_date_to']))   { $exp_where .= " AND cct.created_at <= :date_to";   $exp_params[':date_to']   = $_GET['hist_date_to'] . ' 23:59:59'; }
+    try {
+        $exp_name_s = $pdo->prepare("SELECT name FROM customers WHERE id=? AND station_id=?");
+        $exp_name_s->execute([$hist_selected_id_pre, $station_id]);
+        $exp_cust_name = $exp_name_s->fetchColumn() ?: 'Customer';
+        $exp_s = $pdo->prepare("SELECT cct.created_at, cct.transaction_id, cct.transaction_type, cct.amount, cct.running_balance, cct.description, COALESCE(u.full_name, u.name, '—') AS recorded_by FROM customer_credit_transactions cct LEFT JOIN users u ON u.id = cct.created_by WHERE $exp_where ORDER BY cct.created_at DESC LIMIT 500");
+        $exp_s->execute($exp_params);
+        $exp_rows = $exp_s->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) { $exp_rows = []; $exp_cust_name = 'Customer'; }
+    ob_end_clean();
+    header('Content-Type: application/vnd.ms-excel; charset=utf-8');
+    header('Content-Disposition: attachment; filename="customer_history_' . date('Ymd') . '.xls"');
+    $out = fopen('php://output', 'w');
+    fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF));
+    fputcsv($out, ['Customer Transaction History']);
+    fputcsv($out, ['Customer:', $exp_cust_name]);
+    fputcsv($out, ['Station:', 'Station #' . $station_id]);
+    fputcsv($out, ['Exported:', date('F d, Y h:i A')]);
+    fputcsv($out, ['Total Records:', count($exp_rows)]);
+    fputcsv($out, []);
+    fputcsv($out, ['Date', 'Reference No.', 'Type', 'Amount (₱)', 'Running Balance (₱)', 'Remarks', 'Recorded By']);
+    foreach ($exp_rows as $er) {
+        fputcsv($out, [
+            date('M d, Y h:i A', strtotime($er['created_at'])),
+            $er['transaction_id'],
+            $er['transaction_type'],
+            number_format((float)$er['amount'], 2),
+            number_format((float)$er['running_balance'], 2),
+            $er['description'] ?? '—',
+            $er['recorded_by']
+        ]);
+    }
+    fclose($out);
+    exit;
+}
+
+// ── Customer List CSV/Excel Export Handler ────────────────────────────────────
+if ($section === 'list' && isset($_GET['export']) && in_array($_GET['export'], ['csv','excel'])) {
+    $is_excel = ($_GET['export'] === 'excel');
+    try {
+        $avail2 = $pdo->query("SHOW COLUMNS FROM customers")->fetchAll(PDO::FETCH_COLUMN);
+        $sel2_contact  = in_array('contact_number', $avail2) ? 'contact_number' : "'' AS contact_number";
+        $sel2_status   = in_array('status',         $avail2) ? 'status'         : "'active' AS status";
+        $sel2_id_type  = in_array('id_type',        $avail2) ? 'id_type'        : "'' AS id_type";
+        $s2 = $pdo->prepare("SELECT id, name, $sel2_contact, $sel2_id_type, $sel2_status FROM customers WHERE station_id=? ORDER BY name");
+        $s2->execute([$station_id]);
+        $list_rows = $s2->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) { $list_rows = []; }
+    ob_end_clean();
+    $filename = 'staff_customer_list_' . date('Y-m-d') . ($is_excel ? '.xls' : '.csv');
+    if ($is_excel) {
+        header('Content-Type: application/vnd.ms-excel; charset=utf-8');
+    } else {
+        header('Content-Type: text/csv; charset=utf-8');
+    }
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    $out2 = fopen('php://output', 'w');
+    fprintf($out2, chr(0xEF).chr(0xBB).chr(0xBF));
+    fputcsv($out2, ['Staff Customer Directory']);
+    fputcsv($out2, ['Station:', 'Station #' . $station_id]);
+    fputcsv($out2, ['Exported:', date('F d, Y h:i A')]);
+    fputcsv($out2, ['Total Records:', count($list_rows)]);
+    fputcsv($out2, []);
+    fputcsv($out2, ['ID', 'Customer Name', 'Contact Number', 'ID Type', 'Status']);
+    foreach ($list_rows as $lr) {
+        fputcsv($out2, [
+            $lr['id'],
+            $lr['name'],
+            $lr['contact_number'] ?? '—',
+            $lr['id_type'] ?? '—',
+            ucfirst($lr['status'] ?? 'active')
+        ]);
+    }
+    fclose($out2);
+    exit;
+}
+
+// ── Summary stats for list section ────────────────────────────────────────
+$summary_total    = 0;
+$summary_active   = 0;
+$summary_inactive = 0;
+$summary_locked   = 0;
+if ($section === 'list') {
+    try {
+        $ss = $pdo->prepare("SELECT status, COUNT(*) AS cnt FROM customers WHERE station_id=? GROUP BY status");
+        $ss->execute([$station_id]);
+        foreach ($ss->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $summary_total += (int)$row['cnt'];
+            if ($row['status'] === 'active')   $summary_active   = (int)$row['cnt'];
+            if ($row['status'] === 'inactive') $summary_inactive = (int)$row['cnt'];
+            if ($row['status'] === 'locked')   $summary_locked   = (int)$row['cnt'];
+        }
+    } catch (Exception $e) {}
+}
+
 // ── Data fetches ──────────────────────────────────────────────────────────────
 $customers = [];
 try {
     // Detect available columns to avoid errors on older schemas
     $avail = $pdo->query("SHOW COLUMNS FROM customers")->fetchAll(PDO::FETCH_COLUMN);
     $sel_contact  = in_array('contact_number', $avail) ? 'contact_number' : "'' AS contact_number";
+    $sel_address  = in_array('address',        $avail) ? 'address'        : "'' AS address";
     $sel_id_type  = in_array('id_type',        $avail) ? 'id_type'        : "'' AS id_type";
     $sel_id_image = in_array('id_image',       $avail) ? 'id_image'       : "'' AS id_image";
     $sel_cr_image = in_array('cr_image',       $avail) ? 'cr_image'       : "'' AS cr_image";
     $sel_status   = in_array('status',         $avail) ? 'status'         : "'active' AS status";
-    $s = $pdo->prepare("SELECT id, name, $sel_contact, $sel_id_type, $sel_id_image, $sel_cr_image, $sel_status FROM customers WHERE station_id=? ORDER BY name");
+    $s = $pdo->prepare("SELECT id, name, $sel_contact, $sel_address, $sel_id_type, $sel_id_image, $sel_cr_image, $sel_status FROM customers WHERE station_id=? ORDER BY name");
     $s->execute([$station_id]);
     $customers = $s->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
@@ -270,171 +467,70 @@ if ($section === 'history') {
             if ($hc['id'] === $hist_selected_id) { $hist_customer_info = $hc; break; }
         }
 
-        // ── Build unified history from job_orders + merchandise_transactions ──
+        // ── Query exclusively from customer_credit_transactions canonical ledger ──
         try {
-            $jo_cols  = $pdo->query("SHOW COLUMNS FROM job_orders")->fetchAll(PDO::FETCH_COLUMN);
-            $mt_cols  = $pdo->query("SHOW COLUMNS FROM merchandise_transactions")->fetchAll(PDO::FETCH_COLUMN);
+            $params = [
+                ':station_id' => $station_id,
+                ':customer_id' => $hist_selected_id
+            ];
             
-            $hist_customer_name = $hist_customer_info['name'] ?? '';
-
-            $has_jo_credit  = in_array('credit_customer_id', $jo_cols);
-            $has_jo_name    = in_array('customer_name', $jo_cols);
+            $where_clauses = [
+                "cct.station_id = :station_id",
+                "cct.customer_id = :customer_id"
+            ];
             
-            $has_mt_cid     = in_array('customer_id', $mt_cols);
-            $has_mt_credit  = in_array('credit_customer_id', $mt_cols);
-            $has_mt_name    = in_array('customer_name', $mt_cols);
-            
-            $jo_num_col     = in_array('job_order_number', $jo_cols) ? 'job_order_number'
-                            : (in_array('job_order_id', $jo_cols) ? 'job_order_id' : 'NULL');
-            $jo_svc_col     = in_array('service_type', $jo_cols) ? 'service_type'
-                            : (in_array('service_description', $jo_cols) ? 'service_description' : "''");
-            $jo_pay_stat    = in_array('payment_status', $jo_cols) ? 'payment_status' : "''";
-            $jo_amt_paid    = in_array('amount_paid', $jo_cols) ? 'amount_paid' : '0';
-            $jo_total       = in_array('actual_cost', $jo_cols) ? 'COALESCE(actual_cost, estimated_cost, 0)'
-                            : (in_array('estimated_cost', $jo_cols) ? 'COALESCE(estimated_cost, 0)' : '0');
-            $jo_plate       = in_array('vehicle_plate', $jo_cols) ? 'vehicle_plate' : "''";
-            
-            $jo_cust_cond   = $has_jo_credit
-                ? '(jo.customer_id=? OR jo.credit_customer_id=?' . ($has_jo_name && $hist_customer_name ? ' OR jo.customer_name=?' : '') . ')'
-                : '(jo.customer_id=?' . ($has_jo_name && $hist_customer_name ? ' OR jo.customer_name=?' : '') . ')';
-                
-            $jo_params      = $has_jo_credit
-                ? [$station_id, $hist_selected_id, $hist_selected_id]
-                : [$station_id, $hist_selected_id];
-                
-            if ($has_jo_name && $hist_customer_name) {
-                $jo_params[] = $hist_customer_name;
-            }
-
-            $mt_date_col    = in_array('transaction_date', $mt_cols) ? 'COALESCE(mt.transaction_date, mt.created_at)' : 'mt.created_at';
-            
-            // Build MT conditions
-            $mt_cond_parts = [];
-            $mt_params = [$station_id];
-            
-            if ($has_mt_cid) {
-                $mt_cond_parts[] = "mt.customer_id=?";
-                $mt_params[] = $hist_selected_id;
-            }
-            if ($has_mt_credit) {
-                $mt_cond_parts[] = "mt.credit_customer_id=?";
-                $mt_params[] = $hist_selected_id;
-            }
-            if ($has_mt_name && $hist_customer_name) {
-                $mt_cond_parts[] = "mt.customer_name=?";
-                $mt_params[] = $hist_customer_name;
-            }
-            
-            $mt_cust_cond = empty($mt_cond_parts) ? '1=0' : '(' . implode(' OR ', $mt_cond_parts) . ')';
-
-            // Date filter (supports single date legacy + from/to range)
-            $jo_date_filter = $mt_date_filter = '';
             if ($hist_filter_date_from && $hist_filter_date_to) {
-                $jo_date_filter = " AND DATE(jo.created_at) BETWEEN " . $pdo->quote($hist_filter_date_from) . " AND " . $pdo->quote($hist_filter_date_to);
-                $mt_date_filter = " AND DATE($mt_date_col) BETWEEN " . $pdo->quote($hist_filter_date_from) . " AND " . $pdo->quote($hist_filter_date_to);
+                $where_clauses[] = "cct.created_at BETWEEN :date_from AND :date_to";
+                $params[':date_from'] = $hist_filter_date_from . ' 00:00:00';
+                $params[':date_to'] = $hist_filter_date_to . ' 23:59:59';
             } elseif ($hist_filter_date_from) {
-                $jo_date_filter = " AND DATE(jo.created_at) >= " . $pdo->quote($hist_filter_date_from);
-                $mt_date_filter = " AND DATE($mt_date_col) >= " . $pdo->quote($hist_filter_date_from);
+                $where_clauses[] = "cct.created_at >= :date_from";
+                $params[':date_from'] = $hist_filter_date_from . ' 00:00:00';
             } elseif ($hist_filter_date_to) {
-                $jo_date_filter = " AND DATE(jo.created_at) <= " . $pdo->quote($hist_filter_date_to);
-                $mt_date_filter = " AND DATE($mt_date_col) <= " . $pdo->quote($hist_filter_date_to);
+                $where_clauses[] = "cct.created_at <= :date_to";
+                $params[':date_to'] = $hist_filter_date_to . ' 23:59:59';
             }
-
-            // ── Job Orders ──
-            $jo_rows = [];
-            if ($hist_filter_type === '' || $hist_filter_type === 'job_order') {
-                $jo_sql = "
-                    SELECT
-                        'job_order' AS record_type,
-                        jo.id,
-                        COALESCE($jo_num_col, CONCAT('JO-', jo.id)) AS ref_number,
-                        COALESCE($jo_svc_col, '—') AS service_label,
-                        '' AS merch_items_summary,
-                        $jo_total AS total_amount,
-                        $jo_amt_paid AS amount_paid,
-                        COALESCE($jo_pay_stat, 'Unpaid') AS payment_status,
-                        jo.payment_method,
-                        jo.status AS txn_status,
-                        jo.created_at AS txn_date,
-                        $jo_plate AS vehicle_plate
-                    FROM job_orders jo
-                    WHERE jo.station_id=? AND $jo_cust_cond
-                    $jo_date_filter
-                    ORDER BY jo.created_at DESC
-                ";
-                $st = $pdo->prepare($jo_sql);
-                $st->execute($jo_params);
-                $jo_rows = $st->fetchAll(PDO::FETCH_ASSOC);
+            
+            $where_str = implode(' AND ', $where_clauses);
+            
+            $query = "
+                SELECT
+                    cct.created_at AS txn_date,
+                    cct.transaction_id AS ref_number,
+                    CASE
+                        WHEN cct.transaction_id LIKE 'JO-%' OR cct.transaction_id LIKE 'AR-%' THEN 'job_order'
+                        ELSE 'merchandise'
+                    END AS record_type,
+                    cct.amount AS total_amount,
+                    cct.amount AS amount_paid,
+                    CASE
+                        WHEN cct.transaction_type = 'Payment' THEN 'Paid'
+                        ELSE 'Unpaid'
+                    END AS payment_status,
+                    cct.description AS service_label,
+                    cct.description AS merch_items_summary
+                FROM customer_credit_transactions cct
+                WHERE $where_str
+                ORDER BY cct.created_at DESC
+                LIMIT 500
+            ";
+            
+            $st = $pdo->prepare($query);
+            $st->execute($params);
+            $hist_records = $st->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Apply in-memory type filter if set
+            if ($hist_filter_type) {
+                $hist_records = array_filter($hist_records, fn($r) => $r['record_type'] === $hist_filter_type);
+                $hist_records = array_values($hist_records);
             }
-
-            // ── Merchandise Transactions ──
-            $mt_rows = [];
-            if (($hist_filter_type === '' || $hist_filter_type === 'merchandise') && ($has_mt_cid || $has_mt_credit)) {
-                $mt_sql = "
-                    SELECT
-                        'merchandise' AS record_type,
-                        mt.id,
-                        COALESCE(mt.transaction_id, CONCAT('MT-', mt.id)) AS ref_number,
-                        COALESCE(mt.job_order_service, '') AS service_label,
-                        '' AS merch_items_summary,
-                        COALESCE(mt.total_amount, 0) AS total_amount,
-                        COALESCE(mt.total_amount, 0) AS amount_paid,
-                        COALESCE(mt.status, 'Unpaid') AS payment_status,
-                        mt.payment_method,
-                        COALESCE(mt.validation_status, mt.status, 'Pending') AS txn_status,
-                        $mt_date_col AS txn_date,
-                        '' AS vehicle_plate
-                    FROM merchandise_transactions mt
-                    WHERE mt.station_id=? AND $mt_cust_cond
-                    $mt_date_filter
-                    ORDER BY $mt_date_col DESC
-                ";
-                $st = $pdo->prepare($mt_sql);
-                $st->execute($mt_params);
-                $mt_rows = $st->fetchAll(PDO::FETCH_ASSOC);
-
-                // Fetch items summary for each merchandise transaction
-                foreach ($mt_rows as &$mtr) {
-                    try {
-                        $is = $pdo->prepare("
-                            SELECT COALESCE(ip.product_name, mti.product_name, 'Item') AS pname, mti.quantity
-                            FROM merchandise_transaction_items mti
-                            LEFT JOIN inventory_products ip ON ip.id = mti.product_id
-                            WHERE mti.transaction_id = ?
-                            LIMIT 5
-                        ");
-                        $is->execute([$mtr['id']]);
-                        $items = $is->fetchAll(PDO::FETCH_ASSOC);
-                        $mtr['merch_items_summary'] = implode(', ', array_map(fn($i) => $i['pname'] . ' ×' . $i['quantity'], $items));
-                    } catch (Exception $e) {}
-                }
-                unset($mtr);
-            }
-
-            // Merge and sort by date desc
-            $hist_records = array_merge($jo_rows, $mt_rows);
-            usort($hist_records, fn($a, $b) => strtotime($b['txn_date']) - strtotime($a['txn_date']));
-
-            // Normalize payment_status
-            foreach ($hist_records as &$hr) {
-                $ps = strtolower(trim($hr['payment_status'] ?? ''));
-                $total = (float)$hr['total_amount'];
-                $paid  = (float)$hr['amount_paid'];
-                if ($ps === 'paid' || $ps === 'completed' || $ps === 'approved') {
-                    $hr['payment_status'] = 'Paid';
-                } elseif ($ps === 'partial' || ($paid > 0 && $paid < $total)) {
-                    $hr['payment_status'] = 'Partial';
-                } else {
-                    $hr['payment_status'] = 'Unpaid';
-                }
-            }
-            unset($hr);
-
-            // Apply payment status filter
+            
+            // Apply in-memory payment status filter if set
             if ($hist_filter_status) {
                 $hist_records = array_filter($hist_records, fn($r) => $r['payment_status'] === $hist_filter_status);
                 $hist_records = array_values($hist_records);
             }
+            
         } catch (Exception $e) {}
     }
 }
@@ -446,6 +542,7 @@ $section_titles = [
     'list'     => ['fas fa-list',       'Customer List'],
     'history'  => ['fas fa-history',    'Customer History'],
     'linkage'  => ['fas fa-link',       'Transaction Linkage'],
+    'edit'     => ['fas fa-user-edit',  'Edit Customer Profile'],
 ];
 [$sec_ico, $sec_title] = $section_titles[$section];
 
@@ -750,9 +847,9 @@ include __DIR__ . '/../partials/header.php';
         <h1><i class="<?= $sec_ico ?>"></i> <?= $sec_title ?></h1>
         <div class="page-subtitle">
             Station #<?= (int)$station_id ?>
-            <?php if ($section === 'add'): ?>&mdash; Fill in the form below to register a new customer.
-            <?php elseif ($section === 'list'): ?>&mdash; All customers registered at this station.
-            <?php elseif ($section === 'history'): ?>&mdash; View a customer's own transaction history.
+            <?php if ($section === 'add'): ?>&mdash; Encode basic customer details (name, contact, address).
+            <?php elseif ($section === 'list'): ?>&mdash; View and manage customer profiles within your station.
+            <?php elseif ($section === 'history'): ?>&mdash; View transaction history within your station.
             <?php endif; ?>
         </div>
     </div>
@@ -789,11 +886,18 @@ include __DIR__ . '/../partials/header.php';
             <input type="hidden" name="action" value="encode_customer">
 
             <div class="cust-form-grid" style="margin-bottom:14px;">
-                <!-- Customer Name -->
-                <div style="grid-column:1/-1;">
-                    <label class="cust-label">Customer Name <span style="color:#dc3545;">*</span></label>
-                    <input type="text" name="name" class="cust-input" placeholder="Full name or company name"
-                           required maxlength="200" value="<?= htmlspecialchars($_POST['name'] ?? '') ?>">
+                <!-- First Name -->
+                <div>
+                    <label class="cust-label">First Name <span style="color:#dc3545;">*</span></label>
+                    <input type="text" name="first_name" class="cust-input" placeholder="First Name"
+                           required maxlength="100" value="<?= htmlspecialchars($_POST['first_name'] ?? '') ?>">
+                </div>
+
+                <!-- Last Name -->
+                <div>
+                    <label class="cust-label">Last Name <span style="color:#dc3545;">*</span></label>
+                    <input type="text" name="last_name" class="cust-input" placeholder="Last Name"
+                           required maxlength="100" value="<?= htmlspecialchars($_POST['last_name'] ?? '') ?>">
                 </div>
 
                 <!-- Contact Number -->
@@ -801,6 +905,13 @@ include __DIR__ . '/../partials/header.php';
                     <label class="cust-label">Contact Number</label>
                     <input type="text" name="contact" class="cust-input" placeholder="e.g. 09XX-XXX-XXXX"
                            maxlength="50" value="<?= htmlspecialchars($_POST['contact'] ?? '') ?>">
+                </div>
+
+                <!-- Address -->
+                <div>
+                    <label class="cust-label">Address</label>
+                    <input type="text" name="address" class="cust-input" placeholder="Complete address"
+                           maxlength="255" value="<?= htmlspecialchars($_POST['address'] ?? '') ?>">
                 </div>
 
                 <!-- Government ID Type -->
@@ -826,7 +937,7 @@ include __DIR__ . '/../partials/header.php';
                 </div>
 
                 <!-- CR Image Upload -->
-                <div>
+                <div style="grid-column: span 2;">
                     <label class="cust-label">Certificate of Registration (CR) <span style="color:#6c757d;font-weight:400;">(optional)</span></label>
                     <input type="file" name="cr_image" class="cust-input" accept="image/*,.pdf"
                            style="padding:6px 10px;">
@@ -834,14 +945,81 @@ include __DIR__ . '/../partials/header.php';
                 </div>
             </div>
 
+            <div style="display:flex;gap:10px;align-items:center;padding-top:8px;border-top:1px solid #f0f0f0;margin-top:4px;">
+                <button type="submit" class="cust-btn cust-btn-primary">
+                    <i class="fas fa-save"></i> Save Customer
+                </button>
+                <a href="customers.php?section=list" class="cust-btn"
+                   style="background:#f1f5f9;color:#475569;text-decoration:none;">
+                    <i class="fas fa-times"></i> Cancel
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ══ SECTION: EDIT CUSTOMER PROFILE ════════════════════════════════════════ -->
+<?php elseif ($section === 'edit' && $edit_customer): ?>
+<?php
+    $name_parts = explode(' ', $edit_customer['name'], 2);
+    $fname = $name_parts[0] ?? '';
+    $lname = $name_parts[1] ?? '';
+?>
+<div class="cust-card">
+    <div class="cust-card-head">
+        <h2 class="cust-card-title"><i class="fas fa-user-edit"></i> Edit Customer General Info</h2>
+        <a href="customers.php?section=list" class="btn-back">
+            <i class="fas fa-arrow-left"></i> Back to Customer List
+        </a>
+    </div>
+    <div class="cust-card-body">
+        <form method="POST" action="customers.php?section=edit" enctype="multipart/form-data">
+            <input type="hidden" name="action" value="update_customer">
+            <input type="hidden" name="customer_id" value="<?= (int)$edit_customer['id'] ?>">
+
+            <div class="cust-form-grid" style="margin-bottom:14px;">
+                <!-- First Name -->
+                <div>
+                    <label class="cust-label">First Name <span style="color:#dc3545;">*</span></label>
+                    <input type="text" name="first_name" class="cust-input" required maxlength="100" value="<?= htmlspecialchars($fname) ?>">
+                </div>
+
+                <!-- Last Name -->
+                <div>
+                    <label class="cust-label">Last Name <span style="color:#dc3545;">*</span></label>
+                    <input type="text" name="last_name" class="cust-input" required maxlength="100" value="<?= htmlspecialchars($lname) ?>">
+                </div>
+
+                <!-- Contact Number -->
+                <div>
+                    <label class="cust-label">Contact Number</label>
+                    <input type="text" name="contact" class="cust-input" maxlength="50" value="<?= htmlspecialchars($edit_customer['contact_number'] ?? '') ?>">
+                </div>
+
+                <!-- Address -->
+                <div>
+                    <label class="cust-label">Address</label>
+                    <input type="text" name="address" class="cust-input" maxlength="255" value="<?= htmlspecialchars($edit_customer['address'] ?? '') ?>">
+                </div>
+
+                <!-- Status -->
+                <div>
+                    <label class="cust-label">Account Status</label>
+                    <select name="status" class="cust-input">
+                        <option value="active" <?= ($edit_customer['status'] ?? 'active') === 'active' ? 'selected' : '' ?>>Active</option>
+                        <option value="inactive" <?= ($edit_customer['status'] ?? 'active') === 'inactive' ? 'selected' : '' ?>>Inactive</option>
+                    </select>
+                </div>
+            </div>
+
             <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin:14px 0;font-size:12px;color:#1e40af;display:flex;align-items:center;gap:8px;">
                 <i class="fas fa-info-circle"></i>
-                <span>Credit line, suki status, and other confidential info are set by the <strong>Manager</strong> — not encoded here.</span>
+                <span>Credit line, suki status, and other confidential fields are protected and can only be updated by a <strong>Manager</strong>.</span>
             </div>
 
             <div style="display:flex;gap:10px;align-items:center;padding-top:8px;border-top:1px solid #f0f0f0;margin-top:4px;">
                 <button type="submit" class="cust-btn cust-btn-primary">
-                    <i class="fas fa-save"></i> Save Customer
+                    <i class="fas fa-save"></i> Save Changes
                 </button>
                 <a href="customers.php?section=list" class="cust-btn"
                    style="background:#f1f5f9;color:#475569;text-decoration:none;">
@@ -858,7 +1036,45 @@ include __DIR__ . '/../partials/header.php';
 <div class="cust-card">
     <div class="cust-card-head">
         <h2 class="cust-card-title"><i class="fas fa-list"></i> Customer List</h2>
-        <span style="font-size:13px;color:#6c757d;"><?= count($customers) ?> customer<?= count($customers) !== 1 ? 's' : '' ?></span>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="font-size:13px;color:#6c757d;"><?= count($customers) ?> customer<?= count($customers) !== 1 ? 's' : '' ?></span>
+            <a href="customers.php?section=add" class="cust-btn cust-btn-primary" style="font-size:12px;padding:7px 14px;text-decoration:none;">
+                <i class="fas fa-user-plus"></i> Add Customer
+            </a>
+            <?php if (!empty($customers)): ?>
+            <a href="customers.php?section=list&export=csv" class="cust-btn" style="background:#28a745;color:#fff;font-size:12px;padding:7px 14px;text-decoration:none;">
+                <i class="fas fa-file-csv"></i> CSV
+            </a>
+            <a href="customers.php?section=list&export=excel" class="cust-btn" style="background:#1f7a3e;color:#fff;font-size:12px;padding:7px 14px;text-decoration:none;">
+                <i class="fas fa-file-excel"></i> Excel
+            </a>
+            <button onclick="printStaffListPDF()" class="cust-btn" style="background:#dc3545;color:#fff;border:none;cursor:pointer;font-size:12px;padding:7px 14px;">
+                <i class="fas fa-file-pdf"></i> PDF
+            </button>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div style="display:flex;gap:12px;padding:14px 18px;background:#f9fafb;border-bottom:1px solid #f0f0f0;flex-wrap:wrap;">
+        <div style="flex:1;min-width:120px;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #002F70;border-radius:6px;padding:10px 14px;">
+            <div style="font-size:20px;font-weight:800;color:#002F70;"><?= $summary_total ?></div>
+            <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px;">Total Customers</div>
+        </div>
+        <div style="flex:1;min-width:120px;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #28a745;border-radius:6px;padding:10px 14px;">
+            <div style="font-size:20px;font-weight:800;color:#28a745;"><?= $summary_active ?></div>
+            <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px;">Active</div>
+        </div>
+        <div style="flex:1;min-width:120px;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #6c757d;border-radius:6px;padding:10px 14px;">
+            <div style="font-size:20px;font-weight:800;color:#6c757d;"><?= $summary_inactive ?></div>
+            <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px;">Inactive</div>
+        </div>
+        <?php if ($summary_locked > 0): ?>
+        <div style="flex:1;min-width:120px;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #7c3aed;border-radius:6px;padding:10px 14px;">
+            <div style="font-size:20px;font-weight:800;color:#7c3aed;"><?= $summary_locked ?></div>
+            <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px;">Locked</div>
+        </div>
+        <?php endif; ?>
     </div>
     <div class="cust-card-body">
         <input type="text" class="cust-search" id="encodeSearch" placeholder="&#128269; Search by name..." oninput="filterTable('encodeSearch','encodeTable')">
@@ -886,10 +1102,16 @@ include __DIR__ . '/../partials/header.php';
                         <td style="font-size:12px;color:#6c757d;"><?= htmlspecialchars($c['id_type'] ?? '—') ?></td>
                         <td><span class="badge-<?= $c['status']==='active'?'active':'inactive' ?>"><?= htmlspecialchars($c['status']) ?></span></td>
                         <td>
-                            <a href="customers.php?section=history&cust_id=<?= (int)$c['id'] ?>"
-                               class="edit-link" title="View history">
-                                <i class="fas fa-history"></i> History
-                            </a>
+                            <div style="display:flex;gap:6px;align-items:center;">
+                                <a href="customers.php?section=edit&customer_id=<?= (int)$c['id'] ?>"
+                                   class="edit-link" style="border-color:#2563eb;color:#2563eb;" title="Edit General Info">
+                                    <i class="fas fa-edit"></i> Edit
+                                </a>
+                                <a href="customers.php?section=history&cust_id=<?= (int)$c['id'] ?>"
+                                   class="edit-link" title="View history">
+                                    <i class="fas fa-history"></i> History
+                                </a>
+                            </div>
                         </td>
                     </tr>
                 <?php endforeach; endif; ?>
@@ -930,8 +1152,6 @@ include __DIR__ . '/../partials/header.php';
             <div style="background:#f0f4ff;border:1px solid #c7d7f9;border-radius:8px;padding:12px 16px;margin-bottom:18px;font-size:13px;">
                 <strong style="color:#002F70;"><?= htmlspecialchars($sel_cust['name']) ?></strong>
                 <span style="color:#6c757d;margin-left:12px;">Contact: <?= htmlspecialchars($sel_cust['contact_number'] ?? '—') ?></span>
-                <?php $sel_remaining = (float)$sel_cust['credit_limit'] - (float)$sel_cust['balance']; ?>
-                <span style="color:#6c757d;margin-left:12px;">Remaining Balance: <strong style="color:<?= $sel_remaining <= 0 ? '#dc3545' : '#28a745' ?>">₱<?= number_format($sel_remaining, 2) ?></strong></span>
             </div>
             <?php endif; ?>
 
@@ -1340,8 +1560,8 @@ include __DIR__ . '/../partials/header.php';
 $ci_balance   = 0; $ci_limit = 0; $ci_remaining = 0;
 $ci_total_txns = 0; $ci_unpaid_count = 0;
 if ($hist_customer_info) {
-    $ci_balance      = (float)$hist_customer_info['balance'];
-    $ci_limit        = (float)$hist_customer_info['credit_limit'];
+    $ci_balance      = (float)($hist_customer_info['balance'] ?? 0);
+    $ci_limit        = (float)($hist_customer_info['credit_limit'] ?? 0);
     $ci_remaining    = $ci_limit - $ci_balance;
     $ci_total_txns   = count($hist_records);
     $ci_unpaid_count = count(array_filter($hist_records, fn($r) => $r['payment_status'] === 'Unpaid'));
@@ -1350,6 +1570,26 @@ if ($hist_customer_info) {
 
 <!-- ── FILTER PANEL ──────────────────────────────────────────────────────── -->
 <div class="ch-filter-panel">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+        <a href="customers.php?section=list" class="btn-back" style="margin:0;">
+            <i class="fas fa-arrow-left"></i> Back to Customer List
+        </a>
+        <?php if ($hist_selected_id && !empty($hist_records)): ?>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <a href="customers.php?section=history&cust_id=<?= $hist_selected_id ?>&export=csv<?= $hist_filter_date_from ? '&hist_date_from='.$hist_filter_date_from : '' ?><?= $hist_filter_date_to ? '&hist_date_to='.$hist_filter_date_to : '' ?>"
+               style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;background:#28a745;color:#fff;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;">
+                <i class="fas fa-file-csv"></i> CSV
+            </a>
+            <a href="customers.php?section=history&cust_id=<?= $hist_selected_id ?>&export=excel<?= $hist_filter_date_from ? '&hist_date_from='.$hist_filter_date_from : '' ?><?= $hist_filter_date_to ? '&hist_date_to='.$hist_filter_date_to : '' ?>"
+               style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;background:#1f7a3e;color:#fff;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;">
+                <i class="fas fa-file-excel"></i> Excel
+            </a>
+            <button onclick="printHistoryPDF()" style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;background:#dc3545;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">
+                <i class="fas fa-file-pdf"></i> PDF
+            </button>
+        </div>
+        <?php endif; ?>
+    </div>
     <form method="GET" action="customers.php" id="chFilterForm">
         <input type="hidden" name="section" value="history">
         <div class="ch-filter-row">
@@ -1449,6 +1689,32 @@ if ($hist_customer_info) {
         <span class="ch-cust-item-value neutral"><?= $ci_total_txns ?></span>
     </span>
 </div>
+
+<!-- ── History Summary Cards ─────────────────────────────────────────────── -->
+<?php if (!empty($hist_records)):
+    $hist_total_amount = array_sum(array_column($hist_records, 'total_amount'));
+    $hist_paid_count   = count(array_filter($hist_records, fn($r) => $r['payment_status'] === 'Paid'));
+    $hist_unpaid_count = count(array_filter($hist_records, fn($r) => $r['payment_status'] === 'Unpaid'));
+?>
+<div id="histSummaryCards" style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+    <div style="flex:1;min-width:130px;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #002F70;border-radius:6px;padding:10px 14px;">
+        <div style="font-size:20px;font-weight:800;color:#002F70;"><?= $ci_total_txns ?></div>
+        <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px;">Total Records</div>
+    </div>
+    <div style="flex:1;min-width:130px;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #dc3545;border-radius:6px;padding:10px 14px;">
+        <div style="font-size:20px;font-weight:800;color:#dc3545;">₱<?= number_format($hist_total_amount, 2) ?></div>
+        <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px;">Total Amount</div>
+    </div>
+    <div style="flex:1;min-width:130px;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #28a745;border-radius:6px;padding:10px 14px;">
+        <div style="font-size:20px;font-weight:800;color:#28a745;"><?= $hist_paid_count ?></div>
+        <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px;">Paid</div>
+    </div>
+    <div style="flex:1;min-width:130px;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #fd7e14;border-radius:6px;padding:10px 14px;">
+        <div style="font-size:20px;font-weight:800;color:#fd7e14;"><?= $hist_unpaid_count ?></div>
+        <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px;">Unpaid</div>
+    </div>
+</div>
+<?php endif; ?>
 <?php endif; ?>
 
 <!-- ── Transaction Table ────────────────────────────────────────────────── -->
@@ -1582,6 +1848,82 @@ function switchLinkageTab(tabId, btn) {
     });
     document.getElementById('tab-' + tabId).style.display = 'block';
     if(btn) btn.classList.add('active');
+}
+
+// Auto-submit history form when customer dropdown changes
+const chCustSelect = document.getElementById('chCustSelect');
+if (chCustSelect) {
+    chCustSelect.addEventListener('change', function() {
+        if (this.value) document.getElementById('chFilterForm').submit();
+    });
+}
+
+// PDF Print for History Section
+function printHistoryPDF() {
+    const printContent = document.getElementById('histSummaryCards') ? 
+        (document.getElementById('histSummaryCards').outerHTML || '') : '';
+    const tableEl = document.querySelector('.ch-table-card');
+    if (!tableEl) { alert('No data to print.'); return; }
+    const custName = document.querySelector('.ch-cust-name') ? document.querySelector('.ch-cust-name').innerText : 'Customer';
+    const w = window.open('', '_blank', 'width=900,height=700');
+    w.document.write(`<!DOCTYPE html>
+<html><head>
+<title>Customer History - ${custName}</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 12px; margin: 20px; color: #333; }
+  h2 { color: #002F6C; margin-bottom: 4px; }
+  .meta { color: #666; font-size: 11px; margin-bottom: 16px; }
+  .cards { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  .card { flex: 1; min-width: 120px; border: 1px solid #ddd; border-left: 4px solid #002F6C; padding: 8px 12px; border-radius: 4px; }
+  .card-val { font-size: 18px; font-weight: 800; color: #002F6C; }
+  .card-lbl { font-size: 10px; text-transform: uppercase; color: #888; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th { background: #002F6C; color: #fff; padding: 8px; text-align: left; }
+  td { padding: 7px 8px; border-bottom: 1px solid #eee; }
+  tr:last-child td { border-bottom: none; }
+  @media print { body { margin: 0; } }
+</style>
+</head><body>
+<h2>Customer Transaction History</h2>
+<div class="meta">Customer: <strong>${custName}</strong> &nbsp;|&nbsp; Printed: ${new Date().toLocaleString()}</div>
+${printContent}
+${tableEl.outerHTML}
+<script>window.onload=function(){window.print();}<\/script>
+</body></html>`);
+    w.document.close();
+}
+
+// PDF Print for Customer List Section
+function printStaffListPDF() {
+    const kpiEl = document.querySelector('.cust-card .cust-card-head');
+    const tableEl = document.getElementById('encodeTable');
+    if (!tableEl) { alert('No customer data to print.'); return; }
+    const w = window.open('', '_blank', 'width=900,height=700');
+    w.document.write(`<!DOCTYPE html>
+<html><head>
+<title>Staff Customer Directory</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 12px; margin: 20px; color: #333; }
+  h2 { color: #002F6C; margin-bottom: 4px; }
+  .meta { color: #666; font-size: 11px; margin-bottom: 16px; }
+  .kpis { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  .kpi { flex: 1; min-width: 100px; border: 1px solid #ddd; border-left: 4px solid #002F6C; padding: 8px 12px; border-radius: 4px; background: #fcfcfc; }
+  .kpi-val { font-size: 18px; font-weight: 800; color: #002F6C; }
+  .kpi-lbl { font-size: 10px; text-transform: uppercase; color: #888; margin-top: 2px; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th { background: #002F6C; color: #fff; padding: 8px; text-align: left; }
+  td { padding: 7px 8px; border-bottom: 1px solid #eee; }
+  .badge-active { background: #d1fae5; color: #065f46; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: bold; }
+  .badge-inactive { background: #f3f4f6; color: #374151; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: bold; }
+  @media print { body { margin: 0; } }
+</style>
+</head><body>
+<h2>Staff Customer Directory</h2>
+<div class="meta">Printed on: \${new Date().toLocaleString()}</div>
+<table style="width:100%;border-collapse:collapse;font-size:11px;">\${tableEl.innerHTML}</table>
+<script>window.onload=function(){window.print();}<\/script>
+</body></html>`);
+    w.document.close();
 }
 </script>
 

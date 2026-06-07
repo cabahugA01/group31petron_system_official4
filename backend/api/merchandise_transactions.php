@@ -570,12 +570,22 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             echo json_encode(['error' => 'A credit account must be selected for Credit (Utang) transactions.']);
             return;
         }
-        // Check credit limit
+        // Check credit limit and customer status
         try {
-            $cstmt = $pdo->prepare("SELECT credit_limit, balance FROM customers WHERE id = ? AND station_id = ? LIMIT 1");
+            $cstmt = $pdo->prepare("SELECT credit_limit, balance, status FROM customers WHERE id = ? AND station_id = ? LIMIT 1");
             $cstmt->execute([$credit_customer_id, $station_id]);
             $cust = $cstmt->fetch(PDO::FETCH_ASSOC);
             if ($cust) {
+                if (($cust['status'] ?? '') === 'locked') {
+                    http_response_code(400);
+                    echo json_encode(['error' => 'Transaction blocked: Customer account is locked.']);
+                    return;
+                }
+                if (($cust['status'] ?? '') === 'inactive') {
+                    http_response_code(400);
+                    echo json_encode(['error' => 'Transaction blocked: Customer account is inactive.']);
+                    return;
+                }
                 $available = floatval($cust['credit_limit']) - floatval($cust['balance']);
                 if ($total_amount > $available) {
                     http_response_code(400);
@@ -949,12 +959,54 @@ function validateTransaction($pdo, $station_id, $role, $me) {
         
         // Update customer balance if credit transaction
         if ($transaction['credit_customer_id']) {
+            $cust_chk = $pdo->prepare("SELECT status FROM customers WHERE id = ?");
+            $cust_chk->execute([$transaction['credit_customer_id']]);
+            $cust_status = $cust_chk->fetchColumn();
+            if ($cust_status === 'locked') {
+                $pdo->rollBack();
+                http_response_code(400);
+                echo json_encode(['error' => 'Approval blocked: Customer account is locked.']);
+                return;
+            }
+            if ($cust_status === 'inactive') {
+                $pdo->rollBack();
+                http_response_code(400);
+                echo json_encode(['error' => 'Approval blocked: Customer account is inactive.']);
+                return;
+            }
+            
             $stmt = $pdo->prepare("
                 UPDATE customers 
                 SET balance = balance + ? 
                 WHERE id = ?
             ");
             $stmt->execute([$transaction['total_amount'], $transaction['credit_customer_id']]);
+            
+            // Also write to customer_credit_transactions
+            try {
+                // Fetch updated balance
+                $bal_stmt = $pdo->prepare("SELECT balance FROM customers WHERE id = ?");
+                $bal_stmt->execute([$transaction['credit_customer_id']]);
+                $new_bal = (float)$bal_stmt->fetchColumn();
+                
+                $cct_stmt = $pdo->prepare("
+                    INSERT INTO customer_credit_transactions (
+                        customer_id, transaction_id, transaction_type, amount, 
+                        running_balance, description, station_id, created_by, created_at
+                    ) VALUES (?, ?, 'Sale', ?, ?, ?, ?, ?, NOW())
+                ");
+                $cct_stmt->execute([
+                    $transaction['credit_customer_id'],
+                    $transaction['transaction_id'],
+                    $transaction['total_amount'],
+                    $new_bal,
+                    "Merchandise Sale (Credit) - Ref: " . $transaction['transaction_id'],
+                    $station_id,
+                    $me['id']
+                ]);
+            } catch (Exception $ccError) {
+                error_log("Error inserting into customer_credit_transactions: " . $ccError->getMessage());
+            }
         }
         
         // Log to audit trail

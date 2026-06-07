@@ -45,6 +45,17 @@ $page_id = match($section) {
 $range = strtolower(trim($_GET['range'] ?? 'month'));
 if (!in_array($range, ['today', 'week', 'month', 'custom'])) $range = 'month';
 
+$sub_tab = trim($_GET['sub_tab'] ?? '');
+if (empty($sub_tab)) {
+    if ($section === 'sales') $sub_tab = 'fuel_sales';
+    elseif ($section === 'job_orders') $sub_tab = 'jo_list';
+    elseif ($section === 'balances') $sub_tab = 'cust_balances';
+    elseif ($section === 'deliveries') $sub_tab = 'merch_deliveries';
+    elseif ($section === 'staff') $sub_tab = 'performance';
+    elseif ($section === 'validation') $sub_tab = 'validation_list';
+    elseif ($section === 'inventory') $sub_tab = 'fuel_inventory';
+}
+
 $today = date('Y-m-d');
 switch ($range) {
     case 'week':
@@ -1606,7 +1617,36 @@ require_once __DIR__ . '/../partials/header.php';
 .page-head .h1 { font-size: 26px; font-weight: 800; color: var(--petron-blue); margin: 0 0 4px; letter-spacing: -.3px; }
 .page-head .sub { font-size: 13px; color: #667085; }
 
-/* Tab navigation - REMOVED */
+/* Sub-tab navigation */
+.rpt-sub-tabs {
+    display: flex;
+    gap: 8px;
+    border-bottom: 2px solid #EAEAEA;
+    padding-bottom: 0px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+.sub-tab-btn {
+    padding: 10px 18px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #64748b;
+    text-decoration: none;
+    border-bottom: 3px solid transparent;
+    transition: all 0.15s ease;
+    margin-bottom: -2px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.sub-tab-btn:hover {
+    color: var(--petron-blue);
+    background: #f8fafc;
+}
+.sub-tab-btn.active {
+    color: var(--petron-blue);
+    border-bottom-color: var(--petron-red);
+}
 
 /* Date range filter bar */
 .rpt-filter-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: #fff; border: 1px solid #EAEAEA; border-radius: 10px; padding: 12px 16px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.04); }
@@ -1617,10 +1657,19 @@ require_once __DIR__ . '/../partials/header.php';
 .rpt-filter-bar input[type="date"] { padding: 6px 10px; border: 1px solid #EAEAEA; border-radius: 6px; font-size: 12px; color: #374151; background: #f8fafc; }
 .rpt-filter-bar .btn-apply { padding: 6px 16px; background: var(--petron-red); color: #fff; border: none; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer; transition: .15s; }
 .rpt-filter-bar .btn-apply:hover { background: #a80000; }
-.rpt-filter-bar .btn-export { padding: 6px 14px; background: #fff; color: var(--petron-blue); border: 1px solid var(--petron-blue); border-radius: 6px; font-size: 12px; font-weight: 700; text-decoration: none; transition: .15s; }
-.rpt-filter-bar .btn-export:hover { background: var(--petron-blue); color: #fff; }
+.rpt-filter-bar .btn-export { display:inline-flex; align-items:center; gap:6px; padding:7px 14px; border-radius:7px; font-size:12px; font-weight:700; text-decoration:none; cursor:pointer; transition:.15s; border:none; }
+.rpt-filter-bar .btn-export:hover { opacity:.88; }
 .rpt-filter-bar .export-buttons { display: flex; gap: 8px; margin-left: auto; }
 #custom-range-inputs { display: flex; align-items: center; gap: 8px; }
+
+/* Card-level export action bar */
+.card-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.btn-act { display:inline-flex; align-items:center; gap:6px; padding:7px 16px; border-radius:7px; font-size:12px; font-weight:700; text-decoration:none; cursor:pointer; transition:.15s; border:none; white-space:nowrap; }
+.btn-act:hover { opacity:.85; transform:translateY(-1px); }
+.btn-act-excel  { background:#1e7e34; color:#fff; }
+.btn-act-csv    { background:#1a3a6b; color:#fff; }
+.btn-act-pdf    { background:#cc0000; color:#fff; }
+.btn-act-back   { background:#6c757d; color:#fff; }
 
 /* Stat cards */
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px; }
@@ -1722,9 +1771,12 @@ require_once __DIR__ . '/../partials/header.php';
     <!-- DATE RANGE FILTER BAR -->
     <form method="GET" action="manager_reports.php" class="rpt-filter-bar" id="filter-form">
         <input type="hidden" name="section" value="<?= htmlspecialchars($section) ?>">
+        <?php if (!empty($sub_tab)): ?>
+        <input type="hidden" name="sub_tab" value="<?= htmlspecialchars($sub_tab) ?>">
+        <?php endif; ?>
         <label>Period:</label>
         <?php foreach (['today' => 'Today', 'week' => 'This Week', 'month' => 'This Month', 'custom' => 'Custom'] as $r => $label): ?>
-        <a href="manager_reports.php?<?= http_build_query(['section' => $section, 'range' => $r, 'start' => $date_start, 'end' => $date_end]) ?>"
+        <a href="manager_reports.php?<?= http_build_query(['section' => $section, 'range' => $r, 'start' => $date_start, 'end' => $date_end, 'sub_tab' => $sub_tab]) ?>"
            class="range-btn<?= $range === $r ? ' active' : '' ?>"
            onclick="if('<?= $r ?>'==='custom'){document.getElementById('custom-range-inputs').style.display='flex';return false;}else{document.getElementById('custom-range-inputs').style.display='none';}">
             <?= $label ?>
@@ -1737,19 +1789,80 @@ require_once __DIR__ . '/../partials/header.php';
             <input type="date" name="end"   value="<?= htmlspecialchars($date_end) ?>"   max="<?= $today ?>">
             <button type="submit" class="btn-apply"><i class="fa-solid fa-filter"></i> Apply</button>
         </div>
-        <?php
-        $exp_base = 'manager_report_export.php?' . http_build_query(['section'=>$section,'range'=>$range,'start'=>$date_start,'end'=>$date_end]);
-        ?>
-        <div class="export-buttons">
-            <a href="<?= $exp_base ?>&format=excel" class="btn-export" style="background:#22c55e;color:#fff;border-color:#22c55e;">
-                <i class="fa-solid fa-file-excel"></i> Excel
-            </a>
-            <a href="<?= $exp_base ?>&format=pdf" class="btn-export" style="background:#dc3545;color:#fff;border-color:#dc3545;" target="_blank">
-                <i class="fa-solid fa-file-pdf"></i> PDF
-            </a>
-        </div>
     </form>
 
+    <?php
+    $sub_tabs_def = [
+        'sales' => [
+            'fuel_sales' => ['label' => 'Fuel Sales', 'icon' => 'fa-gas-pump'],
+            'volume_amount' => ['label' => 'Sales Volume & Amount', 'icon' => 'fa-layer-group'],
+            'merch_sales' => ['label' => 'Merchandise Sales', 'icon' => 'fa-store']
+        ],
+        'job_orders' => [
+            'jo_list' => ['label' => 'Job Orders List', 'icon' => 'fa-wrench'],
+            'status_breakdown' => ['label' => 'Status Breakdown', 'icon' => 'fa-chart-pie'],
+            'staff_perf' => ['label' => 'Staff / Mechanic Performance', 'icon' => 'fa-user-gear']
+        ],
+        'balances' => [
+            'cust_balances' => ['label' => 'Customer Credit Balances', 'icon' => 'fa-users'],
+            'unpaid_jo' => ['label' => 'Unpaid Credit Job Orders', 'icon' => 'fa-wrench'],
+            'unpaid_merch' => ['label' => 'Unpaid Credit Merchandise', 'icon' => 'fa-store']
+        ],
+        'deliveries' => [
+            'merch_deliveries' => ['label' => 'Merchandise & General', 'icon' => 'fa-boxes-stacked'],
+            'fuel_deliveries' => ['label' => 'Fuel Tanker Deliveries', 'icon' => 'fa-gas-pump']
+        ],
+        'staff' => [
+            'performance' => ['label' => 'Staff Performance', 'icon' => 'fa-star'],
+            'attendance' => ['label' => 'Attendance & Shift Logs', 'icon' => 'fa-clock']
+        ],
+        'validation' => [
+            'validation_list' => ['label' => 'Validation Logs', 'icon' => 'fa-clipboard-list'],
+            'manager_summary' => ['label' => 'Manager Activity Summary', 'icon' => 'fa-user-tie']
+        ],
+        'inventory' => [
+            'fuel_inventory' => ['label' => 'Fuel Inventory', 'icon' => 'fa-gas-pump'],
+            'merch_inventory' => ['label' => 'Merchandise Inventory', 'icon' => 'fa-boxes']
+        ]
+    ];
+    ?>
+
+    <?php if (isset($sub_tabs_def[$section])): ?>
+        <div class="rpt-sub-tabs">
+            <?php foreach ($sub_tabs_def[$section] as $sub_key => $sub_info): ?>
+                <?php
+                $sub_url = 'manager_reports.php?' . http_build_query([
+                    'section' => $section,
+                    'range' => $range,
+                    'start' => $date_start,
+                    'end' => $date_end,
+                    'sub_tab' => $sub_key
+                ]);
+                ?>
+                <a href="<?= $sub_url ?>" class="sub-tab-btn<?= $sub_tab === $sub_key ? ' active' : '' ?>">
+                    <i class="fa-solid <?= $sub_info['icon'] ?>"></i> <?= htmlspecialchars($sub_info['label']) ?>
+                </a>
+            <?php endforeach; ?>
+        </div>
+    <?php endif; ?>
+
+    <?php
+    // Reusable export action buttons for every report card
+    $_exp_url = 'manager_report_export.php?' . http_build_query([
+        'section' => $section, 'range' => $range,
+        'start'   => $date_start, 'end'  => $date_end, 'sub_tab' => $sub_tab
+    ]);
+    $_back_url = 'manager_reports.php?' . http_build_query([
+        'section' => $section, 'range' => $range,
+        'start'   => $date_start, 'end'  => $date_end
+    ]);
+    $card_btns = '<div class="card-actions">
+        <a href="'.$_exp_url.'&format=excel" class="btn-act btn-act-excel" title="Export Excel"><i class="fa-solid fa-file-excel"></i> Excel</a>
+        <a href="'.$_exp_url.'&format=csv"   class="btn-act btn-act-csv"   title="Export CSV"><i class="fa-solid fa-file-csv"></i> CSV</a>
+        <a href="'.$_exp_url.'&format=pdf"   class="btn-act btn-act-pdf"   title="View PDF" target="_blank"><i class="fa-solid fa-file-pdf"></i> PDF</a>
+        <a href="'.$_back_url.'"             class="btn-act btn-act-back"  title="Back to Section"><i class="fa-solid fa-arrow-left"></i> Back</a>
+    </div>';
+    ?>
 
     <!-- ============================================================
          SECTION: SALES
@@ -1757,9 +1870,11 @@ require_once __DIR__ . '/../partials/header.php';
     <?php if ($section === 'sales'): ?>
     
     <!-- ── FUEL SALES REPORT ─────────────────────────────────── -->
+    <?php if ($sub_tab === 'fuel_sales'): ?>
     <div class="rpt-card">
         <div class="rpt-card-head">
             <h3><i class="fa-solid fa-gas-pump"></i> Fuel Sales Report <span class="badge-count"><?= count($fuel_sales_data) ?></span></h3>
+            <?= $card_btns ?>
         </div>
         <?php if (empty($fuel_sales_data)): ?>
         <div class="empty-state"><i class="fa-solid fa-gas-pump"></i><p>No fuel sales data for this period.</p></div>
@@ -1819,13 +1934,16 @@ require_once __DIR__ . '/../partials/header.php';
 
     <?php endif; ?>
     </div>
+    <?php endif; ?>
 
     <!-- ── SALES VOLUME & AMOUNT REPORT ──────────────────────── -->
+    <?php if ($sub_tab === 'volume_amount'): ?>
     <div class="rpt-card">
         <div class="rpt-card-head">
             <h3><i class="fa-solid fa-layer-group"></i> Sales Volume &amp; Amount Report
                 <span class="badge-count"><?= count($sales_volume_amount_data) ?></span>
             </h3>
+            <?= $card_btns ?>
         </div>
         <?php if (empty($sales_volume_amount_data)): ?>
         <div class="empty-state"><i class="fa-solid fa-layer-group"></i><p>No volume and amount data for this period.</p></div>
@@ -1864,13 +1982,16 @@ require_once __DIR__ . '/../partials/header.php';
         </div>
         <?php endif; ?>
     </div>
+    <?php endif; ?>
 
     <!-- ── MERCHANDISE SALES REPORT ──────────────────────────── -->
+    <?php if ($sub_tab === 'merch_sales'): ?>
     <div class="rpt-card">
         <div class="rpt-card-head">
             <h3><i class="fa-solid fa-store"></i> Merchandise Sales Report
                 <span class="badge-count"><?= count($merch_sales_data) ?></span>
             </h3>
+            <?= $card_btns ?>
         </div>
         <?php if (empty($merch_sales_data)): ?>
         <div class="empty-state"><i class="fa-solid fa-store"></i><p>No merchandise sales data for this period.</p></div>
@@ -1936,6 +2057,7 @@ require_once __DIR__ . '/../partials/header.php';
 
         <?php endif; ?>
     </div>
+    <?php endif; ?>
 
 
     <?php endif; // end sales ?>
@@ -1974,14 +2096,14 @@ require_once __DIR__ . '/../partials/header.php';
         arsort($staff_perf);
     ?>
 
-
-
     <!-- ── MAIN JOB ORDERS TABLE ─────────────────────────────── -->
+    <?php if ($sub_tab === 'jo_list'): ?>
     <div class="rpt-card">
         <div class="rpt-card-head">
             <h3><i class="fa-solid fa-wrench"></i> Job Orders Report
                 <span class="badge-count"><?= count($jo_rows) ?></span>
             </h3>
+            <?= $card_btns ?>
         </div>
         <?php if (empty($jo_rows)): ?>
         <div class="empty-state"><i class="fa-solid fa-wrench"></i><p>No job orders found for this period.</p></div>
@@ -2056,83 +2178,101 @@ require_once __DIR__ . '/../partials/header.php';
                 </tfoot>
             </table>
         </div>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
 
-        <!-- Status Breakdown -->
-        <div style="margin-top:20px;padding-top:16px;border-top:1px solid #EAEAEA;">
-            <h4 style="font-size:14px;font-weight:700;color:var(--petron-blue);margin-bottom:12px;">Status Breakdown</h4>
-            <div class="table-scroll">
-                <table class="mgr-table">
-                    <thead><tr>
-                        <th>Validation Status</th>
-                        <th>Count</th>
-                        <th>% of Total</th>
-                        <th>Total Cost</th>
-                    </tr></thead>
-                    <tbody>
-                    <?php
-                    $status_cost = [];
-                    foreach ($jo_rows as $r) {
-                        $vs = $r['validation_status'];
-                        if (!isset($status_cost[$vs])) $status_cost[$vs] = ['count'=>0,'total'=>0];
-                        $status_cost[$vs]['count']++;
-                        $status_cost[$vs]['total'] += (float)$r['total_cost'];
-                    }
-                    arsort($status_cost);
-                    $total_jos = count($jo_rows);
-                    foreach ($status_cost as $vs => $d):
-                        $pct = $total_jos > 0 ? ($d['count'] / $total_jos) * 100 : 0;
-                    ?>
-                    <tr>
-                        <td><span class="badge <?= status_badge_class($vs) ?>"><?= htmlspecialchars($vs) ?></span></td>
-                        <td><strong><?= $d['count'] ?></strong></td>
-                        <td>
-                            <div style="display:flex;align-items:center;gap:8px;">
-                                <div class="progress-bar-wrap" style="flex:1;"><div class="progress-bar-fill" style="width:<?= round($pct) ?>%;background:var(--petron-blue);"></div></div>
-                                <span style="font-size:11px;font-weight:700;"><?= number_format($pct,1) ?>%</span>
-                            </div>
-                        </td>
-                        <td>&#8369;<?= number_format($d['total'], 2) ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
+    <!-- Status Breakdown -->
+    <?php if ($sub_tab === 'status_breakdown'): ?>
+    <div class="rpt-card">
+        <div class="rpt-card-head">
+            <h3><i class="fa-solid fa-chart-pie"></i> Status Breakdown</h3>
+            <?= $card_btns ?>
         </div>
-
-        <!-- Staff Performance -->
-        <?php if (!empty($staff_perf)): ?>
-        <div style="margin-top:20px;padding-top:16px;border-top:1px solid #EAEAEA;">
-            <h4 style="font-size:14px;font-weight:700;color:var(--petron-blue);margin-bottom:12px;">Staff / Mechanic Performance</h4>
-            <div class="table-scroll">
-                <table class="mgr-table">
-                    <thead><tr>
-                        <th>Staff / Mechanic</th>
-                        <th>JOs Assigned</th>
-                        <th>Labor Cost</th>
-                        <th>Parts Cost</th>
-                        <th>Total Cost</th>
-                        <th>Avg per JO</th>
-                    </tr></thead>
-                    <tbody>
-                    <?php foreach ($staff_perf as $sname => $d):
-                        $avg = $d['count'] > 0 ? $d['total'] / $d['count'] : 0;
-                    ?>
-                    <tr>
-                        <td><strong><?= htmlspecialchars($sname) ?></strong></td>
-                        <td><?= $d['count'] ?></td>
-                        <td>&#8369;<?= number_format($d['labor'], 2) ?></td>
-                        <td>&#8369;<?= number_format($d['parts'], 2) ?></td>
-                        <td><strong>&#8369;<?= number_format($d['total'], 2) ?></strong></td>
-                        <td>&#8369;<?= number_format($avg, 2) ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
+        <?php if (empty($jo_rows)): ?>
+        <div class="empty-state"><i class="fa-solid fa-chart-pie"></i><p>No job orders found for this period.</p></div>
+        <?php else: ?>
+        <div class="table-scroll">
+            <table class="mgr-table">
+                <thead><tr>
+                    <th>Validation Status</th>
+                    <th>Count</th>
+                    <th>% of Total</th>
+                    <th>Total Cost</th>
+                </tr></thead>
+                <tbody>
+                <?php
+                $status_cost = [];
+                foreach ($jo_rows as $r) {
+                    $vs = $r['validation_status'];
+                    if (!isset($status_cost[$vs])) $status_cost[$vs] = ['count'=>0,'total'=>0];
+                    $status_cost[$vs]['count']++;
+                    $status_cost[$vs]['total'] += (float)$r['total_cost'];
+                }
+                arsort($status_cost);
+                $total_jos = count($jo_rows);
+                foreach ($status_cost as $vs => $d):
+                    $pct = $total_jos > 0 ? ($d['count'] / $total_jos) * 100 : 0;
+                ?>
+                <tr>
+                    <td><span class="badge <?= status_badge_class($vs) ?>"><?= htmlspecialchars($vs) ?></span></td>
+                    <td><strong><?= $d['count'] ?></strong></td>
+                    <td>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <div class="progress-bar-wrap" style="flex:1;"><div class="progress-bar-fill" style="width:<?= round($pct) ?>%;background:var(--petron-blue);"></div></div>
+                            <span style="font-size:11px;font-weight:700;"><?= number_format($pct,1) ?>%</span>
+                        </div>
+                    </td>
+                    <td>&#8369;<?= number_format($d['total'], 2) ?></td>
+                </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
         </div>
         <?php endif; ?>
-        <?php endif; // end empty check ?>
     </div>
+    <?php endif; ?>
+
+    <!-- Staff Performance -->
+    <?php if ($sub_tab === 'staff_perf'): ?>
+    <div class="rpt-card">
+        <div class="rpt-card-head">
+            <h3><i class="fa-solid fa-user-gear"></i> Staff / Mechanic Performance</h3>
+            <?= $card_btns ?>
+        </div>
+        <?php if (empty($staff_perf)): ?>
+        <div class="empty-state"><i class="fa-solid fa-user-gear"></i><p>No performance data available.</p></div>
+        <?php else: ?>
+        <div class="table-scroll">
+            <table class="mgr-table">
+                <thead><tr>
+                    <th>Staff / Mechanic</th>
+                    <th>JOs Assigned</th>
+                    <th>Labor Cost</th>
+                    <th>Parts Cost</th>
+                    <th>Total Cost</th>
+                    <th>Avg per JO</th>
+                </tr></thead>
+                <tbody>
+                <?php foreach ($staff_perf as $sname => $d):
+                    $avg = $d['count'] > 0 ? $d['total'] / $d['count'] : 0;
+                ?>
+                <tr>
+                    <td><strong><?= htmlspecialchars($sname) ?></strong></td>
+                    <td><?= $d['count'] ?></td>
+                    <td>&#8369;<?= number_format($d['labor'], 2) ?></td>
+                    <td>&#8369;<?= number_format($d['parts'], 2) ?></td>
+                    <td><strong>&#8369;<?= number_format($d['total'], 2) ?></strong></td>
+                    <td>&#8369;<?= number_format($avg, 2) ?></td>
+                </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
+
     <?php endif; // end job_orders ?>
 
 
@@ -2145,26 +2285,20 @@ require_once __DIR__ . '/../partials/header.php';
         $grand_credit_limit  = array_sum(array_column($balance_rows, 'credit_limit'));
         $grand_jo_balance    = array_sum(array_column($balance_jo_rows, 'balance_due'));
         $grand_mt_balance    = array_sum(array_column($balance_mt_rows, 'total_amount'));
-        $has_any = !empty($balance_rows) || !empty($balance_jo_rows) || !empty($balance_mt_rows);
     ?>
 
-
-
-    <?php if (!$has_any): ?>
-    <div class="rpt-card">
-        <div class="empty-state"><i class="fa-solid fa-scale-balanced"></i><p>No outstanding customer balances.</p></div>
-    </div>
-    <?php endif; ?>
-
     <!-- ── CUSTOMER CREDIT BALANCES ──────────────────────────── -->
-    <?php if (!empty($balance_rows)): ?>
+    <?php if ($sub_tab === 'cust_balances'): ?>
     <div class="rpt-card">
         <div class="rpt-card-head">
             <h3><i class="fa-solid fa-users"></i> Customer Credit Balances
                 <span class="badge-count"><?= count($balance_rows) ?></span>
             </h3>
-
+            <?= $card_btns ?>
         </div>
+        <?php if (empty($balance_rows)): ?>
+        <div class="empty-state"><i class="fa-solid fa-users"></i><p>No outstanding customer credit balances.</p></div>
+        <?php else: ?>
         <div class="table-scroll">
             <table class="mgr-table">
                 <thead><tr>
@@ -2224,17 +2358,22 @@ require_once __DIR__ . '/../partials/header.php';
                 </tfoot>
             </table>
         </div>
+        <?php endif; ?>
     </div>
     <?php endif; ?>
 
     <!-- ── UNPAID CREDIT JOB ORDERS ──────────────────────────── -->
-    <?php if (!empty($balance_jo_rows)): ?>
+    <?php if ($sub_tab === 'unpaid_jo'): ?>
     <div class="rpt-card">
         <div class="rpt-card-head">
             <h3><i class="fa-solid fa-wrench"></i> Unpaid Credit Job Orders
                 <span class="badge-count"><?= count($balance_jo_rows) ?></span>
             </h3>
+            <?= $card_btns ?>
         </div>
+        <?php if (empty($balance_jo_rows)): ?>
+        <div class="empty-state"><i class="fa-solid fa-wrench"></i><p>No unpaid credit job orders found.</p></div>
+        <?php else: ?>
         <div class="table-scroll">
             <table class="mgr-table">
                 <thead><tr>
@@ -2273,17 +2412,22 @@ require_once __DIR__ . '/../partials/header.php';
                 </tfoot>
             </table>
         </div>
+        <?php endif; ?>
     </div>
     <?php endif; ?>
 
     <!-- ── UNPAID CREDIT MERCHANDISE ─────────────────────────── -->
-    <?php if (!empty($balance_mt_rows)): ?>
+    <?php if ($sub_tab === 'unpaid_merch'): ?>
     <div class="rpt-card">
         <div class="rpt-card-head">
             <h3><i class="fa-solid fa-store"></i> Unpaid Credit Merchandise Transactions
                 <span class="badge-count"><?= count($balance_mt_rows) ?></span>
             </h3>
+            <?= $card_btns ?>
         </div>
+        <?php if (empty($balance_mt_rows)): ?>
+        <div class="empty-state"><i class="fa-solid fa-store"></i><p>No unpaid credit merchandise transactions found.</p></div>
+        <?php else: ?>
         <div class="table-scroll">
             <table class="mgr-table">
                 <thead><tr>
@@ -2315,6 +2459,7 @@ require_once __DIR__ . '/../partials/header.php';
                 </tfoot>
             </table>
         </div>
+        <?php endif; ?>
     </div>
     <?php endif; ?>
 
@@ -2345,20 +2490,14 @@ require_once __DIR__ . '/../partials/header.php';
 
 
 
-    <?php if (!$has_any): ?>
-    <div class="rpt-card">
-        <div class="empty-state"><i class="fa-solid fa-truck"></i><p>No deliveries found for this period.</p></div>
-    </div>
-    <?php endif; ?>
-
     <!-- ── MERCHANDISE / GENERAL DELIVERIES ──────────────────── -->
-    <?php if (!empty($delivery_rows)): ?>
+    <?php if ($sub_tab === 'merch_deliveries'): ?>
     <div class="rpt-card">
         <div class="rpt-card-head">
             <h3><i class="fa-solid fa-boxes-stacked"></i> Merchandise &amp; General Deliveries
                 <span class="badge-count"><?= count($delivery_rows) ?></span>
             </h3>
-
+            <?= $card_btns ?>
         </div>
         <div class="table-scroll">
             <table class="mgr-table">
@@ -2401,13 +2540,13 @@ require_once __DIR__ . '/../partials/header.php';
     <?php endif; ?>
 
     <!-- ── FUEL TANKER DELIVERIES ────────────────────────────── -->
-    <?php if (!empty($fuel_delivery_rows)): ?>
+    <?php if ($sub_tab === 'fuel_deliveries'): ?>
     <div class="rpt-card">
         <div class="rpt-card-head">
             <h3><i class="fa-solid fa-gas-pump"></i> Fuel Tanker Deliveries
                 <span class="badge-count"><?= count($fuel_delivery_rows) ?></span>
             </h3>
-
+            <?= $card_btns ?>
         </div>
         <div class="table-scroll">
             <table class="mgr-table">
@@ -2447,8 +2586,6 @@ require_once __DIR__ . '/../partials/header.php';
     </div>
     <?php endif; ?>
 
-
-
     <?php endif; // end deliveries ?>
 
 
@@ -2475,11 +2612,13 @@ require_once __DIR__ . '/../partials/header.php';
 
 
     <!-- ── STAFF PERFORMANCE TABLE ───────────────────────────── -->
+    <?php if ($sub_tab === 'performance'): ?>
     <div class="rpt-card">
         <div class="rpt-card-head">
             <h3><i class="fa-solid fa-star"></i> Staff Performance Report
                 <span class="badge-count"><?= $staff_count ?></span>
             </h3>
+            <?= $card_btns ?>
         </div>
         <?php if (empty($staff_performance)): ?>
         <div class="empty-state"><i class="fa-solid fa-users"></i><p>No staff performance data for this period.</p></div>
@@ -2546,13 +2685,16 @@ require_once __DIR__ . '/../partials/header.php';
 
         <?php endif; ?>
     </div>
+    <?php endif; ?>
 
     <!-- ── ATTENDANCE & SHIFT LOGS ───────────────────────────── -->
+    <?php if ($sub_tab === 'attendance'): ?>
     <div class="rpt-card">
         <div class="rpt-card-head">
             <h3><i class="fa-solid fa-clock"></i> Attendance &amp; Shift Logs
                 <span class="badge-count"><?= count($attendance_rows) ?></span>
             </h3>
+            <?= $card_btns ?>
         </div>
         <?php if (empty($attendance_rows)): ?>
         <div class="empty-state"><i class="fa-solid fa-clock"></i><p>No attendance records for this period.</p></div>
@@ -2588,6 +2730,7 @@ require_once __DIR__ . '/../partials/header.php';
         </div>
         <?php endif; ?>
     </div>
+    <?php endif; ?>
     <?php endif; // end staff ?>
 
 
@@ -2620,11 +2763,13 @@ require_once __DIR__ . '/../partials/header.php';
 
 
     <!-- ── VALIDATION LOG TABLE ──────────────────────────────── -->
+    <?php if ($sub_tab === 'validation_list'): ?>
     <div class="rpt-card">
         <div class="rpt-card-head">
             <h3><i class="fa-solid fa-clipboard-list"></i> Validation Logs
                 <span class="badge-count"><?= $total_val ?></span>
             </h3>
+            <?= $card_btns ?>
         </div>
         <?php if (empty($validation_rows)): ?>
         <div class="empty-state"><i class="fa-solid fa-clipboard-check"></i><p>No validation records found for this period.</p></div>
@@ -2673,49 +2818,59 @@ require_once __DIR__ . '/../partials/header.php';
             </table>
         </div>
 
-        <!-- Manager Activity Summary -->
-        <?php if (!empty($manager_map)): ?>
-        <div style="margin-top:20px;padding-top:16px;border-top:1px solid #EAEAEA;">
-            <h4 style="font-size:14px;font-weight:700;color:var(--petron-blue);margin-bottom:12px;">Manager Activity Summary</h4>
-            <div class="table-scroll">
-                <table class="mgr-table">
-                    <thead><tr>
-                        <th>Manager</th>
-                        <th>Role</th>
-                        <th>Total Actions</th>
-                        <th>Approved</th>
-                        <th>Adjusted</th>
-                        <th>Rejected</th>
-                        <th>Activity</th>
-                    </tr></thead>
-                    <tbody>
-                    <?php
-                    $max_total = max(array_column($manager_map, 'total')) ?: 1;
-                    foreach ($manager_map as $mgr => $ms):
-                        $pct = round(($ms['total'] / $max_total) * 100);
-                    ?>
-                    <tr>
-                        <td><strong><?= htmlspecialchars($mgr) ?></strong></td>
-                        <td><span class="badge badge-default"><?= ucfirst(htmlspecialchars($ms['role'])) ?></span></td>
-                        <td><strong><?= $ms['total'] ?></strong></td>
-                        <td><span class="badge badge-approved"><?= $ms['approved'] ?></span></td>
-                        <td><span class="badge badge-inprog"><?= $ms['adjusted'] ?></span></td>
-                        <td><span class="badge badge-rejected"><?= $ms['rejected'] ?></span></td>
-                        <td>
-                            <div style="display:flex;align-items:center;gap:8px;">
-                                <div class="progress-bar-wrap" style="flex:1;"><div class="progress-bar-fill" style="width:<?= $pct ?>%;background:var(--petron-blue);"></div></div>
-                                <span style="font-size:11px;font-weight:700;"><?= $pct ?>%</span>
-                            </div>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        <?php endif; ?>
         <?php endif; ?>
     </div>
+    <?php endif; ?>
+
+    <!-- Manager Activity Summary -->
+    <?php if ($sub_tab === 'manager_summary'): ?>
+    <div class="rpt-card">
+        <div class="rpt-card-head">
+            <h3><i class="fa-solid fa-user-tie"></i> Manager Activity Summary</h3>
+            <?= $card_btns ?>
+        </div>
+        <?php if (empty($manager_map)): ?>
+        <div class="empty-state"><i class="fa-solid fa-user-tie"></i><p>No manager activity data for this period.</p></div>
+        <?php else: ?>
+        <div class="table-scroll">
+            <table class="mgr-table">
+                <thead><tr>
+                    <th>Manager</th>
+                    <th>Role</th>
+                    <th>Total Actions</th>
+                    <th>Approved</th>
+                    <th>Adjusted</th>
+                    <th>Rejected</th>
+                    <th>Activity</th>
+                </tr></thead>
+                <tbody>
+                <?php
+                $max_total = max(array_column($manager_map, 'total')) ?: 1;
+                foreach ($manager_map as $mgr => $ms):
+                    $pct = round(($ms['total'] / $max_total) * 100);
+                ?>
+                <tr>
+                    <td><strong><?= htmlspecialchars($mgr) ?></strong></td>
+                    <td><span class="badge badge-default"><?= ucfirst(htmlspecialchars($ms['role'])) ?></span></td>
+                    <td><strong><?= $ms['total'] ?></strong></td>
+                    <td><span class="badge badge-approved"><?= $ms['approved'] ?></span></td>
+                    <td><span class="badge badge-inprog"><?= $ms['adjusted'] ?></span></td>
+                    <td><span class="badge badge-rejected"><?= $ms['rejected'] ?></span></td>
+                    <td>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <div class="progress-bar-wrap" style="flex:1;"><div class="progress-bar-fill" style="width:<?= $pct ?>%;background:var(--petron-blue);"></div></div>
+                            <span style="font-size:11px;font-weight:700;"><?= $pct ?>%</span>
+                        </div>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
+
     <?php endif; // end validation ?>
 
     <!-- ============================================================
@@ -2749,7 +2904,7 @@ require_once __DIR__ . '/../partials/header.php';
             <h3><i class="fa-solid fa-shield-halved"></i> Audit Trail (Manager Validation Logs)
                 <span class="badge-count"><?= $at_total ?></span>
             </h3>
-
+            <?= $card_btns ?>
         </div>
         <?php if (empty($paginated_rows)): ?>
         <div class="empty-state">
@@ -2866,6 +3021,7 @@ require_once __DIR__ . '/../partials/header.php';
     <div class="rpt-card">
         <div class="rpt-card-head">
             <h3><i class="fa-solid fa-scale-unbalanced"></i> Variance Reports <span class="badge-count"><?= count($variance_rows) ?></span></h3>
+            <?= $card_btns ?>
         </div>
         <?php if (empty($variance_rows)): ?>
         <div class="empty-state"><i class="fa-solid fa-scale-balanced"></i><p>No variance reports found.</p></div>
@@ -2910,6 +3066,7 @@ require_once __DIR__ . '/../partials/header.php';
     <div class="rpt-card">
         <div class="rpt-card-head">
             <h3><i class="fa-solid fa-tachometer-alt"></i> Validated Meter Readings <span class="badge-count"><?= count($meter_rows) ?></span></h3>
+            <?= $card_btns ?>
         </div>
         <?php if (empty($meter_rows)): ?>
         <div class="empty-state"><i class="fa-solid fa-tachometer-alt"></i><p>No validated meter readings found.</p></div>
@@ -2946,9 +3103,11 @@ require_once __DIR__ . '/../partials/header.php';
          SECTION: INVENTORY
          ============================================================ -->
     <?php if ($section === 'inventory'): ?>
+    <?php if ($sub_tab === 'fuel_inventory'): ?>
     <div class="rpt-card">
         <div class="rpt-card-head">
             <h3><i class="fa-solid fa-gas-pump"></i> Fuel Inventory</h3>
+            <?= $card_btns ?>
         </div>
         <?php if (empty($inventory_rows)): ?>
         <div class="empty-state"><i class="fa-solid fa-gas-pump"></i><p>No fuel inventory found.</p></div>
@@ -2982,10 +3141,13 @@ require_once __DIR__ . '/../partials/header.php';
         </div>
         <?php endif; ?>
     </div>
+    <?php endif; ?>
 
+    <?php if ($sub_tab === 'merch_inventory'): ?>
     <div class="rpt-card">
         <div class="rpt-card-head">
             <h3><i class="fa-solid fa-boxes"></i> Merchandise Inventory</h3>
+            <?= $card_btns ?>
         </div>
         <?php if (empty($inventory_merch_rows)): ?>
         <div class="empty-state"><i class="fa-solid fa-boxes"></i><p>No merchandise inventory found.</p></div>
@@ -3016,6 +3178,7 @@ require_once __DIR__ . '/../partials/header.php';
         <?php endif; ?>
     </div>
     <?php endif; ?>
+    <?php endif; // end inventory ?>
 
     <!-- ============================================================
          SECTION: PRICE LOGS
@@ -3024,7 +3187,8 @@ require_once __DIR__ . '/../partials/header.php';
     <div class="rpt-card">
         <div class="rpt-card-head">
             <h3><i class="fa-solid fa-tags"></i> Fuel Price Change Log <span class="badge-count"><?= count($price_log_rows) ?></span></h3>
-            <div style="font-size:.78rem; color:#888; margin-top:4px;">
+            <?= $card_btns ?>
+            <div style="font-size:.78rem; color:#888; margin-top:4px; flex-basis:100%;">
                 <i class="fas fa-shield-alt" style="color:#0056b3;"></i>
                 Immutable log — every price change and rollback is recorded with Manager ID, old price, new price, reason, and timestamp.
                 <?php if ($role === 'manager'): ?>

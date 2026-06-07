@@ -77,10 +77,14 @@ try {
         encoded_by     INT NOT NULL,
         encoded_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         batch_ref      VARCHAR(100) NULL,
+        delivery_ref   VARCHAR(100) NULL,
         INDEX idx_station (station_id),
         INDEX idx_encoded_at (encoded_at),
         INDEX idx_delivery_id (delivery_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    
+    // Add delivery_ref column if not exists (migration)
+    $pdo->exec("ALTER TABLE fuel_stock_in ADD COLUMN IF NOT EXISTS delivery_ref VARCHAR(100) NULL");
 } catch (Exception $e) {}
 
 // Bootstrap fuel_batches table — mirrors merchandise_batches but for fuel
@@ -170,37 +174,79 @@ function handle_submit_stock_in($pdo, $me, $role, $station_id) {
         return;
     }
 
-    $po_id      = (int)($input['po_id']     ?? 0);
-    $items      = $input['items']           ?? [];
-    $batch_note = trim($input['batch_note'] ?? '');
-    $batch_id   = trim($input['batch_id']   ?? '');  // Staff-entered or PO batch_id
+    $delivery_id = (int)($input['delivery_id'] ?? 0);  // NEW: from deliveries_oversight
+    $po_id       = (int)($input['po_id']       ?? 0);  // LEGACY: fallback for old flow
+    $items       = $input['items']             ?? [];
+    $batch_note  = trim($input['batch_note']   ?? '');
+    $batch_id    = trim($input['batch_id']     ?? '');  // Staff-entered or delivery batch_id
 
-    if ($po_id <= 0) {
-        echo json_encode(['success' => false, 'message' => 'PO ID is required']);
+    // Prioritize delivery_id (new flow from Admin processing)
+    if ($delivery_id > 0) {
+        // NEW FLOW: Fetch from deliveries_oversight
+        $stmt = $pdo->prepare("
+            SELECT 
+                do2.id AS delivery_id,
+                do2.delivery_ref AS po_number,
+                do2.supplier,
+                do2.product AS product_name,
+                do2.quantity,
+                do2.expected_quantity,
+                do2.actual_quantity,
+                do2.unit_price,
+                do2.batch_id AS delivery_batch_id,
+                ip.id AS product_id,
+                ip.sku,
+                ip.category
+            FROM deliveries_oversight do2
+            LEFT JOIN inventory_products ip 
+                   ON ip.product_name = do2.product AND ip.category != 'Fuel'
+            WHERE do2.id = ? AND do2.station_id = ?
+              AND do2.delivery_type = 'merchandise'
+              AND do2.status IN ('Validated', 'Partial Delivery', 'Damaged Items')
+        ");
+        $stmt->execute([$delivery_id, $station_id]);
+        $po = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$po) {
+            echo json_encode(['success' => false, 'message' => 'Delivery not found, not yet validated by Admin, or already stocked in']);
+            return;
+        }
+        
+        // Map delivery data to legacy PO structure for compatibility
+        $po['id'] = $delivery_id;
+        $po['quantity'] = $po['actual_quantity'] ?: $po['quantity'];
+        $po['supplier_name'] = $po['supplier'];
+        if (!$batch_id && !empty($po['delivery_batch_id'])) {
+            $batch_id = $po['delivery_batch_id'];
+        }
+        
+    } elseif ($po_id > 0) {
+        // LEGACY FLOW: Fetch from purchase_orders (for backwards compatibility)
+        $stmt = $pdo->prepare("
+            SELECT po.*, ip.id AS product_id, ip.sku, ip.category
+            FROM purchase_orders po
+            LEFT JOIN inventory_products ip
+                   ON ip.product_name = po.product_name AND ip.category != 'Fuel'
+            WHERE po.id = ? AND po.station_id = ?
+              AND po.type = 'merch'
+              AND po.admin_finalized    = 1
+              AND po.delivery_validated = 1
+              AND po.stock_in_done      = 0
+        ");
+        $stmt->execute([$po_id, $station_id]);
+        $po = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$po) {
+            echo json_encode(['success' => false, 'message' => 'PO not found, already stocked in, not yet finalized by Admin, or not yet validated by Manager']);
+            return;
+        }
+    } else {
+        echo json_encode(['success' => false, 'message' => 'Delivery ID or PO ID is required']);
         return;
     }
+
     if (empty($items)) {
         echo json_encode(['success' => false, 'message' => 'No items provided']);
-        return;
-    }
-
-    // Fetch and validate the PO — must be admin-finalized AND manager-validated
-    $stmt = $pdo->prepare("
-        SELECT po.*, ip.id AS product_id, ip.sku, ip.category
-        FROM purchase_orders po
-        LEFT JOIN inventory_products ip
-               ON ip.product_name = po.product_name AND ip.category != 'Fuel'
-        WHERE po.id = ? AND po.station_id = ?
-          AND po.type = 'merch'
-          AND po.admin_finalized    = 1
-          AND po.delivery_validated = 1
-          AND po.stock_in_done      = 0
-    ");
-    $stmt->execute([$po_id, $station_id]);
-    $po = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if (!$po) {
-        echo json_encode(['success' => false, 'message' => 'PO not found, already stocked in, not yet finalized by Admin, or not yet validated by Manager']);
         return;
     }
 
@@ -330,6 +376,7 @@ function handle_submit_stock_in($pdo, $me, $role, $station_id) {
                     $batchCheck = $pdo->prepare("SELECT id FROM merchandise_batches WHERE product_id = ? AND station_id = ? AND batch_number = ? LIMIT 1");
                     $batchCheck->execute([$item_product_id, $station_id, $effective_batch_id]);
                     if (!$batchCheck->fetch()) {
+                        $delivery_ref_id = $delivery_id > 0 ? $delivery_id : $po_id;
                         $pdo->prepare("
                             INSERT INTO merchandise_batches
                                 (product_id, station_id, batch_number, delivery_id, quantity_received,
@@ -340,13 +387,13 @@ function handle_submit_stock_in($pdo, $me, $role, $station_id) {
                             $item_product_id,
                             $station_id,
                             $effective_batch_id,
-                            $po_id,              // delivery_id = po_id for traceability
+                            $delivery_ref_id,    // delivery_id for traceability
                             $qty_received,
                             $qty_to_add,         // remaining = qty added to stock
                             $unit_cost,
-                            $po['supplier_name'] ?? '',
+                            $po['supplier_name'] ?? $po['supplier'] ?? '',
                             $me['id'],
-                            ($remarks ?: ('Stock-In from PO ' . ($po['po_number'] ?? '')))
+                            ($remarks ?: ('Stock-In from ' . ($po['po_number'] ?? 'Delivery')))
                         ]);
                     } else {
                         // Batch already exists — update remaining_qty (cumulative delivery)
@@ -375,35 +422,49 @@ function handle_submit_stock_in($pdo, $me, $role, $station_id) {
             ];
         }
 
-        // Mark PO as stock-in done
-        $pdo->prepare("
-            UPDATE purchase_orders
-            SET stock_in_done = 1,
-                stock_in_at   = NOW(),
-                stock_in_by   = ?,
-                status        = 'Stock-In Complete',
-                updated_at    = NOW()
-            WHERE id = ?
-        ")->execute([$me['id'], $po_id]);
+        // Mark delivery as stocked in
+        if ($delivery_id > 0) {
+            // NEW FLOW: Update deliveries_oversight
+            $pdo->prepare("
+                UPDATE deliveries_oversight
+                SET status = 'Stock-In Complete',
+                    updated_at = NOW()
+                WHERE id = ?
+            ")->execute([$delivery_id]);
+        } elseif ($po_id > 0) {
+            // LEGACY FLOW: Update purchase_orders
+            $pdo->prepare("
+                UPDATE purchase_orders
+                SET stock_in_done = 1,
+                    stock_in_at   = NOW(),
+                    stock_in_by   = ?,
+                    status        = 'Stock-In Complete',
+                    updated_at    = NOW()
+                WHERE id = ?
+            ")->execute([$me['id'], $po_id]);
 
-        // Update stock_requests status to 'Received' if linked
-        if (!empty($po['request_id'])) {
-            try {
-                $pdo->prepare("UPDATE stock_requests SET status = 'Received' WHERE id = ?")
-                    ->execute([$po['request_id']]);
-            } catch (Exception $e) {}
+            // Update stock_requests status to 'Received' if linked
+            if (!empty($po['request_id'])) {
+                try {
+                    $pdo->prepare("UPDATE stock_requests SET status = 'Received' WHERE id = ?")
+                        ->execute([$po['request_id']]);
+                } catch (Exception $e) {}
+            }
         }
 
         // Audit log
-        $detail = "Stock-In | PO: {$po['po_number']} | Product: {$po['product_name']} | Received: {$total_received} | Batch: {$effective_batch_id} | Ref: {$batch_ref}";
+        $ref_number = $delivery_id > 0 ? "Delivery #{$delivery_id}" : "PO: {$po['po_number']}";
+        $detail = "Stock-In | {$ref_number} | Product: {$po['product_name']} | Received: {$total_received} | Batch: {$effective_batch_id} | Ref: {$batch_ref}";
         if ($batch_note) $detail .= " | Note: {$batch_note}";
         try {
+            $entity_id = $delivery_id > 0 ? $delivery_id : $po_id;
+            $entity_type = $delivery_id > 0 ? 'deliveries_oversight' : 'purchase_orders';
             $pdo->prepare("
                 INSERT INTO audit_logs
                     (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at)
-                VALUES (?, 'inventory', 'Stock-In', ?, 'purchase_orders', ?, 'Success', ?, ?, NOW())
+                VALUES (?, 'inventory', 'Stock-In', ?, ?, ?, 'Success', ?, ?, NOW())
             ")->execute([
-                $me['id'], $detail, $po_id,
+                $me['id'], $detail, $entity_type, $entity_id,
                 $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0',
                 $_SERVER['HTTP_USER_AGENT'] ?? ''
             ]);
@@ -472,37 +533,78 @@ function handle_submit_fuel_stock_in($pdo, $me, $role, $station_id) {
         return;
     }
 
-    $delivery_id  = (int)($input['delivery_id']    ?? 0);
-    $qty_received = (float)($input['qty_received']  ?? 0);
-    $condition    = $input['condition']             ?? 'Good';
-    $remarks      = trim($input['remarks']          ?? '');
-    $batch_id     = trim($input['batch_id']         ?? '');
-    $unit_cost    = (float)($input['unit_cost']     ?? 0);
+    $oversight_delivery_id = (int)($input['oversight_delivery_id'] ?? 0); // NEW: from deliveries_oversight
+    $delivery_id           = (int)($input['delivery_id']          ?? 0);  // LEGACY: from fuel_deliveries
+    $qty_received          = (float)($input['qty_received']        ?? 0);
+    $condition             = $input['condition']                   ?? 'Good';
+    $remarks               = trim($input['remarks']                ?? '');
+    $batch_id              = trim($input['batch_id']               ?? '');
+    $unit_cost             = (float)($input['unit_cost']           ?? 0);
 
-    if ($delivery_id <= 0) {
+    // Prioritize oversight_delivery_id (new flow from Admin processing)
+    if ($oversight_delivery_id > 0) {
+        // NEW FLOW: Fetch from deliveries_oversight
+        $stmt = $pdo->prepare("
+            SELECT 
+                do2.id AS oversight_id,
+                do2.delivery_ref,
+                do2.supplier,
+                do2.product AS fuel_type,
+                do2.quantity AS delivery_liters,
+                do2.expected_quantity,
+                do2.actual_quantity,
+                do2.unit_price,
+                do2.batch_id AS delivery_batch_id,
+                do2.dr_number AS invoice_no
+            FROM deliveries_oversight do2
+            WHERE do2.id = ? AND do2.station_id = ?
+              AND do2.delivery_type = 'fuel'
+              AND do2.status IN ('Validated', 'Partial Delivery', 'Damaged Items')
+        ");
+        $stmt->execute([$oversight_delivery_id, $station_id]);
+        $del = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$del) {
+            echo json_encode(['success' => false, 'message' => 'Fuel delivery not found, not yet validated by Admin, or already stocked in.']);
+            return;
+        }
+        
+        $fuel_type = $del['fuel_type'];
+        $qty_expected = (float)($del['actual_quantity'] ?: $del['delivery_liters']);
+        $delivery_ref_id = $oversight_delivery_id;
+        $is_new_flow = true;
+        
+        if (!$batch_id && !empty($del['delivery_batch_id'])) {
+            $batch_id = $del['delivery_batch_id'];
+        }
+        
+    } elseif ($delivery_id > 0) {
+        // LEGACY FLOW: Fetch from fuel_deliveries
+        $stmt = $pdo->prepare("
+            SELECT * FROM fuel_deliveries
+            WHERE id = ? AND station_id = ? AND status = 'Awaiting Stock-In'
+        ");
+        $stmt->execute([$delivery_id, $station_id]);
+        $del = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$del) {
+            echo json_encode(['success' => false, 'message' => 'Pending fuel delivery not found or already stocked in.']);
+            return;
+        }
+        
+        $fuel_type = $del['fuel_type'];
+        $qty_expected = (float)$del['delivery_liters'];
+        $delivery_ref_id = $delivery_id;
+        $is_new_flow = false;
+    } else {
         echo json_encode(['success' => false, 'message' => 'Delivery ID is required']);
         return;
     }
+
     if ($qty_received < 0) {
         echo json_encode(['success' => false, 'message' => 'Quantity received cannot be negative']);
         return;
     }
-
-    // Fetch the pending fuel delivery
-    $stmt = $pdo->prepare("
-        SELECT * FROM fuel_deliveries
-        WHERE id = ? AND station_id = ? AND status = 'Awaiting Stock-In'
-    ");
-    $stmt->execute([$delivery_id, $station_id]);
-    $del = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if (!$del) {
-        echo json_encode(['success' => false, 'message' => 'Pending fuel delivery not found or already stocked in.']);
-        return;
-    }
-
-    $fuel_type = $del['fuel_type'];
-    $qty_expected = (float)$del['delivery_liters'];
 
     // Resolve fuel_type_id
     $fuel_type_id = null;
@@ -543,24 +645,35 @@ function handle_submit_fuel_stock_in($pdo, $me, $role, $station_id) {
 
     $pdo->beginTransaction();
     try {
-        // Update fuel deliveries status
-        $pdo->prepare("
-            UPDATE fuel_deliveries
-            SET status = 'Stock-In Complete',
-                notes = CONCAT(IFNULL(notes,''), ' | Stock-In Completed: ', ?)
-            WHERE id = ?
-        ")->execute([$remarks ?: 'Completed', $delivery_id]);
+        // Update delivery status
+        if ($is_new_flow) {
+            // NEW FLOW: Update deliveries_oversight
+            $pdo->prepare("
+                UPDATE deliveries_oversight
+                SET status = 'Stock-In Complete',
+                    updated_at = NOW()
+                WHERE id = ?
+            ")->execute([$oversight_delivery_id]);
+        } else {
+            // LEGACY FLOW: Update fuel_deliveries
+            $pdo->prepare("
+                UPDATE fuel_deliveries
+                SET status = 'Stock-In Complete',
+                    notes = CONCAT(IFNULL(notes,''), ' | Stock-In Completed: ', ?)
+                WHERE id = ?
+            ")->execute([$remarks ?: 'Completed', $delivery_id]);
 
-        // If PO-based, also update deliveries_oversight status to 'Stock-In Complete'
-        if ($del['invoice_no']) {
-            try {
-                $pdo->prepare("
-                    UPDATE deliveries_oversight
-                    SET status = 'Stock-In Complete',
-                        updated_at = NOW()
-                    WHERE station_id = ? AND dr_number = ? AND LOWER(TRIM(product)) = LOWER(TRIM(?))
-                ")->execute([$station_id, $del['invoice_no'], $fuel_type]);
-            } catch (Exception $e) {}
+            // If PO-based, also update deliveries_oversight status to 'Stock-In Complete'
+            if ($del['invoice_no']) {
+                try {
+                    $pdo->prepare("
+                        UPDATE deliveries_oversight
+                        SET status = 'Stock-In Complete',
+                            updated_at = NOW()
+                        WHERE station_id = ? AND dr_number = ? AND LOWER(TRIM(product)) = LOWER(TRIM(?))
+                    ")->execute([$station_id, $del['invoice_no'], $fuel_type]);
+                } catch (Exception $e) {}
+            }
         }
 
         // Update fuel_inventory
@@ -601,10 +714,10 @@ function handle_submit_fuel_stock_in($pdo, $me, $role, $station_id) {
         $pdo->prepare("
             INSERT INTO fuel_stock_in
                 (delivery_id, invoice_no, station_id, fuel_type, qty_expected, qty_received, qty_variance,
-                 condition_flag, remarks, level_before, level_after, encoded_by, encoded_at, batch_ref)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
+                 condition_flag, remarks, level_before, level_after, encoded_by, encoded_at, batch_ref, delivery_ref)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?)
         ")->execute([
-            $delivery_id,
+            $delivery_ref_id,
             $del['invoice_no'] ?? '',
             $station_id,
             $fuel_type,
@@ -616,7 +729,8 @@ function handle_submit_fuel_stock_in($pdo, $me, $role, $station_id) {
             $level_before,
             $level_after,
             $me['id'],
-            $batch_ref
+            $batch_ref,
+            $del['delivery_ref'] ?? ''
         ]);
 
         // ── Create / Update fuel_batches record (FIFO tracking) ───────────────
@@ -650,7 +764,7 @@ function handle_submit_fuel_stock_in($pdo, $me, $role, $station_id) {
                         $fuel_type_id,
                         $station_id,
                         $batch_ref,
-                        $delivery_id,
+                        $delivery_ref_id,
                         $qty_to_add,
                         $qty_to_add,
                         $unit_cost ?: 0,
@@ -665,15 +779,17 @@ function handle_submit_fuel_stock_in($pdo, $me, $role, $station_id) {
         }
 
         // Audit log
-        $detail = "Fuel Stock-In | Delivery #{$delivery_id} | Fuel: {$fuel_type} | Received: {$qty_received} L | Batch: {$batch_ref}";
+        $ref_desc = $is_new_flow ? "Delivery #{$oversight_delivery_id} ({$del['delivery_ref']})" : "Delivery #{$delivery_id}";
+        $detail = "Fuel Stock-In | {$ref_desc} | Fuel: {$fuel_type} | Received: {$qty_received} L | Batch: {$batch_ref}";
         if ($remarks) $detail .= " | Note: {$remarks}";
         try {
+            $entity_type = $is_new_flow ? 'deliveries_oversight' : 'fuel_deliveries';
             $pdo->prepare("
                 INSERT INTO audit_logs
                     (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at)
-                VALUES (?, 'fuel_management', 'Fuel Stock-In', ?, 'fuel_deliveries', ?, 'Success', ?, ?, NOW())
+                VALUES (?, 'fuel_management', 'Fuel Stock-In', ?, ?, ?, 'Success', ?, ?, NOW())
             ")->execute([
-                $me['id'], $detail, $delivery_id,
+                $me['id'], $detail, $entity_type, $delivery_ref_id,
                 $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0',
                 $_SERVER['HTTP_USER_AGENT'] ?? ''
             ]);

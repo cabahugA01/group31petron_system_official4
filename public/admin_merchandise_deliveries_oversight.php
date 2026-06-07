@@ -26,10 +26,26 @@ try {
     $station_name = $s->fetchColumn() ?: $station_name;
 } catch (Exception $e) {}
 
+/* ══════════════════════════════════════════════════════════
+   ADD PAYMENT COLUMNS TO deliveries_oversight TABLE
+══════════════════════════════════════════════════════════ */
+$payment_columns = [
+    "ALTER TABLE deliveries_oversight ADD COLUMN unit_price DECIMAL(12,2) DEFAULT 0",
+    "ALTER TABLE deliveries_oversight ADD COLUMN expected_quantity DECIMAL(12,3) DEFAULT 0",
+    "ALTER TABLE deliveries_oversight ADD COLUMN actual_quantity DECIMAL(12,3) DEFAULT 0",
+    "ALTER TABLE deliveries_oversight ADD COLUMN damaged_quantity DECIMAL(12,3) DEFAULT 0",
+    "ALTER TABLE deliveries_oversight ADD COLUMN expected_amount DECIMAL(12,2) DEFAULT 0",
+    "ALTER TABLE deliveries_oversight ADD COLUMN payable_amount DECIMAL(12,2) DEFAULT 0",
+    "ALTER TABLE deliveries_oversight ADD COLUMN discrepancy_type ENUM('','Partial','Damaged','Rejected','Mixed') DEFAULT ''",
+];
+foreach ($payment_columns as $col_sql) {
+    try { $pdo->exec($col_sql); } catch (Exception $e) {}
+}
+
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
-:root{--blue:#002F70;--red:#dc3545;--green:#28a745;--orange:#fd7e14;--gray:#6c757d;--light:#f8f9fa;}
+:root{--blue:#002F70;--red:#dc3545;--green:#28a745;--orange:#fd7e14;--gray:#6c757d;--light:#f8f9fa;--purple:#6f42c1;--yellow:#ffc107;}
 .page-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;flex-wrap:wrap;gap:12px;}
 .page-head h1{margin:0;font-size:1.6rem;color:var(--blue);display:flex;align-items:center;gap:10px;}
 .page-subtitle{font-size:13px;color:var(--gray);margin:4px 0 0;}
@@ -55,30 +71,46 @@ include __DIR__ . '/../partials/header.php';
 .btn-sm{padding:5px 10px;font-size:12px;}
 .btn:disabled{opacity:.5;cursor:not-allowed;}
 /* ── Table ── */
-.table-wrap{overflow-x:hidden;}
+.table-wrap{overflow-x:auto;}
 table.dt{width:100%;border-collapse:collapse;font-size:13px;}
 table.dt th{background:var(--light);padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray);border-bottom:2px solid #dee2e6;white-space:nowrap;text-transform:uppercase;letter-spacing:.4px;}
 table.dt td{padding:10px 12px;border-bottom:1px solid #f0f0f0;vertical-align:middle;}
 table.dt tr:hover td{background:#f8f9fa;}
-/* ── Action Buttons (Aligned with User Management) ── */
-.action-btn { font-size:12px; padding:5px 8px; border:none; border-radius:4px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:5px; transition:all .15s; font-weight:600; width:100px; text-decoration:none; }
+/* ── Action Buttons ── */
+.action-btn { font-size:11px; padding:5px 8px; border:none; border-radius:4px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:4px; transition:all .15s; font-weight:600; min-width:90px; text-decoration:none; }
 .action-btn:hover { filter:brightness(.9); transform:translateY(-1px); }
-.btn-view    { background:#28a745; color:#fff; }
-.btn-validate { background:#002F70; color:#fff; }
-.btn-flag    { background:#dc3545; color:#fff; }
+.btn-view    { background:#17a2b8; color:#fff; }
+.btn-process { background:#002F70; color:#fff; }
+.btn-partial { background:#fd7e14; color:#fff; }
+.btn-damaged { background:#dc3545; color:#fff; }
+.btn-reject  { background:#6c757d; color:#fff; }
+.btn-print   { background:#6f42c1; color:#fff; }
 /* ── Badges ── */
 .badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;white-space:nowrap;}
 .badge-expected{background:#e0f2fe;color:#0369a1;}
 .badge-pending{background:#fff3cd;color:#856404;}
 .badge-validated{background:#d1fae5;color:#065f46;}
+.badge-approved{background:#d1fae5;color:#065f46;}
 .badge-flagged{background:#fee2e2;color:#991b1b;}
+.badge-partial{background:#fff3cd;color:#f59e0b;border:1px solid #fbbf24;}
+.badge-damaged{background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;}
+.badge-rejected{background:#f3f4f6;color:#6b7280;border:1px solid #d1d5db;}
 .badge-fuel{background:#dbeafe;color:#1e40af;}
 .badge-merch{background:#ede9fe;color:#5b21b6;}
+/* ── Payment Info ── */
+.payment-info{background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:12px;margin:10px 0;font-size:13px;}
+.payment-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #d1f5e0;}
+.payment-row:last-child{border-bottom:none;font-weight:700;font-size:14px;color:var(--green);margin-top:5px;padding-top:10px;}
+.payment-label{color:#6c757d;}
+.payment-value{font-weight:600;color:#222;}
+/* ── Discrepancy Alert ── */
+.discrepancy-alert{background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:12px;margin:10px 0;font-size:13px;color:#856404;}
+.discrepancy-alert strong{color:#d97706;}
 /* ── Modals ── */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9000;align-items:center;justify-content:center;}
 .modal-overlay.show{display:flex;}
-.modal-box{background:#fff;border-radius:12px;padding:28px;width:540px;max-width:96vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2);}
-.modal-box.wide{width:680px;}
+.modal-box{background:#fff;border-radius:12px;padding:28px;width:600px;max-width:96vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2);}
+.modal-box.wide{width:750px;}
 .modal-box h3{margin:0 0 16px;font-size:16px;color:var(--blue);display:flex;align-items:center;gap:8px;}
 .modal-box label{font-size:12px;font-weight:600;color:var(--gray);display:block;margin-bottom:5px;}
 .modal-box input,.modal-box select,.modal-box textarea{width:100%;padding:9px 11px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;box-sizing:border-box;}
@@ -86,11 +118,14 @@ table.dt tr:hover td{background:#f8f9fa;}
 .modal-box textarea{resize:vertical;}
 .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:18px;}
 .form-group{margin-bottom:12px;}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
 /* ── Detail Grid ── */
 .detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
 .detail-item{background:var(--light);border-radius:6px;padding:10px 12px;}
 .detail-item .di-label{font-size:11px;color:var(--gray);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;}
 .detail-item .di-val{font-size:13px;color:#222;font-weight:500;}
+.detail-item.highlight{background:#f0fdf4;border:1px solid #86efac;}
+.detail-item.alert{background:#fff5f5;border:1px solid #fecaca;}
 /* ── Empty State ── */
 .empty-state{text-align:center;padding:48px 20px;color:var(--gray);}
 .empty-state i{font-size:40px;margin-bottom:12px;opacity:.4;display:block;}
@@ -100,20 +135,10 @@ table.dt tr:hover td{background:#f8f9fa;}
 .toast-success{background:var(--green);}
 .toast-error{background:var(--red);}
 @keyframes tUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
-/* ── Compliance Alert Items ── */
-.alert-item{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid #fecaca;}
-.alert-item:last-child{border-bottom:none;}
-.alert-item .ai-icon{width:28px;height:28px;border-radius:50%;background:#fee2e2;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-.alert-item .ai-icon i{color:#991b1b;font-size:12px;}
-.alert-item .ai-body{flex:1;}
-.alert-item .ai-title{font-size:13px;font-weight:600;color:#991b1b;}
-.alert-item .ai-sub{font-size:12px;color:var(--gray);margin-top:2px;}
-.alert-item .ai-action{flex-shrink:0;}
-/* ── Action button extra ── */
-.btn-finalize{background:#6f42c1;color:#fff;}.btn-finalize:hover{background:#5a32a3;}
 @media(max-width:768px){
   .filter-bar{flex-direction:column;}
   .detail-grid{grid-template-columns:1fr;}
+  .form-row{grid-template-columns:1fr;}
 }
 </style>
 
@@ -204,12 +229,12 @@ table.dt tr:hover td{background:#f8f9fa;}
         <thead>
           <tr>
             <th>Delivery ID</th><th>Type</th><th>DR Number</th><th>Supplier</th>
-            <th>Product</th><th>Quantity</th><th>Date</th><th>Encoded By</th>
-            <th>Status</th><th>Remarks</th><th>Actions</th>
+            <th>Product</th><th>Quantity</th><th>Payable Amount</th><th>Date</th>
+            <th>Status</th><th>Actions</th>
           </tr>
         </thead>
         <tbody id="deliveriesBody">
-          <tr><td colspan="11"><div class="empty-state"><i class="fas fa-spinner fa-spin"></i> Loading…</div></td></tr>
+          <tr><td colspan="10"><div class="empty-state"><i class="fas fa-spinner fa-spin"></i> Loading…</div></td></tr>
         </tbody>
       </table>
     </div>
@@ -284,6 +309,93 @@ table.dt tr:hover td{background:#f8f9fa;}
   </div>
 </div>
 
+<!-- ── Process Delivery Modal (with Payment Computation) ──────────────────── -->
+<div class="modal-overlay" id="processModal">
+  <div class="modal-box wide">
+    <h3><i class="fas fa-calculator" style="color:var(--blue);"></i> Process Delivery & Compute Payment</h3>
+    <p style="font-size:13px;color:#555;margin:0 0 14px;">Review delivery details, adjust quantities if needed, and compute the payable amount for supplier payment.</p>
+    
+    <!-- Delivery Info -->
+    <div id="processInfo" style="background:#f8f9fa;border-radius:6px;padding:14px;margin-bottom:14px;font-size:13px;">
+      <strong>Loading...</strong>
+    </div>
+
+    <form id="processForm">
+      <input type="hidden" id="proc_id" name="delivery_id">
+      
+      <div class="form-row">
+        <div class="form-group">
+          <label>Expected Quantity <span style="color:var(--gray);">(from PO/Staff)</span></label>
+          <input type="number" step="0.01" id="proc_expected" class="form-control" readonly style="background:#e9ecef;">
+        </div>
+        <div class="form-group">
+          <label>Unit Price (₱) <span style="color:var(--red);">*</span></label>
+          <input type="number" step="0.01" id="proc_unit_price" class="form-control" placeholder="e.g. 50.00" required oninput="recalcPayment()">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Actual Received Quantity <span style="color:var(--red);">*</span></label>
+          <input type="number" step="0.01" id="proc_actual" class="form-control" placeholder="Actual qty received" required oninput="recalcPayment()">
+        </div>
+        <div class="form-group">
+          <label>Damaged/Defective Quantity</label>
+          <input type="number" step="0.01" id="proc_damaged" class="form-control" placeholder="0.00" value="0" oninput="recalcPayment()">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Discrepancy Type</label>
+        <select id="proc_type" class="form-control">
+          <option value="">None (Full Delivery)</option>
+          <option value="Partial">Partial Delivery (Kulang ang qty)</option>
+          <option value="Damaged">Damaged Items (May guba)</option>
+          <option value="Mixed">Mixed (Kulang + Guba)</option>
+          <option value="Rejected">Rejected (Wrong item/batch)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Admin Remarks / Notes <span style="color:var(--red);">*</span></label>
+        <textarea id="proc_remarks" class="form-control" rows="3" placeholder="e.g. Partial delivery: Only 80 pcs received out of 100 pcs ordered. Damaged items: 5 pcs broken/unusable." required></textarea>
+      </div>
+
+      <!-- Payment Summary -->
+      <div class="payment-info" id="paymentSummary" style="display:none;">
+        <h4 style="margin:0 0 10px;font-size:14px;color:var(--blue);"><i class="fas fa-money-bill-wave"></i> Payment Computation</h4>
+        <div class="payment-row">
+          <span class="payment-label">Expected Amount (PO):</span>
+          <span class="payment-value" id="pay_expected">₱0.00</span>
+        </div>
+        <div class="payment-row">
+          <span class="payment-label">Actual Received:</span>
+          <span class="payment-value"><span id="pay_actual_qty">0</span> × ₱<span id="pay_unit_price">0</span> = <span id="pay_actual_amt">₱0.00</span></span>
+        </div>
+        <div class="payment-row" id="damagedRow" style="display:none;">
+          <span class="payment-label">Less: Damaged Items:</span>
+          <span class="payment-value" style="color:var(--red);">-<span id="pay_damaged_qty">0</span> × ₱<span id="pay_damaged_price">0</span> = -<span id="pay_damaged_amt">₱0.00</span></span>
+        </div>
+        <div class="payment-row">
+          <span class="payment-label">PAYABLE AMOUNT:</span>
+          <span class="payment-value" style="font-size:16px;color:var(--green);">₱<span id="pay_total">0.00</span></span>
+        </div>
+      </div>
+
+      <div class="discrepancy-alert" id="discrepancyAlert" style="display:none;">
+        <strong><i class="fas fa-exclamation-triangle"></i> Discrepancy Detected!</strong><br>
+        <span id="discrepancyMsg"></span>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" onclick="closeModal('processModal')">Cancel</button>
+        <button type="button" class="btn btn-success" onclick="submitProcess('approve')"><i class="fas fa-check"></i> Approve & Compute Payment</button>
+        <button type="button" class="btn btn-print" onclick="submitProcess('print')"><i class="fas fa-print"></i> Approve & Print Report</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -348,29 +460,42 @@ function buildRow(r){
     'Validated':'Approved',
     'Discrepancy':'Flagged',
     'Flagged':'Flagged',
+    'Partial Delivery':'Partial',
+    'Damaged Items':'Damaged',
+    'Rejected Delivery':'Rejected',
   };
   const displayStatus=statusMap[r.status]||r.status;
 
   const statusBadge={
     'Expected':'<span class="badge badge-expected"><i class="fas fa-clock"></i> Expected</span>',
-    'Pending Validation':'<span class="badge badge-pending"><i class="fas fa-hourglass-half"></i> Pending Validation</span>',
-    'Approved':'<span class="badge badge-validated"><i class="fas fa-check-circle"></i> Approved</span>',
+    'Pending Validation':'<span class="badge badge-pending"><i class="fas fa-hourglass-half"></i> Pending</span>',
+    'Approved':'<span class="badge badge-approved"><i class="fas fa-check-circle"></i> Approved</span>',
     'Flagged':'<span class="badge badge-flagged"><i class="fas fa-exclamation-triangle"></i> Flagged</span>',
+    'Partial':'<span class="badge badge-partial"><i class="fas fa-box-open"></i> Partial</span>',
+    'Damaged':'<span class="badge badge-damaged"><i class="fas fa-hammer"></i> Damaged</span>',
+    'Rejected':'<span class="badge badge-rejected"><i class="fas fa-times-circle"></i> Rejected</span>',
   }[displayStatus]||`<span class="badge">${esc(displayStatus)}</span>`;
 
   const typeBadge=r.delivery_type==='fuel'
     ?'<span class="badge badge-fuel">Fuel</span>'
     :'<span class="badge badge-merch">Merchandise</span>';
 
+  // Payment amount display
+  const payableAmt = parseFloat(r.payable_amount||0);
+  const paymentDisplay = payableAmt > 0 
+    ? '<strong style="color:var(--green);">₱' + payableAmt.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2}) + '</strong>'
+    : '<span style="color:var(--gray);">Not computed</span>';
+
   let actions=`<button class="action-btn btn-view" onclick="showDetail(${r.id})" title="View Details"><i class="fas fa-eye"></i> View</button>`;
-  // Admin final oversight: can validate (finalize) manager-approved records, or flag discrepancies
-  if(displayStatus==='Approved'){
-    actions+=` <button class="action-btn btn-validate" onclick="openValidate(${r.id},'${esc(r.supplier)}','${esc(r.product)}','${fmtQty(r.quantity,r.unit)}','${esc(r.dr_number||'')}')"><i class="fas fa-check"></i> Finalize</button>`;
-    actions+=` <button class="action-btn btn-flag" onclick="openFlag(${r.id},'${esc(r.supplier)}','${esc(r.product)}')"><i class="fas fa-flag"></i> Flag</button>`;
+  
+  // Add "Process" button for Approved deliveries (with payment computation)
+  if(displayStatus==='Approved' && r.delivery_type==='merchandise'){
+    actions+=` <button class="action-btn btn-process" onclick="openProcess(${r.id})" title="Process & Compute Payment"><i class="fas fa-calculator"></i> Process</button>`;
   }
-  if(displayStatus==='Pending Validation'){
-    actions+=` <button class="action-btn btn-validate" onclick="openValidate(${r.id},'${esc(r.supplier)}','${esc(r.product)}','${fmtQty(r.quantity,r.unit)}','${esc(r.dr_number||'')}')"><i class="fas fa-check"></i> Validate</button>`;
-    actions+=` <button class="action-btn btn-flag" onclick="openFlag(${r.id},'${esc(r.supplier)}','${esc(r.product)}')"><i class="fas fa-flag"></i> Flag</button>`;
+  
+  // Show print button if already processed with payment
+  if(payableAmt > 0){
+    actions+=` <button class="action-btn btn-print" onclick="printDeliveryReport(${r.id})" title="Print Payment Report"><i class="fas fa-print"></i> Print</button>`;
   }
 
   return `<tr>
@@ -380,11 +505,9 @@ function buildRow(r){
     <td>${esc(r.supplier)}</td>
     <td>${esc(r.product)}</td>
     <td>${fmtQty(r.quantity,r.unit)}</td>
+    <td>${paymentDisplay}</td>
     <td>${fmtDate(r.delivery_date)}</td>
-    <td>${esc(r.encoded_by_name||'—')}</td>
     <td>${statusBadge}</td>
-    <td style="font-size:12px;color:var(--gray);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-        title="${esc(r.admin_notes||r.remarks||'')}">${esc(r.admin_notes||r.remarks||'—')}</td>
     <td style="vertical-align:middle;">
       <div style="display:flex;flex-direction:column;gap:4px;align-items:stretch;">
         ${actions}
@@ -647,6 +770,255 @@ document.addEventListener('click',function(e){
     if(el&&e.target===el)closeModal(id);
   });
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── PAYMENT COMPUTATION & PROCESS DELIVERY ─────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── Open Process Modal ────────────────────────────────────────────────────────
+async function openProcess(id) {
+  currentId = id;
+  document.getElementById('processModal').classList.add('show');
+  document.getElementById('paymentSummary').style.display = 'none';
+  document.getElementById('discrepancyAlert').style.display = 'none';
+  
+  try {
+    const res = await fetch(`${API}?action=detail&id=${id}`);
+    const data = await res.json();
+    if (!data.success) {
+      toast('Failed to load delivery details', 'error');
+      return;
+    }
+    
+    const r = data.data;
+    currentRec = r;
+    
+    // Fill in delivery info
+    document.getElementById('processInfo').innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div><strong>Delivery Ref:</strong> ${esc(r.delivery_ref)}</div>
+        <div><strong>DR Number:</strong> ${esc(r.dr_number || 'N/A')}</div>
+        <div><strong>Supplier:</strong> ${esc(r.supplier)}</div>
+        <div><strong>Product:</strong> ${esc(r.product)}</div>
+        <div><strong>Unit:</strong> ${esc(r.unit)}</div>
+        <div><strong>Delivery Date:</strong> ${fmtDate(r.delivery_date)}</div>
+      </div>
+    `;
+    
+    // Get unit price from PO (if exists) or from existing delivery record
+    let unitPrice = 0;
+    let priceSource = 'Manual Input Required';
+    
+    // Try to get from existing delivery record first
+    if (r.unit_price && parseFloat(r.unit_price) > 0) {
+      unitPrice = parseFloat(r.unit_price);
+      priceSource = 'From Delivery Record';
+    }
+    
+    // Try to fetch from PO if source_ref exists
+    if (r.source_ref && r.source_ref !== '') {
+      try {
+        const poRes = await fetch(`${API}?action=get_po_price&source_ref=${encodeURIComponent(r.source_ref)}`);
+        const poData = await poRes.json();
+        if (poData.success && poData.unit_price > 0) {
+          unitPrice = parseFloat(poData.unit_price);
+          priceSource = 'From Purchase Order (PO)';
+        }
+      } catch (e) {
+        console.log('Could not fetch PO price:', e);
+      }
+    }
+    
+    // Fill form fields
+    document.getElementById('proc_id').value = r.id;
+    document.getElementById('proc_expected').value = parseFloat(r.quantity).toFixed(2);
+    document.getElementById('proc_actual').value = parseFloat(r.quantity).toFixed(2); // Pre-fill with expected
+    document.getElementById('proc_damaged').value = '0.00';
+    document.getElementById('proc_unit_price').value = unitPrice.toFixed(2);
+    document.getElementById('proc_type').value = '';
+    document.getElementById('proc_remarks').value = '';
+    
+    // Make unit price readonly if from PO
+    const priceInput = document.getElementById('proc_unit_price');
+    if (unitPrice > 0) {
+      priceInput.readOnly = true;
+      priceInput.style.background = '#e8f4fd';
+      priceInput.style.color = '#002F70';
+      priceInput.style.fontWeight = '600';
+      priceInput.title = priceSource;
+      
+      // Show price source label
+      const priceLabel = priceInput.parentElement.querySelector('label');
+      priceLabel.innerHTML = `Unit Price (₱) <span style="color:var(--green);font-size:10px;margin-left:5px;"><i class="fas fa-check-circle"></i> ${priceSource}</span>`;
+    } else {
+      priceInput.readOnly = false;
+      priceInput.style.background = '#fff';
+      priceInput.style.color = '';
+      priceInput.style.fontWeight = '';
+      priceInput.title = 'Enter unit price manually';
+      
+      const priceLabel = priceInput.parentElement.querySelector('label');
+      priceLabel.innerHTML = `Unit Price (₱) <span style="color:var(--red);">*</span> <span style="color:var(--orange);font-size:10px;margin-left:5px;"><i class="fas fa-exclamation-triangle"></i> No PO price found - manual input required</span>`;
+    }
+    
+    // Trigger initial calculation if price is available
+    if (unitPrice > 0) {
+      recalcPayment();
+    }
+    
+  } catch (e) {
+    toast('Error loading delivery: ' + e.message, 'error');
+  }
+}
+
+// ── Recalculate Payment ───────────────────────────────────────────────────────
+function recalcPayment() {
+  const expected = parseFloat(document.getElementById('proc_expected').value) || 0;
+  const actual = parseFloat(document.getElementById('proc_actual').value) || 0;
+  const damaged = parseFloat(document.getElementById('proc_damaged').value) || 0;
+  const unitPrice = parseFloat(document.getElementById('proc_unit_price').value) || 0;
+  
+  if (unitPrice <= 0) {
+    document.getElementById('paymentSummary').style.display = 'none';
+    return;
+  }
+  
+  // Show payment summary
+  document.getElementById('paymentSummary').style.display = 'block';
+  
+  // Calculate amounts
+  const expectedAmt = expected * unitPrice;
+  const actualAmt = actual * unitPrice;
+  const damagedAmt = damaged * unitPrice;
+  const payableAmt = actualAmt - damagedAmt;
+  
+  // Update display
+  document.getElementById('pay_expected').textContent = '₱' + expectedAmt.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
+  document.getElementById('pay_actual_qty').textContent = actual.toFixed(2);
+  document.getElementById('pay_unit_price').textContent = unitPrice.toFixed(2);
+  document.getElementById('pay_actual_amt').textContent = '₱' + actualAmt.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
+  document.getElementById('pay_total').textContent = payableAmt.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
+  
+  // Show/hide damaged row
+  if (damaged > 0) {
+    document.getElementById('damagedRow').style.display = 'flex';
+    document.getElementById('pay_damaged_qty').textContent = damaged.toFixed(2);
+    document.getElementById('pay_damaged_price').textContent = unitPrice.toFixed(2);
+    document.getElementById('pay_damaged_amt').textContent = '₱' + damagedAmt.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
+  } else {
+    document.getElementById('damagedRow').style.display = 'none';
+  }
+  
+  // Check for discrepancies
+  const discrepancyEl = document.getElementById('discrepancyAlert');
+  const discrepancyMsg = document.getElementById('discrepancyMsg');
+  
+  if (actual < expected || damaged > 0) {
+    discrepancyEl.style.display = 'block';
+    let msgs = [];
+    
+    if (actual < expected) {
+      const shortfall = expected - actual;
+      msgs.push(`Partial Delivery: ${shortfall.toFixed(2)} units short (Expected: ${expected.toFixed(2)}, Received: ${actual.toFixed(2)})`);
+    }
+    
+    if (damaged > 0) {
+      msgs.push(`Damaged Items: ${damaged.toFixed(2)} units damaged/unusable`);
+    }
+    
+    discrepancyMsg.innerHTML = msgs.join('<br>');
+    
+    // Auto-suggest discrepancy type
+    const typeSelect = document.getElementById('proc_type');
+    if (actual < expected && damaged > 0) {
+      typeSelect.value = 'Mixed';
+    } else if (actual < expected) {
+      typeSelect.value = 'Partial';
+    } else if (damaged > 0) {
+      typeSelect.value = 'Damaged';
+    }
+  } else {
+    discrepancyEl.style.display = 'none';
+  }
+}
+
+// ── Submit Process ────────────────────────────────────────────────────────────
+async function submitProcess(mode) {
+  const id = parseInt(document.getElementById('proc_id').value);
+  const expected = parseFloat(document.getElementById('proc_expected').value) || 0;
+  const actual = parseFloat(document.getElementById('proc_actual').value) || 0;
+  const damaged = parseFloat(document.getElementById('proc_damaged').value) || 0;
+  const unitPrice = parseFloat(document.getElementById('proc_unit_price').value) || 0;
+  const discrepancyType = document.getElementById('proc_type').value;
+  const remarks = document.getElementById('proc_remarks').value.trim();
+  
+  // Validation
+  if (!id || actual <= 0 || unitPrice <= 0) {
+    toast('Please fill in all required fields with valid values', 'error');
+    return;
+  }
+  
+  if (!remarks) {
+    toast('Please provide remarks explaining the delivery details', 'error');
+    return;
+  }
+  
+  if (damaged > actual) {
+    toast('Damaged quantity cannot exceed actual received quantity', 'error');
+    return;
+  }
+  
+  // Calculate payment
+  const expectedAmt = expected * unitPrice;
+  const actualAmt = actual * unitPrice;
+  const damagedAmt = damaged * unitPrice;
+  const payableAmt = actualAmt - damagedAmt;
+  
+  try {
+    const res = await fetch(`${API}?action=process_delivery`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        id: id,
+        expected_quantity: expected,
+        actual_quantity: actual,
+        damaged_quantity: damaged,
+        unit_price: unitPrice,
+        expected_amount: expectedAmt,
+        payable_amount: payableAmt,
+        discrepancy_type: discrepancyType,
+        remarks: remarks
+      })
+    });
+    
+    const data = await res.json();
+    
+    if (!data.success) {
+      toast(data.message, 'error');
+      return;
+    }
+    
+    closeModal('processModal');
+    toast(data.message, 'success');
+    loadDeliveries();
+    
+    // If print mode, open print window
+    if (mode === 'print') {
+      setTimeout(() => {
+        printDeliveryReport(id);
+      }, 500);
+    }
+    
+  } catch (e) {
+    toast('Error processing delivery: ' + e.message, 'error');
+  }
+}
+
+// ── Print Delivery Report ─────────────────────────────────────────────────────
+function printDeliveryReport(id) {
+  window.open(`${API}?action=print_payment_report&id=${id}`, '_blank');
+}
+
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

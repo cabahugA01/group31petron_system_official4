@@ -7,6 +7,18 @@ require_once __DIR__ . '/../backend/ui_config.php';
 require_once __DIR__ . '/../config/email_config.php';
 require_login();
 
+// Dynamic Column Detection
+$user_cols = [];
+try {
+    $col_query = $pdo->query("SHOW COLUMNS FROM users");
+    while ($col = $col_query->fetch(PDO::FETCH_ASSOC)) {
+        $user_cols[] = $col['Field'];
+    }
+} catch (Exception $e) { /* ignore */ }
+// Phone column removed - no longer supported
+$s_pass  = in_array('password_hash', $user_cols) ? 'password_hash' : 'password';
+$s_uid   = in_array('user_id', $user_cols) ? 'user_id' : 'id';
+
 $me = current_user();
 $my_role = role_key($me['role'] ?? 'staff');
 $my_station_id = user_station_id();
@@ -57,16 +69,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $raw_password   = trim($_POST['password'] ?? '');
             $confirmPassword = trim($_POST['confirm_password'] ?? '');
 
-            // Parse Login ID into email/phone/username
+            // Parse Login ID into email/username (phone support removed)
             $email    = null;
-            $phone    = null;
             $username = $login_id;
 
             if (strpos($login_id, '@') !== false) {
                 $email = $login_id;
                 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) throw new Exception('Invalid email address format.');
-            } elseif (preg_match('/^\d{11}$/', $login_id)) {
-                $phone = $login_id;
             }
 
             // Validate required fields
@@ -94,14 +103,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $password = $raw_password;
             }
 
-            // Check login_id uniqueness
+            // Check login_id uniqueness (phone support removed)
             $dup_sql = 'SELECT id FROM users WHERE username = ?';
             $dup_params = [$username];
             if (!empty($email)) { $dup_sql .= ' OR email = ?'; $dup_params[] = $email; }
-            if (!empty($phone)) { $dup_sql .= ' OR phone = ?'; $dup_params[] = $phone; }
             $stmt = $pdo->prepare($dup_sql);
             $stmt->execute($dup_params);
-            if ($stmt->fetch()) throw new Exception('Login ID (Email, Phone, or Username) is already in use.');
+            if ($stmt->fetch()) throw new Exception('Login ID (Email or Username) is already in use.');
 
             // Handle station assignment based on role and creator
             $station_target = null;
@@ -279,8 +287,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $last_name_val = '';
             }
 
-            $stmt = $pdo->prepare("INSERT INTO users (name, first_name, last_name, username, role, email, phone, password, station_id, status, must_change_password, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 1, NOW())");
-            $stmt->execute([$name, $first_name_val, $last_name_val, $username, $role, $email, $phone, $hashed, $station_target]);
+            $stmt = $pdo->prepare("INSERT INTO users (name, first_name, last_name, username, role, email, {$s_pass}, station_id, status, must_change_password, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', 1, NOW())");
+            $stmt->execute([$name, $first_name_val, $last_name_val, $username, $role, $email, $hashed, $station_target]);
 
             // Get station name for email
             $station_name_for_email = 'Unknown Station';
@@ -291,21 +299,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($stn_row) $station_name_for_email = $stn_row['name'];
             }
 
-            // Send credentials via email and/or SMS
+            // Send credentials via email only (SMS support removed)
             $cred_sent = false;
             if (!empty($email)) {
                 $cred_sent = sendAdminCredentialsEmail($email, $name, $station_name_for_email, $username, $password, $me['role']) ? true : false;
-            }
-            if (!empty($phone)) {
-                sendSMS($phone, "Your Petron account has been created. Login: {$username} | Temp Password: {$password} | Station: {$station_name_for_email}");
-                $cred_sent = true;
             }
 
             log_activity($pdo, $me['id'], 'Add User', "Created user $username ($role)");
 
             if ($cred_sent) {
-                $dest = $email ?? $phone ?? $username;
-                $msg = "✅ User created successfully. Credentials sent to {$dest}.";
+                $msg = "✅ User created successfully. Credentials sent to {$email}.";
             } else {
                 $msg = "✅ User created successfully. Temp Password: {$password} — share manually.";
             }
@@ -322,15 +325,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (empty($name))     throw new Exception('Full Name is required.');
             if (empty($login_id)) throw new Exception('Login ID is required.');
 
-            // Parse Login ID
+            // Parse Login ID (phone support removed)
             $email    = null;
-            $phone    = null;
             $username = $login_id;
             if (strpos($login_id, '@') !== false) {
                 $email = $login_id;
                 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) throw new Exception('Invalid email address format.');
-            } elseif (preg_match('/^\d{11}$/', $login_id)) {
-                $phone = $login_id;
             }
             
             // Normalize role to standard format
@@ -411,11 +411,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
             
-            // Check login_id uniqueness against other accounts
+            // Check login_id uniqueness against other accounts (phone support removed)
             $dup_sql = 'SELECT id FROM users WHERE username = ? AND id != ?';
             $dup_params = [$username, $id];
             if (!empty($email)) { $dup_sql .= ' OR (email = ? AND id != ?)'; $dup_params[] = $email; $dup_params[] = $id; }
-            if (!empty($phone)) { $dup_sql .= ' OR (phone = ? AND id != ?)'; $dup_params[] = $phone; $dup_params[] = $id; }
             $stmt = $pdo->prepare($dup_sql);
             $stmt->execute($dup_params);
             if ($stmt->fetch()) throw new Exception('This Login ID is already registered to another account.');
@@ -430,9 +429,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $last_name_edit  = '';
             }
 
-            // Update user details
-            $stmt = $pdo->prepare('UPDATE users SET name = ?, first_name = ?, last_name = ?, role = ?, username = ?, email = ?, phone = ? WHERE id = ?');
-            $stmt->execute([$name, $first_name_edit, $last_name_edit, $role, $username, $email, $phone, $id]);
+            // Update user details (phone support removed)
+            $stmt = $pdo->prepare("UPDATE users SET name = ?, first_name = ?, last_name = ?, role = ?, username = ?, email = ? WHERE id = ?");
+            $stmt->execute([$name, $first_name_edit, $last_name_edit, $role, $username, $email, $id]);
             
              // Update password if checkbox is checked
              if ($changePassword) {
@@ -444,7 +443,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  }
                  
                  $hashed = password_hash($new_password, PASSWORD_DEFAULT);
-                 $stmt = $pdo->prepare("UPDATE users SET password = ? WHERE id = ?");
+                 $stmt = $pdo->prepare("UPDATE users SET {$s_pass} = ? WHERE id = ?");
                  $stmt->execute([$hashed, $id]);
                  
                  $msg = "✅ User details and password updated successfully. New password: $new_password";
@@ -471,7 +470,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             
             $hashed = password_hash($new_pass, PASSWORD_DEFAULT);
-            $stmt = $pdo->prepare("UPDATE users SET password = ? WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE users SET {$s_pass} = ? WHERE id = ?");
             $stmt->execute([$hashed, $id]);
             
             log_activity($pdo, $me['id'], 'Reset Password', "Reset password for user #$id");
@@ -551,7 +550,7 @@ error_log("Is Superadmin check: " . ($my_role === 'superadmin' ? 'YES' : 'NO'));
 
 if ($my_role === 'superadmin') {
     error_log("Executing SUPERADMIN query - fetch ALL users");
-    $stmt = $pdo->query("SELECT u.*, s.name as station_name FROM users u LEFT JOIN stations s ON u.station_id = s.id ORDER BY u.created_at DESC");
+    $stmt = $pdo->query("SELECT u.*, u.{$s_pass} AS password, s.name as station_name FROM users u LEFT JOIN stations s ON u.station_id = s.id ORDER BY u.created_at DESC");
     $users = $stmt->fetchAll();
     error_log("Superadmin query returned " . count($users) . " users");
     // Fetch stations for dropdown
@@ -559,18 +558,18 @@ if ($my_role === 'superadmin') {
     error_log("Stations fetched: " . count($stations));
 } else {
     error_log("Executing ADMIN/MANAGER query - filter by station_id");
-    error_log("SQL: SELECT * FROM users WHERE station_id = ? ORDER BY role, name");
+    error_log("SQL: SELECT *, {$s_pass} AS password FROM users WHERE station_id = ? ORDER BY role, name");
     error_log("Param: " . var_export($my_station_id, true));
 
     if ($my_role === 'staff' || $my_role === 'manager') {
-        $stmt = $pdo->prepare("SELECT * FROM users WHERE station_id = ? AND LOWER(role) IN ('staff', 'operations_staff', 'operations staff') ORDER BY role, name");
+        $stmt = $pdo->prepare("SELECT *, {$s_pass} AS password FROM users WHERE station_id = ? AND LOWER(role) IN ('staff', 'operations_staff', 'operations staff') ORDER BY role, username");
         $stmt->execute([$my_station_id]);
     } elseif ($my_role === 'admin') {
         // Admin users can only see Manager and Staff accounts, not other Admin accounts
-        $stmt = $pdo->prepare("SELECT * FROM users WHERE station_id = ? AND LOWER(role) IN ('manager', 'staff', 'operations_staff', 'operations staff') ORDER BY role, name");
+        $stmt = $pdo->prepare("SELECT *, {$s_pass} AS password FROM users WHERE station_id = ? AND LOWER(role) IN ('manager', 'staff', 'operations_staff', 'operations staff') ORDER BY role, username");
         $stmt->execute([$my_station_id]);
     } else {
-        $stmt = $pdo->prepare("SELECT * FROM users WHERE station_id = ? ORDER BY role, name");
+        $stmt = $pdo->prepare("SELECT *, {$s_pass} AS password FROM users WHERE station_id = ? ORDER BY role, username");
         $stmt->execute([$my_station_id]);
     }
     $users = $stmt->fetchAll();
@@ -639,12 +638,11 @@ include __DIR__ . '/../partials/header.php';
                 ?>
                 <tr>
                     <td>
-                        <div style="font-weight:bold;"><?php echo htmlspecialchars($u['name']); ?></div>
-                        <div class="muted" style="font-size:0.85em;">@<?php echo htmlspecialchars($u['username']); ?></div>
+                        <div style="font-weight:bold;"><?php echo htmlspecialchars(isset($u['name']) ? $u['name'] : ($u['username'] ?? 'Unknown')); ?></div>
+                        <div class="muted" style="font-size:0.85em;">@<?php echo htmlspecialchars($u['username'] ?? 'N/A'); ?></div>
                     </td>
                     <td><span class="badge bg-<?php echo $roleClass; ?>"><?php echo htmlspecialchars($roleLabel); ?></span></td>
                     <td>
-                        <div><i class="fas fa-phone fa-xs"></i> <?php echo htmlspecialchars($u['phone'] ?? 'N/A'); ?></div>
                         <div><i class="fas fa-envelope fa-xs"></i> <?php echo htmlspecialchars($u['email'] ?? 'N/A'); ?></div>
                     </td>
                     <?php if($my_role === 'superadmin'): ?>
@@ -725,8 +723,8 @@ include __DIR__ . '/../partials/header.php';
 
                 <div class="form-group mb-3">
                     <label class="lbl">Login ID <span style="color:red;">*</span></label>
-                    <input type="text" name="login_id" class="inp full" required placeholder="Email, Phone Number, or Username">
-                    <small class="muted">Enter email (e.g. juan@email.com), 11-digit phone, or a username. Credentials will be sent via email or SMS.</small>
+                    <input type="text" name="login_id" class="inp full" required placeholder="Email or Username">
+                    <small class="muted">Enter email (e.g. juan@email.com) or a username. Credentials will be sent via email.</small>
                 </div>
                 
                 <div class="form-group mb-3">
@@ -827,7 +825,7 @@ include __DIR__ . '/../partials/header.php';
                 </div>
                 <div class="form-group mb-3">
                     <label class="lbl">Login ID <span style="color:red;">*</span></label>
-                    <input type="text" name="login_id" id="edit_login_id" class="inp full" required placeholder="Email, Phone Number, or Username">
+                    <input type="text" name="login_id" id="edit_login_id" class="inp full" required placeholder="Email or Username">
                     <small class="muted">Current login credential. Change to update the login method.</small>
                 </div>
 
@@ -933,10 +931,6 @@ include __DIR__ . '/../partials/header.php';
                 <div>
                     <div style="font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Email</div>
                     <div id="view_email" style="font-size:13px;color:#374151;word-break:break-all;"></div>
-                </div>
-                <div>
-                    <div style="font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Phone</div>
-                    <div id="view_phone" style="font-size:13px;color:#374151;"></div>
                 </div>
                 <div>
                     <div style="font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Status</div>
@@ -1069,7 +1063,6 @@ function openViewModal(user) {
     document.getElementById('view_name').textContent = user.name || '—';
     document.getElementById('view_username').textContent = '@' + (user.username || user.email || '—');
     document.getElementById('view_email').textContent = user.email || 'N/A';
-    document.getElementById('view_phone').textContent = user.phone || 'N/A';
     document.getElementById('view_role_text').textContent = isManager ? 'Manager' : 'Staff';
 
     // Role badge
@@ -1101,8 +1094,8 @@ function openEditModal(user) {
     // Full name
     document.getElementById('edit_full_name').value = (user.name || '').trim();
 
-    // Login ID: prefer email, then phone, then username
-    var loginId = user.email || user.phone || user.username || '';
+    // Login ID: prefer email, then username (phone support removed)
+    var loginId = user.email || user.username || '';
     document.getElementById('edit_login_id').value = loginId;
 
     // Role

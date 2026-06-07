@@ -251,3 +251,107 @@
     border-color: #002F70;
     box-shadow: 0 0 0 3px rgba(0,47,112,0.1);
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   DARK MODE OVERRIDES — beats hardcoded light styles above
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Card containers */
+body.dark-theme .card,
+body.dark-theme .widget-card,
+body.dark-theme .petron-card {
+    background: #1e2130 !important;
+    border-color: #2d3748 !important;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.5) !important;
+    color: #e2e8f0 !important;
+}
+body.dark-theme .card-header {
+    background: #1a2035 !important;
+    border-bottom-color: #2d3748 !important;
+}
+body.dark-theme .card-header h3,
+body.dark-theme .card-header h4,
+body.dark-theme .card-header h5 {
+    color: #93c5fd !important;
+}
+body.dark-theme .card-body {
+    background: #1e2130 !important;
+    color: #e2e8f0 !important;
+}
+
+/* Tables */
+body.dark-theme .table,
+body.dark-theme .data-table,
+body.dark-theme .pm-table,
+body.dark-theme .mgrc-table,
+body.dark-theme .mfm-table,
+body.dark-theme .transactions-table {
+    background: #1e2130 !important;
+    color: #e2e8f0 !important;
+}
+
+/* Table headers — override hardcoded #002F6C blue */
+body.dark-theme .table thead th,
+body.dark-theme .data-table thead th,
+body.dark-theme .pm-table thead th,
+body.dark-theme .mgrc-table thead th,
+body.dark-theme .mfm-table thead th,
+body.dark-theme .transactions-table thead th,
+body.dark-theme .table th,
+body.dark-theme .data-table th {
+    background: #1a2035 !important;
+    color: #93c5fd !important;
+    border-bottom: 1px solid #2d3748 !important;
+    border-top: 1px solid #2d3748 !important;
+}
+
+/* Table cells */
+body.dark-theme .table tbody td,
+body.dark-theme .data-table tbody td,
+body.dark-theme .pm-table tbody td,
+body.dark-theme .mgrc-table tbody td,
+body.dark-theme .mfm-table tbody td,
+body.dark-theme .transactions-table tbody td,
+body.dark-theme .table td,
+body.dark-theme .data-table td {
+    color: #e2e8f0 !important;
+    border-bottom-color: #2d3748 !important;
+}
+
+/* Alternating rows */
+body.dark-theme .table tbody tr:nth-child(even) td,
+body.dark-theme .data-table tbody tr:nth-child(even) td,
+body.dark-theme .pm-table tbody tr:nth-child(even) td {
+    background: #22273a !important;
+}
+body.dark-theme .table tbody tr:nth-child(odd) td,
+body.dark-theme .data-table tbody tr:nth-child(odd) td,
+body.dark-theme .pm-table tbody tr:nth-child(odd) td {
+    background: #1e2130 !important;
+}
+
+/* Hover — override hardcoded light blue #e3f2fd */
+body.dark-theme .table tbody tr:hover td,
+body.dark-theme .data-table tbody tr:hover td,
+body.dark-theme .pm-table tbody tr:hover td,
+body.dark-theme .mgrc-table tbody tr:hover td,
+body.dark-theme .mfm-table tbody tr:hover td,
+body.dark-theme .transactions-table tbody tr:hover td,
+body.dark-theme .table tr:hover td,
+body.dark-theme .data-table tr:hover td {
+    background: #2a3150 !important;
+}
+
+/* Empty state */
+body.dark-theme .empty-state { color: #64748b !important; }
+
+/* Form controls */
+body.dark-theme .form-control {
+    background: #252840 !important;
+    border-color: #3d4a5c !important;
+    color: #e2e8f0 !important;
+}
+body.dark-theme .form-control:focus {
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.2) !important;
+}

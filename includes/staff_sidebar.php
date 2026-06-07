@@ -119,25 +119,40 @@ function getStaffSidebar($current_page = 'dashboard') {
             'title' => 'Reports',
             'url'   => 'staff_reports.php',
             'submenu' => [
-                'report_activity' => [
-                    'icon'  => 'fas fa-user-clock',
-                    'title' => 'Personal Activity Report',
-                    'url'   => 'staff_reports.php?view=personal_activity',
+                'report_sales' => [
+                    'icon'  => 'fas fa-dollar-sign',
+                    'title' => 'Sales Reports',
+                    'url'   => 'staff_reports.php?view=sales_reports&sub=daily_summary',
                 ],
-                'report_daily_sales' => [
-                    'icon'  => 'fas fa-receipt',
-                    'title' => 'Transaction Report (own sales/services)',
-                    'url'   => 'staff_reports.php?view=daily_sales',
+                'report_job_orders' => [
+                    'icon'  => 'fas fa-wrench',
+                    'title' => 'Job Orders Reports',
+                    'url'   => 'staff_reports.php?view=job_orders_reports&sub=job_tracker',
                 ],
-                'report_customer' => [
+                'report_deliveries' => [
+                    'icon'  => 'fas fa-truck',
+                    'title' => 'Deliveries Reports',
+                    'url'   => 'staff_reports.php?view=deliveries_reports&sub=fuel_deliveries',
+                ],
+                'report_meter' => [
+                    'icon'  => 'fas fa-tachometer-alt',
+                    'title' => 'Meter Reading Reports',
+                    'url'   => 'staff_reports.php?view=meter_readings',
+                ],
+                'report_payments' => [
+                    'icon'  => 'fas fa-credit-card',
+                    'title' => 'Payments Reports',
+                    'url'   => 'staff_reports.php?view=payments_reports&sub=all',
+                ],
+                'report_customers' => [
                     'icon'  => 'fas fa-users',
-                    'title' => 'Customer Report',
-                    'url'   => 'staff_reports.php?view=customer_report',
+                    'title' => 'Customer Reports',
+                    'url'   => 'staff_reports.php?view=customer_reports&sub=customer_list',
                 ],
-                'report_inventory' => [
-                    'icon'  => 'fas fa-boxes',
-                    'title' => 'Inventory Report',
-                    'url'   => 'staff_reports.php?view=inventory_report',
+                'report_activity' => [
+                    'icon'  => 'fas fa-chart-line',
+                    'title' => 'Activity Reports',
+                    'url'   => 'staff_reports.php?view=activity_reports&sub=staff_activity',
                 ],
             ],
         ],

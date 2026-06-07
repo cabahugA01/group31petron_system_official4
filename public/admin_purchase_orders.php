@@ -91,6 +91,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         throw new Exception("Pending Merchandise request item #{$item_id} not found.");
                     }
 
+                    // Generate unique delivery_ref for deliveries_oversight
+                    $delivery_ref_prefix = 'MDR-' . date('Ymd') . '-';
+                    $stmt_max = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(delivery_ref, '-', -1) AS UNSIGNED)) FROM deliveries_oversight WHERE delivery_ref LIKE ?");
+                    $stmt_max->execute([$delivery_ref_prefix . '%']);
+                    $max_num = (int)$stmt_max->fetchColumn();
+                    $delivery_ref = $delivery_ref_prefix . str_pad($max_num + 1, 4, '0', STR_PAD_LEFT);
+
                     // Update purchase_orders
                     $pdo->prepare("
                         UPDATE purchase_orders
@@ -115,19 +122,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pdo->prepare("
                         INSERT INTO deliveries_oversight (
                             delivery_type, delivery_ref, batch_id, supplier, product, quantity, unit,
-                            delivery_date, station_id, status, source_ref, remarks, created_at, updated_at
+                            delivery_date, station_id, status, source_ref, remarks, unit_price, expected_quantity,
+                            created_at, updated_at
                         ) VALUES (
                             'merchandise', ?, ?, 'Petron Corporation', ?, ?, 'pcs',
-                            CURDATE(), ?, 'Expected Delivery', ?, ?, NOW(), NOW()
+                            CURDATE(), ?, 'Expected Delivery', ?, ?, ?, ?, NOW(), NOW()
                         )
                     ")->execute([
-                        'MDR-' . date('Ymd') . '-' . rand(1000, 9999),
+                        $delivery_ref,
                         $batch_id,
                         $po_rec['product_name'],
                         $qty,
                         $po_rec['station_id'],
                         $batch_id,
-                        $admin_notes
+                        $admin_notes,
+                        $price,
+                        $qty
                     ]);
                 } else if ($po_type === 'fuel') {
                     // Fetch fuel PO record
@@ -142,6 +152,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (!$po_rec) {
                         throw new Exception("Pending Fuel request item #{$item_id} not found.");
                     }
+
+                    // Generate unique delivery_ref for deliveries_oversight
+                    $fuel_delivery_ref_prefix = 'FDR-' . date('Ymd') . '-';
+                    $stmt_max_fuel = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(delivery_ref, '-', -1) AS UNSIGNED)) FROM deliveries_oversight WHERE delivery_ref LIKE ?");
+                    $stmt_max_fuel->execute([$fuel_delivery_ref_prefix . '%']);
+                    $max_num_fuel = (int)$stmt_max_fuel->fetchColumn();
+                    $fuel_delivery_ref = $fuel_delivery_ref_prefix . str_pad($max_num_fuel + 1, 4, '0', STR_PAD_LEFT);
 
                     // Update fuel_purchase_orders
                     $pdo->prepare("
@@ -164,19 +181,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pdo->prepare("
                         INSERT INTO deliveries_oversight (
                             delivery_type, delivery_ref, batch_id, supplier, product, quantity, unit,
-                            delivery_date, station_id, status, source_ref, remarks, created_at, updated_at
+                            delivery_date, station_id, status, source_ref, remarks, unit_price, expected_quantity,
+                            created_at, updated_at
                         ) VALUES (
                             'fuel', ?, ?, 'Petron Corporation', ?, ?, 'L',
-                            CURDATE(), ?, 'Expected Delivery', ?, ?, NOW(), NOW()
+                            CURDATE(), ?, 'Expected Delivery', ?, ?, ?, ?, NOW(), NOW()
                         )
                     ")->execute([
-                        'FDR-' . date('Ymd') . '-' . rand(1000, 9999),
+                        $fuel_delivery_ref,
                         $batch_id,
                         $po_rec['fuel_name'],
                         $qty,
                         $po_rec['station_id'],
                         $batch_id,
-                        $admin_notes
+                        $admin_notes,
+                        $price,
+                        $qty
                     ]);
                 }
             }

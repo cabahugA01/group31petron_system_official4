@@ -67,42 +67,93 @@ $pending_pos = [];
 $pending_fuel = [];
 $pending_err = '';
 try {
+    // Fetch MERCHANDISE deliveries from deliveries_oversight table
+    // These are deliveries that Admin has processed/validated and are ready for stock-in
     $stmt = $pdo->prepare("
-        SELECT po.id, po.po_number, po.product_name, po.quantity AS qty_ordered,
-               po.unit_price, po.total_amount, po.admin_notes, po.admin_finalized_at,
-               po.delivery_validated, po.delivery_validated_at, po.delivery_flag,
-               po.delivery_notes, po.actual_qty_received,
-               po.batch_id,
-               ip.id AS product_id, ip.sku, ip.category, ip.unit_cost,
-               COALESCE(si.stock_level, ip.stock, 0) AS current_stock,
-               u_mgr.name AS manager_name, u_adm.name AS admin_name,
-               u_val.name AS validated_by_name,
-               sr.remarks AS sr_remarks
-        FROM purchase_orders po
-        LEFT JOIN inventory_products ip
-               ON ip.product_name = po.product_name AND ip.category != 'Fuel'
+        SELECT 
+            do2.id AS delivery_id,
+            do2.delivery_ref,
+            do2.delivery_type,
+            do2.supplier,
+            do2.product,
+            do2.quantity,
+            do2.unit,
+            do2.delivery_date,
+            do2.source_ref AS po_number,
+            do2.expected_quantity,
+            do2.actual_quantity,
+            do2.damaged_quantity,
+            do2.unit_price,
+            do2.payable_amount,
+            do2.discrepancy_type,
+            do2.admin_notes,
+            do2.admin_action_at,
+            do2.batch_id,
+            do2.dr_number,
+            ip.id AS product_id,
+            ip.sku,
+            ip.category,
+            ip.unit_cost,
+            COALESCE(si.stock_level, ip.stock, 0) AS current_stock,
+            u_enc.name AS encoded_by_name,
+            u_adm.name AS admin_name
+        FROM deliveries_oversight do2
+        LEFT JOIN inventory_products ip 
+               ON ip.product_name = do2.product AND ip.category != 'Fuel'
         LEFT JOIN station_inventory si
-               ON si.product_id = ip.id AND si.station_id = po.station_id
-        LEFT JOIN users u_mgr ON po.created_by        = u_mgr.id
-        LEFT JOIN users u_adm ON po.admin_id           = u_adm.id
-        LEFT JOIN users u_val ON po.delivery_validated_by = u_val.id
-        LEFT JOIN stock_requests sr ON po.request_id   = sr.id
-        WHERE po.station_id = ? AND po.type = 'merch'
-          AND po.admin_finalized   = 1
-          AND po.delivery_validated = 1
-          AND po.stock_in_done     = 0
-        ORDER BY po.delivery_validated_at ASC
+               ON si.product_id = ip.id AND si.station_id = do2.station_id
+        LEFT JOIN users u_enc ON do2.encoded_by = u_enc.id
+        LEFT JOIN users u_adm ON do2.admin_id = u_adm.id
+        WHERE do2.station_id = ?
+          AND do2.delivery_type = 'merchandise'
+          AND do2.status IN ('Validated', 'Partial Delivery', 'Damaged Items')
+          AND NOT EXISTS (
+              SELECT 1 FROM merchandise_stock_in msi 
+              WHERE msi.po_number = do2.delivery_ref 
+                 OR msi.batch_ref = do2.batch_id
+          )
+        ORDER BY do2.admin_action_at ASC, do2.delivery_date ASC
     ");
     $stmt->execute([$station_id]);
     $pending_pos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Fetch approved fuel deliveries awaiting stock-in
+    // Fetch FUEL deliveries from deliveries_oversight table
     $stmtFuel = $pdo->prepare("
-        SELECT fd.*, u.name as encoded_by_name
-        FROM fuel_deliveries fd
-        LEFT JOIN users u ON fd.received_by = u.id
-        WHERE fd.station_id = ? AND fd.status = 'Awaiting Stock-In'
-        ORDER BY fd.delivery_date ASC, fd.created_at ASC
+        SELECT
+            do2.id AS delivery_id,
+            do2.delivery_ref,
+            do2.delivery_type,
+            do2.supplier,
+            do2.product AS fuel_type,
+            do2.quantity AS delivery_liters,
+            do2.unit,
+            do2.delivery_date,
+            do2.source_ref AS po_number,
+            do2.expected_quantity,
+            do2.actual_quantity,
+            do2.damaged_quantity,
+            do2.unit_price,
+            do2.payable_amount,
+            do2.discrepancy_type,
+            do2.admin_notes AS notes,
+            do2.admin_action_at,
+            do2.batch_id,
+            do2.dr_number AS invoice_no,
+            do2.dr_number AS tanker_number,
+            u_enc.name AS encoded_by_name,
+            u_adm.name AS admin_name
+        FROM deliveries_oversight do2
+        LEFT JOIN users u_enc ON do2.encoded_by = u_enc.id
+        LEFT JOIN users u_adm ON do2.admin_id = u_adm.id
+        WHERE do2.station_id = ?
+          AND do2.delivery_type = 'fuel'
+          AND do2.status IN ('Validated', 'Partial Delivery', 'Damaged Items')
+          AND NOT EXISTS (
+              SELECT 1 FROM fuel_stock_in fsi 
+              WHERE fsi.delivery_ref = do2.delivery_ref 
+                 OR fsi.batch_ref = do2.batch_id
+          )
+        ORDER BY do2.admin_action_at ASC, do2.delivery_date ASC
     ");
     $stmtFuel->execute([$station_id]);
     $pending_fuel = $stmtFuel->fetchAll(PDO::FETCH_ASSOC);
@@ -116,6 +167,91 @@ if (!in_array($type_filter, ['merch', 'fuel'])) {
     $type_filter = 'merch';
 }
 $active_tab = $_GET['tab'] ?? 'pending';
+
+// ── Fetch deliveries history for "Deliveries History" tab ──────────────────────
+$deliveries_history = [];
+$del_hist_date_from = $_GET['del_date_from'] ?? date('Y-m-d', strtotime('-30 days'));
+$del_hist_date_to   = $_GET['del_date_to']   ?? date('Y-m-d');
+if ($active_tab === 'deliveries') {
+    try {
+        if ($type_filter === 'fuel') {
+            $stmt = $pdo->prepare("
+                SELECT 
+                    do2.id,
+                    do2.delivery_ref,
+                    do2.delivery_type,
+                    do2.supplier,
+                    do2.product AS fuel_type,
+                    do2.quantity AS delivery_liters,
+                    do2.expected_quantity,
+                    do2.actual_quantity,
+                    do2.unit_price,
+                    do2.payable_amount,
+                    do2.discrepancy_type,
+                    do2.status,
+                    do2.delivery_date,
+                    do2.admin_action_at,
+                    do2.dr_number,
+                    u_enc.name AS encoded_by_name,
+                    u_adm.name AS admin_name
+                FROM deliveries_oversight do2
+                LEFT JOIN users u_enc ON do2.encoded_by = u_enc.id
+                LEFT JOIN users u_adm ON do2.admin_id = u_adm.id
+                WHERE do2.station_id = ?
+                  AND do2.delivery_type = 'fuel'
+                  AND do2.status IN ('Validated', 'Partial Delivery', 'Damaged Items', 'Stock-In Complete')
+                  AND DATE(do2.delivery_date) BETWEEN ? AND ?
+                ORDER BY 
+                    FIELD(do2.status, 'Validated', 'Partial Delivery', 'Damaged Items', 'Stock-In Complete'),
+                    do2.admin_action_at DESC
+                LIMIT 100
+            ");
+            $stmt->execute([$station_id, $del_hist_date_from, $del_hist_date_to]);
+            $deliveries_history = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } else {
+            $stmt = $pdo->prepare("
+                SELECT 
+                    do2.id,
+                    do2.delivery_ref,
+                    do2.delivery_type,
+                    do2.supplier,
+                    do2.product,
+                    do2.quantity,
+                    do2.expected_quantity,
+                    do2.actual_quantity,
+                    do2.damaged_quantity,
+                    do2.unit_price,
+                    do2.payable_amount,
+                    do2.discrepancy_type,
+                    do2.status,
+                    do2.delivery_date,
+                    do2.admin_action_at,
+                    do2.batch_id,
+                    do2.dr_number,
+                    ip.sku,
+                    ip.category,
+                    u_enc.name AS encoded_by_name,
+                    u_adm.name AS admin_name
+                FROM deliveries_oversight do2
+                LEFT JOIN inventory_products ip ON ip.product_name = do2.product AND ip.category != 'Fuel'
+                LEFT JOIN users u_enc ON do2.encoded_by = u_enc.id
+                LEFT JOIN users u_adm ON do2.admin_id = u_adm.id
+                WHERE do2.station_id = ?
+                  AND do2.delivery_type = 'merchandise'
+                  AND do2.status IN ('Validated', 'Partial Delivery', 'Damaged Items', 'Stock-In Complete')
+                  AND DATE(do2.delivery_date) BETWEEN ? AND ?
+                ORDER BY 
+                    FIELD(do2.status, 'Validated', 'Partial Delivery', 'Damaged Items', 'Stock-In Complete'),
+                    do2.admin_action_at DESC
+                LIMIT 100
+            ");
+            $stmt->execute([$station_id, $del_hist_date_from, $del_hist_date_to]);
+            $deliveries_history = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+    } catch (Exception $e) {
+        error_log("Deliveries history fetch error: " . $e->getMessage());
+    }
+}
 
 // ── Fetch stock-in history (server-side, last 30 days) ────────────────────────
 $history_rows = [];
@@ -198,6 +334,7 @@ include __DIR__ . '/../partials/header.php';
 .hist-table th{background:#f8f9fa;padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--gray);border-bottom:2px solid #dee2e6;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;}
 .hist-table td{padding:7px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle;}
 .hist-table tr:hover td{background:#f8f9fa;}
+.badge-ready{background:#fff3cd;color:#856404;border:1px solid #ffc107;}
 </style>
 
 <div class="page-head">
@@ -227,6 +364,9 @@ include __DIR__ . '/../partials/header.php';
     ?>
       <span style="background:#dc3545;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;"><?= $pending_count ?></span>
     <?php endif; ?>
+  </a>
+  <a href="staff_stock_in.php?tab=deliveries&type=<?= $type_filter ?>" class="tab-btn <?= $active_tab === 'deliveries' ? 'active' : '' ?>">
+    <i class="fas fa-truck-loading"></i> Deliveries History
   </a>
   <a href="staff_stock_in.php?tab=history&type=<?= $type_filter ?>" class="tab-btn <?= $active_tab === 'history' ? 'active' : '' ?>">
     <i class="fas fa-history"></i> Stock-In History
@@ -259,17 +399,19 @@ include __DIR__ . '/../partials/header.php';
     <div class="empty-state">
       <i class="fas fa-check-circle" style="color:#28a745;opacity:.5;"></i>
       <strong>No pending fuel deliveries for stock-in.</strong><br>
-      <span style="font-size:13px;">All manager-validated fuel deliveries have been stocked in, or no deliveries have been approved yet.</span>
+      <span style="font-size:13px;">All admin-validated fuel deliveries have been stocked in, or no deliveries have been approved yet.</span>
     </div>
   <?php else: ?>
     <?php foreach ($pending_fuel as $fd):
-      $qty_expected = (float)$fd['delivery_liters'];
+      // Map deliveries_oversight fields for fuel
+      $delivery_id = (int)$fd['delivery_id'];
+      $qty_expected = (float)($fd['actual_quantity'] ?: $fd['delivery_liters']);
     ?>
-    <div class="po-item" id="fuel-item-<?= $fd['id'] ?>">
+    <div class="po-item" id="fuel-item-<?= $delivery_id ?>">
       <div class="po-item-header">
         <div>
           <div style="font-size:14px;font-weight:700;color:var(--blue);">
-            <i class="fas fa-gas-pump"></i> Fuel Delivery #<?= $fd['id'] ?>
+            <i class="fas fa-gas-pump"></i> <?= htmlspecialchars($fd['delivery_ref'] ?? 'Fuel Delivery') ?>
           </div>
           <div style="font-size:15px;font-weight:700;color:#222;margin-top:3px;">
             <?= htmlspecialchars($fd['fuel_type'] ?? '') ?>
@@ -279,18 +421,28 @@ include __DIR__ . '/../partials/header.php';
       </div>
       <div class="po-meta">
         <span><i class="fas fa-truck-container"></i> Supplier: <strong><?= htmlspecialchars($fd['supplier'] ?? 'N/A') ?></strong></span>
-        <span><i class="fas fa-truck"></i> Tanker: <strong><?= htmlspecialchars($fd['tanker_number'] ?? 'N/A') ?></strong></span>
+        <span><i class="fas fa-truck"></i> DR/Tanker: <strong><?= htmlspecialchars($fd['tanker_number'] ?? 'N/A') ?></strong></span>
         <span><i class="fas fa-file-invoice"></i> Invoice: <strong><?= htmlspecialchars($fd['invoice_no'] ?? 'N/A') ?></strong></span>
         <span><i class="fas fa-shopping-cart"></i> Expected Volume: <strong><?= number_format($qty_expected, 2) ?> L</strong></span>
         <?php if ($fd['encoded_by_name']): ?><span><i class="fas fa-user-edit"></i> Encoded by: <?= htmlspecialchars($fd['encoded_by_name']) ?></span><?php endif; ?>
+        <?php if ($fd['admin_name']): ?><span><i class="fas fa-user-shield"></i> Admin: <?= htmlspecialchars($fd['admin_name']) ?></span><?php endif; ?>
         <?php if ($fd['delivery_date']): ?><span><i class="fas fa-calendar"></i> <?= date('M d, Y', strtotime($fd['delivery_date'])) ?></span><?php endif; ?>
       </div>
-      <?php if (!empty($fd['notes'])): ?>
-      <div style="font-size:12px;color:#6c757d;margin-bottom:10px;"><i class="fas fa-comment"></i> Delivery note: <?= htmlspecialchars($fd['notes']) ?></div>
+      <?php if (!empty($fd['admin_notes'])): ?>
+      <div style="font-size:12px;color:#6c757d;margin-bottom:10px;"><i class="fas fa-comment"></i> Admin note: <?= htmlspecialchars($fd['admin_notes']) ?></div>
       <?php endif; ?>
+      <?php if (!empty($fd['discrepancy_type']) && $fd['discrepancy_type'] !== ''): ?>
       <div class="warn-box">
         <i class="fas fa-exclamation-triangle"></i>
-        <strong>Fuel Stock-In Protection:</strong> Enter the actual received liters. The manager-validated quantity of <strong><?= number_format($qty_expected, 2) ?> L</strong> is the baseline. Capture any shortages, damages, or excess accurately to match tank levels.
+        <strong>Discrepancy Detected:</strong> <?= htmlspecialchars($fd['discrepancy_type']) ?>
+        <?php if ((float)$fd['damaged_quantity'] > 0): ?>
+          | Damaged: <strong><?= number_format((float)$fd['damaged_quantity'], 2) ?> L</strong>
+        <?php endif; ?>
+      </div>
+      <?php endif; ?>
+      <div class="info-box">
+        <i class="fas fa-info-circle"></i>
+        <strong>Stock-In Instruction:</strong> Enter the actual received liters. Admin validated quantity: <strong><?= number_format($qty_expected, 2) ?> L</strong>. Capture any shortages, damages, or excess accurately to match tank levels.
       </div>
       <div class="table-wrap" style="margin-bottom:12px;">
         <table class="si-table">
@@ -307,37 +459,39 @@ include __DIR__ . '/../partials/header.php';
               <td><strong><?= htmlspecialchars($fd['fuel_type'] ?? '') ?></strong></td>
               <td><?= htmlspecialchars($fd['supplier'] ?? '') ?></td>
               <td>
-                <input type="text" id="fuel-batch-<?= $fd['id'] ?>" placeholder="e.g. FB-001" maxlength="50"
+                <input type="text" id="fuel-batch-<?= $delivery_id ?>" placeholder="e.g. FB-001" maxlength="50"
+                       value="<?= htmlspecialchars($fd['batch_id'] ?? '') ?>"
                        style="width:130px;font-family:monospace;font-weight:700;font-size:12px;text-transform:uppercase;border:1px solid #dee2e6;border-radius:5px;padding:6px 8px;"
                        oninput="this.value=this.value.toUpperCase()">
               </td>
               <td>
-                <input type="number" id="fuel-cost-<?= $fd['id'] ?>" min="0" step="0.01" value="0.00"
+                <input type="number" id="fuel-cost-<?= $delivery_id ?>" min="0" step="0.01" 
+                       value="<?= number_format((float)($fd['unit_price'] ?? 0), 2) ?>"
                        placeholder="0.00" style="width:90px;"
                        title="Unit cost per litre for this batch (for FIFO costing)">
               </td>
               <td style="text-align:center;font-weight:700;"><?= number_format($qty_expected, 2) ?> L</td>
               <td>
-                <input type="number" id="fuel-qty-<?= $fd['id'] ?>" min="0" step="0.01" value="<?= $qty_expected ?>"
-                       oninput="updateFuelVariance(<?= $fd['id'] ?>, <?= $qty_expected ?>)" style="width: 120px;">
+                <input type="number" id="fuel-qty-<?= $delivery_id ?>" min="0" step="0.01" value="<?= $qty_expected ?>"
+                       oninput="updateFuelVariance(<?= $delivery_id ?>, <?= $qty_expected ?>)" style="width: 120px;">
               </td>
               <td>
-                <select id="fuel-cond-<?= $fd['id'] ?>" onchange="updateFuelVariance(<?= $fd['id'] ?>, <?= $qty_expected ?>)">
+                <select id="fuel-cond-<?= $delivery_id ?>" onchange="updateFuelVariance(<?= $delivery_id ?>, <?= $qty_expected ?>)">
                   <option value="Good">Good</option>
                   <option value="Damaged">Damaged</option>
                   <option value="Short">Short</option>
                   <option value="Excess">Excess</option>
                 </select>
               </td>
-              <td id="fuel-var-<?= $fd['id'] ?>" class="variance-zero">0.00 L</td>
-              <td><input type="text" id="fuel-rem-<?= $fd['id'] ?>" placeholder="Optional notes..." style="width: 160px;"></td>
+              <td id="fuel-var-<?= $delivery_id ?>" class="variance-zero">0.00 L</td>
+              <td><input type="text" id="fuel-rem-<?= $delivery_id ?>" placeholder="Optional notes..." style="width: 160px;"></td>
             </tr>
           </tbody>
         </table>
       </div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <button class="btn btn-success" id="fuel-btn-<?= $fd['id'] ?>"
-                onclick="submitFuelStockIn(<?= $fd['id'] ?>, <?= $qty_expected ?>)">
+        <button class="btn btn-success" id="fuel-btn-<?= $delivery_id ?>"
+                onclick="submitFuelStockIn(<?= $delivery_id ?>, <?= $qty_expected ?>)">
           <i class="fas fa-check-circle"></i> Submit Fuel Stock-In
         </button>
         <span style="font-size:12px;color:var(--gray);">
@@ -353,27 +507,30 @@ include __DIR__ . '/../partials/header.php';
     <div class="empty-state">
       <i class="fas fa-check-circle" style="color:#28a745;opacity:.5;"></i>
       <strong>No pending deliveries for stock-in.</strong><br>
-      <span style="font-size:13px;">Deliveries appear here after the Manager validates them. Waiting for Manager validation, or all validated deliveries have already been stocked in.</span>
+      <span style="font-size:13px;">Deliveries appear here after Admin validates them. Waiting for Admin validation, or all validated deliveries have already been stocked in.</span>
     </div>
   <?php else: ?>
     <?php foreach ($pending_pos as $po):
+      $delivery_id = (int)($po['delivery_id'] ?? 0);
       $product_id  = (int)($po['product_id'] ?? 0);
-      $qty_ordered = (int)($po['qty_ordered'] ?? 0);
-      $unit_cost   = (float)($po['unit_cost'] ?? 0);
+      $qty_ordered = (int)($po['expected_quantity'] ?: $po['quantity']);
+      $actual_qty  = (int)($po['actual_quantity'] ?: $qty_ordered);
+      $unit_cost   = (float)($po['unit_price'] ?: $po['unit_cost'] ?: 0);
       $cur_stock   = (int)($po['current_stock'] ?? 0);
-      $del_flag    = $po['delivery_flag'] ?? 'OK';
-      $actual_qty  = (int)($po['actual_qty_received'] ?? $qty_ordered);
-      $flag_colors = ['OK'=>'#28a745','Short'=>'#856404','Damaged'=>'#dc3545','Excess'=>'#004085','Mixed'=>'#6f42c1'];
-      $flag_color  = $flag_colors[$del_flag] ?? '#6c757d';
+      
+      // Determine discrepancy badge
+      $disc_type = $po['discrepancy_type'] ?? '';
+      $flag_colors = [''=>'#28a745','Partial'=>'#856404','Damaged'=>'#dc3545','Rejected'=>'#6c757d','Mixed'=>'#6f42c1'];
+      $flag_color  = $flag_colors[$disc_type] ?? '#28a745';
     ?>
-    <div class="po-item" id="po-item-<?= $po['id'] ?>">
+    <div class="po-item" id="po-item-<?= $delivery_id ?>">
       <div class="po-item-header">
         <div>
           <div style="font-size:14px;font-weight:700;color:var(--blue);">
-            <i class="fas fa-file-invoice"></i> <?= htmlspecialchars($po['po_number'] ?? 'Manual') ?>
+            <i class="fas fa-file-invoice"></i> <?= htmlspecialchars($po['delivery_ref'] ?? $po['po_number'] ?? 'Delivery') ?>
           </div>
           <div style="font-size:15px;font-weight:700;color:#222;margin-top:3px;">
-            <?= htmlspecialchars($po['product_name'] ?? '') ?>
+            <?= htmlspecialchars($po['product'] ?? $po['product_name'] ?? '') ?>
           </div>
         </div>
         <span class="badge badge-pending"><i class="fas fa-clock"></i> Awaiting Stock-In</span>
@@ -382,61 +539,64 @@ include __DIR__ . '/../partials/header.php';
         <?php if ($po['sku']): ?><span><i class="fas fa-barcode"></i> SKU: <?= htmlspecialchars($po['sku']) ?></span><?php endif; ?>
         <?php if ($po['category']): ?><span><i class="fas fa-tag"></i> <?= htmlspecialchars($po['category']) ?></span><?php endif; ?>
         <span><i class="fas fa-boxes"></i> Current Stock: <strong><?= $cur_stock ?></strong></span>
-        <span><i class="fas fa-shopping-cart"></i> Ordered: <strong><?= $qty_ordered ?></strong></span>
-        <span><i class="fas fa-clipboard-check"></i> Manager Actual Qty: <strong><?= $actual_qty ?></strong></span>
-        <?php if ($po['validated_by_name']): ?><span><i class="fas fa-user-check"></i> Validated by: <strong><?= htmlspecialchars($po['validated_by_name']) ?></strong></span><?php endif; ?>
-        <?php if ($po['delivery_validated_at']): ?><span><i class="fas fa-calendar-check"></i> <?= date('M d, Y H:i', strtotime($po['delivery_validated_at'])) ?></span><?php endif; ?>
+        <span><i class="fas fa-shopping-cart"></i> Expected: <strong><?= $qty_ordered ?></strong></span>
+        <span><i class="fas fa-clipboard-check"></i> Admin Actual Qty: <strong><?= $actual_qty ?></strong></span>
+        <?php if (!empty($po['unit_price'])): ?><span><i class="fas fa-money-bill-wave"></i> Unit Price: <strong>₱<?= number_format((float)$po['unit_price'], 2) ?></strong></span><?php endif; ?>
+        <?php if ($po['encoded_by_name']): ?><span><i class="fas fa-user-edit"></i> Encoded by: <?= htmlspecialchars($po['encoded_by_name']) ?></span><?php endif; ?>
         <?php if ($po['admin_name']): ?><span><i class="fas fa-user-shield"></i> Admin: <?= htmlspecialchars($po['admin_name']) ?></span><?php endif; ?>
+        <?php if ($po['admin_action_at']): ?><span><i class="fas fa-calendar-check"></i> <?= date('M d, Y H:i', strtotime($po['admin_action_at'])) ?></span><?php endif; ?>
       </div>
-      <!-- Manager validation summary -->
+      <!-- Admin validation summary -->
+      <?php if ($disc_type): ?>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
-        <span style="font-size:12px;font-weight:700;color:#495057;">Delivery Flag:</span>
+        <span style="font-size:12px;font-weight:700;color:#495057;">Discrepancy:</span>
         <span style="background:<?= $flag_color ?>20;color:<?= $flag_color ?>;border:1px solid <?= $flag_color ?>40;border-radius:20px;padding:3px 12px;font-size:12px;font-weight:700;">
-          <?= htmlspecialchars($del_flag) ?>
+          <?= htmlspecialchars($disc_type) ?>
         </span>
-        <?php if (!empty($po['delivery_notes'])): ?>
-        <span style="font-size:12px;color:#6c757d;"><i class="fas fa-comment"></i> <?= htmlspecialchars($po['delivery_notes']) ?></span>
+        <?php if ((float)($po['damaged_quantity'] ?? 0) > 0): ?>
+        <span style="font-size:12px;color:#dc3545;"><i class="fas fa-exclamation-triangle"></i> Damaged: <strong><?= number_format((float)$po['damaged_quantity'], 2) ?></strong></span>
         <?php endif; ?>
       </div>
-      <?php if (!empty($po['sr_remarks'])): ?>
-      <div style="font-size:12px;color:#6c757d;margin-bottom:10px;"><i class="fas fa-comment"></i> Staff note: <?= htmlspecialchars($po['sr_remarks']) ?></div>
       <?php endif; ?>
-      <div class="warn-box">
-        <i class="fas fa-exclamation-triangle"></i>
-        <strong>Manual Encode Required:</strong> Enter the <em>actual</em> quantity received. Capture shortages, damages, or excess accurately.
+      <?php if (!empty($po['admin_notes'])): ?>
+      <div style="font-size:12px;color:#6c757d;margin-bottom:10px;"><i class="fas fa-comment"></i> Admin note: <?= htmlspecialchars($po['admin_notes']) ?></div>
+      <?php endif; ?>
+      <div class="info-box">
+        <i class="fas fa-info-circle"></i>
+        <strong>Manual Encode Required:</strong> Enter the <em>actual</em> quantity received. Admin validated quantity: <strong><?= $actual_qty ?></strong>. Capture shortages, damages, or excess accurately.
       </div>
       <!-- Batch ID display / override -->
       <div style="background:#e8f4fd;border-left:4px solid #002F70;border-radius:6px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
         <label style="font-size:12px;font-weight:700;color:#002F70;white-space:nowrap;margin:0;"><i class="fas fa-tag"></i> Batch ID:</label>
-        <input type="text" id="batch-<?= $po['id'] ?>" value="<?= htmlspecialchars($po['batch_id'] ?? '') ?>"
+        <input type="text" id="batch-<?= $delivery_id ?>" value="<?= htmlspecialchars($po['batch_id'] ?? '') ?>"
                placeholder="Enter Batch ID (e.g. BATCH-001)"
                style="font-family:monospace;font-size:0.9rem;padding:5px 10px;border:1px solid #bcd2ee;border-radius:5px;min-width:180px;color:#002F70;font-weight:700;">
         <?php if (!empty($po['batch_id'])): ?>
-        <span style="font-size:11px;color:#6c757d;"><i class="fas fa-info-circle"></i> Pre-filled from PO. Edit if different from actual delivery.</span>
+        <span style="font-size:11px;color:#6c757d;"><i class="fas fa-info-circle"></i> Pre-filled from delivery. Edit if different from actual.</span>
         <?php else: ?>
-        <span style="font-size:11px;color:#dc3545;"><i class="fas fa-exclamation-circle"></i> No Batch ID on PO — please enter one below.</span>
+        <span style="font-size:11px;color:#dc3545;"><i class="fas fa-exclamation-circle"></i> No Batch ID — please enter one below.</span>
         <?php endif; ?>
       </div>
       <div class="table-wrap" style="margin-bottom:12px;">
         <table class="si-table">
           <thead>
             <tr>
-              <th>Product</th><th>SKU</th><th>Ordered</th>
+              <th>Product</th><th>SKU</th><th>Expected</th>
               <th>Actual Received *</th><th>Condition *</th>
               <th>Unit Cost</th><th>Variance</th><th>Remarks</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td><strong><?= htmlspecialchars($po['product_name'] ?? '') ?></strong></td>
+              <td><strong><?= htmlspecialchars($po['product'] ?? $po['product_name'] ?? '') ?></strong></td>
               <td><code style="font-size:11px;"><?= htmlspecialchars($po['sku'] ?? '') ?></code></td>
               <td style="text-align:center;font-weight:700;"><?= $qty_ordered ?></td>
               <td>
-                <input type="number" id="qty-<?= $po['id'] ?>" min="0" value="<?= $actual_qty ?>"
-                       oninput="updateVariance(<?= $po['id'] ?>, <?= $qty_ordered ?>)">
+                <input type="number" id="qty-<?= $delivery_id ?>" min="0" value="<?= $actual_qty ?>"
+                       oninput="updateVariance(<?= $delivery_id ?>, <?= $qty_ordered ?>)">
               </td>
               <td>
-                <select id="cond-<?= $po['id'] ?>" onchange="updateVariance(<?= $po['id'] ?>, <?= $qty_ordered ?>)">
+                <select id="cond-<?= $delivery_id ?>" onchange="updateVariance(<?= $delivery_id ?>, <?= $qty_ordered ?>)">
                   <option value="Good">Good</option>
                   <option value="Damaged">Damaged</option>
                   <option value="Short">Short</option>
@@ -444,15 +604,15 @@ include __DIR__ . '/../partials/header.php';
                 </select>
               </td>
               <td>&#8369;<?= number_format($unit_cost, 2) ?></td>
-              <td id="var-<?= $po['id'] ?>" class="variance-zero">0</td>
-              <td><input type="text" id="rem-<?= $po['id'] ?>" placeholder="Optional notes..."></td>
+              <td id="var-<?= $delivery_id ?>" class="variance-zero">0</td>
+              <td><input type="text" id="rem-<?= $delivery_id ?>" placeholder="Optional notes..."></td>
             </tr>
           </tbody>
         </table>
       </div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <button class="btn btn-success" id="btn-<?= $po['id'] ?>"
-                onclick="submitStockIn(<?= $po['id'] ?>, <?= $product_id ?>, <?= $qty_ordered ?>, <?= $unit_cost ?>)">
+        <button class="btn btn-success" id="btn-<?= $delivery_id ?>"
+                onclick="submitStockIn(<?= $delivery_id ?>, <?= $product_id ?>, <?= $qty_ordered ?>, <?= $unit_cost ?>)">
           <i class="fas fa-check-circle"></i> Submit Stock-In
         </button>
         <span style="font-size:12px;color:var(--gray);">
@@ -463,6 +623,141 @@ include __DIR__ . '/../partials/header.php';
     <?php endforeach; ?>
   <?php endif; ?>
 <?php endif; ?>
+
+<?php elseif ($active_tab === 'deliveries'): ?>
+<!-- ══ DELIVERIES HISTORY TAB ══ -->
+<div class="si-card">
+  <div class="si-card-head">
+    <div class="si-card-title"><i class="fas fa-truck-loading"></i> Deliveries History</div>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-left:auto;">
+      <form method="get" action="staff_stock_in.php" style="display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0;">
+        <input type="hidden" name="tab" value="deliveries">
+        <input type="hidden" name="type" value="<?= htmlspecialchars($type_filter) ?>">
+        <input type="date" name="del_date_from" value="<?= htmlspecialchars($del_hist_date_from) ?>"
+               style="padding:6px 10px;border:1px solid #dee2e6;border-radius:5px;font-size:12px;height:36px;">
+        <span style="font-size:12px;color:var(--gray);">to</span>
+        <input type="date" name="del_date_to" value="<?= htmlspecialchars($del_hist_date_to) ?>"
+               style="padding:6px 10px;border:1px solid #dee2e6;border-radius:5px;font-size:12px;height:36px;">
+        <button type="submit" class="btn btn-sm" style="background:var(--blue);color:#fff;height:36px;">
+          <i class="fas fa-filter"></i> Filter
+        </button>
+      </form>
+    </div>
+  </div>
+  <div class="si-card-body">
+    <?php if (empty($deliveries_history)): ?>
+      <div class="empty-state">
+        <i class="fas fa-inbox"></i>
+        <strong>No deliveries found for the selected period.</strong>
+      </div>
+    <?php else: ?>
+      <div class="info-box" style="margin-bottom:16px;">
+        <i class="fas fa-info-circle"></i>
+        <strong>Status Legend:</strong>
+        <span class="badge" style="background:#fff3cd;color:#856404;margin-left:8px;">Ready for Stock-In</span> = Admin validated, awaiting staff stock-in
+        <span class="badge badge-done" style="margin-left:8px;">Stock-In Complete</span> = Already stocked in
+      </div>
+      <div class="table-wrap">
+        <table class="hist-table" style="font-size:13px;">
+          <thead>
+            <tr>
+              <th>Delivery Ref</th>
+              <th><?= $type_filter === 'fuel' ? 'Fuel Type' : 'Product' ?></th>
+              <th>Supplier</th>
+              <?php if ($type_filter === 'merch'): ?>
+              <th>SKU</th>
+              <th>Category</th>
+              <?php endif; ?>
+              <th>Expected Qty</th>
+              <th>Actual Qty</th>
+              <?php if ($type_filter === 'merch'): ?>
+              <th>Damaged</th>
+              <?php endif; ?>
+              <th>Unit Price</th>
+              <th>Payable</th>
+              <th>Delivery Date</th>
+              <th>Admin Processed</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($deliveries_history as $dh): 
+              $status = $dh['status'];
+              $is_ready = in_array($status, ['Validated', 'Partial Delivery', 'Damaged Items']);
+              $status_badge_class = $is_ready ? 'badge-pending' : 'badge-done';
+              $status_text = $is_ready ? 'Ready for Stock-In' : $status;
+            ?>
+            <tr>
+              <td>
+                <strong style="color:var(--blue);font-size:12px;"><?= htmlspecialchars($dh['delivery_ref']) ?></strong>
+                <?php if ($dh['dr_number']): ?>
+                <br><span style="font-size:11px;color:#6c757d;">DR: <?= htmlspecialchars($dh['dr_number']) ?></span>
+                <?php endif; ?>
+              </td>
+              <td>
+                <strong><?= htmlspecialchars($type_filter === 'fuel' ? $dh['fuel_type'] : $dh['product']) ?></strong>
+                <?php if ($dh['discrepancy_type']): ?>
+                <br><span class="badge" style="background:#fff3cd;color:#856404;font-size:10px;margin-top:2px;"><?= htmlspecialchars($dh['discrepancy_type']) ?></span>
+                <?php endif; ?>
+              </td>
+              <td><?= htmlspecialchars($dh['supplier']) ?></td>
+              <?php if ($type_filter === 'merch'): ?>
+              <td><code style="font-size:11px;"><?= htmlspecialchars($dh['sku'] ?? '') ?></code></td>
+              <td><?= htmlspecialchars($dh['category'] ?? '') ?></td>
+              <?php endif; ?>
+              <td style="text-align:right;"><?= number_format((float)($dh['expected_quantity'] ?: $dh['quantity']), 2) ?></td>
+              <td style="text-align:right;font-weight:700;"><?= number_format((float)$dh['actual_quantity'], 2) ?></td>
+              <?php if ($type_filter === 'merch'): ?>
+              <td style="text-align:right;color:<?= (float)($dh['damaged_quantity'] ?? 0) > 0 ? '#dc3545' : '#6c757d' ?>;">
+                <?= number_format((float)($dh['damaged_quantity'] ?? 0), 2) ?>
+              </td>
+              <?php endif; ?>
+              <td style="text-align:right;">₱<?= number_format((float)$dh['unit_price'], 2) ?></td>
+              <td style="text-align:right;font-weight:700;color:#28a745;">₱<?= number_format((float)$dh['payable_amount'], 2) ?></td>
+              <td><?= date('M d, Y', strtotime($dh['delivery_date'])) ?></td>
+              <td>
+                <?php if ($dh['admin_name']): ?>
+                  <?= htmlspecialchars($dh['admin_name']) ?><br>
+                  <span style="font-size:11px;color:#6c757d;"><?= $dh['admin_action_at'] ? date('M d, H:i', strtotime($dh['admin_action_at'])) : '' ?></span>
+                <?php else: ?>
+                  <span style="color:#6c757d;">—</span>
+                <?php endif; ?>
+              </td>
+              <td>
+                <span class="badge <?= $status_badge_class ?>">
+                  <?php if ($is_ready): ?>
+                    <i class="fas fa-clock"></i> <?= $status_text ?>
+                  <?php else: ?>
+                    <i class="fas fa-check"></i> <?= $status_text ?>
+                  <?php endif; ?>
+                </span>
+              </td>
+              <td>
+                <?php if ($is_ready): ?>
+                  <a href="staff_stock_in.php?tab=pending&type=<?= $type_filter ?>" 
+                     class="btn btn-sm" 
+                     style="background:#28a745;color:#fff;padding:3px 8px;font-size:11px;white-space:nowrap;"
+                     title="Go to Stock-In">
+                    <i class="fas fa-dolly"></i>
+                  </a>
+                <?php else: ?>
+                  <span style="font-size:11px;color:#28a745;"><i class="fas fa-check-circle"></i></span>
+                <?php endif; ?>
+              </td>
+            </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-top:16px;padding:12px;background:#f8f9fa;border-radius:6px;font-size:12px;color:#6c757d;">
+        <i class="fas fa-info-circle"></i> 
+        Showing <?= count($deliveries_history) ?> deliveries from <?= date('M d, Y', strtotime($del_hist_date_from)) ?> to <?= date('M d, Y', strtotime($del_hist_date_to)) ?>.
+        Deliveries with "Ready for Stock-In" status can be processed in the <strong>Pending Stock-In</strong> tab.
+      </div>
+    <?php endif; ?>
+  </div>
+</div>
 
 <?php else: ?>
 <!-- ══ HISTORY TAB ══ -->
@@ -607,11 +902,11 @@ function updateVariance(poId, qtyOrdered) {
     el.className = v > 0 ? 'variance-pos' : (v < 0 ? 'variance-neg' : 'variance-zero');
 }
 
-function submitStockIn(poId, productId, qtyOrdered, unitCost) {
-    var qtyReceived = parseInt(document.getElementById('qty-' + poId).value) || 0;
-    var condition   = document.getElementById('cond-' + poId).value;
-    var remarks     = document.getElementById('rem-' + poId).value.trim();
-    var batchId     = (document.getElementById('batch-' + poId) || {}).value || '';
+function submitStockIn(deliveryId, productId, qtyOrdered, unitCost) {
+    var qtyReceived = parseInt(document.getElementById('qty-' + deliveryId).value) || 0;
+    var condition   = document.getElementById('cond-' + deliveryId).value;
+    var remarks     = document.getElementById('rem-' + deliveryId).value.trim();
+    var batchId     = (document.getElementById('batch-' + deliveryId) || {}).value || '';
 
     if (qtyReceived < 0) { showToast('Quantity received cannot be negative.', 'err'); return; }
     if (!batchId.trim()) {
@@ -624,7 +919,7 @@ function submitStockIn(poId, productId, qtyOrdered, unitCost) {
     }
     if (!confirm(msg)) return;
 
-    var btn = document.getElementById('btn-' + poId);
+    var btn = document.getElementById('btn-' + deliveryId);
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
 
@@ -632,7 +927,7 @@ function submitStockIn(poId, productId, qtyOrdered, unitCost) {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-            po_id: poId,
+            delivery_id: deliveryId,  // NEW: Pass delivery_id from deliveries_oversight
             batch_id: batchId,
             items: [{
                 product_id:   productId,
@@ -649,7 +944,7 @@ function submitStockIn(poId, productId, qtyOrdered, unitCost) {
     .then(function(data) {
         if (data.success) {
             showToast('Stock-In submitted! Batch: ' + (data.batch_ref || batchId || 'N/A'), 'ok');
-            var item = document.getElementById('po-item-' + poId);
+            var item = document.getElementById('po-item-' + deliveryId);
             if (item) {
                 item.style.opacity = '0.4';
                 item.style.pointerEvents = 'none';
@@ -678,13 +973,13 @@ function updateFuelVariance(fdId, qtyExpected) {
     el.className = v > 0 ? 'variance-pos' : (v < 0 ? 'variance-neg' : 'variance-zero');
 }
 
-function submitFuelStockIn(fdId, qtyExpected) {
-    var qtyReceived = parseFloat(document.getElementById('fuel-qty-' + fdId).value) || 0;
-    var condition   = document.getElementById('fuel-cond-' + fdId).value;
-    var remarks     = document.getElementById('fuel-rem-' + fdId).value.trim();
-    var batchIdEl   = document.getElementById('fuel-batch-' + fdId);
+function submitFuelStockIn(deliveryId, qtyExpected) {
+    var qtyReceived = parseFloat(document.getElementById('fuel-qty-' + deliveryId).value) || 0;
+    var condition   = document.getElementById('fuel-cond-' + deliveryId).value;
+    var remarks     = document.getElementById('fuel-rem-' + deliveryId).value.trim();
+    var batchIdEl   = document.getElementById('fuel-batch-' + deliveryId);
     var batchId     = batchIdEl ? batchIdEl.value.trim().toUpperCase() : '';
-    var unitCostEl  = document.getElementById('fuel-cost-' + fdId);
+    var unitCostEl  = document.getElementById('fuel-cost-' + deliveryId);
     var unitCost    = unitCostEl ? (parseFloat(unitCostEl.value) || 0) : 0;
 
     if (!batchId) { showToast('Batch ID is required before submitting.', 'err'); if (batchIdEl) batchIdEl.focus(); return; }
@@ -697,7 +992,7 @@ function submitFuelStockIn(fdId, qtyExpected) {
     }
     if (!confirm(msg)) return;
 
-    var btn = document.getElementById('fuel-btn-' + fdId);
+    var btn = document.getElementById('fuel-btn-' + deliveryId);
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
 
@@ -705,7 +1000,7 @@ function submitFuelStockIn(fdId, qtyExpected) {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-            delivery_id:  fdId,
+            oversight_delivery_id: deliveryId,  // NEW: Pass oversight delivery_id
             qty_received: qtyReceived,
             condition:    condition,
             remarks:      remarks,
@@ -717,7 +1012,7 @@ function submitFuelStockIn(fdId, qtyExpected) {
     .then(function(data) {
         if (data.success) {
             showToast(data.message, 'ok');
-            var item = document.getElementById('fuel-item-' + fdId);
+            var item = document.getElementById('fuel-item-' + deliveryId);
             if (item) {
                 item.style.opacity = '0.4';
                 item.style.pointerEvents = 'none';

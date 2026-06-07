@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Manager Merchandise Deliveries API
  * Actions: list, approve, reject, adjust, get_detail, pending_count
@@ -98,9 +98,10 @@ function map_status_display(string $status): array {
         case 'Confirmed':
         case 'Approved':
         case 'Validated':
-            return ['bucket' => 'Approved', 'label' => 'Approved'];
+        case 'Ready for Stock-In':
+            return ['bucket' => 'Approved', 'label' => 'Ready for Stock-In'];
         case 'Adjusted':
-            return ['bucket' => 'Approved', 'label' => 'Adjusted'];
+            return ['bucket' => 'Approved', 'label' => 'Adjusted — Ready for Stock-In'];
         case 'Pending Resolution':
             return ['bucket' => 'Rejected', 'label' => 'Pending Resolution'];
         case 'Awaiting Replacement':
@@ -111,6 +112,8 @@ function map_status_display(string $status): array {
         case 'Flagged':
         case 'Rejected':
             return ['bucket' => 'Rejected', 'label' => 'Rejected'];
+        case 'Returned':
+            return ['bucket' => 'Rejected', 'label' => 'Returned to Staff'];
         case 'Closed':
             return ['bucket' => 'Closed',   'label' => 'Closed'];
         default:
@@ -140,15 +143,19 @@ try {
             }
 
             // Map UI filter bucket → actual DB status values
-            if ($status_f !== '') {
+            if ($status_f !== '' && $status_f !== 'active' && $status_f !== 'history') {
                 if ($status_f === 'Pending') {
                     $where .= " AND do2.status IN ('Pending Manager Approval','Pending Manager Confirmation','Pending Validation')";
-                } elseif ($status_f === 'Approved') {
-                    $where .= " AND do2.status IN ('Confirmed','Approved','Validated','Adjusted')";
+                } elseif ($status_f === 'Ready for Stock-In') {
+                    $where .= " AND do2.status IN ('Ready for Stock-In','Confirmed','Approved','Validated')";
+                } elseif ($status_f === 'Adjusted') {
+                    $where .= " AND do2.status = 'Adjusted'";
                 } elseif ($status_f === 'Pending Resolution') {
                     $where .= " AND do2.status = 'Pending Resolution'";
                 } elseif ($status_f === 'Awaiting Replacement') {
                     $where .= " AND do2.status = 'Awaiting Replacement'";
+                } elseif ($status_f === 'Returned to Staff') {
+                    $where .= " AND do2.status = 'Returned'";
                 } elseif ($status_f === 'Returned to Supplier') {
                     $where .= " AND do2.status = 'Returned to Supplier'";
                 } elseif ($status_f === 'Rejected') {
@@ -156,6 +163,12 @@ try {
                 } elseif ($status_f === 'Closed') {
                     $where .= " AND do2.status = 'Closed'";
                 }
+            } elseif ($status_f === 'active') {
+                // All Active = pending validation + pending resolution + awaiting replacement
+                $where .= " AND do2.status IN ('Pending Manager Approval','Pending Manager Confirmation','Pending Validation','Pending Resolution','Awaiting Replacement')";
+            } elseif ($status_f === 'history') {
+                // History = all processed (ready for stock-in, adjusted, returned, rejected, closed)
+                $where .= " AND do2.status IN ('Ready for Stock-In','Confirmed','Approved','Validated','Adjusted','Returned','Returned to Supplier','Rejected','Discrepancy','Flagged','Closed')";
             }
             if ($supplier_f !== '') {
                 $where   .= " AND do2.supplier LIKE ?";
@@ -195,7 +208,10 @@ try {
                         'Pending Manager Confirmation',
                         'Pending Validation',
                         'Awaiting Replacement',
-                        'Confirmed','Approved','Validated','Adjusted',
+                        'Confirmed','Approved','Validated',
+                        'Ready for Stock-In',
+                        'Adjusted',
+                        'Returned',
                         'Returned to Supplier',
                         'Closed'
                     ),
@@ -265,7 +281,7 @@ try {
             echo json_encode(['success' => true, 'data' => $row]);
             break;
 
-        // ── POST: approve delivery → auto-update inventory ────────────────────
+        // ── POST: approve delivery → mark Ready for Stock-In (no inventory update here) ──
         case 'approve':
             $input  = json_decode(file_get_contents('php://input'), true) ?? [];
             $id     = (int)($input['id'] ?? 0);
@@ -298,7 +314,6 @@ try {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
             } catch (Exception $e) {}
 
-            // ── Now start the transaction (no DDL will run inside it) ──
             $pdo->beginTransaction();
             try {
                 $stmt = $pdo->prepare("SELECT * FROM deliveries_oversight WHERE id = ? AND station_id = ? FOR UPDATE");
@@ -316,10 +331,10 @@ try {
                     break;
                 }
 
-                // Update status
+                // Mark as Ready for Stock-In — Staff will update inventory during stock-in
                 $pdo->prepare("
                     UPDATE deliveries_oversight
-                    SET status = 'Pending Admin Oversight',
+                    SET status = 'Ready for Stock-In',
                         manager_id = ?,
                         manager_action_at = NOW(),
                         manager_notes = ?,
@@ -327,68 +342,19 @@ try {
                     WHERE id = ?
                 ")->execute([$me['id'], $reason ?: null, $id]);
 
-                // Inventory update (merchandise only, no DDL here)
-                if ($del['delivery_type'] !== 'fuel') {
-                    $pStmt = $pdo->prepare("SELECT id FROM inventory_products WHERE product_name = ? LIMIT 1");
-                    $pStmt->execute([$del['product']]);
-                    $prod_row = $pStmt->fetch(PDO::FETCH_ASSOC);
-
-                    if ($prod_row) {
-                        $product_id = (int)$prod_row['id'];
-
-                        $cntStmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_batches WHERE product_id = ?");
-                        $cntStmt->execute([$product_id]);
-                        $batchCount   = (int)$cntStmt->fetchColumn();
-                        $batch_number = 'BATCH-' . str_pad($product_id, 4, '0', STR_PAD_LEFT) . '-' . str_pad($batchCount + 1, 3, '0', STR_PAD_LEFT);
-
-                        $unit_cost = 0;
-                        try {
-                            $ucStmt = $pdo->prepare("SELECT unit_cost FROM inventory_products WHERE id = ? LIMIT 1");
-                            $ucStmt->execute([$product_id]);
-                            $unit_cost = (float)($ucStmt->fetchColumn() ?: 0);
-                        } catch (Exception $e) {}
-
-                        $pdo->prepare("
-                            INSERT INTO merchandise_batches
-                                (product_id, station_id, batch_number, delivery_id, quantity_received,
-                                 remaining_qty, unit_cost, supplier, date_received,
-                                 encoded_by, validated_by, validated_at, status)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'active')
-                        ")->execute([
-                            $product_id, $station_id, $batch_number, $id,
-                            (int)$del['quantity'], (int)$del['quantity'],
-                            $unit_cost,
-                            $del['supplier'] ?: null,
-                            $del['delivery_date'] ?? date('Y-m-d'),
-                            $del['encoded_by'] ?? $me['id'],
-                            $me['id']
-                        ]);
-
-                        $syncStmt = $pdo->prepare("SELECT COALESCE(SUM(remaining_qty), 0) FROM merchandise_batches WHERE product_id = ? AND status = 'active'");
-                        $syncStmt->execute([$product_id]);
-                        $newStock = (int)$syncStmt->fetchColumn();
-                        $pdo->prepare("UPDATE inventory_products SET stock = ? WHERE id = ?")->execute([$newStock, $product_id]);
-                    } else {
-                        $pdo->prepare("UPDATE inventory_products SET stock = stock + ? WHERE product_name = ? LIMIT 1")->execute([$del['quantity'], $del['product']]);
-                    }
-                } else {
-                    // Fuel inventory update
-                    $upd = $pdo->prepare("UPDATE fuel_inventory fi JOIN fuel_types ft ON fi.fuel_type_id = ft.id SET fi.current_stock = fi.current_stock + ? WHERE fi.station_id = ? AND ft.name = ? LIMIT 1");
-                    $upd->execute([$del['quantity'], $station_id, $del['product']]);
-                }
-
                 if ($pdo->inTransaction()) $pdo->commit();
 
-                try_log_merch($pdo, $me['id'], 'Approve Delivery', "Manager approved delivery #{$id} ref:{$del['delivery_ref']} ({$del['product']}, qty:{$del['quantity']}) — forwarded to Admin oversight");
+                try_log_merch($pdo, $me['id'], 'Approve Delivery',
+                    "Manager approved delivery #{$id} ref:{$del['delivery_ref']} ({$del['product']}, qty:{$del['quantity']}) — marked Ready for Stock-In" . ($reason ? " | Notes: {$reason}" : ''));
 
                 try {
                     $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
                     $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
-                    $detail = "Manager approved delivery | Ref: {$del['delivery_ref']} | Product: {$del['product']} | Qty: {$del['quantity']} | Supplier: {$del['supplier']} | Status → Pending Admin Oversight" . ($reason ? " | Notes: {$reason}" : '');
+                    $detail = "Delivery approved | Ref: {$del['delivery_ref']} | Product: {$del['product']} | Qty: {$del['quantity']} | Status → Ready for Stock-In" . ($reason ? " | Notes: {$reason}" : '');
                     $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'transaction', 'Approve', ?, 'deliveries', ?, 'Success', ?, ?, NOW())")->execute([$me['id'], $detail, $id, $ip, $ua]);
                 } catch (Exception $e) {}
 
-                echo json_encode(['success' => true, 'message' => 'Delivery approved and forwarded to Admin for final oversight.']);
+                echo json_encode(['success' => true, 'message' => 'Delivery approved. Marked as Ready for Stock-In. Staff can now update the inventory.']);
 
             } catch (Exception $e) {
                 if ($pdo->inTransaction()) $pdo->rollBack();
@@ -706,7 +672,7 @@ try {
             echo json_encode(['success' => true, 'message' => 'Replacement received. Inventory updated to full quantity.']);
             break;
 
-        // ── POST: adjust delivery (minor corrections by manager) ─────────────
+        // ── POST: adjust delivery (minor corrections) → mark Ready for Stock-In ──
         case 'adjust':
             $input    = json_decode(file_get_contents('php://input'), true) ?? [];
             $id       = (int)($input['id'] ?? 0);
@@ -725,7 +691,8 @@ try {
 
             if (!$del) { echo json_encode(['success' => false, 'message' => 'Delivery not found']); break; }
 
-            $fields = ['quantity = ?', 'manager_id = ?', 'manager_action_at = NOW()', 'manager_notes = ?', 'updated_at = NOW()'];
+            // Save corrections and mark as Ready for Stock-In (no inventory update here)
+            $fields = ['quantity = ?', 'status = \'Adjusted\'', 'manager_id = ?', 'manager_action_at = NOW()', 'manager_notes = ?', 'updated_at = NOW()'];
             $vals   = [$qty, $me['id'], $reason];
 
             if ($supplier !== '') { $fields[] = 'supplier = ?'; $vals[] = $supplier; }
@@ -736,9 +703,16 @@ try {
                 ->execute($vals);
 
             try_log_merch($pdo, $me['id'], 'Adjust Delivery',
-                "Adjusted delivery #{$id} ref:{$del['delivery_ref']} ({$del['product']}) qty:{$del['quantity']} → {$qty} — reason: {$reason}");
+                "Adjusted delivery #{$id} ref:{$del['delivery_ref']} ({$del['product']}) qty:{$del['quantity']} → {$qty} — marked Adjusted (Ready for Stock-In) — reason: {$reason}");
 
-            echo json_encode(['success' => true, 'message' => 'Delivery adjusted successfully.']);
+            try {
+                $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+                $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                $detail = "Delivery adjusted | Ref: {$del['delivery_ref']} | Product: {$del['product']} | Old Qty: {$del['quantity']} → New Qty: {$qty} | Status → Adjusted (Ready for Stock-In) | Reason: {$reason}";
+                $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'transaction', 'Adjust', ?, 'deliveries', ?, 'Success', ?, ?, NOW())")->execute([$me['id'], $detail, $id, $ip, $ua]);
+            } catch (Exception $e) {}
+
+            echo json_encode(['success' => true, 'message' => 'Delivery adjusted and marked as Ready for Stock-In. Staff can now update the inventory.']);
             break;
 
         // ── GET: export_excel ───────────────────────────────────────
@@ -944,6 +918,119 @@ try {
             
             // Use HTML to PDF conversion (you may need to install a library like DOMPDF)
             echo $html;
+            exit;
+
+        // ── POST: create_po ──────────────────────────────────────────
+        case 'create_po':
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+                http_response_code(405);
+                echo json_encode(['success' => false, 'message' => 'POST method required.']);
+                exit;
+            }
+            $data = json_decode(file_get_contents('php://input'), true);
+            $item_name    = trim($data['item_name'] ?? '');
+            $batch_id     = trim($data['batch_id'] ?? '');
+            $quantity     = (float)($data['quantity'] ?? 0);
+            $unit         = trim($data['unit'] ?? 'pcs');
+            $supplier_name= trim($data['supplier_name'] ?? 'Petron Corporation');
+            $expected_delivery = trim($data['expected_delivery'] ?? '');
+            $notes        = trim($data['notes'] ?? '');
+
+            if (empty($item_name)) {
+                echo json_encode(['success' => false, 'message' => 'Item name is required.']);
+                exit;
+            }
+            if (empty($batch_id)) {
+                echo json_encode(['success' => false, 'message' => 'Batch ID is required.']);
+                exit;
+            }
+            if ($quantity <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Quantity must be greater than zero.']);
+                exit;
+            }
+            if (empty($expected_delivery)) {
+                echo json_encode(['success' => false, 'message' => 'Expected delivery date is required.']);
+                exit;
+            }
+
+            // Ensure unit and other columns exist on purchase_orders
+            foreach ([
+                "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS unit VARCHAR(20) DEFAULT 'pcs'",
+                "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS batch_id VARCHAR(100) NULL",
+                "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS supplier_name VARCHAR(200) NULL",
+                "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS expected_delivery DATE NULL",
+                "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS notes TEXT NULL",
+                "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'merch'",
+                "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS admin_finalized TINYINT(1) NOT NULL DEFAULT 0",
+            ] as $sql) {
+                try { $pdo->exec($sql); } catch (Exception $e) {}
+            }
+
+            $po_number = 'POM-' . date('Ymd') . '-' . rand(1000, 9999);
+
+            $stmt = $pdo->prepare("
+                INSERT INTO purchase_orders (
+                    po_number, station_id, product_name, batch_id, quantity, unit,
+                    supplier_name, expected_delivery, notes, type, status, created_by, admin_finalized, created_at, updated_at
+                ) VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, 'merch', 'Pending Admin Validation', ?, 0, NOW(), NOW()
+                )
+            ");
+            $stmt->execute([
+                $po_number,
+                $station_id,
+                $item_name,
+                $batch_id,
+                $quantity,
+                $unit,
+                $supplier_name ?: 'Petron Corporation',
+                $expected_delivery,
+                $notes,
+                $me['id']
+            ]);
+
+            try_log_merch($pdo, $me['id'], 'Create PO', "Created Merchandise PO #$po_number for item: $item_name (Batch: $batch_id)");
+
+            echo json_encode(['success' => true, 'message' => 'Purchase Order submitted to Admin for finalization.']);
+            exit;
+
+        // ── GET: list_po ─────────────────────────────────────────────
+        case 'list_po':
+            // Ensure columns exist just in case
+            try { $pdo->exec("ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS unit VARCHAR(20) DEFAULT 'pcs'"); } catch (Exception $e) {}
+            try { $pdo->exec("ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS batch_id VARCHAR(100) NULL"); } catch (Exception $e) {}
+
+            $stmt = $pdo->prepare("
+                SELECT po.*, u.name as created_by_name
+                FROM purchase_orders po
+                LEFT JOIN users u ON po.created_by = u.id
+                WHERE po.station_id = ? AND po.type = 'merch'
+                ORDER BY po.id DESC
+            ");
+            $stmt->execute([$station_id]);
+            $pos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            echo json_encode(['success' => true, 'data' => $pos]);
+            exit;
+
+        // ── GET: get_po ──────────────────────────────────────────────
+        case 'get_po':
+            $po_id = (int)($_GET['id'] ?? 0);
+            $stmt = $pdo->prepare("
+                SELECT po.*, u.name as created_by_name
+                FROM purchase_orders po
+                LEFT JOIN users u ON po.created_by = u.id
+                WHERE po.id = ? AND po.station_id = ?
+            ");
+            $stmt->execute([$po_id, $station_id]);
+            $po = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$po) {
+                echo json_encode(['success' => false, 'message' => 'Purchase Order not found.']);
+                exit;
+            }
+
+            echo json_encode(['success' => true, 'data' => $po]);
             exit;
 
         default:

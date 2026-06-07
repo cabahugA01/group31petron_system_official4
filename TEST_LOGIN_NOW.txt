@@ -1,0 +1,136 @@
+═══════════════════════════════════════════════════════════════════════
+  TEST THE NEW LOGIN SYSTEM (NO OTP)
+═══════════════════════════════════════════════════════════════════════
+
+✅ WHAT TO TEST:
+
+1. LOGIN FLOW (Main Feature)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   URL: http://localhost/group31petron_system_official4/public/login.php
+   
+   Steps:
+   [ ] Enter email/username
+   [ ] Enter password
+   [ ] Solve CAPTCHA (math problem)
+   [ ] Click "Login"
+   
+   Expected Result:
+   ✅ Should go DIRECTLY to dashboard
+   ❌ Should NOT show OTP verification page
+   
+   Dashboard based on role:
+   • SuperAdmin → super_admin_dashboard.php
+   • Admin → admin_dashboard.php
+   • Manager → manager_dashboard.php
+   • Staff → staff_dashboard.php
+
+2. PASSWORD RESET FLOW (Should Still Work)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   URL: http://localhost/group31petron_system_official4/public/forgot_password.php
+   
+   Steps:
+   [ ] Click "Forgot Password"
+   [ ] Enter email/username
+   [ ] Check email for OTP code
+   [ ] Enter OTP on verify_otp.php
+   [ ] Set new password
+   [ ] Try logging in with new password
+   
+   Expected Result:
+   ✅ Should receive email with OTP
+   ✅ Should be able to verify OTP
+   ✅ Should be able to reset password
+   ✅ Should be able to login with new password
+
+3. FAILED LOGIN ATTEMPTS (Security)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Steps:
+   [ ] Try wrong password 3 times
+   [ ] Should show error message
+   [ ] Try 5 times total
+   
+   Expected Result:
+   ✅ After 5 failed attempts, account should be locked
+   ✅ Should show "Too many failed attempts" message
+   ✅ Should unlock after 15 minutes
+
+4. CAPTCHA VALIDATION
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Steps:
+   [ ] Try correct credentials
+   [ ] Enter WRONG CAPTCHA answer
+   [ ] Click Login
+   
+   Expected Result:
+   ✅ Should show "Invalid CAPTCHA" error
+   ✅ Should not log in
+
+5. INACTIVE USER
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Steps:
+   [ ] Try logging in with disabled/locked account
+   
+   Expected Result:
+   ✅ Should show "Account is disabled/locked" message
+   ✅ Should not log in
+
+═══════════════════════════════════════════════════════════════════════
+
+📊 TEST RESULTS TEMPLATE:
+
+Date: ______________
+Tester: ______________
+
+✅ LOGIN FLOW
+   [ ] PASS - Direct to dashboard without OTP
+   [ ] FAIL - (describe issue)
+
+✅ PASSWORD RESET
+   [ ] PASS - Email OTP works correctly
+   [ ] FAIL - (describe issue)
+
+✅ SECURITY
+   [ ] PASS - Account lockout works
+   [ ] PASS - CAPTCHA validation works
+   [ ] FAIL - (describe issue)
+
+═══════════════════════════════════════════════════════════════════════
+
+🔍 QUICK VERIFICATION:
+
+Test User Credentials (if you have test users):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Email: ____________________
+Password: ____________________
+
+Expected:
+1. Enter credentials + solve CAPTCHA
+2. Click Login
+3. ✅ Go directly to dashboard
+
+═══════════════════════════════════════════════════════════════════════
+
+⚠️ WHAT SHOULD NOT HAPPEN:
+
+❌ Should NOT redirect to verify_login_otp.php
+❌ Should NOT ask for OTP code during login
+❌ Should NOT send SMS/Email OTP for login
+
+✅ OTP should ONLY appear for password reset!
+
+═══════════════════════════════════════════════════════════════════════
+
+🎯 SUCCESS CRITERIA:
+
+[ ] Login works without OTP
+[ ] Goes directly to correct dashboard
+[ ] Password reset still requires OTP
+[ ] CAPTCHA validation works
+[ ] Account lockout works
+[ ] All security features functional
+
+═══════════════════════════════════════════════════════════════════════
+
+If all checks pass: ✅ SYSTEM READY FOR PRODUCTION!
+
+═══════════════════════════════════════════════════════════════════════

@@ -167,7 +167,7 @@ include __DIR__ . '/../partials/header.php';
 
 /* Table */
 .del-table { width:100%; border-collapse:collapse; font-size:13px; }
-.del-table th { background:#f8f9fa; color:#495057; font-weight:700; padding:10px 12px; text-align:left; border-bottom:2px solid #dee2e6; white-space:nowrap; }
+.del-table thead th { background:#002F70 !important; color:#fff !important; font-weight:600; padding:14px 16px; text-align:left; text-transform:uppercase; letter-spacing:0.3px; border:none !important; white-space:nowrap; font-size:11px; }
 .del-table td { padding:10px 12px; border-bottom:1px solid #f0f0f0; vertical-align:middle; }
 .del-table tr:hover td { background:#f8f9fa; }
 .del-table tr.row-rejected td { background:#fff8f8; }

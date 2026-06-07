@@ -159,11 +159,11 @@ include __DIR__ . '/../partials/header.php';
 
 /* ── Table ── */
 .table-wrap{overflow-x:auto;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.08);border:1px solid #e9ecef;overflow:hidden;}
-#del-table{width:100%;border-collapse:collapse;font-size:0.875rem;}
-#del-table th{background:#002F70 !important;color:#fff !important;padding:14px 16px !important;font-weight:600 !important;font-size:0.813rem !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;white-space:nowrap;}
-#del-table td{padding:12px 16px;border-bottom:1px solid #e9ecef;vertical-align:middle;color:#212529;}
-#del-table tbody tr:hover td{background:#e3f2fd;}
-#del-table tbody tr:last-child td{border-bottom:none;}
+body #del-table{width:100%;border-collapse:collapse;font-size:0.875rem;}
+body #del-table thead th{background:#002F70 !important;color:#fff !important;padding:14px 16px !important;font-weight:600 !important;font-size:0.813rem !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;white-space:nowrap;}
+body #del-table tbody td{padding:12px 16px;border-bottom:1px solid #e9ecef;vertical-align:middle;color:#212529;}
+body #del-table tbody tr:hover td{background:#e3f2fd;}
+body #del-table tbody tr:last-child td{border-bottom:none;}
 
 /* ── Filter bar ── */
 .filter-row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:16px;}
@@ -231,33 +231,49 @@ include __DIR__ . '/../partials/header.php';
 body{overflow-x:hidden !important;max-width:100vw !important;}
 </style>
 
+<?php
+// Summary counts for cards
+$cnt_pending = 0; $cnt_validated = 0; $cnt_rejected = 0;
+try {
+    $sc = $pdo->prepare("SELECT status FROM deliveries_oversight WHERE station_id=? AND delivery_type='merchandise'");
+    $sc->execute([$station_id]);
+    foreach ($sc->fetchAll(PDO::FETCH_COLUMN) as $s) {
+        $sl = strtolower($s);
+        if (in_array($sl, ['pending manager approval','pending manager confirmation','pending validation','pending resolution','awaiting replacement'])) $cnt_pending++;
+        elseif (in_array($sl, ['confirmed','approved','validated','ready for stock-in','adjusted'])) $cnt_validated++;
+        elseif (in_array($sl, ['discrepancy','rejected','flagged','returned','returned to supplier','closed'])) $cnt_rejected++;
+    }
+} catch (Exception $e) {}
+
+
+?>
+
 <div class="page-head">
     <div>
+        <a href="manager_dashboard.php" class="btn ghost" style="margin-bottom:6px;display:inline-flex;align-items:center;gap:5px;font-size:12px;"><i class="fas fa-arrow-left"></i> Back to Dashboard</a>
         <h1 class="h1"><i class="fas fa-truck"></i> Merchandise Deliveries</h1>
-        <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; Merchandise deliveries &mdash; Approve, Flag Discrepancy, or Resolve</div>
+        <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; Validate staff-encoded deliveries &mdash; Approve, Reject, Return, or Adjust</div>
     </div>
-    <div class="header-actions">
+    <div class="header-actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <button onclick="exportCSV()" class="btn ghost" style="font-size:12px;"><i class="fas fa-file-csv"></i> Export CSV</button>
+        <button onclick="exportPDF()" class="btn ghost" style="font-size:12px;"><i class="fas fa-file-pdf"></i> Export PDF</button>
         <button onclick="loadDeliveries()" class="btn ghost"><i class="fas fa-sync-alt"></i> Refresh</button>
     </div>
 </div>
 
-<!-- Workflow Integration Guide -->
-<div class="workflow-container">
-    <div class="workflow-title"><i class="fas fa-project-diagram" style="color:#002F70;"></i> Merchandise Flow Guide (Merchandise Only)</div>
-    <div class="workflow-steps">
-        <div class="step done"><span class="step-num">1</span> Inventory Alert</div>
-        <div class="step-arrow"><i class="fas fa-chevron-right"></i></div>
-        <div class="step done"><span class="step-num">2</span> PO Creation</div>
-        <div class="step-arrow"><i class="fas fa-chevron-right"></i></div>
-        <div class="step done"><span class="step-num">3</span> Admin Forward</div>
-        <div class="step-arrow"><i class="fas fa-chevron-right"></i></div>
-        <div class="step done"><span class="step-num">4</span> Supplier Delivery</div>
-        <div class="step-arrow"><i class="fas fa-chevron-right"></i></div>
-        <div class="step active"><span class="step-num">5</span> Manager Confirmation</div>
-        <div class="step-arrow"><i class="fas fa-chevron-right"></i></div>
-        <div class="step"><span class="step-num">6</span> Inventory Update</div>
-        <div class="step-arrow"><i class="fas fa-chevron-right"></i></div>
-        <div class="step"><span class="step-num">7</span> Close</div>
+<!-- Summary Cards -->
+<div class="sum-grid" style="margin-bottom:18px;">
+    <div class="sum-card sc-pending">
+        <div class="sc-num" id="card-pending"><?php echo $cnt_pending; ?></div>
+        <div class="sc-lbl"><i class="fas fa-hourglass-half"></i> Pending Deliveries</div>
+    </div>
+    <div class="sum-card sc-approved">
+        <div class="sc-num" id="card-validated"><?php echo $cnt_validated; ?></div>
+        <div class="sc-lbl"><i class="fas fa-check-circle"></i> Validated Deliveries</div>
+    </div>
+    <div class="sum-card sc-discrepancy">
+        <div class="sc-num" id="card-rejected"><?php echo $cnt_rejected; ?></div>
+        <div class="sc-lbl"><i class="fas fa-exclamation-triangle"></i> Rejected / Returned</div>
     </div>
 </div>
 
@@ -286,7 +302,7 @@ body{overflow-x:hidden !important;max-width:100vw !important;}
     </div>
 </div>
 
-<!-- Tabs for Manage vs History -->
+<!-- Tabs for Manage vs History vs PO -->
 <div class="tab-container">
     <button class="tab-btn active" id="tab-manage" onclick="switchTab('manage')">
         <i class="fas fa-clipboard-check"></i> Manage Deliveries <span class="badge" id="badge-pending">0</span>
@@ -294,6 +310,7 @@ body{overflow-x:hidden !important;max-width:100vw !important;}
     <button class="tab-btn" id="tab-history" onclick="switchTab('history')">
         <i class="fas fa-history"></i> Delivery History
     </button>
+
 </div>
 
 <div class="inv-card">
@@ -303,19 +320,19 @@ body{overflow-x:hidden !important;max-width:100vw !important;}
     </div>
     <div class="inv-card-body">
         <div class="table-wrap">
-            <table class="table" id="del-table">
-                <thead>
-                    <tr>
-                        <th>Delivery ID</th>
-                        <th>Type</th>
-                        <th>Supplier Name</th>
-                        <th>Product / Fuel</th>
-                        <th>Qty Delivered</th>
-                        <th>Date</th>
-                        <th>Encoded By</th>
-                        <th>Status</th>
-                        <th>Remarks / Notes</th>
-                        <th>Actions</th>
+            <table id="del-table">
+                <thead style="background:#002F70 !important;">
+                    <tr style="background:#002F70 !important;">
+                        <th style="background:#002F70 !important;color:#fff !important;padding:14px 16px !important;font-weight:600 !important;font-size:0.813rem !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;white-space:nowrap;">Delivery ID</th>
+                        <th style="background:#002F70 !important;color:#fff !important;padding:14px 16px !important;font-weight:600 !important;font-size:0.813rem !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;white-space:nowrap;">Type</th>
+                        <th style="background:#002F70 !important;color:#fff !important;padding:14px 16px !important;font-weight:600 !important;font-size:0.813rem !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;white-space:nowrap;">Supplier Name</th>
+                        <th style="background:#002F70 !important;color:#fff !important;padding:14px 16px !important;font-weight:600 !important;font-size:0.813rem !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;white-space:nowrap;">Product / Fuel</th>
+                        <th style="background:#002F70 !important;color:#fff !important;padding:14px 16px !important;font-weight:600 !important;font-size:0.813rem !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;white-space:nowrap;">Qty Delivered</th>
+                        <th style="background:#002F70 !important;color:#fff !important;padding:14px 16px !important;font-weight:600 !important;font-size:0.813rem !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;white-space:nowrap;">Date</th>
+                        <th style="background:#002F70 !important;color:#fff !important;padding:14px 16px !important;font-weight:600 !important;font-size:0.813rem !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;white-space:nowrap;">Encoded By</th>
+                        <th style="background:#002F70 !important;color:#fff !important;padding:14px 16px !important;font-weight:600 !important;font-size:0.813rem !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;white-space:nowrap;">Status</th>
+                        <th style="background:#002F70 !important;color:#fff !important;padding:14px 16px !important;font-weight:600 !important;font-size:0.813rem !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;white-space:nowrap;">Remarks / Notes</th>
+                        <th style="background:#002F70 !important;color:#fff !important;padding:14px 16px !important;font-weight:600 !important;font-size:0.813rem !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;white-space:nowrap;">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="del-tbody">
@@ -326,6 +343,8 @@ body{overflow-x:hidden !important;max-width:100vw !important;}
     </div>
 </div>
 
+
+
 <!-- ══ APPROVE MODAL ══════════════════════════════════════════════════════════ -->
 <div class="modal-overlay" id="aprModal">
     <div class="modal-box">
@@ -333,7 +352,7 @@ body{overflow-x:hidden !important;max-width:100vw !important;}
             <div class="modal-title"><i class="fas fa-check-circle" style="color:#28a745;"></i> Approve Delivery</div>
             <button class="modal-close" onclick="closeM('aprModal')">&times;</button>
         </div>
-        <div class="ibox"><i class="fas fa-info-circle"></i> Approving will <strong>automatically update inventory</strong> — delivered quantity added to stock.</div>
+        <div class="ibox"><i class="fas fa-info-circle"></i> Approving marks this delivery as <strong>Ready for Stock-In</strong>. Inventory will be updated by Staff during the stock-in step.</div>
         <div class="fg2">
             <div class="fld"><label>Delivery ID</label><input type="text" id="apr-ref" readonly></div>
             <div class="fld"><label>Supplier</label><input type="text" id="apr-sup" readonly></div>
@@ -354,10 +373,10 @@ body{overflow-x:hidden !important;max-width:100vw !important;}
 <div class="modal-overlay" id="flagModal">
     <div class="modal-box">
         <div class="modal-head">
-            <div class="modal-title"><i class="fas fa-exclamation-triangle" style="color:#fd7e14;"></i> Flag Discrepancy</div>
+            <div class="modal-title"><i class="fas fa-times-circle" style="color:#dc3545;"></i> Reject Delivery</div>
             <button class="modal-close" onclick="closeM('flagModal')">&times;</button>
         </div>
-        <div class="obox"><i class="fas fa-info-circle"></i> Use this when delivery is <strong>incomplete or has damaged items</strong>. Inventory will NOT be updated until resolved.</div>
+        <div class="obox"><i class="fas fa-info-circle"></i> Use this when delivery is <strong>invalid, has wrong Batch ID, or cannot be accepted</strong>. Delivery will be flagged and inventory will NOT be updated.</div>
         <div class="fg2">
             <div class="fld"><label>Delivery ID</label><input type="text" id="flag-ref" readonly></div>
             <div class="fld"><label>Product</label><input type="text" id="flag-prod" readonly></div>
@@ -377,7 +396,7 @@ body{overflow-x:hidden !important;max-width:100vw !important;}
         <div class="fld"><label>Discrepancy Details <span style="color:#dc3545;">*</span></label><textarea id="flag-reason" rows="3" placeholder="e.g. Encoded 50 pcs but actual delivery is 45 pcs — 5 pcs kulang. OR 2 pcs guba/damaged."></textarea></div>
         <div class="modal-footer">
             <button type="button" onclick="closeM('flagModal')" class="btn ghost">Cancel</button>
-            <button type="button" onclick="doFlag()" class="btn" style="background:#fd7e14;color:#fff;font-weight:700;"><i class="fas fa-flag"></i> Flag as Discrepancy</button>
+            <button type="button" onclick="doFlag()" class="btn" style="background:#dc3545;color:#fff;font-weight:700;"><i class="fas fa-times-circle"></i> Reject Delivery</button>
         </div>
     </div>
 </div>
@@ -386,19 +405,19 @@ body{overflow-x:hidden !important;max-width:100vw !important;}
 <div class="modal-overlay" id="rejModal">
     <div class="modal-box">
         <div class="modal-head">
-            <div class="modal-title"><i class="fas fa-times-circle" style="color:#dc3545;"></i> Reject Delivery</div>
+            <div class="modal-title"><i class="fas fa-undo" style="color:#856404;"></i> Return to Staff</div>
             <button class="modal-close" onclick="closeM('rejModal')">&times;</button>
         </div>
-        <div class="wbox"><i class="fas fa-exclamation-triangle"></i> Delivery will be <strong>returned to Staff for correction</strong>. Use this for encoding errors, not physical discrepancies.</div>
+        <div class="wbox"><i class="fas fa-exclamation-triangle"></i> Delivery will be <strong>returned to Staff for correction</strong>. Use this for encoding errors (wrong DR number, incorrect data). Staff will re-encode and resubmit.</div>
         <div class="fg2">
             <div class="fld"><label>Delivery ID</label><input type="text" id="rej-ref" readonly></div>
             <div class="fld"><label>Qty Delivered</label><input type="text" id="rej-qty" readonly></div>
         </div>
         <div class="fld"><label>Product</label><input type="text" id="rej-prod" readonly></div>
-        <div class="fld"><label>Rejection Reason <span style="color:#dc3545;">*</span></label><textarea id="rej-rsn" rows="3" placeholder="Explain why this delivery is being rejected (encoding error, wrong data, etc.)..."></textarea></div>
+        <div class="fld"><label>Return Reason <span style="color:#dc3545;">*</span></label><textarea id="rej-rsn" rows="3" placeholder="Explain why this delivery is being returned (e.g. wrong DR number, incorrect quantity entered, missing Batch ID)..."></textarea></div>
         <div class="modal-footer">
             <button type="button" onclick="closeM('rejModal')" class="btn ghost">Cancel</button>
-            <button type="button" onclick="doReject()" class="btn" style="background:#dc3545;color:#fff;font-weight:700;"><i class="fas fa-times"></i> Reject &amp; Return to Staff</button>
+            <button type="button" onclick="doReject()" class="btn" style="background:#856404;color:#fff;font-weight:700;"><i class="fas fa-undo"></i> Return to Staff</button>
         </div>
     </div>
 </div>
@@ -507,7 +526,7 @@ body{overflow-x:hidden !important;max-width:100vw !important;}
             <div class="modal-title"><i class="fas fa-sliders-h" style="color:#002F70;"></i> Adjust Delivery</div>
             <button class="modal-close" onclick="closeM('adjModal')">&times;</button>
         </div>
-        <div class="ibox"><i class="fas fa-info-circle"></i> Minor corrections only. <strong>Reason is mandatory</strong> for all adjustments.</div>
+        <div class="ibox"><i class="fas fa-info-circle"></i> Minor corrections only. After saving, this delivery will be marked <strong>Adjusted — Ready for Stock-In</strong>. Inventory will be updated by Staff during stock-in. <strong>Reason is mandatory.</strong></div>
         <div class="fg2">
             <div class="fld"><label>Delivery ID</label><input type="text" id="adj-ref" readonly></div>
             <div class="fld"><label>Product</label><input type="text" id="adj-prod" readonly></div>
@@ -539,6 +558,8 @@ body{overflow-x:hidden !important;max-width:100vw !important;}
     </div>
 </div>
 
+
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -547,27 +568,37 @@ var CID = null, _t = null, _selRes = null;
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
-    ['aprModal','flagModal','rejModal','resolveModal','remarksModal','replRecvModal','adjModal','dtlModal'].forEach(function(id) {
-        var el = document.getElementById(id);
-        if (el && el.parentNode !== document.body) document.body.appendChild(el);
-    });
-    document.getElementById('f-supplier').addEventListener('input', function() {
-        clearTimeout(_t); _t = setTimeout(loadDeliveries, 400);
-    });
-    loadDeliveries();
+    console.log('Manager Merchandise Deliveries: Initializing...');
+    try {
+        ['aprModal','flagModal','rejModal','resolveModal','remarksModal','replRecvModal','adjModal','dtlModal'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el && el.parentNode !== document.body) document.body.appendChild(el);
+        });
+        document.getElementById('f-supplier').addEventListener('input', function() {
+            clearTimeout(_t); _t = setTimeout(loadDeliveries, 400);
+        });
+        console.log('Manager Merchandise Deliveries: Loading deliveries...');
+        loadDeliveries();
+    } catch (error) {
+        console.error('Initialization error:', error);
+        var tb = document.getElementById('del-tbody');
+        if (tb) {
+            tb.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#dc3545;padding:32px;"><i class="fas fa-exclamation-triangle"></i> Initialization Error: ' + error.message + '</td></tr>';
+        }
+    }
 });
 
 // ── Modal helpers ─────────────────────────────────────────────────────────────
 function openM(id)  { document.getElementById(id).classList.add('open'); }
 function closeM(id) { document.getElementById(id).classList.remove('open'); }
 document.addEventListener('click', function(e) {
-    ['aprModal','flagModal','rejModal','resolveModal','remarksModal','replRecvModal','adjModal','dtlModal'].forEach(function(id) {
+    ['aprModal','flagModal','rejModal','resolveModal','remarksModal','replRecvModal','adjModal','dtlModal','poModal','poDtlModal'].forEach(function(id) {
         var el = document.getElementById(id);
         if (el && e.target === el) closeM(id);
     });
 });
 document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') ['aprModal','flagModal','rejModal','resolveModal','remarksModal','replRecvModal','adjModal','dtlModal'].forEach(closeM);
+    if (e.key === 'Escape') ['aprModal','flagModal','rejModal','resolveModal','remarksModal','replRecvModal','adjModal','dtlModal','poModal','poDtlModal'].forEach(closeM);
 });
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
@@ -595,8 +626,10 @@ function getDisplayStatus(raw) {
     if (s.includes('pending manager') || s === 'pending validation' || s === 'pending') return 'Pending';
     if (s === 'pending resolution') return 'Pending Resolution';
     if (s === 'awaiting replacement') return 'Awaiting Replacement';
-    if (s === 'confirmed' || s === 'approved' || s === 'validated') return 'Approved';
+    if (s === 'ready for stock-in') return 'Ready for Stock-In';
+    if (s === 'confirmed' || s === 'approved' || s === 'validated') return 'Ready for Stock-In';
     if (s === 'adjusted') return 'Adjusted';
+    if (s === 'returned') return 'Returned to Staff';
     if (s === 'returned to supplier') return 'Returned to Supplier';
     if (s === 'discrepancy' || s === 'flagged' || s === 'rejected') return 'Rejected';
     if (s === 'closed') return 'Closed';
@@ -604,7 +637,6 @@ function getDisplayStatus(raw) {
 }
 
 // ── Load deliveries ───────────────────────────────────────────────────────────
-[ignoring loop detection]
 var currentTab = 'manage';
 
 function switchTab(tab) {
@@ -615,6 +647,12 @@ function switchTab(tab) {
     var activeBtn = document.getElementById('tab-' + tab);
     if (activeBtn) activeBtn.classList.add('active');
     
+    // Show/hide filter row and delivery table based on tab
+    var filterRow = document.querySelector('.filter-row');
+    var delPanel  = document.querySelector('.inv-card');
+    if (filterRow) filterRow.style.display = '';
+    if (delPanel)  delPanel.style.display  = '';
+
     // Update status filter dropdown options
     var sf = document.getElementById('f-status');
     if (tab === 'manage') {
@@ -624,8 +662,9 @@ function switchTab(tab) {
                      + '<option value="Awaiting Replacement">Awaiting Replacement</option>';
     } else {
         sf.innerHTML = '<option value="history">All Processed</option>'
-                     + '<option value="Approved">Approved / Confirmed</option>'
-                     + '<option value="Adjusted">Adjusted</option>'
+                     + '<option value="Ready for Stock-In">Approved (Ready for Stock-In)</option>'
+                     + '<option value="Adjusted">Adjusted (Ready for Stock-In)</option>'
+                     + '<option value="Returned to Staff">Returned to Staff</option>'
                      + '<option value="Returned to Supplier">Returned to Supplier</option>'
                      + '<option value="Rejected">Rejected</option>';
     }
@@ -633,6 +672,7 @@ function switchTab(tab) {
 }
 
 function loadDeliveries() {
+    console.log('loadDeliveries() called, currentTab:', currentTab);
     var status   = document.getElementById('f-status').value;
     var supplier = document.getElementById('f-supplier').value;
     var start    = document.getElementById('f-start').value;
@@ -641,11 +681,21 @@ function loadDeliveries() {
     var url = API + '?action=list&start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end);
     if (supplier) url += '&supplier=' + encodeURIComponent(supplier);
 
+    console.log('Fetching from:', url);
+
     var tb = document.getElementById('del-tbody');
     tb.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:40px;color:#6c757d;"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;display:block;margin-bottom:10px;"></i>Loading...</td></tr>';
 
-    fetch(url).then(function(r){return r.json();}).then(function(res) {
+    fetch(url).then(function(r){
+        if (!r.ok) {
+            console.error('API response not OK:', r.status, r.statusText);
+            throw new Error('HTTP ' + r.status + ': ' + r.statusText);
+        }
+        return r.json();
+    }).then(function(res) {
+        console.log('API Response:', res);
         if (!res.success) {
+            console.error('API returned error:', res.message);
             tb.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#dc3545;padding:32px;">' + h(res.message) + '</td></tr>';
             return;
         }
@@ -673,9 +723,8 @@ function loadDeliveries() {
                 if (status === 'active') return true;
                 return ds === status;
             } else {
-                if (ds !== 'Approved' && ds !== 'Adjusted' && ds !== 'Returned to Supplier' && ds !== 'Rejected' && ds !== 'Closed') {
-                    return false;
-                }
+                var historyBuckets = ['Ready for Stock-In','Adjusted','Returned to Staff','Returned to Supplier','Rejected','Closed'];
+                if (historyBuckets.indexOf(ds) === -1) return false;
                 if (status === 'history') return true;
                 return ds === status;
             }
@@ -707,20 +756,23 @@ function loadDeliveries() {
                 'Pending':              'sbadge-pending',
                 'Pending Resolution':   'sbadge-pending-resolution',
                 'Awaiting Replacement': 'sbadge-awaiting-replacement',
-                'Approved':             'sbadge-approved',
+                'Ready for Stock-In':   'sbadge-approved',
                 'Adjusted':             'sbadge-adjusted',
+                'Returned to Staff':    'sbadge-pending-resolution',
                 'Returned to Supplier': 'sbadge-returned-to-supplier',
                 'Rejected':             'sbadge-rejected',
                 'Closed':               'sbadge-closed',
             }[ds] || 'sbadge-pending';
-            var badge = '<span class="sbadge ' + badgeCls + '">' + h(ds) + '</span>';
+            var dsLabel = ds === 'Ready for Stock-In' ? '✅ Ready for Stock-In' : ds;
+            var badge = '<span class="sbadge ' + badgeCls + '">' + h(dsLabel) + '</span>';
 
             // Action buttons
             var acts = '';
             if (ds === 'Pending') {
                 acts = '<button class="btn-act btn-approve" onclick="openApr(' + d.id + ',\'' + j(d.delivery_ref) + '\',\'' + j(d.product_name) + '\',' + parseFloat(d.quantity_delivered) + ',\'' + j(d.supplier_name) + '\',\'' + j(d.delivery_type||'merchandise') + '\')"><i class="fas fa-check"></i> Approve</button>'
-                     + '<button class="btn-act btn-flag"    onclick="openFlag(' + d.id + ',\'' + j(d.delivery_ref) + '\',\'' + j(d.product_name) + '\',' + parseFloat(d.quantity_delivered) + ')"><i class="fas fa-exclamation-triangle"></i> Flag</button>'
-                     + '<button class="btn-act btn-reject"  onclick="openRej(' + d.id + ',\'' + j(d.delivery_ref) + '\',\'' + j(d.product_name) + '\',' + parseFloat(d.quantity_delivered) + ')"><i class="fas fa-times"></i> Reject</button>';
+                     + '<button class="btn-act btn-flag"    onclick="openFlag(' + d.id + ',\'' + j(d.delivery_ref) + '\',\'' + j(d.product_name) + '\',' + parseFloat(d.quantity_delivered) + ')"><i class="fas fa-times-circle"></i> Reject</button>'
+                     + '<button class="btn-act btn-reject"  onclick="openRej(' + d.id + ',\'' + j(d.delivery_ref) + '\',\'' + j(d.product_name) + '\',' + parseFloat(d.quantity_delivered) + ')"><i class="fas fa-undo"></i> Return</button>'
+                     + '<button class="btn-act btn-adjust"  onclick="openAdj(' + d.id + ',\'' + j(d.delivery_ref) + '\',\'' + j(d.product_name) + '\',' + parseFloat(d.quantity_delivered) + ',\'' + j(d.supplier_name) + '\',\'' + j(d.remarks||'') + '\')"><i class="fas fa-sliders-h"></i> Adjust</button>';
             } else if (ds === 'Pending Resolution') {
                 acts = '<button class="btn-act btn-resolve" onclick="openResolve(' + d.id + ',\'' + j(d.delivery_ref) + '\',\'' + j(d.product_name) + '\',' + parseFloat(d.quantity_delivered) + ',\'' + j(d.remarks||'') + '\',\'' + j(d.manager_reason||d.admin_notes||'') + '\')"><i class="fas fa-tools"></i> Resolve</button>'
                      + '<button class="btn-act btn-view"    onclick="openRemarks(' + d.id + ',\'' + j(d.delivery_ref) + '\',\'' + j(d.manager_reason||d.admin_notes||'') + '\')"><i class="fas fa-comment-alt"></i> Add Remarks</button>';
@@ -744,7 +796,8 @@ function loadDeliveries() {
         });
         tb.innerHTML = out;
     }).catch(function(err) {
-        tb.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#dc3545;padding:32px;"><i class="fas fa-wifi"></i> Network error — please refresh.</td></tr>';
+        console.error('Fetch error:', err);
+        tb.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#dc3545;padding:32px;"><i class="fas fa-exclamation-triangle" style="font-size:2rem;display:block;margin-bottom:12px;"></i><strong>Error loading deliveries</strong><br><span style="font-size:12px;color:#6c757d;">' + h(err.message) + '</span><br><button onclick="loadDeliveries()" class="btn" style="margin-top:12px;"><i class="fas fa-sync-alt"></i> Retry</button></td></tr>';
     });
 }
 
@@ -760,9 +813,9 @@ function openApr(id, ref, prod, qty, sup, dtype) {
     var ibox = document.querySelector('#aprModal .ibox');
     if (ibox) {
         if (dtype === 'fuel') {
-            ibox.innerHTML = '<i class="fas fa-gas-pump"></i> Approving will <strong>update Fuel Inventory</strong> — delivered liters added to fuel stock.';
+            ibox.innerHTML = '<i class="fas fa-gas-pump"></i> Approving marks this fuel delivery as <strong>Ready for Stock-In</strong>. Inventory will be updated by Staff during the fuel stock-in step.';
         } else {
-            ibox.innerHTML = '<i class="fas fa-info-circle"></i> Approving will <strong>automatically update inventory</strong> — delivered quantity added to stock.';
+            ibox.innerHTML = '<i class="fas fa-info-circle"></i> Approving marks this delivery as <strong>Ready for Stock-In</strong>. Inventory will be updated by Staff during the stock-in step.';
         }
     }
     openM('aprModal');
@@ -925,11 +978,11 @@ function openDtl(id) {
 }
 
 // ── EXPORT ────────────────────────────────────────────────────────────────────
-function exportExcel() {
+function exportCSV() {
     var s=document.getElementById('f-status').value, sup=document.getElementById('f-supplier').value;
     var st=document.getElementById('f-start').value, en=document.getElementById('f-end').value;
     window.open(API+'?action=export_excel&start='+encodeURIComponent(st)+'&end='+encodeURIComponent(en)+'&status='+encodeURIComponent(s)+'&supplier='+encodeURIComponent(sup),'_blank');
-    toast('Exporting to Excel...','success');
+    toast('Exporting to CSV...','success');
 }
 function exportPDF() {
     var s=document.getElementById('f-status').value, sup=document.getElementById('f-supplier').value;
@@ -937,6 +990,8 @@ function exportPDF() {
     window.open(API+'?action=export_pdf&start='+encodeURIComponent(st)+'&end='+encodeURIComponent(en)+'&status='+encodeURIComponent(s)+'&supplier='+encodeURIComponent(sup),'_blank');
     toast('Exporting to PDF...','success');
 }
+
+
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

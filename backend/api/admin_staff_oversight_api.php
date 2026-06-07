@@ -22,15 +22,15 @@ try {
             $sql = "
                 SELECT 
                     u.id as staff_id,
-                    u.emp_id,
-                    u.name,
+                    u.id as emp_id,
+                    COALESCE(u.name, u.username) as name,
                     u.username,
                     u.email,
                     u.station_id,
                     u.role as assigned_role,
                     s.name as station_name,
                     u.status as account_status,
-                    u.remarks,
+                    '' as remarks,
                     (SELECT created_at FROM activity_logs WHERE user_id = u.id AND action = 'Login' ORDER BY created_at DESC LIMIT 1) as last_login,
                     (SELECT created_at FROM activity_logs WHERE user_id = u.id AND action LIKE '%Encod%' ORDER BY created_at DESC LIMIT 1) as last_encoded_transaction,
                     (SELECT created_at FROM activity_logs WHERE user_id = u.id AND (action LIKE '%Approve%' OR action LIKE '%Validat%' OR action LIKE '%Reject%') ORDER BY created_at DESC LIMIT 1) as last_validated_transaction,
@@ -40,7 +40,7 @@ try {
                     (SELECT COUNT(*) FROM fuel_deliveries WHERE verified_by = u.id AND status = 'Delivered') as total_deliveries_validated
                 FROM users u
                 LEFT JOIN stations s ON u.station_id = s.id
-                WHERE u.role IN ('staff', 'operations_staff', 'manager') AND u.is_deleted = 0
+                WHERE u.role IN ('staff', 'operations_staff', 'manager')
             ";
             
             // If admin, only show staff from their station
@@ -57,7 +57,7 @@ try {
                 $params[] = $my_station_id;
             }
             
-            $sql .= " ORDER BY s.name ASC, u.role ASC, u.name ASC";
+            $sql .= " ORDER BY s.name ASC, u.role ASC, u.username ASC";
             
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
@@ -103,7 +103,7 @@ try {
             }
             
             // Ensure target is staff/manager and (if admin) in same station
-            $checkSql = "SELECT station_id FROM users WHERE id = ? AND role IN ('staff', 'operations_staff', 'manager') AND is_deleted = 0";
+            $checkSql = "SELECT station_id FROM users WHERE id = ? AND role IN ('staff', 'operations_staff', 'manager')";
             $checkStmt = $pdo->prepare($checkSql);
             $checkStmt->execute([$staff_id]);
             $target = $checkStmt->fetch(PDO::FETCH_ASSOC);
@@ -130,7 +130,7 @@ try {
                 exit;
             }
             
-            $checkSql = "SELECT station_id FROM users WHERE id = ? AND role IN ('staff', 'operations_staff', 'manager') AND is_deleted = 0";
+            $checkSql = "SELECT station_id FROM users WHERE id = ? AND role IN ('staff', 'operations_staff', 'manager')";
             $checkStmt = $pdo->prepare($checkSql);
             $checkStmt->execute([$staff_id]);
             $target = $checkStmt->fetch(PDO::FETCH_ASSOC);
@@ -140,10 +140,18 @@ try {
                 exit;
             }
             
-            $update = $pdo->prepare("UPDATE users SET remarks = ? WHERE id = ?");
-            $update->execute([$remarks, $staff_id]);
+            // Check if 'remarks' column exists
+            $columns = $pdo->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_COLUMN);
+            $has_remarks_col = in_array('remarks', $columns);
             
-            echo json_encode(['success' => true]);
+            if ($has_remarks_col) {
+                $update = $pdo->prepare("UPDATE users SET remarks = ? WHERE id = ?");
+                $update->execute([$remarks, $staff_id]);
+                echo json_encode(['success' => true]);
+            } else {
+                // Column doesn't exist, just return success (remarks feature not available)
+                echo json_encode(['success' => true, 'warning' => 'Remarks column not available in database']);
+            }
             break;
 
         case 'edit_user':
@@ -159,7 +167,7 @@ try {
                 exit;
             }
             
-            $checkSql = "SELECT station_id FROM users WHERE id = ? AND role IN ('staff', 'operations_staff', 'manager') AND is_deleted = 0";
+            $checkSql = "SELECT station_id FROM users WHERE id = ? AND role IN ('staff', 'operations_staff', 'manager')";
             $checkStmt = $pdo->prepare($checkSql);
             $checkStmt->execute([$staff_id]);
             $target = $checkStmt->fetch(PDO::FETCH_ASSOC);
@@ -170,7 +178,7 @@ try {
             }
 
             if ($edit_role === 'manager') {
-                $checkMgr = $pdo->prepare("SELECT id FROM users WHERE station_id = ? AND role = 'manager' AND is_deleted = 0 AND id != ?");
+                $checkMgr = $pdo->prepare("SELECT id FROM users WHERE station_id = ? AND role = 'manager' AND id != ?");
                 $checkMgr->execute([$target['station_id'], $staff_id]);
                 if ($checkMgr->fetch()) {
                     echo json_encode(['success' => false, 'error' => 'This station already has a manager. Only one manager is allowed per station.']);
@@ -178,9 +186,19 @@ try {
                 }
             }
 
-            $updateSql = "UPDATE users SET name = ?, email = ?, role = ?, status = ? WHERE id = ?";
-            $updateStmt = $pdo->prepare($updateSql);
-            $updateStmt->execute([$name, $email, $edit_role, $status, $staff_id]);
+            // Check if 'name' column exists, update accordingly
+            $columns = $pdo->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_COLUMN);
+            $has_name_col = in_array('name', $columns);
+            
+            if ($has_name_col) {
+                $updateSql = "UPDATE users SET name = ?, email = ?, role = ?, status = ? WHERE id = ?";
+                $updateStmt = $pdo->prepare($updateSql);
+                $updateStmt->execute([$name, $email, $edit_role, $status, $staff_id]);
+            } else {
+                $updateSql = "UPDATE users SET email = ?, role = ?, status = ? WHERE id = ?";
+                $updateStmt = $pdo->prepare($updateSql);
+                $updateStmt->execute([$email, $edit_role, $status, $staff_id]);
+            }
 
             log_activity($pdo, $me['id'], 'Edit User', "Edited staff #$staff_id ($name) via Admin Oversight");
             

@@ -205,10 +205,10 @@ switch ($action) {
                     GROUP BY DATE(ft.transaction_date)
                 ) f ON f.sd = d.sale_date
                 LEFT JOIN (
-                    SELECT ($mt_date) AS sd, COALESCE(SUM(total_amount), 0) AS merch_rev
-                    FROM merchandise_transactions
-                    WHERE station_id = ? AND ($mt_date) BETWEEN ? AND ?
-                      AND LOWER(COALESCE(validation_status, '')) NOT IN ('rejected', 'cancelled')
+                    SELECT ($mt_date) AS sd, COALESCE(SUM(mt.total_amount), 0) AS merch_rev
+                    FROM merchandise_transactions mt
+                    WHERE mt.station_id = ? AND ($mt_date) BETWEEN ? AND ?
+                      AND LOWER(COALESCE(mt.validation_status, '')) NOT IN ('rejected', 'cancelled')
                     GROUP BY ($mt_date)
                 ) m ON m.sd = d.sale_date
                 ORDER BY d.sale_date DESC
@@ -245,10 +245,10 @@ switch ($action) {
                     GROUP BY DATE(ft.transaction_date)
                 ) f ON f.sd = d.sale_date
                 LEFT JOIN (
-                    SELECT ($mt_date) AS sd, COALESCE(SUM(total_amount), 0) AS merch_rev
-                    FROM merchandise_transactions
-                    WHERE station_id = ? AND ($mt_date) BETWEEN ? AND ?
-                      AND LOWER(COALESCE(validation_status, '')) NOT IN ('rejected', 'cancelled')
+                    SELECT ($mt_date) AS sd, COALESCE(SUM(mt.total_amount), 0) AS merch_rev
+                    FROM merchandise_transactions mt
+                    WHERE mt.station_id = ? AND ($mt_date) BETWEEN ? AND ?
+                      AND LOWER(COALESCE(mt.validation_status, '')) NOT IN ('rejected', 'cancelled')
                     GROUP BY ($mt_date)
                 ) m ON m.sd = d.sale_date
                 ORDER BY d.sale_date DESC
@@ -387,38 +387,92 @@ switch ($action) {
         api_ok($rows);
 
     // ── AUDIT TRAIL ──────────────────────────────────────────────────────────
-    // Admin = oversight only. Staff and Manager actions only.
+    // Logs ALL roles: Staff, Manager, Admin oversight actions.
     // audit_logs columns: user_id, action_type, entity_type, action_details,
     //                     ip_address, status, created_at  (all lowercase)
     case 'audit_trail':
         $user_filter   = (int)($_GET['user_id']   ?? 0);
         $action_filter = trim($_GET['action_type'] ?? '');
         $module_filter = trim($_GET['module']      ?? '');
+        $status_filter = trim($_GET['status_filter'] ?? '');
+
+        // Scope: Staff, Manager, Admin only — SuperAdmin excluded
+        $role_excl = "AND LOWER(TRIM(COALESCE(u.role,''))) NOT IN ('superadmin','super admin','super_admin')";
 
         $sql = "SELECT al.id,
                        al.created_at,
-                       u.name        AS user_name,
-                       u.id          AS user_id,
-                       u.role,
+                       COALESCE(u.name, 'System') AS user_name,
+                       COALESCE(u.id, 0)          AS user_id,
+                       COALESCE(u.role, 'system')  AS role,
                        al.action_type,
-                       al.entity_type AS module,
-                       al.action_details AS details,
+                       al.entity_type              AS module,
+                       al.action_details           AS details,
                        al.ip_address,
                        al.status
                 FROM audit_logs al
                 LEFT JOIN users u ON u.id = al.user_id
                 WHERE u.station_id = ?
                   AND DATE(al.created_at) BETWEEN ? AND ?
-                  AND (u.role IS NULL OR LOWER(TRIM(u.role)) NOT IN ('admin','superadmin','super admin','super_admin'))";
+                  $role_excl";
         $params = [$station_id, $date_from, $date_to];
 
-        if ($user_filter)   { $sql .= " AND al.user_id = ?";     $params[] = $user_filter; }
-        if ($action_filter) { $sql .= " AND al.action_type = ?"; $params[] = $action_filter; }
-        if ($module_filter) { $sql .= " AND al.entity_type = ?"; $params[] = $module_filter; }
-        $sql .= " ORDER BY al.created_at DESC LIMIT 500";
+        if ($user_filter)   { $sql .= " AND al.user_id = ?";       $params[] = $user_filter; }
+        if ($action_filter) { $sql .= " AND al.action_type = ?";   $params[] = $action_filter; }
+        if ($module_filter) { $sql .= " AND al.entity_type = ?";   $params[] = $module_filter; }
+        if ($status_filter) { $sql .= " AND LOWER(al.status) = ?"; $params[] = strtolower($status_filter); }
+        $sql .= " ORDER BY al.created_at DESC LIMIT 1000";
 
         $rows = safe_rows($pdo, $sql, $params);
         api_ok($rows);
+
+    // ── AUDIT SUMMARY STATS ───────────────────────────────────────────────────
+    case 'audit_summary':
+        $rx = "AND LOWER(TRIM(COALESCE(u.role,''))) NOT IN ('superadmin','super admin','super_admin')";
+        $total        = safe_val($pdo, "SELECT COUNT(*) FROM audit_logs al LEFT JOIN users u ON u.id=al.user_id WHERE u.station_id=? AND DATE(al.created_at) BETWEEN ? AND ? $rx", [$station_id,$date_from,$date_to]);
+        $failed       = safe_val($pdo, "SELECT COUNT(*) FROM audit_logs al LEFT JOIN users u ON u.id=al.user_id WHERE u.station_id=? AND DATE(al.created_at) BETWEEN ? AND ? AND LOWER(al.status)='failed' $rx", [$station_id,$date_from,$date_to]);
+        $users_active = safe_val($pdo, "SELECT COUNT(DISTINCT al.user_id) FROM audit_logs al LEFT JOIN users u ON u.id=al.user_id WHERE u.station_id=? AND DATE(al.created_at) BETWEEN ? AND ? $rx", [$station_id,$date_from,$date_to]);
+        $anomalies    = safe_val($pdo, "SELECT COUNT(*) FROM (SELECT ip_address, COUNT(*) c FROM audit_logs al LEFT JOIN users u ON u.id=al.user_id WHERE u.station_id=? AND DATE(al.created_at) BETWEEN ? AND ? AND LOWER(al.status)='failed' $rx GROUP BY ip_address HAVING c >= 3) sub", [$station_id,$date_from,$date_to]);
+        api_ok(['total'=>(int)$total,'failed'=>(int)$failed,'users_active'=>(int)$users_active,'anomalies'=>(int)$anomalies]);
+
+    // ── ANOMALY DETECTION ─────────────────────────────────────────────────────
+    case 'anomaly_detection':
+        // Scope: Staff, Manager, Admin only
+        $no_sa = "AND LOWER(TRIM(COALESCE(u.role,''))) NOT IN ('superadmin','super admin','super_admin')";
+
+        // Repeated failures per user/IP
+        $repeated = safe_rows($pdo, "
+            SELECT COALESCE(u.name,'Unknown') AS user_name, u.role, al.ip_address,
+                   COUNT(*) AS fail_count,
+                   MAX(al.created_at) AS last_attempt,
+                   GROUP_CONCAT(DISTINCT al.action_type ORDER BY al.action_type SEPARATOR ', ') AS actions
+            FROM audit_logs al
+            LEFT JOIN users u ON u.id = al.user_id
+            WHERE u.station_id=?
+              AND DATE(al.created_at) BETWEEN ? AND ?
+              AND LOWER(al.status) = 'failed'
+              $no_sa
+            GROUP BY al.user_id, al.ip_address
+            HAVING fail_count >= 3
+            ORDER BY fail_count DESC LIMIT 50
+        ", [$station_id,$date_from,$date_to]);
+
+        // Repeated rejections (validation rejections)
+        $rejections = safe_rows($pdo, "
+            SELECT COALESCE(u.name,'Unknown') AS user_name, u.role,
+                   al.action_type, COUNT(*) AS reject_count,
+                   MAX(al.created_at) AS last_seen
+            FROM audit_logs al
+            LEFT JOIN users u ON u.id = al.user_id
+            WHERE u.station_id=?
+              AND DATE(al.created_at) BETWEEN ? AND ?
+              AND LOWER(al.action_type) IN ('reject','rejected','rejection','return')
+              $no_sa
+            GROUP BY al.user_id, al.action_type
+            HAVING reject_count >= 2
+            ORDER BY reject_count DESC LIMIT 50
+        ", [$station_id,$date_from,$date_to]);
+
+        api_ok(['repeated_failures'=>$repeated,'repeated_rejections'=>$rejections]);
 
     // ── VARIANCE REPORTS ─────────────────────────────────────────────────────
     case 'variance_reports':
@@ -646,31 +700,653 @@ switch ($action) {
         require __DIR__ . '/_export_staff_handler.php';
         exit;
 
+    // ── EXPORT: FUEL MANAGEMENT ───────────────────────────────────────────
+    case 'export_fuel_management':
+        $dels = safe_rows($pdo, "
+            SELECT DATE(fd.delivery_date) AS delivery_date, fd.fuel_type, fd.supplier,
+                   fd.invoice_no, fd.delivery_liters, fd.tanker_number,
+                   COALESCE(u.name,'') AS received_name, fd.status
+            FROM fuel_deliveries fd
+            LEFT JOIN users u ON u.id = fd.received_by
+            WHERE fd.station_id = ? AND DATE(fd.delivery_date) BETWEEN ? AND ?
+            ORDER BY fd.delivery_date DESC
+        ", [$station_id, $date_from, $date_to]);
+
+        $reads = safe_rows($pdo, "
+            SELECT DATE(fr.encoded_at) AS encoded_date, fr.pump_number, fr.fuel_type,
+                   fr.shift_period, fr.previous_reading, fr.present_reading, fr.difference, fr.status
+            FROM fuel_readings fr
+            WHERE fr.station_id = ? AND DATE(fr.encoded_at) BETWEEN ? AND ?
+            ORDER BY fr.encoded_at DESC
+        ", [$station_id, $date_from, $date_to]);
+
+        if ($format === 'pdf') {
+            header('Content-Type: text/html; charset=UTF-8');
+            $del_tbody = '';
+            foreach ($dels as $r) {
+                $del_tbody .= '<tr>
+                    <td>' . htmlspecialchars($r['delivery_date'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['fuel_type'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['supplier'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['invoice_no'] ?? '') . '</td>
+                    <td style="text-align:right">' . number_format($r['delivery_liters'] ?? 0, 2) . ' L</td>
+                    <td>' . htmlspecialchars($r['tanker_number'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['received_name'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['status'] ?? '') . '</td>
+                </tr>';
+            }
+            $read_tbody = '';
+            foreach ($reads as $r) {
+                $read_tbody .= '<tr>
+                    <td>' . htmlspecialchars($r['encoded_date'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['pump_number'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['fuel_type'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['shift_period'] ?? '') . '</td>
+                    <td style="text-align:right">' . number_format($r['previous_reading'] ?? 0, 2) . '</td>
+                    <td style="text-align:right">' . number_format($r['present_reading'] ?? 0, 2) . '</td>
+                    <td style="text-align:right">' . number_format($r['difference'] ?? 0, 2) . ' L</td>
+                    <td>' . htmlspecialchars($r['status'] ?? '') . '</td>
+                </tr>';
+            }
+            echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Fuel Management Report</title>
+<style>
+body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:20px}
+.hdr{margin-bottom:16px;border-bottom:3px solid #00264D;padding-bottom:10px}
+.hdr h1{font-size:18px;color:#00264D;margin:0 0 4px 0}
+h2{font-size:14px;color:#00264D;margin:20px 0 10px 0}
+table{width:100%;border-collapse:collapse}
+th{background:#00264D;color:#fff;padding:6px 8px;text-align:left;font-size:9px;text-transform:uppercase}
+td{padding:5px 8px;border-bottom:1px solid #e2e8f0;font-size:10px}
+tr:nth-child(even) td{background:#f8fafc}
+.pbtn{margin-bottom:14px}@media print{.pbtn{display:none}}
+</style></head><body>
+<div class="pbtn"><button onclick="window.print()">Print Report</button></div>
+<div class="hdr">
+  <h1>Fuel Management Report</h1>
+  <p><strong>Station:</strong> ' . htmlspecialchars($station_name) . '</p>
+  <p><strong>Date Range:</strong> ' . htmlspecialchars($date_from) . ' &mdash; ' . htmlspecialchars($date_to) . '</p>
+</div>
+<h2>1. Fuel Deliveries</h2>
+<table><thead><tr><th>Date</th><th>Fuel Type</th><th>Supplier</th><th>Invoice #</th><th style="text-align:right">Liters</th><th>Tanker #</th><th>Received By</th><th>Status</th></tr></thead>
+<tbody>' . ($del_tbody ?: '<tr><td colspan="8" style="text-align:center">No deliveries found.</td></tr>') . '</tbody></table>
+<h2>2. Pump Readings</h2>
+<table><thead><tr><th>Date</th><th>Pump #</th><th>Fuel Type</th><th>Shift</th><th style="text-align:right">Prev Reading</th><th style="text-align:right">Pres Reading</th><th style="text-align:right">Difference</th><th>Status</th></tr></thead>
+<tbody>' . ($read_tbody ?: '<tr><td colspan="8" style="text-align:center">No readings found.</td></tr>') . '</tbody></table>
+</body></html>';
+            exit;
+        }
+
+        // CSV
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="fuel_management_' . $date_from . '_to_' . $date_to . '.csv"');
+        $out = fopen('php://output', 'w');
+        fputs($out, "\xEF\xBB\xBF");
+        fputcsv($out, ['Fuel Management Report']);
+        fputcsv($out, ['Station:', $station_name]);
+        fputcsv($out, ['Date Range:', $date_from . ' to ' . $date_to]);
+        fputcsv($out, []);
+        fputcsv($out, ['--- FUEL DELIVERIES ---']);
+        fputcsv($out, ['Date', 'Fuel Type', 'Supplier', 'Invoice #', 'Delivery Liters', 'Tanker #', 'Received By', 'Status']);
+        foreach ($dels as $r) {
+            fputcsv($out, [
+                $r['delivery_date'] ?? '',
+                $r['fuel_type'] ?? '',
+                $r['supplier'] ?? '',
+                $r['invoice_no'] ?? '',
+                $r['delivery_liters'] ?? 0,
+                $r['tanker_number'] ?? '',
+                $r['received_name'] ?? '',
+                $r['status'] ?? '',
+            ]);
+        }
+        fputcsv($out, []);
+        fputcsv($out, ['--- PUMP READINGS ---']);
+        fputcsv($out, ['Date', 'Pump #', 'Fuel Type', 'Shift', 'Previous Reading', 'Present Reading', 'Difference (L)', 'Status']);
+        foreach ($reads as $r) {
+            fputcsv($out, [
+                $r['encoded_date'] ?? '',
+                $r['pump_number'] ?? '',
+                $r['fuel_type'] ?? '',
+                $r['shift_period'] ?? '',
+                $r['previous_reading'] ?? 0,
+                $r['present_reading'] ?? 0,
+                $r['difference'] ?? 0,
+                $r['status'] ?? '',
+            ]);
+        }
+        fclose($out);
+        exit;
+
+    // ── EXPORT: MERCHANDISE DELIVERIES ────────────────────────────────────
+    case 'export_merch_deliveries':
+        $rows = safe_rows($pdo, "
+            SELECT d.id, COALESCE(d.dr_number,d.delivery_ref,'') AS dr_number,
+                   COALESCE(d.source_ref,'') AS source_ref,
+                   d.supplier, d.product, COALESCE(d.quantity,0) AS quantity,
+                   COALESCE(d.expected_quantity,d.quantity,0) AS expected_quantity,
+                   COALESCE(d.actual_quantity,d.quantity,0) AS actual_quantity,
+                   COALESCE(d.damaged_quantity,0) AS damaged_quantity,
+                   DATE(COALESCE(d.delivery_date,d.created_at)) AS delivery_date,
+                   d.status
+            FROM deliveries_oversight d
+            WHERE d.station_id = ? AND d.delivery_type='merchandise'
+              AND DATE(COALESCE(d.delivery_date,d.created_at)) BETWEEN ? AND ?
+            ORDER BY delivery_date DESC
+        ", [$station_id, $date_from, $date_to]);
+
+        if ($format === 'pdf') {
+            header('Content-Type: text/html; charset=UTF-8');
+            $tbody = '';
+            foreach ($rows as $r) {
+                $tbody .= '<tr>
+                    <td>' . htmlspecialchars($r['dr_number'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['source_ref'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['supplier'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['product'] ?? '') . '</td>
+                    <td style="text-align:right">' . number_format($r['quantity'] ?? 0) . '</td>
+                    <td style="text-align:right">' . number_format($r['expected_quantity'] ?? 0) . '</td>
+                    <td style="text-align:right">' . number_format($r['actual_quantity'] ?? 0) . '</td>
+                    <td style="text-align:right">' . number_format($r['damaged_quantity'] ?? 0) . '</td>
+                    <td>' . htmlspecialchars($r['delivery_date'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['status'] ?? '') . '</td>
+                </tr>';
+            }
+            echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Merchandise Deliveries Report</title>
+<style>
+body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:20px}
+.hdr{margin-bottom:16px;border-bottom:3px solid #00264D;padding-bottom:10px}
+.hdr h1{font-size:18px;color:#00264D;margin:0 0 4px 0}
+table{width:100%;border-collapse:collapse}
+th{background:#00264D;color:#fff;padding:6px 8px;text-align:left;font-size:9px;text-transform:uppercase}
+td{padding:5px 8px;border-bottom:1px solid #e2e8f0;font-size:10px}
+tr:nth-child(even) td{background:#f8fafc}
+.pbtn{margin-bottom:14px}@media print{.pbtn{display:none}}
+</style></head><body>
+<div class="pbtn"><button onclick="window.print()">Print Report</button></div>
+<div class="hdr">
+  <h1>Merchandise Deliveries Report</h1>
+  <p><strong>Station:</strong> ' . htmlspecialchars($station_name) . '</p>
+  <p><strong>Date Range:</strong> ' . htmlspecialchars($date_from) . ' &mdash; ' . htmlspecialchars($date_to) . '</p>
+</div>
+<table><thead><tr><th>DR #</th><th>PO #</th><th>Supplier</th><th>Product</th><th style="text-align:right">PO Qty</th><th style="text-align:right">Expected</th><th style="text-align:right">Actual</th><th style="text-align:right">Damaged</th><th>Date</th><th>Status</th></tr></thead>
+<tbody>' . ($tbody ?: '<tr><td colspan="10" style="text-align:center">No records found.</td></tr>') . '</tbody></table>
+</body></html>';
+            exit;
+        }
+
+        // CSV
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="merchandise_deliveries_' . $date_from . '_to_' . $date_to . '.csv"');
+        $out = fopen('php://output', 'w');
+        fputs($out, "\xEF\xBB\xBF");
+        fputcsv($out, ['Merchandise Deliveries Report']);
+        fputcsv($out, ['Station:', $station_name]);
+        fputcsv($out, ['Date Range:', $date_from . ' to ' . $date_to]);
+        fputcsv($out, []);
+        fputcsv($out, ['DR #', 'PO #', 'Supplier', 'Product', 'PO Qty', 'Expected Qty', 'Actual Qty', 'Damaged Qty', 'Date', 'Status']);
+        foreach ($rows as $r) {
+            fputcsv($out, [
+                $r['dr_number'] ?? '',
+                $r['source_ref'] ?? '',
+                $r['supplier'] ?? '',
+                $r['product'] ?? '',
+                $r['quantity'] ?? 0,
+                $r['expected_quantity'] ?? 0,
+                $r['actual_quantity'] ?? 0,
+                $r['damaged_quantity'] ?? 0,
+                $r['delivery_date'] ?? '',
+                $r['status'] ?? '',
+            ]);
+        }
+        fclose($out);
+        exit;
+
+    // ── EXPORT: INVENTORY ──────────────────────────────────────────────────
+    case 'export_inventory':
+        $rows = safe_rows($pdo, "
+            SELECT ip.sku, ip.product_name, ip.category, ip.supplier,
+                   ip.unit_cost, ip.unit_price,
+                   COALESCE(ip.stock_quantity, ip.stock, 0) AS stock_quantity,
+                   COALESCE(ip.min_stock,0) AS min_stock,
+                   ip.status
+            FROM inventory_products ip
+            WHERE ip.station_id = ?
+            ORDER BY ip.category, ip.product_name
+        ", [$station_id]);
+
+        if ($format === 'pdf') {
+            header('Content-Type: text/html; charset=UTF-8');
+            $tbody = '';
+            foreach ($rows as $r) {
+                $tbody .= '<tr>
+                    <td><code>' . htmlspecialchars($r['sku'] ?? '') . '</code></td>
+                    <td>' . htmlspecialchars($r['product_name'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['category'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['supplier'] ?? '') . '</td>
+                    <td style="text-align:right">₱' . number_format($r['unit_cost'] ?? 0, 2) . '</td>
+                    <td style="text-align:right">₱' . number_format($r['unit_price'] ?? 0, 2) . '</td>
+                    <td style="text-align:right">' . number_format($r['stock_quantity'] ?? 0) . '</td>
+                    <td style="text-align:right">' . number_format($r['min_stock'] ?? 0) . '</td>
+                    <td>' . htmlspecialchars($r['status'] ?? '') . '</td>
+                </tr>';
+            }
+            echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Inventory Status Report</title>
+<style>
+body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:20px}
+.hdr{margin-bottom:16px;border-bottom:3px solid #00264D;padding-bottom:10px}
+.hdr h1{font-size:18px;color:#00264D;margin:0 0 4px 0}
+table{width:100%;border-collapse:collapse}
+th{background:#00264D;color:#fff;padding:6px 8px;text-align:left;font-size:9px;text-transform:uppercase}
+td{padding:5px 8px;border-bottom:1px solid #e2e8f0;font-size:10px}
+tr:nth-child(even) td{background:#f8fafc}
+.pbtn{margin-bottom:14px}@media print{.pbtn{display:none}}
+</style></head><body>
+<div class="pbtn"><button onclick="window.print()">Print Report</button></div>
+<div class="hdr">
+  <h1>Inventory Status Report</h1>
+  <p><strong>Station:</strong> ' . htmlspecialchars($station_name) . '</p>
+  <p><strong>Generated:</strong> ' . date('Y-m-d H:i:s') . '</p>
+</div>
+<table><thead><tr><th>SKU</th><th>Product</th><th>Category</th><th>Supplier</th><th style="text-align:right">Cost</th><th style="text-align:right">Price</th><th style="text-align:right">Stock</th><th style="text-align:right">Min Stock</th><th>Status</th></tr></thead>
+<tbody>' . ($tbody ?: '<tr><td colspan="9" style="text-align:center">No products found.</td></tr>') . '</tbody></table>
+</body></html>';
+            exit;
+        }
+
+        // CSV
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="inventory_report_' . date('Y-m-d') . '.csv"');
+        $out = fopen('php://output', 'w');
+        fputs($out, "\xEF\xBB\xBF");
+        fputcsv($out, ['Inventory Status Report']);
+        fputcsv($out, ['Station:', $station_name]);
+        fputcsv($out, ['Generated:', date('Y-m-d H:i:s')]);
+        fputcsv($out, []);
+        fputcsv($out, ['SKU', 'Product', 'Category', 'Supplier', 'Unit Cost', 'Unit Price', 'Stock Qty', 'Min Stock', 'Status']);
+        foreach ($rows as $r) {
+            fputcsv($out, [
+                $r['sku'] ?? '',
+                $r['product_name'] ?? '',
+                $r['category'] ?? '',
+                $r['supplier'] ?? '',
+                $r['unit_cost'] ?? 0,
+                $r['unit_price'] ?? 0,
+                $r['stock_quantity'] ?? 0,
+                $r['min_stock'] ?? 0,
+                $r['status'] ?? '',
+            ]);
+        }
+        fclose($out);
+        exit;
+
+    // ── EXPORT: CUSTOMERS ──────────────────────────────────────────────────
+    case 'export_customers':
+        $rows = safe_rows($pdo, "
+            SELECT c.id, c.name, c.type, COALESCE(c.contact_number,c.phone,'') AS contact_number,
+                   COALESCE(c.balance,c.current_balance,0) AS balance,
+                   COALESCE(c.credit_limit,0) AS credit_limit,
+                   COALESCE(c.payment_terms,'') AS payment_terms,
+                   COALESCE(c.account_status,c.status,'Active') AS account_status
+            FROM customers c
+            WHERE c.station_id = ?
+            ORDER BY name ASC
+        ", [$station_id]);
+
+        if ($format === 'pdf') {
+            header('Content-Type: text/html; charset=UTF-8');
+            $tbody = '';
+            foreach ($rows as $r) {
+                $tbody .= '<tr>
+                    <td>' . htmlspecialchars($r['id'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['name'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['type'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['contact_number'] ?? '') . '</td>
+                    <td style="text-align:right">₱' . number_format($r['balance'] ?? 0, 2) . '</td>
+                    <td style="text-align:right">₱' . number_format($r['credit_limit'] ?? 0, 2) . '</td>
+                    <td>' . htmlspecialchars($r['payment_terms'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['account_status'] ?? '') . '</td>
+                </tr>';
+            }
+            echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Customer Accounts Report</title>
+<style>
+body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:20px}
+.hdr{margin-bottom:16px;border-bottom:3px solid #00264D;padding-bottom:10px}
+.hdr h1{font-size:18px;color:#00264D;margin:0 0 4px 0}
+table{width:100%;border-collapse:collapse}
+th{background:#00264D;color:#fff;padding:6px 8px;text-align:left;font-size:9px;text-transform:uppercase}
+td{padding:5px 8px;border-bottom:1px solid #e2e8f0;font-size:10px}
+tr:nth-child(even) td{background:#f8fafc}
+.pbtn{margin-bottom:14px}@media print{.pbtn{display:none}}
+</style></head><body>
+<div class="pbtn"><button onclick="window.print()">Print Report</button></div>
+<div class="hdr">
+  <h1>Customer Accounts Report</h1>
+  <p><strong>Station:</strong> ' . htmlspecialchars($station_name) . '</p>
+  <p><strong>Generated:</strong> ' . date('Y-m-d H:i:s') . '</p>
+</div>
+<table><thead><tr><th>ID</th><th>Customer Name</th><th>Type</th><th>Contact</th><th style="text-align:right">Balance</th><th style="text-align:right">Credit Limit</th><th>Payment Terms</th><th>Status</th></tr></thead>
+<tbody>' . ($tbody ?: '<tr><td colspan="8" style="text-align:center">No customers found.</td></tr>') . '</tbody></table>
+</body></html>';
+            exit;
+        }
+
+        // CSV
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="customer_accounts_' . date('Y-m-d') . '.csv"');
+        $out = fopen('php://output', 'w');
+        fputs($out, "\xEF\xBB\xBF");
+        fputcsv($out, ['Customer Accounts Report']);
+        fputcsv($out, ['Station:', $station_name]);
+        fputcsv($out, ['Generated:', date('Y-m-d H:i:s')]);
+        fputcsv($out, []);
+        fputcsv($out, ['ID', 'Customer Name', 'Type', 'Contact', 'Outstanding Balance', 'Credit Limit', 'Payment Terms', 'Status']);
+        foreach ($rows as $r) {
+            fputcsv($out, [
+                $r['id'] ?? '',
+                $r['name'] ?? '',
+                $r['type'] ?? '',
+                $r['contact_number'] ?? '',
+                $r['balance'] ?? 0,
+                $r['credit_limit'] ?? 0,
+                $r['payment_terms'] ?? '',
+                $r['account_status'] ?? '',
+            ]);
+        }
+        fclose($out);
+        exit;
+
+    // ── EXPORT: SUPPLIERS ──────────────────────────────────────────────────
+    case 'export_suppliers':
+        $rows = safe_rows($pdo, "
+            SELECT d.supplier AS supplier_name,
+                   COALESCE(s.contact_person,'') AS contact_person,
+                   COUNT(d.id) AS total_deliveries,
+                   SUM(CASE WHEN LOWER(d.status) IN ('confirmed','approved','validated','ready for stock-in','adjusted') THEN 1 ELSE 0 END) AS approved_count,
+                   SUM(CASE WHEN LOWER(d.status) IN ('discrepancy','flagged') THEN 1 ELSE 0 END) AS discrepancy_count,
+                   SUM(CASE WHEN LOWER(d.status) IN ('rejected','returned','returned to supplier') THEN 1 ELSE 0 END) AS rejected_count,
+                   COALESCE(SUM(d.payable_amount),0) AS total_payable
+            FROM deliveries_oversight d
+            LEFT JOIN suppliers s ON LOWER(TRIM(s.name)) = LOWER(TRIM(d.supplier))
+            WHERE d.station_id = ?
+              AND DATE(COALESCE(d.delivery_date,d.created_at)) BETWEEN ? AND ?
+            GROUP BY d.supplier ORDER BY total_payable DESC
+        ", [$station_id, $date_from, $date_to]);
+
+        if ($format === 'pdf') {
+            header('Content-Type: text/html; charset=UTF-8');
+            $tbody = '';
+            foreach ($rows as $i => $r) {
+                $tbody .= '<tr>
+                    <td>' . ($i + 1) . '</td>
+                    <td>' . htmlspecialchars($r['supplier_name'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['contact_person'] ?? '') . '</td>
+                    <td style="text-align:right">' . number_format($r['total_deliveries'] ?? 0) . '</td>
+                    <td style="text-align:right">' . number_format($r['approved_count'] ?? 0) . '</td>
+                    <td style="text-align:right">' . number_format($r['discrepancy_count'] ?? 0) . '</td>
+                    <td style="text-align:right">' . number_format($r['rejected_count'] ?? 0) . '</td>
+                    <td style="text-align:right">₱' . number_format($r['total_payable'] ?? 0, 2) . '</td>
+                </tr>';
+            }
+            echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Supplier Performance Report</title>
+<style>
+body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:20px}
+.hdr{margin-bottom:16px;border-bottom:3px solid #00264D;padding-bottom:10px}
+.hdr h1{font-size:18px;color:#00264D;margin:0 0 4px 0}
+table{width:100%;border-collapse:collapse}
+th{background:#00264D;color:#fff;padding:6px 8px;text-align:left;font-size:9px;text-transform:uppercase}
+td{padding:5px 8px;border-bottom:1px solid #e2e8f0;font-size:10px}
+tr:nth-child(even) td{background:#f8fafc}
+.pbtn{margin-bottom:14px}@media print{.pbtn{display:none}}
+</style></head><body>
+<div class="pbtn"><button onclick="window.print()">Print Report</button></div>
+<div class="hdr">
+  <h1>Supplier Performance Report</h1>
+  <p><strong>Station:</strong> ' . htmlspecialchars($station_name) . '</p>
+  <p><strong>Date Range:</strong> ' . htmlspecialchars($date_from) . ' &mdash; ' . htmlspecialchars($date_to) . '</p>
+</div>
+<table><thead><tr><th>Rank</th><th>Supplier Name</th><th>Contact</th><th style="text-align:right">Total Deliveries</th><th style="text-align:right">Approved</th><th style="text-align:right">Discrepancies</th><th style="text-align:right">Rejected</th><th style="text-align:right">Total Payable</th></tr></thead>
+<tbody>' . ($tbody ?: '<tr><td colspan="8" style="text-align:center">No records found.</td></tr>') . '</tbody></table>
+</body></html>';
+            exit;
+        }
+
+        // CSV
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="supplier_performance_' . $date_from . '_to_' . $date_to . '.csv"');
+        $out = fopen('php://output', 'w');
+        fputs($out, "\xEF\xBB\xBF");
+        fputcsv($out, ['Supplier Performance Report']);
+        fputcsv($out, ['Station:', $station_name]);
+        fputcsv($out, ['Date Range:', $date_from . ' to ' . $date_to]);
+        fputcsv($out, []);
+        fputcsv($out, ['Rank', 'Supplier Name', 'Contact Person', 'Total Deliveries', 'Approved', 'Discrepancies', 'Rejected', 'Total Payable']);
+        foreach ($rows as $i => $r) {
+            fputcsv($out, [
+                $i + 1,
+                $r['supplier_name'] ?? '',
+                $r['contact_person'] ?? '',
+                $r['total_deliveries'] ?? 0,
+                $r['approved_count'] ?? 0,
+                $r['discrepancy_count'] ?? 0,
+                $r['rejected_count'] ?? 0,
+                $r['total_payable'] ?? 0,
+            ]);
+        }
+        fclose($out);
+        exit;
+
+    // ── EXPORT: FINANCIAL ──────────────────────────────────────────────────
+    case 'export_financial':
+        $rows = safe_rows($pdo, "
+            SELECT d.sale_date,
+                   COALESCE(f.fuel_rev,0) AS fuel_revenue,
+                   COALESCE(m.merch_rev,0) AS merch_revenue,
+                   COALESCE(f.fuel_rev,0)+COALESCE(m.merch_rev,0) AS total_revenue,
+                   COALESCE(p.payables,0) AS supplier_payables
+            FROM (
+                SELECT DISTINCT DATE(ft.transaction_date) AS sale_date FROM fuel_transactions ft
+                WHERE ft.station_id=? AND DATE(ft.transaction_date) BETWEEN ? AND ?
+                UNION
+                SELECT DISTINCT ($mt_date) FROM merchandise_transactions mt
+                WHERE mt.station_id=? AND ($mt_date) BETWEEN ? AND ?
+            ) d
+            LEFT JOIN (
+                SELECT DATE(transaction_date) sd, COALESCE(SUM(total_amount),0) fuel_rev
+                FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ?
+                GROUP BY DATE(transaction_date)
+            ) f ON f.sd=d.sale_date
+            LEFT JOIN (
+                SELECT ($mt_date) sd, COALESCE(SUM(mt.total_amount),0) merch_rev
+                FROM merchandise_transactions mt WHERE mt.station_id=? AND ($mt_date) BETWEEN ? AND ?
+                AND LOWER(COALESCE(mt.validation_status,'')) NOT IN ('rejected','cancelled')
+                GROUP BY ($mt_date)
+            ) m ON m.sd=d.sale_date
+            LEFT JOIN (
+                SELECT DATE(COALESCE(delivery_date,created_at)) sd, COALESCE(SUM(payable_amount),0) payables
+                FROM deliveries_oversight WHERE station_id=? AND DATE(COALESCE(delivery_date,created_at)) BETWEEN ? AND ?
+                GROUP BY DATE(COALESCE(delivery_date,created_at))
+            ) p ON p.sd=d.sale_date
+            ORDER BY d.sale_date DESC
+        ", [
+            $station_id,$date_from,$date_to,
+            $station_id,$date_from,$date_to,
+            $station_id,$date_from,$date_to,
+            $station_id,$date_from,$date_to,
+            $station_id,$date_from,$date_to,
+        ]);
+
+        if ($format === 'pdf') {
+            header('Content-Type: text/html; charset=UTF-8');
+            $tbody = '';
+            foreach ($rows as $r) {
+                $rev = ($r['fuel_revenue'] ?? 0) + ($r['merch_revenue'] ?? 0);
+                $net = $rev - ($r['supplier_payables'] ?? 0);
+                $tbody .= '<tr>
+                    <td>' . htmlspecialchars($r['sale_date'] ?? '') . '</td>
+                    <td style="text-align:right">₱' . number_format($r['fuel_revenue'] ?? 0, 2) . '</td>
+                    <td style="text-align:right">₱' . number_format($r['merch_revenue'] ?? 0, 2) . '</td>
+                    <td style="text-align:right">₱' . number_format($rev, 2) . '</td>
+                    <td style="text-align:right">₱' . number_format($r['supplier_payables'] ?? 0, 2) . '</td>
+                    <td style="text-align:right">₱' . number_format($net, 2) . '</td>
+                </tr>';
+            }
+            echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Financial Cash Flow Report</title>
+<style>
+body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:20px}
+.hdr{margin-bottom:16px;border-bottom:3px solid #00264D;padding-bottom:10px}
+.hdr h1{font-size:18px;color:#00264D;margin:0 0 4px 0}
+table{width:100%;border-collapse:collapse}
+th{background:#00264D;color:#fff;padding:6px 8px;text-align:left;font-size:9px;text-transform:uppercase}
+td{padding:5px 8px;border-bottom:1px solid #e2e8f0;font-size:10px}
+tr:nth-child(even) td{background:#f8fafc}
+.pbtn{margin-bottom:14px}@media print{.pbtn{display:none}}
+</style></head><body>
+<div class="pbtn"><button onclick="window.print()">Print Report</button></div>
+<div class="hdr">
+  <h1>Financial Cash Flow Report</h1>
+  <p><strong>Station:</strong> ' . htmlspecialchars($station_name) . '</p>
+  <p><strong>Date Range:</strong> ' . htmlspecialchars($date_from) . ' &mdash; ' . htmlspecialchars($date_to) . '</p>
+</div>
+<table><thead><tr><th>Date</th><th style="text-align:right">Fuel Revenue</th><th style="text-align:right">Merchandise Revenue</th><th style="text-align:right">Total Revenue</th><th style="text-align:right">Supplier Payables</th><th style="text-align:right">Net Cash Flow</th></tr></thead>
+<tbody>' . ($tbody ?: '<tr><td colspan="6" style="text-align:center">No records found.</td></tr>') . '</tbody></table>
+</body></html>';
+            exit;
+        }
+
+        // CSV
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="financial_cashflow_' . $date_from . '_to_' . $date_to . '.csv"');
+        $out = fopen('php://output', 'w');
+        fputs($out, "\xEF\xBB\xBF");
+        fputcsv($out, ['Financial Cash Flow Report']);
+        fputcsv($out, ['Station:', $station_name]);
+        fputcsv($out, ['Date Range:', $date_from . ' to ' . $date_to]);
+        fputcsv($out, []);
+        fputcsv($out, ['Date', 'Fuel Revenue', 'Merchandise Revenue', 'Total Revenue', 'Supplier Payables', 'Net Cash Flow']);
+        foreach ($rows as $r) {
+            $rev = ($r['fuel_revenue'] ?? 0) + ($r['merch_revenue'] ?? 0);
+            $net = $rev - ($r['supplier_payables'] ?? 0);
+            fputcsv($out, [
+                $r['sale_date'] ?? '',
+                $r['fuel_revenue'] ?? 0,
+                $r['merch_revenue'] ?? 0,
+                $rev,
+                $r['supplier_payables'] ?? 0,
+                $net,
+            ]);
+        }
+        fclose($out);
+        exit;
+
+    // ── EXPORT: CALENDAR ───────────────────────────────────────────────────
+    case 'export_calendar':
+        $rows = safe_rows($pdo, "
+            SELECT ce.id, DATE(ce.event_date) AS event_date,
+                   COALESCE(TIME_FORMAT(ce.event_time,'%h:%i %p'),'') AS event_time,
+                   ce.event_type, ce.work_description, ce.status,
+                   COALESCE(us.name,'') AS staff_name,
+                   COALESCE(um.name,'') AS manager_name,
+                   ce.remarks
+            FROM calendar_events ce
+            LEFT JOIN users us ON us.id = ce.staff_assigned
+            LEFT JOIN users um ON um.id = ce.manager_assigned
+            WHERE ce.station_id = ?
+              AND DATE(ce.event_date) BETWEEN ? AND ?
+            ORDER BY ce.event_date ASC
+        ", [$station_id, $date_from, $date_to]);
+
+        if ($format === 'pdf') {
+            header('Content-Type: text/html; charset=UTF-8');
+            $tbody = '';
+            foreach ($rows as $r) {
+                $tbody .= '<tr>
+                    <td>' . htmlspecialchars($r['event_date'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['event_time'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['event_type'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['work_description'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['staff_name'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['manager_name'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['status'] ?? '') . '</td>
+                    <td>' . htmlspecialchars($r['remarks'] ?? '') . '</td>
+                </tr>';
+            }
+            echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Calendar & Scheduling Report</title>
+<style>
+body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:20px}
+.hdr{margin-bottom:16px;border-bottom:3px solid #00264D;padding-bottom:10px}
+.hdr h1{font-size:18px;color:#00264D;margin:0 0 4px 0}
+table{width:100%;border-collapse:collapse}
+th{background:#00264D;color:#fff;padding:6px 8px;text-align:left;font-size:9px;text-transform:uppercase}
+td{padding:5px 8px;border-bottom:1px solid #e2e8f0;font-size:10px}
+tr:nth-child(even) td{background:#f8fafc}
+.pbtn{margin-bottom:14px}@media print{.pbtn{display:none}}
+</style></head><body>
+<div class="pbtn"><button onclick="window.print()">Print Report</button></div>
+<div class="hdr">
+  <h1>Calendar & Scheduling Report</h1>
+  <p><strong>Station:</strong> ' . htmlspecialchars($station_name) . '</p>
+  <p><strong>Date Range:</strong> ' . htmlspecialchars($date_from) . ' &mdash; ' . htmlspecialchars($date_to) . '</p>
+</div>
+<table><thead><tr><th>Date</th><th>Time</th><th>Event Type</th><th>Description</th><th>Staff Assigned</th><th>Manager</th><th>Status</th><th>Remarks</th></tr></thead>
+<tbody>' . ($tbody ?: '<tr><td colspan="8" style="text-align:center">No scheduled events found.</td></tr>') . '</tbody></table>
+</body></html>';
+            exit;
+        }
+
+        // CSV
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="calendar_scheduling_' . $date_from . '_to_' . $date_to . '.csv"');
+        $out = fopen('php://output', 'w');
+        fputs($out, "\xEF\xBB\xBF");
+        fputcsv($out, ['Calendar & Scheduling Report']);
+        fputcsv($out, ['Station:', $station_name]);
+        fputcsv($out, ['Date Range:', $date_from . ' to ' . $date_to]);
+        fputcsv($out, []);
+        fputcsv($out, ['Date', 'Time', 'Event Type', 'Description', 'Staff Assigned', 'Manager', 'Status', 'Remarks']);
+        foreach ($rows as $r) {
+            fputcsv($out, [
+                $r['event_date'] ?? '',
+                $r['event_time'] ?? '',
+                $r['event_type'] ?? '',
+                $r['work_description'] ?? '',
+                $r['staff_name'] ?? '',
+                $r['manager_name'] ?? '',
+                $r['status'] ?? '',
+                $r['remarks'] ?? '',
+            ]);
+        }
+        fclose($out);
+        exit;
+
     // ── EXPORT: AUDIT TRAIL ───────────────────────────────────────────────────
     case 'export_audit':
         $user_filter   = (int)($_GET['user_id']   ?? 0);
         $action_filter = trim($_GET['action_type'] ?? '');
         $module_filter = trim($_GET['module']      ?? '');
+        $status_filter = trim($_GET['status_filter'] ?? '');
 
+        // Scope: Staff, Manager, Admin only — SuperAdmin excluded
         $sql = "SELECT al.id,
                        al.created_at,
-                       u.name        AS user_name,
-                       u.id          AS user_id,
-                       u.role,
+                       COALESCE(u.name, 'System') AS user_name,
+                       COALESCE(u.id, 0)          AS user_id,
+                       COALESCE(u.role, 'system')  AS role,
                        al.action_type,
-                       al.entity_type AS module,
-                       al.action_details AS details,
+                       al.entity_type              AS module,
+                       al.action_details           AS details,
                        al.ip_address,
                        al.status
                 FROM audit_logs al
                 LEFT JOIN users u ON u.id = al.user_id
                 WHERE u.station_id = ?
                   AND DATE(al.created_at) BETWEEN ? AND ?
-                  AND (u.role IS NULL OR LOWER(TRIM(u.role)) NOT IN ('admin','superadmin','super admin','super_admin'))";
+                  AND LOWER(TRIM(COALESCE(u.role,''))) NOT IN ('superadmin','super admin','super_admin')";
         $params = [$station_id, $date_from, $date_to];
-        if ($user_filter)   { $sql .= " AND al.user_id = ?";     $params[] = $user_filter; }
-        if ($action_filter) { $sql .= " AND al.action_type = ?"; $params[] = $action_filter; }
-        if ($module_filter) { $sql .= " AND al.entity_type = ?"; $params[] = $module_filter; }
+
+        if ($user_filter)   { $sql .= " AND al.user_id = ?";       $params[] = $user_filter; }
+        if ($action_filter) { $sql .= " AND al.action_type = ?";   $params[] = $action_filter; }
+        if ($module_filter) { $sql .= " AND al.entity_type = ?";   $params[] = $module_filter; }
+        if ($status_filter) { $sql .= " AND LOWER(al.status) = ?"; $params[] = strtolower($status_filter); }
         $sql .= " ORDER BY al.created_at DESC";
 
         $rows = safe_rows($pdo, $sql, $params);
@@ -692,7 +1368,7 @@ switch ($action) {
                 </tr>';
             }
             echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
-<title>Audit Trail — Compliance Copy</title>
+<title>Audit Trail — Full Compliance Copy</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:20px}
@@ -710,18 +1386,18 @@ tr:nth-child(even) td{background:#f8fafc}
 </style></head><body>
 <div class="pbtn"><button onclick="window.print()">&#128438; Print / Save as PDF</button></div>
 <div class="hdr">
-  <h1>Audit Trail — Compliance Copy</h1>
+  <h1>Audit Trail — Full Compliance Copy</h1>
   <p><strong>Station:</strong> ' . htmlspecialchars($station_name) . '</p>
   <p><strong>Date Range:</strong> ' . htmlspecialchars($date_from) . ' &mdash; ' . htmlspecialchars($date_to) . '</p>
   <p><strong>Generated:</strong> ' . date('F j, Y H:i:s') . '</p>
 </div>
-<div class="scope"><strong>Scope:</strong> Staff &amp; Manager actions only. Admin oversight role is excluded from this log.</div>
+<div class="scope"><strong>Scope:</strong> Full Compliance Trail tracking Staff activities (encoding), Manager reviews (validation), and Admin decisions.</div>
 <table>
 <thead><tr>
   <th>Date &amp; Time</th><th>User</th><th>Role</th><th>Action</th>
   <th>Module</th><th>Details</th><th>IP Address</th><th>Status</th>
 </tr></thead>
-<tbody>' . ($tbody ?: '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:20px">No audit records found for this period.</td></tr>') . '</tbody>
+  <tbody>' . ($tbody ?: '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:20px">No audit records found for this period.</td></tr>') . '</tbody>
 </table></body></html>';
             exit;
         }
@@ -731,11 +1407,11 @@ tr:nth-child(even) td{background:#f8fafc}
         header('Content-Disposition: attachment; filename="audit_trail_' . $date_from . '_to_' . $date_to . '.csv"');
         $out = fopen('php://output', 'w');
         fputs($out, "\xEF\xBB\xBF");
-        fputcsv($out, ['Audit Trail Report — Staff & Manager Actions Only']);
+        fputcsv($out, ['Audit Trail Report — Full Compliance Copy']);
         fputcsv($out, ['Station:', $station_name]);
         fputcsv($out, ['Date Range:', $date_from . ' to ' . $date_to]);
         fputcsv($out, ['Generated:', date('Y-m-d H:i:s')]);
-        fputcsv($out, ['Scope:', 'Staff and Manager actions only. Admin oversight role excluded.']);
+        fputcsv($out, ['Scope:', 'Full trail logs for Staff encoding, Manager validation, and Admin oversight actions.']);
         fputcsv($out, []);
         fputcsv($out, ['Date & Time', 'User Name', 'User ID', 'Role', 'Action', 'Module', 'Details', 'IP Address', 'Status']);
         foreach ($rows as $r) {
@@ -754,6 +1430,230 @@ tr:nth-child(even) td{background:#f8fafc}
         fclose($out);
         exit;
 
+    // ── FUEL DELIVERIES REPORT ───────────────────────────────────────────
+    case 'fuel_deliveries_report':
+        $rows = safe_rows($pdo, "
+            SELECT DATE(fd.delivery_date) AS delivery_date, fd.fuel_type, fd.supplier,
+                   fd.invoice_no, fd.delivery_liters, fd.tanker_number,
+                   COALESCE(u.name,'') AS received_name, fd.status
+            FROM fuel_deliveries fd
+            LEFT JOIN users u ON u.id = fd.received_by
+            WHERE fd.station_id = ? AND DATE(fd.delivery_date) BETWEEN ? AND ?
+            ORDER BY fd.delivery_date DESC LIMIT 500
+        ", [$station_id, $date_from, $date_to]);
+        api_ok($rows);
+
+    // ── PUMP READINGS REPORT ─────────────────────────────────────────────
+    case 'pump_readings_report':
+        $rows = safe_rows($pdo, "
+            SELECT DATE(fr.encoded_at) AS encoded_date, fr.pump_number, fr.fuel_type,
+                   fr.shift_period, fr.previous_reading, fr.present_reading, fr.difference, fr.status
+            FROM fuel_readings fr
+            WHERE fr.station_id = ? AND DATE(fr.encoded_at) BETWEEN ? AND ?
+            ORDER BY fr.encoded_at DESC LIMIT 1000
+        ", [$station_id, $date_from, $date_to]);
+        api_ok($rows);
+
+    // ── MERCH DELIVERIES: DR vs PO ───────────────────────────────────────
+    case 'merch_deliveries_drpo':
+        $rows = safe_rows($pdo, "
+            SELECT d.id, COALESCE(d.dr_number,d.delivery_ref,'') AS dr_number,
+                   COALESCE(d.source_ref,'') AS source_ref,
+                   d.supplier, d.product, COALESCE(d.quantity,0) AS quantity,
+                   COALESCE(d.expected_quantity,d.quantity,0) AS expected_quantity,
+                   COALESCE(d.actual_quantity,d.quantity,0) AS actual_quantity,
+                   COALESCE(d.damaged_quantity,0) AS damaged_quantity,
+                   DATE(COALESCE(d.delivery_date,d.created_at)) AS delivery_date,
+                   d.status
+            FROM deliveries_oversight d
+            WHERE d.station_id = ? AND d.delivery_type='merchandise'
+              AND DATE(COALESCE(d.delivery_date,d.created_at)) BETWEEN ? AND ?
+            ORDER BY delivery_date DESC LIMIT 500
+        ", [$station_id, $date_from, $date_to]);
+        api_ok($rows);
+
+    // ── MERCH DELIVERIES: Issues ─────────────────────────────────────────
+    case 'merch_deliveries_issues':
+        $rows = safe_rows($pdo, "
+            SELECT d.id, COALESCE(d.dr_number,d.delivery_ref,'') AS dr_number,
+                   d.supplier, d.product,
+                   COALESCE(d.discrepancy_type,d.status,'') AS discrepancy_type,
+                   COALESCE(d.damaged_quantity,0) AS damaged_quantity,
+                   COALESCE(d.actual_quantity,0) AS actual_quantity,
+                   COALESCE(d.return_reason,d.remarks,'') AS return_reason,
+                   COALESCE(d.resolution_action,'') AS resolution_action,
+                   DATE(COALESCE(d.delivery_date,d.created_at)) AS delivery_date,
+                   d.status
+            FROM deliveries_oversight d
+            WHERE d.station_id = ? AND d.delivery_type='merchandise'
+              AND DATE(COALESCE(d.delivery_date,d.created_at)) BETWEEN ? AND ?
+              AND (COALESCE(d.damaged_quantity,0) > 0
+                   OR LOWER(d.status) IN ('rejected','returned','discrepancy','returned to supplier','flagged'))
+            ORDER BY delivery_date DESC LIMIT 500
+        ", [$station_id, $date_from, $date_to]);
+        api_ok($rows);
+
+    // ── SUPPLIER PAYABLES (Merchandise) ─────────────────────────────────
+    case 'merch_supplier_payables':
+        $rows = safe_rows($pdo, "
+            SELECT d.supplier AS supplier,
+                   COUNT(d.id) AS total_deliveries,
+                   COALESCE(SUM(d.expected_amount),0) AS total_expected,
+                   COALESCE(SUM(d.payable_amount),0) AS total_payable,
+                   SUM(CASE WHEN LOWER(d.status) IN ('confirmed','approved','validated','ready for stock-in','adjusted') THEN 1 ELSE 0 END) AS approved_count,
+                   SUM(CASE WHEN LOWER(d.status) IN ('rejected','discrepancy','flagged') THEN 1 ELSE 0 END) AS rejected_count
+            FROM deliveries_oversight d
+            WHERE d.station_id = ? AND d.delivery_type='merchandise'
+              AND DATE(COALESCE(d.delivery_date,d.created_at)) BETWEEN ? AND ?
+            GROUP BY d.supplier ORDER BY total_payable DESC
+        ", [$station_id, $date_from, $date_to]);
+        api_ok($rows);
+
+    // ── INVENTORY REPORT ────────────────────────────────────────────────
+    case 'inventory_report':
+        $rows = safe_rows($pdo, "
+            SELECT ip.sku, ip.product_name, ip.category, ip.supplier,
+                   ip.unit_cost, ip.unit_price,
+                   COALESCE(ip.stock_quantity, ip.stock, 0) AS stock_quantity,
+                   COALESCE(ip.min_stock,0) AS min_stock,
+                   ip.status
+            FROM inventory_products ip
+            WHERE ip.station_id = ?
+            ORDER BY ip.category, ip.product_name LIMIT 1000
+        ", [$station_id]);
+        api_ok($rows);
+
+    // ── CUSTOMER REPORT: Balances ────────────────────────────────────────
+    case 'customer_report_balances':
+        $rows = safe_rows($pdo, "
+            SELECT c.id, c.name, c.type, COALESCE(c.contact_number,c.phone,'') AS contact_number,
+                   COALESCE(c.balance,c.current_balance,0) AS balance,
+                   COALESCE(c.credit_limit,0) AS credit_limit,
+                   COALESCE(c.payment_terms,'') AS payment_terms,
+                   COALESCE(c.account_status,c.status,'Active') AS account_status
+            FROM customers c
+            WHERE c.station_id = ?
+              AND COALESCE(c.balance,c.current_balance,0) > 0
+            ORDER BY balance DESC LIMIT 500
+        ", [$station_id]);
+        api_ok($rows);
+
+    // ── CUSTOMER REPORT: Purchase History ───────────────────────────────
+    case 'customer_purchase_history':
+        $rows = safe_rows($pdo, "
+            SELECT ($mt_date) AS txn_date,
+                   COALESCE(mt.customer_name,
+                     TRIM(CONCAT(COALESCE(mt.customer_first_name,''),' ',COALESCE(mt.customer_last_name,''))),
+                     'Walk-in') AS customer_name,
+                   mt.transaction_id,
+                   mt.total_amount,
+                   mt.payment_method,
+                   COALESCE(mt.validation_status,mt.payment_status,'Pending') AS validation_status
+            FROM merchandise_transactions mt
+            WHERE mt.station_id = ?
+              AND ($mt_date) BETWEEN ? AND ?
+              AND (mt.customer_name IS NOT NULL OR mt.credit_customer_id IS NOT NULL)
+            ORDER BY mt.created_at DESC LIMIT 500
+        ", [$station_id, $date_from, $date_to]);
+        api_ok($rows);
+
+    // ── SUPPLIER PERFORMANCE ────────────────────────────────────────────
+    case 'supplier_performance':
+        $rows = safe_rows($pdo, "
+            SELECT d.supplier AS supplier_name,
+                   COALESCE(s.contact_person,'') AS contact_person,
+                   COUNT(d.id) AS total_deliveries,
+                   SUM(CASE WHEN LOWER(d.status) IN ('confirmed','approved','validated','ready for stock-in','adjusted') THEN 1 ELSE 0 END) AS approved_count,
+                   SUM(CASE WHEN LOWER(d.status) IN ('discrepancy','flagged') THEN 1 ELSE 0 END) AS discrepancy_count,
+                   SUM(CASE WHEN LOWER(d.status) IN ('rejected','returned','returned to supplier') THEN 1 ELSE 0 END) AS rejected_count,
+                   COALESCE(SUM(d.payable_amount),0) AS total_payable
+            FROM deliveries_oversight d
+            LEFT JOIN suppliers s ON LOWER(TRIM(s.name)) = LOWER(TRIM(d.supplier))
+            WHERE d.station_id = ?
+              AND DATE(COALESCE(d.delivery_date,d.created_at)) BETWEEN ? AND ?
+            GROUP BY d.supplier ORDER BY approved_count DESC, total_deliveries DESC
+        ", [$station_id, $date_from, $date_to]);
+        api_ok($rows);
+
+    // ── CASH FLOW REPORT ────────────────────────────────────────────────
+    case 'cash_flow_report':
+        $rows = safe_rows($pdo, "
+            SELECT d.sale_date,
+                   COALESCE(f.fuel_rev,0) AS fuel_revenue,
+                   COALESCE(m.merch_rev,0) AS merch_revenue,
+                   COALESCE(f.fuel_rev,0)+COALESCE(m.merch_rev,0) AS total_revenue,
+                   COALESCE(p.payables,0) AS supplier_payables
+            FROM (
+                SELECT DISTINCT DATE(ft.transaction_date) AS sale_date FROM fuel_transactions ft
+                WHERE ft.station_id=? AND DATE(ft.transaction_date) BETWEEN ? AND ?
+                UNION
+                SELECT DISTINCT ($mt_date) FROM merchandise_transactions mt
+                WHERE mt.station_id=? AND ($mt_date) BETWEEN ? AND ?
+            ) d
+            LEFT JOIN (
+                SELECT DATE(transaction_date) sd, COALESCE(SUM(total_amount),0) fuel_rev
+                FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ?
+                GROUP BY DATE(transaction_date)
+            ) f ON f.sd=d.sale_date
+            LEFT JOIN (
+                SELECT ($mt_date) sd, COALESCE(SUM(mt.total_amount),0) merch_rev
+                FROM merchandise_transactions mt WHERE mt.station_id=? AND ($mt_date) BETWEEN ? AND ?
+                AND LOWER(COALESCE(mt.validation_status,'')) NOT IN ('rejected','cancelled')
+                GROUP BY ($mt_date)
+            ) m ON m.sd=d.sale_date
+            LEFT JOIN (
+                SELECT DATE(COALESCE(delivery_date,created_at)) sd, COALESCE(SUM(payable_amount),0) payables
+                FROM deliveries_oversight WHERE station_id=? AND DATE(COALESCE(delivery_date,created_at)) BETWEEN ? AND ?
+                GROUP BY DATE(COALESCE(delivery_date,created_at))
+            ) p ON p.sd=d.sale_date
+            ORDER BY d.sale_date DESC
+        ", [
+            $station_id,$date_from,$date_to,
+            $station_id,$date_from,$date_to,
+            $station_id,$date_from,$date_to,
+            $station_id,$date_from,$date_to,
+            $station_id,$date_from,$date_to,
+        ]);
+        api_ok($rows);
+
+    // ── DELIVERY ADJUSTMENTS ─────────────────────────────────────────────
+    case 'delivery_adjustments':
+        $rows = safe_rows($pdo, "
+            SELECT COALESCE(d.dr_number,d.delivery_ref,'') AS dr_number,
+                   d.supplier, d.product,
+                   COALESCE(d.discrepancy_type,'Adjustment') AS discrepancy_type,
+                   COALESCE(d.expected_amount,0) AS expected_amount,
+                   COALESCE(d.payable_amount,0) AS payable_amount,
+                   DATE(COALESCE(d.delivery_date,d.created_at)) AS delivery_date,
+                   d.status
+            FROM deliveries_oversight d
+            WHERE d.station_id=? AND d.delivery_type='merchandise'
+              AND DATE(COALESCE(d.delivery_date,d.created_at)) BETWEEN ? AND ?
+              AND (COALESCE(d.expected_amount,0) != COALESCE(d.payable_amount,0)
+                   OR COALESCE(d.damaged_quantity,0) > 0)
+            ORDER BY delivery_date DESC LIMIT 500
+        ", [$station_id, $date_from, $date_to]);
+        api_ok($rows);
+
+    // ── CALENDAR REPORT ──────────────────────────────────────────────────
+    case 'calendar_report':
+        $rows = safe_rows($pdo, "
+            SELECT ce.id, DATE(ce.event_date) AS event_date,
+                   COALESCE(TIME_FORMAT(ce.event_time,'%h:%i %p'),'') AS event_time,
+                   ce.event_type, ce.work_description, ce.status,
+                   COALESCE(us.name,'') AS staff_name,
+                   COALESCE(um.name,'') AS manager_name,
+                   ce.remarks
+            FROM calendar_events ce
+            LEFT JOIN users us ON us.id = ce.staff_assigned
+            LEFT JOIN users um ON um.id = ce.manager_assigned
+            WHERE ce.station_id = ?
+              AND DATE(ce.event_date) BETWEEN ? AND ?
+            ORDER BY ce.event_date ASC LIMIT 500
+        ", [$station_id, $date_from, $date_to]);
+        api_ok($rows);
+
     default:
         api_err('Unknown action: ' . htmlspecialchars($action));
 }
+

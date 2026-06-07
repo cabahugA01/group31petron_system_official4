@@ -2,68 +2,120 @@
 session_start();
 ob_start();
 
-// Include database connection
 require_once __DIR__ . '/../public/db_connect.php';
+require_once __DIR__ . '/../config/email_config.php';
 
 $message = '';
-$message_type = '';
 $error = '';
+$success = '';
 
-// Prevent caching
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Cache-Control: post-check=0, pre-check=0", false);
 header("Pragma: no-cache");
 
-$email = $_GET['email'] ?? $_POST['email'] ?? '';
-$phone = $_GET['phone'] ?? $_POST['phone'] ?? '';
+// EMAIL ONLY - No phone support
+$email = trim($_GET['email'] ?? $_POST['email'] ?? $_SESSION['reset_email'] ?? '');
 
-// Handle form submission
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+// Store email in session for resend functionality
+if (!empty($email)) {
+    $_SESSION['reset_email'] = $email;
+}
+
+// Handle RESEND OTP request
+if (isset($_GET['resend']) && $_GET['resend'] === '1' && !empty($email)) {
+    try {
+        // Auto-detect column names
+        $cols = array_column($pdo->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_ASSOC), 'Field');
+        $uid_col = in_array('user_id', $cols) ? 'user_id' : 'id';
+        $status_active = in_array('Active', $pdo->query("SELECT DISTINCT status FROM users")->fetchAll(PDO::FETCH_COLUMN)) ? 'Active' : 'active';
+
+        // Find user by email
+        $stmt = $pdo->prepare("SELECT `{$uid_col}` AS user_id, username, TRIM(email) AS email FROM users WHERE TRIM(email) = ? AND status = ? LIMIT 1");
+        $stmt->execute([$email, $status_active]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($user) {
+            // Generate new OTP
+            $otp_code = sprintf("%06d", random_int(100000, 999999));
+
+            // Delete old OTPs and insert new one
+            $pdo->prepare("DELETE FROM password_reset_tokens WHERE user_id = ? AND token_type = 'reset'")->execute([$user['user_id']]);
+            $pdo->prepare("INSERT INTO password_reset_tokens (user_id, token, token_type, expires_at, ip_address) VALUES (?, ?, 'reset', DATE_ADD(NOW(), INTERVAL 5 MINUTE), ?)")
+                ->execute([$user['user_id'], $otp_code, $_SERVER['REMOTE_ADDR']]);
+
+            // Send new OTP via email
+            if (function_exists('sendPasswordResetOTP')) {
+                sendPasswordResetOTP($user['email'], $otp_code);
+            }
+
+            // Log resend attempt
+            try {
+                $pdo->prepare("INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, 'OTP Resend', ?, ?)")
+                    ->execute([$user['user_id'], "OTP resent to: {$email}", $_SERVER['REMOTE_ADDR']]);
+            } catch (Exception $e) {}
+
+            $success = "A new OTP has been sent to your email. Please check your inbox.";
+        } else {
+            $error = "Unable to resend OTP. Please start the password reset process again.";
+        }
+    } catch (Exception $e) {
+        error_log("OTP resend error: " . $e->getMessage());
+        $error = "System error. Please try again later.";
+    }
+}
+
+// Handle OTP submission
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['otp'])) {
     $otp = trim($_POST['otp'] ?? '');
-    
+
     if (empty($otp)) {
         $error = "Please enter the 6-digit OTP.";
     } elseif (strlen($otp) !== 6 || !is_numeric($otp)) {
         $error = "Please enter a valid 6-digit OTP.";
     } else {
         try {
+            // Auto-detect column names
+            $cols = array_column($pdo->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_ASSOC), 'Field');
+            $uid_col = in_array('user_id', $cols) ? 'user_id' : 'id';
+            $status_active = in_array('Active', $pdo->query("SELECT DISTINCT status FROM users")->fetchAll(PDO::FETCH_COLUMN)) ? 'Active' : 'active';
+
+            // Verify OTP via EMAIL only
             if (!empty($email)) {
-                // Verify token using email
                 $stmt = $pdo->prepare("
-                    SELECT prt.user_id, prt.token, prt.expires_at, prt.is_used, prt.used_at,
-                           u.username, u.email, u.phone 
-                    FROM password_reset_tokens prt
-                    JOIN users u ON prt.user_id = u.id
-                    WHERE prt.token = ? AND prt.token_type = 'reset' AND u.status = 'active' AND (u.is_deleted = 0 OR u.is_deleted IS NULL) AND u.email = ?
-                    LIMIT 1
+                    SELECT prt.user_id, prt.token, prt.is_used,
+                           (prt.expires_at > NOW()) AS is_valid_time,
+                           u.username, TRIM(u.email) AS email
+                    FROM   password_reset_tokens prt
+                    JOIN   users u ON prt.user_id = u.`{$uid_col}`
+                    WHERE  prt.token      = ?
+                      AND  prt.token_type = 'reset'
+                      AND  u.status       = ?
+                      AND  TRIM(u.email)  = ?
+                    ORDER BY prt.id DESC
+                    LIMIT  1
                 ");
-                $stmt->execute([$otp, $email]);
+                $stmt->execute([$otp, $status_active, $email]);
+                $token_data = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                if ($token_data) {
+                    if (!$token_data['is_valid_time']) {
+                        $error = "OTP has expired. Please click 'Resend OTP' below.";
+                    } elseif ($token_data['is_used'] == 1) {
+                        $error = "OTP has already been used. Please request a new one.";
+                    } else {
+                        // Valid OTP! Redirect to reset password page
+                        // Clear session email after successful verification
+                        unset($_SESSION['reset_email']);
+                        header("Location: forgot_password_reset.php?token=" . urlencode($otp) . "&email=" . urlencode($email));
+                        exit;
+                    }
+                } else {
+                    $error = "Invalid OTP. Please check the code and try again.";
+                }
             } else {
-                // Verify token using phone
-                $stmt = $pdo->prepare("
-                    SELECT prt.user_id, prt.token, prt.expires_at, prt.is_used, prt.used_at,
-                           u.username, u.email, u.phone 
-                    FROM password_reset_tokens prt
-                    JOIN users u ON prt.user_id = u.id
-                    WHERE prt.token = ? AND prt.token_type = 'reset' AND u.status = 'active' AND (u.is_deleted = 0 OR u.is_deleted IS NULL) AND u.phone = ?
-                    LIMIT 1
-                ");
-                $stmt->execute([$otp, $phone]);
+                $error = "Email is required for verification.";
             }
-            $token_data = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            if (!$token_data) {
-                $error = "Invalid OTP. Please check the code and try again.";
-            } elseif (strtotime($token_data['expires_at']) < time()) {
-                $error = "OTP has expired. Please request a new password reset.";
-            } elseif ($token_data['is_used'] == 1 && $token_data['used_at'] !== null) {
-                $error = "OTP has already been used. Please request a new password reset.";
-            } else {
-                // OTP is valid! Redirect to reset form
-                header("Location: forgot_password_reset.php?token=" . urlencode($otp) . "&email=" . urlencode($token_data['email'] ?? '') . "&phone=" . urlencode($token_data['phone'] ?? ''));
-                exit;
-            }
-        } catch (PDOException $e) {
+        } catch (Exception $e) {
             error_log("OTP validation error: " . $e->getMessage());
             $error = "System error. Please try again later.";
         }
@@ -84,21 +136,209 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             --red-glow: rgba(227, 6, 19, 0.35);
         }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: url('../assets/img/background.jpg') center center / cover no-repeat;
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            overflow-x: hidden;
             position: relative;
+            overflow: hidden;
+            background: #000814;
+        }
+
+        /* 4D Animated Background Layers */
+        .bg-layer {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+        }
+
+        /* Base image layer */
+        .bg-image {
+            background: url('../assets/img/background.jpg') center/cover no-repeat;
+            filter: brightness(0.6) blur(0px);
+            z-index: 1;
+        }
+
+        /* Animated gradient overlay */
+        .bg-gradient {
+            background: linear-gradient(
+                135deg,
+                rgba(0, 47, 108, 0.3) 0%,
+                rgba(227, 6, 19, 0.15) 25%,
+                rgba(0, 15, 45, 0.4) 50%,
+                rgba(0, 80, 180, 0.2) 75%,
+                rgba(0, 26, 61, 0.35) 100%
+            );
+            background-size: 400% 400%;
+            animation: gradientShift 15s ease infinite;
+            z-index: 2;
+            mix-blend-mode: multiply;
+            opacity: 0.7;
+        }
+
+        @keyframes gradientShift {
+            0%   { background-position: 0% 50%; }
+            25%  { background-position: 50% 100%; }
+            50%  { background-position: 100% 50%; }
+            75%  { background-position: 50% 0%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Floating particles layer */
+        .bg-particles {
+            z-index: 3;
+            pointer-events: none;
+        }
+
+        .particle {
+            position: absolute;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(96, 165, 250, 0.8), transparent);
+            animation: float linear infinite;
+            opacity: 0;
+        }
+
+        .particle:nth-child(1) { 
+            width: 4px; height: 4px; 
+            left: 10%; top: 80%; 
+            animation-duration: 8s; 
+            animation-delay: 0s;
+            box-shadow: 0 0 20px rgba(96, 165, 250, 0.6);
+        }
+        .particle:nth-child(2) { 
+            width: 6px; height: 6px; 
+            left: 20%; top: 60%; 
+            animation-duration: 12s; 
+            animation-delay: 1s;
+            box-shadow: 0 0 25px rgba(227, 6, 19, 0.5);
+            background: radial-gradient(circle, rgba(227, 6, 19, 0.7), transparent);
+        }
+        .particle:nth-child(3) { 
+            width: 3px; height: 3px; 
+            left: 35%; top: 90%; 
+            animation-duration: 10s; 
+            animation-delay: 2s;
+            box-shadow: 0 0 15px rgba(96, 165, 250, 0.5);
+        }
+        .particle:nth-child(4) { 
+            width: 5px; height: 5px; 
+            left: 50%; top: 85%; 
+            animation-duration: 14s; 
+            animation-delay: 0.5s;
+            box-shadow: 0 0 22px rgba(147, 197, 253, 0.6);
+        }
+        .particle:nth-child(5) { 
+            width: 4px; height: 4px; 
+            left: 65%; top: 75%; 
+            animation-duration: 11s; 
+            animation-delay: 1.5s;
+            box-shadow: 0 0 18px rgba(96, 165, 250, 0.5);
+        }
+        .particle:nth-child(6) { 
+            width: 7px; height: 7px; 
+            left: 80%; top: 70%; 
+            animation-duration: 13s; 
+            animation-delay: 2.5s;
+            box-shadow: 0 0 28px rgba(227, 6, 19, 0.6);
+            background: radial-gradient(circle, rgba(227, 6, 19, 0.8), transparent);
+        }
+        .particle:nth-child(7) { 
+            width: 3px; height: 3px; 
+            left: 90%; top: 80%; 
+            animation-duration: 9s; 
+            animation-delay: 1.8s;
+            box-shadow: 0 0 16px rgba(96, 165, 250, 0.4);
+        }
+        .particle:nth-child(8) { 
+            width: 5px; height: 5px; 
+            left: 15%; top: 50%; 
+            animation-duration: 15s; 
+            animation-delay: 3s;
+            box-shadow: 0 0 24px rgba(147, 197, 253, 0.7);
+        }
+
+        @keyframes float {
+            0% {
+                transform: translateY(0) translateX(0) scale(1);
+                opacity: 0;
+            }
+            10% {
+                opacity: 1;
+            }
+            90% {
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(-100vh) translateX(30px) scale(1.5);
+                opacity: 0;
+            }
+        }
+
+        /* Glowing orbs layer */
+        .bg-orbs {
+            z-index: 4;
+            pointer-events: none;
+            opacity: 0.6;
+        }
+
+        .orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.25;
+            animation: orbFloat ease-in-out infinite alternate;
+        }
+
+        .orb-1 {
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, rgba(0, 47, 108, 0.4), transparent);
+            top: -10%;
+            left: -10%;
+            animation-duration: 8s;
+        }
+
+        .orb-2 {
+            width: 350px;
+            height: 350px;
+            background: radial-gradient(circle, rgba(227, 6, 19, 0.3), transparent);
+            bottom: -10%;
+            right: -10%;
+            animation-duration: 10s;
+            animation-delay: 1s;
+        }
+
+        @keyframes orbFloat {
+            0% {
+                transform: translate(0, 0) scale(1);
+            }
+            100% {
+                transform: translate(20px, -20px) scale(1.1);
+            }
+        }
+
+        /* Grid overlay */
+        .bg-grid {
+            background-image: 
+                linear-gradient(rgba(96, 165, 250, 0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(96, 165, 250, 0.02) 1px, transparent 1px);
+            background-size: 50px 50px;
+            z-index: 5;
+            pointer-events: none;
+            animation: gridMove 20s linear infinite;
+        }
+
+        @keyframes gridMove {
+            0% {
+                background-position: 0 0;
+            }
+            100% {
+                background-position: 50px 50px;
+            }
         }
 
         .login-wrap {
@@ -108,7 +348,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             align-items: center;
             justify-content: center;
             padding: 20px;
-            z-index: 2;
+            z-index: 10;
+            position: relative;
         }
 
         .login-card {
@@ -119,12 +360,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             max-width: 520px;
             border-radius: 28px;
             padding: 48px 40px 36px;
-            box-shadow: 
-                0 4px 0 rgba(255,255,255,.05) inset, 
-                0 -2px 0 rgba(0,0,0,.6) inset, 
-                0 12px 40px rgba(0,0,0,.6), 
-                0 32px 80px rgba(0,0,0,.65), 
-                0 0 0 1px rgba(255,255,255,.08), 
+            box-shadow:
+                0 4px 0 rgba(255,255,255,.05) inset,
+                0 -2px 0 rgba(0,0,0,.6) inset,
+                0 12px 40px rgba(0,0,0,.6),
+                0 32px 80px rgba(0,0,0,.65),
+                0 0 0 1px rgba(255,255,255,.08),
                 0 0 50px var(--blue-glow);
             position: relative;
             animation: cardGlowFlow 8s linear infinite;
@@ -143,14 +384,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         @keyframes borderFlow {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
+            0%   { background-position: 0% 50%; }
+            50%  { background-position: 100% 50%; }
             100% { background-position: 0% 50%; }
         }
 
         @keyframes cardGlowFlow {
             0%, 100% { box-shadow: 0 4px 0 rgba(255,255,255,.05) inset, 0 -2px 0 rgba(0,0,0,.6) inset, 0 12px 40px rgba(0,0,0,.6), 0 32px 80px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.08), 0 0 50px var(--blue-glow); }
-            50% { box-shadow: 0 4px 0 rgba(255,255,255,.05) inset, 0 -2px 0 rgba(0,0,0,.6) inset, 0 12px 40px rgba(0,0,0,.6), 0 32px 80px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.08), 0 0 60px var(--red-glow); }
+            50%       { box-shadow: 0 4px 0 rgba(255,255,255,.05) inset, 0 -2px 0 rgba(0,0,0,.6) inset, 0 12px 40px rgba(0,0,0,.6), 0 32px 80px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.08), 0 0 60px var(--red-glow); }
         }
 
         .brand {
@@ -186,10 +427,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             text-shadow: 0 0 12px rgba(100,160,255,.4);
         }
 
-        .field-group {
-            margin-bottom: 24px;
-            position: relative;
-        }
+        .field-group { margin-bottom: 24px; position: relative; }
 
         .field-label {
             display: block;
@@ -243,16 +481,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             padding: 0 16px 0 46px;
             color: #ffffff;
             font-family: inherit;
-            font-size: 18px;
+            font-size: 22px;
             font-weight: 700;
             text-align: center;
-            letter-spacing: 4px;
+            letter-spacing: 6px;
             text-shadow: 0 1px 2px rgba(0,0,0,.4);
         }
 
         .field-input::placeholder {
             color: rgba(255,255,255,.3);
             letter-spacing: normal;
+            font-size: 16px;
+            font-weight: 400;
         }
 
         .btn-submit {
@@ -279,20 +519,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             transform: translateY(-1px);
         }
 
-        .btn-submit:active {
-            transform: translateY(1px);
-            box-shadow: 0 2px 10px rgba(0,47,108,.4);
-        }
+        .btn-submit:active  { transform: translateY(1px); box-shadow: 0 2px 10px rgba(0,47,108,.4); }
+        .btn-submit:disabled { background: #4a5568; border-color: rgba(255,255,255,.05); cursor: not-allowed; box-shadow: none; transform: none; }
 
-        .btn-submit:disabled {
-            background: #4a5568;
-            border-color: rgba(255,255,255,.05);
-            cursor: not-allowed;
-            box-shadow: none;
-            transform: none;
-        }
-
-        .error-banner, .info-banner {
+        .error-banner, .info-banner, .success-banner {
             border-radius: 12px;
             padding: 12px 16px;
             font-size: 13.5px;
@@ -305,17 +535,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             text-align: left;
         }
 
-        .error-banner {
-            background: rgba(220,38,38,.25);
-            border: 1.5px solid rgba(220,38,38,.45);
-            color: #fca5a5;
-        }
-
+        .error-banner { background: rgba(220,38,38,.25); border: 1.5px solid rgba(220,38,38,.45); color: #fca5a5; }
+        .success-banner { background: rgba(16,185,129,.2); border: 1.5px solid rgba(16,185,129,.45); color: #a7f3d0; }
         .info-banner {
             background: rgba(59,130,246,.2);
             border: 1.5px solid rgba(59,130,246,.45);
             color: #bfdbfe;
         }
+
+        .otp-timer {
+            text-align: center;
+            font-size: 12.5px;
+            color: rgba(255,255,255,.55);
+            margin-bottom: 20px;
+        }
+
+        .otp-timer span { color: #fbbf24; font-weight: 700; }
 
         .links-wrap {
             margin-top: 24px;
@@ -337,10 +572,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             gap: 8px;
         }
 
-        .forgot-link:hover {
-            color: #93c5fd;
-            text-shadow: 0 0 8px rgba(147,197,253,.5);
-        }
+        .forgot-link:hover { color: #93c5fd; text-shadow: 0 0 8px rgba(147,197,253,.5); }
 
         .page-footer {
             margin-top: 28px;
@@ -355,27 +587,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             pointer-events: none;
         }
 
-        .spinner {
-            width: 18px;
-            height: 18px;
-            border: 2px solid rgba(255,255,255,0.3);
-            border-radius: 50%;
-            border-top-color: #fff;
-            animation: spin 0.8s linear infinite;
-            display: none;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
         @media (max-width: 540px) {
             .login-wrap { padding: 0 12px; }
-            .login-card { padding: 38px 28px 32px; }
+            .login-card  { padding: 38px 28px 32px; }
         }
     </style>
 </head>
 <body>
+
+<!-- 4D Background Layers -->
+<div class="bg-layer bg-image"></div>
+<div class="bg-layer bg-gradient"></div>
+<div class="bg-layer bg-orbs">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+</div>
+<div class="bg-layer bg-particles">
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+</div>
+<div class="bg-layer bg-grid"></div>
 
 <div class="login-wrap">
     <div class="login-card">
@@ -392,64 +629,97 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <span><?php echo htmlspecialchars($error); ?></span>
             </div>
         <?php endif; ?>
-        
-        <?php if (empty($error)): ?>
-            <?php if (!empty($email)): ?>
-                <div class="info-banner">
-                    <i class="fas fa-info-circle"></i>
-                    <span>If the email <strong><?php echo htmlspecialchars($email); ?></strong> is registered, we sent an OTP. Please check your inbox.</span>
-                </div>
-            <?php elseif (!empty($phone)): ?>
-                <div class="info-banner">
-                    <i class="fas fa-info-circle"></i>
-                    <span>If the phone <strong><?php echo htmlspecialchars($phone); ?></strong> is registered, we sent an OTP SMS. Please check your messages.</span>
-                </div>
-            <?php endif; ?>
+
+        <!-- Success Message -->
+        <?php if ($success): ?>
+            <div class="success-banner" role="status">
+                <i class="fas fa-check-circle"></i>
+                <span><?php echo htmlspecialchars($success); ?></span>
+            </div>
         <?php endif; ?>
 
+        <!-- Info Banner -->
+        <?php if (empty($error) && empty($success) && !empty($email)): ?>
+            <div class="info-banner">
+                <i class="fas fa-envelope"></i>
+                <span>We sent a 6-digit OTP to <strong><?php echo htmlspecialchars($email); ?></strong>. Please check your inbox.</span>
+            </div>
+        <?php endif; ?>
+
+        <!-- Countdown -->
+        <div class="otp-timer" id="otpTimer">
+            OTP expires in <span id="countdown">05:00</span>
+        </div>
+
         <!-- OTP Form -->
-        <form method="POST" action="" id="verifyForm">
+        <form method="POST" action="">
             <input type="hidden" name="email" value="<?php echo htmlspecialchars($email); ?>">
-            <input type="hidden" name="phone" value="<?php echo htmlspecialchars($phone); ?>">
             <div class="field-group">
                 <label for="otp" class="field-label">Enter OTP</label>
                 <div class="input-wrap">
                     <i class="fas fa-key input-icon"></i>
-                    <input type="text" name="otp" id="otp" class="field-input" placeholder="123456" maxlength="6" required autofocus autocomplete="off">
+                    <input type="text" name="otp" id="otp" class="field-input"
+                           placeholder="123456" maxlength="6" inputmode="numeric"
+                           pattern="\d{6}" required autofocus autocomplete="one-time-code">
                 </div>
             </div>
 
-            <button type="submit" class="btn-submit" id="submitBtn">
-                <div class="spinner" id="spinner"></div>
-                <span id="btnText">Verify OTP</span>
+            <button type="submit" class="btn-submit">
+                <span>Verify OTP</span>
+                <i class="fas fa-check-circle"></i>
             </button>
         </form>
 
-        <!-- Secondary Links -->
+        <!-- Links -->
         <div class="links-wrap">
-            <a href="forgot_password.php" class="forgot-link"><i class="fas fa-redo"></i> Request New OTP</a>
-            <a href="login.php" class="forgot-link"><i class="fas fa-arrow-left"></i> Back to Login</a>
+            <?php if (!empty($email)): ?>
+            <a href="?resend=1&email=<?php echo urlencode($email); ?>" class="forgot-link">
+                <i class="fas fa-redo"></i> Resend OTP
+            </a>
+            <?php endif; ?>
+            <a href="forgot_password.php" class="forgot-link">
+                <i class="fas fa-arrow-left"></i> Start Over
+            </a>
+            <a href="login.php" class="forgot-link">
+                <i class="fas fa-sign-in-alt"></i> Back to Login
+            </a>
         </div>
     </div>
 
     <div class="page-footer">
-        &copy; <?php echo date('Y'); ?> Petron Station &amp; Service Center Management System. All Rights Reserved.
+        &copy; <?php echo date('Y'); ?> Petron Station Management System. All Rights Reserved.
     </div>
 </div>
 
 <script>
-    const form = document.getElementById('verifyForm');
-    const submitBtn = document.getElementById('submitBtn');
-    const spinner = document.getElementById('spinner');
-    const btnText = document.getElementById('btnText');
+// Countdown timer (5 minutes)
+(function() {
+    let seconds = 300;
+    const el = document.getElementById('countdown');
+    
+    const tick = setInterval(() => {
+        seconds--;
+        if (seconds <= 0) {
+            clearInterval(tick);
+            el.textContent = '00:00';
+            el.style.color = '#f87171';
+        } else {
+            const m = String(Math.floor(seconds / 60)).padStart(2, '0');
+            const s = String(seconds % 60).padStart(2, '0');
+            el.textContent = m + ':' + s;
+            if (seconds <= 60) el.style.color = '#f87171';
+        }
+    }, 1000);
+})();
 
-    if (form) {
-        form.addEventListener('submit', () => {
-            submitBtn.disabled = true;
-            spinner.style.display = 'block';
-            btnText.textContent = 'Verifying...';
-        });
+// Auto-submit when 6 digits entered
+const otpInput = document.getElementById('otp');
+otpInput.addEventListener('input', () => {
+    otpInput.value = otpInput.value.replace(/\D/g, '').slice(0, 6);
+    if (otpInput.value.length === 6) {
+        otpInput.form.submit();
     }
+});
 </script>
 
 </body>

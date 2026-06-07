@@ -97,32 +97,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Fetch Purchase Orders from purchase_orders table (merch, scoped to station)
+// Fetch Purchase Orders from purchase_orders (merch) and fuel_purchase_orders (fuel) table
 $pos = [];
 try {
     $stmt = $pdo->prepare("
-        SELECT po.*,
-               u.name AS created_by_name,
-               sr.item_name AS request_item_name,
-               sr.item_sku
+        SELECT 
+            'merchandise' AS po_type,
+            po.id,
+            po.po_number,
+            po.product_name,
+            po.batch_id,
+            po.supplier_name,
+            po.quantity,
+            po.unit_price,
+            po.total_amount,
+            po.expected_delivery,
+            po.status,
+            po.created_at,
+            po.notes,
+            u.name AS created_by_name
         FROM purchase_orders po
         LEFT JOIN users u ON po.created_by = u.id
-        LEFT JOIN stock_requests sr ON po.request_id = sr.id
-        WHERE po.station_id = ?
-          AND po.type = 'merch'
-        ORDER BY
-            CASE po.status
-                WHEN 'Pending' THEN 1
-                WHEN 'pending' THEN 1
-                WHEN 'pending_supplier' THEN 1
-                WHEN 'Pending Delivery' THEN 2
-                WHEN 'Approved' THEN 3
-                ELSE 4
-            END,
-            po.created_at DESC
+        WHERE po.station_id = ? AND po.type = 'merch'
+
+        UNION ALL
+
+        SELECT 
+            'fuel' AS po_type,
+            fpo.id,
+            fpo.po_number,
+            ft.name AS product_name,
+            fpo.batch_id,
+            s.name AS supplier_name,
+            fpo.volume AS quantity,
+            fpo.unit_price,
+            fpo.total_amount,
+            fpo.expected_delivery_date AS expected_delivery,
+            fpo.status,
+            fpo.created_at,
+            fpo.notes,
+            u.name AS created_by_name
+        FROM fuel_purchase_orders fpo
+        LEFT JOIN users u ON fpo.created_by = u.id
+        LEFT JOIN fuel_types ft ON fpo.fuel_type_id = ft.id
+        LEFT JOIN suppliers s ON fpo.supplier_id = s.id
+        WHERE fpo.station_id = ?
+
+        ORDER BY created_at DESC
         LIMIT 200
     ");
-    $stmt->execute([$station_id]);
+    $stmt->execute([$station_id, $station_id]);
     $pos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     $pos = [];
@@ -210,6 +234,26 @@ include __DIR__ . '/../partials/header.php';
     padding: 11px 14px;
     vertical-align: middle;
     color: #333;
+}
+
+/* ── Type Badges ── */
+.type-badge {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+.type-fuel {
+    background: #fff8e1;
+    color: #b78103;
+    border: 1px solid #ffe082;
+}
+.type-merchandise {
+    background: #e8f5e9;
+    color: #2e7d32;
+    border: 1px solid #a5d6a7;
 }
 
 /* ── Status Badges — plain text, no background color ────── */
@@ -404,7 +448,7 @@ include __DIR__ . '/../partials/header.php';
     <div class="page-head">
         <div>
             <h1 class="h1">Purchase Orders</h1>
-            <div class="sub">CREATE DRAFT PURCHASE ORDERS BASED ON VALIDATED REQUESTS FOR ADMIN APPROVAL.</div>
+            <div class="sub">VIEW THE HISTORY OF PURCHASE ORDERS APPROVED BY THE ADMIN, INCLUDING PROPOSED MANAGER PRICES FOR BOTH FUEL AND MERCHANDISE.</div>
         </div>
     </div>
 
@@ -422,6 +466,7 @@ include __DIR__ . '/../partials/header.php';
             <thead>
                 <tr>
                     <th>PO Number</th>
+                    <th>Type</th>
                     <th>Product</th>
                     <th>Batch ID</th>
                     <th>Supplier</th>
@@ -431,7 +476,6 @@ include __DIR__ . '/../partials/header.php';
                     <th>Expected Delivery</th>
                     <th>Status</th>
                     <th>Created</th>
-                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -463,14 +507,38 @@ include __DIR__ . '/../partials/header.php';
 
                     $product_display = htmlspecialchars($po['product_name'] ?? '—');
                     $supplier_display = !empty($po['supplier_name']) ? htmlspecialchars($po['supplier_name']) : '—';
-                    $qty_display = isset($po['quantity']) ? number_format((float)$po['quantity'], 0) : '—';
+                    if ($po['po_type'] === 'fuel') {
+                        $qty_display = isset($po['quantity']) ? number_format((float)$po['quantity'], 2) . ' L' : '—';
+                    } else {
+                        $qty_display = isset($po['quantity']) ? number_format((float)$po['quantity'], 0) . ' pcs' : '—';
+                    }
                     $unit_price_display = isset($po['unit_price']) && $po['unit_price'] > 0 ? '₱' . number_format((float)$po['unit_price'], 2) : '—';
                     $total_display = isset($po['total_amount']) && $po['total_amount'] > 0 ? '₱' . number_format((float)$po['total_amount'], 2) : '—';
                     $exp_delivery_display = !empty($po['expected_delivery']) ? date('M j, Y', strtotime($po['expected_delivery'])) : '—';
                     $created_display = !empty($po['created_at']) ? date('M j, Y', strtotime($po['created_at'])) : '—';
                 ?>
                 <tr>
-                    <td><strong><?php echo htmlspecialchars($po['po_number'] ?? '—'); ?></strong></td>
+                    <td>
+                        <a href="#" style="font-weight:700; text-decoration:none; color:#002F70;" onclick="openViewModal(<?php
+                            echo htmlspecialchars(json_encode([
+                                'po_number'        => $po['po_number'] ?? '',
+                                'po_type'          => ucfirst($po['po_type']),
+                                'product_name'     => $po['product_name'] ?? '',
+                                'supplier_name'    => $po['supplier_name'] ?? '',
+                                'quantity'         => $qty_display,
+                                'unit_price'       => $po['unit_price'] ?? '',
+                                'total_amount'     => $po['total_amount'] ?? '',
+                                'expected_delivery'=> $po['expected_delivery'] ?? '',
+                                'status'           => $display_status,
+                                'notes'            => $po['notes'] ?? '',
+                                'created_by_name'  => $po['created_by_name'] ?? '',
+                                'created_at'       => $po['created_at'] ?? '',
+                            ]), ENT_QUOTES);
+                        ?>); return false;">
+                            <?php echo htmlspecialchars($po['po_number'] ?? '—'); ?>
+                        </a>
+                    </td>
+                    <td><span class="type-badge <?php echo $po['po_type'] === 'fuel' ? 'type-fuel' : 'type-merchandise'; ?>"><?php echo ucfirst($po['po_type']); ?></span></td>
                     <td><?php echo $product_display; ?></td>
                     <td>
                         <?php if (!empty($po['batch_id'])): ?>
@@ -484,46 +552,6 @@ include __DIR__ . '/../partials/header.php';
                     <td><?php echo $exp_delivery_display; ?></td>
                     <td><span class="status-badge <?php echo $badge_class; ?>"><?php echo htmlspecialchars($display_status); ?></span></td>
                     <td><?php echo $created_display; ?></td>
-                    <td style="white-space:nowrap;">
-                        <?php if ($is_pending): ?>
-                        <button type="button"
-                                class="btn-action btn-finalize"
-                                onclick="openFinalizeModal(<?php
-                                    echo htmlspecialchars(json_encode([
-                                        'id'               => $po['id'],
-                                        'po_number'        => $po['po_number'] ?? '',
-                                        'product_name'     => $po['product_name'] ?? '',
-                                        'batch_id'         => $po['batch_id'] ?? '',
-                                        'supplier_name'    => $po['supplier_name'] ?? '',
-                                        'quantity'         => $po['quantity'] ?? '',
-                                        'unit_price'       => $po['unit_price'] ?? '',
-                                        'expected_delivery'=> $po['expected_delivery'] ?? '',
-                                        'notes'            => $po['notes'] ?? '',
-                                    ]), ENT_QUOTES);
-                                ?>)">
-                            <i class="fas fa-edit"></i> Finalize
-                        </button>
-                        <?php endif; ?>
-                        <button type="button"
-                                class="btn-action btn-view"
-                                onclick="openViewModal(<?php
-                                    echo htmlspecialchars(json_encode([
-                                        'po_number'        => $po['po_number'] ?? '',
-                                        'product_name'     => $po['product_name'] ?? '',
-                                        'supplier_name'    => $po['supplier_name'] ?? '',
-                                        'quantity'         => $po['quantity'] ?? '',
-                                        'unit_price'       => $po['unit_price'] ?? '',
-                                        'total_amount'     => $po['total_amount'] ?? '',
-                                        'expected_delivery'=> $po['expected_delivery'] ?? '',
-                                        'status'           => $display_status,
-                                        'notes'            => $po['notes'] ?? '',
-                                        'created_by_name'  => $po['created_by_name'] ?? '',
-                                        'created_at'       => $po['created_at'] ?? '',
-                                    ]), ENT_QUOTES);
-                                ?>)">
-                            <i class="fas fa-eye"></i> View
-                        </button>
-                    </td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
@@ -538,67 +566,7 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
-<!-- ── Finalize PO Modal ──────────────────────────────────── -->
-<div id="finalizeModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="finalizeModalTitle">
-    <div class="modal-box">
-        <div class="modal-header">
-            <h2 id="finalizeModalTitle"><i class="fas fa-edit"></i> Finalize Purchase Order</h2>
-            <button class="modal-close" onclick="closeModal('finalizeModal')" aria-label="Close">&times;</button>
-        </div>
-        <form method="post" action="manager_purchase_orders.php" id="finalizeForm">
-            <input type="hidden" name="action" value="finalize_po">
-            <input type="hidden" name="po_id" id="finalize_po_id">
-            <div class="modal-body">
-                <p style="font-size:0.85rem;color:#555;margin:0 0 16px;">
-                    PO: <strong id="finalize_po_number"></strong> &mdash; Product: <strong id="finalize_product_name"></strong>
-                </p>
 
-                <div class="form-group">
-                    <label class="form-label" for="finalize_batch_id">Batch ID <span class="req">*</span> <span style="font-weight:400;color:#888;font-size:0.78rem;">— unique per delivery batch (e.g. BATCH-001, APR2026-A)</span></label>
-                    <input type="text" id="finalize_batch_id" name="batch_id" class="form-control"
-                           placeholder="e.g. BATCH-001" required maxlength="100"
-                           style="font-family:monospace;font-size:0.95rem;letter-spacing:0.5px;">
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label" for="finalize_supplier">Supplier Name <span class="req">*</span></label>
-                    <input type="text" id="finalize_supplier" name="supplier_name" class="form-control"
-                           placeholder="e.g. Petron Corporation" required maxlength="200">
-                </div>
-
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-                    <div class="form-group">
-                        <label class="form-label" for="finalize_qty">Confirmed Quantity <span class="req">*</span></label>
-                        <input type="number" id="finalize_qty" name="quantity" class="form-control"
-                               min="1" step="1" required placeholder="0">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" for="finalize_unit_price">Unit Price (₱) <span class="req">*</span></label>
-                        <input type="number" id="finalize_unit_price" name="unit_price" class="form-control"
-                               min="0.01" step="0.01" required placeholder="0.00">
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label" for="finalize_delivery">Expected Delivery Date <span class="req">*</span></label>
-                    <input type="date" id="finalize_delivery" name="expected_delivery" class="form-control" required>
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label" for="finalize_notes">Notes <span style="font-weight:400;color:#888;">(optional)</span></label>
-                    <textarea id="finalize_notes" name="notes" class="form-control" rows="3"
-                              placeholder="Any additional notes for this PO..."></textarea>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn-cancel-modal" onclick="closeModal('finalizeModal')">Cancel</button>
-                <button type="submit" class="btn-submit-finalize">
-                    <i class="fas fa-check"></i> Finalize PO
-                </button>
-            </div>
-        </form>
-    </div>
-</div>
 
 <!-- ── View PO Modal ──────────────────────────────────────── -->
 <div id="viewModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="viewModalTitle">
@@ -638,26 +606,6 @@ document.addEventListener('keydown', function(e) {
     }
 });
 
-// ── Finalize Modal ────────────────────────────────────────
-function openFinalizeModal(data) {
-    document.getElementById('finalize_po_id').value        = data.id;
-    document.getElementById('finalize_po_number').textContent  = data.po_number;
-    document.getElementById('finalize_product_name').textContent = data.product_name;
-    document.getElementById('finalize_batch_id').value     = data.batch_id || '';
-    document.getElementById('finalize_supplier').value     = data.supplier_name || '';
-    document.getElementById('finalize_qty').value          = data.quantity || '';
-    document.getElementById('finalize_unit_price').value   = data.unit_price || '';
-    document.getElementById('finalize_delivery').value     = data.expected_delivery || '';
-    document.getElementById('finalize_notes').value        = data.notes || '';
-
-    // Set min date to today
-    var today = new Date().toISOString().split('T')[0];
-    document.getElementById('finalize_delivery').min = today;
-
-    document.getElementById('finalizeModal').classList.add('active');
-    document.getElementById('finalize_batch_id').focus();
-}
-
 // ── View Modal ────────────────────────────────────────────
 function openViewModal(data) {
     var fmt = function(v) { return v ? v : '—'; };
@@ -674,9 +622,10 @@ function openViewModal(data) {
 
     var rows = [
         ['PO Number',          fmt(data.po_number)],
+        ['PO Type',            fmt(data.po_type)],
         ['Product',            fmt(data.product_name)],
         ['Supplier',           fmt(data.supplier_name)],
-        ['Quantity',           data.quantity ? Number(data.quantity).toLocaleString() : '—'],
+        ['Quantity',           fmt(data.quantity)],
         ['Unit Price',         fmtMoney(data.unit_price)],
         ['Total Amount',       fmtMoney(data.total_amount)],
         ['Expected Delivery',  fmtDate(data.expected_delivery)],

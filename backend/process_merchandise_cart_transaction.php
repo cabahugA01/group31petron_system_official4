@@ -125,6 +125,15 @@ try {
         
         // Handle credit customer if applicable - simplified approach
         if (!empty($input['credit_customer_id']) && $input['payment_method'] === 'Account Receivable') {
+            $custCheck = $pdo->prepare("SELECT status FROM customers WHERE id = ? LIMIT 1");
+            $custCheck->execute([$input['credit_customer_id']]);
+            $custStatus = $custCheck->fetchColumn();
+            if ($custStatus === 'locked') {
+                throw new Exception("Transaction blocked: Customer account is locked.");
+            }
+            if ($custStatus === 'inactive') {
+                throw new Exception("Transaction blocked: Customer account is inactive.");
+            }
             try {
                 $creditStmt = $pdo->prepare("
                     INSERT INTO accounts_receivable (
@@ -159,6 +168,32 @@ try {
                         $input['credit_customer_id'],
                         $station_id
                     ]);
+                    
+                    // Also write to customer_credit_transactions
+                    try {
+                        // Fetch updated balance
+                        $bal_stmt = $pdo->prepare("SELECT balance FROM customers WHERE id = ?");
+                        $bal_stmt->execute([$input['credit_customer_id']]);
+                        $new_bal = (float)$bal_stmt->fetchColumn();
+                        
+                        $cct_stmt = $pdo->prepare("
+                            INSERT INTO customer_credit_transactions (
+                                customer_id, transaction_id, transaction_type, amount, 
+                                running_balance, description, station_id, created_by, created_at
+                            ) VALUES (?, ?, 'Sale', ?, ?, ?, ?, ?, NOW())
+                        ");
+                        $cct_stmt->execute([
+                            $input['credit_customer_id'],
+                            $input['transaction_id'],
+                            $input['total_amount'],
+                            $new_bal,
+                            "Merchandise Sale (Credit) - Ref: " . $input['transaction_id'],
+                            $station_id,
+                            $input['staff_id']
+                        ]);
+                    } catch (Exception $ccError) {
+                        error_log("Error inserting into customer_credit_transactions: " . $ccError->getMessage());
+                    }
                 } catch (Exception $balanceError) {
                     error_log("Customer balance update failed: " . $balanceError->getMessage());
                 }

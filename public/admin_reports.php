@@ -25,7 +25,16 @@ try {
 
 // Active tab
 $active_tab = $_GET['tab'] ?? 'sales';
-$allowed_tabs = ['sales','job_orders','balances','deliveries','staff','variance','receivable'];
+$allowed_tabs = [
+    'sales',       // Transactions Reports
+    'fuel',        // Fuel Management Reports
+    'deliveries',  // Merchandise Deliveries Reports
+    'inventory',   // Inventory Reports
+    'customers',   // Customer Reports
+    'suppliers',   // Supplier Reports
+    'payments',    // Financial/Payables Reports
+    'calendar',    // Calendar & Scheduling Reports
+];
 if (!in_array($active_tab, $allowed_tabs)) $active_tab = 'sales';
 
 // Date range defaults
@@ -151,7 +160,7 @@ require_once __DIR__ . '/../partials/header.php';
 
 /* Table wrapper */
 .rpt-table-wrap {
-    overflow-x:hidden;
+    overflow-x: auto;
     border-radius: 12px;
     border: 1px solid var(--line);
 }
@@ -383,267 +392,388 @@ require_once __DIR__ . '/../partials/header.php';
   <?php endif; ?>
 
   <!-- ════════════════════════════════════════════════════════════════════════
-       SECTION: JOB ORDERS
+       SECTION: FUEL MANAGEMENT REPORTS
   ═══════════════════════════════════════════════════════════════════════════ -->
-  <?php if ($active_tab === 'job_orders'): ?>
+  <?php if ($active_tab === 'fuel'): ?>
 
     <div class="rpt-section-head">
-      <i class="fas fa-wrench"></i>
+      <i class="fas fa-gas-pump"></i>
       <div>
-        <h2>Job Orders Report</h2>
-        <div class="rpt-section-sub">Customer, service type, status, cost, staff, technician, and date</div>
+        <h2>Fuel Management Reports</h2>
+        <div class="rpt-section-sub">Fuel deliveries, pump readings, stock‑in/out, and variance (expected vs actual)</div>
       </div>
+    </div>
+
+    <div class="sub-tabs">
+      <button class="sub-tab active" onclick="showSubSection('fuel-delivery',this)"><i class="fas fa-truck"></i> Fuel Deliveries</button>
+      <button class="sub-tab" onclick="showSubSection('fuel-readings',this)"><i class="fas fa-tachometer-alt"></i> Pump Readings</button>
+      <button class="sub-tab" onclick="showSubSection('fuel-variance',this)"><i class="fas fa-balance-scale"></i> Variance Report</button>
     </div>
 
     <div class="export-bar">
       <span class="lbl"><i class="fas fa-download"></i> Export:</span>
-      <a href="<?php echo '../backend/api/admin_reports_audit_api.php?action=export_job_orders&format=csv&date_from='.urlencode($date_from).'&date_to='.urlencode($date_to); ?>"
-         class="btn-export excel" target="_blank"><i class="fas fa-file-csv"></i> Excel / CSV</a>
-      <a href="<?php echo '../backend/api/admin_reports_audit_api.php?action=export_job_orders&format=pdf&date_from='.urlencode($date_from).'&date_to='.urlencode($date_to); ?>"
-         class="btn-export pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
+      <a id="fuelMgmtExcelBtn" href="../backend/api/admin_reports_audit_api.php?action=export_fuel_management&format=csv&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>" class="btn-export excel" target="_blank"><i class="fas fa-file-csv"></i> Excel / CSV</a>
+      <a id="fuelMgmtPdfBtn" href="../backend/api/admin_reports_audit_api.php?action=export_fuel_management&format=pdf&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>" class="btn-export pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
     </div>
-    <div class="rpt-summary-cards" id="joSummaryCards"></div>
-    <div class="rpt-table-wrap">
-      <table class="rpt-table">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Customer</th>
-            <th>Service Type</th>
-            <th>Description</th>
-            <th>Status</th>
-            <th class="tr">Cost (&#8369;)</th>
-            <th>Staff</th>
-            <th>Technician</th>
-            <th>Date</th>
-          </tr>
-        </thead>
-        <tbody id="joTbody">
-          <tr><td colspan="9" class="rpt-loading"><i class="fas fa-spinner fa-spin"></i>Loading...</td></tr>
-        </tbody>
-        <tfoot id="joTfoot"></tfoot>
-      </table>
+
+    <!-- Fuel Deliveries -->
+    <div id="fuel-delivery" class="fuel-subsection">
+      <div class="rpt-summary-cards" id="fuelDelCards"></div>
+      <div class="rpt-table-wrap">
+        <table class="rpt-table">
+          <thead><tr>
+            <th>Date</th><th>Fuel Type</th><th>Supplier</th><th>Invoice #</th>
+            <th class="tr">Delivery (L)</th><th>Tanker #</th><th>Received By</th><th>Status</th>
+          </tr></thead>
+          <tbody id="fuelDelTbody"><tr><td colspan="8" class="rpt-loading"><i class="fas fa-spinner fa-spin"></i>Loading...</td></tr></tbody>
+          <tfoot id="fuelDelTfoot"></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- Pump Readings -->
+    <div id="fuel-readings" class="fuel-subsection" style="display:none">
+      <div class="rpt-summary-cards" id="fuelReadCards"></div>
+      <div class="rpt-table-wrap">
+        <table class="rpt-table">
+          <thead><tr>
+            <th>Date</th><th>Pump #</th><th>Fuel Type</th><th>Shift</th>
+            <th class="tr">Previous Reading</th><th class="tr">Present Reading</th>
+            <th class="tr">Difference (L)</th><th>Status</th>
+          </tr></thead>
+          <tbody id="fuelReadTbody"><tr><td colspan="8" class="rpt-loading"><i class="fas fa-spinner fa-spin"></i>Loading...</td></tr></tbody>
+          <tfoot id="fuelReadTfoot"></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- Variance -->
+    <div id="fuel-variance" class="fuel-subsection" style="display:none">
+      <div class="rpt-summary-cards" id="fuelVarCards"></div>
+      <div class="rpt-table-wrap">
+        <table class="rpt-table">
+          <thead><tr>
+            <th>Date</th><th>Fuel Type</th>
+            <th class="tr">Expected (L)</th><th class="tr">Actual (L)</th>
+            <th class="tr">Variance (L)</th><th class="tr">Variance (%)</th>
+            <th>Reason</th><th>Status</th>
+          </tr></thead>
+          <tbody id="fuelVarTbody"><tr><td colspan="8" class="rpt-loading"><i class="fas fa-spinner fa-spin"></i>Loading...</td></tr></tbody>
+        </table>
+      </div>
     </div>
 
   <?php endif; ?>
 
   <!-- ════════════════════════════════════════════════════════════════════════
-       SECTION: CUSTOMER BALANCES
-  ═══════════════════════════════════════════════════════════════════════════ -->
-  <?php if ($active_tab === 'balances'): ?>
-
-    <div class="rpt-section-head">
-      <i class="fas fa-balance-scale"></i>
-      <div>
-        <h2>Customer Balances Report</h2>
-        <div class="rpt-section-sub">Outstanding balances, credit limits, usage, due dates, and status</div>
-      </div>
-    </div>
-
-    <div class="export-bar">
-      <span class="lbl"><i class="fas fa-download"></i> Export:</span>
-      <a href="<?php echo '../backend/api/admin_reports_audit_api.php?action=export_balances&format=csv&date_from='.urlencode($date_from).'&date_to='.urlencode($date_to); ?>"
-         class="btn-export excel" target="_blank"><i class="fas fa-file-csv"></i> Excel / CSV</a>
-      <a href="<?php echo '../backend/api/admin_reports_audit_api.php?action=export_balances&format=pdf&date_from='.urlencode($date_from).'&date_to='.urlencode($date_to); ?>"
-         class="btn-export pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
-    </div>
-    <div class="rpt-summary-cards" id="balSummaryCards"></div>
-    <div class="rpt-table-wrap">
-      <table class="rpt-table">
-        <thead>
-          <tr>
-            <th>Customer ID</th>
-            <th>Name</th>
-            <th class="tr">Outstanding Balance (&#8369;)</th>
-            <th class="tr">Credit Limit (&#8369;)</th>
-            <th class="tr">Credit Used (&#8369;)</th>
-            <th>Due Date</th>
-            <th>Status</th>
-            <th>Remarks</th>
-          </tr>
-        </thead>
-        <tbody id="balTbody">
-          <tr><td colspan="8" class="rpt-loading"><i class="fas fa-spinner fa-spin"></i>Loading...</td></tr>
-        </tbody>
-        <tfoot id="balTfoot"></tfoot>
-      </table>
-    </div>
-
-  <?php endif; ?>
-
-  <!-- ════════════════════════════════════════════════════════════════════════
-       SECTION: DELIVERIES
+       SECTION: MERCHANDISE DELIVERIES REPORTS
   ═══════════════════════════════════════════════════════════════════════════ -->
   <?php if ($active_tab === 'deliveries'): ?>
 
     <div class="rpt-section-head">
-      <i class="fas fa-truck"></i>
+      <i class="fas fa-boxes-stacked"></i>
       <div>
-        <h2>Deliveries Report</h2>
-        <div class="rpt-section-sub">Delivery ID, supplier, product, quantity, encoder, status, and remarks</div>
+        <h2>Merchandise Deliveries Reports</h2>
+        <div class="rpt-section-sub">DR vs PO comparison, partial/damaged/rejected deliveries, computed payables per supplier</div>
+      </div>
+    </div>
+
+    <div class="sub-tabs">
+      <button class="sub-tab active" onclick="showSubSection('del-drpo',this)"><i class="fas fa-clipboard-check"></i> DR vs PO</button>
+      <button class="sub-tab" onclick="showSubSection('del-issues',this)"><i class="fas fa-exclamation-triangle"></i> Partial / Damaged / Rejected</button>
+      <button class="sub-tab" onclick="showSubSection('del-payables',this)"><i class="fas fa-file-invoice-dollar"></i> Supplier Payables</button>
+    </div>
+
+    <div class="export-bar">
+      <span class="lbl"><i class="fas fa-download"></i> Export:</span>
+      <a href="../backend/api/admin_reports_audit_api.php?action=export_merch_deliveries&format=csv&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>" class="btn-export excel" target="_blank"><i class="fas fa-file-csv"></i> Excel / CSV</a>
+      <a href="../backend/api/admin_reports_audit_api.php?action=export_merch_deliveries&format=pdf&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>" class="btn-export pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
+    </div>
+
+    <!-- DR vs PO -->
+    <div id="del-drpo" class="del-subsection">
+      <div class="rpt-summary-cards" id="drpoCards"></div>
+      <div class="rpt-table-wrap">
+        <table class="rpt-table">
+          <thead><tr>
+            <th>DR #</th><th>PO #</th><th>Supplier</th><th>Product</th>
+            <th class="tr">PO Qty</th><th class="tr">Expected Qty</th><th class="tr">Actual Qty</th>
+            <th class="tr">Damaged Qty</th><th>Date</th><th>Status</th>
+          </tr></thead>
+          <tbody id="drpoTbody"><tr><td colspan="10" class="rpt-loading"><i class="fas fa-spinner fa-spin"></i>Loading...</td></tr></tbody>
+          <tfoot id="drpoTfoot"></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- Partial / Damaged / Rejected -->
+    <div id="del-issues" class="del-subsection" style="display:none">
+      <div class="rpt-summary-cards" id="delIssueCards"></div>
+      <div class="rpt-table-wrap">
+        <table class="rpt-table">
+          <thead><tr>
+            <th>DR #</th><th>Supplier</th><th>Product</th><th>Issue Type</th>
+            <th class="tr">Damaged Qty</th><th class="tr">Actual Qty</th>
+            <th>Return Reason</th><th>Date</th><th>Resolution</th>
+          </tr></thead>
+          <tbody id="delIssueTbody"><tr><td colspan="9" class="rpt-loading"><i class="fas fa-spinner fa-spin"></i>Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Supplier Payables -->
+    <div id="del-payables" class="del-subsection" style="display:none">
+      <div class="rpt-summary-cards" id="delPayCards"></div>
+      <div class="rpt-table-wrap">
+        <table class="rpt-table">
+          <thead><tr>
+            <th>Supplier</th><th class="tr">Deliveries</th>
+            <th class="tr">Total Expected (₱)</th><th class="tr">Total Payable (₱)</th>
+            <th class="tr">Deductions (₱)</th><th class="tr">Approved</th><th class="tr">Rejected</th>
+          </tr></thead>
+          <tbody id="delPayTbody"><tr><td colspan="7" class="rpt-loading"><i class="fas fa-spinner fa-spin"></i>Loading...</td></tr></tbody>
+          <tfoot id="delPayTfoot"></tfoot>
+        </table>
+      </div>
+    </div>
+
+  <?php endif; ?>
+
+  <!-- ════════════════════════════════════════════════════════════════════════
+       SECTION: INVENTORY REPORTS
+  ═══════════════════════════════════════════════════════════════════════════ -->
+  <?php if ($active_tab === 'inventory'): ?>
+
+    <div class="rpt-section-head">
+      <i class="fas fa-warehouse"></i>
+      <div>
+        <h2>Inventory Reports</h2>
+        <div class="rpt-section-sub">Stock movement (in/out), current stock levels, and discrepancy logs</div>
       </div>
     </div>
 
     <div class="export-bar">
       <span class="lbl"><i class="fas fa-download"></i> Export:</span>
-      <a href="<?php echo '../backend/api/admin_reports_audit_api.php?action=export_deliveries&format=csv&date_from='.urlencode($date_from).'&date_to='.urlencode($date_to); ?>"
-         class="btn-export excel" target="_blank"><i class="fas fa-file-csv"></i> Excel / CSV</a>
-      <a href="<?php echo '../backend/api/admin_reports_audit_api.php?action=export_deliveries&format=pdf&date_from='.urlencode($date_from).'&date_to='.urlencode($date_to); ?>"
-         class="btn-export pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
+      <a href="../backend/api/admin_reports_audit_api.php?action=export_inventory&format=csv&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>" class="btn-export excel" target="_blank"><i class="fas fa-file-csv"></i> Excel / CSV</a>
+      <a href="../backend/api/admin_reports_audit_api.php?action=export_inventory&format=pdf&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>" class="btn-export pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
     </div>
-    <div class="rpt-summary-cards" id="delSummaryCards"></div>
+
+    <div class="rpt-summary-cards" id="invCards"></div>
     <div class="rpt-table-wrap">
       <table class="rpt-table">
-        <thead>
-          <tr>
-            <th>Delivery ID</th>
-            <th>Supplier</th>
-            <th>Product</th>
-            <th class="tr">Quantity</th>
-            <th>Date</th>
-            <th>Encoder</th>
-            <th>Status</th>
-            <th>Remarks</th>
-          </tr>
-        </thead>
-        <tbody id="delTbody">
-          <tr><td colspan="8" class="rpt-loading"><i class="fas fa-spinner fa-spin"></i>Loading...</td></tr>
-        </tbody>
-        <tfoot id="delTfoot"></tfoot>
+        <thead><tr>
+          <th>SKU</th><th>Product</th><th>Category</th><th>Supplier</th>
+          <th class="tr">Unit Cost (₱)</th><th class="tr">Unit Price (₱)</th>
+          <th class="tr">Stock Qty</th><th class="tr">Min Stock</th>
+          <th>Status</th>
+        </tr></thead>
+        <tbody id="invTbody"><tr><td colspan="9" class="rpt-loading"><i class="fas fa-spinner fa-spin"></i>Loading...</td></tr></tbody>
+        <tfoot id="invTfoot"></tfoot>
       </table>
     </div>
 
   <?php endif; ?>
 
   <!-- ════════════════════════════════════════════════════════════════════════
-       SECTION: STAFF PERFORMANCE
+       SECTION: CUSTOMER REPORTS
   ═══════════════════════════════════════════════════════════════════════════ -->
-  <?php if ($active_tab === 'staff'): ?>
+  <?php if ($active_tab === 'customers'): ?>
 
     <div class="rpt-section-head">
       <i class="fas fa-users"></i>
       <div>
-        <h2>Staff Performance Report</h2>
-        <div class="rpt-section-sub">Transactions, job orders, deliveries, and activity summary per staff member</div>
+        <h2>Customer Reports</h2>
+        <div class="rpt-section-sub">Purchase history, outstanding balances, complaints and returns</div>
       </div>
+    </div>
+
+    <div class="sub-tabs">
+      <button class="sub-tab active" onclick="showSubSection('cust-balances',this)"><i class="fas fa-balance-scale"></i> Outstanding Balances</button>
+      <button class="sub-tab" onclick="showSubSection('cust-history',this)"><i class="fas fa-history"></i> Purchase History</button>
     </div>
 
     <div class="export-bar">
       <span class="lbl"><i class="fas fa-download"></i> Export:</span>
-      <a href="<?php echo '../backend/api/admin_reports_audit_api.php?action=export_staff&format=csv&date_from='.urlencode($date_from).'&date_to='.urlencode($date_to); ?>"
-         class="btn-export excel" target="_blank"><i class="fas fa-file-csv"></i> Excel / CSV</a>
-      <a href="<?php echo '../backend/api/admin_reports_audit_api.php?action=export_staff&format=pdf&date_from='.urlencode($date_from).'&date_to='.urlencode($date_to); ?>"
-         class="btn-export pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
+      <a href="../backend/api/admin_reports_audit_api.php?action=export_customers&format=csv&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>" class="btn-export excel" target="_blank"><i class="fas fa-file-csv"></i> Excel / CSV</a>
+      <a href="../backend/api/admin_reports_audit_api.php?action=export_customers&format=pdf&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>" class="btn-export pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
     </div>
-    <div class="rpt-summary-cards" id="staffSummaryCards"></div>
-    <div class="rpt-table-wrap">
-      <table class="rpt-table">
-        <thead>
-          <tr>
-            <th>Staff ID</th>
-            <th>Name</th>
-            <th>Role</th>
-            <th class="tr">Transactions</th>
-            <th class="tr">Job Orders</th>
-            <th class="tr">Deliveries</th>
-            <th class="tr">Shifts Logged</th>
-            <th>Performance</th>
-          </tr>
-        </thead>
-        <tbody id="staffTbody">
-          <tr><td colspan="8" class="rpt-loading"><i class="fas fa-spinner fa-spin"></i>Loading...</td></tr>
-        </tbody>
-      </table>
+
+    <!-- Balances -->
+    <div id="cust-balances" class="cust-subsection">
+      <div class="rpt-summary-cards" id="custBalCards"></div>
+      <div class="rpt-table-wrap">
+        <table class="rpt-table">
+          <thead><tr>
+            <th>ID</th><th>Customer Name</th><th>Type</th><th>Contact</th>
+            <th class="tr">Outstanding Balance (₱)</th><th class="tr">Credit Limit (₱)</th>
+            <th>Payment Terms</th><th>Status</th>
+          </tr></thead>
+          <tbody id="custBalTbody"><tr><td colspan="8" class="rpt-loading"><i class="fas fa-spinner fa-spin"></i>Loading...</td></tr></tbody>
+          <tfoot id="custBalTfoot"></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- Purchase History -->
+    <div id="cust-history" class="cust-subsection" style="display:none">
+      <div class="rpt-summary-cards" id="custHistCards"></div>
+      <div class="rpt-table-wrap">
+        <table class="rpt-table">
+          <thead><tr>
+            <th>Date</th><th>Customer</th><th>Transaction ID</th>
+            <th class="tr">Amount (₱)</th><th>Payment Method</th><th>Status</th>
+          </tr></thead>
+          <tbody id="custHistTbody"><tr><td colspan="6" class="rpt-loading"><i class="fas fa-spinner fa-spin"></i>Loading...</td></tr></tbody>
+          <tfoot id="custHistTfoot"></tfoot>
+        </table>
+      </div>
     </div>
 
   <?php endif; ?>
 
   <!-- ════════════════════════════════════════════════════════════════════════
-       SECTION: VARIANCE REPORTS
+       SECTION: SUPPLIER REPORTS
   ═══════════════════════════════════════════════════════════════════════════ -->
-  <?php if ($active_tab === 'variance'): ?>
+  <?php if ($active_tab === 'suppliers'): ?>
 
     <div class="rpt-section-head">
-      <i class="fas fa-balance-scale"></i>
+      <i class="fas fa-handshake"></i>
       <div>
-        <h2>Variance Reports</h2>
-        <div class="rpt-section-sub">Reconciliation logs for expected vs actual stock levels and fuel pump variance</div>
+        <h2>Supplier Reports</h2>
+        <div class="rpt-section-sub">Supplier performance (on‑time deliveries, discrepancies), ranking reliable vs problematic</div>
       </div>
     </div>
 
     <div class="export-bar">
       <span class="lbl"><i class="fas fa-download"></i> Export:</span>
-      <a href="<?php echo '../backend/api/admin_reports_audit_api.php?action=export_variance&format=csv&date_from='.urlencode($date_from).'&date_to='.urlencode($date_to); ?>"
-         class="btn-export excel" target="_blank"><i class="fas fa-file-csv"></i> Excel / CSV</a>
-      <a href="<?php echo '../backend/api/admin_reports_audit_api.php?action=export_variance&format=pdf&date_from='.urlencode($date_from).'&date_to='.urlencode($date_to); ?>"
-         class="btn-export pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
+      <a href="../backend/api/admin_reports_audit_api.php?action=export_suppliers&format=csv&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>" class="btn-export excel" target="_blank"><i class="fas fa-file-csv"></i> Excel / CSV</a>
+      <a href="../backend/api/admin_reports_audit_api.php?action=export_suppliers&format=pdf&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>" class="btn-export pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
     </div>
-    <div class="rpt-summary-cards" id="varSummaryCards"></div>
+
+    <div class="rpt-summary-cards" id="suppCards"></div>
     <div class="rpt-table-wrap">
       <table class="rpt-table">
-        <thead>
-          <tr>
-            <th>Report Date</th>
-            <th>Fuel Type</th>
-            <th class="tr">Expected Stock (L)</th>
-            <th class="tr">Actual Stock (L)</th>
-            <th class="tr">Variance (L)</th>
-            <th class="tr">Variance (%)</th>
-            <th>Reason</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody id="varTbody">
-          <tr><td colspan="8" class="rpt-loading"><i class="fas fa-spinner fa-spin"></i>Loading...</td></tr>
-        </tbody>
+        <thead><tr>
+          <th>Rank</th><th>Supplier Name</th><th>Contact</th>
+          <th class="tr">Total Deliveries</th><th class="tr">On-Time</th><th class="tr">Discrepancies</th>
+          <th class="tr">Rejected</th><th class="tr">Total Payable (₱)</th><th>Rating</th>
+        </tr></thead>
+        <tbody id="suppTbody"><tr><td colspan="9" class="rpt-loading"><i class="fas fa-spinner fa-spin"></i>Loading...</td></tr></tbody>
       </table>
     </div>
 
   <?php endif; ?>
 
   <!-- ════════════════════════════════════════════════════════════════════════
-       SECTION: ACCOUNTS RECEIVABLE
+       SECTION: FINANCIAL / PAYABLES REPORTS
   ═══════════════════════════════════════════════════════════════════════════ -->
-  <?php if ($active_tab === 'receivable'): ?>
+  <?php if ($active_tab === 'payments'): ?>
 
     <div class="rpt-section-head">
       <i class="fas fa-file-invoice-dollar"></i>
       <div>
-        <h2>Accounts Receivable Report</h2>
-        <div class="rpt-section-sub">Detailed log of credit transactions, due dates, and settlement status</div>
+        <h2>Financial / Payables Reports</h2>
+        <div class="rpt-section-sub">Computed payable per supplier, cash flow summary, adjustments for partial/damaged deliveries</div>
+      </div>
+    </div>
+
+    <div class="sub-tabs">
+      <button class="sub-tab active" onclick="showSubSection('fin-cashflow',this)"><i class="fas fa-chart-line"></i> Cash Flow Summary</button>
+      <button class="sub-tab" onclick="showSubSection('fin-payables',this)"><i class="fas fa-receipt"></i> Supplier Payables</button>
+      <button class="sub-tab" onclick="showSubSection('fin-adjustments',this)"><i class="fas fa-sliders-h"></i> Adjustments</button>
+    </div>
+
+    <div class="export-bar">
+      <span class="lbl"><i class="fas fa-download"></i> Export:</span>
+      <a href="../backend/api/admin_reports_audit_api.php?action=export_financial&format=csv&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>" class="btn-export excel" target="_blank"><i class="fas fa-file-csv"></i> Excel / CSV</a>
+      <a href="../backend/api/admin_reports_audit_api.php?action=export_financial&format=pdf&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>" class="btn-export pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
+    </div>
+
+    <!-- Cash Flow Summary -->
+    <div id="fin-cashflow" class="fin-subsection">
+      <div class="rpt-summary-cards" id="cfCards"></div>
+      <div class="rpt-table-wrap">
+        <table class="rpt-table">
+          <thead><tr>
+            <th>Date</th>
+            <th class="tr">Fuel Revenue (₱)</th><th class="tr">Merch Revenue (₱)</th>
+            <th class="tr">Total Revenue (₱)</th><th class="tr">Supplier Payables (₱)</th>
+            <th class="tr">Net Cash Flow (₱)</th>
+          </tr></thead>
+          <tbody id="cfTbody"><tr><td colspan="6" class="rpt-loading"><i class="fas fa-spinner fa-spin"></i>Loading...</td></tr></tbody>
+          <tfoot id="cfTfoot"></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- Supplier Payables -->
+    <div id="fin-payables" class="fin-subsection" style="display:none">
+      <div class="rpt-summary-cards" id="finPayCards"></div>
+      <div class="rpt-table-wrap">
+        <table class="rpt-table">
+          <thead><tr>
+            <th>Supplier</th><th class="tr">Deliveries</th>
+            <th class="tr">Expected Amount (₱)</th><th class="tr">Payable Amount (₱)</th>
+            <th class="tr">Deductions (₱)</th>
+          </tr></thead>
+          <tbody id="finPayTbody"><tr><td colspan="5" class="rpt-loading"><i class="fas fa-spinner fa-spin"></i>Loading...</td></tr></tbody>
+          <tfoot id="finPayTfoot"></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- Adjustments -->
+    <div id="fin-adjustments" class="fin-subsection" style="display:none">
+      <div class="rpt-summary-cards" id="adjCards"></div>
+      <div class="rpt-table-wrap">
+        <table class="rpt-table">
+          <thead><tr>
+            <th>DR #</th><th>Supplier</th><th>Product</th><th>Issue</th>
+            <th class="tr">Expected (₱)</th><th class="tr">Payable (₱)</th>
+            <th class="tr">Deduction (₱)</th><th>Date</th>
+          </tr></thead>
+          <tbody id="adjTbody"><tr><td colspan="8" class="rpt-loading"><i class="fas fa-spinner fa-spin"></i>Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+  <?php endif; ?>
+
+  <!-- ════════════════════════════════════════════════════════════════════════
+       SECTION: CALENDAR & SCHEDULING REPORTS
+  ═══════════════════════════════════════════════════════════════════════════ -->
+  <?php if ($active_tab === 'calendar'): ?>
+
+    <div class="rpt-section-head">
+      <i class="fas fa-calendar-alt"></i>
+      <div>
+        <h2>Calendar &amp; Scheduling Reports</h2>
+        <div class="rpt-section-sub">Scheduled deliveries, meetings, tasks, and compliance with deadlines</div>
       </div>
     </div>
 
     <div class="export-bar">
       <span class="lbl"><i class="fas fa-download"></i> Export:</span>
-      <a href="<?php echo '../backend/api/admin_reports_audit_api.php?action=export_receivable&format=csv&date_from='.urlencode($date_from).'&date_to='.urlencode($date_to); ?>"
-         class="btn-export excel" target="_blank"><i class="fas fa-file-csv"></i> Excel / CSV</a>
-      <a href="<?php echo '../backend/api/admin_reports_audit_api.php?action=export_receivable&format=pdf&date_from='.urlencode($date_from).'&date_to='.urlencode($date_to); ?>"
-         class="btn-export pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
+      <a href="../backend/api/admin_reports_audit_api.php?action=export_calendar&format=csv&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>" class="btn-export excel" target="_blank"><i class="fas fa-file-csv"></i> Excel / CSV</a>
+      <a href="../backend/api/admin_reports_audit_api.php?action=export_calendar&format=pdf&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>" class="btn-export pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
     </div>
-    <div class="rpt-summary-cards" id="arSummaryCards"></div>
+
+    <div class="rpt-summary-cards" id="calCards"></div>
     <div class="rpt-table-wrap">
       <table class="rpt-table">
-        <thead>
-          <tr>
-            <th>Created Date</th>
-            <th>Transaction ID</th>
-            <th>Customer Name</th>
-            <th>Details</th>
-            <th class="tr">Amount (&#8369;)</th>
-            <th>Due Date</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody id="arTbody">
-          <tr><td colspan="7" class="rpt-loading"><i class="fas fa-spinner fa-spin"></i>Loading...</td></tr>
-        </tbody>
+        <thead><tr>
+          <th>Date</th><th>Time</th><th>Event Type</th><th>Description</th>
+          <th>Staff Assigned</th><th>Manager</th>
+          <th>Deadline</th><th>Status</th><th>Compliance</th>
+        </tr></thead>
+        <tbody id="calTbody"><tr><td colspan="9" class="rpt-loading"><i class="fas fa-spinner fa-spin"></i>Loading...</td></tr></tbody>
       </table>
     </div>
 
   <?php endif; ?>
 
 </div><!-- /.page-content rpt-page -->
+
 
 <script>
 (function () {
@@ -1109,26 +1239,351 @@ function loadAccountsReceivable() {
         .catch(e => { document.getElementById('arTbody').innerHTML = emptyRow(7, 'Error: ' + (e.message||e)); });
 }
 
+// ── Generic sub-section toggle ─────────────────────────────────────────────
+window.showSubSection = function(id, btn) {
+    // Derive the group prefix from the id (e.g. "fuel" from "fuel-delivery")
+    const prefix = id.split('-')[0];
+    // Hide all panels whose id starts with prefix + '-'
+    document.querySelectorAll('[id^="' + prefix + '-"]').forEach(el => {
+        el.style.display = 'none';
+    });
+    const el = document.getElementById(id);
+    if (el) el.style.display = '';
+    // Reset active state on sub-tab buttons within the same sub-tabs container
+    btn.closest('.sub-tabs').querySelectorAll('.sub-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+};
+
+// ── FUEL MANAGEMENT ───────────────────────────────────────────────────────
+function loadFuelManagement() {
+    // Fuel Deliveries
+    apiFetch(apiUrl('fuel_deliveries_report')).then(res => {
+        const rows = res.data || [];
+        let html = '', tot = 0;
+        rows.forEach(r => {
+            tot += parseFloat(r.delivery_liters || 0);
+            html += `<tr><td>${esc(r.delivery_date)}</td><td>${esc(r.fuel_type)}</td><td>${esc(r.supplier)}</td>
+            <td>${esc(r.invoice_no)}</td><td class="tr">${fmt(r.delivery_liters)} L</td>
+            <td>${esc(r.tanker_number)}</td><td>${esc(r.received_name)}</td>
+            <td>${statusBadge(r.status)}</td></tr>`;
+        });
+        document.getElementById('fuelDelTbody').innerHTML = html || emptyRow(8);
+        document.getElementById('fuelDelTfoot').innerHTML = `<tr><td colspan="4"><strong>TOTAL (${rows.length} deliveries)</strong></td><td class="tr"><strong>${fmt(tot)} L</strong></td><td colspan="3"></td></tr>`;
+        document.getElementById('fuelDelCards').innerHTML =
+            summaryCard('Total Deliveries', fmtInt(rows.length)) +
+            summaryCard('Total Liters Received', fmt(tot) + ' L');
+    });
+    // Pump Readings
+    apiFetch(apiUrl('pump_readings_report')).then(res => {
+        const rows = res.data || [];
+        let html = '', tot = 0;
+        rows.forEach(r => {
+            tot += parseFloat(r.difference || 0);
+            const d = parseFloat(r.difference || 0);
+            html += `<tr><td>${esc(r.encoded_date)}</td><td>${esc(r.pump_number)}</td><td>${esc(r.fuel_type)}</td>
+            <td>${esc(r.shift_period)}</td><td class="tr">${fmt(r.previous_reading)}</td>
+            <td class="tr">${fmt(r.present_reading)}</td><td class="tr ${d<0?'var-neg':''}">${fmt(d)} L</td>
+            <td>${statusBadge(r.status)}</td></tr>`;
+        });
+        document.getElementById('fuelReadTbody').innerHTML = html || emptyRow(8);
+        document.getElementById('fuelReadTfoot').innerHTML = `<tr><td colspan="6"><strong>TOTAL</strong></td><td class="tr"><strong>${fmt(tot)} L</strong></td><td></td></tr>`;
+        document.getElementById('fuelReadCards').innerHTML =
+            summaryCard('Total Readings', fmtInt(rows.length)) +
+            summaryCard('Total Difference', fmt(tot) + ' L');
+    });
+    // Variance
+    apiFetch(apiUrl('variance_reports')).then(res => {
+        const rows = res.data || [];
+        let html = '';
+        rows.forEach(r => {
+            const v = parseFloat(r.variance_liters || 0);
+            const vc = v > 0 ? 'var-pos' : v < 0 ? 'var-neg' : 'var-ok';
+            html += `<tr><td>${esc(r.report_date)}</td><td>${esc(r.fuel_type)}</td>
+            <td class="tr">${fmt(r.expected_stock)} L</td><td class="tr">${fmt(r.actual_stock)} L</td>
+            <td class="tr ${vc}">${(v>0?'+':'')+fmt(v)} L</td><td class="tr">${fmt(r.variance_percent)}%</td>
+            <td>${esc(r.reason)}</td><td>${statusBadge(r.status)}</td></tr>`;
+        });
+        document.getElementById('fuelVarTbody').innerHTML = html || emptyRow(8);
+        document.getElementById('fuelVarCards').innerHTML =
+            summaryCard('Variance Records', fmtInt(rows.length));
+    });
+}
+
+// ── MERCHANDISE DELIVERIES ────────────────────────────────────────────────
+function loadMerchDeliveries() {
+    apiFetch(apiUrl('merch_deliveries_drpo')).then(res => {
+        const rows = res.data || [];
+        let html = '', totExp = 0, totAct = 0, totDmg = 0;
+        rows.forEach(r => {
+            totExp += parseFloat(r.expected_quantity || 0);
+            totAct += parseFloat(r.actual_quantity || 0);
+            totDmg += parseFloat(r.damaged_quantity || 0);
+            const diff = parseFloat(r.actual_quantity||0) - parseFloat(r.expected_quantity||0);
+            const dc = diff < 0 ? 'var-pos' : 'var-ok';
+            html += `<tr><td>${esc(r.dr_number||r.delivery_ref)}</td><td>${esc(r.source_ref)}</td>
+            <td>${esc(r.supplier)}</td><td>${esc(r.product)}</td>
+            <td class="tr">${fmt(r.quantity,0)}</td><td class="tr">${fmt(r.expected_quantity,0)}</td>
+            <td class="tr ${dc}">${fmt(r.actual_quantity,0)}</td><td class="tr ${parseFloat(r.damaged_quantity)>0?'var-pos':''}">${fmt(r.damaged_quantity,0)}</td>
+            <td>${esc(r.delivery_date)}</td><td>${statusBadge(r.status)}</td></tr>`;
+        });
+        document.getElementById('drpoTbody').innerHTML = html || emptyRow(10);
+        document.getElementById('drpoCards').innerHTML =
+            summaryCard('Total Deliveries', fmtInt(rows.length)) +
+            summaryCard('Expected Qty', fmt(totExp,0)) +
+            summaryCard('Actual Qty', fmt(totAct,0)) +
+            summaryCard('Damaged Qty', fmt(totDmg,0));
+    });
+    apiFetch(apiUrl('merch_deliveries_issues')).then(res => {
+        const rows = res.data || [];
+        let html = '';
+        rows.forEach(r => {
+            html += `<tr><td>${esc(r.dr_number||r.delivery_ref)}</td><td>${esc(r.supplier)}</td>
+            <td>${esc(r.product)}</td><td>${statusBadge(r.discrepancy_type||r.status)}</td>
+            <td class="tr var-pos">${fmt(r.damaged_quantity,0)}</td><td class="tr">${fmt(r.actual_quantity,0)}</td>
+            <td>${esc(r.return_reason||r.remarks)}</td><td>${esc(r.delivery_date)}</td>
+            <td>${esc(r.resolution_action||'Pending')}</td></tr>`;
+        });
+        document.getElementById('delIssueTbody').innerHTML = html || emptyRow(9,'No issues found.');
+        document.getElementById('delIssueCards').innerHTML =
+            summaryCard('Issue Records', fmtInt(rows.length)) +
+            summaryCard('Partial', fmtInt(rows.filter(r=>(r.discrepancy_type||'').toLowerCase().includes('partial')).length)) +
+            summaryCard('Damaged', fmtInt(rows.filter(r=>parseFloat(r.damaged_quantity)>0).length)) +
+            summaryCard('Rejected', fmtInt(rows.filter(r=>(r.status||'').toLowerCase().includes('reject')).length));
+    });
+    apiFetch(apiUrl('merch_supplier_payables')).then(res => {
+        const rows = res.data || [];
+        let html = '', totExp = 0, totPay = 0;
+        rows.forEach(r => {
+            totExp += parseFloat(r.total_expected||0);
+            totPay += parseFloat(r.total_payable||0);
+            const ded = parseFloat(r.total_expected||0) - parseFloat(r.total_payable||0);
+            html += `<tr><td><strong>${esc(r.supplier)}</strong></td><td class="tr">${fmtInt(r.total_deliveries)}</td>
+            <td class="tr">₱${fmt(r.total_expected)}</td><td class="tr">₱${fmt(r.total_payable)}</td>
+            <td class="tr ${ded>0?'var-pos':''}">${ded>0?'-':''}₱${fmt(Math.abs(ded))}</td>
+            <td class="tr" style="color:#16a34a">${fmtInt(r.approved_count)}</td>
+            <td class="tr" style="color:#dc2626">${fmtInt(r.rejected_count)}</td></tr>`;
+        });
+        document.getElementById('delPayTbody').innerHTML = html || emptyRow(7);
+        document.getElementById('delPayTfoot').innerHTML = `<tr><td><strong>TOTAL</strong></td><td></td>
+        <td class="tr"><strong>₱${fmt(totExp)}</strong></td><td class="tr"><strong>₱${fmt(totPay)}</strong></td>
+        <td class="tr"><strong>₱${fmt(totExp-totPay)}</strong></td><td colspan="2"></td></tr>`;
+        document.getElementById('delPayCards').innerHTML =
+            summaryCard('Total Suppliers', fmtInt(rows.length)) +
+            summaryCard('Total Expected', '₱'+fmt(totExp)) +
+            summaryCard('Total Payable', '₱'+fmt(totPay)) +
+            summaryCard('Total Deductions', '₱'+fmt(totExp-totPay));
+    });
+}
+
+// ── INVENTORY ────────────────────────────────────────────────────────────
+function loadInventory() {
+    apiFetch(apiUrl('inventory_report')).then(res => {
+        const rows = res.data || [];
+        let html = '', totStock = 0, lowStock = 0;
+        rows.forEach(r => {
+            totStock += parseInt(r.stock_quantity||0);
+            const isLow = parseInt(r.stock_quantity||0) <= parseInt(r.min_stock||0);
+            if(isLow) lowStock++;
+            html += `<tr><td><code>${esc(r.sku)}</code></td><td>${esc(r.product_name)}</td>
+            <td>${esc(r.category)}</td><td>${esc(r.supplier)}</td>
+            <td class="tr">₱${fmt(r.unit_cost)}</td><td class="tr">₱${fmt(r.unit_price)}</td>
+            <td class="tr ${isLow?'var-pos':''}">${fmtInt(r.stock_quantity)}</td>
+            <td class="tr">${fmtInt(r.min_stock)}</td>
+            <td>${statusBadge(isLow?'low stock':r.status)}</td></tr>`;
+        });
+        document.getElementById('invTbody').innerHTML = html || emptyRow(9);
+        document.getElementById('invTfoot').innerHTML = `<tr><td colspan="6"><strong>TOTAL</strong></td><td class="tr"><strong>${fmtInt(totStock)}</strong></td><td colspan="2"></td></tr>`;
+        document.getElementById('invCards').innerHTML =
+            summaryCard('Total SKUs', fmtInt(rows.length)) +
+            summaryCard('Total Stock', fmtInt(totStock)+' units') +
+            summaryCard('Low Stock Alerts', fmtInt(lowStock));
+    });
+}
+
+// ── CUSTOMERS ────────────────────────────────────────────────────────────
+function loadCustomerReport() {
+    apiFetch(apiUrl('customer_report_balances')).then(res => {
+        const rows = res.data || [];
+        let html = '', totBal = 0, totLim = 0;
+        rows.forEach(r => {
+            totBal += parseFloat(r.balance||0);
+            totLim += parseFloat(r.credit_limit||0);
+            const over = parseFloat(r.balance||0) > parseFloat(r.credit_limit||0) && parseFloat(r.credit_limit||0)>0;
+            html += `<tr><td>${esc(r.id)}</td><td><strong>${esc(r.name)}</strong></td>
+            <td>${statusBadge(r.type||'Regular')}</td><td>${esc(r.contact_number||r.phone)}</td>
+            <td class="tr ${over?'var-pos':''}">₱${fmt(r.balance)}</td>
+            <td class="tr">₱${fmt(r.credit_limit)}</td>
+            <td>${esc(r.payment_terms||'—')}</td>
+            <td>${statusBadge(r.account_status||r.status||'Active')}</td></tr>`;
+        });
+        document.getElementById('custBalTbody').innerHTML = html || emptyRow(8,'No outstanding balances.');
+        document.getElementById('custBalTfoot').innerHTML = `<tr><td colspan="4"><strong>TOTAL (${rows.length})</strong></td><td class="tr"><strong>₱${fmt(totBal)}</strong></td><td class="tr"><strong>₱${fmt(totLim)}</strong></td><td colspan="2"></td></tr>`;
+        document.getElementById('custBalCards').innerHTML =
+            summaryCard('Total Customers', fmtInt(rows.length)) +
+            summaryCard('Total Outstanding', '₱'+fmt(totBal)) +
+            summaryCard('Total Credit Limit', '₱'+fmt(totLim));
+    });
+    apiFetch(apiUrl('customer_purchase_history')).then(res => {
+        const rows = res.data || [];
+        let html = '', tot = 0;
+        rows.forEach(r => {
+            tot += parseFloat(r.total_amount||0);
+            html += `<tr><td>${esc(r.txn_date)}</td><td>${esc(r.customer_name||r.customer_first_name)}</td>
+            <td><code>${esc(r.transaction_id)}</code></td>
+            <td class="tr"><strong>₱${fmt(r.total_amount)}</strong></td>
+            <td>${esc(r.payment_method)}</td>
+            <td>${statusBadge(r.validation_status||r.payment_status)}</td></tr>`;
+        });
+        document.getElementById('custHistTbody').innerHTML = html || emptyRow(6);
+        document.getElementById('custHistTfoot').innerHTML = `<tr><td colspan="3"><strong>TOTAL (${rows.length})</strong></td><td class="tr"><strong>₱${fmt(tot)}</strong></td><td colspan="2"></td></tr>`;
+        document.getElementById('custHistCards').innerHTML =
+            summaryCard('Transactions', fmtInt(rows.length)) +
+            summaryCard('Total Revenue', '₱'+fmt(tot));
+    });
+}
+
+// ── SUPPLIERS ────────────────────────────────────────────────────────────
+function loadSupplierReport() {
+    apiFetch(apiUrl('supplier_performance')).then(res => {
+        const rows = res.data || [];
+        let html = '';
+        rows.forEach((r,i) => {
+            const total = parseInt(r.total_deliveries||0);
+            const onTime = parseInt(r.approved_count||0);
+            const pct = total > 0 ? Math.round((onTime/total)*100) : 0;
+            const rating = pct>=90?'<span style="color:#16a34a;font-weight:700">★ Excellent</span>':
+                           pct>=70?'<span style="color:#2563eb;font-weight:600">★ Good</span>':
+                           pct>=50?'<span style="color:#d97706;font-weight:600">★ Fair</span>':
+                           '<span style="color:#dc2626;font-weight:600">⚠ Problematic</span>';
+            html += `<tr><td class="tc"><strong>#${i+1}</strong></td><td><strong>${esc(r.supplier_name)}</strong></td>
+            <td>${esc(r.contact_person||'—')}</td>
+            <td class="tr">${fmtInt(total)}</td>
+            <td class="tr" style="color:#16a34a">${fmtInt(onTime)} (${pct}%)</td>
+            <td class="tr ${parseInt(r.discrepancy_count)>0?'var-neg':''}">${fmtInt(r.discrepancy_count||0)}</td>
+            <td class="tr ${parseInt(r.rejected_count)>0?'var-pos':''}">${fmtInt(r.rejected_count||0)}</td>
+            <td class="tr">₱${fmt(r.total_payable||0)}</td>
+            <td>${rating}</td></tr>`;
+        });
+        document.getElementById('suppTbody').innerHTML = html || emptyRow(9);
+        document.getElementById('suppCards').innerHTML =
+            summaryCard('Total Suppliers', fmtInt(rows.length)) +
+            summaryCard('Excellent Suppliers', fmtInt(rows.filter(r=>parseInt(r.approved_count||0)/Math.max(1,parseInt(r.total_deliveries||0))>=0.9).length)) +
+            summaryCard('Problematic Suppliers', fmtInt(rows.filter(r=>parseInt(r.rejected_count||0)>0).length));
+    });
+}
+
+// ── FINANCIAL / PAYABLES ────────────────────────────────────────────────
+function loadFinancial() {
+    // Cash Flow
+    apiFetch(apiUrl('cash_flow_report')).then(res => {
+        const rows = res.data || [];
+        let html = '', totF=0,totM=0,totR=0,totP=0;
+        rows.forEach(r => {
+            const rev = parseFloat(r.fuel_revenue||0)+parseFloat(r.merch_revenue||0);
+            const pay = parseFloat(r.supplier_payables||0);
+            const net = rev - pay;
+            totF+=parseFloat(r.fuel_revenue||0); totM+=parseFloat(r.merch_revenue||0);
+            totR+=rev; totP+=pay;
+            html += `<tr><td><strong>${esc(r.sale_date)}</strong></td>
+            <td class="tr">₱${fmt(r.fuel_revenue)}</td><td class="tr">₱${fmt(r.merch_revenue)}</td>
+            <td class="tr" style="color:var(--blue);font-weight:700">₱${fmt(rev)}</td>
+            <td class="tr" style="color:#dc2626">₱${fmt(pay)}</td>
+            <td class="tr ${net>=0?'':'var-pos'}" style="font-weight:700">₱${fmt(net)}</td></tr>`;
+        });
+        document.getElementById('cfTbody').innerHTML = html || emptyRow(6);
+        const netTotal = totR-totP;
+        document.getElementById('cfTfoot').innerHTML = `<tr><td><strong>TOTAL</strong></td>
+        <td class="tr"><strong>₱${fmt(totF)}</strong></td><td class="tr"><strong>₱${fmt(totM)}</strong></td>
+        <td class="tr" style="color:var(--blue)"><strong>₱${fmt(totR)}</strong></td>
+        <td class="tr" style="color:#dc2626"><strong>₱${fmt(totP)}</strong></td>
+        <td class="tr" style="${netTotal>=0?'color:#16a34a':'color:#dc2626'}"><strong>₱${fmt(netTotal)}</strong></td></tr>`;
+        document.getElementById('cfCards').innerHTML =
+            summaryCard('Total Revenue','₱'+fmt(totR)) +
+            summaryCard('Supplier Payables','₱'+fmt(totP)) +
+            summaryCard('Net Cash Flow','₱'+fmt(netTotal),netTotal>=0?'Positive':'Negative');
+    });
+    // Payables per supplier
+    apiFetch(apiUrl('merch_supplier_payables')).then(res => {
+        const rows = res.data || [];
+        let html = '', totE=0, totP=0;
+        rows.forEach(r => {
+            totE+=parseFloat(r.total_expected||0); totP+=parseFloat(r.total_payable||0);
+            const ded = parseFloat(r.total_expected||0)-parseFloat(r.total_payable||0);
+            html += `<tr><td><strong>${esc(r.supplier)}</strong></td><td class="tr">${fmtInt(r.total_deliveries)}</td>
+            <td class="tr">₱${fmt(r.total_expected)}</td><td class="tr">₱${fmt(r.total_payable)}</td>
+            <td class="tr ${ded>0?'var-neg':''}">${ded>0?'-':''}₱${fmt(Math.abs(ded))}</td></tr>`;
+        });
+        document.getElementById('finPayTbody').innerHTML = html || emptyRow(5);
+        document.getElementById('finPayTfoot').innerHTML = `<tr><td><strong>TOTAL</strong></td><td></td>
+        <td class="tr"><strong>₱${fmt(totE)}</strong></td><td class="tr"><strong>₱${fmt(totP)}</strong></td>
+        <td class="tr"><strong>₱${fmt(totE-totP)}</strong></td></tr>`;
+        document.getElementById('finPayCards').innerHTML =
+            summaryCard('Suppliers', fmtInt(rows.length)) +
+            summaryCard('Total Expected','₱'+fmt(totE)) +
+            summaryCard('Total Payable','₱'+fmt(totP)) +
+            summaryCard('Total Savings','₱'+fmt(totE-totP));
+    });
+    // Adjustments
+    apiFetch(apiUrl('delivery_adjustments')).then(res => {
+        const rows = res.data || [];
+        let html = '';
+        rows.forEach(r => {
+            const ded = parseFloat(r.expected_amount||0)-parseFloat(r.payable_amount||0);
+            html += `<tr><td>${esc(r.dr_number||r.delivery_ref)}</td><td>${esc(r.supplier)}</td>
+            <td>${esc(r.product)}</td><td>${statusBadge(r.discrepancy_type||r.status)}</td>
+            <td class="tr">₱${fmt(r.expected_amount)}</td><td class="tr">₱${fmt(r.payable_amount)}</td>
+            <td class="tr ${ded>0?'var-pos':''}">₱${fmt(ded)}</td>
+            <td>${esc(r.delivery_date)}</td></tr>`;
+        });
+        document.getElementById('adjTbody').innerHTML = html || emptyRow(8,'No adjustments in this period.');
+        document.getElementById('adjCards').innerHTML =
+            summaryCard('Adjustments', fmtInt(rows.length));
+    });
+}
+
+// ── CALENDAR ────────────────────────────────────────────────────────────
+function loadCalendarReport() {
+    apiFetch(apiUrl('calendar_report')).then(res => {
+        const rows = res.data || [];
+        let html = '', done=0, pending=0, overdue=0;
+        rows.forEach(r => {
+            const sl = (r.status||'').toLowerCase();
+            if(sl==='completed'||sl==='done') done++;
+            else if(sl==='pending') pending++;
+            const isOverdue = sl==='pending' && r.event_date < new Date().toISOString().slice(0,10);
+            if(isOverdue) overdue++;
+            const compliance = sl==='completed'?'<span style="color:#16a34a">✓ On Time</span>':
+                isOverdue?'<span style="color:#dc2626">⚠ Overdue</span>':'<span style="color:#d97706">⏳ Pending</span>';
+            html += `<tr><td>${esc(r.event_date)}</td><td>${esc(r.event_time||'—')}</td>
+            <td><strong>${esc(r.event_type)}</strong></td>
+            <td style="max-width:180px;word-break:break-word">${esc(r.work_description)}</td>
+            <td>${esc(r.staff_name||'—')}</td><td>${esc(r.manager_name||'—')}</td>
+            <td>${esc(r.event_date)}</td><td>${statusBadge(r.status)}</td>
+            <td>${compliance}</td></tr>`;
+        });
+        document.getElementById('calTbody').innerHTML = html || emptyRow(9,'No scheduled events found.');
+        document.getElementById('calCards').innerHTML =
+            summaryCard('Total Events', fmtInt(rows.length)) +
+            summaryCard('Completed', fmtInt(done)) +
+            summaryCard('Pending', fmtInt(pending)) +
+            summaryCard('Overdue', fmtInt(overdue));
+    });
+}
+
+// ── DISPATCH ─────────────────────────────────────────────────────────────
 if (ACTIVE_TAB === 'sales') {
-    updateSalesExportLinks();
-    loadFuelSales();
-    loadMerchSales();
-    loadDailySummary();
-} else if (ACTIVE_TAB === 'job_orders') {
-    loadJobOrders();
-} else if (ACTIVE_TAB === 'balances') {
-    loadBalances();
-} else if (ACTIVE_TAB === 'deliveries') {
-    loadDeliveries();
-} else if (ACTIVE_TAB === 'staff') {
-    loadStaffPerformance();
-} else if (ACTIVE_TAB === 'variance') {
-    loadVarianceReports();
-} else if (ACTIVE_TAB === 'receivable') {
-    loadAccountsReceivable();
+    updateSalesExportLinks(); loadFuelSales(); loadMerchSales(); loadDailySummary();
+} else if (ACTIVE_TAB === 'fuel')       { loadFuelManagement();
+} else if (ACTIVE_TAB === 'deliveries') { loadMerchDeliveries();
+} else if (ACTIVE_TAB === 'inventory')  { loadInventory();
+} else if (ACTIVE_TAB === 'customers')  { loadCustomerReport();
+} else if (ACTIVE_TAB === 'suppliers')  { loadSupplierReport();
+} else if (ACTIVE_TAB === 'payments')   { loadFinancial();
+} else if (ACTIVE_TAB === 'calendar')   { loadCalendarReport();
 }
 
 })();
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>
+

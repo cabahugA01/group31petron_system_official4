@@ -183,10 +183,20 @@ try {
     $stmt->execute([$station_id, $date_from, $date_to]);
     $total_records = (int)$stmt->fetchColumn();
     
-    // Get paginated results
+    // Get paginated results - Handle both name and first_name/last_name schemas
     $sql = "SELECT ft.*, 
-                   staff.name as staff_name,
-                   validator.name as validator_name
+                   COALESCE(
+                       NULLIF(TRIM(staff.name), ''),
+                       NULLIF(CONCAT(TRIM(staff.first_name), ' ', TRIM(staff.last_name)), ' '),
+                       staff.username,
+                       'Unknown'
+                   ) as staff_name,
+                   COALESCE(
+                       NULLIF(TRIM(validator.name), ''),
+                       NULLIF(CONCAT(TRIM(validator.first_name), ' ', TRIM(validator.last_name)), ' '),
+                       validator.username,
+                       'Unknown'
+                   ) as validator_name
             FROM fuel_transactions ft
             LEFT JOIN users staff ON ft.staff_id = staff.id
             LEFT JOIN users validator ON ft.validated_by = validator.id
@@ -369,13 +379,13 @@ html, body {
 
 /* Action Buttons */
 .action-btn {
-    padding: 7px 10px; border-radius: 5px; font-size: 12px; font-weight: 600;
-    border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
+    padding: 6px 14px; border-radius: 5px; font-size: 12px; font-weight: 600;
+    border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
     transition: all .15s;
-    margin: 3px 0;
+    margin: 2px 0;
     white-space: nowrap;
     line-height: 1.3;
-    width: 100%;
+    width: auto;
     justify-content: center;
 }
 .action-btn i { font-size: 11px; }
@@ -388,7 +398,7 @@ html, body {
 
 /* Actions cell layout */
 .data-table tbody td:last-child {
-    padding: 8px 6px !important;
+    padding: 6px 4px !important;
     vertical-align: middle;
 }
 
@@ -396,7 +406,8 @@ html, body {
     display: flex;
     flex-direction: column;
     gap: 3px;
-    width: 100%;
+    width: auto;
+    align-items: center;
 }
 
 /* ACTION header alignment */

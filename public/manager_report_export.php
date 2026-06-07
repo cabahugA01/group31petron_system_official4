@@ -15,6 +15,7 @@ $range      = trim($_GET['range']   ?? 'month');
 $date_start = trim($_GET['start']   ?? date('Y-m-01'));
 $date_end   = trim($_GET['end']     ?? date('Y-m-d'));
 $format     = strtolower(trim($_GET['format'] ?? 'csv')); // csv | excel | pdf
+$sub_tab    = trim($_GET['sub_tab'] ?? '');
 
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_start)) $date_start = date('Y-m-01');
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_end))   $date_end   = date('Y-m-d');
@@ -102,7 +103,71 @@ if ($section === 'job_orders') {
         $jo_rows = q($pdo,"$jo_query WHERE jo.station_id=? ORDER BY jo.created_at DESC LIMIT 50", [$station_id]);
     }
     
+    // Status Breakdown
+    $status_buckets = ['Pending'=>0,'Approved'=>0,'Adjusted'=>0,'Rejected'=>0,'Completed'=>0,'Other'=>0];
+    $status_cost = ['Pending'=>0,'Approved'=>0,'Adjusted'=>0,'Rejected'=>0,'Completed'=>0,'Other'=>0];
+    $staff_perf = [];
+    foreach ($jo_rows as $r) {
+        $vs = $r['validation_status'];
+        $st = $r['jo_status'];
+        if (in_array($vs, ['Approved'])) $bucket = 'Approved';
+        elseif (in_array($vs, ['Adjusted'])) $bucket = 'Adjusted';
+        elseif (in_array($vs, ['Rejected'])) $bucket = 'Rejected';
+        elseif (in_array($st, ['Completed','Verified','finalized'])) $bucket = 'Completed';
+        else $bucket = 'Pending';
+        $status_buckets[$bucket]++;
+        $status_cost[$bucket] += (float)$r['total_cost'];
+        
+        $sname = ($r['assigned_staff'] !== '' && $r['assigned_staff'] !== '—') ? $r['assigned_staff'] : (($r['mechanic'] !== '' && $r['mechanic'] !== '—') ? $r['mechanic'] : 'Unassigned');
+        if (!isset($staff_perf[$sname])) $staff_perf[$sname] = ['count'=>0,'labor'=>0,'parts'=>0,'total'=>0];
+        $staff_perf[$sname]['count']++;
+        $staff_perf[$sname]['labor'] += (float)$r['labor_cost'];
+        $staff_perf[$sname]['parts'] += (float)$r['parts_cost'];
+        $staff_perf[$sname]['total'] += (float)$r['total_cost'];
+    }
+    
+    // Flatten status buckets for dataset
+    $status_rows = [];
+    $total_jos = count($jo_rows);
+    foreach ($status_buckets as $bucket => $count) {
+        $pct = $total_jos > 0 ? ($count / $total_jos) * 100 : 0;
+        $status_rows[] = [
+            'status' => $bucket,
+            'count' => $count,
+            'pct' => number_format($pct, 1) . '%',
+            'total_cost' => $status_cost[$bucket]
+        ];
+    }
+    
+    // Flatten staff performance for dataset
+    $staff_perf_rows = [];
+    foreach ($staff_perf as $sname => $d) {
+        $avg = $d['count'] > 0 ? $d['total'] / $d['count'] : 0;
+        $staff_perf_rows[] = [
+            'name' => $sname,
+            'count' => $d['count'],
+            'labor' => $d['labor'],
+            'parts' => $d['parts'],
+            'total' => $d['total'],
+            'avg' => $avg
+        ];
+    }
+    
     $datasets['jo'] = ['title'=>'Job Orders Report','headers'=>['JO Reference','Customer','Vehicle Plate','Vehicle Type','Service Type','Staff','Mechanic','Validation Status','JO Status','Labor Cost','Parts Cost','Total Cost','Amount Paid','Payment Method','Date'],'rows'=>$jo_rows,'map'=>function($r){return [$r['jo_ref'],$r['customer'],$r['vehicle_plate'],$r['vehicle_type'],$r['service_type'],$r['assigned_staff'],$r['mechanic'],$r['validation_status'],$r['jo_status'],number_format($r['labor_cost'],2),number_format($r['parts_cost'],2),number_format($r['total_cost'],2),number_format($r['amount_paid'],2),$r['payment_method'],date('M j, Y',strtotime($r['created_at']))];}];
+    
+    $datasets['status_breakdown'] = [
+        'title' => 'Job Orders Status Breakdown',
+        'headers' => ['Validation Status', 'Count', '% of Total', 'Total Cost (PHP)'],
+        'rows' => $status_rows,
+        'map' => function($r) { return [$r['status'], $r['count'], $r['pct'], number_format($r['total_cost'], 2)]; }
+    ];
+    
+    $datasets['staff_perf'] = [
+        'title' => 'Staff / Mechanic Performance',
+        'headers' => ['Staff / Mechanic', 'JOs Assigned', 'Labor Cost (PHP)', 'Parts Cost (PHP)', 'Total Cost (PHP)', 'Avg per JO (PHP)'],
+        'rows' => $staff_perf_rows,
+        'map' => function($r) { return [$r['name'], $r['count'], number_format($r['labor'], 2), number_format($r['parts'], 2), number_format($r['total'], 2), number_format($r['avg'], 2)]; }
+    ];
 }
 
 if ($section === 'balances') {
@@ -163,6 +228,33 @@ if ($section === 'staff') {
         ORDER BY (COALESCE(ft.cnt,0)+COALESCE(mt.cnt,0)+COALESCE(jo.cnt,0)) DESC, u.name ASC",
         [$station_id,$date_start,$date_end,$station_id,$date_start,$date_end,$station_id,$date_start,$date_end,$station_id,$date_start,$date_end,$station_id,$date_start,$date_end,$station_id]);
     $datasets['staff'] = ['title'=>'Staff Performance Report','headers'=>['Staff ID','Name','Role','Fuel Txns','Merch Txns','Total Txns','Job Orders','Deliveries','Total Hours','Shifts','Attendance Days','Performance Score'],'rows'=>$staff_rows,'map'=>function($r){$s=($r['total_transactions']*1)+($r['job_orders_encoded']*2)+($r['deliveries_encoded']*3);return ['#'.$r['staff_id'],$r['staff_name'],ucfirst($r['role']),$r['fuel_transactions'],$r['merch_transactions'],$r['total_transactions'],$r['job_orders_encoded'],$r['deliveries_encoded'],number_format($r['total_hours'],1).'h',$r['shift_count'],$r['attendance_days'],$s];}];
+
+    $attendance_rows = q($pdo, "
+        SELECT u.name AS staff_name, u.role, ls.start_time, ls.end_time,
+               COALESCE(ls.hours_worked, 0) AS hours_worked,
+               COALESCE(ls.shift_name, ls.shift_period, '—') AS shift_label
+        FROM labor_sessions ls
+        LEFT JOIN users u ON u.id = ls.user_id
+        WHERE ls.station_id = ? AND DATE(ls.start_time) BETWEEN ? AND ?
+        ORDER BY ls.start_time DESC", [$station_id, $date_start, $date_end]);
+
+    $datasets['attendance'] = [
+        'title' => 'Attendance & Shift Logs',
+        'headers' => ['Staff', 'Role', 'Shift', 'Time In', 'Time Out', 'Hours Worked', 'Status'],
+        'rows' => $attendance_rows,
+        'map' => function($r) {
+            $status = !$r['end_time'] ? 'Active' : ((float)$r['hours_worked'] < 4 ? 'Incomplete' : 'Completed');
+            return [
+                $r['staff_name'],
+                ucfirst($r['role']),
+                $r['shift_label'],
+                $r['start_time'] ? date('M j, Y g:i A', strtotime($r['start_time'])) : '—',
+                $r['end_time'] ? date('M j, Y g:i A', strtotime($r['end_time'])) : 'Active',
+                number_format((float)$r['hours_worked'], 2) . 'h',
+                $status
+            ];
+        }
+    ];
 }
 
 if ($section === 'validation') {
@@ -188,6 +280,37 @@ if ($section === 'validation') {
         } catch(Exception $e){}
     }
     $datasets['val'] = ['title'=>'Validation Logs','headers'=>['Date & Time','Manager','Role','Action','Details','IP Address','Module','Record ID'],'rows'=>$val_rows,'map'=>function($r){return [date('M j, Y g:i A',strtotime($r['date_time'])),$r['manager_name'],ucfirst($r['role']),$r['action'],$r['details'],$r['ip_address'],$r['module_name']?:'—',$r['record_id']?:'—'];}];
+
+    $manager_map = [];
+    foreach ($val_rows as $r) {
+        $a = $r['action'] ?? '';
+        $al = strtolower($a);
+        $mn = $r['manager_name'] ?? 'Unknown';
+        if (!isset($manager_map[$mn])) {
+            $manager_map[$mn] = ['name' => $mn, 'role' => $r['role'] ?? 'manager', 'total' => 0, 'approved' => 0, 'adjusted' => 0, 'rejected' => 0];
+        }
+        $manager_map[$mn]['total']++;
+        if (in_array($al, ['approved', 'approve']))          $manager_map[$mn]['approved']++;
+        elseif (in_array($al, ['adjusted', 'adjust']))       $manager_map[$mn]['adjusted']++;
+        elseif (in_array($al, ['rejected', 'reject']))       $manager_map[$mn]['rejected']++;
+    }
+    uasort($manager_map, function($a, $b) { return $b['total'] - $a['total']; });
+    
+    $datasets['manager_summary'] = [
+        'title' => 'Manager Activity Summary',
+        'headers' => ['Manager', 'Role', 'Total Validations', 'Approved', 'Adjusted', 'Rejected'],
+        'rows' => array_values($manager_map),
+        'map' => function($r) {
+            return [
+                $r['name'],
+                ucfirst($r['role']),
+                $r['total'],
+                $r['approved'],
+                $r['adjusted'],
+                $r['rejected']
+            ];
+        }
+    ];
 }
 
 if ($section === 'audit_trail') {
@@ -270,6 +393,46 @@ if ($section === 'price_logs') {
         } catch(Exception $e2) {}
     }
     $datasets['price_logs'] = ['title'=>'Price Change Logs','headers'=>['Date & Time','User','Details'],'rows'=>$price_log_rows,'map'=>function($r){return [date('M j, Y g:i A',strtotime($r['created_at'])),$r['user_name']?:'System',$r['details']];}];
+}
+
+// Filter datasets by sub_tab if specified
+if (!empty($sub_tab)) {
+    $sub_tab_mapping = [
+        'fuel_sales' => 'fuel',
+        'volume_amount' => 'svas',
+        'merch_sales' => 'merch',
+        
+        'jo_list' => 'jo',
+        'status_breakdown' => 'status_breakdown',
+        'staff_perf' => 'staff_perf',
+        
+        'cust_balances' => 'cust',
+        'unpaid_jo' => 'jo_cr',
+        'unpaid_merch' => 'mt_cr',
+        
+        'merch_deliveries' => 'do',
+        'fuel_deliveries' => 'fd',
+        
+        'performance' => 'staff',
+        'attendance' => 'attendance',
+        
+        'validation_list' => 'val',
+        'manager_summary' => 'manager_summary',
+        
+        'fuel_inventory' => 'fuel_inv',
+        'merch_inventory' => 'merch_inv'
+    ];
+    
+    if (isset($sub_tab_mapping[$sub_tab])) {
+        $target_key = $sub_tab_mapping[$sub_tab];
+        if (isset($datasets[$target_key])) {
+            $datasets = [$target_key => $datasets[$target_key]];
+        }
+    }
+}
+
+if (count($datasets) === 1) {
+    $section_label = reset($datasets)['title'];
 }
 
 // ── OUTPUT ────────────────────────────────────────────────────────────────────

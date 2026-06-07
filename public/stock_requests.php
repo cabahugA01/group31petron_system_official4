@@ -122,37 +122,6 @@ try {
 } catch (Exception $e) {
     $error_msg = 'Error loading stock requests: ' . $e->getMessage();
 }
-        } else {
-            try {
-                $stmt = $pdo->prepare("INSERT INTO stock_requests (station_id, type, product_name, qty, notes, status, submitted_by, submitted_at) VALUES (?, ?, ?, ?, ?, 'pending', ?, NOW())");
-                $stmt->execute([$station_id, $req_type, $product, $qty, $notes, (int)$me['id']]);
-                $msg = "✅ Stock request submitted! Awaiting manager review.";
-            } catch (Exception $e) {
-                $msg = "❌ Error: " . $e->getMessage();
-            }
-        }
-    }
-    
-    // MANAGER ONLY: Approve/Reject stock requests (per hierarchy - Admin cannot do Manager work)
-    if (in_array($action, ['approve_request', 'reject_request'])) {
-        if ($role !== 'manager') {
-            $msg = "❌ Error: Only managers can approve/reject stock requests.";
-        } else {
-            $request_id = (int)($_POST['request_id'] ?? 0);
-            $new_status = ($action === 'approve_request') ? 'approved' : 'rejected';
-            
-            if ($request_id > 0) {
-                try {
-                    $stmt = $pdo->prepare("UPDATE stock_requests SET status = ?, reviewed_by = ?, reviewed_at = NOW() WHERE id = ?");
-                    $stmt->execute([$new_status, (int)$me['id'], $request_id]);
-                    $msg = "✅ Stock request has been " . $new_status . ".";
-                } catch (Exception $e) {
-                    $msg = "❌ Error: " . $e->getMessage();
-                }
-            }
-        }
-    }
-}
 
 $requests = [];
 try {

@@ -321,9 +321,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                        $msg = "❌ Error: Credit card details are required for Credit Card payments.";
                        $pdo->rollBack();
                    } elseif ($payment_type === 'Account Receivable' && empty($ar_customer_id)) {
-                       $msg = "❌ Error: Customer ID is required for Account Receivable payments.";
-                       $pdo->rollBack();
-                   } else {
+                        $msg = "❌ Error: Customer ID is required for Account Receivable payments.";
+                        $pdo->rollBack();
+                    } elseif ($payment_type === 'Account Receivable' && ($cust_status_check = $pdo->prepare("SELECT status FROM customers WHERE id = ? LIMIT 1")) && $cust_status_check->execute([$ar_customer_id]) && ($cust_status = $cust_status_check->fetchColumn()) && in_array($cust_status, ['locked', 'inactive'])) {
+                        $msg = "❌ Error: Customer account is " . $cust_status . ".";
+                        $pdo->rollBack();
+                    } else {
                         // Insert Sale
                         $sale_id = uniqid('SALE-');
                         $stmt = $pdo->prepare("INSERT INTO sales (id, station_id, user_id, customer, sale_date, sale_time, payment_method, total, credit_card_number, credit_card_expiry, ar_customer_id, credit_limit, status, created_at) VALUES (?, ?, ?, ?, CURDATE(), CURTIME(), ?, ?, ?, ?, ?, ?, ?, NOW())");
@@ -347,7 +350,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                            $stmtStock->execute([$item['quantity'], $item['name'], $station_id]);
                        }
                        
-                       $pdo->commit();
+                                               // Update customer balance if Account Receivable
+                        if ($payment_type === 'Account Receivable') {
+                            $updateBalanceStmt = $pdo->prepare("
+                                UPDATE customers 
+                                SET balance = balance + ? 
+                                WHERE id = ? AND station_id = ?
+                            ");
+                            $updateBalanceStmt->execute([
+                                $final_total,
+                                $ar_customer_id,
+                                $station_id
+                            ]);
+                            
+                            // Fetch updated balance for running balance
+                            $bal_stmt = $pdo->prepare("SELECT balance FROM customers WHERE id = ?");
+                            $bal_stmt->execute([$ar_customer_id]);
+                            $new_bal = (float)$bal_stmt->fetchColumn();
+                            
+                            $cct_stmt = $pdo->prepare("
+                                INSERT INTO customer_credit_transactions (
+                                    customer_id, transaction_id, transaction_type, amount, 
+                                    running_balance, description, station_id, created_by, created_at
+                                ) VALUES (?, ?, 'Sale', ?, ?, ?, ?, ?, NOW())
+                            ");
+                            $cct_stmt->execute([
+                                $ar_customer_id,
+                                $sale_id,
+                                $final_total,
+                                $new_bal,
+                                "POS Sale (Credit) - Ref: " . $sale_id,
+                                $station_id,
+                                $me['id']
+                            ]);
+                        }
+                        
+                        $pdo->commit();
                        $msg = "✅ Multi-item transaction completed successfully. Stock deducted immediately.";
                    }
                } catch (Exception $e) {

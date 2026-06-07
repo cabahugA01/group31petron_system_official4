@@ -1,8 +1,9 @@
 <?php
 /**
  * Admin Customer Management
- * Four-section module: Master List | Balances Oversight | Accounts Receivable | Customer History
- * Admin/SuperAdmin only — station-scoped oversight
+ * Five-section module: Master List | Balances | Receivable | History | Oversight | Audit Trail
+ * Admin — Station-scoped view (assigned station only)
+ * SuperAdmin/Developer — Global franchise-wide view (all stations)
  */
 
 // ── Bootstrap ─────────────────────────────────────────────
@@ -22,16 +23,19 @@ if (!in_array($role, ['admin', 'superadmin'])) {
 }
 
 // ── Section routing ────────────────────────────────────────
-$valid_sections = ['master', 'balances', 'receivable', 'history'];
+$valid_sections = ['list', 'balances', 'receivable', 'history', 'oversight', 'audit'];
 $section = isset($_GET['section']) && in_array($_GET['section'], $valid_sections)
-    ? $_GET['section'] : 'master';
+    ? $_GET['section'] : 'list';
+
+// Oversight section is accessible to Admin & SuperAdmin
 
 // Page ID for sidebar sub-item highlighting
 $page_id = match($section) {
     'balances'   => 'adm_cust_balances',
-    'receivable' => 'adm_cust_ar',
     'history'    => 'adm_cust_history',
-    default      => 'adm_cust_master',
+    'oversight'  => 'adm_cust_oversight',
+    'audit'      => 'adm_cust_audit',
+    default      => 'adm_cust_list',
 };
 
 // ── Ensure required customer columns exist ─────────────────
@@ -54,14 +58,27 @@ try {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     header('Content-Type: application/json');
 
+    // Block Admin from editing customers belonging to other stations for standard actions (Oversight actions bypass this)
+    if ($role === 'admin' && in_array($_POST['action'], ['adjust_credit_limit', 'toggle_status'])) {
+        $cid = (int)($_POST['customer_id'] ?? 0);
+        if ($cid > 0) {
+            $chk_station = (int)adm_cust_val($pdo, "SELECT station_id FROM customers WHERE id = ?", [$cid], 0);
+            if ($chk_station !== $station_id) {
+                echo json_encode(['success' => false, 'error' => 'Permission denied: Customer belongs to another station.']);
+                exit;
+            }
+        }
+    }
+
     if ($_POST['action'] === 'adjust_credit_limit') {
         $cid   = (int)($_POST['customer_id'] ?? 0);
         $limit = (float)($_POST['credit_limit'] ?? 0);
         $note  = trim($_POST['note'] ?? '');
         try {
-            $stmt = $pdo->prepare("UPDATE customers SET credit_limit=? WHERE id=? AND station_id=?");
-            $stmt->execute([$limit, $cid, $station_id]);
-            log_activity('Admin Credit Limit Adjusted', "Customer #$cid → ₱" . number_format($limit, 2) . ($note ? " | $note" : ''));
+            // Global — no station_id constraint (Admin can adjust any customer)
+            $stmt = $pdo->prepare("UPDATE customers SET credit_limit=? WHERE id=?");
+            $stmt->execute([$limit, $cid]);
+            write_audit_log($pdo, 'Update', "Admin adjusted credit limit for Customer #$cid → ₱" . number_format($limit, 2) . ($note ? " | Note: $note" : ''), 'customers', $cid, 'success');
             echo json_encode(['success' => true]);
         } catch (Exception $e) {
             echo json_encode(['success' => false, 'error' => 'DB error: ' . $e->getMessage()]);
@@ -73,9 +90,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $cid    = (int)($_POST['customer_id'] ?? 0);
         $status = $_POST['status'] === 'active' ? 'active' : 'inactive';
         try {
-            $stmt = $pdo->prepare("UPDATE customers SET status=? WHERE id=? AND station_id=?");
-            $stmt->execute([$status, $cid, $station_id]);
-            log_activity('Admin Customer Status Changed', "Customer #$cid → $status");
+            // Global — no station_id constraint
+            $stmt = $pdo->prepare("UPDATE customers SET status=? WHERE id=?");
+            $stmt->execute([$status, $cid]);
+            write_audit_log($pdo, 'Update', "Admin changed status of Customer #$cid → $status", 'customers', $cid, 'success');
+            echo json_encode(['success' => true]);
+        } catch (Exception $e) {
+            echo json_encode(['success' => false, 'error' => 'DB error: ' . $e->getMessage()]);
+        }
+        exit;
+    }
+
+    if ($_POST['action'] === 'reassign_station') {
+        $cid = (int)($_POST['customer_id'] ?? 0);
+        $new_station_id = (int)($_POST['new_station_id'] ?? 0);
+        try {
+            $stmt = $pdo->prepare("UPDATE customers SET station_id=? WHERE id=?");
+            $stmt->execute([$new_station_id, $cid]);
+            $station_name = adm_cust_val($pdo, "SELECT name FROM stations WHERE id=?", [$new_station_id], 'Unknown');
+            write_audit_log($pdo, 'Update', "Admin re-assigned Customer #$cid → Station: $station_name (ID: $new_station_id)", 'customers', $cid, 'success');
+            echo json_encode(['success' => true]);
+        } catch (Exception $e) {
+            echo json_encode(['success' => false, 'error' => 'DB error: ' . $e->getMessage()]);
+        }
+        exit;
+    }
+
+    if ($_POST['action'] === 'archive_customer') {
+        $cid = (int)($_POST['customer_id'] ?? 0);
+        try {
+            // Soft delete by setting status to 'archived'
+            $stmt = $pdo->prepare("UPDATE customers SET status='archived' WHERE id=?");
+            $stmt->execute([$cid]);
+            write_audit_log($pdo, 'Delete', "Admin archived Customer #$cid", 'customers', $cid, 'success');
             echo json_encode(['success' => true]);
         } catch (Exception $e) {
             echo json_encode(['success' => false, 'error' => 'DB error: ' . $e->getMessage()]);
@@ -85,6 +132,188 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
     echo json_encode(['success' => false, 'error' => 'Unknown action']);
     exit;
+}
+
+// ── Master Customer List CSV/Excel Export Handler ───────────────────────────
+if ($section === 'list' && isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel'])) {
+    $is_excel = ($_GET['export'] === 'excel');
+    $where  = "WHERE 1=1";
+    $params = [];
+    if ($role === 'admin') {
+        $where .= " AND c.station_id = :admin_station_id";
+        $params[':admin_station_id'] = $station_id;
+    }
+    if ($search !== '') {
+        $where .= " AND (c.name LIKE :q OR c.contact_number LIKE :q OR c.id_number LIKE :q OR c.email LIKE :q)";
+        $params[':q'] = "%$search%";
+    }
+    if ($status_filter !== 'all') {
+        $where .= " AND c.status = :status";
+        $params[':status'] = $status_filter;
+    }
+    if ($station_filter > 0 && $role !== 'admin') {
+        $where .= " AND c.station_id = :stn";
+        $params[':stn'] = $station_filter;
+    }
+    
+    $rows = adm_cust_rows($pdo,
+        "SELECT c.id, c.name, c.contact_number, c.id_number, c.email,
+                COALESCE(c.current_balance, c.balance, 0) AS outstanding_balance,
+                COALESCE(c.credit_limit, 0) AS credit_limit,
+                c.status, c.created_at, s.name AS station_name
+         FROM customers c
+         LEFT JOIN stations s ON s.id = c.station_id
+         $where
+         ORDER BY c.name ASC", $params);
+         
+    if (ob_get_level() > 0) ob_end_clean();
+    $filename = 'admin_customer_list_' . date('Y-m-d') . ($is_excel ? '.xls' : '.csv');
+    if ($is_excel) {
+        header('Content-Type: application/vnd.ms-excel; charset=utf-8');
+    } else {
+        header('Content-Type: text/csv; charset=utf-8');
+    }
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    
+    $output = fopen('php://output', 'w');
+    fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+    
+    fputcsv($output, ['Customer Management Directory']);
+    fputcsv($output, ['Station Filter:', $role === 'admin' ? 'Station #' . $station_id : ($station_filter > 0 ? 'Station #' . $station_filter : 'All Stations')]);
+    fputcsv($output, ['Exported By:', $me['name'] ?? $me['username'] ?? 'Admin']);
+    fputcsv($output, ['Export Date:', date('F d, Y h:i A')]);
+    fputcsv($output, ['Total Records:', count($rows)]);
+    fputcsv($output, []);
+    
+    fputcsv($output, ['ID', 'Customer Name', 'Station', 'Contact Number', 'ID Number', 'Email', 'Outstanding Balance', 'Credit Limit', 'Status']);
+    foreach ($rows as $row) {
+        fputcsv($output, [
+            $row['id'],
+            $row['name'],
+            $row['station_name'] ?? '—',
+            $row['contact_number'] ?? '—',
+            $row['id_number'] ?? '—',
+            $row['email'] ?? '—',
+            number_format((float)$row['outstanding_balance'], 2),
+            number_format((float)$row['credit_limit'], 2),
+            ucfirst($row['status'] ?? 'active')
+        ]);
+    }
+    fclose($output);
+    write_audit_log($pdo, 'Export Customer List', "Admin exported customer list directory to " . strtoupper($_GET['export']), 'customers', 0, 'report');
+    exit;
+}
+
+// ── Customer History CSV/Excel Export Handler ───────────────────────────────
+if ($section === 'history' && isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel'])) {
+    $is_excel = ($_GET['export'] === 'excel');
+    $hist_customer_id = (int)($_GET['cid'] ?? 0);
+    
+    if ($hist_customer_id > 0) {
+        if ($role === 'admin') {
+            $chk_station = (int)adm_cust_val($pdo, "SELECT station_id FROM customers WHERE id = ?", [$hist_customer_id], 0);
+            if ($chk_station !== $station_id) {
+                $hist_customer_id = 0;
+            }
+        }
+    }
+    
+    if ($hist_customer_id > 0) {
+        $cust_name = adm_cust_val($pdo, "SELECT name FROM customers WHERE id=?", [$hist_customer_id], 'Customer');
+        
+        $jo_cols_adm  = adm_cust_rows($pdo, "SHOW COLUMNS FROM job_orders", []);
+        $jo_col_names = array_column($jo_cols_adm, 'Field');
+        $jo_cust_cond = in_array('credit_customer_id', $jo_col_names) ? '(customer_id=? OR credit_customer_id=?)' : 'customer_id=?';
+        $jo_params = in_array('credit_customer_id', $jo_col_names) ? [$hist_customer_id, $hist_customer_id] : [$hist_customer_id];
+        
+        $mt_cols_adm  = adm_cust_rows($pdo, "SHOW COLUMNS FROM merchandise_transactions", []);
+        $mt_col_names = array_column($mt_cols_adm, 'Field');
+        $mt_cid_col   = in_array('credit_customer_id', $mt_col_names) ? 'credit_customer_id' : (in_array('customer_id', $mt_col_names) ? 'customer_id' : null);
+        
+        $exp_rows = [];
+        // Job Orders
+        try {
+            $s = $pdo->prepare("
+                SELECT 'Job Order' AS type, id, COALESCE(created_at, updated_at) AS txn_date,
+                       COALESCE(total_amount, estimated_cost, 0) AS total_amount,
+                       COALESCE(payment_method, '—') AS payment_method,
+                       status, COALESCE(remarks, service_description, service_type, '') AS notes
+                FROM job_orders WHERE $jo_cust_cond ORDER BY txn_date DESC LIMIT 200
+            ");
+            $s->execute($jo_params);
+            $exp_rows = array_merge($exp_rows, $s->fetchAll(PDO::FETCH_ASSOC));
+        } catch (Exception $e) {}
+        
+        // Merchandise
+        if ($mt_cid_col) {
+            try {
+                $mt_date = in_array('transaction_date', $mt_col_names) ? 'COALESCE(transaction_date, created_at)' : 'created_at';
+                $s = $pdo->prepare("
+                    SELECT 'Merchandise' AS type, id, $mt_date AS txn_date,
+                           COALESCE(total_amount, 0) AS total_amount,
+                           COALESCE(payment_method, '—') AS payment_method,
+                           COALESCE(validation_status, status, '—') AS status, NULL AS notes
+                    FROM merchandise_transactions WHERE {$mt_cid_col}=? ORDER BY txn_date DESC LIMIT 200
+                ");
+                $s->execute([$hist_customer_id]);
+                $exp_rows = array_merge($exp_rows, $s->fetchAll(PDO::FETCH_ASSOC));
+            } catch (Exception $e) {}
+        }
+        
+        // Payments
+        try {
+            $s = $pdo->prepare("
+                SELECT 'Payment' AS type, id, created_at AS txn_date,
+                       amount AS total_amount, 'Credit Payment' AS payment_method,
+                       'Paid' AS status, description AS notes
+                FROM customer_credit_transactions WHERE customer_id=? AND transaction_type='Payment' ORDER BY created_at DESC LIMIT 100
+            ");
+            $s->execute([$hist_customer_id]);
+            $exp_rows = array_merge($exp_rows, $s->fetchAll(PDO::FETCH_ASSOC));
+        } catch (Exception $e) {}
+        
+        usort($exp_rows, fn($a, $b) => strtotime($b['txn_date']) - strtotime($a['txn_date']));
+        $exp_rows = array_slice($exp_rows, 0, 300);
+        
+        if (ob_get_level() > 0) ob_end_clean();
+        $filename = 'admin_customer_history_' . date('Y-m-d') . ($is_excel ? '.xls' : '.csv');
+        if ($is_excel) {
+            header('Content-Type: application/vnd.ms-excel; charset=utf-8');
+        } else {
+            header('Content-Type: text/csv; charset=utf-8');
+        }
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        
+        $output = fopen('php://output', 'w');
+        fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+        
+        fputcsv($output, ['Customer History Audit Report']);
+        fputcsv($output, ['Customer:', $cust_name]);
+        fputcsv($output, ['Exported By:', $me['name'] ?? $me['username'] ?? 'Admin']);
+        fputcsv($output, ['Export Date:', date('F d, Y h:i A')]);
+        fputcsv($output, ['Total Records:', count($exp_rows)]);
+        fputcsv($output, []);
+        
+        fputcsv($output, ['Date/Time', 'Type', 'ID/Ref', 'Amount (₱)', 'Payment Method', 'Status', 'Notes']);
+        foreach ($exp_rows as $er) {
+            fputcsv($output, [
+                date('M d, Y h:i A', strtotime($er['txn_date'])),
+                $er['type'],
+                $er['id'],
+                number_format((float)$er['total_amount'], 2),
+                $er['payment_method'],
+                ucfirst($er['status']),
+                $er['notes'] ?? '—'
+            ]);
+        }
+        fclose($output);
+        write_audit_log($pdo, 'Export Customer History', "Admin exported customer history report to " . strtoupper($_GET['export']) . " for customer: $cust_name", 'customers', $hist_customer_id, 'report');
+        exit;
+    } else {
+        $_SESSION['flash_err'] = 'No customer selected to export history.';
+        header('Location: admin_customer_management.php?section=history');
+        exit;
+    }
 }
 
 // ── Helpers ────────────────────────────────────────────────
@@ -97,50 +326,72 @@ function adm_cust_rows(PDO $p, string $sql, array $args = []): array {
     catch (Exception $e) { return []; }
 }
 
-// ── DATA: Master List ──────────────────────────────────────
-$search  = trim($_GET['q'] ?? '');
+// ── DATA: Customer List ────────────────────────────────────
+$search        = trim($_GET['q'] ?? '');
 $status_filter = $_GET['status'] ?? 'all';
+$station_filter = (int)($_GET['stn'] ?? 0);
+if ($role === 'admin') {
+    $station_filter = $station_id;
+}
 $customers = [];
-if ($section === 'master') {
-    $where = "WHERE station_id = :sid";
-    $params = [':sid' => $station_id];
+if ($section === 'list') {
+    $where  = "WHERE 1=1";
+    $params = [];
+    if ($role === 'admin') {
+        $where .= " AND c.station_id = :admin_station_id";
+        $params[':admin_station_id'] = $station_id;
+    }
     if ($search !== '') {
-        $where .= " AND (name LIKE :q OR contact_number LIKE :q OR id_number LIKE :q OR email LIKE :q)";
+        $where .= " AND (c.name LIKE :q OR c.contact_number LIKE :q OR c.id_number LIKE :q OR c.email LIKE :q)";
         $params[':q'] = "%$search%";
     }
     if ($status_filter !== 'all') {
-        $where .= " AND status = :status";
+        $where .= " AND c.status = :status";
         $params[':status'] = $status_filter;
     }
+    if ($station_filter > 0 && $role !== 'admin') {
+        $where .= " AND c.station_id = :stn";
+        $params[':stn'] = $station_filter;
+    }
     $customers = adm_cust_rows($pdo,
-        "SELECT id, name, contact_number, id_number, email,
-                COALESCE(current_balance, balance, 0) AS outstanding_balance,
-                COALESCE(credit_limit, 0) AS credit_limit,
-                status, created_at
-         FROM customers $where
-         ORDER BY name ASC", $params);
+        "SELECT c.id, c.name, c.contact_number, c.id_number, c.email,
+                COALESCE(c.current_balance, c.balance, 0) AS outstanding_balance,
+                COALESCE(c.credit_limit, 0) AS credit_limit,
+                c.status, c.created_at, s.name AS station_name
+         FROM customers c
+         LEFT JOIN stations s ON s.id = c.station_id
+         $where
+         ORDER BY c.name ASC", $params);
 }
 
 // ── DATA: Balances Oversight ───────────────────────────────
 $balance_customers = [];
 $overdue_count = 0;
 if ($section === 'balances') {
+    $bal_where = "";
+    $bal_params = [];
+    if ($role === 'admin') {
+        $bal_where = "WHERE c.station_id = ?";
+        $bal_params = [$station_id];
+    }
     $balance_customers = adm_cust_rows($pdo,
-        "SELECT id, name, contact_number,
-                COALESCE(current_balance, balance, 0) AS outstanding_balance,
-                COALESCE(credit_limit, 0) AS credit_limit,
-                status,
+        "SELECT c.id, c.name, c.contact_number,
+                COALESCE(c.current_balance, c.balance, 0) AS outstanding_balance,
+                COALESCE(c.credit_limit, 0) AS credit_limit,
+                c.status,
+                s.name AS station_name,
                 CASE
-                    WHEN COALESCE(credit_limit,0) > 0
-                     AND COALESCE(current_balance,balance,0) >= COALESCE(credit_limit,0)
+                    WHEN COALESCE(c.credit_limit,0) > 0
+                     AND COALESCE(c.current_balance,c.balance,0) >= COALESCE(c.credit_limit,0)
                     THEN 'overdue'
-                    WHEN COALESCE(current_balance,balance,0) > 0 THEN 'has_balance'
+                    WHEN COALESCE(c.current_balance,c.balance,0) > 0 THEN 'has_balance'
                     ELSE 'clear'
                 END AS balance_flag
-         FROM customers
-         WHERE station_id = ?
+         FROM customers c
+         LEFT JOIN stations s ON s.id = c.station_id
+         $bal_where
          ORDER BY outstanding_balance DESC",
-        [$station_id]);
+        $bal_params);
     $overdue_count = count(array_filter($balance_customers, fn($c) => $c['balance_flag'] === 'overdue'));
 }
 
@@ -149,7 +400,12 @@ $ar_rows     = [];
 $total_ar    = 0;
 $collected   = 0;
 if ($section === 'receivable') {
-    // AR = customers with positive outstanding balance
+    $ar_where = "WHERE COALESCE(c.current_balance, c.balance, 0) > 0";
+    $ar_params = [];
+    if ($role === 'admin') {
+        $ar_where .= " AND c.station_id = ?";
+        $ar_params = [$station_id];
+    }
     $ar_rows = adm_cust_rows($pdo,
         "SELECT c.id, c.name, c.contact_number,
                 COALESCE(c.current_balance, c.balance, 0) AS outstanding_balance,
@@ -157,19 +413,21 @@ if ($section === 'receivable') {
                 (SELECT COALESCE(SUM(amount),0)
                    FROM credit_payments cp
                   WHERE cp.customer_id = c.id) AS total_paid,
-                c.status
+                c.status, s.name AS station_name
          FROM customers c
-         WHERE c.station_id = ?
-           AND COALESCE(c.current_balance, c.balance, 0) > 0
+         LEFT JOIN stations s ON s.id = c.station_id
+         $ar_where
          ORDER BY outstanding_balance DESC",
-        [$station_id]);
+        $ar_params);
     $total_ar  = array_sum(array_column($ar_rows, 'outstanding_balance'));
-    $collected = adm_cust_val($pdo,
-        "SELECT COALESCE(SUM(cp.amount),0)
-         FROM credit_payments cp
-         JOIN customers c ON c.id = cp.customer_id
-         WHERE c.station_id = ?",
-        [$station_id]);
+    
+    $collected_sql = "SELECT COALESCE(SUM(cp.amount),0) FROM credit_payments cp";
+    $collected_params = [];
+    if ($role === 'admin') {
+        $collected_sql .= " WHERE cp.station_id = ?";
+        $collected_params = [$station_id];
+    }
+    $collected = adm_cust_val($pdo, $collected_sql, $collected_params);
 }
 
 // ── DATA: Customer History ─────────────────────────────────
@@ -177,37 +435,167 @@ $hist_customer_id = (int)($_GET['cid'] ?? 0);
 $hist_customers   = [];
 $hist_rows        = [];
 if ($section === 'history') {
-    $hist_customers = adm_cust_rows($pdo,
-        "SELECT id, name FROM customers WHERE station_id=? ORDER BY name",
-        [$station_id]);
+    $hist_cust_sql = "SELECT c.id, c.name, s.name AS station_name
+         FROM customers c
+         LEFT JOIN stations s ON s.id = c.station_id
+         WHERE c.status != 'archived'";
+    $hist_cust_params = [];
+    if ($role === 'admin') {
+        $hist_cust_sql .= " AND c.station_id = ?";
+        $hist_cust_params = [$station_id];
+    }
+    $hist_cust_sql .= " ORDER BY c.name ASC";
+    $hist_customers = adm_cust_rows($pdo, $hist_cust_sql, $hist_cust_params);
 
     if ($hist_customer_id > 0) {
-        // Merchandise transactions
-        $hist_rows = adm_cust_rows($pdo,
-            "SELECT 'Merchandise' AS type, id, COALESCE(transaction_date, created_at) AS txn_date,
-                    total_amount, payment_method, validation_status AS status, NULL AS notes
-             FROM merchandise_transactions
-             WHERE station_id=? AND customer_id=?
-             UNION ALL
-             SELECT 'Job Order' AS type, id, COALESCE(created_at, updated_at) AS txn_date,
-                    COALESCE(total_amount,0), payment_method, status, remarks AS notes
-             FROM job_orders
-             WHERE station_id=? AND customer_id=?
-             UNION ALL
-             SELECT 'Payment' AS type, id, created_at AS txn_date,
-                    amount, 'Credit Payment' AS payment_method, 'Paid' AS status, notes
-             FROM credit_payments
-             WHERE customer_id=?
-             ORDER BY txn_date DESC
-             LIMIT 200",
-            [$station_id, $hist_customer_id, $station_id, $hist_customer_id, $hist_customer_id]);
+        if ($role === 'admin') {
+            $chk_station = (int)adm_cust_val($pdo, "SELECT station_id FROM customers WHERE id = ?", [$hist_customer_id], 0);
+            if ($chk_station !== $station_id) {
+                $hist_customer_id = 0;
+            }
+        }
     }
+
+    if ($hist_customer_id > 0) {
+        // Detect columns to handle schema variations
+        $jo_cols_adm  = adm_cust_rows($pdo, "SHOW COLUMNS FROM job_orders", []);
+        $jo_col_names = array_column($jo_cols_adm, 'Field');
+        $jo_cust_cond = in_array('credit_customer_id', $jo_col_names)
+            ? '(customer_id=? OR credit_customer_id=?)'
+            : 'customer_id=?';
+        $jo_params = in_array('credit_customer_id', $jo_col_names)
+            ? [$hist_customer_id, $hist_customer_id]
+            : [$hist_customer_id];
+
+        $mt_cols_adm  = adm_cust_rows($pdo, "SHOW COLUMNS FROM merchandise_transactions", []);
+        $mt_col_names = array_column($mt_cols_adm, 'Field');
+        $mt_cid_col   = in_array('credit_customer_id', $mt_col_names) ? 'credit_customer_id'
+                      : (in_array('customer_id', $mt_col_names) ? 'customer_id' : null);
+
+        // Build history from job_orders + merchandise_transactions
+        $hist_rows = [];
+        // Job Orders
+        try {
+            $s = $pdo->prepare("
+                SELECT 'Job Order' AS type, id,
+                       COALESCE(created_at, updated_at) AS txn_date,
+                       COALESCE(total_amount, estimated_cost, 0) AS total_amount,
+                       COALESCE(payment_method, '—') AS payment_method,
+                       status, COALESCE(remarks, service_description, service_type, '') AS notes
+                FROM job_orders
+                WHERE $jo_cust_cond
+                ORDER BY txn_date DESC LIMIT 200
+            ");
+            $s->execute($jo_params);
+            $hist_rows = array_merge($hist_rows, $s->fetchAll(PDO::FETCH_ASSOC));
+        } catch (Exception $e) {}
+        // Merchandise Transactions
+        if ($mt_cid_col) {
+            try {
+                $mt_date = in_array('transaction_date', $mt_col_names) ? 'COALESCE(transaction_date, created_at)' : 'created_at';
+                $s = $pdo->prepare("
+                    SELECT 'Merchandise' AS type, id, $mt_date AS txn_date,
+                           COALESCE(total_amount, 0) AS total_amount,
+                           COALESCE(payment_method, '—') AS payment_method,
+                           COALESCE(validation_status, status, '—') AS status, NULL AS notes
+                    FROM merchandise_transactions
+                    WHERE {$mt_cid_col}=?
+                    ORDER BY txn_date DESC LIMIT 200
+                ");
+                $s->execute([$hist_customer_id]);
+                $hist_rows = array_merge($hist_rows, $s->fetchAll(PDO::FETCH_ASSOC));
+            } catch (Exception $e) {}
+        }
+        // Payments from customer_credit_transactions
+        try {
+            $s = $pdo->prepare("
+                SELECT 'Payment' AS type, id, created_at AS txn_date,
+                       amount AS total_amount, 'Credit Payment' AS payment_method,
+                       'Paid' AS status, description AS notes
+                FROM customer_credit_transactions
+                WHERE customer_id=? AND transaction_type='Payment'
+                ORDER BY created_at DESC LIMIT 100
+            ");
+            $s->execute([$hist_customer_id]);
+            $hist_rows = array_merge($hist_rows, $s->fetchAll(PDO::FETCH_ASSOC));
+        } catch (Exception $e) {}
+
+        // Sort merged results by date desc
+        usort($hist_rows, fn($a, $b) => strtotime($b['txn_date']) - strtotime($a['txn_date']));
+        $hist_rows = array_slice($hist_rows, 0, 300);
+    }
+}
+
+// ── DATA: Customer Oversight — GLOBAL ──────────────────────
+$oversight_customers = [];
+$all_stations = [];
+if ($section === 'oversight') {
+    $oversight_customers = adm_cust_rows($pdo,
+        "SELECT c.id, c.name, c.contact_number, c.email, c.status,
+                COALESCE(c.current_balance, c.balance, 0) AS outstanding_balance,
+                COALESCE(c.credit_limit, 0) AS credit_limit,
+                c.station_id, s.name AS station_name,
+                c.created_at, c.updated_at
+         FROM customers c
+         LEFT JOIN stations s ON s.id = c.station_id
+         ORDER BY s.name ASC, c.name ASC",
+        []);
+
+    $all_stations = adm_cust_rows($pdo,
+        "SELECT id, name FROM stations WHERE status='active' ORDER BY name ASC",
+        []);
+}
+
+// ── DATA: Audit Trail — Customer actions ────────────────────
+$audit_rows = [];
+$audit_search = trim($_GET['aq'] ?? '');
+$audit_date_from = $_GET['adf'] ?? '';
+$audit_date_to   = $_GET['adt'] ?? '';
+if ($section === 'audit') {
+    $aw = "WHERE al.entity_type IN ('customers','customer')";
+    $ap = [];
+    if ($role === 'admin') {
+        $aw .= " AND u.station_id = ?";
+        $ap[] = $station_id;
+    }
+    if ($audit_search !== '') {
+        $aw .= " AND (al.action_details LIKE ? OR u.username LIKE ? OR u.full_name LIKE ?)";
+        $ap[] = "%$audit_search%";
+        $ap[] = "%$audit_search%";
+        $ap[] = "%$audit_search%";
+    }
+    if ($audit_date_from !== '') {
+        $aw .= " AND DATE(al.created_at) >= ?";
+        $ap[] = $audit_date_from;
+    }
+    if ($audit_date_to !== '') {
+        $aw .= " AND DATE(al.created_at) <= ?";
+        $ap[] = $audit_date_to;
+    }
+    $audit_rows = adm_cust_rows($pdo,
+        "SELECT al.id, al.action_type, al.action_details, al.entity_type, al.entity_id,
+                al.log_type, al.status, al.created_at,
+                COALESCE(u.full_name, u.username, 'System') AS actor,
+                u.role AS actor_role,
+                s.name AS station_name
+         FROM audit_logs al
+         LEFT JOIN users u ON u.id = al.user_id
+         LEFT JOIN stations s ON s.id = u.station_id
+         $aw
+         ORDER BY al.created_at DESC
+         LIMIT 300",
+        $ap);
 }
 
 // ── Flash messages ─────────────────────────────────────────
 $flash_ok  = $_SESSION['flash_ok']  ?? '';
 $flash_err = $_SESSION['flash_err'] ?? '';
 unset($_SESSION['flash_ok'], $_SESSION['flash_err']);
+
+// ── All stations for filter dropdowns ──────────────────────
+$all_stations_list = adm_cust_rows($pdo,
+    "SELECT id, name FROM stations WHERE status='active' ORDER BY name ASC",
+    []);
 
 include __DIR__ . '/../partials/header.php';
 ?>
@@ -222,6 +610,31 @@ include __DIR__ . '/../partials/header.php';
     --adm-gray:    #f8f9fa;
     --adm-border:  #dee2e6;
 }
+
+/* ── Action Buttons (Aligned with other Admin modules) ─── */
+.action-btn {
+    font-size: 12px;
+    padding: 5px 8px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    transition: all .15s;
+    font-weight: 600;
+    width: 100px;
+    text-decoration: none;
+}
+.action-btn:hover {
+    filter: brightness(.9);
+    transform: translateY(-1px);
+}
+.btn-edit { background: #002F70; color: #fff; }
+.btn-view { background: #28a745; color: #fff; }
+.btn-danger { background: #dc3545; color: #fff; }
+.btn-success { background: #28a745; color: #fff; }
 
 /* ── Cards / KPI ─────────────────────────────────────────── */
 .acm-kpi-grid {
@@ -421,12 +834,23 @@ include __DIR__ . '/../partials/header.php';
 <div style="max-width:1400px;margin:0 auto;padding:0 0 40px;">
 
     <!-- Page header -->
-    <div class="page-head" style="margin-bottom:20px;">
-        <h1 style="font-size:22px;font-weight:800;color:var(--adm-blue);margin:0 0 4px;">
+    <div class="page-head" style="margin-bottom:20px;display:block;">
+        <h1 style="font-size:22px;font-weight:800;color:var(--adm-blue);margin:0 0 8px;">
             <i class="fas fa-users" style="margin-right:10px;"></i>Customer Management
         </h1>
-        <p class="page-subtitle" style="margin:0;font-size:13px;color:#666;">
-            Admin oversight — customer profiles, balances, receivables &amp; history
+        <p class="page-subtitle" style="margin:0;font-size:13px;color:#666;line-height:1.5;">
+            <i class="fas fa-building" style="color:var(--adm-blue);margin-right:4px;"></i>
+            <?php
+            $section_descriptions = [
+                'list'       => 'Global access to all customer profiles across stations.',
+                'balances'   => 'Monitor receivables and outstanding balances across the franchise.',
+                'receivable' => 'Track accounts receivable and payment collections franchise-wide.',
+                'history'    => 'View full transaction history across all stations.',
+                'oversight'  => 'Manage customer records (assign/re-map, delete/archive inactive).',
+                'audit'      => 'Full logs of staff and manager actions for accountability and compliance.',
+            ];
+            echo $section_descriptions[$section] ?? 'Global franchise view — all stations — customer profiles, balances, receivables &amp; audit trail';
+            ?>
         </p>
     </div>
 
@@ -439,9 +863,9 @@ include __DIR__ . '/../partials/header.php';
     <?php endif; ?>
 
     <!-- ══════════════════════════════════════════════════════════
-         SECTION 1: CUSTOMER MASTER LIST
+         SECTION 1: CUSTOMER LIST
     ══════════════════════════════════════════════════════════ -->
-    <?php if ($section === 'master'): ?>
+    <?php if ($section === 'list'): ?>
 
     <?php
     $total_customers  = count($customers);
@@ -473,9 +897,9 @@ include __DIR__ . '/../partials/header.php';
     <!-- Search & filter -->
     <div class="acm-card">
         <div class="acm-card-head">
-            <h2><i class="fas fa-list-ul"></i> Customer Master List</h2>
+            <h2><i class="fas fa-list-ul"></i> <?php echo $role === 'admin' ? 'Customer List' : 'Global Customer List'; ?></h2>
             <form method="get" action="" style="margin:0;">
-                <input type="hidden" name="section" value="master">
+                <input type="hidden" name="section" value="list">
                 <div class="acm-toolbar">
                     <input type="text" name="q" placeholder="Search name / contact / ID…"
                            value="<?php echo htmlspecialchars($search); ?>">
@@ -484,14 +908,33 @@ include __DIR__ . '/../partials/header.php';
                         <option value="active"   <?php echo $status_filter === 'active'   ? 'selected' : ''; ?>>Active</option>
                         <option value="inactive" <?php echo $status_filter === 'inactive' ? 'selected' : ''; ?>>Inactive</option>
                     </select>
+                    <?php if ($role !== 'admin'): ?>
+                    <select name="stn">
+                        <option value="0">All Stations</option>
+                        <?php foreach ($all_stations_list as $st): ?>
+                        <option value="<?php echo $st['id']; ?>" <?php echo $station_filter === (int)$st['id'] ? 'selected' : ''; ?>>
+                            <?php echo htmlspecialchars($st['name']); ?>
+                        </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <?php endif; ?>
                     <button type="submit" class="btn-acm btn-acm-primary">
                         <i class="fas fa-search"></i> Filter
                     </button>
-                    <?php if ($search || $status_filter !== 'all'): ?>
-                        <a href="?section=master" class="btn-acm btn-acm-outline">
+                    <?php if ($search || $status_filter !== 'all' || $station_filter > 0): ?>
+                        <a href="?section=list" class="btn-acm btn-acm-outline">
                             <i class="fas fa-times"></i> Clear
                         </a>
                     <?php endif; ?>
+                    <a href="?section=list&export=csv&q=<?php echo urlencode($search); ?>&status=<?php echo urlencode($status_filter); ?>&stn=<?php echo $station_filter; ?>" class="btn-acm" style="background:#28a745;color:#fff;text-decoration:none;display:inline-flex;align-items:center;height:36px;box-sizing:border-box;">
+                        <i class="fas fa-file-csv"></i> CSV
+                    </a>
+                    <a href="?section=list&export=excel&q=<?php echo urlencode($search); ?>&status=<?php echo urlencode($status_filter); ?>&stn=<?php echo $station_filter; ?>" class="btn-acm" style="background:#1f7a3e;color:#fff;text-decoration:none;display:inline-flex;align-items:center;height:36px;box-sizing:border-box;">
+                        <i class="fas fa-file-excel"></i> Excel
+                    </a>
+                    <button type="button" onclick="printAdminListPDF()" class="btn-acm" style="background:#dc3545;color:#fff;border:none;cursor:pointer;display:inline-flex;align-items:center;height:36px;box-sizing:border-box;">
+                        <i class="fas fa-file-pdf"></i> PDF
+                    </button>
                 </div>
             </form>
         </div>
@@ -508,8 +951,8 @@ include __DIR__ . '/../partials/header.php';
                     <tr>
                         <th>#</th>
                         <th>Customer Name</th>
+                        <?php if ($role !== 'admin'): ?><th>Station</th><?php endif; ?>
                         <th>Contact</th>
-                        <th>ID Number</th>
                         <th>Outstanding Balance</th>
                         <th>Credit Limit</th>
                         <th>Status</th>
@@ -527,8 +970,8 @@ include __DIR__ . '/../partials/header.php';
                 <tr>
                     <td style="color:#999;"><?php echo $i + 1; ?></td>
                     <td style="font-weight:600;color:#333;"><?php echo htmlspecialchars($c['name']); ?></td>
+                    <?php if ($role !== 'admin'): ?><td style="font-size:12px;color:var(--adm-blue);font-weight:600;"><?php echo htmlspecialchars($c['station_name'] ?? '—'); ?></td><?php endif; ?>
                     <td><?php echo htmlspecialchars($c['contact_number'] ?? '—'); ?></td>
-                    <td><?php echo htmlspecialchars($c['id_number'] ?? '—'); ?></td>
                     <td style="font-weight:700;color:<?php echo $bal > 0 ? '#dc3545' : '#28a745'; ?>;">
                         ₱<?php echo number_format($bal, 2); ?>
                     </td>
@@ -548,20 +991,21 @@ include __DIR__ . '/../partials/header.php';
                     </td>
                     <td style="color:#666;font-size:12px;"><?php echo date('M d, Y', strtotime($c['created_at'])); ?></td>
                     <td>
-                        <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                            <button class="btn-acm btn-acm-outline btn-acm-sm"
+                        <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;">
+                            <button class="action-btn btn-edit"
                                     onclick="openCreditModal(<?php echo $c['id']; ?>, '<?php echo htmlspecialchars(addslashes($c['name'])); ?>', <?php echo $limit; ?>)"
                                     title="Adjust Credit Limit">
-                                <i class="fas fa-sliders-h"></i>
+                                <i class="fas fa-sliders-h"></i> Adjust
                             </button>
-                            <button class="btn-acm btn-acm-sm <?php echo strtolower($c['status']) === 'active' ? 'btn-acm-danger' : 'btn-acm-success'; ?>"
+                            <button class="action-btn <?php echo strtolower($c['status']) === 'active' ? 'btn-danger' : 'btn-success'; ?>"
                                     onclick="toggleStatus(<?php echo $c['id']; ?>, '<?php echo strtolower($c['status']) === 'active' ? 'inactive' : 'active'; ?>')"
                                     title="<?php echo strtolower($c['status']) === 'active' ? 'Deactivate' : 'Reactivate'; ?>">
-                                <i class="fas <?php echo strtolower($c['status']) === 'active' ? 'fa-user-slash' : 'fa-user-check'; ?>"></i>
+                                <i class="fas <?php echo strtolower($c['status']) === 'active' ? 'fa-times' : 'fa-check'; ?>"></i> 
+                                <?php echo strtolower($c['status']) === 'active' ? 'Deactivate' : 'Activate'; ?>
                             </button>
                             <a href="?section=history&cid=<?php echo $c['id']; ?>"
-                               class="btn-acm btn-acm-sm btn-acm-primary" title="View History">
-                                <i class="fas fa-history"></i>
+                               class="action-btn btn-view" title="View History">
+                                <i class="fas fa-history"></i> History
                             </a>
                         </div>
                     </td>
@@ -573,11 +1017,11 @@ include __DIR__ . '/../partials/header.php';
         </div>
     </div>
 
-    <?php endif; /* end master */ ?>
+    <?php endif; /* end list */ ?>
 
 
     <!-- ══════════════════════════════════════════════════════════
-         SECTION 2: BALANCES OVERSIGHT
+         SECTION 2: CUSTOMER BALANCES
     ══════════════════════════════════════════════════════════ -->
     <?php if ($section === 'balances'): ?>
 
@@ -608,7 +1052,7 @@ include __DIR__ . '/../partials/header.php';
 
     <div class="acm-card">
         <div class="acm-card-head">
-            <h2><i class="fas fa-wallet"></i> Customer Balances Oversight</h2>
+            <h2><i class="fas fa-wallet"></i> Customer Balances</h2>
             <span style="font-size:12px;color:#666;">Sorted by highest outstanding balance</span>
         </div>
         <div class="acm-table-wrap">
@@ -792,12 +1236,17 @@ include __DIR__ . '/../partials/header.php';
     <?php if ($section === 'history'): ?>
 
     <div class="acm-card">
-        <div class="acm-card-head">
-            <h2><i class="fas fa-history"></i> Customer History</h2>
+        <div class="acm-card-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <a href="admin_customer_management.php?section=list" class="btn-acm btn-acm-outline" style="text-decoration:none;padding:6px 12px;font-size:12px;display:inline-flex;align-items:center;gap:6px;">
+                    <i class="fas fa-arrow-left"></i> Back to List
+                </a>
+                <h2 style="margin:0;"><i class="fas fa-history"></i> Customer History</h2>
+            </div>
             <form method="get" action="" style="margin:0;">
                 <input type="hidden" name="section" value="history">
-                <div class="acm-toolbar">
-                    <select name="cid" onchange="this.form.submit()" style="min-width:220px;">
+                <div class="acm-toolbar" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                    <select name="cid" onchange="this.form.submit()" style="min-width:220px;height:36px;box-sizing:border-box;">
                         <option value="0">— Select a customer —</option>
                         <?php foreach ($hist_customers as $hc): ?>
                             <option value="<?php echo $hc['id']; ?>"
@@ -807,9 +1256,18 @@ include __DIR__ . '/../partials/header.php';
                         <?php endforeach; ?>
                     </select>
                     <?php if ($hist_customer_id > 0): ?>
-                        <a href="?section=history" class="btn-acm btn-acm-outline btn-acm-sm">
+                        <a href="?section=history" class="btn-acm btn-acm-outline" style="text-decoration:none;display:inline-flex;align-items:center;height:36px;box-sizing:border-box;padding:0 12px;">
                             <i class="fas fa-times"></i> Clear
                         </a>
+                        <a href="?section=history&export=csv&cid=<?php echo $hist_customer_id; ?>" class="btn-acm" style="background:#28a745;color:#fff;text-decoration:none;display:inline-flex;align-items:center;height:36px;box-sizing:border-box;padding:0 12px;">
+                            <i class="fas fa-file-csv"></i> CSV
+                        </a>
+                        <a href="?section=history&export=excel&cid=<?php echo $hist_customer_id; ?>" class="btn-acm" style="background:#1f7a3e;color:#fff;text-decoration:none;display:inline-flex;align-items:center;height:36px;box-sizing:border-box;padding:0 12px;">
+                            <i class="fas fa-file-excel"></i> Excel
+                        </a>
+                        <button type="button" onclick="printAdminHistoryPDF()" class="btn-acm" style="background:#dc3545;color:#fff;border:none;cursor:pointer;display:inline-flex;align-items:center;height:36px;box-sizing:border-box;padding:0 12px;">
+                            <i class="fas fa-file-pdf"></i> PDF
+                        </button>
                     <?php endif; ?>
                 </div>
             </form>
@@ -893,6 +1351,270 @@ include __DIR__ . '/../partials/header.php';
 
     <?php endif; /* end history */ ?>
 
+
+    <!-- ══════════════════════════════════════════════════════════
+         SECTION 4: CUSTOMER OVERSIGHT
+    ══════════════════════════════════════════════════════════ -->
+    <?php if ($section === 'oversight'): ?>
+
+    <?php
+    $total_oversight = count($oversight_customers);
+    $active_oversight = count(array_filter($oversight_customers, fn($c) => strtolower($c['status']) === 'active'));
+    $inactive_oversight = count(array_filter($oversight_customers, fn($c) => strtolower($c['status']) === 'inactive'));
+    $archived_oversight = count(array_filter($oversight_customers, fn($c) => strtolower($c['status']) === 'archived'));
+    ?>
+
+    <!-- KPI row -->
+    <div class="acm-kpi-grid">
+        <div class="acm-kpi">
+            <div class="acm-kpi-value"><?php echo number_format($total_oversight); ?></div>
+            <div class="acm-kpi-label"><i class="fas fa-users"></i> Total Customers</div>
+        </div>
+        <div class="acm-kpi success">
+            <div class="acm-kpi-value"><?php echo number_format($active_oversight); ?></div>
+            <div class="acm-kpi-label"><i class="fas fa-user-check"></i> Active</div>
+        </div>
+        <div class="acm-kpi warning">
+            <div class="acm-kpi-value"><?php echo number_format($inactive_oversight); ?></div>
+            <div class="acm-kpi-label"><i class="fas fa-user-times"></i> Inactive</div>
+        </div>
+        <div class="acm-kpi info">
+            <div class="acm-kpi-value"><?php echo number_format($archived_oversight); ?></div>
+            <div class="acm-kpi-label"><i class="fas fa-archive"></i> Archived</div>
+        </div>
+    </div>
+
+    <div class="acm-card">
+        <div class="acm-card-head">
+            <h2><i class="fas fa-tasks"></i> Customer Oversight</h2>
+            <p style="font-size:12px;color:#666;margin:0;">
+                Manage customer records, assign/re-map to stations, delete/archive inactive customers
+            </p>
+        </div>
+
+        <div class="acm-table-wrap">
+            <?php if (empty($oversight_customers)): ?>
+                <div style="padding:40px;text-align:center;color:#999;">
+                    <i class="fas fa-users-slash" style="font-size:40px;margin-bottom:12px;display:block;opacity:.3;"></i>
+                    No customers found for oversight.
+                </div>
+            <?php else: ?>
+            <table class="acm-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Customer Name</th>
+                        <th>Contact</th>
+                        <th>Email</th>
+                        <th>Station Assigned</th>
+                        <th>Balance</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($oversight_customers as $i => $c):
+                    $bal = (float)$c['outstanding_balance'];
+                    $is_archived = strtolower($c['status']) === 'archived';
+                ?>
+                <tr <?php echo $is_archived ? 'style="opacity:0.5;background:#f9f9f9;"' : ''; ?>>
+                    <td style="color:#999;"><?php echo $i + 1; ?></td>
+                    <td style="font-weight:600;color:#333;">
+                        <?php echo htmlspecialchars($c['name']); ?>
+                        <?php if ($is_archived): ?>
+                            <span class="badge-status badge-inactive" style="margin-left:6px;font-size:9px;">ARCHIVED</span>
+                        <?php endif; ?>
+                    </td>
+                    <td><?php echo htmlspecialchars($c['contact_number'] ?? '—'); ?></td>
+                    <td style="font-size:12px;color:#666;"><?php echo htmlspecialchars($c['email'] ?? '—'); ?></td>
+                    <td>
+                        <span style="font-weight:600;color:var(--adm-blue);">
+                            <?php echo htmlspecialchars($c['station_name'] ?? 'Unknown'); ?>
+                        </span>
+                        <span style="font-size:11px;color:#999;margin-left:4px;">(ID: <?php echo $c['station_id']; ?>)</span>
+                    </td>
+                    <td style="font-weight:700;color:<?php echo $bal > 0 ? '#dc3545' : '#28a745'; ?>;">
+                        ₱<?php echo number_format($bal, 2); ?>
+                    </td>
+                    <td>
+                        <span class="badge-status <?php echo match(strtolower($c['status'])) {
+                            'active' => 'badge-active',
+                            'archived' => 'badge-inactive',
+                            default => 'badge-balance'
+                        }; ?>">
+                            <?php echo ucfirst(htmlspecialchars($c['status'] ?? 'unknown')); ?>
+                        </span>
+                    </td>
+                    <td style="color:#666;font-size:12px;white-space:nowrap;">
+                        <?php echo date('M d, Y', strtotime($c['created_at'])); ?>
+                    </td>
+                    <td>
+                        <?php if (!$is_archived): ?>
+                        <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;">
+                            <button class="action-btn btn-edit"
+                                    onclick="openReassignModal(<?php echo $c['id']; ?>, '<?php echo htmlspecialchars(addslashes($c['name'])); ?>', <?php echo $c['station_id']; ?>)"
+                                    title="Re-assign to another station">
+                                <i class="fas fa-exchange-alt"></i> Re-assign
+                            </button>
+                            <button class="action-btn btn-danger"
+                                    onclick="archiveCustomer(<?php echo $c['id']; ?>, '<?php echo htmlspecialchars(addslashes($c['name'])); ?>')"
+                                    title="Archive this customer">
+                                <i class="fas fa-archive"></i> Archive
+                            </button>
+                            <a href="?section=history&cid=<?php echo $c['id']; ?>"
+                               class="action-btn btn-view" title="View History">
+                                <i class="fas fa-history"></i> History
+                            </a>
+                        </div>
+                        <?php else: ?>
+                            <span style="font-size:12px;color:#999;font-style:italic;">Archived</span>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <?php endif; /* end oversight */ ?>
+
+
+    <!-- ══════════════════════════════════════════════════════════
+         SECTION 6: AUDIT TRAIL
+    ══════════════════════════════════════════════════════════ -->
+    <?php if ($section === 'audit'): ?>
+
+    <div class="acm-card">
+        <div class="acm-card-head">
+            <h2><i class="fas fa-clipboard-list"></i> Customer Audit Trail</h2>
+            <span style="font-size:12px;color:#666;">All staff &amp; manager actions on customer records</span>
+        </div>
+
+        <!-- Filter bar -->
+        <div style="padding:14px 20px;border-bottom:1px solid var(--adm-border);background:#f9fafb;">
+            <form method="get" action="" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+                <input type="hidden" name="section" value="audit">
+                <div>
+                    <label style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;display:block;margin-bottom:4px;">Search</label>
+                    <input type="text" name="aq" value="<?php echo htmlspecialchars($audit_search); ?>"
+                           placeholder="Search details / actor…"
+                           style="padding:7px 11px;border:1px solid var(--adm-border);border-radius:6px;font-size:13px;min-width:220px;">
+                </div>
+                <div>
+                    <label style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;display:block;margin-bottom:4px;">From</label>
+                    <input type="date" name="adf" value="<?php echo htmlspecialchars($audit_date_from); ?>"
+                           style="padding:7px 11px;border:1px solid var(--adm-border);border-radius:6px;font-size:13px;">
+                </div>
+                <div>
+                    <label style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;display:block;margin-bottom:4px;">To</label>
+                    <input type="date" name="adt" value="<?php echo htmlspecialchars($audit_date_to); ?>"
+                           style="padding:7px 11px;border:1px solid var(--adm-border);border-radius:6px;font-size:13px;">
+                </div>
+                <div style="display:flex;gap:8px;align-items:flex-end;">
+                    <button type="submit" class="btn-acm btn-acm-primary">
+                        <i class="fas fa-filter"></i> Filter
+                    </button>
+                    <?php if ($audit_search || $audit_date_from || $audit_date_to): ?>
+                    <a href="?section=audit" class="btn-acm btn-acm-outline">
+                        <i class="fas fa-times"></i> Clear
+                    </a>
+                    <?php endif; ?>
+                </div>
+            </form>
+        </div>
+
+        <div class="acm-table-wrap">
+            <?php if (empty($audit_rows)): ?>
+                <div style="padding:48px;text-align:center;color:#999;">
+                    <i class="fas fa-clipboard" style="font-size:40px;margin-bottom:12px;display:block;opacity:.3;"></i>
+                    No customer audit logs found.
+                </div>
+            <?php else: ?>
+            <table class="acm-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Date &amp; Time</th>
+                        <th>Action</th>
+                        <th>Actor</th>
+                        <th>Role</th>
+                        <th>Station</th>
+                        <th style="min-width:320px;">Details</th>
+                        <th>Entity</th>
+                        <th>Result</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($audit_rows as $i => $al):
+                    $action_lc = strtolower($al['action_type'] ?? '');
+                    $act_color = match(true) {
+                        in_array($action_lc, ['create','add','insert'])  => ['#d1fae5','#065f46'],
+                        in_array($action_lc, ['update','edit','adjust']) => ['#dbeafe','#1e40af'],
+                        in_array($action_lc, ['delete','archive'])       => ['#fee2e2','#991b1b'],
+                        default                                          => ['#f3f4f6','#374151'],
+                    };
+                    $log_lc = strtolower($al['log_type'] ?? '');
+                    $log_color = match($log_lc) {
+                        'success'     => '#28a745',
+                        'error','fail'=> '#dc3545',
+                        default       => '#6c757d',
+                    };
+                ?>
+                <tr>
+                    <td style="color:#999;font-size:12px;"><?php echo $i + 1; ?></td>
+                    <td style="white-space:nowrap;font-size:12px;color:#555;">
+                        <?php echo $al['created_at'] ? date('M d, Y', strtotime($al['created_at'])) : '—'; ?>
+                        <span style="display:block;color:#9ca3af;font-size:11px;">
+                            <?php echo $al['created_at'] ? date('h:i A', strtotime($al['created_at'])) : ''; ?>
+                        </span>
+                    </td>
+                    <td>
+                        <span style="display:inline-block;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:700;text-transform:uppercase;
+                                     background:<?php echo $act_color[0]; ?>;color:<?php echo $act_color[1]; ?>;">
+                            <?php echo htmlspecialchars($al['action_type'] ?? 'N/A'); ?>
+                        </span>
+                    </td>
+                    <td style="font-weight:600;color:#333;font-size:13px;">
+                        <?php echo htmlspecialchars($al['actor'] ?? '—'); ?>
+                    </td>
+                    <td style="font-size:12px;color:#6c757d;text-transform:capitalize;">
+                        <?php echo htmlspecialchars($al['actor_role'] ?? '—'); ?>
+                    </td>
+                    <td style="font-size:12px;color:var(--adm-blue);font-weight:600;">
+                        <?php echo htmlspecialchars($al['station_name'] ?? 'System'); ?>
+                    </td>
+                    <td style="font-size:12px;color:#374151;max-width:320px;word-break:break-word;">
+                        <?php echo htmlspecialchars($al['details'] ?? '—'); ?>
+                    </td>
+                    <td style="font-size:12px;color:#6c757d;">
+                        <?php if ($al['entity_id']): ?>
+                        <span style="font-family:monospace;">
+                            <?php echo htmlspecialchars($al['entity_type'] ?? ''); ?> #<?php echo (int)$al['entity_id']; ?>
+                        </span>
+                        <?php else: echo '—'; endif; ?>
+                    </td>
+                    <td>
+                        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:<?php echo $log_color; ?>;margin-right:4px;"></span>
+                        <span style="font-size:11px;font-weight:600;color:<?php echo $log_color; ?>;text-transform:capitalize;">
+                            <?php echo htmlspecialchars($al['log_type'] ?? 'N/A'); ?>
+                        </span>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+            <div style="padding:10px 18px;font-size:12px;color:#666;border-top:1px solid #f0f0f0;">
+                Showing <?php echo count($audit_rows); ?> most recent records (limit 300).
+            </div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <?php endif; /* end audit */ ?>
+
 </div><!-- end wrapper -->
 
 
@@ -910,6 +1632,29 @@ include __DIR__ . '/../partials/header.php';
             <button class="btn-acm btn-acm-outline" onclick="closeCreditModal()">Cancel</button>
             <button class="btn-acm btn-acm-primary" onclick="saveCreditLimit()">
                 <i class="fas fa-save"></i> Save
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Re-assign Station Modal ────────────────────────────── -->
+<div class="acm-modal-overlay" id="reassignModal">
+    <div class="acm-modal">
+        <h3><i class="fas fa-exchange-alt" style="margin-right:8px;"></i>Re-assign Customer to Station</h3>
+        <div id="reassignModalName" style="font-size:13px;color:#666;margin-bottom:16px;"></div>
+        <input type="hidden" id="reassignCustomerId">
+        <input type="hidden" id="reassignCurrentStation">
+        <label>Select New Station</label>
+        <select id="reassignStationSelect">
+            <option value="">— Choose a station —</option>
+            <?php foreach ($all_stations as $st): ?>
+                <option value="<?php echo $st['id']; ?>"><?php echo htmlspecialchars($st['name']); ?></option>
+            <?php endforeach; ?>
+        </select>
+        <div class="acm-modal-actions">
+            <button class="btn-acm btn-acm-outline" onclick="closeReassignModal()">Cancel</button>
+            <button class="btn-acm btn-acm-primary" onclick="saveReassignment()">
+                <i class="fas fa-check"></i> Re-assign
             </button>
         </div>
     </div>
@@ -980,4 +1725,146 @@ function toggleStatus(id, newStatus) {
 document.getElementById('creditModal').addEventListener('click', function(e) {
     if (e.target === this) closeCreditModal();
 });
+
+// ── Re-assign Station modal ───────────────────────────────
+function openReassignModal(id, name, currentStationId) {
+    document.getElementById('reassignCustomerId').value = id;
+    document.getElementById('reassignCurrentStation').value = currentStationId;
+    document.getElementById('reassignModalName').textContent = 'Customer: ' + name;
+    document.getElementById('reassignStationSelect').value = '';
+    document.getElementById('reassignModal').classList.add('open');
+}
+function closeReassignModal() {
+    document.getElementById('reassignModal').classList.remove('open');
+}
+
+function saveReassignment() {
+    const id = document.getElementById('reassignCustomerId').value;
+    const newStationId = document.getElementById('reassignStationSelect').value;
+    const currentStationId = document.getElementById('reassignCurrentStation').value;
+
+    if (!newStationId || newStationId === '') {
+        alert('Please select a station to re-assign this customer.');
+        return;
+    }
+
+    if (newStationId === currentStationId) {
+        alert('Customer is already assigned to this station.');
+        return;
+    }
+
+    if (!confirm('Re-assign this customer to the selected station?')) return;
+
+    const fd = new FormData();
+    fd.append('action', 'reassign_station');
+    fd.append('customer_id', id);
+    fd.append('new_station_id', newStationId);
+
+    fetch(window.location.pathname + '?section=oversight', {
+        method: 'POST', body: fd
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.success) {
+            closeReassignModal();
+            location.reload();
+        } else {
+            alert('Error: ' + (d.error || 'Could not re-assign customer.'));
+        }
+    })
+    .catch(() => alert('Network error. Please try again.'));
+}
+
+// ── Archive customer ──────────────────────────────────────
+function archiveCustomer(id, name) {
+    if (!confirm(`Archive customer "${name}"?\n\nThis will mark the customer as archived and they will no longer appear in active listings.`)) return;
+
+    const fd = new FormData();
+    fd.append('action', 'archive_customer');
+    fd.append('customer_id', id);
+
+    fetch(window.location.pathname + '?section=oversight', {
+        method: 'POST', body: fd
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.success) {
+            location.reload();
+        } else {
+            alert('Error: ' + (d.error || 'Could not archive customer.'));
+        }
+    })
+    .catch(() => alert('Network error. Please try again.'));
+}
+
+// Close reassign modal when clicking outside
+document.getElementById('reassignModal').addEventListener('click', function(e) {
+    if (e.target === this) closeReassignModal();
+});
+
+function printAdminListPDF() {
+    const kpiEl = document.querySelector('.acm-kpi-grid');
+    const tableEl = document.querySelector('.acm-table');
+    if (!tableEl) { alert('No table found to print.'); return; }
+    
+    const w = window.open('', '_blank', 'width=900,height=700');
+    w.document.write(`<!DOCTYPE html>
+<html><head>
+<title>Admin - Customer List</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 12px; margin: 20px; color: #333; }
+  h2 { color: #002f6c; margin-bottom: 4px; }
+  .meta { color: #666; font-size: 11px; margin-bottom: 16px; }
+  .kpis { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  .kpi { flex: 1; min-width: 120px; border: 1px solid #ddd; border-top: 4px solid #002f6c; padding: 8px 12px; border-radius: 4px; background: #fcfcfc; }
+  .kpi-val { font-size: 18px; font-weight: 800; color: #002f6c; }
+  .kpi-lbl { font-size: 10px; text-transform: uppercase; color: #777; margin-top: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th { background: #002f6c; color: #fff; padding: 8px; text-align: left; }
+  td { padding: 7px 8px; border-bottom: 1px solid #eee; }
+  .badge-status { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: bold; text-transform: uppercase; }
+  .badge-active { background: #e6f4ea; color: #137333; }
+  .badge-inactive { background: #fce8e6; color: #c5221f; }
+  @media print { body { margin: 0; } }
+</style>
+</head><body>
+<h2>Customer List Directory</h2>
+<div class="meta">Printed on: \${new Date().toLocaleString()}</div>
+<div class="kpis">
+  \${kpiEl ? kpiEl.innerHTML.replace(/acm-kpi-value/g, 'kpi-val').replace(/acm-kpi-label/g, 'kpi-lbl').replace(/acm-kpi/g, 'kpi') : ''}
+</div>
+<table style="width:100%;border-collapse:collapse;font-size:11px;">\${tableEl.innerHTML}</table>
+<script>window.onload=function(){window.print();}<\/script>
+</body></html>`);
+    w.document.close();
+}
+
+function printAdminHistoryPDF() {
+    const tableEl = document.querySelector('.acm-table');
+    if (!tableEl) { alert('No history found to print.'); return; }
+    
+    const custSel = document.querySelector('select[name="cid"]');
+    const custName = custSel ? custSel.options[custSel.selectedIndex].text : 'Select a customer';
+    
+    const w = window.open('', '_blank', 'width=900,height=700');
+    w.document.write(`<!DOCTYPE html>
+<html><head>
+<title>Admin - Customer History</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 12px; margin: 20px; color: #333; }
+  h2 { color: #002f6c; margin-bottom: 4px; }
+  .meta { color: #666; font-size: 11px; margin-bottom: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th { background: #002f6c; color: #fff; padding: 8px; text-align: left; }
+  td { padding: 7px 8px; border-bottom: 1px solid #eee; }
+  @media print { body { margin: 0; } }
+</style>
+</head><body>
+<h2>Customer Transaction History</h2>
+<div class="meta">Customer: <strong>\${custName}</strong> &nbsp;|&nbsp; Printed: \${new Date().toLocaleString()}</div>
+<table style="width:100%;border-collapse:collapse;font-size:11px;">\${tableEl.innerHTML}</table>
+<script>window.onload=function(){window.print();}<\/script>
+</body></html>`);
+    w.document.close();
+}
 </script>

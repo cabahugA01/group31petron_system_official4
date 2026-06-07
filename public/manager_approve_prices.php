@@ -4,8 +4,8 @@ require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
 
-$me = current_user();
-$role = role_key($me['role'] ?? '');
+$me       = current_user();
+$role     = role_key($me['role'] ?? '');
 $station_id = user_station_id();
 
 // Manager only
@@ -14,344 +14,410 @@ if (!in_array($role, ['manager', 'superadmin'])) {
     exit;
 }
 
-$msg = '';
-
-// Handle price approval/rejection
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = $_POST['action'] ?? '';
-    
-    if ($action === 'approve_price') {
-        $product_id = (int)($_POST['product_id'] ?? 0);
-        $new_cost = (float)($_POST['new_cost'] ?? 0);
-        $new_price = (float)($_POST['new_price'] ?? 0);
-        
-        if ($product_id <= 0 || $new_price < 0 || $new_cost < 0) {
-            $msg = "❌ Invalid product or price values.";
-        } elseif ($new_price < $new_cost) {
-            $msg = "❌ Selling price must be at least equal to cost.";
-        } else {
-            try {
-                // Get old prices
-                $stmt = $pdo->prepare("SELECT unit_cost as cost, unit_price as price FROM inventory_products WHERE id = ?");
-                $stmt->execute([$product_id]);
-                $prod = $stmt->fetch(PDO::FETCH_ASSOC);
-                
-                if (!$prod) {
-                    $msg = "❌ Product not found.";
-                } else {
-                    // APPLY the price changes now that manager approved
-                    $stmt = $pdo->prepare("UPDATE inventory_products SET unit_cost = ?, unit_price = ? WHERE id = ?");
-                    $stmt->execute([$new_cost, $new_price, $product_id]);
-                    
-                    // Also update station_inventory selling price so POS gets it immediately (silent fail if table doesn't exist)
-                    try {
-                        $stmt = $pdo->prepare("UPDATE station_inventory SET price = ? WHERE product_id = ? AND station_id = ?");
-                        $stmt->execute([$new_price, $product_id, $station_id]);
-                    } catch (Exception $e) {}
-                    
-                    log_activity($pdo, $me['id'], 'Approve Price', "APPROVED: Product ID $product_id | Old Cost: {$prod['cost']} → New Cost: $new_cost | Old Price: {$prod['price']} → New Price: $new_price | NOW ACTIVE FOR STAFF");
-                    
-                    $msg = "✅ Price approved! Now active for staff in POS and transactions.";
-                }
-            } catch (Exception $e) {
-                $msg = "❌ Error: " . $e->getMessage();
-            }
-        }
-    } elseif ($action === 'reject_price') {
-        $product_id = (int)($_POST['product_id'] ?? 0);
-        $reason = trim($_POST['rejection_reason'] ?? '');
-        
-        if ($product_id <= 0 || empty($reason)) {
-            $msg = "❌ Please provide a rejection reason.";
-        } else {
-            try {
-                log_activity($pdo, $me['id'], 'Reject Price', "REJECTED: Product ID $product_id. Reason: $reason | Admin must re-propose prices.");
-                $msg = "✅ Price rejected. Admin will be notified to re-propose.";
-            } catch (Exception $e) {
-                $msg = "❌ Error: " . $e->getMessage();
-            }
-        }
-    } elseif ($action === 'hold_price') {
-        $product_id = (int)($_POST['product_id'] ?? 0);
-        $reason = trim($_POST['hold_reason'] ?? '');
-        
-        if ($product_id <= 0 || empty($reason)) {
-            $msg = "❌ Please provide a reason to hold.";
-        } else {
-            try {
-                log_activity($pdo, $me['id'], 'Hold Price', "HELD: Product ID $product_id. Reason: $reason | Proposal is under review.");
-                $msg = "✅ Price proposal placed on hold.";
-            } catch (Exception $e) {
-                $msg = "❌ Error: " . $e->getMessage();
-            }
-        }
-    }
-}
-
-// Fetch all products with their current prices
-$products = [];
+// ── Fetch approved price history from activity_logs ───────────────────────────
+// Show all products where Admin proposed a price — including already approved ones.
+$history = [];
 try {
-    $stmt = $pdo->query("SELECT id, product_name as name, sku, unit_cost as current_cost, unit_price as current_price FROM inventory_products ORDER BY product_name ASC");
-    $all_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    // For each product, extract proposed prices from latest "Propose Price" log
-    foreach ($all_products as $p) {
-        $prod_id = $p['id'];
-        
-        // Get latest price proposal for this product
-        $log_stmt = $pdo->prepare("
-            SELECT created_at, details FROM activity_logs 
-            WHERE action = 'Propose Price' AND details LIKE ?
-            ORDER BY created_at DESC LIMIT 1
-        ");
-        $log_stmt->execute(["%Product ID $prod_id %"]);
-        $log = $log_stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$log) {
-            // Also try matching without space, just in case
-            $log_stmt->execute(["%Product ID $prod_id%"]);
-            $log = $log_stmt->fetch(PDO::FETCH_ASSOC);
-        }
-        
-        if ($log) {
-            // Check if there are any newer Approve/Reject/Hold logs for this product
-            $status_stmt = $pdo->prepare("
-                SELECT action FROM activity_logs 
-                WHERE action IN ('Approve Price', 'Reject Price', 'Hold Price') 
-                AND details LIKE ? 
-                AND created_at > ?
-                ORDER BY created_at DESC LIMIT 1
-            ");
-            $status_stmt->execute(["%Product ID $prod_id%", $log['created_at']]);
-            $latest_action = $status_stmt->fetchColumn();
-            
-            if ($latest_action === 'Approve Price' || $latest_action === 'Reject Price') {
-                continue; // Proposal already resolved
-            }
-            
-            $status = ($latest_action === 'Hold Price') ? 'On Hold' : 'Pending';
+    // Pull every "Propose Price" log entry (these are the admin-proposed prices)
+    $stmt = $pdo->query("
+        SELECT al.id, al.details, al.created_at,
+               u.full_name AS proposed_by
+        FROM activity_logs al
+        LEFT JOIN users u ON u.id = al.user_id
+        WHERE al.action IN ('Propose Price', 'Approve Price', 'Set Price', 'Update Price', 'Price Updated')
+        ORDER BY al.created_at DESC
+        LIMIT 200
+    ");
+    $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            // Parse details to extract proposed prices
-            // Format: "PROPOSED: Product ID X | Old Cost: Y → New Cost: Z | Old Price: A → New Price: B"
-            $proposed_cost = null;
-            $proposed_price = null;
-            
-            if (preg_match('/New Cost: ([\d.]+)/', $log['details'], $matches)) {
-                $proposed_cost = (float)$matches[1];
-            }
-            if (preg_match('/New Price: ([\d.]+)/', $log['details'], $matches)) {
-                $proposed_price = (float)$matches[1];
-            }
-            
-            // Only add to list if there's an actual proposal
-            if ($proposed_cost !== null && $proposed_price !== null) {
-                $p['proposed_cost'] = $proposed_cost;
-                $p['proposed_price'] = $proposed_price;
-                $p['status'] = $status;
-                $products[] = $p;
+    foreach ($logs as $log) {
+        $d = $log['details'] ?? '';
+
+        // Parse: "PROPOSED: Product ID X | Old Cost: Y → New Cost: Z | Old Price: A → New Price: B"
+        // or similar patterns
+        $prod_id       = null;
+        $product_name  = null;
+        $sku           = null;
+        $old_cost      = null;
+        $new_cost      = null;
+        $old_price     = null;
+        $new_price     = null;
+
+        if (preg_match('/Product ID (\d+)/', $d, $m)) $prod_id = (int)$m[1];
+        if (preg_match('/Old Cost:\s*([\d.]+)/', $d, $m))  $old_cost  = (float)$m[1];
+        if (preg_match('/New Cost:\s*([\d.]+)/', $d, $m))  $new_cost  = (float)$m[1];
+        if (preg_match('/Old Price:\s*([\d.]+)/', $d, $m)) $old_price = (float)$m[1];
+        if (preg_match('/New Price:\s*([\d.]+)/', $d, $m)) $new_price = (float)$m[1];
+
+        // Get product name & sku from DB if we have a product ID
+        if ($prod_id) {
+            $ps = $pdo->prepare("SELECT product_name, sku, product_type FROM inventory_products WHERE id = ?");
+            $ps->execute([$prod_id]);
+            $pr = $ps->fetch(PDO::FETCH_ASSOC);
+            if ($pr) {
+                $product_name = $pr['product_name'];
+                $sku          = $pr['sku'];
+                $product_type = $pr['product_type'] ?? 'merchandise';
             }
         }
+
+        // Skip entries we can't parse meaningfully
+        if (!$product_name || ($new_cost === null && $new_price === null)) continue;
+
+        $history[] = [
+            'product_name'  => $product_name,
+            'sku'           => $sku ?? '—',
+            'product_type'  => $product_type ?? 'merchandise',
+            'old_cost'      => $old_cost,
+            'new_cost'      => $new_cost,
+            'old_price'     => $old_price,
+            'new_price'     => $new_price,
+            'proposed_by'   => $log['proposed_by'] ?? '—',
+            'approved_at'   => $log['created_at'],
+            'action'        => $log['action'] ?? 'Propose Price',
+        ];
     }
 } catch (Exception $e) {
-    $products = [];
+    $history = [];
 }
 
 include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-  /* === Manager Approve Prices - Clean Table Design === */
-  .card { background:#fff; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.08); border:1px solid #e9ecef; margin-bottom:20px; overflow:hidden; }
-  .card-header { padding:16px 20px; border-bottom:1px solid #e9ecef; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
-  .card-header h3 { font-size:16px; font-weight:700; color:#002F70; margin:0; display:flex; align-items:center; gap:8px; }
-  .card-body { padding:20px; overflow-x:hidden; }
-  .table-wrap { overflow-x:auto; width:100%; }
-  .pm-table { width:100%; border-collapse:collapse; table-layout:auto; }
-  .pm-table thead th { background:#002F70 !important; color:#fff !important; font-weight:600; padding:14px 12px !important; text-align:left !important; text-transform:uppercase; letter-spacing:0.3px; border:none !important; white-space:nowrap; font-size:11px; }
-  .pm-table thead th:last-child { text-align:center !important; }
-  .pm-table tbody td { vertical-align:middle; padding:12px !important; border-bottom:1px solid #e9ecef !important; font-size:13px; }
-  .pm-table tbody td:last-child { text-align:center !important; }
-  .pm-table tbody tr:hover td { background:#e3f2fd !important; }
-  .pm-table tbody tr { transition:background 0.2s ease; }
-  
-  .action-col { display:flex; flex-direction:column; gap:6px; align-items:center; width:90px; min-width:90px; justify-content:center; }
-  .action-col .btn { width:90px; padding:6px 14px; border:none; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer; transition:all .2s; display:inline-flex; align-items:center; justify-content:center; gap:5px; margin:0; }
-  .btn-approve { background:#28a745; color:#fff; }
-  .btn-approve:hover { background:#218838; }
-  .btn-hold { background:#002F70; color:#fff; }
-  .btn-hold:hover { background:#001f4d; }
-  .btn-reject { background:#dc3545; color:#fff; }
-  .btn-reject:hover { background:#c82333; }
-  
-  .badge-pending { background:transparent !important; color:#4338ca; padding:4px 8px; border-radius:6px; font-size:11px; font-weight:700; display:inline-block; }
-  .badge-hold { background:transparent !important; color:#b45309; padding:4px 8px; border-radius:6px; font-size:11px; font-weight:700; display:inline-block; }
-  
-  .empty-state { text-align:center; padding:40px; color:#6c757d; }
-  
-  /* Modals */
-  .modal { display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,.5); align-items:center; justify-content:center; }
-  .modal.open { display:flex; }
-  .modal-content { background:#fff; border-radius:12px; width:90%; max-width:500px; max-height:90vh; overflow-y:auto; box-shadow:0 8px 32px rgba(0,0,0,.25); animation:mIn .18s ease; }
-  @keyframes mIn { from{opacity:0;transform:scale(.96)} to{opacity:1;transform:scale(1)} }
-  .modal-header { display:flex; justify-content:space-between; align-items:center; padding:18px 22px; border-bottom:1px solid #e9ecef; }
-  .modal-header h3 { margin:0; font-size:17px; font-weight:700; display: flex; align-items: center; gap: 8px; }
-  .close { background:none; border:none; font-size:26px; cursor:pointer; color:#aaa; line-height:1; }
-  .close:hover { color:#333; }
-  .modal-body { padding:22px; }
-  .modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:18px 22px; border-top:1px solid #e9ecef; }
-  .form-group { margin-bottom:14px; }
-  .form-group label { display:block; margin-bottom:5px; font-weight:600; font-size:12px; color:#374151; }
-  .form-control { width:100%; padding:9px 11px; border:1px solid #ddd; border-radius:6px; font-size:13px; box-sizing:border-box; font-family:inherit; }
-  .form-control:focus { border-color:#002F70; outline:none; box-shadow:0 0 0 3px rgba(0,47,112,.1); }
+/* === Price History — Read-Only View === */
+.ph-wrap { max-width:1200px; margin:0 auto; padding:0 4px 32px; }
+
+.page-head-box { margin-bottom:24px; }
+.page-head-box h1 { font-size:1.5rem; font-weight:800; color:#002F70; display:flex; align-items:center; gap:10px; margin:0 0 4px; }
+.page-head-box .sub { font-size:0.78rem; color:#6c757d; text-transform:uppercase; letter-spacing:0.5px; }
+
+/* Info banner */
+.info-banner {
+    background: linear-gradient(135deg, #e8f4fd 0%, #f0f7ff 100%);
+    border: 1px solid #b8d9f5;
+    border-left: 4px solid #002F70;
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 22px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    font-size: 13px;
+    color: #1a3a5c;
+}
+.info-banner i { font-size: 16px; color: #002F70; margin-top: 1px; flex-shrink: 0; }
+
+/* Card */
+.card { background:#fff; border-radius:10px; box-shadow:0 2px 10px rgba(0,0,0,.07); border:1px solid #e4e8ef; overflow:hidden; }
+.card-header { padding:16px 20px; border-bottom:1px solid #e9ecef; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+.card-header h3 { font-size:15px; font-weight:700; color:#002F70; margin:0; display:flex; align-items:center; gap:8px; }
+.rec-count { font-size:12px; color:#6c757d; background:#f8f9fa; border:1px solid #e9ecef; padding:4px 10px; border-radius:20px; }
+.card-body { padding:0; overflow-x:auto; }
+
+/* Table */
+.ph-table { width:100%; border-collapse:collapse; min-width:800px; }
+.ph-table thead th {
+    background:#002F70;
+    color:#fff;
+    font-weight:600;
+    padding:13px 14px;
+    text-align:left;
+    text-transform:uppercase;
+    letter-spacing:0.3px;
+    font-size:11px;
+    white-space:nowrap;
+    border:none;
+}
+.ph-table tbody td {
+    vertical-align:middle;
+    padding:11px 14px;
+    border-bottom:1px solid #f0f2f5;
+    font-size:13px;
+    color:#333;
+}
+.ph-table tbody tr:last-child td { border-bottom:none; }
+.ph-table tbody tr:hover td { background:#f5f9ff; }
+
+/* Price change display */
+.price-change { display:flex; align-items:center; gap:6px; }
+.price-old { color:#9ca3af; text-decoration:line-through; font-size:12px; }
+.price-arrow { color:#9ca3af; font-size:10px; }
+.price-new { color:#059669; font-weight:700; }
+.price-new.higher { color:#b45309; }
+.price-same { color:#374151; font-weight:600; }
+
+/* Type badge */
+.type-badge { display:inline-block; padding:2px 9px; border-radius:12px; font-size:10px; font-weight:700; white-space:nowrap; }
+.type-fuel  { background:#dbeafe; color:#1e40af; border:1px solid #93c5fd; }
+.type-merchandise { background:#ede9fe; color:#5b21b6; border:1px solid #c4b5fd; }
+
+/* Action badge (read-only status label) */
+.action-badge { display:inline-block; padding:3px 10px; border-radius:6px; font-size:11px; font-weight:700; }
+.action-propose { background:#fef3c7; color:#92400e; }
+.action-approve { background:#d1fae5; color:#065f46; }
+.action-update  { background:#e0e7ff; color:#3730a3; }
+
+.date-col { font-size:12px; color:#6c757d; white-space:nowrap; }
+
+/* Empty state */
+.empty-state { text-align:center; padding:56px 24px; color:#9ca3af; }
+.empty-state i { font-size:3rem; display:block; margin-bottom:14px; opacity:.3; }
+.empty-state strong { display:block; font-size:15px; color:#6c757d; margin-bottom:6px; }
+.empty-state span { font-size:12px; }
+
+/* Tabs */
+.tabs { display: flex; gap: 4px; border-bottom: 2px solid #e9ecef; margin-bottom: 20px; }
+.tab-btn { background: transparent; border: none; padding: 12px 24px; font-size: 14px; font-weight: 600; color: #6c757d; cursor: pointer; border-bottom: 3px solid transparent; transition: all .2s; }
+.tab-btn:hover { color: #002F70; background: #f8f9fa; }
+.tab-btn.active { color: #002F70; border-bottom-color: #002F70; background: #f0f7ff; }
+.tab-btn i { margin-right: 8px; }
+
+.tab-content { display: none; }
+.tab-content.active { display: block; }
 </style>
 
-<div class="page-head">
-    <div>
-        <h1 class="h1"><i class="fas fa-check-double" style="color: #059669;"></i> Verify Price Proposals</h1>
-        <div class="sub">Manager &mdash; Review and approve/reject price changes from Admin</div>
-    </div>
-</div>
-<?php if($msg): ?>
-<div style="background: <?php echo strpos($msg, '✅') !== false ? '#d4edda' : '#f8d7da'; ?>; color: <?php echo strpos($msg, '✅') !== false ? '#155724' : '#721c24'; ?>; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px;">
-    <i class="fas <?php echo strpos($msg, '✅') !== false ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
-    <?php echo htmlspecialchars($msg); ?>
-</div>
-<?php endif; ?>
-  
-<div class="card">
-  <div class="card-header">
-    <h3><i class="fas fa-list" style="color:#002F70;"></i> Price Proposals</h3>
-  </div>
-  <div class="card-body">
-    <div class="table-wrap">
-      <table class="table pm-table">
-      <thead>
-        <tr>
-          <th>Product</th>
-          <th>SKU</th>
-          <th>Current Cost</th>
-          <th>Proposed Cost</th>
-          <th>Current Price</th>
-          <th>Proposed Price</th>
-          <th>Status</th>
-          <th style="text-align: center;">Action</th>
-        </tr>
-      </thead>
-      <tbody>
-        <?php if(empty($products)): ?>
-          <tr><td colspan="8" class="empty-state">No pending price proposals found.</td></tr>
-        <?php else: ?>
-          <?php foreach($products as $p): ?>
-            <tr>
-              <td><strong><?php echo htmlspecialchars($p['name']); ?></strong></td>
-              <td><?php echo $p['sku']; ?></td>
-              <td style="color:#6c757d;">₱<?php echo number_format($p['current_cost'], 2); ?></td>
-              <td><strong style="color:#b45309;">₱<?php echo number_format($p['proposed_cost'], 2); ?></strong></td>
-              <td style="color:#6c757d;">₱<?php echo number_format($p['current_price'], 2); ?></td>
-              <td><strong style="color:#b45309;">₱<?php echo number_format($p['proposed_price'], 2); ?></strong></td>
-              <td>
-                <span class="<?php echo $p['status'] === 'On Hold' ? 'badge-hold' : 'badge-pending'; ?>">
-                  <?php echo $p['status']; ?>
-                </span>
-              </td>
-              <td style="text-align: center; vertical-align: middle;">
-                <div class="action-col">
-                  <form method="post" style="margin: 0; display:flex; justify-content:center; width:100%;">
-                    <input type="hidden" name="action" value="approve_price">
-                    <input type="hidden" name="product_id" value="<?php echo $p['id']; ?>">
-                    <input type="hidden" name="new_cost" value="<?php echo $p['proposed_cost']; ?>">
-                    <input type="hidden" name="new_price" value="<?php echo $p['proposed_price']; ?>">
-                    <button type="submit" class="btn btn-approve"><i class="fas fa-check"></i> Approve</button>
-                  </form>
-                  <button type="button" class="btn btn-hold" onclick="openHoldModal(<?php echo $p['id']; ?>)"><i class="fas fa-pause"></i> Hold</button>
-                  <button type="button" class="btn btn-reject" onclick="openRejectModal(<?php echo $p['id']; ?>)"><i class="fas fa-times"></i> Reject</button>
-                </div>
-              </td>
-            </tr>
-          <?php endforeach; ?>
-        <?php endif; ?>
-      </tbody>
-    </table>
-  </div>
-  </div>
-</div>
+<div class="ph-wrap">
 
-<!-- Rejection Modal -->
-<div class="modal" id="rejectModal">
-  <div class="modal-content">
-    <div class="modal-header">
-      <h3><i class="fas fa-times-circle" style="color: #ef4444;"></i> Reject Price Proposal</h3>
-      <button type="button" class="close" onclick="closeRejectModal()">&times;</button>
+    <!-- Page Header -->
+    <div class="page-head-box">
+        <h1><i class="fas fa-history" style="color:#059669;"></i> Price History</h1>
+        <div class="sub">Manager — Approved price changes from Admin's Product &amp; Pricing Overview</div>
     </div>
-    <form method="post" id="rejectForm">
-      <div class="modal-body">
-          <input type="hidden" name="action" value="reject_price">
-          <input type="hidden" name="product_id" id="productId" value="">
-          
-          <div class="form-group">
-            <label>Reason for Rejection <span style="color:#dc3545;">*</span></label>
-            <textarea name="rejection_reason" class="form-control" rows="3" placeholder="e.g., Price too high, market rate lower, etc." required></textarea>
-          </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn ghost" style="padding: 8px 16px; border: 1px solid #ddd; background: #fff; border-radius: 6px; cursor: pointer;" onclick="closeRejectModal()">Cancel</button>
-        <button type="submit" class="btn-reject" style="margin-left: 0;">Reject Price</button>
-      </div>
-    </form>
-  </div>
-</div>
 
-<!-- Hold Modal -->
-<div class="modal" id="holdModal">
-  <div class="modal-content">
-    <div class="modal-header">
-      <h3><i class="fas fa-pause-circle" style="color: #f59e0b;"></i> Hold Price Proposal</h3>
-      <button type="button" class="close" onclick="closeHoldModal()">&times;</button>
+    <!-- Info Banner -->
+    <div class="info-banner">
+        <i class="fas fa-info-circle"></i>
+        <div>
+            This page shows <strong>all price proposals submitted by the Admin</strong> — including cost and selling price changes for both fuel and merchandise products.
+            These are <strong>read-only</strong>. Price approvals are finalized by Admin in the <em>Product &amp; Pricing Overview</em>.
+        </div>
     </div>
-    <form method="post" id="holdForm">
-      <div class="modal-body">
-          <input type="hidden" name="action" value="hold_price">
-          <input type="hidden" name="product_id" id="holdProductId" value="">
-          
-          <div class="form-group">
-            <label>Reason for Hold <span style="color:#dc3545;">*</span></label>
-            <textarea name="hold_reason" class="form-control" rows="3" placeholder="e.g., Needs further market review, awaiting supplier confirmation, etc." required></textarea>
-          </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn ghost" style="padding: 8px 16px; border: 1px solid #ddd; background: #fff; border-radius: 6px; cursor: pointer;" onclick="closeHoldModal()">Cancel</button>
-        <button type="submit" class="btn-hold" style="margin-left: 0;">Hold Proposal</button>
-      </div>
-    </form>
-  </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('fuel')">
+            <i class="fas fa-gas-pump"></i> Fuel Prices
+        </button>
+        <button class="tab-btn" onclick="switchTab('merchandise')">
+            <i class="fas fa-box"></i> Merchandise Prices
+        </button>
+    </div>
+
+    <!-- Fuel Tab -->
+    <div class="tab-content active" id="fuelTab">
+        <div class="card">
+            <div class="card-header">
+                <h3><i class="fas fa-gas-pump"></i> Fuel Price History</h3>
+                <span class="rec-count"><?php echo count(array_filter($history, fn($h) => ($h['product_type'] ?? '') === 'fuel')); ?> record(s)</span>
+            </div>
+            <div class="card-body">
+                <table class="ph-table">
+                    <thead>
+                        <tr>
+                            <th>Fuel Type</th>
+                            <th>SKU</th>
+                            <th>Cost Change</th>
+                            <th>Price Change</th>
+                            <th>Proposed By</th>
+                            <th>Event</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php 
+                        $fuel_history = array_filter($history, fn($h) => ($h['product_type'] ?? '') === 'fuel');
+                        if (empty($fuel_history)): 
+                        ?>
+                        <tr>
+                            <td colspan="7">
+                                <div class="empty-state">
+                                    <i class="fas fa-gas-pump"></i>
+                                    <strong>No fuel price history yet</strong>
+                                    <span>Fuel price changes proposed by Admin will appear here once recorded.</span>
+                                </div>
+                            </td>
+                        </tr>
+                        <?php else: ?>
+                        <?php foreach ($fuel_history as $h): ?>
+                        <?php
+                            // Cost change
+                            if ($h['old_cost'] !== null && $h['new_cost'] !== null) {
+                                $cost_higher = $h['new_cost'] > $h['old_cost'];
+                                $cost_html = '<div class="price-change">'
+                                    . '<span class="price-old">₱' . number_format($h['old_cost'], 2) . '</span>'
+                                    . '<span class="price-arrow">→</span>'
+                                    . '<span class="price-new' . ($cost_higher ? ' higher' : '') . '">₱' . number_format($h['new_cost'], 2) . '</span>'
+                                    . '</div>';
+                            } elseif ($h['new_cost'] !== null) {
+                                $cost_html = '<span class="price-same">₱' . number_format($h['new_cost'], 2) . '</span>';
+                            } else {
+                                $cost_html = '<span style="color:#9ca3af;">—</span>';
+                            }
+
+                            // Price change
+                            if ($h['old_price'] !== null && $h['new_price'] !== null) {
+                                $price_higher = $h['new_price'] > $h['old_price'];
+                                $price_html = '<div class="price-change">'
+                                    . '<span class="price-old">₱' . number_format($h['old_price'], 2) . '</span>'
+                                    . '<span class="price-arrow">→</span>'
+                                    . '<span class="price-new' . ($price_higher ? ' higher' : '') . '">₱' . number_format($h['new_price'], 2) . '</span>'
+                                    . '</div>';
+                            } elseif ($h['new_price'] !== null) {
+                                $price_html = '<span class="price-same">₱' . number_format($h['new_price'], 2) . '</span>';
+                            } else {
+                                $price_html = '<span style="color:#9ca3af;">—</span>';
+                            }
+
+                            // Action badge
+                            $action_lower = strtolower($h['action']);
+                            if (str_contains($action_lower, 'approve')) {
+                                $badge_class = 'action-approve';
+                                $badge_label = '✓ Approved';
+                            } elseif (str_contains($action_lower, 'propose')) {
+                                $badge_class = 'action-propose';
+                                $badge_label = '⏳ Proposed';
+                            } else {
+                                $badge_class = 'action-update';
+                                $badge_label = '✎ Updated';
+                            }
+
+                            $date_display = !empty($h['approved_at'])
+                                ? date('M j, Y g:i A', strtotime($h['approved_at']))
+                                : '—';
+                        ?>
+                        <tr>
+                            <td><strong><?php echo htmlspecialchars($h['product_name']); ?></strong></td>
+                            <td style="font-family:monospace;font-size:12px;color:#6c757d;"><?php echo htmlspecialchars($h['sku']); ?></td>
+                            <td><?php echo $cost_html; ?></td>
+                            <td><?php echo $price_html; ?></td>
+                            <td style="font-size:12px;color:#374151;"><?php echo htmlspecialchars($h['proposed_by']); ?></td>
+                            <td><span class="action-badge <?php echo $badge_class; ?>"><?php echo $badge_label; ?></span></td>
+                            <td class="date-col"><?php echo $date_display; ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Merchandise Tab -->
+    <div class="tab-content" id="merchandiseTab">
+        <div class="card">
+            <div class="card-header">
+                <h3><i class="fas fa-box"></i> Merchandise Price History</h3>
+                <span class="rec-count"><?php echo count(array_filter($history, fn($h) => ($h['product_type'] ?? 'merchandise') === 'merchandise')); ?> record(s)</span>
+            </div>
+            <div class="card-body">
+                <table class="ph-table">
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th>SKU</th>
+                            <th>Cost Change</th>
+                            <th>Price Change</th>
+                            <th>Proposed By</th>
+                            <th>Event</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php 
+                        $merch_history = array_filter($history, fn($h) => ($h['product_type'] ?? 'merchandise') === 'merchandise');
+                        if (empty($merch_history)): 
+                        ?>
+                        <tr>
+                            <td colspan="7">
+                                <div class="empty-state">
+                                    <i class="fas fa-box"></i>
+                                    <strong>No merchandise price history yet</strong>
+                                    <span>Merchandise price changes proposed by Admin will appear here once recorded.</span>
+                                </div>
+                            </td>
+                        </tr>
+                        <?php else: ?>
+                        <?php foreach ($merch_history as $h): ?>
+                        <?php
+                            // Cost change
+                            if ($h['old_cost'] !== null && $h['new_cost'] !== null) {
+                                $cost_higher = $h['new_cost'] > $h['old_cost'];
+                                $cost_html = '<div class="price-change">'
+                                    . '<span class="price-old">₱' . number_format($h['old_cost'], 2) . '</span>'
+                                    . '<span class="price-arrow">→</span>'
+                                    . '<span class="price-new' . ($cost_higher ? ' higher' : '') . '">₱' . number_format($h['new_cost'], 2) . '</span>'
+                                    . '</div>';
+                            } elseif ($h['new_cost'] !== null) {
+                                $cost_html = '<span class="price-same">₱' . number_format($h['new_cost'], 2) . '</span>';
+                            } else {
+                                $cost_html = '<span style="color:#9ca3af;">—</span>';
+                            }
+
+                            // Price change
+                            if ($h['old_price'] !== null && $h['new_price'] !== null) {
+                                $price_higher = $h['new_price'] > $h['old_price'];
+                                $price_html = '<div class="price-change">'
+                                    . '<span class="price-old">₱' . number_format($h['old_price'], 2) . '</span>'
+                                    . '<span class="price-arrow">→</span>'
+                                    . '<span class="price-new' . ($price_higher ? ' higher' : '') . '">₱' . number_format($h['new_price'], 2) . '</span>'
+                                    . '</div>';
+                            } elseif ($h['new_price'] !== null) {
+                                $price_html = '<span class="price-same">₱' . number_format($h['new_price'], 2) . '</span>';
+                            } else {
+                                $price_html = '<span style="color:#9ca3af;">—</span>';
+                            }
+
+                            // Action badge
+                            $action_lower = strtolower($h['action']);
+                            if (str_contains($action_lower, 'approve')) {
+                                $badge_class = 'action-approve';
+                                $badge_label = '✓ Approved';
+                            } elseif (str_contains($action_lower, 'propose')) {
+                                $badge_class = 'action-propose';
+                                $badge_label = '⏳ Proposed';
+                            } else {
+                                $badge_class = 'action-update';
+                                $badge_label = '✎ Updated';
+                            }
+
+                            $date_display = !empty($h['approved_at'])
+                                ? date('M j, Y g:i A', strtotime($h['approved_at']))
+                                : '—';
+                        ?>
+                        <tr>
+                            <td><strong><?php echo htmlspecialchars($h['product_name']); ?></strong></td>
+                            <td style="font-family:monospace;font-size:12px;color:#6c757d;"><?php echo htmlspecialchars($h['sku']); ?></td>
+                            <td><?php echo $cost_html; ?></td>
+                            <td><?php echo $price_html; ?></td>
+                            <td style="font-size:12px;color:#374151;"><?php echo htmlspecialchars($h['proposed_by']); ?></td>
+                            <td><span class="action-badge <?php echo $badge_class; ?>"><?php echo $badge_label; ?></span></td>
+                            <td class="date-col"><?php echo $date_display; ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 <script>
-  function openRejectModal(productId) {
-    document.getElementById('productId').value = productId;
-    document.getElementById('rejectModal').classList.add('open');
-  }
-  
-  function closeRejectModal() {
-    document.getElementById('rejectModal').classList.remove('open');
-  }
-  
-  document.getElementById('rejectModal').addEventListener('click', function(e) {
-    if (e.target === this) closeRejectModal();
-  });
-
-  function openHoldModal(productId) {
-    document.getElementById('holdProductId').value = productId;
-    document.getElementById('holdModal').classList.add('open');
-  }
-  
-  function closeHoldModal() {
-    document.getElementById('holdModal').classList.remove('open');
-  }
-  
-  document.getElementById('holdModal').addEventListener('click', function(e) {
-    if (e.target === this) closeHoldModal();
-  });
+function switchTab(tab) {
+    // Update tab buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.closest('.tab-btn').classList.add('active');
+    
+    // Update tab content
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+    if (tab === 'fuel') {
+        document.getElementById('fuelTab').classList.add('active');
+    } else {
+        document.getElementById('merchandiseTab').classList.add('active');
+    }
+}
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

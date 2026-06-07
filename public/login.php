@@ -87,13 +87,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $check_user = null;
             if (!empty($login_input)) {
-                $check_sql = "SELECT id, role FROM users WHERE username = ? OR email = ? OR phone = ? LIMIT 1";
-                $check_stmt = $pdo->prepare($check_sql);
-                $check_stmt->execute([$login_input, $login_input, $login_input]);
-                $check_user = $check_stmt->fetch(PDO::FETCH_ASSOC);
+                try {
+                    $_c = array_column($pdo->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_ASSOC), 'Field');
+                    $_u = in_array('user_id',     $_c) ? 'user_id'     : 'id';
+                    $_p = in_array('phone_number', $_c) ? 'phone_number' : 'phone';
+                    $check_stmt = $pdo->prepare("SELECT `{$_u}` AS user_id, role FROM users WHERE username = ? OR email = ? OR `{$_p}` = ? LIMIT 1");
+                    $check_stmt->execute([$login_input, $login_input, $login_input]);
+                    $check_user = $check_stmt->fetch(PDO::FETCH_ASSOC);
+                } catch (Exception $e) { $check_user = null; }
             }
-            $target_uid = $check_user ? $check_user['id'] : null;
-            $target_role = $check_user ? $check_user['role'] : 'guest';
+            $target_uid  = $check_user ? $check_user['user_id'] : null;
+            $target_role = $check_user ? $check_user['role']    : 'guest';
 
             // Log to login_attempts for lockout policy
             $tables = $pdo->query("SHOW TABLES LIKE 'login_attempts'")->fetchAll();
@@ -158,65 +162,140 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Input contains @ -> Email login.
                 // Input is exactly 11 digits -> Phone login.
                 // Else -> Username login.
-                $login_type = 'Username';
-            $sql = "SELECT * FROM users WHERE username = ? AND (is_deleted = 0 OR is_deleted IS NULL) LIMIT 1";
+            // ── Auto-detect schema column names ──────────────────────
+            $s_cols  = array_column($pdo->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_ASSOC), 'Field');
+            $s_uid   = in_array('user_id',      $s_cols) ? 'user_id'      : 'id';
+            $s_phone = in_array('phone_number',  $s_cols) ? 'phone_number'  : 'phone';
+            $s_pass  = in_array('password_hash', $s_cols) ? 'password_hash' : 'password';
+            $s_stat  = in_array('Active', $pdo->query("SELECT DISTINCT status FROM users LIMIT 10")->fetchAll(PDO::FETCH_COLUMN)) ? 'Active' : 'active';
+
+            $login_type = 'Username';
+            $sql = "SELECT *, `{$s_uid}` AS _uid FROM users WHERE username = ? AND status = '{$s_stat}' LIMIT 1";
 
             if (strpos($login_input, '@') !== false) {
                 $login_type = 'Email';
-                $sql = "SELECT * FROM users WHERE email = ? AND (is_deleted = 0 OR is_deleted IS NULL) LIMIT 1";
-            } elseif (preg_match('/^\d{11}$/', $login_input)) {
+                $sql = "SELECT *, `{$s_uid}` AS _uid FROM users WHERE email = ? AND status = '{$s_stat}' LIMIT 1";
+            } elseif (preg_match('/^\d{10,13}$/', $login_input)) {
                 $login_type = 'Phone';
-                $sql = "SELECT * FROM users WHERE phone = ? AND (is_deleted = 0 OR is_deleted IS NULL) LIMIT 1";
+                $sql = "SELECT *, `{$s_uid}` AS _uid FROM users WHERE `{$s_phone}` = ? AND status = '{$s_stat}' LIMIT 1";
             }
 
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$login_input]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            // Verify password using secure hash verification
             $valid_login = false;
             if ($user) {
-                // Check account status
-                if (($user['status'] ?? 'active') !== 'active') {
+                // Use _uid alias for the actual PK value
+                $user['user_id'] = $user['_uid'] ?? $user['user_id'] ?? $user['id'] ?? null;
+                $status = $user['status'] ?? 'Disabled';
+                $status_lower = strtolower($status);
+                if ($status_lower === 'locked') {
+                    $error = "Your account is locked due to too many failed attempts. Please contact the administrator.";
+                } elseif ($status_lower === 'disabled') {
+                    $error = "Your account is disabled. Please contact the administrator.";
+                } elseif ($status_lower !== 'active') {
                     $error = "Your account is inactive. Please contact the administrator.";
-                }
-                // Verify password hash
-                elseif (password_verify($password, $user['password'])) {
+                } elseif (password_verify($password, $user[$s_pass])) {
                     $valid_login = true;
                 }
             }
 
             if ($valid_login) {
-                // Successful Password Verification - Redirect to 2FA OTP
+                // Successful Password Verification - Log in directly (NO OTP)
                 try {
                     $tables = $pdo->query("SHOW TABLES LIKE 'login_attempts'")->fetchAll();
                     if (!empty($tables)) {
                         $pdo->prepare("INSERT INTO login_attempts (user_id, username, ip_address, user_agent, attempt_time, status) VALUES (?, ?, ?, ?, NOW(), 'success')")
-                            ->execute([$user['id'], $login_input, $_SERVER['REMOTE_ADDR'], $_SERVER['HTTP_USER_AGENT'] ?? null]);
+                            ->execute([$user['user_id'], $login_input, $_SERVER['REMOTE_ADDR'], $_SERVER['HTTP_USER_AGENT'] ?? null]);
                         $pdo->prepare("DELETE FROM login_attempts WHERE (username = ? OR ip_address = ?) AND status = 'failed'")
                             ->execute([$login_input, $_SERVER['REMOTE_ADDR']]);
                     }
                 } catch (Exception $e) {}
 
-                // Generate 2FA OTP
-                $otp_code = sprintf("%06d", random_int(0, 999999));
-                $expires_at = date('Y-m-d H:i:s', strtotime('+5 minutes'));
-                
-                $pdo->prepare("DELETE FROM password_reset_tokens WHERE user_id = ? AND token_type = 'login'")->execute([$user['id']]);
-                $pdo->prepare("INSERT INTO password_reset_tokens (user_id, token, token_type, expires_at, ip_address) VALUES (?, ?, 'login', ?, ?)")
-                    ->execute([$user['id'], $otp_code, $expires_at, $_SERVER['REMOTE_ADDR']]);
+                // Direct login - Set session and redirect to dashboard
+                unset($user[$s_pass]); // Remove password from session
+                $_SESSION['user']    = $user;
+                $_SESSION['user_id'] = $user['user_id'];
+                $_SESSION['role']    = $user['role'];
 
-                require_once __DIR__ . '/../config/email_config.php';
-                $sent = false;
-                if (!empty($user['email'])) {
-                    $sent = sendPasswordResetOTP($user['email'], $otp_code);
-                } elseif (!empty($user['phone'])) {
-                    $sent = sendSMS($user['phone'], "Your Petron Login OTP code is {$otp_code}. It will expire in 5 minutes.");
+                // Update last login timestamp
+                try {
+                    $pdo->prepare("UPDATE users SET updated_at = NOW() WHERE `{$s_uid}` = ?")->execute([$user['user_id']]);
+                } catch (Exception $e) { /* ignore */ }
+
+                // Activity logging
+                try {
+                    $tables = $pdo->query("SHOW TABLES LIKE 'activity_logs'")->fetchAll();
+                    if (!empty($tables)) {
+                        $logStmt = $pdo->prepare("INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, 'Login', ?, ?)");
+                        $logStmt->execute([$user['user_id'], "User logged in via {$login_type}", $_SERVER['REMOTE_ADDR']]);
+                    }
+
+                    $tables = $pdo->query("SHOW TABLES LIKE 'audit_logs'")->fetchAll();
+                    if (!empty($tables)) {
+                        $login_name   = $user['first_name'] ?? $user['username'] ?? 'Unknown';
+                        $login_role   = ucfirst(strtolower($user['role'] ?? 'staff'));
+                        $login_detail = "{$login_name} ({$login_role}) logged in via {$login_type}";
+                        $auditStmt = $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'user', 'Login', ?, 'users', ?, 'Success', ?, ?, NOW())");
+                        $auditStmt->execute([
+                            $user['user_id'],
+                            $login_detail,
+                            $user['user_id'],
+                            $_SERVER['REMOTE_ADDR'] ?? null,
+                            $_SERVER['HTTP_USER_AGENT'] ?? null,
+                        ]);
+                    }
+                } catch (Exception $e) { /* Fail silently if logs table missing */ }
+
+                // Auto Clock In for staff roles on login
+                $role = role_key($user['role'] ?? '');
+                $staff_roles = ['staff'];
+                if (in_array($role, $staff_roles)) {
+                    try {
+                        $station_id = $user['station_id'] ?? null;
+                        // Only clock in if not already clocked in
+                        $check = $pdo->prepare("SELECT id FROM labor_sessions WHERE user_id = ? AND end_time IS NULL");
+                        $check->execute([$user['user_id']]);
+                        if (!$check->fetch() && $station_id) {
+                            // Determine current shift
+                            $sp = $pdo->prepare(
+                                "SELECT shift_key, shift_name FROM shift_periods
+                                 WHERE is_active = 1 AND start_time <= TIME(NOW()) AND end_time >= TIME(NOW())
+                                 ORDER BY sort_order ASC LIMIT 1"
+                            );
+                            $sp->execute();
+                            $shift = $sp->fetch(PDO::FETCH_ASSOC);
+                            if (!$shift) {
+                                $sp2   = $pdo->query("SELECT shift_key, shift_name FROM shift_periods WHERE is_active = 1 ORDER BY sort_order DESC LIMIT 1");
+                                $shift = $sp2 ? $sp2->fetch(PDO::FETCH_ASSOC) : null;
+                            }
+                            if (!$shift) $shift = ['shift_key' => 'first', 'shift_name' => 'First Shift'];
+
+                            $pdo->prepare(
+                                "INSERT INTO labor_sessions (user_id, station_id, start_time, shift_period, shift_name)
+                                 VALUES (?, ?, NOW(), ?, ?)"
+                            )->execute([$user['user_id'], $station_id, $shift['shift_key'], $shift['shift_name']]);
+
+                            $tables = $pdo->query("SHOW TABLES LIKE 'activity_logs'")->fetchAll();
+                            if (!empty($tables)) {
+                                $pdo->prepare("INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, 'Clock In', ?, ?)")
+                                    ->execute([$user['user_id'], "Auto clock-in on login - Station {$station_id} - {$shift['shift_name']}", $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0']);
+                            }
+                        }
+                    } catch (Exception $e) { /* Fail silently, do not block login */ }
                 }
 
-                $_SESSION['temp_2fa_user_id'] = $user['id'];
-                $_SESSION['temp_2fa_login_type'] = $login_type;
-                header("Location: verify_login_otp.php");
+                // RBAC Redirect Logic
+                if ($role === 'superadmin') {
+                    header("Location: super_admin_dashboard.php");
+                } elseif ($role === 'admin') {
+                    header("Location: admin_dashboard.php");
+                } elseif ($role === 'manager') {
+                    header("Location: manager_dashboard.php");
+                } else {
+                    header("Location: staff_dashboard.php");
+                }
                 exit;
             } else {
                 // Audit Logging: Failed Attempt
@@ -225,26 +304,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $tables = $pdo->query("SHOW TABLES LIKE 'login_attempts'")->fetchAll();
                     if (!empty($tables)) {
                         $logAttempts = $pdo->prepare("INSERT INTO login_attempts (user_id, username, ip_address, user_agent, attempt_time, status, failure_reason) VALUES (?, ?, ?, ?, NOW(), 'failed', 'Invalid credentials or password.')");
-                        $logAttempts->execute([($user['id'] ?? null), $login_input, $_SERVER['REMOTE_ADDR'], $_SERVER['HTTP_USER_AGENT'] ?? null]);
+                        $logAttempts->execute([($user['user_id'] ?? null), $login_input, $_SERVER['REMOTE_ADDR'], $_SERVER['HTTP_USER_AGENT'] ?? null]);
                     }
 
-                    // Check if activity_logs table exists before inserting
                     $tables = $pdo->query("SHOW TABLES LIKE 'activity_logs'")->fetchAll();
                     if (!empty($tables)) {
                         $logStmt = $pdo->prepare("INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, 'Login Failed', ?, ?)");
-                        $logStmt->execute([($user['id'] ?? 0), "Failed login attempt for login ID: $login_input via {$login_type}", $_SERVER['REMOTE_ADDR']]);
+                        $logStmt->execute([($user['user_id'] ?? null), "Failed login attempt for login ID: $login_input via {$login_type}", $_SERVER['REMOTE_ADDR']]);
                     }
 
-                    // Check if audit_logs table exists before inserting
                     $tables = $pdo->query("SHOW TABLES LIKE 'audit_logs'")->fetchAll();
                     if (!empty($tables)) {
                         $fail_role   = ucfirst(strtolower($user['role'] ?? 'unknown'));
                         $fail_detail = "Failed login attempt — login ID: {$login_input} via {$login_type}" . ($fail_role !== 'Unknown' ? " ({$fail_role})" : '');
                         $auditStmt = $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'user', 'Login Failed', ?, 'users', ?, 'Failed', ?, ?, NOW())");
                         $auditStmt->execute([
-                            $user['id'] ?? null,
+                            $user['user_id'] ?? null,
                             $fail_detail,
-                            $user['id'] ?? null,
+                            $user['user_id'] ?? null,
                             $_SERVER['REMOTE_ADDR'] ?? null,
                             $_SERVER['HTTP_USER_AGENT'] ?? null,
                         ]);
@@ -296,11 +373,292 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flex-direction: column;
             align-items: center;
             justify-content: center;
+            position: relative;
+            overflow: hidden;
+            background: #000814;
+        }
+
+        /* 4D Animated Background Layers */
+        .bg-layer {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+        }
+
+        /* Base image layer with blur and overlay */
+        .bg-image {
             background: url('../assets/img/background.jpg') center/cover no-repeat;
+            filter: brightness(0.6) blur(0px);
+            z-index: 1;
+        }
+
+        /* Animated gradient overlay */
+        .bg-gradient {
+            background: linear-gradient(
+                135deg,
+                rgba(0, 47, 108, 0.3) 0%,
+                rgba(227, 6, 19, 0.15) 25%,
+                rgba(0, 15, 45, 0.4) 50%,
+                rgba(0, 80, 180, 0.2) 75%,
+                rgba(0, 26, 61, 0.35) 100%
+            );
+            background-size: 400% 400%;
+            animation: gradientShift 15s ease infinite;
+            z-index: 2;
+            mix-blend-mode: multiply;
+            opacity: 0.7;
+        }
+
+        @keyframes gradientShift {
+            0%   { background-position: 0% 50%; }
+            25%  { background-position: 50% 100%; }
+            50%  { background-position: 100% 50%; }
+            75%  { background-position: 50% 0%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Floating particles layer */
+        .bg-particles {
+            z-index: 3;
+            pointer-events: none;
+        }
+
+        .particle {
+            position: absolute;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(96, 165, 250, 0.8), transparent);
+            animation: float linear infinite;
+            opacity: 0;
+        }
+
+        /* Generate multiple particle sizes */
+        .particle:nth-child(1) { 
+            width: 4px; height: 4px; 
+            left: 10%; top: 80%; 
+            animation-duration: 8s; 
+            animation-delay: 0s;
+            box-shadow: 0 0 20px rgba(96, 165, 250, 0.6);
+        }
+        .particle:nth-child(2) { 
+            width: 6px; height: 6px; 
+            left: 20%; top: 60%; 
+            animation-duration: 12s; 
+            animation-delay: 1s;
+            box-shadow: 0 0 25px rgba(227, 6, 19, 0.5);
+            background: radial-gradient(circle, rgba(227, 6, 19, 0.7), transparent);
+        }
+        .particle:nth-child(3) { 
+            width: 3px; height: 3px; 
+            left: 35%; top: 90%; 
+            animation-duration: 10s; 
+            animation-delay: 2s;
+            box-shadow: 0 0 15px rgba(96, 165, 250, 0.5);
+        }
+        .particle:nth-child(4) { 
+            width: 5px; height: 5px; 
+            left: 50%; top: 85%; 
+            animation-duration: 14s; 
+            animation-delay: 0.5s;
+            box-shadow: 0 0 22px rgba(147, 197, 253, 0.6);
+        }
+        .particle:nth-child(5) { 
+            width: 4px; height: 4px; 
+            left: 65%; top: 75%; 
+            animation-duration: 11s; 
+            animation-delay: 1.5s;
+            box-shadow: 0 0 18px rgba(96, 165, 250, 0.5);
+        }
+        .particle:nth-child(6) { 
+            width: 7px; height: 7px; 
+            left: 80%; top: 70%; 
+            animation-duration: 13s; 
+            animation-delay: 2.5s;
+            box-shadow: 0 0 28px rgba(227, 6, 19, 0.6);
+            background: radial-gradient(circle, rgba(227, 6, 19, 0.8), transparent);
+        }
+        .particle:nth-child(7) { 
+            width: 3px; height: 3px; 
+            left: 90%; top: 80%; 
+            animation-duration: 9s; 
+            animation-delay: 1.8s;
+            box-shadow: 0 0 16px rgba(96, 165, 250, 0.4);
+        }
+        .particle:nth-child(8) { 
+            width: 5px; height: 5px; 
+            left: 15%; top: 50%; 
+            animation-duration: 15s; 
+            animation-delay: 3s;
+            box-shadow: 0 0 24px rgba(147, 197, 253, 0.7);
+        }
+        .particle:nth-child(9) { 
+            width: 4px; height: 4px; 
+            left: 75%; top: 40%; 
+            animation-duration: 10.5s; 
+            animation-delay: 2.2s;
+            box-shadow: 0 0 20px rgba(96, 165, 250, 0.5);
+        }
+        .particle:nth-child(10) { 
+            width: 6px; height: 6px; 
+            left: 40%; top: 65%; 
+            animation-duration: 12.5s; 
+            animation-delay: 0.8s;
+            box-shadow: 0 0 26px rgba(227, 6, 19, 0.5);
+            background: radial-gradient(circle, rgba(227, 6, 19, 0.7), transparent);
+        }
+
+        @keyframes float {
+            0% {
+                transform: translateY(0) translateX(0) scale(1);
+                opacity: 0;
+            }
+            10% {
+                opacity: 1;
+            }
+            90% {
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(-100vh) translateX(30px) scale(1.5);
+                opacity: 0;
+            }
+        }
+
+        /* Glowing orbs layer */
+        .bg-orbs {
+            z-index: 4;
+            pointer-events: none;
+            opacity: 0.6;
+        }
+
+        .orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.25;
+            animation: orbFloat ease-in-out infinite alternate;
+        }
+
+        .orb-1 {
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, rgba(0, 47, 108, 0.4), transparent);
+            top: -10%;
+            left: -10%;
+            animation-duration: 8s;
+        }
+
+        .orb-2 {
+            width: 350px;
+            height: 350px;
+            background: radial-gradient(circle, rgba(227, 6, 19, 0.3), transparent);
+            bottom: -10%;
+            right: -10%;
+            animation-duration: 10s;
+            animation-delay: 1s;
+        }
+
+        .orb-3 {
+            width: 300px;
+            height: 300px;
+            background: radial-gradient(circle, rgba(0, 80, 180, 0.35), transparent);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            animation-duration: 12s;
+            animation-delay: 2s;
+        }
+
+        @keyframes orbFloat {
+            0% {
+                transform: translate(0, 0) scale(1);
+            }
+            100% {
+                transform: translate(20px, -20px) scale(1.1);
+            }
+        }
+
+        /* Scanlines effect */
+        .bg-scanlines {
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 0, 0, 0.05) 0px,
+                rgba(0, 0, 0, 0.05) 1px,
+                transparent 1px,
+                transparent 2px
+            );
+            z-index: 5;
+            pointer-events: none;
+            opacity: 0.15;
+        }
+
+        /* Grid overlay */
+        .bg-grid {
+            background-image: 
+                linear-gradient(rgba(96, 165, 250, 0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(96, 165, 250, 0.02) 1px, transparent 1px);
+            background-size: 50px 50px;
+            z-index: 6;
+            pointer-events: none;
+            animation: gridMove 20s linear infinite;
+        }
+
+        @keyframes gridMove {
+            0% {
+                background-position: 0 0;
+            }
+            100% {
+                background-position: 50px 50px;
+            }
+        }
+
+        /* Light rays */
+        .bg-rays {
+            z-index: 7;
+            pointer-events: none;
             overflow: hidden;
         }
 
-        /* no background blobs — image shows 100% clean */
+        .ray {
+            position: absolute;
+            width: 2px;
+            height: 100%;
+            background: linear-gradient(
+                to bottom,
+                transparent 0%,
+                rgba(96, 165, 250, 0.1) 10%,
+                rgba(96, 165, 250, 0.2) 50%,
+                rgba(96, 165, 250, 0.1) 90%,
+                transparent 100%
+            );
+            animation: rayShine 3s ease-in-out infinite;
+            opacity: 0;
+        }
+
+        .ray:nth-child(1) {
+            left: 20%;
+            animation-delay: 0s;
+        }
+
+        .ray:nth-child(2) {
+            left: 50%;
+            animation-delay: 1s;
+        }
+
+        .ray:nth-child(3) {
+            left: 80%;
+            animation-delay: 2s;
+        }
+
+        @keyframes rayShine {
+            0%, 100% {
+                opacity: 0;
+                transform: translateY(-100%);
+            }
+            50% {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
 
 
         .login-wrap {
@@ -833,10 +1191,86 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             letter-spacing: normal;
             font-size: 14px;
         }
+        /* Captcha validation states */
+        .captcha-input.captcha-error {
+            border-color: #ef4444 !important;
+            background: rgba(239, 68, 68, 0.15) !important;
+            box-shadow: 0 0 16px rgba(239, 68, 68, 0.6), 0 2px 6px rgba(0,0,0,.3) inset !important;
+        }
+        .captcha-input.captcha-success {
+            border-color: #22c55e !important;
+            background: rgba(34, 197, 94, 0.15) !important;
+            box-shadow: 0 0 16px rgba(34, 197, 94, 0.6), 0 2px 6px rgba(0,0,0,.3) inset !important;
+        }
+        .captcha-refresh {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            width: 48px;
+            height: 48px;
+            background: rgba(0,47,108,.45);
+            border: 1.5px solid rgba(100,160,255,.3);
+            border-radius: 12px;
+            color: #93c5fd;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all .25s;
+            box-shadow: 0 0 12px rgba(59,130,246,.2) inset;
+        }
+        .captcha-refresh:hover:not(:disabled) {
+            background: rgba(0,47,108,.65);
+            border-color: rgba(100,160,255,.5);
+            color: #60a5fa;
+            box-shadow: 0 0 16px rgba(59,130,246,.35) inset;
+            transform: scale(1.05);
+        }
+        .captcha-refresh:active:not(:disabled) {
+            transform: scale(0.95);
+        }
+        .captcha-refresh:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .captcha-refresh.spinning {
+            animation: spinRefresh 0.6s ease;
+        }
+        @keyframes spinRefresh {
+            from { transform: rotate(0deg); }
+            to   { transform: rotate(360deg); }
+        }
 
     </style>
 </head>
 <body>
+
+<!-- 4D Background Layers -->
+<div class="bg-layer bg-image"></div>
+<div class="bg-layer bg-gradient"></div>
+<div class="bg-layer bg-orbs">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+</div>
+<div class="bg-layer bg-particles">
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+</div>
+<div class="bg-layer bg-scanlines"></div>
+<div class="bg-layer bg-grid"></div>
+<div class="bg-layer bg-rays">
+    <div class="ray"></div>
+    <div class="ray"></div>
+    <div class="ray"></div>
+</div>
 
 <div class="login-wrap">
     <div class="login-card">
@@ -921,6 +1355,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         required
                         aria-label="CAPTCHA Answer"
                     >
+                    <button type="button" class="captcha-refresh" id="refreshCaptcha" aria-label="Refresh CAPTCHA">
+                        <i class="fas fa-redo-alt"></i>
+                    </button>
                 </div>
             </div>
 
@@ -954,6 +1391,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     var spinner    = document.getElementById('spinner');
     var btnText    = document.getElementById('btnText');
     var typeBadge  = document.getElementById('typeBadge');
+    var refreshBtn = document.getElementById('refreshCaptcha');
+    var captchaQuestion = document.getElementById('captchaQuestion');
+    var captchaInput = document.getElementById('captchaInput');
+    
+    /* Real-time captcha validation */
+    function validateCaptcha() {
+        var answer = captchaInput.value.trim();
+        if (!answer) {
+            captchaInput.classList.remove('captcha-error', 'captcha-success');
+            return;
+        }
+        
+        // Get the question text and calculate expected answer
+        var questionText = captchaQuestion.textContent.trim();
+        var match = questionText.match(/(\d+)\s*\+\s*(\d+)/);
+        
+        if (match) {
+            var num1 = parseInt(match[1], 10);
+            var num2 = parseInt(match[2], 10);
+            var correctAnswer = num1 + num2;
+            var userAnswer = parseInt(answer, 10);
+            
+            if (userAnswer === correctAnswer) {
+                captchaInput.classList.remove('captcha-error');
+                captchaInput.classList.add('captcha-success');
+            } else {
+                captchaInput.classList.remove('captcha-success');
+                captchaInput.classList.add('captcha-error');
+            }
+        }
+    }
+    
+    // Validate on input
+    captchaInput.addEventListener('input', validateCaptcha);
+    
+    // Validate on blur
+    captchaInput.addEventListener('blur', validateCaptcha);
 
     /* Live type detection */
     function detectType(val) {
@@ -981,6 +1455,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         var isText = pwField.type === 'text';
         pwField.type = isText ? 'password' : 'text';
         pwIcon.className = isText ? 'fas fa-eye' : 'fas fa-eye-slash';
+    });
+
+    /* Refresh CAPTCHA */
+    refreshBtn.addEventListener('click', function () {
+        // Prevent multiple clicks
+        if (refreshBtn.disabled) return;
+        
+        // Disable button and add spinning animation
+        refreshBtn.disabled = true;
+        refreshBtn.classList.add('spinning');
+        
+        // Send AJAX request to refresh CAPTCHA
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', 'refresh_captcha.php', true);
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        
+        xhr.onload = function () {
+            if (xhr.status === 200) {
+                try {
+                    var response = JSON.parse(xhr.responseText);
+                    if (response.success) {
+                        captchaQuestion.textContent = response.question;
+                        captchaInput.value = '';
+                        captchaInput.classList.remove('captcha-error', 'captcha-success');
+                        captchaInput.focus();
+                    } else {
+                        console.error('CAPTCHA refresh failed:', response.error || 'Unknown error');
+                    }
+                } catch (e) {
+                    console.error('Error parsing CAPTCHA response:', e);
+                }
+            } else {
+                console.error('Server error:', xhr.status);
+            }
+            
+            // Remove spinning animation and re-enable button after 600ms
+            setTimeout(function () {
+                refreshBtn.classList.remove('spinning');
+                refreshBtn.disabled = false;
+            }, 600);
+        };
+        
+        xhr.onerror = function () {
+            console.error('Error refreshing CAPTCHA');
+            setTimeout(function () {
+                refreshBtn.classList.remove('spinning');
+                refreshBtn.disabled = false;
+            }, 600);
+        };
+        
+        xhr.send('refresh=1');
     });
 
     /* Form submit */

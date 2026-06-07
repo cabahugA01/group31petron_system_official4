@@ -24,6 +24,17 @@ if (empty($csrf_token) || $csrf_token !== ($_SESSION['csrf_token'] ?? '')) {
     echo json_encode(['ok' => false, 'error' => 'Invalid CSRF token.']); exit;
 }
 
+// Dynamic Column Detection
+$user_cols = [];
+try {
+    $col_query = $pdo->query("SHOW COLUMNS FROM users");
+    while ($col = $col_query->fetch(PDO::FETCH_ASSOC)) {
+        $user_cols[] = $col['Field'];
+    }
+} catch (Exception $e) { /* ignore */ }
+$s_phone = in_array('phone_number', $user_cols) ? 'phone_number' : 'phone';
+$s_pass  = in_array('password_hash', $user_cols) ? 'password_hash' : 'password';
+
 $action = trim($_POST['action'] ?? '');
 
 // ── Helper: send credentials email ───────────────────────────
@@ -86,7 +97,7 @@ if ($action === 'create_admin') {
         $dup_sql = 'SELECT id FROM users WHERE username = ?';
         $dup_params = [$username];
         if (!empty($email)) { $dup_sql .= ' OR email = ?'; $dup_params[] = $email; }
-        if (!empty($phone)) { $dup_sql .= ' OR phone = ?'; $dup_params[] = $phone; }
+        if (!empty($phone)) { $dup_sql .= " OR {$s_phone} = ?"; $dup_params[] = $phone; }
         $chk = $pdo->prepare($dup_sql . ' LIMIT 1');
         $chk->execute($dup_params);
         if ($chk->rowCount() > 0) {
@@ -124,7 +135,7 @@ if ($action === 'create_admin') {
 
         // Insert
         $ins = $pdo->prepare(
-            "INSERT INTO users (username, name, first_name, last_name, email, phone, password, role, station_id, status, must_change_password, created_at)
+            "INSERT INTO users (username, name, first_name, last_name, email, {$s_phone}, {$s_pass}, role, station_id, status, must_change_password, created_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, 'admin', ?, 'active', 1, NOW())"
         );
         $ins->execute([$username, $full_name, $fn_first, $fn_last, $email, $phone, $hashed, $station_id]);

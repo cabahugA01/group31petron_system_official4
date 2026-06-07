@@ -1726,7 +1726,7 @@ try {
     </a>
 
     <!-- My Shift -->
-    <a href="staff_reports.php?view=personal_activity&user_id=<?= (int)$me['id'] ?>" class="quick-action-btn <?= $qa_clocked_in ? 'qa-active' : '' ?>">
+    <a href="staff_reports_complete.php?view=activity_reports&sub=staff_activity" class="quick-action-btn <?= $qa_clocked_in ? 'qa-active' : '' ?>">
       <div style="position:relative;display:inline-block">
         <i class="fas fa-clock"></i>
         <?php if ($qa_clocked_in): ?>
@@ -1742,31 +1742,46 @@ try {
   </div>
 </div>
 
-<!-- ===== REPORTS SHORTCUTS ===== -->
+<!-- ===== REPORTS & ADD-ONS ===== -->
 <div class="widget-card widget-full" style="margin-top:20px">
-  <h3><i class="fas fa-file-alt"></i> Reports Shortcuts
-    <span style="margin-left:8px;font-size:11px;font-weight:500;color:#667085">Your personal reports — scoped to your station &amp; activity</span>
+  <h3><i class="fas fa-file-chart-line"></i> Reports & Add-ons
+    <span style="margin-left:8px;font-size:11px;font-weight:500;color:#667085">Comprehensive reports — Sales, Job Orders, Deliveries, Payments, Customers & Activity</span>
   </h3>
   <div class="reports-grid">
-    <a href="staff_reports.php?view=inventory_report" class="report-btn">
+    <a href="staff_reports_complete.php?view=sales_reports&sub=daily_summary" class="report-btn">
+      <i class="fas fa-dollar-sign"></i>
+      <span>Sales Reports</span>
+      <span class="qa-desc">Daily sales & customer linkage</span>
+    </a>
+    <a href="staff_reports_complete.php?view=job_orders_reports&sub=job_tracker" class="report-btn">
+      <i class="fas fa-wrench"></i>
+      <span>Job Orders</span>
+      <span class="qa-desc">Tracker & performance</span>
+    </a>
+    <a href="staff_reports_complete.php?view=deliveries_reports&sub=fuel_deliveries" class="report-btn">
       <i class="fas fa-truck"></i>
-      <span>Inventory Report</span>
-      <span class="qa-desc">Received &amp; encoded deliveries</span>
+      <span>Deliveries</span>
+      <span class="qa-desc">Fuel, merchandise & movement</span>
     </a>
-    <a href="staff_reports.php?view=customer_report" class="report-btn">
+    <a href="staff_reports_complete.php?view=meter_readings" class="report-btn">
+      <i class="fas fa-tachometer-alt"></i>
+      <span>Meter Readings</span>
+      <span class="qa-desc">Pump reading logs per day</span>
+    </a>
+    <a href="staff_reports_complete.php?view=payments_reports&sub=all" class="report-btn">
+      <i class="fas fa-credit-card"></i>
+      <span>Payments</span>
+      <span class="qa-desc">Unpaid, pending, paid status</span>
+    </a>
+    <a href="staff_reports_complete.php?view=customer_reports&sub=customer_list" class="report-btn">
       <i class="fas fa-users"></i>
-      <span>Customer Report</span>
-      <span class="qa-desc">Basic info + your transactions</span>
+      <span>Customers</span>
+      <span class="qa-desc">List & transaction history</span>
     </a>
-    <a href="staff_reports.php?view=daily_sales" class="report-btn">
-      <i class="fas fa-receipt"></i>
-      <span>Transaction Report</span>
-      <span class="qa-desc">Merchandise &amp; credit sales</span>
-    </a>
-    <a href="staff_reports.php?view=personal_activity&user_id=<?= (int)$me['id'] ?>" class="report-btn">
-      <i class="fas fa-user-clock"></i>
-      <span>Personal Activity</span>
-      <span class="qa-desc">Clock-in/out &amp; action logs</span>
+    <a href="staff_reports_complete.php?view=activity_reports&sub=staff_activity" class="report-btn">
+      <i class="fas fa-chart-line"></i>
+      <span>Activity Reports</span>
+      <span class="qa-desc">Activity log & audit trail</span>
     </a>
   </div>
 </div>

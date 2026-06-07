@@ -25,18 +25,60 @@ $login_type = $_SESSION['temp_2fa_login_type'] ?? 'Username';
 
 // Fetch user data
 try {
-    $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ? LIMIT 1");
+    // ── Auto-detect actual column names ──────────────────────────
+    $s_cols  = array_column($pdo->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_ASSOC), 'Field');
+    $s_uid   = in_array('user_id',      $s_cols) ? 'user_id'      : 'id';
+    $s_phone = in_array('phone_number',  $s_cols) ? 'phone_number'  : 'phone';
+    $s_pass  = in_array('password_hash', $s_cols) ? 'password_hash' : 'password';
+    $s_stat  = in_array('Active', $pdo->query("SELECT DISTINCT status FROM users LIMIT 10")->fetchAll(PDO::FETCH_COLUMN)) ? 'Active' : 'active';
+
+    $stmt = $pdo->prepare("SELECT *, `{$s_uid}` AS _uid FROM users WHERE `{$s_uid}` = ? LIMIT 1");
     $stmt->execute([$user_id]);
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
     if (!$user) {
         header("Location: login.php");
         exit;
     }
+    // Normalise: always expose user_id key regardless of schema
+    $user['user_id'] = $user['_uid'] ?? $user['user_id'] ?? $user['id'] ?? null;
+
 } catch (Exception $e) {
     error_log("DB Error: " . $e->getMessage());
     header("Location: login.php");
     exit;
 }
+
+// ── Dev Mode: show OTP on-screen when SMS is simulated ───────────────────
+$dev_otp_login    = null;
+$sms_is_simulated = false;
+$debug_info = []; // Store debug info to display
+try {
+    $sms_cfg = __DIR__ . '/../config/sms_config.php';
+    if (file_exists($sms_cfg)) {
+        $sms_config = [];
+        include $sms_cfg;
+        $sms_is_simulated = empty($sms_config['enabled']) || $sms_config['enabled'] === false
+                          || ($sms_config['api_key'] ?? '') === 'YOUR_SEMAPHORE_API_KEY_HERE';
+    }
+    if ($sms_is_simulated) {
+        $s = $pdo->prepare("SELECT token, token_type, expires_at, is_used FROM password_reset_tokens WHERE user_id = ? AND is_used = 0 AND expires_at > NOW() ORDER BY id DESC LIMIT 1");
+        $s->execute([$user_id]);
+        $token_info = $s->fetch(PDO::FETCH_ASSOC);
+        if ($token_info) {
+            $dev_otp_login = $token_info['token'];
+            $debug_info['latest_token'] = $token_info['token'];
+            $debug_info['token_type'] = $token_info['token_type'];
+            $debug_info['expires_at'] = $token_info['expires_at'];
+        }
+        
+        // Get ALL tokens for this user for debugging
+        $all_tokens = $pdo->prepare("SELECT token, token_type, is_used, expires_at FROM password_reset_tokens WHERE user_id = ? ORDER BY id DESC LIMIT 3");
+        $all_tokens->execute([$user_id]);
+        $debug_info['all_tokens'] = $all_tokens->fetchAll(PDO::FETCH_ASSOC);
+    }
+} catch (Exception $e) { /* silently ignore */ }
+
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -48,6 +90,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Please enter a valid 6-digit OTP.";
     } else {
         try {
+            // DEBUG: Log what we're searching for
+            error_log("=== OTP DEBUG ===");
+            error_log("Searching for OTP: {$otp}");
+            error_log("User ID: {$user_id}");
+            error_log("Token Type: login");
+            
+            // First, check if ANY token exists for this user
+            $debug_stmt = $pdo->prepare("SELECT * FROM password_reset_tokens WHERE user_id = ? ORDER BY id DESC LIMIT 1");
+            $debug_stmt->execute([$user_id]);
+            $debug_token = $debug_stmt->fetch(PDO::FETCH_ASSOC);
+            error_log("Latest token for user: " . print_r($debug_token, true));
+            
             $stmt = $pdo->prepare("
                 SELECT prt.token, prt.expires_at, prt.is_used
                 FROM password_reset_tokens prt
@@ -57,8 +111,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$otp, $user_id]);
             $token_data = $stmt->fetch(PDO::FETCH_ASSOC);
             
+            error_log("Token data found: " . print_r($token_data, true));
+            
             if (!$token_data) {
-                $error = "Invalid OTP. Please check the code and try again.";
+                // Try searching WITHOUT token_type filter to see if token exists at all
+                $debug2 = $pdo->prepare("SELECT * FROM password_reset_tokens WHERE token = ? AND user_id = ?");
+                $debug2->execute([$otp, $user_id]);
+                $any_token = $debug2->fetch(PDO::FETCH_ASSOC);
+                
+                if ($any_token) {
+                    error_log("Token EXISTS but with different type: " . $any_token['token_type']);
+                    $error = "Invalid OTP. Token type mismatch. Expected 'login', found '{$any_token['token_type']}'";
+                } else {
+                    error_log("Token does NOT exist in database at all");
+                    $error = "Invalid OTP. Please check the code and try again.";
+                }
             } elseif (strtotime($token_data['expires_at']) < time()) {
                 $error = "OTP has expired. Please login again.";
                 // Clean up expired token
@@ -71,14 +138,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 // Update last login
                 try {
-                    $pdo->prepare("UPDATE users SET status = 'active' WHERE id = ?")->execute([$user['id']]);
+                    // Remove old last-login update that used wrong column; update updated_at instead
+                    $pdo->prepare("UPDATE users SET updated_at = NOW() WHERE `{$s_uid}` = ?")->execute([$user['user_id']]);
                 } catch (Exception $e) { /* ignore */ }
 
                 // Normal login success session
-                unset($user['password']);
-                $_SESSION['user'] = $user;
-                $_SESSION['user_id'] = $user['id'];
-                $_SESSION['role'] = $user['role'];
+                unset($user['password_hash']); // strip sensitive data
+                $_SESSION['user']    = $user;
+                $_SESSION['user_id'] = $user['user_id'];
+                $_SESSION['role']    = $user['role'];
                 
                 unset($_SESSION['temp_2fa_user_id']);
                 unset($_SESSION['temp_2fa_login_type']);
@@ -88,20 +156,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $tables = $pdo->query("SHOW TABLES LIKE 'activity_logs'")->fetchAll();
                     if (!empty($tables)) {
                         $logStmt = $pdo->prepare("INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, 'Login', ?, ?)");
-                        $logStmt->execute([$user['id'], "User logged in via {$login_type} (2FA Verified)", $_SERVER['REMOTE_ADDR']]);
+                        $logStmt->execute([$user['user_id'], "User logged in via {$login_type} (2FA Verified)", $_SERVER['REMOTE_ADDR']]);
                     }
 
-                    // Check if audit_logs table exists before inserting
                     $tables = $pdo->query("SHOW TABLES LIKE 'audit_logs'")->fetchAll();
                     if (!empty($tables)) {
-                        $login_name   = $user['name'] ?? $user['username'] ?? 'Unknown';
+                        $login_name   = $user['first_name'] ?? $user['username'] ?? 'Unknown';
                         $login_role   = ucfirst(strtolower($user['role'] ?? 'staff'));
                         $login_detail = "{$login_name} ({$login_role}) logged in via {$login_type} (2FA Verified)";
                         $auditStmt = $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'user', 'Login', ?, 'users', ?, 'Success', ?, ?, NOW())");
                         $auditStmt->execute([
-                            $user['id'],
+                            $user['user_id'],
                             $login_detail,
-                            $user['id'],
+                            $user['user_id'],
                             $_SERVER['REMOTE_ADDR'] ?? null,
                             $_SERVER['HTTP_USER_AGENT'] ?? null,
                         ]);
@@ -116,7 +183,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $station_id = $user['station_id'] ?? null;
                         // Only clock in if not already clocked in
                         $check = $pdo->prepare("SELECT id FROM labor_sessions WHERE user_id = ? AND end_time IS NULL");
-                        $check->execute([$user['id']]);
+                        $check->execute([$user['user_id']]);
                         if (!$check->fetch() && $station_id) {
                             // Determine current shift
                             $sp = $pdo->prepare(
@@ -127,25 +194,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $sp->execute();
                             $shift = $sp->fetch(PDO::FETCH_ASSOC);
                             if (!$shift) {
-                                // Fallback: use the last active shift
-                                $sp2 = $pdo->query(
-                                    "SELECT shift_key, shift_name FROM shift_periods
-                                     WHERE is_active = 1 ORDER BY sort_order DESC LIMIT 1"
-                                 );
+                                $sp2   = $pdo->query("SELECT shift_key, shift_name FROM shift_periods WHERE is_active = 1 ORDER BY sort_order DESC LIMIT 1");
                                 $shift = $sp2 ? $sp2->fetch(PDO::FETCH_ASSOC) : null;
                             }
-                            if (!$shift) {
-                                $shift = ['shift_key' => 'first', 'shift_name' => 'First Shift'];
-                            }
+                            if (!$shift) $shift = ['shift_key' => 'first', 'shift_name' => 'First Shift'];
+
                             $pdo->prepare(
                                 "INSERT INTO labor_sessions (user_id, station_id, start_time, shift_period, shift_name)
                                  VALUES (?, ?, NOW(), ?, ?)"
-                            )->execute([$user['id'], $station_id, $shift['shift_key'], $shift['shift_name']]);
-                            // Log the auto clock-in
+                            )->execute([$user['user_id'], $station_id, $shift['shift_key'], $shift['shift_name']]);
+
                             $tables = $pdo->query("SHOW TABLES LIKE 'activity_logs'")->fetchAll();
                             if (!empty($tables)) {
                                 $pdo->prepare("INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, 'Clock In', ?, ?)")
-                                    ->execute([$user['id'], "Auto clock-in on login - Station {$station_id} - {$shift['shift_name']}", $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0']);
+                                    ->execute([$user['user_id'], "Auto clock-in on login - Station {$station_id} - {$shift['shift_name']}", $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0']);
                             }
                         }
                     } catch (Exception $e) { /* Fail silently, do not block login */ }
@@ -470,6 +532,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <i class="fas fa-shield-halved"></i>
                 For security, please verify your login. We've sent a 6-digit OTP code to your registered contact.
             </div>
+
+            <?php if ($sms_is_simulated && $dev_otp_login !== null): ?>
+            <!-- Dev Mode OTP Hint -->
+            <div style="
+                background: rgba(234,179,8,0.15);
+                border: 1.5px solid rgba(234,179,8,0.5);
+                border-radius: 12px;
+                padding: 12px 16px;
+                margin-bottom: 20px;
+                display: flex;
+                align-items: flex-start;
+                gap: 12px;
+                font-size: 13px;
+            ">
+                <i class="fas fa-tools" style="color:#fbbf24; font-size:18px; flex-shrink:0; margin-top:2px;"></i>
+                <div style="color:#fde68a; line-height:1.5; flex:1;">
+                    <strong style="display:block; margin-bottom:8px;">⚠ Dev Mode — Debug Info</strong>
+                    <div style="background:rgba(0,0,0,0.3); padding:10px; border-radius:6px; font-family:monospace; margin-bottom:8px;">
+                        <div><strong>Latest OTP:</strong> <span style="font-size:20px; letter-spacing:4px; color:#fff;"><?php echo htmlspecialchars($dev_otp_login); ?></span></div>
+                        <div><strong>Token Type:</strong> <?php echo htmlspecialchars($debug_info['token_type'] ?? 'unknown'); ?></div>
+                        <div><strong>Expected Type:</strong> login</div>
+                        <?php if (isset($debug_info['token_type']) && $debug_info['token_type'] !== 'login'): ?>
+                            <div style="color:#f87171; margin-top:8px;">
+                                <strong>⚠️ TYPE MISMATCH!</strong><br>
+                                This token has type '<?php echo $debug_info['token_type']; ?>' but verify_login_otp expects 'login'
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                    
+                    <?php if (!empty($debug_info['all_tokens'])): ?>
+                    <details style="margin-top:8px;">
+                        <summary style="cursor:pointer; color:#fbbf24;">Show All Recent Tokens</summary>
+                        <div style="margin-top:8px; font-size:11px;">
+                            <?php foreach ($debug_info['all_tokens'] as $idx => $t): ?>
+                                <div style="background:rgba(0,0,0,0.2); padding:6px; border-radius:4px; margin:4px 0;">
+                                    <?php echo ($idx + 1); ?>. Token: <strong><?php echo $t['token']; ?></strong> | 
+                                    Type: <strong><?php echo $t['token_type']; ?></strong> | 
+                                    Used: <?php echo $t['is_used'] ? 'Yes' : 'No'; ?> |
+                                    Expires: <?php echo $t['expires_at']; ?>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </details>
+                    <?php endif; ?>
+                    
+                    <span style="display:block; font-size:11px; opacity:0.7; margin-top:8px;">
+                        Configure Semaphore in config/sms_config.php to send real SMS.
+                    </span>
+                </div>
+            </div>
+            <?php endif; ?>
 
             <form action="" method="POST" id="otpForm">
                 

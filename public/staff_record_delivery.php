@@ -39,6 +39,32 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'products_by_category') {
     exit;
 }
 
+/* ══════════════════════════════════════════════════════════
+   AJAX — fetch category by product name (AUTO-FETCH)
+══════════════════════════════════════════════════════════ */
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_product_category') {
+    header('Content-Type: application/json');
+    $product_name = trim($_GET['product_name'] ?? '');
+    $category = '';
+    if ($product_name !== '') {
+        try {
+            $stmt = $pdo->prepare("
+                SELECT category
+                FROM inventory_products
+                WHERE product_name = ? AND category NOT IN ('Fuel')
+                LIMIT 1
+            ");
+            $stmt->execute([$product_name]);
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($result) {
+                $category = $result['category'];
+            }
+        } catch (Exception $e) {}
+    }
+    echo json_encode(['category' => $category]);
+    exit;
+}
+
 /* Bootstrap deliveries_oversight table once */
 try {
     $pdo->exec("
@@ -115,9 +141,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recei
                 $pdo->commit();
 
                 if ($status === 'Discrepancy') {
-                    header('Location: staff_delivery_history.php?msg=discrepancy&type=error');
+                    header('Location: staff_delivery_status.php?msg=discrepancy&type=warning');
                 } else {
-                    header('Location: staff_delivery_history.php?msg=received&type=success');
+                    header('Location: staff_delivery_status.php?msg=received&type=success');
                 }
                 exit;
             } else {
@@ -198,7 +224,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
             $pdo->commit();
             if ($success_count > 0) {
                 log_activity($pdo, $me['id'], 'Staff Manual Delivery', "Batch: {$batch_id} | Items: {$success_count}");
-                header('Location: staff_delivery_history.php?msg=manual_saved&type=success');
+                header('Location: staff_delivery_status.php?msg=manual_saved&type=success');
                 exit;
             } else {
                 $msg = 'No valid items provided.'; $msg_type = 'error';
@@ -230,7 +256,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit_
             $msg = "&#10003; Delivery record successfully updated and resubmitted for manager approval.";
             $msg_type = 'success';
             log_activity($pdo, $me['id'], 'Staff Resubmitted Delivery', "Resubmitted delivery ID: {$delivery_id} with qty: {$quantity}");
-            header('Location: staff_delivery_history.php?msg=resubmitted&type=success');
+            header('Location: staff_delivery_status.php?msg=resubmitted&type=success');
             exit;
         } catch (Exception $e) {
             $msg = 'Error updating delivery: ' . $e->getMessage(); $msg_type = 'error';
@@ -306,6 +332,21 @@ if (isset($_GET['edit'])) {
     } catch (Exception $e) {}
 }
 
+/* ── Check if coming from Expected Deliveries (PO selected) ── */
+$selected_po = null;
+if (isset($_GET['po_id'])) {
+    $po_id = (int)$_GET['po_id'];
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM deliveries_oversight WHERE id = ? AND station_id = ? AND status = 'Expected Delivery' AND delivery_type = 'merchandise'");
+        $stmt->execute([$po_id, $station_id]);
+        $selected_po = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$selected_po) {
+            $msg = "Error: Expected delivery not found or already processed.";
+            $msg_type = "error";
+        }
+    } catch (Exception $e) {}
+}
+
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
@@ -339,6 +380,11 @@ include __DIR__ . '/../partials/header.php';
 .form-control, .form-select { width: 100%; padding: 9px 12px; border: 1px solid #ced4da; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
 .form-control:focus, .form-select:focus { border-color: #002F70; outline: 0; box-shadow: 0 0 0 3px rgba(0,47,112,.15); }
 .form-control[readonly] { background: #e9ecef; cursor: not-allowed; font-weight: 600; color: #495057; }
+textarea.form-control { resize: vertical; font-family: inherit; }
+
+/* ── Variance Warning ── */
+.variance-warning { display: none; background: #fff3cd; color: #856404; padding: 12px; border-radius: 6px; font-size: 13px; margin-top: 10px; border: 1px solid #ffeeba; align-items: flex-start; gap: 8px; }
+.variance-warning i { margin-top: 2px; flex-shrink: 0; }
 
 /* ── Modal ── */
 .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.6); z-index: 9999; align-items: center; justify-content: center; }
@@ -351,8 +397,13 @@ include __DIR__ . '/../partials/header.php';
 
 <div class="page-head">
     <div>
-        <h1 class="h1"><i class="fas fa-boxes"></i> Record Merchandise Delivery</h1>
-        <div class="sub">Receive expected merchandise deliveries from finalized POs management.</div>
+        <h1 class="h1"><i class="fas fa-boxes"></i> Record Delivery Receipt</h1>
+        <div class="sub">Encode actual delivery details: DR number, Batch ID, received items, quantity, and date received.</div>
+    </div>
+    <div class="header-actions">
+        <a href="staff_dashboard.php" style="background:#6c757d;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:8px;transition:background .2s;">
+            <i class="fas fa-arrow-left"></i> Back to Dashboard
+        </a>
     </div>
 </div>
 
@@ -364,22 +415,76 @@ include __DIR__ . '/../partials/header.php';
 <?php endif; ?>
 
 <div class="layout-grid">
-    <!-- LEFT: Expected Deliveries (From Admin POs) -->
+    <!-- LEFT: Expected Delivery Details (VIEW-ONLY - Reference for Staff) -->
     <div class="del-card">
         <div class="del-card-head">
             <div class="del-card-title">
-                <i class="fas fa-clipboard-list"></i> Expected Deliveries
-                <?php if(count($expected_deliveries)>0): ?>
-                    <span style="background:#dc3545;color:#fff;border-radius:10px;padding:2px 8px;font-size:11px;"><?php echo count($expected_deliveries); ?></span>
-                <?php endif; ?>
+                <i class="fas fa-clipboard-check"></i> <?php echo $selected_po ? 'Expected Delivery Details' : 'Expected Deliveries'; ?>
             </div>
-            <span style="font-size:12px;color:#6c757d;">Based on Finalized POs</span>
+            <?php if ($selected_po): ?>
+                <span style="font-size:12px;color:#6c757d;">Reference Only - Use Manual Encode →</span>
+            <?php else: ?>
+                <span style="font-size:12px;color:#6c757d;">Based on Finalized POs</span>
+            <?php endif; ?>
         </div>
         <div class="del-card-body">
-            <?php if (empty($expected_deliveries)): ?>
+            <?php if ($selected_po): ?>
+                <!-- VIEW-ONLY: PO Order Details for Reference -->
+                <div style="background:#e8f4fd;border:1px solid #b8d4f0;border-radius:8px;padding:20px;">
+                    <h4 style="margin:0 0 16px 0;color:#002F70;font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;">
+                        <i class="fas fa-file-invoice"></i> Purchase Order Details
+                    </h4>
+                    
+                    <div style="display:grid;gap:12px;font-size:14px;">
+                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
+                            <span style="color:#6c757d;font-weight:500;">PO Number:</span>
+                            <strong style="color:#002F70;font-family:monospace;font-size:15px;"><?php echo htmlspecialchars($selected_po['source_ref'] ?? 'N/A'); ?></strong>
+                        </div>
+                        
+                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
+                            <span style="color:#6c757d;font-weight:500;">Product:</span>
+                            <strong style="color:#212529;"><?php echo htmlspecialchars($selected_po['product']); ?></strong>
+                        </div>
+                        
+                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
+                            <span style="color:#6c757d;font-weight:500;">Supplier:</span>
+                            <strong style="color:#212529;"><?php echo htmlspecialchars($selected_po['supplier']); ?></strong>
+                        </div>
+                        
+                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
+                            <span style="color:#6c757d;font-weight:500;">Expected Quantity:</span>
+                            <strong style="color:#002F70;font-size:16px;"><?php echo number_format($selected_po['quantity'], 2); ?> <span style="font-size:14px;color:#6c757d;"><?php echo htmlspecialchars($selected_po['unit']); ?></span></strong>
+                        </div>
+                        
+                        <?php if (!empty($selected_po['remarks'])): ?>
+                        <div style="padding:10px 0;">
+                            <span style="color:#6c757d;font-weight:500;display:block;margin-bottom:6px;">Notes:</span>
+                            <p style="margin:0;padding:10px;background:#fff;border-radius:6px;font-size:13px;color:#495057;"><?php echo htmlspecialchars($selected_po['remarks']); ?></p>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:14px;margin-top:20px;display:flex;align-items:flex-start;gap:10px;">
+                    <i class="fas fa-info-circle" style="color:#856404;margin-top:2px;font-size:18px;flex-shrink:0;"></i>
+                    <div style="font-size:13px;color:#856404;line-height:1.5;">
+                        <strong>Instructions:</strong> Use the <strong>"Manual Encode Delivery"</strong> form on the right to record the actual delivery receipt. Fill in the actual quantity received, DR number, and any remarks.
+                    </div>
+                </div>
+
+                <div style="margin-top:20px;text-align:center;">
+                    <a href="staff_expected_deliveries.php" style="background:#6c757d;color:#fff;border:none;padding:10px 20px;border-radius:6px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:6px;transition:background .2s;">
+                        <i class="fas fa-arrow-left"></i> Back to Expected Deliveries
+                    </a>
+                </div>
+
+            <?php elseif (empty($expected_deliveries)): ?>
                 <div style="text-align:center;padding:40px;color:#adb5bd;">
                     <i class="fas fa-box-open" style="font-size:3em;margin-bottom:15px;display:block;"></i>
-                    No expected merchandise deliveries at the moment.
+                    <p style="margin-bottom:16px;">No expected merchandise deliveries at the moment.</p>
+                    <a href="staff_expected_deliveries.php" style="color:#002F70;text-decoration:none;font-weight:600;">
+                        <i class="fas fa-arrow-left"></i> View Expected Deliveries
+                    </a>
                 </div>
             <?php else: ?>
                 <?php foreach ($expected_deliveries as $ed): ?>
@@ -392,15 +497,8 @@ include __DIR__ . '/../partials/header.php';
                             <span><i class="fas fa-building"></i> <?php echo htmlspecialchars($ed['supplier']); ?></span>
                         </div>
                     </div>
-                    <button class="btn-receive" onclick="openReceiveModal(
-                        <?php echo $ed['id']; ?>, 
-                        '<?php echo addslashes($ed['source_ref'] ?? ''); ?>',
-                        '<?php echo addslashes($ed['product']); ?>',
-                        '<?php echo addslashes($ed['supplier']); ?>',
-                        <?php echo (float)$ed['quantity']; ?>,
-                        '<?php echo addslashes($ed['unit']); ?>'
-                    )">
-                        <i class="fas fa-hand-holding-box"></i> Receive
+                    <button class="btn-receive" onclick="window.location.href='staff_record_delivery.php?po_id=<?php echo $ed['id']; ?>'">
+                        <i class="fas fa-eye"></i> View Details
                     </button>
                 </div>
                 <?php endforeach; ?>
@@ -408,13 +506,13 @@ include __DIR__ . '/../partials/header.php';
         </div>
     </div>
 
-    <!-- RIGHT: Manual Encode (Fallback) -->
+    <!-- RIGHT: Manual Encode Delivery (Staff encodes actual receipt details) -->
     <div class="del-card">
         <div class="del-card-head">
             <div class="del-card-title">
                 <i class="fas fa-keyboard"></i> Manual Encode Delivery
             </div>
-            <span style="font-size:12px;color:#6c757d;">For 3rd party or non-PO deliveries</span>
+            <span style="font-size:12px;color:#6c757d;"><?php echo $selected_po ? 'Based on PO (left panel)' : 'For 3rd party or non-PO deliveries'; ?></span>
         </div>
         <div class="del-card-body">
             <form method="POST" id="manualForm">
@@ -422,7 +520,8 @@ include __DIR__ . '/../partials/header.php';
                 
                 <div class="form-group">
                     <label class="form-label">Supplier Name <span style="color:red;">*</span></label>
-                    <input type="text" name="supplier_name" class="form-control" list="supplierList" required>
+                    <input type="text" name="supplier_name" class="form-control" list="supplierList" 
+                           value="<?php echo $selected_po ? htmlspecialchars($selected_po['supplier']) : ''; ?>" required>
                     <datalist id="supplierList">
                         <?php foreach ($suppliers as $s): ?><option value="<?php echo htmlspecialchars($s); ?>"><?php endforeach; ?>
                     </datalist>
@@ -430,39 +529,59 @@ include __DIR__ . '/../partials/header.php';
 
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
                     <div class="form-group">
-                        <label class="form-label">Category <span style="color:red;">*</span></label>
-                        <select name="category[]" class="form-select" required>
-                            <option value="">— Select Category —</option>
-                            <?php foreach ($merch_cats as $c): ?><option value="<?php echo htmlspecialchars($c); ?>"><?php echo htmlspecialchars($c); ?></option><?php endforeach; ?>
-                        </select>
+                        <label class="form-label">Item Name <span style="color:red;">*</span></label>
+                        <input type="text" name="item_name[]" class="form-control item-name-input" list="productList" 
+                               value="<?php echo $selected_po ? htmlspecialchars($selected_po['product']) : ''; ?>" required>
+                        <datalist id="productList">
+                            <?php foreach ($merch_products as $p): ?><option value="<?php echo htmlspecialchars($p); ?>"><?php endforeach; ?>
+                        </datalist>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Item Name <span style="color:red;">*</span></label>
-                        <input type="text" name="item_name[]" class="form-control" list="productList" required>
+                        <label class="form-label">Category <span style="color:red;">*</span></label>
+                        <input type="text" class="form-control category-display" readonly placeholder="Auto-filled from product" style="background:#f8f9fa;cursor:not-allowed;">
+                        <input type="hidden" name="category[]" class="category-hidden" required>
+                        <small style="font-size:11px;color:#6c757d;display:block;margin-top:4px;">
+                            <i class="fas fa-info-circle"></i> Category will auto-fill when you select a product
+                        </small>
                     </div>
                 </div>
 
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
                     <div class="form-group">
-                        <label class="form-label">Quantity <span style="color:red;">*</span></label>
-                        <input type="number" step="0.01" name="quantity[]" class="form-control" required>
+                        <label class="form-label">Actual Quantity Received <span style="color:red;">*</span></label>
+                        <input type="number" step="0.01" name="quantity[]" class="form-control" 
+                               value="<?php echo $selected_po ? $selected_po['quantity'] : ''; ?>" 
+                               placeholder="Enter actual quantity" required>
+                        <?php if ($selected_po): ?>
+                        <small style="color:#6c757d;font-size:11px;display:block;margin-top:4px;">
+                            Expected: <?php echo number_format($selected_po['quantity'], 2) . ' ' . $selected_po['unit']; ?>
+                        </small>
+                        <?php endif; ?>
                     </div>
                     <div class="form-group">
                         <label class="form-label">Unit <span style="color:red;">*</span></label>
                         <select name="unit[]" class="form-select">
-                            <option value="pcs">pcs</option><option value="kg">kg</option><option value="box">box</option><option value="L">L</option>
+                            <option value="pcs" <?php echo ($selected_po && $selected_po['unit'] === 'pcs') ? 'selected' : ''; ?>>pcs</option>
+                            <option value="kg" <?php echo ($selected_po && $selected_po['unit'] === 'kg') ? 'selected' : ''; ?>>kg</option>
+                            <option value="box" <?php echo ($selected_po && $selected_po['unit'] === 'box') ? 'selected' : ''; ?>>box</option>
+                            <option value="L" <?php echo ($selected_po && $selected_po['unit'] === 'L') ? 'selected' : ''; ?>>L</option>
                         </select>
                     </div>
                 </div>
 
                 <div class="form-group">
-                    <label class="form-label">DR Number / Remarks</label>
-                    <input type="text" name="dr_number" class="form-control" placeholder="Optional notes or DR #">
+                    <label class="form-label">DR Number (Delivery Receipt)</label>
+                    <input type="text" name="dr_number" class="form-control" placeholder="Optional - Enter DR number if available">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Remarks / Notes</label>
+                    <textarea name="remarks" class="form-control" rows="3" placeholder="Optional - Add any notes about this delivery"><?php echo $selected_po ? 'Based on PO: ' . htmlspecialchars($selected_po['source_ref'] ?? '') : ''; ?></textarea>
                 </div>
 
                 <div style="margin-top:20px;text-align:right;">
-                    <button type="submit" style="background:#6c757d;color:#fff;border:none;padding:10px 20px;border-radius:6px;font-weight:600;cursor:pointer;">
-                        <i class="fas fa-save"></i> Save Manual Record
+                    <button type="submit" style="background:#28a745;color:#fff;border:none;padding:12px 24px;border-radius:6px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-size:14px;">
+                        <i class="fas fa-save"></i> Save Delivery Record
                     </button>
                 </div>
             </form>
@@ -489,13 +608,13 @@ include __DIR__ . '/../partials/header.php';
         <div style="overflow-x: auto;">
             <table style="width:100%; border-collapse:collapse; font-size: 12px; margin-bottom: 0;">
                 <thead>
-                    <tr style="background: #f8fafc; border-bottom: 2px solid #e9ecef;">
-                        <th style="padding: 8px; text-align: left; font-weight: 700; color: #64748b; text-transform: uppercase;">PO Number</th>
-                        <th style="padding: 8px; text-align: left; font-weight: 700; color: #64748b; text-transform: uppercase;">Product Name</th>
-                        <th style="padding: 8px; text-align: right; font-weight: 700; color: #64748b; text-transform: uppercase;">Quantity</th>
-                        <th style="padding: 8px; text-align: left; font-weight: 700; color: #64748b; text-transform: uppercase;">Expected Date</th>
-                        <th style="padding: 8px; text-align: left; font-weight: 700; color: #64748b; text-transform: uppercase;">Supplier</th>
-                        <th style="padding: 8px; text-align: left; font-weight: 700; color: #64748b; text-transform: uppercase;">Status</th>
+                    <tr style="background: #002F70 !important; border-bottom: none;">
+                        <th style="padding: 14px 16px; text-align: left; font-weight: 600; color: #fff !important; text-transform: uppercase; letter-spacing: 0.3px; background: #002F70 !important; font-size: 11px; white-space: nowrap;">PO Number</th>
+                        <th style="padding: 14px 16px; text-align: left; font-weight: 600; color: #fff !important; text-transform: uppercase; letter-spacing: 0.3px; background: #002F70 !important; font-size: 11px; white-space: nowrap;">Product Name</th>
+                        <th style="padding: 14px 16px; text-align: right; font-weight: 600; color: #fff !important; text-transform: uppercase; letter-spacing: 0.3px; background: #002F70 !important; font-size: 11px; white-space: nowrap;">Quantity</th>
+                        <th style="padding: 14px 16px; text-align: left; font-weight: 600; color: #fff !important; text-transform: uppercase; letter-spacing: 0.3px; background: #002F70 !important; font-size: 11px; white-space: nowrap;">Expected Date</th>
+                        <th style="padding: 14px 16px; text-align: left; font-weight: 600; color: #fff !important; text-transform: uppercase; letter-spacing: 0.3px; background: #002F70 !important; font-size: 11px; white-space: nowrap;">Supplier</th>
+                        <th style="padding: 14px 16px; text-align: left; font-weight: 600; color: #fff !important; text-transform: uppercase; letter-spacing: 0.3px; background: #002F70 !important; font-size: 11px; white-space: nowrap;">Status</th>
                     </tr>
                 </thead>
                 <tbody id="merchPoReferenceTableBody">
@@ -698,6 +817,73 @@ function searchMerchPOs() {
         }
     });
 }
+</script>
+
+<script>
+// Auto-fetch category when product name is selected/changed
+document.addEventListener('DOMContentLoaded', function() {
+    const itemNameInput = document.querySelector('.item-name-input');
+    const categoryDisplay = document.querySelector('.category-display');
+    const categoryHidden = document.querySelector('.category-hidden');
+    
+    if (!itemNameInput || !categoryDisplay || !categoryHidden) {
+        console.error('Auto-category elements not found');
+        return;
+    }
+    
+    // Function to fetch and update category
+    function updateCategory() {
+        const productName = itemNameInput.value.trim();
+        
+        if (productName) {
+            // Fetch category from database
+            fetch('?ajax=get_product_category&product_name=' + encodeURIComponent(productName))
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Category fetch response:', data);
+                    if (data.category) {
+                        // Auto-fill the category
+                        categoryDisplay.value = data.category;
+                        categoryHidden.value = data.category;
+                        categoryDisplay.style.background = '#e8f4fd';
+                        categoryDisplay.style.color = '#002F70';
+                        categoryDisplay.style.fontWeight = '600';
+                    } else {
+                        // Product not found in database
+                        categoryDisplay.value = '';
+                        categoryHidden.value = '';
+                        categoryDisplay.placeholder = 'Product not found in database';
+                        categoryDisplay.style.background = '#fff3cd';
+                        categoryDisplay.style.color = '#856404';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching category:', error);
+                    categoryDisplay.value = '';
+                    categoryHidden.value = '';
+                });
+        } else {
+            // Clear if no product name
+            categoryDisplay.value = '';
+            categoryHidden.value = '';
+            categoryDisplay.placeholder = 'Auto-filled from product';
+            categoryDisplay.style.background = '#f8f9fa';
+            categoryDisplay.style.color = '';
+        }
+    }
+    
+    // Trigger on change (when user selects from datalist)
+    itemNameInput.addEventListener('change', updateCategory);
+    
+    // Trigger on blur (when user finishes typing)
+    itemNameInput.addEventListener('blur', updateCategory);
+    
+    // If there's already a value (from PO), fetch immediately
+    if (itemNameInput.value.trim()) {
+        console.log('Pre-filled value detected, fetching category...');
+        updateCategory();
+    }
+});
 </script>
 
 <?php if ($edit_data): ?>

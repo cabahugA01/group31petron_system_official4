@@ -328,6 +328,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $additional_notes   = $_POST['additional_notes']   ?? '';
                 $payment_method     = $_POST['payment_method']     ?? '';
 
+                // Block locked or inactive customers from credit purchases
+                if ($payment_method === 'Credit' && !empty($customer_id)) {
+                    $cust_stmt = $pdo->prepare("SELECT status FROM customers WHERE id = ? LIMIT 1");
+                    $cust_stmt->execute([$customer_id]);
+                    $cust_status = $cust_stmt->fetchColumn();
+                    if ($cust_status === 'locked') {
+                        $_SESSION['error'] = 'Transaction blocked: Customer account is locked.';
+                        header('Location: joborder.php');
+                        exit;
+                    }
+                    if ($cust_status === 'inactive') {
+                        $_SESSION['error'] = 'Transaction blocked: Customer account is inactive.';
+                        header('Location: joborder.php');
+                        exit;
+                    }
+                }
+
                 // ── Collect payment method-specific reference fields ──────────
                 $card_ref       = trim($_POST['card_ref']       ?? '');
                 $ewallet_ref    = trim($_POST['ewallet_ref']    ?? '');
@@ -657,6 +674,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         // Update customer balance
                         $stmt = $pdo->prepare("UPDATE customers SET balance = balance + ? WHERE id = ?");
                         $stmt->execute([$estimated_cost, $customer_id]);
+                        
+                        // Record in customer_credit_transactions
+                        try {
+                            $bal_stmt = $pdo->prepare("SELECT balance FROM customers WHERE id = ?");
+                            $bal_stmt->execute([$customer_id]);
+                            $new_bal = (float)$bal_stmt->fetchColumn();
+                            
+                            $cct_stmt = $pdo->prepare("
+                                INSERT INTO customer_credit_transactions (
+                                    customer_id, transaction_id, transaction_type, amount, 
+                                    running_balance, description, station_id, created_by, created_at
+                                ) VALUES (?, ?, 'Sale', ?, ?, ?, ?, ?, NOW())
+                            ");
+                            $cct_stmt->execute([
+                                $customer_id,
+                                $reference_number ?: ('JO-' . $job_order_id),
+                                $estimated_cost,
+                                $new_bal,
+                                $description ?: "Job Order: {$job_order_id}",
+                                $station_id,
+                                $me['id']
+                            ]);
+                        } catch (Exception $ccError) {
+                            error_log("Error inserting into customer_credit_transactions: " . $ccError->getMessage());
+                        }
                         
                         // Update job order with estimated cost
                         $stmt = $pdo->prepare("UPDATE job_orders SET estimated_cost = ? WHERE id = ?");

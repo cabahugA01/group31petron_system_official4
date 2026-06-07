@@ -54,8 +54,8 @@ Implement `public/manager_customers.php` as a single-file, three-section manager
 
 - [x] 3. Checkpoint — Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 4. Implement the Customer Balances section (`?section=balances`)
-  - [ ] 4.1 Write the Customer Balances data query and PHP rendering
+- [x] 4. Implement the Customer Balances section (`?section=balances`)
+  - [x] 4.1 Write the Customer Balances data query and PHP rendering
     - Build the station-scoped `SELECT` query with `COALESCE(credit_limit, 0)`, `COALESCE(current_balance, balance, 0)`, computed `available_credit`, `utilization_pct`, and a correlated subquery for `last_txn_date` from `merchandise_transactions`; filter to `credit_limit > 0 OR outstanding > 0`; order by `outstanding DESC`
     - Compute per-row CSS class: `row-over-limit` when `outstanding >= credit_limit`, `row-near-limit` when `utilization_pct >= 80 AND utilization_pct < 100`
     - Render the summary `.dv-card` at the top with two stat boxes: Total Outstanding (sum of all `outstanding`) and Total Credit Limit (sum of all `credit_limit`)
@@ -78,8 +78,8 @@ Implement `public/manager_customers.php` as a single-file, three-section manager
     - **Validates: Requirements 3.5**
     - Generate random customer sets; assert summary total outstanding = arithmetic sum of individual outstandings, and summary total credit limit = arithmetic sum of individual credit limits
 
-- [ ] 5. Implement AJAX payment validation
-  - [ ] 5.1 Write the POST handler for `action=validate_payment`
+- [x] 5. Implement AJAX payment validation
+  - [x] 5.1 Write the POST handler for `action=validate_payment`
     - Detect AJAX request (check `Content-Type: application/json` or `X_REQUESTED_WITH` header); decode JSON body
     - Validate inputs: `amount > 0`, `strlen(reference) >= 3`; return `{success: false, error: '...'}` on failure
     - Fetch customer row (`SELECT id, name, COALESCE(current_balance, balance, 0) AS outstanding FROM customers WHERE id = :id AND station_id = :station_id`)
@@ -88,7 +88,7 @@ Implement `public/manager_customers.php` as a single-file, three-section manager
     - On success return `{success: true, new_balance: X, new_utilization: Y}`
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 8.1_
 
-  - [ ] 5.2 Write the client-side JS for payment modal and AJAX submission
+  - [x] 5.2 Write the client-side JS for payment modal and AJAX submission
     - `openPaymentModal(id, name, outstanding)` — populates modal fields and shows overlay
     - `closeModal()` — hides overlay
     - `fetch()` POST to `manager_customers.php` with `action=validate_payment` JSON body
@@ -117,10 +117,10 @@ Implement `public/manager_customers.php` as a single-file, three-section manager
     - **Validates: Requirements 4.4, 8.1**
     - For any valid payment, assert `audit_logs` gains exactly one new row with `action_type = 'Payment Validated'`, `entity_type = 'customers'`, `entity_id = customer_id`, and `action_details` containing the payment amount and reference
 
-- [ ] 6. Checkpoint — Ensure all tests pass, ask the user if questions arise.
+- [x] 6. Checkpoint — Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 7. Implement the Customer History section (`?section=history`)
-  - [ ] 7.1 Write the Customer History data query and PHP rendering
+- [x] 7. Implement the Customer History section (`?section=history`)
+  - [x] 7.1 Write the Customer History data query and PHP rendering
     - Build the three-way `UNION ALL` query (Merchandise Sales from `merchandise_transactions`, Job Orders from `job_orders` with `status IN ('Completed','Validated','Approved')`, Payments from `audit_logs` where `action_type = 'Payment Validated'`) with `:station_id`, `:customer_id`, `:date_start`, `:date_end_eod` bind parameters
     - Default date range: past 90 days (`date('Y-m-d', strtotime('-90 days'))` to today)
     - Populate the customer dropdown from `SELECT id, name FROM customers WHERE station_id = :station_id ORDER BY name ASC`
@@ -166,7 +166,7 @@ Implement `public/manager_customers.php` as a single-file, three-section manager
     - **Validates: Requirements 6.5**
     - For any export, assert the CSV metadata section contains station name, manager full name, export date, and applied date range — regardless of data row count
 
-- [ ] 9. Implement the redirect shim
+- [x] 9. Implement the redirect shim
   - Create `public/manager_customer_history.php` with a single `header('Location: manager_customers.php?section=history'); exit;` redirect
   - _Requirements: 7.1 (legacy URL support)_
 

@@ -16,49 +16,47 @@ header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Cache-Control: post-check=0, pre-check=0", false);
 header("Pragma: no-cache");
 
-// Get token, email and phone from URL
-$token = $_GET['token'] ?? '';
-$email = $_GET['email'] ?? '';
-$phone = $_GET['phone'] ?? '';
+// Get token and email from URL (email-only flow)
+$token = trim($_GET['token'] ?? '');
+$email = trim($_GET['email'] ?? '');
 
-if (empty($token) || (empty($email) && empty($phone))) {
+if (empty($token) || empty($email)) {
     $error = "Invalid reset request. Please request a new password reset.";
 } else {
     try {
-        if (!empty($email)) {
-            // Validate token against email
-            $stmt = $pdo->prepare("
-                SELECT prt.user_id, prt.token, prt.expires_at, prt.is_used, prt.used_at,
-                       u.username, u.email, u.phone 
-                FROM password_reset_tokens prt
-                JOIN users u ON prt.user_id = u.id
-                WHERE prt.token = ? AND u.email = ? AND prt.token_type = 'reset' AND u.status = 'active' AND (u.is_deleted = 0 OR u.is_deleted IS NULL)
-                LIMIT 1
-            ");
-            $stmt->execute([$token, $email]);
-        } else {
-            // Validate token against phone
-            $stmt = $pdo->prepare("
-                SELECT prt.user_id, prt.token, prt.expires_at, prt.is_used, prt.used_at,
-                       u.username, u.email, u.phone 
-                FROM password_reset_tokens prt
-                JOIN users u ON prt.user_id = u.id
-                WHERE prt.token = ? AND u.phone = ? AND prt.token_type = 'reset' AND u.status = 'active' AND (u.is_deleted = 0 OR u.is_deleted IS NULL)
-                LIMIT 1
-            ");
-            $stmt->execute([$token, $phone]);
-        }
+        // ── Auto-detect actual column names ──────────────────────────
+        $cols     = array_column($pdo->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_ASSOC), 'Field');
+        $uid_col  = in_array('user_id',      $cols) ? 'user_id'      : 'id';
+        $pass_col = in_array('password_hash', $cols) ? 'password_hash' : 'password';
+        $status_active = in_array('Active', $pdo->query("SELECT DISTINCT status FROM users LIMIT 10")->fetchAll(PDO::FETCH_COLUMN)) ? 'Active' : 'active';
+
+        // ── Email path: validate via password_reset_tokens table ─────
+        $stmt = $pdo->prepare("
+            SELECT prt.user_id, prt.token, prt.is_used, prt.used_at,
+                   (prt.expires_at > NOW()) AS is_valid_time,
+                   u.username, TRIM(u.email) AS email,
+                   NULL AS reset_id
+            FROM   password_reset_tokens prt
+            JOIN   users u ON prt.user_id = u.`{$uid_col}`
+            WHERE  prt.token      = ?
+              AND  TRIM(u.email)  = ?
+              AND  prt.token_type = 'reset'
+              AND  u.status       = '{$status_active}'
+            ORDER BY prt.id DESC
+            LIMIT  1
+        ");
+        $stmt->execute([$token, $email]);
         $token_data = $stmt->fetch(PDO::FETCH_ASSOC);
-        
+
         if (!$token_data) {
             $error = "Invalid or expired reset link. Please request a new password reset.";
-        } elseif (strtotime($token_data['expires_at']) < time()) {
+        } elseif (!$token_data['is_valid_time']) {
             $error = "Reset link has expired. Please request a new password reset.";
         } elseif ($token_data['is_used'] == 1 && $token_data['used_at'] !== null) {
             $error = "Reset link has already been used. Please request a new password reset.";
         } else {
             $token_valid = true;
-            $user_data = $token_data;
+            $user_data   = $token_data;
         }
     } catch (PDOException $e) {
         error_log("Token validation error: " . $e->getMessage());
@@ -95,31 +93,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
     
     if (empty($password_errors)) {
         try {
-            // Start transaction
             $pdo->beginTransaction();
-            
-            // Update password
-            $hashed_password = password_hash($password, PASSWORD_DEFAULT);
-            $updateStmt = $pdo->prepare("UPDATE users SET password = ? WHERE id = ?");
-            $updateStmt->execute([$hashed_password, $user_data['user_id']]);
-            
-            // Mark token as used
-            $tokenStmt = $pdo->prepare("UPDATE password_reset_tokens SET is_used = 1, used_at = NOW() WHERE token = ?");
-            $tokenStmt->execute([$token]);
-            
-            // Log the password reset
-            $logStmt = $pdo->prepare("INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, 'Password Reset', 'Password successfully reset', ?)");
-            $logStmt->execute([$user_data['user_id'], $_SERVER['REMOTE_ADDR']]);
-            
-            // Commit transaction
+
+            // ── Update password_hash (new column name) ──────────────
+            $hashed = password_hash($password, PASSWORD_BCRYPT);
+            $pdo->prepare("UPDATE users SET `{$pass_col}` = ? WHERE `{$uid_col}` = ?")
+                ->execute([$hashed, $user_data['user_id']]);
+
+            // ── Mark OTP / token as used ────────────────────────────
+            if (!empty($phone)) {
+                // Phone path: mark password_resets row as used
+                $pdo->prepare("UPDATE password_resets SET status = 'used' WHERE id = ?")
+                    ->execute([$user_data['reset_id']]);
+            } else {
+                // Email path: mark password_reset_tokens row as used
+                $pdo->prepare("UPDATE password_reset_tokens SET is_used = 1, used_at = NOW() WHERE token = ?")
+                    ->execute([$token]);
+            }
+
+            // ── Audit log ───────────────────────────────────────────
+            $pdo->prepare(
+                "INSERT INTO activity_logs (user_id, action, details, ip_address)
+                 VALUES (?, 'Password Reset', 'Password successfully reset', ?)"
+            )->execute([$user_data['user_id'], $_SERVER['REMOTE_ADDR']]);
+
             $pdo->commit();
-            
-            $message = "Your password has been successfully reset. You can now login with your new password.";
+
+            $message      = "Your password has been successfully reset. You can now login with your new password.";
             $message_type = "success";
-            
-            // Clear token data to hide form
-            $token_valid = false;
-            
+            $token_valid  = false;
+
         } catch (PDOException $e) {
             $pdo->rollBack();
             error_log("Password reset error: " . $e->getMessage());
@@ -152,13 +155,205 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
 
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: url('../assets/img/background.jpg') center center / cover no-repeat;
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            overflow-x: hidden;
             position: relative;
+            overflow: hidden;
+            background: #000814;
+        }
+
+        /* 4D Animated Background Layers */
+        .bg-layer {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+        }
+
+        /* Base image layer */
+        .bg-image {
+            background: url('../assets/img/background.jpg') center/cover no-repeat;
+            filter: brightness(0.6) blur(0px);
+            z-index: 1;
+        }
+
+        /* Animated gradient overlay */
+        .bg-gradient {
+            background: linear-gradient(
+                135deg,
+                rgba(0, 47, 108, 0.3) 0%,
+                rgba(227, 6, 19, 0.15) 25%,
+                rgba(0, 15, 45, 0.4) 50%,
+                rgba(0, 80, 180, 0.2) 75%,
+                rgba(0, 26, 61, 0.35) 100%
+            );
+            background-size: 400% 400%;
+            animation: gradientShift 15s ease infinite;
+            z-index: 2;
+            mix-blend-mode: multiply;
+            opacity: 0.7;
+        }
+
+        @keyframes gradientShift {
+            0%   { background-position: 0% 50%; }
+            25%  { background-position: 50% 100%; }
+            50%  { background-position: 100% 50%; }
+            75%  { background-position: 50% 0%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Floating particles layer */
+        .bg-particles {
+            z-index: 3;
+            pointer-events: none;
+        }
+
+        .particle {
+            position: absolute;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(96, 165, 250, 0.8), transparent);
+            animation: float linear infinite;
+            opacity: 0;
+        }
+
+        .particle:nth-child(1) { 
+            width: 4px; height: 4px; 
+            left: 10%; top: 80%; 
+            animation-duration: 8s; 
+            animation-delay: 0s;
+            box-shadow: 0 0 20px rgba(96, 165, 250, 0.6);
+        }
+        .particle:nth-child(2) { 
+            width: 6px; height: 6px; 
+            left: 20%; top: 60%; 
+            animation-duration: 12s; 
+            animation-delay: 1s;
+            box-shadow: 0 0 25px rgba(227, 6, 19, 0.5);
+            background: radial-gradient(circle, rgba(227, 6, 19, 0.7), transparent);
+        }
+        .particle:nth-child(3) { 
+            width: 3px; height: 3px; 
+            left: 35%; top: 90%; 
+            animation-duration: 10s; 
+            animation-delay: 2s;
+            box-shadow: 0 0 15px rgba(96, 165, 250, 0.5);
+        }
+        .particle:nth-child(4) { 
+            width: 5px; height: 5px; 
+            left: 50%; top: 85%; 
+            animation-duration: 14s; 
+            animation-delay: 0.5s;
+            box-shadow: 0 0 22px rgba(147, 197, 253, 0.6);
+        }
+        .particle:nth-child(5) { 
+            width: 4px; height: 4px; 
+            left: 65%; top: 75%; 
+            animation-duration: 11s; 
+            animation-delay: 1.5s;
+            box-shadow: 0 0 18px rgba(96, 165, 250, 0.5);
+        }
+        .particle:nth-child(6) { 
+            width: 7px; height: 7px; 
+            left: 80%; top: 70%; 
+            animation-duration: 13s; 
+            animation-delay: 2.5s;
+            box-shadow: 0 0 28px rgba(227, 6, 19, 0.6);
+            background: radial-gradient(circle, rgba(227, 6, 19, 0.8), transparent);
+        }
+        .particle:nth-child(7) { 
+            width: 3px; height: 3px; 
+            left: 90%; top: 80%; 
+            animation-duration: 9s; 
+            animation-delay: 1.8s;
+            box-shadow: 0 0 16px rgba(96, 165, 250, 0.4);
+        }
+        .particle:nth-child(8) { 
+            width: 5px; height: 5px; 
+            left: 15%; top: 50%; 
+            animation-duration: 15s; 
+            animation-delay: 3s;
+            box-shadow: 0 0 24px rgba(147, 197, 253, 0.7);
+        }
+
+        @keyframes float {
+            0% {
+                transform: translateY(0) translateX(0) scale(1);
+                opacity: 0;
+            }
+            10% {
+                opacity: 1;
+            }
+            90% {
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(-100vh) translateX(30px) scale(1.5);
+                opacity: 0;
+            }
+        }
+
+        /* Glowing orbs layer */
+        .bg-orbs {
+            z-index: 4;
+            pointer-events: none;
+            opacity: 0.6;
+        }
+
+        .orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.25;
+            animation: orbFloat ease-in-out infinite alternate;
+        }
+
+        .orb-1 {
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, rgba(0, 47, 108, 0.4), transparent);
+            top: -10%;
+            left: -10%;
+            animation-duration: 8s;
+        }
+
+        .orb-2 {
+            width: 350px;
+            height: 350px;
+            background: radial-gradient(circle, rgba(227, 6, 19, 0.3), transparent);
+            bottom: -10%;
+            right: -10%;
+            animation-duration: 10s;
+            animation-delay: 1s;
+        }
+
+        @keyframes orbFloat {
+            0% {
+                transform: translate(0, 0) scale(1);
+            }
+            100% {
+                transform: translate(20px, -20px) scale(1.1);
+            }
+        }
+
+        /* Grid overlay */
+        .bg-grid {
+            background-image: 
+                linear-gradient(rgba(96, 165, 250, 0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(96, 165, 250, 0.02) 1px, transparent 1px);
+            background-size: 50px 50px;
+            z-index: 5;
+            pointer-events: none;
+            animation: gridMove 20s linear infinite;
+        }
+
+        @keyframes gridMove {
+            0% {
+                background-position: 0 0;
+            }
+            100% {
+                background-position: 50px 50px;
+            }
         }
 
         .login-wrap {
@@ -168,7 +363,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
             align-items: center;
             justify-content: center;
             padding: 20px;
-            z-index: 2;
+            z-index: 10;
+            position: relative;
         }
 
         .login-card {
@@ -485,6 +681,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
     </style>
 </head>
 <body>
+
+<!-- 4D Background Layers -->
+<div class="bg-layer bg-image"></div>
+<div class="bg-layer bg-gradient"></div>
+<div class="bg-layer bg-orbs">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+</div>
+<div class="bg-layer bg-particles">
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+</div>
+<div class="bg-layer bg-grid"></div>
 
 <div class="login-wrap">
     <div class="login-card">

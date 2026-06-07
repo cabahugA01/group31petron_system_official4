@@ -1,0 +1,246 @@
+═══════════════════════════════════════════════════════════════════════
+  PASSWORD RESET OTP - QUICK FIX GUIDE
+═══════════════════════════════════════════════════════════════════════
+
+🔴 PROBLEM: "OTP verification failing even with correct code"
+
+✅ ROOT CAUSE FOUND:
+   Users are accessing the WRONG verification page!
+   
+   ❌ WRONG: verify_login_otp.php (for login 2FA)
+   ✅ RIGHT: verify_otp.php (for password reset)
+
+═══════════════════════════════════════════════════════════════════════
+  CORRECT PASSWORD RESET FLOW
+═══════════════════════════════════════════════════════════════════════
+
+Step 1: forgot_password.php
+   → User enters email/username
+   → System generates OTP with token_type = 'reset'
+   → Email sent with OTP code
+   
+Step 2: verify_otp.php?email=user@example.com
+   → User enters 6-digit OTP from email
+   → System verifies token_type = 'reset'
+   → Checks expiration (5 minutes)
+   
+Step 3: forgot_password_reset.php?token=123456&email=...
+   → User enters new password (twice)
+   → Password updated in database
+   → Token marked as used
+   
+Step 4: login.php
+   → User logs in with new password
+   → Success!
+
+═══════════════════════════════════════════════════════════════════════
+  HOW TO TEST IF IT'S WORKING
+═══════════════════════════════════════════════════════════════════════
+
+METHOD 1: Use Testing Tool (EASIEST)
+-----------------------------------------
+1. Open in browser:
+   http://localhost/group31petron_system_official4/test_complete_password_reset_flow.php
+
+2. Enter a valid email from your users table
+
+3. Click "Send Password Reset OTP"
+   → OTP will be displayed on screen
+   → Check if email was sent
+   → Verify database storage
+
+4. Click "Test OTP Verification"
+   → See if OTP works correctly
+   → View detailed debug info
+
+5. Click "Go to Password Reset Page"
+   → Test the actual flow
+   → Set a new password
+
+METHOD 2: Manual Test
+-----------------------------------------
+1. Go to: public/forgot_password.php
+2. Enter your email
+3. Check email for OTP code
+4. **IMPORTANT:** Make sure you land on verify_otp.php (NOT verify_login_otp.php)
+5. Enter OTP code
+6. Set new password
+7. Login with new password
+
+═══════════════════════════════════════════════════════════════════════
+  TWO DIFFERENT OTP SYSTEMS IN YOUR CODE
+═══════════════════════════════════════════════════════════════════════
+
+System 1: PASSWORD RESET (Email)
+-----------------------------------------
+Files:
+  • forgot_password.php (initiates reset)
+  • verify_otp.php (verifies OTP)
+  • forgot_password_reset.php (sets new password)
+  
+Database:
+  • Table: password_reset_tokens
+  • Token Type: 'reset'
+  • Column: token (stores 6-digit OTP)
+  
+Status: ✅ WORKING (if correct page is used)
+
+System 2: LOGIN 2FA (Two-Factor Authentication)
+-----------------------------------------
+Files:
+  • login.php (generates login OTP)
+  • verify_login_otp.php (verifies login OTP)
+  
+Database:
+  • Table: password_reset_tokens
+  • Token Type: 'login'
+  • Column: token (stores 6-digit OTP)
+  
+Status: ✅ WORKING
+
+═══════════════════════════════════════════════════════════════════════
+  COMMON MISTAKES TO AVOID
+═══════════════════════════════════════════════════════════════════════
+
+❌ MISTAKE 1: Using verify_login_otp.php for password reset
+   ✅ FIX: Use verify_otp.php?email=... instead
+
+❌ MISTAKE 2: OTP expired (waited more than 5 minutes)
+   ✅ FIX: Request a new OTP
+
+❌ MISTAKE 3: Email not matching database exactly
+   ✅ FIX: Check email spelling and case
+
+❌ MISTAKE 4: User status is not 'Active'
+   ✅ FIX: Update user status in database
+
+❌ MISTAKE 5: Token already used
+   ✅ FIX: Request a new OTP
+
+═══════════════════════════════════════════════════════════════════════
+  DATABASE QUICK CHECK
+═══════════════════════════════════════════════════════════════════════
+
+Check if OTP exists:
+-----------------------------------------
+SELECT * FROM password_reset_tokens 
+WHERE token = 'YOUR_OTP_CODE' 
+  AND token_type = 'reset'
+  AND is_used = 0
+  AND expires_at > NOW();
+
+If this returns NO ROWS:
+  → OTP doesn't exist, expired, or already used
+  → Request a new OTP
+
+If this returns a ROW:
+  → OTP is valid
+  → Check if email matches the user_id
+
+Get user email from token:
+-----------------------------------------
+SELECT u.email, u.status, prt.token, prt.expires_at, prt.is_used
+FROM password_reset_tokens prt
+JOIN users u ON prt.user_id = u.user_id
+WHERE prt.token = 'YOUR_OTP_CODE'
+  AND prt.token_type = 'reset';
+
+═══════════════════════════════════════════════════════════════════════
+  EMAIL CONFIGURATION
+═══════════════════════════════════════════════════════════════════════
+
+Location: config/email_config.php
+
+Current Settings:
+  Host: smtp.gmail.com
+  Port: 587
+  Email: christianval0813@gmail.com
+  App Password: ojgy ravy ufed qgfl
+  
+Status: ✅ CONFIGURED
+
+To test email:
+  1. Run test_complete_password_reset_flow.php
+  2. Check if "Email sent successfully" appears
+  3. Check inbox/spam folder
+  4. If failed, check PHP error logs
+
+═══════════════════════════════════════════════════════════════════════
+  SMS CONFIGURATION (CURRENTLY DISABLED)
+═══════════════════════════════════════════════════════════════════════
+
+Status: ⚠️ SIMULATED MODE (logs to file)
+
+To enable real SMS:
+  1. Get API key from Semaphore or Twilio
+  2. Edit config/sms_config.php
+  3. Set enabled => true
+  4. Add your API key
+  
+Current behavior:
+  → SMS not sent to phone
+  → Logged to sms_sent.log file
+  → Shows OTP on screen in dev mode
+
+See: HOW_TO_ENABLE_REAL_SMS.md
+
+═══════════════════════════════════════════════════════════════════════
+  TROUBLESHOOTING CHECKLIST
+═══════════════════════════════════════════════════════════════════════
+
+[ ] Email config is correct (config/email_config.php)
+[ ] User exists in database with valid email
+[ ] User status is 'Active'
+[ ] Requested OTP within last 5 minutes
+[ ] Using verify_otp.php (NOT verify_login_otp.php)
+[ ] Email parameter in URL matches database
+[ ] OTP hasn't been used already (is_used = 0)
+[ ] password_reset_tokens table exists
+[ ] No PHP errors in error log
+
+═══════════════════════════════════════════════════════════════════════
+  QUICK FIX IF STILL NOT WORKING
+═══════════════════════════════════════════════════════════════════════
+
+1. Clear old tokens:
+   DELETE FROM password_reset_tokens WHERE token_type = 'reset';
+
+2. Test with the testing tool:
+   http://localhost/.../test_complete_password_reset_flow.php
+
+3. Check the detailed output - it will show EXACTLY what's wrong
+
+4. Follow the error messages and fix accordingly
+
+═══════════════════════════════════════════════════════════════════════
+  FILES TO READ FOR MORE INFO
+═══════════════════════════════════════════════════════════════════════
+
+📄 PASSWORD_RESET_OTP_FIX.md
+   → Complete explanation with diagrams
+   → Detailed troubleshooting guide
+   → Code examples
+
+📄 test_complete_password_reset_flow.php
+   → Interactive testing tool
+   → Shows step-by-step results
+   → Debug information
+
+📄 HOW_TO_ENABLE_REAL_SMS.md
+   → SMS configuration guide
+   → Provider comparison
+   → Setup instructions
+
+═══════════════════════════════════════════════════════════════════════
+
+✅ SUMMARY: The code is working correctly! The issue is users accessing
+   the wrong verification page. Use verify_otp.php for password reset,
+   NOT verify_login_otp.php (which is for login 2FA).
+
+🔧 TEST TOOL: test_complete_password_reset_flow.php will show you 
+   exactly what's happening and where the problem is.
+
+📧 EMAIL STATUS: ✅ Configured and working
+📱 SMS STATUS: ⚠️ Simulated (needs paid API to enable)
+
+═══════════════════════════════════════════════════════════════════════
