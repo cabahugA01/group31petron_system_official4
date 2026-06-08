@@ -44,11 +44,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $fuel_type = $_POST['fuel_type'] ?? '';
         $supplier_name = $_POST['supplier_name'] ?? '';
         $invoice_no = $_POST['invoice_no'] ?? '';
-        $delivery_liters = (float)($_POST['delivery_liters'] ?? 0);
-        $tanker_number = $_POST['tanker_number'] ?? '';
         $delivery_notes = $_POST['delivery_notes'] ?? '';
         
-        if ($delivery_date && $fuel_type && $supplier_name && $delivery_liters > 0) {
+        // Get tanker arrays
+        $tanker_ids = $_POST['tanker_id'] ?? [];
+        $tanker_liters = $_POST['tanker_liters'] ?? [];
+        $tanker_times = $_POST['tanker_time'] ?? [];
+        $tanker_notes_arr = $_POST['tanker_notes'] ?? [];
+        $tanker_numbers = $_POST['tanker_number'] ?? [];
+        
+        // Calculate total delivery liters from all tankers
+        $delivery_liters = 0;
+        foreach ($tanker_liters as $liters) {
+            $delivery_liters += (float)$liters;
+        }
+        
+        // Build tanker details string
+        $tanker_details = [];
+        for ($i = 0; $i < count($tanker_ids); $i++) {
+            $tanker_details[] = sprintf(
+                "Tanker %s (%s): %.2fL @ %s%s",
+                $tanker_numbers[$i] ?? ($i + 1),
+                $tanker_ids[$i] ?? 'N/A',
+                (float)($tanker_liters[$i] ?? 0),
+                $tanker_times[$i] ?? 'N/A',
+                !empty($tanker_notes_arr[$i]) ? " - " . $tanker_notes_arr[$i] : ""
+            );
+        }
+        $tanker_info = implode(" | ", $tanker_details);
+        
+        if ($delivery_date && $fuel_type && $supplier_name && $delivery_liters > 0 && count($tanker_ids) > 0) {
             try {
                 // Find the fuel product by name/SKU
                 $stmt = $pdo->prepare("
@@ -87,6 +112,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Manager_Direct', NOW())
                     ");
                     
+                    $combined_notes = "TANKERS: " . $tanker_info;
+                    if (!empty($delivery_notes)) {
+                        $combined_notes .= " | NOTES: " . $delivery_notes;
+                    }
+                    
                     $stmt->execute([
                         $station_id,
                         $delivery_date,
@@ -94,9 +124,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $supplier_name,
                         $invoice_no,
                         $delivery_liters,
-                        $tanker_number,
+                        implode(", ", array_map(function($i, $id) {
+                            return "T" . ($i + 1) . ":" . $id;
+                        }, array_keys($tanker_ids), $tanker_ids)),
                         $me['id'],
-                        $delivery_notes
+                        $combined_notes
                     ]);
                     
                     $delivery_id = $pdo->lastInsertId();
@@ -137,7 +169,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $pdo,
                         $me['id'],
                         'Manager Direct Delivery',
-                        "Recorded fuel delivery: {$delivery_liters}L of {$fuel_type}. Stock: {$quantity_before}L → {$quantity_after}L (Invoice: {$invoice_no})",
+                        "Recorded fuel delivery: {$delivery_liters}L of {$fuel_type} via " . count($tanker_ids) . " tanker(s). Stock: {$quantity_before}L → {$quantity_after}L (Invoice: {$invoice_no})",
                         'fuel_management'
                     );
                     
@@ -155,7 +187,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'delivery_liters' => $delivery_liters,
                             'supplier_name' => $supplier_name,
                             'invoice_no' => $invoice_no,
-                            'tanker_number' => $tanker_number,
+                            'tanker_count' => count($tanker_ids),
+                            'tanker_details' => $tanker_info,
                             'quantity_before' => $quantity_before,
                             'quantity_after' => $quantity_after,
                             'quantity_change' => $delivery_liters,
@@ -166,9 +199,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     $pdo->commit();
                     
+                    $tanker_summary = count($tanker_ids) . " tanker(s): " . implode(", ", array_map(function($num, $liters) {
+                        return "T{$num}: " . number_format((float)$liters, 0) . "L";
+                    }, $tanker_numbers, $tanker_liters));
+                    
                     $msg = "✅ <strong>Fuel delivery recorded successfully!</strong><br>
                             📦 Delivery ID: {$delivery_id}<br>
                             ⛽ {$fuel_type}: +{$delivery_liters}L<br>
+                            🚛 {$tanker_summary}<br>
                             📊 Stock Updated: {$quantity_before}L → <strong>{$quantity_after}L</strong><br>
                             📄 Invoice: {$invoice_no}";
                     
@@ -298,32 +336,33 @@ $current_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         <form method="POST">
                             <input type="hidden" name="action" value="record_delivery">
                             
-                            <div class="row mb-3">
-                                <div class="col-md-6">
-                                    <label class="form-label">
-                                        <i class="bi bi-calendar3"></i> Delivery Date
-                                    </label>
-                                    <input type="date" name="delivery_date" class="form-control" 
-                                           value="<?= date('Y-m-d') ?>" required>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">
-                                        <i class="bi bi-fuel-pump"></i> Fuel Type
-                                    </label>
-                                    <select name="fuel_type" class="form-select" required>
-                                        <option value="">Select Fuel Type</option>
-                                        <?php foreach ($fuel_types as $fuel): ?>
-                                        <option value="<?= htmlspecialchars($fuel['name']) ?>">
-                                            <?= htmlspecialchars($fuel['name']) ?>
-                                            <?php if ($fuel['sku']): ?>
-                                                (<?= htmlspecialchars($fuel['sku']) ?>)
-                                            <?php endif; ?>
-                                        </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </div>
+                            <!-- Delivery Date -->
+                            <div class="mb-3">
+                                <label class="form-label">
+                                    <i class="bi bi-calendar3"></i> Delivery Date
+                                </label>
+                                <input type="date" name="delivery_date" class="form-control" 
+                                       value="<?= date('Y-m-d') ?>" required>
                             </div>
 
+                            <!-- Fuel Type Selection -->
+                            <div class="mb-3">
+                                <label class="form-label">
+                                    <i class="bi bi-fuel-pump"></i> Fuel Type
+                                </label>
+                                <select name="fuel_type" id="fuelTypeSelect" class="form-select" required>
+                                    <option value="">Select Fuel Type</option>
+                                    <option value="Diesel 1">Diesel 1 (4 Tankers)</option>
+                                    <option value="Diesel 2">Diesel 2 (2 Tankers)</option>
+                                    <option value="Turbo Diesel">Turbo Diesel (2 Tankers)</option>
+                                    <option value="XCS Plus">XCS Plus (4 Tankers)</option>
+                                    <option value="Kerosene">Kerosene (1 Tanker)</option>
+                                    <option value="XTRA UNL 1">XTRA UNL 1 (2 Tankers)</option>
+                                    <option value="XTRA UNL 2">XTRA UNL 2 (2 Tankers)</option>
+                                </select>
+                            </div>
+
+                            <!-- Common Fields -->
                             <div class="row mb-3">
                                 <div class="col-md-6">
                                     <label class="form-label">
@@ -341,21 +380,13 @@ $current_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 </div>
                             </div>
 
-                            <div class="row mb-3">
-                                <div class="col-md-6">
-                                    <label class="form-label">
-                                        <i class="bi bi-droplet"></i> Delivery Liters
-                                    </label>
-                                    <input type="number" name="delivery_liters" class="form-control" 
-                                           step="0.01" min="0.01" placeholder="e.g., 10000.00" required>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">
-                                        <i class="bi bi-truck"></i> Tanker Number
-                                    </label>
-                                    <input type="text" name="tanker_number" class="form-control" 
-                                           placeholder="e.g., TK-001">
-                                </div>
+                            <!-- Dynamic Tanker Input Section -->
+                            <div id="tankerInputsContainer" style="display: none;">
+                                <hr class="my-3">
+                                <h6 class="mb-3">
+                                    <i class="bi bi-truck"></i> <span id="tankerSectionTitle">Tanker Details</span>
+                                </h6>
+                                <div id="tankerInputs"></div>
                             </div>
 
                             <div class="mb-3">
@@ -467,6 +498,141 @@ $current_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Tanker configuration for each fuel type
+        const tankerConfig = {
+            'Diesel 1': { count: 4, startNumber: 1 },      // Tanker 1-4
+            'Diesel 2': { count: 2, startNumber: 5 },      // Tanker 5-6
+            'Turbo Diesel': { count: 2, startNumber: 1 },  // Tanker 1-2
+            'XCS Plus': { count: 4, startNumber: 1 },      // Tanker 1-4
+            'Kerosene': { count: 1, startNumber: 1 },      // Tanker 1
+            'XTRA UNL 1': { count: 2, startNumber: 1 },    // Tanker 1-2
+            'XTRA UNL 2': { count: 2, startNumber: 3 }     // Tanker 3-4
+        };
+
+        // Generate tanker input fields dynamically
+        document.getElementById('fuelTypeSelect').addEventListener('change', function() {
+            const fuelType = this.value;
+            const container = document.getElementById('tankerInputsContainer');
+            const inputsDiv = document.getElementById('tankerInputs');
+            const titleSpan = document.getElementById('tankerSectionTitle');
+            
+            // Clear previous inputs
+            inputsDiv.innerHTML = '';
+            
+            if (!fuelType || !tankerConfig[fuelType]) {
+                container.style.display = 'none';
+                return;
+            }
+            
+            const config = tankerConfig[fuelType];
+            const tankerCount = config.count;
+            const startNum = config.startNumber;
+            
+            // Update title
+            titleSpan.textContent = `${fuelType} - Enter Details for ${tankerCount} Tanker${tankerCount > 1 ? 's' : ''}`;
+            
+            // Generate input fields for each tanker
+            for (let i = 0; i < tankerCount; i++) {
+                const tankerNum = startNum + i;
+                const tankerDiv = document.createElement('div');
+                tankerDiv.className = 'card mb-3 bg-light bg-opacity-10';
+                tankerDiv.innerHTML = `
+                    <div class="card-body">
+                        <h6 class="card-title text-white">
+                            <i class="bi bi-truck-front-fill"></i> Tanker ${tankerNum}
+                        </h6>
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="form-label text-white">
+                                    <i class="bi bi-upc-scan"></i> Tanker ID/Plate
+                                </label>
+                                <input type="text" 
+                                       name="tanker_id[]" 
+                                       class="form-control" 
+                                       placeholder="e.g., TK-${tankerNum} or ABC-1234"
+                                       required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label text-white">
+                                    <i class="bi bi-droplet-fill"></i> Liters Delivered
+                                </label>
+                                <input type="number" 
+                                       name="tanker_liters[]" 
+                                       class="form-control tanker-liters" 
+                                       step="0.01" 
+                                       min="0.01" 
+                                       placeholder="e.g., 10000.00"
+                                       required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label text-white">
+                                    <i class="bi bi-clock-fill"></i> Arrival Time
+                                </label>
+                                <input type="time" 
+                                       name="tanker_time[]" 
+                                       class="form-control" 
+                                       required>
+                            </div>
+                        </div>
+                        <div class="mt-2">
+                            <label class="form-label text-white">
+                                <i class="bi bi-card-text"></i> Tanker Notes (Optional)
+                            </label>
+                            <input type="text" 
+                                   name="tanker_notes[]" 
+                                   class="form-control" 
+                                   placeholder="e.g., Driver name, condition remarks">
+                        </div>
+                        <input type="hidden" name="tanker_number[]" value="${tankerNum}">
+                    </div>
+                `;
+                inputsDiv.appendChild(tankerDiv);
+            }
+            
+            // Show container
+            container.style.display = 'block';
+            
+            // Add total calculation
+            addTotalCalculation();
+        });
+        
+        // Calculate and display total liters
+        function addTotalCalculation() {
+            const inputsDiv = document.getElementById('tankerInputs');
+            
+            // Create total display div if it doesn't exist
+            let totalDiv = document.getElementById('totalLitersDisplay');
+            if (!totalDiv) {
+                totalDiv = document.createElement('div');
+                totalDiv.id = 'totalLitersDisplay';
+                totalDiv.className = 'alert alert-info mt-3';
+                totalDiv.innerHTML = `
+                    <strong><i class="bi bi-calculator"></i> Total Delivery:</strong>
+                    <span id="totalLitersValue" class="fs-5 ms-2">0.00 L</span>
+                `;
+                document.getElementById('tankerInputsContainer').appendChild(totalDiv);
+            }
+            
+            // Add event listeners to calculate total
+            document.querySelectorAll('.tanker-liters').forEach(input => {
+                input.addEventListener('input', calculateTotal);
+            });
+        }
+        
+        function calculateTotal() {
+            let total = 0;
+            document.querySelectorAll('.tanker-liters').forEach(input => {
+                const value = parseFloat(input.value) || 0;
+                total += value;
+            });
+            
+            const totalDisplay = document.getElementById('totalLitersValue');
+            if (totalDisplay) {
+                totalDisplay.textContent = total.toFixed(2) + ' L';
+            }
+        }
+    </script>
 </body>
 </html>
 

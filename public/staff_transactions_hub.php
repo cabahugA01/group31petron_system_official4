@@ -132,6 +132,8 @@ try {
     $ft_sql .= " ORDER BY fi.fuel_type";
     $stmt = $pdo->prepare($ft_sql);
     $stmt->execute($ft_params);
+    
+    // Fetch all fuel types from database - each one will be expanded by tanker config
     $fuel_types = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) { $fuel_types = []; }
 
@@ -1635,15 +1637,69 @@ main.main {
                         Inputs inside the table rows use form="fuelForm_..." to associate.
                         Putting <form> inside <td>/<tr> is invalid HTML; browsers eject it
                         from the table, breaking FormData collection. */ ?>
-            <?php foreach ($fuel_types as $idx => $ft):
-                $ft_id_form = 'fuel_' . preg_replace('/[^a-z0-9]/i', '_', $ft['fuel_type']) . '_' . $idx;
+            <?php 
+            // Tanker configuration per fuel type - SAME AS TABLE CONFIG
+            // ORDER MATTERS: Check longer/more specific names first to avoid partial matches
+            $tanker_config_forms = [
+                'xcs plus' => [
+                    ['name' => 'XCS Plus', 'tankers' => [1, 2, 3, 4], 'price_key' => 'xcs plus']
+                ],
+                'turbo diesel' => [
+                    ['name' => 'Turbo Diesel', 'tankers' => [1, 2], 'price_key' => 'turbo diesel']
+                ],
+                'xtra advance' => [
+                    ['name' => 'XTRA Advance 1', 'tankers' => [1, 2], 'price_key' => 'xtra advance'],
+                    ['name' => 'XTRA Advance 2', 'tankers' => [3, 4], 'price_key' => 'xtra advance']
+                ],
+                'xtra unl' => [
+                    ['name' => 'XTRA UNL 1', 'tankers' => [1, 2], 'price_key' => 'xtra unl'],
+                    ['name' => 'XTRA UNL 2', 'tankers' => [3, 4], 'price_key' => 'xtra unl']
+                ],
+                'diesel' => [
+                    ['name' => 'Diesel 1', 'tankers' => [1, 2, 3, 4], 'price_key' => 'diesel'],
+                    ['name' => 'Diesel 2', 'tankers' => [5, 6], 'price_key' => 'diesel']
+                ],
+                'xcs' => [
+                    ['name' => 'XCS 1', 'tankers' => [1, 2], 'price_key' => 'xcs'],
+                    ['name' => 'XCS 2', 'tankers' => [3, 4], 'price_key' => 'xcs']
+                ],
+                'kerosene' => [
+                    ['name' => 'Kerosene', 'tankers' => [1], 'price_key' => 'kerosene']
+                ]
+            ];
+            
+            foreach ($fuel_types as $idx => $ft):
                 $ft_name_form = htmlspecialchars($ft['fuel_type']);
-                $prev_reading_form = (float)$ft['previous_reading'];
+                $ft_lower = strtolower(trim($ft['fuel_type']));
+                
+                // Get tanker configuration for this fuel type
+                $config_groups_forms = null;
+                foreach ($tanker_config_forms as $key => $groups) {
+                    if (str_contains($ft_lower, $key)) {
+                        $config_groups_forms = $groups;
+                        break;
+                    }
+                }
+                
+                // If no config found, create default single tanker
+                if (!$config_groups_forms) {
+                    $config_groups_forms = [
+                        ['name' => $ft['fuel_type'], 'tankers' => [1], 'price_key' => $ft_lower]
+                    ];
+                }
+                
+                // Loop through each group and create forms for each tanker
+                foreach ($config_groups_forms as $group):
+                    $group_name = $group['name'];
+                    $tankers = $group['tankers'];
+                    
+                    foreach ($tankers as $tanker_num):
+                        $ft_id = 'fuel_' . preg_replace('/[^a-z0-9]/i', '_', $group_name) . '_' . $idx . '_t' . $tanker_num;
             ?>
-            <form id="fuelForm_<?= $ft_id_form ?>"
+            <form id="fuelForm_<?= $ft_id ?>"
                   method="POST"
                   action="api_fuel_readings.php"
-                  onsubmit="return submitFuelCard(event, '<?= $ft_id_form ?>')"
+                  onsubmit="return submitFuelCard(event, '<?= $ft_id ?>')"
                   style="display:none;">
                 <input type="hidden" name="action"           value="encode_reading">
                 <input type="hidden" name="api_token"        value="<?= htmlspecialchars($_api_token) ?>">
@@ -1652,143 +1708,243 @@ main.main {
                 <input type="hidden" name="staff_id"         value="<?= (int)$me['id'] ?>">
                 <input type="hidden" name="station_id"       value="<?= (int)$station_id ?>">
                 <input type="hidden" name="fuel_type"        value="<?= $ft_name_form ?>">
-                <input type="hidden" name="price_per_liter"  value="<?= (float)$ft['price_per_liter'] ?>">
+                <input type="hidden" name="tanker_number"    value="<?= $tanker_num ?>">
                 <input type="hidden" name="shift_period"     value="<?= htmlspecialchars($fuel_shift_key) ?>">
                 <input type="hidden" name="shift_name"       value="<?= htmlspecialchars($fuel_shift_name) ?>">
                 <input type="hidden" name="reading_date"     value="<?= date('Y-m-d') ?>">
             </form>
-            <?php endforeach; ?>
+            <?php 
+                    endforeach; // End tanker loop
+                endforeach; // End group loop
+            endforeach; // End fuel type loop
+            ?>
 
-            <div class="fet-wrap">
-                <table class="fet">
+            <div class="fet-wrap" style="overflow-x:auto;">
+                <table class="fet" style="width:100%;border-collapse:collapse;">
                     <thead>
-                        <tr>
-                            <th>Fuel Type</th>
-                            <th class="num">Prev. Reading</th>
-                            <th style="">Present Reading <span style="color:#dc2626;font-weight:800;">*</span></th>
-                            <th style="">Calibration</th>
-                            <th style="">Notes</th>
-                            <th style="">Actions</th>
+                        <tr style="background:#f8fafc;">
+                            <th rowspan="2" style="border:1px solid #e2e8f0;padding:12px;vertical-align:middle;min-width:120px;font-weight:700;font-size:13px;">NAME</th>
+                            <th colspan="6" style="border:1px solid #e2e8f0;padding:8px;text-align:center;font-size:14px;font-weight:700;color:#002F6C;">METER READING</th>
+                            <th rowspan="2" style="border:1px solid #e2e8f0;padding:12px;vertical-align:middle;min-width:100px;font-weight:700;font-size:11px;">TOTAL<br>LITERS</th>
+                            <th rowspan="2" style="border:1px solid #e2e8f0;padding:12px;vertical-align:middle;min-width:120px;font-weight:700;font-size:11px;">NOTES</th>
+                        </tr>
+                        <tr style="background:#f8fafc;">
+                            <th style="border:1px solid #e2e8f0;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#64748b;">BEGINNING</th>
+                            <th style="border:1px solid #e2e8f0;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#64748b;">ENDING</th>
+                            <th style="border:1px solid #e2e8f0;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#64748b;">CAL</th>
+                            <th style="border:1px solid #e2e8f0;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#64748b;">VOLUME<br>LITERS</th>
+                            <th style="border:1px solid #e2e8f0;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#64748b;">PRICE</th>
+                            <th style="border:1px solid #e2e8f0;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#64748b;">AMOUNT</th>
                         </tr>
                     </thead>
                     <tbody>
-                    <?php foreach ($fuel_types as $idx => $ft):
-                        $ft_id   = 'fuel_' . preg_replace('/[^a-z0-9]/i', '_', $ft['fuel_type']) . '_' . $idx;
-                        $ft_name = htmlspecialchars($ft['fuel_type']);
-                        $ft_lower = strtolower($ft['fuel_type']);
-
-                        // Brand-accurate colors
-                        if      (str_contains($ft_lower, 'diesel'))   { $ft_color = '#003d7a'; $ft_icon = 'fa-gas-pump';  }
-                        elseif  (str_contains($ft_lower, 'kerosene')) { $ft_color = '#b45309'; $ft_icon = 'fa-fire';      }
-                        elseif  (str_contains($ft_lower, 'xcs'))      { $ft_color = '#0369a1'; $ft_icon = 'fa-gas-pump';  }
-                        elseif  (str_contains($ft_lower, 'xtra'))     { $ft_color = '#15803d'; $ft_icon = 'fa-gas-pump';  }
-                        elseif  (str_contains($ft_lower, 'blaze'))    { $ft_color = '#b91c1c'; $ft_icon = 'fa-fire-alt';  }
-                        elseif  (str_contains($ft_lower, 'e10'))      { $ft_color = '#065f46'; $ft_icon = 'fa-leaf';      }
-                        else                                           { $ft_color = '#334155'; $ft_icon = 'fa-gas-pump';  }
-
-                        $prev_reading = (float)$ft['previous_reading'];
+                    <?php 
+                    // Tanker configuration per fuel type - THIS CONTROLS THE DISPLAY
+                    // ORDER MATTERS: Check longer/more specific names first to avoid partial matches
+                    $tanker_config = [
+                        'xcs plus' => [
+                            ['name' => 'XCS Plus', 'tankers' => [1, 2, 3, 4], 'price_key' => 'xcs plus']
+                        ],
+                        'turbo diesel' => [
+                            ['name' => 'Turbo Diesel', 'tankers' => [1, 2], 'price_key' => 'turbo diesel']
+                        ],
+                        'xtra advance' => [
+                            ['name' => 'XTRA Advance 1', 'tankers' => [1, 2], 'price_key' => 'xtra advance'],
+                            ['name' => 'XTRA Advance 2', 'tankers' => [3, 4], 'price_key' => 'xtra advance']
+                        ],
+                        'xtra unl' => [
+                            ['name' => 'XTRA UNL 1', 'tankers' => [1, 2], 'price_key' => 'xtra unl'],
+                            ['name' => 'XTRA UNL 2', 'tankers' => [3, 4], 'price_key' => 'xtra unl']
+                        ],
+                        'diesel' => [
+                            ['name' => 'Diesel 1', 'tankers' => [1, 2, 3, 4], 'price_key' => 'diesel'],
+                            ['name' => 'Diesel 2', 'tankers' => [5, 6], 'price_key' => 'diesel']
+                        ],
+                        'xcs' => [
+                            ['name' => 'XCS 1', 'tankers' => [1, 2], 'price_key' => 'xcs'],
+                            ['name' => 'XCS 2', 'tankers' => [3, 4], 'price_key' => 'xcs']
+                        ],
+                        'kerosene' => [
+                            ['name' => 'Kerosene', 'tankers' => [1], 'price_key' => 'kerosene']
+                        ]
+                    ];
+                    
+                    foreach ($fuel_types as $idx => $ft):
+                        $ft_lower = strtolower(trim($ft['fuel_type']));
+                        $price_per_liter = (float)$ft['price_per_liter'];
+                        
+                        // Get tanker configuration for this fuel type
+                        $config_groups = null;
+                        foreach ($tanker_config as $key => $groups) {
+                            if (str_contains($ft_lower, $key)) {
+                                $config_groups = $groups;
+                                break;
+                            }
+                        }
+                        
+                        // If no config found, create default single tanker
+                        if (!$config_groups) {
+                            $config_groups = [
+                                ['name' => $ft['fuel_type'], 'tankers' => [1], 'price_key' => $ft_lower]
+                            ];
+                        }
+                        
+                        // Loop through each group (e.g., Diesel 1 group, Diesel 2 group)
+                        foreach ($config_groups as $group):
+                            $group_name = $group['name'];
+                            $tankers = $group['tankers'];
+                            
+                            // Color selection
+                            $ft_color = '#334155';
+                            $ft_icon = 'fa-gas-pump';
+                            if (str_contains($ft_lower, 'diesel')) { $ft_color = '#003d7a'; }
+                            elseif (str_contains($ft_lower, 'kerosene')) { $ft_color = '#b45309'; $ft_icon = 'fa-fire'; }
+                            elseif (str_contains($ft_lower, 'xcs')) { $ft_color = '#0369a1'; }
+                            elseif (str_contains($ft_lower, 'xtra')) { $ft_color = '#15803d'; }
+                            elseif (str_contains($ft_lower, 'turbo')) { $ft_color = '#7c3aed'; }
+                            
+                            // Create a row for EACH tanker in this group
+                            foreach ($tankers as $tanker_num):
+                                $ft_id = 'fuel_' . preg_replace('/[^a-z0-9]/i', '_', $group_name) . '_' . $idx . '_t' . $tanker_num;
+                                $display_name = strtoupper($group_name) . ' - ' . $tanker_num;
                     ?>
-                    <tr id="fuelRow_<?= $ft_id ?>">
-                        <td>
-                            <!-- Fuel type identity -->
-                            <div class="fet-fuel-cell">
-                                <div style="width:32px;height:32px;border-radius:50%;background:<?= $ft_color ?>;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                                    <i class="fas <?= $ft_icon ?>" style="color:#fff;font-size:13px;"></i>
+                    <tr id="fuelRow_<?= $ft_id ?>" style="border-bottom:1px solid #e2e8f0;">
+                        <!-- NAME Column (with tanker number) -->
+                        <td style="border:1px solid #e2e8f0;padding:10px;">
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <div style="width:24px;height:24px;border-radius:50%;background:<?= $ft_color ?>;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                    <i class="fas <?= $ft_icon ?>" style="color:#fff;font-size:10px;"></i>
                                 </div>
-                                <div class="fet-fuel-name" style="color:<?= $ft_color ?>;"><?= $ft_name ?></div>
+                                <div style="font-weight:700;font-size:12px;color:<?= $ft_color ?>;"><?= $display_name ?></div>
                             </div>
                         </td>
 
-                        <!-- Previous Reading — auto-display but editable -->
-                        <td>
+                        <!-- BEGINNING Column -->
+                        <td style="border:1px solid #e2e8f0;padding:6px;">
                             <input type="number"
                                    form="fuelForm_<?= $ft_id ?>"
-                                   name="previous_reading"
-                                   id="prev_<?= $ft_id ?>"
-                                   class="fet-input"
+                                   name="beginning_reading"
+                                   id="beginning_<?= $ft_id ?>"
+                                   style="width:110px;padding:8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px;text-align:right;"
                                    step="0.01" min="0"
-                                   value="<?= $prev_reading > 0 ? $prev_reading : '' ?>"
-                                   placeholder="Enter previous"
-                                   required
+                                   placeholder="0.00"
                                    autocomplete="off"
-                                   oninput="updateFuelCalc('<?= $ft_id ?>', <?= (float)$ft['price_per_liter'] ?>)">
+                                   oninput="updateFuelCalc('<?= $ft_id ?>', <?= $price_per_liter ?>)">
                         </td>
-
-                        <!-- Present Reading — staff encodes -->
-                        <td>
+                        
+                        <!-- ENDING Column -->
+                        <td style="border:1px solid #e2e8f0;padding:6px;">
                             <input type="number"
                                    form="fuelForm_<?= $ft_id ?>"
-                                   name="present_reading"
-                                   id="present_<?= $ft_id ?>"
-                                   class="fet-input"
+                                   name="ending_reading"
+                                   id="ending_<?= $ft_id ?>"
+                                   style="width:110px;padding:8px;font-size:12px;border:2px solid <?= $ft_color ?>;border-radius:4px;text-align:right;font-weight:700;"
                                    step="0.01" min="0"
-                                   placeholder="Enter present"
+                                   placeholder="0.00"
                                    required
                                    autocomplete="off"
-                                   style="border-color:<?= $ft_color ?>;"
-                                   oninput="updateFuelCalc('<?= $ft_id ?>', <?= (float)$ft['price_per_liter'] ?>)">
+                                   oninput="updateFuelCalc('<?= $ft_id ?>', <?= $price_per_liter ?>)">
                         </td>
-
-                        <!-- Calibration — always starts at 0.000; technician ref shown as hint -->
-                        <td>
+                        
+                        <!-- CAL (Calibration) Column -->
+                        <td style="border:1px solid #e2e8f0;padding:6px;">
                             <input type="number"
                                    form="fuelForm_<?= $ft_id ?>"
                                    name="calibration"
-                                   id="calib_<?= $ft_id ?>"
-                                   class="fet-input calib"
-                                   step="0.001" min="0"
-                                   value="0.000"
-                                   placeholder="0.000"
+                                   id="cal_<?= $ft_id ?>"
+                                   style="width:80px;padding:8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px;text-align:right;"
+                                   step="0.01" min="0"
+                                   value="0.00"
+                                   placeholder="0.00"
                                    autocomplete="off"
-                                   oninput="updateFuelCalc('<?= $ft_id ?>', <?= (float)$ft['price_per_liter'] ?>)">
-                            <div style="font-size:10px;color:#94a3b8;margin-top:3px;font-style:italic;line-height:1.5;" id="calibHint_<?= $ft_id ?>">
-                                <?php if ((float)$ft['calibration'] != 0): ?>
-                                    technician ref: <?= number_format((float)$ft['calibration'], 3) ?> L
-                                    &nbsp;<button type="button"
-                                        onclick="applyTechCalib('<?= $ft_id ?>', <?= number_format((float)$ft['calibration'], 3, '.', '') ?>, <?= (float)$ft['price_per_liter'] ?>)"
-                                        style="font-size:9px;padding:1px 6px;border:1px solid #94a3b8;border-radius:4px;background:#f8fafc;color:#475569;cursor:pointer;vertical-align:middle;">
-                                        Use
-                                    </button>
-                                <?php else: ?>
-                                    0.000 = no correction today
-                                <?php endif; ?>
-                            </div>
+                                   oninput="updateFuelCalc('<?= $ft_id ?>', <?= $price_per_liter ?>)">
+                        </td>
+                        
+                        <!-- VOLUME LITERS Column (Auto-calculated: Ending - Beginning - CAL) -->
+                        <td style="border:1px solid #e2e8f0;padding:6px;background:#fef3c7;">
+                            <input type="text"
+                                   id="volume_<?= $ft_id ?>"
+                                   style="width:90px;padding:8px;font-size:12px;background:#fef08a;border:2px solid #fbbf24;border-radius:4px;text-align:right;font-weight:800;color:#92400e;"
+                                   value="0.00"
+                                   readonly>
+                            <input type="hidden"
+                                   form="fuelForm_<?= $ft_id ?>"
+                                   name="volume_liters"
+                                   id="volume_value_<?= $ft_id ?>"
+                                   value="0.00">
+                        </td>
+                        
+                        <!-- PRICE Column (Visible, not editable) -->
+                        <td style="border:1px solid #e2e8f0;padding:6px;background:#e0f2fe;">
+                            <input type="text"
+                                   style="width:80px;padding:8px;font-size:12px;background:#dbeafe;border:1px solid #60a5fa;border-radius:4px;text-align:right;font-weight:700;color:#1e40af;"
+                                   value="₱<?= number_format($price_per_liter, 2) ?>"
+                                   readonly>
+                            <input type="hidden"
+                                   form="fuelForm_<?= $ft_id ?>"
+                                   name="price_per_liter"
+                                   value="<?= $price_per_liter ?>">
+                        </td>
+                        
+                        <!-- AMOUNT Column (Auto-calculated: Volume × Price) -->
+                        <td style="border:1px solid #e2e8f0;padding:6px;background:#f0f9ff;">
+                            <input type="text"
+                                   id="amount_<?= $ft_id ?>"
+                                   style="width:110px;padding:8px;font-size:12px;background:#e0f2fe;border:2px solid #7dd3fc;border-radius:4px;text-align:right;font-weight:800;color:#0369a1;"
+                                   value="₱0.00"
+                                   readonly>
+                            <input type="hidden"
+                                   form="fuelForm_<?= $ft_id ?>"
+                                   name="total_amount"
+                                   id="amount_value_<?= $ft_id ?>"
+                                   value="0.00">
                         </td>
 
-                        <!-- Notes — optional -->
-                        <td>
+                        <!-- TOTAL LITERS Column (Same as VOLUME for single row) -->
+                        <td style="border:1px solid #e2e8f0;padding:6px;background:#dcfce7;">
+                            <input type="text"
+                                   id="total_<?= $ft_id ?>"
+                                   style="width:90px;padding:8px;font-size:12px;background:#bbf7d0;border:2px solid #4ade80;border-radius:4px;text-align:right;font-weight:800;color:#15803d;"
+                                   value="0.00 L"
+                                   readonly>
+                        </td>
+
+                        <!-- NOTES Column -->
+                        <td style="border:1px solid #e2e8f0;padding:6px;">
                             <input type="text"
                                    form="fuelForm_<?= $ft_id ?>"
                                    name="notes"
-                                   class="fet-input notes-input"
+                                   style="width:140px;padding:8px;font-size:11px;border:1px solid #cbd5e1;border-radius:4px;"
                                    placeholder="Remarks…"
                                    maxlength="255"
                                    autocomplete="off">
                         </td>
-
-                        <!-- Actions -->
-                        <td>
-                            <div style="display:flex;gap:6px;align-items:center;flex-wrap:nowrap;">
-                                <button type="submit"
-                                        form="fuelForm_<?= $ft_id ?>"
-                                        class="fet-submit-btn"
-                                        id="submitBtn_<?= $ft_id ?>">
-                                    <i class="fas fa-paper-plane"></i> Submit
-                                </button>
-                                <button type="button"
-                                        class="fet-reset-btn"
-                                        onclick="resetCard('<?= $ft_id ?>', <?= $prev_reading ?>, <?= number_format((float)$ft['calibration'], 3, '.', '') ?>, <?= (float)$ft['price_per_liter'] ?>)"
-                                        title="Reset this row">
-                                    <i class="fas fa-undo"></i>
-                                </button>
-                            </div>
-                            <div id="cardMsg_<?= $ft_id ?>" class="fet-row-msg" style="margin-top:5px;"></div>
-                        </td>
                     </tr>
-                    <?php endforeach; ?>
+                    <?php 
+                        endforeach; // End tanker loop
+                        endforeach; // End group loop
+                    endforeach; // End fuel type loop
+                    ?>
                     </tbody>
                 </table>
             </div><!-- /fet-wrap -->
+
+            <!-- Submit/Reset Buttons - Bottom Right -->
+            <div style="display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-top:16px;padding:0 8px;">
+                <button type="button"
+                        onclick="resetAllFuelRows()"
+                        class="fet-reset-btn"
+                        style="padding:10px 20px;font-size:13px;font-weight:600;">
+                    <i class="fas fa-undo"></i> Reset All
+                </button>
+                <button type="button"
+                        onclick="submitAllFuelRows()"
+                        class="fet-submit-btn"
+                        style="padding:10px 24px;font-size:13px;font-weight:700;">
+                    <i class="fas fa-paper-plane"></i> Submit All Readings
+                </button>
+            </div>
+
         </div><!-- /txn-card -->
 
         <?php endif; ?>
@@ -1860,75 +2016,69 @@ main.main {
             window.location.href = 'staff_transactions_hub.php?section=fuel';
         }
 
-        // ── Live calculation preview per row ──────────────────────────────────
-        // Correct flow:
-        //   Step 1 — Raw Volume  = Present Reading − Previous Reading
-        //   Step 2 — Net Volume  = Raw Volume − Calibration
-        //            If Net Volume < 0 → auto-set to 0 (valid, no sale this shift)
-        //   Step 3 — Amount      = Net Volume × Price per Liter
+        // ── Live calculation per row (Beginning → Ending → CAL → Volume → Amount) ──────────────────────────
         function updateFuelCalc(ftId, pricePerLiter) {
-            const prevEl     = document.getElementById('prev_'      + ftId);
-            const presentEl  = document.getElementById('present_'   + ftId);
-            const calibEl    = document.getElementById('calib_'     + ftId);
-            const hintEl     = document.getElementById('calibHint_' + ftId);
-            if (!presentEl || !prevEl) return;
-
-            const present = parseFloat(presentEl.value);
-            const prev    = parseFloat(prevEl.value)   || 0;
-            const calib   = parseFloat(calibEl?.value) || 0;
-
-            if (isNaN(present) || present <= 0) return;
-
-            const rawVol = present - prev;
-            const fmt = (n, d=2) => Number(n).toLocaleString('en-PH', {minimumFractionDigits:d, maximumFractionDigits:d});
-
-            // Update calibration hint only
-            if (hintEl) {
-                if (calib >= rawVol && rawVol > 0) {
-                    hintEl.style.color = '#b45309';
-                    hintEl.textContent = `⚠ Calibration (${fmt(calib,3)}) ≥ difference (${fmt(rawVol,3)}) — 0 L net (valid zero-sale). Correct if wrong.`;
-                } else if (calib > 0) {
-                    hintEl.style.color = '#94a3b8';
-                    hintEl.textContent = `technician ref: ${fmt(calib,3)} L`;
-                } else {
-                    hintEl.style.color = '#94a3b8';
-                    hintEl.textContent = '0.000 = no correction';
-                }
+            const beginningEl = document.getElementById(`beginning_${ftId}`);
+            const endingEl    = document.getElementById(`ending_${ftId}`);
+            const calEl       = document.getElementById(`cal_${ftId}`);
+            const volumeEl    = document.getElementById(`volume_${ftId}`);
+            const volumeValueEl = document.getElementById(`volume_value_${ftId}`);
+            const amountEl    = document.getElementById(`amount_${ftId}`);
+            const amountValueEl = document.getElementById(`amount_value_${ftId}`);
+            const totalEl     = document.getElementById(`total_${ftId}`);
+            
+            if (!beginningEl || !endingEl || !calEl || !volumeEl || !amountEl || !totalEl) return;
+            
+            const beginning = parseFloat(beginningEl.value) || 0;
+            const ending = parseFloat(endingEl.value) || 0;
+            const cal = parseFloat(calEl.value) || 0;
+            
+            // Calculate volume liters: Ending - Beginning - CAL
+            let volume = 0;
+            if (ending > 0 && ending >= beginning) {
+                volume = Math.max(0, ending - beginning - cal);
             }
+            
+            // Calculate amount: Volume × Price per Liter
+            const amount = volume * pricePerLiter;
+            
+            // Update displays
+            volumeEl.value = volume.toFixed(2);
+            volumeValueEl.value = volume.toFixed(2);
+            
+            amountEl.value = '₱' + amount.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
+            amountValueEl.value = amount.toFixed(2);
+            
+            // Total liters = same as volume for single row entry
+            totalEl.value = volume.toFixed(2) + ' L';
         }
 
-        // ── AJAX submit per fuel row ──────────────────────────────────────────
+        // ── AJAX submit per fuel row (Updated for tanker data) ──────────────────────────────────────────
         async function submitFuelCard(event, ftId) {
             event.preventDefault();
 
             const form      = document.getElementById('fuelForm_' + ftId);
             const submitBtn = document.getElementById('submitBtn_' + ftId);
             const msgEl     = document.getElementById('cardMsg_'   + ftId);
-            const presentEl = document.getElementById('present_'   + ftId);
 
-            if (!form || !presentEl) return false;
+            if (!form) return false;
 
-            // Client-side validation
-            const present  = parseFloat(presentEl.value) || 0;
-            const prevEl   = document.getElementById('prev_' + ftId);
-            const previous = parseFloat(prevEl?.value) || 0;
-            const calib    = parseFloat(document.getElementById('calib_' + ftId)?.value) || 0;
-
-            if (present <= 0) {
-                showRowMsg(msgEl, 'error', 'Present reading is required.');
-                presentEl.focus();
+            // Collect all tanker readings from form inputs
+            const formData = new FormData(form);
+            let hasPresentReading = false;
+            
+            // Check if at least one tanker has a present reading
+            for (let pair of formData.entries()) {
+                if (pair[0].startsWith('tanker_present_') && pair[1] && parseFloat(pair[1]) > 0) {
+                    hasPresentReading = true;
+                    break;
+                }
+            }
+            
+            if (!hasPresentReading) {
+                showRowMsg(msgEl, 'error', 'Please enter at least one present reading.');
                 return false;
             }
-            if (present < previous) {
-                showRowMsg(msgEl, 'error', `Present (${present.toFixed(2)}) cannot be less than previous (${previous.toFixed(2)}).`);
-                presentEl.focus();
-                return false;
-            }
-
-            // ── Calibration > difference guard (Removed blocking validation) ──
-            const diff = present - previous;
-            // The system auto-computes Math.max(0, diff - calib) during submit, 
-            // so we allow it to proceed and save as 0 L per business rules.
 
             // Disable button, show loading
             submitBtn.disabled = true;
@@ -1936,30 +2086,20 @@ main.main {
             showRowMsg(msgEl, '', '');
 
             try {
-                const data = new FormData(form);
-                console.log('Sending FormData for form:', form.id);
-                for (let pair of data.entries()) {
-                    console.log(pair[0] + ': ' + pair[1]);
-                }
                 const targetUrl = window.location.pathname.replace(/[^\\/]+$/, '') + 'api_fuel_readings.php';
                 const res  = await fetch(targetUrl, {
                     method: 'POST',
-                    body: data,
+                    body: formData,
                     credentials: 'same-origin',
                 });
 
-                // Read body as text first, then parse — a Response body can only be read once,
-                // so calling res.json() then res.text() always fails with "(no response)".
                 const raw = await res.text().catch(() => '');
                 let json;
                 try {
-                    // Strip any PHP warnings/notices prepended before the JSON.
-                    // Look specifically for {"success" to avoid matching { inside HTML/CSS.
                     const jsonStart = raw.indexOf('{"success"');
                     const jsonStr   = jsonStart >= 0 ? raw.slice(jsonStart) : raw;
                     json = JSON.parse(jsonStr);
                 } catch (parseErr) {
-                    // Show the actual raw server response for debugging
                     const preview = raw.length > 0
                         ? raw.substring(0, 400).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
                         : '(empty response)';
@@ -1974,22 +2114,11 @@ main.main {
                 }
 
                 if (json.success) {
-                    const prev    = parseFloat(json.previous_reading || 0);
-                    const present = parseFloat(form.querySelector('[name="present_reading"]')?.value || presentEl.value || 0);
-                    const calib   = parseFloat(json.calibration || 0);
-                    const liters  = parseFloat(json.liters_sold  || 0);
-                    const price   = parseFloat(json.price_per_liter || 0);
-                    const amount  = parseFloat(json.total_amount || 0);
-
-                    const fmt  = (n, d=2) => n.toLocaleString('en-PH', {minimumFractionDigits:d, maximumFractionDigits:d});
-
-                    // Simple clean success message requested by user
                     const msg = `Meter Reading submitted successfully!`;
                     
-                    // Create and show a global toast notification at the top
                     const toast = document.createElement('div');
                     toast.style.position = 'fixed';
-                    toast.style.top = '80px'; // Below top header
+                    toast.style.top = '80px';
                     toast.style.left = '50%';
                     toast.style.transform = 'translateX(-50%)';
                     toast.style.backgroundColor = '#d4edda';
@@ -2065,29 +2194,106 @@ main.main {
         }
 
         // ── Reset a single row ────────────────────────────────────────────────
-        function resetCard(ftId, prevReading, defaultCalib, pricePerLiter) {
-            const prevEl    = document.getElementById('prev_'    + ftId);
-            const presentEl = document.getElementById('present_' + ftId);
-            const calibEl   = document.getElementById('calib_'   + ftId);
-            const msgEl     = document.getElementById('cardMsg_' + ftId);
-            const previewEl = document.getElementById('calcPreview_' + ftId);
-            const notesEl   = document.querySelector(`#fuelForm_${ftId} [name="notes"]`);
-
-            if (prevEl)    prevEl.value = prevReading > 0 ? prevReading : '';
-            if (presentEl) presentEl.value = '';
-            if (calibEl)   calibEl.value   = '0.000';
-            if (notesEl)   notesEl.value   = '';
-            if (msgEl)     showRowMsg(msgEl, '', '');
-            if (previewEl) previewEl.style.display = 'none';
+        function resetFuelRow(ftId) {
+            const msgEl         = document.getElementById('cardMsg_' + ftId);
+            const notesEl       = document.querySelector(`#fuelForm_${ftId} [name="notes"]`);
+            const beginningEl   = document.getElementById(`beginning_${ftId}`);
+            const endingEl      = document.getElementById(`ending_${ftId}`);
+            const calEl         = document.getElementById(`cal_${ftId}`);
+            const volumeEl      = document.getElementById(`volume_${ftId}`);
+            const volumeValueEl = document.getElementById(`volume_value_${ftId}`);
+            const amountEl      = document.getElementById(`amount_${ftId}`);
+            const amountValueEl = document.getElementById(`amount_value_${ftId}`);
+            const totalEl       = document.getElementById(`total_${ftId}`);
+            
+            if (beginningEl) beginningEl.value = '';
+            if (endingEl) endingEl.value = '';
+            if (calEl) calEl.value = '0.00';
+            if (volumeEl) volumeEl.value = '0.00';
+            if (volumeValueEl) volumeValueEl.value = '0.00';
+            if (amountEl) amountEl.value = '₱0.00';
+            if (amountValueEl) amountValueEl.value = '0.00';
+            if (totalEl) totalEl.value = '0.00 L';
+            if (notesEl) notesEl.value = '';
+            if (msgEl) showRowMsg(msgEl, '', '');
         }
 
-        // ── Apply technician calibration value with one click ────────────────
-        function applyTechCalib(ftId, techValue, pricePerLiter) {
-            const calibEl = document.getElementById('calib_' + ftId);
-            if (calibEl) {
-                calibEl.value = parseFloat(techValue).toFixed(3);
-                updateFuelCalc(ftId, pricePerLiter);
-                calibEl.focus();
+        // ── Reset ALL fuel rows ────────────────────────────────────────────────
+        function resetAllFuelRows() {
+            if (!confirm('Reset all fuel readings? This will clear all entered data.')) return;
+            
+            // Find all forms that start with "fuelForm_"
+            const allForms = document.querySelectorAll('form[id^="fuelForm_"]');
+            allForms.forEach(form => {
+                const ftId = form.id.replace('fuelForm_', '');
+                resetFuelRow(ftId);
+            });
+            
+            alert('All fuel readings have been reset.');
+        }
+
+        // ── Submit ALL fuel rows with data ─────────────────────────────────────
+        async function submitAllFuelRows() {
+            const allForms = document.querySelectorAll('form[id^="fuelForm_"]');
+            const formsToSubmit = [];
+            
+            // Collect forms that have ending reading (required field)
+            allForms.forEach(form => {
+                const ftId = form.id.replace('fuelForm_', '');
+                const endingEl = document.getElementById(`ending_${ftId}`);
+                const endingValue = parseFloat(endingEl?.value || 0);
+                
+                if (endingValue > 0) {
+                    formsToSubmit.push({ ftId, form });
+                }
+            });
+            
+            if (formsToSubmit.length === 0) {
+                alert('No fuel readings to submit. Please enter at least one ending reading.');
+                return;
+            }
+            
+            if (!confirm(`Submit ${formsToSubmit.length} fuel reading(s)?`)) return;
+            
+            let successCount = 0;
+            let errorCount = 0;
+            const errors = [];
+            
+            // Submit each form
+            for (const {ftId, form} of formsToSubmit) {
+                try {
+                    const formData = new FormData(form);
+                    const response = await fetch('api_fuel_readings.php', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        successCount++;
+                        // Clear the form
+                        resetFuelRow(ftId);
+                    } else {
+                        errorCount++;
+                        errors.push(`${ftId}: ${result.message || 'Unknown error'}`);
+                    }
+                } catch (error) {
+                    errorCount++;
+                    errors.push(`${ftId}: ${error.message}`);
+                }
+            }
+            
+            // Show summary
+            let message = `Submitted ${successCount} reading(s) successfully.`;
+            if (errorCount > 0) {
+                message += `\n${errorCount} reading(s) failed:\n${errors.join('\n')}`;
+            }
+            alert(message);
+            
+            // Refresh today's entries if we're on that tab
+            if (typeof refreshTodayEntries === 'function') {
+                refreshTodayEntries();
             }
         }
 

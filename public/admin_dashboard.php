@@ -254,11 +254,11 @@ $complaints_trend_data = adm_rows($pdo, "
 
 
 // ══════════════════════════════════════════════════════════
-// 7. CALENDAR & WEEKLY SCHEDULING
+// 7. CALENDAR & WEEKLY SCHEDULING (Sunday to Saturday format)
 // ══════════════════════════════════════════════════════════
 $week_offset   = (int)($_GET['week'] ?? 0);
-$start_of_week = date('Y-m-d', strtotime("monday this week +{$week_offset} weeks"));
-$end_of_week   = date('Y-m-d', strtotime("sunday this week +{$week_offset} weeks"));
+$start_of_week = date('Y-m-d', strtotime("sunday this week +{$week_offset} weeks"));
+$end_of_week   = date('Y-m-d', strtotime("saturday this week +{$week_offset} weeks"));
 
 $cal_events = [];
 
@@ -1323,10 +1323,10 @@ body {
       </div>
     </div>
 
-    <!-- Weekly Grid -->
+    <!-- Weekly Grid (Sunday to Saturday format) -->
     <div class="adm-cal-grid">
       <?php
-      $days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      $days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
       for ($i = 0; $i < 7; $i++) {
           $current_day_date = date('Y-m-d', strtotime($start_of_week . " +$i days"));
           $is_today = ($current_day_date === date('Y-m-d'));
