@@ -428,7 +428,7 @@ try {
                                unit,
                                status,
                                created_at AS delivery_date,
-                               COALESCE((SELECT name FROM users WHERE id = encoded_by), '—') AS encoded_by
+                               COALESCE((SELECT name FROM users WHERE user_id = encoded_by), '—') AS encoded_by
                         FROM deliveries_oversight
                         WHERE station_id=? AND delivery_type='merchandise' 
                         AND DATE(created_at) BETWEEN ? AND ?
@@ -667,7 +667,7 @@ try {
                            mt.total_amount,
                            mt.payment_method,
                            mt.created_at AS transaction_date,
-                           COALESCE((SELECT name FROM users WHERE id=mt.staff_id),'—') AS encoded_by
+                           COALESCE((SELECT name FROM users WHERE user_id =mt.staff_id),'—') AS encoded_by
                     FROM merchandise_transactions mt
                     LEFT JOIN customers c ON mt.customer_id = c.id
                     WHERE mt.station_id = ? AND mt.staff_id = ? AND DATE(mt.created_at) BETWEEN ? AND ?
@@ -681,7 +681,7 @@ try {
                            mt.total_amount,
                            mt.payment_method,
                            mt.created_at AS transaction_date,
-                           COALESCE((SELECT name FROM users WHERE id=mt.staff_id),'—') AS encoded_by
+                           COALESCE((SELECT name FROM users WHERE user_id =mt.staff_id),'—') AS encoded_by
                     FROM merchandise_transactions mt
                     WHERE mt.station_id = ? AND mt.staff_id = ? AND DATE(mt.created_at) BETWEEN ? AND ?
                     ORDER BY mt.created_at DESC

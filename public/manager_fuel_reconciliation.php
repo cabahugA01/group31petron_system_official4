@@ -154,9 +154,13 @@ try {
     $stmt->execute([$station_id, $date_from, $date_to]);
     $total_records = (int)$stmt->fetchColumn();
     
-    // Get paginated results
+    // Get paginated results - Use first_name/last_name columns
     $sql = "SELECT fvr.*, 
-                   u.name as resolved_by_name
+                   COALESCE(
+                       NULLIF(CONCAT(TRIM(COALESCE(u.first_name, '')), ' ', TRIM(COALESCE(u.last_name, ''))), ' '),
+                       u.username,
+                       'Unknown'
+                   ) as resolved_by_name
             FROM fuel_variance_reports fvr
             LEFT JOIN users u ON fvr.resolved_by = u.id
             WHERE fvr.station_id = ?
@@ -191,7 +195,11 @@ $export = $_GET['export'] ?? '';
 if (in_array($export, ['excel', 'csv', 'pdf'])) {
     try {
         $stmt = $pdo->prepare("SELECT fvr.*, 
-                                      u.name as resolved_by_name
+                                      COALESCE(
+                                          NULLIF(CONCAT(TRIM(COALESCE(u.first_name, '')), ' ', TRIM(COALESCE(u.last_name, ''))), ' '),
+                                          u.username,
+                                          'Unknown'
+                                      ) as resolved_by_name
                                FROM fuel_variance_reports fvr
                                LEFT JOIN users u ON fvr.resolved_by = u.id
                                WHERE fvr.station_id = ?

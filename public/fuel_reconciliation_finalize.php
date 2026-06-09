@@ -30,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Verify password
             if (empty($admin_password)) {
 $msg = "Admin password required to finalize reconciliation.";
-            } elseif (!password_verify($admin_password, $me['password'] ?? '')) {
+            } elseif (!password_verify($admin_password, $me['password_hash'] ?? '')) {
 $msg = "Incorrect password. Reconciliation not finalized.";
             } else {
                 $stmt = $pdo->prepare("SELECT * FROM fuel_reconciliation WHERE id=?");
@@ -339,7 +339,7 @@ include __DIR__ . '/../partials/header.php';
                 
                 <div>
                   <label>Admin Password (for report lock) *</label>
-                  <input type="password" name="admin_password" placeholder="Enter your password to finalize" required>
+                  <input type="password_hash" name="admin_password" placeholder="Enter your password to finalize" required>
                   <small style="color: #94a3b8; margin-top: 4px; display: block;">Required to lock report and prevent changes</small>
                 </div>
                 

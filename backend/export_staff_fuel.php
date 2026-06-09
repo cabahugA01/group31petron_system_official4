@@ -37,7 +37,7 @@ if ($type === 'fuel_transactions') {
                    ft.transaction_date,
                    u.name AS encoded_by
             FROM fuel_transactions ft
-            LEFT JOIN users u ON u.id = ft.staff_id
+            LEFT JOIN users u ON u.user_id = ft.staff_id
             WHERE ft.station_id = ? AND ft.staff_id = ?
             ORDER BY ft.transaction_date DESC
         ");
@@ -82,7 +82,7 @@ if ($type === 'fuel_transactions') {
                    fd.created_at,
                    u.name AS recorded_by
             FROM fuel_deliveries fd
-            LEFT JOIN users u ON u.id = fd.received_by
+            LEFT JOIN users u ON u.user_id = fd.received_by
             WHERE fd.station_id = ? AND fd.received_by = ?
             ORDER BY fd.delivery_date DESC, fd.created_at DESC
         ");

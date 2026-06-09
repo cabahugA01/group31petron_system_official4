@@ -103,7 +103,7 @@ try {
             }
             
             // Ensure target is staff/manager and (if admin) in same station
-            $checkSql = "SELECT station_id FROM users WHERE id = ? AND role IN ('staff', 'operations_staff', 'manager')";
+            $checkSql = "SELECT station_id FROM users WHERE user_id = ? AND role IN ('staff', 'operations_staff', 'manager')";
             $checkStmt = $pdo->prepare($checkSql);
             $checkStmt->execute([$staff_id]);
             $target = $checkStmt->fetch(PDO::FETCH_ASSOC);
@@ -113,7 +113,7 @@ try {
                 exit;
             }
             
-            $update = $pdo->prepare("UPDATE users SET status = ? WHERE id = ?");
+            $update = $pdo->prepare("UPDATE users SET status = ? WHERE user_id = ?");
             $update->execute([$status, $staff_id]);
             
             log_activity($pdo, $me['id'], 'Change Status', "Updated staff #$staff_id status to $status from admin oversight");
@@ -130,7 +130,7 @@ try {
                 exit;
             }
             
-            $checkSql = "SELECT station_id FROM users WHERE id = ? AND role IN ('staff', 'operations_staff', 'manager')";
+            $checkSql = "SELECT station_id FROM users WHERE user_id = ? AND role IN ('staff', 'operations_staff', 'manager')";
             $checkStmt = $pdo->prepare($checkSql);
             $checkStmt->execute([$staff_id]);
             $target = $checkStmt->fetch(PDO::FETCH_ASSOC);
@@ -145,7 +145,7 @@ try {
             $has_remarks_col = in_array('remarks', $columns);
             
             if ($has_remarks_col) {
-                $update = $pdo->prepare("UPDATE users SET remarks = ? WHERE id = ?");
+                $update = $pdo->prepare("UPDATE users SET remarks = ? WHERE user_id = ?");
                 $update->execute([$remarks, $staff_id]);
                 echo json_encode(['success' => true]);
             } else {
@@ -167,7 +167,7 @@ try {
                 exit;
             }
             
-            $checkSql = "SELECT station_id FROM users WHERE id = ? AND role IN ('staff', 'operations_staff', 'manager')";
+            $checkSql = "SELECT station_id FROM users WHERE user_id = ? AND role IN ('staff', 'operations_staff', 'manager')";
             $checkStmt = $pdo->prepare($checkSql);
             $checkStmt->execute([$staff_id]);
             $target = $checkStmt->fetch(PDO::FETCH_ASSOC);
@@ -178,7 +178,7 @@ try {
             }
 
             if ($edit_role === 'manager') {
-                $checkMgr = $pdo->prepare("SELECT id FROM users WHERE station_id = ? AND role = 'manager' AND id != ?");
+                $checkMgr = $pdo->prepare("SELECT user_id FROM users WHERE station_id = ? AND role = 'manager' AND id != ?");
                 $checkMgr->execute([$target['station_id'], $staff_id]);
                 if ($checkMgr->fetch()) {
                     echo json_encode(['success' => false, 'error' => 'This station already has a manager. Only one manager is allowed per station.']);
@@ -191,11 +191,11 @@ try {
             $has_name_col = in_array('name', $columns);
             
             if ($has_name_col) {
-                $updateSql = "UPDATE users SET name = ?, email = ?, role = ?, status = ? WHERE id = ?";
+                $updateSql = "UPDATE users SET name = ?, email = ?, role = ?, status = ? WHERE user_id = ?";
                 $updateStmt = $pdo->prepare($updateSql);
                 $updateStmt->execute([$name, $email, $edit_role, $status, $staff_id]);
             } else {
-                $updateSql = "UPDATE users SET email = ?, role = ?, status = ? WHERE id = ?";
+                $updateSql = "UPDATE users SET email = ?, role = ?, status = ? WHERE user_id = ?";
                 $updateStmt = $pdo->prepare($updateSql);
                 $updateStmt->execute([$email, $edit_role, $status, $staff_id]);
             }

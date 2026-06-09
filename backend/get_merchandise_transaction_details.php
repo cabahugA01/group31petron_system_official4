@@ -52,7 +52,7 @@ try {
             mt.created_at,
             u.name AS staff_name
         FROM merchandise_transactions mt
-        LEFT JOIN users u ON u.id = mt.staff_id
+        LEFT JOIN users u ON u.user_id = mt.staff_id
         WHERE mt.transaction_id = ?
         LIMIT 1
     ");

@@ -29,7 +29,7 @@ $metrics = [
 
 try {
     // Staff on duty - use users table with shift_status
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE station_id = ? AND status = 'active' AND role IN ('staff', 'cashier', 'pump_attendant') AND shift_status = 'on_duty'");
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE station_id = ? AND status = 'Active' AND role IN ('staff', 'cashier', 'pump_attendant') AND shift_status = 'on_duty'");
     $stmt->execute([$station_id]);
     $metrics['staff_on_duty'] = (int)$stmt->fetchColumn();
     
@@ -61,7 +61,7 @@ include __DIR__ . '/../partials/header.php';
 // Recent alerts (priority/high/medium)
 $alerts = [];
 try {
-  $stmt = $pdo->prepare("SELECT id, action as title, created_at, details, 'medium' as priority FROM activity_logs WHERE station_id = ? ORDER BY created_at DESC LIMIT 5");
+  $stmt = $pdo->prepare("SELECT `user_id`, action as title, created_at, details, 'medium' as priority FROM activity_logs WHERE station_id = ? ORDER BY created_at DESC LIMIT 5");
   $stmt->execute([$station_id]);
   $alerts = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch(Exception $e) {}

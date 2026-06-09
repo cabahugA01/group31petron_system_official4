@@ -316,7 +316,7 @@ try {
                 $stmt = $pdo->query("SELECT COUNT(*) FROM users");
                 $stats['users']['total'] = $stmt->fetchColumn();
                 
-                $stmt = $pdo->query("SELECT COUNT(*) FROM users WHERE status = 'active'");
+                $stmt = $pdo->query("SELECT COUNT(*) FROM users WHERE status = 'Active'");
                 $stats['users']['active'] = $stmt->fetchColumn();
                 
                 $stmt = $pdo->query("SELECT role, COUNT(*) as count FROM users GROUP BY role");
@@ -328,7 +328,7 @@ try {
                 $stmt = $pdo->query("SELECT COUNT(*) FROM stations");
                 $stats['stations']['total'] = $stmt->fetchColumn();
                 
-                $stmt = $pdo->query("SELECT COUNT(*) FROM stations WHERE status = 'active'");
+                $stmt = $pdo->query("SELECT COUNT(*) FROM stations WHERE status = 'Active'");
                 $stats['stations']['active'] = $stmt->fetchColumn();
             } catch (Exception $e) {}
             
@@ -552,7 +552,7 @@ try {
             $email = trim($_POST['email'] ?? '');
             $role = $_POST['role'] ?? 'staff';
             $station_id = $_POST['station_id'] ?? null;
-            $password = $_POST['password'] ?? '';
+            $password = $_POST['password_hash'] ?? '';
             
             if (empty($username) || empty($name) || empty($email)) {
                 echo json_encode(['success' => false, 'error' => 'Username, name, and email are required']);
@@ -565,7 +565,7 @@ try {
             }
             
             // Check if username exists
-            $checkStmt = $pdo->prepare("SELECT id FROM users WHERE username = ?");
+            $checkStmt = $pdo->prepare("SELECT user_id FROM users WHERE username = ?");
             $checkStmt->execute([$username]);
             if ($checkStmt->rowCount() > 0) {
                 echo json_encode(['success' => false, 'error' => 'Username already exists']);
@@ -573,7 +573,7 @@ try {
             }
             
             // Check if email exists
-            $checkStmt = $pdo->prepare("SELECT id FROM users WHERE email = ?");
+            $checkStmt = $pdo->prepare("SELECT user_id FROM users WHERE email = ?");
             $checkStmt->execute([$email]);
             if ($checkStmt->rowCount() > 0) {
                 echo json_encode(['success' => false, 'error' => 'Email already exists']);

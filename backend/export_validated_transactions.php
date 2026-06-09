@@ -86,8 +86,8 @@ try {
             COALESCE({$mt_staff_col},'Unknown') AS staff_name,
             COALESCE({$mt_vby_col},'N/A') AS validated_by
         FROM merchandise_transactions mt
-        LEFT JOIN users u ON u.id = mt.staff_id
-        LEFT JOIN users v ON v.id = mt.validated_by
+        LEFT JOIN users u ON u.user_id = mt.staff_id
+        LEFT JOIN users v ON v.user_id = mt.validated_by
         {$mt_where}
         ORDER BY txn_date DESC
         LIMIT 5000
@@ -135,8 +135,8 @@ try {
             COALESCE(u.name,'Unknown') AS staff_name,
             COALESCE({$jo_vby_col},'N/A') AS validated_by
         FROM job_orders jo
-        LEFT JOIN users u ON u.id = {$jo_staff_col}
-        LEFT JOIN users v ON v.id = jo.validated_by
+        LEFT JOIN users u ON u.user_id = {$jo_staff_col}
+        LEFT JOIN users v ON v.user_id = jo.validated_by
         {$jo_where}
         ORDER BY jo.created_at DESC
         LIMIT 5000

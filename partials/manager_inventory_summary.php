@@ -33,7 +33,7 @@ try {
 // 3. Total Active Products
 $active_products = 0;
 try {
-    $s_ap = $pdo->prepare("SELECT COUNT(*) FROM inventory_products WHERE status = 'active' AND category != 'Fuel'");
+    $s_ap = $pdo->prepare("SELECT COUNT(*) FROM inventory_products WHERE status = 'Active' AND category != 'Fuel'");
     $s_ap->execute([]);
     $active_products = (int)$s_ap->fetchColumn();
 } catch (Exception $e) {}
@@ -45,7 +45,7 @@ try {
         SELECT COUNT(*) 
         FROM inventory_products ip
         LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
-        WHERE ip.category != 'Fuel' AND ip.status = 'active'
+        WHERE ip.category != 'Fuel' AND ip.status = 'Active'
           AND COALESCE(si.stock_level, ip.stock, 0) > 0 
           AND COALESCE(si.stock_level, ip.stock, 0) <= COALESCE(si.reorder_level, 10)
     ");
@@ -60,7 +60,7 @@ try {
         SELECT COUNT(*) 
         FROM inventory_products ip
         LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
-        WHERE ip.category != 'Fuel' AND ip.status = 'active'
+        WHERE ip.category != 'Fuel' AND ip.status = 'Active'
           AND COALESCE(si.stock_level, ip.stock, 0) <= 0
     ");
     $s_oos->execute([$station_id]);

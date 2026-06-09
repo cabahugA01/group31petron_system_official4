@@ -45,16 +45,16 @@ if (!$me) {
     $posted_uid = (int)($_POST['auth_user_id'] ?? $_GET['auth_user_id'] ?? 0);
     if ($posted_uid > 0) {
         try {
-            $u = $pdo->prepare("SELECT * FROM users WHERE id = ? AND (status = 'active' OR status IS NULL) LIMIT 1");
+            $u = $pdo->prepare("SELECT * FROM users WHERE user_id = ? AND (status = 'Active' OR status IS NULL) LIMIT 1");
             $u->execute([$posted_uid]);
             $db_user = $u->fetch(PDO::FETCH_ASSOC);
             if ($db_user) {
-                unset($db_user['password']);
+                unset($db_user['password_hash']);
                 $me         = $db_user;
                 $role       = role_key($me['role'] ?? '');
                 $station_id = $me['station_id'] ?? null;
                 try {
-                    $sid_stmt = $pdo->prepare("SELECT station_id FROM users WHERE id = ? LIMIT 1");
+                    $sid_stmt = $pdo->prepare("SELECT station_id FROM users WHERE user_id = ? LIMIT 1");
                     $sid_stmt->execute([$me['id']]);
                     $sid_val = $sid_stmt->fetchColumn();
                     if ($sid_val !== false) $station_id = $sid_val;
@@ -111,7 +111,10 @@ try {
                 respond(false, 'Only staff can encode readings.');
 
             $fuel_type    = trim($_POST['fuel_type']      ?? '');
-            $present      = (float)($_POST['present_reading']  ?? 0);
+            // NOTE: the form submits 'ending_reading' (the ending meter) and 'beginning_reading' (the beginning meter)
+            $present_raw  = $_POST['ending_reading']   ?? $_POST['present_reading'] ?? '0';
+            $present      = (float)str_replace(',', '', $present_raw);   // Ending meter (remove commas)
+            $tanker_num   = (int)($_POST['tanker_number'] ?? 0);  // pump identifier for this fuel type
             $notes        = trim($_POST['notes'] ?? '');
             $reading_date = $_POST['reading_date']  ?? date('Y-m-d');
             $shift_period = trim($_POST['shift_period'] ?? '');
@@ -119,20 +122,27 @@ try {
             $shift_id     = (int)($_POST['shift_id'] ?? 0) ?: null;
 
             if (empty($fuel_type)) respond(false, 'Fuel type is required.');
-            if ($present  <= 0)   respond(false, 'Present reading must be greater than 0.');
+            if ($present  <= 0)   respond(false, 'Ending meter reading must be greater than 0.');
+            if ($tanker_num <= 0) respond(false, 'Tanker/pump number is required.');
 
-            // ── Previous reading — use provided if any, else fallback to DB ──
+            // ── Beginning (Previous) reading — pump-specific for 24-hour continuous cycle ──
+            // Form posts 'beginning_reading'; fallback fetches last present_reading for same pump.
             $previous = 0.0;
-            if (isset($_POST['previous_reading']) && $_POST['previous_reading'] !== '') {
-                $previous = (float)$_POST['previous_reading'];
+            if (isset($_POST['beginning_reading']) && $_POST['beginning_reading'] !== '') {
+                $previous = (float)str_replace(',', '', $_POST['beginning_reading']);
+            } elseif (isset($_POST['previous_reading']) && $_POST['previous_reading'] !== '') {
+                $previous = (float)str_replace(',', '', $_POST['previous_reading']);
             } else {
                 try {
                     $prev_stmt = $pdo->prepare("
                         SELECT present_reading FROM fuel_transactions
-                        WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
-                        ORDER BY transaction_date DESC LIMIT 1
+                        WHERE station_id = ?
+                          AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                          AND pump_id = ?
+                          AND COALESCE(status, '') != 'Rejected'
+                        ORDER BY transaction_date DESC, id DESC LIMIT 1
                     ");
-                    $prev_stmt->execute([$station_id, $fuel_type]);
+                    $prev_stmt->execute([$station_id, $fuel_type, $tanker_num]);
                     $row_prev = $prev_stmt->fetchColumn();
                     if ($row_prev !== false) $previous = (float)$row_prev;
                 } catch (Exception $e) {}
@@ -173,12 +183,10 @@ try {
 
             // Staff override: if they edited the calibration field, use that value
             if (isset($_POST['calibration']) && $_POST['calibration'] !== '') {
-                $calibration = (float)$_POST['calibration'];
+                $calibration = (float)str_replace(',', '', $_POST['calibration']);
             }
 
-            // ── Re-pull price from DB ─────────────────────────────────────────
-            // Priority 1: fuel_inventory for this station (most reliable — has correct prices)
-            // Priority 2: fuel_pricing JOIN fuel_types (fallback)
+            // ── Price — always fetched strictly from fuel_inventory (staff cannot override)
             $price = 0.0;
             try {
                 $pr_inv = $pdo->prepare("
@@ -191,38 +199,6 @@ try {
                 $price = (float)($pr_inv->fetchColumn() ?: 0);
             } catch (Exception $e) {}
 
-            if ($price <= 0) {
-                // Fallback: fuel_pricing joined with fuel_types
-                try {
-                    $pr_stmt = $pdo->prepare("
-                        SELECT fp.price_per_liter
-                        FROM fuel_pricing fp
-                        INNER JOIN fuel_types ftt ON ftt.id = fp.fuel_type_id
-                        WHERE fp.station_id = ?
-                          AND LOWER(TRIM(ftt.name)) = LOWER(TRIM(?))
-                          AND fp.is_active = 1
-                        ORDER BY fp.effective_date DESC, fp.id DESC LIMIT 1
-                    ");
-                    $pr_stmt->execute([$station_id, $fuel_type]);
-                    $price = (float)($pr_stmt->fetchColumn() ?: 0);
-                } catch (Exception $e) {}
-            }
-
-            if ($price <= 0) {
-                // Fallback 3: try fuel_pricing without JOIN (direct fuel_type name match)
-                try {
-                    $pr_stmt3 = $pdo->prepare("
-                        SELECT fp.price_per_liter
-                        FROM fuel_pricing fp
-                        WHERE fp.station_id = ?
-                          AND LOWER(TRIM(fp.fuel_type)) = LOWER(TRIM(?))
-                          AND fp.is_active = 1
-                        ORDER BY fp.effective_date DESC, fp.id DESC LIMIT 1
-                    ");
-                    $pr_stmt3->execute([$station_id, $fuel_type]);
-                    $price = (float)($pr_stmt3->fetchColumn() ?: 0);
-                } catch (Exception $e) {}
-            }
 
             // ── Price = 0: allow submission, record reading with ₱0 amount ──
             // Staff can still record meter readings even if price isn't configured yet.
@@ -255,16 +231,20 @@ try {
             // Final fallback — shift_period is NOT NULL in DB
             if (empty($shift_period)) $shift_period = 'general';
 
-            // ── Validate: present must be >= previous ──
+            // ── Validate: ending must be >= beginning ──
             if ($present < $previous) {
-                respond(false, "Present reading ({$present}) cannot be less than previous reading ({$previous}).");
+                respond(false, "Ending meter reading ({$present}) cannot be less than Beginning reading ({$previous}). Please check your values.");
             }
 
-            // ── Compute: Volume = (Present − Previous) ± Calibration ──
-            // Calibration can be positive (correction reduces volume) or negative (adds volume).
-            // Volume is clamped to 0 — a zero-liter reading is valid (no sales this shift).
-            $diff        = round($present - $previous, 4);
-            $liters_sold = round(max(0.0, $diff - $calibration), 4);
+            // ── Formula: Volume Liters = (Ending − Beginning) − Calibration ──
+            // Step 1: Compute volume
+            $diff        = round($present - $previous, 4);      // Ending - Beginning
+            $liters_sold = round($diff - $calibration, 4);       // subtract calibration correction
+
+            // Guard: if calibration > diff the result would be negative — flag it but allow 0
+            if ($liters_sold < 0) $liters_sold = 0.0;
+
+            // Step 2: Compute Amount
             $total_amount = round($liters_sold * $price, 2);
 
             // ── Generate transaction ID ──
@@ -314,18 +294,51 @@ try {
             $shift_name_safe     = substr($shift_name ?? '', 0, 100);
             $payment_method_safe = 'Internal';
 
+            // ── Resolve actual pump_id from fuel_pumps table ──────────────────────────
+            // tanker_number is the pump_number string (e.g. "1", "2"), not the PK id.
+            // We must look up the real id to satisfy the FK constraint.
+            $resolved_pump_id = null;
+            try {
+                $pump_stmt = $pdo->prepare("
+                    SELECT fp.id FROM fuel_pumps fp
+                    JOIN fuel_types ft ON ft.id = fp.fuel_type_id
+                    WHERE fp.station_id = ?
+                      AND fp.pump_number = ?
+                      AND LOWER(TRIM(ft.name)) = LOWER(TRIM(?))
+                    LIMIT 1
+                ");
+                $pump_stmt->execute([$station_id, (string)$tanker_num, $fuel_type]);
+                $pid = $pump_stmt->fetchColumn();
+                if ($pid !== false) $resolved_pump_id = (int)$pid;
+            } catch (Exception $e) {}
+
+            // Fallback: match by station + pump_number only (ignores fuel_type)
+            if ($resolved_pump_id === null) {
+                try {
+                    $pump_stmt2 = $pdo->prepare("
+                        SELECT id FROM fuel_pumps
+                        WHERE station_id = ? AND pump_number = ?
+                        LIMIT 1
+                    ");
+                    $pump_stmt2->execute([$station_id, (string)$tanker_num]);
+                    $pid2 = $pump_stmt2->fetchColumn();
+                    if ($pid2 !== false) $resolved_pump_id = (int)$pid2;
+                } catch (Exception $e) {}
+            }
+            // $resolved_pump_id is NULL if no match — FK allows NULL (ON DELETE SET NULL)
+
             try {
                 $pdo->beginTransaction();
                 $pdo->prepare("
                     INSERT INTO fuel_transactions
-                        (transaction_id, station_id, fuel_type,
+                        (transaction_id, station_id, fuel_type, pump_id,
                          present_reading, previous_reading, calibration,
                          liters_sold, price_per_liter, total_amount,
                          payment_method, staff_id, transaction_date,
                          shift_period, shift_name, shift_id, notes, status)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'Pending Validation')
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'Pending Validation')
                 ")->execute([
-                    $txn_id, $station_id, $fuel_type,
+                    $txn_id, $station_id, $fuel_type, $resolved_pump_id,
                     $present, $previous, $calibration,
                     $liters_sold, $price, $total_amount,
                     $payment_method_safe, $me['id'], $reading_date . ' ' . date('H:i:s'),
@@ -347,11 +360,34 @@ try {
 
             try {
                 log_activity($pdo, $me['id'], 'Fuel Reading Encoded',
-                    "{$fuel_type}: Present={$present}, Prev={$previous}, Calib={$calibration}, Liters={$liters_sold}, Amount=₱{$total_amount}");
-                // Notify managers
+                    "{$fuel_type} Pump#{$tanker_num}: Ending={$present}, Beginning={$previous}, Calib={$calibration}, Volume={$liters_sold}L, Amount=₱{$total_amount}");
+            } catch (Exception $e) {}
+
+            // ── Notify all managers at this station ──
+            try {
+                $staff_name = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? '')) ?: ($me['name'] ?? $me['username'] ?? 'Staff');
+                $notif_msg  = "{$staff_name} submitted Fuel Reading: {$fuel_type} Pump#{$tanker_num} | Volume: " . number_format($liters_sold, 2) . "L | Amount: ₱" . number_format($total_amount, 2) . " | Ref: {$txn_id}";
                 if (function_exists('create_role_notification')) {
-                    $staff_name = $me['name'] ?? $me['username'] ?? 'Staff';
-                    create_role_notification($pdo, 'manager', 'info', 'New Fuel Transaction', "{$staff_name} submitted a new fuel transaction ({$txn_id}) pending validation.");
+                    create_role_notification($pdo, 'manager', 'info', 'New Fuel Reading — Pending Validation', $notif_msg);
+                } else {
+                    // Fallback: query users directly using station_id column
+                    $mgr_stmt = $pdo->prepare("
+                        SELECT id FROM users
+                        WHERE station_id = ?
+                          AND LOWER(TRIM(role)) IN ('manager','admin')
+                          AND (is_active = 1 OR status = 'active')
+                    ");
+                    $mgr_stmt->execute([$station_id]);
+                    $mgr_ids = $mgr_stmt->fetchAll(PDO::FETCH_COLUMN);
+                    foreach ($mgr_ids as $mgr_id) {
+                        try {
+                            $ins_notif = $pdo->prepare("
+                                INSERT INTO notifications (user_id, type, title, message, status, created_at)
+                                VALUES (?, 'info', 'New Fuel Reading — Pending Validation', ?, 'unread', NOW())
+                            ");
+                            $ins_notif->execute([$mgr_id, $notif_msg]);
+                        } catch (Exception $ne) {}
+                    }
                 }
             } catch (Exception $e) {}
 
@@ -387,7 +423,6 @@ try {
             $new_status    = $_POST['status'] ?? '';
             $reject_reason = trim($_POST['reject_reason'] ?? '');
             if (!in_array($new_status, ['Approved','Rejected'])) respond(false, 'Status must be Approved or Rejected.');
-            if ($new_status === 'Rejected' && empty($reject_reason)) respond(false, 'Rejection reason is required.');
             $row = $pdo->prepare("SELECT * FROM fuel_transactions WHERE transaction_id=? AND station_id=? AND status='Pending Validation'");
             $row->execute([$txn_id, $station_id]);
             $txn = $row->fetch(PDO::FETCH_ASSOC);
@@ -501,15 +536,18 @@ try {
                     ft.shift_period,
                     ft.shift_name,
                     DATE(ft.transaction_date) AS reading_date,
-                    u.name                AS staff_name,
+                    ft.transaction_date,
+                    ft.notes,
+                    ft.reject_reason,
+                    CONCAT(u.first_name, ' ', u.last_name) AS staff_name,
                     ft.status,
                     ft.validated_at,
-                    vm.name               AS validated_by_name
+                    CONCAT(vm.first_name, ' ', vm.last_name) AS validated_by_name
                 FROM fuel_transactions ft
                 LEFT JOIN users u  ON ft.staff_id    = u.id
                 LEFT JOIN users vm ON ft.validated_by = vm.id
                 WHERE {$base_where}
-                ORDER BY ft.fuel_type ASC, ft.transaction_date ASC
+                ORDER BY ft.transaction_date DESC, ft.fuel_type ASC
             ";
             $mr_stmt = $pdo->prepare($mr_sql);
             $mr_stmt->execute($base_params);
@@ -590,7 +628,7 @@ try {
                     AVG(ft.price_per_liter)   AS avg_price,
                     SUM(ft.total_amount)      AS total_amount,
                     COUNT(*)                  AS entry_count,
-                    GROUP_CONCAT(DISTINCT u.name ORDER BY u.name SEPARATOR ', ') AS staff_names
+                    GROUP_CONCAT(DISTINCT CONCAT(u.first_name,' ',u.last_name) ORDER BY u.first_name SEPARATOR ', ') AS staff_names
                 FROM fuel_transactions ft
                 LEFT JOIN users u ON ft.staff_id = u.id
                 WHERE {$dr_where}

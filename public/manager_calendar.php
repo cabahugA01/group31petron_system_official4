@@ -267,14 +267,14 @@ try {
     
     // MANAGER SPECIFIC: Overdue payments count
     try {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM credit_customers WHERE station_id = ? AND balance_due > 0 AND due_date < CURDATE() AND status = 'active'");
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM credit_customers WHERE station_id = ? AND balance_due > 0 AND due_date < CURDATE() AND status = 'Active'");
         $stmt->execute([$station_id]);
         $summary_stats['overdue_payments'] = $stmt->fetchColumn();
     } catch (Exception $e) {}
     
     // MANAGER SPECIFIC: Low stock items
     try {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM inventory_products WHERE station_id = ? AND current_stock <= minimum_stock AND status = 'active'");
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM inventory_products WHERE station_id = ? AND current_stock <= minimum_stock AND status = 'Active'");
         $stmt->execute([$station_id]);
         $summary_stats['low_stock_items'] = $stmt->fetchColumn();
     } catch (Exception $e) {}
@@ -284,7 +284,7 @@ try {
         $stmt = $pdo->prepare("SELECT u.id, u.name, COUNT(sce.id) as event_count
             FROM users u
             LEFT JOIN staff_calendar_events sce ON u.id = sce.staff_encoder_id AND sce.event_date = ?
-            WHERE u.station_id = ? AND u.role IN ('staff','cashier','pump_attendant') AND u.status = 'active'
+            WHERE u.station_id = ? AND u.role IN ('staff','cashier','pump_attendant') AND u.status = 'Active'
             GROUP BY u.id, u.name
             ORDER BY event_count DESC");
         $stmt->execute([$today_date, $station_id]);
@@ -390,7 +390,7 @@ $staff_colors = ['#039be5', '#7986cb', '#33b679', '#8e24aa', '#e67c73', '#f6bf26
 
 try {
     // Load staff list with assigned colors
-    $staff_stmt = $pdo->prepare("SELECT id, name FROM users WHERE station_id = ? AND role IN ('staff','cashier','pump_attendant') AND status = 'active' ORDER BY name");
+    $staff_stmt = $pdo->prepare("SELECT `user_id`, name FROM users WHERE station_id = ? AND role IN ('staff','cashier','pump_attendant') AND status = 'Active' ORDER BY name");
     $staff_stmt->execute([$station_id]);
     $all_staff = $staff_stmt->fetchAll(PDO::FETCH_ASSOC);
     
@@ -546,7 +546,7 @@ try {
     try {
         $low_stock = $pdo->prepare("SELECT ip.id, ip.product_name, ip.current_stock, ip.minimum_stock, ip.unit
             FROM inventory_products ip
-            WHERE ip.station_id = ? AND ip.current_stock <= ip.minimum_stock AND ip.status = 'active'
+            WHERE ip.station_id = ? AND ip.current_stock <= ip.minimum_stock AND ip.status = 'Active'
             LIMIT 10");
         $low_stock->execute([$station_id]);
         
@@ -574,7 +574,7 @@ try {
             DATEDIFF(CURDATE(), c.due_date) AS days_overdue
             FROM credit_customers c
             WHERE c.station_id = ? AND c.balance_due > 0 AND c.due_date < CURDATE()
-            AND c.status = 'active'
+            AND c.status = 'Active'
             ORDER BY c.due_date ASC
             LIMIT 15");
         $overdue_payments->execute([$station_id]);

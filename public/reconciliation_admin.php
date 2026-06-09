@@ -9,7 +9,7 @@ $role = role_key($u['role'] ?? 'staff');
 $station_id = user_station_id();
 
 // Debug: Log who is logged in
-error_log("DEBUG: Current user - ID: ".$u['id'].", Username: ".$u['username'].", Role: ".$role.", Pass: ".substr($u['password'] ?? '', 0, 20));
+error_log("DEBUG: Current user - ID: ".$u['id'].", Username: ".$u['username'].", Role: ".$role.", Pass: ".substr($u['password_hash'] ?? '', 0, 20));
 
 if (!has_role_at_least('admin')) {
     die("Access Denied");
@@ -52,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         
         // Debug
         error_log("DEBUG: recon_id=$recon_id, physical_stock=$physical_stock, password_len=".strlen($admin_password));
-        error_log("DEBUG: user_id=".$u['id'].", stored_pass=".substr($u['password'] ?? '', 0, 10));
+        error_log("DEBUG: user_id=".$u['id'].", stored_pass=".substr($u['password_hash'] ?? '', 0, 10));
         
         if ($recon_id === 0) {
             $msg = "❌ No reconciliation selected";
@@ -62,10 +62,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $msg = "❌ Admin password required to finalize";
         } else {
             // Verify password: check session, then check database directly
-            $pwd_from_session = $u['password'] ?? '';
+            $pwd_from_session = $u['password_hash'] ?? '';
             
             // Also get password directly from database  
-            $db_pwd_stmt = $pdo->prepare("SELECT password FROM users WHERE id = ?");
+            $db_pwd_stmt = $pdo->prepare("SELECT password_hash FROM users WHERE user_id = ?");
             $db_pwd_stmt->execute([$u['id']]);
             $db_pwd = $db_pwd_stmt->fetchColumn();
             
@@ -400,7 +400,7 @@ try {
                                 <i class="fas fa-key"></i> Your Admin Password
                             </label>
                             <input 
-                                type="password" 
+                                type="password_hash" 
                                 name="admin_password" 
                                 id="admin_password" 
                                 placeholder="Enter your password"

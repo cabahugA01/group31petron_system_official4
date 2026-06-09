@@ -23,7 +23,7 @@ try {
         SELECT al.id, al.details, al.created_at,
                u.full_name AS proposed_by
         FROM activity_logs al
-        LEFT JOIN users u ON u.id = al.user_id
+        LEFT JOIN users u ON u.user_id = al.user_id
         WHERE al.action IN ('Propose Price', 'Approve Price', 'Set Price', 'Update Price', 'Price Updated')
         ORDER BY al.created_at DESC
         LIMIT 200

@@ -113,7 +113,7 @@ if ($view === 'calibration') {
                 '' as performed_by
             FROM fuel_calibration fc
             JOIN fuel_types ft ON fc.fuel_type = ft.name
-            WHERE fc.status = 'active'
+            WHERE fc.status = 'Active'
             ORDER BY fc.effective_date DESC, fc.created_at DESC
             LIMIT 30";
         $stmt = $pdo->prepare($sql);

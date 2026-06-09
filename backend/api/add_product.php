@@ -76,7 +76,7 @@ try {
         exit;
     }
 
-    $status = 'active';
+    $status = 'Active';
     if (in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
         $status = 'pending';
     }

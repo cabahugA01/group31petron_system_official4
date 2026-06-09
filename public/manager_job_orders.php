@@ -162,7 +162,7 @@ try {
             'job_orders' AS _source
         FROM job_orders j
         LEFT JOIN customers c ON c.id = j.customer_id
-        LEFT JOIN users u ON u.id = COALESCE(j.created_by, j.user_id)
+        LEFT JOIN users u ON u.user_id = COALESCE(j.created_by, j.user_id)
         WHERE {$jo_where_sql}
     ";
 
@@ -210,7 +210,7 @@ try {
                 u2.name,
                 'merchandise_transactions'
             FROM merchandise_transactions mt2
-            LEFT JOIN users u2 ON u2.id = mt2.staff_id
+            LEFT JOIN users u2 ON u2.user_id = mt2.staff_id
             WHERE " . implode(' AND ', $mt2_where);
         }
     } catch (Exception $e2) { /* merchandise_transactions may not exist */ }

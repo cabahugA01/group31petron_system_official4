@@ -90,7 +90,7 @@ if (!$merchandise_products) {
 // Fetch customers for credit transactions
 $customers = [];
 try {
-    $stmt = $pdo->prepare("SELECT id, name, credit_limit, balance FROM customers WHERE station_id = ? AND status = 'active' ORDER BY name");
+    $stmt = $pdo->prepare("SELECT id, name, credit_limit, balance FROM customers WHERE station_id = ? AND status = 'Active' ORDER BY name");
     $stmt->execute([$station_id]);
     $customers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {

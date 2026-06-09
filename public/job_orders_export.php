@@ -62,7 +62,7 @@ if ($start_date && $end_date) {
         // If no real data, create sample data for demonstration
         if (empty($job_orders)) {
             $staff_list = [];
-            $stmt = $pdo->query("SELECT id, username, role FROM users WHERE status = 'active' AND role IN ('admin', 'manager', 'staff') ORDER BY username");
+            $stmt = $pdo->query("SELECT `user_id`, username, role FROM users WHERE status = 'Active' AND role IN ('admin', 'manager', 'staff') ORDER BY username");
             $staff_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             $sample_statuses = ['Active', 'Completed', 'Pending'];

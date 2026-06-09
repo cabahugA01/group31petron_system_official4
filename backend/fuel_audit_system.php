@@ -14,7 +14,7 @@ function log_fuel_activity($pdo, $user_id, $action, $details = '', $station_id =
     try {
         // Get station ID if not provided
         if (!$station_id) {
-            $stmt = $pdo->prepare("SELECT station_id FROM users WHERE id = ?");
+            $stmt = $pdo->prepare("SELECT station_id FROM users WHERE user_id = ?");
             $stmt->execute([$user_id]);
             $station_id = $stmt->fetchColumn();
         }

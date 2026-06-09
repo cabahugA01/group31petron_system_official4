@@ -123,7 +123,7 @@ try {
             }
             
             // Verify manager password
-            if (!password_verify($manager_password, $current_user['password'])) {
+            if (!password_verify($manager_password, $current_user['password_hash'])) {
                 echo json_encode(['success' => false, 'error' => 'Invalid manager password']);
                 exit;
             }
@@ -226,7 +226,7 @@ try {
             }
             
             // Verify manager password
-            if (!password_verify($manager_password, $current_user['password'])) {
+            if (!password_verify($manager_password, $current_user['password_hash'])) {
                 echo json_encode(['success' => false, 'error' => 'Invalid manager password']);
                 exit;
             }
@@ -306,7 +306,7 @@ try {
             }
             
             // Verify manager password
-            if (!password_verify($manager_password, $current_user['password'])) {
+            if (!password_verify($manager_password, $current_user['password_hash'])) {
                 echo json_encode(['success' => false, 'error' => 'Invalid manager password']);
                 exit;
             }

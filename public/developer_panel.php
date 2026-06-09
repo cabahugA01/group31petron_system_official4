@@ -347,7 +347,7 @@ require_once __DIR__ . '/../partials/header.php';
                 </div>
                 <div class="form-group">
                     <label>Password</label>
-                    <input type="password" name="password" required>
+                    <input type="password_hash" name="password_hash" required>
                 </div>
             </form>
         </div>

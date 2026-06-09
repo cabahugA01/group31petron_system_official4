@@ -67,7 +67,7 @@ if ($type === 'job_orders') {
                    jo.created_at,
                    COALESCE(u.name, u.username) AS mechanic_name
             FROM job_orders jo
-            LEFT JOIN users u ON u.id = jo.assigned_mechanic_id
+            LEFT JOIN users u ON u.user_id = jo.assigned_mechanic_id
             WHERE jo.station_id = ?
             ORDER BY jo.created_at DESC
         ");

@@ -75,7 +75,7 @@ try {
             COALESCE({$mt_status_col},'Pending') AS validation_status,
             COALESCE({$mt_staff_col},'Unknown') AS staff_name
         FROM merchandise_transactions mt
-        LEFT JOIN users u ON u.id = mt.staff_id
+        LEFT JOIN users u ON u.user_id = mt.staff_id
         {$mt_where}
         ORDER BY txn_date DESC
         LIMIT 5000
@@ -116,7 +116,7 @@ try {
             COALESCE(NULLIF(TRIM({$jo_status_col}),''),'Pending') AS validation_status,
             COALESCE(u.name,'Unknown') AS staff_name
         FROM job_orders jo
-        LEFT JOIN users u ON u.id = {$jo_staff_col}
+        LEFT JOIN users u ON u.user_id = {$jo_staff_col}
         {$jo_where}
         ORDER BY jo.created_at DESC
         LIMIT 5000

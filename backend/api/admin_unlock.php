@@ -38,7 +38,7 @@ try {
             }
             
             $id = (int)($_POST['record_id'] ?? 0);
-            $password = $_POST['password'] ?? '';
+            $password = $_POST['password_hash'] ?? '';
             $reason = $_POST['reason'] ?? '';
             
             if (empty($id) || empty($password) || empty($reason)) {

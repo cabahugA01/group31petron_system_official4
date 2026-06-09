@@ -93,7 +93,7 @@ if (!empty($query)) {
                         mt.created_at, mt.payment_method,
                         u.name AS staff_name
                  FROM merchandise_transactions mt
-                 LEFT JOIN users u ON u.id = mt.staff_id
+                 LEFT JOIN users u ON u.user_id = mt.staff_id
                  WHERE (mt.transaction_id LIKE ?
                      OR mt.status LIKE ?
                      OR mt.payment_method LIKE ?
@@ -251,7 +251,7 @@ if (!empty($query)) {
                         jo.customer_name, jo.service_type,
                         jo.created_at, u.name AS staff_name
                  FROM job_orders jo
-                 LEFT JOIN users u ON u.id = jo.created_by
+                 LEFT JOIN users u ON u.user_id = jo.created_by
                  WHERE (jo.job_order_id LIKE ?
                      OR jo.customer_name LIKE ?
                      OR jo.service_type LIKE ?
@@ -290,7 +290,7 @@ if (!empty($query)) {
                         do2.delivery_date, do2.delivery_type,
                         u.name AS staff_name
                  FROM deliveries_oversight do2
-                 LEFT JOIN users u ON u.id = do2.encoded_by
+                 LEFT JOIN users u ON u.user_id = do2.encoded_by
                  WHERE (CAST(do2.id AS CHAR) LIKE ?
                      OR do2.status LIKE ?
                      OR do2.supplier LIKE ?
@@ -330,7 +330,7 @@ if (!empty($query)) {
                         ce.event_type, ce.description,
                         u.name AS assigned_name
                  FROM calendar_events ce
-                 LEFT JOIN users u ON u.id = ce.user_id
+                 LEFT JOIN users u ON u.user_id = ce.user_id
                  WHERE (ce.title LIKE ?
                      OR ce.event_type LIKE ?
                      OR ce.description LIKE ?

@@ -310,7 +310,7 @@ if ($type_f === '' || $type_f === 'merchandise' || $type_f === 'job_order' || $t
                 COALESCE({$mt_staff_col},'Unknown')                     AS staff_name,
                 'merchandise_transactions'                              AS _source
             FROM merchandise_transactions mt
-            LEFT JOIN users u ON u.id = mt.staff_id
+            LEFT JOIN users u ON u.user_id = mt.staff_id
             {$mt_where}
             GROUP BY mt.id
             ORDER BY txn_date DESC
@@ -336,7 +336,7 @@ $jo_mechanic_col = ato_has($jo_cols, 'assigned_mechanic_id') ? 'COALESCE(m.name,
 $jo_pay_col      = ato_has($jo_cols, 'payment_method')    ? 'COALESCE(jo.payment_method,\'N/A\')' : "'N/A'";
 $jo_cost_col     = ato_has($jo_cols, 'total_cost')        ? 'COALESCE(jo.total_cost,0)' : 'COALESCE(jo.estimated_cost,0)';
 $jo_paid_col     = ato_has($jo_cols, 'amount_paid')       ? 'jo.amount_paid' : 'NULL';
-$mechanic_join   = ato_has($jo_cols, 'assigned_mechanic_id') ? "LEFT JOIN users m ON m.id = jo.assigned_mechanic_id" : "";
+$mechanic_join   = ato_has($jo_cols, 'assigned_mechanic_id') ? "LEFT JOIN users m ON m.user_id = jo.assigned_mechanic_id" : "";
 
 $jo_where  = "WHERE jo.station_id = ? AND DATE(jo.created_at) BETWEEN ? AND ?";
 $jo_params = [$station_id, $start, $end];
@@ -376,7 +376,7 @@ if ($type_f === '' || $type_f === 'job_order') {
                 COALESCE(u.name,'Unknown')                                   AS staff_name,
                 'job_orders'                                                 AS _source
             FROM job_orders jo
-            LEFT JOIN users u ON u.id = {$jo_staff_col}
+            LEFT JOIN users u ON u.user_id = {$jo_staff_col}
             {$mechanic_join}
             {$jo_where}
             ORDER BY jo.created_at DESC

@@ -33,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $scheduled_date = $_POST['scheduled_date'] ?? date('Y-m-d');
             
             // Verify user belongs to this station
-            $check = $pdo->prepare("SELECT id FROM users WHERE id = ? AND station_id = ?");
+            $check = $pdo->prepare("SELECT user_id FROM users WHERE user_id = ? AND station_id = ?");
             $check->execute([$user_id, $station_id]);
             if (!$check->fetch()) throw new Exception("Unauthorized");
             
@@ -50,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $due_date = $_POST['due_date'] ?? null;
             
             // Verify user
-            $check = $pdo->prepare("SELECT id FROM users WHERE id = ? AND station_id = ?");
+            $check = $pdo->prepare("SELECT user_id FROM users WHERE user_id = ? AND station_id = ?");
             $check->execute([$user_id, $station_id]);
             if (!$check->fetch()) throw new Exception("Unauthorized");
             
@@ -66,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Get all staff for this station
 $staff = [];
-$stmt = $pdo->prepare("SELECT id, name, username, email, role, status, created_at FROM users WHERE station_id = ? AND role = 'staff' ORDER BY name");
+$stmt = $pdo->prepare("SELECT `user_id`, name, username, email, role, status, created_at FROM users WHERE station_id = ? AND role = 'staff' ORDER BY name");
 $stmt->execute([$station_id]);
 $staff = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>

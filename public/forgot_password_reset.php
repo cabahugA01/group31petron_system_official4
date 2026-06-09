@@ -26,8 +26,8 @@ if (empty($token) || empty($email)) {
     try {
         // ── Auto-detect actual column names ──────────────────────────
         $cols     = array_column($pdo->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_ASSOC), 'Field');
-        $uid_col  = in_array('user_id',      $cols) ? 'user_id'      : 'id';
-        $pass_col = in_array('password_hash', $cols) ? 'password_hash' : 'password';
+        $uid_col  = 'id';
+        $pass_col = in_array('password_hash', $cols) ? 'password_hash' : 'password_hash';
         $status_active = in_array('Active', $pdo->query("SELECT DISTINCT status FROM users LIMIT 10")->fetchAll(PDO::FETCH_COLUMN)) ? 'Active' : 'active';
 
         // ── Email path: validate via password_reset_tokens table ─────
@@ -66,7 +66,7 @@ if (empty($token) || empty($email)) {
 
 // Handle password reset form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
-    $password = $_POST['password'] ?? '';
+    $password = $_POST['password_hash'] ?? '';
     $confirm_password = $_POST['confirm_password'] ?? '';
     
     // Strong password validation
@@ -161,253 +161,79 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
             justify-content: center;
             position: relative;
             overflow: hidden;
-            background: #000814;
+            background: transparent;
         }
 
-        /* 4D Animated Background Layers */
+        /* ── Base Image Background only ── */
         .bg-layer {
             position: fixed;
             inset: 0;
             z-index: 0;
+            display: none !important;
         }
 
-        /* Base image layer */
         .bg-image {
-            background: url('../assets/img/background.jpg') center/cover no-repeat;
-            filter: brightness(0.6) blur(0px);
+            display: block !important;
+            background: url('../assets/img/background.jpg') center center / cover no-repeat;
             z-index: 1;
         }
 
-        /* Animated gradient overlay */
-        .bg-gradient {
-            background: linear-gradient(
-                135deg,
-                rgba(0, 47, 108, 0.3) 0%,
-                rgba(227, 6, 19, 0.15) 25%,
-                rgba(0, 15, 45, 0.4) 50%,
-                rgba(0, 80, 180, 0.2) 75%,
-                rgba(0, 26, 61, 0.35) 100%
-            );
-            background-size: 400% 400%;
-            animation: gradientShift 15s ease infinite;
-            z-index: 2;
-            mix-blend-mode: multiply;
-            opacity: 0.7;
-        }
-
-        @keyframes gradientShift {
-            0%   { background-position: 0% 50%; }
-            25%  { background-position: 50% 100%; }
-            50%  { background-position: 100% 50%; }
-            75%  { background-position: 50% 0%; }
-            100% { background-position: 0% 50%; }
-        }
-
-        /* Floating particles layer */
-        .bg-particles {
-            z-index: 3;
-            pointer-events: none;
-        }
-
-        .particle {
-            position: absolute;
-            border-radius: 50%;
-            background: radial-gradient(circle, rgba(96, 165, 250, 0.8), transparent);
-            animation: float linear infinite;
-            opacity: 0;
-        }
-
-        .particle:nth-child(1) { 
-            width: 4px; height: 4px; 
-            left: 10%; top: 80%; 
-            animation-duration: 8s; 
-            animation-delay: 0s;
-            box-shadow: 0 0 20px rgba(96, 165, 250, 0.6);
-        }
-        .particle:nth-child(2) { 
-            width: 6px; height: 6px; 
-            left: 20%; top: 60%; 
-            animation-duration: 12s; 
-            animation-delay: 1s;
-            box-shadow: 0 0 25px rgba(227, 6, 19, 0.5);
-            background: radial-gradient(circle, rgba(227, 6, 19, 0.7), transparent);
-        }
-        .particle:nth-child(3) { 
-            width: 3px; height: 3px; 
-            left: 35%; top: 90%; 
-            animation-duration: 10s; 
-            animation-delay: 2s;
-            box-shadow: 0 0 15px rgba(96, 165, 250, 0.5);
-        }
-        .particle:nth-child(4) { 
-            width: 5px; height: 5px; 
-            left: 50%; top: 85%; 
-            animation-duration: 14s; 
-            animation-delay: 0.5s;
-            box-shadow: 0 0 22px rgba(147, 197, 253, 0.6);
-        }
-        .particle:nth-child(5) { 
-            width: 4px; height: 4px; 
-            left: 65%; top: 75%; 
-            animation-duration: 11s; 
-            animation-delay: 1.5s;
-            box-shadow: 0 0 18px rgba(96, 165, 250, 0.5);
-        }
-        .particle:nth-child(6) { 
-            width: 7px; height: 7px; 
-            left: 80%; top: 70%; 
-            animation-duration: 13s; 
-            animation-delay: 2.5s;
-            box-shadow: 0 0 28px rgba(227, 6, 19, 0.6);
-            background: radial-gradient(circle, rgba(227, 6, 19, 0.8), transparent);
-        }
-        .particle:nth-child(7) { 
-            width: 3px; height: 3px; 
-            left: 90%; top: 80%; 
-            animation-duration: 9s; 
-            animation-delay: 1.8s;
-            box-shadow: 0 0 16px rgba(96, 165, 250, 0.4);
-        }
-        .particle:nth-child(8) { 
-            width: 5px; height: 5px; 
-            left: 15%; top: 50%; 
-            animation-duration: 15s; 
-            animation-delay: 3s;
-            box-shadow: 0 0 24px rgba(147, 197, 253, 0.7);
-        }
-
-        @keyframes float {
-            0% {
-                transform: translateY(0) translateX(0) scale(1);
-                opacity: 0;
-            }
-            10% {
-                opacity: 1;
-            }
-            90% {
-                opacity: 1;
-            }
-            100% {
-                transform: translateY(-100vh) translateX(30px) scale(1.5);
-                opacity: 0;
-            }
-        }
-
-        /* Glowing orbs layer */
-        .bg-orbs {
-            z-index: 4;
-            pointer-events: none;
-            opacity: 0.6;
-        }
-
-        .orb {
-            position: absolute;
-            border-radius: 50%;
-            filter: blur(80px);
-            opacity: 0.25;
-            animation: orbFloat ease-in-out infinite alternate;
-        }
-
-        .orb-1 {
-            width: 400px;
-            height: 400px;
-            background: radial-gradient(circle, rgba(0, 47, 108, 0.4), transparent);
-            top: -10%;
-            left: -10%;
-            animation-duration: 8s;
-        }
-
-        .orb-2 {
-            width: 350px;
-            height: 350px;
-            background: radial-gradient(circle, rgba(227, 6, 19, 0.3), transparent);
-            bottom: -10%;
-            right: -10%;
-            animation-duration: 10s;
-            animation-delay: 1s;
-        }
-
-        @keyframes orbFloat {
-            0% {
-                transform: translate(0, 0) scale(1);
-            }
-            100% {
-                transform: translate(20px, -20px) scale(1.1);
-            }
-        }
-
-        /* Grid overlay */
-        .bg-grid {
-            background-image: 
-                linear-gradient(rgba(96, 165, 250, 0.02) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(96, 165, 250, 0.02) 1px, transparent 1px);
-            background-size: 50px 50px;
-            z-index: 5;
-            pointer-events: none;
-            animation: gridMove 20s linear infinite;
-        }
-
-        @keyframes gridMove {
-            0% {
-                background-position: 0 0;
-            }
-            100% {
-                background-position: 50px 50px;
-            }
-        }
-
         .login-wrap {
-            width: 100%;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-            z-index: 10;
             position: relative;
+            z-index: 10;
+            width: 100%;
+            max-width: 520px;
+            padding: 0 20px;
         }
 
         .login-card {
-            background: rgba(0, 15, 45, 0.9);
-            backdrop-filter: blur(24px) saturate(1.8) brightness(1.05);
-            -webkit-backdrop-filter: blur(24px) saturate(1.8) brightness(1.05);
-            width: 100%;
-            max-width: 520px;
+            background: linear-gradient(160deg, #002F6C 0%, #001a3d 60%, #A80016 100%);
             border-radius: 28px;
-            padding: 48px 40px 36px;
-            box-shadow: 
-                0 4px 0 rgba(255,255,255,.05) inset, 
-                0 -2px 0 rgba(0,0,0,.6) inset, 
-                0 12px 40px rgba(0,0,0,.6), 
-                0 32px 80px rgba(0,0,0,.65), 
-                0 0 0 1px rgba(255,255,255,.08), 
-                0 0 50px var(--blue-glow);
+            padding: 54px 52px 46px;
             position: relative;
-            animation: cardGlowFlow 8s linear infinite;
+            overflow: visible;
+            color: #ffffff;
+            box-shadow:
+                0 8px 32px rgba(0,0,0,.40),
+                0 24px 56px rgba(0,0,0,.30);
+            width: 100%;
         }
 
         .login-card::before {
             content: '';
             position: absolute;
-            inset: -1.5px;
-            border-radius: 29px;
-            background: linear-gradient(90deg, #002F6C, #E30613, #002F6C);
-            background-size: 200% auto;
-            animation: borderFlow 6s linear infinite;
-            z-index: -1;
-            opacity: 0.85;
+            top: 10%; left: -18px;
+            width: 12px; height: 80%;
+            background: linear-gradient(180deg, rgba(0,100,255,0) 0%, rgba(0,100,255,0.9) 30%, rgba(0,150,255,1) 50%, rgba(0,100,255,0.9) 70%, rgba(0,100,255,0) 100%);
+            border-radius: 50%;
+            filter: blur(8px);
+            animation: sideGlowBlue 3s ease-in-out infinite alternate;
+            z-index: 2;
         }
 
-        @keyframes borderFlow {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
+        .login-card::after {
+            content: '';
+            position: absolute;
+            top: 10%; right: -18px;
+            width: 12px; height: 80%;
+            background: linear-gradient(180deg, rgba(227,6,19,0) 0%, rgba(227,6,19,0.9) 30%, rgba(255,40,40,1) 50%, rgba(227,6,19,0.9) 70%, rgba(227,6,19,0) 100%);
+            border-radius: 50%;
+            filter: blur(8px);
+            animation: sideGlowRed 3s ease-in-out infinite alternate;
+            z-index: 2;
         }
 
-        @keyframes cardGlowFlow {
-            0%, 100% { box-shadow: 0 4px 0 rgba(255,255,255,.05) inset, 0 -2px 0 rgba(0,0,0,.6) inset, 0 12px 40px rgba(0,0,0,.6), 0 32px 80px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.08), 0 0 50px var(--blue-glow); }
-            50% { box-shadow: 0 4px 0 rgba(255,255,255,.05) inset, 0 -2px 0 rgba(0,0,0,.6) inset, 0 12px 40px rgba(0,0,0,.6), 0 32px 80px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.08), 0 0 60px var(--red-glow); }
+        @keyframes sideGlowBlue {
+            0%   { opacity: 0.4; height: 60%; top: 20%; filter: blur(8px); }
+            50%  { opacity: 1;   height: 85%; top: 8%;  filter: blur(6px); }
+            100% { opacity: 0.6; height: 70%; top: 15%; filter: blur(10px); }
         }
+        @keyframes sideGlowRed {
+            0%   { opacity: 0.6; height: 70%; top: 15%; filter: blur(10px); }
+            50%  { opacity: 1;   height: 85%; top: 8%;  filter: blur(6px); }
+            100% { opacity: 0.4; height: 60%; top: 20%; filter: blur(8px); }
+        }
+
 
         .brand {
             display: flex;
@@ -528,15 +354,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
         .pw-toggle:hover { color: #93c5fd; text-shadow: 0 0 10px rgba(96,165,250,.6); }
 
         /* Hide browser native password reveal eye (Chrome/Edge/IE) */
-        .field-input[type="password"]::-ms-reveal,
-        .field-input[type="password"]::-ms-clear,
-        input[type="password"]::-ms-reveal,
-        input[type="password"]::-ms-clear {
+        .field-input[type="password_hash"]::-ms-reveal,
+        .field-input[type="password_hash"]::-ms-clear,
+        input[type="password_hash"]::-ms-reveal,
+        input[type="password_hash"]::-ms-clear {
             display: none !important;
         }
-        input[type="password"]::-webkit-contacts-auto-fill-button,
-        input[type="password"]::-webkit-credentials-auto-fill-button,
-        input[type="password"]::-webkit-strong-password-auto-fill-button {
+        input[type="password_hash"]::-webkit-contacts-auto-fill-button,
+        input[type="password_hash"]::-webkit-credentials-auto-fill-button,
+        input[type="password_hash"]::-webkit-strong-password-auto-fill-button {
             display: none !important;
             visibility: hidden;
             pointer-events: none;
@@ -705,7 +531,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
     <div class="login-card">
         <!-- Branding -->
         <div class="brand">
-            <img src="../assets/img/Petron Logo.png" alt="Petron" class="brand-logo">
+            <img src="../assets/img/Petron Logo.png?v=2" alt="Petron" class="brand-logo">
             <span class="brand-tagline">Station Management System</span>
         </div>
 
@@ -735,10 +561,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
             <!-- Reset Password Form -->
             <form method="POST" action="" id="resetForm">
                 <div class="field-group">
-                    <label for="password" class="field-label">New Password</label>
+                    <label for="password_hash" class="field-label">New Password</label>
                     <div class="input-wrap">
                         <i class="fas fa-lock input-icon"></i>
-                        <input type="password" name="password" id="password" class="field-input" placeholder="Enter password" required autofocus aria-label="New Password">
+                        <input type="password_hash" name="password_hash" id="password_hash" class="field-input" placeholder="Enter password" required autofocus aria-label="New Password">
                         <button type="button" class="pw-toggle" id="togglePassword" aria-label="Show password">
                             <i class="fas fa-eye"></i>
                         </button>
@@ -750,7 +576,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
                     <label for="confirm_password" class="field-label">Confirm Password</label>
                     <div class="input-wrap">
                         <i class="fas fa-lock input-icon"></i>
-                        <input type="password" name="confirm_password" id="confirm_password" class="field-input" placeholder="Enter password" required aria-label="Confirm Password">
+                        <input type="password_hash" name="confirm_password" id="confirm_password" class="field-input" placeholder="Enter password" required aria-label="Confirm Password">
                         <button type="button" class="pw-toggle" id="toggleConfirmPassword" aria-label="Show confirm password">
                             <i class="fas fa-eye"></i>
                         </button>
@@ -782,20 +608,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
 <script>
     const togglePassword        = document.getElementById('togglePassword');
     const toggleConfirmPassword = document.getElementById('toggleConfirmPassword');
-    const passwordInput         = document.getElementById('password');
+    const passwordInput         = document.getElementById('password_hash');
     const confirmPasswordInput  = document.getElementById('confirm_password');
     const passwordStrength      = document.getElementById('passwordStrength');
 
     togglePassword.addEventListener('click', () => {
-        const type = passwordInput.type === 'password' ? 'text' : 'password';
+        const type = passwordInput.type === 'password_hash' ? 'text' : 'password_hash';
         passwordInput.type = type;
-        togglePassword.innerHTML = type === 'password' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
+        togglePassword.innerHTML = type === 'password_hash' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
     });
 
     toggleConfirmPassword.addEventListener('click', () => {
-        const type = confirmPasswordInput.type === 'password' ? 'text' : 'password';
+        const type = confirmPasswordInput.type === 'password_hash' ? 'text' : 'password_hash';
         confirmPasswordInput.type = type;
-        toggleConfirmPassword.innerHTML = type === 'password' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
+        toggleConfirmPassword.innerHTML = type === 'password_hash' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
     });
 
     passwordInput.addEventListener('input', () => {

@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST')
                 // Input validation
                 if (empty($fuel_type)) {
                     $msg = "❌ Error: Fuel type is required.";
-                } elseif (!in_array($fuel_type, ["Diesel Max", "XCS Plus", "XCS Advance", "Turbo Diesel", "Kerosene"])) {
+                } elseif (!in_array($fuel_type, ["Diesel", "XCS Plus", "XTRA UNL", "Turbo Diesel", "Kerosene"])) {
                     $msg = "❌ Error: Invalid fuel type.";
                 } elseif ($liters <= 0 || $liters > 100000) { // Reasonable max to prevent abuse
                     $msg = "❌ Error: Liters must be a positive number and less than 100,000.";
@@ -541,9 +541,9 @@ include __DIR__ . '/../partials/header.php';
           <label class="pay-label">Fuel Type</label>
           <select class="select" name="fuel_type" id="fuelSelect" required>
             <option value="">-- Select Fuel Type --</option>
-            <option value="Diesel Max">Diesel Max</option>
+            <option value="Diesel">Diesel</option>
             <option value="XCS Plus">XCS Plus</option>
-            <option value="XCS Advance">XCS Advance</option>
+            <option value="XTRA UNL">XTRA UNL</option>
             <option value="Turbo Diesel">Turbo Diesel</option>
             <option value="Kerosene">Kerosene</option>
           </select>

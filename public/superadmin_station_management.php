@@ -90,10 +90,10 @@ $stations = [];
 try {
     $stations = $pdo->query(
         "SELECT s.id, s.name, s.location, s.status, s.created_at,
-                (SELECT u.name  FROM users u WHERE u.station_id = s.id AND LOWER(u.role) IN ('admin','station admin','station_admin') AND u.status='active' LIMIT 1) AS admin_name,
-                (SELECT u.id    FROM users u WHERE u.station_id = s.id AND LOWER(u.role) IN ('admin','station admin','station_admin') AND u.status='active' LIMIT 1) AS admin_id,
-                (SELECT u.email FROM users u WHERE u.station_id = s.id AND LOWER(u.role) IN ('admin','station admin','station_admin') AND u.status='active' LIMIT 1) AS admin_email,
-                (SELECT COUNT(*) FROM users u WHERE u.station_id = s.id AND u.status='active') AS active_users
+                (SELECT u.name  FROM users u WHERE u.station_id = s.id AND LOWER(u.role) IN ('admin','station admin','station_admin') AND u.status = 'Active' LIMIT 1) AS admin_name,
+                (SELECT u.id    FROM users u WHERE u.station_id = s.id AND LOWER(u.role) IN ('admin','station admin','station_admin') AND u.status = 'Active' LIMIT 1) AS admin_id,
+                (SELECT u.email FROM users u WHERE u.station_id = s.id AND LOWER(u.role) IN ('admin','station admin','station_admin') AND u.status = 'Active' LIMIT 1) AS admin_email,
+                (SELECT COUNT(*) FROM users u WHERE u.station_id = s.id AND u.status = 'Active') AS active_users
          FROM stations s
          ORDER BY s.name"
     )->fetchAll(PDO::FETCH_ASSOC);
@@ -102,7 +102,7 @@ try {
 // ── Fetch fuel types ──────────────────────────────────────────
 $fuel_types = [];
 try {
-    $fuel_types = $pdo->query("SELECT id, name FROM fuel_types ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
+    $fuel_types = $pdo->query("SELECT `user_id`, name FROM fuel_types ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
 // ── Fetch unassigned admins (for reassign dropdown) ───────────
@@ -110,7 +110,7 @@ $all_admins = [];
 try {
     $all_admins = $pdo->query(
         "SELECT id, name, email, station_id FROM users
-         WHERE LOWER(role) IN ('admin','station admin','station_admin') AND status='active'
+         WHERE LOWER(role) IN ('admin','station admin','station_admin') AND status = 'Active'
          ORDER BY name"
     )->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}

@@ -199,7 +199,7 @@ class JobOrderOperations {
             $insInv = $this->pdo->prepare("INSERT INTO station_inventory (station_id, product_id, stock_level, cost, price, reorder_level, capacity, unit, status) VALUES (?, ?, 0, ?, ?, 0, 1000, 'pcs', 'active')");
             $insInv->execute([$this->station_id, $productId, $unitPrice, $unitPrice]);
         } else {
-            $updInv = $this->pdo->prepare("UPDATE station_inventory SET cost = ?, price = ?, status = 'active', unit = COALESCE(NULLIF(unit, ''), 'pcs') WHERE id = ?");
+            $updInv = $this->pdo->prepare("UPDATE station_inventory SET cost = ?, price = ?, status = 'Active', unit = COALESCE(NULLIF(unit, ''), 'pcs') WHERE id = ?");
             $updInv->execute([$unitPrice, $unitPrice, $invId]);
         }
 
@@ -252,7 +252,7 @@ class JobOrderOperations {
                 throw new Exception('Quantity must be greater than zero');
             }
 
-            $jobStmt = $this->pdo->prepare("SELECT id, job_order_number, station_id FROM job_orders WHERE id = ? LIMIT 1");
+            $jobStmt = $this->pdo->prepare("SELECT `user_id`, job_order_number, station_id FROM job_orders WHERE id = ? LIMIT 1");
             $jobStmt->execute([$jobId]);
             $job = $jobStmt->fetch(PDO::FETCH_ASSOC);
             if (!$job || (int)$job['station_id'] !== (int)$this->station_id) {
@@ -423,8 +423,8 @@ class JobOrderOperations {
                     INNER JOIN job_orders j ON j.id = l.job_order_id
                     INNER JOIN station_items si ON si.id = l.station_item_id
                           LEFT JOIN product_categories pc ON pc.id = si.category_id
-                    LEFT JOIN users u1 ON u1.id = l.linked_by
-                    LEFT JOIN users u2 ON u2.id = l.executed_by
+                    LEFT JOIN users u1 ON u1.user_id = l.linked_by
+                    LEFT JOIN users u2 ON u2.user_id = l.executed_by
                     WHERE l.station_id = ?";
             $params = [$this->station_id];
 
@@ -723,7 +723,7 @@ class JobOrderOperations {
                 $stmt->execute([$this->user['id']]);
                 $manager = $stmt->fetch(PDO::FETCH_ASSOC);
                 
-                if (!$manager || !password_verify($manager_password, $manager['password'])) {
+                if (!$manager || !password_verify($manager_password, $manager['password_hash'])) {
                     throw new Exception('Invalid manager password verification');
                 }
             }
@@ -1414,7 +1414,7 @@ class JobOrderOperations {
                 LEFT JOIN customers c ON c.id = jo.customer_id
                 LEFT JOIN mechanics m ON m.id = jo.assigned_mechanic_id
                 LEFT JOIN service_categories sc ON sc.id = jo.service_category_id
-                LEFT JOIN users u ON u.id = jo.assigned_by
+                LEFT JOIN users u ON u.user_id = jo.assigned_by
                 WHERE jo.id = ?
             ");
             $stmt->execute([$job_id]);
@@ -1430,7 +1430,7 @@ class JobOrderOperations {
                 LEFT JOIN customers c ON c.id = jo.customer_id
                 LEFT JOIN mechanics m ON m.id = jo.assigned_mechanic_id
                 LEFT JOIN service_categories sc ON sc.id = jo.service_category_id
-                LEFT JOIN users u ON u.id = jo.assigned_by
+                LEFT JOIN users u ON u.user_id = jo.assigned_by
                 WHERE jo.id = ? AND jo.station_id = ?
             ");
             $stmt->execute([$job_id, $this->station_id]);
@@ -1452,7 +1452,7 @@ class JobOrderOperations {
             LEFT JOIN customers c ON c.id = jo.customer_id
             LEFT JOIN mechanics m ON m.id = jo.assigned_mechanic_id
             LEFT JOIN service_categories sc ON sc.id = jo.service_category_id
-            LEFT JOIN users u ON u.id = jo.assigned_by
+            LEFT JOIN users u ON u.user_id = jo.assigned_by
             WHERE jo.station_id = ? AND jo.status = ?
             ORDER BY jo.created_at DESC
         ");
@@ -1479,8 +1479,8 @@ class JobOrderOperations {
             LEFT JOIN customers c ON c.id = jo.customer_id
             LEFT JOIN mechanics m ON m.id = jo.assigned_mechanic_id
             LEFT JOIN service_categories sc ON sc.id = jo.service_category_id
-            LEFT JOIN users u ON u.id = jo.assigned_by
-            LEFT JOIN users r ON r.id = jo.reviewed_by
+            LEFT JOIN users u ON u.user_id = jo.assigned_by
+            LEFT JOIN users r ON r.user_id = jo.reviewed_by
             WHERE jo.id = ? AND jo.station_id = ?
         ");
         $stmt->execute([$job_id, $this->station_id]);

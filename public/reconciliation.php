@@ -144,7 +144,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $msg = "❌ Error: Password required to finalize reconciliation.";
         } else {
             // Verify against current user's password (manager/admin must provide their own password)
-            if (password_verify($manager_password, $u['password'])) {
+            if (password_verify($manager_password, $u['password_hash'])) {
                 $_SESSION['recon_verified'] = true;
                 $_SESSION['recon_verified_time'] = time();
                 $msg = "✅ Identity verified. Proceeding with reconciliation finalization.";
@@ -200,7 +200,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 // Fetch stations for dropdown
 $stations_list = [];
 try {
-    $stmt = $pdo->query("SELECT id, name FROM stations WHERE status = 'active' ORDER BY name");
+    $stmt = $pdo->query("SELECT id, name FROM stations WHERE status = 'Active' ORDER BY name");
     $stations_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch(Exception $e) {
     $error = "Error fetching stations: " . $e->getMessage();
@@ -1271,7 +1271,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <div class="modal-body" style="padding: 20px;">
             <p style="color: #666; margin-bottom: 15px;">To finalize this reconciliation, please enter your password:</p>
             <input 
-                type="password" 
+                type="password_hash" 
                 id="managerPassword" 
                 class="filter-input" 
                 placeholder="Enter your password"

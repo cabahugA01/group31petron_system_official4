@@ -159,7 +159,7 @@ try {
     $audit_rows = $pdo->query(
         "SELECT al.id, al.user_id, al.action, al.details, al.created_at, u.name AS user_name
          FROM activity_logs al
-         LEFT JOIN users u ON u.id = al.user_id
+         LEFT JOIN users u ON u.user_id = al.user_id
          WHERE al.action LIKE 'DB%'
          ORDER BY al.created_at DESC LIMIT 100"
     )->fetchAll(PDO::FETCH_ASSOC);

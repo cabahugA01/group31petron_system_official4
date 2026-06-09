@@ -35,20 +35,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['export'])) {
         $pdo->beginTransaction();
         
         if ($action === 'approve' && $tx_id > 0) {
+            $notes = trim($_POST['approve_notes'] ?? '');
+            
             // Approve transaction
             $stmt = $pdo->prepare("UPDATE fuel_transactions 
                                    SET status = 'Verified', 
                                        validated_by = ?, 
-                                       validated_at = NOW() 
+                                       validated_at = NOW(),
+                                       reject_reason = ? 
                                    WHERE id = ? AND station_id = ? AND LOWER(status) LIKE '%pending%'");
-            $stmt->execute([$me['id'], $tx_id, $station_id]);
+            $stmt->execute([$me['id'], $notes !== '' ? $notes : null, $tx_id, $station_id]);
             
             if ($stmt->rowCount() > 0) {
                 // Log audit trail
                 try {
-                    $pdo->prepare("INSERT INTO audit_logs (user_id, action_type, entity_type, entity_id, station_id, ip_address, created_at) 
-                                   VALUES (?, 'Approve', 'fuel_transaction', ?, ?, ?, NOW())")
-                        ->execute([$me['id'], $tx_id, $station_id, $_SERVER['REMOTE_ADDR'] ?? '']);
+                    $details = "Approved.";
+                    if ($notes !== '') {
+                        $details .= " Notes: " . $notes;
+                    }
+                    $pdo->prepare("INSERT INTO audit_logs (user_id, action_type, entity_type, entity_id, details, station_id, ip_address, created_at) 
+                                   VALUES (?, 'Approve', 'fuel_transaction', ?, ?, ?, ?, NOW())")
+                        ->execute([$me['id'], $tx_id, $details, $station_id, $_SERVER['REMOTE_ADDR'] ?? '']);
                 } catch (Exception $ae) {}
                 
                 $_SESSION['success'] = "Transaction #{$tx_id} approved successfully.";
@@ -60,25 +67,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['export'])) {
         elseif ($action === 'reject' && $tx_id > 0) {
             $reason = trim($_POST['reason'] ?? '');
             
-            if (empty($reason)) {
-                throw new Exception("Rejection reason is required.");
-            }
-            
-            // Reject transaction
+            // Reject transaction (reason is optional)
             $stmt = $pdo->prepare("UPDATE fuel_transactions 
                                    SET status = 'Rejected', 
                                        validated_by = ?, 
                                        validated_at = NOW(),
                                        reject_reason = ? 
                                    WHERE id = ? AND station_id = ? AND LOWER(status) LIKE '%pending%'");
-            $stmt->execute([$me['id'], $reason, $tx_id, $station_id]);
+            $stmt->execute([$me['id'], $reason !== '' ? $reason : null, $tx_id, $station_id]);
             
             if ($stmt->rowCount() > 0) {
                 // Log audit trail
                 try {
+                    $details = "Rejected.";
+                    if ($reason !== '') {
+                        $details .= " Reason: " . $reason;
+                    }
                     $pdo->prepare("INSERT INTO audit_logs (user_id, action_type, entity_type, entity_id, details, station_id, ip_address, created_at) 
                                    VALUES (?, 'Reject', 'fuel_transaction', ?, ?, ?, ?, NOW())")
-                        ->execute([$me['id'], $tx_id, "Reason: {$reason}", $station_id, $_SERVER['REMOTE_ADDR'] ?? '']);
+                        ->execute([$me['id'], $tx_id, $details, $station_id, $_SERVER['REMOTE_ADDR'] ?? '']);
                 } catch (Exception $ae) {}
                 
                 $_SESSION['success'] = "Transaction #{$tx_id} rejected and returned to staff.";
@@ -96,26 +103,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['export'])) {
                 throw new Exception("Adjusted values must be greater than zero.");
             }
             
-            if (empty($adj_note)) {
-                throw new Exception("Adjustment note is required.");
-            }
-            
-            // Adjust transaction
+            // Adjust transaction (note is optional)
             $stmt = $pdo->prepare("UPDATE fuel_transactions 
                                    SET status = 'Verified', 
                                        liters_sold = ?,
                                        total_amount = ?,
                                        validated_by = ?, 
-                                       validated_at = NOW()
+                                       validated_at = NOW(),
+                                       reject_reason = ?
                                    WHERE id = ? AND station_id = ? AND LOWER(status) LIKE '%pending%'");
-            $stmt->execute([$new_liters, $new_amount, $me['id'], $tx_id, $station_id]);
+            $stmt->execute([$new_liters, $new_amount, $me['id'], $adj_note !== '' ? $adj_note : null, $tx_id, $station_id]);
             
             if ($stmt->rowCount() > 0) {
                 // Log audit trail
                 try {
+                    $details = "Adjusted to {$new_liters}L / ₱{$new_amount}.";
+                    if ($adj_note !== '') {
+                        $details .= " Note: {$adj_note}";
+                    }
                     $pdo->prepare("INSERT INTO audit_logs (user_id, action_type, entity_type, entity_id, details, station_id, ip_address, created_at) 
                                    VALUES (?, 'Adjust', 'fuel_transaction', ?, ?, ?, ?, NOW())")
-                        ->execute([$me['id'], $tx_id, "Adjusted to {$new_liters}L / ₱{$new_amount}. Note: {$adj_note}", $station_id, $_SERVER['REMOTE_ADDR'] ?? '']);
+                        ->execute([$me['id'], $tx_id, $details, $station_id, $_SERVER['REMOTE_ADDR'] ?? '']);
                 } catch (Exception $ae) {}
                 
                 $_SESSION['success'] = "Transaction #{$tx_id} adjusted successfully.";
@@ -183,21 +191,21 @@ try {
     $stmt->execute([$station_id, $date_from, $date_to]);
     $total_records = (int)$stmt->fetchColumn();
     
-    // Get paginated results - Handle both name and first_name/last_name schemas
+    // Get paginated results - Use only first_name/last_name (compatible schema)
     $sql = "SELECT ft.*, 
+                   fp.pump_number,
                    COALESCE(
-                       NULLIF(TRIM(staff.name), ''),
-                       NULLIF(CONCAT(TRIM(staff.first_name), ' ', TRIM(staff.last_name)), ' '),
+                       NULLIF(CONCAT(TRIM(COALESCE(staff.first_name, '')), ' ', TRIM(COALESCE(staff.last_name, ''))), ' '),
                        staff.username,
                        'Unknown'
                    ) as staff_name,
                    COALESCE(
-                       NULLIF(TRIM(validator.name), ''),
-                       NULLIF(CONCAT(TRIM(validator.first_name), ' ', TRIM(validator.last_name)), ' '),
+                       NULLIF(CONCAT(TRIM(COALESCE(validator.first_name, '')), ' ', TRIM(COALESCE(validator.last_name, ''))), ' '),
                        validator.username,
                        'Unknown'
                    ) as validator_name
             FROM fuel_transactions ft
+            LEFT JOIN fuel_pumps fp ON ft.pump_id = fp.id
             LEFT JOIN users staff ON ft.staff_id = staff.id
             LEFT JOIN users validator ON ft.validated_by = validator.id
             WHERE ft.station_id = ?
@@ -221,6 +229,37 @@ try {
 
 $total_pages = ceil($total_records / $rows_per_page);
 
+// Helper functions for formatting
+function formatShift($shiftPeriod, $shiftName) {
+    if ($shiftName) return $shiftName;
+    if (!$shiftPeriod) return '—';
+    $sl = strtolower($shiftPeriod);
+    if (str_contains($sl, 'first') || $sl === 'shift_1' || $sl === '1') return 'First Shift';
+    if (str_contains($sl, 'second') || $sl === 'shift_2' || $sl === '2') return 'Second Shift';
+    return $shiftPeriod;
+}
+
+function getStatusBadge($status) {
+    $s = strtolower(trim($status ?? ''));
+    if ($s === 'pending validation' || $s === 'pending') {
+        $color = '#d97706';
+        $label = 'Pending Manager Validation';
+    } elseif ($s === 'approved' || $s === 'verified' || $s === 'validated') {
+        $color = '#16a34a';
+        $label = 'Validated';
+    } elseif ($s === 'adjusted') {
+        $color = '#2563eb';
+        $label = 'Adjusted';
+    } elseif ($s === 'rejected') {
+        $color = '#dc2626';
+        $label = 'Rejected';
+    } else {
+        $color = '#64748b';
+        $label = $status;
+    }
+    return '<span style="background:'.$color.'15; color:'.$color.'; border:1px solid '.$color.'30; font-weight:700; font-size:11px; padding:4px 8px; border-radius:6px; text-transform:uppercase; letter-spacing:.5px; white-space:nowrap;">'.$label.'</span>';
+}
+
 require_once __DIR__ . '/../partials/header.php';
 ?>
 
@@ -241,7 +280,7 @@ html, body {
     padding: 0; 
     max-width: 100%;
     width: 100%;
-    overflow-x: hidden !important;
+    overflow-x: visible;
     box-sizing: border-box;
 }
 
@@ -313,108 +352,101 @@ html, body {
 .filter-group label { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; }
 .filter-group input[type=date] { padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; width: 100%; }
 
-/* Table */
+/* Table – NO horizontal scroll, all columns fit on screen */
 .table-card {
     background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
-    padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,.05);
-    max-width: 100%;
-    overflow: hidden;
-    box-sizing: border-box;
+    padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.05);
+    width: 100%; overflow: hidden; box-sizing: border-box;
 }
 .table-wrap { 
-    width: 100%;
-    max-width: 100%;
-    overflow-x: hidden;
-    box-sizing: border-box;
-    display: block;
+    width: 100%; overflow-x: hidden;
+    box-sizing: border-box; display: block;
 }
 .data-table {
-    width: 100%; 
-    border-collapse: collapse; 
-    font-size: 13px;
+    width: 100%; border-collapse: collapse;
     table-layout: fixed;
     box-sizing: border-box;
-    display: table;
 }
+/* Column widths — tuned so all 13 cols fit at ~1050px+ content width */
+.data-table th:nth-child(1),  .data-table td:nth-child(1)  { width:7%;  } /* Date        */
+.data-table th:nth-child(2),  .data-table td:nth-child(2)  { width:6%;  } /* Shift       */
+.data-table th:nth-child(3),  .data-table td:nth-child(3)  { width:9%;  } /* Pump/Fuel   */
+.data-table th:nth-child(4),  .data-table td:nth-child(4)  { width:6%;  } /* Beginning   */
+.data-table th:nth-child(5),  .data-table td:nth-child(5)  { width:6%;  } /* Ending      */
+.data-table th:nth-child(6),  .data-table td:nth-child(6)  { width:5%;  } /* Calibration */
+.data-table th:nth-child(7),  .data-table td:nth-child(7)  { width:6%;  } /* Volume      */
+.data-table th:nth-child(8),  .data-table td:nth-child(8)  { width:6%;  } /* Price/L     */
+.data-table th:nth-child(9),  .data-table td:nth-child(9)  { width:7%;  } /* Amount      */
+.data-table th:nth-child(10), .data-table td:nth-child(10) { width:8%;  } /* Encoded By  */
+.data-table th:nth-child(11), .data-table td:nth-child(11) { width:11%; } /* Status      */
+.data-table th:nth-child(12), .data-table td:nth-child(12) { width:6%;  } /* Notes       */
+.data-table th:nth-child(13), .data-table td:nth-child(13) { width:13%; } /* ACTION      */
 .data-table thead th {
-    background: #002F70; padding: 10px 6px; text-align: left;
-    font-size: 11px; font-weight: 700; color: #fff;
+    background: #002F70; padding: 8px 6px; text-align: left;
+    font-size: 10px; font-weight: 700; color: #fff;
     text-transform: uppercase; border-bottom: 2px solid #002F70;
-    white-space: normal;
-    word-wrap: break-word;
-    overflow: hidden;
-    line-height: 1.3;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    line-height: 1.2;
 }
-/* Column widths - optimized for full visibility */
-.data-table th:nth-child(1), .data-table td:nth-child(1) { width: 4%; } /* ID */
-.data-table th:nth-child(2), .data-table td:nth-child(2) { width: 9%; } /* Date */
-.data-table th:nth-child(3), .data-table td:nth-child(3) { width: 5%; } /* Pump # */
-.data-table th:nth-child(4), .data-table td:nth-child(4) { width: 9%; } /* Fuel Type */
-.data-table th:nth-child(5), .data-table td:nth-child(5) { width: 7%; } /* Liters */
-.data-table th:nth-child(6), .data-table td:nth-child(6) { width: 8%; } /* Price/L */
-.data-table th:nth-child(7), .data-table td:nth-child(7) { width: 9%; } /* Total */
-.data-table th:nth-child(8), .data-table td:nth-child(8) { width: 11%; } /* Staff */
-.data-table th:nth-child(9), .data-table td:nth-child(9) { width: 8%; } /* Status */
-.data-table th:nth-child(10), .data-table td:nth-child(10) { width: 30%; } /* Actions - increased */
 .data-table tbody tr { border-bottom: 1px solid #f1f5f9; }
 .data-table tbody tr:hover { background: #e3f2fd; }
-.data-table tbody td { 
-    padding: 10px 6px; 
-    color: #334155; 
+.data-table tbody td {
+    padding: 7px 6px;
+    color: #334155;
     vertical-align: middle;
-    word-wrap: break-word;
-    overflow: hidden;
-    font-size: 13px;
-    line-height: 1.4;
-}
-
-/* Badges - Plain text, no background */
-.badge {
-    display: inline-block;
-    font-size: 12px; font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-.badge-amber { color: #d97706; }
-
-/* Action Buttons */
-.action-btn {
-    padding: 6px 14px; border-radius: 5px; font-size: 12px; font-weight: 600;
-    border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
-    transition: all .15s;
-    margin: 2px 0;
-    white-space: nowrap;
+    font-size: 11px;
     line-height: 1.3;
-    width: auto;
-    justify-content: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
-.action-btn i { font-size: 11px; }
-.btn-approve { background: #28a745; color: #fff; }
-.btn-approve:hover { background: #218838; }
-.btn-reject { background: #dc2626; color: #fff; }
-.btn-reject:hover { background: #b91c1c; }
-.btn-adjust { background: #002F70; color: #fff; }
-.btn-adjust:hover { background: #001a42; }
+.align-right { text-align: right !important; }
 
-/* Actions cell layout */
-.data-table tbody td:last-child {
-    padding: 6px 4px !important;
-    vertical-align: middle;
+/* Status badge – compact */
+.status-badge {
+    display: inline-block;
+    font-size: 9px; font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    padding: 3px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
 }
+
+/* Compact action buttons – stacked vertically with words */
+.action-btn {
+    padding: 5px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    transition: all .15s;
+    width: 100%;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    box-sizing: border-box;
+}
+.btn-approve { background: #28a745; color: #fff; }
+.btn-approve:hover { background: #218838; transform: scale(1.03); }
+.btn-reject  { background: #dc2626; color: #fff; }
+.btn-reject:hover  { background: #b91c1c; transform: scale(1.03); }
+.btn-adjust  { background: #002F70; color: #fff; }
+.btn-adjust:hover  { background: #001a42; transform: scale(1.03); }
 
 .action-buttons-wrapper {
     display: flex;
     flex-direction: column;
-    gap: 3px;
-    width: auto;
-    align-items: center;
+    gap: 4px;
+    width: 100%;
+    align-items: stretch;
 }
-
-/* ACTION header alignment */
-.data-table thead th:last-child {
-    text-align: center;
-    vertical-align: middle;
-}
+.data-table thead th:last-child  { text-align: center; }
+.data-table tbody td:last-child   { padding: 6px 6px !important; overflow: visible; }
 
 /* Modal */
 .modal {
@@ -536,39 +568,72 @@ html, body {
                 <!-- v2.0 - Action header added -->
                 <thead>
                     <tr>
-                        <th>ID</th>
                         <th>Date</th>
-                        <th>Pump #</th>
-                        <th>Fuel Type</th>
-                        <th>Liters</th>
-                        <th>Price/L</th>
-                        <th>Total</th>
-                        <th>Staff</th>
+                        <th>Shift</th>
+                        <th>Pump / Fuel Type</th>
+                        <th class="align-right">Beginning</th>
+                        <th class="align-right">Ending</th>
+                        <th class="align-right">Calibration</th>
+                        <th class="align-right">Volume (L)</th>
+                        <th class="align-right">Price/L</th>
+                        <th class="align-right">Amount</th>
+                        <th>Encoded By</th>
                         <th>Status</th>
-                        <th>ACTION</th>
+                        <th>Notes</th>
+                        <th style="text-align: center;">ACTION</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($transactions as $tx): ?>
+                    <?php foreach ($transactions as $tx): 
+                        $pump_fuel = htmlspecialchars($tx['fuel_type'] ?? 'N/A');
+                        if (!empty($tx['pump_number'])) {
+                            $pump_fuel .= ' - ' . htmlspecialchars($tx['pump_number']);
+                        }
+                    ?>
                     <tr>
-                        <td><?= htmlspecialchars($tx['id']) ?></td>
                         <td><?= date('M d, Y', strtotime($tx['transaction_date'])) ?></td>
-                        <td><?= htmlspecialchars($tx['pump_number'] ?? 'N/A') ?></td>
-                        <td><?= htmlspecialchars($tx['fuel_type'] ?? 'N/A') ?></td>
-                        <td><?= number_format($tx['liters_sold'] ?? 0, 2) ?>L</td>
-                        <td>₱<?= number_format($tx['price_per_liter'] ?? 0, 2) ?></td>
-                        <td>₱<?= number_format($tx['total_amount'] ?? 0, 2) ?></td>
-                        <td><?= htmlspecialchars($tx['staff_name'] ?? 'N/A') ?></td>
-                        <td><span class="badge badge-amber">PENDING</span></td>
+                        <td><?= htmlspecialchars(formatShift($tx['shift_period'] ?? '', $tx['shift_name'] ?? '')) ?></td>
+                        <td style="font-weight: 700; color: #0f172a;"><?= $pump_fuel ?></td>
+                        <td class="align-right"><?= number_format($tx['previous_reading'] ?? 0, 2) ?></td>
+                        <td class="align-right" style="font-weight: 600; color: #1e293b;"><?= number_format($tx['present_reading'] ?? 0, 2) ?></td>
+                        <td class="align-right"><?= number_format($tx['calibration'] ?? 0, 3) ?></td>
+                        <td class="align-right" style="font-weight: 700; color: #1e293b;"><?= number_format($tx['liters_sold'] ?? 0, 2) ?> L</td>
+                        <td class="align-right">₱<?= number_format($tx['price_per_liter'] ?? 0, 2) ?></td>
+                        <td class="align-right" style="font-weight: 800; color: #0f172a;">₱<?= number_format($tx['total_amount'] ?? 0, 2) ?></td>
+                        <td style="font-weight: 500;"><?= htmlspecialchars($tx['staff_name'] ?? 'N/A') ?></td>
+                        <td><?= getStatusBadge($tx['status']) ?></td>
+                        <td style="max-width: 160px;">
+                            <?php
+                            $staffNotes = trim($tx['notes'] ?? '');
+                            $mgrNotes = trim($tx['reject_reason'] ?? '');
+                            $fullTooltip = '';
+                            if ($staffNotes !== '') {
+                                $fullTooltip .= 'Staff: ' . $staffNotes;
+                            }
+                            if ($mgrNotes !== '') {
+                                if ($fullTooltip !== '') $fullTooltip .= "\n";
+                                $fullTooltip .= 'Manager: ' . $mgrNotes;
+                            }
+                            if ($staffNotes !== '' && $mgrNotes !== '') {
+                                echo '<div style="line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="' . htmlspecialchars($fullTooltip) . '"><strong>S:</strong> ' . htmlspecialchars($staffNotes) . '<br><strong>M:</strong> ' . htmlspecialchars($mgrNotes) . '</div>';
+                            } elseif ($staffNotes !== '') {
+                                echo '<div style="line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="' . htmlspecialchars($fullTooltip) . '">' . htmlspecialchars($staffNotes) . '</div>';
+                            } elseif ($mgrNotes !== '') {
+                                echo '<div style="line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#002F70;" title="' . htmlspecialchars($fullTooltip) . '"><strong>M:</strong> ' . htmlspecialchars($mgrNotes) . '</div>';
+                            } else {
+                                echo '—';
+                            }
+                            ?>
+                        </td>
                         <td>
                             <div class="action-buttons-wrapper">
-                                <button class="action-btn btn-approve" onclick="approveTransaction(<?= $tx['id'] ?>)">
+                                <button class="action-btn btn-approve" onclick="approveTransaction(<?= $tx['id'] ?>)" title="Approve">
                                     <i class="fas fa-check"></i> Approve
                                 </button>
-                                <button class="action-btn btn-reject" onclick="rejectTransaction(<?= $tx['id'] ?>)">
+                                <button class="action-btn btn-reject" onclick="rejectTransaction(<?= $tx['id'] ?>)" title="Reject">
                                     <i class="fas fa-times"></i> Reject
                                 </button>
-                                <button class="action-btn btn-adjust" onclick="adjustTransaction(<?= $tx['id'] ?>, <?= $tx['liters_sold'] ?? 0 ?>, <?= $tx['total_amount'] ?? 0 ?>)">
+                                <button class="action-btn btn-adjust" onclick="adjustTransaction(<?= $tx['id'] ?>, <?= $tx['liters_sold'] ?? 0 ?>, <?= $tx['total_amount'] ?? 0 ?>)" title="Adjust">
                                     <i class="fas fa-edit"></i> Adjust
                                 </button>
                             </div>
@@ -631,6 +696,34 @@ html, body {
     </div>
 </div>
 
+<!-- Approve Modal -->
+<div id="approveModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Approve Transaction</h3>
+            <span class="modal-close" onclick="closeModal('approveModal')">&times;</span>
+        </div>
+        <form method="post">
+            <input type="hidden" name="action" value="approve">
+            <input type="hidden" name="transaction_id" id="approve_tx_id">
+            <div class="form-group">
+                <label>Validation Notes <span style="font-weight: normal; color: #64748b;">(Optional)</span></label>
+                <textarea name="approve_notes" placeholder="Enter optional validation notes or comments..."></textarea>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;">
+                <button type="button" onclick="closeModal('approveModal')"
+                        style="background:#6c757d;color:#fff;padding:8px 16px;border-radius:6px;border:none;cursor:pointer;">
+                    Cancel
+                </button>
+                <button type="submit"
+                        style="background:#28a745;color:#fff;padding:8px 16px;border-radius:6px;border:none;cursor:pointer;">
+                    <i class="fas fa-check"></i> Approve
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- Reject Modal -->
 <div id="rejectModal" class="modal">
     <div class="modal-content">
@@ -642,8 +735,8 @@ html, body {
             <input type="hidden" name="action" value="reject">
             <input type="hidden" name="transaction_id" id="reject_tx_id">
             <div class="form-group">
-                <label>Rejection Reason <span style="color:#dc2626;">*</span></label>
-                <textarea name="reason" required placeholder="Explain why this transaction is being rejected..."></textarea>
+                <label>Rejection Reason <span style="font-weight: normal; color: #64748b;">(Optional)</span></label>
+                <textarea name="reason" placeholder="Explain why this transaction is being rejected..."></textarea>
             </div>
             <div style="display:flex;gap:8px;justify-content:flex-end;">
                 <button type="button" onclick="closeModal('rejectModal')"
@@ -678,8 +771,8 @@ html, body {
                 <input type="number" name="adj_amount" id="adj_amount" step="0.01" min="0" required>
             </div>
             <div class="form-group">
-                <label>Adjustment Note <span style="color:#dc2626;">*</span></label>
-                <textarea name="adj_note" required placeholder="Explain the reason for adjustment..."></textarea>
+                <label>Adjustment Note <span style="font-weight: normal; color: #64748b;">(Optional)</span></label>
+                <textarea name="adj_note" placeholder="Explain the reason for adjustment..."></textarea>
             </div>
             <div style="display:flex;gap:8px;justify-content:flex-end;">
                 <button type="button" onclick="closeModal('adjustModal')"
@@ -704,16 +797,8 @@ function changeRowsPerPage(value) {
 }
 
 function approveTransaction(txId) {
-    if (confirm('Approve this transaction?')) {
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.innerHTML = `
-            <input type="hidden" name="action" value="approve">
-            <input type="hidden" name="transaction_id" value="${txId}">
-        `;
-        document.body.appendChild(form);
-        form.submit();
-    }
+    document.getElementById('approve_tx_id').value = txId;
+    document.getElementById('approveModal').style.display = 'block';
 }
 
 function rejectTransaction(txId) {

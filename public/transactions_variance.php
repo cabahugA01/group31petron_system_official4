@@ -306,7 +306,7 @@ try {
                COALESCE(SUM(jop.total_cost),0) AS parts_total
         FROM job_orders jo
         LEFT JOIN job_order_parts jop ON jop.job_order_id=jo.id
-        LEFT JOIN users u ON u.id=COALESCE(jo.created_by, jo.user_id)
+        LEFT JOIN users u ON u.user_id=COALESCE(jo.created_by, jo.user_id)
         WHERE jo.station_id=? AND jo.status IN ('Completed','Verified','finalized')
           AND DATE(jo.created_at) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
           AND NOT EXISTS (SELECT 1 FROM variance_alerts va

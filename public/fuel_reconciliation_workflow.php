@@ -186,7 +186,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $manager_password = $_POST['manager_password'] ?? '';
                 
                 // Verify manager password
-                if (!password_verify($manager_password, $u['password'])) {
+                if (!password_verify($manager_password, $u['password_hash'])) {
                     $error = "Invalid manager password";
                 } else {
                     try {
@@ -598,7 +598,7 @@ function getStepIcon($step, $current_step) {
                     SELECT fp.*, ft.name as fuel_type 
                     FROM fuel_pumps fp 
                     JOIN fuel_types ft ON fp.fuel_type_id = ft.id 
-                    WHERE fp.station_id = ? AND fp.status = 'active'
+                    WHERE fp.station_id = ? AND fp.status = 'Active'
                 ");
                 $stmt->execute([$station_id]);
                 $pumps = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -901,7 +901,7 @@ function getStepIcon($step, $current_step) {
 
                     <div class="form-group">
                         <label class="form-label">Manager Password (for verification)</label>
-                        <input type="password" name="manager_password" class="form-input" required
+                        <input type="password_hash" name="manager_password" class="form-input" required
                                placeholder="Enter your manager password">
                     </div>
 

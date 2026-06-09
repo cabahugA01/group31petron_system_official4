@@ -31,7 +31,7 @@ try {
         LEFT JOIN technicians t ON t.id = jo.assigned_technician_id
         LEFT JOIN mechanics m ON m.id = jo.assigned_mechanic_id
         LEFT JOIN service_categories sc ON sc.id = jo.service_category_id
-        LEFT JOIN users u ON u.id = jo.assigned_by
+        LEFT JOIN users u ON u.user_id = jo.assigned_by
         WHERE jo.station_id = ? 
           AND jo.status = 'Completed'
           AND jo.reviewed_by IS NULL
@@ -59,7 +59,7 @@ try {
         LEFT JOIN technicians t ON t.id = jo.assigned_technician_id
         LEFT JOIN mechanics m ON m.id = jo.assigned_mechanic_id
         LEFT JOIN service_categories sc ON sc.id = jo.service_category_id
-        LEFT JOIN users reviewer ON reviewer.id = jo.reviewed_by
+        LEFT JOIN users reviewer ON reviewer.user_id = jo.reviewed_by
         WHERE jo.station_id = ? 
           AND jo.status = 'Completed'
           AND jo.reviewed_by IS NOT NULL

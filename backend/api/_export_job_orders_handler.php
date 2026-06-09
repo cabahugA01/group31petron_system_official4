@@ -22,8 +22,8 @@ $stmt = $pdo->prepare("
         m.name                                         AS mechanic_name
     FROM job_orders jo
     LEFT JOIN customers c  ON c.id  = jo.customer_id
-    LEFT JOIN users u      ON u.id  = COALESCE(jo.created_by, jo.user_id)
-    LEFT JOIN users m      ON m.id  = jo.assigned_mechanic_id
+    LEFT JOIN users u      ON u.user_id  = COALESCE(jo.created_by, jo.user_id)
+    LEFT JOIN users m      ON m.user_id  = jo.assigned_mechanic_id
     WHERE jo.station_id = ?
         AND DATE(jo.created_at) BETWEEN ? AND ?
     ORDER BY jo.created_at DESC

@@ -31,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 try {
                     // Verify current user's password
-                    $passStmt = $pdo->prepare("SELECT password FROM users WHERE id = ?");
+                    $passStmt = $pdo->prepare("SELECT password_hash FROM users WHERE user_id = ?");
                     $passStmt->execute([$me['id']]);
                     $currentPass = $passStmt->fetchColumn();
                     
@@ -39,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $notice = "Error: Incorrect password verification.";
                     } else {
                         // Get user info
-                        $userStmt = $pdo->prepare("SELECT username, role FROM users WHERE id = ?");
+                        $userStmt = $pdo->prepare("SELECT username, role FROM users WHERE user_id = ?");
                         $userStmt->execute([$user_id]);
                         $user = $userStmt->fetch();
                         
@@ -51,13 +51,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $hashedPass = password_hash($new_password, PASSWORD_DEFAULT);
                             
                             // Update password
-                            $stmt = $pdo->prepare("UPDATE users SET password = ?, must_change_password = 1 WHERE id = ?");
+                            $stmt = $pdo->prepare("UPDATE users SET password = ? WHERE user_id = ?");
                             $stmt->execute([$hashedPass, $user_id]);
                             
                             // Set password expiry if supported
                             try {
                                 $expires = (new DateTime("+90 days"))->format('Y-m-d H:i:s');
-                                $pdo->prepare("UPDATE users SET password_expires_at = ? WHERE id = ?")
+                                $pdo->prepare("UPDATE users SET password_expires_at = ? WHERE user_id = ?")
                                     ->execute([$expires, $user_id]);
                             } catch(Exception $e){}
                             
@@ -579,7 +579,7 @@ include __DIR__ . '/../partials/header.php';
                     <p style="color: #666; margin-bottom: 24px;">For security and audit logging, please verify your current password.</p>
                     
                     <div class="password-input-group">
-                        <input type="password" 
+                        <input type="password_hash" 
                                class="password-input" 
                                id="verify_password" 
                                placeholder="Enter your password..."
@@ -659,7 +659,7 @@ include __DIR__ . '/../partials/header.php';
                 <?php 
                 $activeUsers = 0;
                 try {
-                    $activeUsers = $pdo->query("SELECT COUNT(*) FROM users WHERE status = 'active'")->fetchColumn();
+                    $activeUsers = $pdo->query("SELECT COUNT(*) FROM users WHERE status = 'Active'")->fetchColumn();
                 } catch(Exception $e) { $activeUsers = 0; }
                 echo $activeUsers;
                 ?>
@@ -780,7 +780,7 @@ function togglePasswordVisibility() {
     const toggle = document.getElementById('password_toggle');
     
     if (passwordVisible) {
-        passwordInput.type = 'password';
+        passwordInput.type = 'password_hash';
         toggle.className = 'fas fa-eye password-toggle';
         passwordVisible = false;
     } else {

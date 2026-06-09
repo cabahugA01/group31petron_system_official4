@@ -30,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 try {
                     // Get user info
-                    $user = $pdo->prepare("SELECT username, name, role FROM users WHERE id = ?");
+                    $user = $pdo->prepare("SELECT username, name, role FROM users WHERE user_id = ?");
                     $user->execute([$user_id]);
                     $userInfo = $user->fetch();
                     
@@ -42,13 +42,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
                         
                         // Update password
-                        $stmt = $pdo->prepare("UPDATE users SET password = ? WHERE id = ?");
+                        $stmt = $pdo->prepare("UPDATE users SET password = ? WHERE user_id = ?");
                         $result = $stmt->execute([$hashed_password, $user_id]);
                         
                         // Set password expiry and must_change flag if columns exist
                         try {
                             $expires = (new DateTime("+90 days"))->format('Y-m-d H:i:s');
-                            $pdo->prepare("UPDATE users SET password_expires_at = ?, must_change_password = 1 WHERE id = ?")
+                            $pdo->prepare("UPDATE users SET password_expires_at = ? WHERE user_id = ?")
                                 ->execute([$expires, $user_id]);
                         } catch(Exception $e){
                             // Columns don't exist, continue without them

@@ -42,7 +42,7 @@ try {
             }
             
             // Remove sensitive data
-            unset($user['password']);
+            unset($user['password_hash']);
             
             $response['success'] = true;
             $response['data'] = $user;
@@ -83,7 +83,7 @@ try {
             }
             
             // Check if username already exists
-            $chk = $pdo->prepare("SELECT id FROM users WHERE username = ?");
+            $chk = $pdo->prepare("SELECT user_id FROM users WHERE username = ?");
             $chk->execute([$username]);
             
             if ($chk->rowCount() > 0) {
@@ -156,7 +156,7 @@ try {
             $manager_password_plain = generateSecurePassword();
             $manager_password = password_hash($manager_password_plain, PASSWORD_DEFAULT);
 
-            $chk = $pdo->prepare("SELECT id FROM users WHERE username = ?");
+            $chk = $pdo->prepare("SELECT user_id FROM users WHERE username = ?");
             $chk->execute([$manager_username]);
             if ($chk->rowCount() == 0) {
                 $stmt = $pdo->prepare("INSERT INTO users (username, password, name, role, station_id, status, created_at) VALUES (?, ?, ?, 'manager', ?, 'active', NOW())");
@@ -170,7 +170,7 @@ try {
                 $staff_password_plain = generateSecurePassword();
                 $staff_password = password_hash($staff_password_plain, PASSWORD_DEFAULT);
                 
-                $chk = $pdo->prepare("SELECT id FROM users WHERE username = ?");
+                $chk = $pdo->prepare("SELECT user_id FROM users WHERE username = ?");
                 $chk->execute([$staff_username]);
                 if ($chk->rowCount() == 0) {
                     $stmt = $pdo->prepare("INSERT INTO users (username, password, name, role, station_id, status, created_at) VALUES (?, ?, ?, 'staff', ?, 'active', NOW())");
@@ -197,7 +197,7 @@ try {
             }
             
             // Get user info
-            $user = $pdo->prepare("SELECT username, name, role, station_id FROM users WHERE id = ?");
+            $user = $pdo->prepare("SELECT username, name, role, station_id FROM users WHERE user_id = ?");
             $user->execute([$user_id]);
             $userInfo = $user->fetch();
             
@@ -222,13 +222,13 @@ try {
             $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
             
             // Update password
-            $stmt = $pdo->prepare("UPDATE users SET password = ?, must_change_password = 1, updated_at = NOW() WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE users SET password = ?, updated_at = NOW() WHERE user_id = ?");
             $stmt->execute([$hashed_password, $user_id]);
             
             // Set password expiry if column exists
             try {
                 $expires = (new DateTime("+90 days"))->format('Y-m-d H:i:s');
-                $pdo->prepare("UPDATE users SET password_expires_at = ? WHERE id = ?")
+                $pdo->prepare("UPDATE users SET password_expires_at = ? WHERE user_id = ?")
                     ->execute([$expires, $user_id]);
             } catch(Exception $e){}
             
@@ -259,7 +259,7 @@ try {
             }
             
             // Get user info
-            $user = $pdo->prepare("SELECT username, name, status FROM users WHERE id = ?");
+            $user = $pdo->prepare("SELECT username, name, status FROM users WHERE user_id = ?");
             $user->execute([$user_id]);
             $userInfo = $user->fetch();
             
@@ -268,7 +268,7 @@ try {
             }
             
             // Update user status
-            $stmt = $pdo->prepare("UPDATE users SET status = ?, updated_at = NOW() WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE users SET status = ?, updated_at = NOW() WHERE user_id = ?");
             $stmt->execute([$new_status, $user_id]);
             
             log_user_action('User Status Change', "Changed user '$userInfo[username]' status from '$userInfo[status]' to '$new_status'. Reason: $reason");
@@ -332,7 +332,7 @@ try {
             
             // Remove sensitive data
             foreach ($users as &$user) {
-                unset($user['password']);
+                unset($user['password_hash']);
             }
             
             $response['success'] = true;
@@ -368,7 +368,7 @@ try {
             $updateFields = "name = ?, email = ?, phone = ?, role = ?, station_id = ?, status = ?, updated_at = NOW()";
             $updateParams = [$name, $email, $phone, $role, $station_id, $status, $user_id];
             
-            $stmt = $pdo->prepare("UPDATE users SET $updateFields WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE users SET $updateFields WHERE user_id = ?");
             $stmt->execute($updateParams);
             
             log_user_action('User Update', "Updated user ID $user_id");
@@ -392,7 +392,7 @@ try {
             }
             
             // Get user info
-            $user = $pdo->prepare("SELECT username, name FROM users WHERE id = ?");
+            $user = $pdo->prepare("SELECT username, name FROM users WHERE user_id = ?");
             $user->execute([$user_id]);
             $userInfo = $user->fetch();
             
@@ -407,7 +407,7 @@ try {
             }
             
             // Soft delete by setting status to inactive
-            $stmt = $pdo->prepare("UPDATE users SET status = 'inactive', updated_at = NOW() WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE users SET status = 'Disabled', updated_at = NOW() WHERE user_id = ?");
             $stmt->execute([$user_id]);
             
             log_user_action('User Deletion', "Deleted user '$userInfo[username]'");

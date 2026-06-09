@@ -38,8 +38,8 @@ $active_tab    = in_array($_GET['atab'] ?? '', ['logs','anomalies']) ? ($_GET['a
 $all_users = [];
 try {
     $su = $pdo->prepare("
-        SELECT id, name, role FROM users
-        WHERE station_id=? AND status='active'
+        SELECT `user_id`, name, role FROM users
+        WHERE station_id=? AND status = 'Active'
           AND LOWER(TRIM(COALESCE(role,''))) NOT IN ('superadmin','super admin','super_admin')
         ORDER BY role, name
     ");
@@ -53,7 +53,7 @@ try {
     $sa = $pdo->prepare("
         SELECT DISTINCT al.action_type
         FROM audit_logs al
-        LEFT JOIN users u ON u.id = al.user_id
+        LEFT JOIN users u ON u.user_id = al.user_id
         WHERE u.station_id = ?
           AND LOWER(TRIM(COALESCE(u.role,''))) NOT IN ('superadmin','super admin','super_admin')
           AND al.action_type IS NOT NULL
@@ -69,7 +69,7 @@ try {
     $sm = $pdo->prepare("
         SELECT DISTINCT al.entity_type
         FROM audit_logs al
-        LEFT JOIN users u ON u.id = al.user_id
+        LEFT JOIN users u ON u.user_id = al.user_id
         WHERE u.station_id = ?
           AND LOWER(TRIM(COALESCE(u.role,''))) NOT IN ('superadmin','super admin','super_admin')
           AND al.entity_type IS NOT NULL

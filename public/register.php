@@ -18,14 +18,14 @@ $msg = '';
 
 // Ensure email column exists (Auto-migration for this update)
 try {
-    $pdo->exec("ALTER TABLE users ADD COLUMN email VARCHAR(150) NULL AFTER name");
+    $pdo->exec("-- email column already exists");
 } catch (PDOException $e) { /* Column likely exists */ }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email'] ?? '');
     $full_name = trim($_POST['full_name'] ?? '');
     $username = trim($_POST['username']);
-    $password = trim($_POST['password']);
+    $password = trim($_POST['password_hash']);
     $confirm_password = trim($_POST['confirm_password']);
     $terms = $_POST['terms'] ?? '';
     
@@ -44,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             try {
                 // Check if username exists
-                $stmt = $pdo->prepare("SELECT id FROM users WHERE username = ?");
+                $stmt = $pdo->prepare("SELECT user_id FROM users WHERE username = ?");
                 $stmt->execute([$username]);
                 if ($stmt->rowCount() > 0) {
                     $msg = "Username already taken.";
@@ -58,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         throw new Exception('No active stations available for registration');
                     }
                     
-                    $insert = $pdo->prepare("INSERT INTO users (username, password, role, email, name, status, station_id) VALUES (?, ?, ?, ?, ?, 'active', ?)");
+                    $insert = $pdo->prepare("INSERT INTO users (username, password_hash, role, email, first_name, status, station_id) VALUES (?, ?, ?, ?, ?, 'Active', ?)");
                     if ($insert->execute([$username, $hashed_password, $role, $email, $full_name, $default_station])) {
                         // AUTO LOGIN: Diretso na login human register
                         $_SESSION['user_id'] = $pdo->lastInsertId();
@@ -71,7 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $_SESSION['user'] = [
                             'username' => $username,
                             'role' => $dashboard_role, // Use the mapped role
-                            'name' => $full_name,
+                            'first_name' => $full_name,
                             'email' => $email,
                             'station_id' => $default_station,
                             'id' => $_SESSION['user_id']
@@ -336,8 +336,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="form-group">
                 <div class="input-group">
                     <span class="input-icon"><i class="fas fa-lock"></i></span>
-                    <input type="password" name="password" id="password" class="form-control" placeholder="Password" required aria-label="Password">
-                    <button type="button" class="toggle-password" onclick="togglePass('password', this)" aria-label="Show password"><i class="fas fa-eye"></i></button>
+                    <input type="password" name="password_hash" id="password_hash" class="form-control" placeholder="Password" required aria-label="Password">
+                    <button type="button" class="toggle-password" onclick="togglePass('password_hash', this)" aria-label="Show password"><i class="fas fa-eye"></i></button>
                 </div>
             </div>
 
@@ -372,9 +372,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <script>
         function togglePass(inputId, btn) {
             const input = document.getElementById(inputId);
-            const type = input.getAttribute('type') === 'password' ? 'text' : 'password';
+            const type = input.getAttribute('type') === 'password_hash' ? 'text' : 'password_hash';
             input.setAttribute('type', type);
-            btn.innerHTML = type === 'password' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
+            btn.innerHTML = type === 'password_hash' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
         }
 
         // Loading State

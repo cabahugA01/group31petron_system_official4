@@ -131,7 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // ── Load data ──────────────────────────────────────────────────────────────
-$required_fuel_types = ['Diesel', 'Kerosene', 'Turbo Diesel', 'XCS', 'Xtra Advance'];
+$required_fuel_types = ['Diesel', 'Kerosene', 'Turbo Diesel', 'XCS Plus', 'XTRA UNL'];
 $fuel_products = [];
 $msg = '';
 

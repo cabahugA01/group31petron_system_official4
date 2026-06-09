@@ -1421,7 +1421,7 @@ try {
         $stmt = $pdo->query("
             SELECT id, full_name, specialization 
             FROM mechanics 
-            WHERE status = 'active' 
+            WHERE status = 'Active' 
             ORDER BY full_name
         ");
         $mechanics = $stmt->fetchAll(PDO::FETCH_ASSOC);

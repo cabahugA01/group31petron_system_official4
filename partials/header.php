@@ -58,7 +58,7 @@ if(in_array($role, ['superadmin','admin','manager'])){
     }
     // 2. Password Expirations
     try {
-        $expiring_passwords = $pdo->query("SELECT username FROM users WHERE password_expires_at < NOW() AND status = 'active' LIMIT 5")->fetchAll();
+        $expiring_passwords = $pdo->query("SELECT username FROM users WHERE password_expires_at < NOW() AND status = 'Active' LIMIT 5")->fetchAll();
         foreach($expiring_passwords as $ep) $header_alerts[] = ['msg'=>"Password Expired: {$ep['username']}", 'time'=>'Now', 'link'=>'users.php'];
     } catch(Exception $e){}
     // 3. Reconciliation Delays (Super Admin only)
@@ -150,7 +150,7 @@ if (in_array($role, ['superadmin','admin','manager'])) {
 try {
     if ($role === 'superadmin') {
         $badges['joborder_stats'] = $pdo->query("SELECT COUNT(*) FROM job_orders WHERE status = 'Pending'")->fetchColumn();
-        $badges['users'] = $pdo->query("SELECT COUNT(*) FROM users WHERE status = 'inactive'")->fetchColumn();
+        $badges['users'] = $pdo->query("SELECT COUNT(*) FROM users WHERE status = 'Disabled'")->fetchColumn();
         
         // Inventory Shortages (Oversight)
         $shortages_count = $pdo->query("SELECT COUNT(*) FROM inventory WHERE stock_level <= 20")->fetchColumn();

@@ -68,13 +68,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Manager: 1 per station only
             if ($role === 'manager') {
-                $chk = $pdo->prepare("SELECT id FROM users WHERE role = 'manager' AND station_id = ? AND status = 'active'");
+                $chk = $pdo->prepare("SELECT id FROM users WHERE role = 'manager' AND station_id = ? AND status = 'Active'");
                 $chk->execute([$my_station_id]);
                 if ($chk->fetch()) throw new Exception("Manager account already exists for this station.");
             }
 
             // Password handling
-            $raw_password = trim($_POST['password'] ?? '');
+            $raw_password = trim($_POST['password_hash'] ?? '');
             if (empty($raw_password)) {
                 // Auto-generate: 12 chars, uses only allowed symbols _ . - ! @ #
                 $password = generateSecurePassword();
@@ -114,7 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // Insert user — must_change_password = 1 forces password change on first login
-            $stmt = $pdo->prepare("INSERT INTO users (name, username, role, email, phone, password, station_id, status, must_change_password, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 1, NOW())");
+            $stmt = $pdo->prepare("INSERT INTO users (first_name, last_name, username, role, email, phone, password, station_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 1, NOW())");
             $stmt->execute([$name, $username, $role, $email, $phone, $hashed, $station_target]);
             $new_user_id = $pdo->lastInsertId();
 
@@ -233,7 +233,7 @@ if ($my_role === 'superadmin') {
     $stmt = $pdo->query("SELECT u.*, s.name as station_name FROM users u LEFT JOIN stations s ON u.station_id = s.id ORDER BY u.created_at DESC");
     $users = $stmt->fetchAll();
     // Fetch stations for dropdown
-    $stations = $pdo->query("SELECT id, name FROM stations WHERE status = 'active' ORDER BY name ASC")->fetchAll();
+    $stations = $pdo->query("SELECT id, name FROM stations WHERE status = 'Active' ORDER BY name ASC")->fetchAll();
 } else {
     if ($my_role === 'staff' || $my_role === 'manager') {
         $stmt = $pdo->prepare("SELECT * FROM users WHERE station_id = ? AND LOWER(role) IN ('staff', 'operations_staff', 'operations staff') ORDER BY role, name");
@@ -403,7 +403,7 @@ include __DIR__ . '/../partials/header.php';
                 <div class="form-group mb-3">
                     <label class="lbl">Password</label>
                     <div style="position:relative;">
-                        <input type="password" name="password" id="add_password" class="inp full" placeholder="Leave empty to auto-generate">
+                        <input type="password_hash" name="password_hash" id="add_password" class="inp full" placeholder="Leave empty to auto-generate">
                         <button type="button" onclick="togglePasswordVisibility('add_password', this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#6c757d;">
                             <i class="fas fa-eye"></i>
                         </button>
@@ -414,7 +414,7 @@ include __DIR__ . '/../partials/header.php';
                 <div class="form-group mb-3">
                     <label class="lbl">Confirm Password</label>
                     <div style="position:relative;">
-                        <input type="password" name="confirm_password" id="add_confirm_password" class="inp full" placeholder="Re-enter password">
+                        <input type="password_hash" name="confirm_password" id="add_confirm_password" class="inp full" placeholder="Re-enter password">
                         <button type="button" onclick="togglePasswordVisibility('add_confirm_password', this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#6c757d;">
                             <i class="fas fa-eye"></i>
                         </button>
@@ -543,11 +543,11 @@ function closeModal(id) {
 function togglePasswordVisibility(fieldId, btn) {
     const field = document.getElementById(fieldId);
     const icon = btn.querySelector('i');
-    if (field.type === 'password') {
+    if (field.type === 'password_hash') {
         field.type = 'text';
         icon.classList.replace('fa-eye', 'fa-eye-slash');
     } else {
-        field.type = 'password';
+        field.type = 'password_hash';
         icon.classList.replace('fa-eye-slash', 'fa-eye');
     }
 }

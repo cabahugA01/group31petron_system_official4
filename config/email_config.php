@@ -4,7 +4,7 @@ $email_config = [
     'host' => 'smtp.gmail.com',        // SMTP server
     'port' => 587,                   // SMTP port
     'username' => 'christianval0813@gmail.com', // Your Gmail
-    'password' => 'ojgy ravy ufed qgfl',   // App password (not regular password)
+    'password_hash' => 'ojgy ravy ufed qgfl',   // App password (not regular password)
     'from_email' => 'christianval0813@gmail.com',
     'from_name' => 'Petron Management System',
     'encryption' => 'tls'
@@ -27,7 +27,7 @@ function sendPasswordResetOTP($to_email, $otp) {
         $mail->Host = $email_config['host'];
         $mail->SMTPAuth = true;
         $mail->Username = $email_config['username'];
-        $mail->Password = $email_config['password'];
+        $mail->Password = $email_config['password_hash'];
         $mail->SMTPSecure = $email_config['encryption'];
         $mail->Port = $email_config['port'];
         
@@ -87,7 +87,7 @@ function sendAdminCredentialsEmail($to_email, $admin_name, $station_name, $usern
         $mail->Host = $email_config['host'];
         $mail->SMTPAuth = true;
         $mail->Username = $email_config['username'];
-        $mail->Password = $email_config['password'];
+        $mail->Password = $email_config['password_hash'];
         $mail->SMTPSecure = $email_config['encryption'];
         $mail->Port = $email_config['port'];
 

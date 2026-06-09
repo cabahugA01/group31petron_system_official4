@@ -61,9 +61,9 @@ if ($action === 'get_job_details') {
             FROM job_orders jo
             LEFT JOIN customers c         ON c.id  = jo.customer_id
             LEFT JOIN mechanics m         ON m.id  = jo.assigned_mechanic_id
-            LEFT JOIN users u_mech        ON u_mech.id = jo.assigned_mechanic_id
+            LEFT JOIN users u_mech        ON u_mech.user_id = jo.assigned_mechanic_id
             LEFT JOIN job_order_service_types sc ON sc.service_key = jo.service_type
-            LEFT JOIN users u_cb          ON u_cb.id = jo.created_by
+            LEFT JOIN users u_cb          ON u_cb.user_id = jo.created_by
             WHERE jo.id = ? AND jo.station_id = ?
         ");
         $stmt->execute([$job_id, $station_id]);

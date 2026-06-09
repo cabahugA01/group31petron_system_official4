@@ -108,7 +108,7 @@ try {
         "SELECT mt.id, mt.transaction_id, mt.status, mt.created_at,
                 u.name AS staff_name
          FROM merchandise_transactions mt
-         LEFT JOIN users u ON u.id = mt.staff_id
+         LEFT JOIN users u ON u.user_id = mt.staff_id
          WHERE mt.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
            AND mt.status IN ('failed','pending','Pending','Failed')
            $where_station

@@ -136,7 +136,7 @@ if (isset($_GET['refresh']) && $_GET['refresh'] == '1') {
         // Variance count
         $vc = $pdo->prepare("SELECT COUNT(*) FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date)=CURDATE() AND liters_sold>0 AND ABS((present_reading-previous_reading)-liters_sold)>=2"); $vc->execute([$station_id]); $vcc = (int)$vc->fetchColumn();
         // Low stock count
-        $lc = $pdo->prepare("SELECT COUNT(*) FROM station_inventory WHERE station_id=? AND status='active' AND stock_level<=reorder_level"); $lc->execute([$station_id]); $lcc = (int)$lc->fetchColumn();        echo json_encode([
+        $lc = $pdo->prepare("SELECT COUNT(*) FROM station_inventory WHERE station_id=? AND status = 'Active' AND stock_level<=reorder_level"); $lc->execute([$station_id]); $lcc = (int)$lc->fetchColumn();        echo json_encode([
             'success'            => true,
             'today_sales'        => (float)($mr['merch_sales'] ?? 0) + array_sum(array_column($fbt, 'total_revenue')),
             'today_fuel'         => array_sum(array_column($fbt, 'total_revenue')),
@@ -302,7 +302,7 @@ if (isset($_GET['refresh_stock_charts']) && $_GET['refresh_stock_charts'] == '1'
                        END AS stock_status
                 FROM station_inventory si
                 LEFT JOIN inventory_products ip ON ip.id = si.product_id
-                WHERE si.station_id = ? AND si.status = 'active'
+                WHERE si.station_id = ? AND si.status = 'Active'
                   AND (si.product_name IS NOT NULL AND si.product_name != '')
                   AND si.stock_level <= COALESCE(si.reorder_level, 10)
                 ORDER BY si.stock_level ASC
@@ -594,7 +594,7 @@ try {
             COALESCE(jo.validation_status, jo.status)                      AS display_status,
             jo.notes
         FROM job_orders jo
-        LEFT JOIN users u      ON u.id  = jo.assigned_mechanic_id
+        LEFT JOIN users u      ON u.user_id  = jo.assigned_mechanic_id
         LEFT JOIN mechanics m  ON m.id  = jo.assigned_mechanic_id
         LEFT JOIN customers c  ON c.id  = jo.customer_id
         WHERE jo.station_id = ?
@@ -640,7 +640,7 @@ try {
             ELSE 'Medium'
         END AS priority
         FROM station_inventory
-        WHERE station_id = ? AND status = 'active' AND stock_level <= reorder_level
+        WHERE station_id = ? AND status = 'Active' AND stock_level <= reorder_level
         ORDER BY shortage DESC LIMIT 10");
     $lsi->execute([$station_id]);
     $low_stock_items = $lsi->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -693,7 +693,7 @@ try {
                END AS stock_status
         FROM station_inventory si
         LEFT JOIN inventory_products ip ON ip.id = si.product_id
-        WHERE si.station_id = ? AND si.status = 'active'
+        WHERE si.station_id = ? AND si.status = 'Active'
           AND (si.product_name IS NOT NULL AND si.product_name != '')
           AND si.stock_level <= COALESCE(si.reorder_level, 10)
         ORDER BY si.stock_level ASC

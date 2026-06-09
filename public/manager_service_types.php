@@ -59,8 +59,8 @@ try {
                sub.name AS submitted_by_name,
                rev.name AS reviewed_by_name
         FROM   job_order_service_types jst
-        LEFT JOIN users sub ON sub.id = jst.submitted_by
-        LEFT JOIN users rev ON rev.id = jst.reviewed_by
+        LEFT JOIN users sub ON sub.user_id = jst.submitted_by
+        LEFT JOIN users rev ON rev.user_id = jst.reviewed_by
         $where
         ORDER  BY jst.status = 'pending' DESC, jst.created_at DESC
     ")->fetchAll(PDO::FETCH_ASSOC);

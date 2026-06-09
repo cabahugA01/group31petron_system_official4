@@ -569,7 +569,7 @@ $jo_sql = "
         COALESCE(NULLIF(TRIM(jo.payment_status),''), 'Unpaid') AS payment_status,
         'job_orders' AS _source
     FROM job_orders jo
-    LEFT JOIN users u ON u.id = COALESCE(jo.created_by, jo.user_id)
+    LEFT JOIN users u ON u.user_id = COALESCE(jo.created_by, jo.user_id)
     $jow
     ORDER BY jo.created_at DESC
 ";

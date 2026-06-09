@@ -101,9 +101,9 @@ class ManagerCalendarOps {
      */
     public function get_assignable_staff() {
         $stmt = $this->pdo->prepare("
-            SELECT id, name, username 
+            SELECT `user_id`, name, username 
             FROM users 
-            WHERE station_id = ? AND role IN ('staff', 'manager') AND status = 'active'
+            WHERE station_id = ? AND role IN ('staff', 'manager') AND status = 'Active'
             ORDER BY name
         ");
         $stmt->execute([$this->station_id]);

@@ -103,7 +103,7 @@ function clockIn($pdo) {
         SELECT sp.*, s.station_name, u.username, u.full_name 
         FROM shift_periods sp
         JOIN stations s ON s.id = ?
-        JOIN users u ON u.id = ?
+        JOIN users u ON u.user_id = ?
         WHERE sp.id = ?
     ");
     $stmt->execute([$station_id, $staff_id, $shift_period_id]);

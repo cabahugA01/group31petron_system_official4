@@ -44,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pdo->beginTransaction();
                     
                     // Validate station exists and is accessible
-                    $stmt = $pdo->prepare("SELECT id, name, status FROM stations WHERE id = ?");
+                    $stmt = $pdo->prepare("SELECT `user_id`, name, status FROM stations WHERE id = ?");
                     $stmt->execute([$station_id]);
                     $station = $stmt->fetch(PDO::FETCH_ASSOC);
                     
@@ -53,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     
                     // Validate admin/owner exists and has proper role for station access
-                    $stmt = $pdo->prepare("SELECT id, name, role, station_id as current_station, status FROM users WHERE id = ? AND role IN ('admin', 'owner') AND status = 'active'");
+                    $stmt = $pdo->prepare("SELECT id, name, role, station_id as current_station, status FROM users WHERE user_id = ? AND role IN ('admin', 'owner') AND status = 'Active'");
                     $stmt->execute([$admin_id]);
                     $admin = $stmt->fetch(PDO::FETCH_ASSOC);
                     
@@ -67,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     
                     // Get current admin assignment for this station (if any) for audit trail
-                    $stmt = $pdo->prepare("SELECT id, name, role FROM users WHERE station_id = ? AND role IN ('admin', 'owner') AND status = 'active'");
+                    $stmt = $pdo->prepare("SELECT `user_id`, name, role FROM users WHERE station_id = ? AND role IN ('admin', 'owner') AND status = 'Active'");
                     $stmt->execute([$station_id]);
                     $previous_admin = $stmt->fetch(PDO::FETCH_ASSOC);
                     
@@ -76,11 +76,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt->execute([$station_id]);
                     
                     // Create new station access mapping
-                    $stmt = $pdo->prepare("UPDATE users SET station_id = ? WHERE id = ?");
+                    $stmt = $pdo->prepare("UPDATE users SET station_id = ? WHERE user_id = ?");
                     $stmt->execute([$station_id, $admin_id]);
                     
                     // Update station status to active when access is mapped
-                    $stmt = $pdo->prepare("UPDATE stations SET status = 'active', updated_at = NOW() WHERE id = ?");
+                    $stmt = $pdo->prepare("UPDATE stations SET status = 'Active', updated_at = NOW() WHERE id = ?");
                     $stmt->execute([$station_id]);
                     
                     // Comprehensive audit logging for access mapping
@@ -110,10 +110,10 @@ try {
     // Fetch stations with admin information
     $stmt = $pdo->query("
         SELECT s.*, 
-               (SELECT u.name FROM users u WHERE u.station_id = s.id AND u.role IN ('admin', 'owner') AND u.status = 'active' LIMIT 1) as admin_name,
-               (SELECT u.role FROM users u WHERE u.station_id = s.id AND u.role IN ('admin', 'owner') AND u.status = 'active' LIMIT 1) as admin_role,
-               (SELECT u.id FROM users u WHERE u.station_id = s.id AND u.role IN ('admin', 'owner') AND u.status = 'active' LIMIT 1) as admin_id,
-               (SELECT COUNT(*) FROM users u WHERE u.station_id = s.id AND u.status = 'active') as active_users
+               (SELECT u.name FROM users u WHERE u.station_id = s.id AND u.role IN ('admin', 'owner') AND u.status = 'Active' LIMIT 1) as admin_name,
+               (SELECT u.role FROM users u WHERE u.station_id = s.id AND u.role IN ('admin', 'owner') AND u.status = 'Active' LIMIT 1) as admin_role,
+               (SELECT u.id FROM users u WHERE u.station_id = s.id AND u.role IN ('admin', 'owner') AND u.status = 'Active' LIMIT 1) as admin_id,
+               (SELECT COUNT(*) FROM users u WHERE u.station_id = s.id AND u.status = 'Active') as active_users
         FROM stations s 
         ORDER BY s.name
     ");
@@ -125,7 +125,7 @@ try {
                CASE WHEN u.station_id IS NOT NULL THEN s.name ELSE 'Unassigned' END as current_station
         FROM users u 
         LEFT JOIN stations s ON u.station_id = s.id 
-        WHERE u.role IN ('admin', 'owner') AND u.status = 'active'
+        WHERE u.role IN ('admin', 'owner') AND u.status = 'Active'
         ORDER BY u.name
     ");
     $admins = $stmt->fetchAll();

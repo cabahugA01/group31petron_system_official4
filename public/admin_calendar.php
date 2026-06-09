@@ -312,7 +312,7 @@ try {
     // ADMIN SPECIFIC: Critical stock alerts
     try {
         $stmt = $pdo->prepare("SELECT COUNT(*) FROM inventory_products ip " . 
-            ($filter_station > 0 ? "WHERE ip.station_id = ? AND" : "WHERE") . " ip.current_stock <= (ip.minimum_stock * 0.5) AND ip.status = 'active'");
+            ($filter_station > 0 ? "WHERE ip.station_id = ? AND" : "WHERE") . " ip.current_stock <= (ip.minimum_stock * 0.5) AND ip.status = 'Active'");
         $stmt->execute($station_params);
         $summary_stats['critical_stock'] = $stmt->fetchColumn();
     } catch (Exception $e) {}
@@ -333,8 +333,8 @@ try {
                 COUNT(DISTINCT ss.id) as shifts_today
                 FROM stations s
                 LEFT JOIN staff_calendar_events sce ON s.id = sce.station_id AND sce.event_date = ?
-                LEFT JOIN staff_schedules ss ON s.id IN (SELECT station_id FROM users WHERE id = ss.user_id) AND ss.scheduled_date = ?
-                WHERE s.status = 'active'
+                LEFT JOIN staff_schedules ss ON s.id IN (SELECT station_id FROM users WHERE user_id = ss.user_id) AND ss.scheduled_date = ?
+                WHERE s.status = 'Active'
                 GROUP BY s.id, s.name
                 ORDER BY events_today DESC, shifts_today DESC
                 LIMIT 10");
@@ -448,10 +448,10 @@ $staff_colors = ['#039be5', '#7986cb', '#33b679', '#8e24aa', '#e67c73', '#f6bf26
 try {
     // Load staff list with assigned colors (ALL STATIONS or filtered)
     if ($filter_station > 0) {
-        $staff_stmt = $pdo->prepare("SELECT id, name FROM users WHERE station_id = ? AND role IN ('staff','cashier','pump_attendant','manager','supervisor') AND status = 'active' ORDER BY name");
+        $staff_stmt = $pdo->prepare("SELECT `user_id`, name FROM users WHERE station_id = ? AND role IN ('staff','cashier','pump_attendant','manager','supervisor') AND status = 'Active' ORDER BY name");
         $staff_stmt->execute([$filter_station]);
     } else {
-        $staff_stmt = $pdo->prepare("SELECT id, name FROM users WHERE role IN ('staff','cashier','pump_attendant','manager','supervisor') AND status = 'active' ORDER BY name");
+        $staff_stmt = $pdo->prepare("SELECT `user_id`, name FROM users WHERE role IN ('staff','cashier','pump_attendant','manager','supervisor') AND status = 'Active' ORDER BY name");
         $staff_stmt->execute();
     }
     $all_staff = $staff_stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -718,7 +718,7 @@ try {
             ip.station_id, s.name as station_name
             FROM inventory_products ip
             JOIN stations s ON ip.station_id = s.id
-            WHERE ip.current_stock <= (ip.minimum_stock * 0.5) AND ip.status = 'active'";
+            WHERE ip.current_stock <= (ip.minimum_stock * 0.5) AND ip.status = 'Active'";
         
         if ($filter_station > 0) {
             $critical_stock_query .= " AND ip.station_id = ?";

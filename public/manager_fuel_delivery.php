@@ -263,7 +263,7 @@ $stmt = $pdo->prepare("
         END as stock_status
     FROM station_inventory si
     JOIN products p ON si.product_id = p.id
-    WHERE si.station_id = ? AND p.type_id = 1 AND si.status = 'active'
+    WHERE si.station_id = ? AND p.type_id = 1 AND si.status = 'Active'
     ORDER BY p.name
 ");
 $stmt->execute([$station_id]);

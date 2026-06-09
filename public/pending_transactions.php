@@ -274,7 +274,7 @@ try {
             COALESCE({$mt_staff_col},'Unknown') AS staff_name,
             'merchandise_transactions' AS _source
         FROM merchandise_transactions mt
-        LEFT JOIN users u ON u.id = mt.staff_id
+        LEFT JOIN users u ON u.user_id = mt.staff_id
         {$mt_where}
         ORDER BY txn_date DESC
         LIMIT 100
@@ -316,7 +316,7 @@ try {
             COALESCE(u.name,'Unknown') AS staff_name,
             'job_orders' AS _source
         FROM job_orders jo
-        LEFT JOIN users u ON u.id = {$jo_staff_col}
+        LEFT JOIN users u ON u.user_id = {$jo_staff_col}
         {$jo_where}
         ORDER BY jo.created_at DESC
         LIMIT 100

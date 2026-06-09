@@ -504,7 +504,7 @@ function getActiveShiftData($pdo, $station_id, $staff_id) {
             LEFT JOIN users u ON sh.staff_id = u.id
             WHERE sh.station_id = ? 
             AND sh.staff_id = ? 
-            AND sh.status = 'active'
+            AND sh.status = 'Active'
             AND sh.start_time <= NOW()
             AND (sh.end_time IS NULL OR sh.end_time >= NOW())
             ORDER BY sh.start_time DESC

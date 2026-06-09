@@ -22,7 +22,7 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 // Get user info
-$stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+$stmt = $pdo->prepare("SELECT * FROM users WHERE user_id = ?");
 $stmt->execute([$_SESSION['user_id']]);
 $me = $stmt->fetch(PDO::FETCH_ASSOC);
 

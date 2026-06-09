@@ -44,10 +44,10 @@ if (isset($_SESSION['approvals_verified']) && $_SESSION['approvals_verified'] &&
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['verify_password'])) {
-        $password = $_POST['password'] ?? '';
+        $password = $_POST['password_hash'] ?? '';
 
         if ($role === 'manager') {
-            $stmt = $pdo->prepare("SELECT password FROM users WHERE id = ?");
+            $stmt = $pdo->prepare("SELECT password_hash FROM users WHERE user_id = ?");
             $stmt->execute([$me['id']]);
             $hash = $stmt->fetchColumn();
 
@@ -296,7 +296,7 @@ include __DIR__ . '/../partials/header.php';
     
     <form method="post">
         <div style="margin-bottom: 20px;">
-            <input type="password" name="password" class="inp" style="width: 100%; padding: 10px;" placeholder="Enter Password" required autofocus>
+            <input type="password_hash" name="password_hash" class="inp" style="width: 100%; padding: 10px;" placeholder="Enter Password" required autofocus>
         </div>
         <button type="submit" name="verify_password" class="btn primary" style="width: 100%;">Verify Identity</button>
     </form>

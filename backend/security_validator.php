@@ -46,7 +46,7 @@ class SecurityValidator {
     public function verifyPassword($password, $target_user_id = null) {
         $target_id = $target_user_id ?: $this->user['id'];
         
-        $stmt = $this->pdo->prepare("SELECT password FROM users WHERE id = ?");
+        $stmt = $this->pdo->prepare("SELECT password_hash FROM users WHERE user_id = ?");
         $stmt->execute([$target_id]);
         $stored_hash = $stmt->fetchColumn();
         

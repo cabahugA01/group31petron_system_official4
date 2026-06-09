@@ -99,7 +99,7 @@ try {
     require_once __DIR__ . '/../backend/lib.php';
 
     // Check user from DB
-    $u = $pdo->prepare("SELECT id, name, role, station_id, status FROM users WHERE id = ? LIMIT 1");
+    $u = $pdo->prepare("SELECT `user_id`, name, role, station_id, status FROM users WHERE user_id = ? LIMIT 1");
     $u->execute([$uid]);
     $db_user = $u->fetch(PDO::FETCH_ASSOC);
     echo "DB user lookup: " . ($db_user ? "<span class='ok'>✓ Found: {$db_user['name']}, role={$db_user['role']}, station={$db_user['station_id']}, status={$db_user['status']}</span>" : "<span class='err'>✗ NOT FOUND in DB</span>") . "<br>";

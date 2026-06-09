@@ -15,18 +15,18 @@ function col_exists(PDO $pdo, string $table, string $col): bool {
 
 $has_first_name      = col_exists($pdo, 'users', 'first_name');
 $has_last_name       = col_exists($pdo, 'users', 'last_name');
-$has_phone           = col_exists($pdo, 'users', 'phone');
+$has_phone = true; // phone_number column always exists
 $has_profile_picture = col_exists($pdo, 'users', 'profile_picture');
 
 if (!$has_first_name)      { try { $pdo->exec("ALTER TABLE users ADD COLUMN first_name VARCHAR(100) DEFAULT NULL AFTER id");           $has_first_name = true;      } catch (Exception $e) {} }
 if (!$has_last_name)       { try { $pdo->exec("ALTER TABLE users ADD COLUMN last_name VARCHAR(100) DEFAULT NULL AFTER first_name");    $has_last_name = true;       } catch (Exception $e) {} }
-if (!$has_profile_picture) { try { $pdo->exec("ALTER TABLE users ADD COLUMN profile_picture VARCHAR(255) DEFAULT NULL");               $has_profile_picture = true; } catch (Exception $e) {} }
+$has_profile_picture = false; // profile_picture column removed from schema
 
 try {
-    $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ? LIMIT 1");
+    $stmt = $pdo->prepare("SELECT * FROM users WHERE user_id = ? LIMIT 1");
     $stmt->execute([$me['id']]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
-    if ($row) { unset($row['password']); $me = $row; $_SESSION['user'] = array_merge($_SESSION['user'], $me); }
+    if ($row) { unset($row['password_hash']); $me = $row; $_SESSION['user'] = array_merge($_SESSION['user'], $me); }
 } catch (Exception $e) {}
 
 $station_name = '';
@@ -61,32 +61,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             try {
                 if ($email !== '') {
-                    $chk = $pdo->prepare("SELECT id FROM users WHERE email = ? AND id != ?");
+                    $chk = $pdo->prepare("SELECT user_id FROM users WHERE email = ? AND id != ?");
                     $chk->execute([$email, $me['id']]);
                     if ($chk->fetch()) throw new Exception("Email already registered to another account.");
                 }
                 $full_name = trim("$first_name $last_name");
-                $sets = ["name = ?"]; $params = [$full_name];
+                $sets = []; $params = [$full_name];
                 if ($has_first_name) { $sets[] = "first_name = ?"; $params[] = $first_name; }
                 if ($has_last_name)  { $sets[] = "last_name = ?";  $params[] = $last_name;  }
                 $sets[] = "email = ?"; $params[] = $email;
-                if ($has_phone) { $sets[] = "phone = ?"; $params[] = $phone; }
+                if ($has_phone) { $sets[] = "phone_number = ?"; $params[] = $phone; }
                 $params[] = $me['id'];
-                $pdo->prepare("UPDATE users SET " . implode(', ', $sets) . " WHERE id = ?")->execute($params);
+                $pdo->prepare("UPDATE users SET " . implode(', ', $sets) . " WHERE user_id = ?")->execute($params);
                 $_SESSION['user']['name']       = $full_name;
                 $_SESSION['user']['first_name'] = $first_name;
                 $_SESSION['user']['last_name']  = $last_name;
                 $_SESSION['user']['email']      = $email;
-                if ($has_phone) $_SESSION['user']['phone'] = $phone;
+                if ($has_phone) $_SESSION['user']['phone_number'] = $phone;
                 $me['name'] = $full_name; $me['first_name'] = $first_name;
-                $me['last_name'] = $last_name; $me['email'] = $email; $me['phone'] = $phone;
+                $me['last_name'] = $last_name; $me['email'] = $email; $me['phone_number'] = $phone;
                 try { $pdo->prepare("INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, 'Profile Update', 'User updated profile information', ?)")->execute([$me['id'], $_SERVER['REMOTE_ADDR']]); } catch (Exception $e) {}
                 $msg = 'Profile updated successfully!';
             } catch (Exception $e) { $msg = 'Error: ' . $e->getMessage(); $msg_type = 'error'; }
         }
     }
 
-    if ($action === 'upload_picture' && $has_profile_picture) {
+    // profile_picture removed
+    if (false && $has_profile_picture) {
         if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] === UPLOAD_ERR_OK) {
             $file = $_FILES['profile_picture'];
             $finfo = finfo_open(FILEINFO_MIME_TYPE);
@@ -105,7 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $old = $me['profile_picture'] ?? '';
                     if ($old && file_exists(__DIR__ . '/../' . ltrim($old, '/'))) @unlink(__DIR__ . '/../' . ltrim($old, '/'));
                     $rel = 'uploads/profiles/' . $filename;
-                    $pdo->prepare("UPDATE users SET profile_picture = ? WHERE id = ?")->execute([$rel, $me['id']]);
+                    // profile_picture removed
                     $_SESSION['user']['profile_picture'] = $rel;
                     $me['profile_picture'] = $rel;
                     $msg = 'Profile picture updated!';
@@ -490,8 +491,8 @@ require_once __DIR__ . '/../partials/header.php';
                 <?php if ($has_phone): ?>
                 <div class="pf-row">
                     <span class="pf-row-label">Phone</span>
-                    <span class="pf-row-value <?php echo empty($me['phone']) ? 'muted' : ''; ?>">
-                        <?php echo htmlspecialchars($me['phone'] ?? 'Not set'); ?>
+                    <span class="pf-row-value <?php echo empty($me['phone_number']) ? 'muted' : ''; ?>">
+                        <?php echo htmlspecialchars($me['phone_number'] ?? 'Not set'); ?>
                     </span>
                 </div>
                 <?php endif; ?>
@@ -568,7 +569,7 @@ require_once __DIR__ . '/../partials/header.php';
                     <div class="pf-fg">
                         <label for="phone">Phone Number</label>
                         <input type="tel" id="phone" name="phone" class="pf-input"
-                               value="<?php echo htmlspecialchars($me['phone'] ?? ''); ?>"
+                               value="<?php echo htmlspecialchars($me['phone_number'] ?? ''); ?>"
                                placeholder="+63 9XX XXX XXXX">
                     </div>
                     <?php endif; ?>

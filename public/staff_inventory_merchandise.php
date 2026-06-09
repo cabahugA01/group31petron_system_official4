@@ -34,7 +34,7 @@ try {
         FROM inventory_products ip
         LEFT JOIN station_inventory si
                ON si.product_id = ip.id AND si.station_id = ?
-        WHERE ip.category NOT IN ('Fuel') AND ip.status = 'active'
+        WHERE ip.category NOT IN ('Fuel') AND ip.status = 'Active'
         ORDER BY ip.category, ip.product_name
     ");
     $stmt->execute([$station_id]);

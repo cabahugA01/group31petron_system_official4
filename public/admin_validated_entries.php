@@ -107,7 +107,7 @@ try {
     $stmt = $pdo->prepare("
         SELECT DISTINCT u.name 
         FROM users u
-        WHERE u.station_id = ? AND u.status = 'active'
+        WHERE u.station_id = ? AND u.status = 'Active'
         ORDER BY u.name
     ");
     $stmt->execute([$station_id]);

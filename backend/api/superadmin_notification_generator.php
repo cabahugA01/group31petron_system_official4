@@ -50,7 +50,7 @@ try {
 $sa_ids = [];
 try {
     $stmt = $pdo->query(
-        "SELECT id FROM users WHERE LOWER(role) IN ('superadmin','developer') AND status='active'"
+        "SELECT user_id FROM users WHERE LOWER(role) IN ('superadmin','developer') AND status = 'Active'"
     );
     $sa_ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
 } catch (Exception $e) {}
@@ -107,7 +107,7 @@ try {
                 MAX(created_at) AS last_at,
                 GROUP_CONCAT(DISTINCT COALESCE(u.name,'Unknown') ORDER BY al.created_at DESC SEPARATOR ', ') AS users
          FROM activity_logs al
-         LEFT JOIN users u ON u.id = al.user_id
+         LEFT JOIN users u ON u.user_id = al.user_id
          WHERE (al.action LIKE '%Failed%' OR al.action LIKE '%failed%' OR al.details LIKE '%failed%')
            AND al.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
          GROUP BY ip_address
@@ -132,7 +132,7 @@ try {
     $rows = $pdo->query(
         "SELECT al.id, al.ip_address, al.details, al.created_at, u.name AS user_name
          FROM activity_logs al
-         LEFT JOIN users u ON u.id = al.user_id
+         LEFT JOIN users u ON u.user_id = al.user_id
          WHERE (al.action LIKE '%Unauthorized%' OR al.action LIKE '%unauthorized%'
                 OR al.details LIKE '%Access denied%' OR al.details LIKE '%access denied%')
            AND al.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
@@ -157,7 +157,7 @@ try {
     $rows = $pdo->query(
         "SELECT al.id, al.details, al.created_at, u.name AS user_name
          FROM activity_logs al
-         LEFT JOIN users u ON u.id = al.user_id
+         LEFT JOIN users u ON u.user_id = al.user_id
          WHERE (al.action LIKE '%lock%' OR al.action LIKE '%Lock%'
                 OR al.details LIKE '%locked%' OR al.details LIKE '%account lock%')
            AND al.created_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
@@ -242,7 +242,7 @@ try {
         "SELECT al.user_id, u.name AS user_name, COUNT(*) AS cnt,
                 MAX(al.created_at) AS last_at
          FROM activity_logs al
-         LEFT JOIN users u ON u.id = al.user_id
+         LEFT JOIN users u ON u.user_id = al.user_id
          WHERE (al.action LIKE '%Delete%' OR al.action LIKE '%delete%'
                 OR al.action LIKE '%Soft Delete%' OR al.action LIKE '%Remove%')
            AND al.created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
@@ -268,7 +268,7 @@ try {
     $rows = $pdo->query(
         "SELECT al.id, al.user_id, u.name AS user_name, al.details, al.created_at
          FROM activity_logs al
-         LEFT JOIN users u ON u.id = al.user_id
+         LEFT JOIN users u ON u.user_id = al.user_id
          WHERE al.action LIKE 'SLA Export%'
            AND al.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
          ORDER BY al.created_at DESC LIMIT 10"
@@ -370,7 +370,7 @@ try {
         "SELECT mca.id, mca.module_key, mca.config_key, mca.action_type,
                 u.name AS user_name, mca.timestamp
          FROM module_config_audit mca
-         LEFT JOIN users u ON u.id = mca.changed_by
+         LEFT JOIN users u ON u.user_id = mca.changed_by
          WHERE mca.timestamp >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
          ORDER BY mca.timestamp DESC LIMIT 10"
     )->fetchAll(PDO::FETCH_ASSOC);
@@ -430,7 +430,7 @@ try {
     $rows = $pdo->query(
         "SELECT al.id, al.ip_address, al.details, al.created_at, u.name AS user_name
          FROM activity_logs al
-         LEFT JOIN users u ON u.id = al.user_id
+         LEFT JOIN users u ON u.user_id = al.user_id
          WHERE (al.action LIKE '%System Settings%' OR al.action LIKE '%system_settings%')
            AND (al.details LIKE '%denied%' OR al.details LIKE '%unauthorized%'
                 OR al.details LIKE '%Unauthorized%' OR al.details LIKE '%403%')

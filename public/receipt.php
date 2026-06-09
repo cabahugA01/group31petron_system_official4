@@ -20,8 +20,8 @@ if ($type === 'job_order') {
                    s.address  AS station_address,
                    s.vat_tin  AS station_vat_tin
             FROM job_orders jo
-            LEFT JOIN users    u  ON u.id  = jo.assigned_mechanic_id
-            LEFT JOIN users    cb ON cb.id = jo.created_by
+            LEFT JOIN users    u  ON u.user_id  = jo.assigned_mechanic_id
+            LEFT JOIN users    cb ON cb.user_id = jo.created_by
             LEFT JOIN stations s  ON s.id  = jo.station_id
             WHERE jo.job_order_id = ? OR jo.job_order_number = ? OR jo.id = ?
             LIMIT 1
@@ -41,7 +41,7 @@ if ($type === 'job_order') {
                            s.address AS station_address,
                            s.vat_tin AS station_vat_tin
                     FROM merchandise_transactions mt
-                    LEFT JOIN users u ON u.id = mt.staff_id
+                    LEFT JOIN users u ON u.user_id = mt.staff_id
                     LEFT JOIN stations s ON s.id = mt.station_id
                     WHERE mt.id = ?
                       AND mt.transaction_type IN ('job_order', 'combined')
@@ -262,8 +262,8 @@ if ($type === 'job_order') {
                                    u.name AS mechanic_name,
                                    cb.name AS created_by_name
                             FROM job_orders jo
-                            LEFT JOIN users u  ON u.id  = jo.assigned_mechanic_id
-                            LEFT JOIN users cb ON cb.id = jo.created_by
+                            LEFT JOIN users u  ON u.user_id  = jo.assigned_mechanic_id
+                            LEFT JOIN users cb ON cb.user_id = jo.created_by
                             WHERE jo.id = ?
                             LIMIT 1
                         ");
@@ -274,8 +274,8 @@ if ($type === 'job_order') {
                                    u.name AS mechanic_name,
                                    cb.name AS created_by_name
                             FROM job_orders jo
-                            LEFT JOIN users u  ON u.id  = jo.assigned_mechanic_id
-                            LEFT JOIN users cb ON cb.id = jo.created_by
+                            LEFT JOIN users u  ON u.user_id  = jo.assigned_mechanic_id
+                            LEFT JOIN users cb ON cb.user_id = jo.created_by
                             WHERE (jo.job_order_id = ? OR jo.job_order_number = ?)
                             LIMIT 1
                         ");

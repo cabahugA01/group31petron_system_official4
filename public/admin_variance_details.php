@@ -35,7 +35,7 @@ try {
                u.name  AS investigator_name
         FROM fuel_variance_reports fvr
         LEFT JOIN stations s ON s.id = fvr.station_id
-        LEFT JOIN users    u ON u.id = fvr.investigated_by
+        LEFT JOIN users    u ON u.user_id = fvr.investigated_by
         WHERE fvr.id = ? AND fvr.station_id = ?
         LIMIT 1
     ");

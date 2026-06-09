@@ -25,7 +25,7 @@ $csrf = $_SESSION['csrf_token'];
 // ── Fetch all stations ────────────────────────────────────────
 $stations = [];
 try {
-    $stations = $pdo->query("SELECT id, name, location FROM stations WHERE status='active' ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
+    $stations = $pdo->query("SELECT `user_id`, name, location FROM stations WHERE status = 'Active' ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     try { $stations = $pdo->query("SELECT id, name FROM stations ORDER BY name")->fetchAll(PDO::FETCH_ASSOC); } catch (Exception $e2) {}
 }

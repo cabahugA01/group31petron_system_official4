@@ -34,7 +34,7 @@ try {
             $stmt = $pdo->prepare("
                  SELECT s.*, 
                         (SELECT u.name FROM users u WHERE u.station_id = s.id AND u.role = 'admin' LIMIT 1) as admin_name,
-                        (SELECT COUNT(*) FROM users u WHERE u.station_id = s.id AND u.status = 'active') as active_users,
+                        (SELECT COUNT(*) FROM users u WHERE u.station_id = s.id AND u.status = 'Active') as active_users,
                         (SELECT SUM(stock_level) FROM fuel_inventory fi WHERE fi.station_id = s.id) as fuel_level
                  FROM stations s 
                  WHERE s.id = ?
@@ -50,7 +50,7 @@ try {
             $station['phone'] = '+63 912 345 6789';
             $station['email'] = 'station' . $station_id . '@petron.com';
             $station['opening_hours'] = '24/7';
-            $station['fuel_types'] = 'Diesel, Gasoline, Premium, XCS';
+            $station['fuel_types'] = 'Diesel, Turbo Diesel, XCS Plus, XTRA UNL, Kerosene';
             $station['notes'] = 'Strategic location with high traffic volume. Modern facilities with convenience store.';
             
             $response['success'] = true;
@@ -149,7 +149,7 @@ try {
             $sql = "
                  SELECT s.*, 
                         (SELECT u.name FROM users u WHERE u.station_id = s.id AND u.role = 'admin' LIMIT 1) as admin_name,
-                        (SELECT COUNT(*) FROM users u WHERE u.station_id = s.id AND u.status = 'active') as active_users,
+                        (SELECT COUNT(*) FROM users u WHERE u.station_id = s.id AND u.status = 'Active') as active_users,
                         (SELECT SUM(stock_level) FROM fuel_inventory fi WHERE fi.station_id = s.id) as fuel_level
                  FROM stations s 
                  WHERE 1=1
@@ -221,7 +221,7 @@ try {
                      $ins = $pdo->prepare("
                          INSERT INTO fuel_inventory (station_id, product_id, stock_level, unit, status) 
                          VALUES (?, ?, 0, 'liters', 'active')
-                         ON DUPLICATE KEY UPDATE status = 'active'
+                         ON DUPLICATE KEY UPDATE status = 'Active'
                      ");
                      foreach ($fuelProducts as $fuel) {
                          $ins->execute([$station_id, $fuel['id']]);

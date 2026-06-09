@@ -88,7 +88,7 @@ if ($get_action === 'get_audit') {
         $rows = $pdo->query(
             "SELECT ia.*, u.name AS user_name
              FROM integration_audit ia
-             LEFT JOIN users u ON u.id = ia.user_id
+             LEFT JOIN users u ON u.user_id = ia.user_id
              ORDER BY ia.created_at DESC LIMIT 100"
         )->fetchAll(PDO::FETCH_ASSOC);
         echo json_encode(['ok' => true, 'rows' => $rows]);

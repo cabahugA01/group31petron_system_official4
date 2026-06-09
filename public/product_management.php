@@ -289,7 +289,7 @@ $fuel_inventory_products_only = [];
 $fuel_inventory_product_count = 0;
 
 // Define required fuel types outside try-catch to ensure it's always available
-$required_fuel_types = ['Diesel', 'Kerosene', 'Turbo Diesel', 'XCS', 'Xtra Advance'];
+$required_fuel_types = ['Diesel', 'Kerosene', 'Turbo Diesel', 'XCS Plus', 'XTRA UNL'];
 
 // Initialize arrays before try-catch so they are always defined
 $merchandise_products = [];
@@ -409,7 +409,7 @@ try {
         SELECT mb.*, u.name AS encoded_by_name
         FROM merchandise_batches mb
         LEFT JOIN users u ON mb.encoded_by = u.id
-        WHERE mb.station_id = ? AND mb.status = 'active' AND mb.remaining_qty > 0
+        WHERE mb.station_id = ? AND mb.status = 'Active' AND mb.remaining_qty > 0
         ORDER BY mb.date_received ASC, mb.id ASC
     ");
     $bStmt->execute([$station_id]);

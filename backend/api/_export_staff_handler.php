@@ -52,7 +52,7 @@ try {
         $del_join
         WHERE u.station_id = ?
           AND LOWER(u.role) IN ('staff','cashier','pump_attendant','mechanic')
-          AND u.status = 'active'
+          AND u.status = 'Active'
         GROUP BY u.id, u.name, u.role
         ORDER BY (COUNT(DISTINCT ft.transaction_id) + COUNT(DISTINCT mt.id) + COUNT(DISTINCT jo.id)) DESC, u.name ASC
     ");
@@ -76,7 +76,7 @@ try {
                 ELSE NULL
             END AS hours_worked
         FROM labor_sessions ls
-        JOIN users u ON u.id = ls.user_id
+        JOIN users u ON u.user_id = ls.user_id
         WHERE ls.station_id = ?
           AND DATE(ls.start_time) BETWEEN ? AND ?
         ORDER BY ls.start_time DESC

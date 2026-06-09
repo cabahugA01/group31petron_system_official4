@@ -27,7 +27,7 @@ $unlock_success = false;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unlock_record'])) {
     $table = $_POST['table'] ?? '';
     $record_id = (int)($_POST['record_id'] ?? 0);
-    $password = $_POST['password'] ?? '';
+    $password = $_POST['password_hash'] ?? '';
     $reason = $_POST['reason'] ?? '';
 
     if (empty($table) || empty($record_id) || empty($password) || empty($reason)) {
@@ -38,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unlock_record'])) {
             $data = [
                 'table' => $table,
                 'record_id' => $record_id,
-                'password' => $password,
+                'password_hash' => $password,
                 'reason' => $reason
             ];
 
@@ -48,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unlock_record'])) {
                 'action' => 'unlock_' . $table,
                 'table' => $table,
                 'record_id' => $record_id,
-                'password' => $password,
+                'password_hash' => $password,
                 'reason' => $reason
             ]));
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -97,7 +97,7 @@ $locked_records = [];
 try {
     if ($role === 'superadmin') {
         // Super Admin sees all locked records
-        $stmt = $pdo->query("SELECT id, table_name FROM admin_unlocks ORDER BY unlocked_at DESC LIMIT 50");
+        $stmt = $pdo->query("SELECT `user_id`, table_name FROM admin_unlocks ORDER BY unlocked_at DESC LIMIT 50");
         $all_unlocks = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         // Group by table
@@ -112,7 +112,7 @@ try {
         $locked_records = $by_table;
     } else {
         // Admin sees only their station's locked records
-        $stmt = $pdo->prepare("SELECT id, table_name, unlocked_by FROM admin_unlocks WHERE unlocked_by IN (SELECT id FROM users WHERE station_id = ?) ORDER BY unlocked_at DESC LIMIT 50");
+        $stmt = $pdo->prepare("SELECT id, table_name, unlocked_by FROM admin_unlocks WHERE unlocked_by IN (SELECT user_id FROM users WHERE station_id = ?) ORDER BY unlocked_at DESC LIMIT 50");
         $stmt->execute([$station_id]);
         $all_unlocks = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -222,7 +222,7 @@ include __DIR__ . '/../partials/header.php';
 
             <div style="margin-bottom:20px;">
                 <label class="lbl">Admin Password *</label>
-                <input type="password" name="password" class="inp full" required placeholder="Enter your admin password" style="width:100%; padding:12px; border:1px solid #cbd5e1; border-radius:8px;">
+                <input type="password_hash" name="password_hash" class="inp full" required placeholder="Enter your admin password" style="width:100%; padding:12px; border:1px solid #cbd5e1; border-radius:8px;">
                 <small class="muted">You must verify your password to unlock this record.</small>
             </div>
 

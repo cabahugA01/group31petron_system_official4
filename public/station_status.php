@@ -50,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $stations = [];
 try {
     $stmt = $pdo->query("SELECT s.*, 
-                       (SELECT COUNT(*) FROM users u WHERE u.station_id = s.id AND u.status = 'active') as active_users,
+                       (SELECT COUNT(*) FROM users u WHERE u.station_id = s.id AND u.status = 'Active') as active_users,
                        (SELECT u.name FROM users u WHERE u.station_id = s.id AND u.role = 'admin' LIMIT 1) as admin_name,
                        (SELECT SUM(i.stock_level) FROM station_inventory i 
                         JOIN products p ON i.product_id = p.id 

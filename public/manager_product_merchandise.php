@@ -170,7 +170,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([$id]);
                 $pname = $stmt->fetchColumn();
 
-                $pdo->prepare("UPDATE inventory_products SET status='active' WHERE id=?")->execute([$id]);
+                $pdo->prepare("UPDATE inventory_products SET status = 'Active' WHERE id=?")->execute([$id]);
                 log_activity($pdo, $me['id'], 'Product Validated', "Pending merchandise product '$pname' (ID:$id) validated by {$me['name']}");
                 $_SESSION['success'] = "Product '$pname' has been validated and is now active.";
             } catch (Exception $e) {
@@ -205,8 +205,8 @@ try {
             SELECT
                 product_id,
                 COUNT(*) AS total_batches,
-                SUM(CASE WHEN status='active' THEN 1    ELSE 0 END) AS active_batches,
-                SUM(CASE WHEN status='active' THEN remaining_qty ELSE 0 END) AS batch_stock
+                SUM(CASE WHEN status = 'Active' THEN 1    ELSE 0 END) AS active_batches,
+                SUM(CASE WHEN status = 'Active' THEN remaining_qty ELSE 0 END) AS batch_stock
             FROM merchandise_batches
             WHERE station_id = ?
             GROUP BY product_id

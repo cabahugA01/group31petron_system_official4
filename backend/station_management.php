@@ -124,7 +124,7 @@ class StationManager {
         }
         
         try {
-            $stmt = $pdo->prepare("SELECT COUNT(*) FROM stations WHERE id = ? AND status = 'active'");
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM stations WHERE id = ? AND status = 'Active'");
             $stmt->execute([$station_id]);
             return $stmt->fetchColumn() > 0;
         } catch (Exception $e) {
@@ -146,7 +146,7 @@ class StationManager {
         }
         
         try {
-            $stmt = $pdo->query("SELECT id, name FROM stations WHERE status = 'active' ORDER BY name ASC");
+            $stmt = $pdo->query("SELECT id, name FROM stations WHERE status = 'Active' ORDER BY name ASC");
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (Exception $e) {
             error_log("Failed to fetch active stations: " . $e->getMessage());

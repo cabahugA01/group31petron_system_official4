@@ -269,7 +269,7 @@ if ($action === 'seed') {
     try {
         $mgr_actions = $pdo->prepare(
             "SELECT COUNT(*) FROM audit_logs al
-             JOIN users u ON u.id=al.user_id
+             JOIN users u ON u.user_id=al.user_id
              WHERE u.station_id=? AND u.role IN ('manager','supervisor')
              AND al.action_type IN ('Approved','Rejected','Adjusted')
              AND al.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)"
@@ -293,7 +293,7 @@ if ($action === 'seed') {
     try {
         $suspicious = $pdo->prepare(
             "SELECT COUNT(*) FROM audit_logs al
-             JOIN users u ON u.id=al.user_id
+             JOIN users u ON u.user_id=al.user_id
              WHERE u.station_id=? AND al.action_type IN ('Delete','Bulk Delete','Override','Force Approve')
              AND al.created_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)"
         );

@@ -89,7 +89,7 @@ class StaffCalendarAPI {
     private function getEventTypes() {
         try {
             $stmt = $this->pdo->prepare("
-                SELECT id, type_key, type_name, description, icon_class, color_class 
+                SELECT `user_id`, type_key, type_name, description, icon_class, color_class 
                 FROM staff_event_types 
                 WHERE is_active = TRUE 
                 ORDER BY sort_order
@@ -113,7 +113,7 @@ class StaffCalendarAPI {
                 LEFT JOIN staff_color_config scc ON u.id = scc.user_id AND scc.is_active = TRUE
                 WHERE u.station_id = :station_id 
                 AND u.role IN ('staff', 'cashier', 'pump_attendant')
-                AND u.account_status = 'active'
+                AND u.account_status = 'Active'
                 ORDER BY u.first_name, u.last_name
             ");
             $stmt->execute([':station_id' => $this->station_id]);
@@ -135,7 +135,7 @@ class StaffCalendarAPI {
                 LEFT JOIN manager_color_config mcc ON u.id = mcc.user_id AND mcc.is_active = TRUE
                 WHERE u.station_id = :station_id 
                 AND u.role IN ('manager', 'admin')
-                AND u.account_status = 'active'
+                AND u.account_status = 'Active'
                 ORDER BY u.first_name, u.last_name
             ");
             $stmt->execute([':station_id' => $this->station_id]);

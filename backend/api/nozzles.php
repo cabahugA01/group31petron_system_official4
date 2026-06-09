@@ -108,7 +108,7 @@ switch($action) {
                     FROM nozzles n
                     LEFT JOIN fuel_types ft ON n.fuel_type_id = ft.id
                     WHERE n.pump_id = ? 
-                      AND n.status = 'active'
+                      AND n.status = 'Active'
                     ORDER BY n.nozzle_number ASC";
             
             $stmt = $pdo->prepare($sql);

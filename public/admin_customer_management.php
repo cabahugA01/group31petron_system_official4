@@ -542,7 +542,7 @@ if ($section === 'oversight') {
         []);
 
     $all_stations = adm_cust_rows($pdo,
-        "SELECT id, name FROM stations WHERE status='active' ORDER BY name ASC",
+        "SELECT id, name FROM stations WHERE status = 'Active' ORDER BY name ASC",
         []);
 }
 
@@ -579,7 +579,7 @@ if ($section === 'audit') {
                 u.role AS actor_role,
                 s.name AS station_name
          FROM audit_logs al
-         LEFT JOIN users u ON u.id = al.user_id
+         LEFT JOIN users u ON u.user_id = al.user_id
          LEFT JOIN stations s ON s.id = u.station_id
          $aw
          ORDER BY al.created_at DESC
@@ -594,7 +594,7 @@ unset($_SESSION['flash_ok'], $_SESSION['flash_err']);
 
 // ── All stations for filter dropdowns ──────────────────────
 $all_stations_list = adm_cust_rows($pdo,
-    "SELECT id, name FROM stations WHERE status='active' ORDER BY name ASC",
+    "SELECT id, name FROM stations WHERE status = 'Active' ORDER BY name ASC",
     []);
 
 include __DIR__ . '/../partials/header.php';

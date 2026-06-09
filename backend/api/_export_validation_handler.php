@@ -17,7 +17,7 @@ $stmt = $pdo->prepare("
         u.name  AS manager_name,
         u.role  AS manager_role
     FROM activity_logs al
-    LEFT JOIN users u ON u.id = al.user_id
+    LEFT JOIN users u ON u.user_id = al.user_id
     WHERE u.station_id = ?
         AND LOWER(u.role) IN ('manager','admin','superadmin','super admin')
         AND DATE(al.created_at) BETWEEN ? AND ?

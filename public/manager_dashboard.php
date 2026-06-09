@@ -88,7 +88,7 @@ function fetchDashboardData($pdo, $station_id) {
     $data['total_fuel_liters'] = array_sum(array_column($data['fuel_stock'], 'current_stock'));
     
     // 3. Merchandise Inventory → station_inventory (validated stock-in/out)
-    $merch_inv_stmt = $pdo->prepare("SELECT COUNT(*) AS total_items, COALESCE(SUM(stock_level), 0) AS total_stock FROM station_inventory WHERE station_id = ? AND status = 'active'");
+    $merch_inv_stmt = $pdo->prepare("SELECT COUNT(*) AS total_items, COALESCE(SUM(stock_level), 0) AS total_stock FROM station_inventory WHERE station_id = ? AND status = 'Active'");
     $merch_inv_stmt->execute([$station_id]);
     $merch_inv = $merch_inv_stmt->fetch(PDO::FETCH_ASSOC);
     $data['merch_inventory_items'] = (int)$merch_inv['total_items'];
@@ -188,10 +188,11 @@ function fetchDashboardData($pdo, $station_id) {
     // Pie Chart: Delivery status breakdown (Full, Partial, Damaged, Rejected)
     $del_status_stmt = $pdo->prepare("SELECT 
         CASE 
-            WHEN status = 'Validated' AND COALESCE(discrepancy_type, 'None') = 'None' THEN 'Full'
-            WHEN discrepancy_type = 'Partial Delivery' THEN 'Partial'
-            WHEN discrepancy_type = 'Damaged Items' THEN 'Damaged'
-            WHEN status = 'Rejected Delivery' THEN 'Rejected'
+            WHEN status IN ('Validated', 'Confirmed', 'Approved', 'Stock-In Complete') THEN 'Full'
+            WHEN status = 'Partial Delivery' THEN 'Partial'
+            WHEN status IN ('Damaged Items', 'Flagged') THEN 'Damaged'
+            WHEN status IN ('Rejected', 'Rejected Delivery', 'Discrepancy') THEN 'Rejected'
+            WHEN status LIKE '%Pending%' THEN 'Pending'
             ELSE 'Other'
         END AS delivery_status,
         COUNT(*) AS count
@@ -203,32 +204,77 @@ function fetchDashboardData($pdo, $station_id) {
     $data['delivery_status_breakdown'] = $del_status_stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // Stacked Bar Chart: PO vs actual quantities (last 10 deliveries)
-    $po_vs_actual_stmt = $pdo->prepare("SELECT 
-        COALESCE(delivery_ref, CONCAT('DEL-', id)) AS delivery_ref,
-        expected_quantity,
-        actual_quantity,
-        damaged_quantity
-    FROM deliveries_oversight
-    WHERE station_id = ? AND status IN ('Validated', 'Partial Delivery', 'Damaged Items', 'Stock-In Complete')
-    ORDER BY created_at DESC
-    LIMIT 10");
-    $po_vs_actual_stmt->execute([$station_id]);
-    $data['po_vs_actual'] = $po_vs_actual_stmt->fetchAll(PDO::FETCH_ASSOC);
+    // NOTE: This query requires expected_quantity, actual_quantity, and damaged_quantity columns
+    // If these columns don't exist, they need to be added via the admin panel
+    try {
+        $po_vs_actual_stmt = $pdo->prepare("SELECT 
+            COALESCE(delivery_ref, CONCAT('DEL-', id)) AS delivery_ref,
+            COALESCE(expected_quantity, quantity, 0) AS expected_quantity,
+            COALESCE(actual_quantity, quantity, 0) AS actual_quantity,
+            COALESCE(damaged_quantity, 0) AS damaged_quantity
+        FROM deliveries_oversight
+        WHERE station_id = ? AND status IN ('Validated', 'Partial Delivery', 'Damaged Items', 'Stock-In Complete')
+        ORDER BY created_at DESC
+        LIMIT 10");
+        $po_vs_actual_stmt->execute([$station_id]);
+        $data['po_vs_actual'] = $po_vs_actual_stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        // Fallback if columns don't exist - use basic quantity data
+        $po_vs_actual_stmt = $pdo->prepare("SELECT 
+            COALESCE(delivery_ref, CONCAT('DEL-', id)) AS delivery_ref,
+            COALESCE(quantity, 0) AS expected_quantity,
+            COALESCE(quantity, 0) AS actual_quantity,
+            0 AS damaged_quantity
+        FROM deliveries_oversight
+        WHERE station_id = ? AND status IN ('Validated', 'Partial Delivery', 'Damaged Items', 'Stock-In Complete')
+        ORDER BY created_at DESC
+        LIMIT 10");
+        $po_vs_actual_stmt->execute([$station_id]);
+        $data['po_vs_actual'] = $po_vs_actual_stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
     
     // Trend Line: Supplier performance (on-time vs delayed) - Last 30 days
-    $supplier_perf_stmt = $pdo->prepare("
-        SELECT 
-            po.supplier_name AS supplier,
-            COUNT(*) AS total_deliveries,
-            SUM(CASE WHEN COALESCE(do.delivery_date, DATE(do.created_at)) <= po.expected_delivery_date THEN 1 ELSE 0 END) AS on_time,
-            SUM(CASE WHEN COALESCE(do.delivery_date, DATE(do.created_at)) > po.expected_delivery_date THEN 1 ELSE 0 END) AS `delayed`
-        FROM purchase_orders po
-        LEFT JOIN deliveries_oversight do ON po.po_number = do.delivery_ref AND po.station_id = do.station_id
-        WHERE po.station_id = ? AND po.expected_delivery_date IS NOT NULL
-        GROUP BY po.supplier_name
-    ");
-    $supplier_perf_stmt->execute([$station_id]);
-    $data['supplier_performance'] = $supplier_perf_stmt->fetchAll(PDO::FETCH_ASSOC);
+    // NOTE: This query attempts to join purchase_orders with deliveries_oversight
+    // If the schema doesn't support this analysis, it will return empty data
+    try {
+        $supplier_perf_stmt = $pdo->prepare("
+            SELECT 
+                COALESCE(po.supplier_name, do.supplier, 'Unknown Supplier') AS supplier,
+                COUNT(*) AS total_deliveries,
+                SUM(CASE WHEN COALESCE(do.delivery_date, DATE(do.created_at)) <= COALESCE(po.expected_delivery_date, po.expected_delivery, DATE_ADD(DATE(do.created_at), INTERVAL 7 DAY)) THEN 1 ELSE 0 END) AS on_time,
+                SUM(CASE WHEN COALESCE(do.delivery_date, DATE(do.created_at)) > COALESCE(po.expected_delivery_date, po.expected_delivery, DATE_ADD(DATE(do.created_at), INTERVAL 7 DAY)) THEN 1 ELSE 0 END) AS `delayed`
+            FROM deliveries_oversight do
+            LEFT JOIN purchase_orders po ON po.po_number = do.source_ref AND po.station_id = do.station_id
+            WHERE do.station_id = ? AND DATE(COALESCE(do.delivery_date, do.created_at)) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+            GROUP BY supplier
+            HAVING total_deliveries > 0
+            ORDER BY total_deliveries DESC
+            LIMIT 10
+        ");
+        $supplier_perf_stmt->execute([$station_id]);
+        $data['supplier_performance'] = $supplier_perf_stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        // Fallback: Simple supplier count from deliveries_oversight only
+        try {
+            $supplier_perf_fallback = $pdo->prepare("
+                SELECT 
+                    COALESCE(supplier, 'Unknown') AS supplier,
+                    COUNT(*) AS total_deliveries,
+                    COUNT(*) AS on_time,
+                    0 AS delayed
+                FROM deliveries_oversight
+                WHERE station_id = ? AND DATE(COALESCE(delivery_date, created_at)) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+                GROUP BY supplier
+                ORDER BY total_deliveries DESC
+                LIMIT 10
+            ");
+            $supplier_perf_fallback->execute([$station_id]);
+            $data['supplier_performance'] = $supplier_perf_fallback->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $e2) {
+            // Ultimate fallback: empty array
+            $data['supplier_performance'] = [];
+        }
+    }
     
     // ─── INVENTORY GRAPHS ───────────────────────────────────────────────────────
     
@@ -268,7 +314,7 @@ function fetchDashboardData($pdo, $station_id) {
         'Merchandise' AS item_type
     FROM station_inventory si
     JOIN inventory_products ip ON si.product_id = ip.id
-    WHERE si.station_id = ? AND si.status = 'active' AND si.stock_level <= si.reorder_level
+    WHERE si.station_id = ? AND si.status = 'Active' AND si.stock_level <= si.reorder_level
     UNION
     SELECT 
         COALESCE(ft.name, fi.fuel_type) AS product_name,

@@ -74,7 +74,7 @@ class JobOrderReceipt {
             FROM   job_orders jo
             LEFT JOIN stations  s ON s.id = jo.station_id
             LEFT JOIN mechanics m ON m.id = jo.assigned_mechanic_id
-            LEFT JOIN users     u ON u.id = jo.created_by
+            LEFT JOIN users     u ON u.user_id = jo.created_by
             WHERE  (jo.job_order_id = ? OR jo.job_order_number = ?)
             LIMIT  1
         ");

@@ -23,7 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([$id]);
                 $pname = $stmt->fetchColumn();
 
-                $pdo->prepare("UPDATE inventory_products SET status='active' WHERE id=?")->execute([$id]);
+                $pdo->prepare("UPDATE inventory_products SET status = 'Active' WHERE id=?")->execute([$id]);
                 log_activity($pdo, $me['id'], 'Product Validated', "Pending merchandise product '$pname' (ID:$id) validated by {$me['name']}");
                 $_SESSION['success'] = "Product '$pname' has been validated and is now active.";
             } catch (Exception $e) {
@@ -45,7 +45,7 @@ try {
                ip.unit_price   AS price,
                ip.unit_cost    AS cost,
                ip.sku,
-               ip.status,
+               COALESCE(si.status, 'Active') AS status,
                COALESCE(si.stock_level, ip.stock, 0) AS stock_level,
                COALESCE(si.reorder_level, 10)        AS reorder_level
         FROM inventory_products ip

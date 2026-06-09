@@ -18,7 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
     if ($pump_id) {
         try {
             // Get user's station_id
-            $stmt = $pdo->prepare("SELECT station_id FROM users WHERE id = ?");
+            $stmt = $pdo->prepare("SELECT station_id FROM users WHERE user_id = ?");
             $stmt->execute([$_SESSION['user_id']]);
             $user = $stmt->fetch();
             
@@ -76,7 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
     if ($pump_id) {
         try {
             // Get user's station_id
-            $stmt = $pdo->prepare("SELECT station_id FROM users WHERE id = ?");
+            $stmt = $pdo->prepare("SELECT station_id FROM users WHERE user_id = ?");
             $stmt->execute([$_SESSION['user_id']]);
             $user = $stmt->fetch();
             
@@ -474,7 +474,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 if ($stmt->rowCount() > 0) {
                     // If adjustment is approved, update inventory in real-time
                     if ($status === 'Approved' || $status === 'approved') {
-                        // Get adjustment details — fuel_type (string) and liters
+                        // Get adjustment details  fuel_type (string) and liters
                         $stmtAdj = $pdo->prepare("SELECT fuel_type, fuel_type_id, adjustment_type, liters FROM fuel_adjustments WHERE id = ?");
                         $stmtAdj->execute([$id]);
                         $adjustment = $stmtAdj->fetch(PDO::FETCH_ASSOC);

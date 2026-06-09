@@ -32,8 +32,8 @@ try {
         $user_cols[] = $col['Field'];
     }
 } catch (Exception $e) { /* ignore */ }
-$s_phone = in_array('phone_number', $user_cols) ? 'phone_number' : 'phone';
-$s_pass  = in_array('password_hash', $user_cols) ? 'password_hash' : 'password';
+$s_phone = 'phone_number';
+$s_pass  = in_array('password_hash', $user_cols) ? 'password_hash' : 'password_hash';
 
 $action = trim($_POST['action'] ?? '');
 
@@ -94,7 +94,7 @@ if ($action === 'create_admin') {
 
     try {
         // Check login_id uniqueness
-        $dup_sql = 'SELECT id FROM users WHERE username = ?';
+        $dup_sql = 'SELECT user_id FROM users WHERE username = ?';
         $dup_params = [$username];
         if (!empty($email)) { $dup_sql .= ' OR email = ?'; $dup_params[] = $email; }
         if (!empty($phone)) { $dup_sql .= " OR {$s_phone} = ?"; $dup_params[] = $phone; }
@@ -113,7 +113,7 @@ if ($action === 'create_admin') {
         }
 
         // Check one-admin-per-station rule
-        $admChk = $pdo->prepare("SELECT COUNT(*) FROM users WHERE role='admin' AND station_id=? AND (is_deleted=0 OR is_deleted IS NULL)");
+        $admChk = $pdo->prepare("SELECT COUNT(*) FROM users WHERE role='admin' AND station_id=?");
         $admChk->execute([$station_id]);
         if ((int)$admChk->fetchColumn() > 0) {
             echo json_encode(['ok'=>false,'error'=>'This station already has an Admin.']); exit;
@@ -135,7 +135,7 @@ if ($action === 'create_admin') {
 
         // Insert
         $ins = $pdo->prepare(
-            "INSERT INTO users (username, name, first_name, last_name, email, {$s_phone}, {$s_pass}, role, station_id, status, must_change_password, created_at)
+            "INSERT INTO users (username, name, first_name, last_name, email, {$s_phone}, {$s_pass}, role, station_id, status, created_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, 'admin', ?, 'active', 1, NOW())"
         );
         $ins->execute([$username, $full_name, $fn_first, $fn_last, $email, $phone, $hashed, $station_id]);
@@ -188,7 +188,7 @@ if ($action === 'edit_admin') {
 
     try {
         // Ensure admin exists and is actually an admin
-        $chk = $pdo->prepare("SELECT id, name FROM users WHERE id = ? AND LOWER(role) IN ('admin','station admin','station_admin') LIMIT 1");
+        $chk = $pdo->prepare("SELECT `user_id`, name FROM users WHERE user_id = ? AND LOWER(role) IN ('admin','station admin','station_admin') LIMIT 1");
         $chk->execute([$admin_id]);
         $existing = $chk->fetch(PDO::FETCH_ASSOC);
         if (!$existing) { echo json_encode(['ok'=>false,'error'=>'Admin account not found.']); exit; }
@@ -210,7 +210,7 @@ if ($action === 'edit_admin') {
         }
 
         // Update — email is excluded from update (fixed after creation)
-        $upd = $pdo->prepare("UPDATE users SET name=?, first_name=?, last_name=?, station_id=?, status=? WHERE id=?");
+        $upd = $pdo->prepare("UPDATE users SET first_name = ?, last_name = ?, station_id=?, status=? WHERE user_id =?");
         $upd->execute([$full_name, $eu_first, $eu_last, $station_id, $status, $admin_id]);
 
         log_activity($pdo, $me['id'], 'Edit Admin', "SuperAdmin updated admin ID {$admin_id} ('{$full_name}') — station: '{$station_name}', status: {$status}");
@@ -231,12 +231,12 @@ if ($action === 'deactivate_admin') {
     if ($admin_id <= 0) { echo json_encode(['ok'=>false,'error'=>'Invalid admin ID.']); exit; }
 
     try {
-        $chk = $pdo->prepare("SELECT name FROM users WHERE id = ? AND LOWER(role) IN ('admin','station admin','station_admin') LIMIT 1");
+        $chk = $pdo->prepare("SELECT name FROM users WHERE user_id = ? AND LOWER(role) IN ('admin','station admin','station_admin') LIMIT 1");
         $chk->execute([$admin_id]);
         $adm = $chk->fetch(PDO::FETCH_ASSOC);
         if (!$adm) { echo json_encode(['ok'=>false,'error'=>'Admin not found.']); exit; }
 
-        $pdo->prepare("UPDATE users SET status='inactive' WHERE id=?")->execute([$admin_id]);
+        $pdo->prepare("UPDATE users SET status = 'Disabled' WHERE user_id =?")->execute([$admin_id]);
         log_activity($pdo, $me['id'], 'Deactivate Admin', "SuperAdmin deactivated admin '{$adm['name']}' (ID {$admin_id})");
 
         echo json_encode(['ok'=>true,'message'=>"Admin '{$adm['name']}' has been deactivated."]);
@@ -255,12 +255,12 @@ if ($action === 'activate_admin') {
     if ($admin_id <= 0) { echo json_encode(['ok'=>false,'error'=>'Invalid admin ID.']); exit; }
 
     try {
-        $chk = $pdo->prepare("SELECT name FROM users WHERE id = ? AND LOWER(role) IN ('admin','station admin','station_admin') LIMIT 1");
+        $chk = $pdo->prepare("SELECT name FROM users WHERE user_id = ? AND LOWER(role) IN ('admin','station admin','station_admin') LIMIT 1");
         $chk->execute([$admin_id]);
         $adm = $chk->fetch(PDO::FETCH_ASSOC);
         if (!$adm) { echo json_encode(['ok'=>false,'error'=>'Admin not found.']); exit; }
 
-        $pdo->prepare("UPDATE users SET status='active' WHERE id=?")->execute([$admin_id]);
+        $pdo->prepare("UPDATE users SET status = 'Active' WHERE user_id =?")->execute([$admin_id]);
         log_activity($pdo, $me['id'], 'Activate Admin', "SuperAdmin activated admin '{$adm['name']}' (ID {$admin_id})");
 
         echo json_encode(['ok'=>true,'message'=>"Admin '{$adm['name']}' has been activated."]);

@@ -69,8 +69,8 @@ class NotificationSystem {
                 LEFT JOIN technicians t ON t.id = jo.assigned_technician_id
                 LEFT JOIN mechanics m ON m.id = jo.assigned_mechanic_id
                 LEFT JOIN service_categories sc ON sc.id = jo.service_category_id
-                LEFT JOIN users u ON u.id = jo.assigned_by
-                LEFT JOIN users r ON r.id = jo.reviewed_by
+                LEFT JOIN users u ON u.user_id = jo.assigned_by
+                LEFT JOIN users r ON r.user_id = jo.reviewed_by
                 WHERE jo.id = ? AND jo.station_id = ?
             ");
             $stmt->execute([$job_order_id, $this->station_id]);

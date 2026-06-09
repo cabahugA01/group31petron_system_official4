@@ -80,8 +80,8 @@ $rows = $pdo->query("
            sub.name AS submitted_by_name,
            rev.name AS reviewed_by_name
     FROM   vehicle_types vt
-    LEFT JOIN users sub ON sub.id = vt.submitted_by
-    LEFT JOIN users rev ON rev.id = vt.reviewed_by
+    LEFT JOIN users sub ON sub.user_id = vt.submitted_by
+    LEFT JOIN users rev ON rev.user_id = vt.reviewed_by
     $where
     ORDER  BY vt.status = 'pending' DESC, vt.created_at DESC
 ")->fetchAll(PDO::FETCH_ASSOC);

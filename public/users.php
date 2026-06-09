@@ -16,8 +16,8 @@ try {
     }
 } catch (Exception $e) { /* ignore */ }
 // Phone column removed - no longer supported
-$s_pass  = in_array('password_hash', $user_cols) ? 'password_hash' : 'password';
-$s_uid   = in_array('user_id', $user_cols) ? 'user_id' : 'id';
+$s_pass  = in_array('password_hash', $user_cols) ? 'password_hash' : 'password_hash';
+$s_uid   = 'id';
 
 $me = current_user();
 $my_role = role_key($me['role'] ?? 'staff');
@@ -66,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $login_id       = trim($_POST['login_id'] ?? $_POST['email'] ?? '');
             $role_key_input = $_POST['role'] ?? '';
             $role           = role_key($role_key_input);
-            $raw_password   = trim($_POST['password'] ?? '');
+            $raw_password   = trim($_POST['password_hash'] ?? '');
             $confirmPassword = trim($_POST['confirm_password'] ?? '');
 
             // Parse Login ID into email/username (phone support removed)
@@ -104,7 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // Check login_id uniqueness (phone support removed)
-            $dup_sql = 'SELECT id FROM users WHERE username = ?';
+            $dup_sql = 'SELECT user_id FROM users WHERE username = ?';
             $dup_params = [$username];
             if (!empty($email)) { $dup_sql .= ' OR email = ?'; $dup_params[] = $email; }
             $stmt = $pdo->prepare($dup_sql);
@@ -176,8 +176,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         SELECT COUNT(*) 
                         FROM users 
                         WHERE role = 'manager' 
-                          AND station_id = ? 
-                          AND (is_deleted = 0 OR is_deleted IS NULL)
+                          AND station_id = ?
                     ");
                     $checkManager->execute([$my_station_id]);
                     $managerCount = (int)$checkManager->fetchColumn();
@@ -188,8 +187,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             SELECT name, status 
                             FROM users 
                             WHERE role = 'manager' 
-                              AND station_id = ? 
-                              AND (is_deleted = 0 OR is_deleted IS NULL)
+                              AND station_id = ?
                             LIMIT 1
                         ");
                         $existingMgr->execute([$my_station_id]);
@@ -216,8 +214,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         SELECT COUNT(*) 
                         FROM users 
                         WHERE role = 'admin' 
-                          AND station_id = ? 
-                          AND (is_deleted = 0 OR is_deleted IS NULL)
+                          AND station_id = ?
                     ");
                     $checkAdmin->execute([$station_target]);
                     $adminCount = (int)$checkAdmin->fetchColumn();
@@ -228,8 +225,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             SELECT name, status 
                             FROM users 
                             WHERE role = 'admin' 
-                              AND station_id = ? 
-                              AND (is_deleted = 0 OR is_deleted IS NULL)
+                              AND station_id = ?
                             LIMIT 1
                         ");
                         $existingAdm->execute([$station_target]);
@@ -249,8 +245,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         SELECT COUNT(*) 
                         FROM users 
                         WHERE role = 'manager' 
-                          AND station_id = ? 
-                          AND (is_deleted = 0 OR is_deleted IS NULL)
+                          AND station_id = ?
                     ");
                     $checkManager->execute([$station_target]);
                     $managerCount = (int)$checkManager->fetchColumn();
@@ -261,8 +256,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             SELECT name, status 
                             FROM users 
                             WHERE role = 'manager' 
-                              AND station_id = ? 
-                              AND (is_deleted = 0 OR is_deleted IS NULL)
+                              AND station_id = ?
                             LIMIT 1
                         ");
                         $existingMgr->execute([$station_target]);
@@ -287,8 +281,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $last_name_val = '';
             }
 
-            $stmt = $pdo->prepare("INSERT INTO users (name, first_name, last_name, username, role, email, {$s_pass}, station_id, status, must_change_password, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', 1, NOW())");
-            $stmt->execute([$name, $first_name_val, $last_name_val, $username, $role, $email, $hashed, $station_target]);
+            $stmt = $pdo->prepare("INSERT INTO users (first_name, last_name, username, role, email, password_hash, station_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'Active', NOW())");
+            $stmt->execute([$first_name_val, $last_name_val, $username, $role, $email, $hashed, $station_target]);
 
             // Get station name for email
             $station_name_for_email = 'Unknown Station';
@@ -354,7 +348,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             // Security check: Ensure user belongs to my station and role is manageable (unless superadmin)
             if ($my_role !== 'superadmin') {
-                $chk = $pdo->prepare("SELECT id, station_id, role FROM users WHERE id = ? AND station_id = ?");
+                $chk = $pdo->prepare("SELECT `user_id`, station_id, role FROM users WHERE user_id = ? AND station_id = ?");
                 $chk->execute([$id, $my_station_id]);
                 $target_user = $chk->fetch(PDO::FETCH_ASSOC);
                 if (!$target_user) throw new Exception("Unauthorized access to user.");
@@ -374,7 +368,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         WHERE role = 'manager' 
                           AND station_id = ? 
                           AND id != ?
-                          AND (is_deleted = 0 OR is_deleted IS NULL)
                     ");
                     $checkManager->execute([$my_station_id, $id]);
                     $managerCount = (int)$checkManager->fetchColumn();
@@ -385,7 +378,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             } else {
                 // Superadmin editing
-                $chk = $pdo->prepare("SELECT id, station_id, role FROM users WHERE id = ?");
+                $chk = $pdo->prepare("SELECT `user_id`, station_id, role FROM users WHERE user_id = ?");
                 $chk->execute([$id]);
                 $target_user = $chk->fetch(PDO::FETCH_ASSOC);
                 if (!$target_user) throw new Exception("User not found.");
@@ -400,7 +393,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         WHERE role = 'manager' 
                           AND station_id = ? 
                           AND id != ?
-                          AND (is_deleted = 0 OR is_deleted IS NULL)
                     ");
                     $checkManager->execute([$station_id_to_check, $id]);
                     $managerCount = (int)$checkManager->fetchColumn();
@@ -412,7 +404,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             
             // Check login_id uniqueness against other accounts (phone support removed)
-            $dup_sql = 'SELECT id FROM users WHERE username = ? AND id != ?';
+            $dup_sql = 'SELECT user_id FROM users WHERE username = ? AND id != ?';
             $dup_params = [$username, $id];
             if (!empty($email)) { $dup_sql .= ' OR (email = ? AND id != ?)'; $dup_params[] = $email; $dup_params[] = $id; }
             $stmt = $pdo->prepare($dup_sql);
@@ -430,7 +422,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // Update user details (phone support removed)
-            $stmt = $pdo->prepare("UPDATE users SET name = ?, first_name = ?, last_name = ?, role = ?, username = ?, email = ? WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE users SET first_name = ?, last_name = ?, role = ?, username = ?, email = ? WHERE user_id = ?");
             $stmt->execute([$name, $first_name_edit, $last_name_edit, $role, $username, $email, $id]);
             
              // Update password if checkbox is checked
@@ -443,7 +435,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  }
                  
                  $hashed = password_hash($new_password, PASSWORD_DEFAULT);
-                 $stmt = $pdo->prepare("UPDATE users SET {$s_pass} = ? WHERE id = ?");
+                 $stmt = $pdo->prepare("UPDATE users SET password_hash = ? WHERE user_id = ?");
                  $stmt->execute([$hashed, $id]);
                  
                  $msg = "✅ User details and password updated successfully. New password: $new_password";
@@ -460,7 +452,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $new_pass = $_POST['new_password'] ?? generateSecurePassword();
 
             if ($my_role !== 'superadmin') {
-                $chk = $pdo->prepare("SELECT id, role FROM users WHERE id = ? AND station_id = ?");
+                $chk = $pdo->prepare("SELECT `user_id`, role FROM users WHERE user_id = ? AND station_id = ?");
                 $chk->execute([$id, $my_station_id]);
                 $target_user = $chk->fetch(PDO::FETCH_ASSOC);
                 if (!$target_user) throw new Exception("Unauthorized access to user.");
@@ -470,7 +462,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             
             $hashed = password_hash($new_pass, PASSWORD_DEFAULT);
-            $stmt = $pdo->prepare("UPDATE users SET {$s_pass} = ? WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE users SET password_hash = ? WHERE user_id = ?");
             $stmt->execute([$hashed, $id]);
             
             log_activity($pdo, $me['id'], 'Reset Password', "Reset password for user #$id");
@@ -485,7 +477,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Get target user info first
             $target_user = null;
             if ($my_role !== 'superadmin') {
-                $chk = $pdo->prepare("SELECT id, role, station_id, status FROM users WHERE id = ? AND station_id = ?");
+                $chk = $pdo->prepare("SELECT `user_id`, role, station_id, status FROM users WHERE user_id = ? AND station_id = ?");
                 $chk->execute([$id, $my_station_id]);
                 $target_user = $chk->fetch(PDO::FETCH_ASSOC);
                 if (!$target_user) throw new Exception("Unauthorized access to user.");
@@ -493,7 +485,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new Exception("You cannot change status for this user.");
                 }
             } else {
-                $chk = $pdo->prepare("SELECT id, role, station_id, status FROM users WHERE id = ?");
+                $chk = $pdo->prepare("SELECT `user_id`, role, station_id, status FROM users WHERE user_id = ?");
                 $chk->execute([$id]);
                 $target_user = $chk->fetch(PDO::FETCH_ASSOC);
                 if (!$target_user) throw new Exception("User not found.");
@@ -515,8 +507,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     WHERE role = 'manager' 
                       AND station_id = ? 
                       AND id != ?
-                      AND status = 'active'
-                      AND (is_deleted = 0 OR is_deleted IS NULL)
+                      AND status = 'Active'
                 ");
                 $checkActiveManager->execute([$station_to_check, $id]);
                 $result = $checkActiveManager->fetch(PDO::FETCH_ASSOC);
@@ -528,7 +519,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
             
-            $stmt = $pdo->prepare("UPDATE users SET status = ? WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE users SET status = ? WHERE user_id = ?");
             $stmt->execute([$new_status, $id]);
             
             log_activity($pdo, $me['id'], 'Change Status', "Changed user #$id status to $new_status");
@@ -550,26 +541,26 @@ error_log("Is Superadmin check: " . ($my_role === 'superadmin' ? 'YES' : 'NO'));
 
 if ($my_role === 'superadmin') {
     error_log("Executing SUPERADMIN query - fetch ALL users");
-    $stmt = $pdo->query("SELECT u.*, u.{$s_pass} AS password, s.name as station_name FROM users u LEFT JOIN stations s ON u.station_id = s.id ORDER BY u.created_at DESC");
+    $stmt = $pdo->query("SELECT u.*, u.password_hash AS password, s.name as station_name FROM users u LEFT JOIN stations s ON u.station_id = s.id ORDER BY u.created_at DESC");
     $users = $stmt->fetchAll();
     error_log("Superadmin query returned " . count($users) . " users");
     // Fetch stations for dropdown
-    $stations = $pdo->query("SELECT id, name FROM stations WHERE status = 'active' ORDER BY name ASC")->fetchAll();
+    $stations = $pdo->query("SELECT `user_id`, name FROM stations WHERE status = 'Active' ORDER BY name ASC")->fetchAll();
     error_log("Stations fetched: " . count($stations));
 } else {
     error_log("Executing ADMIN/MANAGER query - filter by station_id");
-    error_log("SQL: SELECT *, {$s_pass} AS password FROM users WHERE station_id = ? ORDER BY role, name");
+    error_log("SQL: SELECT *, password_hash AS password FROM users WHERE station_id = ? ORDER BY role, name");
     error_log("Param: " . var_export($my_station_id, true));
 
     if ($my_role === 'staff' || $my_role === 'manager') {
-        $stmt = $pdo->prepare("SELECT *, {$s_pass} AS password FROM users WHERE station_id = ? AND LOWER(role) IN ('staff', 'operations_staff', 'operations staff') ORDER BY role, username");
+        $stmt = $pdo->prepare("SELECT *, password_hash AS password FROM users WHERE station_id = ? AND LOWER(role) IN ('staff', 'operations_staff', 'operations staff') ORDER BY role, username");
         $stmt->execute([$my_station_id]);
     } elseif ($my_role === 'admin') {
         // Admin users can only see Manager and Staff accounts, not other Admin accounts
-        $stmt = $pdo->prepare("SELECT *, {$s_pass} AS password FROM users WHERE station_id = ? AND LOWER(role) IN ('manager', 'staff', 'operations_staff', 'operations staff') ORDER BY role, username");
+        $stmt = $pdo->prepare("SELECT *, password_hash AS password FROM users WHERE station_id = ? AND LOWER(role) IN ('manager', 'staff', 'operations_staff', 'operations staff') ORDER BY role, username");
         $stmt->execute([$my_station_id]);
     } else {
-        $stmt = $pdo->prepare("SELECT *, {$s_pass} AS password FROM users WHERE station_id = ? ORDER BY role, username");
+        $stmt = $pdo->prepare("SELECT *, password_hash AS password FROM users WHERE station_id = ? ORDER BY role, username");
         $stmt->execute([$my_station_id]);
     }
     $users = $stmt->fetchAll();
@@ -786,7 +777,7 @@ include __DIR__ . '/../partials/header.php';
                 <div class="form-group mb-3">
                     <label class="lbl">Password</label>
                     <div style="display:flex; gap:10px; align-items:flex-start;">
-                        <input type="text" name="password" id="new_password" class="inp full" placeholder="Leave empty to auto-generate">
+                        <input type="text" name="password_hash" id="new_password" class="inp full" placeholder="Leave empty to auto-generate">
                         <button type="button" class="btn small ghost" onclick="generateSimplePassword()" title="Generate random password" style="margin-top: 2px; flex-shrink: 0;">
                             <i class="fas fa-dice"></i>
                         </button>
@@ -796,7 +787,7 @@ include __DIR__ . '/../partials/header.php';
                 
                 <div class="form-group mb-3">
                     <label class="lbl">Confirm Password</label>
-                    <input type="password" name="confirm_password" id="confirm_password" class="inp full" placeholder="Re-enter password">
+                    <input type="password_hash" name="confirm_password" id="confirm_password" class="inp full" placeholder="Re-enter password">
                 </div>
             </div>
             <div class="modal-footer">
@@ -858,7 +849,7 @@ include __DIR__ . '/../partials/header.php';
                 <div id="passwordFieldGroup" class="form-group mb-3" style="display: none;">
                     <label class="lbl">New Password</label>
                     <div style="display: flex; gap: 10px; align-items: center;">
-                        <input type="password" name="new_password" id="edit_password" class="inp full" placeholder="Enter new password or leave empty for auto-generate">
+                        <input type="password_hash" name="new_password" id="edit_password" class="inp full" placeholder="Enter new password or leave empty for auto-generate">
                         <button type="button" class="btn small ghost" onclick="generatePassword()" title="Generate random password">
                             <i class="fas fa-dice"></i> Generate
                         </button>
@@ -888,7 +879,7 @@ include __DIR__ . '/../partials/header.php';
                 <p>Reset password for <strong id="reset_username"></strong>?</p>
                 <div class="form-group mt-3">
                     <label class="lbl">New Password</label>
-                    <input type="password" name="new_password" class="inp full" placeholder="Enter new password or leave empty to auto-generate">
+                    <input type="password_hash" name="new_password" class="inp full" placeholder="Enter new password or leave empty to auto-generate">
                     <small class="muted">Leave empty for auto-generated secure password</small>
                 </div>
             </div>

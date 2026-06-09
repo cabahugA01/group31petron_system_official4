@@ -34,7 +34,7 @@ try {
             $stmt = $pdo->prepare("
                 SELECT s.*, 
                        (SELECT u.name FROM users u WHERE u.station_id = s.id AND u.role = 'admin' LIMIT 1) as admin_name,
-                       (SELECT COUNT(*) FROM users u WHERE u.station_id = s.id AND u.status = 'active') as active_users,
+                       (SELECT COUNT(*) FROM users u WHERE u.station_id = s.id AND u.status = 'Active') as active_users,
                        (SELECT SUM(stock_level) FROM inventory i WHERE i.station_id = s.id AND i.type = 'fuel') as fuel_level
                 FROM stations s 
                 WHERE s.id = ?
@@ -50,7 +50,7 @@ try {
             $station['phone'] = '+63 912 345 6789';
             $station['email'] = 'station' . $station_id . '@petron.com';
             $station['opening_hours'] = '24/7';
-            $station['fuel_types'] = 'Diesel, Gasoline, Premium, XCS';
+            $station['fuel_types'] = 'Diesel, Turbo Diesel, XCS Plus, XTRA UNL, Kerosene';
             $station['notes'] = 'Strategic location with high traffic volume. Modern facilities with convenience store.';
             
             $response['success'] = true;
@@ -149,7 +149,7 @@ try {
             $sql = "
                 SELECT s.*, 
                        (SELECT u.name FROM users u WHERE u.station_id = s.id AND u.role = 'admin' LIMIT 1) as admin_name,
-                       (SELECT COUNT(*) FROM users u WHERE u.station_id = s.id AND u.status = 'active') as active_users,
+                       (SELECT COUNT(*) FROM users u WHERE u.station_id = s.id AND u.status = 'Active') as active_users,
                        (SELECT SUM(stock_level) FROM inventory i WHERE i.station_id = s.id AND i.type = 'fuel') as fuel_level
                 FROM stations s 
                 WHERE 1=1
@@ -209,7 +209,7 @@ try {
             // Seed default fuel inventory rows for the new station so Inventory Management isn't empty.
             // (Merchandise items are added by admin as needed.)
             try {
-                $fuelTypes = ['Diesel Max','XCS Plus','XCS Advance','Turbo Diesel','Kerosene'];
+                $fuelTypes = ['Diesel', 'XCS Plus', 'XTRA UNL', 'Turbo Diesel', 'Kerosene'];
                 $ins = $pdo->prepare("INSERT INTO inventory (station_id, product_name, stock_level, type) VALUES (?, ?, 0, 'fuel')");
                 foreach ($fuelTypes as $ft) {
                     $ins->execute([$station_id, $ft]);

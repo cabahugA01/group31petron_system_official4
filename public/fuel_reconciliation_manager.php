@@ -390,7 +390,7 @@
                     <form id="verificationForm">
                         <div class="mb-3">
                             <label for="managerPassword" class="form-label">Manager Password *</label>
-                            <input type="password" class="form-control" id="managerPassword" required>
+                            <input type="password_hash" class="form-control" id="managerPassword" required>
                             <div class="form-text">Password required for report finalization and audit trail</div>
                         </div>
                         <div class="mb-3">
@@ -468,7 +468,7 @@
                         
                         <div class="mb-3">
                             <label for="adjustManagerPassword" class="form-label">Manager Password *</label>
-                            <input type="password" class="form-control" id="adjustManagerPassword" required>
+                            <input type="password_hash" class="form-control" id="adjustManagerPassword" required>
                             <div class="form-text">Password required to authorize adjustment</div>
                         </div>
                         

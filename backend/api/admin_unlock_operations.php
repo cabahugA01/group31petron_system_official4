@@ -21,7 +21,7 @@ class AdminUnlockOperations {
      * Verify admin password
      */
     private function verifyPassword($password) {
-        $stmt = $this->pdo->prepare("SELECT password FROM users WHERE id = ?");
+        $stmt = $this->pdo->prepare("SELECT password_hash FROM users WHERE user_id = ?");
         $stmt->execute([$this->me['id']]);
         $hash = $stmt->fetchColumn();
         return password_verify($password, $hash);
@@ -144,7 +144,7 @@ class AdminUnlockOperations {
         }
         
         // Unlock the record
-        $stmt = $this->pdo->prepare("UPDATE fuel_reconciliation SET status = 'active', finalized_by = NULL, finalized_at = NULL WHERE id = ?");
+        $stmt = $this->pdo->prepare("UPDATE fuel_reconciliation SET status = 'Active', finalized_by = NULL, finalized_at = NULL WHERE id = ?");
         $stmt->execute([$id]);
         
         // Log the unlock
@@ -203,7 +203,7 @@ class AdminUnlockOperations {
         }
         
         // Unlock the record
-        $stmt = $this->pdo->prepare("UPDATE shift_reports SET status = 'active', finalized_by = NULL, finalized_at = NULL WHERE id = ?");
+        $stmt = $this->pdo->prepare("UPDATE shift_reports SET status = 'Active', finalized_by = NULL, finalized_at = NULL WHERE id = ?");
         $stmt->execute([$id]);
         
         // Log the unlock
@@ -262,7 +262,7 @@ class AdminUnlockOperations {
         }
         
         // Unlock the record
-        $stmt = $this->pdo->prepare("UPDATE job_orders SET status = 'active', finalized_by = NULL, finalized_at = NULL WHERE id = ?");
+        $stmt = $this->pdo->prepare("UPDATE job_orders SET status = 'Active', finalized_by = NULL, finalized_at = NULL WHERE id = ?");
         $stmt->execute([$id]);
         
         // Log the unlock

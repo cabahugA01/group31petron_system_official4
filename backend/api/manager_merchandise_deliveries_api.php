@@ -193,8 +193,16 @@ try {
                     do2.manager_id,
                     do2.manager_action_at,
                     do2.created_at,
-                    u_enc.name          AS encoded_by_name,
-                    u_mgr.name          AS manager_name,
+                    COALESCE(
+                        NULLIF(CONCAT(TRIM(COALESCE(u_enc.first_name, '')), ' ', TRIM(COALESCE(u_enc.last_name, ''))), ' '),
+                        u_enc.username,
+                        'Unknown'
+                    ) AS encoded_by_name,
+                    COALESCE(
+                        NULLIF(CONCAT(TRIM(COALESCE(u_mgr.first_name, '')), ' ', TRIM(COALESCE(u_mgr.last_name, ''))), ' '),
+                        u_mgr.username,
+                        'Unknown'
+                    ) AS manager_name,
                     '' AS category
                 FROM deliveries_oversight do2
                 LEFT JOIN users u_enc ON do2.encoded_by  = u_enc.id
@@ -262,8 +270,16 @@ try {
                     do2.manager_notes   AS manager_reason,
                     do2.manager_id,
                     do2.manager_action_at,
-                    u_enc.name          AS encoded_by_name,
-                    u_mgr.name          AS manager_name,
+                    COALESCE(
+                        NULLIF(CONCAT(TRIM(COALESCE(u_enc.first_name, '')), ' ', TRIM(COALESCE(u_enc.last_name, ''))), ' '),
+                        u_enc.username,
+                        'Unknown'
+                    ) AS encoded_by_name,
+                    COALESCE(
+                        NULLIF(CONCAT(TRIM(COALESCE(u_mgr.first_name, '')), ' ', TRIM(COALESCE(u_mgr.last_name, ''))), ' '),
+                        u_mgr.username,
+                        'Unknown'
+                    ) AS manager_name,
                     '' AS category
                 FROM deliveries_oversight do2
                 LEFT JOIN users u_enc ON do2.encoded_by  = u_enc.id
@@ -745,8 +761,16 @@ try {
                     d.delivery_date,
                     d.status,
                     d.remarks,
-                    u.username as encoded_by_name,
-                    m.username as manager_name,
+                    COALESCE(
+                        NULLIF(CONCAT(TRIM(COALESCE(u.first_name, '')), ' ', TRIM(COALESCE(u.last_name, ''))), ' '),
+                        u.username,
+                        'Unknown'
+                    ) as encoded_by_name,
+                    COALESCE(
+                        NULLIF(CONCAT(TRIM(COALESCE(m.first_name, '')), ' ', TRIM(COALESCE(m.last_name, ''))), ' '),
+                        m.username,
+                        'Unknown'
+                    ) as manager_name,
                     d.manager_action_at,
                     d.manager_notes
                 FROM deliveries_oversight d
@@ -824,8 +848,16 @@ try {
                     d.delivery_date,
                     d.status,
                     d.remarks,
-                    u.username as encoded_by_name,
-                    m.username as manager_name,
+                    COALESCE(
+                        NULLIF(CONCAT(TRIM(COALESCE(u.first_name, '')), ' ', TRIM(COALESCE(u.last_name, ''))), ' '),
+                        u.username,
+                        'Unknown'
+                    ) as encoded_by_name,
+                    COALESCE(
+                        NULLIF(CONCAT(TRIM(COALESCE(m.first_name, '')), ' ', TRIM(COALESCE(m.last_name, ''))), ' '),
+                        m.username,
+                        'Unknown'
+                    ) as manager_name,
                     d.manager_action_at,
                     d.manager_notes
                 FROM deliveries_oversight d
@@ -1001,7 +1033,12 @@ try {
             try { $pdo->exec("ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS batch_id VARCHAR(100) NULL"); } catch (Exception $e) {}
 
             $stmt = $pdo->prepare("
-                SELECT po.*, u.name as created_by_name
+                SELECT po.*, 
+                       COALESCE(
+                           NULLIF(CONCAT(TRIM(COALESCE(u.first_name, '')), ' ', TRIM(COALESCE(u.last_name, ''))), ' '),
+                           u.username,
+                           'Unknown'
+                       ) as created_by_name
                 FROM purchase_orders po
                 LEFT JOIN users u ON po.created_by = u.id
                 WHERE po.station_id = ? AND po.type = 'merch'
@@ -1017,7 +1054,12 @@ try {
         case 'get_po':
             $po_id = (int)($_GET['id'] ?? 0);
             $stmt = $pdo->prepare("
-                SELECT po.*, u.name as created_by_name
+                SELECT po.*, 
+                       COALESCE(
+                           NULLIF(CONCAT(TRIM(COALESCE(u.first_name, '')), ' ', TRIM(COALESCE(u.last_name, ''))), ' '),
+                           u.username,
+                           'Unknown'
+                       ) as created_by_name
                 FROM purchase_orders po
                 LEFT JOIN users u ON po.created_by = u.id
                 WHERE po.id = ? AND po.station_id = ?

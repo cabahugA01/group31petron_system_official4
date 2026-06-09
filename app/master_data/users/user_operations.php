@@ -42,7 +42,7 @@ try {
             }
             
             // Remove sensitive data
-            unset($user['password']);
+            unset($user['password_hash']);
             
             $response['success'] = true;
             $response['data'] = $user;
@@ -197,7 +197,7 @@ try {
             $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
             
             // Update password
-            $stmt = $pdo->prepare("UPDATE users SET password = ?, must_change_password = 1, updated_at = NOW() WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE users SET password = ?, updated_at = NOW() WHERE id = ?");
             $stmt->execute([$hashed_password, $user_id]);
             
             // Set password expiry if column exists
@@ -297,7 +297,7 @@ try {
             
             // Remove sensitive data
             foreach ($users as &$user) {
-                unset($user['password']);
+                unset($user['password_hash']);
             }
             
             $response['success'] = true;
@@ -372,7 +372,7 @@ try {
             }
             
             // Soft delete by setting status to inactive
-            $stmt = $pdo->prepare("UPDATE users SET status = 'inactive', updated_at = NOW() WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE users SET status = 'Disabled', updated_at = NOW() WHERE id = ?");
             $stmt->execute([$user_id]);
             
             log_user_action('User Deletion', "Deleted user '$userInfo[username]'");

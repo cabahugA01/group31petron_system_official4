@@ -139,7 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 // Notify staff
                 $stat_id = $po_record['station_id'] ?: $station_id;
                 $notify_url = ($po_type === 'fuel') ? 'staff_fuel_deliveries.php' : 'staff_record_delivery.php';
-                $staffs = $pdo->prepare("SELECT id FROM users WHERE role IN ('staff','manager') AND station_id=?");
+                $staffs = $pdo->prepare("SELECT user_id FROM users WHERE role IN ('staff','manager') AND station_id=?");
                 $staffs->execute([$stat_id]);
                 foreach ($staffs->fetchAll(PDO::FETCH_COLUMN) as $sid) {
                     $pdo->prepare("

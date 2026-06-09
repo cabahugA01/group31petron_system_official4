@@ -44,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
                         
                         // Update password
-                        $stmt = $pdo->prepare("UPDATE users SET password = ?, must_change_password = 1, updated_at = NOW() WHERE id = ?");
+                        $stmt = $pdo->prepare("UPDATE users SET password = ?, updated_at = NOW() WHERE id = ?");
                         $stmt->execute([$hashed_password, $user_id]);
                         
                         log_user_action('Password Reset', "Reset password for user '$userInfo[username]'");

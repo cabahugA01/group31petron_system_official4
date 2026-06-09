@@ -43,7 +43,7 @@ if ($start_date && $end_date) {
         
         // Get stations list
         $stations_list = [];
-        $stmt = $pdo->query("SELECT id, name FROM stations WHERE status = 'active' ORDER BY name");
+        $stmt = $pdo->query("SELECT id, name FROM stations WHERE status = 'Active' ORDER BY name");
         $stations_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         // Combine and calculate variance

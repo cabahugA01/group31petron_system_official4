@@ -24,7 +24,7 @@ $error = '';
 // Handle password verification
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['verify'])) {
     if ($role === 'admin') {
-        $stmt = $pdo->prepare("SELECT password FROM users WHERE station_id = ? AND status = 'active' AND role IN ('manager','Manager')");
+        $stmt = $pdo->prepare("SELECT password_hash FROM users WHERE station_id = ? AND status = 'Active' AND role IN ('manager','Manager')");
         $stmt->execute([$station_id]);
         $hashes = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
@@ -135,7 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $role = role_key($me['role'] ?? '');
                     if ($role === 'admin') {
-                        $stmt = $pdo->prepare("SELECT password FROM users WHERE station_id = ? AND status = 'active' AND role IN ('manager','Manager')");
+                        $stmt = $pdo->prepare("SELECT password_hash FROM users WHERE station_id = ? AND status = 'Active' AND role IN ('manager','Manager')");
                         $stmt->execute([$station_id]);
                         $hashes = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
@@ -181,7 +181,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $role = role_key($me['role'] ?? '');
                     if ($role === 'admin') {
                         // Admin must verify using manager password
-                        $stmt = $pdo->prepare("SELECT password FROM users WHERE station_id = ? AND status = 'active' AND role IN ('manager','Manager')");
+                        $stmt = $pdo->prepare("SELECT password_hash FROM users WHERE station_id = ? AND status = 'Active' AND role IN ('manager','Manager')");
                         $stmt->execute([$station_id]);
                         $hashes = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
@@ -535,7 +535,7 @@ include __DIR__ . '/../partials/header.php';
 
     <form method="post">
         <div style="margin-bottom: 20px;">
-            <input type="password" name="verify_password" class="inp" style="width: 100%; padding: 12px;" placeholder="Enter Password" required autofocus>
+            <input type="password_hash" name="verify_password" class="inp" style="width: 100%; padding: 12px;" placeholder="Enter Password" required autofocus>
         </div>
         <button type="submit" name="verify" class="btn primary" style="width: 100%;">Verify & Continue</button>
     </form>

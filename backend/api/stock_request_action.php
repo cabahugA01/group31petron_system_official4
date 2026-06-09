@@ -130,7 +130,7 @@ try {
 
 function logAudit($pdo, $requestId, $userId, $actionType, $oldStatus, $newStatus, $notes) {
     // Determine role (manager)
-    $stmt = $pdo->prepare('SELECT role FROM users WHERE id = ?');
+    $stmt = $pdo->prepare('SELECT role FROM users WHERE user_id = ?');
     $stmt->execute([$userId]);
     $role = $stmt->fetchColumn() ?: 'manager';
     $roleKey = strtolower(str_replace(' ', '_', $role));

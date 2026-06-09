@@ -232,10 +232,18 @@ try {
     $stmt->execute([$station_id, $date_from, $date_to]);
     $total_records = (int)$stmt->fetchColumn();
     
-    // Get paginated results
+    // Get paginated results - Use only first_name/last_name columns
     $sql = "SELECT fd.*, 
-                   staff.name as staff_name,
-                   validator.name as validator_name,
+                   COALESCE(
+                       NULLIF(CONCAT(TRIM(COALESCE(staff.first_name, '')), ' ', TRIM(COALESCE(staff.last_name, ''))), ' '),
+                       staff.username,
+                       'Unknown'
+                   ) as staff_name,
+                   COALESCE(
+                       NULLIF(CONCAT(TRIM(COALESCE(validator.first_name, '')), ' ', TRIM(COALESCE(validator.last_name, ''))), ' '),
+                       validator.username,
+                       'Unknown'
+                   ) as validator_name,
                    COALESCE(fi.current_level, fi.current_stock, 0) as current_tank_level
             FROM fuel_deliveries fd
             LEFT JOIN users staff ON fd.received_by = staff.id
@@ -268,8 +276,16 @@ $export = $_GET['export'] ?? '';
 if (in_array($export, ['excel', 'csv', 'pdf'])) {
     try {
         $stmt = $pdo->prepare("SELECT fd.*, 
-                                      staff.name as staff_name,
-                                      validator.name as validator_name
+                                      COALESCE(
+                                          NULLIF(CONCAT(TRIM(COALESCE(staff.first_name, '')), ' ', TRIM(COALESCE(staff.last_name, ''))), ' '),
+                                          staff.username,
+                                          'Unknown'
+                                      ) as staff_name,
+                                      COALESCE(
+                                          NULLIF(CONCAT(TRIM(COALESCE(validator.first_name, '')), ' ', TRIM(COALESCE(validator.last_name, ''))), ' '),
+                                          validator.username,
+                                          'Unknown'
+                                      ) as validator_name
                                FROM fuel_deliveries fd
                                LEFT JOIN users staff ON fd.received_by = staff.id
                                LEFT JOIN users validator ON fd.verified_by = validator.id

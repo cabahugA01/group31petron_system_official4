@@ -75,7 +75,7 @@ try {
             
             // Remove sensitive data
             foreach ($users as &$user) {
-                unset($user['password']);
+                unset($user['password_hash']);
             }
             
             echo json_encode(['success' => true, 'data' => $users]);
@@ -97,7 +97,7 @@ try {
             
             if ($role !== 'superadmin') {
                 // Check if target user is in same station
-                $check = $pdo->prepare("SELECT station_id FROM users WHERE id = ?");
+                $check = $pdo->prepare("SELECT station_id FROM users WHERE user_id = ?");
                 $check->execute([$user_id]);
                 $target_station = $check->fetchColumn();
                 
@@ -117,7 +117,7 @@ try {
             }
             
             // Remove sensitive data
-            unset($user['password']);
+            unset($user['password_hash']);
             
             echo json_encode(['success' => true, 'data' => $user]);
             break;
@@ -144,7 +144,7 @@ try {
             $email = trim($_POST['email'] ?? '');
             $phone = trim($_POST['phone'] ?? '');
             $user_role = trim($_POST['role'] ?? 'staff');
-            $password = $_POST['password'] ?? '';
+            $password = $_POST['password_hash'] ?? '';
             $station_id = $_POST['station_id'] ?? '';
             $status = $_POST['status'] ?? 'active';
             
@@ -155,7 +155,7 @@ try {
             }
             
             // Check if username exists
-            $check = $pdo->prepare("SELECT id FROM users WHERE username = ?");
+            $check = $pdo->prepare("SELECT user_id FROM users WHERE username = ?");
             $check->execute([$username]);
             if ($check->fetch()) {
                 echo json_encode(['success' => false, 'error' => 'Username already exists']);
@@ -229,7 +229,7 @@ try {
                     ->execute([$me['id'], $detail, $user_id, $ip, $ua]);
             } catch (Exception $e) {}
 
-            echo json_encode(['success' => true, 'message' => 'User created successfully', 'user_id' => $user_id, 'password' => $password]);
+            echo json_encode(['success' => true, 'message' => 'User created successfully', 'user_id' => $user_id, 'password_hash' => $password]);
             break;
             
         case 'update':
@@ -258,7 +258,7 @@ try {
             }
             
             // Check if user exists and has permission to edit
-            $check = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+            $check = $pdo->prepare("SELECT * FROM users WHERE user_id = ?");
             $check->execute([$user_id]);
             $target_user = $check->fetch(PDO::FETCH_ASSOC);
             
@@ -293,7 +293,7 @@ try {
             }
             
             // Update user
-            $stmt = $pdo->prepare("UPDATE users SET name = ?, email = ?, phone = ?, role = ?, station_id = ?, status = ?, updated_at = NOW() WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE users SET name = ?, email = ?, phone = ?, role = ?, station_id = ?, status = ?, updated_at = NOW() WHERE user_id = ?");
             $stmt->execute([$name, $email, $phone, $user_role, $station_id, $status, $user_id]);
             
             log_activity($pdo, $me['id'], 'Update User', "Updated user ID $user_id");
@@ -340,7 +340,7 @@ try {
             }
             
             // Check if user exists
-            $check = $pdo->prepare("SELECT id, username FROM users WHERE id = ?");
+            $check = $pdo->prepare("SELECT `user_id`, username FROM users WHERE user_id = ?");
             $check->execute([$user_id]);
             $target_user = $check->fetch(PDO::FETCH_ASSOC);
             
@@ -350,7 +350,7 @@ try {
             }
             
             // Soft delete - set status to inactive
-            $stmt = $pdo->prepare("UPDATE users SET status = 'inactive', updated_at = NOW() WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE users SET status = 'Disabled', updated_at = NOW() WHERE user_id = ?");
             $stmt->execute([$user_id]);
             
             log_activity($pdo, $me['id'], 'Delete User', "Deleted user {$target_user['username']} (ID: $user_id)");
@@ -386,7 +386,7 @@ try {
             }
             
             // Get target user
-            $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+            $stmt = $pdo->prepare("SELECT * FROM users WHERE user_id = ?");
             $stmt->execute([$user_id]);
             $target_user = $stmt->fetch(PDO::FETCH_ASSOC);
             
@@ -419,13 +419,13 @@ try {
             $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
             
             // Update password
-            $stmt = $pdo->prepare("UPDATE users SET password = ?, must_change_password = 1, updated_at = NOW() WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE users SET password = ?, updated_at = NOW() WHERE user_id = ?");
             $stmt->execute([$hashed_password, $user_id]);
             
             // Set password expiry if column exists
             try {
                 $expires = (new DateTime("+90 days"))->format('Y-m-d H:i:s');
-                $pdo->prepare("UPDATE users SET password_expires_at = ? WHERE id = ?")->execute([$expires, $user_id]);
+                $pdo->prepare("UPDATE users SET password_expires_at = ? WHERE user_id = ?")->execute([$expires, $user_id]);
             } catch(Exception $e){}
             
             log_activity($pdo, $me['id'], 'Reset Password', "Reset password for user {$target_user['username']} (ID: $user_id)");
@@ -465,7 +465,7 @@ try {
             }
             
             // Get target user
-            $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+            $stmt = $pdo->prepare("SELECT * FROM users WHERE user_id = ?");
             $stmt->execute([$user_id]);
             $target_user = $stmt->fetch(PDO::FETCH_ASSOC);
             
@@ -483,7 +483,7 @@ try {
             }
             
             // Update status
-            $stmt = $pdo->prepare("UPDATE users SET status = ?, updated_at = NOW() WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE users SET status = ?, updated_at = NOW() WHERE user_id = ?");
             $stmt->execute([$new_status, $user_id]);
             
             log_activity($pdo, $me['id'], 'Change Status', "Changed user {$target_user['username']} status to $new_status");

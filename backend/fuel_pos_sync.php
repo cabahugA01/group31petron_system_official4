@@ -29,7 +29,7 @@
 function syncReconciliationToPOS($pdo, $reconciliation_id, $synced_by_user_id) {
     try {
         // 1. Validate user has permission (Manager+)
-        $stmt = $pdo->prepare("SELECT role FROM users WHERE id = ?");
+        $stmt = $pdo->prepare("SELECT role FROM users WHERE user_id = ?");
         $stmt->execute([$synced_by_user_id]);
         $user = $stmt->fetch();
         

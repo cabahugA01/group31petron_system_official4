@@ -52,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             // Auto-detect column names
             $cols = array_column($pdo->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_ASSOC), 'Field');
-            $uid_col = in_array('user_id', $cols) ? 'user_id' : 'id';
+            $uid_col = 'id';
             $status_active = in_array('Active', $pdo->query("SELECT DISTINCT status FROM users")->fetchAll(PDO::FETCH_COLUMN)) ? 'Active' : 'active';
 
             // Verify OTP via EMAIL only
@@ -118,11 +118,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             justify-content: center;
             position: relative;
             overflow: hidden;
-            background: #000814;
+            background: transparent;
         }
 
-        .bg-layer { position: fixed; inset: 0; z-index: 0; }
-        .bg-image { background: url('../assets/img/background.jpg') center/cover no-repeat; filter: brightness(0.6); z-index: 1; }
+        /* ── Base Image Background only ── */
+        .bg-layer { position: fixed; inset: 0; z-index: 0; display: none !important; }
+        .bg-image { display: block !important; background: url('../assets/img/background.jpg') center center / cover no-repeat; z-index: 1; }
         
         .bg-gradient {
             background: linear-gradient(135deg, rgba(0,47,108,0.3) 0%, rgba(227,6,19,0.15) 25%, rgba(0,15,45,0.4) 50%, rgba(0,80,180,0.2) 75%, rgba(0,26,61,0.35) 100%);
@@ -139,43 +140,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         .login-wrap {
-            width: 100%;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-            z-index: 10;
             position: relative;
+            z-index: 10;
+            width: 100%;
+            max-width: 520px;
+            padding: 0 20px;
         }
 
         .login-card {
-            background: rgba(0, 15, 45, 0.9);
-            backdrop-filter: blur(24px);
-            width: 100%;
-            max-width: 520px;
+            background: linear-gradient(160deg, #002F6C 0%, #001a3d 60%, #A80016 100%);
             border-radius: 28px;
-            padding: 48px 40px 36px;
-            box-shadow: 0 12px 40px rgba(0,0,0,.6), 0 0 50px var(--blue-glow);
+            padding: 54px 52px 46px;
             position: relative;
+            overflow: visible;
+            color: #ffffff;
+            box-shadow:
+                0 8px 32px rgba(0,0,0,.40),
+                0 24px 56px rgba(0,0,0,.30);
+            width: 100%;
         }
 
         .login-card::before {
             content: '';
             position: absolute;
-            inset: -1.5px;
-            border-radius: 29px;
-            background: linear-gradient(90deg, #002F6C, #E30613, #002F6C);
-            background-size: 200% auto;
-            animation: borderFlow 6s linear infinite;
-            z-index: -1;
-            opacity: 0.85;
+            top: 10%; left: -18px;
+            width: 12px; height: 80%;
+            background: linear-gradient(180deg, rgba(0,100,255,0) 0%, rgba(0,100,255,0.9) 30%, rgba(0,150,255,1) 50%, rgba(0,100,255,0.9) 70%, rgba(0,100,255,0) 100%);
+            border-radius: 50%;
+            filter: blur(8px);
+            animation: sideGlowBlue 3s ease-in-out infinite alternate;
+            z-index: 2;
         }
 
-        @keyframes borderFlow {
-            0%, 100% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
+        .login-card::after {
+            content: '';
+            position: absolute;
+            top: 10%; right: -18px;
+            width: 12px; height: 80%;
+            background: linear-gradient(180deg, rgba(227,6,19,0) 0%, rgba(227,6,19,0.9) 30%, rgba(255,40,40,1) 50%, rgba(227,6,19,0.9) 70%, rgba(227,6,19,0) 100%);
+            border-radius: 50%;
+            filter: blur(8px);
+            animation: sideGlowRed 3s ease-in-out infinite alternate;
+            z-index: 2;
         }
+
+        @keyframes sideGlowBlue {
+            0%   { opacity: 0.4; height: 60%; top: 20%; filter: blur(8px); }
+            50%  { opacity: 1;   height: 85%; top: 8%;  filter: blur(6px); }
+            100% { opacity: 0.6; height: 70%; top: 15%; filter: blur(10px); }
+        }
+        @keyframes sideGlowRed {
+            0%   { opacity: 0.6; height: 70%; top: 15%; filter: blur(10px); }
+            50%  { opacity: 1;   height: 85%; top: 8%;  filter: blur(6px); }
+            100% { opacity: 0.4; height: 60%; top: 20%; filter: blur(8px); }
+        }
+
 
         .brand {
             display: flex;
@@ -352,6 +371,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         .forgot-link:hover { color: #93c5fd; }
+
+        @media (max-width: 540px) {
+            .login-wrap { padding: 0 12px; }
+            .login-card  { padding: 38px 28px 32px; }
+        }
     </style>
 </head>
 <body>
@@ -362,7 +386,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <div class="login-wrap">
     <div class="login-card">
         <div class="brand">
-            <img src="../assets/img/Petron Logo.png" alt="Petron" class="brand-logo">
+            <img src="../assets/img/Petron Logo.png?v=2" alt="Petron" class="brand-logo">
             <span class="brand-tagline">Station Management System</span>
         </div>
 

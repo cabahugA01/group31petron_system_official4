@@ -88,7 +88,7 @@ try {
 
 // 2. Active Stations (DB)
 try {
-    $active_stations = $pdo->query("SELECT COUNT(*) FROM stations WHERE status='active'")->fetchColumn();
+    $active_stations = $pdo->query("SELECT COUNT(*) FROM stations WHERE status = 'Active'")->fetchColumn();
 } catch (Exception $e) {
     $active_stations = $station_count;
 }

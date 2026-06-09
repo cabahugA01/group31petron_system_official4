@@ -16,7 +16,7 @@ $stations = [];
 
 // Get all active stations
 try {
-    $stmt = $pdo->query("SELECT id, name FROM stations WHERE status = 'active'");
+    $stmt = $pdo->query("SELECT id, name FROM stations WHERE status = 'Active'");
     $stations = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     echo "<p style='color: red;'>Error fetching stations: " . htmlspecialchars($e->getMessage()) . "</p>";

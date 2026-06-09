@@ -78,13 +78,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 $stations = [];
 try {
     if ($role === 'superadmin') {
-        $stmt = $pdo->query("SELECT id, name, location FROM stations WHERE status = 'active' ORDER BY name");
+        $stmt = $pdo->query("SELECT id, name, location FROM stations WHERE status = 'Active' ORDER BY name");
         $stations = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } else {
         // Managers can only see their stations
         $stmt = $pdo->prepare("SELECT s.id, s.name, s.location FROM stations s
                                  JOIN user_stations us ON s.id = us.station_id
-                                 WHERE us.user_id = ? AND s.status = 'active'
+                                 WHERE us.user_id = ? AND s.status = 'Active'
                                  ORDER BY s.name");
         $stmt->execute([$user['id']]);
         $stations = $stmt->fetchAll(PDO::FETCH_ASSOC);

@@ -40,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 try {
                     // Check if username already exists
-                    $chk = $pdo->prepare("SELECT id FROM users WHERE username = ?");
+                    $chk = $pdo->prepare("SELECT user_id FROM users WHERE username = ?");
                     $chk->execute([$username]);
                     
                     if ($chk->rowCount() > 0) {
@@ -59,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $hashed_password = password_hash($temp_password, PASSWORD_DEFAULT);
                             
                             // Create station admin
-                            $stmt = $pdo->prepare("INSERT INTO users (username, password, name, email, role, station_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())");
+                            $stmt = $pdo->prepare("INSERT INTO users (username, password_hash, first_name, email, role, station_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'Active', NOW())");
                             $stmt->execute([$username, $hashed_password, $full_name, $email, 'admin', $assigned_station, $status]);
                             
                             log_user_action('Create Station Admin', "Created admin '$username' for station '$station_name'");
@@ -81,7 +81,7 @@ function generateRandomPassword($length = 8) {
 // --- FETCH STATIONS ---
 $stations = [];
 try {
-    $stmt = $pdo->query("SELECT id, name FROM stations WHERE status = 'active' ORDER BY name");
+    $stmt = $pdo->query("SELECT id, name FROM stations WHERE status = 'Active' ORDER BY name");
     $stations = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
     $notice = "Database Error: " . $e->getMessage();

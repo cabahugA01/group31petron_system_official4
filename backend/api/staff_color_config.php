@@ -53,7 +53,7 @@ class StaffColorConfigAPI {
                 LEFT JOIN staff_color_config scc ON u.id = scc.user_id AND scc.is_active = TRUE
                 WHERE u.station_id = :station_id 
                 AND u.role IN ('staff', 'cashier', 'pump_attendant')
-                AND u.account_status = 'active'
+                AND u.account_status = 'Active'
                 ORDER BY u.first_name, u.last_name
             ");
             $stmt->execute([':station_id' => $this->station_id]);
@@ -75,7 +75,7 @@ class StaffColorConfigAPI {
                 LEFT JOIN manager_color_config mcc ON u.id = mcc.user_id AND mcc.is_active = TRUE
                 WHERE u.station_id = :station_id 
                 AND u.role IN ('manager', 'admin')
-                AND u.account_status = 'active'
+                AND u.account_status = 'Active'
                 ORDER BY u.first_name, u.last_name
             ");
             $stmt->execute([':station_id' => $this->station_id]);
@@ -105,10 +105,10 @@ class StaffColorConfigAPI {
             
             // Check if staff exists and belongs to station
             $stmt = $this->pdo->prepare("
-                SELECT id FROM users 
-                WHERE id = :staff_id AND station_id = :station_id 
+                SELECT user_id FROM users 
+                WHERE user_id = :staff_id AND station_id = :station_id 
                 AND role IN ('staff', 'cashier', 'pump_attendant')
-                AND account_status = 'active'
+                AND account_status = 'Active'
             ");
             $stmt->execute([
                 ':staff_id' => $staff_id,
@@ -160,10 +160,10 @@ class StaffColorConfigAPI {
             
             // Check if manager exists and belongs to station
             $stmt = $this->pdo->prepare("
-                SELECT id FROM users 
-                WHERE id = :manager_id AND station_id = :station_id 
+                SELECT user_id FROM users 
+                WHERE user_id = :manager_id AND station_id = :station_id 
                 AND role IN ('manager', 'admin')
-                AND account_status = 'active'
+                AND account_status = 'Active'
             ");
             $stmt->execute([
                 ':manager_id' => $manager_id,
@@ -212,10 +212,10 @@ class StaffColorConfigAPI {
             ];
             
             $stmt = $this->pdo->prepare("
-                SELECT id FROM users 
+                SELECT user_id FROM users 
                 WHERE station_id = :station_id 
                 AND role IN ('staff', 'cashier', 'pump_attendant')
-                AND account_status = 'active'
+                AND account_status = 'Active'
                 AND id NOT IN (SELECT user_id FROM staff_color_config WHERE is_active = TRUE)
             ");
             $stmt->execute([':station_id' => $this->station_id]);
@@ -251,10 +251,10 @@ class StaffColorConfigAPI {
             ];
             
             $stmt = $this->pdo->prepare("
-                SELECT id FROM users 
+                SELECT user_id FROM users 
                 WHERE station_id = :station_id 
                 AND role IN ('manager', 'admin')
-                AND account_status = 'active'
+                AND account_status = 'Active'
                 AND id NOT IN (SELECT user_id FROM manager_color_config WHERE is_active = TRUE)
             ");
             $stmt->execute([':station_id' => $this->station_id]);

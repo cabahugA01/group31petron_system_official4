@@ -149,10 +149,10 @@ function getMerchandiseProducts($pdo, $station_id) {
 function getCreditCustomers($pdo, $station_id) {
     try {
         $stmt = $pdo->prepare("
-            SELECT id, name, credit_limit, balance, 
+            SELECT `user_id`, name, credit_limit, balance, 
                    (credit_limit - balance) AS available_credit
             FROM customers 
-            WHERE station_id = ? AND status = 'active' 
+            WHERE station_id = ? AND status = 'Active' 
             ORDER BY name
         ");
         $stmt->execute([$station_id]);
@@ -1281,8 +1281,8 @@ function logFailedTransactionAttempt($pdo, $station_id, $me) {
         // Notify managers via notifications table if it exists
         try {
             $mgr_stmt = $pdo->prepare("
-                SELECT id FROM users
-                WHERE station_id = ? AND role IN ('manager','admin','superadmin') AND status = 'active'
+                SELECT user_id FROM users
+                WHERE station_id = ? AND role IN ('manager','admin','superadmin') AND status = 'Active'
             ");
             $mgr_stmt->execute([$station_id]);
             $managers = $mgr_stmt->fetchAll(PDO::FETCH_ASSOC);

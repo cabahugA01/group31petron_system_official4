@@ -83,7 +83,7 @@ function sync_product_stock(PDO $pdo, int $product_id): void {
     $stmt = $pdo->prepare("
         SELECT COALESCE(SUM(remaining_qty), 0)
         FROM merchandise_batches
-        WHERE product_id = ? AND status = 'active'
+        WHERE product_id = ? AND status = 'Active'
     ");
     $stmt->execute([$product_id]);
     $total = (int)$stmt->fetchColumn();
@@ -200,8 +200,8 @@ try {
                     SELECT
                         product_id,
                         COUNT(*)                                          AS total_batches,
-                        SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) AS active_batches,
-                        SUM(CASE WHEN status='active' THEN remaining_qty ELSE 0 END) AS total_remaining,
+                        SUM(CASE WHEN status = 'Active' THEN 1 ELSE 0 END) AS active_batches,
+                        SUM(CASE WHEN status = 'Active' THEN remaining_qty ELSE 0 END) AS total_remaining,
                         MAX(date_received)                                AS latest_batch_date,
                         (SELECT unit_cost FROM merchandise_batches mb2
                          WHERE mb2.product_id = merchandise_batches.product_id

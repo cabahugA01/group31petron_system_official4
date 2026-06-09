@@ -1,0 +1,44 @@
+696: .txn-content {
+724: overflow: hidden;
+728: overflow-y: auto;
+751: overflow-y: auto;
+832: overflow: hidden;
+1009: overflow: hidden;
+1010: text-overflow: ellipsis;
+1246: .cart-item-name { font-size: 12px; font-weight: 600; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+1262: <div class="txn-content">
+1305: .fet-wrap { overflow-x:hidden; }
+1452: <i class="fas fa-history"></i> Meter Reading History
+1544: <div class="fet-wrap" style="overflow-x:auto;">
+1789: <div class="txn-card" id="todayEntriesCard" style="margin-top:8px; margin-bottom:80px; background:#fff; border:1.5px solid #e2e8f0; border-radius:12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);">
+1792: <h3 style="font-size:16px; font-weight:700; color:#0f172a; margin:0;">Meter Reading History</h3>
+1895: var todayCard  = document.getElementById('todayEntriesCard');
+1937: const todayCard = document.getElementById('todayEntriesCard');
+2123: // Switch to Meter Reading History tab and refresh
+2482: let html = `<div style="overflow-x:auto; border-bottom:1px solid #e2e8f0; background:#ffffff;">
+2672: <div style="min-width:0;overflow:hidden;">
+2850: padding:10px 12px;font-size:12px;max-height:180px;overflow-y:auto;">
+2941: z-index:999;max-height:260px;overflow-y:auto;">
+2978: <span style="font-size:13px;font-weight:600;color:<?= $out_of_stock ? '#94a3b8' : '#1e293b' ?>;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+3052: <div id="merchTab_history" style="display:none; padding-bottom: 80px; min-width:0; overflow:hidden;">
+3114: <div style="width:100%;overflow-x:hidden;">
+3154: <td style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><strong style="color:var(--petron-blue);"><?= htmlspecialchars($txn['transaction_id'] ?? ('#'.$txn['id'])) ?></strong></td>
+3155: <td style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($txn['customer_name'] ?? '') ?>"><?= htmlspecialchars($txn['customer_name'] ?? '—') ?></td>
+3157: <td style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= htmlspecialchars($txn['payment_method'] ?? '—') ?></td>
+3161: <td style="font-size:13px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($txn['shift_name'] ?? $txn['shift_period'] ?? '') ?>"><?= htmlspecialchars($txn['shift_name'] ?? $txn['shift_period'] ?? '—') ?></td>
+4411: <div style="font-size:12px;font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(item.product_name)}</div>
+4937: <div style="overflow-x:hidden;">
+5349: width:100%;max-width:450px;margin:16px;overflow:hidden;animation:pmSlideIn .18s ease;">
+5411: border-radius:8px;overflow:hidden;flex:1;transition:border-color .15s;">
+5454: <div style="display:flex;align-items:center;border:1.5px solid #d1d5db;border-radius:8px;overflow:hidden;max-width:200px;">
+5664: width:100%;max-width:600px;margin:16px;overflow:hidden;animation:pmSlideIn .18s ease;">
+5683: <div style="padding:20px;max-height:70vh;overflow-y:auto;">
+5750: width:100%;max-width:700px;margin:16px;overflow:hidden;animation:pmSlideIn .18s ease;">
+5769: <div style="padding:20px;max-height:70vh;overflow-y:auto;">
+5787: <div id="viewMTItems" style="max-height:200px;overflow-y:auto;">
+5863: width:100%;max-width:480px;margin:16px;overflow:hidden;animation:pmSlideIn .18s ease;">
+5937: width:100%;max-width:600px;margin:16px;overflow:hidden;animation:pmSlideIn .18s ease;">
+5957: <div style="padding:20px;max-height:65vh;overflow-y:auto;">
+6248: <div style="overflow-x:hidden;">
+6381: <div style="overflow-x:hidden;">
+6478: </div><!-- /txn-content -->

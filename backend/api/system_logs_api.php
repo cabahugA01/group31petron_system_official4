@@ -505,7 +505,7 @@ switch ($action) {
             $stmt = $pdo->prepare("
                 UPDATE system_alerts 
                 SET status = 'acknowledged', acknowledged_by = ?, acknowledged_at = NOW()
-                WHERE id = ? AND status = 'active'
+                WHERE id = ? AND status = 'Active'
             ");
             $stmt->execute([$u['id'], $id]);
             

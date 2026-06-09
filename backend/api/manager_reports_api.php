@@ -326,7 +326,7 @@ try {
                     $mechanic_field
                 FROM job_orders jo
                 LEFT JOIN customers c  ON c.id  = jo.customer_id
-                LEFT JOIN users u      ON u.id  = $created_by_expr
+                LEFT JOIN users u      ON u.user_id  = $created_by_expr
                 $mechanic_join
                 WHERE jo.station_id = ?
                     AND DATE(jo.created_at) BETWEEN ? AND ?
@@ -460,8 +460,8 @@ try {
                         ver.name                            AS validated_by,
                         'fuel'                              AS source
                     FROM fuel_deliveries d
-                    LEFT JOIN users enc ON enc.id = d.received_by
-                    LEFT JOIN users ver ON ver.id = d.verified_by
+                    LEFT JOIN users enc ON enc.user_id = d.received_by
+                    LEFT JOIN users ver ON ver.user_id = d.verified_by
                     WHERE d.station_id = ?
                         AND DATE(d.delivery_date) BETWEEN ? AND ?
                         $ws
@@ -496,8 +496,8 @@ try {
                         adm.name                                                   AS validated_by,
                         'oversight'                                                AS source
                     FROM deliveries_oversight do2
-                    LEFT JOIN users enc2 ON enc2.id = do2.encoded_by
-                    LEFT JOIN users adm  ON adm.id  = do2.admin_id
+                    LEFT JOIN users enc2 ON enc2.user_id = do2.encoded_by
+                    LEFT JOIN users adm  ON adm.user_id  = do2.admin_id
                     WHERE do2.station_id = ?
                         AND DATE(do2.delivery_date) BETWEEN ? AND ?
                         $ws2
@@ -568,7 +568,7 @@ try {
                 $del_join
                 WHERE u.station_id = ?
                     AND LOWER(u.role) IN ('staff','cashier','pump_attendant','mechanic')
-                    AND u.status = 'active'
+                    AND u.status = 'Active'
                 GROUP BY u.id, u.name, u.role
                 ORDER BY (COUNT(DISTINCT ft.transaction_id) + COUNT(DISTINCT mt.id) + COUNT(DISTINCT jo.id)) DESC, u.name ASC
             ");
@@ -589,7 +589,7 @@ try {
                         ELSE NULL
                     END                                                         AS hours_worked
                 FROM labor_sessions ls
-                JOIN users u ON u.id = ls.user_id
+                JOIN users u ON u.user_id = ls.user_id
                 WHERE ls.station_id = ?
                     AND DATE(ls.start_time) BETWEEN ? AND ?
                 ORDER BY ls.start_time DESC
@@ -617,8 +617,8 @@ try {
                     u.name  AS manager_name,
                     u.role  AS manager_role
                 FROM activity_logs al
-                LEFT JOIN users u ON u.id = al.user_id
-                WHERE (u.station_id = ? OR al.user_id IN (SELECT id FROM users WHERE station_id = ?))
+                LEFT JOIN users u ON u.user_id = al.user_id
+                WHERE (u.station_id = ? OR al.user_id IN (SELECT user_id FROM users WHERE station_id = ?))
                     AND DATE(al.created_at) BETWEEN ? AND ?
                     AND al.action IN (
                         'Approve','Reject','Adjust','Validate','Approve Transaction',
@@ -647,7 +647,7 @@ try {
                     u.name  AS manager_name,
                     u.role  AS manager_role
                 FROM activity_logs al
-                LEFT JOIN users u ON u.id = al.user_id
+                LEFT JOIN users u ON u.user_id = al.user_id
                 WHERE u.station_id = ?
                     AND LOWER(u.role) IN ('manager','admin','superadmin','super admin')
                     AND DATE(al.created_at) BETWEEN ? AND ?

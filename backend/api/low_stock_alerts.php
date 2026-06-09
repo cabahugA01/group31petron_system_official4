@@ -201,7 +201,7 @@ function resolveAlert($pdo, $alert_id, $user_id, $notes) {
                 alert_resolved_at = NOW(), 
                 resolved_by = ?, 
                 notes = ?
-            WHERE id = ? AND status = 'active'
+            WHERE id = ? AND status = 'Active'
         ");
         $stmt->execute([$user_id, $notes, $alert_id]);
         

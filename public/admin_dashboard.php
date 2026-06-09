@@ -69,9 +69,9 @@ $merch_stock_val = (float) adm_val($pdo, "SELECT COALESCE(SUM(stock_level),0) FR
 $pending_deliveries_val = (int) adm_val($pdo, "SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status LIKE 'Pending%'", [$station_id]);
 
 // Active Users (Staff, Manager, Customers)
-$active_staff = (int) adm_val($pdo, "SELECT COUNT(*) FROM users WHERE station_id=? AND status='Active' AND role='Staff'", [$station_id]);
-$active_managers = (int) adm_val($pdo, "SELECT COUNT(*) FROM users WHERE station_id=? AND status='Active' AND role='Manager'", [$station_id]);
-$active_customers = (int) adm_val($pdo, "SELECT COUNT(*) FROM customers WHERE station_id=? AND account_status='active'", [$station_id]);
+$active_staff = (int) adm_val($pdo, "SELECT COUNT(*) FROM users WHERE station_id=? AND status = 'Active' AND role='Staff'", [$station_id]);
+$active_managers = (int) adm_val($pdo, "SELECT COUNT(*) FROM users WHERE station_id=? AND status = 'Active' AND role='Manager'", [$station_id]);
+$active_customers = (int) adm_val($pdo, "SELECT COUNT(*) FROM customers WHERE station_id=? AND account_status = 'Active'", [$station_id]);
 $total_active_users = $active_staff + $active_managers + $active_customers;
 
 
@@ -209,11 +209,11 @@ $inventory_trend_data = adm_rows($pdo, "
 $low_stock_alerts_data = adm_rows($pdo, "
     SELECT fuel_type AS item_name, current_stock, threshold AS min_level, 'Fuel' AS category
     FROM low_stock_alerts
-    WHERE station_id = ? AND status = 'active'
+    WHERE station_id = ? AND status = 'Active'
     UNION ALL
     SELECT name AS item_name, current_stock, min_stock_level AS min_level, 'Merchandise' AS category
     FROM products
-    WHERE station_id = ? AND current_stock <= min_stock_level AND status = 'active'
+    WHERE station_id = ? AND current_stock <= min_stock_level AND status = 'Active'
 ", [$station_id, $station_id]);
 
 
@@ -282,7 +282,7 @@ foreach ($del_events as $x) {
 $shift_events = adm_rows($pdo, "
     SELECT ss.id, ss.shift, ss.status, ss.scheduled_date AS edate, u.name AS sname 
     FROM staff_schedules ss 
-    JOIN users u ON u.id = ss.user_id 
+    JOIN users u ON u.user_id = ss.user_id 
     WHERE u.station_id = ? AND ss.scheduled_date BETWEEN ? AND ?
 ", [$station_id, $start_of_week, $end_of_week]);
 foreach ($shift_events as $x) {
@@ -298,7 +298,7 @@ foreach ($shift_events as $x) {
 $task_events = adm_rows($pdo, "
     SELECT st.id, st.task, st.priority, st.status, st.due_date AS edate, u.name AS sname 
     FROM staff_tasks st 
-    JOIN users u ON u.id = st.user_id 
+    JOIN users u ON u.user_id = st.user_id 
     WHERE u.station_id = ? AND st.due_date BETWEEN ? AND ?
 ", [$station_id, $start_of_week, $end_of_week]);
 foreach ($task_events as $x) {

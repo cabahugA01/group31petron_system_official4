@@ -136,7 +136,7 @@ try {
 $stations = [];
 if ($role === 'superadmin') {
     try {
-        $stmt = $pdo->query("SELECT id, name FROM stations WHERE status='active' ORDER BY name");
+        $stmt = $pdo->query("SELECT id, name FROM stations WHERE status = 'Active' ORDER BY name");
         $stations = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {}
 }

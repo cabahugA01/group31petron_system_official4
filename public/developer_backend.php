@@ -66,7 +66,7 @@ function addUser() {
         $email = $_POST['email'] ?? '';
         $role = $_POST['role'] ?? '';
         $station_id = $_POST['station_id'] ?? '';
-        $password = $_POST['password'] ?? '';
+        $password = $_POST['password_hash'] ?? '';
         
         // Validate required fields
         if (empty($username) || empty($name) || empty($role) || empty($password)) {
@@ -75,7 +75,7 @@ function addUser() {
         }
         
         // Check if username already exists
-        $stmt = $pdo->prepare("SELECT id FROM users WHERE username = ?");
+        $stmt = $pdo->prepare("SELECT user_id FROM users WHERE username = ?");
         $stmt->execute([$username]);
         if ($stmt->fetch()) {
             echo json_encode(['success' => false, 'message' => 'Username already exists']);
@@ -83,7 +83,7 @@ function addUser() {
         }
         
         // Check if email already exists
-        $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ?");
+        $stmt = $pdo->prepare("SELECT user_id FROM users WHERE email = ?");
         $stmt->execute([$email]);
         if ($stmt->fetch()) {
             echo json_encode(['success' => false, 'message' => 'Email already exists']);
@@ -95,7 +95,7 @@ function addUser() {
         
         // Insert user
         $stmt = $pdo->prepare("
-            INSERT INTO users (username, name, email, role, station_id, password, created_at, updated_at)
+            INSERT INTO users (username, first_name, email, role, station_id, password_hash, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
         ");
         
@@ -159,7 +159,7 @@ function deleteUser() {
         }
         
         // Don't allow deletion of superadmin
-        $stmt = $pdo->prepare("SELECT role FROM users WHERE id = ?");
+        $stmt = $pdo->prepare("SELECT role FROM users WHERE user_id = ?");
         $stmt->execute([$user_id]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
         
@@ -169,7 +169,7 @@ function deleteUser() {
         }
         
         // Delete user
-        $stmt = $pdo->prepare("DELETE FROM users WHERE id = ?");
+        $stmt = $pdo->prepare("DELETE FROM users WHERE user_id = ?");
         $result = $stmt->execute([$user_id]);
         
         if ($result) {
@@ -360,7 +360,7 @@ function getDataStats() {
         $stats['users'] = $stmt->fetchColumn();
         
         // Station stats
-        $stmt = $pdo->query("SELECT COUNT(*) as total FROM stations WHERE status = 'active'");
+        $stmt = $pdo->query("SELECT COUNT(*) as total FROM stations WHERE status = 'Active'");
         $stats['stations'] = $stmt->fetchColumn();
         
         // Product stats

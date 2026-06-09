@@ -25,8 +25,8 @@ try {
             enc.name                            AS encoded_by,
             ver.name                            AS validated_by
         FROM fuel_deliveries d
-        LEFT JOIN users enc ON enc.id = d.received_by
-        LEFT JOIN users ver ON ver.id = d.verified_by
+        LEFT JOIN users enc ON enc.user_id = d.received_by
+        LEFT JOIN users ver ON ver.user_id = d.verified_by
         WHERE d.station_id = ?
           AND DATE(d.delivery_date) BETWEEN ? AND ?
         ORDER BY d.delivery_date DESC
@@ -52,8 +52,8 @@ try {
             enc2.name                                                  AS encoded_by,
             adm.name                                                   AS validated_by
         FROM deliveries_oversight do2
-        LEFT JOIN users enc2 ON enc2.id = do2.encoded_by
-        LEFT JOIN users adm  ON adm.id  = do2.admin_id
+        LEFT JOIN users enc2 ON enc2.user_id = do2.encoded_by
+        LEFT JOIN users adm  ON adm.user_id  = do2.admin_id
         WHERE do2.station_id = ?
           AND DATE(do2.delivery_date) BETWEEN ? AND ?
         ORDER BY do2.delivery_date DESC

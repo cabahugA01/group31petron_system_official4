@@ -748,7 +748,7 @@ function create_role_notification($pdo, $targetRole, $type, $title, $message, $s
   try {
     $sql = "INSERT INTO notifications (user_id, type, title, message) 
             SELECT u.id, ?, ?, ? FROM users u 
-            WHERE u.role = ? AND u.status = 'active'";
+            WHERE u.role = ? AND u.status = 'Active'";
     $params = [$type, $title, $message, $targetRole];
     
     if ($specificUserId) {
@@ -880,7 +880,7 @@ function fifo_deduct_stock(PDO $pdo, int $station_id, $product_id_or_name, float
         $batchesStmt = $pdo->prepare("
             SELECT id, remaining_qty 
             FROM merchandise_batches 
-            WHERE product_id = ? AND station_id = ? AND status = 'active' AND remaining_qty > 0 
+            WHERE product_id = ? AND station_id = ? AND status = 'Active' AND remaining_qty > 0 
             ORDER BY date_received ASC, id ASC
         ");
         $batchesStmt->execute([$product_id, $station_id]);

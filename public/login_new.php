@@ -65,7 +65,7 @@ if (isset($_GET['logout'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $station_id = trim($_POST['station_id'] ?? '');
     $login_input = trim($_POST['login_input'] ?? '');
-    $password = $_POST['password'] ?? '';
+    $password = $_POST['password_hash'] ?? '';
     $captcha_input = trim($_POST['captcha'] ?? '');
     
     // Validation
@@ -152,7 +152,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $error = "Your account is disabled. Please contact the administrator.";
                     } elseif ($status_lower !== 'active') {
                         $error = "Your account is inactive. Please contact the administrator.";
-                    } elseif (password_verify($password, $user['password_hash'] ?? $user['password'] ?? '')) {
+                    } elseif (password_verify($password, $user['password_hash'] ?? $user['password_hash'] ?? '')) {
                         $valid_login = true;
                     } else {
                         $error = "Invalid password.";
@@ -578,7 +578,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <label class="field-label">Password</label>
                     <div class="input-wrapper">
                         <i class="fas fa-lock input-icon"></i>
-                        <input type="password" name="password" class="form-input" 
+                        <input type="password_hash" name="password_hash" class="form-input" 
                                placeholder="Enter Password" 
                                required>
                     </div>

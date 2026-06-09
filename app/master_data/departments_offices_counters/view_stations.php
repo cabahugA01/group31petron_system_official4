@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         // Seed default fuel inventory rows for the new station so Inventory Management isn't empty.
                         // (Merchandise items are added by admin as needed.)
                         try {
-                            $fuelTypes = ['Diesel Max','XCS Plus','XCS Advance','Turbo Diesel','Kerosene'];
+                            $fuelTypes = ['Diesel', 'XCS Plus', 'XTRA UNL', 'Turbo Diesel', 'Kerosene'];
                             $ins = $pdo->prepare("INSERT INTO inventory (station_id, product_name, stock_level, type) VALUES (?, ?, 0, 'fuel')");
                             foreach ($fuelTypes as $ft) {
                                 $ins->execute([$new_station_id, $ft]);
@@ -72,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $stations = [];
 try {
     $stmt = $pdo->query("SELECT s.*, 
-                       (SELECT COUNT(*) FROM users u WHERE u.station_id = s.id AND u.status = 'active') as active_users,
+                       (SELECT COUNT(*) FROM users u WHERE u.station_id = s.id AND u.status = 'Active') as active_users,
                        (SELECT u.name FROM users u WHERE u.station_id = s.id AND u.role = 'admin' LIMIT 1) as admin_name
                        FROM stations s 
                        ORDER BY s.name");

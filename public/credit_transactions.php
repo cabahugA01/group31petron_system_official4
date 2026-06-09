@@ -138,7 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // Fetch Customers for Dropdown
-$customers = $pdo->prepare("SELECT id, name FROM customers WHERE type = 'credit' AND status = 'active' AND (station_id = ? OR station_id IS NULL) ORDER BY name");
+$customers = $pdo->prepare("SELECT id, name FROM customers WHERE type = 'credit' AND status = 'Active' AND (station_id = ? OR station_id IS NULL) ORDER BY name");
 $customers->execute([$station_id]);
 $customers_list = $customers->fetchAll(PDO::FETCH_ASSOC);
 

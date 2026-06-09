@@ -37,7 +37,7 @@ $stmt = $pdo->prepare("
     FROM pump_configuration 
     WHERE station_id = ? 
       AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
-      AND pump_status = 'active'
+      AND pump_status = 'Active'
     LIMIT 1
 ");
 $stmt->execute([$station_id, $_POST['fuel_type']]);

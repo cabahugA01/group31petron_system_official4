@@ -462,7 +462,7 @@ if ($section === 'history' && isset($_GET['export']) && in_array($_GET['export']
             cct.customer_id,
             COALESCE(c.name, '—') AS customer_name
         FROM customer_credit_transactions cct
-        LEFT JOIN users u ON u.id = cct.created_by
+        LEFT JOIN users u ON u.user_id = cct.created_by
         LEFT JOIN customers c ON c.id = cct.customer_id
         WHERE cct.station_id = :station_id
           AND (:customer_id = 0 OR cct.customer_id = :customer_id)
@@ -606,7 +606,7 @@ if ($section === 'history') {
                 cct.running_balance,
                 cct.description
             FROM customer_credit_transactions cct
-            LEFT JOIN users u ON u.id = cct.created_by
+            LEFT JOIN users u ON u.user_id = cct.created_by
             WHERE cct.station_id = :station_id
               AND (:customer_id = 0 OR cct.customer_id = :customer_id)
               AND cct.created_at BETWEEN :date_start AND :date_end_eod

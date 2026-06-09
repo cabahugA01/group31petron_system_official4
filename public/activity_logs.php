@@ -17,7 +17,7 @@ $user_filter = $_GET['user'] ?? '';
 $stations = [];
 if ($isSuper) {
     try {
-        $stations = $pdo->query("SELECT id, name FROM stations ORDER BY name")->fetchAll(PDO::FETCH_KEY_PAIR);
+        $stations = $pdo->query("SELECT `user_id`, name FROM stations ORDER BY name")->fetchAll(PDO::FETCH_KEY_PAIR);
     } catch (Exception $e) {}
 }
 
@@ -73,7 +73,7 @@ try {
 // Fetch users for filter dropdown
 $users = [];
 try {
-    $q = $isSuper ? "SELECT id, name FROM users ORDER BY name" : "SELECT id, name FROM users WHERE station_id = ? ORDER BY name";
+    $q = $isSuper ? "SELECT id, name FROM users ORDER BY name" : "SELECT `user_id`, name FROM users WHERE station_id = ? ORDER BY name";
     $st = $pdo->prepare($q);
     $st->execute($isSuper ? [] : [user_station_id()]);
     $users = $st->fetchAll(PDO::FETCH_KEY_PAIR);

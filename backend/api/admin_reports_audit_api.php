@@ -278,7 +278,7 @@ switch ($action) {
                    DATE(jo.created_at)                             AS order_date
             FROM job_orders jo
             LEFT JOIN customers c    ON c.id    = jo.customer_id
-            LEFT JOIN users us       ON us.id   = $jo_user_expr
+            LEFT JOIN users us       ON us.user_id   = $jo_user_expr
             LEFT JOIN mechanics mech ON mech.id = jo.assigned_mechanic_id
             WHERE jo.station_id = ?
               AND DATE(jo.created_at) BETWEEN ? AND ?
@@ -331,7 +331,7 @@ switch ($action) {
                    COALESCE(d.status, '')                                       AS status,
                    COALESCE(d.remarks, d.admin_notes, '')                       AS remarks
             FROM deliveries_oversight d
-            LEFT JOIN users ue ON ue.id = d.encoded_by
+            LEFT JOIN users ue ON ue.user_id = d.encoded_by
             WHERE d.station_id = ?
               AND DATE(COALESCE(d.delivery_date, d.created_at)) BETWEEN ? AND ?
             ORDER BY delivery_date DESC
@@ -379,7 +379,7 @@ switch ($action) {
             $del_join
             $ls_join
             WHERE u.station_id = ?
-              AND u.status = 'active'
+              AND u.status = 'Active'
               AND LOWER(TRIM(u.role)) NOT IN ('admin', 'superadmin', 'super admin', 'super_admin')
             GROUP BY u.id, u.name, u.role
             ORDER BY total_activity DESC, u.name ASC
@@ -410,7 +410,7 @@ switch ($action) {
                        al.ip_address,
                        al.status
                 FROM audit_logs al
-                LEFT JOIN users u ON u.id = al.user_id
+                LEFT JOIN users u ON u.user_id = al.user_id
                 WHERE u.station_id = ?
                   AND DATE(al.created_at) BETWEEN ? AND ?
                   $role_excl";
@@ -428,10 +428,10 @@ switch ($action) {
     // ── AUDIT SUMMARY STATS ───────────────────────────────────────────────────
     case 'audit_summary':
         $rx = "AND LOWER(TRIM(COALESCE(u.role,''))) NOT IN ('superadmin','super admin','super_admin')";
-        $total        = safe_val($pdo, "SELECT COUNT(*) FROM audit_logs al LEFT JOIN users u ON u.id=al.user_id WHERE u.station_id=? AND DATE(al.created_at) BETWEEN ? AND ? $rx", [$station_id,$date_from,$date_to]);
-        $failed       = safe_val($pdo, "SELECT COUNT(*) FROM audit_logs al LEFT JOIN users u ON u.id=al.user_id WHERE u.station_id=? AND DATE(al.created_at) BETWEEN ? AND ? AND LOWER(al.status)='failed' $rx", [$station_id,$date_from,$date_to]);
-        $users_active = safe_val($pdo, "SELECT COUNT(DISTINCT al.user_id) FROM audit_logs al LEFT JOIN users u ON u.id=al.user_id WHERE u.station_id=? AND DATE(al.created_at) BETWEEN ? AND ? $rx", [$station_id,$date_from,$date_to]);
-        $anomalies    = safe_val($pdo, "SELECT COUNT(*) FROM (SELECT ip_address, COUNT(*) c FROM audit_logs al LEFT JOIN users u ON u.id=al.user_id WHERE u.station_id=? AND DATE(al.created_at) BETWEEN ? AND ? AND LOWER(al.status)='failed' $rx GROUP BY ip_address HAVING c >= 3) sub", [$station_id,$date_from,$date_to]);
+        $total        = safe_val($pdo, "SELECT COUNT(*) FROM audit_logs al LEFT JOIN users u ON u.user_id=al.user_id WHERE u.station_id=? AND DATE(al.created_at) BETWEEN ? AND ? $rx", [$station_id,$date_from,$date_to]);
+        $failed       = safe_val($pdo, "SELECT COUNT(*) FROM audit_logs al LEFT JOIN users u ON u.user_id=al.user_id WHERE u.station_id=? AND DATE(al.created_at) BETWEEN ? AND ? AND LOWER(al.status)='failed' $rx", [$station_id,$date_from,$date_to]);
+        $users_active = safe_val($pdo, "SELECT COUNT(DISTINCT al.user_id) FROM audit_logs al LEFT JOIN users u ON u.user_id=al.user_id WHERE u.station_id=? AND DATE(al.created_at) BETWEEN ? AND ? $rx", [$station_id,$date_from,$date_to]);
+        $anomalies    = safe_val($pdo, "SELECT COUNT(*) FROM (SELECT ip_address, COUNT(*) c FROM audit_logs al LEFT JOIN users u ON u.user_id=al.user_id WHERE u.station_id=? AND DATE(al.created_at) BETWEEN ? AND ? AND LOWER(al.status)='failed' $rx GROUP BY ip_address HAVING c >= 3) sub", [$station_id,$date_from,$date_to]);
         api_ok(['total'=>(int)$total,'failed'=>(int)$failed,'users_active'=>(int)$users_active,'anomalies'=>(int)$anomalies]);
 
     // ── ANOMALY DETECTION ─────────────────────────────────────────────────────
@@ -446,7 +446,7 @@ switch ($action) {
                    MAX(al.created_at) AS last_attempt,
                    GROUP_CONCAT(DISTINCT al.action_type ORDER BY al.action_type SEPARATOR ', ') AS actions
             FROM audit_logs al
-            LEFT JOIN users u ON u.id = al.user_id
+            LEFT JOIN users u ON u.user_id = al.user_id
             WHERE u.station_id=?
               AND DATE(al.created_at) BETWEEN ? AND ?
               AND LOWER(al.status) = 'failed'
@@ -462,7 +462,7 @@ switch ($action) {
                    al.action_type, COUNT(*) AS reject_count,
                    MAX(al.created_at) AS last_seen
             FROM audit_logs al
-            LEFT JOIN users u ON u.id = al.user_id
+            LEFT JOIN users u ON u.user_id = al.user_id
             WHERE u.station_id=?
               AND DATE(al.created_at) BETWEEN ? AND ?
               AND LOWER(al.action_type) IN ('reject','rejected','rejection','return')
@@ -707,7 +707,7 @@ switch ($action) {
                    fd.invoice_no, fd.delivery_liters, fd.tanker_number,
                    COALESCE(u.name,'') AS received_name, fd.status
             FROM fuel_deliveries fd
-            LEFT JOIN users u ON u.id = fd.received_by
+            LEFT JOIN users u ON u.user_id = fd.received_by
             WHERE fd.station_id = ? AND DATE(fd.delivery_date) BETWEEN ? AND ?
             ORDER BY fd.delivery_date DESC
         ", [$station_id, $date_from, $date_to]);
@@ -1248,8 +1248,8 @@ tr:nth-child(even) td{background:#f8fafc}
                    COALESCE(um.name,'') AS manager_name,
                    ce.remarks
             FROM calendar_events ce
-            LEFT JOIN users us ON us.id = ce.staff_assigned
-            LEFT JOIN users um ON um.id = ce.manager_assigned
+            LEFT JOIN users us ON us.user_id = ce.staff_assigned
+            LEFT JOIN users um ON um.user_id = ce.manager_assigned
             WHERE ce.station_id = ?
               AND DATE(ce.event_date) BETWEEN ? AND ?
             ORDER BY ce.event_date ASC
@@ -1337,7 +1337,7 @@ tr:nth-child(even) td{background:#f8fafc}
                        al.ip_address,
                        al.status
                 FROM audit_logs al
-                LEFT JOIN users u ON u.id = al.user_id
+                LEFT JOIN users u ON u.user_id = al.user_id
                 WHERE u.station_id = ?
                   AND DATE(al.created_at) BETWEEN ? AND ?
                   AND LOWER(TRIM(COALESCE(u.role,''))) NOT IN ('superadmin','super admin','super_admin')";
@@ -1437,7 +1437,7 @@ tr:nth-child(even) td{background:#f8fafc}
                    fd.invoice_no, fd.delivery_liters, fd.tanker_number,
                    COALESCE(u.name,'') AS received_name, fd.status
             FROM fuel_deliveries fd
-            LEFT JOIN users u ON u.id = fd.received_by
+            LEFT JOIN users u ON u.user_id = fd.received_by
             WHERE fd.station_id = ? AND DATE(fd.delivery_date) BETWEEN ? AND ?
             ORDER BY fd.delivery_date DESC LIMIT 500
         ", [$station_id, $date_from, $date_to]);
@@ -1645,8 +1645,8 @@ tr:nth-child(even) td{background:#f8fafc}
                    COALESCE(um.name,'') AS manager_name,
                    ce.remarks
             FROM calendar_events ce
-            LEFT JOIN users us ON us.id = ce.staff_assigned
-            LEFT JOIN users um ON um.id = ce.manager_assigned
+            LEFT JOIN users us ON us.user_id = ce.staff_assigned
+            LEFT JOIN users um ON um.user_id = ce.manager_assigned
             WHERE ce.station_id = ?
               AND DATE(ce.event_date) BETWEEN ? AND ?
             ORDER BY ce.event_date ASC LIMIT 500

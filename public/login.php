@@ -70,7 +70,7 @@ if (isset($_GET['logout'])) {
 // 2. Handle Login Logic
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $login_input = trim($_POST['username'] ?? '');
-    $password = $_POST['password'] ?? '';
+    $password = $_POST['password_hash'] ?? '';
     $captcha_input = trim($_POST['captcha'] ?? '');
 
     if (empty($login_input) || empty($password)) {
@@ -89,8 +89,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!empty($login_input)) {
                 try {
                     $_c = array_column($pdo->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_ASSOC), 'Field');
-                    $_u = in_array('user_id',     $_c) ? 'user_id'     : 'id';
-                    $_p = in_array('phone_number', $_c) ? 'phone_number' : 'phone';
+                    $_u = 'id';
+                    $_p = 'phone_number';
                     $check_stmt = $pdo->prepare("SELECT `{$_u}` AS user_id, role FROM users WHERE username = ? OR email = ? OR `{$_p}` = ? LIMIT 1");
                     $check_stmt->execute([$login_input, $login_input, $login_input]);
                     $check_user = $check_stmt->fetch(PDO::FETCH_ASSOC);
@@ -164,9 +164,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Else -> Username login.
             // ── Auto-detect schema column names ──────────────────────
             $s_cols  = array_column($pdo->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_ASSOC), 'Field');
-            $s_uid   = in_array('user_id',      $s_cols) ? 'user_id'      : 'id';
-            $s_phone = in_array('phone_number',  $s_cols) ? 'phone_number'  : 'phone';
-            $s_pass  = in_array('password_hash', $s_cols) ? 'password_hash' : 'password';
+            $s_uid   = 'id';
+            $s_phone = 'phone_number';
+            $s_pass  = in_array('password_hash', $s_cols) ? 'password_hash' : 'password_hash';
             $s_stat  = in_array('Active', $pdo->query("SELECT DISTINCT status FROM users LIMIT 10")->fetchAll(PDO::FETCH_COLUMN)) ? 'Active' : 'active';
 
             $login_type = 'Username';
@@ -357,13 +357,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         :root {
             --blue:      #002F6C;
             --blue-mid:  #003d8a;
-            --blue-glow: rgba(0,80,180,.6);
+            --blue-glow: rgba(0,91,255,.6);
             --red:       #E30613;
-            --red-glow:  rgba(227,6,19,.45);
+            --red-glow:  rgba(227,6,19,.6);
             --text:      #ffffff;
-            --muted:     rgba(255,255,255,.85);
-            --label:     rgba(180,210,255,.9);
-            --icon:      rgba(160,200,255,.75);
+            --muted:     rgba(255,255,255,.9);
+            --label:     #ffffff;
+            --icon:      rgba(200,225,255,.85);
         }
 
         body {
@@ -375,7 +375,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             justify-content: center;
             position: relative;
             overflow: hidden;
-            background: #000814;
+            background: transparent;
         }
 
         /* 4D Animated Background Layers */
@@ -385,280 +385,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             z-index: 0;
         }
 
-        /* Base image layer with blur and overlay */
+        /* Base image layer — real Petron station photo, no grid */
         .bg-image {
-            background: url('../assets/img/background.jpg') center/cover no-repeat;
-            filter: brightness(0.6) blur(0px);
+            background: url('../assets/img/background.jpg') center center / cover no-repeat;
             z-index: 1;
         }
 
-        /* Animated gradient overlay */
-        .bg-gradient {
-            background: linear-gradient(
-                135deg,
-                rgba(0, 47, 108, 0.3) 0%,
-                rgba(227, 6, 19, 0.15) 25%,
-                rgba(0, 15, 45, 0.4) 50%,
-                rgba(0, 80, 180, 0.2) 75%,
-                rgba(0, 26, 61, 0.35) 100%
-            );
-            background-size: 400% 400%;
-            animation: gradientShift 15s ease infinite;
-            z-index: 2;
-            mix-blend-mode: multiply;
-            opacity: 0.7;
-        }
-
-        @keyframes gradientShift {
-            0%   { background-position: 0% 50%; }
-            25%  { background-position: 50% 100%; }
-            50%  { background-position: 100% 50%; }
-            75%  { background-position: 50% 0%; }
-            100% { background-position: 0% 50%; }
-        }
-
-        /* Floating particles layer */
-        .bg-particles {
-            z-index: 3;
-            pointer-events: none;
-        }
-
-        .particle {
-            position: absolute;
-            border-radius: 50%;
-            background: radial-gradient(circle, rgba(96, 165, 250, 0.8), transparent);
-            animation: float linear infinite;
-            opacity: 0;
-        }
-
-        /* Generate multiple particle sizes */
-        .particle:nth-child(1) { 
-            width: 4px; height: 4px; 
-            left: 10%; top: 80%; 
-            animation-duration: 8s; 
-            animation-delay: 0s;
-            box-shadow: 0 0 20px rgba(96, 165, 250, 0.6);
-        }
-        .particle:nth-child(2) { 
-            width: 6px; height: 6px; 
-            left: 20%; top: 60%; 
-            animation-duration: 12s; 
-            animation-delay: 1s;
-            box-shadow: 0 0 25px rgba(227, 6, 19, 0.5);
-            background: radial-gradient(circle, rgba(227, 6, 19, 0.7), transparent);
-        }
-        .particle:nth-child(3) { 
-            width: 3px; height: 3px; 
-            left: 35%; top: 90%; 
-            animation-duration: 10s; 
-            animation-delay: 2s;
-            box-shadow: 0 0 15px rgba(96, 165, 250, 0.5);
-        }
-        .particle:nth-child(4) { 
-            width: 5px; height: 5px; 
-            left: 50%; top: 85%; 
-            animation-duration: 14s; 
-            animation-delay: 0.5s;
-            box-shadow: 0 0 22px rgba(147, 197, 253, 0.6);
-        }
-        .particle:nth-child(5) { 
-            width: 4px; height: 4px; 
-            left: 65%; top: 75%; 
-            animation-duration: 11s; 
-            animation-delay: 1.5s;
-            box-shadow: 0 0 18px rgba(96, 165, 250, 0.5);
-        }
-        .particle:nth-child(6) { 
-            width: 7px; height: 7px; 
-            left: 80%; top: 70%; 
-            animation-duration: 13s; 
-            animation-delay: 2.5s;
-            box-shadow: 0 0 28px rgba(227, 6, 19, 0.6);
-            background: radial-gradient(circle, rgba(227, 6, 19, 0.8), transparent);
-        }
-        .particle:nth-child(7) { 
-            width: 3px; height: 3px; 
-            left: 90%; top: 80%; 
-            animation-duration: 9s; 
-            animation-delay: 1.8s;
-            box-shadow: 0 0 16px rgba(96, 165, 250, 0.4);
-        }
-        .particle:nth-child(8) { 
-            width: 5px; height: 5px; 
-            left: 15%; top: 50%; 
-            animation-duration: 15s; 
-            animation-delay: 3s;
-            box-shadow: 0 0 24px rgba(147, 197, 253, 0.7);
-        }
-        .particle:nth-child(9) { 
-            width: 4px; height: 4px; 
-            left: 75%; top: 40%; 
-            animation-duration: 10.5s; 
-            animation-delay: 2.2s;
-            box-shadow: 0 0 20px rgba(96, 165, 250, 0.5);
-        }
-        .particle:nth-child(10) { 
-            width: 6px; height: 6px; 
-            left: 40%; top: 65%; 
-            animation-duration: 12.5s; 
-            animation-delay: 0.8s;
-            box-shadow: 0 0 26px rgba(227, 6, 19, 0.5);
-            background: radial-gradient(circle, rgba(227, 6, 19, 0.7), transparent);
-        }
-
-        @keyframes float {
-            0% {
-                transform: translateY(0) translateX(0) scale(1);
-                opacity: 0;
-            }
-            10% {
-                opacity: 1;
-            }
-            90% {
-                opacity: 1;
-            }
-            100% {
-                transform: translateY(-100vh) translateX(30px) scale(1.5);
-                opacity: 0;
-            }
-        }
-
-        /* Glowing orbs layer */
-        .bg-orbs {
-            z-index: 4;
-            pointer-events: none;
-            opacity: 0.6;
-        }
-
-        .orb {
-            position: absolute;
-            border-radius: 50%;
-            filter: blur(80px);
-            opacity: 0.25;
-            animation: orbFloat ease-in-out infinite alternate;
-        }
-
-        .orb-1 {
-            width: 400px;
-            height: 400px;
-            background: radial-gradient(circle, rgba(0, 47, 108, 0.4), transparent);
-            top: -10%;
-            left: -10%;
-            animation-duration: 8s;
-        }
-
-        .orb-2 {
-            width: 350px;
-            height: 350px;
-            background: radial-gradient(circle, rgba(227, 6, 19, 0.3), transparent);
-            bottom: -10%;
-            right: -10%;
-            animation-duration: 10s;
-            animation-delay: 1s;
-        }
-
-        .orb-3 {
-            width: 300px;
-            height: 300px;
-            background: radial-gradient(circle, rgba(0, 80, 180, 0.35), transparent);
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            animation-duration: 12s;
-            animation-delay: 2s;
-        }
-
-        @keyframes orbFloat {
-            0% {
-                transform: translate(0, 0) scale(1);
-            }
-            100% {
-                transform: translate(20px, -20px) scale(1.1);
-            }
-        }
-
-        /* Scanlines effect */
-        .bg-scanlines {
-            background: repeating-linear-gradient(
-                0deg,
-                rgba(0, 0, 0, 0.05) 0px,
-                rgba(0, 0, 0, 0.05) 1px,
-                transparent 1px,
-                transparent 2px
-            );
-            z-index: 5;
-            pointer-events: none;
-            opacity: 0.15;
-        }
-
-        /* Grid overlay */
-        .bg-grid {
-            background-image: 
-                linear-gradient(rgba(96, 165, 250, 0.02) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(96, 165, 250, 0.02) 1px, transparent 1px);
-            background-size: 50px 50px;
-            z-index: 6;
-            pointer-events: none;
-            animation: gridMove 20s linear infinite;
-        }
-
-        @keyframes gridMove {
-            0% {
-                background-position: 0 0;
-            }
-            100% {
-                background-position: 50px 50px;
-            }
-        }
-
-        /* Light rays */
-        .bg-rays {
-            z-index: 7;
-            pointer-events: none;
-            overflow: hidden;
-        }
-
-        .ray {
-            position: absolute;
-            width: 2px;
-            height: 100%;
-            background: linear-gradient(
-                to bottom,
-                transparent 0%,
-                rgba(96, 165, 250, 0.1) 10%,
-                rgba(96, 165, 250, 0.2) 50%,
-                rgba(96, 165, 250, 0.1) 90%,
-                transparent 100%
-            );
-            animation: rayShine 3s ease-in-out infinite;
-            opacity: 0;
-        }
-
-        .ray:nth-child(1) {
-            left: 20%;
-            animation-delay: 0s;
-        }
-
-        .ray:nth-child(2) {
-            left: 50%;
-            animation-delay: 1s;
-        }
-
-        .ray:nth-child(3) {
-            left: 80%;
-            animation-delay: 2s;
-        }
-
-        @keyframes rayShine {
-            0%, 100% {
-                opacity: 0;
-                transform: translateY(-100%);
-            }
-            50% {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
+        /* All decorative overlay layers hidden — image is the only background */
+        .bg-gradient,
+        .bg-orbs,
+        .bg-particles,
+        .bg-scanlines,
+        .bg-grid,
+        .bg-rays { display: none !important; }
 
 
         .login-wrap {
@@ -667,54 +406,89 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             width: 100%;
             max-width: 520px;
             padding: 0 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .page-footer {
+            margin-top: 18px;
+            font-size: 11.5px;
+            font-weight: 500;
+            color: rgba(255,255,255,.75);
+            text-align: center;
+            letter-spacing: .4px;
+            text-shadow: 0 1px 6px rgba(0,0,0,.8);
+            width: 100%;
         }
 
         .login-card {
-            background: linear-gradient(160deg, rgba(0,15,45,.88) 0%, rgba(0,25,65,.92) 100%);
-            backdrop-filter: blur(32px) saturate(1.8) brightness(1.1);
-            -webkit-backdrop-filter: blur(32px) saturate(1.8) brightness(1.1);
+            /* Petron brand colors: blue + red gradient */
+            background: linear-gradient(160deg, #002F6C 0%, #001a3d 60%, #A80016 100%);
             border-radius: 28px;
             padding: 54px 52px 46px;
             position: relative;
-            /* Layered 4D depth shadows */
+            overflow: visible;
+            color: #ffffff;
+            width: 100%;
             box-shadow:
-                0 2px 0 rgba(255,255,255,.08) inset,
-                0 -1px 0 rgba(0,0,0,.4) inset,
-                0 8px 32px rgba(0,0,0,.5),
-                0 32px 80px rgba(0,0,0,.6),
-                0 0 0 1px rgba(255,255,255,.1),
-                0 0 60px var(--blue-glow);
-            animation: cardGlow 4s ease-in-out infinite alternate;
+                0 8px 32px rgba(0,0,0,.40),
+                0 24px 56px rgba(0,0,0,.30);
         }
-        /* Animated gradient border */
+
+        /* 4D Blue glow on the LEFT side */
         .login-card::before {
             content: '';
             position: absolute;
-            inset: -2px;
-            border-radius: 30px;
-            background: linear-gradient(135deg, rgba(0,100,255,.5), rgba(227,6,19,.4), rgba(0,60,180,.5));
-            background-size: 300% 300%;
-            animation: borderAnim 5s ease infinite;
-            z-index: -1;
+            top: 10%;
+            left: -18px;
+            width: 12px;
+            height: 80%;
+            background: linear-gradient(180deg,
+                rgba(0, 100, 255, 0) 0%,
+                rgba(0, 100, 255, 0.9) 30%,
+                rgba(0, 150, 255, 1) 50%,
+                rgba(0, 100, 255, 0.9) 70%,
+                rgba(0, 100, 255, 0) 100%
+            );
+            border-radius: 50%;
+            filter: blur(8px);
+            animation: sideGlowBlue 3s ease-in-out infinite alternate;
+            z-index: 2;
         }
-        @keyframes borderAnim {
-            0%   { background-position: 0% 50%; }
-            50%  { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
-        }
-        /* Top shine streak */
+
+        /* 4D Red glow on the RIGHT side */
         .login-card::after {
             content: '';
             position: absolute;
-            top: 0; left: 10%; right: 10%;
-            height: 1px;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent);
+            top: 10%;
+            right: -18px;
+            width: 12px;
+            height: 80%;
+            background: linear-gradient(180deg,
+                rgba(227, 6, 19, 0) 0%,
+                rgba(227, 6, 19, 0.9) 30%,
+                rgba(255, 40, 40, 1) 50%,
+                rgba(227, 6, 19, 0.9) 70%,
+                rgba(227, 6, 19, 0) 100%
+            );
             border-radius: 50%;
+            filter: blur(8px);
+            animation: sideGlowRed 3s ease-in-out infinite alternate;
+            z-index: 2;
         }
-        @keyframes cardGlow {
-            from { box-shadow: 0 2px 0 rgba(255,255,255,.08) inset, 0 -1px 0 rgba(0,0,0,.4) inset, 0 8px 32px rgba(0,0,0,.5), 0 32px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.1), 0 0 60px var(--blue-glow); }
-            to   { box-shadow: 0 2px 0 rgba(255,255,255,.08) inset, 0 -1px 0 rgba(0,0,0,.4) inset, 0 8px 32px rgba(0,0,0,.5), 0 32px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.1), 0 0 80px var(--red-glow); }
+
+        @keyframes sideGlowBlue {
+            0%   { opacity: 0.4; height: 60%; top: 20%; filter: blur(8px); }
+            50%  { opacity: 1;   height: 85%; top: 8%;  filter: blur(6px); }
+            100% { opacity: 0.6; height: 70%; top: 15%; filter: blur(10px); }
         }
+        @keyframes sideGlowRed {
+            0%   { opacity: 0.6; height: 70%; top: 15%; filter: blur(10px); }
+            50%  { opacity: 1;   height: 85%; top: 8%;  filter: blur(6px); }
+            100% { opacity: 0.4; height: 60%; top: 20%; filter: blur(8px); }
+        }
+
 
         .brand { text-align: center; margin-bottom: 30px; }
         .brand-logo {
@@ -733,8 +507,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-weight: 700;
             letter-spacing: 2.8px;
             text-transform: uppercase;
-            color: rgba(180,210,255,.9);
-            text-shadow: 0 0 12px rgba(100,160,255,.4);
+            color: rgba(200,220,255,.95);
+            text-shadow: 0 1px 4px rgba(0,0,0,.5);
         }
 
         .alert-error {
@@ -802,8 +576,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-size: 14.5px;
             font-weight: 500;
             color: #ffffff;
-            background: rgba(255,255,255,.10);
-            border: 1px solid rgba(255,255,255,.22);
+            background: rgba(255,255,255,.12);
+            border: 1px solid rgba(255,255,255,.25);
             border-radius: 13px;
             outline: none;
             transition: border-color .25s, box-shadow .25s, background .25s;
@@ -811,11 +585,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             text-shadow: 0 1px 3px rgba(0,0,0,.4);
         }
         .field-input.no-right { padding-right: 18px; }
-        .field-input::placeholder { color: rgba(200,220,255,.45); font-weight: 400; }
+        .field-input::placeholder { color: rgba(200,220,255,.55); font-weight: 400; }
         .field-input:focus {
-            background: rgba(255,255,255,.15);
-            border-color: rgba(96,165,250,.75);
-            box-shadow: 0 0 0 3px rgba(96,165,250,.15), 0 0 24px rgba(0,80,200,.35);
+            background: rgba(255,255,255,.18);
+            border-color: rgba(147,197,253,.8);
+            box-shadow: 0 0 0 3px rgba(96,165,250,.20);
         }
 
         .pw-toggle {
@@ -838,11 +612,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .pw-toggle:hover { color: #93c5fd; text-shadow: 0 0 10px rgba(96,165,250,.6); }
 
         /* Hide browser native password reveal eye (Edge/IE/Chrome) */
-        input[type="password"]::-ms-reveal,
-        input[type="password"]::-ms-clear { display: none !important; }
-        input[type="password"]::-webkit-contacts-auto-fill-button,
-        input[type="password"]::-webkit-credentials-auto-fill-button,
-        input[type="password"]::-webkit-strong-password-auto-fill-button {
+        input[type="password_hash"]::-ms-reveal,
+        input[type="password_hash"]::-ms-clear { display: none !important; }
+        input[type="password_hash"]::-webkit-contacts-auto-fill-button,
+        input[type="password_hash"]::-webkit-credentials-auto-fill-button,
+        input[type="password_hash"]::-webkit-strong-password-auto-fill-button {
             display: none !important; visibility: hidden; pointer-events: none;
         }
 
@@ -1240,6 +1014,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             to   { transform: rotate(360deg); }
         }
 
+        /* ── Footer Styling ── */
+        .page-footer {
+            position: relative;
+            margin-top: 24px;
+            color: rgba(255, 255, 255, 0.75);
+            font-size: 12px;
+            font-weight: 500;
+            text-align: center;
+            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+            z-index: 20;
+            width: 100%;
+            padding: 0 20px;
+            pointer-events: none;
+        }
+
+        .login-footer {
+            margin-top: 24px;
+            text-align: center;
+        }
+        .login-footer a {
+            color: rgba(255, 255, 255, 0.75);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 600;
+            transition: color 0.2s, text-shadow 0.2s;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+        }
+        .login-footer a:hover {
+            color: #ffffff;
+            text-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
+        }
+
     </style>
 </head>
 <body>
@@ -1277,7 +1083,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <!-- Branding -->
         <div class="brand">
-            <img src="../assets/img/Petron Logo.png" alt="Petron" class="brand-logo">
+            <img src="../assets/img/Petron Logo.png?v=2" alt="Petron" class="brand-logo">
             <span class="brand-tagline">Station Management System</span>
         </div>
 
@@ -1323,8 +1129,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="input-wrap">
                     <i class="fas fa-lock input-icon"></i>
                     <input
-                        type="password"
-                        name="password"
+                        type="password_hash"
+                        name="password_hash"
                         id="passwordField"
                         class="field-input"
                         placeholder="Enter password"
@@ -1373,10 +1179,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <i class="fas fa-key" style="margin-right:5px;font-size:11px;opacity:.7;"></i>Forgot Password?
             </a>
         </div>
-    </div>
-</div>
+        </div><!-- /.login-card -->
 
-<div class="page-footer"><?php echo $footer_text; ?></div>
+    <div class="page-footer"><?php echo $footer_text; ?></div>
+</div><!-- /.login-wrap -->
 
 
 
@@ -1453,7 +1259,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     /* Password toggle */
     pwToggle.addEventListener('click', function () {
         var isText = pwField.type === 'text';
-        pwField.type = isText ? 'password' : 'text';
+        pwField.type = isText ? 'password_hash' : 'text';
         pwIcon.className = isText ? 'fas fa-eye' : 'fas fa-eye-slash';
     });
 

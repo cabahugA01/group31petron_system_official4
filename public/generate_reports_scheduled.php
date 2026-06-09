@@ -49,7 +49,7 @@ try {
     if ($report_type === 'daily' || $report_type === 'all') {
         echo "[" . date('Y-m-d H:i:s') . "] Generating daily reports...\n";
         
-        $stmt = $pdo->query("SELECT id, name FROM stations WHERE status = 'active'");
+        $stmt = $pdo->query("SELECT id, name FROM stations WHERE status = 'Active'");
         $stations = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         foreach ($stations as $station) {
@@ -145,7 +145,7 @@ try {
     if ($report_type === 'shift_am' || $report_type === 'all') {
         echo "[" . date('Y-m-d H:i:s') . "] Generating AM shift reports...\n";
         
-        $stmt = $pdo->query("SELECT id, name FROM stations WHERE status = 'active'");
+        $stmt = $pdo->query("SELECT id, name FROM stations WHERE status = 'Active'");
         $stations = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         foreach ($stations as $station) {
@@ -193,7 +193,7 @@ try {
     if ($report_type === 'shift_pm' || $report_type === 'all') {
         echo "[" . date('Y-m-d H:i:s') . "] Generating PM shift reports...\n";
         
-        $stmt = $pdo->query("SELECT id, name FROM stations WHERE status = 'active'");
+        $stmt = $pdo->query("SELECT id, name FROM stations WHERE status = 'Active'");
         $stations = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         foreach ($stations as $station) {

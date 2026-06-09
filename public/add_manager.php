@@ -22,7 +22,7 @@ try {
     
     // Insert manager user
     $stmt = $pdo->prepare("
-        INSERT INTO users (username, password, role, hourly_rate, email, name, station_id, status, is_deleted, created_at) 
+        INSERT INTO users (username, password_hash, role, email, first_name, station_id, status, created_at) 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
     ");
     

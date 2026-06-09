@@ -738,7 +738,7 @@ function viewProfile(id) {
     document.getElementById('viewPhone').value = '+63 912 345 6789';
     document.getElementById('viewEmail').value = 'station' + id + '@petron.com';
     document.getElementById('viewOpeningHours').value = '24/7';
-    document.getElementById('viewFuelTypes').value = 'Diesel, Gasoline, Premium, XCS';
+    document.getElementById('viewFuelTypes').value = 'Diesel, Turbo Diesel, XCS Plus, XTRA UNL, Kerosene';
     document.getElementById('viewNotes').value = 'Strategic location with high traffic volume. Modern facilities with convenience store.';
     
     document.getElementById('viewProfileModalTitle').textContent = `Profile - ${row.dataset.code}`;

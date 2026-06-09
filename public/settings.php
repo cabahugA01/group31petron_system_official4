@@ -225,7 +225,7 @@ try {
 }
 
 try {
-    $stmt = $pdo->query("SELECT id, name, location FROM stations WHERE status = 'active' ORDER BY name");
+    $stmt = $pdo->query("SELECT id, name, location FROM stations WHERE status = 'Active' ORDER BY name");
     $stations_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch(Exception $e) {
     $stations_list = [];

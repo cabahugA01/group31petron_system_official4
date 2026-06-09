@@ -94,7 +94,7 @@ if ($section === 'job_orders') {
         COALESCE(jo.total_cost,jo.estimated_cost,0) AS total_cost,
         COALESCE(jo.amount_paid,0) AS amount_paid, COALESCE(jo.payment_method,'') AS payment_method, jo.created_at
         FROM job_orders jo LEFT JOIN customers c ON c.id=jo.customer_id
-        LEFT JOIN users staff ON staff.id=jo.created_by LEFT JOIN users mech ON mech.id=jo.assigned_mechanic_id";
+        LEFT JOIN users staff ON staff.user_id=jo.created_by LEFT JOIN users mech ON mech.user_id=jo.assigned_mechanic_id";
         
     $jo_rows = q($pdo,"$jo_query WHERE jo.station_id=? AND DATE(jo.created_at) BETWEEN ? AND ? ORDER BY jo.created_at DESC",
         [$station_id,$date_start,$date_end]);
@@ -198,14 +198,14 @@ if ($section === 'deliveries') {
         COALESCE(d.quantity,0) AS quantity_delivered, COALESCE(d.unit,'pcs') AS unit_type,
         COALESCE(d.dr_number,'') AS dr_number, COALESCE(d.delivery_date,DATE(d.created_at)) AS delivery_date,
         COALESCE(u.name,'Unknown') AS encoded_by, d.status, COALESCE(d.admin_notes,d.remarks,'') AS remarks
-        FROM deliveries_oversight d LEFT JOIN users u ON u.id=d.encoded_by
+        FROM deliveries_oversight d LEFT JOIN users u ON u.user_id=d.encoded_by
         WHERE d.station_id=? AND DATE(COALESCE(d.delivery_date,d.created_at)) BETWEEN ? AND ?
         ORDER BY COALESCE(d.delivery_date,DATE(d.created_at)) DESC",[$station_id,$date_start,$date_end]);
     $fd_rows = q($pdo,"SELECT CONCAT('FD-',fd.id) AS delivery_id, COALESCE(fd.supplier,'Petron Corporation') AS supplier_name,
         COALESCE(fd.fuel_type,'Fuel') AS fuel_type, COALESCE(fd.delivery_liters,0) AS delivery_liters,
         COALESCE(fd.invoice_no,'') AS invoice_no, fd.delivery_date,
         COALESCE(u.name,'Unknown') AS received_by, fd.status, COALESCE(fd.notes,'') AS notes
-        FROM fuel_deliveries fd LEFT JOIN users u ON u.id=fd.received_by
+        FROM fuel_deliveries fd LEFT JOIN users u ON u.user_id=fd.received_by
         WHERE fd.station_id=? ORDER BY fd.delivery_date DESC LIMIT 100",[$station_id]);
     $datasets['do'] = ['title'=>'Merchandise & General Deliveries','headers'=>['Reference','Type','Supplier','Product','Qty','Unit','DR Number','Delivery Date','Encoded By','Status','Remarks'],'rows'=>$do_rows,'map'=>function($r){return [$r['delivery_id'],$r['delivery_type'],$r['supplier_name'],$r['product_name'],number_format($r['quantity_delivered'],2),$r['unit_type'],$r['dr_number'],$r['delivery_date']?date('M j, Y',strtotime($r['delivery_date'])):'—',$r['encoded_by'],$r['status'],$r['remarks']?:'—'];}];
     $datasets['fd'] = ['title'=>'Fuel Tanker Deliveries','headers'=>['Reference','Supplier','Fuel Type','Liters','Invoice/DR No.','Delivery Date','Received By','Status','Notes'],'rows'=>$fd_rows,'map'=>function($r){return [$r['delivery_id'],$r['supplier_name'],$r['fuel_type'],number_format($r['delivery_liters'],2),$r['invoice_no'],$r['delivery_date']?date('M j, Y',strtotime($r['delivery_date'])):'—',$r['received_by'],$r['status'],$r['notes']?:'—'];}];
@@ -224,7 +224,7 @@ if ($section === 'staff') {
         LEFT JOIN (SELECT created_by,COUNT(*) AS cnt FROM job_orders WHERE station_id=? AND DATE(created_at) BETWEEN ? AND ? GROUP BY created_by) jo ON jo.created_by=u.id
         LEFT JOIN (SELECT encoded_by,COUNT(*) AS cnt FROM deliveries_oversight WHERE station_id=? AND DATE(COALESCE(delivery_date,created_at)) BETWEEN ? AND ? GROUP BY encoded_by) dv ON dv.encoded_by=u.id
         LEFT JOIN (SELECT user_id,SUM(hours_worked) AS total_hours,COUNT(*) AS shift_count,COUNT(DISTINCT DATE(start_time)) AS attendance_days FROM labor_sessions WHERE station_id=? AND DATE(start_time) BETWEEN ? AND ? GROUP BY user_id) ls ON ls.user_id=u.id
-        WHERE u.station_id=? AND u.status='active'
+        WHERE u.station_id=? AND u.status = 'Active'
         ORDER BY (COALESCE(ft.cnt,0)+COALESCE(mt.cnt,0)+COALESCE(jo.cnt,0)) DESC, u.name ASC",
         [$station_id,$date_start,$date_end,$station_id,$date_start,$date_end,$station_id,$date_start,$date_end,$station_id,$date_start,$date_end,$station_id,$date_start,$date_end,$station_id]);
     $datasets['staff'] = ['title'=>'Staff Performance Report','headers'=>['Staff ID','Name','Role','Fuel Txns','Merch Txns','Total Txns','Job Orders','Deliveries','Total Hours','Shifts','Attendance Days','Performance Score'],'rows'=>$staff_rows,'map'=>function($r){$s=($r['total_transactions']*1)+($r['job_orders_encoded']*2)+($r['deliveries_encoded']*3);return ['#'.$r['staff_id'],$r['staff_name'],ucfirst($r['role']),$r['fuel_transactions'],$r['merch_transactions'],$r['total_transactions'],$r['job_orders_encoded'],$r['deliveries_encoded'],number_format($r['total_hours'],1).'h',$r['shift_count'],$r['attendance_days'],$s];}];
@@ -234,7 +234,7 @@ if ($section === 'staff') {
                COALESCE(ls.hours_worked, 0) AS hours_worked,
                COALESCE(ls.shift_name, ls.shift_period, '—') AS shift_label
         FROM labor_sessions ls
-        LEFT JOIN users u ON u.id = ls.user_id
+        LEFT JOIN users u ON u.user_id = ls.user_id
         WHERE ls.station_id = ? AND DATE(ls.start_time) BETWEEN ? AND ?
         ORDER BY ls.start_time DESC", [$station_id, $date_start, $date_end]);
 
@@ -263,7 +263,7 @@ if ($section === 'validation') {
         $s = $pdo->prepare("SELECT al.action_date AS date_time, COALESCE(u.name,'Unknown') AS manager_name,
             COALESCE(u.role,'Unknown') AS role, al.action_type AS action, al.description AS details,
             COALESCE(al.ip_address,'N/A') AS ip_address, al.module_name, al.record_id
-            FROM audit_log al LEFT JOIN users u ON u.id=al.user_id
+            FROM audit_log al LEFT JOIN users u ON u.user_id=al.user_id
             WHERE al.station_id=? AND DATE(al.action_date) BETWEEN ? AND ? ORDER BY al.action_date DESC");
         $s->execute([$station_id,$date_start,$date_end]); $val_rows = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
     } catch(Exception $e){}
@@ -273,7 +273,7 @@ if ($section === 'validation') {
                 COALESCE(u.role,'Unknown') AS role, COALESCE(jo.validation_status,'Validated') AS action,
                 CONCAT('Job Order ',COALESCE(jo.job_order_id,jo.job_order_number,CONCAT('JO-',jo.id)),' - ',COALESCE(jo.customer_name,'Walk-in')) AS details,
                 'N/A' AS ip_address, 'Job Orders' AS module_name, jo.id AS record_id
-                FROM job_orders jo LEFT JOIN users u ON u.id=jo.validated_by
+                FROM job_orders jo LEFT JOIN users u ON u.user_id=jo.validated_by
                 WHERE jo.station_id=? AND jo.validated_at IS NOT NULL AND DATE(jo.validated_at) BETWEEN ? AND ?
                 ORDER BY jo.validated_at DESC");
             $s->execute([$station_id,$date_start,$date_end]); $val_rows = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -356,17 +356,17 @@ if ($section === 'audit_trail') {
     ];
 }
 if ($section === 'variance') {
-    $variance_rows = q($pdo,"SELECT v.*, u.name as staff_name FROM fuel_variance_reports v LEFT JOIN users u ON u.id = v.staff_id WHERE v.station_id = ? AND DATE(v.report_date) BETWEEN ? AND ? ORDER BY v.report_date DESC", [$station_id, $date_start, $date_end]);
+    $variance_rows = q($pdo,"SELECT v.*, u.name as staff_name FROM fuel_variance_reports v LEFT JOIN users u ON u.user_id = v.staff_id WHERE v.station_id = ? AND DATE(v.report_date) BETWEEN ? AND ? ORDER BY v.report_date DESC", [$station_id, $date_start, $date_end]);
     if (empty($variance_rows)) {
-        $variance_rows = q($pdo,"SELECT v.*, u.name as staff_name FROM fuel_variance_reports v LEFT JOIN users u ON u.id = v.staff_id WHERE v.station_id = ? ORDER BY v.report_date DESC LIMIT 50", [$station_id]);
+        $variance_rows = q($pdo,"SELECT v.*, u.name as staff_name FROM fuel_variance_reports v LEFT JOIN users u ON u.user_id = v.staff_id WHERE v.station_id = ? ORDER BY v.report_date DESC LIMIT 50", [$station_id]);
     }
     $datasets['variance'] = ['title'=>'Variance Reports','headers'=>['Report Date','Fuel Type','System Liters','Pump Liters','Variance Liters','Staff Name','Status'],'rows'=>$variance_rows,'map'=>function($r){return [date('M j, Y',strtotime($r['report_date'])),$r['fuel_type'],number_format($r['system_liters'],2).' L',number_format($r['pump_liters'],2).' L',number_format($r['variance_liters'],4).' L',$r['staff_name']?:'—',$r['status']];}];
 }
 
 if ($section === 'meter_readings') {
-    $meter_rows = q($pdo,"SELECT m.*, u.name as staff_name FROM fuel_pump_readings m LEFT JOIN users u ON u.id = m.user_id WHERE m.station_id = ? AND m.status = 'Approved' AND DATE(m.reading_time) BETWEEN ? AND ? ORDER BY m.reading_time DESC", [$station_id, $date_start, $date_end]);
+    $meter_rows = q($pdo,"SELECT m.*, u.name as staff_name FROM fuel_pump_readings m LEFT JOIN users u ON u.user_id = m.user_id WHERE m.station_id = ? AND m.status = 'Approved' AND DATE(m.reading_time) BETWEEN ? AND ? ORDER BY m.reading_time DESC", [$station_id, $date_start, $date_end]);
     if (empty($meter_rows)) {
-        $meter_rows = q($pdo,"SELECT m.*, u.name as staff_name FROM fuel_pump_readings m LEFT JOIN users u ON u.id = m.user_id WHERE m.station_id = ? AND m.status = 'Approved' ORDER BY m.reading_time DESC LIMIT 50", [$station_id]);
+        $meter_rows = q($pdo,"SELECT m.*, u.name as staff_name FROM fuel_pump_readings m LEFT JOIN users u ON u.user_id = m.user_id WHERE m.station_id = ? AND m.status = 'Approved' ORDER BY m.reading_time DESC LIMIT 50", [$station_id]);
     }
     $datasets['meter'] = ['title'=>'Validated Meter Readings','headers'=>['Date & Time','Pump / Nozzle','Fuel Type','Opening Reading','Closing Reading','Staff'],'rows'=>$meter_rows,'map'=>function($r){return [date('M j, Y H:i',strtotime($r['reading_time'])),'Pump '.$r['pump_number'].' - N'.$r['nozzle_number'],$r['fuel_type'],number_format($r['opening_reading'],2),number_format($r['closing_reading'],2),$r['staff_name']?:'—'];}];
 }
@@ -382,12 +382,12 @@ if ($section === 'inventory') {
 if ($section === 'price_logs') {
     $price_log_rows = [];
     try {
-        $s = $pdo->prepare("SELECT al.action_date AS created_at, al.description AS details, u.name AS user_name FROM audit_log al LEFT JOIN users u ON u.id = al.user_id WHERE al.action_type LIKE '%Price%' AND al.station_id = ? AND DATE(al.action_date) BETWEEN ? AND ? ORDER BY al.action_date DESC");
+        $s = $pdo->prepare("SELECT al.action_date AS created_at, al.description AS details, u.name AS user_name FROM audit_log al LEFT JOIN users u ON u.user_id = al.user_id WHERE al.action_type LIKE '%Price%' AND al.station_id = ? AND DATE(al.action_date) BETWEEN ? AND ? ORDER BY al.action_date DESC");
         $s->execute([$station_id, $date_start, $date_end]);
         $price_log_rows = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
     } catch(Exception $e) {
         try {
-            $s = $pdo->prepare("SELECT al.created_at, al.details, u.name AS user_name FROM activity_logs al LEFT JOIN users u ON u.id = al.user_id WHERE al.action LIKE '%Price%' AND DATE(al.created_at) BETWEEN ? AND ? ORDER BY al.created_at DESC");
+            $s = $pdo->prepare("SELECT al.created_at, al.details, u.name AS user_name FROM activity_logs al LEFT JOIN users u ON u.user_id = al.user_id WHERE al.action LIKE '%Price%' AND DATE(al.created_at) BETWEEN ? AND ? ORDER BY al.created_at DESC");
             $s->execute([$date_start, $date_end]);
             $price_log_rows = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
         } catch(Exception $e2) {}

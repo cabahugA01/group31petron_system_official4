@@ -85,16 +85,8 @@ try {
         SELECT fi.fuel_type,
                COALESCE(fi.current_level, fi.current_stock, 0) AS current_level,
 
-               -- Price: fuel_pricing (manager-set, active) → fuel_inventory fallback
-               COALESCE(
-                   (SELECT fp.price_per_liter FROM fuel_pricing fp
-                    INNER JOIN fuel_types ftt ON ftt.id = fp.fuel_type_id
-                    WHERE fp.station_id = fi.station_id
-                      AND LOWER(TRIM(ftt.name)) = LOWER(TRIM(fi.fuel_type))
-                      AND fp.is_active = 1
-                    ORDER BY fp.effective_date DESC, fp.id DESC LIMIT 1),
-                   fi.price_per_liter, 0
-               ) AS price_per_liter,
+               -- Price: strictly fuel_inventory.price_per_liter
+               COALESCE(fi.price_per_liter, 0) AS price_per_liter,
 
                -- Calibration: fuel_calibration table (technician record, active) → fuel_inventory fallback
                COALESCE(
@@ -837,7 +829,7 @@ main.main {
     border-radius: 12px;
     border: 1px solid #e2e8f0;
     box-shadow: 0 1px 6px rgba(0,0,0,.05);
-    overflow: hidden;
+    overflow: visible;
     margin-bottom: 16px;
     width: 100%;
 }
@@ -1306,180 +1298,17 @@ main.main {
         </div>
         <?php else: ?>
 
-        <!-- ══════════════════════════════════════════════════════════════
-             FILTER BAR — applies to Today's Entries table below
-        ══════════════════════════════════════════════════════════════ -->
-        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 18px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.04);">
-            <form method="GET" action="staff_transactions_hub.php" id="fuelFiltersForm">
-                <input type="hidden" name="section" value="fuel">
 
-                <!-- Filter chips row -->
-                <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
-
-                    <!-- Date From -->
-                    <div style="display:flex;flex-direction:column;gap:4px;">
-                        <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">
-                            <i class="fas fa-calendar-day" style="margin-right:3px;"></i>From
-                        </label>
-                        <input type="date" name="date_from"
-                               value="<?= htmlspecialchars($filter_date_from) ?>"
-                               style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;color:#1e293b;background:#fff;width:100%;">
-                    </div>
-
-                    <!-- Date To -->
-                    <div style="display:flex;flex-direction:column;gap:4px;">
-                        <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">
-                            <i class="fas fa-calendar-day" style="margin-right:3px;"></i>To
-                        </label>
-                        <input type="date" name="date_to"
-                               value="<?= htmlspecialchars($filter_date_to) ?>"
-                               style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;color:#1e293b;background:#fff;width:100%;">
-                    </div>
-
-                    <!-- Fuel Type -->
-                    <div style="display:flex;flex-direction:column;gap:4px;">
-                        <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">
-                            <i class="fas fa-gas-pump" style="margin-right:3px;"></i>Fuel Type
-                        </label>
-                        <select name="fuel_type"
-                                style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;color:#1e293b;background:#fff;width:100%;">
-                            <option value="">All Types</option>
-                            <?php foreach ($fuel_types as $ft_opt): ?>
-                            <option value="<?= htmlspecialchars($ft_opt['fuel_type']) ?>"
-                                <?= $filter_fuel_type === $ft_opt['fuel_type'] ? 'selected' : '' ?>>
-                                <?= htmlspecialchars($ft_opt['fuel_type']) ?>
-                            </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-
-                    <!-- Staff Name / Cashier -->
-                    <div style="display:flex;flex-direction:column;gap:4px;">
-                        <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">
-                            <i class="fas fa-user" style="margin-right:3px;"></i>Staff / Cashier
-                        </label>
-                        <select name="staff_id"
-                                style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;color:#1e293b;background:#fff;width:100%;">
-                            <option value="">All Staff</option>
-                            <?php foreach ($staff_list as $sl): ?>
-                            <option value="<?= (int)$sl['id'] ?>"
-                                <?= (string)$filter_staff_id === (string)$sl['id'] ? 'selected' : '' ?>>
-                                <?= htmlspecialchars($sl['name'] ?: $sl['username']) ?>
-                            </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-
-                    <!-- Status — pulled from DB distinct values -->
-                    <div style="display:flex;flex-direction:column;gap:4px;">
-                        <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">
-                            <i class="fas fa-flag" style="margin-right:3px;"></i>Status
-                        </label>
-                        <select name="status"
-                                style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;color:#1e293b;background:#fff;width:100%;">
-                            <option value="">All Statuses</option>
-                            <?php
-                            // Pull distinct statuses from DB
-                            $db_statuses = [];
-                            try {
-                                $ss = $pdo->prepare("SELECT DISTINCT status FROM fuel_transactions WHERE station_id = ? AND status IS NOT NULL AND status != '' ORDER BY status");
-                                $ss->execute([$station_id]);
-                                $db_statuses = $ss->fetchAll(PDO::FETCH_COLUMN);
-                            } catch (Exception $e) {}
-                            // Ensure standard statuses always appear even if no data yet
-                            $std_statuses = ['Pending Validation','Approved','Verified','Adjusted','Rejected'];
-                            $all_statuses = array_unique(array_merge($std_statuses, $db_statuses));
-                            foreach ($all_statuses as $st):
-                            ?>
-                            <option value="<?= htmlspecialchars($st) ?>" <?= $filter_status === $st ? 'selected' : '' ?>>
-                                <?= htmlspecialchars($st) ?>
-                            </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-
-                    <!-- Shift Period — from DB only -->
-                    <div style="display:flex;flex-direction:column;gap:4px;">
-                        <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">
-                            <i class="fas fa-clock" style="margin-right:3px;"></i>Shift Period
-                        </label>
-                        <select name="shift"
-                                style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;color:#1e293b;background:#fff;width:100%;">
-                            <option value="">All Shifts</option>
-                            <?php foreach ($shift_periods as $sp_opt): ?>
-                            <option value="<?= htmlspecialchars($sp_opt['shift_key']) ?>"
-                                <?= $filter_shift === $sp_opt['shift_key'] ? 'selected' : '' ?>>
-                                <?= htmlspecialchars($sp_opt['shift_name']) ?>
-                            </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-
-                    <!-- Buttons -->
-                    <div style="display:flex;gap:8px;align-items:flex-end;padding-bottom:1px;margin-left:auto;">
-                        <button type="submit"
-                                style="padding:8px 18px;background:#002f6c;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:background .15s;"
-                                onmouseover="this.style.background='#001f4d'" onmouseout="this.style.background='#002f6c'">
-                            <i class="fas fa-search"></i> Apply Filter
-                        </button>
-                        <a href="staff_transactions_hub.php?section=fuel"
-                           style="padding:8px 14px;background:#f1f5f9;color:#475569;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:background .15s;"
-                           onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'">
-                            <i class="fas fa-undo"></i> Reset
-                        </a>
-                    </div>
-
-                </div><!-- /filter chips row -->
-
-                <!-- Active filter summary -->
-                <?php
-                $active_filters = [];
-                if ($filter_date_from && $filter_date_to) {
-                    $active_filters[] = date('M j', strtotime($filter_date_from)) . ' – ' . date('M j, Y', strtotime($filter_date_to));
-                }
-                if ($filter_fuel_type) $active_filters[] = $filter_fuel_type;
-                if ($filter_staff_id) {
-                    foreach ($staff_list as $sl) {
-                        if ((string)$sl['id'] === (string)$filter_staff_id) {
-                            $active_filters[] = $sl['name'] ?: $sl['username'];
-                            break;
-                        }
-                    }
-                }
-                if ($filter_status) $active_filters[] = $filter_status;
-                if ($filter_shift) {
-                    foreach ($shift_periods as $sp_opt) {
-                        if ($sp_opt['shift_key'] === $filter_shift) {
-                            $active_filters[] = $sp_opt['shift_name'];
-                            break;
-                        }
-                    }
-                }
-                if (!empty($active_filters)):
-                ?>
-                <div style="margin-top:10px;font-size:11px;color:#64748b;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                    <i class="fas fa-filter" style="color:#94a3b8;"></i>
-                    <span>Active:</span>
-                    <?php foreach ($active_filters as $af): ?>
-                    <span style="background:#eff6ff;color:#1d4ed8;padding:2px 9px;border-radius:20px;font-weight:600;">
-                        <?= htmlspecialchars($af) ?>
-                    </span>
-                    <?php endforeach; ?>
-                </div>
-                <?php endif; ?>
-
-            </form>
-        </div><!-- /filter bar -->
 
         <style>
         /* ── Fuel Encoding Table ─────────────────────────────────── */
-        .fet-wrap { overflow-x:hidden; }
+        .fet-wrap { overflow-x: hidden; }
 
         .fet {
             width: 100%;
             border-collapse: collapse;
             font-size: 13px;
-            
+            table-layout: fixed;
         }
 
         /* Header */
@@ -1620,18 +1449,11 @@ main.main {
                     style="padding:9px 18px;border:none;background:#f8fafc;border-bottom:2px solid transparent;
                            margin-bottom:-2px;font-size:13px;font-weight:500;color:#64748b;
                            cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;">
-                <i class="fas fa-history"></i> Today's Meter Readings
+                <i class="fas fa-history"></i> Meter Reading History
             </button>
         </div>
 
         <div class="txn-card" style="margin-bottom:20px;" id="encodeCard">
-            <div class="txn-card-header" style="background:#f0f4ff;">
-                <i class="fas fa-table" style="color:var(--petron-blue);"></i>
-                <h3>Encode Meter Readings</h3>
-                <span style="margin-left:auto;font-size:11px;color:#64748b;font-weight:500;">
-                    <?= date('F j, Y') ?> &nbsp;|&nbsp; <?= htmlspecialchars($fuel_shift_name) ?>
-                </span>
-            </div>
 
             <?php /* ── Hidden forms for each fuel row — placed OUTSIDE the table.
                         Inputs inside the table rows use form="fuelForm_..." to associate.
@@ -1722,19 +1544,18 @@ main.main {
             <div class="fet-wrap" style="overflow-x:auto;">
                 <table class="fet" style="width:100%;border-collapse:collapse;">
                     <thead>
-                        <tr style="background:#f8fafc;">
-                            <th rowspan="2" style="border:1px solid #e2e8f0;padding:12px;vertical-align:middle;min-width:120px;font-weight:700;font-size:13px;">NAME</th>
-                            <th colspan="6" style="border:1px solid #e2e8f0;padding:8px;text-align:center;font-size:14px;font-weight:700;color:#002F6C;">METER READING</th>
-                            <th rowspan="2" style="border:1px solid #e2e8f0;padding:12px;vertical-align:middle;min-width:100px;font-weight:700;font-size:11px;">TOTAL<br>LITERS</th>
-                            <th rowspan="2" style="border:1px solid #e2e8f0;padding:12px;vertical-align:middle;min-width:120px;font-weight:700;font-size:11px;">NOTES</th>
+                        <tr style="background:#002F70;">
+                            <th rowspan="2" style="border:1px solid #001f4d;padding:12px;vertical-align:middle;min-width:120px;font-weight:700;font-size:13px;color:#fff;">NAME</th>
+                            <th colspan="6" style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:14px;font-weight:700;color:#fff;">METER READING</th>
+                            <th rowspan="2" style="border:1px solid #001f4d;padding:12px;vertical-align:middle;min-width:120px;font-weight:700;font-size:11px;color:#fff;">NOTES</th>
                         </tr>
-                        <tr style="background:#f8fafc;">
-                            <th style="border:1px solid #e2e8f0;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#64748b;">BEGINNING</th>
-                            <th style="border:1px solid #e2e8f0;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#64748b;">ENDING</th>
-                            <th style="border:1px solid #e2e8f0;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#64748b;">CAL</th>
-                            <th style="border:1px solid #e2e8f0;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#64748b;">VOLUME<br>LITERS</th>
-                            <th style="border:1px solid #e2e8f0;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#64748b;">PRICE</th>
-                            <th style="border:1px solid #e2e8f0;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#64748b;">AMOUNT</th>
+                        <tr style="background:#002F70;">
+                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">BEGINNING</th>
+                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">ENDING</th>
+                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">CAL</th>
+                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">VOLUME LITERS</th>
+                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">PRICE</th>
+                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">AMOUNT</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1807,6 +1628,26 @@ main.main {
                             foreach ($tankers as $tanker_num):
                                 $ft_id = 'fuel_' . preg_replace('/[^a-z0-9]/i', '_', $group_name) . '_' . $idx . '_t' . $tanker_num;
                                 $display_name = strtoupper($group_name) . ' - ' . $tanker_num;
+
+                                // ── Continuous Meter Reading Cycle ──────────────────────────────────
+                                // Fetch the last present_reading for this specific pump (fuel_type + pump_id)
+                                // This becomes the pre-filled Beginning for the current shift.
+                                $pump_prev_reading = 0.00;
+                                try {
+                                    $pump_prev_stmt = $pdo->prepare("
+                                        SELECT present_reading FROM fuel_transactions
+                                        WHERE station_id = ?
+                                          AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                                          AND pump_id = ?
+                                          AND COALESCE(status, '') != 'Rejected'
+                                        ORDER BY transaction_date DESC, id DESC LIMIT 1
+                                    ");
+                                    $pump_prev_stmt->execute([$station_id, $ft['fuel_type'], $tanker_num]);
+                                    $pump_prev_val = $pump_prev_stmt->fetchColumn();
+                                    if ($pump_prev_val !== false && $pump_prev_val !== null) {
+                                        $pump_prev_reading = (float)$pump_prev_val;
+                                    }
+                                } catch (Exception $e) { /* fallback to 0 */ }
                     ?>
                     <tr id="fuelRow_<?= $ft_id ?>" style="border-bottom:1px solid #e2e8f0;">
                         <!-- NAME Column (with tanker number) -->
@@ -1819,52 +1660,53 @@ main.main {
                             </div>
                         </td>
 
-                        <!-- BEGINNING Column -->
+                        <!-- BEGINNING Column — pre-filled from previous shift's Ending reading -->
                         <td style="border:1px solid #e2e8f0;padding:6px;">
-                            <input type="number"
+                            <input type="text"
                                    form="fuelForm_<?= $ft_id ?>"
                                    name="beginning_reading"
                                    id="beginning_<?= $ft_id ?>"
-                                   style="width:110px;padding:8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px;text-align:right;"
-                                   step="0.01" min="0"
-                                   placeholder="0.00"
+                                   style="width:110px;padding:8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px;text-align:right;<?= $pump_prev_reading > 0 ? 'background:#f0f9ff;font-weight:600;' : '' ?>"
+                                   value="<?= $pump_prev_reading > 0 ? number_format($pump_prev_reading, 2, '.', ',') : '' ?>"
+                                   placeholder="<?= $pump_prev_reading > 0 ? number_format($pump_prev_reading, 2, '.', ',') : '0.00' ?>"
                                    autocomplete="off"
-                                   oninput="updateFuelCalc('<?= $ft_id ?>', <?= $price_per_liter ?>)">
+                                   oninput="formatOnInput(this); updateFuelCalc('<?= $ft_id ?>')"
+                                   onblur="formatOnBlur(this); updateFuelCalc('<?= $ft_id ?>')">
                         </td>
                         
                         <!-- ENDING Column -->
                         <td style="border:1px solid #e2e8f0;padding:6px;">
-                            <input type="number"
+                            <input type="text"
                                    form="fuelForm_<?= $ft_id ?>"
                                    name="ending_reading"
                                    id="ending_<?= $ft_id ?>"
-                                   style="width:110px;padding:8px;font-size:12px;border:2px solid <?= $ft_color ?>;border-radius:4px;text-align:right;font-weight:700;"
-                                   step="0.01" min="0"
+                                   style="width:110px;padding:8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px;text-align:right;font-weight:700;"
                                    placeholder="0.00"
                                    required
                                    autocomplete="off"
-                                   oninput="updateFuelCalc('<?= $ft_id ?>', <?= $price_per_liter ?>)">
+                                   oninput="formatOnInput(this); updateFuelCalc('<?= $ft_id ?>')"
+                                   onblur="formatOnBlur(this); updateFuelCalc('<?= $ft_id ?>')">
                         </td>
                         
                         <!-- CAL (Calibration) Column -->
                         <td style="border:1px solid #e2e8f0;padding:6px;">
-                            <input type="number"
+                            <input type="text"
                                    form="fuelForm_<?= $ft_id ?>"
                                    name="calibration"
                                    id="cal_<?= $ft_id ?>"
                                    style="width:80px;padding:8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px;text-align:right;"
-                                   step="0.01" min="0"
                                    value="0.00"
                                    placeholder="0.00"
                                    autocomplete="off"
-                                   oninput="updateFuelCalc('<?= $ft_id ?>', <?= $price_per_liter ?>)">
+                                   oninput="formatOnInput(this); updateFuelCalc('<?= $ft_id ?>')"
+                                   onblur="formatOnBlur(this); updateFuelCalc('<?= $ft_id ?>')">
                         </td>
                         
                         <!-- VOLUME LITERS Column (Auto-calculated: Ending - Beginning - CAL) -->
-                        <td style="border:1px solid #e2e8f0;padding:6px;background:#fef3c7;">
+                        <td style="border:1px solid #e2e8f0;padding:6px;">
                             <input type="text"
                                    id="volume_<?= $ft_id ?>"
-                                   style="width:90px;padding:8px;font-size:12px;background:#fef08a;border:2px solid #fbbf24;border-radius:4px;text-align:right;font-weight:800;color:#92400e;"
+                                   style="width:90px;padding:8px;font-size:12px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:4px;text-align:right;font-weight:700;color:#334155;"
                                    value="0.00"
                                    readonly>
                             <input type="hidden"
@@ -1874,23 +1716,24 @@ main.main {
                                    value="0.00">
                         </td>
                         
-                        <!-- PRICE Column (Visible, not editable) -->
-                        <td style="border:1px solid #e2e8f0;padding:6px;background:#e0f2fe;">
-                            <input type="text"
-                                   style="width:80px;padding:8px;font-size:12px;background:#dbeafe;border:1px solid #60a5fa;border-radius:4px;text-align:right;font-weight:700;color:#1e40af;"
-                                   value="₱<?= number_format($price_per_liter, 2) ?>"
-                                   readonly>
+                        <!-- PRICE Column (Fixed — fetched from product config, not editable) -->
+                        <td style="border:1px solid #e2e8f0;padding:6px;background:#f8fafc;">
+                            <span id="price_display_<?= $ft_id ?>"
+                                  style="display:block;width:80px;padding:8px;font-size:13px;font-weight:700;color:#334155;text-align:right;">
+                                ₱<?= number_format($price_per_liter, 2) ?>
+                            </span>
                             <input type="hidden"
                                    form="fuelForm_<?= $ft_id ?>"
                                    name="price_per_liter"
-                                   value="<?= $price_per_liter ?>">
+                                   id="price_<?= $ft_id ?>"
+                                   value="<?= number_format($price_per_liter, 2, '.', '') ?>">
                         </td>
                         
                         <!-- AMOUNT Column (Auto-calculated: Volume × Price) -->
-                        <td style="border:1px solid #e2e8f0;padding:6px;background:#f0f9ff;">
+                        <td style="border:1px solid #e2e8f0;padding:6px;">
                             <input type="text"
                                    id="amount_<?= $ft_id ?>"
-                                   style="width:110px;padding:8px;font-size:12px;background:#e0f2fe;border:2px solid #7dd3fc;border-radius:4px;text-align:right;font-weight:800;color:#0369a1;"
+                                   style="width:110px;padding:8px;font-size:12px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:4px;text-align:right;font-weight:800;color:#0f172a;"
                                    value="₱0.00"
                                    readonly>
                             <input type="hidden"
@@ -1900,14 +1743,7 @@ main.main {
                                    value="0.00">
                         </td>
 
-                        <!-- TOTAL LITERS Column (Same as VOLUME for single row) -->
-                        <td style="border:1px solid #e2e8f0;padding:6px;background:#dcfce7;">
-                            <input type="text"
-                                   id="total_<?= $ft_id ?>"
-                                   style="width:90px;padding:8px;font-size:12px;background:#bbf7d0;border:2px solid #4ade80;border-radius:4px;text-align:right;font-weight:800;color:#15803d;"
-                                   value="0.00 L"
-                                   readonly>
-                        </td>
+
 
                         <!-- NOTES Column -->
                         <td style="border:1px solid #e2e8f0;padding:6px;">
@@ -1950,17 +1786,102 @@ main.main {
         <?php endif; ?>
 
         <!-- ── TODAY'S ENTRIES — Meter Reading Table (Table A) ──────────── -->
-        <div class="txn-card" id="todayEntriesCard" style="margin-top:8px; margin-bottom:80px;">
-            <div class="txn-card-header" style="background:#fff; border-bottom:1px solid #e2e8f0;">
-                <i class="fas fa-tachometer-alt" style="color:var(--petron-blue);"></i>
-                <h3>Today's Meter Readings</h3>
-                <span style="margin-left:auto;font-size:11px;color:#64748b;font-weight:500;">
-                    Your submissions for <?= date('F j, Y') ?> — pending manager validation
+        <div class="txn-card" id="todayEntriesCard" style="margin-top:8px; margin-bottom:80px; background:#fff; border:1.5px solid #e2e8f0; border-radius:12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);">
+            <div class="txn-card-header" style="background:#fff; border-bottom:1.5px solid #e2e8f0; border-top-left-radius:12px; border-top-right-radius:12px; padding: 16px 20px;">
+                <i class="fas fa-history" style="color:var(--petron-blue); font-size:18px;"></i>
+                <h3 style="font-size:16px; font-weight:700; color:#0f172a; margin:0;">Meter Reading History</h3>
+                <span style="margin-left:auto; font-size:12px; color:#64748b; font-weight:500;">
+                    Per-Shift Reporting & Validation History
                 </span>
             </div>
+
+            <!-- Summary Cards Row -->
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:16px; padding:20px 20px 0 20px; background:#ffffff;">
+                <!-- Card 1: Transactions Encoded -->
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:18px; display:flex; align-items:center; gap:16px; transition: transform 0.2s, box-shadow 0.2s; cursor:default;" 
+                     onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.05)';" 
+                     onmouseout="this.style.transform='none'; this.style.boxShadow='none';">
+                    <div style="background:#eff6ff; color:#2563eb; width:48px; height:48px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0;">
+                        <i class="fas fa-file-invoice"></i>
+                    </div>
+                    <div>
+                        <div id="summary_encoded_count" style="font-size:26px; font-weight:800; color:#0f172a; line-height:1.2; font-family:var(--font-sans, sans-serif);">0</div>
+                        <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.8px; margin-top:2px;">Transactions Encoded</div>
+                    </div>
+                </div>
+
+                <!-- Card 2: Pending Manager Validation -->
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:18px; display:flex; align-items:center; gap:16px; transition: transform 0.2s, box-shadow 0.2s; cursor:default;"
+                     onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.05)';" 
+                     onmouseout="this.style.transform='none'; this.style.boxShadow='none';">
+                    <div style="background:#fffbeb; color:#d97706; width:48px; height:48px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0;">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <div>
+                        <div id="summary_pending_count" style="font-size:26px; font-weight:800; color:#0f172a; line-height:1.2; font-family:var(--font-sans, sans-serif);">0</div>
+                        <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.8px; margin-top:2px;">Pending Validation</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filters & Export Control Bar -->
+            <div style="background:#ffffff; padding:20px; display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:16px; border-bottom:1px solid #f1f5f9;">
+                <!-- Local Filter Inputs -->
+                <div style="display:flex; flex-wrap:wrap; gap:16px; align-items:center;">
+                    <!-- Date Filter -->
+                    <div style="display:flex; flex-direction:column; gap:6px;">
+                        <label for="subtab_date" style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:0.5px;">
+                            <i class="fas fa-calendar-alt" style="color:var(--petron-blue); margin-right:4px;"></i>Filter by Date
+                        </label>
+                        <input type="date" id="subtab_date" value="<?= date('Y-m-d') ?>" onchange="loadTodayEntries();"
+                               style="padding:8px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:13px; color:#0f172a; outline:none; background:#ffffff; height:38px; min-width:160px; box-sizing:border-box; transition:border-color 0.15s ease-in-out;"
+                               onfocus="this.style.borderColor='var(--petron-blue)'" onblur="this.style.borderColor='#cbd5e1'">
+                    </div>
+
+                    <!-- Shift Filter -->
+                    <div style="display:flex; flex-direction:column; gap:6px;">
+                        <label for="subtab_shift" style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:0.5px;">
+                            <i class="fas fa-clock" style="color:var(--petron-blue); margin-right:4px;"></i>Filter by Shift
+                        </label>
+                        <select id="subtab_shift" onchange="loadTodayEntries();"
+                                style="padding:8px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:13px; color:#0f172a; outline:none; background:#ffffff; height:38px; min-width:180px; box-sizing:border-box; cursor:pointer; transition:border-color 0.15s ease-in-out;"
+                                onfocus="this.style.borderColor='var(--petron-blue)'" onblur="this.style.borderColor='#cbd5e1'">
+                            <option value="">All Shifts</option>
+                            <option value="first">First Shift (6 AM–2 PM)</option>
+                            <option value="second">Second Shift (2 PM–12 MN)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Export Buttons -->
+                <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-start;">
+                    <span style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:0.5px;">
+                        <i class="fas fa-download" style="color:var(--petron-blue); margin-right:4px;"></i>Export Options
+                    </span>
+                    <div style="display:inline-flex; align-items:center; gap:8px;">
+                        <button onclick="exportTodayReadings('excel');" 
+                                style="background:#1d6f42; color:#ffffff; border:none; border-radius:8px; height:38px; padding:0 14px; font-size:13px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:background 0.2s;"
+                                onmouseover="this.style.background='#155231'" onmouseout="this.style.background='#1d6f42'">
+                            <i class="fas fa-file-excel"></i> Excel
+                        </button>
+                        <button onclick="exportTodayReadings('csv');" 
+                                style="background:#0284c7; color:#ffffff; border:none; border-radius:8px; height:38px; padding:0 14px; font-size:13px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:background 0.2s;"
+                                onmouseover="this.style.background='#0369a1'" onmouseout="this.style.background='#0284c7'">
+                            <i class="fas fa-file-csv"></i> CSV
+                        </button>
+                        <button onclick="exportTodayReadings('pdf');" 
+                                style="background:#dc2626; color:#ffffff; border:none; border-radius:8px; height:38px; padding:0 14px; font-size:13px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:background 0.2s;"
+                                onmouseover="this.style.background='#b91c1c'" onmouseout="this.style.background='#dc2626'">
+                            <i class="fas fa-file-pdf"></i> PDF
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Table Body Container -->
             <div id="todayEntriesBody" style="padding:0;">
-                <div style="text-align:center;padding:32px;color:#94a3b8;font-size:13px;">
-                    <i class="fas fa-spinner fa-spin" style="font-size:22px;display:block;margin-bottom:8px;"></i>
+                <div style="text-align:center; padding:40px; color:#94a3b8; font-size:14px;">
+                    <i class="fas fa-spinner fa-spin" style="font-size:24px; display:block; margin-bottom:12px; color:var(--petron-blue);"></i>
                     Loading today's entries…
                 </div>
             </div>
@@ -2013,44 +1934,95 @@ main.main {
 
         // ── Fuel Transaction Filters ───────────────────────────────────────────
         function resetFuelFilters() {
-            window.location.href = 'staff_transactions_hub.php?section=fuel';
+            const todayCard = document.getElementById('todayEntriesCard');
+            const isReadings = todayCard && todayCard.style.display !== 'none';
+            if (isReadings) {
+                window.location.href = 'staff_transactions_hub.php?section=fuel&fuel_tab=readings';
+            } else {
+                window.location.href = 'staff_transactions_hub.php?section=fuel&fuel_tab=encode';
+            }
         }
 
-        // ── Live calculation per row (Beginning → Ending → CAL → Volume → Amount) ──────────────────────────
-        function updateFuelCalc(ftId, pricePerLiter) {
+        // Helper functions for dynamic comma-formatting as user types
+        function formatOnInput(input) {
+            let selectionStart = input.selectionStart;
+            let oldLength = input.value.length;
+            let val = input.value;
+            
+            // Allow numbers, commas, and a single decimal dot
+            let clean = val.replace(/[^\d.]/g, '');
+            let parts = clean.split('.');
+            if (parts.length > 2) {
+                parts = [parts[0], parts.slice(1).join('')];
+            }
+            
+            let integerPart = parts[0];
+            if (integerPart) {
+                // Remove leading zeroes
+                if (integerPart.length > 1 && integerPart.startsWith('0')) {
+                    integerPart = integerPart.replace(/^0+/, '');
+                    if (integerPart === '') integerPart = '0';
+                }
+                // Add commas
+                integerPart = parseInt(integerPart, 10).toLocaleString('en-US');
+            }
+            
+            let formatted = integerPart;
+            if (parts.length > 1) {
+                formatted += '.' + parts[1];
+            }
+            
+            input.value = formatted || '';
+            
+            // Restore selection range/cursor offset
+            let newLength = input.value.length;
+            let delta = newLength - oldLength;
+            input.setSelectionRange(selectionStart + delta, selectionStart + delta);
+        }
+
+        function formatOnBlur(input) {
+            let val = input.value.replace(/,/g, '');
+            let num = parseFloat(val);
+            if (!isNaN(num)) {
+                input.value = num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            } else {
+                input.value = '';
+            }
+        }
+
+        // ── Live calculation per row (Beginning → Ending → CAL → Price → Volume → Amount) ──────────────────
+        function updateFuelCalc(ftId) {
             const beginningEl = document.getElementById(`beginning_${ftId}`);
             const endingEl    = document.getElementById(`ending_${ftId}`);
             const calEl       = document.getElementById(`cal_${ftId}`);
+            const priceEl     = document.getElementById(`price_${ftId}`);
             const volumeEl    = document.getElementById(`volume_${ftId}`);
             const volumeValueEl = document.getElementById(`volume_value_${ftId}`);
             const amountEl    = document.getElementById(`amount_${ftId}`);
             const amountValueEl = document.getElementById(`amount_value_${ftId}`);
-            const totalEl     = document.getElementById(`total_${ftId}`);
             
-            if (!beginningEl || !endingEl || !calEl || !volumeEl || !amountEl || !totalEl) return;
+            if (!beginningEl || !endingEl || !calEl || !priceEl || !volumeEl || !amountEl) return;
             
-            const beginning = parseFloat(beginningEl.value) || 0;
-            const ending = parseFloat(endingEl.value) || 0;
-            const cal = parseFloat(calEl.value) || 0;
+            const beginning = parseFloat(beginningEl.value.replace(/,/g, '')) || 0;
+            const ending = parseFloat(endingEl.value.replace(/,/g, '')) || 0;
+            const cal = parseFloat(calEl.value.replace(/,/g, '')) || 0;
+            const price = parseFloat(priceEl.value) || 0;
             
-            // Calculate volume liters: Ending - Beginning - CAL
+            // Step 1: Compute Volume Liters = (Ending Meter - Beginning Meter) - Calibration
             let volume = 0;
-            if (ending > 0 && ending >= beginning) {
-                volume = Math.max(0, ending - beginning - cal);
+            if (ending > 0) {
+                volume = (ending - beginning) - cal;
             }
             
-            // Calculate amount: Volume × Price per Liter
-            const amount = volume * pricePerLiter;
+            // Step 2: Compute Amount = Volume Liters * Price
+            const amount = volume * price;
             
             // Update displays
-            volumeEl.value = volume.toFixed(2);
-            volumeValueEl.value = volume.toFixed(2);
+            volumeEl.value = volume.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
+            if (volumeValueEl) volumeValueEl.value = volume.toFixed(2);
             
             amountEl.value = '₱' + amount.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
-            amountValueEl.value = amount.toFixed(2);
-            
-            // Total liters = same as volume for single row entry
-            totalEl.value = volume.toFixed(2) + ' L';
+            if (amountValueEl) amountValueEl.value = amount.toFixed(2);
         }
 
         // ── AJAX submit per fuel row (Updated for tanker data) ──────────────────────────────────────────
@@ -2063,22 +2035,22 @@ main.main {
 
             if (!form) return false;
 
-            // Collect all tanker readings from form inputs
+            // Build FormData from the form
             const formData = new FormData(form);
-            let hasPresentReading = false;
-            
-            // Check if at least one tanker has a present reading
-            for (let pair of formData.entries()) {
-                if (pair[0].startsWith('tanker_present_') && pair[1] && parseFloat(pair[1]) > 0) {
-                    hasPresentReading = true;
-                    break;
-                }
-            }
-            
-            if (!hasPresentReading) {
-                showRowMsg(msgEl, 'error', 'Please enter at least one present reading.');
+
+            // Validate: ending_reading must be filled (strip commas before parsing)
+            const endingRaw = (formData.get('ending_reading') || '').replace(/,/g, '');
+            const endingVal = parseFloat(endingRaw);
+            if (!endingVal || endingVal <= 0) {
+                showRowMsg(msgEl, 'error', 'Please enter the Ending meter reading.');
                 return false;
             }
+            // Inject stripped value back so API receives a plain number
+            formData.set('ending_reading', endingRaw);
+            const beginningRaw = (formData.get('beginning_reading') || '').replace(/,/g, '');
+            formData.set('beginning_reading', beginningRaw);
+            const calibrationRaw = (formData.get('calibration') || '0').replace(/,/g, '');
+            formData.set('calibration', calibrationRaw);
 
             // Disable button, show loading
             submitBtn.disabled = true;
@@ -2114,55 +2086,52 @@ main.main {
                 }
 
                 if (json.success) {
-                    const msg = `Meter Reading submitted successfully!`;
-                    
-                    const toast = document.createElement('div');
-                    toast.style.position = 'fixed';
-                    toast.style.top = '80px';
-                    toast.style.left = '50%';
-                    toast.style.transform = 'translateX(-50%)';
-                    toast.style.backgroundColor = '#d4edda';
-                    toast.style.color = '#155724';
-                    toast.style.border = '1px solid #c3e6cb';
-                    toast.style.padding = '12px 24px';
-                    toast.style.borderRadius = '8px';
-                    toast.style.fontWeight = '600';
-                    toast.style.zIndex = '9999';
-                    toast.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
-                    toast.style.transition = 'opacity 0.3s ease';
-                    toast.innerHTML = `<i class="fas fa-check-circle" style="color:#28a745; margin-right:8px;"></i> ${msg}`;
-                    document.body.appendChild(toast);
-                    
-                    // Fade out after 3 seconds
+                    // Show success toast via shared helper
+                    showToast('All meter readings for today\'s shift have been recorded.', 'success');
+
+                    // Clear any inline message
+                    if (msgEl) { msgEl.style.display = 'none'; msgEl.innerHTML = ''; }
+
+                    // ── Continuous cycle: carryover submitted Ending → next Beginning ──
+                    const endingEl    = document.getElementById('ending_'    + ftId);
+                    const beginningEl = document.getElementById('beginning_' + ftId);
+                    const calEl       = document.getElementById('cal_'       + ftId);
+                    const volumeEl    = document.getElementById('volume_'    + ftId);
+                    const volumeValEl = document.getElementById('volume_value_' + ftId);
+                    const amountEl    = document.getElementById('amount_'    + ftId);
+                    const amountValEl = document.getElementById('amount_value_' + ftId);
+
+                    const submittedEnding = parseFloat((endingEl?.value || '0').replace(/,/g, ''));
+
+                    // Update beginning to the ending we just submitted (with comma formatting)
+                    if (beginningEl && submittedEnding > 0) {
+                        const fmtEnding = submittedEnding.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+                        beginningEl.value = fmtEnding;
+                        beginningEl.placeholder = fmtEnding;
+                        beginningEl.style.background = '#f0f9ff';
+                        beginningEl.style.fontWeight  = '600';
+                    }
+
+                    // Clear ending and computed fields
+                    if (endingEl)    endingEl.value    = '';
+                    if (calEl)       calEl.value       = '0.00';
+                    if (volumeEl)    volumeEl.value    = '0.00';
+                    if (volumeValEl) volumeValEl.value = '0.00';
+                    if (amountEl)    amountEl.value    = '₱0.00';
+                    if (amountValEl) amountValEl.value = '0.00';
+
+                    // Switch to Meter Reading History tab and refresh
+                    if (typeof switchFuelSubTab === 'function') switchFuelSubTab('readings');
+                    if (typeof loadTodayEntries === 'function') loadTodayEntries();
+
+                    // Fade out toast then redirect to manager validation page
                     setTimeout(() => {
                         toast.style.opacity = '0';
-                        setTimeout(() => toast.remove(), 300);
-                    }, 3000);
-
-                    // Clear any inline message to keep the row clean
-                    msgEl.style.display = 'none';
-                    msgEl.innerHTML = '';
-
-                    // Clear the present reading
-                    const submittedPresent = parseFloat(presentEl.value) || 0;
-                    presentEl.value = '';
-                    // Update previous reading input so next submit is correct
-                    const prevInput = document.getElementById('prev_' + ftId);
-                    if (prevInput && submittedPresent > 0) {
-                        prevInput.value = submittedPresent;
-                    }
-                    // Refresh the entries table and switch to it
-                    loadTodayEntries();
-                    switchFuelSubTab('readings');
-                    setTimeout(() => {
-                        const todayCard = document.getElementById('todayEntriesCard');
-                        if (todayCard) {
-                            todayCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            todayCard.style.outline = '2px solid #86efac';
-                            todayCard.style.borderRadius = '12px';
-                            setTimeout(() => { todayCard.style.outline = ''; }, 2000);
-                        }
-                    }, 600);
+                        setTimeout(() => {
+                            toast.remove();
+                            window.location.href = 'manager_fuel_transaction_validation.php';
+                        }, 400);
+                    }, 2500);
                 } else {
                     // Show the actual server error message
                     const errMsg = json.message || 'Submission failed. Please try again.';
@@ -2204,19 +2173,19 @@ main.main {
             const volumeValueEl = document.getElementById(`volume_value_${ftId}`);
             const amountEl      = document.getElementById(`amount_${ftId}`);
             const amountValueEl = document.getElementById(`amount_value_${ftId}`);
-            const totalEl       = document.getElementById(`total_${ftId}`);
             
-            if (beginningEl) beginningEl.value = '';
+            // Restore beginning to its carryover value (previous shift Ending), not blank
+            if (beginningEl) beginningEl.value = beginningEl.placeholder !== '0.00' ? beginningEl.placeholder : '';
             if (endingEl) endingEl.value = '';
             if (calEl) calEl.value = '0.00';
             if (volumeEl) volumeEl.value = '0.00';
             if (volumeValueEl) volumeValueEl.value = '0.00';
             if (amountEl) amountEl.value = '₱0.00';
             if (amountValueEl) amountValueEl.value = '0.00';
-            if (totalEl) totalEl.value = '0.00 L';
             if (notesEl) notesEl.value = '';
             if (msgEl) showRowMsg(msgEl, '', '');
         }
+
 
         // ── Reset ALL fuel rows ────────────────────────────────────────────────
         function resetAllFuelRows() {
@@ -2228,52 +2197,81 @@ main.main {
                 const ftId = form.id.replace('fuelForm_', '');
                 resetFuelRow(ftId);
             });
-            
-            alert('All fuel readings have been reset.');
+
+            showToast('All fuel readings have been reset.', 'info');
         }
 
         // ── Submit ALL fuel rows with data ─────────────────────────────────────
         async function submitAllFuelRows() {
             const allForms = document.querySelectorAll('form[id^="fuelForm_"]');
             const formsToSubmit = [];
-            
+
             // Collect forms that have ending reading (required field)
             allForms.forEach(form => {
                 const ftId = form.id.replace('fuelForm_', '');
                 const endingEl = document.getElementById(`ending_${ftId}`);
-                const endingValue = parseFloat(endingEl?.value || 0);
-                
+                const endingValue = parseFloat((endingEl?.value || '0').replace(/,/g, ''));
                 if (endingValue > 0) {
                     formsToSubmit.push({ ftId, form });
                 }
             });
-            
+
             if (formsToSubmit.length === 0) {
-                alert('No fuel readings to submit. Please enter at least one ending reading.');
+                showToast('No fuel readings to submit. Please enter at least one ending reading.', 'warning');
                 return;
             }
-            
-            if (!confirm(`Submit ${formsToSubmit.length} fuel reading(s)?`)) return;
-            
+
+            // Custom confirm instead of browser confirm()
+            const confirmed = await showConfirm(`Submit ${formsToSubmit.length} fuel reading(s) for manager validation?`);
+            if (!confirmed) return;
+
             let successCount = 0;
             let errorCount = 0;
             const errors = [];
-            
+
             // Submit each form
             for (const {ftId, form} of formsToSubmit) {
                 try {
                     const formData = new FormData(form);
+                    // Strip commas from text inputs before sending to API
+                    formData.set('ending_reading',   (formData.get('ending_reading')   || '').replace(/,/g, ''));
+                    formData.set('beginning_reading', (formData.get('beginning_reading') || '').replace(/,/g, ''));
+                    formData.set('calibration',       (formData.get('calibration')       || '0').replace(/,/g, ''));
                     const response = await fetch('api_fuel_readings.php', {
                         method: 'POST',
                         body: formData
                     });
-                    
-                    const result = await response.json();
-                    
+
+                    let result;
+                    try { result = await response.json(); }
+                    catch(e) { result = {success:false, message:'Invalid server response.'}; }
+
                     if (result.success) {
                         successCount++;
-                        // Clear the form
-                        resetFuelRow(ftId);
+                        // ── Continuous cycle: carryover Ending → Beginning ──
+                        const endingEl    = document.getElementById(`ending_${ftId}`);
+                        const beginningEl = document.getElementById(`beginning_${ftId}`);
+                        const calEl       = document.getElementById(`cal_${ftId}`);
+                        const volumeEl    = document.getElementById(`volume_${ftId}`);
+                        const volumeValEl = document.getElementById(`volume_value_${ftId}`);
+                        const amountEl    = document.getElementById(`amount_${ftId}`);
+                        const amountValEl = document.getElementById(`amount_value_${ftId}`);
+                        const notesEl     = document.querySelector(`#fuelForm_${ftId} [name="notes"]`);
+                        const submittedEnding = parseFloat((endingEl?.value || '0').replace(/,/g, ''));
+                        if (beginningEl && submittedEnding > 0) {
+                            const fmtEnding = submittedEnding.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+                            beginningEl.value = fmtEnding;
+                            beginningEl.placeholder = fmtEnding;
+                            beginningEl.style.background = '#f0f9ff';
+                            beginningEl.style.fontWeight  = '600';
+                        }
+                        if (endingEl)    endingEl.value    = '';
+                        if (calEl)       calEl.value       = '0.00';
+                        if (volumeEl)    volumeEl.value    = '0.00';
+                        if (volumeValEl) volumeValEl.value = '0.00';
+                        if (amountEl)    amountEl.value    = '₱0.00';
+                        if (amountValEl) amountValEl.value = '0.00';
+                        if (notesEl)     notesEl.value     = '';
                     } else {
                         errorCount++;
                         errors.push(`${ftId}: ${result.message || 'Unknown error'}`);
@@ -2283,18 +2281,73 @@ main.main {
                     errors.push(`${ftId}: ${error.message}`);
                 }
             }
-            
-            // Show summary
-            let message = `Submitted ${successCount} reading(s) successfully.`;
-            if (errorCount > 0) {
-                message += `\n${errorCount} reading(s) failed:\n${errors.join('\n')}`;
+
+            // Switch to history tab and refresh
+            if (typeof switchFuelSubTab === 'function') switchFuelSubTab('readings');
+            if (typeof loadTodayEntries === 'function') loadTodayEntries();
+
+            // Show summary toast
+            if (errorCount === 0) {
+                showToast('✔ All meter readings for today\'s shift have been recorded.', 'success');
+                // Redirect to manager validation after short delay
+                setTimeout(() => {
+                    window.location.href = 'manager_fuel_transaction_validation.php';
+                }, 2800);
+            } else {
+                showToast(
+                    `${successCount} reading(s) submitted.` +
+                    (errorCount > 0 ? ` ${errorCount} failed — check individual rows.` : ''),
+                    errorCount === successCount ? 'error' : 'warning'
+                );
             }
-            alert(message);
-            
-            // Refresh today's entries if we're on that tab
-            if (typeof refreshTodayEntries === 'function') {
-                refreshTodayEntries();
-            }
+        }
+
+        // ── Generic toast helper ────────────────────────────────────────────────
+        function showToast(msg, type = 'success') {
+            const colors = {
+                success: { bg:'#d4edda', color:'#155724', border:'#c3e6cb', icon:'fa-check-circle', iconColor:'#28a745' },
+                error:   { bg:'#f8d7da', color:'#721c24', border:'#f5c6cb', icon:'fa-times-circle',  iconColor:'#dc3545' },
+                warning: { bg:'#fff3cd', color:'#856404', border:'#ffeeba', icon:'fa-exclamation-triangle', iconColor:'#ffc107' },
+                info:    { bg:'#d1ecf1', color:'#0c5460', border:'#bee5eb', icon:'fa-info-circle',   iconColor:'#17a2b8' },
+            };
+            const c = colors[type] || colors.success;
+            const toast = document.createElement('div');
+            toast.style.cssText = `position:fixed;top:80px;left:50%;transform:translateX(-50%) scale(0.95);` +
+                `background:${c.bg};color:${c.color};border:1.5px solid ${c.border};` +
+                `padding:14px 28px;border-radius:12px;font-weight:600;z-index:99999;` +
+                `box-shadow:0 6px 24px rgba(0,0,0,.15);transition:opacity .35s ease, transform .25s ease;` +
+                `font-size:14px;text-align:center;max-width:480px;line-height:1.5;opacity:0;`;
+            toast.innerHTML = `<i class="fas ${c.icon}" style="color:${c.iconColor};margin-right:8px;"></i>${msg}`;
+            document.body.appendChild(toast);
+            // Animate in
+            requestAnimationFrame(() => {
+                toast.style.opacity = '1';
+                toast.style.transform = 'translateX(-50%) scale(1)';
+            });
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 400);
+            }, type === 'error' ? 6000 : 3500);
+        }
+
+        // ── Custom confirm modal (replaces browser confirm()) ───────────────────
+        function showConfirm(msg) {
+            return new Promise(resolve => {
+                const overlay = document.createElement('div');
+                overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99998;display:flex;align-items:center;justify-content:center;';
+                overlay.innerHTML = `
+                    <div style="background:#fff;border-radius:14px;padding:28px 32px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.2);text-align:center;">
+                        <div style="font-size:22px;color:#002F6C;margin-bottom:12px;"><i class="fas fa-question-circle"></i></div>
+                        <p style="font-size:15px;font-weight:600;color:#1e293b;margin:0 0 20px;">${msg}</p>
+                        <div style="display:flex;gap:12px;justify-content:center;">
+                            <button id="confirmNo"  style="padding:9px 24px;border-radius:8px;border:1.5px solid #cbd5e1;background:#f8fafc;color:#64748b;font-weight:600;cursor:pointer;font-size:13px;">Cancel</button>
+                            <button id="confirmYes" style="padding:9px 24px;border-radius:8px;border:none;background:#002F6C;color:#fff;font-weight:700;cursor:pointer;font-size:13px;">Submit</button>
+                        </div>
+                    </div>`;
+                document.body.appendChild(overlay);
+                overlay.querySelector('#confirmYes').onclick = () => { overlay.remove(); resolve(true); };
+                overlay.querySelector('#confirmNo').onclick  = () => { overlay.remove(); resolve(false); };
+            });
         }
 
         // ── Today's Entries (Table A) — auto-load + refresh after submit ──────
@@ -2304,41 +2357,52 @@ main.main {
             if (icon) icon.className = 'fas fa-spinner fa-spin';
 
             try {
-                // Read active filter values from the filter form
-                const form      = document.getElementById('fuelFiltersForm');
-                const dateFrom  = form?.querySelector('[name="date_from"]')?.value  || '<?= date('Y-m-d') ?>';
-                const dateTo    = form?.querySelector('[name="date_to"]')?.value    || '<?= date('Y-m-d') ?>';
-                const fuelType  = form?.querySelector('[name="fuel_type"]')?.value  || '';
-                const staffId   = form?.querySelector('[name="staff_id"]')?.value   || '';
-                const status    = form?.querySelector('[name="status"]')?.value     || '';
-                const shift     = form?.querySelector('[name="shift"]')?.value      || '';
+                // Read local sub-tab date and shift filter values
+                const dateVal  = document.getElementById('subtab_date')?.value || '<?= date('Y-m-d') ?>';
+                const shiftVal = document.getElementById('subtab_shift')?.value || '';
 
-                const params = new URLSearchParams({ action: 'summary', date_from: dateFrom, date_to: dateTo, auth_user_id: '<?= (int)$me['id'] ?>' });
-                if (fuelType) params.set('fuel_type', fuelType);
-                if (staffId)  params.set('staff_id',  staffId);
-                if (status)   params.set('status',    status);
-                if (shift)    params.set('shift',     shift);
+                const params = new URLSearchParams({ 
+                    action: 'summary', 
+                    date_from: dateVal, 
+                    date_to: dateVal, 
+                    auth_user_id: '<?= (int)$me['id'] ?>' 
+                });
+                if (shiftVal) params.set('shift', shiftVal);
 
                 const url  = `./api_fuel_readings.php?${params.toString()}`;
                 const res  = await fetch(url, {credentials:'same-origin'});
                 const json = await res.json();
 
-                if (!json.success || !json.meter_readings || json.meter_readings.length === 0) {
-                    body.innerHTML = `<div style="text-align:center;padding:32px;color:#94a3b8;font-size:13px;">
-                        <i class="fas fa-tachometer-alt" style="font-size:24px;display:block;margin-bottom:8px;"></i>
-                        No readings submitted yet today. Encode a reading above to get started.
+                const readings = json.meter_readings || [];
+
+                // ── Update Summary Cards Counts ──
+                const totalCount = readings.length;
+                const pendingCount = readings.filter(r => {
+                    const s = (r.status || '').toLowerCase().trim();
+                    return s === 'pending' || s === 'pending validation';
+                }).length;
+
+                const elEncoded = document.getElementById('summary_encoded_count');
+                const elPending = document.getElementById('summary_pending_count');
+                if (elEncoded) elEncoded.textContent = totalCount;
+                if (elPending) elPending.textContent = pendingCount;
+
+                if (!json.success) {
+                    body.innerHTML = `<div style="text-align:center;padding:40px;color:#ef4444;font-size:14px;background:#ffffff;">
+                        <i class="fas fa-exclamation-circle" style="font-size:28px;display:block;margin-bottom:10px;color:#f87171;"></i>
+                        Failed to load history entries.
                     </div>`;
                     if (icon) icon.className = 'fas fa-sync';
                     return;
                 }
 
-                window.todayEntriesData = json.meter_readings;
+                window.todayEntriesData = readings;
                 window.todayEntriesPage = 1;
                 renderTodayEntriesTable();
             } catch(e) {
-                body.innerHTML = `<div style="text-align:center;padding:24px;color:#ef4444;font-size:13px;">
-                    <i class="fas fa-exclamation-circle" style="display:block;margin-bottom:6px;"></i>
-                    Could not load entries. Please refresh.
+                body.innerHTML = `<div style="text-align:center;padding:30px;color:#ef4444;font-size:13px;background:#ffffff;">
+                    <i class="fas fa-exclamation-circle" style="display:block;margin-bottom:6px;font-size:20px;"></i>
+                    Could not load entries. Please check your connection or refresh the page.
                 </div>`;
             }
             if (icon) icon.className = 'fas fa-sync';
@@ -2349,7 +2413,6 @@ main.main {
         function renderTodayEntriesTable() {
             const body = document.getElementById('todayEntriesBody');
             const rows = window.todayEntriesData || [];
-            if (rows.length === 0) return;
             
             const totalRows = rows.length;
             const totalPages = Math.max(1, Math.ceil(totalRows / window.todayEntriesPageSize));
@@ -2360,60 +2423,138 @@ main.main {
             const pageRows = rows.slice(startIdx, endIdx);
 
             const statusMap = {
-                'pending validation': {color:'#b45309',label:'Pending'},
-                'pending':            {color:'#b45309',label:'Pending'},
-                'approved':           {color:'#15803d',label:'Approved'},
-                'verified':           {color:'#15803d',label:'Verified'},
-                'adjusted':           {color:'#1d4ed8',label:'Adjusted'},
-                'rejected':           {color:'#b91c1c',label:'Rejected'},
+                'pending validation': {color:'#d97706',label:'Pending Manager Validation'},
+                'pending':            {color:'#d97706',label:'Pending Manager Validation'},
+                'approved':           {color:'#16a34a',label:'Validated'},
+                'verified':           {color:'#16a34a',label:'Validated'},
+                'validated':          {color:'#16a34a',label:'Validated'},
+                'adjusted':           {color:'#2563eb',label:'Adjusted'},
+                'rejected':           {color:'#dc2626',label:'Rejected'},
             };
             function badge(s) {
                 const k = (s||'').toLowerCase().trim();
                 const c = statusMap[k] || {color:'#64748b',label:s||'—'};
-                return `<span style="color:${c.color};font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">${c.label}</span>`;
+                return `<span style="background:${c.color}15; color:${c.color}; border:1px solid ${c.color}30; font-weight:700; font-size:11px; padding:4px 8px; border-radius:6px; text-transform:uppercase; letter-spacing:.5px; white-space:nowrap;">${c.label}</span>`;
             }
             function fmt(n,d=2){ return Number(n||0).toLocaleString('en-PH',{minimumFractionDigits:d,maximumFractionDigits:d}); }
 
-            let html = `<div style="max-height:450px; overflow-y:auto; overflow-x:hidden; border-bottom:1px solid #e2e8f0;">
-                <table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed;">
-                    <thead style="position:sticky; top:0; z-index:10; background:#002F70;">
-                        <tr>
-                            <th style="padding:10px 13px;text-align:left;font-size:11px;font-weight:700;color:#ffffff;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #002255;white-space:nowrap;">Fuel Type</th>
-                            <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#ffffff;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #002255;white-space:nowrap;">Beginning</th>
-                            <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#ffffff;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #002255;white-space:nowrap;">Ending</th>
-                            <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#ffffff;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #002255;white-space:nowrap;">Cal</th>
-                            <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#ffffff;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #002255;white-space:nowrap;">Liters Sold</th>
-                            <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#ffffff;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #002255;white-space:nowrap;">Price/L</th>
-                            <th style="padding:10px 13px;text-align:right;font-size:11px;font-weight:700;color:#ffffff;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #002255;white-space:nowrap;">Amount</th>
-                            <th style="padding:10px 13px;text-align:left;font-size:11px;font-weight:700;color:#ffffff;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #002255;white-space:nowrap;width:20%;">Shift</th>
-                            <th style="padding:10px 13px;text-align:left;font-size:11px;font-weight:700;color:#ffffff;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #002255;white-space:nowrap;">Status</th>
+            function fmtTime(dtStr) {
+                if (!dtStr) return '—';
+                try {
+                    const parts = dtStr.trim().split(' ');
+                    if (parts.length < 2) return dtStr;
+                    const timeParts = parts[1].split(':');
+                    if (timeParts.length < 2) return parts[1];
+                    let hour = parseInt(timeParts[0], 10);
+                    const minute = timeParts[1];
+                    const ampm = hour >= 12 ? 'PM' : 'AM';
+                    hour = hour % 12;
+                    hour = hour ? hour : 12;
+                    return `${hour}:${minute} ${ampm}`;
+                } catch(e) {
+                    return dtStr;
+                }
+            }
+
+            function fmtDate(dtStr) {
+                if (!dtStr) return '—';
+                try {
+                    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                    const parts = dtStr.split('-');
+                    if (parts.length >= 3) {
+                        return `${months[parseInt(parts[1],10)-1]} ${parseInt(parts[2],10)}, ${parts[0]}`;
+                    }
+                    return dtStr;
+                } catch(e) { return dtStr; }
+            }
+            function fmtShift(shiftPeriod, shiftName) {
+                if (shiftName) return shiftName;
+                if (!shiftPeriod) return '—';
+                const sl = shiftPeriod.toLowerCase();
+                if (sl.includes('first') || sl === 'shift_1' || sl === '1') return 'First Shift';
+                if (sl.includes('second') || sl === 'shift_2' || sl === '2') return 'Second Shift';
+                return shiftPeriod;
+            }
+
+            const TH  = 'padding:8px 6px; font-size:10px; font-weight:700; color:#ffffff; text-transform:uppercase; letter-spacing:.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;';
+            const THR = TH + ' text-align:right;';
+
+            let html = `<div style="overflow-x:hidden; border-bottom:1px solid #e2e8f0; background:#ffffff;">
+                <table id="todayReadingsTable" style="width:100%; border-collapse:collapse; font-size:11px; text-align:left; table-layout:fixed;">
+                    <thead>
+                        <tr style="background:#002F70; border-bottom:2px solid #001f4d;">
+                            <th style="${TH}; width:8%;">Date</th>
+                            <th style="${TH}; width:7%;">Shift</th>
+                            <th style="${TH}; width:10%;">Pump / Fuel Type</th>
+                            <th style="${THR}; width:7%;">Beginning</th>
+                            <th style="${THR}; width:7%;">Ending</th>
+                            <th style="${THR}; width:6%;">Calibration</th>
+                            <th style="${THR}; width:7%;">Volume (L)</th>
+                            <th style="${THR}; width:6%;">Price/L</th>
+                            <th style="${THR}; width:8%;">Amount</th>
+                            <th style="${TH}; width:10%;">Encoded By</th>
+                            <th style="${TH}; width:12%;">Status</th>
+                            <th style="${TH}; width:12%;">Notes</th>
                         </tr>
                     </thead>
                     <tbody>`;
 
+            const escapeHtml = (str) => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+
             pageRows.forEach(r => {
-                const shiftLabel = r.shift_name || (r.shift_period ? r.shift_period.replace(/_/g,' ') : '—');
-                html += `<tr style="border-bottom:1px solid #f1f5f9;">
-                    <td style="padding:10px 13px;font-weight:700;color:#1e293b;">${r.fuel_type||'—'}</td>
-                    <td style="padding:10px 13px;text-align:right;font-variant-numeric:tabular-nums;">${fmt(r.beginning)}</td>
-                    <td style="padding:10px 13px;text-align:right;font-variant-numeric:tabular-nums;">${fmt(r.ending)}</td>
-                    <td style="padding:10px 13px;text-align:right;font-variant-numeric:tabular-nums;">${fmt(r.cal,3)}</td>
-                    <td style="padding:10px 13px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums;">${fmt(r.volume_liters)} L</td>
-                    <td style="padding:10px 13px;text-align:right;font-variant-numeric:tabular-nums;">₱${fmt(r.price_per_liter)}</td>
-                    <td style="padding:10px 13px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums;">₱${fmt(r.amount)}</td>
-                    <td style="padding:10px 13px;font-size:11px;color:#64748b;white-space:nowrap;">${shiftLabel}</td>
-                    <td style="padding:10px 13px;">${badge(r.status)}</td>
+                let staffNotes = (r.notes || '').trim();
+                let mgrNotes = (r.reject_reason || '').trim();
+                let tooltipText = '';
+                if (staffNotes) tooltipText += 'Staff: ' + staffNotes;
+                if (mgrNotes) tooltipText += (tooltipText ? '\n' : '') + 'Manager: ' + mgrNotes;
+
+                let notesCellContent = '—';
+                if (staffNotes && mgrNotes) {
+                    notesCellContent = `<div style="line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(tooltipText)}"><strong>S:</strong> ${escapeHtml(staffNotes)}<br><strong>M:</strong> ${escapeHtml(mgrNotes)}</div>`;
+                } else if (staffNotes) {
+                    notesCellContent = `<div style="line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(tooltipText)}">${escapeHtml(staffNotes)}</div>`;
+                } else if (mgrNotes) {
+                    notesCellContent = `<div style="line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#002F70;" title="${escapeHtml(tooltipText)}"><strong>M:</strong> ${escapeHtml(mgrNotes)}</div>`;
+                }
+
+                const dateStr = fmtDate(r.reading_date || r.transaction_date);
+                const shiftStr = fmtShift(r.shift_period, r.shift_name);
+                const fuelStr = r.fuel_type || '—';
+                const staffStr = r.staff_name || '—';
+
+                html += `<tr style="border-bottom:1px solid #f1f5f9; background:#ffffff; transition: background-color 0.15s ease;" onmouseover="this.style.backgroundColor='#f0f5ff';" onmouseout="this.style.backgroundColor='#ffffff';">
+                    <td style="padding:8px 6px; color:#1e293b; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${dateStr}">${dateStr}</td>
+                    <td style="padding:8px 6px; color:#334155; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${shiftStr}">${shiftStr}</td>
+                    <td style="padding:8px 6px; font-weight:700; color:#0f172a; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fuelStr}">${fuelStr}</td>
+                    <td style="padding:8px 6px; text-align:right; font-variant-numeric:tabular-nums; color:#1e293b; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.beginning)}">${fmt(r.beginning)}</td>
+                    <td style="padding:8px 6px; text-align:right; font-variant-numeric:tabular-nums; color:#1e293b; font-weight:600; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.ending)}">${fmt(r.ending)}</td>
+                    <td style="padding:8px 6px; text-align:right; font-variant-numeric:tabular-nums; color:#334155; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.cal,3)}">${fmt(r.cal,3)}</td>
+                    <td style="padding:8px 6px; text-align:right; font-weight:700; font-variant-numeric:tabular-nums; color:#1e293b; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.volume_liters)} L">${fmt(r.volume_liters)} L</td>
+                    <td style="padding:8px 6px; text-align:right; font-variant-numeric:tabular-nums; color:#334155; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="₱${fmt(r.price_per_liter)}">₱${fmt(r.price_per_liter)}</td>
+                    <td style="padding:8px 6px; text-align:right; font-weight:800; font-variant-numeric:tabular-nums; color:#0f172a; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="₱${fmt(r.amount)}">₱${fmt(r.amount)}</td>
+                    <td style="padding:8px 6px; color:#334155; font-weight:500; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${staffStr}">${staffStr}</td>
+                    <td style="padding:8px 6px; font-size:11px; overflow:visible; vertical-align:middle;">${badge(r.status)}</td>
+                    <td style="padding:8px 6px; color:#475569; font-size:11px; max-width:160px; overflow:hidden; vertical-align:middle;">${notesCellContent}</td>
                 </tr>`;
             });
+
+            if (pageRows.length === 0) {
+                html += `<tr>
+                    <td colspan="12" style="padding:40px; text-align:center; color:#94a3b8; font-size:14px; background:#ffffff;">
+                        <i class="fas fa-history" style="font-size:24px; display:block; margin-bottom:8px; color:#cbd5e1;"></i>
+                        No readings submitted for the selected filter criteria.
+                    </td>
+                </tr>`;
+            }
 
             html += `</tbody></table></div>`;
             
             // Pagination Footer
             html += `
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 20px; border-top:1px solid #e2e8f0; background:#fff; border-radius:0 0 12px 12px; font-size:13px; color:#475569;">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
                 <div style="display:flex; align-items:center; gap:8px;">
-                    <label style="margin:0; font-weight:400; color:#475569;">Rows per page:</label>
-                    <select onchange="window.todayEntriesPageSize=parseInt(this.value); window.todayEntriesPage=1; renderTodayEntriesTable();" style="padding:4px 24px 4px 8px; border:1px solid #cbd5e1; border-radius:4px; font-size:13px; background:#fff; color:#1e293b; outline:none; cursor:pointer;">
+                    <label style="margin:0; font-weight:500; color:#475569;">Rows per page:</label>
+                    <select onchange="window.todayEntriesPageSize=parseInt(this.value); window.todayEntriesPage=1; renderTodayEntriesTable();" style="padding:5px 24px 5px 8px; border:1.5px solid #cbd5e1; border-radius:6px; font-size:13px; background:#fff; color:#1e293b; outline:none; cursor:pointer;">
                         <option value="10" ${window.todayEntriesPageSize === 10 ? 'selected' : ''}>10</option>
                         <option value="20" ${window.todayEntriesPageSize === 20 ? 'selected' : ''}>20</option>
                         <option value="30" ${window.todayEntriesPageSize === 30 ? 'selected' : ''}>30</option>
@@ -2421,20 +2562,56 @@ main.main {
                         <option value="50" ${window.todayEntriesPageSize === 50 ? 'selected' : ''}>50</option>
                     </select>
                 </div>
-                <div style="display:flex; align-items:center; gap:8px;">
+                <div style="display:flex; align-items:center; gap:10px;">
                     <button onclick="if(window.todayEntriesPage>1){ window.todayEntriesPage--; renderTodayEntriesTable(); }" 
-                            style="width:28px; height:28px; background:#fff; border:1px solid #cbd5e1; border-radius:4px; cursor:${window.todayEntriesPage > 1 ? 'pointer' : 'not-allowed'}; color:${window.todayEntriesPage > 1 ? '#475569' : '#cbd5e1'}; display:flex; align-items:center; justify-content:center;">
+                            style="width:32px; height:32px; background:#fff; border:1.5px solid #cbd5e1; border-radius:6px; cursor:${window.todayEntriesPage > 1 ? 'pointer' : 'not-allowed'}; color:${window.todayEntriesPage > 1 ? '#475569' : '#cbd5e1'}; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            onmouseover="if(window.todayEntriesPage>1) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
                         <i class="fas fa-chevron-left"></i>
                     </button>
-                    <span style="color:#475569; font-size:13px; padding:0 4px;">Page ${window.todayEntriesPage} of ${totalPages}</span>
+                    <span style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page ${window.todayEntriesPage} of ${totalPages}</span>
                     <button onclick="if(window.todayEntriesPage<${totalPages}){ window.todayEntriesPage++; renderTodayEntriesTable(); }" 
-                            style="width:28px; height:28px; background:#fff; border:1px solid #cbd5e1; border-radius:4px; cursor:${window.todayEntriesPage < totalPages ? 'pointer' : 'not-allowed'}; color:${window.todayEntriesPage < totalPages ? '#475569' : '#cbd5e1'}; display:flex; align-items:center; justify-content:center;">
+                            style="width:32px; height:32px; background:#fff; border:1.5px solid #cbd5e1; border-radius:6px; cursor:${window.todayEntriesPage < totalPages ? 'pointer' : 'not-allowed'}; color:${window.todayEntriesPage < totalPages ? '#475569' : '#cbd5e1'}; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            onmouseover="if(window.todayEntriesPage<${totalPages}) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
                         <i class="fas fa-chevron-right"></i>
                     </button>
                 </div>
             </div>`;
             
             body.innerHTML = html;
+        }
+
+        // ── Export Sub-Tab Readings ──
+        function exportTodayReadings(format) {
+            const tableId = 'todayReadingsTable';
+            const tableEl = document.getElementById(tableId);
+            if (!tableEl) {
+                alert('No data available to export.');
+                return;
+            }
+            const dateVal = document.getElementById('subtab_date')?.value || '<?= date('Y-m-d') ?>';
+            const shiftVal = document.getElementById('subtab_shift')?.value || 'all_shifts';
+            const filename = `meter_readings_history_${dateVal}_${shiftVal}`;
+            const title = `Petron Fuel Meter Readings History Report (${dateVal} - Shift: ${shiftVal.toUpperCase()})`;
+            
+            if (format === 'excel') {
+                if (typeof exportTableToExcel === 'function') {
+                    exportTableToExcel(tableId, filename + '.xls');
+                } else {
+                    alert('Excel export function is not loaded.');
+                }
+            } else if (format === 'csv') {
+                if (typeof exportTableToCSV === 'function') {
+                    exportTableToCSV(tableId, filename + '.csv');
+                } else {
+                    alert('CSV export function is not loaded.');
+                }
+            } else if (format === 'pdf') {
+                if (typeof exportTableToPDF === 'function') {
+                    exportTableToPDF(tableId, title);
+                } else {
+                    alert('PDF export function is not loaded.');
+                }
+            }
         }
 
         function refreshTodayEntries() { loadTodayEntries(); }

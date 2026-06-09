@@ -215,7 +215,7 @@ if ($action === 'assign_admin') {
         if (!$station_name) { $pdo->rollBack(); echo json_encode(['ok'=>false,'error'=>'Station not found.']); exit; }
 
         // Verify admin
-        $adm = $pdo->prepare("SELECT name, station_id FROM users WHERE id=? AND LOWER(role) IN ('admin','station admin','station_admin') AND status='active' LIMIT 1");
+        $adm = $pdo->prepare("SELECT name, station_id FROM users WHERE user_id =? AND LOWER(role) IN ('admin','station admin','station_admin') AND status = 'Active' LIMIT 1");
         $adm->execute([$admin_id]);
         $admin = $adm->fetch(PDO::FETCH_ASSOC);
         if (!$admin) { $pdo->rollBack(); echo json_encode(['ok'=>false,'error'=>'Admin not found or inactive.']); exit; }
@@ -226,7 +226,7 @@ if ($action === 'assign_admin') {
         $pdo->prepare("UPDATE users SET station_id=NULL WHERE station_id=? AND LOWER(role) IN ('admin','station admin','station_admin')")->execute([$station_id]);
 
         // Assign new admin
-        $pdo->prepare("UPDATE users SET station_id=? WHERE id=?")->execute([$station_id, $admin_id]);
+        $pdo->prepare("UPDATE users SET station_id=? WHERE user_id =?")->execute([$station_id, $admin_id]);
 
         $pdo->commit();
 
@@ -314,8 +314,8 @@ if ($get_action === 'get_station_profile') {
         // Station base info
         $st = $pdo->prepare(
             "SELECT s.id, s.name, s.location, s.status, s.created_at,
-                    (SELECT u.name  FROM users u WHERE u.station_id = s.id AND LOWER(u.role) IN ('admin','station admin','station_admin') AND u.status='active' LIMIT 1) AS admin_name,
-                    (SELECT COUNT(*) FROM users u WHERE u.station_id = s.id AND u.status='active') AS active_users
+                    (SELECT u.name  FROM users u WHERE u.station_id = s.id AND LOWER(u.role) IN ('admin','station admin','station_admin') AND u.status = 'Active' LIMIT 1) AS admin_name,
+                    (SELECT COUNT(*) FROM users u WHERE u.station_id = s.id AND u.status = 'Active') AS active_users
              FROM stations s WHERE s.id = ? LIMIT 1"
         );
         $st->execute([$station_id]);

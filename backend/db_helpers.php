@@ -35,7 +35,7 @@ function get_user_name_sql($alias, $result_alias = 'user_name') {
  * @return string User's full name or username as fallback
  * 
  * @example
- * $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+ * $stmt = $pdo->prepare("SELECT * FROM users WHERE user_id = ?");
  * $stmt->execute([$user_id]);
  * $user = $stmt->fetch(PDO::FETCH_ASSOC);
  * echo get_user_display_name($user);

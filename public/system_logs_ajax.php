@@ -303,7 +303,7 @@ switch ($action) {
             $stats['modules'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             // Get users for dropdown
-            $users_query = "SELECT DISTINCT id, username, name FROM users WHERE status = 'active' ORDER BY username";
+            $users_query = "SELECT DISTINCT id, username, name FROM users WHERE status = 'Active' ORDER BY username";
             $stmt = $pdo->prepare($users_query);
             $stmt->execute();
             $stats['users'] = $stmt->fetchAll(PDO::FETCH_ASSOC);

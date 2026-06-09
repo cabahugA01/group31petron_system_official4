@@ -267,7 +267,7 @@ class ReportsOperations {
                 $stmt->execute([$this->station_id]);
                 $manager = $stmt->fetch(PDO::FETCH_ASSOC);
                 
-                if (!$manager || !password_verify($manager_password, $manager['password'])) {
+                if (!$manager || !password_verify($manager_password, $manager['password_hash'])) {
                     throw new Exception('Invalid manager password verification');
                 }
             }

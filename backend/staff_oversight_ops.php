@@ -214,7 +214,7 @@ class StaffOversightOps {
         } catch(Exception $e) {}
 
         foreach ($items as &$item) {
-            $u = $this->pdo->prepare("SELECT name FROM users WHERE id = ?");
+            $u = $this->pdo->prepare("SELECT name FROM users WHERE user_id = ?");
             $u->execute([$item['staff_id']]);
             $item['staff'] = $u->fetchColumn() ?: 'Unknown';
             $item['status'] = 'Flagged';
@@ -267,7 +267,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 echo json_encode(['success' => true, 'data' => $result]);
                 break;
             case 'staff_list':
-                $stmt = $pdo->prepare("SELECT id, name FROM users WHERE station_id = ? AND role IN ('staff', 'cashier', 'mechanic')");
+                $stmt = $pdo->prepare("SELECT `user_id`, name FROM users WHERE station_id = ? AND role IN ('staff', 'cashier', 'mechanic')");
                 $stmt->execute([$station_id]);
                 echo json_encode(['success' => true, 'data' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
                 break;

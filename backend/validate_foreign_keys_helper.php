@@ -101,7 +101,7 @@ function validateUserId($pdo, $user_id) {
         return false;
     }
     
-    $stmt = $pdo->prepare("SELECT id FROM users WHERE id = ?");
+    $stmt = $pdo->prepare("SELECT user_id FROM users WHERE user_id = ?");
     $stmt->execute([$user_id]);
     return $stmt->fetch() !== false;
 }

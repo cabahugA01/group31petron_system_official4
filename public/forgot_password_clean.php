@@ -23,7 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             // Auto-detect column names
             $cols = array_column($pdo->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_ASSOC), 'Field');
-            $uid_col = in_array('user_id', $cols) ? 'user_id' : 'id';
+            $uid_col = 'id';
             
             // Detect status format (Active vs active)
             $all_status = $pdo->query("SELECT DISTINCT status FROM users")->fetchAll(PDO::FETCH_COLUMN);
@@ -115,178 +115,79 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             justify-content: center;
             position: relative;
             overflow: hidden;
-            background: #000814;
+            background: transparent;
         }
 
-        /* 4D Animated Background Layers */
+        /* ── Base Image Background only ── */
         .bg-layer {
             position: fixed;
             inset: 0;
             z-index: 0;
+            display: none !important;
         }
 
         .bg-image {
-            background: url('../assets/img/background.jpg') center/cover no-repeat;
-            filter: brightness(0.6) blur(0px);
+            display: block !important;
+            background: url('../assets/img/background.jpg') center center / cover no-repeat;
             z-index: 1;
         }
 
-        .bg-gradient {
-            background: linear-gradient(
-                135deg,
-                rgba(0, 47, 108, 0.3) 0%,
-                rgba(227, 6, 19, 0.15) 25%,
-                rgba(0, 15, 45, 0.4) 50%,
-                rgba(0, 80, 180, 0.2) 75%,
-                rgba(0, 26, 61, 0.35) 100%
-            );
-            background-size: 400% 400%;
-            animation: gradientShift 15s ease infinite;
-            z-index: 2;
-            mix-blend-mode: multiply;
-            opacity: 0.7;
-        }
-
-        @keyframes gradientShift {
-            0%   { background-position: 0% 50%; }
-            25%  { background-position: 50% 100%; }
-            50%  { background-position: 100% 50%; }
-            75%  { background-position: 50% 0%; }
-            100% { background-position: 0% 50%; }
-        }
-
-        .bg-particles {
-            z-index: 3;
-            pointer-events: none;
-        }
-
-        .particle {
-            position: absolute;
-            border-radius: 50%;
-            background: radial-gradient(circle, rgba(96, 165, 250, 0.8), transparent);
-            animation: float linear infinite;
-            opacity: 0;
-        }
-
-        .particle:nth-child(1) { width: 4px; height: 4px; left: 10%; top: 80%; animation-duration: 8s; box-shadow: 0 0 20px rgba(96, 165, 250, 0.6); }
-        .particle:nth-child(2) { width: 6px; height: 6px; left: 20%; top: 60%; animation-duration: 12s; animation-delay: 1s; box-shadow: 0 0 25px rgba(227, 6, 19, 0.5); background: radial-gradient(circle, rgba(227, 6, 19, 0.7), transparent); }
-        .particle:nth-child(3) { width: 3px; height: 3px; left: 35%; top: 90%; animation-duration: 10s; animation-delay: 2s; box-shadow: 0 0 15px rgba(96, 165, 250, 0.5); }
-        .particle:nth-child(4) { width: 5px; height: 5px; left: 50%; top: 85%; animation-duration: 14s; animation-delay: 0.5s; box-shadow: 0 0 22px rgba(147, 197, 253, 0.6); }
-        .particle:nth-child(5) { width: 4px; height: 4px; left: 65%; top: 75%; animation-duration: 11s; animation-delay: 1.5s; box-shadow: 0 0 18px rgba(96, 165, 250, 0.5); }
-        .particle:nth-child(6) { width: 7px; height: 7px; left: 80%; top: 70%; animation-duration: 13s; animation-delay: 2.5s; box-shadow: 0 0 28px rgba(227, 6, 19, 0.6); background: radial-gradient(circle, rgba(227, 6, 19, 0.8), transparent); }
-        .particle:nth-child(7) { width: 3px; height: 3px; left: 90%; top: 80%; animation-duration: 9s; animation-delay: 1.8s; box-shadow: 0 0 16px rgba(96, 165, 250, 0.4); }
-        .particle:nth-child(8) { width: 5px; height: 5px; left: 15%; top: 50%; animation-duration: 15s; animation-delay: 3s; box-shadow: 0 0 24px rgba(147, 197, 253, 0.7); }
-
-        @keyframes float {
-            0% { transform: translateY(0) translateX(0) scale(1); opacity: 0; }
-            10% { opacity: 1; }
-            90% { opacity: 1; }
-            100% { transform: translateY(-100vh) translateX(30px) scale(1.5); opacity: 0; }
-        }
-
-        .bg-orbs {
-            z-index: 4;
-            pointer-events: none;
-            opacity: 0.6;
-        }
-
-        .orb {
-            position: absolute;
-            border-radius: 50%;
-            filter: blur(80px);
-            opacity: 0.25;
-            animation: orbFloat ease-in-out infinite alternate;
-        }
-
-        .orb-1 {
-            width: 400px;
-            height: 400px;
-            background: radial-gradient(circle, rgba(0, 47, 108, 0.4), transparent);
-            top: -10%;
-            left: -10%;
-            animation-duration: 8s;
-        }
-
-        .orb-2 {
-            width: 350px;
-            height: 350px;
-            background: radial-gradient(circle, rgba(227, 6, 19, 0.3), transparent);
-            bottom: -10%;
-            right: -10%;
-            animation-duration: 10s;
-            animation-delay: 1s;
-        }
-
-        @keyframes orbFloat {
-            0% { transform: translate(0, 0) scale(1); }
-            100% { transform: translate(20px, -20px) scale(1.1); }
-        }
-
-        .bg-grid {
-            background-image: 
-                linear-gradient(rgba(96, 165, 250, 0.02) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(96, 165, 250, 0.02) 1px, transparent 1px);
-            background-size: 50px 50px;
-            z-index: 5;
-            pointer-events: none;
-            animation: gridMove 20s linear infinite;
-        }
-
-        @keyframes gridMove {
-            0% { background-position: 0 0; }
-            100% { background-position: 50px 50px; }
-        }
-
         .login-wrap {
-            width: 100%;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-            z-index: 10;
             position: relative;
+            z-index: 10;
+            width: 100%;
+            max-width: 520px;
+            padding: 0 20px;
         }
 
         .login-card {
-            background: linear-gradient(160deg, rgba(0,15,45,.88) 0%, rgba(0,25,65,.92) 100%);
-            backdrop-filter: blur(32px) saturate(1.8) brightness(1.1);
-            width: 100%;
-            max-width: 520px;
+            background: linear-gradient(160deg, #002F6C 0%, #001a3d 60%, #A80016 100%);
             border-radius: 28px;
             padding: 54px 52px 46px;
             position: relative;
+            overflow: visible;
+            color: #ffffff;
             box-shadow:
-                0 2px 0 rgba(255,255,255,.08) inset,
-                0 -1px 0 rgba(0,0,0,.4) inset,
-                0 8px 32px rgba(0,0,0,.5),
-                0 32px 80px rgba(0,0,0,.6),
-                0 0 0 1px rgba(255,255,255,.1),
-                0 0 60px var(--blue-glow);
-            animation: cardGlow 4s ease-in-out infinite alternate;
+                0 8px 32px rgba(0,0,0,.40),
+                0 24px 56px rgba(0,0,0,.30);
+            width: 100%;
         }
 
         .login-card::before {
             content: '';
             position: absolute;
-            inset: -2px;
-            border-radius: 30px;
-            background: linear-gradient(135deg, rgba(0,100,255,.5), rgba(227,6,19,.4), rgba(0,60,180,.5));
-            background-size: 300% 300%;
-            animation: borderAnim 5s ease infinite;
-            z-index: -1;
+            top: 10%; left: -18px;
+            width: 12px; height: 80%;
+            background: linear-gradient(180deg, rgba(0,100,255,0) 0%, rgba(0,100,255,0.9) 30%, rgba(0,150,255,1) 50%, rgba(0,100,255,0.9) 70%, rgba(0,100,255,0) 100%);
+            border-radius: 50%;
+            filter: blur(8px);
+            animation: sideGlowBlue 3s ease-in-out infinite alternate;
+            z-index: 2;
         }
 
-        @keyframes borderAnim {
-            0%   { background-position: 0% 50%; }
-            50%  { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
+        .login-card::after {
+            content: '';
+            position: absolute;
+            top: 10%; right: -18px;
+            width: 12px; height: 80%;
+            background: linear-gradient(180deg, rgba(227,6,19,0) 0%, rgba(227,6,19,0.9) 30%, rgba(255,40,40,1) 50%, rgba(227,6,19,0.9) 70%, rgba(227,6,19,0) 100%);
+            border-radius: 50%;
+            filter: blur(8px);
+            animation: sideGlowRed 3s ease-in-out infinite alternate;
+            z-index: 2;
         }
 
-        @keyframes cardGlow {
-            from { box-shadow: 0 2px 0 rgba(255,255,255,.08) inset, 0 -1px 0 rgba(0,0,0,.4) inset, 0 8px 32px rgba(0,0,0,.5), 0 32px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.1), 0 0 60px var(--blue-glow); }
-            to   { box-shadow: 0 2px 0 rgba(255,255,255,.08) inset, 0 -1px 0 rgba(0,0,0,.4) inset, 0 8px 32px rgba(0,0,0,.5), 0 32px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.1), 0 0 80px var(--red-glow); }
+        @keyframes sideGlowBlue {
+            0%   { opacity: 0.4; height: 60%; top: 20%; filter: blur(8px); }
+            50%  { opacity: 1;   height: 85%; top: 8%;  filter: blur(6px); }
+            100% { opacity: 0.6; height: 70%; top: 15%; filter: blur(10px); }
         }
+        @keyframes sideGlowRed {
+            0%   { opacity: 0.6; height: 70%; top: 15%; filter: blur(10px); }
+            50%  { opacity: 1;   height: 85%; top: 8%;  filter: blur(6px); }
+            100% { opacity: 0.4; height: 60%; top: 20%; filter: blur(8px); }
+        }
+
 
         .brand {
             display: flex;
@@ -506,7 +407,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="login-card">
         <!-- Branding -->
         <div class="brand">
-            <img src="../assets/img/Petron Logo.png" alt="Petron" class="brand-logo">
+            <img src="../assets/img/Petron Logo.png?v=2" alt="Petron" class="brand-logo">
             <span class="brand-tagline">Station Management System</span>
         </div>
 

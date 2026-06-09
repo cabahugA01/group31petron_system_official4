@@ -23,7 +23,7 @@ if ($get_action === 'export_audit') {
                 a.old_value, a.new_value, a.changed_by_role, a.ip_address,
                 u.name AS user_name
          FROM module_config_audit a
-         LEFT JOIN users u ON u.id = a.changed_by
+         LEFT JOIN users u ON u.user_id = a.changed_by
          ORDER BY a.timestamp DESC LIMIT 1000"
     )->fetchAll(PDO::FETCH_ASSOC);
 
@@ -54,7 +54,7 @@ if ($get_action === 'get_audit') {
             "SELECT a.timestamp, a.module_key, a.config_key, a.action_type,
                     a.old_value, a.new_value, u.name AS user_name
              FROM module_config_audit a
-             LEFT JOIN users u ON u.id = a.changed_by
+             LEFT JOIN users u ON u.user_id = a.changed_by
              ORDER BY a.timestamp DESC LIMIT 50"
         )->fetchAll(PDO::FETCH_ASSOC);
         echo json_encode(['ok'=>true,'rows'=>$rows]);

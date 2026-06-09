@@ -108,7 +108,7 @@ if ($section === 'technical') {
     $sql = "SELECT al.id, al.action_type, al.entity_type, al.action_details, al.status, al.ip_address, al.created_at,
                    u.name AS user_name, u.role AS user_role
             FROM audit_logs al
-            LEFT JOIN users u ON u.id = al.user_id
+            LEFT JOIN users u ON u.user_id = al.user_id
             WHERE DATE(al.created_at) BETWEEN ? AND ?";
     $params = [$date_from, $date_to];
     if ($severity_filter) { $sql .= " AND al.status = ?"; $params[] = $severity_filter; }
@@ -127,7 +127,7 @@ if ($section === 'security') {
         "SELECT al.user_id, u.name AS user_name, u.role AS user_role,
                 al.ip_address, al.action_details, al.created_at
          FROM audit_logs al
-         LEFT JOIN users u ON u.id = al.user_id
+         LEFT JOIN users u ON u.user_id = al.user_id
          WHERE al.action_type IN ('login_failed','Login Failed','failed_login')
            AND DATE(al.created_at) BETWEEN ? AND ?
          ORDER BY al.created_at DESC LIMIT 100",
@@ -139,7 +139,7 @@ if ($section === 'security') {
             "SELECT al.user_id, u.name AS user_name, u.role AS user_role,
                     NULL AS ip_address, al.details AS action_details, al.created_at
              FROM activity_logs al
-             LEFT JOIN users u ON u.id = al.user_id
+             LEFT JOIN users u ON u.user_id = al.user_id
              WHERE al.action = 'Login Failed'
                AND DATE(al.created_at) BETWEEN ? AND ?
              ORDER BY al.created_at DESC LIMIT 100",
@@ -151,7 +151,7 @@ if ($section === 'security') {
         "SELECT al.user_id, u.name AS user_name, u.role AS user_role,
                 al.ip_address, al.created_at
          FROM audit_logs al
-         LEFT JOIN users u ON u.id = al.user_id
+         LEFT JOIN users u ON u.user_id = al.user_id
          WHERE al.action_type IN ('login','login_success','Login')
            AND al.status = 'success'
            AND DATE(al.created_at) BETWEEN ? AND ?
@@ -179,7 +179,7 @@ if ($section === 'security') {
         "SELECT al.user_id, u.name AS user_name, u.role AS user_role,
                 al.action_type, al.entity_type, al.action_details, al.ip_address, al.created_at
          FROM audit_logs al
-         LEFT JOIN users u ON u.id = al.user_id
+         LEFT JOIN users u ON u.user_id = al.user_id
          WHERE al.status IN ('denied','forbidden','unauthorized')
            AND DATE(al.created_at) BETWEEN ? AND ?
          ORDER BY al.created_at DESC LIMIT 50",
@@ -197,7 +197,7 @@ if ($section === 'developer_audit') {
                 al.action_type, al.entity_type AS module, al.action_details,
                 al.old_values, al.new_values, al.ip_address, al.created_at
          FROM audit_logs al
-         LEFT JOIN users u ON u.id = al.user_id
+         LEFT JOIN users u ON u.user_id = al.user_id
          WHERE al.action_type IN ('config_change','update_config','module_update','setting_change',
                                   'price_change','update','create','delete','bulk_update')
            AND DATE(al.created_at) BETWEEN ? AND ?
@@ -219,7 +219,7 @@ if ($section === 'developer_audit') {
         "SELECT u.name AS user_name, u.role AS user_role, COUNT(*) AS total_changes,
                 MAX(al.created_at) AS last_change
          FROM audit_logs al
-         LEFT JOIN users u ON u.id = al.user_id
+         LEFT JOIN users u ON u.user_id = al.user_id
          WHERE DATE(al.created_at) BETWEEN ? AND ?
            AND al.action_type NOT IN ('login','login_failed','view_report','Login','Login Failed')
          GROUP BY al.user_id, u.name, u.role
@@ -238,7 +238,7 @@ if ($section === 'audit_trail') {
                    al.action_type, al.entity_type, al.action_details,
                    al.old_values, al.new_values, al.ip_address, al.status, al.created_at
             FROM audit_logs al
-            LEFT JOIN users u ON u.id = al.user_id
+            LEFT JOIN users u ON u.user_id = al.user_id
             WHERE DATE(al.created_at) BETWEEN ? AND ?";
     $params = [$date_from, $date_to];
     if ($user_filter)     { $sql .= " AND al.user_id = ?";          $params[] = $user_filter; }
@@ -261,7 +261,7 @@ if ($section === 'audit_trail') {
     // All users for filter dropdown
     $trail_data['users'] = rpt_rows($pdo,
         "SELECT DISTINCT u.id, u.name, u.role FROM audit_logs al
-         LEFT JOIN users u ON u.id = al.user_id
+         LEFT JOIN users u ON u.user_id = al.user_id
          WHERE u.id IS NOT NULL ORDER BY u.name");
 }
 

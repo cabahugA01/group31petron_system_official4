@@ -41,7 +41,7 @@ $total_pumps = 0; $calibrated_pumps = 0; $active_pumps = 0; $cal_adj_count = 0;
 try {
     $sc_sql = "SELECT
         COUNT(*) as total,
-        SUM(CASE WHEN status='Active' THEN 1 ELSE 0 END) as active,
+        SUM(CASE WHEN status = 'Active' THEN 1 ELSE 0 END) as active,
         SUM(CASE WHEN calibration_value IS NOT NULL AND calibration_value > 0 THEN 1 ELSE 0 END) as calibrated
         FROM fuel_pumps";
     if ($filter_station > 0) {
@@ -116,7 +116,7 @@ try {
 $stations = [];
 if ($role === 'superadmin') {
     try {
-        $stmt = $pdo->query("SELECT id, name FROM stations WHERE status='active' ORDER BY name");
+        $stmt = $pdo->query("SELECT id, name FROM stations WHERE status = 'Active' ORDER BY name");
         $stations = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {}
 }

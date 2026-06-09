@@ -344,7 +344,7 @@ $staff_colors = ['#039be5', '#7986cb', '#33b679', '#8e24aa', '#e67c73', '#f6bf26
 
 try {
     // Load staff list with assigned colors
-    $staff_stmt = $pdo->prepare("SELECT id, name FROM users WHERE station_id = ? AND role IN ('staff','cashier','pump_attendant') AND status = 'active' ORDER BY name");
+    $staff_stmt = $pdo->prepare("SELECT `user_id`, name FROM users WHERE station_id = ? AND role IN ('staff','cashier','pump_attendant') AND status = 'Active' ORDER BY name");
     $staff_stmt->execute([$station_id]);
     $all_staff = $staff_stmt->fetchAll(PDO::FETCH_ASSOC);
     
