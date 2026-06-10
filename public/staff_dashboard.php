@@ -594,7 +594,7 @@ try {
             COALESCE(jo.validation_status, jo.status)                      AS display_status,
             jo.notes
         FROM job_orders jo
-        LEFT JOIN users u      ON u.user_id  = jo.assigned_mechanic_id
+        LEFT JOIN users u      ON u.id = jo.assigned_mechanic_id
         LEFT JOIN mechanics m  ON m.id  = jo.assigned_mechanic_id
         LEFT JOIN customers c  ON c.id  = jo.customer_id
         WHERE jo.station_id = ?

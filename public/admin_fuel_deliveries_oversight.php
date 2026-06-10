@@ -78,7 +78,8 @@ try {
     $stmt = $pdo->prepare("SELECT fd.id, fd.delivery_date, fd.fuel_type, fd.supplier,
         fd.invoice_no, fd.delivery_liters, fd.tanker_number, fd.status,
         fd.notes, fd.created_at, fd.verified_at,
-        staff.name AS received_by_name, mgr.name AS verified_by_name,
+        COALESCE(NULLIF(CONCAT(TRIM(COALESCE(staff.first_name,'')), ' ', TRIM(COALESCE(staff.last_name,''))), ' '), staff.username, 'Unknown') AS received_by_name,
+        COALESCE(NULLIF(CONCAT(TRIM(COALESCE(mgr.first_name,'')), ' ', TRIM(COALESCE(mgr.last_name,''))), ' '), mgr.username, '—') AS verified_by_name,
         s.name AS station_name
         FROM fuel_deliveries fd
         LEFT JOIN users staff ON fd.received_by = staff.id

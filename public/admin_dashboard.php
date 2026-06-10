@@ -282,7 +282,7 @@ foreach ($del_events as $x) {
 $shift_events = adm_rows($pdo, "
     SELECT ss.id, ss.shift, ss.status, ss.scheduled_date AS edate, u.name AS sname 
     FROM staff_schedules ss 
-    JOIN users u ON u.user_id = ss.user_id 
+    JOIN users u ON u.id = ss.user_id 
     WHERE u.station_id = ? AND ss.scheduled_date BETWEEN ? AND ?
 ", [$station_id, $start_of_week, $end_of_week]);
 foreach ($shift_events as $x) {
@@ -298,7 +298,7 @@ foreach ($shift_events as $x) {
 $task_events = adm_rows($pdo, "
     SELECT st.id, st.task, st.priority, st.status, st.due_date AS edate, u.name AS sname 
     FROM staff_tasks st 
-    JOIN users u ON u.user_id = st.user_id 
+    JOIN users u ON u.id = st.user_id 
     WHERE u.station_id = ? AND st.due_date BETWEEN ? AND ?
 ", [$station_id, $start_of_week, $end_of_week]);
 foreach ($task_events as $x) {
@@ -348,7 +348,7 @@ foreach ($manager_actions as $x) {
 // 8. AUDIT TRAIL DATA (Managers, Staff, Admins. Exclude SuperAdmin)
 // ══════════════════════════════════════════════════════════
 $audit_trail_data = adm_rows($pdo, "
-    SELECT al.id, al.created_at, al.user_id, u.username, u.role, u.name AS user_name, al.action_type, al.entity_type AS module, al.action_details AS remarks, al.ip_address, al.user_agent
+    SELECT al.id, al.created_at, al.user_id, u.username, u.role, COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS user_name, al.action_type, al.entity_type AS module, al.action_details AS remarks, al.ip_address, al.user_agent
     FROM audit_logs al
     JOIN users u ON al.user_id = u.id
     WHERE u.station_id = ? AND u.role IN ('Manager', 'Staff', 'Admin')

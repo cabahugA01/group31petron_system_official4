@@ -61,10 +61,10 @@ $total_amount = 0.0;
 
 // Merchandise APPROVED transactions
 $mt_status_col = vt_has($mt_cols, 'validation_status') ? 'mt.validation_status' : "'Approved'";
-$mt_staff_col  = vt_has($mt_cols, 'staff_id') ? 'u.name' : "'Unknown'";
+$mt_staff_col  = vt_has($mt_cols, 'staff_id') ? "COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown')" : "'Unknown'";
 $mt_date_col   = "CASE WHEN mt.transaction_date > '2000-01-01' THEN mt.transaction_date ELSE mt.created_at END";
 $mt_paid_col   = vt_has($mt_cols, 'amount_paid') ? 'mt.amount_paid' : 'NULL';
-$mt_vby_col    = vt_has($mt_cols, 'validated_by') ? 'v.name' : "'N/A'";
+$mt_vby_col    = vt_has($mt_cols, 'validated_by') ? "COALESCE(NULLIF(CONCAT(v.first_name,' ',v.last_name),' '), v.username, 'N/A')" : "'N/A'";
 
 $mt_where = "WHERE mt.station_id = ? AND LOWER(TRIM(COALESCE(mt.validation_status,''))) = 'approved'";
 $mt_params = [$station_id];
@@ -99,8 +99,8 @@ try {
             COALESCE({$mt_vby_col},'N/A') AS validated_by,
             'merchandise_transactions' AS _source
         FROM merchandise_transactions mt
-        LEFT JOIN users u ON u.user_id = mt.staff_id
-        LEFT JOIN users v ON v.user_id = mt.validated_by
+        LEFT JOIN users u ON u.id = mt.staff_id
+        LEFT JOIN users v ON v.id = mt.validated_by
         {$mt_where}
         ORDER BY txn_date DESC
         LIMIT 500
@@ -115,7 +115,7 @@ $jo_staff_col  = vt_has($jo_cols, 'created_by') ? 'COALESCE(jo.created_by, jo.us
 $jo_pay_col    = vt_has($jo_cols, 'payment_method') ? 'COALESCE(jo.payment_method,\'N/A\')' : "'N/A'";
 $jo_cost_col   = vt_has($jo_cols, 'total_cost') ? 'COALESCE(jo.total_cost,0)' : 'COALESCE(jo.estimated_cost,0)';
 $jo_paid_col   = vt_has($jo_cols, 'amount_paid') ? 'jo.amount_paid' : 'NULL';
-$jo_vby_col    = vt_has($jo_cols, 'validated_by') ? 'v.name' : "'N/A'";
+$jo_vby_col    = vt_has($jo_cols, 'validated_by') ? "COALESCE(NULLIF(CONCAT(v.first_name,' ',v.last_name),' '), v.username, 'N/A')" : "'N/A'";
 
 $jo_where = "WHERE jo.station_id = ? AND LOWER(TRIM(COALESCE({$jo_status_col},''))) = 'approved'";
 $jo_params = [$station_id];
@@ -148,12 +148,12 @@ try {
             {$jo_pay_col} AS payment_method,
             jo.created_at AS txn_date,
             COALESCE(NULLIF(TRIM({$jo_status_col}),''),'Approved') AS validation_status,
-            COALESCE(u.name,'Unknown') AS staff_name,
+            COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS staff_name,
             COALESCE({$jo_vby_col},'N/A') AS validated_by,
             'job_orders' AS _source
         FROM job_orders jo
-        LEFT JOIN users u ON u.user_id = {$jo_staff_col}
-        LEFT JOIN users v ON v.user_id = jo.validated_by
+        LEFT JOIN users u ON u.id = COALESCE(jo.created_by, jo.user_id)
+        LEFT JOIN users v ON v.id = jo.validated_by
         {$jo_where}
         ORDER BY jo.created_at DESC
         LIMIT 500

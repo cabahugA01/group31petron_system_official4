@@ -29,106 +29,189 @@ if ($station_id <= 0) {
 // ── POST Actions ──────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['export'])) {
     $action = trim($_POST['action'] ?? '');
-    $tx_id  = (int)($_POST['transaction_id'] ?? 0);
     
     try {
         $pdo->beginTransaction();
         
-        if ($action === 'approve' && $tx_id > 0) {
+        if ($action === 'approve') {
+            $ids_str = trim($_POST['transaction_id'] ?? '');
+            $ids = array_filter(array_map('intval', explode(',', $ids_str)));
             $notes = trim($_POST['approve_notes'] ?? '');
             
-            // Approve transaction
-            $stmt = $pdo->prepare("UPDATE fuel_transactions 
-                                   SET status = 'Verified', 
-                                       validated_by = ?, 
-                                       validated_at = NOW(),
-                                       reject_reason = ? 
-                                   WHERE id = ? AND station_id = ? AND LOWER(status) LIKE '%pending%'");
-            $stmt->execute([$me['id'], $notes !== '' ? $notes : null, $tx_id, $station_id]);
+            if (empty($ids)) {
+                throw new Exception("No transactions specified for approval.");
+            }
+            
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $sql = "UPDATE fuel_transactions 
+                    SET status = 'Verified', 
+                        validated_by = ?, 
+                        validated_at = NOW(),
+                        reject_reason = ? 
+                    WHERE id IN ($placeholders) AND station_id = ? AND LOWER(status) LIKE '%pending%'";
+            
+            $stmt = $pdo->prepare($sql);
+            $params = array_merge([$me['id'], $notes !== '' ? $notes : null], $ids, [$station_id]);
+            $stmt->execute($params);
             
             if ($stmt->rowCount() > 0) {
-                // Log audit trail
-                try {
-                    $details = "Approved.";
-                    if ($notes !== '') {
-                        $details .= " Notes: " . $notes;
-                    }
-                    $pdo->prepare("INSERT INTO audit_logs (user_id, action_type, entity_type, entity_id, details, station_id, ip_address, created_at) 
-                                   VALUES (?, 'Approve', 'fuel_transaction', ?, ?, ?, ?, NOW())")
-                        ->execute([$me['id'], $tx_id, $details, $station_id, $_SERVER['REMOTE_ADDR'] ?? '']);
-                } catch (Exception $ae) {}
-                
-                $_SESSION['success'] = "Transaction #{$tx_id} approved successfully.";
+                foreach ($ids as $id) {
+                    try {
+                        $details = "Approved shift group.";
+                        if ($notes !== '') {
+                            $details .= " Notes: " . $notes;
+                        }
+                        $pdo->prepare("INSERT INTO audit_logs (user_id, action_type, entity_type, entity_id, details, station_id, ip_address, created_at) 
+                                       VALUES (?, 'Approve', 'fuel_transaction', ?, ?, ?, ?, NOW())")
+                            ->execute([$me['id'], $id, $details, $station_id, $_SERVER['REMOTE_ADDR'] ?? '']);
+                    } catch (Exception $ae) {}
+                }
+                $_SESSION['success'] = "Selected transactions approved successfully.";
             } else {
-                $_SESSION['error'] = "Transaction not found or already processed.";
+                $_SESSION['error'] = "No pending transactions were approved.";
             }
         }
         
-        elseif ($action === 'reject' && $tx_id > 0) {
+        elseif ($action === 'reject') {
+            $ids_str = trim($_POST['transaction_id'] ?? '');
+            $ids = array_filter(array_map('intval', explode(',', $ids_str)));
             $reason = trim($_POST['reason'] ?? '');
             
-            // Reject transaction (reason is optional)
-            $stmt = $pdo->prepare("UPDATE fuel_transactions 
-                                   SET status = 'Rejected', 
-                                       validated_by = ?, 
-                                       validated_at = NOW(),
-                                       reject_reason = ? 
-                                   WHERE id = ? AND station_id = ? AND LOWER(status) LIKE '%pending%'");
-            $stmt->execute([$me['id'], $reason !== '' ? $reason : null, $tx_id, $station_id]);
+            if (empty($ids)) {
+                throw new Exception("No transactions specified for rejection.");
+            }
+            if (empty($reason)) {
+                throw new Exception("Rejection reason is required.");
+            }
+            
+            // Roll back inventory deduction for rejected transactions
+            foreach ($ids as $id) {
+                $stmt_get = $pdo->prepare("SELECT liters_sold, fuel_type FROM fuel_transactions WHERE id = ? AND station_id = ? AND LOWER(status) LIKE '%pending%'");
+                $stmt_get->execute([$id, $station_id]);
+                $tx = $stmt_get->fetch(PDO::FETCH_ASSOC);
+                if ($tx) {
+                    $l_sold = (float)$tx['liters_sold'];
+                    $f_type = $tx['fuel_type'];
+                    $pdo->prepare("UPDATE fuel_inventory 
+                                   SET current_level = COALESCE(current_level,0) + ?, 
+                                       last_updated = NOW() 
+                                   WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))")
+                        ->execute([$l_sold, $station_id, $f_type]);
+                }
+            }
+
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $sql = "UPDATE fuel_transactions 
+                    SET status = 'Rejected', 
+                        validated_by = ?, 
+                        validated_at = NOW(),
+                        reject_reason = ? 
+                    WHERE id IN ($placeholders) AND station_id = ? AND LOWER(status) LIKE '%pending%'";
+            
+            $stmt = $pdo->prepare($sql);
+            $params = array_merge([$me['id'], $reason], $ids, [$station_id]);
+            $stmt->execute($params);
             
             if ($stmt->rowCount() > 0) {
-                // Log audit trail
-                try {
-                    $details = "Rejected.";
-                    if ($reason !== '') {
-                        $details .= " Reason: " . $reason;
-                    }
-                    $pdo->prepare("INSERT INTO audit_logs (user_id, action_type, entity_type, entity_id, details, station_id, ip_address, created_at) 
-                                   VALUES (?, 'Reject', 'fuel_transaction', ?, ?, ?, ?, NOW())")
-                        ->execute([$me['id'], $tx_id, $details, $station_id, $_SERVER['REMOTE_ADDR'] ?? '']);
-                } catch (Exception $ae) {}
-                
-                $_SESSION['success'] = "Transaction #{$tx_id} rejected and returned to staff.";
+                foreach ($ids as $id) {
+                    try {
+                        $details = "Rejected shift group. Reason: " . $reason;
+                        $pdo->prepare("INSERT INTO audit_logs (user_id, action_type, entity_type, entity_id, details, station_id, ip_address, created_at) 
+                                       VALUES (?, 'Reject', 'fuel_transaction', ?, ?, ?, ?, NOW())")
+                            ->execute([$me['id'], $id, $details, $station_id, $_SERVER['REMOTE_ADDR'] ?? '']);
+                    } catch (Exception $ae) {}
+                }
+                $_SESSION['success'] = "Selected transactions rejected and returned to staff.";
             } else {
-                $_SESSION['error'] = "Transaction not found or already processed.";
+                $_SESSION['error'] = "No pending transactions were rejected.";
             }
         }
         
-        elseif ($action === 'adjust' && $tx_id > 0) {
-            $new_liters = (float)($_POST['adj_liters'] ?? 0);
-            $new_amount = (float)($_POST['adj_amount'] ?? 0);
-            $adj_note   = trim($_POST['adj_note'] ?? '');
+        elseif ($action === 'adjust_group') {
+            $adjustments = $_POST['adjustments'] ?? [];
+            $adj_note = trim($_POST['adj_note'] ?? '');
             
-            if ($new_liters <= 0 || $new_amount <= 0) {
-                throw new Exception("Adjusted values must be greater than zero.");
+            if (empty($adjustments)) {
+                throw new Exception("No adjustments specified.");
+            }
+            if (empty($adj_note)) {
+                throw new Exception("Adjustment reason/note is required.");
             }
             
-            // Adjust transaction (note is optional)
-            $stmt = $pdo->prepare("UPDATE fuel_transactions 
-                                   SET status = 'Verified', 
-                                       liters_sold = ?,
-                                       total_amount = ?,
-                                       validated_by = ?, 
-                                       validated_at = NOW(),
-                                       reject_reason = ?
-                                   WHERE id = ? AND station_id = ? AND LOWER(status) LIKE '%pending%'");
-            $stmt->execute([$new_liters, $new_amount, $me['id'], $adj_note !== '' ? $adj_note : null, $tx_id, $station_id]);
-            
-            if ($stmt->rowCount() > 0) {
-                // Log audit trail
-                try {
-                    $details = "Adjusted to {$new_liters}L / ₱{$new_amount}.";
-                    if ($adj_note !== '') {
-                        $details .= " Note: {$adj_note}";
-                    }
-                    $pdo->prepare("INSERT INTO audit_logs (user_id, action_type, entity_type, entity_id, details, station_id, ip_address, created_at) 
-                                   VALUES (?, 'Adjust', 'fuel_transaction', ?, ?, ?, ?, NOW())")
-                        ->execute([$me['id'], $tx_id, $details, $station_id, $_SERVER['REMOTE_ADDR'] ?? '']);
-                } catch (Exception $ae) {}
+            $updated_count = 0;
+            foreach ($adjustments as $tx_id => $data) {
+                $tx_id = (int)$tx_id;
+                $new_prev = (float)($data['prev_reading'] ?? 0);
+                $new_pres = (float)($data['pres_reading'] ?? 0);
+                $new_cal = (float)($data['calibration'] ?? 0);
+                $new_liters = (float)($data['liters'] ?? 0);
+                $new_amount = (float)($data['amount'] ?? 0);
                 
-                $_SESSION['success'] = "Transaction #{$tx_id} adjusted successfully.";
+                if ($tx_id <= 0 || $new_liters < 0 || $new_amount < 0 || $new_prev < 0 || $new_pres < 0 || $new_cal < 0) {
+                    continue;
+                }
+                
+                $stmt = $pdo->prepare("SELECT liters_sold, total_amount, previous_reading, present_reading, calibration, fuel_type FROM fuel_transactions WHERE id = ? AND station_id = ? AND LOWER(status) LIKE '%pending%'");
+                $stmt->execute([$tx_id, $station_id]);
+                $curr = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if (!$curr) continue;
+                
+                $old_liters = (float)$curr['liters_sold'];
+                $old_amount = (float)$curr['total_amount'];
+                $old_prev = (float)$curr['previous_reading'];
+                $old_pres = (float)$curr['present_reading'];
+                $old_cal = (float)$curr['calibration'];
+                $f_type = $curr['fuel_type'];
+                
+                $is_adjusted = (abs($old_liters - $new_liters) > 0.001) 
+                    || (abs($old_amount - $new_amount) > 0.001)
+                    || (abs($old_prev - $new_prev) > 0.001)
+                    || (abs($old_pres - $new_pres) > 0.001)
+                    || (abs($old_cal - $new_cal) > 0.001);
+                
+                $up_stmt = $pdo->prepare("UPDATE fuel_transactions 
+                                          SET status = 'Verified', 
+                                              previous_reading = ?,
+                                              present_reading = ?,
+                                              calibration = ?,
+                                              liters_sold = ?,
+                                              total_amount = ?,
+                                              validated_by = ?, 
+                                              validated_at = NOW(),
+                                              reject_reason = ?
+                                          WHERE id = ? AND station_id = ? AND LOWER(status) LIKE '%pending%'");
+                $up_stmt->execute([$new_prev, $new_pres, $new_cal, $new_liters, $new_amount, $me['id'], $adj_note, $tx_id, $station_id]);
+                
+                if ($up_stmt->rowCount() > 0) {
+                    $updated_count++;
+                    
+                    // Adjust fuel inventory stock levels based on difference: old_liters - new_liters
+                    $diff_liters = $old_liters - $new_liters;
+                    $pdo->prepare("UPDATE fuel_inventory 
+                                   SET current_level = COALESCE(current_level,0) + ?, 
+                                       last_updated = NOW() 
+                                   WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))")
+                        ->execute([$diff_liters, $station_id, $f_type]);
+                    
+                    try {
+                        $log_action = $is_adjusted ? 'Adjust' : 'Approve';
+                        $details = $is_adjusted 
+                            ? "Adjusted Shift Reading for {$f_type} — Beginning: {$old_prev} -> {$new_prev}, Ending: {$old_pres} -> {$new_pres}, Calib: {$old_cal} -> {$new_cal}, Liters: {$old_liters} -> {$new_liters} L (Variance: " . ($new_liters - $old_liters) . " L), Amount: ₱{$old_amount} -> ₱{$new_amount}."
+                            : "Approved shift reading.";
+                        $details .= " Note: " . $adj_note;
+                        
+                        $pdo->prepare("INSERT INTO audit_logs (user_id, action_type, entity_type, entity_id, details, station_id, ip_address, created_at) 
+                                       VALUES (?, ?, 'fuel_transaction', ?, ?, ?, ?, NOW())")
+                            ->execute([$me['id'], $log_action, $tx_id, $details, $station_id, $_SERVER['REMOTE_ADDR'] ?? '']);
+                    } catch (Exception $ae) {}
+                }
+            }
+            
+            if ($updated_count > 0) {
+                $_SESSION['success'] = "Shift adjustments saved successfully.";
             } else {
-                $_SESSION['error'] = "Transaction not found or already processed.";
+                $_SESSION['error'] = "No adjustments were saved.";
             }
         }
         
@@ -149,22 +232,27 @@ $date_to   = trim($_GET['date_to']   ?? date('Y-m-d'));  // Default to today
 
 // ── Summary Cards ──────────────────────────────────────────
 $validated_count = 0;
-$pending_count = 0;
+$pending_count   = 0;
+$rejected_count  = 0;
+$total_liters    = 0.0;
+$total_amount    = 0.0;
 
 try {
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM fuel_transactions 
-                           WHERE station_id = ? 
-                           AND LOWER(status) IN ('approved', 'adjusted', 'verified')
-                           AND DATE(transaction_date) BETWEEN ? AND ?");
+    $stmt = $pdo->prepare("SELECT
+        SUM(CASE WHEN LOWER(status) IN ('approved','adjusted','verified') THEN 1 ELSE 0 END) as validated,
+        SUM(CASE WHEN LOWER(status) LIKE '%pending%' THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN LOWER(status) = 'rejected' THEN 1 ELSE 0 END) as rejected,
+        COALESCE(SUM(CASE WHEN LOWER(status) IN ('approved','adjusted','verified') THEN liters_sold ELSE 0 END),0) as liters,
+        COALESCE(SUM(CASE WHEN LOWER(status) IN ('approved','adjusted','verified') THEN total_amount ELSE 0 END),0) as amount
+        FROM fuel_transactions
+        WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ?");
     $stmt->execute([$station_id, $date_from, $date_to]);
-    $validated_count = (int)$stmt->fetchColumn();
-    
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM fuel_transactions 
-                           WHERE station_id = ? 
-                           AND LOWER(status) LIKE '%pending%'
-                           AND DATE(transaction_date) BETWEEN ? AND ?");
-    $stmt->execute([$station_id, $date_from, $date_to]);
-    $pending_count = (int)$stmt->fetchColumn();
+    $sc = $stmt->fetch(PDO::FETCH_ASSOC);
+    $validated_count = (int)($sc['validated'] ?? 0);
+    $pending_count   = (int)($sc['pending']   ?? 0);
+    $rejected_count  = (int)($sc['rejected']  ?? 0);
+    $total_liters    = (float)($sc['liters']  ?? 0);
+    $total_amount    = (float)($sc['amount']  ?? 0);
 } catch (Exception $e) {
     error_log("Summary error: " . $e->getMessage());
 }
@@ -176,58 +264,6 @@ if (!in_array($rows_per_page, [10, 25, 50, 100])) {
 }
 $current_page = max(1, (int)($_GET['page'] ?? 1));
 $offset = ($current_page - 1) * $rows_per_page;
-
-// ── Fetch Transactions ────────────────────────────────────
-$transactions = [];
-$total_records = 0;
-try {
-    // Get total count
-    $count_sql = "SELECT COUNT(*) 
-                  FROM fuel_transactions ft
-                  WHERE ft.station_id = ?
-                  AND LOWER(ft.status) LIKE '%pending%'
-                  AND DATE(ft.transaction_date) BETWEEN ? AND ?";
-    $stmt = $pdo->prepare($count_sql);
-    $stmt->execute([$station_id, $date_from, $date_to]);
-    $total_records = (int)$stmt->fetchColumn();
-    
-    // Get paginated results - Use only first_name/last_name (compatible schema)
-    $sql = "SELECT ft.*, 
-                   fp.pump_number,
-                   COALESCE(
-                       NULLIF(CONCAT(TRIM(COALESCE(staff.first_name, '')), ' ', TRIM(COALESCE(staff.last_name, ''))), ' '),
-                       staff.username,
-                       'Unknown'
-                   ) as staff_name,
-                   COALESCE(
-                       NULLIF(CONCAT(TRIM(COALESCE(validator.first_name, '')), ' ', TRIM(COALESCE(validator.last_name, ''))), ' '),
-                       validator.username,
-                       'Unknown'
-                   ) as validator_name
-            FROM fuel_transactions ft
-            LEFT JOIN fuel_pumps fp ON ft.pump_id = fp.id
-            LEFT JOIN users staff ON ft.staff_id = staff.id
-            LEFT JOIN users validator ON ft.validated_by = validator.id
-            WHERE ft.station_id = ?
-            AND LOWER(ft.status) LIKE '%pending%'
-            AND DATE(ft.transaction_date) BETWEEN ? AND ?
-            ORDER BY ft.transaction_date DESC, ft.created_at DESC
-            LIMIT ? OFFSET ?";
-    
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindValue(1, $station_id, PDO::PARAM_INT);
-    $stmt->bindValue(2, $date_from, PDO::PARAM_STR);
-    $stmt->bindValue(3, $date_to, PDO::PARAM_STR);
-    $stmt->bindValue(4, $rows_per_page, PDO::PARAM_INT);
-    $stmt->bindValue(5, $offset, PDO::PARAM_INT);
-    $stmt->execute();
-    $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {
-    error_log("Fetch transactions error: " . $e->getMessage());
-    $_SESSION['error'] = "Error loading transactions: " . $e->getMessage();
-}
-
-$total_pages = ceil($total_records / $rows_per_page);
 
 // Helper functions for formatting
 function formatShift($shiftPeriod, $shiftName) {
@@ -260,11 +296,86 @@ function getStatusBadge($status) {
     return '<span style="background:'.$color.'15; color:'.$color.'; border:1px solid '.$color.'30; font-weight:700; font-size:11px; padding:4px 8px; border-radius:6px; text-transform:uppercase; letter-spacing:.5px; white-space:nowrap;">'.$label.'</span>';
 }
 
+// ── Fetch and Group Transactions ─────────────────────────
+$grouped = [];
+$total_records = 0;
+$total_pages = 0;
+$transactions_grouped = [];
+
+try {
+    // Fetch all pending transactions for grouping
+    $sql = "SELECT ft.*, 
+                   fp.pump_number,
+                   COALESCE(
+                       NULLIF(CONCAT(TRIM(COALESCE(staff.first_name, '')), ' ', TRIM(COALESCE(staff.last_name, ''))), ' '),
+                       staff.username,
+                       'Unknown'
+                   ) as staff_name,
+                   COALESCE(
+                       NULLIF(CONCAT(TRIM(COALESCE(validator.first_name, '')), ' ', TRIM(COALESCE(validator.last_name, ''))), ' '),
+                       validator.username,
+                       'Unknown'
+                   ) as validator_name
+            FROM fuel_transactions ft
+            LEFT JOIN fuel_pumps fp ON ft.pump_id = fp.id
+            LEFT JOIN users staff ON ft.staff_id = staff.id
+            LEFT JOIN users validator ON ft.validated_by = validator.id
+            WHERE ft.station_id = ?
+            AND LOWER(ft.status) LIKE '%pending%'
+            AND DATE(ft.transaction_date) BETWEEN ? AND ?
+            ORDER BY ft.transaction_date DESC, ft.created_at DESC";
+    
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$station_id, $date_from, $date_to]);
+    $all_txs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Group in PHP by Date + Shift
+    foreach ($all_txs as $tx) {
+        $date_key = date('Y-m-d', strtotime($tx['transaction_date']));
+        $shift_label = formatShift($tx['shift_period'] ?? '', $tx['shift_name'] ?? '');
+        $group_key = $date_key . '_' . $shift_label;
+        
+        if (!isset($grouped[$group_key])) {
+            $grouped[$group_key] = [
+                'date' => $date_key,
+                'shift' => $shift_label,
+                'shift_period' => $tx['shift_period'] ?? '',
+                'shift_name' => $tx['shift_name'] ?? '',
+                'items' => [],
+                'ids' => [],
+                'staff_names' => []
+            ];
+        }
+        $grouped[$group_key]['items'][] = $tx;
+        $grouped[$group_key]['ids'][] = (int)$tx['id'];
+        
+        $sname = $tx['staff_name'] ?? 'Unknown';
+        if (!in_array($sname, $grouped[$group_key]['staff_names'])) {
+            $grouped[$group_key]['staff_names'][] = $sname;
+        }
+    }
+    
+    // Perform pagination on the groups
+    $total_records = count($grouped);
+    $total_pages = (int)ceil($total_records / $rows_per_page);
+    
+    $keys = array_keys($grouped);
+    $page_keys = array_slice($keys, $offset, $rows_per_page);
+    
+    foreach ($page_keys as $k) {
+        $transactions_grouped[$k] = $grouped[$k];
+        $transactions_grouped[$k]['encoded_by'] = implode(', ', $grouped[$k]['staff_names']);
+    }
+} catch (Exception $e) {
+    error_log("Fetch transactions error: " . $e->getMessage());
+    $_SESSION['error'] = "Error loading transactions: " . $e->getMessage();
+}
+
 require_once __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-/* Global Fix: NO Horizontal Scroll - ABSOLUTE */
+/* Global Fix: NO Horizontal Scroll */
 * {
     box-sizing: border-box;
 }
@@ -280,7 +391,6 @@ html, body {
     padding: 0; 
     max-width: 100%;
     width: 100%;
-    overflow-x: visible;
     box-sizing: border-box;
 }
 
@@ -312,6 +422,8 @@ html, body {
 }
 .summary-card.sc-blue   { border-left: 4px solid #1e40af; }
 .summary-card.sc-amber  { border-left: 4px solid #d97706; }
+.summary-card.sc-green  { border-left: 4px solid #16a34a; }
+.summary-card.sc-red    { border-left: 4px solid #dc2626; }
 .sum-ico {
     width: 52px; height: 52px; border-radius: 10px;
     display: flex; align-items: center; justify-content: center;
@@ -319,6 +431,8 @@ html, body {
 }
 .summary-card.sc-blue .sum-ico   { background: #dbeafe; color: #1e40af; }
 .summary-card.sc-amber .sum-ico  { background: #fef3c7; color: #d97706; }
+.summary-card.sc-green .sum-ico  { background: #dcfce7; color: #16a34a; }
+.summary-card.sc-red   .sum-ico  { background: #fee2e2; color: #dc2626; }
 .sum-meta { 
     min-width: 0;
     overflow: hidden;
@@ -352,101 +466,60 @@ html, body {
 .filter-group label { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; }
 .filter-group input[type=date] { padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; width: 100%; }
 
-/* Table – NO horizontal scroll, all columns fit on screen */
+/* Table – NO horizontal scroll */
 .table-card {
     background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
-    padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.05);
+    padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,.05);
     width: 100%; overflow: hidden; box-sizing: border-box;
 }
 .table-wrap { 
-    width: 100%; overflow-x: hidden;
+    width: 100%; overflow-x: auto;
     box-sizing: border-box; display: block;
 }
 .data-table {
     width: 100%; border-collapse: collapse;
-    table-layout: fixed;
     box-sizing: border-box;
 }
-/* Column widths — tuned so all 13 cols fit at ~1050px+ content width */
-.data-table th:nth-child(1),  .data-table td:nth-child(1)  { width:7%;  } /* Date        */
-.data-table th:nth-child(2),  .data-table td:nth-child(2)  { width:6%;  } /* Shift       */
-.data-table th:nth-child(3),  .data-table td:nth-child(3)  { width:9%;  } /* Pump/Fuel   */
-.data-table th:nth-child(4),  .data-table td:nth-child(4)  { width:6%;  } /* Beginning   */
-.data-table th:nth-child(5),  .data-table td:nth-child(5)  { width:6%;  } /* Ending      */
-.data-table th:nth-child(6),  .data-table td:nth-child(6)  { width:5%;  } /* Calibration */
-.data-table th:nth-child(7),  .data-table td:nth-child(7)  { width:6%;  } /* Volume      */
-.data-table th:nth-child(8),  .data-table td:nth-child(8)  { width:6%;  } /* Price/L     */
-.data-table th:nth-child(9),  .data-table td:nth-child(9)  { width:7%;  } /* Amount      */
-.data-table th:nth-child(10), .data-table td:nth-child(10) { width:8%;  } /* Encoded By  */
-.data-table th:nth-child(11), .data-table td:nth-child(11) { width:11%; } /* Status      */
-.data-table th:nth-child(12), .data-table td:nth-child(12) { width:6%;  } /* Notes       */
-.data-table th:nth-child(13), .data-table td:nth-child(13) { width:13%; } /* ACTION      */
 .data-table thead th {
-    background: #002F70; padding: 8px 6px; text-align: left;
-    font-size: 10px; font-weight: 700; color: #fff;
+    background: #002F70; padding: 8px 10px; text-align: left;
+    font-size: 11px; font-weight: 700; color: #fff;
     text-transform: uppercase; border-bottom: 2px solid #002F70;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     line-height: 1.2;
 }
 .data-table tbody tr { border-bottom: 1px solid #f1f5f9; }
 .data-table tbody tr:hover { background: #e3f2fd; }
 .data-table tbody td {
-    padding: 7px 6px;
+    padding: 8px 10px;
     color: #334155;
     vertical-align: middle;
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.3;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 .align-right { text-align: right !important; }
 
-/* Status badge – compact */
-.status-badge {
-    display: inline-block;
-    font-size: 9px; font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .4px;
-    padding: 3px 6px;
-    border-radius: 4px;
-    white-space: nowrap;
-}
-
-/* Compact action buttons – stacked vertically with words */
+/* Compact action buttons */
 .action-btn {
-    padding: 5px 8px;
-    border-radius: 4px;
-    font-size: 10px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 11px;
     font-weight: 700;
     border: none;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 4px;
+    gap: 6px;
     transition: all .15s;
-    width: 100%;
     text-transform: uppercase;
     letter-spacing: 0.3px;
     box-sizing: border-box;
 }
 .btn-approve { background: #28a745; color: #fff; }
-.btn-approve:hover { background: #218838; transform: scale(1.03); }
+.btn-approve:hover { background: #218838; transform: scale(1.02); }
 .btn-reject  { background: #dc2626; color: #fff; }
-.btn-reject:hover  { background: #b91c1c; transform: scale(1.03); }
+.btn-reject:hover  { background: #b91c1c; transform: scale(1.02); }
 .btn-adjust  { background: #002F70; color: #fff; }
-.btn-adjust:hover  { background: #001a42; transform: scale(1.03); }
-
-.action-buttons-wrapper {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    width: 100%;
-    align-items: stretch;
-}
-.data-table thead th:last-child  { text-align: center; }
-.data-table tbody td:last-child   { padding: 6px 6px !important; overflow: visible; }
+.btn-adjust:hover  { background: #001a42; transform: scale(1.02); }
 
 /* Modal */
 .modal {
@@ -532,11 +605,11 @@ html, body {
     </form>
 
     <!-- Summary Cards -->
-    <div class="summary-row">
+    <div class="summary-row" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
         <div class="summary-card sc-blue">
             <div class="sum-ico"><i class="fas fa-check-circle"></i></div>
             <div class="sum-meta">
-                <h3>Validated Transactions</h3>
+                <h3>Validated</h3>
                 <h2><?= number_format($validated_count) ?></h2>
                 <span>Gi-approve ug gi-adjust</span>
             </div>
@@ -544,111 +617,117 @@ html, body {
         <div class="summary-card sc-amber">
             <div class="sum-ico"><i class="fas fa-clock"></i></div>
             <div class="sum-meta">
-                <h3>Pending Transactions</h3>
+                <h3>Pending</h3>
                 <h2><?= number_format($pending_count) ?></h2>
                 <span>Naghulat sa validation</span>
             </div>
         </div>
+        <div class="summary-card sc-green">
+            <div class="sum-ico"><i class="fas fa-tint"></i></div>
+            <div class="sum-meta">
+                <h3>Total Liters (Validated)</h3>
+                <h2><?= number_format($total_liters, 2) ?></h2>
+                <span>Validated liters sold</span>
+            </div>
+        </div>
+        <div class="summary-card sc-red">
+            <div class="sum-ico"><i class="fas fa-times-circle"></i></div>
+            <div class="sum-meta">
+                <h3>Rejected</h3>
+                <h2><?= number_format($rejected_count) ?></h2>
+                <span>Gi-reject nga entries</span>
+            </div>
+        </div>
     </div>
+
 
     <!-- Transactions Table -->
     <div class="table-card">
-        <h3 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#00264D;text-transform:uppercase;">
+        <h3 style="margin:0 0 18px;font-size:14px;font-weight:700;color:#00264D;text-transform:uppercase;">
             <i class="fas fa-list"></i> Pending Pump Readings
         </h3>
 
-        <?php if (empty($transactions)): ?>
+        <?php if (empty($transactions_grouped)): ?>
         <div style="text-align:center;padding:40px;color:#94a3b8;">
             <i class="fas fa-inbox" style="font-size:48px;margin-bottom:12px;opacity:.5;"></i>
             <p style="margin:0;">Walay pending transactions nga nakit-an.</p>
         </div>
         <?php else: ?>
-        <div class="table-wrap">
-            <table class="data-table">
-                <!-- v2.0 - Action header added -->
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Shift</th>
-                        <th>Pump / Fuel Type</th>
-                        <th class="align-right">Beginning</th>
-                        <th class="align-right">Ending</th>
-                        <th class="align-right">Calibration</th>
-                        <th class="align-right">Volume (L)</th>
-                        <th class="align-right">Price/L</th>
-                        <th class="align-right">Amount</th>
-                        <th>Encoded By</th>
-                        <th>Status</th>
-                        <th>Notes</th>
-                        <th style="text-align: center;">ACTION</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($transactions as $tx): 
-                        $pump_fuel = htmlspecialchars($tx['fuel_type'] ?? 'N/A');
-                        if (!empty($tx['pump_number'])) {
-                            $pump_fuel .= ' - ' . htmlspecialchars($tx['pump_number']);
-                        }
-                    ?>
-                    <tr>
-                        <td><?= date('M d, Y', strtotime($tx['transaction_date'])) ?></td>
-                        <td><?= htmlspecialchars(formatShift($tx['shift_period'] ?? '', $tx['shift_name'] ?? '')) ?></td>
-                        <td style="font-weight: 700; color: #0f172a;"><?= $pump_fuel ?></td>
-                        <td class="align-right"><?= number_format($tx['previous_reading'] ?? 0, 2) ?></td>
-                        <td class="align-right" style="font-weight: 600; color: #1e293b;"><?= number_format($tx['present_reading'] ?? 0, 2) ?></td>
-                        <td class="align-right"><?= number_format($tx['calibration'] ?? 0, 3) ?></td>
-                        <td class="align-right" style="font-weight: 700; color: #1e293b;"><?= number_format($tx['liters_sold'] ?? 0, 2) ?> L</td>
-                        <td class="align-right">₱<?= number_format($tx['price_per_liter'] ?? 0, 2) ?></td>
-                        <td class="align-right" style="font-weight: 800; color: #0f172a;">₱<?= number_format($tx['total_amount'] ?? 0, 2) ?></td>
-                        <td style="font-weight: 500;"><?= htmlspecialchars($tx['staff_name'] ?? 'N/A') ?></td>
-                        <td><?= getStatusBadge($tx['status']) ?></td>
-                        <td style="max-width: 160px;">
-                            <?php
-                            $staffNotes = trim($tx['notes'] ?? '');
-                            $mgrNotes = trim($tx['reject_reason'] ?? '');
-                            $fullTooltip = '';
-                            if ($staffNotes !== '') {
-                                $fullTooltip .= 'Staff: ' . $staffNotes;
+        
+        <?php foreach ($transactions_grouped as $group_key => $group): ?>
+        <div class="shift-group-card" style="margin-bottom: 24px; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.05);">
+            <div class="shift-group-header" style="background: #f8fafc; padding: 12px 16px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div style="font-weight: 700; color: #002F70; font-size: 14px;">
+                    <i class="fas fa-calendar-alt"></i> <?= date('M d, Y', strtotime($group['date'])) ?> 
+                    &nbsp;|&nbsp; 
+                    <i class="fas fa-clock"></i> <?= htmlspecialchars($group['shift']) ?>
+                    &nbsp;|&nbsp;
+                    <span style="font-weight: 500; color: #64748b; font-size: 13px;">Encoded By: <?= htmlspecialchars($group['encoded_by']) ?></span>
+                </div>
+                <div style="display: flex; gap: 6px;">
+                    <button class="action-btn btn-approve" style="width: auto; padding: 6px 14px; font-size: 12px;" onclick="approveGroup('<?= implode(',', $group['ids']) ?>')">
+                        <i class="fas fa-check"></i> Approve Shift
+                    </button>
+                    <button class="action-btn btn-reject" style="width: auto; padding: 6px 14px; font-size: 12px;" onclick="rejectGroup('<?= implode(',', $group['ids']) ?>')">
+                        <i class="fas fa-times"></i> Reject Shift
+                    </button>
+                    <button class="action-btn btn-adjust" style="width: auto; padding: 6px 14px; font-size: 12px;" onclick="adjustGroup('<?= $group_key ?>')">
+                        <i class="fas fa-edit"></i> Adjust Shift
+                    </button>
+                </div>
+            </div>
+            <div class="table-wrap">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 25%;">Pump / Fuel Type</th>
+                            <th class="align-right" style="width: 12%;">Beginning</th>
+                            <th class="align-right" style="width: 12%;">Ending</th>
+                            <th class="align-right" style="width: 10%;">Calibration</th>
+                            <th class="align-right" style="width: 12%;">Volume (L)</th>
+                            <th class="align-right" style="width: 10%;">Price/L</th>
+                            <th class="align-right" style="width: 12%;">Amount</th>
+                            <th style="width: 20%;">Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($group['items'] as $tx): 
+                            $pump_fuel = htmlspecialchars($tx['fuel_type'] ?? 'N/A');
+                            if (!empty($tx['pump_number'])) {
+                                $pump_fuel .= ' - ' . htmlspecialchars($tx['pump_number']);
                             }
-                            if ($mgrNotes !== '') {
-                                if ($fullTooltip !== '') $fullTooltip .= "\n";
-                                $fullTooltip .= 'Manager: ' . $mgrNotes;
-                            }
-                            if ($staffNotes !== '' && $mgrNotes !== '') {
-                                echo '<div style="line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="' . htmlspecialchars($fullTooltip) . '"><strong>S:</strong> ' . htmlspecialchars($staffNotes) . '<br><strong>M:</strong> ' . htmlspecialchars($mgrNotes) . '</div>';
-                            } elseif ($staffNotes !== '') {
-                                echo '<div style="line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="' . htmlspecialchars($fullTooltip) . '">' . htmlspecialchars($staffNotes) . '</div>';
-                            } elseif ($mgrNotes !== '') {
-                                echo '<div style="line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#002F70;" title="' . htmlspecialchars($fullTooltip) . '"><strong>M:</strong> ' . htmlspecialchars($mgrNotes) . '</div>';
-                            } else {
-                                echo '—';
-                            }
-                            ?>
-                        </td>
-                        <td>
-                            <div class="action-buttons-wrapper">
-                                <button class="action-btn btn-approve" onclick="approveTransaction(<?= $tx['id'] ?>)" title="Approve">
-                                    <i class="fas fa-check"></i> Approve
-                                </button>
-                                <button class="action-btn btn-reject" onclick="rejectTransaction(<?= $tx['id'] ?>)" title="Reject">
-                                    <i class="fas fa-times"></i> Reject
-                                </button>
-                                <button class="action-btn btn-adjust" onclick="adjustTransaction(<?= $tx['id'] ?>, <?= $tx['liters_sold'] ?? 0 ?>, <?= $tx['total_amount'] ?? 0 ?>)" title="Adjust">
-                                    <i class="fas fa-edit"></i> Adjust
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
+                        ?>
+                        <tr>
+                            <td style="font-weight: 700; color: #0f172a;"><?= $pump_fuel ?></td>
+                            <td class="align-right"><?= number_format($tx['previous_reading'] ?? 0, 2) ?></td>
+                            <td class="align-right" style="font-weight: 600; color: #1e293b;"><?= number_format($tx['present_reading'] ?? 0, 2) ?></td>
+                            <td class="align-right"><?= number_format($tx['calibration'] ?? 0, 3) ?></td>
+                            <td class="align-right" style="font-weight: 700; color: #1e293b;"><?= number_format($tx['liters_sold'] ?? 0, 2) ?> L</td>
+                            <td class="align-right">₱<?= number_format($tx['price_per_liter'] ?? 0, 2) ?></td>
+                            <td class="align-right" style="font-weight: 800; color: #0f172a;">₱<?= number_format($tx['total_amount'] ?? 0, 2) ?></td>
+                            <td>
+                                <?php
+                                $staffNotes = trim($tx['notes'] ?? '');
+                                if ($staffNotes !== '') {
+                                    echo htmlspecialchars($staffNotes);
+                                } else {
+                                    echo '—';
+                                }
+                                ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
         </div>
+        <?php endforeach; ?>
         
         <?php if ($total_records > 0): ?>
         <!-- Pagination Controls -->
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:16px;border-top:1px solid #e2e8f0;flex-wrap:wrap;gap:12px;">
             <div style="display:flex;align-items:center;gap:8px;">
-                <label style="font-size:13px;color:#64748b;font-weight:600;">Rows per page:</label>
+                <label style="font-size:13px;color:#64748b;font-weight:600;">Shifts per page:</label>
                 <select id="rowsPerPage" onchange="changeRowsPerPage(this.value)"
                         style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;cursor:pointer;">
                     <option value="10" <?= $rows_per_page == 10 ? 'selected' : '' ?>>10</option>
@@ -657,7 +736,7 @@ html, body {
                     <option value="100" <?= $rows_per_page == 100 ? 'selected' : '' ?>>100</option>
                 </select>
                 <span style="font-size:13px;color:#64748b;">
-                    Showing <?= number_format($offset + 1) ?> to <?= number_format(min($offset + $rows_per_page, $total_records)) ?> of <?= number_format($total_records) ?> entries
+                    Showing <?= number_format($offset + 1) ?> to <?= number_format(min($offset + $rows_per_page, $total_records)) ?> of <?= number_format($total_records) ?> shifts
                 </span>
             </div>
             
@@ -700,7 +779,7 @@ html, body {
 <div id="approveModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
-            <h3>Approve Transaction</h3>
+            <h3>Approve Shift Transactions</h3>
             <span class="modal-close" onclick="closeModal('approveModal')">&times;</span>
         </div>
         <form method="post">
@@ -728,7 +807,7 @@ html, body {
 <div id="rejectModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
-            <h3>Reject Transaction</h3>
+            <h3>Reject Shift Transactions</h3>
             <span class="modal-close" onclick="closeModal('rejectModal')">&times;</span>
         </div>
         <form method="post">
@@ -736,7 +815,7 @@ html, body {
             <input type="hidden" name="transaction_id" id="reject_tx_id">
             <div class="form-group">
                 <label>Rejection Reason <span style="font-weight: normal; color: #64748b;">(Optional)</span></label>
-                <textarea name="reason" placeholder="Explain why this transaction is being rejected..."></textarea>
+                <textarea name="reason" placeholder="Explain why this shift is being rejected..."></textarea>
             </div>
             <div style="display:flex;gap:8px;justify-content:flex-end;">
                 <button type="button" onclick="closeModal('rejectModal')"
@@ -754,24 +833,20 @@ html, body {
 
 <!-- Adjust Modal -->
 <div id="adjustModal" class="modal">
-    <div class="modal-content">
+    <div class="modal-content" style="max-width: 600px; width: 95%;">
         <div class="modal-header">
-            <h3>Adjust Transaction</h3>
+            <h3>Adjust Shift Readings</h3>
             <span class="modal-close" onclick="closeModal('adjustModal')">&times;</span>
         </div>
         <form method="post">
-            <input type="hidden" name="action" value="adjust">
-            <input type="hidden" name="transaction_id" id="adjust_tx_id">
-            <div class="form-group">
-                <label>Adjusted Liters <span style="color:#dc2626;">*</span></label>
-                <input type="number" name="adj_liters" id="adj_liters" step="0.01" min="0" required>
+            <input type="hidden" name="action" value="adjust_group">
+            
+            <div id="adjust_items_container" style="max-height: 350px; overflow-y: auto; margin-bottom: 16px; padding-right: 8px;">
+                <!-- Dynamically populated in JavaScript -->
             </div>
+            
             <div class="form-group">
-                <label>Adjusted Amount <span style="color:#dc2626;">*</span></label>
-                <input type="number" name="adj_amount" id="adj_amount" step="0.01" min="0" required>
-            </div>
-            <div class="form-group">
-                <label>Adjustment Note <span style="font-weight: normal; color: #64748b;">(Optional)</span></label>
+                <label>Adjustment Note / Remarks <span style="font-weight: normal; color: #64748b;">(Optional)</span></label>
                 <textarea name="adj_note" placeholder="Explain the reason for adjustment..."></textarea>
             </div>
             <div style="display:flex;gap:8px;justify-content:flex-end;">
@@ -780,8 +855,8 @@ html, body {
                     Cancel
                 </button>
                 <button type="submit"
-                        style="background:#0891b2;color:#fff;padding:8px 16px;border-radius:6px;border:none;cursor:pointer;">
-                    <i class="fas fa-edit"></i> Adjust
+                        style="background:#002F70;color:#fff;padding:8px 16px;border-radius:6px;border:none;cursor:pointer;">
+                    <i class="fas fa-edit"></i> Save Adjustments
                 </button>
             </div>
         </form>
@@ -789,6 +864,8 @@ html, body {
 </div>
 
 <script>
+const groupedData = <?= json_encode($grouped) ?>;
+
 function changeRowsPerPage(value) {
     const url = new URL(window.location.href);
     url.searchParams.set('rows_per_page', value);
@@ -796,21 +873,62 @@ function changeRowsPerPage(value) {
     window.location.href = url.toString();
 }
 
-function approveTransaction(txId) {
-    document.getElementById('approve_tx_id').value = txId;
+function approveGroup(ids) {
+    document.getElementById('approve_tx_id').value = ids;
     document.getElementById('approveModal').style.display = 'block';
 }
 
-function rejectTransaction(txId) {
-    document.getElementById('reject_tx_id').value = txId;
+function rejectGroup(ids) {
+    document.getElementById('reject_tx_id').value = ids;
     document.getElementById('rejectModal').style.display = 'block';
 }
 
-function adjustTransaction(txId, liters, amount) {
-    document.getElementById('adjust_tx_id').value = txId;
-    document.getElementById('adj_liters').value = liters;
-    document.getElementById('adj_amount').value = amount;
-    document.getElementById('adjustModal').style.display = 'block';
+function recalculateTx(txId, price) {
+    const prevInput = document.getElementById(`tx_prev_${txId}`);
+    const presInput = document.getElementById(`tx_pres_${txId}`);
+    const calInput = document.getElementById(`tx_cal_${txId}`);
+    const litersInput = document.getElementById(`tx_liters_${txId}`);
+    const amountInput = document.getElementById(`tx_amount_${txId}`);
+    
+    const prev = parseFloat(prevInput.value) || 0;
+    const pres = parseFloat(presInput.value) || 0;
+    const cal = parseFloat(calInput.value) || 0;
+    
+    let liters = pres - prev - cal;
+    if (liters < 0) liters = 0;
+    liters = Math.round(liters * 100) / 100;
+    
+    let amount = liters * price;
+    amount = Math.round(amount * 100) / 100;
+    
+    litersInput.value = liters.toFixed(2);
+    amountInput.value = amount.toFixed(2);
+}
+
+function handleLitersChange(txId, price) {
+    const litersInput = document.getElementById(`tx_liters_${txId}`);
+    const amountInput = document.getElementById(`tx_amount_${txId}`);
+    
+    const liters = parseFloat(litersInput.value) || 0;
+    let amount = liters * price;
+    amount = Math.round(amount * 100) / 100;
+    
+    amountInput.value = amount.toFixed(2);
+}
+
+function adjustGroup(groupKey) {
+    window.location.href = 'manager_fuel_adjustments.php?sub_tab=adj-transactions#adjustments';
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    return text
+        .toString()
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 }
 
 function closeModal(modalId) {
@@ -826,3 +944,4 @@ window.onclick = function(event) {
 </script>
 
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>
+

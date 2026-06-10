@@ -579,7 +579,7 @@ if ($section === 'audit') {
                 u.role AS actor_role,
                 s.name AS station_name
          FROM audit_logs al
-         LEFT JOIN users u ON u.user_id = al.user_id
+         LEFT JOIN users u ON u.id = al.user_id
          LEFT JOIN stations s ON s.id = u.station_id
          $aw
          ORDER BY al.created_at DESC

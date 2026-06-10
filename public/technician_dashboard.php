@@ -17,9 +17,9 @@ if ($role !== 'technician') {
 $technician = null;
 try {
     $stmt = $pdo->prepare("
-        SELECT t.*, u.name as user_name, u.username
+        SELECT t.*, COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') as user_name, u.username
         FROM technicians t
-        LEFT JOIN users u ON u.user_id = t.user_id
+        LEFT JOIN users u ON u.id = t.user_id
         WHERE t.station_id = ? AND (t.user_id = ? OR u.username = ?)
         LIMIT 1
     ");
@@ -50,7 +50,7 @@ try {
         FROM job_orders jo
         LEFT JOIN customers c ON c.id = jo.customer_id
         LEFT JOIN service_categories sc ON sc.id = jo.service_category_id
-        LEFT JOIN users u ON u.user_id = jo.assigned_by
+        LEFT JOIN users u ON u.id = jo.assigned_by
         WHERE jo.station_id = ? 
           AND (jo.assigned_technician_id = ? OR jo.assigned_mechanic_id = ?)
           AND jo.status IN ('In Progress', 'Approved')

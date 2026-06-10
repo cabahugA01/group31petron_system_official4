@@ -1,0 +1,102 @@
+<?php
+/**
+ * SIMPLIFIED RECEIPT - For debugging
+ */
+require_once __DIR__ . '/../backend/lib.php';
+require_once __DIR__ . '/db_connect.php';
+require_login();
+
+$id = $_GET['id'] ?? '';
+$type = $_GET['type'] ?? 'merchandise';
+
+echo "<!-- DEBUG: Looking for ID=$id, TYPE=$type -->";
+
+// SIMPLE QUERY - NO COMPLEX LOGIC
+try {
+    $stmt = $pdo->prepare("
+        SELECT mt.*,
+               COALESCE(u.name, 'Staff') AS staff_name,
+               COALESCE(s.name, 'Petron Station') AS station_name,
+               COALESCE(s.address, 'Vamenta Blvd., Carmen, CDO') AS station_address,
+               COALESCE(s.vat_tin, '236-002-207-0000') AS station_vat_tin
+        FROM merchandise_transactions mt
+        LEFT JOIN users u ON mt.staff_id = u.id
+        LEFT JOIN stations s ON mt.station_id = s.id
+        WHERE mt.transaction_id = ?
+           OR mt.transaction_id LIKE ?
+           OR mt.id = ?
+        LIMIT 1
+    ");
+    
+    $numeric_id = is_numeric($id) ? (int)$id : 0;
+    $stmt->execute([$id, $id.'%', $numeric_id]);
+    $txn = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$txn) {
+        die("<h2>Transaction Not Found</h2><p>ID: $id</p><p><a href='staff_transactions_hub.php'>Back</a></p>");
+    }
+    
+    // Get items
+    $stmt2 = $pdo->prepare("SELECT * FROM merchandise_transaction_items WHERE transaction_id = ?");
+    $stmt2->execute([$txn['id']]);
+    $items = $stmt2->fetchAll(PDO::FETCH_ASSOC);
+    
+} catch (Exception $e) {
+    die("Error: " . $e->getMessage());
+}
+
+// Simple receipt HTML
+?>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Receipt - <?php echo htmlspecialchars($txn['transaction_id']); ?></title>
+    <style>
+        body { font-family: 'Courier New', monospace; max-width: 400px; margin: 20px auto; padding: 20px; }
+        .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px; }
+        .row { display: flex; justify-content: space-between; margin: 5px 0; }
+        .items { border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 10px 0; margin: 10px 0; }
+        .item { margin: 5px 0; }
+        .total { font-weight: bold; font-size: 1.2em; margin-top: 10px; }
+        @media print { body { margin: 0; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2><?php echo htmlspecialchars($txn['station_name']); ?></h2>
+        <p><?php echo htmlspecialchars($txn['station_address']); ?></p>
+        <p>VAT TIN: <?php echo htmlspecialchars($txn['station_vat_tin']); ?></p>
+    </div>
+    
+    <div class="row"><strong>Transaction ID:</strong> <span><?php echo htmlspecialchars($txn['transaction_id']); ?></span></div>
+    <div class="row"><strong>Date:</strong> <span><?php echo date('M j, Y g:i A', strtotime($txn['created_at'])); ?></span></div>
+    <div class="row"><strong>Customer:</strong> <span><?php echo htmlspecialchars($txn['customer_name'] ?? 'Walk-in'); ?></span></div>
+    <div class="row"><strong>Staff:</strong> <span><?php echo htmlspecialchars($txn['staff_name']); ?></span></div>
+    
+    <div class="items">
+        <h3>Items:</h3>
+        <?php foreach ($items as $item): ?>
+        <div class="item">
+            <div class="row">
+                <span><?php echo htmlspecialchars($item['product_name']); ?> (<?php echo $item['quantity']; ?>x)</span>
+                <span>₱<?php echo number_format($item['subtotal'], 2); ?></span>
+            </div>
+        </div>
+        <?php endforeach; ?>
+    </div>
+    
+    <div class="row"><strong>Subtotal:</strong> <span>₱<?php echo number_format($txn['subtotal_amount'] ?? 0, 2); ?></span></div>
+    <div class="row"><strong>VAT (12%):</strong> <span>₱<?php echo number_format($txn['vat_amount'] ?? 0, 2); ?></span></div>
+    <div class="row total"><strong>TOTAL:</strong> <span>₱<?php echo number_format($txn['total_amount'], 2); ?></span></div>
+    
+    <div class="row"><strong>Payment:</strong> <span><?php echo htmlspecialchars($txn['payment_method']); ?></span></div>
+    <div class="row"><strong>Status:</strong> <span><?php echo htmlspecialchars($txn['validation_status']); ?></span></div>
+    
+    <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 2px solid #000;">
+        <p>Thank you for your business!</p>
+        <button onclick="window.print()">Print Receipt</button>
+        <button onclick="window.close()">Close</button>
+    </div>
+</body>
+</html>

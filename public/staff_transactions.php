@@ -804,16 +804,7 @@ Merchandise Inventory
 <script>
     // Initialize cart array
     let cart = [];
-    
-    // Load staff requests
-    loadStaffRequests();
-    
-    // Update timestamp
-    const timestampInput = document.getElementById('transaction_timestamp');
-    if (timestampInput) {
-        timestampInput.value = new Date().toISOString().slice(0, 19).replace('T', ' ');
-    }
-});
+
 
 // Load merchandise inventory from database
 function loadMerchandiseInventory() {

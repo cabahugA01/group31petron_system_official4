@@ -42,6 +42,7 @@ try {
             new_calibration DECIMAL(12,3) NOT NULL,
             updated_by INT NOT NULL,
             updated_at DATETIME NOT NULL,
+            reason VARCHAR(255) DEFAULT NULL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_station (station_id),
             INDEX idx_fuel (fuel_type),
@@ -201,10 +202,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 // 3. Log to pump_calibration_history for Manager and Admin oversight
                 $history_stmt = $pdo->prepare("
                     INSERT INTO pump_calibration_history 
-                    (station_id, fuel_type, previous_calibration, new_calibration, updated_by, updated_at, created_at)
-                    VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+                    (station_id, fuel_type, previous_calibration, new_calibration, updated_by, updated_at, created_at, reason)
+                    VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?)
                 ");
-                $history_stmt->execute([$station_id, $fuel_type, $current_cal, $new_calibration, $me['id']]);
+                $history_stmt->execute([$station_id, $fuel_type, $current_cal, $new_calibration, $me['id'], 'Individual calibration update']);
 
                 // 4. CRITICAL: Insert into fuel_adjustments for Admin oversight visibility
                 $adjustment_reason = "Pump calibration updated from " . number_format($current_cal, 2) . "L to " . number_format($new_calibration, 2) . "L (adjustment: " . ($adjustment_amount >= 0 ? '+' : '') . number_format($adjustment_amount, 2) . "L)";
@@ -231,6 +232,85 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $_SESSION['error'] = '✖ ' . $e->getMessage();
             }
             header('Location: manager_fuel_pump_master.php'); exit;
+
+
+        /* -- PUMP CALIBRATION ADJUSTMENT (bulk save from single form) -- */
+        case 'pump_calibration_adjust':
+            $rows         = $_POST['rows']         ?? [];  // array of row data
+            $fuel_types   = $_POST['fuel_type']    ?? [];
+            $tanker_labels= $_POST['tanker_label'] ?? [];
+            $tanker_refs  = $_POST['tanker_ref']   ?? [];
+            $encoded_cals = $_POST['encoded_cal']  ?? [];
+            $actual_cals  = $_POST['actual_cal']   ?? [];
+            $adj_reasons  = $_POST['adj_reason']   ?? [];
+
+            $saved = 0; $skipped = 0; $errors = [];
+            $mgr_name = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? '')) ?: ($me['username'] ?? 'Manager');
+
+            foreach ($fuel_types as $i => $fuel_type_raw) {
+                $fuel_type_raw = trim($fuel_type_raw);
+                $actual_cal    = trim($actual_cals[$i] ?? '');
+                $adj_reason    = trim($adj_reasons[$i] ?? '');
+
+                // Skip rows where manager left Actual Value blank
+                if ($actual_cal === '' || $actual_cal === null) { $skipped++; continue; }
+
+                $actual_cal    = (float)$actual_cal;
+                $encoded_cal   = (float)($encoded_cals[$i] ?? 0);
+                $tanker_label  = trim($tanker_labels[$i] ?? '');
+                $tanker_ref    = trim($tanker_refs[$i]   ?? '');
+                $variance      = round($encoded_cal - $actual_cal, 4);
+
+                if (empty($fuel_type_raw))  { $errors[] = "Row $i: missing fuel type."; continue; }
+                if (empty($adj_reason))     { $errors[] = "{$tanker_label}: reason is required."; continue; }
+                if ($actual_cal < 0)        { $errors[] = "{$tanker_label}: actual value cannot be negative."; continue; }
+
+                try {
+                    $pdo->beginTransaction();
+
+                    $pdo->prepare("
+                        UPDATE fuel_inventory
+                        SET latest_calibration = ?, last_updated = NOW()
+                        WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                    ")->execute([$actual_cal, $station_id, $fuel_type_raw]);
+
+                    try {
+                        $pdo->prepare("
+                            INSERT INTO pump_calibration_history
+                                (station_id, fuel_type, previous_calibration, new_calibration, updated_by, updated_at, created_at, reason)
+                            VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?)
+                        ")->execute([$station_id, $tanker_label ?: $fuel_type_raw, $encoded_cal, $actual_cal, $me['id'], $adj_reason]);
+                    } catch (Exception $he) {}
+
+                    $full_reason = "Pump Cal [{$tanker_label}][{$tanker_ref}]: Encoded={$encoded_cal}, Actual={$actual_cal}, Var={$variance}. {$adj_reason}";
+                    try {
+                        $pdo->prepare("
+                            INSERT INTO fuel_adjustments
+                                (station_id, adjustment_date, fuel_type, adjustment_type, liters, reason, user_id, status, created_at)
+                            VALUES (?, CURDATE(), ?, 'Calibration', ?, ?, ?, 'Cleared', NOW())
+                        ")->execute([$station_id, $fuel_type_raw, $variance, substr($full_reason, 0, 255), $me['id']]);
+                    } catch (Exception $ae) {}
+
+                    log_activity($pdo, $me['id'], 'Pump Calibration Adjust', $full_reason);
+                    $pdo->commit();
+                    $saved++;
+                } catch (Exception $e) {
+                    if ($pdo->inTransaction()) $pdo->rollBack();
+                    $errors[] = "{$tanker_label}: " . $e->getMessage();
+                }
+            }
+
+            if ($saved > 0 && empty($errors)) {
+                $_SESSION['success'] = "✔ {$saved} tanker calibration(s) saved successfully by {$mgr_name}.";
+            } elseif ($saved > 0) {
+                $_SESSION['success'] = "✔ {$saved} saved. Errors: " . implode('; ', $errors);
+            } elseif ($skipped === count($fuel_types)) {
+                $_SESSION['error'] = '✖ No rows submitted — please fill in at least one Actual Value.';
+            } else {
+                $_SESSION['error'] = '✖ ' . implode('; ', $errors);
+            }
+            header('Location: manager_fuel_pump_master.php'); exit;
+
 
         /* -- ADJUST READING (Manager corrects liters_sold before approving) -- */
         case 'adjust_reading':
@@ -945,35 +1025,93 @@ try {
     $reconciliation_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) { error_log("reconciliation_data: ".$e->getMessage()); }
 
-// Pump master fuel types — join fuel_pumps for pump ID, encoded-by, last calibration date
-$pump_master_fuel_types = [];
+// ── 17-Tanker Pump Master Config ─────────────────────────────────────────────
+// Static map of all 17 tankers with their fuel type and underground tank reference
+$TANK_CONFIG_17 = [
+    ['fuel_type'=>'Diesel',      'label'=>'DIESEL 1 - 1',     'tank'=>'Underground Tank #1',  'tanker_num'=>1],
+    ['fuel_type'=>'Diesel',      'label'=>'DIESEL 1 - 2',     'tank'=>'Underground Tank #2',  'tanker_num'=>2],
+    ['fuel_type'=>'Diesel',      'label'=>'DIESEL 1 - 3',     'tank'=>'Underground Tank #3',  'tanker_num'=>3],
+    ['fuel_type'=>'Diesel',      'label'=>'DIESEL 1 - 4',     'tank'=>'Underground Tank #4',  'tanker_num'=>4],
+    ['fuel_type'=>'Diesel',      'label'=>'DIESEL 2 - 5',     'tank'=>'Underground Tank #5',  'tanker_num'=>5],
+    ['fuel_type'=>'Diesel',      'label'=>'DIESEL 2 - 6',     'tank'=>'Underground Tank #6',  'tanker_num'=>6],
+    ['fuel_type'=>'Kerosene',    'label'=>'KEROSENE - 1',     'tank'=>'Underground Tank #7',  'tanker_num'=>1],
+    ['fuel_type'=>'Turbo Diesel','label'=>'TURBO DIESEL - 1', 'tank'=>'Underground Tank #8',  'tanker_num'=>1],
+    ['fuel_type'=>'Turbo Diesel','label'=>'TURBO DIESEL - 2', 'tank'=>'Underground Tank #9',  'tanker_num'=>2],
+    ['fuel_type'=>'XCS Plus',    'label'=>'XCS PLUS - 1',     'tank'=>'Underground Tank #10', 'tanker_num'=>1],
+    ['fuel_type'=>'XCS Plus',    'label'=>'XCS PLUS - 2',     'tank'=>'Underground Tank #11', 'tanker_num'=>2],
+    ['fuel_type'=>'XCS Plus',    'label'=>'XCS PLUS - 3',     'tank'=>'Underground Tank #12', 'tanker_num'=>3],
+    ['fuel_type'=>'XCS Plus',    'label'=>'XCS PLUS - 4',     'tank'=>'Underground Tank #13', 'tanker_num'=>4],
+    ['fuel_type'=>'XTRA UNL',    'label'=>'XTRA UNL 1 - 1',  'tank'=>'Underground Tank #14', 'tanker_num'=>1],
+    ['fuel_type'=>'XTRA UNL',    'label'=>'XTRA UNL 1 - 2',  'tank'=>'Underground Tank #15', 'tanker_num'=>2],
+    ['fuel_type'=>'XTRA UNL',    'label'=>'XTRA UNL 2 - 3',  'tank'=>'Underground Tank #16', 'tanker_num'=>3],
+    ['fuel_type'=>'XTRA UNL',    'label'=>'XTRA UNL 2 - 4',  'tank'=>'Underground Tank #17', 'tanker_num'=>4],
+];
+
+// Pull fuel_inventory calibration data (keyed by lowercase fuel_type)
+$pm_inv_lookup = [];
 try {
-    $stmt = $pdo->prepare("
-        SELECT
-            fi.fuel_type,
-            fi.current_level,
-            fi.current_stock,
-            fi.latest_calibration,
-            fi.price_per_liter,
-            fi.last_updated,
-            fi.fuel_type_id,
-            fp.id            AS pump_db_id,
-            fp.pump_number,
-            fp.calibration_value,
-            fp.calibration_updated_at AS last_calibration_date,
-            fp.status        AS pump_status,
-            u.name           AS calibration_encoded_by
-        FROM fuel_inventory fi
-        LEFT JOIN fuel_pumps fp
-            ON fp.station_id = fi.station_id
-            AND fp.fuel_type_id = fi.fuel_type_id
-        LEFT JOIN users u ON fp.calibration_updated_by = u.id
-        WHERE fi.station_id = ?
-        ORDER BY fi.fuel_type ASC, fp.pump_number ASC
+    $inv_stmt = $pdo->prepare("
+        SELECT fuel_type, latest_calibration, last_updated, fuel_type_id
+        FROM fuel_inventory WHERE station_id = ?
     ");
-    $stmt->execute([$station_id]);
-    $pump_master_fuel_types = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) { error_log("pump_master: ".$e->getMessage()); }
+    $inv_stmt->execute([$station_id]);
+    foreach ($inv_stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $pm_inv_lookup[strtolower(trim($row['fuel_type']))] = $row;
+    }
+} catch (Exception $e) { error_log("pm_inv: ".$e->getMessage()); }
+
+// Pull latest calibration reading per (fuel_type, tanker_num) from fuel_transactions
+$pm_txn_lookup = [];
+try {
+    $txn_cal_stmt = $pdo->prepare("
+        SELECT fuel_type, pump_id, calibration, transaction_date,
+               COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, '—') AS staff_name
+        FROM fuel_transactions ft
+        LEFT JOIN users u ON ft.staff_id = u.id
+        WHERE ft.station_id = ?
+          AND ft.calibration IS NOT NULL AND ft.calibration > 0
+          AND ft.id = (
+              SELECT id FROM fuel_transactions ft2
+              WHERE ft2.station_id = ft.station_id
+                AND LOWER(TRIM(ft2.fuel_type)) = LOWER(TRIM(ft.fuel_type))
+                AND ft2.pump_id = ft.pump_id
+              ORDER BY ft2.transaction_date DESC, ft2.id DESC LIMIT 1
+          )
+        GROUP BY ft.fuel_type, ft.pump_id
+    ");
+    $txn_cal_stmt->execute([$station_id]);
+    foreach ($txn_cal_stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $key = strtolower(trim($row['fuel_type'])) . '_' . (int)$row['pump_id'];
+        $pm_txn_lookup[$key] = $row;
+    }
+} catch (Exception $e) { error_log("pm_txn: ".$e->getMessage()); }
+
+// Build the final 17-row dataset
+$pump_master_fuel_types = [];
+foreach ($TANK_CONFIG_17 as $tc) {
+    $ft_key  = strtolower(trim($tc['fuel_type']));
+    $inv     = $pm_inv_lookup[$ft_key] ?? null;
+    $txn_key = $ft_key . '_' . $tc['tanker_num'];
+    $txn     = $pm_txn_lookup[$txn_key] ?? null;
+
+    // Calibration value: prefer latest staff-encoded value from transactions, fall back to inventory
+    $cal_value   = $txn ? (float)$txn['calibration'] : ($inv ? (float)$inv['latest_calibration'] : 0);
+    $cal_date    = $txn ? $txn['transaction_date']    : ($inv ? $inv['last_updated'] : null);
+    $encoded_by  = $txn ? ($txn['staff_name'] ?? '—') : '—';
+
+    $pump_master_fuel_types[] = [
+        'fuel_type'     => $tc['fuel_type'],
+        'label'         => $tc['label'],
+        'tank'          => $tc['tank'],
+        'tanker_num'    => $tc['tanker_num'],
+        'cal_value'     => $cal_value,
+        'cal_date'      => $cal_date,
+        'encoded_by'    => $encoded_by,
+        'fuel_type_id'  => $inv['fuel_type_id'] ?? null,
+        // Status: if cal > 0 it's been encoded; manager can flag/clear
+        'status'        => $cal_value > 0 ? 'Pending' : 'No Reading',
+    ];
+}
 
 // Counts for stats
 $total_tanks    = count($tank_data);
@@ -1204,59 +1342,190 @@ function adjustColor($hex,$pct) {
     </div>
 
         <!-- Calibration Values Table -->
-    <div class="info-box" style="margin-bottom:20px;">
-        <h4 style="margin:0 0 14px;color:<?php echo $colors['primary']; ?>;"><i class="fas fa-sliders-h"></i> Update Calibration Values</h4>
-        <?php if (empty($pump_master_fuel_types)): ?>
-            <div class="empty-state"><i class="fas fa-cog"></i><p>No fuel types found.</p></div>
-        <?php else: ?>
-        <div style="overflow-x:hidden;">
-        <table class="data-table" style="width: 100%; table-layout: fixed; word-wrap: break-word;; margin: 0;">
+    <div class="info-box" style="margin-bottom:20px;border-left:none;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:18px;">
+        <h4 style="margin:0 0 14px;color:<?php echo $colors['primary']; ?>;"><i class="fas fa-sliders-h"></i> Pump Master – Calibration Management <span style="font-size:.75rem;font-weight:400;color:#888;">(<?php echo count($pump_master_fuel_types); ?> tankers)</span></h4>
+
+        <style>
+        .pm-tbl{width:100%;border-collapse:collapse;font-size:.8rem;table-layout:fixed;}
+        .pm-tbl thead tr{background:#002F70;}
+        .pm-tbl thead th{padding:9px 8px;color:#fff;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;}
+        .pm-tbl tbody tr{border-bottom:1px solid #eef0f3;transition:background .12s;}
+        .pm-tbl tbody tr:hover{background:#f8fafc;}
+        .pm-tbl tbody td{padding:8px;vertical-align:middle;word-break:break-word;}
+        .pm-label{font-weight:700;color:#1e293b;font-size:.82rem;}
+        .pm-sub{font-size:.7rem;color:#64748b;margin-top:1px;}
+        .pm-cal-val{font-weight:700;font-family:monospace;font-size:.85rem;color:#1e293b;}
+        .pm-cal-zero{color:#dc2626;font-style:italic;}
+        .pm-var-pos{color:#dc2626;font-weight:700;font-family:monospace;font-size:.82rem;}
+        .pm-var-neg{color:#16a34a;font-weight:700;font-family:monospace;font-size:.82rem;}
+        .pm-var-zero{color:#94a3b8;font-family:monospace;font-size:.82rem;}
+        .pm-input{padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:.8rem;width:100%;box-sizing:border-box;transition:border-color .15s;background:#fff;}
+        .pm-input:focus{outline:none;border-color:#475569;box-shadow:0 0 0 2px rgba(71,85,105,.1);}
+        .pm-reason{padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:.75rem;width:100%;box-sizing:border-box;resize:none;background:#fff;}
+        .pm-reason:focus{outline:none;border-color:#475569;}
+        .sb-pending{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.68rem;font-weight:700;background:#fef3c7;color:#92400e;}
+        .sb-cleared{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.68rem;font-weight:700;background:#dcfce7;color:#166534;}
+        .sb-noread{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.68rem;font-weight:700;background:#f1f5f9;color:#64748b;}
+        .pm-actions{display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid #e2e8f0;}
+        .pm-btn-save{padding:9px 24px;background:#002F70;color:#fff;border:none;border-radius:7px;font-size:.85rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:background .15s;}
+        .pm-btn-save:hover{background:#001a40;}
+        .pm-btn-reset{padding:9px 18px;background:#f1f5f9;color:#475569;border:1.5px solid #e2e8f0;border-radius:7px;font-size:.85rem;font-weight:600;cursor:pointer;transition:background .15s;}
+        .pm-btn-reset:hover{background:#e2e8f0;}
+        </style>
+
+        <form method="post" action="manager_fuel_pump_master.php" id="pmBulkForm">
+        <input type="hidden" name="action" value="pump_calibration_adjust">
+
+        <div style="overflow-x:auto;">
+        <table class="pm-tbl">
+            <colgroup>
+                <col style="width:13%"><col style="width:13%"><col style="width:10%">
+                <col style="width:10%"><col style="width:10%"><col style="width:9%">
+                <col style="width:22%"><col style="width:8%">
+            </colgroup>
             <thead><tr>
-                <th style="width:20%">Fuel Type</th>
-                <th style="width:15%">Available Stock</th>
-                <th style="width:15%">Current Calibration</th>
-                <th style="width:20%">New Calibration (L)</th>
-                <th style="width:20%">Last Updated</th>
-                <th style="width:10%;text-align:center;">Action</th>
+                <th>Fuel Type Name</th>
+                <th>Tanker Reference</th>
+                <th>Cal. Value (L)</th>
+                <th>Last Cal. Date</th>
+                <th>Actual Value (L)</th>
+                <th>Variance (L)</th>
+                <th>Reason</th>
+                <th>Status</th>
             </tr></thead>
             <tbody>
-            <?php foreach ($pump_master_fuel_types as $f):
-                $cal = $f['latest_calibration'] ?? 0;
-                $lvl = $f['current_level'] ?? 0;
-                $cFormId = "cal_form_" . preg_replace('/[^a-zA-Z0-9]/', '', $f['fuel_type']);
+            <?php foreach ($pump_master_fuel_types as $i => $f):
+                $cal = (float)$f['cal_value'];
+                $st  = $f['status'];
             ?>
-            <form id="<?php echo $cFormId; ?>" method="post" action="manager_fuel_pump_master.php">
-                <input type="hidden" name="action" value="update_calibration">
-                <input type="hidden" name="fuel_type" value="<?php echo htmlspecialchars($f['fuel_type']); ?>">
-            </form>
+            <!-- Hidden array fields for this row -->
+            <input type="hidden" name="fuel_type[]"    value="<?php echo htmlspecialchars($f['fuel_type']); ?>">
+            <input type="hidden" name="tanker_label[]" value="<?php echo htmlspecialchars($f['label']); ?>">
+            <input type="hidden" name="tanker_ref[]"   value="<?php echo htmlspecialchars($f['tank']); ?>">
+            <input type="hidden" name="encoded_cal[]"  value="<?php echo $cal; ?>">
             <tr>
-                <td><strong><?php echo htmlspecialchars($f['fuel_type']); ?></strong></td>
+                <!-- Fuel Type Name -->
                 <td>
-                    <span class="tank-status status-<?php echo $lvl>2000?'available':($lvl>500?'low':'out'); ?>">
-                        <?php echo number_format($lvl,2); ?> L
-                    </span>
+                    <div class="pm-label"><?php echo htmlspecialchars($f['label']); ?></div>
+                    <div class="pm-sub"><?php echo htmlspecialchars($f['fuel_type']); ?></div>
                 </td>
+
+                <!-- Tanker Reference -->
                 <td>
-                    <span style="font-weight:700;color:<?php echo $cal>0?$colors['success']:$colors['danger']; ?>;">
-                        <?php echo number_format($cal,2); ?> L
-                    </span>
-                    <?php if ($cal == 0): ?>
-                    <div style="font-size:.72rem;color:<?php echo $colors['danger']; ?>;font-weight:700;">⚠ NEEDS UPDATE</div>
+                    <div style="font-size:.78rem;font-weight:600;color:#334155;"><?php echo htmlspecialchars($f['tank']); ?></div>
+                    <div class="pm-sub">Tanker #<?php echo $f['tanker_num']; ?></div>
+                </td>
+
+                <!-- Calibration Value (staff-encoded) -->
+                <td>
+                    <?php if ($cal > 0): ?>
+                        <span class="pm-cal-val"><?php echo number_format($cal, 2); ?></span>
+                        <?php if (!empty($f['encoded_by']) && $f['encoded_by'] !== '—'): ?>
+                        <div class="pm-sub">by <?php echo htmlspecialchars($f['encoded_by']); ?></div>
+                        <?php endif; ?>
+                    <?php else: ?>
+                        <span class="pm-cal-zero">⚠ No Reading</span>
                     <?php endif; ?>
                 </td>
-                <td>
-                    <input form="<?php echo $cFormId; ?>" type="number" name="new_calibration" class="form-control" step="0.01" min="0" required placeholder="e.g. 500.00" style="padding:6px 10px; height:auto; margin:0;" value="<?php echo $cal>0 ? $cal : ''; ?>">
+
+                <!-- Last Calibration Date -->
+                <td style="font-size:.75rem;color:#555;">
+                    <?php echo $f['cal_date'] ? date('M j, Y', strtotime($f['cal_date'])) : '—'; ?>
+                    <?php if ($f['cal_date']): ?>
+                    <div class="pm-sub"><?php echo date('H:i', strtotime($f['cal_date'])); ?></div>
+                    <?php endif; ?>
                 </td>
-                <td style="font-size:.8rem;color:#555;"><?php echo date('M j, Y H:i',strtotime($f['last_updated'])); ?></td>
-                <td style="text-align:center; padding: 4px;">
-                    <button form="<?php echo $cFormId; ?>" type="submit" class="jo-act-btn" style="background:#003d82;color:white;width:100%;justify-content:center;padding:6px;"><i class="fas fa-save"></i> Save</button>
+
+                <!-- Actual Value (Manager Input) -->
+                <td>
+                    <input type="number"
+                           name="actual_cal[]"
+                           id="actual_<?php echo $i; ?>"
+                           class="pm-input"
+                           step="0.0001" min="0"
+                           placeholder="<?php echo $cal > 0 ? $cal : '0.00'; ?>"
+                           oninput="pmCalcVar(<?php echo $i; ?>, <?php echo $cal; ?>)">
+                </td>
+
+                <!-- Variance (auto-computed) -->
+                <td>
+                    <span id="var_<?php echo $i; ?>" class="pm-var-zero">—</span>
+                </td>
+
+                <!-- Reason -->
+                <td>
+                    <textarea name="adj_reason[]"
+                              class="pm-reason" rows="2"
+                              id="reason_<?php echo $i; ?>"
+                              placeholder="e.g. calibration test, staff error, pump variance"></textarea>
+                </td>
+
+                <!-- Status -->
+                <td>
+                    <?php if ($st === 'Cleared'): ?>
+                        <span class="sb-cleared">✔ Cleared</span>
+                    <?php elseif ($st === 'No Reading'): ?>
+                        <span class="sb-noread">No Reading</span>
+                    <?php else: ?>
+                        <span class="sb-pending">⏳ Pending</span>
+                    <?php endif; ?>
                 </td>
             </tr>
             <?php endforeach; ?>
             </tbody>
         </table>
         </div>
-        <?php endif; ?>
+
+        <!-- Single Save + Reset at bottom right -->
+        <div class="pm-actions">
+            <button type="button" class="pm-btn-reset" onclick="pmResetAll()">
+                <i class="fas fa-undo"></i> Reset
+            </button>
+            <button type="submit" class="pm-btn-save">
+                <i class="fas fa-save"></i> Save All Changes
+            </button>
+        </div>
+        </form>
+
+        <script>
+        function pmCalcVar(idx, encodedCal) {
+            var inp  = document.getElementById('actual_' + idx);
+            var span = document.getElementById('var_' + idx);
+            if (!inp || !span) return;
+            var v = parseFloat(inp.value);
+            if (isNaN(v)) { span.textContent = '—'; span.className = 'pm-var-zero'; return; }
+            var diff = Math.round((encodedCal - v) * 10000) / 10000;
+            span.textContent = (diff > 0 ? '+' : '') + diff.toFixed(4) + ' L';
+            span.className   = diff > 0 ? 'pm-var-pos' : (diff < 0 ? 'pm-var-neg' : 'pm-var-zero');
+        }
+        function pmResetAll() {
+            document.querySelectorAll('#pmBulkForm input[name="actual_cal[]"]').forEach(function(el, i) {
+                el.value = '';
+                var span = document.getElementById('var_' + i);
+                if (span) { span.textContent = '—'; span.className = 'pm-var-zero'; }
+            });
+            document.querySelectorAll('#pmBulkForm textarea[name="adj_reason[]"]').forEach(function(el) { el.value = ''; });
+        }
+        // Validate before submit: any filled actual_cal must have a reason
+        document.getElementById('pmBulkForm').addEventListener('submit', function(e) {
+            var actuals = document.querySelectorAll('#pmBulkForm input[name="actual_cal[]"]');
+            var reasons = document.querySelectorAll('#pmBulkForm textarea[name="adj_reason[]"]');
+            var hasAny  = false, missingReason = false, label = '';
+            var labels  = <?php echo json_encode(array_column($pump_master_fuel_types, 'label')); ?>;
+            actuals.forEach(function(el, i) {
+                if (el.value.trim() !== '') {
+                    hasAny = true;
+                    if (!reasons[i] || reasons[i].value.trim() === '') {
+                        missingReason = true;
+                        label = labels[i] || ('Row ' + (i+1));
+                    }
+                }
+            });
+            if (!hasAny) { e.preventDefault(); alert('Please fill in at least one Actual Value before saving.'); return; }
+            if (missingReason) { e.preventDefault(); alert('Please enter a Reason for: ' + label); return; }
+        });
+        </script>
+
     </div>
 
     <!-- Calibration Log -->

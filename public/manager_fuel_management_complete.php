@@ -2,7 +2,6 @@
 $page_id = match($_GET['tab'] ?? '') {
     'deliveries'    => 'fuel_deliveries_validation',
     'transactions'  => 'fuel_transactions_oversight',
-    'reconciliation'=> 'fuel_reconciliation',
     'adjustments'   => 'fuel_adjustments',
     'stock_requests'=> 'fuel_stock_requests',
     default         => 'fuel_transactions_oversight',
@@ -1004,7 +1003,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             } catch (Exception $e) {
                 $_SESSION['error'] = 'Variance Update Failed: ' . $e->getMessage();
             }
-            header('Location: manager_fuel_management_complete.php#reconciliation'); exit;
+            header('Location: manager_fuel_management_complete.php#variance-reports'); exit;
 
         /* -- EXPORT FUEL TRANSACTIONS -- */
         case 'export_transactions':
@@ -1370,7 +1369,6 @@ $variance_reports   = [];
 $recent_adjustments = [];
 $shift_history      = [];
 $deliveries         = [];
-$reconciliation_data = [];
 
 // -- Load shift periods from DB (replaces all hardcoded shift labels) --
 require_once __DIR__ . '/../backend/classes/ShiftPeriodConfig.php';
@@ -1585,27 +1583,6 @@ try {
     $stmt->execute([$station_id]);
     $shift_history = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) { error_log("shift_history: ".$e->getMessage()); }
-
-// Reconciliation: pump sales vs tank levels summary per fuel type
-try {
-    $stmt = $pdo->prepare("
-        SELECT fi.fuel_type_id, ft.name as fuel_type_name,
-               COALESCE(fi.current_level, fi.current_stock, 0) as current_stock,
-               COALESCE(SUM(ftr.liters_sold),0) as total_sold_today,
-               COALESCE(fi.capacity, 0) as capacity
-        FROM fuel_inventory fi
-        JOIN fuel_types ft ON fi.fuel_type_id=ft.id
-        LEFT JOIN fuel_transactions ftr
-            ON ftr.station_id = fi.station_id
-            AND LOWER(TRIM(ftr.fuel_type)) = LOWER(TRIM(ft.name))
-            AND DATE(ftr.transaction_date) = CURDATE()
-            AND LOWER(ftr.status) IN ('verified','approved','validated','complete','completed')
-        WHERE fi.station_id=?
-        GROUP BY fi.fuel_type_id, ft.name, fi.current_level, fi.current_stock, fi.capacity
-    ");
-    $stmt->execute([$station_id]);
-    $reconciliation_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) { error_log("reconciliation_data: ".$e->getMessage()); }
 
 // Pump master fuel types -" join fuel_pumps for pump ID, encoded-by, last calibration date
 $pump_master_fuel_types = [];
@@ -2946,216 +2923,6 @@ function switchPriceTab(tab) {
     });
 }());
 </script>
-
-<!-- ----------------------------------------------------------
-     TAB 4: RECONCILIATION
----------------------------------------------------------- -->
-<div id="reconciliation" class="fuel-section">
-<div class="fuel-section-inner">
-
-<?php
-// -- Last delivery date per fuel type --
-$last_delivery_map = [];
-try {
-    $stmt = $pdo->prepare("SELECT LOWER(TRIM(fuel_type)) as ft_key, MAX(delivery_date) as last_delivery FROM fuel_deliveries WHERE station_id=? GROUP BY LOWER(TRIM(fuel_type))");
-    $stmt->execute([$station_id]);
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) $last_delivery_map[$r['ft_key']] = $r['last_delivery'];
-} catch (Exception $e) { error_log("last_delivery_map: ".$e->getMessage()); }
-
-// -- Last pump reading per fuel type --
-$last_reading_map = [];
-try {
-    $stmt = $pdo->prepare("SELECT LOWER(TRIM(fuel_type)) as ft_key, MAX(transaction_date) as last_reading_date, MAX(present_reading) as last_pump_reading FROM fuel_transactions WHERE station_id=? GROUP BY LOWER(TRIM(fuel_type))");
-    $stmt->execute([$station_id]);
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) $last_reading_map[$r['ft_key']] = $r;
-} catch (Exception $e) { error_log("last_reading_map: ".$e->getMessage()); }
-?>
-
-    <div class="section-head">
-        <div class="section-title"><i class="fas fa-balance-scale"></i> Reconciliation — Pump Sales vs Tank Levels</div>
-        <span class="audit-badge"><i class="fas fa-calendar-day"></i> <?php echo date('M j, Y'); ?></span>
-    </div>
-
-    <!-- Today's Pump Sales vs Tank Summary -->
-    <?php if (!empty($reconciliation_data)): ?>
-    <div class="section-head" style="margin-top:4px;">
-        <div class="section-title"><i class="fas fa-chart-bar"></i> Today's Pump Sales vs Tank Summary</div>
-    </div>
-    <div class="po-table-wrap" style="margin-top:12px;">
-    <table class="data-table" style="font-size:0.82rem; ">
-        <thead><tr>
-            <th>Fuel Type</th><th>Current Stock</th><th>Capacity</th>
-            <th>Sold Today</th><th>Last Delivery</th><th>Last Pump Reading</th>
-            <th>Fill %</th><th>Status</th>
-        </tr></thead>
-        <tbody>
-        <?php foreach ($reconciliation_data as $rec):
-            $fill_pct  = $rec['capacity'] > 0 ? ($rec['current_stock'] / $rec['capacity']) * 100 : 0;
-            $ft_key    = strtolower(trim($rec['fuel_type_name']));
-            $last_del  = $last_delivery_map[$ft_key] ?? null;
-            $last_rdg  = $last_reading_map[$ft_key]  ?? null;
-            $bar_color = $fill_pct > 40 ? $colors['success'] : ($fill_pct > 15 ? $colors['warning'] : $colors['danger']);
-        ?>
-        <tr>
-            <td><strong><?php echo htmlspecialchars($rec['fuel_type_name']); ?></strong></td>
-            <td><?php echo number_format($rec['current_stock'], 2); ?> L</td>
-            <td><?php echo $rec['capacity'] ? number_format($rec['capacity'], 2).' L' : 'N/A'; ?></td>
-            <td><strong><?php echo number_format($rec['total_sold_today'], 2); ?> L</strong></td>
-            <td style="font-size:.78rem;color:#555;">
-                <?php echo $last_del ? date('M j, Y', strtotime($last_del)) : '<span style="color:#bbb;"> - </span>'; ?>
-            </td>
-            <td style="font-size:.78rem;">
-                <?php if ($last_rdg): ?>
-                    <strong><?php echo number_format($last_rdg['last_pump_reading'], 2); ?></strong>
-                    <span style="color:#aaa;font-size:.7rem;display:block;"><?php echo date('M j H:i', strtotime($last_rdg['last_reading_date'])); ?></span>
-                <?php else: ?>
-                    <span style="color:#bbb;"> - </span>
-                <?php endif; ?>
-            </td>
-            <td>
-                <div style="display:flex;align-items:center;gap:6px;">
-                    <div style="flex:1;background:#e9ecef;border-radius:4px;height:8px;min-width:50px;">
-                        <div style="width:<?php echo min(100,$fill_pct); ?>%;height:100%;border-radius:4px;background:<?php echo $bar_color; ?>"></div>
-                    </div>
-                    <span style="font-size:.8rem;font-weight:600;"><?php echo number_format($fill_pct,1); ?>%</span>
-                </div>
-            </td>
-            <td>
-                <?php if ($fill_pct <= 0): ?>
-                    <span class="tag-investigate">OUT OF STOCK</span>
-                <?php elseif ($fill_pct <= 15): ?>
-                    <span class="tag-investigate">CRITICAL LOW</span>
-                <?php elseif ($fill_pct <= 40): ?>
-                    <span class="tag-open">LOW STOCK</span>
-                <?php else: ?>
-                    <span class="tag-resolved">NORMAL</span>
-                <?php endif; ?>
-            </td>
-        </tr>
-        <?php endforeach; ?>
-        </tbody>
-    </table>
-    </div>
-    </div>
-
-    <!-- Optional Trend Chart (collapsible) -->
-    <div style="margin-bottom:20px;">
-        <div style="display:flex;align-items:center;gap:8px;margin:8px 0;cursor:pointer;user-select:none;" onclick="toggleTrendChart()">
-            <span style="font-size:.85rem;font-weight:600;color:<?php echo $colors['primary']; ?>;"><i class="fas fa-chart-line"></i> Tank Level vs Sales Trend (Last 7 Days)</span>
-            <span id="trendToggleIcon" style="font-size:.75rem;color:#888;"><i class="fas fa-chevron-down"></i> Show</span>
-        </div>
-        <div id="trendChartWrap" style="display:none;background:#f8f9fa;border-radius:8px;padding:16px;border:1px solid #e9ecef;">
-            <canvas id="trendChart" height="80"></canvas>
-        </div>
-    </div>
-    <?php endif; ?>
-
-    <!-- Discrepancy Log -->
-    <div class="section-head" style="padding-top:16px;border-top:2px solid #e9ecef;">
-        <div class="section-title"><i class="fas fa-exclamation-triangle"></i> Discrepancy Log</div>
-        <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;">
-            <span style="font-size:.72rem;color:#888;">Lifecycle:</span>
-            <span class="tag-open" style="font-size:.68rem;padding:2px 7px;">Open</span>
-            <span style="font-size:.7rem;color:#ccc;">?</span>
-            <span class="tag-investigating" style="font-size:.68rem;padding:2px 7px;">Investigating</span>
-            <span style="font-size:.7rem;color:#ccc;">?</span>
-            <span class="tag-resolved" style="font-size:.68rem;padding:2px 7px;">Resolved</span>
-            <?php if ($high_variances > 0): ?>
-            <span class="tag-investigate" style="margin-left:10px;font-size:.68rem;padding:2px 7px;">
-                <i class="fas fa-exclamation-triangle"></i> <?php echo $high_variances; ?> &gt;5%
-            </span>
-            <?php endif; ?>
-        </div>
-    </div>
-
-    <?php if (empty($variance_reports)): ?>
-        <div class="empty-state"><i class="fas fa-check-circle"></i><p>No discrepancies found. All reconciled.</p></div>
-    <?php else: ?>
-    <div class="po-table-wrap" style="margin-top:12px;">
-    <table class="data-table" style="font-size:0.82rem; ">
-        <thead><tr>
-            <th>#</th><th>Date</th><th>Fuel Type</th>
-            <th>Variance (L)</th><th>Variance %</th>
-            <th>Cause / Reason</th><th>Resolution Notes</th>
-            <th>Status</th><th>Manager</th><th>Timestamp</th><th>Action</th>
-        </tr></thead>
-        <tbody>
-        <?php foreach ($variance_reports as $v):
-            $vp     = abs($v['variance_percent'] ?? 0);
-            $vp_val = (float)($v['variance_percent'] ?? 0);
-            $vl     = (float)($v['variance_liters'] ?? 0);
-            $st     = $v['status'] ?? 'Open';
-            $st_key = strtolower(str_replace(' ', '_', $st));
-            $vl_cls = $vl >= 0 ? 'var-ok' : 'var-crit';
-            $vp_cls = $vp > 10 ? 'var-crit' : ($vp > 5 ? 'var-warn' : 'var-ok');
-        ?>
-        <tr>
-            <td><strong style="font-size:.78rem;">#<?php echo $v['id']; ?></strong></td>
-            <td style="font-size:.78rem;white-space:nowrap;"><?php echo date('M j, Y', strtotime($v['report_date'])); ?></td>
-            <td><strong><?php echo htmlspecialchars($v['fuel_type']); ?></strong></td>
-            <td class="<?php echo $vl_cls; ?>" style="font-weight:700;white-space:nowrap;">
-                <?php echo ($vl >= 0 ? '+' : '-"') . number_format($vl, 2); ?> L
-            </td>
-            <td>
-                <span class="<?php echo $vp_cls; ?>" style="font-weight:700;"><?php echo number_format($vp_val, 2); ?>%</span>
-                <?php if ($vp > 5): ?><div style="font-size:.63rem;color:<?php echo $colors['danger']; ?>;font-weight:700;">? INVESTIGATE</div><?php endif; ?>
-            </td>
-            <td style="max-width:150px;font-size:.78rem;">
-                <?php $cause = $v['reason'] ?? '';
-                echo $cause ? '<span title="'.htmlspecialchars($cause).'">'.htmlspecialchars(mb_strimwidth($cause,0,45,' - ')).'</span>' : '<span style="color:#bbb;"> - </span>'; ?>
-            </td>
-            <td style="max-width:150px;font-size:.78rem;">
-                <?php $rn = $v['resolution_notes'] ?? '';
-                echo $rn ? '<span title="'.htmlspecialchars($rn).'">'.htmlspecialchars(mb_strimwidth($rn,0,45,' - ')).'</span>' : '<span style="color:#bbb;"> - </span>'; ?>
-            </td>
-            <td>
-                <?php if ($st === 'Resolved'): ?>
-                    <span class="tag-resolved"><i class="fas fa-check"></i> Resolved</span>
-                <?php elseif ($st === 'Under Investigation'): ?>
-                    <span class="tag-investigating"><i class="fas fa-search"></i> Investigating</span>
-                <?php else: ?>
-                    <span class="tag-open"><i class="fas fa-circle"></i> Open</span>
-                <?php endif; ?>
-            </td>
-            <td style="font-size:.78rem;">
-                <?php echo $v['resolved_by_name']
-                    ? '<span class="audit-badge"><i class="fas fa-user-tie"></i> '.htmlspecialchars($v['resolved_by_name']).'</span>'
-                    : '<span style="color:#bbb;"> - </span>'; ?>
-            </td>
-            <td style="font-size:.75rem;color:#555;white-space:nowrap;">
-                <?php echo !empty($v['updated_at'])
-                    ? date('M j H:i', strtotime($v['updated_at']))
-                    : date('M j H:i', strtotime($v['created_at'])); ?>
-            </td>
-            <td class="col-actions" style="white-space:nowrap;">
-                <?php if ($st !== 'Resolved'): ?>
-                <div style="display:flex;flex-direction:column;gap:3px;align-items:center;">
-                    <button class="act-btn investigate" title="<?php echo $st === 'Under Investigation' ? 'Resolve' : 'Investigate'; ?>"
-                        onclick="openVarianceModal(<?php echo $v['id']; ?>,'<?php echo $st_key; ?>')">
-                        <i class="fas fa-<?php echo $st === 'Under Investigation' ? 'check' : 'search'; ?>"></i>
-                        <?php echo $st === 'Under Investigation' ? 'Resolve' : 'Investigate'; ?>
-                    </button>
-                </div>
-                <?php else: ?>
-                <button class="act-btn view" title="View"
-                    onclick="openVarianceModal(<?php echo $v['id']; ?>,'view')">
-                    <i class="fas fa-eye"></i> View
-                </button>
-                <?php endif; ?>
-            </td>
-        </tr>
-        <?php endforeach; ?>
-        </tbody>
-    </table>
-    </div>
-    </div>
-    <div style="margin-top:8px;font-size:.75rem;color:#888;">
-        <i class="fas fa-shield-alt"></i> Every status change is auto-logged with Manager ID + timestamp in the audit trail.
-    </div>
-    <?php endif; ?>
-
-</div>
-</div>
 
 <!-- ----------------------------------------------------------
      TAB 5: VARIANCE REPORTS
@@ -4702,13 +4469,12 @@ function prefillCalibration(sel) {
 }
 
 /* -- SCROLL TO SECTION FROM HASH OR ?tab= PARAM -- */
-const _validTabs = ['fuel-transactions','daily-ops','fuel-deliveries','adjustments','reconciliation','variance-reports','shift-history','fuel-reports','pump-master'];
+const _validTabs = ['fuel-transactions','daily-ops','fuel-deliveries','adjustments','variance-reports','shift-history','fuel-reports','pump-master'];
 
 // Map ?tab= query param values to section IDs
 const _tabParamMap = {
     'transactions':   'fuel-transactions',
     'deliveries':     'fuel-deliveries',
-    'reconciliation': 'reconciliation',
     'adjustments':    'adjustments',
     'pump-master':    'pump-master',
     'variance':       'variance-reports',
@@ -4721,7 +4487,6 @@ const _tabParamMap = {
 const _sectionTitles = {
     'fuel-transactions': 'Fuel Transactions Oversight',
     'fuel-deliveries':   'Fuel Deliveries Validation',
-    'reconciliation':    'Reconciliation',
     'adjustments':       'Adjustment',
     'pump-master':       'Pump Master',
     'variance-reports':  'Variance Reports',
@@ -4733,7 +4498,6 @@ const _sectionTitles = {
 const _sectionSubtitles = {
     'fuel-transactions': 'Review pump readings encoded by Staff — Validate / Approve / Adjust',
     'fuel-deliveries':   'Review supplier Delivery Receipts encoded by Staff — Approve / Reject / Adjust',
-    'reconciliation':    'Compare pump sales vs tank levels — Validate discrepancies, mark status',
     'adjustments':       'Encode corrections to tank levels, pump readings, or delivery entries',
     'pump-master':       'Manage pump list and calibration records — Add/Edit pumps, assign calibration schedules',
     'variance-reports':  'Detected variances requiring investigation or resolution',
@@ -4840,85 +4604,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 });
-
-/* -- TREND CHART (Reconciliation) -- */
-function toggleTrendChart() {
-    const wrap = document.getElementById('trendChartWrap');
-    const icon = document.getElementById('trendToggleIcon');
-    if (!wrap) return;
-    const isHidden = wrap.style.display === 'none';
-    wrap.style.display = isHidden ? 'block' : 'none';
-    if (icon) icon.innerHTML = isHidden
-        ? '<i class="fas fa-chevron-up"></i> Hide'
-        : '<i class="fas fa-chevron-down"></i> Show';
-    if (isHidden) initTrendChart();
-}
-
-function initTrendChart() {
-    const canvas = document.getElementById('trendChart');
-    if (!canvas || canvas._chartInitialized) return;
-    canvas._chartInitialized = true;
-
-    // Build labels for last 7 days
-    const labels = [];
-    for (let i = 6; i >= 0; i--) {
-        const d = new Date(); d.setDate(d.getDate() - i);
-        labels.push(d.toLocaleDateString('en-US', {month:'short', day:'numeric'}));
-    }
-
-    // Data from PHP  -  tank levels per fuel type (last known stock, simplified)
-    const tankData = <?php
-        $chart_data = [];
-        foreach ($tank_data as $t) {
-            $chart_data[] = [
-                'label' => $t['fuel_type_name'],
-                'stock' => (float)$t['current_stock'],
-                'capacity' => (float)$t['capacity'],
-            ];
-        }
-        echo json_encode($chart_data);
-    ?>;
-
-    const colors = ['#003d7a','#28a745','#ffc107','#dc3545','#17a2b8','#6f42c1'];
-    const datasets = tankData.map((ft, i) => ({
-        label: ft.label + ' Stock',
-        data: Array(7).fill(null).map((_, j) => j === 6 ? ft.stock : null),
-        borderColor: colors[i % colors.length],
-        backgroundColor: colors[i % colors.length] + '22',
-        tension: 0.3,
-        fill: false,
-        pointRadius: [0,0,0,0,0,0,5],
-        spanGaps: true,
-    }));
-
-    if (typeof Chart === 'undefined') {
-        // Load Chart.js dynamically
-        const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js';
-        s.onload = () => renderChart(canvas, labels, datasets);
-        document.head.appendChild(s);
-    } else {
-        renderChart(canvas, labels, datasets);
-    }
-}
-
-function renderChart(canvas, labels, datasets) {
-    new Chart(canvas, {
-        type: 'line',
-        data: { labels, datasets },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: { position: 'top', labels: { font: { size: 11 } } },
-                tooltip: { mode: 'index', intersect: false }
-            },
-            scales: {
-                y: { beginAtZero: true, title: { display: true, text: 'Liters (L)', font: { size: 11 } } },
-                x: { title: { display: true, text: 'Date', font: { size: 11 } } }
-            }
-        }
-    });
-}
 
 /* -- AUTO-DISMISS ALERT -- */
 (function() {

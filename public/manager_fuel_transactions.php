@@ -47,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $variance_liters = (float)($_POST['variance_liters'] ?? 0);
             try {
                 if (empty($notes)) throw new Exception('Manager notes are required for validation.');
-                $stmt = $pdo->prepare("SELECT ft.*, u.name as staff_name FROM fuel_transactions ft JOIN users u ON ft.staff_id=u.id WHERE ft.transaction_id=? AND ft.station_id=?");
+                $stmt = $pdo->prepare("SELECT ft.*, COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Unknown') as staff_name FROM fuel_transactions ft JOIN users u ON ft.staff_id=u.id WHERE ft.transaction_id=? AND ft.station_id=?");
                 $stmt->execute([$reading_id, $station_id]);
                 $transaction = $stmt->fetch(PDO::FETCH_ASSOC);
                 if (!$transaction) throw new Exception('Transaction not found.');
@@ -148,7 +148,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 if (strlen($adj_reason) < 5)
                     throw new Exception('A reason for the adjustment is required.');
 
-                $stmt = $pdo->prepare("SELECT ft.*, u.name as staff_name FROM fuel_transactions ft JOIN users u ON ft.staff_id=u.id WHERE ft.transaction_id=? AND ft.station_id=?");
+                $stmt = $pdo->prepare("SELECT ft.*, COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Unknown') as staff_name FROM fuel_transactions ft JOIN users u ON ft.staff_id=u.id WHERE ft.transaction_id=? AND ft.station_id=?");
                 $stmt->execute([$reading_id, $station_id]);
                 $transaction = $stmt->fetch(PDO::FETCH_ASSOC);
                 if (!$transaction) throw new Exception('Transaction not found.');
@@ -207,7 +207,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $mgr_notes = trim($_POST['mgr_notes'] ?? '');
             try {
                 if (empty($mgr_notes)) throw new Exception('Manager notes are required.');
-                $stmt = $pdo->prepare("SELECT ft.*, u.name as staff_name FROM fuel_transactions ft JOIN users u ON ft.staff_id=u.id WHERE ft.transaction_id=? AND ft.station_id=?");
+                $stmt = $pdo->prepare("SELECT ft.*, COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Unknown') as staff_name FROM fuel_transactions ft JOIN users u ON ft.staff_id=u.id WHERE ft.transaction_id=? AND ft.station_id=?");
                 $stmt->execute([$txn_id, $station_id]);
                 $txn = $stmt->fetch(PDO::FETCH_ASSOC);
                 if (!$txn) throw new Exception('Transaction not found.');
@@ -334,7 +334,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 // Load delivery record
                 $stmt = $pdo->prepare("
-                    SELECT fd.*, u.name AS staff_name
+                    SELECT fd.*, COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Unknown') AS staff_name
                     FROM fuel_deliveries fd
                     LEFT JOIN users u ON fd.received_by = u.id
                     WHERE fd.id = ? AND fd.station_id = ?
@@ -745,14 +745,14 @@ foreach ($tank_data as $td) {
 }
 
 try {
-    $stmt = $pdo->prepare("SELECT fp.*, ft.name as fuel_type_name, u.name as updated_by_name FROM fuel_pumps fp JOIN fuel_types ft ON fp.fuel_type_id=ft.id LEFT JOIN users u ON fp.calibration_updated_by=u.id WHERE fp.station_id=? ORDER BY COALESCE(fp.calibration_updated_at,fp.created_at) DESC LIMIT 10");
+    $stmt = $pdo->prepare("SELECT fp.*, ft.name as fuel_type_name, COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Unknown') as updated_by_name FROM fuel_pumps fp JOIN fuel_types ft ON fp.fuel_type_id=ft.id LEFT JOIN users u ON fp.calibration_updated_by=u.id WHERE fp.station_id=? ORDER BY COALESCE(fp.calibration_updated_at,fp.created_at) DESC LIMIT 10");
     $stmt->execute([$station_id]);
     $calibration_logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) { error_log("calibration_logs: ".$e->getMessage()); }
 
 try {
     $stmt = $pdo->prepare("
-        SELECT ft.*, u.name as staff_name,
+        SELECT ft.*, COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Unknown') as staff_name,
                fi.current_stock as tank_level,
                fi.latest_calibration as tank_calibration
         FROM fuel_transactions ft
@@ -768,7 +768,7 @@ try {
 } catch (Exception $e) { error_log("pending_readings: ".$e->getMessage()); }
 try {
     $stmt = $pdo->prepare("
-        SELECT fvr.*, u.name as resolved_by_name
+        SELECT fvr.*, COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Unknown') as resolved_by_name
         FROM fuel_variance_reports fvr
         LEFT JOIN users u ON fvr.resolved_by = u.id
         WHERE fvr.station_id = ?
@@ -780,14 +780,16 @@ try {
 } catch (Exception $e) { error_log("variance_reports: ".$e->getMessage()); }
 
 try {
-    $stmt = $pdo->prepare("SELECT fa.*, ft.name as fuel_type_name, u.name as user_name FROM fuel_adjustments fa JOIN fuel_types ft ON fa.fuel_type_id=ft.id JOIN users u ON fa.user_id=u.id WHERE fa.station_id=? ORDER BY fa.adjustment_date DESC, fa.created_at DESC LIMIT 15");
+    $stmt = $pdo->prepare("SELECT fa.*, ft.name as fuel_type_name, COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Unknown') as user_name FROM fuel_adjustments fa JOIN fuel_types ft ON fa.fuel_type_id=ft.id JOIN users u ON fa.user_id=u.id WHERE fa.station_id=? ORDER BY fa.adjustment_date DESC, fa.created_at DESC LIMIT 15");
     $stmt->execute([$station_id]);
     $recent_adjustments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) { error_log("recent_adjustments: ".$e->getMessage()); }
 
 try {
     $stmt = $pdo->prepare("
-        SELECT fd.*, u.name as recorded_by_name, v.name as verified_by_name,
+        SELECT fd.*, 
+               COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Unknown') as recorded_by_name, 
+               COALESCE(NULLIF(CONCAT(TRIM(COALESCE(v.first_name,'')), ' ', TRIM(COALESCE(v.last_name,''))), ' '), v.username, '—') as verified_by_name,
                COALESCE(fi.current_level, fi.current_stock, 0) as current_tank_level,
                COALESCE(fi.capacity, 0)                        as tank_capacity
         FROM fuel_deliveries fd
@@ -810,7 +812,7 @@ try {
                ft.status, ft.shift_period, ft.shift_name,
                ft.pump_id, ft.previous_reading, ft.present_reading,
                ft.calibration, ft.price_per_liter, ft.total_amount,
-               u.name as staff_name, u.id as staff_id,
+               COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Unknown') as staff_name, u.id as staff_id,
                fi.current_stock as current_tank_level,
                fi.latest_calibration as tank_calibration
         FROM fuel_transactions ft
@@ -859,7 +861,7 @@ try {
             fp.calibration_value,
             fp.calibration_updated_at AS last_calibration_date,
             fp.status        AS pump_status,
-            u.name           AS calibration_encoded_by
+            COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Unknown') AS calibration_encoded_by
         FROM fuel_inventory fi
         LEFT JOIN fuel_pumps fp
             ON fp.station_id = fi.station_id

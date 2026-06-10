@@ -40,7 +40,14 @@ if ($status_filter && in_array($status_filter, ['Success', 'Failed'])) {
 $where = "WHERE " . implode(" AND ", $where_conditions);
 
 // Get approval records from audit_logs
-$sql = "SELECT a.*, u.name as approved_by FROM audit_logs a
+$sql = "SELECT a.*, 
+        COALESCE(
+            NULLIF(TRIM(u.name), ''), 
+            NULLIF(CONCAT(TRIM(u.first_name), ' ', TRIM(u.last_name)), ' '), 
+            u.username, 
+            'System'
+        ) as approved_by 
+        FROM audit_logs a
         LEFT JOIN users u ON a.user_id = u.id
         $where
         ORDER BY a.created_at DESC";

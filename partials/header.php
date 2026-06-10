@@ -62,14 +62,6 @@ if(in_array($role, ['superadmin','admin','manager'])){
         foreach($expiring_passwords as $ep) $header_alerts[] = ['msg'=>"Password Expired: {$ep['username']}", 'time'=>'Now', 'link'=>'users.php'];
     } catch(Exception $e){}
     // 3. Reconciliation Delays (Super Admin only)
-    if($role === 'superadmin'){
-        try {
-            // Assuming reconciliation is daily, check if today's reconciliation is missing for any station
-            $today = date('Y-m-d');
-            $missing_recons = $pdo->query("SELECT s.name FROM stations s LEFT JOIN reconciliation_results r ON s.id = r.station_id AND r.recon_date = '$today' WHERE r.id IS NULL LIMIT 5")->fetchAll();
-            foreach($missing_recons as $mr) $header_alerts[] = ['msg'=>"Reconciliation Delay: {$mr['name']}", 'time'=>'Today', 'link'=>'reconciliation.php'];
-        } catch(Exception $e){}
-    }
     // 4. Anomalies Detected
     $sales_data = read_json('sales.json', []);
     foreach($sales_data as $s){

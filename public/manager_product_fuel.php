@@ -252,7 +252,7 @@ include __DIR__ . '/../partials/header.php';
                         <th>Stock Level</th>
                         <th>Supplier</th>
                         <th>Status</th>
-                        <th>Actions</th>
+                        <th style="text-align:center;">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="fuelTableBody">
@@ -275,7 +275,7 @@ include __DIR__ . '/../partials/header.php';
                     <td><span style="color:<?php echo $stockColor; ?>;font-weight:700;"><?php echo number_format($stockLevel, 2); ?> L</span></td>
                     <td>Petron Corporation</td>
                     <td><span style="color:<?php echo $statusColor; ?>;font-weight:700;"><?php echo htmlspecialchars($p['display_status']); ?></span></td>
-                    <td>
+                    <td style="text-align:center;">
                         <?php if ($p['id']): ?>
                         <div class="action-col">
                             <button class="btn btn-view" onclick="viewFuel(<?php echo $p['id']; ?>)"><i class="fas fa-eye"></i> View</button>

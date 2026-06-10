@@ -1,0 +1,184 @@
+<?php
+/**
+ * Test Job Order QR Code Verification
+ * Tests that job order QR codes work correctly with verify.php
+ */
+
+require_once __DIR__ . '/../public/db_connect.php';
+
+echo "=== JOB ORDER QR CODE TEST ===\n\n";
+
+// Find some test job orders or combined transactions
+$test_ids = [];
+
+// Test 1: Check job_orders table
+try {
+    $stmt = $pdo->query("
+        SELECT id, job_order_id, job_order_number, customer_name, service_type
+        FROM job_orders
+        ORDER BY created_at DESC
+        LIMIT 3
+    ");
+    $job_orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    if ($job_orders) {
+        echo "Found " . count($job_orders) . " job orders in job_orders table:\n";
+        foreach ($job_orders as $jo) {
+            $test_id = $jo['job_order_id'] ?? $jo['job_order_number'] ?? $jo['id'];
+            echo "  - ID: {$jo['id']}, Job Order ID: " . ($jo['job_order_id'] ?? 'NULL') . ", Customer: {$jo['customer_name']}\n";
+            $test_ids[] = [
+                'id' => $test_id,
+                'numeric_id' => $jo['id'],
+                'type' => 'job_order',
+                'source' => 'job_orders'
+            ];
+        }
+    } else {
+        echo "⚠️ No job orders found in job_orders table\n";
+    }
+    echo "\n";
+} catch (Exception $e) {
+    echo "❌ Error querying job_orders: " . $e->getMessage() . "\n\n";
+}
+
+// Test 2: Check merchandise_transactions for combined/job_order types
+try {
+    $stmt = $pdo->query("
+        SELECT id, transaction_id, customer_name, transaction_type, job_order_service
+        FROM merchandise_transactions
+        WHERE transaction_type IN ('job_order', 'combined')
+        ORDER BY created_at DESC
+        LIMIT 3
+    ");
+    $merch_jo = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    if ($merch_jo) {
+        echo "Found " . count($merch_jo) . " job order transactions in merchandise_transactions:\n";
+        foreach ($merch_jo as $mt) {
+            echo "  - ID: {$mt['id']}, Transaction ID: {$mt['transaction_id']}, Customer: {$mt['customer_name']}, Type: {$mt['transaction_type']}\n";
+            $test_ids[] = [
+                'id' => $mt['transaction_id'],
+                'numeric_id' => $mt['id'],
+                'type' => 'job_order',
+                'source' => 'merchandise_transactions'
+            ];
+        }
+    } else {
+        echo "⚠️ No job order transactions found in merchandise_transactions\n";
+    }
+    echo "\n";
+} catch (Exception $e) {
+    echo "❌ Error querying merchandise_transactions: " . $e->getMessage() . "\n\n";
+}
+
+// Test QR code URL generation and verification
+echo str_repeat("=", 70) . "\n";
+echo "TESTING QR CODE VERIFICATION\n";
+echo str_repeat("=", 70) . "\n\n";
+
+foreach ($test_ids as $index => $test) {
+    echo "Test " . ($index + 1) . ": {$test['source']} - ID: {$test['id']}\n";
+    echo str_repeat("-", 70) . "\n";
+    
+    // Simulate receipt.php QR generation
+    $qr_id = $test['id'];
+    $qr_type = $test['type'];
+    
+    echo "Receipt QR URL: verify.php?id=" . urlencode($qr_id) . "&type=" . urlencode($qr_type) . "\n";
+    
+    // Test verify.php logic
+    $id = $qr_id;
+    $type = $qr_type;
+    $numeric_id = is_numeric($id) ? (int)$id : 0;
+    
+    // Handle IDs that start with '#' (new logic)
+    if ($numeric_id === 0 && str_starts_with($id, '#')) {
+        $clean_id = ltrim($id, '#');
+        if (is_numeric($clean_id)) {
+            $numeric_id = (int)$clean_id;
+            echo "✅ Cleaned ID from '{$id}' to numeric: {$numeric_id}\n";
+        }
+    }
+    
+    echo "Parsed ID: '$id', Numeric ID: $numeric_id, Type: '$type'\n";
+    
+    // Try merchandise_transactions first
+    try {
+        $stmt = $pdo->prepare("
+            SELECT mt.id, mt.transaction_id, mt.customer_name, mt.transaction_type
+            FROM merchandise_transactions mt
+            WHERE mt.transaction_id = ? OR mt.id = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$id, $numeric_id]);
+        $txn = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($txn) {
+            echo "✅ Found in merchandise_transactions\n";
+            echo "   Transaction ID: {$txn['transaction_id']}\n";
+            echo "   Customer: {$txn['customer_name']}\n";
+            echo "   Type: {$txn['transaction_type']}\n";
+        } else {
+            echo "⚠️ Not found in merchandise_transactions\n";
+            
+            // Try job_orders fallback
+            if ($type === 'job_order' && $numeric_id > 0) {
+                $stmt_jo = $pdo->prepare("
+                    SELECT jo.id, jo.job_order_id, jo.customer_name, jo.service_type
+                    FROM job_orders jo
+                    WHERE jo.job_order_id = ? OR jo.job_order_number = ? OR jo.id = ?
+                    LIMIT 1
+                ");
+                $stmt_jo->execute([$id, $id, $numeric_id]);
+                $jo = $stmt_jo->fetch(PDO::FETCH_ASSOC);
+                
+                if ($jo) {
+                    echo "✅ Found in job_orders table\n";
+                    echo "   Job Order ID: " . ($jo['job_order_id'] ?? 'NULL') . "\n";
+                    echo "   Customer: {$jo['customer_name']}\n";
+                    echo "   Service: {$jo['service_type']}\n";
+                } else {
+                    echo "❌ NOT FOUND in job_orders table\n";
+                }
+            } else {
+                echo "⚠️ Skipping job_orders fallback (type='$type', numeric_id=$numeric_id)\n";
+            }
+        }
+    } catch (Exception $e) {
+        echo "❌ Database Error: " . $e->getMessage() . "\n";
+    }
+    
+    echo "\n";
+}
+
+// Test ID format handling
+echo str_repeat("=", 70) . "\n";
+echo "TESTING ID FORMAT HANDLING\n";
+echo str_repeat("=", 70) . "\n\n";
+
+$test_formats = [
+    ['id' => '123', 'expected_numeric' => 123, 'name' => 'Plain numeric'],
+    ['id' => '#456', 'expected_numeric' => 456, 'name' => 'Hash prefix'],
+    ['id' => 'JO-789', 'expected_numeric' => 0, 'name' => 'String ID'],
+    ['id' => 'MERCH2026125328218', 'expected_numeric' => 0, 'name' => 'Transaction ID'],
+];
+
+foreach ($test_formats as $test) {
+    $id = $test['id'];
+    $numeric_id = is_numeric($id) ? (int)$id : 0;
+    
+    // Handle IDs that start with '#'
+    if ($numeric_id === 0 && str_starts_with($id, '#')) {
+        $clean_id = ltrim($id, '#');
+        if (is_numeric($clean_id)) {
+            $numeric_id = (int)$clean_id;
+        }
+    }
+    
+    $status = ($numeric_id === $test['expected_numeric']) ? '✅ PASS' : '❌ FAIL';
+    echo "{$status} - {$test['name']}: '{$id}' → numeric_id = {$numeric_id} (expected: {$test['expected_numeric']})\n";
+}
+
+echo "\n" . str_repeat("=", 70) . "\n";
+echo "✅ QR CODE TEST COMPLETE\n";
+echo str_repeat("=", 70) . "\n";

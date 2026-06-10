@@ -102,7 +102,9 @@ try {
     }
 
     $stmt = $pdo->prepare("
-        SELECT do2.*, u_enc.name AS encoded_by_name, u_act.name AS action_by_name
+        SELECT do2.*, 
+               COALESCE(NULLIF(TRIM(u_enc.username), ''), 'Unknown') AS encoded_by_name, 
+               COALESCE(NULLIF(TRIM(u_act.username), ''), 'Unknown') AS action_by_name
         FROM deliveries_oversight do2
         LEFT JOIN users u_enc ON do2.encoded_by  = u_enc.id
         LEFT JOIN users u_act ON do2.manager_id  = u_act.id

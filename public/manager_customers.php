@@ -462,7 +462,7 @@ if ($section === 'history' && isset($_GET['export']) && in_array($_GET['export']
             cct.customer_id,
             COALESCE(c.name, '—') AS customer_name
         FROM customer_credit_transactions cct
-        LEFT JOIN users u ON u.user_id = cct.created_by
+        LEFT JOIN users u ON u.id = cct.created_by
         LEFT JOIN customers c ON c.id = cct.customer_id
         WHERE cct.station_id = :station_id
           AND (:customer_id = 0 OR cct.customer_id = :customer_id)
@@ -606,7 +606,7 @@ if ($section === 'history') {
                 cct.running_balance,
                 cct.description
             FROM customer_credit_transactions cct
-            LEFT JOIN users u ON u.user_id = cct.created_by
+            LEFT JOIN users u ON u.id = cct.created_by
             WHERE cct.station_id = :station_id
               AND (:customer_id = 0 OR cct.customer_id = :customer_id)
               AND cct.created_at BETWEEN :date_start AND :date_end_eod
@@ -699,7 +699,7 @@ if ($section === 'validation') {
         $s1->execute([$station_id]);
         $pending_new_customers = $s1->fetchAll(PDO::FETCH_ASSOC);
 
-        $s2 = $pdo->prepare("SELECT r.*, c.name as customer_name, u.name as staff_name FROM customer_update_requests r JOIN customers c ON r.customer_id=c.id JOIN users u ON r.requested_by=u.id WHERE r.station_id=? AND r.status='pending' ORDER BY r.created_at DESC");
+        $s2 = $pdo->prepare("SELECT r.*, c.name as customer_name, COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') as staff_name FROM customer_update_requests r JOIN customers c ON r.customer_id=c.id JOIN users u ON r.requested_by=u.id WHERE r.station_id=? AND r.status='pending' ORDER BY r.created_at DESC");
         $s2->execute([$station_id]);
         $pending_update_requests = $s2->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {}
@@ -717,7 +717,7 @@ if ($section === 'transactions' && isset($_GET['customer_id'])) {
 
         if ($transaction_customer) {
             $tstmt = $pdo->prepare("
-                SELECT t.id, t.transaction_type, t.total_amount, t.status, t.created_at, u.name as staff_name 
+                SELECT t.id, t.transaction_type, t.total_amount, t.status, t.created_at, COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') as staff_name 
                 FROM transactions t 
                 JOIN users u ON t.user_id = u.id 
                 WHERE t.customer_id=? AND t.station_id=? 

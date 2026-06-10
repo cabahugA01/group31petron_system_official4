@@ -18,20 +18,19 @@ $pending_review = [];
 try {
     $stmt = $pdo->prepare("
         SELECT jo.*, 
-               c.name as customer_name,
-               c.phone as customer_phone,
+               COALESCE(c.customer_name, jo.customer_name, 'Walk-in') as customer_name,
                t.full_name as technician_name,
                sc.name as service_name,
                sc.fixed_labor_rate,
                sc.estimated_time_minutes,
-               u.name as created_by_name,
+               COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username) as created_by_name,
                TIMESTAMPDIFF(MINUTE, jo.started_at, jo.completed_at) as actual_duration_minutes
         FROM job_orders jo
         LEFT JOIN customers c ON c.id = jo.customer_id
         LEFT JOIN technicians t ON t.id = jo.assigned_technician_id
         LEFT JOIN mechanics m ON m.id = jo.assigned_mechanic_id
         LEFT JOIN service_categories sc ON sc.id = jo.service_category_id
-        LEFT JOIN users u ON u.user_id = jo.assigned_by
+        LEFT JOIN users u ON u.id = jo.assigned_by
         WHERE jo.station_id = ? 
           AND jo.status = 'Completed'
           AND jo.reviewed_by IS NULL
@@ -48,18 +47,18 @@ $recently_reviewed = [];
 try {
     $stmt = $pdo->prepare("
         SELECT jo.*, 
-               c.name as customer_name,
+               COALESCE(c.customer_name, jo.customer_name, 'Walk-in') as customer_name,
                t.full_name as technician_name,
                sc.name as service_name,
                sc.fixed_labor_rate,
-               reviewer.name as reviewed_by_name,
+               COALESCE(NULLIF(CONCAT(reviewer.first_name,' ',reviewer.last_name),' '), reviewer.username) as reviewed_by_name,
                jo.reviewed_at
         FROM job_orders jo
         LEFT JOIN customers c ON c.id = jo.customer_id
         LEFT JOIN technicians t ON t.id = jo.assigned_technician_id
         LEFT JOIN mechanics m ON m.id = jo.assigned_mechanic_id
         LEFT JOIN service_categories sc ON sc.id = jo.service_category_id
-        LEFT JOIN users reviewer ON reviewer.user_id = jo.reviewed_by
+        LEFT JOIN users reviewer ON reviewer.id = jo.reviewed_by
         WHERE jo.station_id = ? 
           AND jo.status = 'Completed'
           AND jo.reviewed_by IS NOT NULL

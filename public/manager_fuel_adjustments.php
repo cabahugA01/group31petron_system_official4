@@ -31,6 +31,107 @@ $msg_type = 'success';
 if (isset($_SESSION['success'])) { $msg = $_SESSION['success']; $msg_type = 'success'; unset($_SESSION['success']); }
 if (isset($_SESSION['error']))   { $msg = $_SESSION['error'];   $msg_type = 'error';   unset($_SESSION['error']); }
 
+/* ── 17 Physical Tank Configuration ─────────────────────── */
+$PHYSICAL_TANKS = [
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 1',     'tank'=>'Underground Tank #1'],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 2',     'tank'=>'Underground Tank #2'],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 3',     'tank'=>'Underground Tank #3'],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 4',     'tank'=>'Underground Tank #4'],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 5',     'tank'=>'Underground Tank #5'],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 6',     'tank'=>'Underground Tank #6'],
+    ['fuel_type'=>'Kerosene',     'label'=>'KEROSENE - 1',     'tank'=>'Underground Tank #7'],
+    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 1', 'tank'=>'Underground Tank #8'],
+    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 2', 'tank'=>'Underground Tank #9'],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 1',     'tank'=>'Underground Tank #10'],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 2',     'tank'=>'Underground Tank #11'],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 3',     'tank'=>'Underground Tank #12'],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 4',     'tank'=>'Underground Tank #13'],
+    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 1',  'tank'=>'Underground Tank #14'],
+    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 2',  'tank'=>'Underground Tank #15'],
+    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 3',  'tank'=>'Underground Tank #16'],
+    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 4',  'tank'=>'Underground Tank #17'],
+];
+
+/* ── Adjustment History Export Handler (GET) ─────────────── */
+if (isset($_GET['export_adj'])) {
+    $export_type = $_GET['export_adj'];
+    try {
+        $stmt = $pdo->prepare("SELECT fa.*, ft.name as fuel_type_name, u.first_name, u.last_name, u.username
+            FROM fuel_adjustments fa
+            JOIN fuel_types ft ON fa.fuel_type_id = ft.id
+            JOIN users u ON fa.user_id = u.id
+            WHERE fa.station_id = ?
+            ORDER BY fa.adjustment_date DESC, fa.created_at DESC");
+        $stmt->execute([$station_id]);
+        $adj_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $type_labels = [
+            'delivery_variance'=>'Delivery Variance (DR vs Dipstick)','delivery_short'=>'Delivery Shortage',
+            'delivery_overage'=>'Delivery Overage','delivery'=>'Delivery',
+            'meter_reading_error'=>'Meter Reading Error','calibration'=>'Calibration Correction',
+            'pump_variance'=>'Pump vs Sales Mismatch','manual'=>'Manual Correction',
+            'evaporation'=>'Evaporation Loss','spillage'=>'Spillage / Leakage',
+            'verified_sale'=>'Verified Sale','rejected_reading'=>'Rejected Reading',
+            'adjusted_reading'=>'Adjusted Reading',
+        ];
+
+        $headers = ['ID','Date','Tank / Fuel Type','Adjustment Type','Liters','Reason','Manager','Timestamp'];
+        $rows_out = [];
+        foreach ($adj_rows as $r) {
+            $mgr = trim(($r['first_name']??'').' '.($r['last_name']??'')) ?: ($r['username']??'-');
+            $fuel_lbl = !empty($r['fuel_type']) ? $r['fuel_type'] : ($r['fuel_type_name']??'-');
+            $adj_lbl  = $type_labels[$r['adjustment_type']??''] ?? ucfirst(str_replace('_',' ',$r['adjustment_type']??''));
+            $rows_out[] = [
+                '#'.$r['id'],
+                $r['adjustment_date']??'-',
+                $fuel_lbl,
+                $adj_lbl,
+                ($r['liters']>=0?'+':'').number_format((float)$r['liters'],2).' L',
+                $r['reason']??'-',
+                $mgr,
+                isset($r['created_at']) ? date('Y-m-d H:i', strtotime($r['created_at'])) : '-',
+            ];
+        }
+
+        if ($export_type === 'pdf') {
+            header('Content-Type: text/html');
+            header('Content-Disposition: inline; filename="adjustment_history_'.date('Y-m-d').'.html"');
+            echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Adjustment History</title>
+            <style>body{font-family:Arial,sans-serif;font-size:11px;margin:20px}h2{color:#002F70}
+            table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:5px;text-align:left}
+            th{background:#002F70;color:#fff}tr:nth-child(even){background:#f5f5f5}@media print{button{display:none}}</style>
+            </head><body>';
+            echo '<h2><i>&#128203;</i> Adjustment History</h2>';
+            echo '<p>Generated: '.date('Y-m-d H:i:s').'</p>';
+            echo '<button onclick="window.print()" style="margin-bottom:12px;padding:6px 14px;background:#002F70;color:#fff;border:none;border-radius:4px;cursor:pointer;">&#128438; Print / Save as PDF</button>';
+            echo '<table><thead><tr>';
+            foreach ($headers as $h) echo '<th>'.htmlspecialchars($h).'</th>';
+            echo '</tr></thead><tbody>';
+            foreach ($rows_out as $row) {
+                echo '<tr>';
+                foreach ($row as $cell) echo '<td>'.htmlspecialchars($cell).'</td>';
+                echo '</tr>';
+            }
+            echo '</tbody></table></body></html>';
+            exit;
+        } elseif ($export_type === 'excel') {
+            header('Content-Type: application/vnd.ms-excel');
+            header('Content-Disposition: attachment; filename="adjustment_history_'.date('Y-m-d').'.xls"');
+        } else {
+            header('Content-Type: text/csv');
+            header('Content-Disposition: attachment; filename="adjustment_history_'.date('Y-m-d').'.csv"');
+        }
+        $out = fopen('php://output','w');
+        fputcsv($out, $headers);
+        foreach ($rows_out as $row) fputcsv($out, $row);
+        fclose($out);
+        exit;
+    } catch (Exception $e) {
+        $_SESSION['error'] = 'Export error: '.$e->getMessage();
+        header('Location: manager_fuel_adjustments.php'); exit;
+    }
+}
+
 /* -------------------------------------------------------------
    POST HANDLERS
 ------------------------------------------------------------- */
@@ -200,6 +301,341 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $_SESSION['error'] = '? ' . $e->getMessage();
             }
             header('Location: manager_fuel_adjustments.php'); exit;
+
+        /* -- ADJUST METER READING (New: Manager corrects flagged meter readings) -- */
+        case 'adjust_meter_reading':
+            $tx_id = (int)($_POST['transaction_id'] ?? 0);
+            $actual_liters = (float)($_POST['actual_liters'] ?? 0);
+            $adjustment_reason = trim($_POST['adjustment_reason'] ?? '');
+            
+            try {
+                if ($tx_id <= 0) throw new Exception("Invalid transaction ID");
+                if ($actual_liters < 0) throw new Exception("Actual liters cannot be negative");
+                if (empty($adjustment_reason) || strlen($adjustment_reason) < 10) {
+                    throw new Exception("Adjustment reason must be at least 10 characters");
+                }
+                
+                // Fetch current transaction
+                $stmt = $pdo->prepare("SELECT * FROM fuel_transactions 
+                                       WHERE id = ? AND station_id = ?");
+                $stmt->execute([$tx_id, $station_id]);
+                $tx = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if (!$tx) throw new Exception("Transaction not found");
+                
+                $old_liters = (float)$tx['liters_sold'];
+                $variance = $actual_liters - $old_liters;
+                
+                $pdo->beginTransaction();
+                
+                // Update transaction with corrected liters
+                $new_amount = $actual_liters * (float)$tx['price_per_liter'];
+                $stmt = $pdo->prepare("UPDATE fuel_transactions 
+                                       SET liters_sold = ?,
+                                           total_amount = ?,
+                                           status = 'Cleared',
+                                           reject_reason = ?,
+                                           validated_by = ?,
+                                           validated_at = NOW()
+                                       WHERE id = ? AND station_id = ?");
+                $stmt->execute([
+                    $actual_liters,
+                    $new_amount,
+                    $adjustment_reason,
+                    $me['id'],
+                    $tx_id,
+                    $station_id
+                ]);
+                
+                // Adjust inventory: old_liters - actual_liters (return difference to stock)
+                $diff_liters = $old_liters - $actual_liters;
+                $pdo->prepare("UPDATE fuel_inventory 
+                               SET current_level = COALESCE(current_level, 0) + ?,
+                                   last_updated = NOW()
+                               WHERE station_id = ? 
+                               AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))")
+                    ->execute([$diff_liters, $station_id, $tx['fuel_type']]);
+                
+                // Log adjustment in audit trail
+                $details = "Meter Reading Adjusted for {$tx['fuel_type']} - " .
+                           "Transaction: {$tx['transaction_id']} - " .
+                           "Liters: {$old_liters} L → {$actual_liters} L - " .
+                           "Variance: " . number_format($variance, 2) . " L - " .
+                           "Reason: {$adjustment_reason}";
+                
+                $pdo->prepare("INSERT INTO audit_logs 
+                               (user_id, action_type, entity_type, entity_id, details, station_id, ip_address, created_at)
+                               VALUES (?, 'Adjust', 'fuel_transaction', ?, ?, ?, ?, NOW())")
+                    ->execute([$me['id'], $tx_id, $details, $station_id, $_SERVER['REMOTE_ADDR'] ?? '']);
+                
+                log_activity($pdo, $me['id'], 'Adjust Meter Reading', $details);
+                
+                $pdo->commit();
+                $_SESSION['success'] = "Meter reading adjusted successfully. Variance: " . 
+                                       number_format($variance, 2) . " L";
+            } catch (Exception $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                $_SESSION['error'] = 'Error: ' . $e->getMessage();
+            }
+            header('Location: manager_fuel_adjustments.php'); exit;
+
+        /* -- ADJUST DELIVERY (New: Manager corrects flagged delivery readings) -- */
+        case 'adjust_delivery':
+            $delivery_id = (int)($_POST['delivery_id'] ?? 0);
+            $actual_liters = (float)($_POST['actual_liters'] ?? 0);
+            $adjustment_reason = trim($_POST['adjustment_reason'] ?? '');
+            
+            try {
+                if ($delivery_id <= 0) throw new Exception("Invalid delivery ID");
+                if ($actual_liters < 0) throw new Exception("Actual liters cannot be negative");
+                if (empty($adjustment_reason) || strlen($adjustment_reason) < 10) {
+                    throw new Exception("Adjustment reason must be at least 10 characters");
+                }
+                
+                // Fetch current delivery
+                $stmt = $pdo->prepare("SELECT * FROM fuel_deliveries 
+                                       WHERE id = ? AND station_id = ?");
+                $stmt->execute([$delivery_id, $station_id]);
+                $delivery = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if (!$delivery) throw new Exception("Delivery not found");
+                
+                $old_liters = (float)$delivery['delivery_liters'];
+                $variance = $actual_liters - $old_liters;
+                
+                $pdo->beginTransaction();
+                
+                // Update delivery with corrected liters
+                $stmt = $pdo->prepare("UPDATE fuel_deliveries 
+                                       SET delivery_liters = ?,
+                                           status = 'Cleared',
+                                           notes = CONCAT(COALESCE(notes, ''), '\\n[ADJUSTED] ', ?),
+                                           verified_by = ?,
+                                           verified_at = NOW()
+                                       WHERE id = ? AND station_id = ?");
+                $stmt->execute([
+                    $actual_liters,
+                    $adjustment_reason,
+                    $me['id'],
+                    $delivery_id,
+                    $station_id
+                ]);
+                
+                // Adjust inventory: actual_liters - old_liters (add/subtract difference)
+                $diff_liters = $actual_liters - $old_liters;
+                $pdo->prepare("UPDATE fuel_inventory 
+                               SET current_level = COALESCE(current_level, 0) + ?,
+                                   last_updated = NOW()
+                               WHERE station_id = ? 
+                               AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))")
+                    ->execute([$diff_liters, $station_id, $delivery['fuel_type']]);
+                
+                // Log adjustment in audit trail
+                $details = "Delivery Adjusted for {$delivery['fuel_type']} - " .
+                           "Invoice: {$delivery['invoice_no']} - " .
+                           "Supplier: {$delivery['supplier']} - " .
+                           "Liters: {$old_liters} L → {$actual_liters} L - " .
+                           "Variance: " . number_format($variance, 2) . " L - " .
+                           "Reason: {$adjustment_reason}";
+                
+                $pdo->prepare("INSERT INTO audit_logs 
+                               (user_id, action_type, entity_type, entity_id, details, station_id, ip_address, created_at)
+                               VALUES (?, 'Adjust', 'fuel_delivery', ?, ?, ?, ?, NOW())")
+                    ->execute([$me['id'], $delivery_id, $details, $station_id, $_SERVER['REMOTE_ADDR'] ?? '']);
+                
+                log_activity($pdo, $me['id'], 'Adjust Delivery', $details);
+                
+                $pdo->commit();
+                $_SESSION['success'] = "Delivery adjusted successfully. Variance: " . 
+                                       number_format($variance, 2) . " L";
+            } catch (Exception $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                $_SESSION['error'] = 'Error: ' . $e->getMessage();
+            }
+            header('Location: manager_fuel_adjustments.php'); exit;
+
+        /* -- BULK ADJUST DELIVERIES (New: Manager corrects multiple deliveries at once) -- */
+        case 'bulk_adjust_deliveries':
+            $delivery_ids = $_POST['delivery_ids'] ?? [];
+            $actual_qtys = $_POST['actual_qty'] ?? [];
+            $adjustment_reason = trim($_POST['adjustment_reason'] ?? '');
+            
+            try {
+                if (empty($delivery_ids)) throw new Exception("No deliveries selected for adjustment");
+                if (empty($adjustment_reason) || strlen($adjustment_reason) < 10) {
+                    throw new Exception("Adjustment reason must be at least 10 characters");
+                }
+                
+                $pdo->beginTransaction();
+                $adjusted_count = 0;
+                
+                foreach ($delivery_ids as $delivery_id) {
+                    $delivery_id = (int)$delivery_id;
+                    $actual_liters = (float)($actual_qtys[$delivery_id] ?? 0);
+                    
+                    if ($delivery_id <= 0 || $actual_liters < 0) continue;
+                    
+                    // Fetch current delivery
+                    $stmt = $pdo->prepare("SELECT * FROM fuel_deliveries 
+                                           WHERE id = ? AND station_id = ?");
+                    $stmt->execute([$delivery_id, $station_id]);
+                    $delivery = $stmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    if (!$delivery) continue;
+                    
+                    $old_liters = (float)$delivery['delivery_liters'];
+                    $variance = $actual_liters - $old_liters;
+                    
+                    // Skip if no change
+                    if (abs($variance) < 0.01) continue;
+                    
+                    // Update delivery with corrected liters
+                    $stmt = $pdo->prepare("UPDATE fuel_deliveries 
+                                           SET delivery_liters = ?,
+                                               status = 'Cleared',
+                                               notes = CONCAT(COALESCE(notes, ''), '\\n[ADJUSTED] ', ?),
+                                               verified_by = ?,
+                                               verified_at = NOW()
+                                           WHERE id = ? AND station_id = ?");
+                    $stmt->execute([
+                        $actual_liters,
+                        $adjustment_reason,
+                        $me['id'],
+                        $delivery_id,
+                        $station_id
+                    ]);
+                    
+                    // Adjust inventory: actual_liters - old_liters
+                    $diff_liters = $actual_liters - $old_liters;
+                    $pdo->prepare("UPDATE fuel_inventory 
+                                   SET current_level = COALESCE(current_level, 0) + ?,
+                                       last_updated = NOW()
+                                   WHERE station_id = ? 
+                                   AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))")
+                        ->execute([$diff_liters, $station_id, $delivery['fuel_type']]);
+                    
+                    // Log adjustment
+                    $details = "Delivery Adjusted for {$delivery['fuel_type']} - " .
+                               "Invoice: {$delivery['invoice_no']} - " .
+                               "Supplier: {$delivery['supplier']} - " .
+                               "Liters: {$old_liters} L → {$actual_liters} L - " .
+                               "Variance: " . number_format($variance, 2) . " L - " .
+                               "Reason: {$adjustment_reason}";
+                    
+                    $pdo->prepare("INSERT INTO audit_logs 
+                                   (user_id, action_type, entity_type, entity_id, details, station_id, ip_address, created_at)
+                                   VALUES (?, 'Adjust', 'fuel_delivery', ?, ?, ?, ?, NOW())")
+                        ->execute([$me['id'], $delivery_id, $details, $station_id, $_SERVER['REMOTE_ADDR'] ?? '']);
+                    
+                    $adjusted_count++;
+                }
+                
+                $pdo->commit();
+                
+                if ($adjusted_count > 0) {
+                    $_SESSION['success'] = "{$adjusted_count} delivery adjustment(s) saved successfully.";
+                } else {
+                    $_SESSION['error'] = "No adjustments were made (no changes detected).";
+                }
+            } catch (Exception $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                $_SESSION['error'] = 'Error: ' . $e->getMessage();
+            }
+            header('Location: manager_fuel_adjustments.php'); exit;
+
+        /* -- BULK ADJUST TRANSACTIONS (New: Manager corrects multiple transactions at once) -- */
+        case 'bulk_adjust_transactions':
+            $transaction_ids = $_POST['transaction_ids'] ?? [];
+            $actual_liters_arr = $_POST['actual_liters'] ?? [];
+            $adjustment_reason = trim($_POST['adjustment_reason'] ?? '');
+            
+            try {
+                if (empty($transaction_ids)) throw new Exception("No transactions selected for adjustment");
+                if (empty($adjustment_reason) || strlen($adjustment_reason) < 10) {
+                    throw new Exception("Adjustment reason must be at least 10 characters");
+                }
+                
+                $pdo->beginTransaction();
+                $adjusted_count = 0;
+                
+                foreach ($transaction_ids as $tx_id) {
+                    $tx_id = (int)$tx_id;
+                    $actual_liters = (float)($actual_liters_arr[$tx_id] ?? 0);
+                    
+                    if ($tx_id <= 0 || $actual_liters < 0) continue;
+                    
+                    // Fetch current transaction
+                    $stmt = $pdo->prepare("SELECT * FROM fuel_transactions 
+                                           WHERE id = ? AND station_id = ?");
+                    $stmt->execute([$tx_id, $station_id]);
+                    $tx = $stmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    if (!$tx) continue;
+                    
+                    $old_liters = (float)$tx['liters_sold'];
+                    $variance = $actual_liters - $old_liters;
+                    
+                    // Skip if no change
+                    if (abs($variance) < 0.01) continue;
+                    
+                    // Update transaction with corrected liters
+                    $new_amount = $actual_liters * (float)$tx['price_per_liter'];
+                    $stmt = $pdo->prepare("UPDATE fuel_transactions 
+                                           SET liters_sold = ?,
+                                               total_amount = ?,
+                                               status = 'Cleared',
+                                               reject_reason = ?,
+                                               validated_by = ?,
+                                               validated_at = NOW()
+                                           WHERE id = ? AND station_id = ?");
+                    $stmt->execute([
+                        $actual_liters,
+                        $new_amount,
+                        $adjustment_reason,
+                        $me['id'],
+                        $tx_id,
+                        $station_id
+                    ]);
+                    
+                    // Adjust inventory: old_liters - actual_liters (return difference to stock)
+                    $diff_liters = $old_liters - $actual_liters;
+                    $pdo->prepare("UPDATE fuel_inventory 
+                                   SET current_level = COALESCE(current_level, 0) + ?,
+                                       last_updated = NOW()
+                                   WHERE station_id = ? 
+                                   AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))")
+                        ->execute([$diff_liters, $station_id, $tx['fuel_type']]);
+                    
+                    // Log adjustment
+                    $details = "Meter Reading Adjusted for {$tx['fuel_type']} - " .
+                               "Transaction: {$tx['transaction_id']} - " .
+                               "Liters: {$old_liters} L → {$actual_liters} L - " .
+                               "Variance: " . number_format($variance, 2) . " L - " .
+                               "Reason: {$adjustment_reason}";
+                    
+                    $pdo->prepare("INSERT INTO audit_logs 
+                                   (user_id, action_type, entity_type, entity_id, details, station_id, ip_address, created_at)
+                                   VALUES (?, 'Adjust', 'fuel_transaction', ?, ?, ?, ?, NOW())")
+                        ->execute([$me['id'], $tx_id, $details, $station_id, $_SERVER['REMOTE_ADDR'] ?? '']);
+                    
+                    $adjusted_count++;
+                }
+                
+                $pdo->commit();
+                
+                if ($adjusted_count > 0) {
+                    $_SESSION['success'] = "{$adjusted_count} transaction adjustment(s) saved successfully.";
+                } else {
+                    $_SESSION['error'] = "No adjustments were made (no changes detected).";
+                }
+            } catch (Exception $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                $_SESSION['error'] = 'Error: ' . $e->getMessage();
+            }
+            header('Location: manager_fuel_adjustments.php'); exit;
+
+
+
 
         /* -- APPROVE DAILY LOG -- */
         case 'approve_daily_log':
@@ -525,18 +961,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
             } catch (Exception $e) {
                 if ($pdo->inTransaction()) $pdo->rollBack();
-                $_SESSION['error'] = '' . $e->getMessage();
+                $_SESSION['error'] = $e->getMessage();
             }
             header('Location: manager_fuel_adjustments.php'); exit;
 
         /* -- ADJUST TANK LEVEL -- */
         case 'adjust_tank_level':
             $fuel_type_id    = $_POST['fuel_type_id'] ?? '';
+            $tank_label      = trim($_POST['tank_label'] ?? '');
             $new_level       = (float)($_POST['new_level'] ?? 0);
             $reason          = trim($_POST['reason'] ?? '');
             $adjustment_type = $_POST['adjustment_type'] ?? '';
             try {
-                if (empty($fuel_type_id))  throw new Exception('Please select a fuel type.');
+                if (empty($fuel_type_id))  throw new Exception('Please select a tank.');
                 if (empty($adjustment_type)) throw new Exception('Please select an adjustment type.');
                 if (strlen($reason) < 10)  throw new Exception('Detailed reason is required (minimum 10 characters) for transparency.');
                 if ($new_level < 0)        throw new Exception('New level cannot be negative.');
@@ -549,63 +986,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 $difference   = $new_level - $current['current_stock'];
                 $fuel_name    = $current['fuel_type_name'];
+                // Use tank_label in audit trail if available, else fall back to fuel_type_name
+                $audit_fuel_label = !empty($tank_label) ? $tank_label : $fuel_name;
                 $reason_short = substr($reason, 0, 255);
 
                 $pdo->beginTransaction();
 
-                // Update both columns so all reads stay consistent
-                $pdo->prepare("UPDATE fuel_inventory SET current_level=?, current_stock=?, last_updated=NOW() WHERE station_id=? AND fuel_type_id=?")->execute([$new_level, $new_level, $station_id, $fuel_type_id]);
+                // Update the consolidated fuel_inventory by applying the variance
+                $pdo->prepare("UPDATE fuel_inventory SET current_level=current_level+?, current_stock=current_stock+?, last_updated=NOW() WHERE station_id=? AND fuel_type_id=?")->execute([$difference, $difference, $station_id, $fuel_type_id]);
 
-                // Audit trail row
-                $pdo->prepare("INSERT INTO fuel_adjustments (station_id, fuel_type_id, fuel_type, adjustment_type, liters, reason, user_id, adjustment_date) VALUES (?,?,?,?,?,?,?,CURDATE())")->execute([$station_id, $fuel_type_id, $fuel_name, $adjustment_type, $difference, $reason_short, $me['id']]);
+                // Audit trail row — store physical tank label in fuel_type column
+                $pdo->prepare("INSERT INTO fuel_adjustments (station_id, fuel_type_id, fuel_type, adjustment_type, liters, reason, user_id, adjustment_date) VALUES (?,?,?,?,?,?,?,CURDATE())")->execute([$station_id, $fuel_type_id, $audit_fuel_label, $adjustment_type, $difference, $reason_short, $me['id']]);
 
-                log_activity($pdo, $me['id'], 'Adjust Tank Level', "Adjusted {$adjustment_type} for {$fuel_name}: {$difference} L (new level: {$new_level} L). Reason: {$reason}");
+                log_activity($pdo, $me['id'], 'Adjust Tank Level', "Adjusted {$adjustment_type} for {$audit_fuel_label}: {$difference} L. Reason: {$reason}");
                 $pdo->commit();
 
                 $diff_str = ($difference >= 0 ? '+' : '') . number_format($difference, 2);
-                $_SESSION['success'] = "? {$fuel_name} tank level set to " . number_format($new_level, 2) . " L (change: {$diff_str} L). Audit trail saved.";
+                $_SESSION['success'] = "✓ {$audit_fuel_label} adjusted by {$diff_str} L. Audit trail saved.";
             } catch (Exception $e) {
                 if ($pdo->inTransaction()) $pdo->rollBack();
-                $_SESSION['error'] = '? ' . $e->getMessage();
-            }
-            header('Location: manager_fuel_adjustments.php'); exit;
-
-        /* -- UPDATE PRICE -- */
-        case 'update_price':
-            $fuel_type_id = $_POST['fuel_type_id'] ?? '';
-            $new_price    = (float)($_POST['new_price'] ?? 0);
-            $reason       = trim($_POST['reason'] ?? '');
-            try {
-                if (empty($fuel_type_id)) throw new Exception('Please select a fuel type.');
-                if (strlen($reason) < 10) throw new Exception('Detailed reason is required (minimum 10 characters) for transparency.');
-                if ($new_price <= 0)      throw new Exception('Price must be greater than 0.');
-
-                // Get current price + fuel type name
-                $stmt = $pdo->prepare("SELECT fi.price_per_liter, ft.name as fuel_type_name FROM fuel_inventory fi JOIN fuel_types ft ON fi.fuel_type_id=ft.id WHERE fi.station_id=? AND fi.fuel_type_id=?");
-                $stmt->execute([$station_id, $fuel_type_id]);
-                $current = $stmt->fetch(PDO::FETCH_ASSOC);
-                if (!$current) throw new Exception('Fuel inventory record not found.');
-
-                $old_price    = $current['price_per_liter'];
-                $fuel_name    = $current['fuel_type_name'];
-                $reason_short = substr($reason, 0, 255);
-
-                $pdo->beginTransaction();
-
-                // Update price
-                $pdo->prepare("UPDATE fuel_inventory SET price_per_liter=?, last_updated=NOW() WHERE station_id=? AND fuel_type_id=?")->execute([$new_price, $station_id, $fuel_type_id]);
-
-                // Audit trail row - use liters=0, store price change in reason
-                $audit_reason = substr("Price: ?{$old_price} ? ?{$new_price}/L. {$reason}", 0, 255);
-                $pdo->prepare("INSERT INTO fuel_adjustments (station_id, fuel_type_id, fuel_type, adjustment_type, liters, reason, user_id, adjustment_date) VALUES (?,?,?,'price_update',0,?,?,CURDATE())")->execute([$station_id, $fuel_type_id, $fuel_name, $audit_reason, $me['id']]);
-
-                log_activity($pdo, $me['id'], 'Update Price', "Updated {$fuel_name} price: ?{$old_price} ? ?{$new_price}/L. Reason: {$reason}");
-                $pdo->commit();
-
-                $_SESSION['success'] = "? {$fuel_name} price updated: ?" . number_format($old_price, 2) . " ? ?" . number_format($new_price, 2) . "/L. Audit trail saved.";
-            } catch (Exception $e) {
-                if ($pdo->inTransaction()) $pdo->rollBack();
-                $_SESSION['error'] = '? ' . $e->getMessage();
+                $_SESSION['error'] = '✗ ' . $e->getMessage();
             }
             header('Location: manager_fuel_adjustments.php'); exit;
 
@@ -1094,179 +1494,712 @@ function adjustColor($hex,$pct) {
 <!-- ----------------------------------------------------------
      TAB 3: ADJUSTMENTS (MANAGER-ONLY)
 ---------------------------------------------------------- -->
+<?php
+// Build inventory lookup & per-type tank counts for the 17-tank table
+$_inv_by_type = [];
+foreach ($tank_data as $_td) {
+    $_inv_by_type[strtolower(trim($_td['fuel_type_name']))] = $_td;
+}
+$_tank_counts = [];
+foreach ($PHYSICAL_TANKS as $_pt) {
+    $k = strtolower(trim($_pt['fuel_type']));
+    $_tank_counts[$k] = ($_tank_counts[$k] ?? 0) + 1;
+}
+
+// Fetch latest fuel transaction readings for each fuel type (for Beginning/Ending display)
+$_latest_readings = [];
+try {
+    $stmt = $pdo->prepare("
+        SELECT ft1.fuel_type,
+               ft1.previous_reading AS beginning,
+               ft1.present_reading AS ending,
+               ft1.transaction_date
+        FROM fuel_transactions ft1
+        INNER JOIN (
+            SELECT fuel_type, MAX(id) AS max_id
+            FROM fuel_transactions
+            WHERE station_id = ?
+            GROUP BY fuel_type
+        ) ft2 ON ft1.id = ft2.max_id
+    ");
+    $stmt->execute([$station_id]);
+    $readings = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($readings as $r) {
+        $_latest_readings[strtolower(trim($r['fuel_type']))] = $r;
+    }
+} catch (Exception $e) {
+    // If query fails, continue without readings
+}
+
+// Fetch flagged fuel transactions for meter reading adjustments (Tab 4)
+$flagged_transactions = [];
+$flagged_count = 0;
+try {
+    $stmt = $pdo->prepare("SELECT 
+        ft.id,
+        ft.transaction_id,
+        ft.transaction_date,
+        ft.fuel_type,
+        ft.pump_id,
+        fp.pump_number,
+        ft.previous_reading,
+        ft.present_reading,
+        ft.calibration,
+        ft.liters_sold,
+        ft.price_per_liter,
+        ft.total_amount,
+        ft.status,
+        ft.reject_reason,
+        ft.notes,
+        ft.staff_id,
+        CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as staff_name,
+        u.username as staff_username,
+        ft.shift_name,
+        ft.shift_period
+    FROM fuel_transactions ft
+    LEFT JOIN fuel_pumps fp ON ft.pump_id = fp.id
+    LEFT JOIN users u ON ft.staff_id = u.id
+    WHERE ft.station_id = ?
+    AND (
+        ft.status = 'Flagged' 
+        OR ft.status LIKE '%flag%'
+        OR ft.status = 'Pending'
+        OR ft.status LIKE '%pending%'
+        OR ft.reject_reason LIKE '%discrepancy%'
+    )
+    ORDER BY ft.transaction_date DESC, ft.created_at DESC
+    LIMIT 100");
+    $stmt->execute([$station_id]);
+    $flagged_transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $flagged_count = count($flagged_transactions);
+} catch (Exception $e) {
+    // If query fails, continue without flagged transactions
+}
+
+// Fetch flagged fuel deliveries for delivery adjustments (Tab 1)
+$flagged_deliveries = [];
+$flagged_deliveries_count = 0;
+try {
+    $stmt = $pdo->prepare("SELECT 
+        fd.id,
+        fd.delivery_date,
+        fd.fuel_type,
+        fd.supplier,
+        fd.invoice_no,
+        fd.delivery_liters,
+        fd.tanker_number,
+        fd.received_by,
+        fd.status,
+        fd.notes,
+        fd.created_at,
+        CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as staff_name,
+        u.username as staff_username
+    FROM fuel_deliveries fd
+    LEFT JOIN users u ON fd.received_by = u.id
+    WHERE fd.station_id = ?
+    AND (
+        fd.status = 'Flagged' 
+        OR fd.status LIKE '%flag%'
+        OR fd.status = 'Pending'
+        OR fd.status LIKE '%pending%'
+        OR fd.notes LIKE '%discrepancy%'
+        OR fd.notes LIKE '%variance%'
+    )
+    ORDER BY fd.delivery_date DESC, fd.created_at DESC
+    LIMIT 100");
+    $stmt->execute([$station_id]);
+    $flagged_deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $flagged_deliveries_count = count($flagged_deliveries);
+} catch (Exception $e) {
+    // If query fails, continue without flagged deliveries
+}
+
+// Fetch full adjustment history for tab 3 (no limit)
+$all_adjustments = [];
+try {
+    $s = $pdo->prepare("SELECT fa.*, ft.name as fuel_type_name, CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))) as user_name FROM fuel_adjustments fa JOIN fuel_types ft ON fa.fuel_type_id=ft.id JOIN users u ON fa.user_id=u.id WHERE fa.station_id=? ORDER BY fa.adjustment_date DESC, fa.created_at DESC");
+    $s->execute([$station_id]);
+    $all_adjustments = $s->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+$adj_type_labels = [
+    'delivery_variance'=>['label'=>'DR vs Dipstick Variance','color'=>'#dc3545'],
+    'delivery_short'   =>['label'=>'Delivery Shortage','color'=>'#dc3545'],
+    'delivery_overage' =>['label'=>'Delivery Overage','color'=>'#28a745'],
+    'delivery'         =>['label'=>'Delivery','color'=>'#17a2b8'],
+    'meter_reading_error'=>['label'=>'Meter Reading Error','color'=>'#fd7e14'],
+    'calibration'      =>['label'=>'Calibration Correction','color'=>'#6f42c1'],
+    'pump_variance'    =>['label'=>'Pump vs Sales Mismatch','color'=>'#ffc107'],
+    'manual'           =>['label'=>'Manual Correction','color'=>'#6c757d'],
+    'evaporation'      =>['label'=>'Evaporation Loss','color'=>'#6c757d'],
+    'spillage'         =>['label'=>'Spillage / Leakage','color'=>'#dc3545'],
+    'verified_sale'    =>['label'=>'Verified Sale','color'=>'#28a745'],
+    'rejected_reading' =>['label'=>'Rejected Reading','color'=>'#dc3545'],
+    'adjusted_reading' =>['label'=>'Adjusted Reading','color'=>'#17a2b8'],
+];
+?>
 <div id="adjustments" class="fuel-section">
 <div class="fuel-section-inner">
 
-    <span class="audit-badge"><i class="fas fa-lock"></i> Manager Access Only</span>
-    </div>
-
-        <div class="info-box" style="margin-bottom:20px;">
-        <h4 style="margin:0 0 14px;color:<?php echo $colors['primary']; ?>;"><i class="fas fa-database"></i> Tank Level Adjustments</h4>
-        <div style="overflow-x:hidden;">
-        <table class="data-table" style=" margin: 0;">
-            <thead>
-                <tr>
-                    <th style="width:15%">Fuel Type</th>
-                    <th style="width:15%">Current Stock</th>
-                    <th style="width:15%">New Level (L)</th>
-                    <th style="width:20%">Adjustment Type</th>
-                    <th style="width:25%">Detailed Reason</th>
-                    <th style="width:10%;text-align:center;">Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($tank_data as $t): ?>
-                <?php $formId = "tank_form_" . $t['fuel_type_id']; ?>
-                <form id="<?php echo $formId; ?>" method="post" action="manager_fuel_adjustments.php">
-                    <input type="hidden" name="action" value="adjust_tank_level">
-                    <input type="hidden" name="fuel_type_id" value="<?php echo $t['fuel_type_id']; ?>">
-                </form>
-                <tr>
-                    <td><strong><?php echo htmlspecialchars($t['fuel_type_name']); ?></strong></td>
-                    <td style="font-weight:bold; color:#00264D;"><?php echo number_format($t['current_stock'],2); ?> L</td>
-                    <td>
-                        <input form="<?php echo $formId; ?>" type="number" name="new_level" class="form-control" step="0.01" min="0" required placeholder="New Level" style="padding:6px 10px; height:auto; margin:0;">
-                    </td>
-                    <td>
-                        <select form="<?php echo $formId; ?>" name="adjustment_type" class="form-control" required style="padding:6px 10px; height:auto; margin:0;">
-                            <option value="">Select type...</option>
-                            <option value="delivery">Fuel Delivery</option>
-                            <option value="calibration">Calibration Correction</option>
-                            <option value="manual">Manual Adjustment</option>
-                            <option value="evaporation">Evaporation Loss</option>
-                            <option value="spillage">Spillage / Wastage</option>
-                        </select>
-                    </td>
-                    <td>
-                        <input form="<?php echo $formId; ?>" type="text" name="reason" class="form-control" placeholder="Enter reason..." required minlength="10" style="padding:6px 10px; height:auto; margin:0;">
-                    </td>
-                    <td style="text-align:center; padding: 4px;">
-                        <button form="<?php echo $formId; ?>" type="submit" class="jo-act-btn" style="background:#003d82;color:white;width:100%;justify-content:center;padding:6px;"><i class="fas fa-edit"></i> Apply</button>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+        <div>
+            <h3 style="margin:0;color:#002F70;font-size:1.1rem;font-weight:700;"><i class="fas fa-sliders-h"></i> Fuel Adjustments</h3>
+            <div style="font-size:.78rem;color:#64748b;margin-top:2px;">Manager-only corrections for deliveries and transactions</div>
         </div>
+        <span class="audit-badge"><i class="fas fa-lock"></i> Manager Access Only</span>
     </div>
 
-    <div class="info-box">
-        <h4 style="margin:0 0 14px;color:<?php echo $colors['primary']; ?>;"><i class="fas fa-tag"></i> Price Per Liter Update</h4>
-        <div style="overflow-x:hidden;">
-        <table class="data-table" style=" margin: 0;">
-            <thead>
-                <tr>
-                    <th style="width:20%">Fuel Type</th>
-                    <th style="width:20%">Current Price (PHP)</th>
-                    <th style="width:20%">New Price (PHP)</th>
-                    <th style="width:30%">Reason for Change</th>
-                    <th style="width:10%;text-align:center;">Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($tank_data as $t): ?>
-                <?php $pFormId = "price_form_" . $t['fuel_type_id']; ?>
-                <form id="<?php echo $pFormId; ?>" method="post" action="manager_fuel_adjustments.php">
-                    <input type="hidden" name="action" value="update_price">
-                    <input type="hidden" name="fuel_type_id" value="<?php echo $t['fuel_type_id']; ?>">
-                </form>
-                <tr>
-                    <td><strong><?php echo htmlspecialchars($t['fuel_type_name']); ?></strong></td>
-                    <td style="font-weight:bold; color:#00264D;">₱<?php echo number_format($t['price_per_liter']??0,2); ?> / L</td>
-                    <td>
-                        <input form="<?php echo $pFormId; ?>" type="number" name="new_price" class="form-control" step="0.01" min="0.01" max="<?php echo $business_rules['max_price_per_liter'] ?? 100; ?>" required placeholder="New Price" style="padding:6px 10px; height:auto; margin:0;">
-                    </td>
-                    <td>
-                        <input form="<?php echo $pFormId; ?>" type="text" name="reason" class="form-control" placeholder="Reason for update..." required minlength="10" style="padding:6px 10px; height:auto; margin:0;">
-                    </td>
-                    <td style="text-align:center; padding: 4px;">
-                        <button form="<?php echo $pFormId; ?>" type="submit" class="jo-act-btn" style="background:#28a745;color:white;width:100%;justify-content:center;padding:6px;"><i class="fas fa-tag"></i> Update</button>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
+    <!-- Sub-tabs -->
+    <div style="display:flex;gap:0;border-bottom:2px solid #e2e8f0;margin-bottom:20px;">
+        <button class="adj-tab-btn active" onclick="switchAdjTab('adj-deliveries',this)" id="btn-adj-deliveries"
+            style="padding:9px 20px;border:none;background:none;font-weight:700;font-size:.85rem;color:#002F70;border-bottom:3px solid #002F70;cursor:pointer;transition:all .2s;">
+            <i class="fas fa-truck"></i> Fuel Deliveries
+        </button>
+        <button class="adj-tab-btn" onclick="switchAdjTab('adj-transactions',this)" id="btn-adj-transactions"
+            style="padding:9px 20px;border:none;background:none;font-weight:600;font-size:.85rem;color:#64748b;border-bottom:3px solid transparent;cursor:pointer;transition:all .2s;">
+            <i class="fas fa-gas-pump"></i> Fuel Transactions
+        </button>
+        <button class="adj-tab-btn" onclick="switchAdjTab('adj-history',this)" id="btn-adj-history"
+            style="padding:9px 20px;border:none;background:none;font-weight:600;font-size:.85rem;color:#64748b;border-bottom:3px solid transparent;cursor:pointer;transition:all .2s;">
+            <i class="fas fa-history"></i> Adjustment History
+            <?php if (!empty($all_adjustments)): ?>
+            <span style="background:#002F70;color:#fff;border-radius:10px;padding:1px 7px;font-size:.7rem;margin-left:4px;"><?php echo count($all_adjustments); ?></span>
+            <?php endif; ?>
+        </button>
+    </div>
+
+    // Unused helper removed to keep UI focused on Deliveries and Transactions adjustments
+
+    <!-- TAB 1: Fuel Deliveries (Delivery Adjustments) -->
+    <div id="adj-deliveries" class="adj-tab-panel" style="display:block;">
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+
+            <form method="post" action="manager_fuel_adjustments.php" id="delivery_adj_form">
+                <input type="hidden" name="action" value="bulk_adjust_deliveries">
+                
+                <!-- Table -->
+                <div style="overflow-x:auto;padding:14px 16px 0;">
+                    <div style="font-size:.78rem;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:8px;letter-spacing:.5px;">
+                        <i class="fas fa-list-ul" style="color:#002F70;margin-right:5px;"></i> Fuel Delivery Adjustments - All 17 Fuel Types
+                    </div>
+                    <table class="data-table" style="margin-bottom:0;font-size:.82rem;">
+                        <thead>
+                            <tr>
+                                <th style="background:#002F70;color:#fff;width:5%;">Sel.</th>
+                                <th style="background:#002F70;color:#fff;">Tank / Fuel Type</th>
+                                <th style="background:#002F70;color:#fff;">Supplier</th>
+                                <th style="background:#002F70;color:#fff;">Invoice/DR No.</th>
+                                <th style="background:#002F70;color:#fff;text-align:right;">DR Quantity (L)</th>
+                                <th style="background:#002F70;color:#fff;text-align:right;">Actual Quantity (L)</th>
+                                <th style="background:#002F70;color:#fff;text-align:right;">Variance</th>
+                                <th style="background:#002F70;color:#fff;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php 
+                            // Create lookup for flagged deliveries by fuel type (latest per type)
+                            $deliveries_by_fuel = [];
+                            foreach ($flagged_deliveries as $fd) {
+                                $ft_key = strtolower(trim($fd['fuel_type']));
+                                // Keep only the latest (most recent) delivery per fuel type
+                                if (!isset($deliveries_by_fuel[$ft_key])) {
+                                    $deliveries_by_fuel[$ft_key] = $fd;
+                                }
+                            }
+                            
+                            // Display all 17 physical tanks
+                            $idx = 0;
+                            foreach ($PHYSICAL_TANKS as $pt): 
+                                $ft_key = strtolower(trim($pt['fuel_type']));
+                                $delivery = $deliveries_by_fuel[$ft_key] ?? null;
+                                $has_delivery = $delivery !== null;
+                                $delivery_id = $has_delivery ? $delivery['id'] : 0;
+                                $dr_qty = $has_delivery ? (float)$delivery['delivery_liters'] : 0;
+                                $supplier = $has_delivery ? ($delivery['supplier'] ?? '—') : '—';
+                                $invoice = $has_delivery ? ($delivery['invoice_no'] ?? '—') : '—';
+                                $status = $has_delivery ? $delivery['status'] : 'No Data';
+                                $row_id = 'deliv_row_' . $idx;
+                            ?>
+                            <tr id="<?php echo $row_id; ?>" style="border-bottom:1px solid #f1f5f9;">
+                                <td style="text-align:center;">
+                                    <?php if ($has_delivery): ?>
+                                    <input type="checkbox" name="delivery_ids[]" value="<?php echo $delivery_id; ?>" 
+                                           id="deliv_check_<?php echo $idx; ?>"
+                                           onchange="selectDeliveryRow(<?php echo $idx; ?>, <?php echo $dr_qty; ?>)">
+                                    <?php else: ?>
+                                    <input type="checkbox" disabled style="opacity:0.3;">
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <strong style="color:#002F70;"><?php echo htmlspecialchars($pt['label']); ?></strong>
+                                    <div style="font-size:.68rem;color:#94a3b8;"><?php echo htmlspecialchars($pt['tank']); ?></div>
+                                    <span style="background:#e8f4fd;color:#0056b3;padding:2px 7px;border-radius:6px;font-size:.7rem;font-weight:700;margin-top:2px;display:inline-block;">
+                                        <?php echo htmlspecialchars($pt['fuel_type']); ?>
+                                    </span>
+                                </td>
+                                <td style="color:#64748b;font-size:.8rem;">
+                                    <?php echo htmlspecialchars($supplier); ?>
+                                </td>
+                                <td style="font-size:.8rem;color:#334155;font-weight:600;">
+                                    <?php echo htmlspecialchars($invoice); ?>
+                                </td>
+                                <td style="text-align:right;font-weight:700;color:<?php echo $has_delivery ? '#1e293b' : '#94a3b8'; ?>;">
+                                    <?php echo $has_delivery ? number_format($dr_qty, 2) . ' L' : '—'; ?>
+                                </td>
+                                <td style="text-align:right;padding:6px;">
+                                    <?php if ($has_delivery): ?>
+                                    <input type="number" 
+                                           name="actual_qty[<?php echo $delivery_id; ?>]"
+                                           id="actual_deliv_<?php echo $idx; ?>" 
+                                           step="0.01" 
+                                           min="0"
+                                           value="<?php echo number_format($dr_qty, 2, '.', ''); ?>"
+                                           onchange="calculateDeliveryVariance(<?php echo $idx; ?>, <?php echo $dr_qty; ?>)"
+                                           onfocus="selectDeliveryRow(<?php echo $idx; ?>, <?php echo $dr_qty; ?>)"
+                                           style="width:120px;padding:4px 7px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;text-align:right;font-weight:700;">
+                                    <?php else: ?>
+                                    <input type="number" disabled placeholder="No delivery"
+                                           style="width:120px;padding:4px 7px;border:1px solid #e2e8f0;border-radius:5px;font-size:.82rem;text-align:right;background:#f8fafc;opacity:0.5;">
+                                    <?php endif; ?>
+                                </td>
+                                <td style="text-align:right;" id="variance_deliv_<?php echo $idx; ?>">
+                                    <span style="color:#94a3b8;">—</span>
+                                </td>
+                                <td>
+                                    <?php
+                                    $s = strtolower($status);
+                                    if (strpos($s, 'flag') !== false) {
+                                        echo '<span style="color:#dc2626;font-weight:700;font-size:.72rem;">Flagged</span>';
+                                    } elseif ($s === 'cleared') {
+                                        echo '<span style="color:#16a34a;font-weight:700;font-size:.72rem;">Cleared</span>';
+                                    } elseif ($s === 'no data') {
+                                        echo '<span style="color:#94a3b8;font-weight:600;font-size:.72rem;">—</span>';
+                                    } else {
+                                        echo '<span style="color:#d97706;font-weight:700;font-size:.72rem;">Pending</span>';
+                                    }
+                                    ?>
+                                </td>
+                            </tr>
+                            <?php 
+                            $idx++;
+                            endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Adjustment Reason -->
+                <div style="padding:14px 16px;display:grid;grid-template-columns:1fr;gap:12px;">
+                    <div class="form-group" style="margin:0;">
+                        <label class="form-label">Adjustment Reason / Notes <span class="required">*</span></label>
+                        <textarea name="adjustment_reason" class="form-control" required minlength="10"
+                                  placeholder="Explain why these deliveries need adjustment (e.g., DR variance, short delivery, tanker calibration error...)"></textarea>
+                    </div>
+                </div>
+
+                <!-- Save Button -->
+                <div style="padding:0 16px 14px;display:flex;justify-content:flex-end;gap:10px;">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Save Adjustments
+                    </button>
+                </div>
+            </form>
         </div>
-    </div>
+    </div><!-- End adj-deliveries -->
 
-    <!-- -- Adjustment History - Audit Trail -- -->
-    <span class="audit-badge"><i class="fas fa-shield-alt"></i> Immutable log</span>
-    </div>
-    <?php if (empty($recent_adjustments)): ?>
-        <div class="empty-state"><i class="fas fa-history"></i><p>No adjustments recorded yet.</p></div>
-    <?php else: ?>
-    <div style="overflow-x:hidden;">
-    <table class="data-table">
-        <thead><tr>
-            <th>Date</th>
-            <th>Fuel Type</th>
-            <th>Type</th>
-            <th>Adjustment</th>
-            <th>Reason</th>
-            <th>Manager</th>
-            <th>Timestamp</th>
-        </tr></thead>
-        <tbody>
-        <?php foreach ($recent_adjustments as $adj):
-            $adj_type = $adj['adjustment_type'] ?? '';
-            $is_price = ($adj_type === 'price_update');
-            $liters   = (float)($adj['liters'] ?? 0);
-        ?>
-        <tr>
-            <td><?php echo date('M j, Y', strtotime($adj['adjustment_date'])); ?></td>
-            <td><strong><?php echo htmlspecialchars($adj['fuel_type_name'] ?? ($adj['fuel_type'] ?? '-')); ?></strong></td>
-            <td>
-                <?php
-                $type_labels = [
-                    'delivery'         => ['label' => 'Delivery',          'color' => '#17a2b8'],
-                    'calibration'      => ['label' => 'Calibration',       'color' => '#6f42c1'],
-                    'manual'           => ['label' => 'Manual Correction',  'color' => '#fd7e14'],
-                    'evaporation'      => ['label' => 'Evaporation',        'color' => '#6c757d'],
-                    'spillage'         => ['label' => 'Spillage',           'color' => '#dc3545'],
-                    'price_update'     => ['label' => 'Price Update',       'color' => '#003d7a'],
-                    'verified_sale'    => ['label' => 'Verified Sale',      'color' => '#28a745'],
-                    'rejected_reading' => ['label' => 'Rejected Reading',   'color' => '#dc3545'],
-                ];
-                $tl = $type_labels[$adj_type] ?? ['label' => ucfirst(str_replace('_',' ',$adj_type)), 'color' => '#6c757d'];
-                ?>
-                <span style="background:<?php echo $tl['color']; ?>1a;color:<?php echo $tl['color']; ?>;border:1px solid <?php echo $tl['color']; ?>40;padding:2px 8px;border-radius:10px;font-size:.72rem;font-weight:700;white-space:nowrap;">
-                    <?php echo $tl['label']; ?>
+    <!-- TAB 2: Fuel Transactions (Meter Reading Adjustments) -->
+    <div id="adj-transactions" class="adj-tab-panel" style="display:none;">
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+
+            <form method="post" action="manager_fuel_adjustments.php" id="transaction_adj_form">
+                <input type="hidden" name="action" value="bulk_adjust_transactions">
+                
+                <!-- Table -->
+                <div style="overflow-x:auto;padding:14px 16px 0;">
+                    <div style="font-size:.78rem;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:8px;letter-spacing:.5px;">
+                        <i class="fas fa-list-ul" style="color:#002F70;margin-right:5px;"></i> Fuel Transaction (Meter Reading) Adjustments - All 17 Fuel Types
+                    </div>
+                    <table class="data-table" style="margin-bottom:0;font-size:.82rem;">
+                        <thead>
+                            <tr>
+                                <th style="background:#002F70;color:#fff;width:5%;">Sel.</th>
+                                <th style="background:#002F70;color:#fff;">Tank / Fuel Type</th>
+                                <th style="background:#002F70;color:#fff;">Transaction ID</th>
+                                <th style="background:#002F70;color:#fff;text-align:right;">Beginning</th>
+                                <th style="background:#002F70;color:#fff;text-align:right;">Ending</th>
+                                <th style="background:#002F70;color:#fff;text-align:right;">Calibration</th>
+                                <th style="background:#002F70;color:#fff;text-align:right;">Liters (Computed)</th>
+                                <th style="background:#002F70;color:#fff;text-align:right;">Actual Liters</th>
+                                <th style="background:#002F70;color:#fff;text-align:right;">Variance</th>
+                                <th style="background:#002F70;color:#fff;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php 
+                            // Create lookup for flagged transactions by fuel type (latest per type)
+                            $transactions_by_fuel = [];
+                            foreach ($flagged_transactions as $ftx) {
+                                $ft_key = strtolower(trim($ftx['fuel_type']));
+                                // Keep only the latest (most recent) transaction per fuel type
+                                if (!isset($transactions_by_fuel[$ft_key])) {
+                                    $transactions_by_fuel[$ft_key] = $ftx;
+                                }
+                            }
+                            
+                            // Display all 17 physical tanks
+                            $idx = 0;
+                            foreach ($PHYSICAL_TANKS as $pt): 
+                                $ft_key = strtolower(trim($pt['fuel_type']));
+                                $ftx = $transactions_by_fuel[$ft_key] ?? null;
+                                $has_transaction = $ftx !== null;
+                                $tx_id = $has_transaction ? $ftx['id'] : 0;
+                                $computed_liters = $has_transaction ? (float)$ftx['liters_sold'] : 0;
+                                $previous = $has_transaction ? (float)$ftx['previous_reading'] : 0;
+                                $present = $has_transaction ? (float)$ftx['present_reading'] : 0;
+                                $calibration = $has_transaction ? (float)$ftx['calibration'] : 0;
+                                $transaction_id = $has_transaction ? $ftx['transaction_id'] : '—';
+                                $status = $has_transaction ? $ftx['status'] : 'No Data';
+                                $row_id = 'tx_row_' . $idx;
+                            ?>
+                            <tr id="<?php echo $row_id; ?>" style="border-bottom:1px solid #f1f5f9;">
+                                <td style="text-align:center;">
+                                    <?php if ($has_transaction): ?>
+                                    <input type="checkbox" name="transaction_ids[]" value="<?php echo $tx_id; ?>" 
+                                           id="tx_check_<?php echo $idx; ?>"
+                                           onchange="selectTransactionRow(<?php echo $idx; ?>, <?php echo $computed_liters; ?>)">
+                                    <?php else: ?>
+                                    <input type="checkbox" disabled style="opacity:0.3;">
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <strong style="color:#002F70;"><?php echo htmlspecialchars($pt['label']); ?></strong>
+                                    <div style="font-size:.68rem;color:#94a3b8;"><?php echo htmlspecialchars($pt['tank']); ?></div>
+                                    <span style="background:#e8f4fd;color:#0056b3;padding:2px 7px;border-radius:6px;font-size:.7rem;font-weight:700;margin-top:2px;display:inline-block;">
+                                        <?php echo htmlspecialchars($pt['fuel_type']); ?>
+                                    </span>
+                                </td>
+                                <td style="font-size:.75rem;color:<?php echo $has_transaction ? '#002F70' : '#94a3b8'; ?>;font-weight:600;">
+                                    <?php echo htmlspecialchars($transaction_id); ?>
+                                </td>
+                                <td style="text-align:right;color:<?php echo $has_transaction ? '#334155' : '#cbd5e1'; ?>;">
+                                    <?php echo $has_transaction ? number_format($previous, 2) : '—'; ?>
+                                </td>
+                                <td style="text-align:right;color:<?php echo $has_transaction ? '#334155' : '#cbd5e1'; ?>;font-weight:600;">
+                                    <?php echo $has_transaction ? number_format($present, 2) : '—'; ?>
+                                </td>
+                                <td style="text-align:right;color:<?php echo $has_transaction ? '#64748b' : '#cbd5e1'; ?>;">
+                                    <?php echo $has_transaction ? number_format($calibration, 2) : '—'; ?>
+                                </td>
+                                <td style="text-align:right;font-weight:700;color:<?php echo $has_transaction ? '#1e293b' : '#cbd5e1'; ?>;">
+                                    <?php echo $has_transaction ? number_format($computed_liters, 2) . ' L' : '—'; ?>
+                                </td>
+                                <td style="text-align:right;padding:6px;">
+                                    <?php if ($has_transaction): ?>
+                                    <input type="number" 
+                                           name="actual_liters[<?php echo $tx_id; ?>]"
+                                           id="actual_tx_<?php echo $idx; ?>" 
+                                           step="0.01" 
+                                           min="0"
+                                           value="<?php echo number_format($computed_liters, 2, '.', ''); ?>"
+                                           onchange="calculateTransactionVariance(<?php echo $idx; ?>, <?php echo $computed_liters; ?>)"
+                                           onfocus="selectTransactionRow(<?php echo $idx; ?>, <?php echo $computed_liters; ?>)"
+                                           style="width:100px;padding:4px 7px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;text-align:right;font-weight:700;">
+                                    <?php else: ?>
+                                    <input type="number" disabled placeholder="No transaction"
+                                           style="width:100px;padding:4px 7px;border:1px solid #e2e8f0;border-radius:5px;font-size:.82rem;text-align:right;background:#f8fafc;opacity:0.5;">
+                                    <?php endif; ?>
+                                </td>
+                                <td style="text-align:right;" id="variance_tx_<?php echo $idx; ?>">
+                                    <span style="color:#94a3b8;">—</span>
+                                </td>
+                                <td>
+                                    <?php
+                                    $s = strtolower($status);
+                                    if (strpos($s, 'flag') !== false) {
+                                        echo '<span style="color:#dc2626;font-weight:700;font-size:.72rem;">Flagged</span>';
+                                    } elseif ($s === 'cleared') {
+                                        echo '<span style="color:#16a34a;font-weight:700;font-size:.72rem;">Cleared</span>';
+                                    } elseif ($s === 'no data') {
+                                        echo '<span style="color:#94a3b8;font-weight:600;font-size:.72rem;">—</span>';
+                                    } else {
+                                        echo '<span style="color:#d97706;font-weight:700;font-size:.72rem;">Pending</span>';
+                                    }
+                                    ?>
+                                </td>
+                            </tr>
+                            <?php 
+                            $idx++;
+                            endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Adjustment Reason -->
+                <div style="padding:14px 16px;display:grid;grid-template-columns:1fr;gap:12px;">
+                    <div class="form-group" style="margin:0;">
+                        <label class="form-label">Adjustment Reason / Notes <span class="required">*</span></label>
+                        <textarea name="adjustment_reason" class="form-control" required minlength="10"
+                                  placeholder="Explain why these transactions need adjustment (e.g., meter reading error, calibration test error, staff encoding error...)"></textarea>
+                    </div>
+                </div>
+
+                <!-- Save Button -->
+                <div style="padding:0 16px 14px;display:flex;justify-content:flex-end;gap:10px;">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Save Adjustments
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div><!-- End adj-transactions -->
+
+    <!-- TAB 3: Adjustment History -->
+    <div id="adj-history" class="adj-tab-panel" style="display:none;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+            <div style="font-weight:700;color:#002F70;font-size:.95rem;">
+                <i class="fas fa-history"></i> Adjustment History
+                <?php if (!empty($all_adjustments)): ?>
+                <span style="background:#e8f4fd;color:#0056b3;padding:2px 10px;border-radius:12px;font-size:.75rem;font-weight:700;margin-left:6px;">
+                    <?php echo count($all_adjustments); ?> Records
                 </span>
-            </td>
-            <td>
-                <?php if ($is_price): ?>
-                    <span style="font-size:.82rem;color:<?php echo $colors['primary']; ?>;font-weight:700;">
-                        <i class="fas fa-tag"></i> Price change
-                    </span>
-                <?php else: ?>
-                    <span class="<?php echo $liters >= 0 ? 'var-ok' : 'var-crit'; ?>" style="font-weight:700;">
-                        <?php echo ($liters >= 0 ? '+' : '') . number_format($liters, 2); ?> L
-                    </span>
                 <?php endif; ?>
-            </td>
-            <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-                title="<?php echo htmlspecialchars($adj['reason'] ?? ''); ?>">
-                <?php echo htmlspecialchars($adj['reason'] ?? '-'); ?>
-            </td>
-            <td>
-                <span class="audit-badge">
-                    <i class="fas fa-user-tie"></i> <?php echo htmlspecialchars($adj['user_name']); ?>
-                </span>
-            </td>
-            <td style="font-size:.78rem;color:#555;">
-                <?php echo isset($adj['created_at'])
-                    ? date('M j, Y H:i', strtotime($adj['created_at']))
-                    : date('M j, Y', strtotime($adj['adjustment_date'])); ?>
-            </td>
-        </tr>
-        <?php endforeach; ?>
-        </tbody>
-    </table>
-    </div>
-    <?php endif; ?>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <a href="manager_fuel_adjustments.php?export_adj=excel"
+                   style="background:#1d6f42;color:#fff;text-decoration:none;padding:6px 14px;border-radius:7px;font-size:.8rem;font-weight:700;display:inline-flex;align-items:center;gap:5px;">
+                    <i class="fas fa-file-excel"></i> Excel
+                </a>
+                <a href="manager_fuel_adjustments.php?export_adj=csv"
+                   style="background:#475569;color:#fff;text-decoration:none;padding:6px 14px;border-radius:7px;font-size:.8rem;font-weight:700;display:inline-flex;align-items:center;gap:5px;">
+                    <i class="fas fa-file-csv"></i> CSV
+                </a>
+                <a href="manager_fuel_adjustments.php?export_adj=pdf" target="_blank"
+                   style="background:#dc2626;color:#fff;text-decoration:none;padding:6px 14px;border-radius:7px;font-size:.8rem;font-weight:700;display:inline-flex;align-items:center;gap:5px;">
+                    <i class="fas fa-file-pdf"></i> PDF
+                </a>
+            </div>
+        </div>
 
-</div>
-</div>
+        <?php if (empty($all_adjustments)): ?>
+        <div class="empty-state">
+            <i class="fas fa-clipboard-list"></i>
+            <p>No adjustment records found for this station.</p>
+            <p style="font-size:.82rem;color:#999;margin-top:8px;">Adjustments will appear here once corrections are saved.</p>
+        </div>
+        <?php else: ?>
+        <div style="overflow-x:auto;">
+        <table class="data-table" style="font-size:.82rem;">
+            <thead><tr>
+                <th style="min-width:50px;">ID</th>
+                <th style="min-width:80px;">Date</th>
+                <th style="min-width:130px;">Tank / Fuel Type</th>
+                <th style="min-width:180px;">Adjustment Type</th>
+                <th style="min-width:80px;text-align:right;">Liters</th>
+                <th style="min-width:200px;">Reason</th>
+                <th style="min-width:110px;">Manager</th>
+                <th style="min-width:120px;">Timestamp</th>
+            </tr></thead>
+            <tbody>
+            <?php foreach ($all_adjustments as $adj):
+                $adj_type = $adj['adjustment_type'] ?? '';
+                $liters   = (float)($adj['liters'] ?? 0);
+                $tl = $adj_type_labels[$adj_type] ?? ['label'=>ucfirst(str_replace('_',' ',$adj_type)),'color'=>'#6c757d'];
+                $fuel_lbl = !empty($adj['fuel_type']) ? $adj['fuel_type'] : ($adj['fuel_type_name'] ?? '-');
+                $mgr_name = trim($adj['user_name'] ?? '-');
+            ?>
+            <tr>
+                <td><strong style="color:#666;font-family:monospace;">#<?php echo $adj['id']; ?></strong></td>
+                <td><?php echo date('M j, Y', strtotime($adj['adjustment_date'])); ?></td>
+                <td><strong><?php echo htmlspecialchars($fuel_lbl); ?></strong></td>
+                <td><span style="background:<?php echo $tl['color']; ?>1a;color:<?php echo $tl['color']; ?>;border:1px solid <?php echo $tl['color']; ?>40;padding:2px 8px;border-radius:10px;font-size:.72rem;font-weight:700;white-space:nowrap;"><?php echo htmlspecialchars($tl['label']); ?></span></td>
+                <td style="text-align:right;"><span class="<?php echo $liters >= 0 ? 'var-ok' : 'var-crit'; ?>" style="font-weight:700;"><?php echo ($liters >= 0 ? '+' : '') . number_format($liters, 2); ?> L</span></td>
+                <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?php echo htmlspecialchars($adj['reason'] ?? ''); ?>"><?php echo htmlspecialchars($adj['reason'] ?? '-'); ?></td>
+                <td><span class="audit-badge"><i class="fas fa-user-tie"></i> <?php echo htmlspecialchars($mgr_name); ?></span></td>
+                <td style="font-size:.78rem;color:#555;"><?php echo isset($adj['created_at']) ? date('M j, Y H:i', strtotime($adj['created_at'])) : date('M j, Y', strtotime($adj['adjustment_date'])); ?></td>
+            </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        </div>
+        <?php endif; ?>
+    </div><!-- End adj-history -->
+
+    <script>
+    // Tab switching
+    function switchAdjTab(tabId, btn) {
+        document.querySelectorAll('.adj-tab-panel').forEach(p => p.style.display = 'none');
+        document.querySelectorAll('.adj-tab-btn').forEach(b => {
+            b.style.color = '#64748b'; b.style.fontWeight = '600'; b.style.borderBottom = '3px solid transparent';
+        });
+        document.getElementById(tabId).style.display = 'block';
+        btn.style.color = '#002F70'; btn.style.fontWeight = '700'; btn.style.borderBottom = '3px solid #002F70';
+    }
+
+    // Per-form state
+    var _adjSel = {};
+    function selectPhysTank(formId, idx, ftId, label, curLevel) {
+        // Deselect all rows in this form
+        document.querySelectorAll('[id^="'+formId+'_row_"]').forEach(r => r.style.background = '');
+        var row = document.getElementById(formId+'_row_'+idx);
+        if (row) row.style.background = 'rgba(0,47,112,.06)';
+        var radio = document.getElementById(formId+'_r'+idx);
+        if (radio) radio.checked = true;
+        document.getElementById(formId+'_ftid').value   = ftId;
+        document.getElementById(formId+'_tlabel').value = label;
+        _adjSel[formId] = {idx: idx, curLevel: curLevel};
+    }
+    function updatePhysVariance(formId, idx, curLevel) {
+        var input = document.getElementById(formId+'_nl'+idx);
+        var cell  = document.getElementById(formId+'_var'+idx);
+        if (!input || !cell) return;
+        var newVal = parseFloat(input.value);
+        if (isNaN(newVal)) { cell.innerHTML = '<span style="color:#94a3b8;">—</span>'; return; }
+        var diff = newVal - curLevel;
+        var fmt  = (diff >= 0 ? '+' : '') + diff.toFixed(2) + ' L';
+        var col  = diff > 0 ? '#16a34a' : (diff < 0 ? '#dc2626' : '#64748b');
+        cell.innerHTML = '<span style="font-weight:700;color:'+col+';">'+fmt+'</span>';
+    }
+    function prepareAdjForm(formId) {
+        var sel = _adjSel[formId];
+        if (!sel) { alert('Please select a tank row first.'); return false; }
+        var input = document.getElementById(formId+'_nl'+sel.idx);
+        if (!input || input.value === '') { alert('Please enter the corrected level for the selected tank.'); return false; }
+        document.getElementById(formId+'_newlevel').value = input.value;
+        return true;
+    }
+
+    // Meter Reading Adjustment Functions
+    function calculateVariance(txId, computedLiters) {
+        var actualInput = document.getElementById('actual_' + txId);
+        var varianceCell = document.getElementById('variance_' + txId);
+        
+        var actualLiters = parseFloat(actualInput.value) || 0;
+        var variance = actualLiters - computedLiters;
+        
+        var varianceHtml = '';
+        if (Math.abs(variance) < 0.01) {
+            varianceHtml = '<span style="color:#94a3b8;">—</span>';
+        } else if (variance > 0) {
+            varianceHtml = '<span style="color:#16a34a;font-weight:700;">+' + variance.toFixed(2) + ' L</span>';
+        } else {
+            varianceHtml = '<span style="color:#dc2626;font-weight:700;">' + variance.toFixed(2) + ' L</span>';
+        }
+        
+        varianceCell.innerHTML = varianceHtml;
+    }
+
+    function adjustMeterReading(txId, txDisplayId, computedLiters, fuelType) {
+        document.getElementById('meter_tx_id').value = txId;
+        document.getElementById('meter_display_id').textContent = txDisplayId;
+        document.getElementById('meter_fuel_type').textContent = fuelType;
+        document.getElementById('meter_computed').textContent = computedLiters.toFixed(2);
+        document.getElementById('meter_actual_input').value = computedLiters.toFixed(2);
+        document.getElementById('modal_variance_display').textContent = '0.00 L';
+        document.getElementById('modal_variance_display').style.color = '#64748b';
+        document.getElementById('meterReadingModal').style.display = 'block';
+    }
+
+    function updateModalVariance() {
+        var computedLiters = parseFloat(document.getElementById('meter_computed').textContent);
+        var actualLiters = parseFloat(document.getElementById('meter_actual_input').value) || 0;
+        var variance = actualLiters - computedLiters;
+        
+        var varianceSpan = document.getElementById('modal_variance_display');
+        varianceSpan.textContent = (variance >= 0 ? '+' : '') + variance.toFixed(2) + ' L';
+        
+        if (variance > 0) {
+            varianceSpan.style.color = '#16a34a';
+        } else if (variance < 0) {
+            varianceSpan.style.color = '#dc2626';
+        } else {
+            varianceSpan.style.color = '#64748b';
+        }
+    }
+
+    function closeMeterModal() {
+        document.getElementById('meterReadingModal').style.display = 'none';
+    }
+
+    // Delivery Adjustment Functions
+    function selectDeliveryRow(idx, drQty) {
+        var checkbox = document.getElementById('deliv_check_' + idx);
+        var row = document.getElementById('deliv_row_' + idx);
+        
+        if (checkbox.checked) {
+            row.style.background = 'rgba(0,47,112,.06)';
+        } else {
+            row.style.background = '';
+        }
+        
+        calculateDeliveryVariance(idx, drQty);
+    }
+
+    function calculateDeliveryVariance(idx, drQty) {
+        var actualInput = document.getElementById('actual_deliv_' + idx);
+        var varianceCell = document.getElementById('variance_deliv_' + idx);
+        var checkbox = document.getElementById('deliv_check_' + idx);
+        
+        var actualQty = parseFloat(actualInput.value) || 0;
+        var variance = actualQty - drQty;
+        
+        var varianceHtml = '';
+        if (Math.abs(variance) < 0.01) {
+            varianceHtml = '<span style="color:#94a3b8;">—</span>';
+            checkbox.checked = false;
+        } else {
+            checkbox.checked = true;
+            if (variance > 0) {
+                varianceHtml = '<span style="color:#16a34a;font-weight:700;">+' + variance.toFixed(2) + ' L</span>';
+            } else {
+                varianceHtml = '<span style="color:#dc2626;font-weight:700;">' + variance.toFixed(2) + ' L</span>';
+            }
+        }
+        
+        varianceCell.innerHTML = varianceHtml;
+        selectDeliveryRow(idx, drQty);
+    }
+
+    // Transaction Adjustment Functions
+    function selectTransactionRow(idx, computedLiters) {
+        var checkbox = document.getElementById('tx_check_' + idx);
+        var row = document.getElementById('tx_row_' + idx);
+        
+        if (checkbox.checked) {
+            row.style.background = 'rgba(0,47,112,.06)';
+        } else {
+            row.style.background = '';
+        }
+        
+        calculateTransactionVariance(idx, computedLiters);
+    }
+
+    function calculateTransactionVariance(idx, computedLiters) {
+        var actualInput = document.getElementById('actual_tx_' + idx);
+        var varianceCell = document.getElementById('variance_tx_' + idx);
+        var checkbox = document.getElementById('tx_check_' + idx);
+        
+        var actualLiters = parseFloat(actualInput.value) || 0;
+        var variance = actualLiters - computedLiters;
+        
+        var varianceHtml = '';
+        if (Math.abs(variance) < 0.01) {
+            varianceHtml = '<span style="color:#94a3b8;">—</span>';
+            checkbox.checked = false;
+        } else {
+            checkbox.checked = true;
+            if (variance > 0) {
+                varianceHtml = '<span style="color:#16a34a;font-weight:700;">+' + variance.toFixed(2) + ' L</span>';
+            } else {
+                varianceHtml = '<span style="color:#dc2626;font-weight:700;">' + variance.toFixed(2) + ' L</span>';
+            }
+        }
+        
+        varianceCell.innerHTML = varianceHtml;
+        selectTransactionRow(idx, computedLiters);
+    }
+    </script>
+
+</div><!-- End fuel-section-inner -->
+</div><!-- End adjustments fuel-section -->
 
 
 </div><!-- /.mfm-wrap -->
@@ -1336,6 +2269,88 @@ function adjustColor($hex,$pct) {
                 </div>
                 <button type="submit" class="btn" style="white-space:nowrap;padding:8px 14px;background:#003d82;color:white;border:none;">
                     <i class="fas fa-tag"></i> Update Price
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+</div>
+
+<!-- ============================================================
+     METER READING ADJUSTMENT MODAL
+============================================================ -->
+<div id="meterReadingModal" class="modal" style="display:none;">
+<div class="modal-box" style="max-width:600px;">
+    <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-edit"></i> Adjust Meter Reading</div>
+        <button class="modal-close" onclick="closeMeterModal()" title="Close">&#x2715;</button>
+    </div>
+    <div class="modal-body" style="padding:18px 20px;">
+        <form method="post" action="manager_fuel_adjustments.php">
+            <input type="hidden" name="action" value="adjust_meter_reading">
+            <input type="hidden" name="transaction_id" id="meter_tx_id">
+            
+            <!-- Transaction Info -->
+            <div style="background:#f8fafc;padding:14px;border-radius:8px;margin-bottom:14px;border:1px solid #e2e8f0;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div>
+                        <div style="font-size:.7rem;color:#64748b;text-transform:uppercase;margin-bottom:4px;font-weight:600;">Transaction ID</div>
+                        <div style="font-size:.88rem;color:#002F70;font-weight:700;" id="meter_display_id">—</div>
+                    </div>
+                    <div>
+                        <div style="font-size:.7rem;color:#64748b;text-transform:uppercase;margin-bottom:4px;font-weight:600;">Fuel Type</div>
+                        <div style="font-size:.88rem;color:#1e293b;font-weight:700;" id="meter_fuel_type">—</div>
+                    </div>
+                </div>
+                <div style="margin-top:10px;padding-top:10px;border-top:1px solid #e2e8f0;">
+                    <div style="font-size:.7rem;color:#64748b;text-transform:uppercase;margin-bottom:4px;font-weight:600;">Computed Liters (Present - Previous - Calibration)</div>
+                    <div style="font-size:1.1rem;color:#1e293b;font-weight:700;"><span id="meter_computed">0.00</span> L</div>
+                </div>
+            </div>
+            
+            <!-- Actual Liters Input -->
+            <div class="form-group" style="margin-bottom:16px;">
+                <label class="form-label" style="font-size:.82rem;font-weight:700;color:#475569;margin-bottom:6px;display:block;">
+                    Actual Liters <span style="color:#dc2626;">*</span>
+                </label>
+                <input type="number" name="actual_liters" id="meter_actual_input" 
+                       step="0.01" min="0" required
+                       placeholder="Enter corrected liters value..."
+                       oninput="updateModalVariance()"
+                       style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:.85rem;font-weight:600;">
+            </div>
+            
+            <!-- Variance Display -->
+            <div style="background:#eff6ff;padding:12px;border-radius:8px;margin-bottom:16px;border:1px solid #bfdbfe;">
+                <div style="font-size:.82rem;color:#1e40af;font-weight:600;">
+                    Variance: <span id="modal_variance_display" style="font-size:1.1rem;font-weight:800;">0.00 L</span>
+                </div>
+            </div>
+            
+            <!-- Adjustment Reason -->
+            <div class="form-group" style="margin-bottom:16px;">
+                <label class="form-label" style="font-size:.82rem;font-weight:700;color:#475569;margin-bottom:6px;display:block;">
+                    Adjustment Reason <span style="color:#dc2626;">*</span>
+                </label>
+                <textarea name="adjustment_reason" required minlength="10"
+                          placeholder="Explain why this adjustment is needed (e.g., calibration test error, meter malfunction, staff encoding error...)..."
+                          style="width:100%;min-height:100px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:.85rem;resize:vertical;"></textarea>
+            </div>
+            
+            <!-- Warning Notice -->
+            <div style="background:#fef3c7;padding:10px 12px;border-radius:6px;margin-bottom:16px;border-left:4px solid #d97706;">
+                <div style="font-size:.75rem;color:#92400e;">
+                    <i class="fas fa-exclamation-triangle"></i> <strong>Note:</strong> This will update inventory levels and create an audit log entry.
+                </div>
+            </div>
+            
+            <!-- Form Actions -->
+            <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:12px;border-top:1px solid #e2e8f0;">
+                <button type="button" onclick="closeMeterModal()" class="btn btn-secondary">
+                    Cancel
+                </button>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i> Save Adjustment
                 </button>
             </div>
         </form>
@@ -2079,6 +3094,18 @@ function activateTabFromHash() {
 document.addEventListener('DOMContentLoaded', function() {
     activateTabFromHash();
 
+    // Check if sub_tab query parameter is passed (e.g. ?sub_tab=adj-transactions#adjustments)
+    const urlParams = new URLSearchParams(window.location.search);
+    const subTab = urlParams.get('sub_tab');
+    if (subTab) {
+        setTimeout(() => {
+            const btn = document.getElementById('btn-' + subTab);
+            if (btn) {
+                switchAdjTab(subTab, btn);
+            }
+        }, 150);
+    }
+
     // Sidebar sub-item clicks - show/hide section without reload if already on page
     document.querySelectorAll('a[href*="manager_fuel_adjustments.php"]').forEach(function(link) {
         link.addEventListener('click', function(e) {
@@ -2092,6 +3119,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 });
+
 
 /* -- ADJUSTMENT FORM HELPERS -- */
 function showCurrentLevel(sel) {

@@ -524,7 +524,7 @@ include __DIR__ . '/../partials/header.php';
         <p style="color: #155724; background: #d4edda; padding: 10px; border-radius: 4px;">
             <?php echo $pending_fuel; ?> reading<?php echo $pending_fuel > 1 ? 's' : ''; ?> awaiting your review
         </p>
-        <p><a href="fuel_reconciliation_validation.php" class="btn primary"><i class="fas fa-external-link-alt"></i> Go to Fuel Validation</a></p>
+        <p><a href="manager_fuel_transaction_validation.php" class="btn primary"><i class="fas fa-external-link-alt"></i> Go to Fuel Validation</a></p>
     <?php else: ?>
         <p class="muted">No pending fuel readings</p>
     <?php endif; ?>

@@ -141,9 +141,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recei
                 $pdo->commit();
 
                 if ($status === 'Discrepancy') {
-                    header('Location: staff_delivery_status.php?msg=discrepancy&type=warning');
+                    header('Location: staff_delivery_history.php?msg=discrepancy&type=warning');
                 } else {
-                    header('Location: staff_delivery_status.php?msg=received&type=success');
+                    header('Location: staff_delivery_history.php?msg=received&type=success');
                 }
                 exit;
             } else {
@@ -182,11 +182,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
         $msg = 'At least one item must be added.'; $msg_type = 'error';
     } else {
         try {
+            // Generate batch ID based on delivery date - ONE batch per date
             $batch_prefix = 'BATCH-' . date('Ymd', strtotime($delivery_date)) . '-';
-            $stmt = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(batch_id, '-', -1) AS UNSIGNED)) FROM deliveries_oversight WHERE batch_id LIKE ?");
-            $stmt->execute([$batch_prefix . '%']);
-            $max_batch_num = (int)$stmt->fetchColumn();
-            $batch_id = $batch_prefix . str_pad($max_batch_num + 1, 3, '0', STR_PAD_LEFT);
+            
+            // Check if a batch already exists for this date at this station
+            $stmt = $pdo->prepare("
+                SELECT batch_id 
+                FROM deliveries_oversight 
+                WHERE batch_id LIKE ? 
+                  AND station_id = ? 
+                  AND DATE(delivery_date) = ? 
+                LIMIT 1
+            ");
+            $stmt->execute([$batch_prefix . '%', $station_id, $delivery_date]);
+            $existing_batch = $stmt->fetchColumn();
+            
+            if ($existing_batch) {
+                // Use existing batch ID for this date
+                $batch_id = $existing_batch;
+            } else {
+                // Create new batch ID for this date
+                $stmt = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(batch_id, '-', -1) AS UNSIGNED)) FROM deliveries_oversight WHERE batch_id LIKE ?");
+                $stmt->execute([$batch_prefix . '%']);
+                $max_batch_num = (int)$stmt->fetchColumn();
+                $batch_id = $batch_prefix . str_pad($max_batch_num + 1, 3, '0', STR_PAD_LEFT);
+            }
             
             $date_prefix = 'MDR-' . date('Ymd', strtotime($delivery_date)) . '-';
             $stmt = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(delivery_ref, '-', -1) AS UNSIGNED)) FROM deliveries_oversight WHERE delivery_ref LIKE ?");
@@ -224,7 +244,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
             $pdo->commit();
             if ($success_count > 0) {
                 log_activity($pdo, $me['id'], 'Staff Manual Delivery', "Batch: {$batch_id} | Items: {$success_count}");
-                header('Location: staff_delivery_status.php?msg=manual_saved&type=success');
+                header('Location: staff_delivery_history.php?msg=manual_saved&type=success');
                 exit;
             } else {
                 $msg = 'No valid items provided.'; $msg_type = 'error';
@@ -256,7 +276,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit_
             $msg = "&#10003; Delivery record successfully updated and resubmitted for manager approval.";
             $msg_type = 'success';
             log_activity($pdo, $me['id'], 'Staff Resubmitted Delivery', "Resubmitted delivery ID: {$delivery_id} with qty: {$quantity}");
-            header('Location: staff_delivery_status.php?msg=resubmitted&type=success');
+            header('Location: staff_delivery_history.php?msg=resubmitted&type=success');
             exit;
         } catch (Exception $e) {
             $msg = 'Error updating delivery: ' . $e->getMessage(); $msg_type = 'error';
@@ -512,7 +532,6 @@ textarea.form-control { resize: vertical; font-family: inherit; }
             <div class="del-card-title">
                 <i class="fas fa-keyboard"></i> Manual Encode Delivery
             </div>
-            <span style="font-size:12px;color:#6c757d;"><?php echo $selected_po ? 'Based on PO (left panel)' : 'For 3rd party or non-PO deliveries'; ?></span>
         </div>
         <div class="del-card-body">
             <form method="POST" id="manualForm">
@@ -520,11 +539,9 @@ textarea.form-control { resize: vertical; font-family: inherit; }
                 
                 <div class="form-group">
                     <label class="form-label">Supplier Name <span style="color:red;">*</span></label>
-                    <input type="text" name="supplier_name" class="form-control" list="supplierList" 
-                           value="<?php echo $selected_po ? htmlspecialchars($selected_po['supplier']) : ''; ?>" required>
-                    <datalist id="supplierList">
-                        <?php foreach ($suppliers as $s): ?><option value="<?php echo htmlspecialchars($s); ?>"><?php endforeach; ?>
-                    </datalist>
+                    <input type="text" name="supplier_name" class="form-control" 
+                           value="<?php echo $selected_po ? htmlspecialchars($selected_po['supplier']) : 'Petron Corporation'; ?>" 
+                           readonly style="background:#e9ecef;cursor:not-allowed;font-weight:600;">
                 </div>
 
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
@@ -569,9 +586,20 @@ textarea.form-control { resize: vertical; font-family: inherit; }
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label class="form-label">DR Number (Delivery Receipt)</label>
-                    <input type="text" name="dr_number" class="form-control" placeholder="Optional - Enter DR number if available">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
+                    <div class="form-group">
+                        <label class="form-label">Batch ID</label>
+                        <div style="background:#002F70;color:#fff;padding:12px;border-radius:6px;font-weight:600;text-align:center;font-size:14px;">
+                            Auto-Generated
+                        </div>
+                        <small style="font-size:11px;color:#6c757d;display:block;margin-top:4px;">
+                            <i class="fas fa-info-circle"></i> System will assign Batch ID upon saving
+                        </small>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">DR Number (Delivery Receipt)</label>
+                        <input type="text" name="dr_number" class="form-control" placeholder="Optional - Enter DR number if available">
+                    </div>
                 </div>
 
                 <div class="form-group">
@@ -579,7 +607,10 @@ textarea.form-control { resize: vertical; font-family: inherit; }
                     <textarea name="remarks" class="form-control" rows="3" placeholder="Optional - Add any notes about this delivery"><?php echo $selected_po ? 'Based on PO: ' . htmlspecialchars($selected_po['source_ref'] ?? '') : ''; ?></textarea>
                 </div>
 
-                <div style="margin-top:20px;text-align:right;">
+                <div style="margin-top:20px;display:flex;justify-content:flex-end;gap:10px;">
+                    <button type="button" onclick="resetDeliveryForm()" style="background:#6c757d;color:#fff;border:none;padding:12px 24px;border-radius:6px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-size:14px;">
+                        <i class="fas fa-redo"></i> Reset
+                    </button>
                     <button type="submit" style="background:#28a745;color:#fff;border:none;padding:12px 24px;border-radius:6px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-size:14px;">
                         <i class="fas fa-save"></i> Save Delivery Record
                     </button>
@@ -588,66 +619,6 @@ textarea.form-control { resize: vertical; font-family: inherit; }
             <datalist id="productList">
                 <?php foreach ($merch_products as $p): ?><option value="<?php echo htmlspecialchars($p); ?>"><?php endforeach; ?>
             </datalist>
-        </div>
-    </div>
-</div>
-
-<!-- Collapsible Merchandise PO Reference Card -->
-<div class="del-card" style="margin-top: 20px; margin-bottom: 20px;">
-    <div class="del-card-head" style="cursor: pointer;" onclick="toggleMerchPOCard()">
-        <div class="del-card-title">
-            <i class="fas fa-file-invoice-dollar" style="color: #002F70;"></i> Purchase Orders Reference (Merchandise)
-            <span style="background:#002F70;color:#fff;border-radius:10px;padding:2px 8px;font-size:11px;"><?php echo count($merchandise_purchase_orders); ?></span>
-        </div>
-        <span style="font-size:12px;color:#6c757d;"><i class="fas fa-chevron-down" id="merchPoToggleChevron"></i> Click to Toggle</span>
-    </div>
-    <div class="del-card-body" id="merchPoCardBody" style="display: none; max-height: 400px; overflow-y: auto; padding: 20px;">
-        <div style="margin-bottom: 12px; display: flex; gap: 8px;">
-            <input type="text" id="merchPoSearchInput" placeholder="Search PO#, Product, Status..." onkeyup="searchMerchPOs()" style="padding: 6px 12px; border: 1.5px solid #ced4da; border-radius: 6px; font-size: 13px; width: 100%; max-width: 300px;">
-        </div>
-        <div style="overflow-x: auto;">
-            <table style="width:100%; border-collapse:collapse; font-size: 12px; margin-bottom: 0;">
-                <thead>
-                    <tr style="background: #002F70 !important; border-bottom: none;">
-                        <th style="padding: 14px 16px; text-align: left; font-weight: 600; color: #fff !important; text-transform: uppercase; letter-spacing: 0.3px; background: #002F70 !important; font-size: 11px; white-space: nowrap;">PO Number</th>
-                        <th style="padding: 14px 16px; text-align: left; font-weight: 600; color: #fff !important; text-transform: uppercase; letter-spacing: 0.3px; background: #002F70 !important; font-size: 11px; white-space: nowrap;">Product Name</th>
-                        <th style="padding: 14px 16px; text-align: right; font-weight: 600; color: #fff !important; text-transform: uppercase; letter-spacing: 0.3px; background: #002F70 !important; font-size: 11px; white-space: nowrap;">Quantity</th>
-                        <th style="padding: 14px 16px; text-align: left; font-weight: 600; color: #fff !important; text-transform: uppercase; letter-spacing: 0.3px; background: #002F70 !important; font-size: 11px; white-space: nowrap;">Expected Date</th>
-                        <th style="padding: 14px 16px; text-align: left; font-weight: 600; color: #fff !important; text-transform: uppercase; letter-spacing: 0.3px; background: #002F70 !important; font-size: 11px; white-space: nowrap;">Supplier</th>
-                        <th style="padding: 14px 16px; text-align: left; font-weight: 600; color: #fff !important; text-transform: uppercase; letter-spacing: 0.3px; background: #002F70 !important; font-size: 11px; white-space: nowrap;">Status</th>
-                    </tr>
-                </thead>
-                <tbody id="merchPoReferenceTableBody">
-                    <?php if (empty($merchandise_purchase_orders)): ?>
-                        <tr>
-                            <td colspan="6" style="text-align: center; color: #adb5bd; padding: 20px;">No purchase orders found.</td>
-                        </tr>
-                    <?php else: ?>
-                        <?php foreach ($merchandise_purchase_orders as $po):
-                            $po_status = strtolower($po['status'] ?? 'pending');
-                            $badge_class = 'pending';
-                            if (in_array($po_status, ['approved', 'approved po'])) {
-                                $badge_class = 'verified';
-                            } elseif (in_array($po_status, ['rejected', 'cancelled'])) {
-                                $badge_class = 'rejected';
-                            }
-                        ?>
-                            <tr class="merch-po-row" style="border-bottom: 1px solid #f1f5f9;">
-                                <td style="padding: 8px;"><strong><?php echo htmlspecialchars($po['po_number']); ?></strong></td>
-                                <td style="padding: 8px;"><?php echo htmlspecialchars($po['product_name']); ?></td>
-                                <td style="padding: 8px; text-align: right;"><strong><?php echo number_format($po['quantity'], 2); ?></strong></td>
-                                <td style="padding: 8px;"><?php echo $po['expected_delivery_date'] ? date('M d, Y', strtotime($po['expected_delivery_date'])) : '—'; ?></td>
-                                <td style="padding: 8px;"><?php echo htmlspecialchars($po['supplier_name'] ?? 'Petron Corporation'); ?></td>
-                                <td style="padding: 8px;">
-                                    <span class="status-badge <?php echo $badge_class; ?>">
-                                        <?php echo htmlspecialchars(ucfirst($po['status'])); ?>
-                                    </span>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
         </div>
     </div>
 </div>
@@ -790,33 +761,6 @@ document.addEventListener('DOMContentLoaded', function() {
     var em = document.getElementById('editModal');
     if (em && em.parentNode !== document.body) document.body.appendChild(em);
 });
-
-function toggleMerchPOCard() {
-    var body = document.getElementById('merchPoCardBody');
-    var chevron = document.getElementById('merchPoToggleChevron');
-    if (body.style.display === 'none') {
-        body.style.display = 'block';
-        chevron.className = 'fas fa-chevron-up';
-    } else {
-        body.style.display = 'none';
-        chevron.className = 'fas fa-chevron-down';
-    }
-}
-
-function searchMerchPOs() {
-    var input = document.getElementById('merchPoSearchInput');
-    var filter = input.value.toLowerCase();
-    var rows = document.querySelectorAll('#merchPoReferenceTableBody .merch-po-row');
-    
-    rows.forEach(function(row) {
-        var text = row.textContent.toLowerCase();
-        if (text.indexOf(filter) > -1) {
-            row.style.display = '';
-        } else {
-            row.style.display = 'none';
-        }
-    });
-}
 </script>
 
 <script>
@@ -884,6 +828,27 @@ document.addEventListener('DOMContentLoaded', function() {
         updateCategory();
     }
 });
+
+// Reset delivery form function
+function resetDeliveryForm() {
+    // Reset the form
+    document.getElementById('manualForm').reset();
+    
+    // Clear category display fields
+    const categoryDisplay = document.querySelector('.category-display');
+    const categoryHidden = document.querySelector('.category-hidden');
+    if (categoryDisplay) {
+        categoryDisplay.value = '';
+        categoryDisplay.placeholder = 'Auto-filled from product';
+        categoryDisplay.style.background = '#f8f9fa';
+        categoryDisplay.style.color = '';
+    }
+    if (categoryHidden) {
+        categoryHidden.value = '';
+    }
+    
+    console.log('Form reset');
+}
 </script>
 
 <?php if ($edit_data): ?>

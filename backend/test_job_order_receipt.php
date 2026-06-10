@@ -1,0 +1,112 @@
+<?php
+require_once __DIR__ . '/../public/db_connect.php';
+
+$id = 2; // From the screenshot
+
+echo "Testing Job Order Receipt for ID: $id\n";
+echo str_repeat("=", 70) . "\n\n";
+
+// First check what's in merchandise_transactions
+$stmt = $pdo->prepare("SELECT id, transaction_id, transaction_type, job_order_service, staff_id FROM merchandise_transactions WHERE id = ?");
+$stmt->execute([$id]);
+$mt = $stmt->fetch(PDO::FETCH_ASSOC);
+
+if ($mt) {
+    echo "✓ Found in merchandise_transactions:\n";
+    echo "  ID: {$mt['id']}\n";
+    echo "  Transaction ID: {$mt['transaction_id']}\n";
+    echo "  Type: {$mt['transaction_type']}\n";
+    echo "  Job Order Service: " . ($mt['job_order_service'] ?? 'NULL') . "\n";
+    echo "  Staff ID: {$mt['staff_id']}\n";
+    echo "\n";
+    
+    // Test the query that receipt.php uses for job order fallback
+    echo "Testing fallback query (merchandise_transactions):\n";
+    $stmt2 = $pdo->prepare("
+        SELECT mt.*,
+               COALESCE(u.username, 'Staff') AS staff_name,
+               s.name AS station_name
+        FROM merchandise_transactions mt
+        LEFT JOIN users u ON mt.staff_id = u.id
+        LEFT JOIN stations s ON mt.station_id = s.id
+        WHERE mt.id = ?
+          AND mt.transaction_type IN ('job_order', 'combined')
+        LIMIT 1
+    ");
+    $stmt2->execute([$id]);
+    $result = $stmt2->fetch(PDO::FETCH_ASSOC);
+    
+    if ($result) {
+        echo "  ✅ Query SUCCESS\n";
+        echo "  Staff Name: {$result['staff_name']}\n";
+        echo "  Station: {$result['station_name']}\n";
+    } else {
+        echo "  ❌ Query returned no results\n";
+    }
+}
+
+echo "\n";
+
+// Now check if there's a matching record in job_orders table
+$stmt3 = $pdo->prepare("SELECT id, job_order_id, customer_name, assigned_mechanic_id, created_by FROM job_orders WHERE id = ?");
+$stmt3->execute([$id]);
+$jo = $stmt3->fetch(PDO::FETCH_ASSOC);
+
+if ($jo) {
+    echo "✓ Found in job_orders:\n";
+    echo "  ID: {$jo['id']}\n";
+    echo "  Job Order ID: " . ($jo['job_order_id'] ?? 'NULL') . "\n";
+    echo "  Customer: {$jo['customer_name']}\n";
+    echo "  Mechanic ID: {$jo['assigned_mechanic_id']}\n";
+    echo "  Created By: {$jo['created_by']}\n";
+    echo "\n";
+    
+    // Test with u.id JOIN (new fix)
+    echo "Testing with u.id JOIN:\n";
+    $stmt4 = $pdo->prepare("
+        SELECT jo.*,
+               COALESCE(u.username, 'Mechanic') AS mechanic_name,
+               COALESCE(cb.username, 'Staff') AS staff_name
+        FROM job_orders jo
+        LEFT JOIN users u ON u.id = jo.assigned_mechanic_id
+        LEFT JOIN users cb ON cb.id = jo.created_by
+        WHERE jo.id = ?
+    ");
+    $stmt4->execute([$id]);
+    $result = $stmt4->fetch(PDO::FETCH_ASSOC);
+    
+    if ($result) {
+        echo "  ✅ Query SUCCESS\n";
+        echo "  Mechanic Name: " . ($result['mechanic_name'] ?? 'NULL') . "\n";
+        echo "  Staff Name: " . ($result['staff_name'] ?? 'NULL') . "\n";
+    } else {
+        echo "  ❌ Query failed\n";
+    }
+    
+    echo "\n";
+    
+    // Test with u.user_id JOIN (old pattern)
+    echo "Testing with u.user_id JOIN:\n";
+    $stmt5 = $pdo->prepare("
+        SELECT jo.*,
+               COALESCE(u.username, 'Mechanic') AS mechanic_name,
+               COALESCE(cb.username, 'Staff') AS staff_name
+        FROM job_orders jo
+        LEFT JOIN users u ON u.user_id = jo.assigned_mechanic_id
+        LEFT JOIN users cb ON cb.user_id = jo.created_by
+        WHERE jo.id = ?
+    ");
+    $stmt5->execute([$id]);
+    $result = $stmt5->fetch(PDO::FETCH_ASSOC);
+    
+    if ($result) {
+        echo "  ✅ Query SUCCESS\n";
+        echo "  Mechanic Name: " . ($result['mechanic_name'] ?? 'NULL') . "\n";
+        echo "  Staff Name: " . ($result['staff_name'] ?? 'NULL') . "\n";
+    } else {
+        echo "  ❌ Query failed\n";
+    }
+} else {
+    echo "✗ NOT found in job_orders table\n";
+}
+?>

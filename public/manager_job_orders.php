@@ -147,7 +147,7 @@ try {
 $where = ["j.station_id=?"]; $params = [$station_id];
 if ($status_filter !== '') { $where[] = "(j.status=? OR j.validation_status=?)"; $params[] = $status_filter; $params[] = $status_filter; }
 if ($search_filter !== '') {
-    $where[] = "(COALESCE(c.name,j.customer_name,'') LIKE ? OR j.service_type LIKE ? OR u.name LIKE ?)";
+    $where[] = "(COALESCE(j.customer_name,'') LIKE ? OR j.service_type LIKE ? OR CONCAT(u.first_name,' ',u.last_name) LIKE ?)";
     $s = '%'.$search_filter.'%'; $params[] = $s; $params[] = $s; $params[] = $s;
 }
 
@@ -158,11 +158,11 @@ try {
     $part1 = "
         SELECT j.id, j.customer_name, j.service_type, j.service_description,
             j.status, j.validation_status, j.estimated_cost, j.notes, j.created_at,
-            COALESCE(c.name, j.customer_name, 'Walk-in') AS cust, u.name AS staff_name,
+            COALESCE(j.customer_name, 'Walk-in') AS cust,
+            COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username) AS staff_name,
             'job_orders' AS _source
         FROM job_orders j
-        LEFT JOIN customers c ON c.id = j.customer_id
-        LEFT JOIN users u ON u.user_id = COALESCE(j.created_by, j.user_id)
+        LEFT JOIN users u ON u.id = COALESCE(j.created_by, j.created_by)
         WHERE {$jo_where_sql}
     ";
 
@@ -207,10 +207,10 @@ try {
                 '',
                 {$mt2_date},
                 COALESCE(NULLIF(TRIM(mt2.customer_name),''),'Walk-in'),
-                u2.name,
+                COALESCE(NULLIF(CONCAT(u2.first_name,' ',u2.last_name),' '), u2.username),
                 'merchandise_transactions'
             FROM merchandise_transactions mt2
-            LEFT JOIN users u2 ON u2.user_id = mt2.staff_id
+            LEFT JOIN users u2 ON u2.id = mt2.staff_id
             WHERE " . implode(' AND ', $mt2_where);
         }
     } catch (Exception $e2) { /* merchandise_transactions may not exist */ }

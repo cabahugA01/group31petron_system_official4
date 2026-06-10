@@ -43,10 +43,10 @@ if ($filter_station > 0) {
 $total_validated = 0; $pending_count = 0; $total_liters = 0.0; $total_amount = 0.0;
 try {
     $sc_sql = "SELECT
-        SUM(CASE WHEN LOWER(status)='verified' THEN 1 ELSE 0 END) as validated,
-        SUM(CASE WHEN LOWER(status) IN ('pending validation','pending') OR status IS NULL OR status='' THEN 1 ELSE 0 END) as pending,
-        COALESCE(SUM(CASE WHEN LOWER(status)='verified' THEN liters_sold ELSE 0 END),0) as liters,
-        COALESCE(SUM(CASE WHEN LOWER(status)='verified' THEN total_amount ELSE 0 END),0) as amount
+        SUM(CASE WHEN LOWER(status) IN ('verified','adjusted') THEN 1 ELSE 0 END) as validated,
+        SUM(CASE WHEN LOWER(status) LIKE '%pending%' OR status IS NULL OR status='' THEN 1 ELSE 0 END) as pending,
+        COALESCE(SUM(CASE WHEN LOWER(status) IN ('verified','adjusted') THEN liters_sold ELSE 0 END),0) as liters,
+        COALESCE(SUM(CASE WHEN LOWER(status) IN ('verified','adjusted') THEN total_amount ELSE 0 END),0) as amount
         FROM fuel_transactions";
     
     if ($filter_station > 0) {
@@ -80,8 +80,15 @@ try {
     $stmt = $pdo->prepare("SELECT ft.id, ft.transaction_id, ft.fuel_type, ft.pump_id,
         ft.present_reading, ft.previous_reading, ft.liters_sold, ft.calibration,
         ft.price_per_liter, ft.total_amount, ft.payment_method, ft.shift_period,
-        ft.status, ft.transaction_date, ft.validated_at,
-        staff.name AS staff_name, mgr.name AS manager_name,
+        ft.shift_name, ft.status, ft.transaction_date, ft.validated_at,
+        COALESCE(
+            NULLIF(CONCAT(TRIM(COALESCE(staff.first_name,'')), ' ', TRIM(COALESCE(staff.last_name,''))), ' '),
+            staff.username, 'Unknown'
+        ) AS staff_name,
+        COALESCE(
+            NULLIF(CONCAT(TRIM(COALESCE(mgr.first_name,'')), ' ', TRIM(COALESCE(mgr.last_name,''))), ' '),
+            mgr.username, '—'
+        ) AS manager_name,
         fp.pump_number, s.name AS station_name
         FROM fuel_transactions ft
         LEFT JOIN users staff ON ft.staff_id = staff.id
@@ -92,7 +99,9 @@ try {
         ORDER BY ft.transaction_date DESC, ft.id DESC LIMIT 500");
     $stmt->execute($params);
     $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}
+} catch (Exception $e) {
+    error_log('admin_fuel_transactions_oversight fetch error: ' . $e->getMessage());
+}
 
 // ── Fuel Type list for filter ────────────────────────────────
 $fuel_types = [];
@@ -265,6 +274,7 @@ html, body { max-width:100vw; overflow-x:hidden; }
 .bg-amber  { background:#fef9c3; color:#a16207; }
 .bg-gray   { background:#f1f5f9; color:#475569; }
 .bg-red    { background:#fee2e2; color:#b91c1c; }
+.bg-blue   { background:#dbeafe; color:#1d4ed8; }
 .afto-empty { text-align:center; padding:60px 20px; color:#94a3b8; }
 .afto-empty i { font-size:44px; display:block; margin-bottom:14px; opacity:.4; }
 </style>
@@ -370,65 +380,67 @@ html, body { max-width:100vw; overflow-x:hidden; }
     <div class="afto-tbl-wrap">
         <table class="afto-tbl">
             <colgroup>
-                <col style="width:9%">
-                <col style="width:7%">
-                <col style="width:10%">
-                <col style="width:4%">
                 <col style="width:8%">
-                <col style="width:6%">
-                <col style="width:6%">
+                <col style="width:13%">
+                <col style="width:11%">
+                <col style="width:5%">
                 <col style="width:8%">
                 <col style="width:7%">
-                <col style="width:7%">
-                <col style="width:9%">
-                <col style="width:9%">
+                <col style="width:6%">
+                <col style="width:8%">
+                <col style="width:8%">
                 <col style="width:10%">
+                <col style="width:10%">
+                <col style="width:11%">
             </colgroup>
             <thead>
                 <tr>
-                    <th>Txn ID</th>
                     <th>Date</th>
+                    <th>Shift</th>
                     <th>Station</th>
-                    <th>Pmp</th>
-                    <th>Fuel</th>
+                    <th>Pump</th>
+                    <th>Fuel Type</th>
                     <th>Liters</th>
                     <th>Price/L</th>
                     <th>Amount</th>
-                    <th>Payment</th>
                     <th>Status</th>
-                    <th>Staff</th>
-                    <th>Manager</th>
-                    <th>Validated</th>
+                    <th>Encoded By</th>
+                    <th>Validated By</th>
+                    <th>Validated At</th>
                 </tr>
             </thead>
             <tbody>
                 <?php foreach($transactions as $tx):
-                    $st = strtolower($tx['status'] ?? '');
-                    $badge = ($st === 'verified') ? 'bg-green' : (in_array($st,['pending','pending validation']) ? 'bg-amber' : 'bg-gray');
-                    // Short display labels so badge never clips
-                    $st_label = match($st) {
-                        'verified'           => 'Verified',
-                        'pending'            => 'Pending',
-                        'pending validation' => 'Pending',
-                        default              => ucfirst($tx['status'] ?? 'Pending'),
-                    };
+                    $st = strtolower(trim($tx['status'] ?? ''));
+                    if ($st === 'verified') {
+                        $badge = 'bg-green'; $st_label = 'Verified';
+                    } elseif ($st === 'adjusted') {
+                        $badge = 'bg-blue'; $st_label = 'Adjusted';
+                    } elseif ($st === 'rejected') {
+                        $badge = 'bg-red'; $st_label = 'Rejected';
+                    } elseif (str_contains($st, 'pending')) {
+                        $badge = 'bg-amber'; $st_label = 'Pending';
+                    } else {
+                        $badge = 'bg-gray'; $st_label = ucfirst($tx['status'] ?? '—');
+                    }
                     // Pump display: use pump_number if not empty, else pump_id
                     $pump_display = !empty($tx['pump_number']) ? $tx['pump_number'] : (!empty($tx['pump_id']) ? '#'.$tx['pump_id'] : '—');
+                    // Shift label
+                    $shift_label = !empty($tx['shift_name']) ? $tx['shift_name'] : (strtolower($tx['shift_period'] ?? '') === 'second' ? 'Second Shift' : ($tx['shift_period'] ?? '—'));
                 ?>
                 <tr>
-                    <td style="font-family:monospace;font-size:11px;color:#475569;" title="<?= htmlspecialchars($tx['transaction_id']) ?>"><?= htmlspecialchars(substr($tx['transaction_id'],0,12)) ?></td>
                     <td><?= date('M d, Y', strtotime($tx['transaction_date'])) ?></td>
+                    <td style="font-size:11px;color:#475569;" title="<?= htmlspecialchars($shift_label) ?>"><?= htmlspecialchars(mb_strimwidth($shift_label, 0, 20, '…')) ?></td>
                     <td title="<?= htmlspecialchars($tx['station_name'] ?? '') ?>"><?= htmlspecialchars($tx['station_name'] ?? '—') ?></td>
-                    <td style="text-align:center;"><?= htmlspecialchars($pump_display) ?></td>
+                    <td style="text-align:center;font-weight:600;"><?= htmlspecialchars($pump_display) ?></td>
                     <td><?= htmlspecialchars($tx['fuel_type']) ?></td>
-                    <td style="font-weight:600;"><?= number_format($tx['liters_sold'],2) ?></td>
+                    <td style="font-weight:600;"><?= number_format($tx['liters_sold'],2) ?> L</td>
                     <td>₱<?= number_format($tx['price_per_liter'],2) ?></td>
-                    <td style="font-weight:700;color:#002F6C;" title="₱<?= number_format($tx['total_amount'],2) ?>">₱<?= number_format($tx['total_amount'],2) ?></td>
-                    <td><?= htmlspecialchars($tx['payment_method']) ?></td>
+                    <td style="font-weight:700;color:#002F6C;">₱<?= number_format($tx['total_amount'],2) ?></td>
                     <td><span class="afto-badge <?= $badge ?>"><?= $st_label ?></span></td>
-                    <td title="<?= htmlspecialchars($tx['staff_name']   ?? '') ?>"><?= htmlspecialchars($tx['staff_name']   ?? '—') ?></td>
+                    <td title="<?= htmlspecialchars($tx['staff_name'] ?? '') ?>"><?= htmlspecialchars($tx['staff_name'] ?? '—') ?></td>
                     <td title="<?= htmlspecialchars($tx['manager_name'] ?? '') ?>"><?= htmlspecialchars($tx['manager_name'] ?? '—') ?></td>
-                    <td><?= $tx['validated_at'] ? date('M d, Y', strtotime($tx['validated_at'])) : '—' ?></td>
+                    <td><?= $tx['validated_at'] ? date('M d, Y H:i', strtotime($tx['validated_at'])) : '—' ?></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>

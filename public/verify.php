@@ -18,20 +18,29 @@ if ($id === '') {
     $error = 'No transaction ID provided.';
 } else {
     try {
+        // First: Try merchandise_transactions table (handles merchandise, job_order, and combined types)
         $stmt = $pdo->prepare("
             SELECT mt.*,
-                   u.name  AS staff_name,
-                   s.name  AS station_name,
-                   s.location AS station_location,
-                   s.address  AS station_address,
-                   s.vat_tin  AS station_vat_tin
+                   COALESCE(u.username, 'Staff') AS staff_name,
+                   COALESCE(s.name, 'Petron Station') AS station_name,
+                   COALESCE(s.location, '') AS station_location,
+                   COALESCE(s.address, 'Vamenta Blvd., Carmen, CDO') AS station_address,
+                   COALESCE(s.vat_tin, '236-002-207-0000') AS station_vat_tin
             FROM   merchandise_transactions mt
             LEFT JOIN users    u ON mt.staff_id   = u.id
             LEFT JOIN stations s ON mt.station_id = s.id
-            WHERE  mt.transaction_id = ?
+            WHERE  mt.transaction_id = ? OR mt.id = ?
             LIMIT  1
         ");
-        $stmt->execute([$id]);
+        $numeric_id = is_numeric($id) ? (int)$id : 0;
+        // Handle IDs that start with '#' (e.g., '#123' from job orders)
+        if ($numeric_id === 0 && str_starts_with($id, '#')) {
+            $clean_id = ltrim($id, '#');
+            if (is_numeric($clean_id)) {
+                $numeric_id = (int)$clean_id;
+            }
+        }
+        $stmt->execute([$id, $numeric_id]);
         $txn = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($txn) {
@@ -44,7 +53,71 @@ if ($id === '') {
             ");
             $stmt2->execute([$txn['id']]);
             $items = $stmt2->fetchAll(PDO::FETCH_ASSOC);
-        } else {
+        } else if ($type === 'job_order' && $numeric_id > 0) {
+            // Fallback: Try job_orders table for pure job orders
+            // Handle IDs: numeric (123), with hash (#123), or string (JO-123)
+            $stmt_jo = $pdo->prepare("
+                SELECT jo.*,
+                       COALESCE(cb.username, 'Staff') AS staff_name,
+                       COALESCE(s.name, 'Petron Station') AS station_name,
+                       COALESCE(s.location, '') AS station_location,
+                       COALESCE(s.address, 'Vamenta Blvd., Carmen, CDO') AS station_address,
+                       COALESCE(s.vat_tin, '236-002-207-0000') AS station_vat_tin
+                FROM   job_orders jo
+                LEFT JOIN users    cb ON cb.id = jo.created_by
+                LEFT JOIN stations s  ON s.id  = jo.station_id
+                WHERE  jo.job_order_id = ? OR jo.job_order_number = ? OR jo.id = ?
+                LIMIT  1
+            ");
+            $stmt_jo->execute([$id, $id, $numeric_id]);
+            $jo = $stmt_jo->fetch(PDO::FETCH_ASSOC);
+            
+            if ($jo) {
+                // Map job order to transaction format
+                $txn = [
+                    'id' => $jo['id'],
+                    'transaction_id' => $jo['job_order_id'] ?? ('JO-' . $jo['id']),
+                    'customer_name' => $jo['customer_name'] ?? 'Walk-in Customer',
+                    'customer_first_name' => '',
+                    'customer_last_name' => '',
+                    'transaction_date' => $jo['order_date'] ?? $jo['created_at'] ?? '',
+                    'created_at' => $jo['created_at'] ?? date('Y-m-d H:i:s'),
+                    'staff_name' => $jo['staff_name'] ?? 'N/A',
+                    'station_name' => $jo['station_name'] ?? 'Petron Station',
+                    'station_location' => $jo['station_location'] ?? '',
+                    'station_address' => $jo['station_address'] ?? 'Vamenta Blvd., Carmen, CDO',
+                    'station_vat_tin' => $jo['station_vat_tin'] ?? '236-002-207-0000',
+                    'total_amount' => $jo['total_amount'] ?? $jo['service_cost'] ?? 0,
+                    'subtotal_amount' => 0,
+                    'vat_amount' => 0,
+                    'amount_paid' => $jo['amount_paid'] ?? 0,
+                    'balance_due' => $jo['balance_due'] ?? 0,
+                    'payment_method' => $jo['payment_method'] ?? 'Cash',
+                    'payment_status' => $jo['payment_status'] ?? 'Pending Payment',
+                    'validation_status' => $jo['status'] ?? 'Pending',
+                    'remarks' => $jo['notes'] ?? $jo['remarks'] ?? '',
+                    'transaction_type' => 'job_order',
+                    'job_order_service' => $jo['service_type'] ?? 'Service',
+                    'job_order_vehicle_plate' => $jo['vehicle_plate'] ?? '',
+                    'job_order_mechanic_name' => $jo['mechanic_name'] ?? $jo['assigned_mechanic'] ?? '',
+                ];
+                
+                // Build items array from service
+                if (!empty($jo['service_type'])) {
+                    $items[] = [
+                        'product_name' => $jo['service_type'],
+                        'category' => 'Job Order Service',
+                        'size_variant' => '',
+                        'quantity' => 1,
+                        'unit_price' => $txn['total_amount'],
+                        'subtotal' => $txn['total_amount'],
+                        'item_type' => 'service',
+                    ];
+                }
+            }
+        }
+        
+        if (!$txn) {
             $error = 'Transaction not found.';
         }
     } catch (Exception $e) {
@@ -64,6 +137,11 @@ if ($txn) {
     $total        = (float)($txn['total_amount'] ?? 0);
     $amount_paid  = (float)($txn['amount_paid']  ?? $txn['amount_tendered'] ?? 0);
     $balance_due  = (float)($txn['balance_due']  ?? 0);
+    
+    // Station info
+    $station = $txn['station_name'] ?? 'Petron Station';
+    $vat_tin = $txn['station_vat_tin'] ?? '236-002-207-0000';
+    $addr = $txn['station_address'] ?? $txn['station_location'] ?? 'Vamenta Blvd., Carmen, Cagayan de Oro City';
 
     // Determine normalised payment status
     $stored_ps    = strtolower(trim($txn['payment_status'] ?? ''));
@@ -87,15 +165,19 @@ if ($txn) {
     $ps_cfg = $pay_labels[$pay_norm] ?? $pay_labels['paid'];
 
     $validation = $txn['validation_status'] ?? 'Pending';
-    $station    = $txn['station_name'] ?? 'Petron Station';
-    $vat_tin    = $txn['station_vat_tin'] ?: '236-002-207-0000';
-    $addr       = $txn['station_address'] ?: $txn['station_location'] ?: 'Vamenta Blvd., Carmen, Cagayan de Oro City';
+    $printed_at = date('M j, Y h:i A');
 
     // Subtotal / VAT
     $items_sum = array_sum(array_map(fn($i) => (float)($i['subtotal'] ?? 0), $items));
     $subtotal  = (float)($txn['subtotal_amount'] ?? ($items_sum ?: $total / 1.12));
     $vat_amt   = (float)($txn['vat_amount']      ?? round($subtotal * 0.12, 2));
+}
 
+// Set default $addr if $txn doesn't exist (for error page footer)
+if (!isset($addr)) {
+    $addr = 'Vamenta Blvd., Carmen, Cagayan de Oro City';
+}
+if (!isset($printed_at)) {
     $printed_at = date('M j, Y h:i A');
 }
 ?>
@@ -379,6 +461,28 @@ body {
           </tbody>
         </table>
       </div>
+    </div>
+    <?php endif; ?>
+
+    <!-- Job Order Details (if applicable) -->
+    <?php if (!empty($txn['job_order_service']) || !empty($txn['job_order_vehicle_plate'])): ?>
+    <div class="vsec">
+      <div class="vsec-title" style="color:#b45309;"><i class="fas fa-wrench"></i> Job Order Details</div>
+      <?php if (!empty($txn['job_order_service'])): ?>
+      <div class="vrow"><span class="vrow-key">Service Type</span><span class="vrow-val"><?php echo htmlspecialchars($txn['job_order_service']); ?></span></div>
+      <?php endif; ?>
+      <?php if (!empty($txn['job_order_vehicle_plate'])): ?>
+      <div class="vrow"><span class="vrow-key">Vehicle Plate</span><span class="vrow-val" style="font-family:monospace;font-weight:700;"><?php echo htmlspecialchars($txn['job_order_vehicle_plate']); ?></span></div>
+      <?php endif; ?>
+      <?php if (!empty($txn['job_order_vehicle_type'])): ?>
+      <div class="vrow"><span class="vrow-key">Vehicle Type</span><span class="vrow-val"><?php echo htmlspecialchars($txn['job_order_vehicle_type']); ?></span></div>
+      <?php endif; ?>
+      <?php if (!empty($txn['job_order_mechanic_name'])): ?>
+      <div class="vrow"><span class="vrow-key">Mechanic</span><span class="vrow-val"><?php echo htmlspecialchars($txn['job_order_mechanic_name']); ?></span></div>
+      <?php endif; ?>
+      <?php if (!empty($txn['job_order_description'])): ?>
+      <div class="vrow" style="align-items:flex-start;"><span class="vrow-key">Description</span><span class="vrow-val" style="font-size:12px;color:#64748b;"><?php echo nl2br(htmlspecialchars($txn['job_order_description'])); ?></span></div>
+      <?php endif; ?>
     </div>
     <?php endif; ?>
 

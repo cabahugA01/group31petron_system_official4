@@ -14,71 +14,94 @@ if (!in_array($role, ['manager', 'superadmin'])) {
     exit;
 }
 
-// ── Fetch approved price history from activity_logs ───────────────────────────
-// Show all products where Admin proposed a price — including already approved ones.
-$history = [];
+// ── Fetch approved price history from pending_price_approvals ──────────────────
+// Show all approved price changes from Admin
+$fuel_history = [];
+$merch_history = [];
+$service_history = [];
+
 try {
-    // Pull every "Propose Price" log entry (these are the admin-proposed prices)
-    $stmt = $pdo->query("
-        SELECT al.id, al.details, al.created_at,
-               u.full_name AS proposed_by
-        FROM activity_logs al
-        LEFT JOIN users u ON u.user_id = al.user_id
-        WHERE al.action IN ('Propose Price', 'Approve Price', 'Set Price', 'Update Price', 'Price Updated')
-        ORDER BY al.created_at DESC
-        LIMIT 200
+    // ── Fuel Price History ──────────────────────────────────────────────────────
+    $stmt_fuel = $pdo->query("
+        SELECT 
+            p.id,
+            p.old_price,
+            p.new_price,
+            p.old_cost,
+            p.new_cost,
+            p.created_at,
+            p.updated_at,
+            f.fuel_type as product_name,
+            f.id as product_id,
+            COALESCE(m.username, 'Manager') as proposed_by,
+            COALESCE(a.username, 'Admin') as approved_by
+        FROM pending_price_approvals p
+        INNER JOIN fuel_inventory f ON f.id = p.product_id
+        LEFT JOIN users m ON m.id = p.manager_id
+        LEFT JOIN users a ON a.id = p.admin_id
+        WHERE p.product_type IN ('fuel', 'fuel_inventory')
+          AND p.status = 'approved'
+        ORDER BY p.updated_at DESC
+        LIMIT 100
     ");
-    $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    foreach ($logs as $log) {
-        $d = $log['details'] ?? '';
-
-        // Parse: "PROPOSED: Product ID X | Old Cost: Y → New Cost: Z | Old Price: A → New Price: B"
-        // or similar patterns
-        $prod_id       = null;
-        $product_name  = null;
-        $sku           = null;
-        $old_cost      = null;
-        $new_cost      = null;
-        $old_price     = null;
-        $new_price     = null;
-
-        if (preg_match('/Product ID (\d+)/', $d, $m)) $prod_id = (int)$m[1];
-        if (preg_match('/Old Cost:\s*([\d.]+)/', $d, $m))  $old_cost  = (float)$m[1];
-        if (preg_match('/New Cost:\s*([\d.]+)/', $d, $m))  $new_cost  = (float)$m[1];
-        if (preg_match('/Old Price:\s*([\d.]+)/', $d, $m)) $old_price = (float)$m[1];
-        if (preg_match('/New Price:\s*([\d.]+)/', $d, $m)) $new_price = (float)$m[1];
-
-        // Get product name & sku from DB if we have a product ID
-        if ($prod_id) {
-            $ps = $pdo->prepare("SELECT product_name, sku, product_type FROM inventory_products WHERE id = ?");
-            $ps->execute([$prod_id]);
-            $pr = $ps->fetch(PDO::FETCH_ASSOC);
-            if ($pr) {
-                $product_name = $pr['product_name'];
-                $sku          = $pr['sku'];
-                $product_type = $pr['product_type'] ?? 'merchandise';
-            }
-        }
-
-        // Skip entries we can't parse meaningfully
-        if (!$product_name || ($new_cost === null && $new_price === null)) continue;
-
-        $history[] = [
-            'product_name'  => $product_name,
-            'sku'           => $sku ?? '—',
-            'product_type'  => $product_type ?? 'merchandise',
-            'old_cost'      => $old_cost,
-            'new_cost'      => $new_cost,
-            'old_price'     => $old_price,
-            'new_price'     => $new_price,
-            'proposed_by'   => $log['proposed_by'] ?? '—',
-            'approved_at'   => $log['created_at'],
-            'action'        => $log['action'] ?? 'Propose Price',
-        ];
-    }
+    $fuel_history = $stmt_fuel->fetchAll(PDO::FETCH_ASSOC);
+    
+    // ── Merchandise Price History ───────────────────────────────────────────────
+    $stmt_merch = $pdo->query("
+        SELECT 
+            p.id,
+            p.old_price,
+            p.new_price,
+            p.old_cost,
+            p.new_cost,
+            p.created_at,
+            p.updated_at,
+            i.product_name,
+            i.sku,
+            i.id as product_id,
+            COALESCE(m.username, 'Manager') as proposed_by,
+            COALESCE(a.username, 'Admin') as approved_by
+        FROM pending_price_approvals p
+        INNER JOIN inventory_products i ON i.id = p.product_id
+        LEFT JOIN users m ON m.id = p.manager_id
+        LEFT JOIN users a ON a.id = p.admin_id
+        WHERE p.product_type = 'merchandise'
+          AND p.status = 'approved'
+        ORDER BY p.updated_at DESC
+        LIMIT 100
+    ");
+    $merch_history = $stmt_merch->fetchAll(PDO::FETCH_ASSOC);
+    
+    // ── Service Type Price History ──────────────────────────────────────────────
+    $stmt_services = $pdo->query("
+        SELECT 
+            p.id,
+            p.old_price,
+            p.new_price,
+            p.status,
+            p.created_at,
+            p.updated_at,
+            s.id as service_id,
+            s.service_name,
+            s.service_key,
+            s.service_price as current_price,
+            COALESCE(m.username, 'Manager') as proposed_by,
+            COALESCE(a.username, 'Admin') as approved_by
+        FROM pending_price_approvals p
+        INNER JOIN job_order_service_types s ON s.id = p.product_id
+        LEFT JOIN users m ON m.id = p.manager_id
+        LEFT JOIN users a ON a.id = p.admin_id
+        WHERE p.product_type = 'service_type'
+          AND p.status = 'approved'
+        ORDER BY p.updated_at DESC
+        LIMIT 100
+    ");
+    $service_history = $stmt_services->fetchAll(PDO::FETCH_ASSOC);
+    
 } catch (Exception $e) {
-    $history = [];
+    $fuel_history = [];
+    $merch_history = [];
+    $service_history = [];
 }
 
 include __DIR__ . '/../partials/header.php';
@@ -202,6 +225,9 @@ include __DIR__ . '/../partials/header.php';
         <button class="tab-btn" onclick="switchTab('merchandise')">
             <i class="fas fa-box"></i> Merchandise Prices
         </button>
+        <button class="tab-btn" onclick="switchTab('services')">
+            <i class="fas fa-wrench"></i> Service Types
+        </button>
     </div>
 
     <!-- Fuel Tab -->
@@ -209,90 +235,59 @@ include __DIR__ . '/../partials/header.php';
         <div class="card">
             <div class="card-header">
                 <h3><i class="fas fa-gas-pump"></i> Fuel Price History</h3>
-                <span class="rec-count"><?php echo count(array_filter($history, fn($h) => ($h['product_type'] ?? '') === 'fuel')); ?> record(s)</span>
+                <span class="rec-count"><?php echo count($fuel_history); ?> record(s)</span>
             </div>
             <div class="card-body">
                 <table class="ph-table">
                     <thead>
                         <tr>
                             <th>Fuel Type</th>
-                            <th>SKU</th>
-                            <th>Cost Change</th>
-                            <th>Price Change</th>
+                            <th>Old Price</th>
+                            <th>New Price</th>
+                            <th>Change</th>
                             <th>Proposed By</th>
-                            <th>Event</th>
-                            <th>Date</th>
+                            <th>Approved By</th>
+                            <th>Date Approved</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php 
-                        $fuel_history = array_filter($history, fn($h) => ($h['product_type'] ?? '') === 'fuel');
-                        if (empty($fuel_history)): 
-                        ?>
+                        <?php if (empty($fuel_history)): ?>
                         <tr>
                             <td colspan="7">
                                 <div class="empty-state">
                                     <i class="fas fa-gas-pump"></i>
                                     <strong>No fuel price history yet</strong>
-                                    <span>Fuel price changes proposed by Admin will appear here once recorded.</span>
+                                    <span>Fuel price changes approved by Admin will appear here once recorded.</span>
                                 </div>
                             </td>
                         </tr>
                         <?php else: ?>
                         <?php foreach ($fuel_history as $h): ?>
                         <?php
-                            // Cost change
-                            if ($h['old_cost'] !== null && $h['new_cost'] !== null) {
-                                $cost_higher = $h['new_cost'] > $h['old_cost'];
-                                $cost_html = '<div class="price-change">'
-                                    . '<span class="price-old">₱' . number_format($h['old_cost'], 2) . '</span>'
-                                    . '<span class="price-arrow">→</span>'
-                                    . '<span class="price-new' . ($cost_higher ? ' higher' : '') . '">₱' . number_format($h['new_cost'], 2) . '</span>'
-                                    . '</div>';
-                            } elseif ($h['new_cost'] !== null) {
-                                $cost_html = '<span class="price-same">₱' . number_format($h['new_cost'], 2) . '</span>';
-                            } else {
-                                $cost_html = '<span style="color:#9ca3af;">—</span>';
-                            }
-
-                            // Price change
-                            if ($h['old_price'] !== null && $h['new_price'] !== null) {
-                                $price_higher = $h['new_price'] > $h['old_price'];
-                                $price_html = '<div class="price-change">'
-                                    . '<span class="price-old">₱' . number_format($h['old_price'], 2) . '</span>'
-                                    . '<span class="price-arrow">→</span>'
-                                    . '<span class="price-new' . ($price_higher ? ' higher' : '') . '">₱' . number_format($h['new_price'], 2) . '</span>'
-                                    . '</div>';
-                            } elseif ($h['new_price'] !== null) {
-                                $price_html = '<span class="price-same">₱' . number_format($h['new_price'], 2) . '</span>';
-                            } else {
-                                $price_html = '<span style="color:#9ca3af;">—</span>';
-                            }
-
-                            // Action badge
-                            $action_lower = strtolower($h['action']);
-                            if (str_contains($action_lower, 'approve')) {
-                                $badge_class = 'action-approve';
-                                $badge_label = '✓ Approved';
-                            } elseif (str_contains($action_lower, 'propose')) {
-                                $badge_class = 'action-propose';
-                                $badge_label = '⏳ Proposed';
-                            } else {
-                                $badge_class = 'action-update';
-                                $badge_label = '✎ Updated';
-                            }
-
-                            $date_display = !empty($h['approved_at'])
-                                ? date('M j, Y g:i A', strtotime($h['approved_at']))
+                            $old_price = (float)($h['old_price'] ?? 0);
+                            $new_price = (float)($h['new_price'] ?? 0);
+                            $price_diff = $new_price - $old_price;
+                            $price_diff_pct = $old_price > 0 ? (($price_diff / $old_price) * 100) : 0;
+                            $price_higher = $price_diff > 0;
+                            
+                            $date_display = !empty($h['updated_at'])
+                                ? date('M j, Y g:i A', strtotime($h['updated_at']))
                                 : '—';
                         ?>
                         <tr>
                             <td><strong><?php echo htmlspecialchars($h['product_name']); ?></strong></td>
-                            <td style="font-family:monospace;font-size:12px;color:#6c757d;"><?php echo htmlspecialchars($h['sku']); ?></td>
-                            <td><?php echo $cost_html; ?></td>
-                            <td><?php echo $price_html; ?></td>
+                            <td><span class="price-old">₱<?php echo number_format($old_price, 2); ?></span></td>
+                            <td><span class="price-new<?php echo $price_higher ? ' higher' : ''; ?>">₱<?php echo number_format($new_price, 2); ?></span></td>
+                            <td>
+                                <div style="color:<?php echo $price_higher ? '#b45309' : '#059669'; ?>;font-weight:700;">
+                                    <?php echo $price_higher ? '+' : ''; ?>₱<?php echo number_format(abs($price_diff), 2); ?>
+                                </div>
+                                <div style="font-size:10px;color:<?php echo $price_higher ? '#b45309' : '#059669'; ?>;">
+                                    (<?php echo number_format(abs($price_diff_pct), 1); ?>%)
+                                </div>
+                            </td>
                             <td style="font-size:12px;color:#374151;"><?php echo htmlspecialchars($h['proposed_by']); ?></td>
-                            <td><span class="action-badge <?php echo $badge_class; ?>"><?php echo $badge_label; ?></span></td>
+                            <td style="font-size:12px;color:#059669;font-weight:600;"><?php echo htmlspecialchars($h['approved_by']); ?></td>
                             <td class="date-col"><?php echo $date_display; ?></td>
                         </tr>
                         <?php endforeach; ?>
@@ -308,7 +303,7 @@ include __DIR__ . '/../partials/header.php';
         <div class="card">
             <div class="card-header">
                 <h3><i class="fas fa-box"></i> Merchandise Price History</h3>
-                <span class="rec-count"><?php echo count(array_filter($history, fn($h) => ($h['product_type'] ?? 'merchandise') === 'merchandise')); ?> record(s)</span>
+                <span class="rec-count"><?php echo count($merch_history); ?> record(s)</span>
             </div>
             <div class="card-body">
                 <table class="ph-table">
@@ -316,82 +311,126 @@ include __DIR__ . '/../partials/header.php';
                         <tr>
                             <th>Product</th>
                             <th>SKU</th>
-                            <th>Cost Change</th>
-                            <th>Price Change</th>
+                            <th>Old Cost</th>
+                            <th>New Cost</th>
+                            <th>Old Price</th>
+                            <th>New Price</th>
                             <th>Proposed By</th>
-                            <th>Event</th>
-                            <th>Date</th>
+                            <th>Approved By</th>
+                            <th>Date Approved</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php 
-                        $merch_history = array_filter($history, fn($h) => ($h['product_type'] ?? 'merchandise') === 'merchandise');
-                        if (empty($merch_history)): 
-                        ?>
+                        <?php if (empty($merch_history)): ?>
                         <tr>
-                            <td colspan="7">
+                            <td colspan="9">
                                 <div class="empty-state">
                                     <i class="fas fa-box"></i>
                                     <strong>No merchandise price history yet</strong>
-                                    <span>Merchandise price changes proposed by Admin will appear here once recorded.</span>
+                                    <span>Merchandise price changes approved by Admin will appear here once recorded.</span>
                                 </div>
                             </td>
                         </tr>
                         <?php else: ?>
                         <?php foreach ($merch_history as $h): ?>
                         <?php
-                            // Cost change
-                            if ($h['old_cost'] !== null && $h['new_cost'] !== null) {
-                                $cost_higher = $h['new_cost'] > $h['old_cost'];
-                                $cost_html = '<div class="price-change">'
-                                    . '<span class="price-old">₱' . number_format($h['old_cost'], 2) . '</span>'
-                                    . '<span class="price-arrow">→</span>'
-                                    . '<span class="price-new' . ($cost_higher ? ' higher' : '') . '">₱' . number_format($h['new_cost'], 2) . '</span>'
-                                    . '</div>';
-                            } elseif ($h['new_cost'] !== null) {
-                                $cost_html = '<span class="price-same">₱' . number_format($h['new_cost'], 2) . '</span>';
-                            } else {
-                                $cost_html = '<span style="color:#9ca3af;">—</span>';
-                            }
-
-                            // Price change
-                            if ($h['old_price'] !== null && $h['new_price'] !== null) {
-                                $price_higher = $h['new_price'] > $h['old_price'];
-                                $price_html = '<div class="price-change">'
-                                    . '<span class="price-old">₱' . number_format($h['old_price'], 2) . '</span>'
-                                    . '<span class="price-arrow">→</span>'
-                                    . '<span class="price-new' . ($price_higher ? ' higher' : '') . '">₱' . number_format($h['new_price'], 2) . '</span>'
-                                    . '</div>';
-                            } elseif ($h['new_price'] !== null) {
-                                $price_html = '<span class="price-same">₱' . number_format($h['new_price'], 2) . '</span>';
-                            } else {
-                                $price_html = '<span style="color:#9ca3af;">—</span>';
-                            }
-
-                            // Action badge
-                            $action_lower = strtolower($h['action']);
-                            if (str_contains($action_lower, 'approve')) {
-                                $badge_class = 'action-approve';
-                                $badge_label = '✓ Approved';
-                            } elseif (str_contains($action_lower, 'propose')) {
-                                $badge_class = 'action-propose';
-                                $badge_label = '⏳ Proposed';
-                            } else {
-                                $badge_class = 'action-update';
-                                $badge_label = '✎ Updated';
-                            }
-
-                            $date_display = !empty($h['approved_at'])
-                                ? date('M j, Y g:i A', strtotime($h['approved_at']))
+                            $old_cost = (float)($h['old_cost'] ?? 0);
+                            $new_cost = (float)($h['new_cost'] ?? 0);
+                            $old_price = (float)($h['old_price'] ?? 0);
+                            $new_price = (float)($h['new_price'] ?? 0);
+                            
+                            $cost_higher = $new_cost > $old_cost;
+                            $price_higher = $new_price > $old_price;
+                            
+                            $date_display = !empty($h['updated_at'])
+                                ? date('M j, Y g:i A', strtotime($h['updated_at']))
                                 : '—';
                         ?>
                         <tr>
                             <td><strong><?php echo htmlspecialchars($h['product_name']); ?></strong></td>
-                            <td style="font-family:monospace;font-size:12px;color:#6c757d;"><?php echo htmlspecialchars($h['sku']); ?></td>
-                            <td><?php echo $cost_html; ?></td>
-                            <td><?php echo $price_html; ?></td>
+                            <td style="font-family:monospace;font-size:12px;color:#6c757d;"><?php echo htmlspecialchars($h['sku'] ?? '—'); ?></td>
+                            <td><span class="price-old">₱<?php echo number_format($old_cost, 2); ?></span></td>
+                            <td><span class="price-new<?php echo $cost_higher ? ' higher' : ''; ?>">₱<?php echo number_format($new_cost, 2); ?></span></td>
+                            <td><span class="price-old">₱<?php echo number_format($old_price, 2); ?></span></td>
+                            <td><span class="price-new<?php echo $price_higher ? ' higher' : ''; ?>">₱<?php echo number_format($new_price, 2); ?></span></td>
                             <td style="font-size:12px;color:#374151;"><?php echo htmlspecialchars($h['proposed_by']); ?></td>
-                            <td><span class="action-badge <?php echo $badge_class; ?>"><?php echo $badge_label; ?></span></td>
+                            <td style="font-size:12px;color:#059669;font-weight:600;"><?php echo htmlspecialchars($h['approved_by']); ?></td>
+                            <td class="date-col"><?php echo $date_display; ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Service Types Tab -->
+    <div class="tab-content" id="servicesTab">
+        <div class="card">
+            <div class="card-header">
+                <h3><i class="fas fa-wrench"></i> Service Type Price History</h3>
+                <span class="rec-count"><?php echo count($service_history); ?> record(s)</span>
+            </div>
+            <div class="card-body">
+                <table class="ph-table">
+                    <thead>
+                        <tr>
+                            <th>Service Name</th>
+                            <th>Service Key</th>
+                            <th>Price Change</th>
+                            <th>Current Price</th>
+                            <th>Proposed By</th>
+                            <th>Approved By</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (empty($service_history)): ?>
+                        <tr>
+                            <td colspan="7">
+                                <div class="empty-state">
+                                    <i class="fas fa-wrench"></i>
+                                    <strong>No service type price history yet</strong>
+                                    <span>Service type price changes approved by Admin will appear here once recorded.</span>
+                                </div>
+                            </td>
+                        </tr>
+                        <?php else: ?>
+                        <?php foreach ($service_history as $h): ?>
+                        <?php
+                            // Price change
+                            $old_price = (float)$h['old_price'];
+                            $new_price = (float)$h['new_price'];
+                            $current_price = (float)$h['current_price'];
+                            $price_higher = $new_price > $old_price;
+                            
+                            $price_html = '<div class="price-change">'
+                                . '<span class="price-old">₱' . number_format($old_price, 2) . '</span>'
+                                . '<span class="price-arrow">→</span>'
+                                . '<span class="price-new' . ($price_higher ? ' higher' : '') . '">₱' . number_format($new_price, 2) . '</span>'
+                                . '</div>';
+                            
+                            $price_diff = $new_price - $old_price;
+                            $price_diff_pct = $old_price > 0 ? (($price_diff / $old_price) * 100) : 0;
+                            
+                            $date_display = !empty($h['updated_at'])
+                                ? date('M j, Y g:i A', strtotime($h['updated_at']))
+                                : '—';
+                        ?>
+                        <tr>
+                            <td><strong><?php echo htmlspecialchars($h['service_name']); ?></strong></td>
+                            <td style="font-family:monospace;font-size:12px;color:#6c757d;"><?php echo htmlspecialchars($h['service_key']); ?></td>
+                            <td>
+                                <?php echo $price_html; ?>
+                                <div style="font-size:10px;color:<?php echo $price_higher ? '#b45309' : '#059669'; ?>;margin-top:2px;">
+                                    <?php echo $price_higher ? '+' : ''; ?>₱<?php echo number_format(abs($price_diff), 2); ?>
+                                    (<?php echo number_format(abs($price_diff_pct), 1); ?>%)
+                                </div>
+                            </td>
+                            <td><span class="price-same">₱<?php echo number_format($current_price, 2); ?></span></td>
+                            <td style="font-size:12px;color:#374151;"><?php echo htmlspecialchars($h['proposed_by'] ?? 'Manager'); ?></td>
+                            <td style="font-size:12px;color:#059669;font-weight:600;"><?php echo htmlspecialchars($h['approved_by'] ?? 'Admin'); ?></td>
                             <td class="date-col"><?php echo $date_display; ?></td>
                         </tr>
                         <?php endforeach; ?>
@@ -414,8 +453,10 @@ function switchTab(tab) {
     document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
     if (tab === 'fuel') {
         document.getElementById('fuelTab').classList.add('active');
-    } else {
+    } else if (tab === 'merchandise') {
         document.getElementById('merchandiseTab').classList.add('active');
+    } else if (tab === 'services') {
+        document.getElementById('servicesTab').classList.add('active');
     }
 }
 </script>

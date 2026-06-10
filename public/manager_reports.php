@@ -397,7 +397,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
                     d.status,
                     COALESCE(d.admin_notes, d.remarks, '') AS remarks
                     FROM deliveries_oversight d 
-                    LEFT JOIN users u ON u.user_id = d.created_by 
+                    LEFT JOIN users u ON u.id = d.created_by 
                     WHERE d.station_id = ? 
                         AND DATE(COALESCE(d.delivery_date, d.created_at)) BETWEEN ? AND ? 
                     ORDER BY 
@@ -433,7 +433,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
             try {
                 $s = $pdo->prepare("SELECT 
                     u.id AS staff_id,
-                    u.name AS staff_name,
+                    COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') as staff_name,
                     u.role,
                     COALESCE(fuel_txns.fuel_transactions, 0) AS fuel_transactions,
                     COALESCE(merch_txns.merch_transactions, 0) AS merch_transactions,
@@ -529,7 +529,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
             try {
                 // Job order validations
                 $s = $pdo->prepare("
-                    SELECT jo.validated_at AS date_time, COALESCE(u.name,'Unknown') AS manager_name,
+                    SELECT jo.validated_at AS date_time, COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS manager_name,
                         COALESCE(u.role,'manager') AS manager_role,
                         COALESCE(jo.validation_status,'Validated') AS action,
                         'Job Order' AS module,
@@ -538,7 +538,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
                         COALESCE(jo.adjustment_reason,jo.admin_remarks,'') AS reason,
                         COALESCE(staff.name,'Unknown') AS encoded_by
                     FROM job_orders jo
-                    LEFT JOIN users u ON u.user_id=jo.validated_by
+                    LEFT JOIN users u ON u.id = jo.validated_by
                     LEFT JOIN users staff ON staff.user_id=jo.created_by
                     WHERE jo.station_id=? AND jo.validated_at IS NOT NULL
                       AND DATE(jo.validated_at) BETWEEN ? AND ?
@@ -549,7 +549,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
                 // Merchandise validations
                 try {
                     $s2 = $pdo->prepare("
-                        SELECT mt.validated_at AS date_time, COALESCE(u.name,'Unknown') AS manager_name,
+                        SELECT mt.validated_at AS date_time, COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS manager_name,
                             COALESCE(u.role,'manager') AS manager_role,
                             COALESCE(mt.validation_status,'Validated') AS action,
                             'Merchandise' AS module, mt.transaction_id AS reference_id,
@@ -557,7 +557,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
                             COALESCE(mt.rejection_reason,mt.adjustment_reason,'') AS reason,
                             COALESCE(staff.name,'Unknown') AS encoded_by
                         FROM merchandise_transactions mt
-                        LEFT JOIN users u ON u.user_id=mt.validated_by
+                        LEFT JOIN users u ON u.id = mt.validated_by
                         LEFT JOIN users staff ON staff.user_id=mt.staff_id
                         WHERE mt.station_id=? AND mt.validated_at IS NOT NULL
                           AND mt.validation_status IN ('Approved','Rejected','Adjusted')
@@ -570,7 +570,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
                 // Delivery validations
                 try {
                     $s3 = $pdo->prepare("
-                        SELECT d.manager_action_at AS date_time, COALESCE(u.name,'Unknown') AS manager_name,
+                        SELECT d.manager_action_at AS date_time, COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS manager_name,
                             COALESCE(u.role,'manager') AS manager_role, d.status AS action,
                             'Delivery' AS module,
                             COALESCE(d.delivery_ref,CONCAT('DEL-',d.id)) AS reference_id,
@@ -578,7 +578,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
                             COALESCE(d.manager_notes,d.remarks,'') AS reason,
                             COALESCE(enc.name,'Unknown') AS encoded_by
                         FROM deliveries_oversight d
-                        LEFT JOIN users u ON u.user_id=d.manager_id
+                        LEFT JOIN users u ON u.id = d.manager_id
                         LEFT JOIN users enc ON enc.user_id=d.encoded_by
                         WHERE d.station_id=? AND d.manager_id IS NOT NULL AND d.manager_action_at IS NOT NULL
                           AND DATE(d.manager_action_at) BETWEEN ? AND ?
@@ -1027,7 +1027,7 @@ if ($section === 'deliveries') {
                 END AS delivery_type,
                 d.created_at
             FROM deliveries_oversight d
-            LEFT JOIN users u ON u.user_id = d.encoded_by
+            LEFT JOIN users u ON u.id = d.encoded_by
             WHERE d.station_id = ?
               AND DATE(COALESCE(d.delivery_date, d.created_at)) BETWEEN ? AND ?
             ORDER BY
@@ -1108,7 +1108,7 @@ if ($section === 'staff') {
         $s = $pdo->prepare("
             SELECT
                 u.id   AS staff_id,
-                u.name AS staff_name,
+                COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') as staff_name,
                 u.role,
                 COALESCE(ft.fuel_cnt,  0) AS fuel_transactions,
                 COALESCE(mt.merch_cnt, 0) AS merch_transactions,
@@ -1174,14 +1174,14 @@ if ($section === 'staff') {
     try {
         $s = $pdo->prepare("
             SELECT
-                u.name                                          AS staff_name,
+                COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') as staff_name,
                 u.role,
                 ls.start_time,
                 ls.end_time,
                 COALESCE(ls.hours_worked, 0)                   AS hours_worked,
                 COALESCE(ls.shift_name, ls.shift_period, '—')  AS shift_label
             FROM labor_sessions ls
-            LEFT JOIN users u ON u.user_id = ls.user_id
+            LEFT JOIN users u ON u.id = ls.user_id
             WHERE ls.station_id = ?
               AND DATE(ls.start_time) BETWEEN ? AND ?
             ORDER BY ls.start_time DESC
@@ -1215,7 +1215,7 @@ if ($section === 'validation') {
                 COALESCE(jo.amount_paid, 0)                                        AS amount,
                 COALESCE(staff.name, 'Unknown Staff')                              AS encoded_by
             FROM job_orders jo
-            LEFT JOIN users u     ON u.user_id    = jo.validated_by
+            LEFT JOIN users u     ON u.id = jo.validated_by
             LEFT JOIN customers c ON c.id    = jo.customer_id
             LEFT JOIN users staff ON staff.user_id = jo.created_by
             WHERE jo.station_id = ?
@@ -1246,7 +1246,7 @@ if ($section === 'validation') {
                 COALESCE(mt.total_amount, 0)                                       AS amount,
                 COALESCE(staff.name, 'Unknown Staff')                              AS encoded_by
             FROM merchandise_transactions mt
-            LEFT JOIN users u     ON u.user_id    = mt.validated_by
+            LEFT JOIN users u     ON u.id = mt.validated_by
             LEFT JOIN users staff ON staff.user_id = mt.staff_id
             WHERE mt.station_id = ?
               AND mt.validated_at IS NOT NULL
@@ -1276,7 +1276,7 @@ if ($section === 'validation') {
                 COALESCE(d.quantity, 0)                                            AS amount,
                 COALESCE(enc.name, 'Unknown Staff')                                AS encoded_by
             FROM deliveries_oversight d
-            LEFT JOIN users u   ON u.user_id   = d.admin_id
+            LEFT JOIN users u   ON u.id = d.admin_id
             LEFT JOIN users enc ON enc.user_id = d.encoded_by
             WHERE d.station_id = ?
               AND d.admin_id IS NOT NULL
@@ -1309,7 +1309,7 @@ if ($section === 'validation') {
                     COALESCE(jo.amount_paid,0) AS amount,
                     COALESCE(staff.name,'Unknown Staff') AS encoded_by
                 FROM job_orders jo
-                LEFT JOIN users u ON u.user_id=jo.validated_by
+                LEFT JOIN users u ON u.id = jo.validated_by
                 LEFT JOIN users staff ON staff.user_id=jo.created_by
                 WHERE jo.station_id=? AND jo.validated_at IS NOT NULL
                 ORDER BY jo.validated_at DESC LIMIT 50
@@ -1436,7 +1436,7 @@ if ($section === 'audit_trail') {
 $variance_rows = [];
 if ($section === 'variance') {
     try {
-        $s = $pdo->prepare("SELECT v.*, u.name as staff_name FROM fuel_variance_reports v LEFT JOIN users u ON u.user_id = v.staff_id WHERE v.station_id = ? AND DATE(v.report_date) BETWEEN ? AND ? ORDER BY v.report_date DESC");
+        $s = $pdo->prepare("SELECT v.*, COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') as staff_name FROM fuel_variance_reports v LEFT JOIN users u ON u.id = v.staff_id WHERE v.station_id = ? AND DATE(v.report_date) BETWEEN ? AND ? ORDER BY v.report_date DESC");
         $s->execute([$station_id, $date_start, $date_end]);
         $variance_rows = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
     } catch(Exception $e) {}
@@ -1445,7 +1445,7 @@ if ($section === 'variance') {
 $meter_rows = [];
 if ($section === 'meter_readings') {
     try {
-        $s = $pdo->prepare("SELECT m.*, u.name as staff_name FROM fuel_pump_readings m LEFT JOIN users u ON u.user_id = m.user_id WHERE m.station_id = ? AND m.status = 'Approved' AND DATE(m.reading_time) BETWEEN ? AND ? ORDER BY m.reading_time DESC");
+        $s = $pdo->prepare("SELECT m.*, COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') as staff_name FROM fuel_pump_readings m LEFT JOIN users u ON u.id = m.user_id WHERE m.station_id = ? AND m.status = 'Approved' AND DATE(m.reading_time) BETWEEN ? AND ? ORDER BY m.reading_time DESC");
         $s->execute([$station_id, $date_start, $date_end]);
         $meter_rows = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
     } catch(Exception $e) {}

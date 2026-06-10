@@ -22,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     // Preserve the active tab across POST redirects
     $redirect_tab = trim($_POST['active_tab'] ?? 'fuel');
-    if (!in_array($redirect_tab, ['fuel', 'merch'])) $redirect_tab = 'fuel';
+    if (!in_array($redirect_tab, ['fuel', 'merch', 'services'])) $redirect_tab = 'fuel';
 
     if ($action === 'approve_price') {
         $approval_id = (int)$_POST['approval_id'];
@@ -35,6 +35,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($ptype === 'merchandise') {
                 $pdo->prepare("UPDATE inventory_products SET unit_cost=?, unit_price=?, updated_at=NOW() WHERE id=?")
                     ->execute([$pending['new_cost'], $pending['new_price'], $pending['product_id']]);
+            } elseif ($ptype === 'service_type') {
+                // Approve service type price change
+                $pdo->prepare("UPDATE job_order_service_types SET service_price=?, updated_at=NOW() WHERE id=?")
+                    ->execute([$pending['new_price'], $pending['product_id']]);
             } else {
                 // covers 'fuel' and 'fuel_inventory'
                 $pdo->prepare("UPDATE fuel_inventory SET price_per_liter=?, last_updated=NOW() WHERE id=?")
@@ -156,9 +160,57 @@ try {
         "Admin viewed pricing for station {$station_id}");
 } catch (Exception $e) { /* silent */ }
 
+// ── Fetch service types with pending approvals ─────────────────────────────
+$service_types = [];
+$service_error = null;
+try {
+    // First check if job_order_service_types table exists
+    $tableCheck = $pdo->query("SHOW TABLES LIKE 'job_order_service_types'")->fetch();
+    
+    if ($tableCheck) {
+        // Query without users join first to isolate the issue
+        $stmt = $pdo->query("
+            SELECT s.id, s.service_name, s.service_key, s.service_price, 
+                   s.status, s.active,
+                   p.new_price as pending_price, p.old_price, p.manager_id as pending_manager_id,
+                   p.status as approval_status, p.id as approval_id
+            FROM job_order_service_types s
+            LEFT JOIN pending_price_approvals p
+                   ON s.id = p.product_id
+                  AND p.product_type = 'service_type'
+                  AND p.status = 'pending'
+            ORDER BY s.service_name
+        ");
+        $service_types = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Add manager names in a second pass
+        foreach ($service_types as &$svc) {
+            if (!empty($svc['pending_manager_id'])) {
+                try {
+                    $userStmt = $pdo->prepare("SELECT username FROM users WHERE id = ? LIMIT 1");
+                    $userStmt->execute([$svc['pending_manager_id']]);
+                    $svc['manager_name'] = $userStmt->fetchColumn() ?: 'Unknown';
+                } catch (Exception $ue) {
+                    $svc['manager_name'] = 'Unknown';
+                }
+            } else {
+                $svc['manager_name'] = null;
+            }
+        }
+        unset($svc);
+    } else {
+        $service_types = [];
+        $service_error = "Table 'job_order_service_types' does not exist. Please run manager_service_types.php first to create it.";
+    }
+} catch (Exception $e) {
+    $service_types = [];
+    $service_error = $e->getMessage();
+    error_log("Error fetching service types: " . $e->getMessage());
+}
+
 // ── Active tab (persists across refresh via ?tab= query param) ───────────────
 $active_tab = $_GET['tab'] ?? 'fuel';
-if (!in_array($active_tab, ['fuel', 'merch'])) $active_tab = 'fuel';
+if (!in_array($active_tab, ['fuel', 'merch', 'services'])) $active_tab = 'fuel';
 
 include __DIR__ . '/../partials/header.php';
 ?>
@@ -215,12 +267,19 @@ include __DIR__ . '/../partials/header.php';
 /* Table tweaks */
 .pricing-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .pricing-table th {
-    background: #f8fafc; padding: 10px 12px; text-align: left;
-    font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;
-    letter-spacing: .4px; border-bottom: 2px solid #e2e8f0; white-space: nowrap;
+    background: #002F70 !important; 
+    color: #fff !important; 
+    padding: 10px 12px; 
+    text-align: left;
+    font-size: 11px; 
+    font-weight: 700; 
+    text-transform: uppercase;
+    letter-spacing: .4px; 
+    border-bottom: 2px solid #002F70; 
+    white-space: nowrap;
 }
 .pricing-table td { padding: 11px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
-.pricing-table tbody tr:hover { background: #f8fafc; }
+.pricing-table tbody tr:hover { background: #e3f2fd; }
 
 /* Category header row */
 .cat-row td {
@@ -275,6 +334,7 @@ include __DIR__ . '/../partials/header.php';
 <div class="ato-tab-bar">
     <a onclick="switchTab('fuel')" id="tab-btn-fuel" class="ato-tab <?php echo $active_tab === 'fuel' ? 'active' : ''; ?>"><i class="fas fa-gas-pump"></i> Fuel Products</a>
     <a onclick="switchTab('merch')" id="tab-btn-merch" class="ato-tab <?php echo $active_tab === 'merch' ? 'active' : ''; ?>"><i class="fas fa-box"></i> Merchandise</a>
+    <a onclick="switchTab('services')" id="tab-btn-services" class="ato-tab <?php echo $active_tab === 'services' ? 'active' : ''; ?>"><i class="fas fa-wrench"></i> Service Types</a>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════════════
@@ -517,6 +577,156 @@ include __DIR__ . '/../partials/header.php';
         </div>
     </div>
     <?php endif; ?>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     TAB 3 — SERVICE TYPES
+     ══════════════════════════════════════════════════════════════════════════ -->
+<div id="tab-services" class="tab-panel <?php echo $active_tab === 'services' ? 'active' : ''; ?>">
+    <?php if (isset($service_error)): ?>
+        <div style="padding:20px;background:#fee2e2;color:#991b1b;border-radius:8px;margin-bottom:16px;">
+            <strong>Debug:</strong> <?php echo htmlspecialchars($service_error); ?>
+        </div>
+    <?php endif; ?>
+    
+    <div class="card" style="padding:0;overflow:hidden;">
+        <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">
+            <strong style="font-size:15px;color:#002F6C;"><i class="fas fa-wrench"></i> Service Types</strong>
+            <div style="color:#64748b;font-size:12px;">
+                Found <?php echo count($service_types); ?> service type(s)
+                <?php 
+                $pendingCount = 0;
+                foreach ($service_types as $svc) {
+                    if (!empty($svc['pending_price'])) $pendingCount++;
+                }
+                if ($pendingCount > 0): ?>
+                    | <span style="color:#d97706;font-weight:600;"><i class="fas fa-clock"></i> <?php echo $pendingCount; ?> pending approval(s)</span>
+                <?php endif; ?>
+            </div>
+        </div>
+        
+        <?php if (empty($service_types)): ?>
+            <div style="padding:28px;text-align:center;color:#94a3b8;">
+                <i class="fas fa-wrench" style="font-size:32px;margin-bottom:10px;display:block;"></i>
+                No service types found.
+            </div>
+        <?php else: ?>
+            <div class="table-wrap" style="overflow-x:auto;">
+                <table class="pricing-table">
+                    <thead>
+                        <tr>
+                            <th style="width:200px;">Service Name</th>
+                            <th style="width:140px;">Service Key</th>
+                            <th style="width:100px;">Current Price (&#8369;)</th>
+                            <th style="width:100px;">Pending Price (&#8369;)</th>
+                            <th style="width:110px;">Change</th>
+                            <th style="width:100px;">Status</th>
+                            <th style="width:120px;">Manager</th>
+                            <th style="text-align:center;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($service_types as $svc): 
+                            $hasPending = !empty($svc['pending_price']);
+                            $currentPrice = (float)$svc['service_price'];
+                            $pendingPrice = (float)($svc['pending_price'] ?? 0);
+                            $oldPrice = (float)($svc['old_price'] ?? $currentPrice);
+                            $priceChange = $pendingPrice - $oldPrice;
+                            $changePercent = $oldPrice > 0 ? (($priceChange / $oldPrice) * 100) : 0;
+                            
+                            // Use active column (1 or 0) instead of status
+                            $isServiceActive = (int)($svc['active'] ?? 1) === 1;
+                            $statusDisplay = $isServiceActive ? 'Active' : 'Inactive';
+                            $statusColor = $isServiceActive ? '#16a34a' : '#dc2626';
+                        ?>
+                        <tr>
+                            <!-- Service Name -->
+                            <td>
+                                <strong><?php echo htmlspecialchars($svc['service_name']); ?></strong>
+                            </td>
+                            
+                            <!-- Service Key -->
+                            <td>
+                                <span style="font-family:monospace;color:#64748b;font-size:12px;">
+                                    <?php echo htmlspecialchars($svc['service_key']); ?>
+                                </span>
+                            </td>
+                            
+                            <!-- Current Price -->
+                            <td>
+                                <strong style="color:#002F6C;">&#8369;<?php echo number_format($currentPrice, 2); ?></strong>
+                            </td>
+                            
+                            <!-- Pending Price -->
+                            <td>
+                                <?php if ($hasPending): ?>
+                                    <strong style="color:#d97706;">&#8369;<?php echo number_format($pendingPrice, 2); ?></strong>
+                                <?php else: ?>
+                                    <span class="muted">—</span>
+                                <?php endif; ?>
+                            </td>
+                            
+                            <!-- Change -->
+                            <td>
+                                <?php if ($hasPending): ?>
+                                    <div style="display:flex;flex-direction:column;gap:2px;">
+                                        <span style="color:<?php echo $priceChange >= 0 ? '#16a34a' : '#dc2626'; ?>;font-weight:700;font-size:12px;">
+                                            <?php echo $priceChange >= 0 ? '+' : ''; ?>&#8369;<?php echo number_format(abs($priceChange), 2); ?>
+                                        </span>
+                                        <span style="color:<?php echo $priceChange >= 0 ? '#16a34a' : '#dc2626'; ?>;font-size:11px;">
+                                            <?php echo number_format(abs($changePercent), 1); ?>%
+                                        </span>
+                                    </div>
+                                <?php else: ?>
+                                    <span class="muted">—</span>
+                                <?php endif; ?>
+                            </td>
+                            
+                            <!-- Status -->
+                            <td>
+                                <?php if ($hasPending): ?>
+                                    <span class="badge" style="background:#fef3c7;color:#92400e;">PENDING APPROVAL</span>
+                                <?php else: ?>
+                                    <span style="color:<?php echo $statusColor; ?>;font-weight:600;"><?php echo $statusDisplay; ?></span>
+                                <?php endif; ?>
+                            </td>
+                            
+                            <!-- Manager -->
+                            <td>
+                                <?php if ($hasPending): ?>
+                                    <?php echo htmlspecialchars($svc['manager_name'] ?? 'Unknown'); ?>
+                                <?php else: ?>
+                                    <span class="muted">—</span>
+                                <?php endif; ?>
+                            </td>
+                            
+                            <!-- Action -->
+                            <td style="text-align:center;vertical-align:middle;">
+                                <?php if ($hasPending): ?>
+                                    <div style="display:flex;gap:4px;justify-content:center;">
+                                        <form method="POST" style="margin:0;">
+                                            <input type="hidden" name="action" value="approve_price">
+                                            <input type="hidden" name="approval_id" value="<?php echo (int)$svc['approval_id']; ?>">
+                                            <input type="hidden" name="active_tab" value="services">
+                                            <button type="submit" class="btn" style="background:#16a34a;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;display:flex;align-items:center;gap:4px;">
+                                                <i class="fas fa-check"></i> Approve
+                                            </button>
+                                        </form>
+                                        <button type="button" class="btn" style="background:#dc2626;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;display:flex;align-items:center;gap:4px;" onclick="openRejectModal(<?php echo (int)$svc['approval_id']; ?>, 'services')">
+                                            <i class="fas fa-times"></i> Reject
+                                        </button>
+                                    </div>
+                                <?php else: ?>
+                                    <span class="muted" style="font-size:11px;">No action needed</span>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+    </div>
 </div>
 
 <!-- Rejection Modal -->

@@ -250,7 +250,7 @@ $total_amount = 0.0;
 
 // ── Merchandise rows ──────────────────────────────────────────────────────
 $mt_status_col  = ato_has($mt_cols, 'validation_status') ? 'mt.validation_status' : "'Pending'";
-$mt_staff_col   = ato_has($mt_cols, 'staff_id')          ? 'u.name'               : "'Unknown'";
+$mt_staff_col   = ato_has($mt_cols, 'staff_id') ? "COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown')" : "'Unknown'";
 $mt_date_col    = "CASE WHEN mt.transaction_date > '2000-01-01' THEN mt.transaction_date ELSE mt.created_at END";
 $mt_paid_col    = ato_has($mt_cols, 'amount_paid')        ? 'mt.amount_paid'       : 'NULL';
 
@@ -310,7 +310,7 @@ if ($type_f === '' || $type_f === 'merchandise' || $type_f === 'job_order' || $t
                 COALESCE({$mt_staff_col},'Unknown')                     AS staff_name,
                 'merchandise_transactions'                              AS _source
             FROM merchandise_transactions mt
-            LEFT JOIN users u ON u.user_id = mt.staff_id
+            LEFT JOIN users u ON u.id = mt.staff_id
             {$mt_where}
             GROUP BY mt.id
             ORDER BY txn_date DESC
@@ -332,11 +332,11 @@ if ($type_f === '' || $type_f === 'merchandise' || $type_f === 'job_order' || $t
 // ── Job Order rows ────────────────────────────────────────────────────────
 $jo_status_col   = ato_has($jo_cols, 'validation_status') ? 'jo.validation_status' : 'jo.status';
 $jo_staff_col    = ato_has($jo_cols, 'created_by')        ? 'COALESCE(jo.created_by, jo.user_id)' : 'jo.user_id';
-$jo_mechanic_col = ato_has($jo_cols, 'assigned_mechanic_id') ? 'COALESCE(m.name,\'\')' : "''";
+$jo_mechanic_col = ato_has($jo_cols, 'assigned_mechanic_id') ? "COALESCE(NULLIF(CONCAT(m.first_name,' ',m.last_name),' '), m.username, '')" : "''";
 $jo_pay_col      = ato_has($jo_cols, 'payment_method')    ? 'COALESCE(jo.payment_method,\'N/A\')' : "'N/A'";
 $jo_cost_col     = ato_has($jo_cols, 'total_cost')        ? 'COALESCE(jo.total_cost,0)' : 'COALESCE(jo.estimated_cost,0)';
 $jo_paid_col     = ato_has($jo_cols, 'amount_paid')       ? 'jo.amount_paid' : 'NULL';
-$mechanic_join   = ato_has($jo_cols, 'assigned_mechanic_id') ? "LEFT JOIN users m ON m.user_id = jo.assigned_mechanic_id" : "";
+$mechanic_join   = ato_has($jo_cols, 'assigned_mechanic_id') ? "LEFT JOIN users m ON m.id = jo.assigned_mechanic_id" : "";
 
 $jo_where  = "WHERE jo.station_id = ? AND DATE(jo.created_at) BETWEEN ? AND ?";
 $jo_params = [$station_id, $start, $end];
@@ -373,10 +373,10 @@ if ($type_f === '' || $type_f === 'job_order') {
                 {$jo_pay_col}                                                AS payment_method,
                 jo.created_at                                                AS txn_date,
                 COALESCE(NULLIF(TRIM({$jo_status_col}),''),'Pending')        AS validation_status,
-                COALESCE(u.name,'Unknown')                                   AS staff_name,
+                COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS staff_name,
                 'job_orders'                                                 AS _source
             FROM job_orders jo
-            LEFT JOIN users u ON u.user_id = {$jo_staff_col}
+            LEFT JOIN users u ON u.id = COALESCE(jo.created_by, jo.user_id)
             {$mechanic_join}
             {$jo_where}
             ORDER BY jo.created_at DESC

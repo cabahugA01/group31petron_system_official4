@@ -9,101 +9,138 @@ $role       = role_key($me['role'] ?? '');
 $station_id = user_station_id();
 
 if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
-    header('Location: dashboard.php');
-    exit;
+    header('Location: dashboard.php'); exit;
 }
 
 $msg      = '';
 $msg_type = 'success';
+if (isset($_SESSION['success'])) { $msg = $_SESSION['success']; $msg_type = 'success'; unset($_SESSION['success']); }
+if (isset($_SESSION['error']))   { $msg = $_SESSION['error'];   $msg_type = 'error';   unset($_SESSION['error']); }
 
-/* ══════════════════════════════════════════════════════════
-   Bootstrap deliveries_oversight table
-══════════════════════════════════════════════════════════ */
-try {
-    $pdo->exec("
-        CREATE TABLE IF NOT EXISTS deliveries_oversight (
-            id              INT AUTO_INCREMENT PRIMARY KEY,
-            delivery_type   ENUM('fuel','merchandise') NOT NULL DEFAULT 'merchandise',
-            delivery_ref    VARCHAR(100) NOT NULL DEFAULT '',
-            batch_id        VARCHAR(100) DEFAULT NULL,
-            supplier        VARCHAR(200) NOT NULL DEFAULT '',
-            product         VARCHAR(200) NOT NULL DEFAULT '',
-            quantity        DECIMAL(12,3) NOT NULL DEFAULT 0,
-            unit            VARCHAR(30)  NOT NULL DEFAULT 'pcs',
-            delivery_date   DATE         NOT NULL,
-            dr_number       VARCHAR(100) DEFAULT NULL,
-            encoded_by      INT          DEFAULT NULL,
-            station_id      INT          NOT NULL,
-            status          VARCHAR(60)  NOT NULL DEFAULT 'Pending Manager Approval',
-            source_ref      VARCHAR(100) DEFAULT NULL,
-            admin_id        INT          DEFAULT NULL,
-            admin_action_at DATETIME     DEFAULT NULL,
-            admin_notes     TEXT         DEFAULT NULL,
-            remarks         TEXT         DEFAULT NULL,
-            created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            INDEX idx_station (station_id),
-            INDEX idx_status  (status),
-            INDEX idx_date    (delivery_date)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+// ── All 17 tank entries (matches image exactly) ────────
+$TANK_CONFIG = [
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 1',     'tank'=>'Underground Tank #1'],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 2',     'tank'=>'Underground Tank #2'],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 3',     'tank'=>'Underground Tank #3'],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 4',     'tank'=>'Underground Tank #4'],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 5',     'tank'=>'Underground Tank #5'],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 6',     'tank'=>'Underground Tank #6'],
+    ['fuel_type'=>'Kerosene',     'label'=>'KEROSENE - 1',     'tank'=>'Underground Tank #7'],
+    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 1', 'tank'=>'Underground Tank #8'],
+    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 2', 'tank'=>'Underground Tank #9'],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 1',     'tank'=>'Underground Tank #10'],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 2',     'tank'=>'Underground Tank #11'],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 3',     'tank'=>'Underground Tank #12'],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 4',     'tank'=>'Underground Tank #13'],
+    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 1',  'tank'=>'Underground Tank #14'],
+    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 2',  'tank'=>'Underground Tank #15'],
+    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 3',  'tank'=>'Underground Tank #16'],
+    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 4',  'tank'=>'Underground Tank #17'],
+];
+
+$FT_STYLE = [
+    'Diesel'       => ['color'=>'#003d7a', 'icon'=>'fas fa-gas-pump'],
+    'Turbo Diesel' => ['color'=>'#7c3aed', 'icon'=>'fas fa-gas-pump'],
+    'XCS Plus'     => ['color'=>'#0369a1', 'icon'=>'fas fa-gas-pump'],
+    'XTRA UNL'     => ['color'=>'#15803d', 'icon'=>'fas fa-gas-pump'],
+    'Kerosene'     => ['color'=>'#b45309', 'icon'=>'fas fa-fire'],
+];
+
+// ── Auto batch ID (Same date = Same batch) ─────────────
+function genBatch(PDO $pdo, string $d, int $station_id): string {
+    $pfx = 'BATCH-'.date('Ymd', strtotime($d)).'-';
+    
+    // Check if a batch already exists for this date at this station
+    $s = $pdo->prepare("
+        SELECT batch_id 
+        FROM fuel_deliveries 
+        WHERE batch_id LIKE ? 
+          AND station_id = ? 
+          AND DATE(delivery_date) = ? 
+        LIMIT 1
     ");
-} catch (Exception $e) {}
-
-/* ══════════════════════════════════════════════════════════
-   POST — Record Manual Fuel Delivery
-══════════════════════════════════════════════════════════ */
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'record_fuel_delivery') {
-    $supplier      = trim($_POST['supplier'] ?? '');
-    $delivery_date = trim($_POST['delivery_date'] ?? date('Y-m-d'));
-    $fuel_type     = trim($_POST['fuel_type'] ?? '');
-    $quantity      = (float)($_POST['quantity'] ?? 0);
-    $invoice_no    = trim($_POST['invoice_no'] ?? '');
-    $tanker_no     = trim($_POST['tanker_number'] ?? '');
-    $remarks       = trim($_POST['remarks'] ?? '');
-
-    if ($supplier === '') {
-        $msg = 'Supplier Name is required.'; $msg_type = 'error';
-    } elseif ($fuel_type === '') {
-        $msg = 'Fuel Type is required.'; $msg_type = 'error';
-    } elseif ($quantity <= 0) {
-        $msg = 'Quantity must be greater than zero.'; $msg_type = 'error';
-    } elseif ($invoice_no === '') {
-        $msg = 'Invoice/DR Number is required.'; $msg_type = 'error';
-    } else {
-        try {
-            $date_prefix = 'FDR-' . date('Ymd', strtotime($delivery_date)) . '-';
-            $stmt = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(delivery_ref, '-', -1) AS UNSIGNED)) FROM deliveries_oversight WHERE delivery_ref LIKE ?");
-            $stmt->execute([$date_prefix . '%']);
-            $max_num = (int)$stmt->fetchColumn();
-            $delivery_ref = $date_prefix . str_pad($max_num + 1, 4, '0', STR_PAD_LEFT);
-            
-            $pdo->beginTransaction();
-            
-            $pdo->prepare("
-                INSERT INTO deliveries_oversight
-                    (delivery_type, delivery_ref, supplier, product, quantity, unit,
-                     delivery_date, dr_number, encoded_by, station_id, status, remarks,
-                     created_at, updated_at)
-                VALUES ('fuel', ?, ?, ?, ?, 'L', ?, ?, ?, ?, 'Pending Manager Approval', ?, NOW(), NOW())
-            ")->execute([
-                $delivery_ref, $supplier, $fuel_type, $quantity,
-                $delivery_date, $invoice_no, $me['id'], $station_id,
-                ($tanker_no ? "Tanker: {$tanker_no}. {$remarks}" : $remarks)
-            ]);
-            
-            $pdo->commit();
-            log_activity($pdo, $me['id'], 'Staff Manual Fuel Delivery', "Fuel: {$fuel_type} | Qty: {$quantity}L | Invoice: {$invoice_no}");
-            header('Location: staff_fuel_delivery_status.php?msg=manual_saved&type=success');
-            exit;
-        } catch (Exception $e) {
-            if ($pdo->inTransaction()) $pdo->rollBack();
-            $msg = 'Error recording delivery: ' . $e->getMessage(); $msg_type = 'error';
-        }
+    $s->execute([$pfx.'%', $station_id, $d]);
+    $existing = $s->fetchColumn();
+    
+    if ($existing) {
+        // Reuse existing batch for this date
+        return $existing;
     }
+    
+    // Create new batch for this date
+    $s = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(batch_id,'-',-1) AS UNSIGNED)) FROM fuel_deliveries WHERE batch_id LIKE ?");
+    $s->execute([$pfx.'%']);
+    return $pfx.str_pad((int)$s->fetchColumn()+1,3,'0',STR_PAD_LEFT);
 }
 
-/* ── Fetch Expected Fuel Deliveries (from Admin Finalized POs) ── */
-$expected_fuel_deliveries = [];
+// ── Fetch Selected PO ──────────────────────────────────
+$selected_po = null;
+$po_id = isset($_GET['po_id']) ? (int)$_GET['po_id'] : (isset($_POST['selected_po_id']) ? (int)$_POST['selected_po_id'] : 0);
+if ($po_id > 0) {
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM deliveries_oversight WHERE id = ? AND station_id = ? AND status = 'Expected Delivery' AND delivery_type = 'fuel'");
+        $stmt->execute([$po_id, $station_id]);
+        $selected_po = $stmt->fetch(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {}
+}
+
+// ── POST ───────────────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action']??'')==='record_fuel_delivery') {
+    $delivery_date  = trim($_POST['delivery_date'] ?? date('Y-m-d'));
+    $supplier       = trim($_POST['supplier']      ?? 'Petron Corporation');
+    $invoice_no     = trim($_POST['invoice_no']    ?? '');
+    $tanker_number  = trim($_POST['tanker_number'] ?? '');
+    $remarks        = trim($_POST['remarks']       ?? '');
+    $liters_arr     = $_POST['liters'] ?? [];
+    $post_po_id     = (int)($_POST['selected_po_id'] ?? 0);
+
+    if ($invoice_no === '')    { $_SESSION['error']='Invoice/DR Number is required.'; header('Location: staff_fuel_deliveries.php'); exit; }
+    if ($tanker_number === '') { $_SESSION['error']='Tanker Number is required.';     header('Location: staff_fuel_deliveries.php'); exit; }
+
+    $has_entry = false;
+    foreach ($liters_arr as $v) { if ((float)$v > 0) { $has_entry = true; break; } }
+    if (!$has_entry) { $_SESSION['error']='Enter liters for at least one tank.'; header('Location: staff_fuel_deliveries.php'); exit; }
+
+    try {
+        $batch_id = genBatch($pdo, $delivery_date, $station_id);
+        $pdo->beginTransaction();
+        $saved = 0;
+        foreach ($TANK_CONFIG as $i => $tank) {
+            $liters = (float)($liters_arr[$i] ?? 0);
+            if ($liters <= 0) continue;
+            $pdo->prepare("
+                INSERT INTO fuel_deliveries
+                    (batch_id,station_id,delivery_date,fuel_type,supplier,invoice_no,
+                     delivery_liters,tank_assigned,tanker_number,received_by,notes,status,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,'Pending Manager Validation',NOW())
+            ")->execute([
+                $batch_id,$station_id,$delivery_date,$tank['fuel_type'],
+                $supplier,$invoice_no,$liters,$tank['tank'],$tanker_number,$me['id'],$remarks
+            ]);
+            $saved++;
+        }
+
+        // If PO was selected, update its status in deliveries_oversight so it's no longer expected
+        if ($post_po_id > 0) {
+            $pdo->prepare("UPDATE deliveries_oversight SET status = 'Received', dr_number = ?, batch_id = ?, updated_at = NOW() WHERE id = ? AND station_id = ?")
+                ->execute([$invoice_no, $batch_id, $post_po_id, $station_id]);
+        }
+
+        $pdo->commit();
+        try {
+            $pdo->prepare("INSERT INTO audit_logs(user_id,log_type,action_type,action_details,entity_type,status,ip_address,created_at)VALUES(?,'transaction','Create',?,'fuel_deliveries','Success',?,NOW())")
+                ->execute([$me['id'],"Fuel delivery | Batch:{$batch_id} | Tanks:{$saved} | Invoice:{$invoice_no} | Tanker:{$tanker_number}",$_SERVER['REMOTE_ADDR']??'']);
+        } catch(Exception $e){}
+        $_SESSION['success'] = "✅ Saved {$saved} tank delivery record(s). Batch ID: <strong>{$batch_id}</strong>";
+    } catch(Exception $e) {
+        if($pdo->inTransaction()) $pdo->rollBack();
+        $_SESSION['error'] = 'Error: '.$e->getMessage();
+    }
+    header('Location: staff_fuel_deliveries.php'); exit;
+}
+
+// ── Fetch Expected Deliveries (from Admin Finalized POs) ──────────────────
+$expected_deliveries = [];
 try {
     $stmt = $pdo->prepare("
         SELECT * FROM deliveries_oversight 
@@ -111,266 +148,332 @@ try {
         ORDER BY created_at ASC
     ");
     $stmt->execute([$station_id]);
-    $expected_fuel_deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}
-
-/* ── Fetch dependencies for manual form ── */
-$fuel_types = [];
-$suppliers = ['Petron Corporation'];
-
-try {
-    $ft = $pdo->query("SELECT DISTINCT product_name FROM inventory_products WHERE LOWER(category) = 'fuel' ORDER BY product_name");
-    if ($ft) $fuel_types = $ft->fetchAll(PDO::FETCH_COLUMN);
-    
-    if (empty($fuel_types)) {
-        $ft2 = $pdo->query("SELECT name FROM fuel_types ORDER BY name");
-        if ($ft2) $fuel_types = $ft2->fetchAll(PDO::FETCH_COLUMN);
-    }
-    
-    $sp = $pdo->query("SELECT DISTINCT name FROM suppliers WHERE name IS NOT NULL ORDER BY name");
-    if ($sp) $suppliers = array_unique(array_merge($suppliers, $sp->fetchAll(PDO::FETCH_COLUMN)));
-    sort($suppliers);
-} catch (Exception $e) {}
-
-/* ── Check if coming from Expected Fuel Deliveries (PO selected) ── */
-$selected_po = null;
-if (isset($_GET['po_id'])) {
-    $po_id = (int)$_GET['po_id'];
-    try {
-        $stmt = $pdo->prepare("SELECT * FROM deliveries_oversight WHERE id = ? AND station_id = ? AND status = 'Expected Delivery' AND delivery_type = 'fuel'");
-        $stmt->execute([$po_id, $station_id]);
-        $selected_po = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (!$selected_po) {
-            $msg = "Error: Expected fuel delivery not found or already processed.";
-            $msg_type = "error";
-        }
-    } catch (Exception $e) {}
-}
+    $expected_deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch(Exception $e){}
 
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
-/* ── Layout & Cards ── */
-.layout-grid { display: grid; grid-template-columns: 1fr; gap: 24px; margin-bottom: 30px; }
-@media (min-width: 1100px) { .layout-grid { grid-template-columns: 1fr 1fr; } }
-
-.del-card { background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.06); border: 1px solid #e9ecef; height: 100%; display: flex; flex-direction: column; }
-.del-card-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #e9ecef; }
-.del-card-title { font-size: 1rem; font-weight: 700; color: #002F70; display: flex; align-items: center; gap: 8px; }
-.del-card-body { padding: 24px; flex-grow: 1; overflow-y: auto; }
+*{box-sizing:border-box;margin:0;padding:0}
+body{overflow-x:hidden;max-width:100vw}
+/* ── Page Head ── */
+.fde-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+.fde-head h1{margin:0 0 5px;font-size:22px;font-weight:800;color:#00264D;text-transform:uppercase;letter-spacing:.5px}
+.fde-head .sub{font-size:12px;color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.3px}
 
 /* ── Alert ── */
-.alert-box { padding: 13px 16px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: flex-start; gap: 10px; font-size: 14px; }
-.alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-.alert-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+.alert-b{padding:12px 16px;border-radius:8px;margin-bottom:18px;display:flex;align-items:flex-start;gap:10px;font-size:14px;line-height:1.5}
+.a-ok{background:#d4edda;color:#155724;border:1px solid #c3e6cb}
+.a-err{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb}
 
-/* ── Expected Deliveries List ── */
-.expected-item { background: #f8f9fa; border: 1px solid #e9ecef; border-left: 4px solid #002F70; border-radius: 8px; padding: 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px; transition: transform .1s, box-shadow .1s; }
-.expected-item:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0,0,0,.05); }
-.expected-info h4 { margin: 0 0 4px 0; font-size: 14px; color: #002F70; }
-.expected-meta { font-size: 12px; color: #6c757d; display: flex; gap: 12px; flex-wrap: wrap; }
-.expected-meta span { display: inline-flex; align-items: center; gap: 4px; }
-.po-badge { background: #e8f4fd; color: #002F70; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 11px; font-weight: bold; border: 1px solid #b8d4f0; }
-.btn-receive { background: #28a745; color: #fff; border: none; padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; text-decoration: none; }
-.btn-receive:hover { background: #218838; }
+/* ── Main layout ── */
+.fde-wrap{display:grid;grid-template-columns:1fr 1.3fr;gap:20px;align-items:start;max-width:100%;overflow:hidden}
+@media(max-width:1100px){.fde-wrap{grid-template-columns:1fr}}
 
-/* ── Forms ── */
-.form-group { margin-bottom: 15px; }
-.form-label { display: block; font-size: 12px; font-weight: 700; color: #495057; text-transform: uppercase; letter-spacing: .4px; margin-bottom: 5px; }
-.form-control, .form-select { width: 100%; padding: 9px 12px; border: 1px solid #ced4da; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
-.form-control:focus, .form-select:focus { border-color: #002F70; outline: 0; box-shadow: 0 0 0 3px rgba(0,47,112,.15); }
-.form-control[readonly] { background: #e9ecef; cursor: not-allowed; font-weight: 600; color: #495057; }
-textarea.form-control { resize: vertical; font-family: inherit; min-height: 80px; }
+/* ── Card shell ── */
+.fde-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);overflow:hidden;max-width:100%}
+.fde-card-hd{padding:13px 18px;background:#002F70;color:#fff !important;display:flex;align-items:center;justify-content:space-between}
+.fde-card-hd h3{margin:0;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;display:flex;align-items:center;gap:8px;color:#fff !important}
+.fde-card-hd span{color:#fff !important;opacity:1 !important}
+.fde-card-hd i{color:#fff !important}
 
-.btn-submit { background: #002F70; color: #fff; border: none; padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; width: 100%; transition: background .2s; }
-.btn-submit:hover { background: #001f50; }
-.btn-submit:disabled { opacity: .5; cursor: not-allowed; }
+/* ── Header Fields ── */
+.hdr-fields{padding:18px 18px 0;max-width:100%}
+.hf-row{display:grid;gap:12px;margin-bottom:12px}
+.hf-2{grid-template-columns:1fr 1fr}
+.hf-3{grid-template-columns:1fr 1fr 1fr}
+@media(max-width:700px){.hf-2,.hf-3{grid-template-columns:1fr}}
+.fld{display:flex;flex-direction:column;gap:4px;min-width:0}
+.fld-lbl{font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px}
+.fld-lbl span{color:#dc2626}
+.fld-inp,.fld-sel{width:100%;padding:8px 11px;border:1px solid #00264D;border-radius:7px;font-size:13px;color:#ffffff !important;background:#002F70 !important;font-family:inherit;transition:border-color .15s,box-shadow .15s}
+.fld-inp:focus,.fld-sel:focus{border-color:#0056b3;outline:none;box-shadow:0 0 0 3px rgba(0,86,179,.25)}
+.fld-inp[readonly]{background:#001a42 !important;cursor:default;color:#ffffff !important;font-weight:700;border-color:#001a42 !important}
+.fld-inp::placeholder,.fld-txt::placeholder{color:rgba(255,255,255,0.6) !important}
+.fld-sel option{background:#002F70;color:#ffffff}
+.fld-txt{width:100%;padding:8px 11px;border:1px solid #00264D;border-radius:7px;font-size:13px;color:#ffffff !important;background:#002F70 !important;font-family:inherit;resize:vertical;min-height:64px;transition:border-color .15s}
+.fld-txt:focus{border-color:#0056b3;outline:none;box-shadow:0 0 0 3px rgba(0,86,179,.25)}
+
+/* Selected PO Info Banner */
+.po-selected-banner{margin:12px 18px 0;background:#e0f2fe;border:1px solid #7dd3fc;border-radius:8px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.po-selected-info{font-size:13px;color:#0369a1;line-height:1.4}
+.po-selected-info strong{color:#0c4a6e}
+.btn-deselect-po{background:#bae6fd;color:#0369a1;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s}
+.btn-deselect-po:hover{background:#7dd3fc;color:#0c4a6e}
+
+/* ── Status badge (REMOVED - Clean design) ── */
+/* .status-badge{margin:12px 18px 0;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:9px 14px;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#856404} */
+
+/* ── Tank Table ── */
+.tank-tbl-wrap{padding:14px 18px;max-width:100%}
+.tank-tbl{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
+.tank-tbl thead th{background:#002F70;color:#fff;padding:8px 6px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap}
+.tank-tbl thead th:nth-child(1){width:5%}
+.tank-tbl thead th:nth-child(2){width:35%}
+.tank-tbl thead th:nth-child(3){width:40%}
+.tank-tbl thead th:nth-child(4){width:20%;text-align:right}
+.tank-tbl thead th.r{text-align:right}
+.tank-tbl tbody tr{border-bottom:1px solid #f1f5f9;transition:background .12s}
+.tank-tbl tbody tr:last-child{border-bottom:none}
+.tank-tbl tbody tr.highlight-fuel{background:none !important}
+.tank-tbl tbody tr:hover{background:#f8fafc}
+.tank-tbl td{padding:6px 6px;vertical-align:middle;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ── Fuel name pill (Clean transparent background as requested) ── */
+.ft-pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;background:transparent !important}
+
+/* ── Liters input ── */
+.liters-inp{width:100%;max-width:110px;padding:6px 8px;border:1.5px solid #00264D;border-radius:7px;font-size:12px;font-weight:700;text-align:right;color:#ffffff;background:#002F70;font-family:inherit;transition:border-color .15s,box-shadow .15s}
+.liters-inp:focus{border-color:#0056b3;outline:none;box-shadow:0 0 0 3px rgba(0,86,179,.25)}
+.liters-inp.has-value{border-color:#22c55e;background:#14532d;color:#ffffff}
+.liters-inp::placeholder{color:rgba(255,255,255,0.6)}
+
+/* ── Buttons ── */
+.btn-row{display:flex;gap:10px;padding:14px 18px 18px}
+.btn-save{flex:1;background:#002F70;color:#fff;border:none;padding:12px 20px;border-radius:9px;font-size:14px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:background .2s,transform .1s;text-transform:uppercase;letter-spacing:.5px}
+.btn-save:hover{background:#001a42;transform:translateY(-1px)}
+.btn-reset{background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;padding:12px 18px;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:6px;white-space:nowrap}
+.btn-reset:hover{background:#e2e8f0;color:#334155}
+
+/* ── Expected PO Card & List ── */
+.rec-scroll{max-height:600px;overflow-y:auto;overflow-x:hidden;padding:18px}
+.po-card-item{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:14px;transition:transform .15s,box-shadow .15s;position:relative;max-width:100%}
+.po-card-item:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,0,0,.05)}
+.po-card-item.selected{border-color:#0ea5e9;background:#f0f9ff}
+.po-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:8px;flex-wrap:wrap}
+.po-number{font-family:monospace;font-size:11px;font-weight:700;background:#e0f2fe;color:#0369a1;padding:3px 8px;border-radius:5px;border:1px solid #bae6fd}
+.po-date{font-size:10px;color:#94a3b8}
+.po-body{font-size:12px;color:#334155;margin-bottom:12px;line-height:1.4}
+.po-body div{margin-bottom:4px}
+.po-body div strong{color:#00264D}
+.po-actions{display:flex;justify-content:flex-end}
+.btn-select-po{background:#002F70;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;text-decoration:none;transition:background .15s}
+.btn-select-po:hover{background:#001a42}
+.selected-tag{font-size:10px;font-weight:700;color:#0284c7;background:#e0f2fe;padding:4px 8px;border-radius:5px;border:1px solid #bae6fd;display:flex;align-items:center;gap:4px}
 </style>
 
-<div class="page-head">
+<div class="fde-head">
     <div>
-        <h1 class="h1"><i class="fas fa-gas-pump"></i> Record Fuel Delivery</h1>
-        <div class="sub">Encode actual fuel delivery details: Invoice number, fuel type, quantity (liters), and remarks.</div>
+        <h1><i class="fas fa-truck-loading"></i> Record Fuel Delivery</h1>
+        <div class="sub">Staff Input Form — Encode actual fuel delivery per tank</div>
     </div>
-    <div class="header-actions">
-        <a href="staff_dashboard.php" style="background:#6c757d;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:8px;transition:background .2s;">
-            <i class="fas fa-arrow-left"></i> Back to Dashboard
-        </a>
-    </div>
+    <a href="staff_fuel_delivery_status.php"
+       style="background:#e2e8f0;color:#334155;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:6px;">
+        <i class="fas fa-history"></i> Delivery Status & History
+    </a>
 </div>
 
 <?php if ($msg): ?>
-<div class="alert-box alert-<?php echo $msg_type === 'success' ? 'success' : 'error'; ?>">
-    <i class="fas fa-<?php echo $msg_type === 'success' ? 'check-circle' : 'exclamation-triangle'; ?>" style="margin-top:2px;"></i>
-    <div><?php echo $msg; ?></div>
+<div class="alert-b <?= $msg_type==='success'?'a-ok':'a-err' ?>">
+    <i class="fas fa-<?= $msg_type==='success'?'check-circle':'exclamation-triangle' ?>"></i>
+    <div><?= $msg ?></div>
 </div>
 <?php endif; ?>
 
-<div class="layout-grid">
-    <!-- LEFT: Expected Fuel Delivery Details (VIEW-ONLY - Reference for Staff) -->
-    <div class="del-card">
-        <div class="del-card-head">
-            <div class="del-card-title">
-                <i class="fas fa-clipboard-check"></i> <?php echo $selected_po ? 'Expected Fuel Delivery Details' : 'Expected Fuel Deliveries'; ?>
-            </div>
+<div class="fde-wrap">
+
+    <!-- ══ LEFT: FORM ══ -->
+    <div class="fde-card">
+        <div class="fde-card-hd">
+            <h3><i class="fas fa-gas-pump"></i> Fuel Delivery Form</h3>
+            <span style="font-size:11px">Fields marked <span style="color:#ffd54f">*</span> are required</span>
+        </div>
+
+        <form method="POST" id="delForm">
+            <input type="hidden" name="action" value="record_fuel_delivery">
+            <input type="hidden" name="selected_po_id" id="selectedPoId" value="<?= $selected_po ? (int)$selected_po['id'] : 0 ?>">
+
+            <!-- Selected PO Information Banner -->
             <?php if ($selected_po): ?>
-                <span style="font-size:12px;color:#6c757d;">Reference Only - Use Manual Encode →</span>
-            <?php else: ?>
-                <span style="font-size:12px;color:#6c757d;">Based on Finalized POs</span>
-            <?php endif; ?>
-        </div>
-        <div class="del-card-body">
-            <?php if ($selected_po): ?>
-                <!-- VIEW-ONLY: PO Order Details for Reference -->
-                <div style="background:#e8f4fd;border:1px solid #b8d4f0;border-radius:8px;padding:20px;">
-                    <h4 style="margin:0 0 16px 0;color:#002F70;font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;">
-                        <i class="fas fa-file-invoice"></i> Purchase Order Details
-                    </h4>
-                    
-                    <div style="display:grid;gap:12px;font-size:14px;">
-                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
-                            <span style="color:#6c757d;font-weight:500;">PO Number:</span>
-                            <strong style="color:#002F70;font-family:monospace;font-size:15px;"><?php echo htmlspecialchars($selected_po['source_ref'] ?? 'N/A'); ?></strong>
-                        </div>
-                        
-                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
-                            <span style="color:#6c757d;font-weight:500;">Fuel Type:</span>
-                            <strong style="color:#212529;"><?php echo htmlspecialchars($selected_po['product']); ?></strong>
-                        </div>
-                        
-                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
-                            <span style="color:#6c757d;font-weight:500;">Supplier:</span>
-                            <strong style="color:#212529;"><?php echo htmlspecialchars($selected_po['supplier']); ?></strong>
-                        </div>
-                        
-                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
-                            <span style="color:#6c757d;font-weight:500;">Expected Quantity:</span>
-                            <strong style="color:#002F70;font-size:16px;"><?php echo number_format($selected_po['quantity'], 2); ?> <span style="font-size:14px;color:#6c757d;">Liters</span></strong>
-                        </div>
-                        
-                        <?php if (!empty($selected_po['remarks'])): ?>
-                        <div style="padding:10px 0;">
-                            <span style="color:#6c757d;font-weight:500;display:block;margin-bottom:6px;">Notes:</span>
-                            <p style="margin:0;padding:10px;background:#fff;border-radius:6px;font-size:13px;color:#495057;"><?php echo htmlspecialchars($selected_po['remarks']); ?></p>
-                        </div>
-                        <?php endif; ?>
-                    </div>
+            <div class="po-selected-banner" id="poBanner">
+                <div class="po-selected-info">
+                    <i class="fas fa-file-invoice" style="margin-right:4px;"></i>
+                    Using Purchase Order: <strong><?= htmlspecialchars($selected_po['source_ref']) ?></strong><br>
+                    Expected: <strong><?= number_format($selected_po['quantity'], 2) ?> L</strong> of <strong><?= htmlspecialchars($selected_po['product']) ?></strong> fuel from <strong><?= htmlspecialchars($selected_po['supplier']) ?></strong>.
                 </div>
-
-                <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:14px;margin-top:20px;display:flex;align-items:flex-start;gap:10px;">
-                    <i class="fas fa-info-circle" style="color:#856404;margin-top:2px;font-size:18px;flex-shrink:0;"></i>
-                    <div style="font-size:13px;color:#856404;line-height:1.5;">
-                        <strong>Instructions:</strong> Use the <strong>"Manual Encode Fuel Delivery"</strong> form on the right to record the actual delivery receipt. Fill in the actual quantity received, Invoice/DR number, tanker number, and any remarks.
-                    </div>
-                </div>
-
-                <div style="margin-top:20px;text-align:center;">
-                    <a href="staff_expected_fuel_deliveries.php" style="background:#6c757d;color:#fff;border:none;padding:10px 20px;border-radius:6px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:6px;transition:background .2s;">
-                        <i class="fas fa-arrow-left"></i> Back to Expected Deliveries
-                    </a>
-                </div>
-
-            <?php elseif (empty($expected_fuel_deliveries)): ?>
-                <div style="text-align:center;padding:40px;color:#adb5bd;">
-                    <i class="fas fa-gas-pump" style="font-size:3em;margin-bottom:15px;display:block;"></i>
-                    <p style="margin-bottom:16px;">No expected fuel deliveries at the moment.</p>
-                    <a href="staff_expected_fuel_deliveries.php" style="color:#002F70;text-decoration:none;font-weight:600;">
-                        <i class="fas fa-arrow-left"></i> View Expected Deliveries
-                    </a>
-                </div>
-            <?php else: ?>
-                <?php foreach ($expected_fuel_deliveries as $ed): ?>
-                <div class="expected-item">
-                    <div class="expected-info">
-                        <h4><?php echo htmlspecialchars($ed['product']); ?> Fuel</h4>
-                        <div class="expected-meta">
-                            <span><i class="fas fa-hashtag"></i> PO: <span class="po-badge"><?php echo htmlspecialchars($ed['source_ref'] ?? 'N/A'); ?></span></span>
-                            <span><i class="fas fa-gas-pump"></i> Exp: <strong><?php echo number_format($ed['quantity'], 2) . ' L'; ?></strong></span>
-                            <span><i class="fas fa-building"></i> <?php echo htmlspecialchars($ed['supplier']); ?></span>
-                        </div>
-                    </div>
-                    <a href="staff_fuel_deliveries.php?po_id=<?php echo $ed['id']; ?>" class="btn-receive">
-                        <i class="fas fa-eye"></i> View Details
-                    </a>
-                </div>
-                <?php endforeach; ?>
-            <?php endif; ?>
-        </div>
-    </div>
-
-    <!-- RIGHT: Manual Encode Fuel Delivery (Staff encodes actual receipt details) -->
-    <div class="del-card">
-        <div class="del-card-head">
-            <div class="del-card-title">
-                <i class="fas fa-keyboard"></i> Manual Encode Fuel Delivery
+                <button type="button" class="btn-deselect-po" onclick="deselectPO()">Deselect</button>
             </div>
-            <span style="font-size:12px;color:#6c757d;"><?php echo $selected_po ? 'Based on PO (left panel)' : 'For 3rd party or non-PO deliveries'; ?></span>
-        </div>
-        <div class="del-card-body">
-            <form method="POST" id="manualFuelForm">
-                <input type="hidden" name="action" value="record_fuel_delivery">
-                
-                <div class="form-group">
-                    <label class="form-label">Supplier Name <span style="color:red;">*</span></label>
-                    <input type="text" name="supplier" class="form-control" list="supplierList" 
-                           value="<?php echo $selected_po ? htmlspecialchars($selected_po['supplier']) : ''; ?>" required>
-                    <datalist id="supplierList">
-                        <?php foreach ($suppliers as $s): ?><option value="<?php echo htmlspecialchars($s); ?>"><?php endforeach; ?>
-                    </datalist>
-                </div>
+            <?php endif; ?>
 
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
-                    <div class="form-group">
-                        <label class="form-label">Fuel Type <span style="color:red;">*</span></label>
-                        <select name="fuel_type" class="form-select" required>
-                            <option value="">— Select Fuel Type —</option>
-                            <?php foreach ($fuel_types as $ft): 
-                                $selected = ($selected_po && $selected_po['product'] === $ft) ? 'selected' : '';
-                            ?>
-                                <option value="<?php echo htmlspecialchars($ft); ?>" <?php echo $selected; ?>><?php echo htmlspecialchars($ft); ?></option>
-                            <?php endforeach; ?>
-                        </select>
+            <!-- Header Fields -->
+            <div class="hdr-fields">
+                <div class="hf-row hf-2">
+                    <div class="fld">
+                        <label class="fld-lbl">Delivery Date <span>*</span></label>
+                        <input type="date" name="delivery_date" class="fld-inp" value="<?= date('Y-m-d') ?>" required id="delDate">
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">Date Received <span style="color:red;">*</span></label>
-                        <input type="date" name="delivery_date" class="form-control" value="<?php echo date('Y-m-d'); ?>" required>
+                    <div class="fld">
+                        <label class="fld-lbl">Batch ID</label>
+                        <input type="text" class="fld-inp" id="batchPrev" value="Auto-Generated" readonly>
                     </div>
                 </div>
 
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
-                    <div class="form-group">
-                        <label class="form-label">Actual Quantity (Liters) <span style="color:red;">*</span></label>
-                        <input type="number" step="0.01" name="quantity" class="form-control" 
-                               value="<?php echo $selected_po ? $selected_po['quantity'] : ''; ?>" 
-                               placeholder="Enter actual liters received" required>
-                        <?php if ($selected_po): ?>
-                        <small style="color:#6c757d;font-size:11px;display:block;margin-top:4px;">
-                            Expected: <?php echo number_format($selected_po['quantity'], 2); ?> L
-                        </small>
-                        <?php endif; ?>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Invoice/DR Number <span style="color:red;">*</span></label>
-                        <input type="text" name="invoice_no" class="form-control" placeholder="e.g., INV-2026-001" required>
+                <div class="hf-row">
+                    <div class="fld">
+                        <label class="fld-lbl">Supplier <span>*</span></label>
+                        <input type="text" name="supplier" id="supplierInput" class="fld-inp" value="<?= $selected_po ? htmlspecialchars($selected_po['supplier']) : 'Petron Corporation' ?>" list="supList" required>
+                        <datalist id="supList">
+                            <option value="Petron Corporation">
+                            <option value="Shell Philippines">
+                            <option value="Caltex Philippines">
+                        </datalist>
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label class="form-label">Tanker Number (Optional)</label>
-                    <input type="text" name="tanker_number" class="form-control" placeholder="e.g., TK-123">
+                <div class="hf-row hf-2">
+                    <div class="fld">
+                        <label class="fld-lbl">Invoice / DR No. <span>*</span></label>
+                        <input type="text" name="invoice_no" class="fld-inp" placeholder="e.g. DR-0610-001" required>
+                    </div>
+                    <div class="fld">
+                        <label class="fld-lbl">Tanker No. <span>*</span></label>
+                        <input type="text" name="tanker_number" class="fld-inp" placeholder="e.g. TNK-4521" required>
+                    </div>
                 </div>
 
-                <div class="form-group">
-                    <label class="form-label">Remarks / Notes (Optional)</label>
-                    <textarea name="remarks" class="form-control" placeholder="Any additional notes or observations..."></textarea>
+                <div class="hf-row">
+                    <div class="fld">
+                        <label class="fld-lbl">Remarks</label>
+                        <textarea name="remarks" id="remarksInput" class="fld-txt" placeholder="e.g. Shift 1 receiving."><?= $selected_po ? "PO Reference: " . htmlspecialchars($selected_po['source_ref']) . ". " : "" ?></textarea>
+                    </div>
                 </div>
+            </div>
 
-                <button type="submit" class="btn-submit">
-                    <i class="fas fa-save"></i> Save Fuel Delivery Record
+            <!-- ── Tank Table ── -->
+            <div class="tank-tbl-wrap">
+                <table class="tank-tbl">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Name</th>
+                            <th>Tank Assigned</th>
+                            <th class="r">Liters Delivered</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($TANK_CONFIG as $i => $tk):
+                        $ft  = $tk['fuel_type'];
+                        $sty = $FT_STYLE[$ft] ?? ['color'=>'#334155','icon'=>'fas fa-gas-pump'];
+                        // Highlight style if this row matches the selected PO's fuel product
+                        $highlight = ($selected_po && strtolower(trim($selected_po['product'])) === strtolower(trim($ft))) ? 'highlight-fuel' : '';
+                    ?>
+                    <tr class="<?= $highlight ?>" data-fuel="<?= htmlspecialchars(strtolower(trim($ft))) ?>">
+                        <td style="color:#94a3b8;font-size:11px;font-weight:600"><?= $i+1 ?></td>
+                        <td>
+                            <div class="ft-pill" style="color:<?= $sty['color'] ?>;">
+                                <i class="<?= $sty['icon'] ?>" style="color:<?= $sty['color'] ?>;font-size:13px;margin-right:4px;"></i>
+                                <?= htmlspecialchars($tk['label']) ?>
+                            </div>
+                        </td>
+                        <td style="font-size:11px;color:#64748b"><?= htmlspecialchars($tk['tank']) ?></td>
+                        <td style="text-align:right">
+                            <input type="number" step="0.01" min="0" name="liters[<?= $i ?>]"
+                                   class="liters-inp"
+                                   placeholder="0"
+                                   oninput="onLiters(this)">
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Buttons -->
+            <div class="btn-row">
+                <button type="submit" class="btn-save">
+                    <i class="fas fa-save"></i> Save Fuel Delivery
                 </button>
-            </form>
+                <button type="button" class="btn-reset" onclick="resetForm()">
+                    <i class="fas fa-undo"></i> Reset
+                </button>
+            </div>
+        </form>
+    </div><!-- /.fde-card LEFT -->
+
+    <!-- ══ RIGHT: EXPECTED FUEL DELIVERIES (PO) ══ -->
+    <div class="fde-card">
+        <div class="fde-card-hd">
+            <h3><i class="fas fa-file-contract"></i> Expected Fuel Deliveries (POs)</h3>
+            <span style="font-size:11px">From Admin Purchase Orders</span>
         </div>
-    </div>
-</div>
+        <div class="rec-scroll">
+        <?php if (empty($expected_deliveries)): ?>
+            <div style="text-align:center;padding:48px;color:#94a3b8">
+                <i class="fas fa-clipboard-list" style="font-size:40px;margin-bottom:12px;display:block;opacity:.4"></i>
+                <div style="font-size:14px">No expected fuel deliveries at the moment.</div>
+                <div style="font-size:12px;margin-top:6px;color:#64748b">Tanan purchase orders gikan ni admin nadawat na o wala pay na-create.</div>
+            </div>
+        <?php else: ?>
+            <?php foreach ($expected_deliveries as $ed):
+                $is_cur_selected = ($selected_po && $selected_po['id'] == $ed['id']);
+                $ft_key = $ed['product'];
+                $sty = $FT_STYLE[$ft_key] ?? ['color' => '#64748b', 'icon' => 'fas fa-gas-pump'];
+            ?>
+            <div class="po-card-item <?= $is_cur_selected ? 'selected' : '' ?>">
+                <div class="po-header">
+                    <span class="po-number">PO: <?= htmlspecialchars($ed['source_ref']) ?></span>
+                    <span class="po-date"><?= date('M d, Y', strtotime($ed['created_at'])) ?></span>
+                </div>
+                <div class="po-body">
+                    <div>Supplier: <strong><?= htmlspecialchars($ed['supplier']) ?></strong></div>
+                    <div>Fuel Type: 
+                        <span style="font-size:11px;font-weight:700;padding:4px 8px;border-radius:6px;border:1px solid <?= $sty['color'] ?>;color:<?= $sty['color'] ?>;margin-left:4px;background:transparent;display:inline-flex;align-items:center;gap:5px;">
+                            <i class="<?= $sty['icon'] ?>" style="color:<?= $sty['color'] ?>;"></i>
+                            <?= htmlspecialchars($ed['product']) ?>
+                        </span>
+                    </div>
+                    <div>Expected liters: <strong><?= number_format($ed['quantity'], 2) ?> L</strong></div>
+                    <?php if(!empty($ed['remarks'])): ?>
+                        <div style="font-size:11px;color:#64748b;margin-top:6px;background:#f1f5f9;padding:6px;border-radius:4px;">
+                            Note: <?= htmlspecialchars($ed['remarks']) ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+                <div class="po-actions">
+                    <?php if ($is_cur_selected): ?>
+                        <span class="selected-tag"><i class="fas fa-check-circle"></i> Currently Selected</span>
+                    <?php else: ?>
+                        <button type="button" class="btn-select-po" onclick="selectPO(<?= $ed['id'] ?>, '<?= htmlspecialchars(addslashes($ed['product'])) ?>', '<?= htmlspecialchars(addslashes($ed['supplier'])) ?>', '<?= htmlspecialchars(addslashes($ed['source_ref'])) ?>', <?= (float)$ed['quantity'] ?>)">
+                            <i class="fas fa-check"></i> Select Purchase Order
+                        </button>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
+        </div>
+    </div><!-- /.fde-card RIGHT -->
+
+</div><!-- /.fde-wrap -->
+
+<script>
+function onLiters(inp) {
+    const v = parseFloat(inp.value);
+    inp.classList.toggle('has-value', v > 0);
+}
+
+function selectPO(id, product, supplier, sourceRef, quantity) {
+    // Redirect with parameter to reload page state cleanly
+    window.location.href = 'staff_fuel_deliveries.php?po_id=' + id;
+}
+
+function deselectPO() {
+    window.location.href = 'staff_fuel_deliveries.php';
+}
+
+function resetForm() {
+    if (!confirm('Reset all form fields?')) return;
+    document.getElementById('delForm').reset();
+    document.querySelectorAll('.liters-inp').forEach(el => el.classList.remove('has-value'));
+    document.getElementById('batchPrev').value = 'Auto-Generated';
+    deselectPO();
+}
+
+// Preview batch ID when date changes
+document.getElementById('delDate').addEventListener('change', function() {
+    const d = this.value.replace(/-/g,'');
+    if (d) document.getElementById('batchPrev').value = 'BATCH-' + d + '-***';
+});
+</script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

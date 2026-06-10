@@ -198,31 +198,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pump_number = $pump_number !== '' ? $pump_number : (string)$pump['pump_number'];
                     $fuel_type = $pump['fuel_type'];
                     
-                    // Get last transaction reading for this fuel type
+                    // Get last VERIFIED/ADJUSTED transaction reading for this fuel type
+                    // (only manager-approved endings can be the beginning of the next shift)
                     $stmt = $pdo->prepare("
                         SELECT present_reading
                         FROM fuel_transactions
-                        WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
-                        ORDER BY transaction_date DESC
+                        WHERE station_id = ?
+                          AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                          AND LOWER(status) IN ('verified','adjusted')
+                        ORDER BY transaction_date DESC, id DESC
                         LIMIT 1
                     ");
                     $stmt->execute([$station_id, $fuel_type]);
                     $last_reading = $stmt->fetch(PDO::FETCH_ASSOC);
 
+                    // Fallback: try fuel_readings table (approved ones only)
                     if (!$last_reading) {
                         $stmt = $pdo->prepare("
                             SELECT present_reading
                             FROM fuel_readings
-                            WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
-                            ORDER BY encoded_at DESC
+                            WHERE station_id = ?
+                              AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                              AND LOWER(status) IN ('verified','adjusted','approved','manager approved')
+                            ORDER BY encoded_at DESC, id DESC
                             LIMIT 1
                         ");
                         $stmt->execute([$station_id, $fuel_type]);
                         $last_reading = $stmt->fetch(PDO::FETCH_ASSOC);
                     }
-                    
+
+                    // If still no approved reading found, start from 0 (first ever reading)
                     $previous_reading = $last_reading['present_reading'] ?? 0;
-                    
+
                     // Validation
                     if ($present_reading < $previous_reading) {
                         $_SESSION['error'] = 'Present reading cannot be less than previous reading (' . number_format($previous_reading, 2) . 'L).';
@@ -360,11 +367,13 @@ try {
         : 'NOW()';
 
     // Get fuel types for this station
+    // previous_reading = present_reading of the LAST VERIFIED/ADJUSTED transaction
+    // This ensures: ending of last approved shift = beginning of next encoding
     $stmt = $pdo->prepare("
         SELECT 
             fi.fuel_type,
             COALESCE(MIN(fp_any.pump_number), fi.fuel_type) AS pump_number,
-            COALESCE(last_tx.present_reading, 0) AS previous_reading,
+            COALESCE(last_verified.present_reading, 0) AS previous_reading,
             COALESCE(fi.current_level, 0) AS current_stock
         FROM fuel_inventory fi
         LEFT JOIN fuel_pumps fp_any
@@ -373,21 +382,21 @@ try {
             SELECT ft.station_id, ft.fuel_type, ft.present_reading
             FROM fuel_transactions ft
             INNER JOIN (
-                SELECT station_id, fuel_type, MAX(transaction_date) AS latest_transaction_date
+                SELECT station_id, fuel_type, MAX(id) AS latest_id
                 FROM fuel_transactions
+                WHERE LOWER(status) IN ('verified','adjusted')
                 GROUP BY station_id, fuel_type
-            )
-                latest
+            ) latest
                 ON latest.station_id = ft.station_id
                AND LOWER(TRIM(latest.fuel_type)) = LOWER(TRIM(ft.fuel_type))
-               AND latest.latest_transaction_date = ft.transaction_date
-        ) last_tx
-                        ON last_tx.station_id = fi.station_id
-                     AND LOWER(TRIM(last_tx.fuel_type)) = LOWER(TRIM(fi.fuel_type))
-                WHERE fi.station_id = ?
-                    AND COALESCE(fi.current_level, 0) > 0
-                GROUP BY fi.fuel_type, last_tx.present_reading, fi.current_level
-                ORDER BY fi.fuel_type
+               AND latest.latest_id = ft.id
+        ) last_verified
+            ON last_verified.station_id = fi.station_id
+           AND LOWER(TRIM(last_verified.fuel_type)) = LOWER(TRIM(fi.fuel_type))
+        WHERE fi.station_id = ?
+          AND COALESCE(fi.current_level, 0) > 0
+        GROUP BY fi.fuel_type, last_verified.present_reading, fi.current_level
+        ORDER BY fi.fuel_type
     ");
     $stmt->execute([$station_id]);
     $fuel_options = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -418,10 +427,11 @@ try {
     $low_stock_alerts = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // Get recent fuel readings based on role
+    $name_expr = "COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Unknown')";
     if (in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
         // Staff can only see their own readings
         $stmt = $pdo->prepare("
-            SELECT fr.*, u.name as encoded_by_name 
+            SELECT fr.*, {$name_expr} as encoded_by_name 
             FROM fuel_readings fr 
             LEFT JOIN users u ON fr.encoded_by = u.id 
             WHERE fr.station_id = ? AND fr.encoded_by = ?
@@ -432,7 +442,7 @@ try {
     } else {
         // Managers and above can see all readings
         $stmt = $pdo->prepare("
-            SELECT fr.*, u.name as encoded_by_name 
+            SELECT fr.*, {$name_expr} as encoded_by_name 
             FROM fuel_readings fr 
             LEFT JOIN users u ON fr.encoded_by = u.id 
             WHERE fr.station_id = ?
@@ -747,8 +757,12 @@ include __DIR__ . '/../partials/header.php';
                         
                         <div class="form-group">
                             <label class="form-label">Staff Name</label>
+                            <?php
+                            $display_name = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? ''));
+                            if ($display_name === '') $display_name = $me['username'] ?? 'Unknown';
+                            ?>
                             <input type="text" class="form-input" 
-                                   value="<?php echo htmlspecialchars($me['name'] ?? $me['username']); ?>" readonly>
+                                   value="<?= htmlspecialchars($display_name) ?>" readonly>
                         </div>
                     </div>
 

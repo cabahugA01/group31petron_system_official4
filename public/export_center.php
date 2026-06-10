@@ -291,7 +291,7 @@ include __DIR__ . '/../partials/header.php';
 
     <?php elseif ($active_tab === 'fuel'): ?>
         <h3 class="h3"><i class="fas fa-gas-pump"></i> Fuel Exports</h3>
-        <p class="muted" style="margin-bottom: 30px;">Fuel reconciliation, variance reports, and calibration logs</p>
+        <p class="muted" style="margin-bottom: 30px;">Variance reports and calibration logs</p>
         
         <form method="post" action="fuel_reconciliation_export.php" style="margin-bottom: 30px;">
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">
@@ -312,7 +312,6 @@ include __DIR__ . '/../partials/header.php';
                 </div>
             </div>
             <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                <button type="submit" name="export_type" value="reconciliation" class="btn primary"><i class="fas fa-download"></i> Fuel Reconciliation</button>
                 <button type="submit" name="export_type" value="variance" class="btn primary"><i class="fas fa-download"></i> Variance Reports</button>
                 <button type="submit" name="export_type" value="calibration" class="btn primary"><i class="fas fa-download"></i> Calibration Logs</button>
             </div>

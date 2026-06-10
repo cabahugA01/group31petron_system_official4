@@ -1,320 +1,687 @@
 <?php
 /**
- * Manager / Admin — Service Types Validation
- * Approve or reject service types submitted by staff.
+ * Service Type Management
+ * Manager view: list, add, edit, activate/deactivate service types for Job Orders.
+ * Changes to pricing require admin approval.
  */
-$page_id = 'master_data';
+$page_id = 'mgr_prod_services';
 require_once __DIR__ . '/../backend/lib.php';
-require_once __DIR__ . '/../public/db_connect.php';
+require_once __DIR__ . '/db_connect.php';
 require_login();
 
-$me   = current_user();
-$role = role_key($me['role'] ?? '');
+$me         = current_user();
+$role       = role_key($me['role'] ?? '');
+$station_id = user_station_id();
 
 if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
-    $_SESSION['error'] = 'Access denied. Manager privileges required.';
     header('Location: dashboard.php');
     exit;
 }
 
-$flash_success = '';
-$flash_error   = '';
+// ── Ensure job_order_service_types table exists ────────────────────────────
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS job_order_service_types (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        station_id INT NOT NULL DEFAULT 1,
+        service_key VARCHAR(100) NOT NULL,
+        service_name VARCHAR(200) NOT NULL,
+        service_price DECIMAL(12,2) NOT NULL DEFAULT 0,
+        min_price DECIMAL(12,2) DEFAULT 0,
+        max_price DECIMAL(12,2) DEFAULT 0,
+        price_description TEXT DEFAULT NULL,
+        pricing_notes TEXT DEFAULT NULL,
+        icon_class VARCHAR(100) DEFAULT 'fa-wrench',
+        color_class VARCHAR(100) DEFAULT 'text-primary',
+        sort_order INT NOT NULL DEFAULT 0,
+        active TINYINT(1) NOT NULL DEFAULT 1,
+        status VARCHAR(30) NOT NULL DEFAULT 'active',
+        created_by INT DEFAULT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_service_key (service_key),
+        INDEX idx_station (station_id),
+        INDEX idx_active (active),
+        INDEX idx_status (status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    
+} catch (Exception $e) {}
 
-// ── Handle POST actions ───────────────────────────────────────────────────────
+// ── Ensure service_type_parts table exists (required parts mapping) ─────────
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS service_type_parts (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        service_key VARCHAR(100) NOT NULL,
+        product_id INT NOT NULL,
+        default_quantity INT NOT NULL DEFAULT 1,
+        is_required TINYINT(1) NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_service (service_key),
+        INDEX idx_product (product_id),
+        FOREIGN KEY (product_id) REFERENCES inventory_products(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+} catch (Exception $e) {}
+
+// ── Ensure pending_price_approvals supports service_types ───────────────────
+try {
+    // Create table if it doesn't exist
+    $pdo->exec("CREATE TABLE IF NOT EXISTS pending_price_approvals (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        station_id INT NOT NULL,
+        product_type VARCHAR(50) NOT NULL DEFAULT 'merchandise',
+        product_id INT NOT NULL,
+        old_cost DECIMAL(12,2) DEFAULT 0,
+        new_cost DECIMAL(12,2) DEFAULT 0,
+        old_price DECIMAL(12,2) DEFAULT 0,
+        new_price DECIMAL(12,2) DEFAULT 0,
+        manager_id INT NOT NULL,
+        admin_id INT DEFAULT NULL,
+        status VARCHAR(30) NOT NULL DEFAULT 'pending',
+        rejection_reason TEXT DEFAULT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_station (station_id),
+        INDEX idx_status (status),
+        INDEX idx_product (product_type, product_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    
+    // Alter table to support service_type if column is too narrow
+    $pdo->exec("ALTER TABLE pending_price_approvals MODIFY COLUMN product_type VARCHAR(50) NOT NULL DEFAULT 'merchandise'");
+} catch (Exception $e) {}
+
+// ──POST handlers ────────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
-    $id     = (int)($_POST['id'] ?? 0);
-    $note   = trim($_POST['note'] ?? '');
 
-    if ($id && in_array($action, ['approve', 'reject', 'delete'])) {
-        try {
-            if ($action === 'delete') {
-                $pdo->prepare("DELETE FROM job_order_service_types WHERE id = ?")->execute([$id]);
-                $flash_success = 'Service type deleted.';
-            } else {
-                $newStatus = $action === 'approve' ? 'approved' : 'rejected';
-                $pdo->prepare("
-                    UPDATE job_order_service_types
-                    SET    status = ?, reviewed_by = ?, review_note = ?
-                    WHERE  id = ?
-                ")->execute([$newStatus, $me['id'], $note ?: null, $id]);
-                $flash_success = 'Service type ' . $newStatus . '.';
+    // ── Add service type ─────────────────────────────────────────────────────
+    if ($action === 'add_service') {
+        $name        = trim($_POST['service_name'] ?? '');
+        $price       = (float)($_POST['service_price'] ?? 0);
+        $min_price   = (float)($_POST['min_price'] ?? 0);
+        $max_price   = (float)($_POST['max_price'] ?? 0);
+        $price_desc  = trim($_POST['price_description'] ?? '');
+        $notes       = trim($_POST['pricing_notes'] ?? '');
+        $icon        = trim($_POST['icon_class'] ?? 'fa-wrench');
+        $color       = trim($_POST['color_class'] ?? 'text-primary');
+
+        if ($name === '') {
+            $_SESSION['error'] = 'Service name is required.';
+        } elseif ($price < 0) {
+            $_SESSION['error'] = 'Service price cannot be negative.';
+        } else {
+            try {
+                // Generate service_key from name
+                $service_key = strtolower(preg_replace('/[^a-z0-9]+/', '_', $name));
+                $service_key = trim($service_key, '_');
+
+                // Check duplicate
+                $chk = $pdo->prepare("SELECT id FROM job_order_service_types WHERE LOWER(TRIM(service_name))=LOWER(TRIM(?)) OR service_key=? LIMIT 1");
+                $chk->execute([$name, $service_key]);
+                if ($chk->fetchColumn()) {
+                    $_SESSION['error'] = "Service '$name' already exists.";
+                } else {
+                    // Get max sort_order
+                    $max_sort = $pdo->query("SELECT COALESCE(MAX(sort_order), 0) FROM job_order_service_types")->fetchColumn();
+                    $new_sort = $max_sort + 1;
+
+                    $pdo->prepare("INSERT INTO job_order_service_types (station_id, service_key, service_name, service_price, min_price, max_price, price_description, pricing_notes, icon_class, color_class, sort_order, active, status, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,1,'active',?,NOW())")
+                        ->execute([$station_id, $service_key, $name, $price, $min_price, $max_price, $price_desc, $notes, $icon, $color, $new_sort, $me['id']]);
+                    
+                    log_activity($pdo, $me['id'], 'Service Type Added', "Service type '$name' added by {$me['name']} (Price: ₱".number_format($price, 2).")");
+                    $_SESSION['success'] = "Service type '$name' added successfully.";
+                }
+            } catch (Exception $e) {
+                $_SESSION['error'] = 'Error adding service type: ' . $e->getMessage();
             }
-        } catch (Exception $e) {
-            $flash_error = 'Error: ' . $e->getMessage();
         }
+        header('Location: manager_service_types.php'); exit;
     }
-    header('Location: manager_service_types.php');
-    exit;
+
+    // ── Update service type ──────────────────────────────────────────────────
+    if ($action === 'update_service') {
+        $id          = (int)($_POST['service_id'] ?? 0);
+        $name        = trim($_POST['service_name'] ?? '');
+        $price       = (float)($_POST['service_price'] ?? 0);
+        $min_price   = (float)($_POST['min_price'] ?? 0);
+        $max_price   = (float)($_POST['max_price'] ?? 0);
+        $price_desc  = trim($_POST['price_description'] ?? '');
+        $notes       = trim($_POST['pricing_notes'] ?? '');
+        $icon        = trim($_POST['icon_class'] ?? 'fa-wrench');
+        $color       = trim($_POST['color_class'] ?? 'text-primary');
+
+        if (!$id || $name === '') {
+            $_SESSION['error'] = 'Service ID and name are required.';
+        } elseif ($price < 0) {
+            $_SESSION['error'] = 'Service price cannot be negative.';
+        } else {
+            try {
+                // Check if price changed
+                $stmt = $pdo->prepare("SELECT service_price FROM job_order_service_types WHERE id=?");
+                $stmt->execute([$id]);
+                $old_price = (float)($stmt->fetchColumn() ?: 0);
+
+                if ($old_price != $price) {
+                    // Update non-pricing fields
+                    $pdo->prepare("UPDATE job_order_service_types SET service_name=?, min_price=?, max_price=?, price_description=?, pricing_notes=?, icon_class=?, color_class=? WHERE id=?")
+                        ->execute([$name, $min_price, $max_price, $price_desc, $notes, $icon, $color, $id]);
+                    
+                    // Insert into pending_price_approvals
+                    $pdo->prepare("INSERT INTO pending_price_approvals (station_id, product_type, product_id, old_price, new_price, manager_id, status, created_at) VALUES (?, 'service_type', ?, ?, ?, ?, 'pending', NOW())")
+                        ->execute([$station_id, $id, $old_price, $price, $me['id']]);
+                    
+                    $_SESSION['success'] = "Service details updated. Price change submitted for Admin approval.";
+                    $log_msg = "Service '$name' updated. Price change submitted: ₱".number_format($old_price, 2)." → ₱".number_format($price, 2)." (Pending Approval)";
+                } else {
+                    $pdo->prepare("UPDATE job_order_service_types SET service_name=?, service_price=?, min_price=?, max_price=?, price_description=?, pricing_notes=?, icon_class=?, color_class=? WHERE id=?")
+                        ->execute([$name, $price, $min_price, $max_price, $price_desc, $notes, $icon, $color, $id]);
+                    $_SESSION['success'] = "Service type updated.";
+                    $log_msg = "Service type '$name' updated.";
+                }
+                log_activity($pdo, $me['id'], 'Service Type Updated', $log_msg);
+
+            } catch (Exception $e) {
+                $_SESSION['error'] = 'Error updating: ' . $e->getMessage();
+            }
+        }
+        header('Location: manager_service_types.php'); exit;
+    }
+
+    // ── Toggle status ────────────────────────────────────────────────────────
+    if ($action === 'toggle_status') {
+        $id        = (int)($_POST['service_id'] ?? 0);
+        $newStatus = ($_POST['new_status'] ?? '') === 'inactive' ? 0 : 1; // Use 0/1 for active column
+        if ($id) {
+            try {
+                $stmt = $pdo->prepare("SELECT service_name FROM job_order_service_types WHERE id=?");
+                $stmt->execute([$id]);
+                $sname = $stmt->fetchColumn();
+
+                // Update active column (1 = active, 0 = inactive)
+                $stmt = $pdo->prepare("UPDATE job_order_service_types SET active=? WHERE id=?");
+                $stmt->execute([$newStatus, $id]);
+                
+                // Verify update worked
+                $verify = $pdo->prepare("SELECT active FROM job_order_service_types WHERE id=?");
+                $verify->execute([$id]);
+                $result = $verify->fetch(PDO::FETCH_ASSOC);
+                
+                $statusText = $newStatus === 1 ? 'ACTIVE' : 'INACTIVE';
+                log_activity($pdo, $me['id'], 'Service Type Status Changed', "Service '$sname' (ID:$id) set to '$statusText' by {$me['name']}");
+                $_SESSION['success'] = "Service type '$sname' is now $statusText (Active: {$result['active']})";
+            } catch (Exception $e) {
+                $_SESSION['error'] = 'Error: ' . $e->getMessage();
+            }
+        }
+        // Force page reload with cache bypass
+        header('Location: manager_service_types.php?v=' . time()); 
+        exit;
+    }
 }
 
-// ── Fetch data ────────────────────────────────────────────────────────────────
-$filter = $_GET['filter'] ?? 'pending';
-if (!in_array($filter, ['pending', 'approved', 'rejected', 'all'])) $filter = 'pending';
-$where  = $filter !== 'all' ? "WHERE jst.status = '$filter'" : '';
-
+// ── Load service types ──────────────────────────────────────────────────────
+$services = [];
+$msg      = '';
 try {
-    $rows = $pdo->query("
-        SELECT jst.*,
-               sub.name AS submitted_by_name,
-               rev.name AS reviewed_by_name
-        FROM   job_order_service_types jst
-        LEFT JOIN users sub ON sub.user_id = jst.submitted_by
-        LEFT JOIN users rev ON rev.user_id = jst.reviewed_by
-        $where
-        ORDER  BY jst.status = 'pending' DESC, jst.created_at DESC
-    ")->fetchAll(PDO::FETCH_ASSOC);
-
-    $pending_count = (int)$pdo->query(
-        "SELECT COUNT(*) FROM job_order_service_types WHERE status = 'pending'"
-    )->fetchColumn();
+    $stmt = $pdo->prepare("
+        SELECT
+            s.id,
+            s.service_key,
+            s.service_name,
+            s.service_price,
+            s.min_price,
+            s.max_price,
+            s.price_description,
+            s.pricing_notes,
+            s.icon_class,
+            s.color_class,
+            s.sort_order,
+            s.active,
+            s.created_at
+        FROM job_order_service_types s
+        ORDER BY s.sort_order, s.service_name
+    ");
+    $stmt->execute();
+    $services = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
-    $rows = [];
-    $pending_count = 0;
-    $flash_error = 'Could not load service types: ' . $e->getMessage();
+    $msg = 'Error loading service types: ' . $e->getMessage();
 }
 
 include __DIR__ . '/../partials/header.php';
 ?>
-
 <style>
-.st-card { background:#fff; border-radius:10px; border:1px solid #e2e8f0; overflow:hidden; margin-bottom:24px; }
-.st-table { width:100%; border-collapse:collapse; font-size:13px; background:#fff; }
-.st-table th { 
-    padding:14px 14px !important; 
-    text-align:left; 
-    font-size:11px; 
-    font-weight:600; 
-    color:#fff !important;
-    text-transform:uppercase; 
-    letter-spacing:.3px; 
-    border:none !important; 
-    background:#002F70 !important; 
-    white-space:nowrap; 
-}
-.st-table th:last-child { text-align:center !important; }
-.st-table td { 
-    padding:12px 14px !important; 
-    border-bottom:1px solid #e9ecef !important; 
-    vertical-align:middle; 
-    color:#212529;
-}
-.st-table td:last-child { text-align:center !important; }
-.st-table tr:last-child td { border-bottom:1px solid #e9ecef !important; }
+/* === Service Type Management - Clean Table Design === */
+.card { background:#fff; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.08); border:1px solid #e9ecef; margin-bottom:20px; overflow:hidden; }
+.card-header { padding:16px 20px; border-bottom:1px solid #e9ecef; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+.card-header h3 { font-size:16px; font-weight:700; color:#002F70; margin:0; display:flex; align-items:center; gap:8px; }
+.card-body { padding:20px; overflow-x:hidden; }
+.st-table-wrap { overflow-x:auto; width:100%; }
+.st-table { min-width:100%; width:100%; border-collapse:collapse; table-layout:auto; }
+.st-table thead th { background:#002F70 !important; color:#fff !important; font-weight:600; padding:14px 12px !important; text-align:left !important; text-transform:uppercase; letter-spacing:0.3px; border:none !important; white-space:nowrap; font-size:11px; }
+.st-table thead th:last-child { text-align:center !important; }
+.st-table tbody td { vertical-align:middle; padding:12px !important; border-bottom:1px solid #e9ecef !important; font-size:13px; }
+.st-table tbody td:last-child { text-align:center !important; }
 .st-table tbody tr:hover td { background:#e3f2fd !important; }
 .st-table tbody tr { transition:background 0.2s ease; }
-.badge-pending  { color:#4338ca !important; background:transparent !important; border:none !important; padding:0 !important; font-size:11px; font-weight:600; }
-.badge-approved { color:#0d7d3e !important; background:transparent !important; border:none !important; padding:0 !important; font-size:11px; font-weight:600; }
-.badge-rejected { color:#c62828 !important; background:transparent !important; border:none !important; padding:0 !important; font-size:11px; font-weight:600; }
-.filter-tab { padding:9px 18px; border:none; background:#f8fafc; border-bottom:2px solid transparent;
-              font-size:13px; font-weight:500; color:#64748b; cursor:pointer; transition:all .15s; text-decoration:none; display:inline-block; }
-.filter-tab.active { background:#fff; font-weight:700; color:#b45309; border-bottom-color:#b45309; }
-.action-btn { padding:5px 12px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; border:none; }
-.btn-approve { background:#f0fdf4; color:#166534; border:1px solid #86efac; }
-.btn-approve:hover { background:#dcfce7; }
-.btn-reject  { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
-.btn-reject:hover  { background:#fecaca; }
-.btn-delete  { background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; }
-.btn-delete:hover  { background:#e2e8f0; }
+.action-col { display:flex; flex-direction:column; gap:3px; min-width:90px; width:90px; align-items:center; justify-content:center; }
+.action-col .btn { font-size:11px; padding:5px 8px; border:none; border-radius:4px; cursor:pointer; display:flex; align-items:center; gap:4px; justify-content:center; transition:all .15s; white-space:nowrap; width:100%; }
+.action-col .btn:hover { filter:brightness(.9); }
+.btn-view    { background:#28a745; color:#fff; }
+.btn-edit    { background:#002F70; color:#fff; }
+.btn-danger  { background:#dc3545; color:#fff; }
+.btn-success { background:#28a745; color:#fff; }
+.service-icon { width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center; border-radius:6px; background:#e0f2fe; color:#0369a1; font-size:13px; }
+.parts-badge { background:#fffbeb; color:#92400e; border:1px solid #fde68a; padding:3px 8px; border-radius:12px; font-size:11px; font-weight:600; display:inline-flex; align-items:center; gap:4px; }
+/* Modals */
+.modal { display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,.5); align-items:center; justify-content:center; }
+.modal.open { display:flex; }
+.modal-content { background:#fff; border-radius:12px; width:90%; max-width:560px; max-height:90vh; overflow-y:auto; box-shadow:0 8px 32px rgba(0,0,0,.25); animation:mIn .18s ease; }
+@keyframes mIn { from{opacity:0;transform:scale(.96)} to{opacity:1;transform:scale(1)} }
+.modal-header { display:flex; justify-content:space-between; align-items:center; padding:18px 22px; border-bottom:1px solid #e9ecef; }
+.modal-header h3 { margin:0; font-size:17px; font-weight:700; }
+.close { background:none; border:none; font-size:26px; cursor:pointer; color:#aaa; line-height:1; }
+.close:hover { color:#333; }
+.modal-body { padding:22px; }
+.modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:18px 22px; border-top:1px solid #e9ecef; }
+.form-group { margin-bottom:14px; }
+.form-group label { display:block; margin-bottom:5px; font-weight:600; font-size:12px; color:#374151; text-transform:uppercase; letter-spacing:.3px; }
+.form-control { width:100%; padding:9px 11px; border:1px solid #ddd; border-radius:6px; font-size:13px; box-sizing:border-box; font-family:inherit; }
+.form-control:focus { border-color:#002F70; outline:none; box-shadow:0 0 0 3px rgba(0,47,112,.1); }
+.fg2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.info-note { background:#e8f4fd; border-left:4px solid:#002F70; border-radius:6px; padding:9px 13px; font-size:12px; color:#002F70; }
+/* Toast */
+.toast { position:fixed; bottom:24px; right:24px; padding:12px 18px; border-radius:8px; color:#fff; font-weight:600; font-size:13px; z-index:99999; box-shadow:0 4px 16px rgba(0,0,0,.2); display:none; animation:tUp .22s ease; max-width:340px; }
+.toast.show { display:block; }
+.toast-success { background:#28a745; }
+.toast-error   { background:#dc3545; }
+@keyframes tUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
 </style>
 
-<div class="txn-content" style="max-width:1100px;margin:0 auto;padding:24px 20px;">
-
-    <!-- Header -->
-    <div style="display:flex;align-items:center;gap:14px;margin-bottom:24px;flex-wrap:wrap;">
-        <div style="width:44px;height:44px;background:#fffbeb;border-radius:10px;
-                    display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-            <i class="fas fa-wrench" style="color:#b45309;font-size:18px;"></i>
-        </div>
-        <div>
-            <h1 style="font-size:20px;font-weight:800;color:#1e293b;margin:0;">Service Types</h1>
-            <p style="font-size:12px;color:#64748b;margin:3px 0 0;">Review and validate service types submitted by staff</p>
-        </div>
-        <?php if ($pending_count > 0): ?>
-        <span style="background:#002F70;color:#fff;font-size:11px;font-weight:800;
-                     padding:3px 10px;border-radius:20px;margin-left:4px;">
-            <?= $pending_count ?> pending
-        </span>
-        <?php endif; ?>
+<div class="page-head">
+    <div>
+        <h1 class="h1"><i class="fas fa-wrench"></i> Service Types</h1>
+        <div class="sub">Product Management &mdash; Service Type Catalog</div>
     </div>
-
-    <?php if ($flash_success): ?>
-    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 16px;
-                margin-bottom:16px;color:#166534;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;">
-        <i class="fas fa-check-circle"></i> <?= htmlspecialchars($flash_success) ?>
-    </div>
-    <?php endif; ?>
-    <?php if ($flash_error): ?>
-    <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:10px 16px;
-                margin-bottom:16px;color:#991b1b;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;">
-        <i class="fas fa-exclamation-circle"></i> <?= htmlspecialchars($flash_error) ?>
-    </div>
-    <?php endif; ?>
-
-    <!-- Filter tabs -->
-    <div style="display:flex;border-bottom:2px solid #e2e8f0;margin-bottom:20px;flex-wrap:wrap;">
-        <?php foreach (['pending' => 'Pending', 'approved' => 'Approved', 'rejected' => 'Rejected', 'all' => 'All'] as $k => $label): ?>
-        <a href="?filter=<?= $k ?>" class="filter-tab <?= $filter === $k ? 'active' : '' ?>">
-            <?= $label ?>
-            <?php if ($k === 'pending' && $pending_count > 0): ?>
-            <span style="background:#002F70;color:#fff;font-size:9px;font-weight:800;
-                         padding:1px 6px;border-radius:20px;margin-left:4px;"><?= $pending_count ?></span>
-            <?php endif; ?>
-        </a>
-        <?php endforeach; ?>
-    </div>
-
-    <!-- Table -->
-    <div class="st-card">
-        <?php if (empty($rows)): ?>
-        <div style="text-align:center;padding:48px;color:#94a3b8;">
-            <i class="fas fa-wrench" style="font-size:28px;display:block;margin-bottom:10px;"></i>
-            No <?= $filter !== 'all' ? $filter : '' ?> service types found.
-        </div>
-        <?php else: ?>
-        <div style="overflow-x:auto;">
-        <table class="st-table">
-            <thead>
-                <tr>
-                    <th>Service Name</th>
-                    <th>Price Range</th>
-                    <th>Status</th>
-                    <th>Submitted By</th>
-                    <th>Reviewed By</th>
-                    <th>Review Note</th>
-                    <th>Date</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-            <?php foreach ($rows as $row): ?>
-            <tr>
-                <td>
-                    <strong style="color:#1e293b;"><?= htmlspecialchars($row['service_name']) ?></strong>
-                    <?php if (!empty($row['pricing_notes'])): ?>
-                    <div style="font-size:11px;color:#64748b;margin-top:2px;max-width:200px;">
-                        <?= htmlspecialchars(mb_strimwidth($row['pricing_notes'], 0, 80, '…')) ?>
-                    </div>
-                    <?php endif; ?>
-                </td>
-                <td style="font-size:12px;color:#475569;white-space:nowrap;">
-                    <?php if ($row['min_price'] > 0 || $row['max_price'] > 0): ?>
-                    ₱<?= number_format($row['min_price'], 0) ?> – ₱<?= number_format($row['max_price'], 0) ?>
-                    <?php else: ?>
-                    <span style="color:#cbd5e1;">—</span>
-                    <?php endif; ?>
-                </td>
-                <td><span class="badge-<?= $row['status'] ?>"><?= ucfirst($row['status']) ?></span></td>
-                <td style="font-size:12px;color:#475569;"><?= htmlspecialchars($row['submitted_by_name'] ?? '—') ?></td>
-                <td style="font-size:12px;color:#475569;"><?= htmlspecialchars($row['reviewed_by_name'] ?? '—') ?></td>
-                <td style="font-size:11px;color:#64748b;max-width:160px;">
-                    <?= $row['review_note'] ? htmlspecialchars($row['review_note']) : '<span style="color:#cbd5e1;">—</span>' ?>
-                </td>
-                <td style="font-size:11px;color:#64748b;white-space:nowrap;">
-                    <?= date('M j, Y', strtotime($row['created_at'])) ?>
-                </td>
-                <td>
-                    <div style="display:flex;gap:5px;flex-wrap:wrap;">
-                        <?php if ($row['status'] === 'pending'): ?>
-                        <form method="POST" style="margin:0;"
-                              onsubmit="return confirm('Approve \'<?= htmlspecialchars($row['service_name'], ENT_QUOTES) ?>\'?')">
-                            <input type="hidden" name="action" value="approve">
-                            <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
-                            <button type="submit" class="action-btn btn-approve">
-                                <i class="fas fa-check"></i> Approve
-                            </button>
-                        </form>
-                        <button type="button" class="action-btn btn-reject"
-                                onclick="openRejectModal(<?= (int)$row['id'] ?>, '<?= htmlspecialchars($row['service_name'], ENT_QUOTES) ?>')">
-                            <i class="fas fa-times"></i> Reject
-                        </button>
-                        <?php elseif ($row['status'] === 'rejected'): ?>
-                        <form method="POST" style="margin:0;"
-                              onsubmit="return confirm('Re-approve \'<?= htmlspecialchars($row['service_name'], ENT_QUOTES) ?>\'?')">
-                            <input type="hidden" name="action" value="approve">
-                            <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
-                            <button type="submit" class="action-btn btn-approve">
-                                <i class="fas fa-redo"></i> Re-approve
-                            </button>
-                        </form>
-                        <?php elseif ($row['status'] === 'approved'): ?>
-                        <button type="button" class="action-btn btn-reject"
-                                onclick="openRejectModal(<?= (int)$row['id'] ?>, '<?= htmlspecialchars($row['service_name'], ENT_QUOTES) ?>')">
-                            <i class="fas fa-ban"></i> Revoke
-                        </button>
-                        <?php endif; ?>
-                        <form method="POST" style="margin:0;"
-                              onsubmit="return confirm('Delete \'<?= htmlspecialchars($row['service_name'], ENT_QUOTES) ?>\'? This cannot be undone.')">
-                            <input type="hidden" name="action" value="delete">
-                            <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
-                            <button type="submit" class="action-btn btn-delete" title="Delete">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        </form>
-                    </div>
-                </td>
-            </tr>
-            <?php endforeach; ?>
-            </tbody>
-        </table>
-        </div>
-        <?php endif; ?>
+    <div class="header-actions">
+        <button onclick="location.reload()" class="btn ghost"><i class="fas fa-sync-alt"></i> Refresh</button>
+        <button onclick="openModal('addModal')" class="btn primary"><i class="fas fa-plus"></i> Add Service Type</button>
     </div>
 </div>
 
-<!-- Reject / Revoke modal -->
-<div id="rejectModal"
-     style="display:none;position:fixed;inset:0;z-index:10000;
-            background:rgba(0,0,0,.45);align-items:center;justify-content:center;">
-    <div style="background:#fff;border-radius:12px;padding:28px;width:100%;max-width:400px;
-                box-shadow:0 20px 60px rgba(0,0,0,.25);margin:16px;">
-        <div style="font-size:15px;font-weight:700;color:#1e293b;margin-bottom:6px;">
-            <i class="fas fa-times-circle" style="color:#dc2626;margin-right:8px;"></i>
-            Reject / Revoke Service Type
+<?php if (!empty($_SESSION['success'])): ?>
+<div style="background:#d4edda;color:#155724;padding:12px 16px;border-radius:8px;margin-bottom:16px;">
+    <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($_SESSION['success']); unset($_SESSION['success']); ?>
+</div>
+<?php endif; ?>
+<?php if (!empty($_SESSION['error'])): ?>
+<div style="background:#f8d7da;color:#721c24;padding:12px 16px;border-radius:8px;margin-bottom:16px;">
+    <i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($_SESSION['error']); unset($_SESSION['error']); ?>
+</div>
+<?php endif; ?>
+<?php if ($msg): ?>
+<div style="background:#f8d7da;color:#721c24;padding:12px 16px;border-radius:8px;margin-bottom:16px;">
+    <i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($msg); ?>
+</div>
+<?php endif; ?>
+
+<div class="card">
+    <div class="card-header">
+        <h3><i class="fas fa-list" style="color:#002F70;"></i> Service Type List</h3>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <input type="text" id="serviceSearch" placeholder="Search service name..." class="form-control" style="width:210px;" oninput="filterTable()">
         </div>
-        <div id="rejectServiceName" style="font-size:13px;color:#64748b;margin-bottom:16px;"></div>
-        <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:6px;">
-            Reason <span style="color:#94a3b8;font-weight:400;">(optional)</span>
-        </label>
-        <textarea id="rejectNote" rows="3"
-                  style="width:100%;border:1.5px solid #e2e8f0;border-radius:8px;padding:9px 12px;
-                         font-size:13px;resize:vertical;box-sizing:border-box;"
-                  placeholder="e.g. Duplicate entry, use existing 'Engine Repair' instead…"></textarea>
-        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">
-            <button type="button" onclick="closeRejectModal()"
-                    style="padding:8px 16px;border:1px solid #e2e8f0;background:#f8fafc;
-                           border-radius:6px;font-size:12px;cursor:pointer;">Cancel</button>
-            <form id="rejectForm" method="POST" style="margin:0;">
-                <input type="hidden" name="action" value="reject">
-                <input type="hidden" name="id"   id="rejectId">
-                <input type="hidden" name="note" id="rejectNoteHidden">
-                <button type="submit"
-                        style="padding:8px 18px;background:#dc2626;color:#fff;border:none;
-                               border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">
-                    <i class="fas fa-times"></i> Confirm
-                </button>
-            </form>
+    </div>
+    <div class="card-body">
+        <div class="table-wrap st-table-wrap">
+            <table class="table st-table" id="mainTable">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Service Name</th>
+                        <th>Base Fee</th>
+                        <th>Price Range</th>
+                        <th>Status</th>
+                        <th style="min-width:120px;text-align:center;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="serviceTableBody">
+                <?php foreach ($services as $s):
+                    // Use active column (1 or 0) instead of status
+                    $isActive    = (int)($s['active'] ?? 1) === 1;
+                    $statusColor = $isActive ? '#28a745' : '#dc3545';
+                    $priceRange  = '';
+                    if ((float)$s['min_price'] > 0 || (float)$s['max_price'] > 0) {
+                        $priceRange = '₱' . number_format((float)$s['min_price'], 2) . ' - ₱' . number_format((float)$s['max_price'], 2);
+                    }
+                ?>
+                <tr class="service-row" data-name="<?php echo strtolower(htmlspecialchars($s['service_name'])); ?>">
+                    <!-- ID -->
+                    <td>
+                        <strong style="color:#64748b;font-family:monospace;">#<?php echo (int)$s['id']; ?></strong>
+                    </td>
+
+                    <!-- Service Name -->
+                    <td><strong><?php echo htmlspecialchars($s['service_name']); ?></strong></td>
+
+                    <!-- Base Fee -->
+                    <td style="color:#28a745;font-weight:700;">₱<?php echo number_format((float)$s['service_price'], 2); ?></td>
+
+                    <!-- Price Range -->
+                    <td style="color:#6c757d;font-size:12px;">
+                        <?php echo $priceRange ?: '—'; ?>
+                    </td>
+
+                    <!-- Status -->
+                    <td>
+                        <span style="color:<?php echo $statusColor; ?>;font-weight:700;">
+                            <?php echo $isActive ? 'Active' : 'Inactive'; ?>
+                        </span>
+                    </td>
+
+                    <!-- Actions -->
+                    <td style="text-align:center;">
+                        <div class="action-col">
+                            <button class="btn btn-view" onclick="viewService(<?php echo (int)$s['id']; ?>)">
+                                <i class="fas fa-eye"></i> View
+                            </button>
+                            <button class="btn btn-edit" onclick="editService(<?php echo (int)$s['id']; ?>)">
+                                <i class="fas fa-edit"></i> Edit
+                            </button>
+                            <?php if ($isActive): ?>
+                            <button class="btn btn-danger" onclick="toggleStatus(<?php echo (int)$s['id']; ?>, 'inactive', '<?php echo htmlspecialchars(addslashes($s['service_name'])); ?>')">
+                                <i class="fas fa-times"></i> Deactivate
+                            </button>
+                            <?php else: ?>
+                            <button class="btn btn-success" onclick="toggleStatus(<?php echo (int)$s['id']; ?>, 'active', '<?php echo htmlspecialchars(addslashes($s['service_name'])); ?>')">
+                                <i class="fas fa-check"></i> Activate
+                            </button>
+                            <?php endif; ?>
+                        </div>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+                <?php if (empty($services)): ?>
+                <tr><td colspan="6" style="text-align:center;padding:40px;color:#666;">No service types found.</td></tr>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+        <div style="margin-top:8px;font-size:12px;color:#9ca3af;">
+            <?php echo count($services); ?> service type(s)
+        </div>
+    </div>
+</div>
+
+<!-- ══ ADD SERVICE TYPE MODAL ═════════════════════════════════════════════════ -->
+<div id="addModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3><i class="fas fa-plus" style="color:#28a745;"></i> Add Service Type</h3>
+            <button class="close" onclick="closeModal('addModal')">&times;</button>
+        </div>
+        <form method="POST" onsubmit="return validateServiceForm(this)">
+            <input type="hidden" name="action" value="add_service">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Service Name <span style="color:#dc2626;">*</span></label>
+                    <input type="text" name="service_name" class="form-control" placeholder="e.g., Oil Change, Tire Repair" required>
+                </div>
+                <div class="fg2">
+                    <div class="form-group">
+                        <label>Base Fee (₱) <span style="color:#dc2626;">*</span></label>
+                        <input type="number" name="service_price" class="form-control" step="0.01" min="0" placeholder="0.00" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Icon Class</label>
+                        <input type="text" name="icon_class" class="form-control" placeholder="fa-wrench" value="fa-wrench">
+                    </div>
+                </div>
+                <div class="fg2">
+                    <div class="form-group">
+                        <label>Min Price (₱)</label>
+                        <input type="number" name="min_price" class="form-control" step="0.01" min="0" placeholder="0.00">
+                    </div>
+                    <div class="form-group">
+                        <label>Max Price (₱)</label>
+                        <input type="number" name="max_price" class="form-control" step="0.01" min="0" placeholder="0.00">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Price Description</label>
+                    <input type="text" name="price_description" class="form-control" placeholder="e.g., Flat rate, Varies by vehicle type">
+                </div>
+                <div class="form-group">
+                    <label>Pricing Notes</label>
+                    <textarea name="pricing_notes" class="form-control" rows="3" placeholder="Additional pricing information for staff..."></textarea>
+                </div>
+                <div class="info-note">
+                    <i class="fas fa-info-circle"></i> You can map required parts to this service after creation.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('addModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-plus"></i> Add Service Type</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ══ EDIT SERVICE TYPE MODAL ════════════════════════════════════════════════ -->
+<div id="editModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3><i class="fas fa-edit" style="color:#002F70;"></i> Edit Service Type</h3>
+            <button class="close" onclick="closeModal('editModal')">&times;</button>
+        </div>
+        <form method="POST" onsubmit="return validateServiceForm(this)">
+            <input type="hidden" name="action" value="update_service">
+            <input type="hidden" name="service_id" id="edit_service_id">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Service Name <span style="color:#dc2626;">*</span></label>
+                    <input type="text" name="service_name" id="edit_service_name" class="form-control" required>
+                </div>
+                <div class="fg2">
+                    <div class="form-group">
+                        <label>Base Fee (₱) <span style="color:#dc2626;">*</span></label>
+                        <input type="number" name="service_price" id="edit_service_price" class="form-control" step="0.01" min="0" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Icon Class</label>
+                        <input type="text" name="icon_class" id="edit_icon_class" class="form-control" placeholder="fa-wrench">
+                    </div>
+                </div>
+                <div class="fg2">
+                    <div class="form-group">
+                        <label>Min Price (₱)</label>
+                        <input type="number" name="min_price" id="edit_min_price" class="form-control" step="0.01" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Max Price (₱)</label>
+                        <input type="number" name="max_price" id="edit_max_price" class="form-control" step="0.01" min="0">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Price Description</label>
+                    <input type="text" name="price_description" id="edit_price_description" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Pricing Notes</label>
+                    <textarea name="pricing_notes" id="edit_pricing_notes" class="form-control" rows="3"></textarea>
+                </div>
+                <div class="info-note">
+                    <i class="fas fa-info-circle"></i> Price changes require Admin approval.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('editModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Update Service Type</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ══ VIEW SERVICE TYPE MODAL ════════════════════════════════════════════════ -->
+<div id="viewModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3><i class="fas fa-eye" style="color:#28a745;"></i> Service Type Details</h3>
+            <button class="close" onclick="closeModal('viewModal')">&times;</button>
+        </div>
+        <div class="modal-body" id="viewModalBody">
+            <div style="text-align:center;padding:40px;color:#999;">
+                <i class="fas fa-spinner fa-spin" style="font-size:24px;"></i>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('viewModal')">Close</button>
         </div>
     </div>
 </div>
 
 <script>
-function openRejectModal(id, name) {
-    document.getElementById('rejectId').value = id;
-    document.getElementById('rejectServiceName').textContent = '"' + name + '"';
-    document.getElementById('rejectNote').value = '';
-    document.getElementById('rejectModal').style.display = 'flex';
-    setTimeout(() => document.getElementById('rejectNote').focus(), 80);
+// Service types data for JavaScript
+const servicesData = <?php echo json_encode($services); ?>;
+
+// ── Filter table ────────────────────────────────────────────────────────────
+function filterTable() {
+    const search = document.getElementById('serviceSearch').value.toLowerCase();
+    const rows = document.querySelectorAll('.service-row');
+    
+    rows.forEach(row => {
+        const name = row.dataset.name || '';
+        const match = name.includes(search);
+        row.style.display = match ? '' : 'none';
+    });
 }
-function closeRejectModal() {
-    document.getElementById('rejectModal').style.display = 'none';
+
+// ── Modal helpers ───────────────────────────────────────────────────────────
+function openModal(id) {
+    document.getElementById(id).classList.add('open');
 }
-document.getElementById('rejectForm').addEventListener('submit', function() {
-    document.getElementById('rejectNoteHidden').value = document.getElementById('rejectNote').value;
-});
-document.getElementById('rejectModal').addEventListener('click', function(e) {
-    if (e.target === this) closeRejectModal();
+
+function closeModal(id) {
+    document.getElementById(id).classList.remove('open');
+}
+
+// ── View service ────────────────────────────────────────────────────────────
+function viewService(id) {
+    const service = servicesData.find(s => s.id == id);
+    if (!service) return;
+    
+    const priceRange = (parseFloat(service.min_price) > 0 || parseFloat(service.max_price) > 0)
+        ? `₱${parseFloat(service.min_price).toFixed(2)} - ₱${parseFloat(service.max_price).toFixed(2)}`
+        : 'Not specified';
+    
+    document.getElementById('viewModalBody').innerHTML = `
+        <div style="display:grid;gap:16px;">
+            <div style="text-align:center;padding:20px;background:#f8fafc;border-radius:8px;">
+                <div class="service-icon" style="width:48px;height:48px;font-size:22px;margin:0 auto 12px;">
+                    <i class="fas ${service.icon_class || 'fa-wrench'}"></i>
+                </div>
+                <h4 style="margin:0;font-size:18px;color:#1e293b;">${service.service_name}</h4>
+                <div style="font-size:24px;color:#28a745;font-weight:700;margin-top:8px;">
+                    ₱${parseFloat(service.service_price).toFixed(2)}
+                </div>
+            </div>
+            <div style="display:grid;gap:10px;">
+                <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e9ecef;">
+                    <span style="color:#6c757d;font-weight:600;">Service Key:</span>
+                    <span style="font-family:monospace;color:#002F70;">${service.service_key}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e9ecef;">
+                    <span style="color:#6c757d;font-weight:600;">Price Range:</span>
+                    <span>${priceRange}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e9ecef;">
+                    <span style="color:#6c757d;font-weight:600;">Required Parts:</span>
+                    <span>${service.parts_count || 0} part(s)</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e9ecef;">
+                    <span style="color:#6c757d;font-weight:600;">Status:</span>
+                    <span style="color:${service.status === 'active' ? '#28a745' : '#dc3545'};font-weight:700;">
+                        ${service.status === 'active' ? 'Active' : 'Inactive'}
+                    </span>
+                </div>
+                ${service.price_description ? `
+                <div style="padding:8px 0;border-bottom:1px solid #e9ecef;">
+                    <div style="color:#6c757d;font-weight:600;margin-bottom:4px;">Price Description:</div>
+                    <div style="color:#374151;">${service.price_description}</div>
+                </div>
+                ` : ''}
+                ${service.pricing_notes ? `
+                <div style="padding:8px 0;">
+                    <div style="color:#6c757d;font-weight:600;margin-bottom:4px;">Pricing Notes:</div>
+                    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:10px;color:#92400e;font-size:12px;">
+                        ${service.pricing_notes}
+                    </div>
+                </div>
+                ` : ''}
+            </div>
+        </div>
+    `;
+    
+    openModal('viewModal');
+}
+
+// ── Edit service ────────────────────────────────────────────────────────────
+function editService(id) {
+    const service = servicesData.find(s => s.id == id);
+    if (!service) return;
+    
+    document.getElementById('edit_service_id').value = service.id;
+    document.getElementById('edit_service_name').value = service.service_name;
+    document.getElementById('edit_service_price').value = parseFloat(service.service_price).toFixed(2);
+    document.getElementById('edit_min_price').value = parseFloat(service.min_price || 0).toFixed(2);
+    document.getElementById('edit_max_price').value = parseFloat(service.max_price || 0).toFixed(2);
+    document.getElementById('edit_price_description').value = service.price_description || '';
+    document.getElementById('edit_pricing_notes').value = service.pricing_notes || '';
+    document.getElementById('edit_icon_class').value = service.icon_class || 'fa-wrench';
+    
+    openModal('editModal');
+}
+
+// ── Toggle status ───────────────────────────────────────────────────────────
+function toggleStatus(id, newStatus, serviceName) {
+    const action = newStatus === 'active' ? 'activate' : 'deactivate';
+    if (!confirm(`Are you sure you want to ${action} "${serviceName}"?`)) return;
+    
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.innerHTML = `
+        <input type="hidden" name="action" value="toggle_status">
+        <input type="hidden" name="service_id" value="${id}">
+        <input type="hidden" name="new_status" value="${newStatus}">
+    `;
+    document.body.appendChild(form);
+    form.submit();
+}
+
+// ── Form validation ─────────────────────────────────────────────────────────
+function validateServiceForm(form) {
+    const price = parseFloat(form.service_price.value);
+    const minPrice = parseFloat(form.min_price?.value || 0);
+    const maxPrice = parseFloat(form.max_price?.value || 0);
+    
+    if (price < 0) {
+        alert('Base fee cannot be negative.');
+        return false;
+    }
+    
+    if (minPrice > 0 && maxPrice > 0 && minPrice > maxPrice) {
+        alert('Minimum price cannot be greater than maximum price.');
+        return false;
+    }
+    
+    return true;
+}
+
+// ── Close modals on background click ────────────────────────────────────────
+document.querySelectorAll('.modal').forEach(modal => {
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            closeModal(modal.id);
+        }
+    });
 });
 </script>
 
-<?php require_once __DIR__ . '/../partials/footer.php'; ?>
+<?php include __DIR__ . '/../partials/footer.php'; ?>

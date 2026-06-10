@@ -677,6 +677,26 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
     // Generate unique transaction ID
     $transaction_id = 'MERCH' . date('Y') . str_pad($station_id, 3, '0', STR_PAD_LEFT) . str_pad(mt_rand(1, 99999), 5, '0', STR_PAD_LEFT);
 
+    // ── Auto-register new customer if name is provided and not "Walk-in Customer" ──
+    if (!empty($data['customer_name']) && $data['customer_name'] !== 'Walk-in Customer') {
+        try {
+            // Check if customer already exists
+            $checkCustomer = $pdo->prepare("SELECT id FROM customers WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) AND station_id = ? LIMIT 1");
+            $checkCustomer->execute([$data['customer_name'], $station_id]);
+            $existingCustomer = $checkCustomer->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$existingCustomer) {
+                // Customer doesn't exist - create new record
+                $insertCustomer = $pdo->prepare("INSERT INTO customers (name, station_id, status, type, created_at) VALUES (?, ?, 'active', 'cash', NOW())");
+                $insertCustomer->execute([$data['customer_name'], $station_id]);
+                error_log("Auto-registered new customer: " . $data['customer_name'] . " for station " . $station_id);
+            }
+        } catch (Exception $e) {
+            // Non-fatal - log but continue with transaction
+            error_log("Customer auto-registration warning: " . $e->getMessage());
+        }
+    }
+
     try {
         $pdo->beginTransaction();
 

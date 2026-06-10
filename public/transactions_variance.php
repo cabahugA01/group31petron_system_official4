@@ -120,7 +120,7 @@ if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel', 'pdf'])
         $stmt = $pdo->prepare(
             "SELECT va.id, va.transaction_type, va.item_identifier, va.variance_amount,
                     va.status, va.investigation_notes, va.created_at, va.updated_at,
-                    u.name AS staff_name
+                    COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') as staff_name
              FROM variance_alerts va LEFT JOIN users u ON va.user_id = u.id
              WHERE " . implode(' AND ', $exp_where) . " ORDER BY va.created_at DESC"
          );
@@ -244,7 +244,7 @@ try {
     $stmt = $pdo->prepare("
         SELECT va.id, va.transaction_type, va.item_identifier, va.variance_amount,
                va.status, va.investigation_notes, va.created_at, va.updated_at,
-               va.user_id, u.name AS staff_name, u.id AS staff_uid
+               va.user_id, COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') as staff_name, u.id AS staff_uid
         FROM variance_alerts va LEFT JOIN users u ON va.user_id = u.id
         WHERE " . implode(' AND ', $where) . "
         ORDER BY CASE WHEN va.status IN ('open','escalated') THEN 0 ELSE 1 END, va.created_at DESC
@@ -258,7 +258,7 @@ $detected_anomalies = [];
 try {
     $stmt = $pdo->prepare("
         SELECT mt.id, mt.transaction_id, mt.item_sku, mt.total_amount,
-               mt.quantity, mt.unit_price, mt.staff_id, mt.created_at, u.name AS staff_name
+               mt.quantity, mt.unit_price, mt.staff_id, mt.created_at, COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') as staff_name
         FROM merchandise_transactions mt LEFT JOIN users u ON mt.staff_id = u.id
         WHERE mt.station_id=? AND mt.total_amount<=0
           AND mt.transaction_type NOT IN ('fuel','Fuel')
@@ -280,7 +280,7 @@ try {
 try {
     $stmt = $pdo->prepare("
         SELECT mt.id, mt.transaction_id, mt.item_sku, mt.total_amount,
-               mt.quantity, mt.unit_price, mt.staff_id, mt.created_at, u.name AS staff_name
+               mt.quantity, mt.unit_price, mt.staff_id, mt.created_at, COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') as staff_name
         FROM merchandise_transactions mt LEFT JOIN users u ON mt.staff_id = u.id
         WHERE mt.station_id=? AND mt.unit_price=0 AND mt.quantity>0
           AND mt.transaction_type NOT IN ('fuel','Fuel')
@@ -302,11 +302,11 @@ try {
     $stmt = $pdo->prepare("
         SELECT jo.id, jo.service_type, jo.total_cost, jo.created_at, jo.user_id,
                jo.actual_parts_cost,
-               u.name AS staff_name, COUNT(jop.id) AS parts_count,
+               COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') as staff_name, COUNT(jop.id) AS parts_count,
                COALESCE(SUM(jop.total_cost),0) AS parts_total
         FROM job_orders jo
         LEFT JOIN job_order_parts jop ON jop.job_order_id=jo.id
-        LEFT JOIN users u ON u.user_id=COALESCE(jo.created_by, jo.user_id)
+        LEFT JOIN users u ON u.id = COALESCE(jo.created_by, jo.user_id)
         WHERE jo.station_id=? AND jo.status IN ('Completed','Verified','finalized')
           AND DATE(jo.created_at) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
           AND NOT EXISTS (SELECT 1 FROM variance_alerts va

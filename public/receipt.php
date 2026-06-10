@@ -1,4 +1,7 @@
 <?php
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
 require_once __DIR__ . '/../backend/lib.php';
 require_login();
 
@@ -13,15 +16,15 @@ if ($type === 'job_order') {
         // Fetch by job_order_id string (JO-xxx) OR numeric db id
         $stmt = $pdo->prepare("
             SELECT jo.*,
-                   u.name  AS mechanic_name,
-                   cb.name AS staff_name,
+                   COALESCE(u.username, 'Mechanic') AS mechanic_name,
+                   COALESCE(cb.username, 'Staff') AS staff_name,
                    s.name  AS station_name,
                    s.location AS station_location,
                    s.address  AS station_address,
                    s.vat_tin  AS station_vat_tin
             FROM job_orders jo
-            LEFT JOIN users    u  ON u.user_id  = jo.assigned_mechanic_id
-            LEFT JOIN users    cb ON cb.user_id = jo.created_by
+            LEFT JOIN users    u  ON u.id  = jo.assigned_mechanic_id
+            LEFT JOIN users    cb ON cb.id = jo.created_by
             LEFT JOIN stations s  ON s.id  = jo.station_id
             WHERE jo.job_order_id = ? OR jo.job_order_number = ? OR jo.id = ?
             LIMIT 1
@@ -30,19 +33,25 @@ if ($type === 'job_order') {
         $stmt->execute([$id, $id, $numeric_id]);
         $jo = $stmt->fetch(PDO::FETCH_ASSOC);
 
+        if ($jo) {
+            error_log("Receipt: Found job order in job_orders table, ID=" . $jo['id']);
+        } else {
+            error_log("Receipt: No job order found in job_orders table for id=$id");
+        }
+
         // ── FALLBACK: Try merchandise_transactions table for JO/combined types ──
         if (!$jo && $numeric_id > 0) {
             try {
                 $stmt_mt = $pdo->prepare("
                     SELECT mt.*,
-                           u.name AS staff_name,
+                           COALESCE(u.username, 'Staff') AS staff_name,
                            s.name AS station_name,
                            s.location AS station_location,
                            s.address AS station_address,
                            s.vat_tin AS station_vat_tin
                     FROM merchandise_transactions mt
-                    LEFT JOIN users u ON u.user_id = mt.staff_id
-                    LEFT JOIN stations s ON s.id = mt.station_id
+                    LEFT JOIN users u ON mt.staff_id = u.id
+                    LEFT JOIN stations s ON mt.station_id = s.id
                     WHERE mt.id = ?
                       AND mt.transaction_type IN ('job_order', 'combined')
                     LIMIT 1
@@ -51,6 +60,8 @@ if ($type === 'job_order') {
                 $jo_mt = $stmt_mt->fetch(PDO::FETCH_ASSOC);
                 
                 if ($jo_mt) {
+                    error_log("Receipt: Found job order in merchandise_transactions, ID={$jo_mt['id']}, Type={$jo_mt['transaction_type']}");
+                    
                     // Map merchandise_transaction fields to job_order structure
                     $jo_total = (float)($jo_mt['total_amount'] ?? 0);
                     $jo_paid = (float)($jo_mt['amount_paid'] ?? 0);
@@ -152,8 +163,8 @@ if ($type === 'job_order') {
             if (!$raw_pay_status || $raw_pay_status === 'pending payment') $raw_pay_status = 'pending';
 
             $sale = [
-                'transaction_id'      => $jo['job_order_id'] ?? $jo['job_order_number'] ?? ('#'.$jo['id']),
-                'id'                  => $jo['job_order_id'] ?? $jo['job_order_number'] ?? ('#'.$jo['id']),
+                'transaction_id'      => $jo['job_order_id'] ?? $jo['job_order_number'] ?? $jo['id'],  // Use numeric ID directly
+                'id'                  => $jo['id'],  // Keep numeric ID for reference
                 'created_at'          => $jo['created_at'] ?? $jo['order_date'] ?? date('Y-m-d H:i:s'),
                 'staff_name'          => $jo['staff_name'] ?? 'N/A',
                 'shift_name'          => $jo['shift_name'] ?? $jo['shift_period'] ?? '',
@@ -200,193 +211,105 @@ if ($type === 'job_order') {
 } elseif ($type === 'merchandise') {
     require_once __DIR__ . '/db_connect.php';
 
-    // ── Ensure stations table has address & vat_tin columns ──────────────────
     try {
-        $cols = $pdo->query("SHOW COLUMNS FROM stations")->fetchAll(PDO::FETCH_COLUMN);
-        if (!in_array('address', $cols)) {
-            $pdo->exec("ALTER TABLE stations ADD COLUMN address VARCHAR(500) NULL AFTER location");
-        }
-        if (!in_array('vat_tin', $cols)) {
-            $pdo->exec("ALTER TABLE stations ADD COLUMN vat_tin VARCHAR(50) NULL AFTER address");
-        }
-    } catch (Exception $e) { /* ignore */ }
-
-    try {
+        // Query with correct JOIN - users table uses 'id' as primary key
         $stmt = $pdo->prepare("
             SELECT mt.*,
-                   u.name AS staff_name,
-                   s.name AS station_name,
-                   s.location AS station_location,
-                   s.address AS station_address,
-                   s.vat_tin AS station_vat_tin,
-                   COALESCE(
-                       NULLIF(TRIM(mt.customer_name), ''),
-                       NULLIF(TRIM(mt.customer_name), 'Walk-in Customer'),
-                       c.name,
-                       'Walk-in Customer'
-                   ) AS resolved_customer_name,
-                   COALESCE(NULLIF(TRIM(mt.customer_first_name), ''), '') AS resolved_first_name,
-                   COALESCE(NULLIF(TRIM(mt.customer_last_name),  ''), '') AS resolved_last_name
-            FROM   merchandise_transactions mt
-            LEFT JOIN users    u ON mt.staff_id   = u.id
+                   COALESCE(u.username, 'Staff') AS staff_name,
+                   COALESCE(s.name, 'Petron Station') AS station_name,
+                   COALESCE(s.location, '') AS station_location,
+                   COALESCE(s.address, 'Vamenta Blvd., Carmen, CDO') AS station_address,
+                   COALESCE(s.vat_tin, '236-002-207-0000') AS station_vat_tin
+            FROM merchandise_transactions mt
+            LEFT JOIN users u ON mt.staff_id = u.id
             LEFT JOIN stations s ON mt.station_id = s.id
-            LEFT JOIN customers c ON mt.credit_customer_id = c.id
-            WHERE  mt.transaction_id = ?
-            LIMIT  1
+            WHERE mt.transaction_id = ?
+               OR mt.transaction_id LIKE ?
+               OR mt.id = ?
+            LIMIT 1
         ");
-        $stmt->execute([$id]);
+        
+        $numeric_id = is_numeric($id) ? (int)$id : 0;
+        $stmt->execute([$id, $id.'%', $numeric_id]);
         $txn = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        // Debug log
+        if ($txn) {
+            error_log("Receipt: Transaction found - ID={$txn['id']}, Staff Name={$txn['staff_name']}, Items to query for txn_id={$txn['id']}");
+        } else {
+            error_log("Receipt: No transaction found for id=$id");
+        }
 
         if ($txn) {
+            // Get items - use explicit transaction_id match
             $stmt2 = $pdo->prepare("
                 SELECT product_name, category, size_variant, quantity, unit_price, subtotal,
                        COALESCE(item_type, 'merchandise') AS item_type
-                FROM   merchandise_transaction_items
-                WHERE  transaction_id = ?
-                ORDER  BY id ASC
+                FROM merchandise_transaction_items
+                WHERE transaction_id = ?
             ");
             $stmt2->execute([$txn['id']]);
             $items = $stmt2->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Debug log
+            error_log("Receipt items query: Found " . count($items) . " items for txn ID " . $txn['id']);
 
-            // ── Build Job Order data from inline transaction fields ────────
+            // Build job order data if exists (check multiple fields)
             $job_order_data = null;
-            $jo_id_ref = $txn['job_order_id'] ?? null;
-            $jo_db_id  = $txn['job_order_db_id'] ?? null;
-
-            // Try to load from job_orders table first
-            if ($jo_id_ref || $jo_db_id) {
-                try {
-                    if ($jo_db_id) {
-                        $joStmt = $pdo->prepare("
-                            SELECT jo.*,
-                                   u.name AS mechanic_name,
-                                   cb.name AS created_by_name
-                            FROM job_orders jo
-                            LEFT JOIN users u  ON u.user_id  = jo.assigned_mechanic_id
-                            LEFT JOIN users cb ON cb.user_id = jo.created_by
-                            WHERE jo.id = ?
-                            LIMIT 1
-                        ");
-                        $joStmt->execute([$jo_db_id]);
-                    } else {
-                        $joStmt = $pdo->prepare("
-                            SELECT jo.*,
-                                   u.name AS mechanic_name,
-                                   cb.name AS created_by_name
-                            FROM job_orders jo
-                            LEFT JOIN users u  ON u.user_id  = jo.assigned_mechanic_id
-                            LEFT JOIN users cb ON cb.user_id = jo.created_by
-                            WHERE (jo.job_order_id = ? OR jo.job_order_number = ?)
-                            LIMIT 1
-                        ");
-                        $joStmt->execute([$jo_id_ref, $jo_id_ref]);
-                    }
-                    $job_order_data = $joStmt->fetch(PDO::FETCH_ASSOC) ?: null;
-                } catch (Exception $e) {
-                    error_log("Receipt JO lookup error: " . $e->getMessage());
-                }
-            }
-
-            // Fall back to inline fields stored on the transaction itself
-            if (!$job_order_data && !empty($txn['job_order_service'])) {
+            if (!empty($txn['job_order_service']) || !empty($txn['job_order_vehicle_plate'])) {
                 $job_order_data = [
-                    'job_order_id'        => $txn['job_order_id'] ?? null,
-                    'service_type'        => $txn['job_order_service'] ?? '',
+                    'service_type' => $txn['job_order_service'] ?? '',
+                    'mechanic_name' => $txn['job_order_mechanic_name'] ?? null,
+                    'vehicle_plate' => $txn['job_order_vehicle_plate'] ?? null,
+                    'vehicle_type' => $txn['job_order_vehicle_type'] ?? null,
                     'service_description' => $txn['job_order_description'] ?? '',
-                    'mechanic_name'       => $txn['job_order_mechanic_name'] ?? null,
-                    'vehicle_plate'       => $txn['job_order_vehicle_plate'] ?? null,
-                    'vehicle_type'        => $txn['job_order_vehicle_type'] ?? null,
-                    'contact_number'      => $txn['job_order_contact'] ?? null,
                 ];
+                error_log("Receipt: Job order data built with service=" . ($txn['job_order_service'] ?? 'NULL'));
+            } else {
+                error_log("Receipt: No job order data - job_order_service is empty");
             }
 
-            // Also detect service items in the cart as a JO indicator
-            if (!$job_order_data) {
-                foreach ($items as $it) {
-                    if (($it['item_type'] ?? '') === 'service') {
-                        $job_order_data = [
-                            'job_order_id'        => null,
-                            'service_type'        => $it['product_name'] ?? 'Service',
-                            'service_description' => $txn['job_order_description'] ?? '',
-                            'mechanic_name'       => $txn['job_order_mechanic_name'] ?? null,
-                            'vehicle_plate'       => $txn['job_order_vehicle_plate'] ?? null,
-                            'vehicle_type'        => $txn['job_order_vehicle_type'] ?? null,
-                            'contact_number'      => $txn['job_order_contact'] ?? null,
-                        ];
-                        break;
-                    }
-                }
+            // Transaction type
+            $txn_type = $txn['transaction_type'] ?? 'merchandise';
+            if (!in_array($txn_type, ['job_order', 'merchandise', 'combined'])) {
+                $txn_type = 'merchandise';
             }
 
+            // BUILD SALE OBJECT
             $sale = [
-                'transaction_id'        => $txn['transaction_id'],
-                'id'                    => $txn['transaction_id'],
-                'created_at'            => $txn['created_at'] ?? $txn['transaction_date'] ?? date('Y-m-d H:i:s'),
-                'staff_id'              => $txn['staff_id'],
-                'staff_name'            => $txn['staff_name'] ?? 'N/A',
-                'shift_name'            => $txn['shift_name'] ?? '',
-                'shift_period'          => $txn['shift_period'] ?? '',
-                'customer_name'         => $txn['resolved_customer_name'] ?? $txn['customer_name'] ?? 'Walk-in Customer',
-                'customer_first_name'   => $txn['resolved_first_name'] ?? $txn['customer_first_name'] ?? '',
-                'customer_last_name'    => $txn['resolved_last_name']  ?? $txn['customer_last_name']  ?? '',
-                'payment_method'        => $txn['payment_method'] ?? 'Cash',
-                'payment_status'        => $txn['payment_status'] ?? null,
-                'amount_paid'           => $txn['amount_paid']    ?? $txn['amount_tendered'] ?? 0,
-                'balance_due'           => $txn['balance_due']    ?? null,
-                'credit_customer_id'    => $txn['credit_customer_id'] ?? null,
-                'total_amount'          => $txn['total_amount'] ?? 0,
-                'subtotal_amount'       => $txn['subtotal_amount'] ?? null,
-                'vat_amount'            => $txn['vat_amount'] ?? null,
-                'amount_tendered'       => $txn['amount_tendered'] ?? 0,
-                'change_amount'         => $txn['change_amount'] ?? 0,
-                'card_reference'        => $txn['card_reference'] ?? '',
-                'card_type'             => $txn['card_type'] ?? '',
-                'ewallet_reference'     => $txn['ewallet_reference'] ?? '',
-                'ewallet_provider'      => $txn['ewallet_provider'] ?? '',
-                'efuel_card_number'     => $txn['efuel_card_number'] ?? '',
-                'remarks'               => $txn['remarks'] ?? '',
-                'validation_status'     => $txn['validation_status'] ?? 'Pending',
-                'station_name'          => $txn['station_name'] ?? '',
-                'station_address'       => $txn['station_address'] ?? '',
-                'station_location'      => $txn['station_location'] ?? '',
-                'station_vat_tin'       => $txn['station_vat_tin'] ?? '',
-                'items'                 => $items,
-                'job_order'             => $job_order_data,
-                // ── Transaction type for receipt title ────────────────────
-                // Priority: stored column → JO inline fields → items item_type
-                'transaction_type'      => (function() use ($txn, $items, $job_order_data) {
-                    // 1. Use stored column if available and valid
-                    $stored = $txn['transaction_type'] ?? '';
-                    if (in_array($stored, ['job_order', 'merchandise', 'combined'])) return $stored;
-
-                    // 2. Detect JO presence from inline transaction fields
-                    $has_jo_fields = (
-                        !empty($txn['job_order_service'])   ||
-                        !empty($txn['job_order_id'])        ||
-                        !empty($txn['job_order_db_id'])     ||
-                        !empty($txn['job_order_vehicle_plate'])
-                    );
-
-                    // 3. Detect from items
-                    $has_service_item = false;
-                    $has_merch_item   = false;
-                    foreach ($items as $it) {
-                        $itype = strtolower(trim($it['item_type'] ?? 'merchandise'));
-                        if ($itype === 'service') $has_service_item = true;
-                        else                      $has_merch_item   = true;
-                    }
-
-                    // 4. job_order_data object also signals JO
-                    $has_jo = $has_jo_fields || $has_service_item || !empty($job_order_data);
-
-                    if ($has_jo && $has_merch_item) return 'combined';
-                    if ($has_jo)                    return 'job_order';
-                    return 'merchandise';
-                })(),
+                'transaction_id'      => $txn['transaction_id'],
+                'id'                  => $txn['transaction_id'],
+                'created_at'          => $txn['created_at'] ?? date('Y-m-d H:i:s'),
+                'staff_name'          => $txn['staff_name'],
+                'customer_name'       => $txn['customer_name'] ?? 'Walk-in Customer',
+                'customer_first_name' => $txn['customer_first_name'] ?? '',
+                'customer_last_name'  => $txn['customer_last_name'] ?? '',
+                'payment_method'      => $txn['payment_method'] ?? 'Cash',
+                'payment_status'      => $txn['payment_status'] ?? 'pending',
+                'amount_paid'         => (float)($txn['amount_paid'] ?? 0),
+                'balance_due'         => (float)($txn['balance_due'] ?? 0),
+                'total_amount'        => (float)($txn['total_amount'] ?? 0),
+                'subtotal_amount'     => (float)($txn['subtotal_amount'] ?? 0),
+                'vat_amount'          => (float)($txn['vat_amount'] ?? 0),
+                'amount_tendered'     => (float)($txn['amount_tendered'] ?? 0),
+                'change_amount'       => (float)($txn['change_amount'] ?? 0),
+                'card_reference'      => $txn['card_reference'] ?? '',
+                'remarks'             => $txn['remarks'] ?? '',
+                'validation_status'   => $txn['validation_status'] ?? 'Pending',
+                'station_name'        => $txn['station_name'],
+                'station_address'     => $txn['station_address'],
+                'station_location'    => $txn['station_location'],
+                'station_vat_tin'     => $txn['station_vat_tin'],
+                'items'               => $items,
+                'job_order'           => $job_order_data,
+                'transaction_type'    => $txn_type,
             ];
+            
+            // Debug log final sale object
+            error_log("Receipt: Sale object built - staff_name={$sale['staff_name']}, items_count=" . count($items) . ", has_job_order=" . ($job_order_data ? 'YES' : 'NO'));
         }
     } catch (Exception $e) {
-        error_log("Receipt DB error: " . $e->getMessage());
+        error_log("Receipt error: " . $e->getMessage());
     }
 } else {
     $sales = read_json('sales.json', []);
@@ -395,11 +318,20 @@ if ($type === 'job_order') {
     }
 }
 
+// DEBUG: Show if $sale was set
+if (isset($_GET['debug'])) {
+    echo "<!-- DEBUG: \$sale is " . (isset($sale) ? "SET" : "NULL") . " -->";
+    if (isset($sale)) {
+        echo "<!-- Sale ID: " . ($sale['transaction_id'] ?? 'unknown') . " -->";
+    }
+}
+
 if (!$sale) {
     http_response_code(404);
     
-    // Debug info (only show in development - remove in production)
+    // Debug info with suggestions
     $debug_info = '';
+    $suggestions = '';
     if (isset($pdo)) {
         try {
             // Check if record exists in job_orders
@@ -407,17 +339,52 @@ if (!$sale) {
             $debug_stmt->execute([$id, $id, $id]);
             $debug_jo = $debug_stmt->fetch(PDO::FETCH_ASSOC);
             
-            // Check if record exists in merchandise_transactions
+            // Check if record exists in merchandise_transactions (exact match)
             $debug_stmt2 = $pdo->prepare("SELECT id, transaction_id, customer_name, transaction_type, validation_status FROM merchandise_transactions WHERE id = ? OR transaction_id = ? LIMIT 1");
             $debug_stmt2->execute([$id, $id]);
             $debug_mt = $debug_stmt2->fetch(PDO::FETCH_ASSOC);
+            
+            // Check for similar transaction IDs (fuzzy match)
+            $debug_stmt3 = $pdo->prepare("SELECT id, transaction_id, customer_name, total_amount, created_at FROM merchandise_transactions WHERE transaction_id LIKE ? ORDER BY id DESC LIMIT 3");
+            $debug_stmt3->execute([$id . '%']);
+            $similar_txns = $debug_stmt3->fetchAll(PDO::FETCH_ASSOC);
             
             if ($debug_jo) {
                 $debug_info = '<p style="font-size:12px;color:#666;margin-top:10px;">Debug: Found in job_orders table (ID: '.$debug_jo['id'].', Status: '.$debug_jo['status'].')</p>';
             } elseif ($debug_mt) {
                 $debug_info = '<p style="font-size:12px;color:#666;margin-top:10px;">Debug: Found in merchandise_transactions table (ID: '.$debug_mt['id'].', Type: '.$debug_mt['transaction_type'].', Status: '.$debug_mt['validation_status'].')</p>';
             } else {
-                $debug_info = '<p style="font-size:12px;color:#666;margin-top:10px;">Debug: Transaction not found in database (searched ID: '.htmlspecialchars($id).', Type: '.htmlspecialchars($type).')</p>';
+                $debug_info = '<p style="font-size:12px;color:#666;margin-top:10px;">Debug: Transaction not found (searched: '.htmlspecialchars($id).', Type: '.htmlspecialchars($type).')</p>';
+                
+                // Show similar transactions if found
+                if (count($similar_txns) > 0) {
+                    $suggestions = '<div style="margin-top:15px;padding:10px;background:#fff3cd;border:1px solid #ffc107;border-radius:5px;">';
+                    $suggestions .= '<p style="margin:0 0 10px 0;font-weight:bold;color:#856404;">Did you mean one of these?</p>';
+                    $suggestions .= '<ul style="list-style:none;padding:0;margin:0;">';
+                    foreach ($similar_txns as $txn) {
+                        $correct_url = 'receipt.php?id='.urlencode($txn['transaction_id']).'&type='.$type;
+                        $suggestions .= '<li style="padding:5px 0;"><a href="'.$correct_url.'" style="color:#002F70;text-decoration:none;">';
+                        $suggestions .= '<strong>'.$txn['transaction_id'].'</strong> - '.$txn['customer_name'].' - ₱'.number_format($txn['total_amount'],2);
+                        $suggestions .= '</a></li>';
+                    }
+                    $suggestions .= '</ul></div>';
+                }
+            }
+            
+            // Show recent transactions
+            $recent_stmt = $pdo->query("SELECT id, transaction_id, customer_name, total_amount, created_at FROM merchandise_transactions ORDER BY id DESC LIMIT 5");
+            $recent_txns = $recent_stmt->fetchAll(PDO::FETCH_ASSOC);
+            if (count($recent_txns) > 0 && empty($suggestions)) {
+                $suggestions = '<div style="margin-top:15px;padding:10px;background:#e7f3ff;border:1px solid #b3d9ff;border-radius:5px;">';
+                $suggestions .= '<p style="margin:0 0 10px 0;font-weight:bold;color:#004085;">Recent Transactions:</p>';
+                $suggestions .= '<ul style="list-style:none;padding:0;margin:0;">';
+                foreach ($recent_txns as $txn) {
+                    $correct_url = 'receipt.php?id='.urlencode($txn['transaction_id']).'&type='.$type;
+                    $suggestions .= '<li style="padding:5px 0;"><a href="'.$correct_url.'" style="color:#002F70;text-decoration:none;">';
+                    $suggestions .= '<strong>'.$txn['transaction_id'].'</strong> - '.$txn['customer_name'].' - ₱'.number_format($txn['total_amount'],2);
+                    $suggestions .= '</a></li>';
+                }
+                $suggestions .= '</ul></div>';
             }
         } catch (Exception $e) {
             $debug_info = '<p style="font-size:12px;color:#999;margin-top:10px;">Debug error: '.$e->getMessage().'</p>';
@@ -430,7 +397,8 @@ if (!$sale) {
 h2{color:#c0392b}a{color:#002F6C}.debug{font-size:11px;color:#999;margin-top:15px;padding:10px;background:#f5f5f5;border-radius:5px}</style></head><body>
 <h2>Receipt Not Found</h2>
 <p>Transaction <strong><?php echo htmlspecialchars($id); ?></strong> could not be located.</p>
-<p><a href="javascript:window.close()">Close this window</a></p>
+<?php echo $suggestions; ?>
+<p style="margin-top:20px;"><a href="javascript:window.close()">Close this window</a> | <a href="staff_transactions_hub.php">Back to Transactions</a></p>
 <?php echo $debug_info; ?>
 </body></html><?php
     exit;
@@ -557,8 +525,10 @@ if ($is_localhost) {
 }
 
 // Build the verify URL (this will be an online URL if accessed via ngrok/public domain)
+// Use the actual transaction type from the sale data
+$verify_type = $sale['transaction_type'] ?? 'merchandise';
 $verify_url = $scheme . '://' . $qr_host . '/group31petron_system_official4/public/verify.php'
-            . '?id=' . urlencode($txn_id) . '&type=merchandise';
+            . '?id=' . urlencode($txn_id) . '&type=' . urlencode($verify_type);
 
 // Generate human-readable text for fallback (in case image fails to load)
 $qr_data = "TXN: {$txn_id}\nURL: {$verify_url}";

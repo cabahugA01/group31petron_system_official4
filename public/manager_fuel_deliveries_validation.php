@@ -26,250 +26,151 @@ if ($station_id <= 0) {
     exit;
 }
 
-// ── POST Actions ──────────────────────────────────────────
+// ── POST Actions (Batch-level) ───────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['export'])) {
-    $action = trim($_POST['action'] ?? '');
-    $del_id = (int)($_POST['delivery_id'] ?? 0);
-    
+    $action   = trim($_POST['action']   ?? '');
+    $batch_id = trim($_POST['batch_id'] ?? '');
+
+    if (empty($batch_id)) {
+        $_SESSION['error'] = 'No Batch ID provided.';
+        header('Location: manager_fuel_deliveries_validation.php'); exit;
+    }
+
     try {
         $pdo->beginTransaction();
-        
-        if ($action === 'approve' && $del_id > 0) {
-            // Get delivery details
-            $stmt = $pdo->prepare("SELECT * FROM fuel_deliveries WHERE id = ? AND station_id = ?");
-            $stmt->execute([$del_id, $station_id]);
-            $delivery = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            if (!$delivery) {
-                throw new Exception("Delivery not found.");
-            }
-            
-            // Check if already processed
-            if (!in_array(strtolower($delivery['status']), ['pending', 'pending validation', 'pending manager approval'])) {
-                throw new Exception("This delivery has already been processed.");
-            }
-            
-            // Update delivery status
-            $stmt = $pdo->prepare("UPDATE fuel_deliveries 
-                                   SET status = 'Verified', 
-                                       verified_by = ?, 
-                                       verified_at = NOW() 
-                                   WHERE id = ? AND station_id = ?");
-            $stmt->execute([$me['id'], $del_id, $station_id]);
-            
-            // Update inventory - add liters to tank
-            $stmt = $pdo->prepare("UPDATE fuel_inventory 
-                                   SET current_level = COALESCE(current_level, 0) + ?,
-                                       current_stock = COALESCE(current_stock, 0) + ?,
-                                       last_updated = NOW()
-                                   WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))");
-            $stmt->execute([
-                $delivery['delivery_liters'],
-                $delivery['delivery_liters'],
-                $station_id,
-                $delivery['fuel_type']
-            ]);
-            
-            // Log audit trail
-            try {
-                $pdo->prepare("INSERT INTO audit_logs (user_id, action_type, entity_type, entity_id, details, station_id, ip_address, created_at) 
-                               VALUES (?, 'Approve', 'fuel_delivery', ?, ?, ?, ?, NOW())")
-                    ->execute([
-                        $me['id'], 
-                        $del_id, 
-                        "Approved delivery of {$delivery['delivery_liters']}L {$delivery['fuel_type']}", 
-                        $station_id, 
-                        $_SERVER['REMOTE_ADDR'] ?? ''
-                    ]);
-            } catch (Exception $ae) {}
-            
-            $_SESSION['success'] = "Delivery #DEL-{$del_id} approved successfully. Tank inventory updated.";
+
+        // Load all entries in this batch
+        $es = $pdo->prepare("SELECT * FROM fuel_deliveries WHERE batch_id = ? AND station_id = ?");
+        $es->execute([$batch_id, $station_id]);
+        $batch_entries = $es->fetchAll(PDO::FETCH_ASSOC);
+
+        if (empty($batch_entries)) {
+            throw new Exception("Batch not found.");
         }
-        
-        elseif ($action === 'reject' && $del_id > 0) {
+
+        // Guard: must still be pending (check first entry only)
+        $first_status = strtolower($batch_entries[0]['status'] ?? '');
+        if (!in_array($first_status, ['pending','pending validation','pending manager approval','pending manager validation'])) {
+            throw new Exception("Batch {$batch_id} has already been processed.");
+        }
+
+        if ($action === 'approve_batch') {
+            foreach ($batch_entries as $e) {
+                $pdo->prepare("UPDATE fuel_deliveries SET status='Verified', verified_by=?, verified_at=NOW() WHERE id=? AND station_id=?")
+                    ->execute([$me['id'], $e['id'], $station_id]);
+                $pdo->prepare("UPDATE fuel_inventory SET current_level=COALESCE(current_level,0)+?, current_stock=COALESCE(current_stock,0)+?, last_updated=NOW() WHERE station_id=? AND LOWER(TRIM(fuel_type))=LOWER(TRIM(?))")
+                    ->execute([$e['delivery_liters'], $e['delivery_liters'], $station_id, $e['fuel_type']]);
+            }
+            $total_l = array_sum(array_column($batch_entries, 'delivery_liters'));
+            try { $pdo->prepare("INSERT INTO audit_logs(user_id,action_type,entity_type,entity_id,details,station_id,ip_address,created_at)VALUES(?,'Approve','fuel_delivery_batch',0,?,?,?,NOW())")
+                ->execute([$me['id'],"Approved batch {$batch_id} — ".count($batch_entries)." tanks, {$total_l}L",$station_id,$_SERVER['REMOTE_ADDR']??'']); } catch(Exception $ae){}
+            $_SESSION['success'] = "Batch <strong>{$batch_id}</strong> approved — ".count($batch_entries)." tanks verified, {$total_l} L added to inventory.";
+
+        } elseif ($action === 'reject_batch') {
             $reason = trim($_POST['reason'] ?? '');
-            
-            if (empty($reason)) {
-                throw new Exception("Return reason is required.");
+            if (empty($reason)) throw new Exception("Return reason is required.");
+            foreach ($batch_entries as $e) {
+                $pdo->prepare("UPDATE fuel_deliveries SET status='Rejected', verified_by=?, verified_at=NOW(), notes=CONCAT(IFNULL(notes,''),' | Manager Returned: ',?) WHERE id=? AND station_id=?")
+                    ->execute([$me['id'], $reason, $e['id'], $station_id]);
             }
+            try { $pdo->prepare("INSERT INTO audit_logs(user_id,action_type,entity_type,entity_id,details,station_id,ip_address,created_at)VALUES(?,'Reject','fuel_delivery_batch',0,?,?,?,NOW())")
+                ->execute([$me['id'],"Returned batch {$batch_id} — Reason: {$reason}",$station_id,$_SERVER['REMOTE_ADDR']??'']); } catch(Exception $ae){}
+            $_SESSION['success'] = "Batch <strong>{$batch_id}</strong> returned to staff for correction.";
+
+        } elseif ($action === 'adjust_batch') {
+            $adj_note    = trim($_POST['adj_note'] ?? '');
+            $adj_liters  = $_POST['adj_liters'] ?? [];
+            if (empty($adj_note)) throw new Exception("Adjustment note is required.");
             
-            // Update delivery status
-            $stmt = $pdo->prepare("UPDATE fuel_deliveries 
-                                   SET status = 'Rejected', 
-                                       verified_by = ?, 
-                                       verified_at = NOW(),
-                                       notes = CONCAT(IFNULL(notes, ''), ' | Manager Returned: ', ?) 
-                                   WHERE id = ? AND station_id = ?");
-            $stmt->execute([$me['id'], $reason, $del_id, $station_id]);
-            
-            if ($stmt->rowCount() > 0) {
-                // Log audit trail
-                try {
-                    $pdo->prepare("INSERT INTO audit_logs (user_id, action_type, entity_type, entity_id, details, station_id, ip_address, created_at) 
-                                   VALUES (?, 'Reject', 'fuel_delivery', ?, ?, ?, ?, NOW())")
-                        ->execute([$me['id'], $del_id, "Reason: {$reason}", $station_id, $_SERVER['REMOTE_ADDR'] ?? '']);
-                } catch (Exception $ae) {}
+            $log_entries = [];
+            foreach ($batch_entries as $e) {
+                $new_l = isset($adj_liters[$e['id']]) ? max(0, (float)$adj_liters[$e['id']]) : (float)$e['delivery_liters'];
+                $orig  = (float)$e['delivery_liters'];
+                $variance = $new_l - $orig;
                 
-                $_SESSION['success'] = "Delivery #DEL-{$del_id} returned to staff for correction.";
-            } else {
-                $_SESSION['error'] = "Delivery not found or already processed.";
+                $var_str = ($variance >= 0 ? "+" : "") . number_format($variance, 2) . " L";
+                $note_update = " | Adjusted {$orig} L -> {$new_l} L (Variance: {$var_str}). Note: {$adj_note}";
+                
+                $pdo->prepare("UPDATE fuel_deliveries SET status='Verified', delivery_liters=?, verified_by=?, verified_at=NOW(), notes=CONCAT(IFNULL(notes,''), ?) WHERE id=? AND station_id=?")
+                    ->execute([$new_l, $note_update, $e['id'], $station_id]);
+                
+                if ($new_l > 0) {
+                    $pdo->prepare("UPDATE fuel_inventory SET current_level=COALESCE(current_level,0)+?, current_stock=COALESCE(current_stock,0)+?, last_updated=NOW() WHERE station_id=? AND LOWER(TRIM(fuel_type))=LOWER(TRIM(?))")
+                        ->execute([$new_l, $new_l, $station_id, $e['fuel_type']]);
+                }
+                
+                $log_entries[] = "Tank: {$e['tank_assigned']} ({$e['fuel_type']}) Adjusted: {$orig} L -> {$new_l} L (Variance: {$var_str})";
             }
+            
+            $consolidated_logs = implode("; ", $log_entries) . " | Reason: {$adj_note}";
+            try { 
+                $pdo->prepare("INSERT INTO audit_logs(user_id,action_type,entity_type,entity_id,details,station_id,ip_address,created_at) VALUES(?,'Adjust','fuel_delivery_batch',0,?,?,?,NOW())")
+                    ->execute([$me['id'], "Adjusted Batch {$batch_id} — " . $consolidated_logs, $station_id, $_SERVER['REMOTE_ADDR']??'']); 
+            } catch(Exception $ae){}
+            
+            $_SESSION['success'] = "Batch <strong>{$batch_id}</strong> adjusted and approved.";
         }
-        
-        elseif ($action === 'adjust' && $del_id > 0) {
-            $new_liters = (float)($_POST['adj_liters'] ?? 0);
-            $adj_note   = trim($_POST['adj_note'] ?? '');
-            
-            if ($new_liters <= 0) {
-                throw new Exception("Adjusted liters must be greater than zero.");
-            }
-            
-            if (empty($adj_note)) {
-                throw new Exception("Adjustment note is required.");
-            }
-            
-            // Get delivery details
-            $stmt = $pdo->prepare("SELECT * FROM fuel_deliveries WHERE id = ? AND station_id = ?");
-            $stmt->execute([$del_id, $station_id]);
-            $delivery = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            if (!$delivery) {
-                throw new Exception("Delivery not found.");
-            }
-            
-            $original_liters = $delivery['delivery_liters'];
-            
-            // Update delivery with adjusted amount
-            $stmt = $pdo->prepare("UPDATE fuel_deliveries 
-                                   SET status = 'Verified',
-                                       delivery_liters = ?,
-                                       verified_by = ?, 
-                                       verified_at = NOW(),
-                                       notes = CONCAT(IFNULL(notes, ''), ' | Adjusted from ', ?, 'L to ', ?, 'L: ', ?) 
-                                   WHERE id = ? AND station_id = ?");
-            $stmt->execute([$new_liters, $me['id'], $original_liters, $new_liters, $adj_note, $del_id, $station_id]);
-            
-            // Update inventory with adjusted amount
-            $stmt = $pdo->prepare("UPDATE fuel_inventory 
-                                   SET current_level = COALESCE(current_level, 0) + ?,
-                                       current_stock = COALESCE(current_stock, 0) + ?,
-                                       last_updated = NOW()
-                                   WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))");
-            $stmt->execute([$new_liters, $new_liters, $station_id, $delivery['fuel_type']]);
-            
-            // Log audit trail
-            try {
-                $pdo->prepare("INSERT INTO audit_logs (user_id, action_type, entity_type, entity_id, details, station_id, ip_address, created_at) 
-                               VALUES (?, 'Adjust', 'fuel_delivery', ?, ?, ?, ?, NOW())")
-                    ->execute([
-                        $me['id'], 
-                        $del_id, 
-                        "Adjusted from {$original_liters}L to {$new_liters}L. Note: {$adj_note}", 
-                        $station_id, 
-                        $_SERVER['REMOTE_ADDR'] ?? ''
-                    ]);
-            } catch (Exception $ae) {}
-            
-            $_SESSION['success'] = "Delivery #DEL-{$del_id} adjusted to {$new_liters}L and approved.";
-        }
-        
+
         $pdo->commit();
-        
     } catch (Exception $e) {
-        $pdo->rollBack();
+        if ($pdo->inTransaction()) $pdo->rollBack();
         $_SESSION['error'] = "Error: " . $e->getMessage();
     }
-    
-    header('Location: manager_fuel_deliveries_validation.php');
-    exit;
+    header('Location: manager_fuel_deliveries_validation.php'); exit;
 }
 
-// ── Date Filter ───────────────────────────────────────────
-$date_from = trim($_GET['date_from'] ?? date('Y-m-d', strtotime('-6 months'))); // Default to 6 months ago
-$date_to   = trim($_GET['date_to']   ?? date('Y-m-d'));  // Default to today
+// ── Date Filter ────────────────────────────────────────────
+$date_from = trim($_GET['date_from'] ?? date('Y-m-d', strtotime('-6 months')));
+$date_to   = trim($_GET['date_to']   ?? date('Y-m-d'));
 
-// ── Summary Cards ──────────────────────────────────────────
+$PENDING_STATUSES = "'pending','pending validation','pending manager approval','pending manager validation'";
+
+// ── Summary Cards ───────────────────────────────────────────
 $validated_count = 0;
-$pending_count = 0;
+$pending_count   = 0;
 
 try {
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM fuel_deliveries 
-                           WHERE station_id = ? 
-                           AND LOWER(status) IN ('verified', 'approved')
-                           AND DATE(delivery_date) BETWEEN ? AND ?");
-    $stmt->execute([$station_id, $date_from, $date_to]);
-    $validated_count = (int)$stmt->fetchColumn();
-    
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM fuel_deliveries 
-                           WHERE station_id = ? 
-                           AND LOWER(status) IN ('pending', 'pending validation', 'pending manager approval')
-                           AND DATE(delivery_date) BETWEEN ? AND ?");
-    $stmt->execute([$station_id, $date_from, $date_to]);
-    $pending_count = (int)$stmt->fetchColumn();
-} catch (Exception $e) {
-    error_log("Summary error: " . $e->getMessage());
-}
+    $sv = $pdo->prepare("SELECT COUNT(DISTINCT batch_id) FROM fuel_deliveries WHERE station_id=? AND LOWER(status) IN ('verified','approved') AND DATE(delivery_date) BETWEEN ? AND ?");
+    $sv->execute([$station_id, $date_from, $date_to]);
+    $validated_count = (int)$sv->fetchColumn();
 
-// ── Pagination ─────────────────────────────────────────────
-$rows_per_page = (int)($_GET['rows_per_page'] ?? 10);
-if (!in_array($rows_per_page, [10, 25, 50, 100])) {
-    $rows_per_page = 10;
-}
-$current_page = max(1, (int)($_GET['page'] ?? 1));
-$offset = ($current_page - 1) * $rows_per_page;
+    $sp = $pdo->prepare("SELECT COUNT(DISTINCT batch_id) FROM fuel_deliveries WHERE station_id=? AND LOWER(status) IN ({$PENDING_STATUSES}) AND DATE(delivery_date) BETWEEN ? AND ?");
+    $sp->execute([$station_id, $date_from, $date_to]);
+    $pending_count = (int)$sp->fetchColumn();
+} catch (Exception $e) { error_log('Summary: '.$e->getMessage()); }
 
-// ── Fetch Deliveries ────────────────────────────────────
-$deliveries = [];
-$total_records = 0;
+// ── Fetch Pending Batches (grouped) ────────────────────────
+$pending_batches = [];
 try {
-    // Get total count
-    $count_sql = "SELECT COUNT(*) 
-                  FROM fuel_deliveries fd
-                  WHERE fd.station_id = ?
-                  AND LOWER(fd.status) IN ('pending', 'pending validation', 'pending manager approval', 'discrepancy')
-                  AND DATE(fd.delivery_date) BETWEEN ? AND ?";
-    $stmt = $pdo->prepare($count_sql);
-    $stmt->execute([$station_id, $date_from, $date_to]);
-    $total_records = (int)$stmt->fetchColumn();
-    
-    // Get paginated results - Use only first_name/last_name columns
-    $sql = "SELECT fd.*, 
-                   COALESCE(
-                       NULLIF(CONCAT(TRIM(COALESCE(staff.first_name, '')), ' ', TRIM(COALESCE(staff.last_name, ''))), ' '),
-                       staff.username,
-                       'Unknown'
-                   ) as staff_name,
-                   COALESCE(
-                       NULLIF(CONCAT(TRIM(COALESCE(validator.first_name, '')), ' ', TRIM(COALESCE(validator.last_name, ''))), ' '),
-                       validator.username,
-                       'Unknown'
-                   ) as validator_name,
-                   COALESCE(fi.current_level, fi.current_stock, 0) as current_tank_level
-            FROM fuel_deliveries fd
-            LEFT JOIN users staff ON fd.received_by = staff.id
-            LEFT JOIN users validator ON fd.verified_by = validator.id
-            LEFT JOIN fuel_inventory fi ON fi.station_id = fd.station_id 
-                AND LOWER(TRIM(fi.fuel_type)) = LOWER(TRIM(fd.fuel_type))
-            WHERE fd.station_id = ?
-            AND LOWER(fd.status) IN ('pending', 'pending validation', 'pending manager approval', 'discrepancy')
-            AND DATE(fd.delivery_date) BETWEEN ? AND ?
-            ORDER BY fd.delivery_date DESC, fd.created_at DESC
-            LIMIT ? OFFSET ?";
-    
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindValue(1, $station_id, PDO::PARAM_INT);
-    $stmt->bindValue(2, $date_from, PDO::PARAM_STR);
-    $stmt->bindValue(3, $date_to, PDO::PARAM_STR);
-    $stmt->bindValue(4, $rows_per_page, PDO::PARAM_INT);
-    $stmt->bindValue(5, $offset, PDO::PARAM_INT);
-    $stmt->execute();
-    $deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {
-    error_log("Fetch deliveries error: " . $e->getMessage());
-    $_SESSION['error'] = "Error loading deliveries: " . $e->getMessage();
-}
+    $bs = $pdo->prepare("
+        SELECT fd.batch_id,
+               MIN(fd.delivery_date) AS delivery_date,
+               fd.supplier, fd.invoice_no, fd.tanker_number,
+               COUNT(*) AS entry_count,
+               SUM(fd.delivery_liters) AS total_liters,
+               MIN(fd.created_at) AS created_at,
+               COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Unknown') AS staff_name
+        FROM fuel_deliveries fd
+        LEFT JOIN users u ON fd.received_by = u.id
+        WHERE fd.station_id = ?
+          AND LOWER(fd.status) IN ({$PENDING_STATUSES})
+          AND DATE(fd.delivery_date) BETWEEN ? AND ?
+        GROUP BY fd.batch_id, fd.supplier, fd.invoice_no, fd.tanker_number, fd.received_by, u.first_name, u.last_name, u.username
+        ORDER BY created_at DESC");
+    $bs->execute([$station_id, $date_from, $date_to]);
+    $pending_batches = $bs->fetchAll(PDO::FETCH_ASSOC);
 
-$total_pages = ceil($total_records / $rows_per_page);
+    foreach ($pending_batches as &$batch) {
+        $es = $pdo->prepare("SELECT * FROM fuel_deliveries WHERE batch_id=? AND station_id=? ORDER BY id ASC");
+        $es->execute([$batch['batch_id'], $station_id]);
+        $batch['entries'] = $es->fetchAll(PDO::FETCH_ASSOC);
+    }
+    unset($batch);
+    $total_records = count($pending_batches);
+} catch (Exception $e) {
+    error_log('Fetch batches: '.$e->getMessage());
+    $_SESSION['error'] = 'Error loading batches: '.$e->getMessage();
+}
 
 // ── Handle Export ──────────────────────────────────────────
 $export = $_GET['export'] ?? '';
@@ -641,264 +542,220 @@ html, body {
         </div>
     </div>
 
-    <!-- Deliveries Table -->
+    <!-- ── Batch Cards Section ── -->
+<style>
+.batch-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;margin-bottom:20px;overflow:hidden;box-shadow:0 2px 6px rgba(0,0,0,.05);}
+.batch-hd{background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:14px 18px;display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;}
+.batch-id-tag{font-family:monospace;font-size:13px;font-weight:800;color:#002F70;background:#e0f2fe;border:1px solid #bae6fd;padding:5px 12px;border-radius:7px;white-space:nowrap;display:flex;align-items:center;gap:7px;}
+.batch-meta{display:flex;flex-wrap:wrap;gap:10px;flex:1;align-items:center;}
+.batch-meta span{font-size:12px;color:#475569;display:inline-flex;align-items:center;gap:5px;font-weight:500;}
+.batch-meta span i{color:#94a3b8;}
+.batch-totals{display:flex;gap:14px;margin-left:auto;}
+.btot-item{text-align:right;}
+.btot-lbl{font-size:10px;color:#94a3b8;font-weight:700;text-transform:uppercase;display:block;}
+.btot-val{font-size:18px;font-weight:900;color:#002F70;}
+.entry-tbl{width:100%;border-collapse:collapse;font-size:13px;}
+.entry-tbl thead th{background:#002F70;color:#fff;padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;}
+.entry-tbl tbody tr{border-bottom:1px solid #f1f5f9;transition:background .1s;}
+.entry-tbl tbody tr:hover{background:#f8fafc;}
+.entry-tbl td{padding:9px 12px;vertical-align:middle;}
+.entry-tbl tfoot td{padding:9px 12px;border-top:2px solid #e2e8f0;background:#f8fafc;}
+.fuel-tag{font-size:11px;font-weight:700;color:#002F70;}
+.batch-actions{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-top:1px solid #e2e8f0;background:#fafafa;gap:12px;flex-wrap:wrap;}
+.badge-pending{font-size:11px;font-weight:700;color:#d97706;background:#fef3c7;border:1px solid #fde68a;padding:5px 10px;border-radius:6px;display:inline-flex;align-items:center;gap:5px;}
+.action-set{display:flex;gap:8px;}
+.act-btn{padding:9px 18px;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:all .15s;}
+.act-approve{background:#002F70;color:#fff;} .act-approve:hover{background:#001a42;}
+.act-adjust{background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;} .act-adjust:hover{background:#e2e8f0;}
+.act-return{background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;} .act-return:hover{background:#fee2e2;}
+</style>
+
     <div class="table-card">
-        <h3 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#00264D;text-transform:uppercase;">
-            <i class="fas fa-truck"></i> Pending Delivery Receipts
+        <h3 style="margin:0 0 16px;font-size:14px;font-weight:700;color:#00264D;text-transform:uppercase;">
+            <i class="fas fa-layer-group"></i> Pending Delivery Batches
+            <span style="font-size:12px;font-weight:600;color:#64748b;margin-left:8px;text-transform:none;">
+                (<?= $total_records ?> batch<?= $total_records != 1 ? 'es' : '' ?> awaiting validation)
+            </span>
         </h3>
 
-        <?php if (empty($deliveries)): ?>
-        <div style="text-align:center;padding:40px;color:#94a3b8;">
-            <i class="fas fa-inbox" style="font-size:48px;margin-bottom:12px;opacity:.5;"></i>
-            <p style="margin:0;">Walay pending deliveries nga nakit-an.</p>
+        <?php if (empty($pending_batches)): ?>
+        <div style="text-align:center;padding:48px;color:#94a3b8;">
+            <i class="fas fa-inbox" style="font-size:48px;margin-bottom:14px;opacity:.4;display:block;"></i>
+            <div style="font-size:14px;font-weight:600;">Walay pending deliveries nga nakit-an.</div>
+            <div style="font-size:12px;margin-top:6px;">No pending batch submissions from staff for this date range.</div>
         </div>
         <?php else: ?>
-        <div class="table-wrap">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Date</th>
-                        <th>Fuel Type</th>
-                        <th>Supplier</th>
-                        <th>Invoice #</th>
-                        <th>Liters</th>
-                        <th>Tanker #</th>
-                        <th>Recorded By</th>
-                        <th>Status</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($deliveries as $d): ?>
-                    <tr>
-                        <td>DEL-<?= htmlspecialchars($d['id']) ?></td>
-                        <td><?= date('M d, Y', strtotime($d['delivery_date'])) ?></td>
-                        <td><?= htmlspecialchars($d['fuel_type']) ?></td>
-                        <td><?= htmlspecialchars($d['supplier']) ?></td>
-                        <td><?= htmlspecialchars($d['invoice_no']) ?></td>
-                        <td><?= number_format($d['delivery_liters'], 2) ?>L</td>
-                        <td><?= htmlspecialchars($d['tanker_number'] ?? 'N/A') ?></td>
-                        <td><?= htmlspecialchars($d['staff_name'] ?? 'N/A') ?></td>
-                        <td><span class="badge badge-amber">PENDING</span></td>
-                        <td>
-                            <div class="action-buttons-wrapper">
-                                <button class="action-btn btn-approve" onclick="approveDelivery(<?= $d['id'] ?>)">
-                                    <i class="fas fa-check"></i> Approve
-                                </button>
-                                <button class="action-btn btn-reject" onclick="rejectDelivery(<?= $d['id'] ?>)">
-                                    <i class="fas fa-times"></i> Return
-                                </button>
-                                <button class="action-btn btn-adjust" onclick="adjustDelivery(<?= $d['id'] ?>, <?= $d['delivery_liters'] ?>)">
-                                    <i class="fas fa-edit"></i> Adjust
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
+
+        <?php foreach ($pending_batches as $batch): ?>
+        <div class="batch-card">
+            <!-- Batch Header -->
+            <div class="batch-hd">
+                <div class="batch-id-tag">
+                    <i class="fas fa-layer-group"></i>
+                    <?= htmlspecialchars($batch['batch_id']) ?>
+                </div>
+                <div class="batch-meta">
+                    <span><i class="fas fa-calendar-alt"></i> <?= date('M d, Y', strtotime($batch['delivery_date'])) ?></span>
+                    <span><i class="fas fa-user"></i> <?= htmlspecialchars($batch['staff_name']) ?></span>
+                    <span><i class="fas fa-building"></i> <?= htmlspecialchars($batch['supplier']) ?></span>
+                    <span><i class="fas fa-file-invoice"></i> <?= htmlspecialchars($batch['invoice_no']) ?></span>
+                    <?php if (!empty($batch['tanker_number'])): ?>
+                    <span><i class="fas fa-truck"></i> <?= htmlspecialchars($batch['tanker_number']) ?></span>
+                    <?php endif; ?>
+                </div>
+                <div class="batch-totals">
+                    <div class="btot-item">
+                        <span class="btot-lbl">Total Liters</span>
+                        <span class="btot-val"><?= number_format($batch['total_liters'], 2) ?> L</span>
+                    </div>
+                    <div class="btot-item">
+                        <span class="btot-lbl">Tanks</span>
+                        <span class="btot-val"><?= $batch['entry_count'] ?></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Entries Table -->
+            <div style="overflow-x:auto;">
+                <table class="entry-tbl">
+                    <thead>
+                        <tr>
+                            <th width="4%">#</th>
+                            <th width="20%">Fuel Type</th>
+                            <th>Tank / Remarks</th>
+                            <th width="18%" style="text-align:right;">Liters Delivered</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($batch['entries'] as $idx => $e): ?>
+                        <tr>
+                            <td style="color:#94a3b8;font-size:11px;"><?= $idx + 1 ?></td>
+                            <td><span class="fuel-tag"><?= htmlspecialchars($e['fuel_type']) ?></span></td>
+                            <td style="font-size:12px;color:#64748b;"><?= htmlspecialchars($e['notes'] ?? '') ?></td>
+                            <td style="text-align:right;font-weight:700;color:#002F70;"><?= number_format($e['delivery_liters'], 2) ?> L</td>
+                        </tr>
                     <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-        
-        <?php if ($total_records > 0): ?>
-        <!-- Pagination Controls -->
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:16px;border-top:1px solid #e2e8f0;flex-wrap:wrap;gap:12px;">
-            <div style="display:flex;align-items:center;gap:8px;">
-                <label style="font-size:13px;color:#64748b;font-weight:600;">Rows per page:</label>
-                <select id="rowsPerPage" onchange="changeRowsPerPage(this.value)"
-                        style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;cursor:pointer;">
-                    <option value="10" <?= $rows_per_page == 10 ? 'selected' : '' ?>>10</option>
-                    <option value="25" <?= $rows_per_page == 25 ? 'selected' : '' ?>>25</option>
-                    <option value="50" <?= $rows_per_page == 50 ? 'selected' : '' ?>>50</option>
-                    <option value="100" <?= $rows_per_page == 100 ? 'selected' : '' ?>>100</option>
-                </select>
-                <span style="font-size:13px;color:#64748b;">
-                    Showing <?= number_format($offset + 1) ?> to <?= number_format(min($offset + $rows_per_page, $total_records)) ?> of <?= number_format($total_records) ?> entries
-                </span>
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="3" style="text-align:right;font-size:12px;font-weight:700;color:#475569;">BATCH TOTAL</td>
+                            <td style="text-align:right;font-weight:900;color:#002F70;font-size:15px;"><?= number_format($batch['total_liters'], 2) ?> L</td>
+                        </tr>
+                    </tfoot>
+                </table>
             </div>
-            
-            <?php if ($total_pages > 1): ?>
-            <div style="display:flex;gap:4px;">
-                <?php if ($current_page > 1): ?>
-                <a href="?page=1&rows_per_page=<?= $rows_per_page ?>&date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>"
-                   style="padding:6px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;color:#00264D;text-decoration:none;display:inline-flex;align-items:center;">
-                    <i class="fas fa-angle-double-left"></i>
-                </a>
-                <a href="?page=<?= $current_page - 1 ?>&rows_per_page=<?= $rows_per_page ?>&date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>"
-                   style="padding:6px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;color:#00264D;text-decoration:none;display:inline-flex;align-items:center;">
-                    <i class="fas fa-angle-left"></i>
-                </a>
-                <?php endif; ?>
-                
-                <span style="padding:6px 12px;background:#002F70;color:#fff;border-radius:6px;font-size:13px;font-weight:600;">
-                    <?= $current_page ?> / <?= $total_pages ?>
-                </span>
-                
-                <?php if ($current_page < $total_pages): ?>
-                <a href="?page=<?= $current_page + 1 ?>&rows_per_page=<?= $rows_per_page ?>&date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>"
-                   style="padding:6px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;color:#00264D;text-decoration:none;display:inline-flex;align-items:center;">
-                    <i class="fas fa-angle-right"></i>
-                </a>
-                <a href="?page=<?= $total_pages ?>&rows_per_page=<?= $rows_per_page ?>&date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>"
-                   style="padding:6px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;color:#00264D;text-decoration:none;display:inline-flex;align-items:center;">
-                    <i class="fas fa-angle-double-right"></i>
-                </a>
-                <?php endif; ?>
+
+            <!-- One Action Row Per Batch -->
+            <div class="batch-actions">
+                <span class="badge-pending"><i class="fas fa-clock"></i> Pending Manager Validation</span>
+                <div class="action-set">
+                    <button type="button" class="act-btn act-approve"
+                        onclick="openBatchAction('approve','<?= htmlspecialchars(addslashes($batch['batch_id'])) ?>','<?= htmlspecialchars(addslashes($batch['invoice_no'])) ?>',<?= (int)$batch['entry_count'] ?>,<?= number_format((float)$batch['total_liters'],2,'.','') ?>)">
+                        <i class="fas fa-check-circle"></i> Approve
+                    </button>
+                    <button type="button" class="act-btn act-adjust"
+                        onclick="openBatchAction('adjust','<?= htmlspecialchars(addslashes($batch['batch_id'])) ?>','<?= htmlspecialchars(addslashes($batch['invoice_no'])) ?>',<?= (int)$batch['entry_count'] ?>,<?= number_format((float)$batch['total_liters'],2,'.','') ?>)">
+                        <i class="fas fa-edit"></i> Adjust
+                    </button>
+                    <button type="button" class="act-btn act-return"
+                        onclick="openBatchAction('return','<?= htmlspecialchars(addslashes($batch['batch_id'])) ?>','<?= htmlspecialchars(addslashes($batch['invoice_no'])) ?>',<?= (int)$batch['entry_count'] ?>,<?= number_format((float)$batch['total_liters'],2,'.','') ?>)">
+                        <i class="fas fa-undo"></i> Return
+                    </button>
+                </div>
             </div>
-            <?php endif; ?>
         </div>
-        <?php endif; ?>
+        <?php endforeach; ?>
         <?php endif; ?>
     </div>
 </div>
 
-<!-- Reject Modal -->
-<div id="rejectModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3>Return Delivery to Staff</h3>
-            <span class="modal-close" onclick="closeModal('rejectModal')">&times;</span>
-        </div>
-        <form method="post">
-            <input type="hidden" name="action" value="reject">
-            <input type="hidden" name="delivery_id" id="reject_del_id">
-            <div class="form-group">
-                <label>Return Reason <span style="color:#dc2626;">*</span></label>
-                <textarea name="reason" required placeholder="Explain why this delivery is being returned..."></textarea>
-            </div>
-            <div style="display:flex;gap:8px;justify-content:flex-end;">
-                <button type="button" onclick="closeModal('rejectModal')"
-                        style="background:#6c757d;color:#fff;padding:8px 16px;border-radius:6px;border:none;cursor:pointer;">
-                    Cancel
-                </button>
-                <button type="submit"
-                        style="background:#dc2626;color:#fff;padding:8px 16px;border-radius:6px;border:none;cursor:pointer;">
-                    <i class="fas fa-times"></i> Return
-                </button>
-            </div>
-        </form>
-    </div>
-</div>
+<?php
+// Build JSON for adjust modal (per-entry liters)
+$batches_json = [];
+foreach ($pending_batches as $b) {
+    $batches_json[$b['batch_id']] = array_map(fn($e) => [
+        'id'      => (int)$e['id'],
+        'fuel'    => $e['fuel_type'],
+        'liters'  => (float)$e['delivery_liters'],
+    ], $b['entries']);
+}
+?>
 
-<!-- Adjust Modal -->
-<div id="adjustModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3>Adjust Delivery Amount</h3>
-            <span class="modal-close" onclick="closeModal('adjustModal')">&times;</span>
+<!-- ── Batch Action Modal ── -->
+<div id="batchModal" class="modal">
+    <div class="modal-content" style="max-width:540px;">
+        <div class="modal-header" style="border-bottom:1px solid #e2e8f0;padding-bottom:12px;">
+            <div>
+                <h3 id="bm_title" style="margin:0;font-size:17px;color:#00264D;"></h3>
+                <p id="bm_sub" style="margin:4px 0 0;font-size:12px;color:#64748b;"></p>
+            </div>
+            <span class="modal-close" onclick="closeModal('batchModal')">&times;</span>
         </div>
-        <form method="post">
-            <input type="hidden" name="action" value="adjust">
-            <input type="hidden" name="delivery_id" id="adjust_del_id">
-            <div class="form-group">
-                <label>Adjusted Liters <span style="color:#dc2626;">*</span></label>
-                <input type="number" name="adj_liters" id="adj_liters" step="0.01" min="0" required>
-            </div>
-            <div class="form-group">
-                <label>Adjustment Note <span style="color:#dc2626;">*</span></label>
-                <textarea name="adj_note" required placeholder="Explain the reason for adjustment..."></textarea>
-            </div>
-            <div style="display:flex;gap:8px;justify-content:flex-end;">
-                <button type="button" onclick="closeModal('adjustModal')"
-                        style="background:#6c757d;color:#fff;padding:8px 16px;border-radius:6px;border:none;cursor:pointer;">
-                    Cancel
-                </button>
-                <button type="submit"
-                        style="background:#002F70;color:#fff;padding:8px 16px;border-radius:6px;border:none;cursor:pointer;">
-                    <i class="fas fa-edit"></i> Adjust
-                </button>
-            </div>
-        </form>
+        <div id="bm_body" style="padding-top:16px;"></div>
     </div>
 </div>
 
 <script>
-function changeRowsPerPage(value) {
-    const url = new URL(window.location.href);
-    url.searchParams.set('rows_per_page', value);
-    url.searchParams.set('page', '1'); // Reset to first page
-    window.location.href = url.toString();
-}
+const BATCHES = <?= json_encode($batches_json) ?>;
 
-function approveDelivery(delId) {
-    if (confirm('Approve this delivery and update tank inventory?')) {
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.innerHTML = `
-            <input type="hidden" name="action" value="approve">
-            <input type="hidden" name="delivery_id" value="${delId}">
-        `;
-        document.body.appendChild(form);
-        form.submit();
-    }
-}
+function openBatchAction(action, batchId, invoiceNo, entryCount, totalLiters) {
+    const modal  = document.getElementById('batchModal');
+    const title  = document.getElementById('bm_title');
+    const sub    = document.getElementById('bm_sub');
+    const body   = document.getElementById('bm_body');
+    sub.textContent = batchId + ' \u2022 Invoice: ' + invoiceNo + ' \u2022 ' + entryCount + ' tanks \u2022 ' + totalLiters + ' L';
 
-function rejectDelivery(delId) {
-    document.getElementById('reject_del_id').value = delId;
-    document.getElementById('rejectModal').style.display = 'block';
-}
-
-function adjustDelivery(delId, liters) {
-    document.getElementById('adjust_del_id').value = delId;
-    document.getElementById('adj_liters').value = liters;
-    document.getElementById('adjustModal').style.display = 'block';
-}
-
-function closeModal(modalId) {
-    document.getElementById(modalId).style.display = 'none';
-}
-
-// Close modal when clicking outside
-window.onclick = function(event) {
-    if (event.target.className === 'modal') {
-        event.target.style.display = 'none';
-    }
-}
-</script>
-
-<?php require_once __DIR__ . '/../partials/footer.php'; ?>lor:#fff;padding:8px 16px;border-radius:6px;border:none;cursor:pointer;">
-                    <i class="fas fa-edit"></i> Adjust & Approve
-                </button>
+    if (action === 'approve') {
+        title.innerHTML = '<i class="fas fa-check-circle" style="color:#16a34a;margin-right:8px;"></i>Approve Batch';
+        body.innerHTML = `
+            <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:14px 16px;margin-bottom:18px;font-size:13px;color:#15803d;">
+                <i class="fas fa-info-circle" style="margin-right:6px;"></i>
+                Approving will verify all <strong>${entryCount}</strong> tank entries and add <strong>${totalLiters} L</strong> to fuel inventory.
             </div>
-        </form>
-    </div>
-</div>
+            <form method="post">
+                <input type="hidden" name="action" value="approve_batch">
+                <input type="hidden" name="batch_id" value="${batchId}">
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button type="button" onclick="closeModal('batchModal')" style="background:#f1f5f9;color:#475569;padding:9px 18px;border-radius:7px;border:1px solid #e2e8f0;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
+                    <button type="submit" style="background:#16a34a;color:#fff;padding:9px 24px;border-radius:7px;border:none;font-size:13px;font-weight:700;cursor:pointer;"><i class="fas fa-check"></i> Confirm Approve</button>
+                </div>
+            </form>`;
 
-<script>
-function approveDelivery(delId) {
-    if (confirm('Approve this delivery? This will add the fuel to tank inventory.')) {
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.innerHTML = `
-            <input type="hidden" name="action" value="approve">
-            <input type="hidden" name="delivery_id" value="${delId}">
-        `;
-        document.body.appendChild(form);
-        form.submit();
+    } else if (action === 'adjust') {
+        window.location.href = 'manager_fuel_adjustments.php?sub_tab=adj-deliveries#adjustments';
+        return;
+
+    } else if (action === 'return') {
+        title.innerHTML = '<i class="fas fa-undo" style="color:#dc2626;margin-right:8px;"></i>Return Batch to Staff';
+        body.innerHTML = `
+            <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:14px 16px;margin-bottom:18px;font-size:13px;color:#b91c1c;">
+                <i class="fas fa-exclamation-triangle" style="margin-right:6px;"></i>
+                Returning will reject all <strong>${entryCount}</strong> entries. Inventory will NOT be updated. Staff will see the reason.
+            </div>
+            <form method="post">
+                <input type="hidden" name="action" value="reject_batch">
+                <input type="hidden" name="batch_id" value="${batchId}">
+                <div style="margin-bottom:14px;">
+                    <label style="display:block;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:4px;">Return Reason <span style="color:#dc2626;">*</span></label>
+                    <textarea name="reason" required placeholder="Explain why this batch is being returned..."
+                              style="width:100%;padding:8px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;min-height:80px;resize:vertical;box-sizing:border-box;"></textarea>
+                </div>
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button type="button" onclick="closeModal('batchModal')" style="background:#f1f5f9;color:#475569;padding:9px 18px;border-radius:7px;border:1px solid #e2e8f0;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
+                    <button type="submit" style="background:#dc2626;color:#fff;padding:9px 24px;border-radius:7px;border:none;font-size:13px;font-weight:700;cursor:pointer;"><i class="fas fa-undo"></i> Confirm Return</button>
+                </div>
+            </form>`;
     }
+    modal.style.display = 'block';
 }
 
-function rejectDelivery(delId) {
-    document.getElementById('reject_del_id').value = delId;
-    document.getElementById('rejectModal').style.display = 'block';
-}
-
-function adjustDelivery(delId, liters) {
-    document.getElementById('adjust_del_id').value = delId;
-    document.getElementById('adj_liters').value = liters;
-    document.getElementById('adjustModal').style.display = 'block';
-}
-
-function closeModal(modalId) {
-    document.getElementById(modalId).style.display = 'none';
-}
-
-// Close modal when clicking outside
-window.onclick = function(event) {
-    if (event.target.className === 'modal') {
-        event.target.style.display = 'none';
-    }
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+window.onclick = function(e) { if (e.target.className === 'modal') e.target.style.display = 'none'; }
+function changeRowsPerPage(v) {
+    const u = new URL(window.location.href);
+    u.searchParams.set('rows_per_page', v);
+    u.searchParams.set('page','1');
+    window.location.href = u.toString();
 }
 </script>
-
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

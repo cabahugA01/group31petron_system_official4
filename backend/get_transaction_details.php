@@ -62,11 +62,11 @@ try {
                 mt.ewallet_provider,
                 mt.subtotal_amount,
                 mt.vat_amount,
-                u_staff.name AS staff_name,
-                u_validated.name AS validated_by_name
+                COALESCE(NULLIF(CONCAT(u_staff.first_name,' ',u_staff.last_name),' '), u_staff.username, 'Unknown') AS staff_name,
+                COALESCE(NULLIF(CONCAT(u_validated.first_name,' ',u_validated.last_name),' '), u_validated.username, 'N/A') AS validated_by_name
             FROM merchandise_transactions mt
-            LEFT JOIN users u_staff ON u_staff.user_id = mt.staff_id
-            LEFT JOIN users u_validated ON u_validated.user_id = mt.validated_by
+            LEFT JOIN users u_staff ON u_staff.id = mt.staff_id
+            LEFT JOIN users u_validated ON u_validated.id = mt.validated_by
             WHERE mt.id = ?
         ");
         $stmt->execute([$id]);
@@ -133,13 +133,13 @@ try {
                 jo.status,
                 jo.notes,
                 jo.service_price_details,
-                u_staff.name AS staff_name,
-                u_validated.name AS validated_by_name,
-                mech.name AS mechanic_name
+                COALESCE(NULLIF(CONCAT(u_staff.first_name,' ',u_staff.last_name),' '), u_staff.username, 'Unknown') AS staff_name,
+                COALESCE(NULLIF(CONCAT(u_validated.first_name,' ',u_validated.last_name),' '), u_validated.username, 'N/A') AS validated_by_name,
+                COALESCE(NULLIF(CONCAT(mech.first_name,' ',mech.last_name),' '), mech.username, 'Not assigned') AS mechanic_name
             FROM job_orders jo
-            LEFT JOIN users u_staff ON u_staff.user_id = COALESCE(jo.created_by, jo.user_id)
-            LEFT JOIN users u_validated ON u_validated.user_id = jo.validated_by
-            LEFT JOIN users mech ON mech.user_id = jo.assigned_mechanic_id
+            LEFT JOIN users u_staff ON u_staff.id = COALESCE(jo.created_by, jo.user_id)
+            LEFT JOIN users u_validated ON u_validated.id = jo.validated_by
+            LEFT JOIN users mech ON mech.id = jo.assigned_mechanic_id
             WHERE jo.id = ?
         ");
         $stmt->execute([$id]);

@@ -70,10 +70,10 @@ if (isset($_GET['export']) && in_array($_GET['export'], ['audit_csv','errors_csv
         if ($exp_action  !== '') { $exp_where[] = 'al.action LIKE ?';  $exp_params[] = '%'.$exp_action.'%'; }
 
         $rows = $pdo->prepare(
-            "SELECT al.id, u.name AS user_name, u.role, al.action, al.details,
+            "SELECT al.id, COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS user_name, u.role, al.action, al.details,
                     al.ip_address, s.name AS station_name, al.created_at
              FROM activity_logs al
-             LEFT JOIN users u ON u.user_id = al.user_id
+             LEFT JOIN users u ON u.id = al.user_id
              LEFT JOIN stations s ON s.id = al.station_id
              WHERE " . implode(' AND ', $exp_where) . "
              ORDER BY al.created_at DESC LIMIT 10000"
@@ -97,9 +97,9 @@ if (isset($_GET['export']) && in_array($_GET['export'], ['audit_csv','errors_csv
     if ($export_type === 'errors_csv') {
         $rows = $pdo->prepare(
             "SELECT el.id, el.severity, el.error_type, el.message, el.context,
-                    u.name AS user_name, el.ip_address, el.created_at
+                    COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS user_name, el.ip_address, el.created_at
              FROM system_error_logs el
-             LEFT JOIN users u ON u.user_id = el.user_id
+             LEFT JOIN users u ON u.id = el.user_id
              WHERE el.created_at BETWEEN ? AND ?
              ORDER BY el.created_at DESC LIMIT 10000"
         );
@@ -144,7 +144,7 @@ if ($section === 'audit_trail') {
     try {
         $all_users = $pdo->query(
             "SELECT DISTINCT u.id, u.name FROM activity_logs al
-             LEFT JOIN users u ON u.user_id = al.user_id
+             LEFT JOIN users u ON u.id = al.user_id
              WHERE u.id IS NOT NULL ORDER BY u.name LIMIT 200"
         )->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {}
@@ -196,10 +196,10 @@ if ($section === 'audit_trail') {
 
         $stmt = $pdo->prepare(
             "SELECT al.id, al.user_id, al.action, al.details, al.ip_address,
-                    al.created_at, u.name AS user_name, u.role AS user_role,
+                    al.created_at, COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS user_name, u.role AS user_role,
                     s.name AS station_name
              FROM activity_logs al
-             LEFT JOIN users u ON u.user_id = al.user_id
+             LEFT JOIN users u ON u.id = al.user_id
              LEFT JOIN stations s ON s.id = al.station_id
              WHERE {$where_sql}
              ORDER BY al.created_at DESC
@@ -277,9 +277,9 @@ if ($section === 'error_tracking') {
         $error_pages = max(1, (int)ceil($error_total / $per_page));
 
         $stmt = $pdo->prepare(
-            "SELECT el.*, u.name AS user_name
+            "SELECT el.*, COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS user_name
              FROM system_error_logs el
-             LEFT JOIN users u ON u.user_id = el.user_id
+             LEFT JOIN users u ON u.id = el.user_id
              WHERE {$where_sql}
              ORDER BY el.created_at DESC
              LIMIT {$per_page} OFFSET {$offset}"
@@ -296,9 +296,9 @@ $export_history = [];
 if ($section === 'export_logs') {
     try {
         $export_history = $pdo->query(
-            "SELECT al.id, al.details, al.created_at, u.name AS user_name
+            "SELECT al.id, al.details, al.created_at, COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS user_name
              FROM activity_logs al
-             LEFT JOIN users u ON u.user_id = al.user_id
+             LEFT JOIN users u ON u.id = al.user_id
              WHERE al.action LIKE 'SLA Export%'
              ORDER BY al.created_at DESC LIMIT 50"
         )->fetchAll(PDO::FETCH_ASSOC);
@@ -325,16 +325,16 @@ if ($section === 'developer_log') {
     $where_sql = implode(' AND ', $where);
 
     try {
-        $cnt = $pdo->prepare("SELECT COUNT(*) FROM activity_logs al LEFT JOIN users u ON u.user_id = al.user_id WHERE {$where_sql}");
+        $cnt = $pdo->prepare("SELECT COUNT(*) FROM activity_logs al LEFT JOIN users u ON u.id = al.user_id WHERE {$where_sql}");
         $cnt->execute($params);
         $dev_total = (int)$cnt->fetchColumn();
         $dev_pages = max(1, (int)ceil($dev_total / $per_page));
 
         $stmt = $pdo->prepare(
             "SELECT al.id, al.action, al.details, al.ip_address, al.created_at,
-                    u.name AS user_name, u.role AS user_role
+                    COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS user_name, u.role AS user_role
              FROM activity_logs al
-             LEFT JOIN users u ON u.user_id = al.user_id
+             LEFT JOIN users u ON u.id = al.user_id
              WHERE {$where_sql}
              ORDER BY al.created_at DESC
              LIMIT {$per_page} OFFSET {$offset}"

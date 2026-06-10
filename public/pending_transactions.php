@@ -50,7 +50,7 @@ function pt_pay_status(array $row): string {
     return 'Paid';
 }
 
-// ── POST: Manager actions (Approve, Reject) ───────────────────────────────────
+// ── POST: Manager actions (Approve, Reject, Adjust) ──────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $post_action = $_POST['action'] ?? '';
 
@@ -61,80 +61,98 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (Exception $ae) {}
     };
 
-    // ── Approve Merchandise Transaction ──────────────────────────────────────
-    if ($post_action === 'approve_transaction') {
-        $row_id = (int)($_POST['transaction_id'] ?? 0);
-        try {
-            $pdo->beginTransaction();
-            
-            $set_parts = ["validation_status = 'Approved'"];
-            $set_vals  = [];
-            if (pt_has($mt_cols, 'validated_by')) { $set_parts[] = "validated_by = ?"; $set_vals[] = $me['id']; }
-            if (pt_has($mt_cols, 'validated_at')) { $set_parts[] = "validated_at = NOW()"; }
-            if (pt_has($mt_cols, 'updated_at'))   { $set_parts[] = "updated_at = NOW()"; }
-            $stmt = $pdo->prepare("UPDATE merchandise_transactions SET " . implode(', ', $set_parts) . " WHERE id = ? AND station_id = ?");
-            $stmt->execute(array_merge($set_vals, [$row_id, $station_id]));
-            
-            if ($stmt->rowCount() > 0) {
-                $insert_audit($row_id, 'Approve');
-                log_activity($pdo, $me['id'], 'Approve Transaction', "Merchandise transaction #{$row_id} approved by {$me['name']}");
-                $pdo->commit();
-                $_SESSION['success'] = 'Transaction approved successfully.';
-            } else {
-                $pdo->rollBack();
-                $_SESSION['error'] = 'Transaction not found.';
-            }
-        } catch (Exception $e) {
-            if ($pdo->inTransaction()) $pdo->rollBack();
-            $_SESSION['error'] = 'Error: ' . $e->getMessage();
+    // ── Approve Group (same customer + same date) ─────────────────────────────
+    if ($post_action === 'approve_group') {
+        $group_ids = json_decode($_POST['group_ids'] ?? '[]', true);
+        if (!is_array($group_ids) || empty($group_ids)) {
+            $_SESSION['error'] = 'No transactions in group.';
+            header('Location: pending_transactions.php'); exit;
         }
-        header('Location: pending_transactions.php?t=' . time()); exit;
-    }
-
-    // ── Reject Merchandise Transaction ───────────────────────────────────────
-    if ($post_action === 'reject_transaction') {
-        $row_id = (int)($_POST['transaction_id'] ?? 0);
-        $reason = trim($_POST['reason'] ?? '');
         try {
             $pdo->beginTransaction();
-            
-            $set_parts = ["validation_status = 'Rejected'"];
-            $set_vals  = [];
-            if (pt_has($mt_cols, 'validated_by')) { $set_parts[] = "validated_by = ?"; $set_vals[] = $me['id']; }
-            if (pt_has($mt_cols, 'validated_at')) { $set_parts[] = "validated_at = NOW()"; }
-            if (pt_has($mt_cols, 'rejection_reason')) { $set_parts[] = "rejection_reason = ?"; $set_vals[] = $reason; }
-            elseif (pt_has($mt_cols, 'remarks')) { $set_parts[] = "remarks = ?"; $set_vals[] = 'REJECTED: ' . $reason; }
-            if (pt_has($mt_cols, 'updated_at')) { $set_parts[] = "updated_at = NOW()"; }
-            $stmt = $pdo->prepare("UPDATE merchandise_transactions SET " . implode(', ', $set_parts) . " WHERE id = ? AND station_id = ?");
-            $stmt->execute(array_merge($set_vals, [$row_id, $station_id]));
-            
-            if ($stmt->rowCount() > 0) {
-                $insert_audit($row_id, 'Reject', $reason);
-                log_activity($pdo, $me['id'], 'Reject Transaction', "Merchandise #{$row_id} rejected. Reason: {$reason}");
-                $pdo->commit();
-                $_SESSION['success'] = 'Transaction rejected.';
-            } else {
-                $pdo->rollBack();
-                $_SESSION['error'] = 'Transaction not found.';
+            $approved = 0;
+            foreach ($group_ids as $item) {
+                $rid = (int)($item['id'] ?? 0);
+                $src = $item['source'] ?? 'merchandise_transactions';
+                if ($rid <= 0) continue;
+                if ($src === 'merchandise_transactions') {
+                    // Fetch transaction details
+                    $txStmt = $pdo->prepare("SELECT * FROM merchandise_transactions WHERE id = ? AND station_id = ?");
+                    $txStmt->execute([$rid, $station_id]);
+                    $transaction = $txStmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    if ($transaction) {
+                        // Check customer locked/inactive if credit customer
+                        if (!empty($transaction['credit_customer_id'])) {
+                            $cust_chk = $pdo->prepare("SELECT status FROM customers WHERE id = ?");
+                            $cust_chk->execute([$transaction['credit_customer_id']]);
+                            $cust_status = $cust_chk->fetchColumn();
+                            if ($cust_status === 'locked') {
+                                throw new Exception("Approval blocked: Customer account is locked.");
+                            }
+                            if ($cust_status === 'inactive') {
+                                throw new Exception("Approval blocked: Customer account is inactive.");
+                            }
+                        }
+
+                        // Deduct stock for merchandise items
+                        $itemRows = $pdo->prepare("SELECT product_id, quantity, item_type FROM merchandise_transaction_items WHERE transaction_id = ?");
+                        $itemRows->execute([$rid]);
+                        foreach ($itemRows->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                            if (($row['item_type'] ?? 'merchandise') !== 'service' && $row['product_id'] && $row['quantity'] > 0) {
+                                $pdo->prepare("
+                                    UPDATE station_inventory
+                                    SET stock_level = GREATEST(stock_level - ?, 0),
+                                        last_updated = NOW()
+                                    WHERE station_id = ? AND product_id = ?
+                                ")->execute([$row['quantity'], $station_id, $row['product_id']]);
+                            }
+                        }
+
+                        // Update customer balance if credit transaction
+                        if (!empty($transaction['credit_customer_id'])) {
+                            $pdo->prepare("UPDATE customers SET balance = balance + ? WHERE id = ?")
+                                ->execute([$transaction['total_amount'], $transaction['credit_customer_id']]);
+                            
+                            // Fetch updated balance
+                            $bal_stmt = $pdo->prepare("SELECT balance FROM customers WHERE id = ?");
+                            $bal_stmt->execute([$transaction['credit_customer_id']]);
+                            $new_bal = (float)$bal_stmt->fetchColumn();
+                            
+                            $cct_stmt = $pdo->prepare("
+                                INSERT INTO customer_credit_transactions (
+                                    customer_id, transaction_id, transaction_type, amount, 
+                                    running_balance, description, station_id, created_by, created_at
+                                ) VALUES (?, ?, 'Sale', ?, ?, ?, ?, ?, NOW())
+                            ");
+                            $cct_stmt->execute([
+                                $transaction['credit_customer_id'],
+                                $transaction['transaction_id'],
+                                $transaction['total_amount'],
+                                $new_bal,
+                                "Merchandise Sale (Credit) - Ref: " . $transaction['transaction_id'],
+                                $station_id,
+                                $me['id']
+                            ]);
+                        }
+                    }
+
+                    $sp = ["validation_status='Approved'"];
+                    $sv = [];
+                    if (pt_has($mt_cols, 'validated_by')) { $sp[] = "validated_by = ?"; $sv[] = $me['id']; }
+                    if (pt_has($mt_cols, 'validated_at')) { $sp[] = "validated_at = NOW()"; }
+                    if (pt_has($mt_cols, 'updated_at'))   { $sp[] = "updated_at = NOW()"; }
+                    $pdo->prepare("UPDATE merchandise_transactions SET " . implode(', ', $sp) . " WHERE id = ? AND station_id = ?")
+                        ->execute(array_merge($sv, [$rid, $station_id]));
+                } else {
+                    $pdo->prepare("UPDATE job_orders SET validation_status='Approved', status='Pending', validated_by=?, validated_at=NOW() WHERE id=? AND station_id=?")
+                        ->execute([$me['id'], $rid, $station_id]);
+                }
+                $insert_audit($rid, 'Approve', 'Group Approved');
+                $approved++;
             }
-        } catch (Exception $e) {
-            if ($pdo->inTransaction()) $pdo->rollBack();
-            $_SESSION['error'] = 'Error: ' . $e->getMessage();
-        }
-        header('Location: pending_transactions.php?t=' . time()); exit;
-    }
-
-    // ── Approve Job Order ─────────────────────────────────────────────────────
-    if ($post_action === 'approve_job_order') {
-        $jo_id = (int)($_POST['jo_id'] ?? 0);
-        try {
-            $pdo->beginTransaction();
-            $pdo->prepare("UPDATE job_orders SET validation_status='Approved', status='Pending', validated_by=?, validated_at=NOW() WHERE id=? AND station_id=?")
-                ->execute([$me['id'], $jo_id, $station_id]);
-            $insert_audit($jo_id, 'Approve', "JO Approved.");
-            log_activity($pdo, $me['id'], 'JO_APPROVED', "Job Order #{$jo_id} approved by {$me['name']}.");
             $pdo->commit();
-            $_SESSION['success'] = "Job Order #{$jo_id} approved.";
+            $_SESSION['success'] = "{$approved} transaction(s) approved successfully.";
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
             $_SESSION['error'] = 'Error: ' . $e->getMessage();
@@ -142,18 +160,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: pending_transactions.php?t=' . time()); exit;
     }
 
-    // ── Reject Job Order ──────────────────────────────────────────────────────
-    if ($post_action === 'reject_job_order') {
-        $jo_id  = (int)($_POST['jo_id'] ?? 0);
-        $reason = trim($_POST['reason'] ?? '');
+    // ── Reject Group ──────────────────────────────────────────────────────────
+    if ($post_action === 'reject_group') {
+        $group_ids = json_decode($_POST['group_ids'] ?? '[]', true);
+        $reason    = trim($_POST['reason'] ?? '');
+        if (!is_array($group_ids) || empty($group_ids)) {
+            $_SESSION['error'] = 'No transactions in group.';
+            header('Location: pending_transactions.php'); exit;
+        }
         try {
             $pdo->beginTransaction();
-            $pdo->prepare("UPDATE job_orders SET validation_status='Rejected', status='Cancelled', validated_by=?, validated_at=NOW() WHERE id=? AND station_id=?")
-                ->execute([$me['id'], $jo_id, $station_id]);
-            $insert_audit($jo_id, 'Reject', "JO Rejected. Reason: {$reason}");
-            log_activity($pdo, $me['id'], 'JO_REJECTED', "Job Order #{$jo_id} rejected. Reason: {$reason}");
+            $rejected = 0;
+            foreach ($group_ids as $item) {
+                $rid = (int)($item['id'] ?? 0);
+                $src = $item['source'] ?? 'merchandise_transactions';
+                if ($rid <= 0) continue;
+                if ($src === 'merchandise_transactions') {
+                    $sp = ["validation_status='Rejected'"];
+                    $sv = [];
+                    if (pt_has($mt_cols, 'validated_by')) { $sp[] = "validated_by = ?"; $sv[] = $me['id']; }
+                    if (pt_has($mt_cols, 'validated_at')) { $sp[] = "validated_at = NOW()"; }
+                    if (pt_has($mt_cols, 'rejection_reason')) { $sp[] = "rejection_reason = ?"; $sv[] = $reason; }
+                    elseif (pt_has($mt_cols, 'remarks')) { $sp[] = "remarks = ?"; $sv[] = 'REJECTED: ' . $reason; }
+                    if (pt_has($mt_cols, 'updated_at')) { $sp[] = "updated_at = NOW()"; }
+                    $pdo->prepare("UPDATE merchandise_transactions SET " . implode(', ', $sp) . " WHERE id = ? AND station_id = ?")
+                        ->execute(array_merge($sv, [$rid, $station_id]));
+                } else {
+                    $pdo->prepare("UPDATE job_orders SET validation_status='Rejected', status='Cancelled', validated_by=?, validated_at=NOW() WHERE id=? AND station_id=?")
+                        ->execute([$me['id'], $rid, $station_id]);
+                }
+                $insert_audit($rid, 'Reject', "Group Rejected: {$reason}");
+                $rejected++;
+            }
             $pdo->commit();
-            $_SESSION['success'] = "Job Order #{$jo_id} rejected.";
+            $_SESSION['success'] = "{$rejected} transaction(s) rejected.";
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
             $_SESSION['error'] = 'Error: ' . $e->getMessage();
@@ -161,79 +201,111 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: pending_transactions.php?t=' . time()); exit;
     }
 
-    // ── Adjust Merchandise Transaction ───────────────────────────────────────
-    if ($post_action === 'adjust_transaction') {
-        $row_id = (int)($_POST['transaction_id'] ?? 0);
-        $adj_type = trim($_POST['adjustment_type'] ?? '');
-        $new_val = trim($_POST['new_value'] ?? '');
-        $reason = trim($_POST['reason'] ?? '');
-        try {
-            $set_parts = ["validation_status = 'Adjusted'"];
-            $set_vals  = [];
-            if (pt_has($mt_cols, 'validated_by')) { $set_parts[] = "validated_by = ?"; $set_vals[] = $me['id']; }
-            if (pt_has($mt_cols, 'validated_at')) { $set_parts[] = "validated_at = NOW()"; }
-            if (pt_has($mt_cols, 'adjustment_reason')) { $set_parts[] = "adjustment_reason = ?"; $set_vals[] = "[$adj_type] $reason"; }
-            elseif (pt_has($mt_cols, 'remarks')) { $set_parts[] = "remarks = ?"; $set_vals[] = "ADJUSTED [$adj_type]: $reason"; }
-            if (pt_has($mt_cols, 'updated_at')) { $set_parts[] = "updated_at = NOW()"; }
-            
-            // Apply adjustment based on type
-            if ($adj_type === 'quantity' && pt_has($mt_cols, 'quantity')) {
-                $set_parts[] = "quantity = ?";
-                $set_vals[] = (float)$new_val;
-            } elseif ($adj_type === 'price' && pt_has($mt_cols, 'total_amount')) {
-                $set_parts[] = "total_amount = ?";
-                $set_vals[] = (float)$new_val;
-            } elseif ($adj_type === 'service_fee' && pt_has($mt_cols, 'service_fee')) {
-                $set_parts[] = "service_fee = ?";
-                $set_vals[] = (float)$new_val;
-            }
-            
-            $stmt = $pdo->prepare("UPDATE merchandise_transactions SET " . implode(', ', $set_parts) . " WHERE id = ? AND station_id = ?");
-            $stmt->execute(array_merge($set_vals, [$row_id, $station_id]));
-            if ($stmt->rowCount() > 0) {
-                $insert_audit($row_id, 'Adjust', "[$adj_type] New value: $new_val. Reason: $reason");
-                log_activity($pdo, $me['id'], 'Adjust Transaction', "Merchandise #{$row_id} adjusted. Type: $adj_type, Value: $new_val");
-                $_SESSION['success'] = 'Transaction adjusted successfully.';
-            } else {
-                $_SESSION['error'] = 'Transaction not found.';
-            }
-        } catch (Exception $e) {
-            $_SESSION['error'] = 'Error: ' . $e->getMessage();
+    // ── Adjust Group ──────────────────────────────────────────────────────────
+    if ($post_action === 'adjust_group') {
+        $group_ids = json_decode($_POST['group_ids'] ?? '[]', true);
+        $adj_type  = trim($_POST['adjustment_type'] ?? '');
+        $new_val   = trim($_POST['new_value'] ?? '');
+        $reason    = trim($_POST['reason'] ?? '');
+        if (!is_array($group_ids) || empty($group_ids)) {
+            $_SESSION['error'] = 'No transactions in group.';
+            header('Location: pending_transactions.php'); exit;
         }
-        header('Location: pending_transactions.php'); exit;
-    }
-
-    // ── Adjust Job Order ──────────────────────────────────────────────────────
-    if ($post_action === 'adjust_job_order') {
-        $jo_id = (int)($_POST['jo_id'] ?? 0);
-        $adj_type = trim($_POST['adjustment_type'] ?? '');
-        $new_val = trim($_POST['new_value'] ?? '');
-        $reason = trim($_POST['reason'] ?? '');
         try {
             $pdo->beginTransaction();
-            $set_parts = ["validation_status='Adjusted'", "validated_by=?", "validated_at=NOW()"];
-            $set_vals  = [$me['id']];
-            
-            // Apply adjustment based on type
-            if ($adj_type === 'price' && pt_has($jo_cols, 'total_cost')) {
-                $set_parts[] = "total_cost = ?";
-                $set_vals[] = (float)$new_val;
-            } elseif ($adj_type === 'service_fee' && pt_has($jo_cols, 'service_fee')) {
-                $set_parts[] = "service_fee = ?";
-                $set_vals[] = (float)$new_val;
+            $adjusted = 0;
+            foreach ($group_ids as $item) {
+                $rid = (int)($item['id'] ?? 0);
+                $src = $item['source'] ?? 'merchandise_transactions';
+                if ($rid <= 0) continue;
+                if ($src === 'merchandise_transactions') {
+                    // Fetch transaction details
+                    $txStmt = $pdo->prepare("SELECT * FROM merchandise_transactions WHERE id = ? AND station_id = ?");
+                    $txStmt->execute([$rid, $station_id]);
+                    $transaction = $txStmt->fetch(PDO::FETCH_ASSOC);
+
+                    if ($transaction) {
+                        // Check customer locked/inactive if credit customer
+                        if (!empty($transaction['credit_customer_id'])) {
+                            $cust_chk = $pdo->prepare("SELECT status FROM customers WHERE id = ?");
+                            $cust_chk->execute([$transaction['credit_customer_id']]);
+                            $cust_status = $cust_chk->fetchColumn();
+                            if ($cust_status === 'locked') {
+                                throw new Exception("Adjustment blocked: Customer account is locked.");
+                            }
+                            if ($cust_status === 'inactive') {
+                                throw new Exception("Adjustment blocked: Customer account is inactive.");
+                            }
+                        }
+
+                        // Deduct stock for merchandise items
+                        $itemRows = $pdo->prepare("SELECT product_id, quantity, item_type FROM merchandise_transaction_items WHERE transaction_id = ?");
+                        $itemRows->execute([$rid]);
+                        foreach ($itemRows->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                            if (($row['item_type'] ?? 'merchandise') !== 'service' && $row['product_id'] && $row['quantity'] > 0) {
+                                $pdo->prepare("
+                                    UPDATE station_inventory
+                                    SET stock_level = GREATEST(stock_level - ?, 0),
+                                        last_updated = NOW()
+                                    WHERE station_id = ? AND product_id = ?
+                                ")->execute([$row['quantity'], $station_id, $row['product_id']]);
+                            }
+                        }
+
+                        // Update customer balance if credit transaction
+                        if (!empty($transaction['credit_customer_id'])) {
+                            $pdo->prepare("UPDATE customers SET balance = balance + ? WHERE id = ?")
+                                ->execute([(float)$new_val, $transaction['credit_customer_id']]);
+                            
+                            // Fetch updated balance
+                            $bal_stmt = $pdo->prepare("SELECT balance FROM customers WHERE id = ?");
+                            $bal_stmt->execute([$transaction['credit_customer_id']]);
+                            $new_bal = (float)$bal_stmt->fetchColumn();
+                            
+                            $cct_stmt = $pdo->prepare("
+                                INSERT INTO customer_credit_transactions (
+                                    customer_id, transaction_id, transaction_type, amount, 
+                                    running_balance, description, station_id, created_by, created_at
+                                ) VALUES (?, ?, 'Sale', ?, ?, ?, ?, ?, NOW())
+                            ");
+                            $cct_stmt->execute([
+                                $transaction['credit_customer_id'],
+                                $transaction['transaction_id'],
+                                (float)$new_val,
+                                $new_bal,
+                                "Merchandise Sale (Credit Adjusted) - Ref: " . $transaction['transaction_id'],
+                                $station_id,
+                                $me['id']
+                            ]);
+                        }
+                    }
+
+                    $sp = ["validation_status='Adjusted'"];
+                    $sv = [];
+                    if (pt_has($mt_cols, 'validated_by')) { $sp[] = "validated_by = ?"; $sv[] = $me['id']; }
+                    if (pt_has($mt_cols, 'validated_at')) { $sp[] = "validated_at = NOW()"; }
+                    if (pt_has($mt_cols, 'remarks'))     { $sp[] = "remarks = ?"; $sv[] = "ADJUSTED [{$adj_type}]: {$reason}"; }
+                    if (pt_has($mt_cols, 'updated_at'))  { $sp[] = "updated_at = NOW()"; }
+                    if ($adj_type === 'price' && pt_has($mt_cols, 'total_amount')) { $sp[] = "total_amount = ?"; $sv[] = (float)$new_val; }
+                    $pdo->prepare("UPDATE merchandise_transactions SET " . implode(', ', $sp) . " WHERE id = ? AND station_id = ?")
+                        ->execute(array_merge($sv, [$rid, $station_id]));
+                } else {
+                    $sp = ["validation_status='Adjusted'", "validated_by=?", "validated_at=NOW()"];
+                    $sv = [$me['id']];
+                    if ($adj_type === 'price' && pt_has($jo_cols, 'total_cost')) { $sp[] = "total_cost = ?"; $sv[] = (float)$new_val; }
+                    $pdo->prepare("UPDATE job_orders SET " . implode(', ', $sp) . " WHERE id=? AND station_id=?")
+                        ->execute(array_merge($sv, [$rid, $station_id]));
+                }
+                $insert_audit($rid, 'Adjust', "Group Adjusted [{$adj_type}]: {$reason}");
+                $adjusted++;
             }
-            
-            $pdo->prepare("UPDATE job_orders SET " . implode(', ', $set_parts) . " WHERE id=? AND station_id=?")
-                ->execute(array_merge($set_vals, [$jo_id, $station_id]));
-            $insert_audit($jo_id, 'Adjust', "[$adj_type] New value: $new_val. Reason: $reason");
-            log_activity($pdo, $me['id'], 'JO_ADJUSTED', "Job Order #{$jo_id} adjusted. Type: $adj_type, Value: $new_val");
             $pdo->commit();
-            $_SESSION['success'] = "Job Order #{$jo_id} adjusted.";
+            $_SESSION['success'] = "{$adjusted} transaction(s) adjusted.";
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
             $_SESSION['error'] = 'Error: ' . $e->getMessage();
         }
-        header('Location: pending_transactions.php'); exit;
+        header('Location: pending_transactions.php?t=' . time()); exit;
     }
 }
 
@@ -246,8 +318,7 @@ $total_amount = 0.0;
 
 // Merchandise PENDING transactions
 $mt_status_col = pt_has($mt_cols, 'validation_status') ? 'mt.validation_status' : "'Pending'";
-$mt_staff_col  = pt_has($mt_cols, 'staff_id') ? 'u.name' : "'Unknown'";
-$mt_date_col   = "CASE WHEN mt.transaction_date > '2000-01-01' THEN mt.transaction_date ELSE mt.created_at END";
+$mt_date_col   = "CASE WHEN mt.created_at > '2000-01-01' THEN mt.created_at ELSE mt.created_at END";
 $mt_paid_col   = pt_has($mt_cols, 'amount_paid') ? 'mt.amount_paid' : 'NULL';
 
 $mt_where = "WHERE mt.station_id = ? AND LOWER(TRIM(COALESCE(mt.validation_status,''))) = 'pending'";
@@ -264,17 +335,26 @@ try {
             mt.id AS row_id,
             mt.transaction_id AS txn_id,
             COALESCE(NULLIF(TRIM(mt.customer_name),''),'Walk-in') AS customer,
-            'Merchandise' AS entry_type,
-            COALESCE(mt.item_sku, 'N/A') AS items_service,
+            CASE mt.transaction_type
+                WHEN 'combined'   THEN 'JO + Merchandise'
+                WHEN 'job_order'  THEN 'Job Order'
+                ELSE                   'Merchandise'
+            END AS entry_type,
+            CASE mt.transaction_type
+                WHEN 'combined'  THEN CONCAT(COALESCE(mt.job_order_service,'Service'),' + Items')
+                WHEN 'job_order' THEN COALESCE(mt.job_order_service,'Service')
+                ELSE COALESCE(mt.item_sku, 'N/A')
+            END AS items_service,
             mt.total_amount AS amount,
             {$mt_paid_col} AS amount_paid,
             COALESCE(mt.payment_method,'Cash') AS payment_method,
             {$mt_date_col} AS txn_date,
             COALESCE({$mt_status_col},'Pending') AS validation_status,
-            COALESCE({$mt_staff_col},'Unknown') AS staff_name,
-            'merchandise_transactions' AS _source
+            COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS staff_name,
+            'merchandise_transactions' AS _source,
+            COALESCE(mt.transaction_type,'merchandise') AS txn_type
         FROM merchandise_transactions mt
-        LEFT JOIN users u ON u.user_id = mt.staff_id
+        LEFT JOIN users u ON u.id = mt.staff_id
         {$mt_where}
         ORDER BY txn_date DESC
         LIMIT 100
@@ -285,7 +365,6 @@ try {
 
 // Job Orders PENDING VALIDATION
 $jo_status_col = pt_has($jo_cols, 'validation_status') ? 'jo.validation_status' : 'jo.status';
-$jo_staff_col  = pt_has($jo_cols, 'created_by') ? 'COALESCE(jo.created_by, jo.user_id)' : 'jo.user_id';
 $jo_pay_col    = pt_has($jo_cols, 'payment_method') ? 'COALESCE(jo.payment_method,\'N/A\')' : "'N/A'";
 $jo_cost_col   = pt_has($jo_cols, 'total_cost') ? 'COALESCE(jo.total_cost,0)' : 'COALESCE(jo.estimated_cost,0)';
 $jo_paid_col   = pt_has($jo_cols, 'amount_paid') ? 'jo.amount_paid' : 'NULL';
@@ -313,10 +392,11 @@ try {
             {$jo_pay_col} AS payment_method,
             jo.created_at AS txn_date,
             COALESCE(NULLIF(TRIM({$jo_status_col}),''),'Pending') AS validation_status,
-            COALESCE(u.name,'Unknown') AS staff_name,
-            'job_orders' AS _source
+            COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS staff_name,
+            'job_orders' AS _source,
+            'job_order' AS txn_type
         FROM job_orders jo
-        LEFT JOIN users u ON u.user_id = {$jo_staff_col}
+        LEFT JOIN users u ON u.id = COALESCE(jo.created_by, jo.created_by)
         {$jo_where}
         ORDER BY jo.created_at DESC
         LIMIT 100
@@ -329,6 +409,37 @@ try {
 $rows = array_merge($mt_rows, $jo_rows);
 usort($rows, fn($a, $b) => strtotime($b['txn_date']) - strtotime($a['txn_date']));
 foreach ($rows as $r) $total_amount += (float)($r['amount'] ?? 0);
+
+// ── Group by customer + date (ONE row per customer per day) ──────────────────
+$groups = [];
+foreach ($rows as $r) {
+    $cust_key = strtolower(trim($r['customer'] ?? 'walk-in'));
+    $date_key  = date('Y-m-d', strtotime($r['txn_date']));
+    $gkey      = $cust_key . '|' . $date_key;
+    if (!isset($groups[$gkey])) {
+        $groups[$gkey] = [
+            'customer'    => $r['customer'],
+            'date'        => $date_key,
+            'types'       => [],
+            'items'       => [],
+            'total'       => 0.0,
+            'pay_methods' => [],
+            'staff'       => $r['staff_name'] ?? 'Unknown',
+            'ids'         => [],   // [{id, source}]
+            'txn_ids'     => [],
+        ];
+    }
+    $groups[$gkey]['types'][]     = $r['entry_type'];
+    $groups[$gkey]['items'][]     = $r['items_service'];
+    $groups[$gkey]['total']      += (float)($r['amount'] ?? 0);
+    $pay = trim($r['payment_method'] ?? '');
+    if ($pay && !in_array($pay, $groups[$gkey]['pay_methods'])) {
+        $groups[$gkey]['pay_methods'][] = $pay;
+    }
+    $groups[$gkey]['txn_ids'][]   = $r['txn_id'];
+    $groups[$gkey]['ids'][]       = ['id' => (int)$r['row_id'], 'source' => $r['_source']];
+}
+$groups = array_values($groups);
 
 include __DIR__ . '/../partials/header.php';
 ?>
@@ -356,7 +467,6 @@ include __DIR__ . '/../partials/header.php';
             <i class="fas fa-arrow-left"></i> Back
         </a>
     </div>
-
 </div>
 
 <?php if (isset($_SESSION['success'])): ?>
@@ -394,91 +504,89 @@ include __DIR__ . '/../partials/header.php';
 <div class="card" style="padding:0;overflow-x:auto;">
     <table class="pt-table" style="table-layout:auto;width:100%;">
         <colgroup>
-            <col style="width:9%;"><!-- Transaction ID -->
-            <col style="width:10%;"><!-- Customer -->
-            <col style="width:8%;"><!-- Type -->
-            <col style="width:14%;"><!-- Items / Service -->
+            <col style="width:12%;"><!-- Transaction ID(s) -->
+            <col style="width:12%;"><!-- Customer -->
+            <col style="width:10%;"><!-- Type -->
+            <col style="width:18%;"><!-- Items / Service -->
             <col style="width:8%;"><!-- Amount -->
             <col style="width:9%;"><!-- Payment Method -->
-            <col style="width:9%;"><!-- Payment Status -->
-            <col style="width:11%;"><!-- Date / Time -->
-            <col style="width:10%;"><!-- Staff -->
-            <col style="width:12%;"><!-- Actions -->
+            <col style="width:8%;"><!-- Status -->
+            <col style="width:10%;"><!-- Date -->
+            <col style="width:11%;"><!-- Staff -->
+            <col style="width:10%;"><!-- Actions -->
         </colgroup>
         <thead>
             <tr>
-                <th style="font-size:13px;">Txn ID</th>
+                <th style="font-size:13px;">Txn ID(s)</th>
                 <th style="font-size:13px;">Customer</th>
                 <th style="font-size:13px;">Type</th>
                 <th style="font-size:13px;">Items / Service</th>
-                <th style="text-align:right;font-size:13px;">Amount</th>
+                <th style="text-align:right;font-size:13px;">Total Amount</th>
                 <th style="font-size:13px;">Method</th>
                 <th style="font-size:13px;">Status</th>
-                <th style="font-size:13px;">Date / Time</th>
+                <th style="font-size:13px;">Date</th>
                 <th style="font-size:13px;">Staff</th>
                 <th style="text-align:center;font-size:13px;">Actions</th>
             </tr>
         </thead>
         <tbody>
-            <?php if (count($rows) > 0): ?>
-                <?php foreach ($rows as $r): ?>
-                <?php $pay_st = pt_pay_status($r); ?>
+            <?php if (count($groups) > 0): ?>
+                <?php foreach ($groups as $g): ?>
+                <?php
+                    $ids_json     = htmlspecialchars(json_encode($g['ids']), ENT_QUOTES, 'UTF-8');
+                    $unique_types = array_unique($g['types']);
+                    $unique_items = array_unique($g['items']);
+                    $pay_str      = implode(' / ', array_unique($g['pay_methods'])) ?: 'Cash';
+                    $count        = count($g['ids']);
+                    
+                    $has_jo       = in_array('Job Order', $g['types']) || in_array('JO + Merchandise', $g['types']);
+                    $has_merch    = in_array('Merchandise', $g['types']) || in_array('JO + Merchandise', $g['types']);
+                    
+                    if ($has_jo && $has_merch)   $badge_class = 'pt-badge-type-combined';
+                    elseif ($has_jo)              $badge_class = 'pt-badge-type-jo';
+                    else                          $badge_class = 'pt-badge-type';
+                    
+                    $type_label   = implode(' + ', $unique_types);
+                ?>
                 <tr>
-                    <td style="font-weight:600;font-size:13px;font-family:monospace;white-space:nowrap;">
-                        <?php echo htmlspecialchars($r['txn_id']); ?>
+                    <td style="font-weight:600;font-size:12px;font-family:monospace;color:#64748b;">
+                        <?php echo htmlspecialchars(implode(', ', $g['txn_ids'])); ?>
                     </td>
-                    <td style="font-size:13px;" title="<?php echo htmlspecialchars($r['customer']); ?>"><?php echo htmlspecialchars($r['customer']); ?></td>
+                    <td style="font-size:13px;font-weight:600;" title="<?php echo htmlspecialchars($g['customer']); ?>">
+                        <?php echo htmlspecialchars($g['customer']); ?>
+                    </td>
                     <td>
-                        <span class="pt-badge pt-badge-type">
-                            <?php echo htmlspecialchars($r['entry_type']); ?>
+                        <span class="pt-badge <?= $badge_class ?>">
+                            <?php echo htmlspecialchars($type_label); ?>
                         </span>
                     </td>
-                    <td style="font-size:13px;"
-                        title="<?php echo htmlspecialchars($r['items_service']); ?>">
-                        <?php echo htmlspecialchars($r['items_service']); ?>
+                    <td style="font-size:12px;" title="<?php echo htmlspecialchars(implode(' | ', $unique_items)); ?>">
+                        <?php echo htmlspecialchars(implode(' | ', $unique_items)); ?>
                     </td>
-                    <td style="font-weight:600;color:#002F70;text-align:right;white-space:nowrap;">
-                        &#8369;<?php echo number_format((float)$r['amount'], 2); ?>
+                    <td style="font-weight:700;color:#002F70;text-align:right;white-space:nowrap;font-size:14px;">
+                        &#8369;<?php echo number_format($g['total'], 2); ?>
                     </td>
-                    <td style="font-size:13px;"><?php echo htmlspecialchars($r['payment_method']); ?></td>
+                    <td style="font-size:13px;"><?php echo htmlspecialchars($pay_str); ?></td>
                     <td>
-                        <span class="pt-badge pt-badge-<?php echo strtolower(str_replace(' ', '-', $pay_st)); ?>">
-                            <?php echo $pay_st; ?>
+                        <span class="pt-badge pt-badge-unpaid" style="background:#fef3c7;color:#92400e;border-color:#fde047;">
+                            Pending
                         </span>
                     </td>
                     <td style="white-space:nowrap;font-size:13px;color:#64748b;">
-                        <?php echo date('M d, Y H:i', strtotime($r['txn_date'])); ?>
+                        <?php echo date('M d, Y', strtotime($g['date'])); ?>
                     </td>
-                    <td style="font-size:13px;color:#64748b;"><?php echo htmlspecialchars($r['staff_name']); ?></td>
-                    <td style="text-align:center;padding:12px 8px;">
-                        <div style="display:flex;flex-direction:column;gap:6px;align-items:center;">
-                            <?php if ($r['_source'] === 'merchandise_transactions'): ?>
-                                <button class="pt-btn-action-full pt-btn-approve" onclick="approveTransaction(<?php echo $r['row_id']; ?>)">
-                                    <i class="fas fa-check-circle"></i> Approve
-                                </button>
-                                <button class="pt-btn-action-full pt-btn-reject" onclick="rejectTransaction(<?php echo $r['row_id']; ?>)">
-                                    <i class="fas fa-times-circle"></i> Reject
-                                </button>
-                                <button class="pt-btn-action-full pt-btn-adjust" onclick="adjustTransaction(<?php echo $r['row_id']; ?>)">
-                                    <i class="fas fa-edit"></i> Adjust
-                                </button>
-                                <button class="pt-btn-action-full pt-btn-view" onclick="viewTransaction(<?php echo $r['row_id']; ?>)">
-                                    <i class="fas fa-eye"></i> View
-                                </button>
-                            <?php else: ?>
-                                <button class="pt-btn-action-full pt-btn-approve" onclick="approveJobOrder(<?php echo $r['row_id']; ?>)">
-                                    <i class="fas fa-check-circle"></i> Approve
-                                </button>
-                                <button class="pt-btn-action-full pt-btn-reject" onclick="rejectJobOrder(<?php echo $r['row_id']; ?>)">
-                                    <i class="fas fa-times-circle"></i> Reject
-                                </button>
-                                <button class="pt-btn-action-full pt-btn-adjust" onclick="adjustJobOrder(<?php echo $r['row_id']; ?>)">
-                                    <i class="fas fa-edit"></i> Adjust
-                                </button>
-                                <button class="pt-btn-action-full pt-btn-view" onclick="viewJobOrder(<?php echo $r['row_id']; ?>)">
-                                    <i class="fas fa-eye"></i> View
-                                </button>
-                            <?php endif; ?>
+                    <td style="font-size:13px;color:#64748b;"><?php echo htmlspecialchars($g['staff']); ?></td>
+                    <td style="text-align:center;padding:10px 8px;">
+                        <div style="display:flex;flex-direction:column;gap:5px;align-items:center;">
+                            <button class="pt-btn-action-full pt-btn-approve" onclick="approveGroup('<?= $ids_json ?>')">
+                                <i class="fas fa-check-circle"></i> Approve
+                            </button>
+                            <button class="pt-btn-action-full pt-btn-reject" onclick="rejectGroup('<?= $ids_json ?>')">
+                                <i class="fas fa-times-circle"></i> Reject
+                            </button>
+                            <button class="pt-btn-action-full pt-btn-adjust" onclick="adjustGroup('<?= $ids_json ?>')">
+                                <i class="fas fa-edit"></i> Adjust
+                            </button>
                         </div>
                     </td>
                 </tr>
@@ -497,7 +605,7 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 <!-- Pagination Controls -->
-<?php if (count($rows) > 0): ?>
+<?php if (count($groups) > 0): ?>
 <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:#fff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px;flex-wrap:wrap;gap:12px;">
     <div style="display:flex;align-items:center;gap:8px;">
         <label style="font-size:12px;color:#64748b;font-weight:600;">Rows per page:</label>
@@ -526,16 +634,15 @@ include __DIR__ . '/../partials/header.php';
 <!-- Reject Modal -->
 <div class="pt-modal-overlay" id="rejectModal">
     <div class="pt-modal">
-        <h3><i class="fas fa-times-circle" style="color:#dc2626;margin-right:8px;"></i>Reject Transaction</h3>
+        <h3><i class="fas fa-times-circle" style="color:#dc2626;margin-right:8px;"></i>Reject Group</h3>
         <form method="POST" id="rejectForm">
-            <input type="hidden" name="action" id="reject_action" value="reject_transaction">
-            <input type="hidden" name="transaction_id" id="reject_txn_id" value="">
-            <input type="hidden" name="jo_id" id="reject_jo_id" value="">
+            <input type="hidden" name="action" value="reject_group">
+            <input type="hidden" name="group_ids" id="reject_group_ids" value="">
             <label>Reason for rejection <span style="color:#dc2626;">*</span></label>
-            <textarea name="reason" id="reject_reason" placeholder="Explain why this transaction is being rejected..." required style="min-height:80px;"></textarea>
+            <textarea name="reason" id="reject_reason" placeholder="Explain why this group of transactions is being rejected..." required style="min-height:80px;"></textarea>
             <div class="pt-modal-btns">
                 <button type="button" class="pt-modal-cancel" onclick="closeRejectModal()">Cancel</button>
-                <button type="submit" class="pt-modal-submit" style="background:#dc2626;">Reject Transaction</button>
+                <button type="submit" class="pt-modal-submit" style="background:#dc2626;">Reject Group</button>
             </div>
         </form>
     </div>
@@ -544,22 +651,18 @@ include __DIR__ . '/../partials/header.php';
 <!-- Adjust Modal -->
 <div class="pt-modal-overlay" id="adjustModal">
     <div class="pt-modal" style="max-width:600px;">
-        <h3><i class="fas fa-edit" style="color:#f59e0b;margin-right:8px;"></i>Adjust Transaction</h3>
+        <h3><i class="fas fa-edit" style="color:#f59e0b;margin-right:8px;"></i>Adjust Group</h3>
         <form method="POST" id="adjustForm">
-            <input type="hidden" name="action" id="adjust_action" value="adjust_transaction">
-            <input type="hidden" name="transaction_id" id="adjust_txn_id" value="">
-            <input type="hidden" name="jo_id" id="adjust_jo_id" value="">
+            <input type="hidden" name="action" value="adjust_group">
+            <input type="hidden" name="group_ids" id="adjust_group_ids" value="">
             
             <label>Adjustment Type <span style="color:#dc2626;">*</span></label>
             <select name="adjustment_type" id="adjust_type" class="pt-modal-input" required>
                 <option value="">Select adjustment type...</option>
-                <option value="quantity">Quantity Adjustment</option>
-                <option value="price">Price Adjustment</option>
-                <option value="service_fee">Service Fee Adjustment</option>
-                <option value="other">Other</option>
+                <option value="price">Price Adjustment (Total)</option>
             </select>
             
-            <label style="margin-top:12px;">New Value</label>
+            <label style="margin-top:12px;">New Total Value</label>
             <input type="text" name="new_value" id="adjust_value" class="pt-modal-input" placeholder="Enter new value..." required>
             
             <label style="margin-top:12px;">Reason for adjustment <span style="color:#dc2626;">*</span></label>
@@ -570,19 +673,6 @@ include __DIR__ . '/../partials/header.php';
                 <button type="submit" class="pt-modal-submit" style="background:#f59e0b;">Apply Adjustment</button>
             </div>
         </form>
-    </div>
-</div>
-
-<!-- View Modal -->
-<div class="pt-modal-overlay" id="viewModal">
-    <div class="pt-modal" style="max-width:800px;">
-        <h3><i class="fas fa-eye" style="color:#3b82f6;margin-right:8px;"></i>Transaction Details</h3>
-        <div id="viewContent" style="max-height:500px;overflow-y:auto;">
-            <!-- Content loaded dynamically -->
-        </div>
-        <div class="pt-modal-btns">
-            <button type="button" class="pt-modal-cancel" onclick="closeViewModal()">Close</button>
-        </div>
     </div>
 </div>
 
@@ -598,7 +688,7 @@ include __DIR__ . '/../partials/header.php';
 }
 .pt-inp:focus { border-color:#002F70;box-shadow:0 0 0 3px rgba(0,47,112,.1); }
 .pt-btn { 
-    display:inline-flex;align-items:center;gap:6px;padding:0 18px;height:40px;border:none;border-radius:7px;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap;transition:filter .15s;:inline-flex;align-items:center;gap:6px;padding:0 16px;height:36px;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap;transition:filter .15s; 
+    display:inline-flex;align-items:center;gap:6px;padding:0 18px;height:40px;border:none;border-radius:7px;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap;transition:filter .15s; 
 }
 .pt-btn:hover { filter:brightness(.88); }
 .pt-btn-search { background:#002F70;color:#fff; }
@@ -616,7 +706,9 @@ include __DIR__ . '/../partials/header.php';
 .pt-badge { 
     display:inline-block;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap;background:#f8fafc;color:#64748b;border:1px solid #e2e8f0;
 }
-.pt-badge-type { background:#f1f5f9;color:#475569;border-color:#cbd5e1; }
+.pt-badge-type         { background:#f1f5f9;color:#475569;border-color:#cbd5e1; }
+.pt-badge-type-jo      { background:#dbeafe;color:#1e40af;border-color:#93c5fd; }
+.pt-badge-type-combined{ background:#ede9fe;color:#5b21b6;border-color:#c4b5fd; }
 .pt-badge-paid { background:#f0fdf4;color:#166534;border-color:#bbf7d0; }
 .pt-badge-partial { background:#fef3c7;color:#92400e;border-color:#fde047; }
 .pt-badge-unpaid { background:#fef2f2;color:#991b1b;border-color:#fecaca; }
@@ -650,7 +742,6 @@ include __DIR__ . '/../partials/header.php';
 .pt-btn-approve { background:#28a745; } /* Bright Green */
 .pt-btn-reject { background:#dc3545; }  /* Bright Red */
 .pt-btn-adjust { background:#6c757d; }  /* Gray */
-.pt-btn-view { background:#003d82; }    /* Navy Blue */
 
 /* Modal */
 .pt-modal-overlay { display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center; }
@@ -669,38 +760,30 @@ include __DIR__ . '/../partials/header.php';
 </style>
 
 <script>
-function approveTransaction(id) {
-    if (confirm('Approve this transaction?')) {
+function approveGroup(idsJson) {
+    if (confirm('Approve all transactions in this group?')) {
         const form = document.createElement('form');
         form.method = 'POST';
-        form.innerHTML = '<input type="hidden" name="action" value="approve_transaction"><input type="hidden" name="transaction_id" value="' + id + '">';
+        
+        const actionInput = document.createElement('input');
+        actionInput.type = 'hidden';
+        actionInput.name = 'action';
+        actionInput.value = 'approve_group';
+        form.appendChild(actionInput);
+        
+        const idsInput = document.createElement('input');
+        idsInput.type = 'hidden';
+        idsInput.name = 'group_ids';
+        idsInput.value = idsJson;
+        form.appendChild(idsInput);
+        
         document.body.appendChild(form);
         form.submit();
     }
 }
 
-function approveJobOrder(id) {
-    if (confirm('Approve this job order?')) {
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.innerHTML = '<input type="hidden" name="action" value="approve_job_order"><input type="hidden" name="jo_id" value="' + id + '">';
-        document.body.appendChild(form);
-        form.submit();
-    }
-}
-
-function rejectTransaction(id) {
-    document.getElementById('reject_action').value = 'reject_transaction';
-    document.getElementById('reject_txn_id').value = id;
-    document.getElementById('reject_jo_id').value = '';
-    document.getElementById('reject_reason').value = '';
-    document.getElementById('rejectModal').classList.add('active');
-}
-
-function rejectJobOrder(id) {
-    document.getElementById('reject_action').value = 'reject_job_order';
-    document.getElementById('reject_jo_id').value = id;
-    document.getElementById('reject_txn_id').value = '';
+function rejectGroup(idsJson) {
+    document.getElementById('reject_group_ids').value = idsJson;
     document.getElementById('reject_reason').value = '';
     document.getElementById('rejectModal').classList.add('active');
 }
@@ -709,21 +792,9 @@ function closeRejectModal() {
     document.getElementById('rejectModal').classList.remove('active');
 }
 
-function adjustTransaction(id) {
-    document.getElementById('adjust_action').value = 'adjust_transaction';
-    document.getElementById('adjust_txn_id').value = id;
-    document.getElementById('adjust_jo_id').value = '';
-    document.getElementById('adjust_type').value = '';
-    document.getElementById('adjust_value').value = '';
-    document.getElementById('adjust_reason').value = '';
-    document.getElementById('adjustModal').classList.add('active');
-}
-
-function adjustJobOrder(id) {
-    document.getElementById('adjust_action').value = 'adjust_job_order';
-    document.getElementById('adjust_jo_id').value = id;
-    document.getElementById('adjust_txn_id').value = '';
-    document.getElementById('adjust_type').value = '';
+function adjustGroup(idsJson) {
+    document.getElementById('adjust_group_ids').value = idsJson;
+    document.getElementById('adjust_type').value = 'price';
     document.getElementById('adjust_value').value = '';
     document.getElementById('adjust_reason').value = '';
     document.getElementById('adjustModal').classList.add('active');
@@ -733,96 +804,6 @@ function closeAdjustModal() {
     document.getElementById('adjustModal').classList.remove('active');
 }
 
-function viewTransaction(id) {
-    document.getElementById('viewContent').innerHTML = '<div style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin" style="font-size:24px;color:#3b82f6;"></i><div style="margin-top:12px;color:#64748b;">Loading transaction details...</div></div>';
-    document.getElementById('viewModal').classList.add('active');
-    
-    // Fetch transaction details via AJAX
-    fetch('../backend/get_transaction_details.php?id=' + id + '&type=merchandise_transactions')
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                let html = '<div style="font-size:13px;line-height:1.6;">';
-                html += '<div style="display:grid;grid-template-columns:140px 1fr;gap:10px 16px;margin-bottom:16px;">';
-                html += '<div style="font-weight:600;color:#64748b;">Transaction ID:</div><div style="color:#1e293b;font-family:monospace;">' + data.transaction_id + '</div>';
-                html += '<div style="font-weight:600;color:#64748b;">Customer:</div><div style="color:#1e293b;">' + data.customer_name + '</div>';
-                html += '<div style="font-weight:600;color:#64748b;">Item SKU:</div><div style="color:#1e293b;">' + data.item_sku + '</div>';
-                html += '<div style="font-weight:600;color:#64748b;">Quantity:</div><div style="color:#1e293b;">' + data.quantity + '</div>';
-                html += '<div style="font-weight:600;color:#64748b;">Unit Price:</div><div style="color:#1e293b;">₱' + data.unit_price + '</div>';
-                html += '<div style="font-weight:600;color:#64748b;">Total Amount:</div><div style="color:#002F70;font-weight:700;font-size:16px;">₱' + data.total_amount + '</div>';
-                html += '<div style="font-weight:600;color:#64748b;">Payment Method:</div><div style="color:#1e293b;">' + data.payment_method + '</div>';
-                if (data.amount_tendered !== 'N/A') {
-                    html += '<div style="font-weight:600;color:#64748b;">Amount Tendered:</div><div style="color:#1e293b;">₱' + data.amount_tendered + '</div>';
-                    html += '<div style="font-weight:600;color:#64748b;">Change:</div><div style="color:#1e293b;">₱' + data.change_amount + '</div>';
-                }
-                html += '<div style="font-weight:600;color:#64748b;">Transaction Date:</div><div style="color:#1e293b;">' + data.transaction_date + '</div>';
-                html += '<div style="font-weight:600;color:#64748b;">Staff:</div><div style="color:#1e293b;">' + data.staff_name + '</div>';
-                html += '<div style="font-weight:600;color:#64748b;">Status:</div><div style="color:#1e293b;"><span style="background:#fef3c7;color:#92400e;padding:4px 10px;border-radius:4px;font-size:11px;font-weight:600;">PENDING</span></div>';
-                if (data.shift !== 'N/A') {
-                    html += '<div style="font-weight:600;color:#64748b;">Shift:</div><div style="color:#1e293b;">' + data.shift + '</div>';
-                }
-                html += '</div>';
-                if (data.remarks !== 'N/A') {
-                    html += '<div style="border-top:1px solid #e2e8f0;padding-top:12px;"><div style="font-weight:600;color:#64748b;margin-bottom:4px;">Remarks:</div><div style="color:#475569;">' + data.remarks + '</div></div>';
-                }
-                html += '</div>';
-                document.getElementById('viewContent').innerHTML = html;
-            } else {
-                document.getElementById('viewContent').innerHTML = '<div style="text-align:center;padding:40px;color:#dc2626;"><i class="fas fa-exclamation-circle" style="font-size:24px;"></i><div style="margin-top:12px;">' + (data.error || 'Failed to load transaction details.') + '</div></div>';
-            }
-        })
-        .catch(error => {
-            console.error('Error loading transaction:', error);
-            document.getElementById('viewContent').innerHTML = '<div style="text-align:center;padding:40px;color:#dc2626;"><i class="fas fa-exclamation-circle" style="font-size:24px;"></i><div style="margin-top:12px;">Error loading details. Please try again.</div></div>';
-        });
-}
-
-function viewJobOrder(id) {
-    document.getElementById('viewContent').innerHTML = '<div style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin" style="font-size:24px;color:#3b82f6;"></i><div style="margin-top:12px;color:#64748b;">Loading job order details...</div></div>';
-    document.getElementById('viewModal').classList.add('active');
-    
-    // Fetch job order details via AJAX
-    fetch('../backend/get_transaction_details.php?id=' + id + '&type=job_orders')
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                let html = '<div style="font-size:13px;line-height:1.6;">';
-                html += '<div style="display:grid;grid-template-columns:140px 1fr;gap:10px 16px;margin-bottom:16px;">';
-                html += '<div style="font-weight:600;color:#64748b;">Job Order #:</div><div style="color:#1e293b;font-family:monospace;">' + data.transaction_id + '</div>';
-                html += '<div style="font-weight:600;color:#64748b;">Customer:</div><div style="color:#1e293b;">' + data.customer_name + '</div>';
-                html += '<div style="font-weight:600;color:#64748b;">Vehicle Plate:</div><div style="color:#1e293b;">' + data.vehicle_plate + '</div>';
-                html += '<div style="font-weight:600;color:#64748b;">Vehicle Type:</div><div style="color:#1e293b;">' + data.vehicle_type + '</div>';
-                html += '<div style="font-weight:600;color:#64748b;">Service Type:</div><div style="color:#1e293b;">' + data.service_type + '</div>';
-                html += '<div style="font-weight:600;color:#64748b;">Description:</div><div style="color:#1e293b;">' + data.service_description + '</div>';
-                html += '<div style="font-weight:600;color:#64748b;">Required Parts:</div><div style="color:#1e293b;font-size:12px;">' + data.required_parts + '</div>';
-                html += '<div style="font-weight:600;color:#64748b;">Mechanic:</div><div style="color:#1e293b;">' + data.mechanic_name + '</div>';
-                html += '<div style="font-weight:600;color:#64748b;">Estimated Cost:</div><div style="color:#1e293b;">₱' + data.estimated_cost + '</div>';
-                html += '<div style="font-weight:600;color:#64748b;">Total Amount:</div><div style="color:#002F70;font-weight:700;font-size:16px;">₱' + data.total_amount + '</div>';
-                html += '<div style="font-weight:600;color:#64748b;">Payment Method:</div><div style="color:#1e293b;">' + data.payment_method + '</div>';
-                html += '<div style="font-weight:600;color:#64748b;">Payment Status:</div><div style="color:#1e293b;">' + data.payment_status + '</div>';
-                html += '<div style="font-weight:600;color:#64748b;">Date:</div><div style="color:#1e293b;">' + data.transaction_date + '</div>';
-                html += '<div style="font-weight:600;color:#64748b;">Staff:</div><div style="color:#1e293b;">' + data.staff_name + '</div>';
-                html += '<div style="font-weight:600;color:#64748b;">Validation Status:</div><div style="color:#1e293b;"><span style="background:#fef3c7;color:#92400e;padding:4px 10px;border-radius:4px;font-size:11px;font-weight:600;">PENDING</span></div>';
-                html += '</div>';
-                if (data.additional_notes !== 'N/A') {
-                    html += '<div style="border-top:1px solid #e2e8f0;padding-top:12px;"><div style="font-weight:600;color:#64748b;margin-bottom:4px;">Notes:</div><div style="color:#475569;">' + data.additional_notes + '</div></div>';
-                }
-                html += '</div>';
-                document.getElementById('viewContent').innerHTML = html;
-            } else {
-                document.getElementById('viewContent').innerHTML = '<div style="text-align:center;padding:40px;color:#dc2626;"><i class="fas fa-exclamation-circle" style="font-size:24px;"></i><div style="margin-top:12px;">' + (data.error || 'Failed to load job order details.') + '</div></div>';
-            }
-        })
-        .catch(error => {
-            console.error('Error loading job order:', error);
-            document.getElementById('viewContent').innerHTML = '<div style="text-align:center;padding:40px;color:#dc2626;"><i class="fas fa-exclamation-circle" style="font-size:24px;"></i><div style="margin-top:12px;">Error loading details. Please try again.</div></div>';
-        });
-}
-
-function closeViewModal() {
-    document.getElementById('viewModal').classList.remove('active');
-}
-
 // Close modals on overlay click
 document.getElementById('rejectModal').addEventListener('click', function(e) {
     if (e.target === this) closeRejectModal();
@@ -830,46 +811,27 @@ document.getElementById('rejectModal').addEventListener('click', function(e) {
 document.getElementById('adjustModal').addEventListener('click', function(e) {
     if (e.target === this) closeAdjustModal();
 });
-document.getElementById('viewModal').addEventListener('click', function(e) {
-    if (e.target === this) closeViewModal();
-});
 
 // ══════════════════════════════════════════════════════════════════════════════
 // AUTO-REFRESH: Pending Transactions (30-second polling for near real-time updates)
-// No manual refresh button needed - system automatically updates to reflect new
-// staff encodings and manager actions.
 // ══════════════════════════════════════════════════════════════════════════════
 let refreshPendingTimer = null;
 let isModalOpen = false;
 
 function autoRefreshPendingTransactions() {
-    // Skip refresh if user is interacting with modal
-    if (isModalOpen) {
-        return;
-    }
-    
-    // Silently reload the page to get fresh data
-    // Preserves current search filters via URL params
+    if (isModalOpen) return;
     const urlParams = new URLSearchParams(window.location.search);
     const currentSearch = urlParams.toString();
     const reloadUrl = currentSearch ? '?' + currentSearch : window.location.pathname;
-    
-    // Silent reload - no page flash
     window.location.replace(reloadUrl + (currentSearch ? '&t=' : '?t=') + Date.now());
 }
 
-// Track modal state
 function updateModalState() {
     const rejectModal = document.getElementById('rejectModal');
     const adjustModal = document.getElementById('adjustModal');
-    const viewModal = document.getElementById('viewModal');
-    
-    isModalOpen = rejectModal.classList.contains('active') || 
-                  adjustModal.classList.contains('active') || 
-                  viewModal.classList.contains('active');
+    isModalOpen = rejectModal.classList.contains('active') || adjustModal.classList.contains('active');
 }
 
-// Update modal state whenever modals open/close
 const originalCloseRejectModal = window.closeRejectModal;
 window.closeRejectModal = function() {
     originalCloseRejectModal();
@@ -880,30 +842,6 @@ const originalCloseAdjustModal = window.closeAdjustModal;
 window.closeAdjustModal = function() {
     originalCloseAdjustModal();
     updateModalState();
-};
-
-const originalCloseViewModal = window.closeViewModal;
-window.closeViewModal = function() {
-    originalCloseViewModal();
-    updateModalState();
-};
-
-const originalApproveTransaction = window.approveTransaction;
-window.approveTransaction = function(id) {
-    updateModalState();
-    return originalApproveTransaction(id);
-};
-
-const originalRejectTransaction = window.rejectTransaction;
-window.rejectTransaction = function(id) {
-    updateModalState();
-    return originalRejectTransaction(id);
-};
-
-const originalAdjustTransaction = window.adjustTransaction;
-window.adjustTransaction = function(id) {
-    updateModalState();
-    return originalAdjustTransaction(id);
 };
 
 function exportPending(format) {
@@ -925,8 +863,6 @@ function exportPending(format) {
 // Start auto-refresh timer (30 seconds)
 refreshPendingTimer = setInterval(autoRefreshPendingTransactions, 30000);
 
-console.log('✅ Auto-refresh enabled for Pending Transactions (30s interval)');
-
 // ══════════════════════════════════════════════════════════════════════════════
 // PAGINATION FUNCTIONALITY
 // ══════════════════════════════════════════════════════════════════════════════
@@ -935,7 +871,6 @@ console.log('✅ Auto-refresh enabled for Pending Transactions (30s interval)');
     if (!table) return;
     
     const allRows = Array.from(table.querySelectorAll('tr'));
-    // Skip if only "no records" row
     if (allRows.length === 1 && allRows[0].querySelector('td[colspan]')) return;
     
     let currentPage = 1;
@@ -953,20 +888,13 @@ console.log('✅ Auto-refresh enabled for Pending Transactions (30s interval)');
         const start = (currentPage - 1) * rowsPerPage;
         const end = start + rowsPerPage;
         
-        // Hide all rows first
         allRows.forEach(row => row.style.display = 'none');
-        
-        // Show only current page rows
         allRows.slice(start, end).forEach(row => row.style.display = '');
         
-        // Update page info
-        pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
-        
-        // Update button states
+        pageInfo.textContent = `Page ${currentPage} of ${totalPages || 1}`;
         prevBtn.disabled = currentPage === 1;
-        nextBtn.disabled = currentPage === totalPages;
+        nextBtn.disabled = currentPage === totalPages || totalPages === 0;
         
-        // Update button styles
         prevBtn.style.opacity = prevBtn.disabled ? '0.5' : '1';
         prevBtn.style.cursor = prevBtn.disabled ? 'not-allowed' : 'pointer';
         nextBtn.style.opacity = nextBtn.disabled ? '0.5' : '1';
@@ -983,7 +911,6 @@ console.log('✅ Auto-refresh enabled for Pending Transactions (30s interval)');
         if (currentPage > 1) {
             currentPage--;
             updateTable();
-            // Scroll to top of table
             document.querySelector('.card').scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
     });
@@ -993,12 +920,10 @@ console.log('✅ Auto-refresh enabled for Pending Transactions (30s interval)');
         if (currentPage < totalPages) {
             currentPage++;
             updateTable();
-            // Scroll to top of table
             document.querySelector('.card').scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
     });
     
-    // Add hover effects
     document.querySelectorAll('.pt-page-btn').forEach(btn => {
         btn.addEventListener('mouseenter', function() {
             if (!this.disabled) {
@@ -1012,7 +937,6 @@ console.log('✅ Auto-refresh enabled for Pending Transactions (30s interval)');
         });
     });
     
-    // Initialize
     updateTable();
 })();
 </script>

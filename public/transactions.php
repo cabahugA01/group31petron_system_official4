@@ -490,7 +490,7 @@ $sql = "
         COALESCE(NULLIF(mt.payment_method,''),'Cash') AS payment_method,
         CASE WHEN mt.transaction_date > '2000-01-01' THEN mt.transaction_date ELSE mt.created_at END AS created_at,
         COALESCE(NULLIF(TRIM(mt.validation_status),''),'Pending') AS status,
-        COALESCE(u.name,'Unknown') AS staff_name,
+        COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS staff_name,
         mt.staff_id,
         COALESCE(
             NULLIF((SELECT GROUP_CONCAT(i.product_name ORDER BY i.id SEPARATOR ', ')
@@ -554,7 +554,7 @@ $jo_sql = "
         COALESCE(jo.payment_method,'N/A') AS payment_method,
         jo.created_at,
         COALESCE(NULLIF(TRIM(jo.validation_status),''),'Pending Validation') AS status,
-        COALESCE(u.name,'Unknown') AS staff_name,
+        COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS staff_name,
         COALESCE(jo.user_id, 0) AS staff_id,
         COALESCE(NULLIF(TRIM(jo.service_type),''),'Job Order') AS product_name,
         COALESCE(jo.vehicle_plate,'') AS vehicle,
@@ -569,7 +569,7 @@ $jo_sql = "
         COALESCE(NULLIF(TRIM(jo.payment_status),''), 'Unpaid') AS payment_status,
         'job_orders' AS _source
     FROM job_orders jo
-    LEFT JOIN users u ON u.user_id = COALESCE(jo.created_by, jo.user_id)
+    LEFT JOIN users u ON u.id = COALESCE(jo.created_by, jo.user_id)
     $jow
     ORDER BY jo.created_at DESC
 ";

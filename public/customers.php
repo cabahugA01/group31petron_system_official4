@@ -202,7 +202,7 @@ if ($section === 'history' && isset($_GET['export']) && $_GET['export'] === 'csv
         $exp_name_s = $pdo->prepare("SELECT name FROM customers WHERE id=? AND station_id=?");
         $exp_name_s->execute([$_hist_export_id, $station_id]);
         $exp_cust_name = $exp_name_s->fetchColumn() ?: 'Customer';
-        $exp_s = $pdo->prepare("SELECT cct.created_at, cct.transaction_id, cct.transaction_type, cct.amount, cct.running_balance, cct.description, COALESCE(u.full_name, u.name, '—') AS recorded_by FROM customer_credit_transactions cct LEFT JOIN users u ON u.user_id = cct.created_by WHERE $exp_where ORDER BY cct.created_at DESC LIMIT 500");
+        $exp_s = $pdo->prepare("SELECT cct.created_at, cct.transaction_id, cct.transaction_type, cct.amount, cct.running_balance, cct.description, COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS recorded_by FROM customer_credit_transactions cct LEFT JOIN users u ON u.id = cct.created_by WHERE $exp_where ORDER BY cct.created_at DESC LIMIT 500");
         $exp_s->execute($exp_params);
         $exp_rows = $exp_s->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) { $exp_rows = []; $exp_cust_name = 'Customer'; }
@@ -244,7 +244,7 @@ if ($section === 'history' && isset($_GET['export']) && $_GET['export'] === 'exc
         $exp_name_s = $pdo->prepare("SELECT name FROM customers WHERE id=? AND station_id=?");
         $exp_name_s->execute([$hist_selected_id_pre, $station_id]);
         $exp_cust_name = $exp_name_s->fetchColumn() ?: 'Customer';
-        $exp_s = $pdo->prepare("SELECT cct.created_at, cct.transaction_id, cct.transaction_type, cct.amount, cct.running_balance, cct.description, COALESCE(u.full_name, u.name, '—') AS recorded_by FROM customer_credit_transactions cct LEFT JOIN users u ON u.user_id = cct.created_by WHERE $exp_where ORDER BY cct.created_at DESC LIMIT 500");
+        $exp_s = $pdo->prepare("SELECT cct.created_at, cct.transaction_id, cct.transaction_type, cct.amount, cct.running_balance, cct.description, COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS recorded_by FROM customer_credit_transactions cct LEFT JOIN users u ON u.id = cct.created_by WHERE $exp_where ORDER BY cct.created_at DESC LIMIT 500");
         $exp_s->execute($exp_params);
         $exp_rows = $exp_s->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) { $exp_rows = []; $exp_cust_name = 'Customer'; }

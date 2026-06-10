@@ -12,22 +12,19 @@ $master_menu = [
     // Staff → staff_transactions_hub.php | Manager → pending_transactions.php (NEW validation page)
     ['id'=>'transactions','label'=>'Transactions','ico'=>'fas fa-exchange-alt','href'=>'staff_transactions_hub.php?section=merchandise','permissions'=>['create_transactions', 'view_transactions', 'approve_transactions'],'station_specific'=>true],
 
-    // Job Orders - Managers handle operations, Staff create
-    ['id'=>'job_orders','label'=>'Job Orders','ico'=>'fas fa-wrench','href'=>'staff_transactions_hub.php?section=merchandise&active_tab=encode_jo','permissions'=>['manage_job_orders', 'create_job_orders'],'station_specific'=>true],
+    // Job Orders tab removed - redundant, already available in Transactions hub
     
     // Fuel Management - Managers handle operations, Staff do encoding
     ['id'=>'fuel','label'=>'Fuel Management','ico'=>'fas fa-gas-pump','href'=>'#','permissions'=>['manage_fuel', 'encode_fuel', 'view_fuel_variance'],'station_specific'=>true,'sub_items'=>[
-        ['id'=>'staff_expected_fuel_del',   'label'=>'Expected Fuel Deliveries',     'href'=>'staff_expected_fuel_deliveries.php',      'permissions'=>['encode_fuel','create_transactions'], 'desc'=>'View fuel POs created by Manager/Admin with expected fuel types and quantities.'],
         ['id'=>'staff_fuel_deliveries_sub', 'label'=>'Record Fuel Delivery',         'href'=>'staff_fuel_deliveries.php',               'permissions'=>['encode_fuel','create_transactions'], 'desc'=>'Encode actual fuel delivery details (Invoice number, fuel type, liters, tanker number).'],
-        ['id'=>'staff_fuel_del_status',     'label'=>'Fuel Delivery Status',         'href'=>'staff_fuel_delivery_status.php',          'permissions'=>['encode_fuel','create_transactions'], 'desc'=>'Monitor encoded fuel deliveries: Pending Validation, Approved, or Rejected status.'],
+        ['id'=>'staff_fuel_del_history',     'label'=>'Fuel Deliveries History',      'href'=>'staff_fuel_deliveries_history.php',          'permissions'=>['encode_fuel','create_transactions'], 'desc'=>'View all fuel delivery records with manager approval status (Pending, Approved, Rejected).'],
         ['id'=>'staff_fuel_transactions',   'label'=>'Fuel Transactions (pump readings)', 'href'=>'staff_transactions_hub.php?section=fuel', 'permissions'=>['encode_fuel','create_transactions']],
     ]],
     
     // Deliveries Management - Staff (Merchandise ONLY — Fuel is under Fuel Management)
     ['id'=>'staff_deliveries','label'=>'Merchandise Deliveries','ico'=>'fas fa-boxes','href'=>'#','permissions'=>['manage_inventory','view_inventory','encode_fuel','create_transactions'],'station_specific'=>true,'sub_items'=>[
-        ['id'=>'staff_expected_deliveries', 'label'=>'Expected Deliveries',           'href'=>'staff_expected_deliveries.php',     'permissions'=>['manage_inventory','encode_fuel','create_transactions'], 'desc'=>'View POs created by Manager/Admin with expected delivery dates.'],
         ['id'=>'staff_record_del',          'label'=>'Record Delivery Receipt',      'href'=>'staff_record_delivery.php',         'permissions'=>['manage_inventory','encode_fuel','create_transactions'], 'desc'=>'Encode actual delivery details (DR number, Batch ID, received items, quantity).'],
-        ['id'=>'staff_delivery_status',     'label'=>'Delivery Status',              'href'=>'staff_delivery_status.php',         'permissions'=>['manage_inventory','encode_fuel','create_transactions'], 'desc'=>'Monitor if encoded deliveries are Pending Validation, Approved, or Rejected.'],
+        ['id'=>'staff_delivery_history',    'label'=>'Merchandise Deliveries History', 'href'=>'staff_delivery_history.php',      'permissions'=>['manage_inventory','encode_fuel','create_transactions'], 'desc'=>'View all encoded merchandise deliveries with manager approval status.'],
     ]],
     
     // Deliveries Management - Manager (Merchandise Validation & History)
@@ -50,6 +47,7 @@ $master_menu = [
     ['id'=>'product_management','label'=>'Product Management','ico'=>'fas fa-boxes','href'=>'manager_product_merchandise.php','permissions'=>['manage_inventory','view_inventory','approve_transactions','manage_job_orders'],'station_specific'=>true,'sub_items'=>[
         ['id'=>'mgr_prod_merchandise','label'=>'Merchandise Products','href'=>'manager_product_merchandise.php','permissions'=>['manage_inventory','view_inventory']],
         ['id'=>'mgr_prod_fuel',       'label'=>'Fuel Products',       'href'=>'manager_product_fuel.php',       'permissions'=>['manage_inventory','view_inventory']],
+        ['id'=>'mgr_prod_services',   'label'=>'Service Types',       'href'=>'manager_service_types.php',      'permissions'=>['manage_inventory','view_inventory','manage_job_orders']],
         ['id'=>'mgr_prod_prices',     'label'=>'Approve Prices',      'href'=>'manager_approve_prices.php',     'permissions'=>['approve_transactions','manage_job_orders']],
     ]],
 
@@ -208,7 +206,6 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                     ['id' => 'admin_fuel_transactions_oversight', 'label' => 'Fuel Transactions Oversight', 'href' => 'admin_fuel_transactions_oversight.php', 'permissions' => ['view_all_reports'], 'desc' => 'Monitor validated pump readings for compliance.'],
                     ['id' => 'admin_fuel_deliveries_oversight', 'label' => 'Fuel Deliveries Oversight', 'href' => 'admin_fuel_deliveries_oversight.php', 'permissions' => ['view_all_reports'], 'desc' => 'Oversee validated supplier deliveries and stock updates.'],
                     ['id' => 'admin_fuel_adjustments_oversight', 'label' => 'Adjustments Oversight', 'href' => 'admin_fuel_adjustments_oversight.php', 'permissions' => ['view_all_reports'], 'desc' => 'Track manager adjustments for audit and transparency.'],
-                    ['id' => 'admin_fuel_reconciliation_oversight', 'label' => 'Reconciliation Oversight', 'href' => 'admin_fuel_reconciliation_oversight.php', 'permissions' => ['view_all_reports'], 'desc' => 'System-wide reconciliation logs and variance reports for compliance oversight.'],
                     ['id' => 'admin_pump_master_oversight', 'label' => 'Pump Master Oversight', 'href' => 'admin_pump_master_oversight.php', 'permissions' => ['view_all_reports'], 'desc' => 'View calibration records and audit trail logs.'],
                 ],
             ],
@@ -438,7 +435,6 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                     ['id'=>'fuel_deliveries_validation',   'label'=>'Fuel Deliveries Validation',   'href'=>'manager_fuel_deliveries_validation.php',          'permissions'=>['manage_fuel'], 'desc'=>'Approve or return supplier delivery receipts.'],
                     ['id'=>'fuel_adjustments',              'label'=>'Adjustments',                  'href'=>'manager_fuel_adjustments.php',                    'permissions'=>['manage_fuel'], 'desc'=>'Apply corrections for tank levels, stock, or price changes.'],
                     ['id'=>'fuel_pump_master',              'label'=>'Pump Master',                  'href'=>'manager_fuel_pump_master.php',                    'permissions'=>['manage_fuel'], 'desc'=>'Manage calibration values for accurate pump readings.'],
-                    ['id'=>'fuel_reconciliation',           'label'=>'Fuel Reconciliation',          'href'=>'manager_fuel_reconciliation.php',                 'permissions'=>['manage_fuel'], 'desc'=>'Compare pump sales with tank levels and resolve variances.'],
                 ];
                 // Add directly — skip the generic sub-item filter below
                 $filtered_menu[] = $filtered_item;
@@ -501,7 +497,6 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                     ['id'=>'mgr_prod_fuel',        'label'=>'Fuel Products',        'href'=>'manager_product_fuel.php',         'permissions'=>['manage_inventory','view_inventory']],
                     ['id'=>'mgr_prod_prices',      'label'=>'Price History',        'href'=>'manager_approve_prices.php',       'permissions'=>['approve_transactions','manage_job_orders']],
                     ['id'=>'mgr_prod_adjustment',  'label'=>'Adjustment',           'href'=>'manager_fuel_adjustments.php',     'permissions'=>['manage_inventory','manage_fuel']],
-                    ['id'=>'mgr_prod_recon',       'label'=>'Reconciliation',       'href'=>'manager_fuel_management_complete.php?tab=reconciliation', 'permissions'=>['manage_fuel']],
                 ];
                 $force_direct_link = false;
             }
