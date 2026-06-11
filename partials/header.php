@@ -190,9 +190,9 @@ try {
         $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE user_id = ? AND status IN ('Pending', 'In Progress', 'Awaiting Parts')");
         $stmt->execute([$user['id']]);
         $badges['joborder'] = $stmt->fetchColumn();
-        // Stock-In badge: POs admin-finalized AND manager-validated, awaiting stock-in
+        // Stock-In badge: deliveries approved by manager (Ready for Stock-In), awaiting staff stock-in
         try {
-            $s = $pdo->prepare("SELECT COUNT(*) FROM purchase_orders WHERE station_id=? AND admin_finalized=1 AND delivery_validated=1 AND stock_in_done=0 AND type='merch'");
+            $s = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status='Ready for Stock-In'");
             $s->execute([$myStationId]);
             $badges['staff_stock_in'] = (int)$s->fetchColumn();
         } catch (Exception $e) { $badges['staff_stock_in'] = 0; }

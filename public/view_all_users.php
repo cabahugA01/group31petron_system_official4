@@ -32,7 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 try {
                     // Get user info
-                    $user = $pdo->prepare("SELECT username, name, role, station_id FROM users WHERE user_id = ?");
+                    $user = $pdo->prepare("SELECT username, name, role, station_id FROM users WHERE id = ?");
                     $user->execute([$user_id]);
                     $userInfo = $user->fetch();
                     
@@ -57,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
                             
                             // Update password
-                            $stmt = $pdo->prepare("UPDATE users SET password = ?, updated_at = NOW() WHERE user_id = ?");
+                            $stmt = $pdo->prepare("UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?");
                             $stmt->execute([$hashed_password, $user_id]);
                             
                             log_user_action('Password Reset', "Reset password for user '$userInfo[username]'");
@@ -84,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 try {
                     // Get user info
-                    $user = $pdo->prepare("SELECT username, name, status FROM users WHERE user_id = ?");
+                    $user = $pdo->prepare("SELECT username, name, status FROM users WHERE id = ?");
                     $user->execute([$user_id]);
                     $userInfo = $user->fetch();
                     
@@ -92,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $notice = 'User not found.';
                     } else {
                         // Update user status
-                        $stmt = $pdo->prepare("UPDATE users SET status = ?, updated_at = NOW() WHERE user_id = ?");
+                        $stmt = $pdo->prepare("UPDATE users SET status = ?, updated_at = NOW() WHERE id = ?");
                         $stmt->execute([$new_status, $user_id]);
                         
                         log_user_action('User Status Change', "Changed user '$userInfo[username]' status from '$userInfo[status]' to '$new_status'. Reason: $reason");

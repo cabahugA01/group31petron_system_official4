@@ -354,15 +354,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
         .pw-toggle:hover { color: #93c5fd; text-shadow: 0 0 10px rgba(96,165,250,.6); }
 
         /* Hide browser native password reveal eye (Chrome/Edge/IE) */
-        .field-input[type="password_hash"]::-ms-reveal,
-        .field-input[type="password_hash"]::-ms-clear,
-        input[type="password_hash"]::-ms-reveal,
-        input[type="password_hash"]::-ms-clear {
+        .field-input[type="password"]::-ms-reveal,
+        .field-input[type="password"]::-ms-clear,
+        input[type="password"]::-ms-reveal,
+        input[type="password"]::-ms-clear {
             display: none !important;
         }
-        input[type="password_hash"]::-webkit-contacts-auto-fill-button,
-        input[type="password_hash"]::-webkit-credentials-auto-fill-button,
-        input[type="password_hash"]::-webkit-strong-password-auto-fill-button {
+        input[type="password"]::-webkit-contacts-auto-fill-button,
+        input[type="password"]::-webkit-credentials-auto-fill-button,
+        input[type="password"]::-webkit-strong-password-auto-fill-button {
             display: none !important;
             visibility: hidden;
             pointer-events: none;
@@ -564,7 +564,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
                     <label for="password_hash" class="field-label">New Password</label>
                     <div class="input-wrap">
                         <i class="fas fa-lock input-icon"></i>
-                        <input type="password_hash" name="password_hash" id="password_hash" class="field-input" placeholder="Enter password" required autofocus aria-label="New Password">
+                        <input type="password" name="password_hash" id="password_hash" class="field-input" placeholder="Enter password" required autofocus aria-label="New Password">
                         <button type="button" class="pw-toggle" id="togglePassword" aria-label="Show password">
                             <i class="fas fa-eye"></i>
                         </button>
@@ -576,7 +576,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
                     <label for="confirm_password" class="field-label">Confirm Password</label>
                     <div class="input-wrap">
                         <i class="fas fa-lock input-icon"></i>
-                        <input type="password_hash" name="confirm_password" id="confirm_password" class="field-input" placeholder="Enter password" required aria-label="Confirm Password">
+                        <input type="password" name="confirm_password" id="confirm_password" class="field-input" placeholder="Enter password" required aria-label="Confirm Password">
                         <button type="button" class="pw-toggle" id="toggleConfirmPassword" aria-label="Show confirm password">
                             <i class="fas fa-eye"></i>
                         </button>
@@ -613,15 +613,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
     const passwordStrength      = document.getElementById('passwordStrength');
 
     togglePassword.addEventListener('click', () => {
-        const type = passwordInput.type === 'password_hash' ? 'text' : 'password_hash';
+        const type = passwordInput.type === 'password' ? 'text' : 'password';
         passwordInput.type = type;
-        togglePassword.innerHTML = type === 'password_hash' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
+        togglePassword.innerHTML = type === 'password' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
     });
 
     toggleConfirmPassword.addEventListener('click', () => {
-        const type = confirmPasswordInput.type === 'password_hash' ? 'text' : 'password_hash';
+        const type = confirmPasswordInput.type === 'password' ? 'text' : 'password';
         confirmPasswordInput.type = type;
-        toggleConfirmPassword.innerHTML = type === 'password_hash' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
+        toggleConfirmPassword.innerHTML = type === 'password' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
     });
 
     passwordInput.addEventListener('input', () => {

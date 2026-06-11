@@ -65,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $pwd_from_session = $u['password_hash'] ?? '';
             
             // Also get password directly from database  
-            $db_pwd_stmt = $pdo->prepare("SELECT password_hash FROM users WHERE user_id = ?");
+            $db_pwd_stmt = $pdo->prepare("SELECT password_hash FROM users WHERE id = ?");
             $db_pwd_stmt->execute([$u['id']]);
             $db_pwd = $db_pwd_stmt->fetchColumn();
             
@@ -400,7 +400,7 @@ try {
                                 <i class="fas fa-key"></i> Your Admin Password
                             </label>
                             <input 
-                                type="password_hash" 
+                                type="password" 
                                 name="admin_password" 
                                 id="admin_password" 
                                 placeholder="Enter your password"

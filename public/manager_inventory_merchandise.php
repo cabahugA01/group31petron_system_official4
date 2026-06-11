@@ -45,13 +45,15 @@ try {
                ip.unit_price   AS price,
                ip.unit_cost    AS cost,
                ip.sku,
-               COALESCE(si.status, 'Active') AS status,
+               ip.status,
                COALESCE(si.stock_level, ip.stock, 0) AS stock_level,
-               COALESCE(si.reorder_level, 10)        AS reorder_level
+               COALESCE(si.capacity, 0)              AS capacity,
+               COALESCE(si.reorder_level, 10)        AS reorder_level,
+               si.last_updated AS last_updated
         FROM inventory_products ip
         LEFT JOIN station_inventory si
                ON si.product_id = ip.id AND si.station_id = ?
-        WHERE ip.category NOT IN ('Fuel')
+        WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel')
         ORDER BY ip.category, ip.product_name
     ");
     $stmt->execute([$station_id]);
@@ -98,8 +100,7 @@ include __DIR__ . '/../partials/header.php';
 
 <div class="page-head">
     <div>
-        <h1 class="h1"><i class="fas fa-box"></i> Merchandise Inventory</h1>
-        <div class="sub">REVIEW AND UPDATE MERCHANDISE PRICING AND PRODUCT DETAILS.</div>
+        <h1 class="h1">Merchandise Inventory</h1>
     </div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto;">
         <?php
@@ -130,31 +131,29 @@ include __DIR__ . '/../partials/header.php';
 </div>
 <?php endif; ?>
 
-<?php require_once __DIR__ . '/../partials/manager_inventory_summary.php'; ?>
+
 
 <div class="mb-3">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h4 class="mb-0"><i class="fas fa-box"></i> Merchandise Stock</h4>
-        <div style="display:flex;align-items:center;gap:10px;">
-            <span style="font-size:13px;color:#6c757d;"><?php echo count($merch_inventory); ?> products</span>
-        </div>
     </div>
 
-    <div class="search-wrap mb-3">
-        <input id="merchSearch" class="form-control" placeholder="&#128269; Search products..." autocomplete="off" />
-    </div>
+
 
     <div class="table-wrap">
             <table class="table" id="mgrMerchTable">
                 <thead>
                     <tr>
-                        <th>Product</th>
-                        <th>SKU</th>
+                        <th>Item Code / SKU</th>
+                        <th>Product Name</th>
                         <th>Category</th>
-                        <th>Stock</th>
+                        <th>Capacity / Max Stock</th>
+                        <th>Current Level</th>
                         <th>Status</th>
-                        <th>Cost</th>
-                        <th>Price</th>
+                        <th>Variance</th>
+                        <th>Unit Price</th>
+                        <th>Total Value</th>
+                        <th>Timestamp</th>
                     </tr>
                 </thead>
                 <tbody id="merchTableBody">
@@ -174,25 +173,95 @@ include __DIR__ . '/../partials/header.php';
 
                 foreach ($sorted as $cat_label => $items): ?>
                     <tr class="cat-header">
-                        <td colspan="7"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td>
+                        <td colspan="10"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td>
                     </tr>
                     <?php foreach ($items as $item):
                         $stock  = (float)($item['stock_level'] ?? 0);
+                        $capacity = (float)($item['capacity'] ?? 0);
+                        
+                        // If no capacity set, use category-based defaults (same logic as staff)
+                        if ($capacity <= 0) {
+                            $cat = strtoupper(trim($item['category_name'] ?? ''));
+                            
+                            if (strpos($cat, 'OIL') !== false && strpos($cat, 'ENGINE') !== false) {
+                                $capacity = 100;
+                            } elseif (strpos($cat, 'COOLANT') !== false || strpos($cat, 'FLUID') !== false) {
+                                $capacity = strpos($cat, 'BRAKE') !== false ? 50 : 80;
+                            } elseif (strpos($cat, 'GREASE') !== false || strpos($cat, 'LUBE') !== false) {
+                                $capacity = 100;
+                            } elseif (strpos($cat, 'FILTER') !== false) {
+                                $capacity = 150;
+                            } elseif (strpos($cat, 'ACCESSORI') !== false || strpos($cat, 'TIRE') !== false || strpos($cat, 'PROTECTANT') !== false || strpos($cat, 'WAX') !== false) {
+                                $capacity = 200;
+                            } elseif (strpos($cat, 'FRESHENER') !== false) {
+                                $capacity = 250;
+                            } elseif (strpos($cat, 'BEVERAGE') !== false || strpos($cat, 'DRINK') !== false) {
+                                $capacity = 500;
+                            } elseif (strpos($cat, 'SNACK') !== false || strpos($cat, 'CHIP') !== false || strpos($cat, 'BISCUIT') !== false || strpos($cat, 'COOKIE') !== false || strpos($cat, 'NOODLE') !== false) {
+                                $capacity = 500;
+                            } elseif (strpos($cat, 'CHOCOLATE') !== false || strpos($cat, 'CANDY') !== false) {
+                                $capacity = 400;
+                            } elseif (strpos($cat, 'PATCH') !== false || strpos($cat, 'REPAIR') !== false) {
+                                $capacity = 100;
+                            } elseif (strpos($cat, 'CHEMICAL') !== false || strpos($cat, 'TREATMENT') !== false || strpos($cat, 'ADDITIVE') !== false) {
+                                $capacity = 80;
+                            } else {
+                                $capacity = 100;
+                            }
+                        }
+                        
                         $reord  = (float)($item['reorder_level'] ?? 10);
-                        $status = $item['status'] ?? 'active';
+                        $status = strtolower($item['status'] ?? 'active');
                         $isPending = ($status === 'pending' || $status === 'pending_validation');
-                        $st     = $isPending ? 'PENDING VALIDATION' : ($stock <= 0 ? 'OUT OF STOCK' : ($stock <= $reord ? 'LOW STOCK' : 'AVAILABLE'));
-                        $sc     = $isPending ? '#fd7e14' : ($stock <= 0 ? '#dc3545' : ($stock <= $reord ? '#fd7e14' : '#28a745'));
-                        $profit = (float)($item['price'] ?? 0) - (float)($item['cost'] ?? 0);
+                        
+                        // Status based on fill percentage
+                        $fill_pct = $capacity > 0 ? ($stock / $capacity) * 100 : 0;
+                        if ($isPending) {
+                            $st = 'PENDING VALIDATION';
+                            $sc = '#fd7e14';
+                        } elseif ($stock <= 0) {
+                            $st = 'Out of Stock';
+                            $sc = '#dc3545';
+                        } elseif ($fill_pct <= 10) {
+                            $st = 'Critical';
+                            $sc = '#dc3545';
+                        } elseif ($fill_pct <= 25) {
+                            $st = 'Low';
+                            $sc = '#fd7e14';
+                        } else {
+                            $st = 'Available';
+                            $sc = '#28a745';
+                        }
+                        
+                        // Variance (placeholder until physical count)
+                        $variance = 0;
+                        $var_display = '0.00';
+                        $var_color = '#6c757d';
+                        
+                        // Unit price and total value
+                        $unit_price = (float)($item['price'] ?? 0);
+                        $total_value = $stock * $unit_price;
+                        
+                        // Timestamp
+                        $timestamp = '—';
+                        if (isset($item['last_updated']) && $item['last_updated']) {
+                            try {
+                                $dt = new DateTime($item['last_updated']);
+                                $timestamp = $dt->format('M d, Y g:i A');
+                            } catch (Exception $e) {
+                                $timestamp = '—';
+                            }
+                        }
                     ?>
                     <tr class="merch-row" data-name="<?php echo strtolower(htmlspecialchars($item['name'])); ?>">
-                        <td><?php echo htmlspecialchars($item['name']); ?></td>
-                        <td><?php echo htmlspecialchars($item['sku'] ?? ''); ?></td>
+                        <td><code style="font-size:11px;font-weight:600;"><?php echo htmlspecialchars($item['sku'] ?? ''); ?></code></td>
+                        <td><strong><?php echo htmlspecialchars($item['name']); ?></strong></td>
                         <td><?php echo htmlspecialchars($item['category_name'] ?? ''); ?></td>
-                        <td><?php echo number_format($stock, 0); ?></td>
+                        <td style="font-weight:600;color:#002F70;"><?php echo number_format($capacity, 0); ?></td>
+                        <td style="font-weight:700;color:#002F70;"><?php echo number_format($stock, 0); ?> <span style="font-size:10px;color:#64748b;">(<?php echo round($fill_pct, 1); ?>%)</span></td>
                         <td>
                             <div style="display:flex;align-items:center;gap:8px;">
-                                <span style="color:<?php echo $sc; ?>;font-weight:700;"><?php echo $st; ?></span>
+                                <span style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600;background:<?php echo $sc; ?>20;color:<?php echo $sc; ?>;border:1px solid <?php echo $sc; ?>40;"><?php echo $st; ?></span>
                                 <?php if ($isPending): ?>
                                     <button class="btn btn-success btn-sm" onclick="validateProduct(<?php echo (int)$item['id']; ?>, '<?php echo htmlspecialchars(addslashes($item['name'])); ?>')" style="padding:2px 8px;font-size:11px;background:#28a745;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:3px;">
                                         <i class="fas fa-check"></i> Validate
@@ -200,19 +269,16 @@ include __DIR__ . '/../partials/header.php';
                                 <?php endif; ?>
                             </div>
                         </td>
-                        <td class="cost-col">&#8369;<?php echo number_format($item['cost'], 2); ?></td>
-                        <td class="price-col">
-                            &#8369;<?php echo number_format($item['price'], 2); ?>
-                            <?php if ($profit > 0): ?>
-                                <span class="profit-sm">(+<?php echo number_format($profit, 2); ?>)</span>
-                            <?php endif; ?>
-                        </td>
+                        <td style="font-weight:700;color:<?php echo $var_color; ?>;"><?php echo $var_display; ?></td>
+                        <td style="font-weight:600;color:#28a745;">&#8369;<?php echo number_format($unit_price, 2); ?></td>
+                        <td style="font-weight:700;color:#002F70;">&#8369;<?php echo number_format($total_value, 2); ?></td>
+                        <td style="font-size:11px;color:#64748b;"><?php echo $timestamp; ?></td>
                     </tr>
                     <?php endforeach; ?>
                 <?php endforeach; ?>
 
                 <?php if (empty($merch_inventory)): ?>
-                    <tr><td colspan="7" style="text-align:center;padding:28px;color:#6c757d;">No merchandise data available.</td></tr>
+                    <tr><td colspan="10" style="text-align:center;padding:28px;color:#6c757d;">No merchandise data available.</td></tr>
                 <?php else: ?>
                     <tr style="background:#f8f9fa;font-weight:700;border-top:2px solid #dee2e6;">
                         <td colspan="4">TOTAL</td>

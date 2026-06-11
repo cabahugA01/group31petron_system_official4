@@ -1,4 +1,8 @@
 <?php
+/**
+ * Staff Inventory History
+ * Track inventory movements, stock-in records, deliveries, and inventory changes
+ */
 $page_id = 'inv_history';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -13,74 +17,161 @@ if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
     exit;
 }
 
-$stock_requests = [];
+// Fetch merchandise inventory movements
+$merch_history = [];
+$fuel_history = [];
 $msg = '';
+
 try {
+    // Query merchandise stock-in records
     $stmt = $pdo->prepare("
-        SELECT sr.*, u.name AS staff_name, m.name AS manager_name
-        FROM stock_requests sr
-        JOIN users u ON sr.staff_id = u.id
-        LEFT JOIN users m ON sr.manager_id = m.id
-        WHERE sr.staff_id = ? AND sr.station_id = ?
-        ORDER BY sr.created_at DESC
+        SELECT 
+            'Stock-In' as action_type,
+            msi.id,
+            msi.po_id,
+            msi.product_id,
+            msi.product_name as item_name,
+            msi.sku as item_sku,
+            msi.category as item_category,
+            msi.qty_received as quantity_received,
+            msi.batch_ref as batch_number,
+            msi.encoded_by,
+            msi.encoded_at,
+            'Completed' as status
+        FROM merchandise_stock_in msi
+        WHERE msi.station_id = ?
+        ORDER BY msi.encoded_at DESC
+        LIMIT 100
     ");
-    $stmt->execute([$me['id'], $station_id]);
-    $stock_requests = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $stmt->execute([$station_id]);
+    $merch_history = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
-    $msg = 'Error loading history: ' . $e->getMessage();
+    $msg = 'Error loading merchandise history: ' . $e->getMessage();
 }
 
-$pending_count  = count(array_filter($stock_requests, fn($r) => $r['status'] === 'Pending'));
-$validated_count= count(array_filter($stock_requests, fn($r) => $r['status'] === 'Validated'));
-$approved_count = $validated_count; // backward compat
-$completed_count= 0;
-$rejected_count = 0;
+try {
+    // Query fuel stock-in records
+    $stmt = $pdo->prepare("
+        SELECT 
+            'Fuel Stock-In' as action_type,
+            fsi.id,
+            fsi.delivery_id,
+            fsi.fuel_type as item_name,
+            fsi.invoice_no as item_sku,
+            'Fuel' as item_category,
+            fsi.qty_received as quantity_received,
+            fsi.batch_ref as batch_number,
+            fsi.encoded_by,
+            fsi.encoded_at,
+            'Completed' as status
+        FROM fuel_stock_in fsi
+        WHERE fsi.station_id = ?
+        ORDER BY fsi.encoded_at DESC
+        LIMIT 100
+    ");
+    $stmt->execute([$station_id]);
+    $fuel_history = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    $msg .= ($msg ? ' | ' : '') . 'Error loading fuel history: ' . $e->getMessage();
+}
 
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
 .inv-card {
-    background: #fff; border-radius: 12px;
+    background: #fff;
+    border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0,0,0,.06);
-    border: 1px solid #e9ecef; margin-bottom: 20px;
+    border: 1px solid #e9ecef;
+    margin-bottom: 20px;
 }
 .inv-card-head {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 16px 20px; border-bottom: 1px solid #e9ecef; flex-wrap: wrap; gap: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid #e9ecef;
+    flex-wrap: wrap;
+    gap: 8px;
 }
-.inv-card-title { font-size: 1rem; font-weight: 700; color: #002F70; display: flex; align-items: center; gap: 8px; }
-.inv-card-body  { padding: 20px; }
-
-/* Status badges */
-.sbadge { display:inline-block; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:600; white-space:nowrap; }
-.sbadge-pending   { background:#fff3cd; color:#856404; }
-.sbadge-validated { background:#d4edda; color:#155724; }
-.sbadge-approved  { background:#d4edda; color:#155724; }
-.sbadge-completed { background:#d4edda; color:#155724; }
-
-/* Summary cards */
-.summary-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px; margin-bottom:20px; }
-.summary-card { border-radius:10px; padding:14px 16px; text-align:center; border-left:4px solid #dee2e6; background:#f8f9fa; }
-.summary-card .s-val { font-size:1.8rem; font-weight:700; }
-.summary-card .s-lbl { font-size:.72rem; text-transform:uppercase; letter-spacing:.5px; color:#666; margin-top:2px; }
-.s-pending   { border-left-color:#ffc107; } .s-pending   .s-val { color:#856404; }
-.s-approved  { border-left-color:#17a2b8; } .s-approved  .s-val { color:#0c5460; }
-.s-completed { border-left-color:#28a745; } .s-completed .s-val { color:#155724; }
-.s-rejected  { border-left-color:#dc3545; } .s-rejected  .s-val { color:#721c24; }
-
-/* Legend */
-.hist-legend {
-    display:flex; gap:14px; flex-wrap:wrap;
-    background:#f8f9fa; border:1px solid #dee2e6;
-    border-radius:8px; padding:10px 16px; margin-bottom:16px; font-size:12px;
+.inv-card-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #002F70;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
-.hist-legend span { display:flex; align-items:center; gap:5px; }
+.inv-card-body {
+    padding: 20px;
+}
+.sbadge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.sbadge-completed {
+    background: #d4edda;
+    color: #155724;
+}
+.sbadge-pending {
+    background: #fff3cd;
+    color: #856404;
+}
+/* Tabs */
+.hist-tabs {
+    display: flex;
+    border-bottom: 2px solid #e9ecef;
+    margin-bottom: 20px;
+}
+.hist-tab {
+    padding: 10px 22px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #6c757d;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    transition: color .15s, border-color .15s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    user-select: none;
+}
+.hist-tab:hover {
+    color: #002F70;
+}
+.hist-tab.active {
+    color: #002F70;
+    border-bottom-color: #002F70;
+}
+.hist-tab .tab-count {
+    background: #e9ecef;
+    color: #495057;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 10px;
+}
+.hist-tab.active .tab-count {
+    background: #002F70;
+    color: #fff;
+}
+.hist-tab-panel {
+    display: none;
+}
+.hist-tab-panel.active {
+    display: block;
+}
 </style>
 
 <div class="page-head">
     <div>
         <h1 class="h1"><i class="fas fa-history"></i> Inventory History</h1>
-        <div class="sub">TRACK THE LIFECYCLE OF REQUESTS, DELIVERIES, AND STOCK UPDATES.</div>
+        <div class="sub">TRACK INVENTORY MOVEMENTS, STOCK-IN RECORDS, AND DELIVERIES.</div>
     </div>
 </div>
 
@@ -92,114 +183,190 @@ include __DIR__ . '/../partials/header.php';
 
 <?php require_once __DIR__ . '/../partials/staff_inventory_summary.php'; ?>
 
-<!-- Flat Summary Table of Requests -->
-<div style="background:#fff;border:1px solid #dee2e6;border-radius:8px;margin-bottom:20px;overflow:hidden;">
-    <table style="width:100%;border-collapse:collapse;font-size:13px;text-align:center;">
-        <thead>
-            <tr style="background:#f8f9fa;border-bottom:1px solid #dee2e6;">
-                <th style="padding:10px;font-weight:700;color:#555;border-right:1px solid #dee2e6;">Pending Requests</th>
-                <th style="padding:10px;font-weight:700;color:#555;">Validated Requests</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr style="font-size:16px;font-weight:800;">
-                <td style="padding:12px;color:#856404;border-right:1px solid #dee2e6;"><?php echo $pending_count; ?></td>
-                <td style="padding:12px;color:#155724;"><?php echo $validated_count; ?></td>
-            </tr>
-        </tbody>
-    </table>
+<!-- Tabs -->
+<div class="hist-tabs">
+    <div class="hist-tab active" onclick="switchTab('merchandise')" id="tab-merchandise">
+        <i class="fas fa-boxes"></i> Merchandise
+        <span class="tab-count"><?php echo count($merch_history); ?></span>
+    </div>
+    <div class="hist-tab" onclick="switchTab('fuel')" id="tab-fuel">
+        <i class="fas fa-gas-pump"></i> Fuel
+        <span class="tab-count"><?php echo count($fuel_history); ?></span>
+    </div>
 </div>
 
+<!-- MERCHANDISE TAB -->
+<div class="hist-tab-panel active" id="panel-merchandise">
 <div class="inv-card">
     <div class="inv-card-head">
         <div class="inv-card-title">
-            <i class="fas fa-list-alt"></i> All Stock Requests
-            <?php if ($pending_count > 0): ?>
-                <span style="background:#dc3545;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;"><?php echo $pending_count; ?> Pending</span>
-            <?php endif; ?>
+            <i class="fas fa-boxes"></i> Merchandise Inventory Movements
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
             <?php
-            $export_table_id       = 'requestsHistoryTable';
-            $export_filename       = 'stock_requests_history_' . date('Ymd');
-            $export_title          = 'Stock Requests History';
-            $export_rows_select_id = 'historyRowsLimit';
+            $export_table_id       = 'merchHistoryTable';
+            $export_filename       = 'merch_inventory_history_' . date('Ymd');
+            $export_title          = 'Merchandise Inventory History';
+            $export_rows_select_id = 'merchHistoryRowsLimit';
             $export_default_rows   = 25;
             require __DIR__ . '/../partials/export_buttons.php';
             ?>
         </div>
     </div>
     <div class="inv-card-body">
-
-        <div class="hist-legend">
-            <span><span class="sbadge sbadge-pending">Pending</span> Waiting for Manager validation</span>
-            <span><span class="sbadge sbadge-validated">Validated</span> Manager validated, PO auto-generated, pending Admin finalization</span>
-        </div>
-
         <div class="table-wrap">
-            <table class="table" id="requestsHistoryTable">
+            <table class="table" id="merchHistoryTable">
                 <thead>
                     <tr>
                         <th>#</th>
-                        <th>Date Submitted</th>
+                        <th>Date</th>
+                        <th>Action Type</th>
                         <th>SKU</th>
                         <th>Product</th>
                         <th>Category</th>
-                        <th>Qty Requested</th>
-                        <th>Qty Approved</th>
+                        <th>Batch Number</th>
+                        <th>Quantity</th>
                         <th>Status</th>
-                        <th>Manager Notes</th>
-                        <th>Last Updated</th>
                     </tr>
                 </thead>
                 <tbody>
-                <?php if (empty($stock_requests)): ?>
+                <?php if (empty($merch_history)): ?>
                     <tr>
-                        <td colspan="10" style="text-align:center;padding:36px;color:#6c757d;">
+                        <td colspan="9" style="text-align:center;padding:36px;color:#6c757d;">
                             <i class="fas fa-inbox" style="font-size:2.5em;display:block;margin-bottom:10px;opacity:.3;"></i>
-                            No stock requests yet.<br>
-                            Go to <a href="staff_inventory_merchandise.php" style="color:#002F70;font-weight:600;">Merchandise Inventory</a> to submit one.
+                            No merchandise inventory movements yet.
                         </td>
                     </tr>
                 <?php else: ?>
-                    <?php foreach ($stock_requests as $req):
-                        $st  = $req['status'] ?? 'Pending';
-                        $cls = 'sbadge sbadge-' . strtolower($st);
-                    ?>
+                    <?php foreach ($merch_history as $record): ?>
                     <tr>
-                        <td style="color:#6c757d;font-size:12px;">#<?php echo (int)$req['id']; ?></td>
-                        <td><?php echo date('M d, Y H:i', strtotime($req['created_at'])); ?></td>
-                        <td><code><?php echo htmlspecialchars($req['item_sku']); ?></code></td>
-                        <td><?php echo htmlspecialchars($req['item_name']); ?></td>
-                        <td><?php echo htmlspecialchars($req['item_category']); ?></td>
-                        <td style="text-align:center;font-weight:600;"><?php echo (int)$req['requested_quantity']; ?></td>
-                        <td style="text-align:center;">
-                            <?php if ($req['approved_quantity'] !== null): ?>
-                                <strong style="color:#28a745;"><?php echo (int)$req['approved_quantity']; ?></strong>
-                            <?php else: ?>
-                                <span style="color:#adb5bd;">&#8212;</span>
-                            <?php endif; ?>
+                        <td style="color:#6c757d;font-size:12px;">#<?php echo (int)$record['id']; ?></td>
+                        <td style="font-size:12px;white-space:nowrap;">
+                            <?php echo date('M d, Y g:i A', strtotime($record['encoded_at'])); ?>
                         </td>
-                        <td><span class="<?php echo $cls; ?>"><?php echo htmlspecialchars($st); ?></span></td>
-                        <td style="font-size:13px;color:#495057;">
-                            <?php echo $req['manager_notes']
-                                ? htmlspecialchars($req['manager_notes'])
-                                : '<span style="color:#adb5bd;">&#8212;</span>'; ?>
+                        <td>
+                            <span class="sbadge" style="background:#e3f2fd;color:#0d47a1;">
+                                <i class="fas fa-arrow-down"></i> <?php echo htmlspecialchars($record['action_type']); ?>
+                            </span>
                         </td>
-                        <td style="font-size:12px;color:#6c757d;"><?php echo date('M d, Y H:i', strtotime($req['updated_at'])); ?></td>
+                        <td><code style="font-size:11px;"><?php echo htmlspecialchars($record['item_sku'] ?? '—'); ?></code></td>
+                        <td><strong><?php echo htmlspecialchars($record['item_name'] ?? '—'); ?></strong></td>
+                        <td style="font-size:12px;"><?php echo htmlspecialchars($record['item_category'] ?? '—'); ?></td>
+                        <td><code style="font-size:11px;color:#002F70;"><?php echo htmlspecialchars($record['batch_number'] ?? '—'); ?></code></td>
+                        <td style="text-align:center;font-weight:700;color:#28a745;">
+                            +<?php echo number_format((float)$record['quantity_received'], 0); ?>
+                        </td>
+                        <td>
+                            <span class="sbadge sbadge-completed">
+                                <i class="fas fa-check"></i> <?php echo htmlspecialchars($record['status']); ?>
+                            </span>
+                        </td>
                     </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
                 </tbody>
             </table>
         </div>
-        <div id="requestsHistoryPagination" style="margin-top:10px;"></div>
+        <div id="merchHistoryPagination" style="margin-top:10px;"></div>
     </div>
+</div>
+</div>
+
+<!-- FUEL TAB -->
+<div class="hist-tab-panel" id="panel-fuel">
+<div class="inv-card">
+    <div class="inv-card-head">
+        <div class="inv-card-title">
+            <i class="fas fa-gas-pump"></i> Fuel Inventory Movements
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <?php
+            $export_table_id       = 'fuelHistoryTable';
+            $export_filename       = 'fuel_inventory_history_' . date('Ymd');
+            $export_title          = 'Fuel Inventory History';
+            $export_rows_select_id = 'fuelHistoryRowsLimit';
+            $export_default_rows   = 25;
+            require __DIR__ . '/../partials/export_buttons.php';
+            ?>
+        </div>
+    </div>
+    <div class="inv-card-body">
+        <div class="table-wrap">
+            <table class="table" id="fuelHistoryTable">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Date</th>
+                        <th>Action Type</th>
+                        <th>Invoice No.</th>
+                        <th>Fuel Type</th>
+                        <th>Batch Number</th>
+                        <th>Quantity (L)</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php if (empty($fuel_history)): ?>
+                    <tr>
+                        <td colspan="8" style="text-align:center;padding:36px;color:#6c757d;">
+                            <i class="fas fa-inbox" style="font-size:2.5em;display:block;margin-bottom:10px;opacity:.3;"></i>
+                            No fuel inventory movements yet.
+                        </td>
+                    </tr>
+                <?php else: ?>
+                    <?php foreach ($fuel_history as $record): ?>
+                    <tr>
+                        <td style="color:#6c757d;font-size:12px;">#<?php echo (int)$record['id']; ?></td>
+                        <td style="font-size:12px;white-space:nowrap;">
+                            <?php echo date('M d, Y g:i A', strtotime($record['encoded_at'])); ?>
+                        </td>
+                        <td>
+                            <span class="sbadge" style="background:#fff3cd;color:#856404;">
+                                <i class="fas fa-gas-pump"></i> <?php echo htmlspecialchars($record['action_type']); ?>
+                            </span>
+                        </td>
+                        <td><code style="font-size:11px;"><?php echo htmlspecialchars($record['item_sku'] ?? '—'); ?></code></td>
+                        <td><strong><?php echo htmlspecialchars($record['item_name'] ?? '—'); ?></strong></td>
+                        <td><code style="font-size:11px;color:#002F70;"><?php echo htmlspecialchars($record['batch_number'] ?? '—'); ?></code></td>
+                        <td style="text-align:center;font-weight:700;color:#28a745;">
+                            +<?php echo number_format((float)$record['quantity_received'], 2); ?> L
+                        </td>
+                        <td>
+                            <span class="sbadge sbadge-completed">
+                                <i class="fas fa-check"></i> <?php echo htmlspecialchars($record['status']); ?>
+                            </span>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+        <div id="fuelHistoryPagination" style="margin-top:10px;"></div>
+    </div>
+</div>
 </div>
 
 <script>
+function switchTab(tab) {
+    document.querySelectorAll('.hist-tab').forEach(function(el) { el.classList.remove('active'); });
+    document.querySelectorAll('.hist-tab-panel').forEach(function(el) { el.classList.remove('active'); });
+    document.getElementById('tab-' + tab).classList.add('active');
+    document.getElementById('panel-' + tab).classList.add('active');
+    history.replaceState(null, '', '#tab-' + tab);
+}
+
 document.addEventListener('DOMContentLoaded', function() {
-    setupTablePagination('requestsHistoryTable', 'historyRowsLimit', 'requestsHistoryPagination', 25);
+    // Restore tab from URL hash
+    var hash = window.location.hash;
+    if (hash === '#tab-fuel') {
+        switchTab('fuel');
+    } else {
+        switchTab('merchandise');
+    }
+    
+    setupTablePagination('merchHistoryTable', 'merchHistoryRowsLimit', 'merchHistoryPagination', 25);
+    setupTablePagination('fuelHistoryTable', 'fuelHistoryRowsLimit', 'fuelHistoryPagination', 25);
 });
 </script>
 

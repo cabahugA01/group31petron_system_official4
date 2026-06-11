@@ -60,7 +60,6 @@ if (!in_array($section, $valid_sections)) {
         'jo_tracker' => 'job_orders',
         'fuel_deliveries' => 'deliveries',
         'merch_deliveries' => 'deliveries',
-        'inventory_movement' => 'deliveries',
         'meter_readings' => 'meter',
         'payment_status' => 'payments',
         'customer_reports' => 'customers',
@@ -85,7 +84,7 @@ if (!in_array($range, ['today', 'week', 'month', 'custom'])) $range = 'month';
 
 $sub_tab = trim($_GET['sub_tab'] ?? $_GET['sub'] ?? '');
 if (empty($sub_tab)) {
-    if ($section === 'sales') $sub_tab = 'daily_summary';
+    if ($section === 'sales') $sub_tab = 'fuel_sales';
     elseif ($section === 'job_orders') $sub_tab = 'jo_list';
     elseif ($section === 'deliveries') $sub_tab = 'fuel_deliveries';
     elseif ($section === 'meter') $sub_tab = 'readings';
@@ -255,60 +254,558 @@ try {
                 ['label' => 'Walk-in Sales', 'value' => $total_walkin, 'icon' => 'fa-walking', 'class' => 'stat-orange'],
                 ['label' => 'Total Linked Txns', 'value' => count($report_data), 'icon' => 'fa-database', 'class' => 'stat-green'],
             ];
+        } elseif ($sub_tab === 'fuel_sales') {
+            // ---- Physical Tank Config (17 tanks) ----
+            $PHYSICAL_TANKS = [
+                ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1-1',     'tank'=>'Underground Tank #1',  'capacity'=>20000],
+                ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1-2',     'tank'=>'Underground Tank #2',  'capacity'=>20000],
+                ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1-3',     'tank'=>'Underground Tank #3',  'capacity'=>20000],
+                ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1-4',     'tank'=>'Underground Tank #4',  'capacity'=>20000],
+                ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2-5',     'tank'=>'Underground Tank #5',  'capacity'=>20000],
+                ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2-6',     'tank'=>'Underground Tank #6',  'capacity'=>20000],
+                ['fuel_type'=>'Kerosene',     'label'=>'KEROSENE-1',     'tank'=>'Underground Tank #7',  'capacity'=>15000],
+                ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL-1', 'tank'=>'Underground Tank #8',  'capacity'=>15000],
+                ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL-2', 'tank'=>'Underground Tank #9',  'capacity'=>15000],
+                ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS-1',     'tank'=>'Underground Tank #10', 'capacity'=>20000],
+                ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS-2',     'tank'=>'Underground Tank #11', 'capacity'=>20000],
+                ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS-3',     'tank'=>'Underground Tank #12', 'capacity'=>20000],
+                ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS-4',     'tank'=>'Underground Tank #13', 'capacity'=>20000],
+                ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1-1',   'tank'=>'Underground Tank #14', 'capacity'=>20000],
+                ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1-2',   'tank'=>'Underground Tank #15', 'capacity'=>20000],
+                ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2-3',   'tank'=>'Underground Tank #16', 'capacity'=>20000],
+                ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2-4',   'tank'=>'Underground Tank #17', 'capacity'=>20000],
+            ];
+
+            // ---- 1. Meter Readings: Liters Sold = ending − beginning ± calibration ----
+            $meter_readings = [];
+            try {
+                $stmt = $pdo->prepare("
+                    SELECT
+                        COALESCE(pump_id,'—') AS pump,
+                        fuel_type,
+                        COALESCE(previous_reading,0) AS beginning,
+                        COALESCE(present_reading,0)  AS ending,
+                        COALESCE(calibration,0)      AS calibration,
+                        COALESCE(liters_sold,
+                            ABS(COALESCE(present_reading,0)-COALESCE(previous_reading,0))+COALESCE(calibration,0)
+                        ) AS liters_sold,
+                        COALESCE(price_per_liter,0) AS price_per_liter,
+                        COALESCE(total_amount,
+                            (COALESCE(liters_sold,
+                                ABS(COALESCE(present_reading,0)-COALESCE(previous_reading,0))+COALESCE(calibration,0)
+                            ))*COALESCE(price_per_liter,0)
+                        ) AS amount,
+                        CASE
+                            WHEN LOWER(COALESCE(shift_period,'')) IN ('first','morning','1')
+                              OR shift_name LIKE '%First%' OR shift_name LIKE '%Morning%' THEN 'Shift 1'
+                            WHEN LOWER(COALESCE(shift_period,'')) IN ('second','afternoon','2')
+                              OR shift_name LIKE '%Second%' OR shift_name LIKE '%Afternoon%' THEN 'Shift 2'
+                            ELSE COALESCE(NULLIF(shift_name,''),NULLIF(shift_period,''),'General')
+                        END AS shift,
+                        CASE
+                            WHEN LOWER(COALESCE(payment_method,'')) IN ('','cash') THEN 'Cash'
+                            WHEN LOWER(COALESCE(payment_method,'')) IN ('credit card','card','gcash','maya','e-wallet','ewallet') THEN 'Digital'
+                            WHEN LOWER(COALESCE(payment_method,'')) IN ('credit','account receivable','utang') THEN 'Credit/AR'
+                            ELSE COALESCE(NULLIF(payment_method,''),'Cash')
+                        END AS payment_type,
+                        DATE(transaction_date) AS transaction_date
+                    FROM fuel_transactions
+                    WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ?
+                    ORDER BY transaction_date ASC, shift ASC
+                ");
+                $stmt->execute([$station_id,$date_start,$date_end]);
+                $meter_readings = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            } catch (Exception $e) { $meter_readings = []; }
+
+            // ---- 2. Volume Sales Summary ----
+            $volume_sales = [];
+            try {
+                $stmt = $pdo->prepare("
+                    SELECT fuel_type,
+                        SUM(COALESCE(liters_sold,
+                            ABS(COALESCE(present_reading,0)-COALESCE(previous_reading,0))+COALESCE(calibration,0)
+                        )) AS total_liters,
+                        AVG(COALESCE(price_per_liter,0)) AS avg_price,
+                        SUM(COALESCE(total_amount,0))    AS total_amount
+                    FROM fuel_transactions
+                    WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ?
+                    GROUP BY fuel_type ORDER BY total_liters DESC
+                ");
+                $stmt->execute([$station_id,$date_start,$date_end]);
+                $volume_sales = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            } catch (Exception $e) { $volume_sales = []; }
+
+            // ---- 3. Tank counts for capacity vs dispensed ----
+            $tank_counts = [];
+            foreach ($PHYSICAL_TANKS as $pt) $tank_counts[$pt['fuel_type']] = ($tank_counts[$pt['fuel_type']] ?? 0)+1;
+            $dispensed_by_type = [];
+            foreach ($volume_sales as $vs) $dispensed_by_type[$vs['fuel_type']] = (float)$vs['total_liters'];
+
+            // ---- 4 & 5. Shift Sales — filter by shift_id / shift_period / shift_name ----
+            $shift_base_sql = "
+                SELECT fuel_type,
+                    SUM(COALESCE(liters_sold,
+                        ABS(COALESCE(present_reading,0)-COALESCE(previous_reading,0))+COALESCE(calibration,0)
+                    )) AS total_liters,
+                    SUM(COALESCE(total_amount,0)) AS total_amount,
+                    SUM(CASE WHEN LOWER(COALESCE(payment_method,'')) IN ('','cash') THEN COALESCE(total_amount,0) ELSE 0 END) AS cash_amount,
+                    SUM(CASE WHEN LOWER(COALESCE(payment_method,'')) IN ('credit card','card','gcash','maya','e-wallet','ewallet') THEN COALESCE(total_amount,0) ELSE 0 END) AS digital_amount,
+                    SUM(CASE WHEN LOWER(COALESCE(payment_method,'')) IN ('credit','account receivable','utang') THEN COALESCE(total_amount,0) ELSE 0 END) AS credit_amount
+                FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ?
+            ";
+            $shift1_sales = [];
+            try {
+                $s = $pdo->prepare($shift_base_sql."AND(LOWER(COALESCE(shift_period,'')) IN('first','morning','1') OR shift_name LIKE '%First%' OR shift_name LIKE '%Morning%') GROUP BY fuel_type ORDER BY fuel_type");
+                $s->execute([$station_id,$date_start,$date_end]);
+                $shift1_sales = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            } catch(Exception $e) { $shift1_sales = []; }
+
+            $shift2_sales = [];
+            try {
+                $s = $pdo->prepare($shift_base_sql."AND(LOWER(COALESCE(shift_period,'')) IN('second','afternoon','2') OR shift_name LIKE '%Second%' OR shift_name LIKE '%Afternoon%') GROUP BY fuel_type ORDER BY fuel_type");
+                $s->execute([$station_id,$date_start,$date_end]);
+                $shift2_sales = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            } catch(Exception $e) { $shift2_sales = []; }
+
+            // ---- 6. Accounts Receivable — Suki/Credit customers with outstanding balances ----
+            $ar_summary = [];
+            try {
+                $s = $pdo->prepare("
+                    SELECT name AS customer_name,
+                           COALESCE(balance, 0) AS outstanding_balance
+                    FROM customers
+                    WHERE station_id = ? AND (type = 'credit' OR COALESCE(balance,0) > 0)
+                    ORDER BY balance DESC
+                ");
+                $s->execute([$station_id]);
+                $ar_summary = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            } catch(Exception $e) { $ar_summary = []; }
+
+            // ---- 7. Service Income — from job_orders ----
+            $service_income_rows  = [];
+            $service_income_total = 0.0;
+            $service_cash         = 0.0;
+            $service_digital      = 0.0;
+            $service_credit       = 0.0;
+            try {
+                $s = $pdo->prepare("
+                    SELECT
+                        COALESCE(NULLIF(jo.job_order_id,''), COALESCE(NULLIF(jo.job_order_number,''), CONCAT('JO-',jo.id))) AS job_ref,
+                        COALESCE(jo.customer_name,'Walk-in')     AS customer_name,
+                        COALESCE(jo.vehicle_plate,'—')           AS vehicle_plate,
+                        COALESCE(jo.service_type,'—')            AS service_type,
+                        COALESCE(jo.total_cost, jo.estimated_cost, 0) AS total_cost,
+                        COALESCE(jo.payment_method,'Cash')       AS payment_method,
+                        COALESCE(jo.status,'Pending')            AS status,
+                        jo.created_at
+                    FROM job_orders jo
+                    WHERE jo.station_id = ?
+                      AND DATE(jo.created_at) BETWEEN ? AND ?
+                      AND jo.status NOT IN ('Cancelled','Rejected')
+                    ORDER BY jo.created_at DESC
+                ");
+                $s->execute([$station_id, $date_start, $date_end]);
+                $service_income_rows = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+                foreach ($service_income_rows as $sr) {
+                    $amt = (float)$sr['total_cost'];
+                    $pm  = strtolower($sr['payment_method']);
+                    $service_income_total += $amt;
+                    if (in_array($pm, ['','cash'])) {
+                        $service_cash    += $amt;
+                    } elseif (in_array($pm, ['credit card','card','gcash','maya','e-wallet','ewallet','digital'])) {
+                        $service_digital += $amt;
+                    } else {
+                        $service_credit  += $amt;
+                    }
+                }
+            } catch(Exception $e) { $service_income_rows = []; }
+
+            // ---- Overall Totals ----
+            $grand_liters  = (float)array_sum(array_column($volume_sales,'total_liters'));
+            $grand_amount  = (float)array_sum(array_column($volume_sales,'total_amount'));
+            $s1_cash       = (float)array_sum(array_column($shift1_sales,'cash_amount'));
+            $s2_cash       = (float)array_sum(array_column($shift2_sales,'cash_amount'));
+            $s1_digital    = (float)array_sum(array_column($shift1_sales,'digital_amount'));
+            $s2_digital    = (float)array_sum(array_column($shift2_sales,'digital_amount'));
+            $s1_credit     = (float)array_sum(array_column($shift1_sales,'credit_amount'));
+            $s2_credit     = (float)array_sum(array_column($shift2_sales,'credit_amount'));
+            $total_cash    = $s1_cash + $s2_cash + $service_cash;
+            $total_digital = $s1_digital + $s2_digital + $service_digital;
+            $total_credit  = $s1_credit + $s2_credit + $service_credit;
+            $cash_in_bank  = $total_cash + $total_digital;
+            // ---- Cash Reconciliation Metrics ----
+            $cash_on_hand          = min(5000.0, $total_cash);
+            $cash_in_bank_deposit  = $cash_in_bank - $cash_on_hand;
+            $variance              = ($cash_in_bank_deposit + $cash_on_hand) - $cash_in_bank;
+            // Outstanding A/R from customers
+            $total_ar_outstanding  = (float)array_sum(array_column($ar_summary,'outstanding_balance'));
+            // Grand total including service
+            $grand_total_all       = $grand_amount + $service_income_total;
+
+            $summary_cards = [
+                ['label'=>'Total Liters Sold',       'value'=>number_format($grand_liters,2).' L',          'icon'=>'fa-gas-pump',        'class'=>'stat-blue'],
+                ['label'=>'Grand Total Sales',        'value'=>'₱'.number_format($grand_amount,2),           'icon'=>'fa-peso-sign',       'class'=>'stat-green'],
+                ['label'=>'Service Income',           'value'=>'₱'.number_format($service_income_total,2),   'icon'=>'fa-screwdriver-wrench','class'=>'stat-teal'],
+                ['label'=>'Digital/Card Sales',       'value'=>'₱'.number_format($total_digital,2),          'icon'=>'fa-credit-card',     'class'=>'stat-purple'],
+                ['label'=>'Accounts Receivable (A/R)','value'=>'₱'.number_format($total_ar_outstanding,2),   'icon'=>'fa-file-invoice',    'class'=>'stat-orange'],
+                ['label'=>'Cash in Bank (Deposits)',  'value'=>'₱'.number_format($cash_in_bank_deposit,2),   'icon'=>'fa-building-columns','class'=>'stat-red'],
+            ];
+            $report_data = $meter_readings ?: [['note'=>'No fuel transactions for this period.']];
+        } elseif ($sub_tab === 'merch_sales') {
+            // ---- Merchandise Sales data fetching ----
+            $merch_items     = [];
+            $merch_shift1    = [];
+            $merch_shift2    = [];
+            $merch_cat_totals= [];
+            $merch_ar        = [];
+            $merch_grand_sales   = 0.0;
+            $merch_grand_qty     = 0;
+            $merch_cash_total    = 0.0;
+            $merch_digital_total = 0.0;
+            $merch_credit_total  = 0.0;
+            $merch_cash_in_bank  = 0.0;
+            $merch_s1_cash       = 0.0;
+            $merch_s1_digital    = 0.0;
+            $merch_s1_credit     = 0.0;
+            $merch_s2_cash       = 0.0;
+            $merch_s2_digital    = 0.0;
+            $merch_s2_credit     = 0.0;
+
+            try {
+                // 1. Sales (Stock-Out) per product
+                $stmt = $pdo->prepare("
+                    SELECT mti.product_id,
+                           mti.product_name,
+                           mti.category,
+                           mti.size_variant,
+                           mti.unit_price,
+                           SUM(mti.quantity)  AS qty_sold,
+                           SUM(mti.subtotal)  AS amount_sold,
+                           GROUP_CONCAT(DISTINCT COALESCE(u.first_name,'') ORDER BY u.first_name SEPARATOR ', ') AS encoders,
+                           GROUP_CONCAT(DISTINCT COALESCE(mt.remarks,'') SEPARATOR '; ') AS remarks
+                    FROM merchandise_transaction_items mti
+                    JOIN merchandise_transactions mt ON mti.transaction_id = mt.id
+                    LEFT JOIN users u ON mt.staff_id = u.id
+                    WHERE mt.station_id = ?
+                      AND DATE(mt.created_at) BETWEEN ? AND ?
+                      AND mti.item_type = 'merchandise'
+                    GROUP BY mti.product_id, mti.product_name, mti.category, mti.size_variant, mti.unit_price
+                    ORDER BY mti.category, mti.product_name
+                ");
+                $stmt->execute([$station_id, $date_start, $date_end]);
+                $sales_rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+                // 2. Stock-In per product
+                $stmt = $pdo->prepare("
+                    SELECT msi.product_id, SUM(msi.qty_received) AS qty_in
+                    FROM merchandise_stock_in msi
+                    WHERE msi.station_id = ? AND DATE(msi.encoded_at) BETWEEN ? AND ?
+                    GROUP BY msi.product_id
+                ");
+                $stmt->execute([$station_id, $date_start, $date_end]);
+                $stock_in_map = [];
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $si) {
+                    $stock_in_map[(int)$si['product_id']] = (float)$si['qty_in'];
+                }
+
+                // 3. Stock-Out AFTER date range
+                $stmt = $pdo->prepare("
+                    SELECT mti.product_id, SUM(mti.quantity) AS qty_after
+                    FROM merchandise_transaction_items mti
+                    JOIN merchandise_transactions mt ON mti.transaction_id = mt.id
+                    WHERE mt.station_id = ? AND DATE(mt.created_at) > ?
+                      AND mti.item_type = 'merchandise'
+                    GROUP BY mti.product_id
+                ");
+                $stmt->execute([$station_id, $date_end]);
+                $sales_after_map = [];
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $r) {
+                    $sales_after_map[(int)$r['product_id']] = (float)$r['qty_after'];
+                }
+
+                // 4. Stock-In AFTER date range
+                $stmt = $pdo->prepare("
+                    SELECT product_id, SUM(qty_received) AS qty_after_in
+                    FROM merchandise_stock_in
+                    WHERE station_id = ? AND DATE(encoded_at) > ?
+                    GROUP BY product_id
+                ");
+                $stmt->execute([$station_id, $date_end]);
+                $in_after_map = [];
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $r) {
+                    $in_after_map[(int)$r['product_id']] = (float)$r['qty_after_in'];
+                }
+
+                // 5. Current stock
+                $stmt = $pdo->prepare("
+                    SELECT id, product_name, category, sku, unit_price, stock AS current_stock
+                    FROM inventory_products
+                    WHERE station_id = ? AND status = 'active' AND category != 'Fuel'
+                    ORDER BY category, product_name
+                ");
+                $stmt->execute([$station_id]);
+                $ip_rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                $ip_by_id = [];
+                foreach ($ip_rows as $ip) { $ip_by_id[(int)$ip['id']] = (float)$ip['current_stock']; }
+
+                // 6. Assemble merch_items
+                $seen_pids = [];
+                foreach ($sales_rows as $sr) {
+                    $pid = (int)$sr['product_id'];
+                    if (isset($seen_pids[$pid])) continue;
+                    $seen_pids[$pid] = true;
+                    $cur_stock       = $ip_by_id[$pid] ?? 0;
+                    $qty_sold        = (float)$sr['qty_sold'];
+                    $qty_in          = $stock_in_map[$pid] ?? 0;
+                    $sales_after     = $sales_after_map[$pid] ?? 0;
+                    $in_after        = $in_after_map[$pid] ?? 0;
+                    $ending_stock    = $cur_stock + $sales_after - $in_after;
+                    $beginning_stock = $ending_stock - $qty_in + $qty_sold;
+                    $merch_items[] = [
+                        'product_id'      => $pid,
+                        'product_name'    => $sr['product_name'],
+                        'category'        => $sr['category'],
+                        'size_variant'    => $sr['size_variant'],
+                        'unit_price'      => (float)$sr['unit_price'],
+                        'beginning_stock' => max(0, $beginning_stock),
+                        'stock_in'        => $qty_in,
+                        'stock_out'       => $qty_sold,
+                        'ending_stock'    => max(0, $ending_stock),
+                        'amount'          => (float)$sr['amount_sold'],
+                        'encoders'        => $sr['encoders'] ?? '—',
+                        'remarks'         => $sr['remarks'] ?? '',
+                    ];
+                    $merch_grand_sales += (float)$sr['amount_sold'];
+                    $merch_grand_qty   += (int)$qty_sold;
+                }
+
+                // 7. Shift breakdowns
+                $is_shift1 = "LOWER(COALESCE(mt.shift_period,'')) IN ('first','morning','1') OR mt.shift_name LIKE '%First%' OR mt.shift_name LIKE '%Morning%'";
+                $is_shift2 = "LOWER(COALESCE(mt.shift_period,'')) IN ('second','afternoon','evening','2') OR mt.shift_name LIKE '%Second%' OR mt.shift_name LIKE '%Afternoon%' OR mt.shift_name LIKE '%Evening%'";
+                foreach ([1 => $is_shift1, 2 => $is_shift2] as $sn => $shift_cond) {
+                    $stmt = $pdo->prepare("
+                        SELECT mti.category,
+                               SUM(mti.quantity)  AS total_qty,
+                               SUM(mti.subtotal)  AS total_amount,
+                               SUM(CASE WHEN LOWER(COALESCE(mt.payment_method,'cash')) IN ('','cash') THEN mti.subtotal ELSE 0 END) AS cash_amount,
+                               SUM(CASE WHEN LOWER(COALESCE(mt.payment_method,'')) IN ('credit card','card','gcash','maya','e-wallet','ewallet','digital') THEN mti.subtotal ELSE 0 END) AS digital_amount,
+                               SUM(CASE WHEN LOWER(COALESCE(mt.payment_method,'')) IN ('credit','account receivable','utang','suki') THEN mti.subtotal ELSE 0 END) AS credit_amount
+                        FROM merchandise_transaction_items mti
+                        JOIN merchandise_transactions mt ON mti.transaction_id = mt.id
+                        WHERE mt.station_id = ? AND DATE(mt.created_at) BETWEEN ? AND ?
+                          AND mti.item_type = 'merchandise' AND ($shift_cond)
+                        GROUP BY mti.category ORDER BY mti.category
+                    ");
+                    $stmt->execute([$station_id, $date_start, $date_end]);
+                    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                    if ($sn === 1) {
+                        $merch_shift1 = $rows;
+                        foreach ($rows as $r) { $merch_s1_cash += (float)$r['cash_amount']; $merch_s1_digital += (float)$r['digital_amount']; $merch_s1_credit += (float)$r['credit_amount']; }
+                    } else {
+                        $merch_shift2 = $rows;
+                        foreach ($rows as $r) { $merch_s2_cash += (float)$r['cash_amount']; $merch_s2_digital += (float)$r['digital_amount']; $merch_s2_credit += (float)$r['credit_amount']; }
+                    }
+                }
+                $merch_cash_total    = $merch_s1_cash    + $merch_s2_cash;
+                $merch_digital_total = $merch_s1_digital + $merch_s2_digital;
+                $merch_credit_total  = $merch_s1_credit  + $merch_s2_credit;
+                $merch_cash_in_bank  = $merch_cash_total + $merch_digital_total;
+
+                // 8. Category Totals
+                $stmt = $pdo->prepare("
+                    SELECT mti.category, SUM(mti.quantity) AS total_qty, SUM(mti.subtotal) AS total_amount
+                    FROM merchandise_transaction_items mti
+                    JOIN merchandise_transactions mt ON mti.transaction_id = mt.id
+                    WHERE mt.station_id = ? AND DATE(mt.created_at) BETWEEN ? AND ?
+                      AND mti.item_type = 'merchandise'
+                    GROUP BY mti.category ORDER BY total_amount DESC
+                ");
+                $stmt->execute([$station_id, $date_start, $date_end]);
+                $merch_cat_totals = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+                // 9. A/R Summary
+                $stmt = $pdo->prepare("
+                    SELECT mt.transaction_id, mt.customer_name,
+                           mt.total_amount AS amount,
+                           COALESCE(mt.payment_status,'Pending') AS status,
+                           DATE_ADD(DATE(mt.created_at), INTERVAL 30 DAY) AS due_date,
+                           mt.created_at
+                    FROM merchandise_transactions mt
+                    WHERE mt.station_id = ? AND DATE(mt.created_at) BETWEEN ? AND ?
+                      AND LOWER(COALESCE(mt.payment_method,'')) IN ('credit','account receivable','utang','suki')
+                    ORDER BY mt.created_at DESC
+                ");
+                $stmt->execute([$station_id, $date_start, $date_end]);
+                $merch_ar = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+            } catch (Exception $e) {
+                $report_error = $e->getMessage();
+            }
+
+            $summary_cards = [
+                ['label' => 'Total Merch Sales',    'value' => '₱'.number_format($merch_grand_sales,2),   'icon' => 'fa-tags',            'class' => 'stat-blue'],
+                ['label' => 'Items Sold',            'value' => number_format($merch_grand_qty),           'icon' => 'fa-box-open',        'class' => 'stat-red'],
+                ['label' => 'Cash Sales',            'value' => '₱'.number_format($merch_cash_total,2),    'icon' => 'fa-money-bill-wave', 'class' => 'stat-green'],
+                ['label' => 'Digital / Card',        'value' => '₱'.number_format($merch_digital_total,2), 'icon' => 'fa-credit-card',     'class' => 'stat-purple'],
+                ['label' => 'Accounts Receivable',   'value' => '₱'.number_format($merch_credit_total,2),  'icon' => 'fa-file-invoice',    'class' => 'stat-orange'],
+                ['label' => 'Cash in Bank',          'value' => '₱'.number_format($merch_cash_in_bank,2),  'icon' => 'fa-building-columns','class' => 'stat-teal'],
+            ];
+            $report_data = $merch_items ?: [];
         }
     }
 
     if ($section === 'job_orders') {
-        $jo_enc = has_col($pdo, 'job_orders', 'created_by') ? 'created_by' : 'user_id';
-        $jo_id_col = has_col($pdo,'job_orders','job_order_id') ? "COALESCE(NULLIF(jo.job_order_id,''),CONCAT('JO-',jo.id))" : "CONCAT('JO-',jo.id)";
-        $cost_col = has_col($pdo,'job_orders','total_cost') ? 'COALESCE(jo.total_cost,jo.estimated_cost,0)' : 'COALESCE(jo.estimated_cost,0)';
-        
-        // Check if mechanics table exists and which columns are available
-        $mechanic_col = "'—'";
-        $mechanic_join = "";
-        try {
-            $tables = $pdo->query("SHOW TABLES LIKE 'mechanics'")->fetchAll();
-            if (!empty($tables)) {
-                if (has_col($pdo, 'mechanics', 'full_name')) {
-                    $mechanic_col = "COALESCE(m.full_name, '—')";
-                    $mechanic_join = "LEFT JOIN mechanics m ON jo.assigned_mechanic_id = m.id";
-                } elseif (has_col($pdo, 'mechanics', 'name')) {
-                    $mechanic_col = "COALESCE(m.name, '—')";
-                    $mechanic_join = "LEFT JOIN mechanics m ON jo.assigned_mechanic_id = m.id";
-                }
-            }
-        } catch (Exception $e) {
-            $mechanic_col = "'—'";
-            $mechanic_join = "";
+        // job_orders FK to users — 'created_by' confirmed present
+        $jo_enc = has_col($pdo,'job_orders','created_by') ? 'created_by' : (has_col($pdo,'job_orders','user_id') ? 'user_id' : 'created_by');
+        $jo_num_col = has_col($pdo,'job_orders','job_order_number')
+                        ? "COALESCE(NULLIF(jo.job_order_number,''),CONCAT('JO-',jo.id))"
+                        : "CONCAT('JO-',jo.id)";
+        $cost_col   = has_col($pdo,'job_orders','total_cost')
+                        ? 'COALESCE(jo.total_cost,jo.estimated_cost,0)'
+                        : 'COALESCE(jo.estimated_cost,0)';
+        // Labor fee column — check each independently
+        if (has_col($pdo,'job_orders','actual_labor_cost') && has_col($pdo,'job_orders','estimated_labor_cost')) {
+            $labor_col = 'COALESCE(jo.actual_labor_cost,jo.estimated_labor_cost,0)';
+        } elseif (has_col($pdo,'job_orders','actual_labor_cost')) {
+            $labor_col = 'COALESCE(jo.actual_labor_cost,0)';
+        } elseif (has_col($pdo,'job_orders','estimated_labor_cost')) {
+            $labor_col = 'COALESCE(jo.estimated_labor_cost,0)';
+        } else {
+            $labor_col = '0';
         }
+        // Payment column — check each independently; never reference a column that may not exist
+        if (has_col($pdo,'job_orders','payment_method')) {
+            $pay_col = "COALESCE(jo.payment_method,'—')";
+        } elseif (has_col($pdo,'job_orders','payment_mode')) {
+            $pay_col = "COALESCE(jo.payment_mode,'—')";
+        } else {
+            $pay_col = "'—'";
+        }
+        // Encoder name — try users table with name or first_name+last_name
+        // Encoder display: users table has first_name + last_name + username (no 'name' col)
+        $enc_col  = "'—'";
+        $enc_join = '';
+        try {
+            $ut = $pdo->query("SHOW TABLES LIKE 'users'")->fetchAll();
+            if (!empty($ut)) {
+                if (has_col($pdo,'users','first_name') && has_col($pdo,'users','last_name')) {
+                    $enc_col = "TRIM(COALESCE(CONCAT(u.first_name,' ',u.last_name),'—'))";
+                } elseif (has_col($pdo,'users','username')) {
+                    $enc_col = "COALESCE(u.username,'—')";
+                } elseif (has_col($pdo,'users','name')) {
+                    $enc_col = "COALESCE(u.name,'—')";
+                }
+                // PK of users table is 'id'
+                $u_pk     = has_col($pdo,'users','user_id') ? 'user_id' : 'id';
+                $enc_join = "LEFT JOIN users u ON jo.$jo_enc = u.$u_pk";
+            }
+        } catch (Exception $e) {}
+        // Customer contact
+        $cust_join  = '';
+        $cust_phone = "''";
+        $cust_ref   = "'0'";
+        try {
+            $ct = $pdo->query("SHOW TABLES LIKE 'customers'")->fetchAll();
+            if (!empty($ct) && has_col($pdo,'customers','contact_number')) {
+                $cust_phone = 'COALESCE(c.contact_number,\'\')';
+                $cust_ref   = 'COALESCE(c.id,0)';
+                $cust_join  = 'LEFT JOIN customers c ON jo.customer_id = c.id';
+            }
+        } catch (Exception $e) {}
+
+        // Initialise shift summary arrays (used in export + HTML render)
+        $jo_s1_jobs = []; $jo_s2_jobs = [];
+        $jo_s1 = ['services'=>0,'amount'=>0.0,'cash'=>0.0,'digital'=>0.0,'credit'=>0.0];
+        $jo_s2 = ['services'=>0,'amount'=>0.0,'cash'=>0.0,'digital'=>0.0,'credit'=>0.0];
 
         if ($sub_tab === 'jo_list') {
-            $stmt = $pdo->prepare("
-                SELECT $jo_id_col AS job_order_id,
-                       COALESCE(jo.customer_name,'Walk-in') AS customer_name,
-                       COALESCE(jo.vehicle_plate,'—') AS vehicle_plate,
-                       COALESCE(jo.service_type,'—') AS service_type,
-                       COALESCE(jo.status,'Pending') AS status,
-                       $cost_col AS total_cost,
-                       jo.created_at,
-                       $mechanic_col AS assigned_mechanic
-                FROM job_orders jo
-                $mechanic_join
-                WHERE jo.station_id=? AND jo.$jo_enc=? AND DATE(jo.created_at) BETWEEN ? AND ?
-                ORDER BY jo.created_at DESC
-            ");
-            $stmt->execute([$station_id, $user_id, $date_start, $date_end]);
-            $report_data = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            try {
+                $stmt = $pdo->prepare("
+                    SELECT jo.id,
+                           $jo_num_col AS job_order_id,
+                           COALESCE(jo.customer_name,'Walk-in') AS customer_name,
+                           $cust_phone AS contact_number,
+                           $cust_ref   AS customer_ref_id,
+                           COALESCE(jo.service_type,'—') AS service_type,
+                           COALESCE(jo.status,'Pending') AS status,
+                           $cost_col  AS total_cost,
+                           $labor_col AS labor_fee,
+                           $pay_col   AS payment_mode,
+                           jo.created_at,
+                           COALESCE(jo.notes,'') AS remarks,
+                           $enc_col AS encoder_name
+                    FROM job_orders jo
+                    $cust_join
+                    $enc_join
+                    WHERE jo.station_id = ? AND DATE(jo.created_at) BETWEEN ? AND ?
+                    ORDER BY jo.created_at DESC
+                ");
+                $stmt->execute([$station_id, $date_start, $date_end]);
+                $report_data = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            } catch (Exception $e) {
+                $report_data = [];
+                $report_error = 'Job Orders query error: ' . $e->getMessage();
+            }
 
-            $total_jo = count($report_data);
-            $completed = count(array_filter($report_data, fn($r) => strtolower($r['status']) === 'completed'));
-            $pending = count(array_filter($report_data, fn($r) => in_array(strtolower($r['status']), ['pending', 'pending validation', 'in progress'])));
+            // Fetch parts per job order
+            $has_jop = !empty($pdo->query("SHOW TABLES LIKE 'job_order_parts'")->fetchAll());
+            foreach ($report_data as &$job) {
+                $job['parts_used'] = [];
+                if ($has_jop) {
+                    try {
+                        $ps = $pdo->prepare("
+                            SELECT jop.quantity_used,
+                                   jop.unit_cost,
+                                   COALESCE(p.name,'Unknown Part') AS product_name
+                            FROM job_order_parts jop
+                            LEFT JOIN products p ON jop.product_id = p.id
+                            WHERE jop.job_order_id = ?
+                        ");
+                        $ps->execute([$job['id']]);
+                        $job['parts_used'] = $ps->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                    } catch (Exception $e) {}
+                }
+            }
+            unset($job);
+
+            // Compute shift 1 / shift 2 breakdowns
+            foreach ($report_data as $job) {
+                $hour   = (int)date('H', strtotime($job['created_at']));
+                $shift  = ($hour >= 6 && $hour < 14) ? 1 : 2;
+                $amt    = (float)$job['total_cost'];
+                $mode   = strtolower(trim($job['payment_mode']));
+                $is_cash    = ($mode === 'cash' || $mode === '');
+                $is_digital = in_array($mode, ['digital','gcash','maya','card','credit card','e-wallet','ewallet']);
+                if ($shift === 1) {
+                    $jo_s1_jobs[] = $job;
+                    $jo_s1['services']++;
+                    $jo_s1['amount'] += $amt;
+                    if ($is_cash)         $jo_s1['cash']    += $amt;
+                    elseif ($is_digital)  $jo_s1['digital'] += $amt;
+                    else                  $jo_s1['credit']  += $amt;
+                } else {
+                    $jo_s2_jobs[] = $job;
+                    $jo_s2['services']++;
+                    $jo_s2['amount'] += $amt;
+                    if ($is_cash)         $jo_s2['cash']    += $amt;
+                    elseif ($is_digital)  $jo_s2['digital'] += $amt;
+                    else                  $jo_s2['credit']  += $amt;
+                }
+            }
+
+            $total_jo      = count($report_data);
+            $completed     = count(array_filter($report_data, fn($r)=>strtolower($r['status'])==='completed'));
+            $pending       = count(array_filter($report_data, fn($r)=>in_array(strtolower($r['status']),['pending','pending validation','in progress'])));
+            $overall_amt   = (float)array_sum(array_column($report_data,'total_cost'));
 
             $summary_cards = [
-                ['label' => 'Total Job Orders', 'value' => $total_jo, 'icon' => 'fa-wrench', 'class' => 'stat-blue'],
-                ['label' => 'Completed Jobs', 'value' => $completed, 'icon' => 'fa-circle-check', 'class' => 'stat-green'],
-                ['label' => 'Pending/Active', 'value' => $pending, 'icon' => 'fa-hourglass-half', 'class' => 'stat-orange'],
+                ['label'=>'Total Job Orders', 'value'=>$total_jo,                                'icon'=>'fa-wrench',         'class'=>'stat-blue'],
+                ['label'=>'Completed Jobs',   'value'=>$completed,                               'icon'=>'fa-circle-check',   'class'=>'stat-green'],
+                ['label'=>'Pending/Active',   'value'=>$pending,                                 'icon'=>'fa-hourglass-half', 'class'=>'stat-orange'],
+                ['label'=>'Total Amount',     'value'=>'₱'.number_format($overall_amt,2),        'icon'=>'fa-peso-sign',      'class'=>'stat-purple'],
             ];
+
         } elseif ($sub_tab === 'staff_perf') {
             $stmt = $pdo->prepare("
                 SELECT DATE(jo.created_at) AS work_date,
@@ -316,25 +813,25 @@ try {
                        SUM(CASE WHEN jo.status = 'Completed' THEN 1 ELSE 0 END) AS jobs_completed,
                        SUM(CASE WHEN jo.status IN ('Approved','Validated','Complete') THEN 1 ELSE 0 END) AS jobs_approved,
                        SUM(CASE WHEN jo.status = 'Rejected' THEN 1 ELSE 0 END) AS jobs_rejected,
-                       AVG(CASE WHEN jo.status = 'Completed' 
-                           THEN TIMESTAMPDIFF(HOUR, jo.created_at, jo.updated_at) 
+                       AVG(CASE WHEN jo.status = 'Completed'
+                           THEN TIMESTAMPDIFF(HOUR, jo.created_at, jo.updated_at)
                            ELSE NULL END) AS avg_completion_hours
                 FROM job_orders jo
-                WHERE jo.station_id=? AND jo.$jo_enc=? AND DATE(jo.created_at) BETWEEN ? AND ?
+                WHERE jo.station_id=? AND DATE(jo.created_at) BETWEEN ? AND ?
                 GROUP BY DATE(jo.created_at)
                 ORDER BY work_date DESC
             ");
-            $stmt->execute([$station_id, $user_id, $date_start, $date_end]);
+            $stmt->execute([$station_id, $date_start, $date_end]);
             $report_data = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-            $total_created = array_sum(array_column($report_data, 'jobs_created'));
-            $total_completed = array_sum(array_column($report_data, 'jobs_completed'));
+            $total_created   = array_sum(array_column($report_data,'jobs_created'));
+            $total_completed = array_sum(array_column($report_data,'jobs_completed'));
             $completion_rate = $total_created > 0 ? ($total_completed / $total_created * 100) : 0;
 
             $summary_cards = [
-                ['label' => 'Jobs Encoded', 'value' => $total_created, 'icon' => 'fa-folder-plus', 'class' => 'stat-blue'],
-                ['label' => 'Completed Status', 'value' => $total_completed, 'icon' => 'fa-check-double', 'class' => 'stat-green'],
-                ['label' => 'Completion Rate', 'value' => number_format($completion_rate, 1) . '%', 'icon' => 'fa-chart-pie', 'class' => 'stat-purple'],
+                ['label'=>'Jobs Encoded',      'value'=>$total_created,                               'icon'=>'fa-folder-plus', 'class'=>'stat-blue'],
+                ['label'=>'Completed Status',  'value'=>$total_completed,                             'icon'=>'fa-check-double','class'=>'stat-green'],
+                ['label'=>'Completion Rate',   'value'=>number_format($completion_rate,1).'%',        'icon'=>'fa-chart-pie',   'class'=>'stat-purple'],
             ];
         }
     }
@@ -428,7 +925,7 @@ try {
                                unit,
                                status,
                                created_at AS delivery_date,
-                               COALESCE((SELECT name FROM users WHERE user_id = encoded_by), '—') AS encoded_by
+                                COALESCE((SELECT CONCAT(first_name, ' ', last_name) FROM users WHERE id = encoded_by), '—') AS encoded_by
                         FROM deliveries_oversight
                         WHERE station_id=? AND delivery_type='merchandise' 
                         AND DATE(created_at) BETWEEN ? AND ?
@@ -667,7 +1164,7 @@ try {
                            mt.total_amount,
                            mt.payment_method,
                            mt.created_at AS transaction_date,
-                           COALESCE((SELECT name FROM users WHERE user_id =mt.staff_id),'—') AS encoded_by
+                           COALESCE((SELECT CONCAT(first_name, ' ', last_name) FROM users WHERE id = mt.staff_id),'—') AS encoded_by
                     FROM merchandise_transactions mt
                     LEFT JOIN customers c ON mt.customer_id = c.id
                     WHERE mt.station_id = ? AND mt.staff_id = ? AND DATE(mt.created_at) BETWEEN ? AND ?
@@ -681,7 +1178,7 @@ try {
                            mt.total_amount,
                            mt.payment_method,
                            mt.created_at AS transaction_date,
-                           COALESCE((SELECT name FROM users WHERE user_id =mt.staff_id),'—') AS encoded_by
+                           COALESCE((SELECT CONCAT(first_name, ' ', last_name) FROM users WHERE id = mt.staff_id),'—') AS encoded_by
                     FROM merchandise_transactions mt
                     WHERE mt.station_id = ? AND mt.staff_id = ? AND DATE(mt.created_at) BETWEEN ? AND ?
                     ORDER BY mt.created_at DESC
@@ -783,9 +1280,9 @@ try {
                                entity_id,
                                status,
                                created_at
-                        FROM audit_logs
-                        WHERE user_id=? AND DATE(created_at) BETWEEN ? AND ?
-                        ORDER BY created_at DESC
+                         FROM audit_logs
+                         WHERE user_id=? AND DATE(created_at) BETWEEN ? AND ?
+                         ORDER BY created_at DESC
                     ");
                     $stmt->execute([$user_id, $date_start, $date_end]);
                     $report_data = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -805,6 +1302,742 @@ try {
     }
 } catch (Exception $e) {
     $report_error = $e->getMessage();
+}
+
+// Safeguard: ensure merch_ variables exist even if section/sub_tab mismatch
+if (!isset($merch_items))     $merch_items     = [];
+if (!isset($merch_shift1))    $merch_shift1    = [];
+if (!isset($merch_shift2))    $merch_shift2    = [];
+if (!isset($merch_cat_totals))$merch_cat_totals= [];
+if (!isset($merch_ar))        $merch_ar        = [];
+if (!isset($merch_grand_sales))   $merch_grand_sales   = 0.0;
+if (!isset($merch_grand_qty))     $merch_grand_qty     = 0;
+if (!isset($merch_cash_total))    $merch_cash_total    = 0.0;
+if (!isset($merch_digital_total)) $merch_digital_total = 0.0;
+if (!isset($merch_credit_total))  $merch_credit_total  = 0.0;
+if (!isset($merch_cash_in_bank))  $merch_cash_in_bank  = 0.0;
+if (!isset($merch_s1_cash))       $merch_s1_cash       = 0.0;
+if (!isset($merch_s1_digital))    $merch_s1_digital    = 0.0;
+if (!isset($merch_s1_credit))     $merch_s1_credit     = 0.0;
+if (!isset($merch_s2_cash))       $merch_s2_cash       = 0.0;
+if (!isset($merch_s2_digital))    $merch_s2_digital    = 0.0;
+if (!isset($merch_s2_credit))     $merch_s2_credit     = 0.0;
+
+// ============================================================
+// FUEL SALES — DEDICATED EXPORT HANDLER
+// ============================================================
+if (isset($_GET['export']) && $sub_tab === 'fuel_sales') {
+    $format = trim($_GET['export']);
+
+    // ---- Inline helper for shift table CSV rows ----
+    function _fs_shift_csv($out, $rows, $label) {
+        fputcsv($out, []);
+        fputcsv($out, [$label]);
+        fputcsv($out, ['FUEL TYPE','LITERS SOLD','TOTAL SALES (₱)','CASH RECEIVED (₱)','DIGITAL (₱)','CREDIT/AR (₱)']);
+        foreach ($rows as $r) {
+            fputcsv($out, [
+                $r['fuel_type'],
+                number_format((float)$r['total_liters'],2),
+                number_format((float)$r['total_amount'],2),
+                number_format((float)$r['cash_amount'],2),
+                number_format((float)$r['digital_amount'],2),
+                number_format((float)$r['credit_amount'],2),
+            ]);
+        }
+        if (empty($rows)) fputcsv($out, ['(No data)']);
+    }
+
+    if (in_array($format, ['excel','csv'])) {
+        header('Content-Type: text/csv; charset=utf-8');
+        $fn = 'daily_fuel_sales_' . $date_start . '_to_' . $date_end . '.csv';
+        header("Content-Disposition: attachment; filename=\"{$fn}\"");
+        $out = fopen('php://output','w');
+        echo "\xEF\xBB\xBF";
+
+        fputcsv($out, ['DAILY FUEL SALES REPORT']);
+        fputcsv($out, ['Station:', $station_name]);
+        fputcsv($out, ['Date Range:', $date_start . ' to ' . $date_end]);
+        fputcsv($out, ['Generated:', date('Y-m-d H:i:s')]);
+
+        // Meter Readings
+        fputcsv($out, []);
+        fputcsv($out, ['METER READING TABLE']);
+        fputcsv($out, ['TANKER ID','FUEL TYPE','BEGINNING READING','ENDING READING','CALIBRATION','LITERS SOLD','UNIT PRICE (₱)','AMOUNT (₱)','SHIFT','DATE']);
+        foreach ($meter_readings as $r) {
+            $tanker_id = is_numeric($r['pump']) ? sprintf('TK-%02d', $r['pump']) : $r['pump'];
+            fputcsv($out, [$tanker_id,$r['fuel_type'],$r['beginning'],$r['ending'],$r['calibration'],$r['liters_sold'],$r['price_per_liter'],$r['amount'],$r['shift'],$r['transaction_date']]);
+        }
+        if (empty($meter_readings)) fputcsv($out, ['(No data)']);
+
+        // Volume Sales
+        fputcsv($out, []);
+        fputcsv($out, ['VOLUME SALES SUMMARY']);
+        fputcsv($out, ['FUEL TYPE','TOTAL LITERS SOLD','AVG PRICE/L (₱)','TOTAL AMOUNT (₱)']);
+        foreach ($volume_sales as $r) {
+            fputcsv($out, [$r['fuel_type'],number_format((float)$r['total_liters'],2),number_format((float)$r['avg_price'],2),number_format((float)$r['total_amount'],2)]);
+        }
+        if (empty($volume_sales)) fputcsv($out, ['(No data)']);
+
+        // Tank Sales
+        fputcsv($out, []);
+        fputcsv($out, ['TANK SALES SUMMARY (Capacity vs Dispensed)']);
+        fputcsv($out, ['TANK','FUEL TYPE','TANK CAPACITY (L)','DISPENSED LITERS (L)','UTILIZATION (%)']);
+        foreach ($PHYSICAL_TANKS as $pt) {
+            $ft = $pt['fuel_type'];
+            $cnt = $tank_counts[$ft] ?? 1;
+            $disp = ($dispensed_by_type[$ft] ?? 0) / $cnt;
+            $util = $pt['capacity'] > 0 ? round($disp/$pt['capacity']*100,1) : 0;
+            fputcsv($out,[$pt['label'],$ft,number_format($pt['capacity'],2),number_format($disp,2),$util.'%']);
+        }
+
+        // Shifts
+        _fs_shift_csv($out, $shift1_sales, 'SHIFT 1 SALES & CASH SUMMARY (6:00 AM – 2:00 PM)');
+        _fs_shift_csv($out, $shift2_sales, 'SHIFT 2 SALES & CASH SUMMARY (2:00 PM – 12:00 MN)');
+
+        // AR Summary — Customer Name + Outstanding Balance
+        fputcsv($out, []);
+        fputcsv($out, ['ACCOUNTS RECEIVABLE SUMMARY']);
+        fputcsv($out, ['CUSTOMER NAME','OUTSTANDING BALANCE (₱)']);
+        foreach ($ar_summary as $r) {
+            fputcsv($out,[$r['customer_name'],number_format((float)$r['outstanding_balance'],2)]);
+        }
+        if (empty($ar_summary)) fputcsv($out, ['(No AR records)']);
+
+        // Service Income Summary
+        fputcsv($out, []);
+        fputcsv($out, ['SERVICE INCOME (JOB ORDERS)']);
+        fputcsv($out, ['JOB REF','CUSTOMER NAME','VEHICLE PLATE','SERVICE TYPE','PAYMENT METHOD','TOTAL COST (₱)']);
+        foreach ($service_income_rows as $r) {
+            fputcsv($out, [$r['job_ref'],$r['customer_name'],$r['vehicle_plate'],$r['service_type'],$r['payment_method'],number_format((float)$r['total_cost'],2)]);
+        }
+        if (empty($service_income_rows)) fputcsv($out, ['(No service records)']);
+
+        // Overall
+        fputcsv($out, []);
+        fputcsv($out, ['OVERALL DAILY SUMMARY']);
+        fputcsv($out, ['METRIC','VALUE']);
+        fputcsv($out, ['Total Liters Sold',           number_format($grand_liters,2).' L']);
+        fputcsv($out, ['Total Fuel Sales',            '₱'.number_format($grand_amount,2)]);
+        fputcsv($out, ['Total Service Income',        '₱'.number_format($service_income_total,2)]);
+        fputcsv($out, ['Grand Total (Fuel+Services)', '₱'.number_format($grand_total_all,2)]);
+        fputcsv($out, ['Total Cash in Bank (Deposits)','₱'.number_format($cash_in_bank_deposit,2)]);
+        fputcsv($out, ['Cash on Hand',                 '₱'.number_format($cash_on_hand,2)]);
+        fputcsv($out, ['Variance',                     '₱'.number_format($variance,2)]);
+
+        fclose($out);
+        exit;
+    }
+
+    if ($format === 'pdf') {
+        // Build a clean, printable HTML page
+        $print_rows_meter = '';
+        foreach ($meter_readings as $i => $r) {
+            $tk = is_numeric($r['pump']) ? sprintf('TK-%02d', $r['pump']) : htmlspecialchars($r['pump']);
+            $print_rows_meter .= '<tr><td>'.($i+1).'</td><td><strong>'.$tk.'</strong></td><td>'.htmlspecialchars($r['fuel_type']).'</td><td>'.number_format((float)$r['beginning'],2).'</td><td>'.number_format((float)$r['ending'],2).'</td><td>'.number_format((float)$r['calibration'],2).'</td><td><strong>'.number_format((float)$r['liters_sold'],2).' L</strong></td><td>₱'.number_format((float)$r['price_per_liter'],2).'</td><td><strong>₱'.number_format((float)$r['amount'],2).'</strong></td><td>'.htmlspecialchars($r['shift']).'</td><td>'.htmlspecialchars($r['transaction_date']).'</td></tr>';
+        }
+        $print_rows_vol = '';
+        foreach ($volume_sales as $r) {
+            $print_rows_vol .= '<tr><td><strong>'.htmlspecialchars($r['fuel_type']).'</strong></td><td>'.number_format((float)$r['total_liters'],2).' L</td><td>₱'.number_format((float)$r['avg_price'],2).'</td><td><strong>₱'.number_format((float)$r['total_amount'],2).'</strong></td></tr>';
+        }
+        $print_rows_tank = '';
+        foreach ($PHYSICAL_TANKS as $pt) {
+            $ft = $pt['fuel_type']; $cnt = $tank_counts[$ft]??1;
+            $disp = ($dispensed_by_type[$ft]??0)/$cnt;
+            $util = $pt['capacity']>0?round($disp/$pt['capacity']*100,1):0;
+            $col = $util>80?'#cc0000':($util>50?'#e67e22':'#22c55e');
+            $print_rows_tank .= '<tr><td><strong>'.htmlspecialchars($pt['label']).'</strong></td><td>'.htmlspecialchars($ft).'</td><td>'.number_format($pt['capacity'],0).' L</td><td>'.number_format($disp,2).' L</td><td style="color:'.$col.';font-weight:700;">'.$util.'%</td></tr>';
+        }
+        function _fs_shift_rows($rows) {
+            $out='';
+            foreach($rows as $r){
+                $out.='<tr><td><strong>'.htmlspecialchars($r['fuel_type']).'</strong></td><td>'.number_format((float)$r['total_liters'],2).' L</td><td>₱'.number_format((float)$r['total_amount'],2).'</td><td>₱'.number_format((float)$r['cash_amount'],2).'</td><td>₱'.number_format((float)$r['digital_amount'],2).'</td><td>₱'.number_format((float)$r['credit_amount'],2).'</td></tr>';
+            }
+            if(empty($rows)) $out='<tr><td colspan="6" style="text-align:center;color:#9ca3af;">No data</td></tr>';
+            return $out;
+        }
+        $print_rows_s1 = _fs_shift_rows($shift1_sales);
+        $print_rows_s2 = _fs_shift_rows($shift2_sales);
+        $print_rows_ar = '';
+        foreach ($ar_summary as $r) {
+            $print_rows_ar .= '<tr><td><strong>'.htmlspecialchars($r['customer_name']).'</strong></td><td><strong>₱'.number_format((float)$r['outstanding_balance'],2).'</strong></td></tr>';
+        }
+        if (empty($ar_summary)) $print_rows_ar = '<tr><td colspan="2" style="text-align:center;color:#9ca3af;">No accounts receivable</td></tr>';
+
+        $print_rows_service = '';
+        foreach ($service_income_rows as $r) {
+            $print_rows_service .= '<tr><td><strong>'.htmlspecialchars($r['job_ref']).'</strong></td><td>'.htmlspecialchars($r['customer_name']).'</td><td><code>'.htmlspecialchars($r['vehicle_plate']).'</code></td><td>'.htmlspecialchars($r['service_type']).'</td><td>'.htmlspecialchars($r['payment_method']).'</td><td><strong>₱'.number_format((float)$r['total_cost'],2).'</strong></td></tr>';
+        }
+        if (empty($service_income_rows)) $print_rows_service = '<tr><td colspan="6" style="text-align:center;color:#9ca3af;">No service income records</td></tr>';
+
+        $th = 'background:#002F70;color:#fff;padding:9px 10px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;white-space:nowrap;';
+        $td_css = 'border-bottom:1px solid #e9ecef;padding:8px 10px;font-size:12px;';
+        $tbl_css = 'width:100%;border-collapse:collapse;margin-bottom:0;';
+        $sec_head = 'background:#002F70;color:#fff;padding:10px 14px;font-size:13px;font-weight:700;border-radius:6px 6px 0 0;display:flex;align-items:center;gap:8px;';
+
+        echo '<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Daily Fuel Sales Report — '.$date_start.' to '.$date_end.'</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Arial,sans-serif;color:#111;background:#fff;padding:20px;}
+.print-header{text-align:center;margin-bottom:20px;border-bottom:3px solid #002F70;padding-bottom:12px;}
+.print-header h1{font-size:20px;font-weight:800;color:#002F70;letter-spacing:-.5px;}
+.print-header p{font-size:12px;color:#667085;margin-top:4px;}
+.section{margin-bottom:22px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;}
+.section-head{'.$sec_head.'}
+.section-head .ico{font-size:16px;}
+table{'.$tbl_css.'}
+th{'.$th.'}
+td{'.$td_css.'}
+tr:last-child td{border-bottom:none;}
+.summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:22px;}
+.s-card{border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;border-left:4px solid #002F70;}
+.s-card .val{font-size:18px;font-weight:800;color:#101828;}
+.s-card .lbl{font-size:11px;color:#667085;text-transform:uppercase;letter-spacing:.4px;margin-top:2px;}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:22px;}
+@media print{body{padding:10px;} .no-print{display:none;}}
+</style></head><body>
+<div class="no-print" style="margin-bottom:16px;">
+  <button onclick="window.print()" style="background:#002F70;color:#fff;border:none;padding:10px 22px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">🖨 Print / Save as PDF</button>
+  <button onclick="window.close()" style="background:#6c757d;color:#fff;border:none;padding:10px 16px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;margin-left:8px;">✕ Close</button>
+</div>
+<div class="print-header">
+  <h1>DAILY SALES &amp; SERVICES REPORT</h1>
+  <p>Station: '.htmlspecialchars($station_name).' &nbsp;|&nbsp; Period: '.htmlspecialchars($date_start).' to '.htmlspecialchars($date_end).' &nbsp;|&nbsp; Generated: '.date('Y-m-d H:i:s').'</p>
+</div>
+
+<div class="summary-grid">
+  <div class="s-card" style="border-left-color:#002F70;"><div class="val">'.number_format($grand_liters,2).' L</div><div class="lbl">Total Liters Sold</div></div>
+  <div class="s-card" style="border-left-color:#22c55e;"><div class="val">₱'.number_format($grand_amount,2).'</div><div class="lbl">Total Fuel Sales</div></div>
+  <div class="s-card" style="border-left-color:#14b8a6;"><div class="val">₱'.number_format($service_income_total,2).'</div><div class="lbl">Service Income</div></div>
+  <div class="s-card" style="border-left-color:#8b5cf6;"><div class="val">₱'.number_format($total_digital,2).'</div><div class="lbl">Digital / Card Sales</div></div>
+  <div class="s-card" style="border-left-color:#f97316;"><div class="val">₱'.number_format($total_ar_outstanding,2).'</div><div class="lbl">Accounts Receivable (A/R)</div></div>
+  <div class="s-card" style="border-left-color:#cc0000;"><div class="val">₱'.number_format($cash_in_bank_deposit,2).'</div><div class="lbl">Cash in Bank (Deposits)</div></div>
+</div>
+
+<div class="section">
+  <div class="section-head"><span>📊 Meter Reading Table (Liters = Ending − Beginning ± Calibration)</span></div>
+  <div style="overflow-x:auto;"><table>
+    <thead><tr><th>#</th><th>Tanker ID</th><th>Fuel Type</th><th>Beginning Reading</th><th>Ending Reading</th><th>Calibration</th><th>Liters Sold</th><th>Unit Price</th><th>Amount</th><th>Shift</th><th>Date</th></tr></thead>
+    <tbody>'.($print_rows_meter ?: '<tr><td colspan="11" style="text-align:center;color:#9ca3af;">No meter readings</td></tr>').'</tbody>
+  </table></div>
+</div>
+
+<div class="two-col">
+  <div class="section">
+    <div class="section-head"><span>⚽ Volume Sales Summary</span></div>
+    <table><thead><tr><th>Fuel Type</th><th>Total Liters Sold</th><th>Avg Price/L</th><th>Total Amount</th></tr></thead>
+    <tbody>'.($print_rows_vol ?: '<tr><td colspan="4" style="text-align:center;color:#9ca3af;">No data</td></tr>').'</tbody></table>
+  </div>
+  <div class="section">
+    <div class="section-head"><span>🛢 Tank Sales Summary</span></div>
+    <table><thead><tr><th>Tank</th><th>Fuel Type</th><th>Tank Capacity</th><th>Dispensed Liters</th><th>Utilization %</th></tr></thead>
+    <tbody>'.$print_rows_tank.'</tbody></table>
+  </div>
+</div>
+
+<div class="two-col">
+  <div class="section">
+    <div class="section-head"><span>🌅 Shift 1 Sales &amp; Cash (6:00 AM – 2:00 PM)</span></div>
+    <table><thead><tr><th>Fuel Type</th><th>Liters</th><th>Total Sales (₱)</th><th>Cash Received (₱)</th><th>Digital (₱)</th><th>Credit (₱)</th></tr></thead>
+    <tbody>'.$print_rows_s1.'</tbody></table>
+  </div>
+  <div class="section">
+    <div class="section-head"><span>🌙 Shift 2 Sales &amp; Cash (2:00 PM – 12:00 MN)</span></div>
+    <table><thead><tr><th>Fuel Type</th><th>Liters</th><th>Total Sales (₱)</th><th>Cash Received (₱)</th><th>Digital (₱)</th><th>Credit (₱)</th></tr></thead>
+    <tbody>'.$print_rows_s2.'</tbody></table>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-head"><span>🔧 Service Income (Job Orders)</span></div>
+  <table><thead><tr><th>Job Ref</th><th>Customer Name</th><th>Vehicle Plate</th><th>Service Type</th><th>Payment Method</th><th>Total Cost</th></tr></thead>
+  <tbody>'.$print_rows_service.'</tbody></table>
+</div>
+
+<div class="section">
+  <div class="section-head"><span>📋 A/R Summary — Suki / Credit Customers</span></div>
+  <table><thead><tr><th>Customer Name</th><th>Outstanding Balance</th></tr></thead>
+  <tbody>'.$print_rows_ar.'</tbody></table>
+</div>
+
+<div class="section">
+  <div class="section-head"><span>📊 Overall Daily Summary</span></div>
+  <table><thead><tr><th>Metric</th><th>Value</th></tr></thead>
+  <tbody>
+    <tr><td>Total Liters Sold</td><td><strong>'.number_format($grand_liters,2).' L</strong></td></tr>
+    <tr><td>Total Fuel Sales</td><td>₱'.number_format($grand_amount,2).'</td></tr>
+    <tr><td>Total Service Income</td><td>₱'.number_format($service_income_total,2).'</td></tr>
+    <tr style="background:#f8fafc;"><td><strong>Grand Total (Fuel + Services)</strong></td><td><strong>₱'.number_format($grand_total_all,2).'</strong></td></tr>
+    <tr><td>Shift 1 &mdash; Cash Received</td><td>₱'.number_format($s1_cash,2).'</td></tr>
+    <tr><td>Shift 2 &mdash; Cash Received</td><td>₱'.number_format($s2_cash,2).'</td></tr>
+    <tr><td>Total Cash Sales (including Service Cash)</td><td>₱'.number_format($total_cash,2).'</td></tr>
+    <tr><td>Total Digital/Card Sales (including Service Digital)</td><td>₱'.number_format($total_digital,2).'</td></tr>
+    <tr><td>Total Accounts Receivable (A/R)</td><td>₱'.number_format($total_ar_outstanding,2).'</td></tr>
+    <tr style="background:#f0fdf4;"><td><strong>Total Cash in Bank (Deposits)</strong></td><td><strong style="color:#15803d;">₱'.number_format($cash_in_bank_deposit,2).'</strong></td></tr>
+    <tr style="background:#fef9c3;"><td><strong>Cash on Hand</strong></td><td><strong>₱'.number_format($cash_on_hand,2).'</strong></td></tr>
+    <tr style="background:'.($variance==0?'#f0fdf4':'#fee2e2').';font-weight:700;"><td><strong>Variance</strong></td><td><strong style="color:'.($variance==0?'#15803d':'#cc0000').'">₱'.number_format($variance,2).'</strong></td></tr>
+  </tbody></table>
+</div>
+<script>window.onload=function(){window.print();}</script>
+</body></html>';
+        exit;
+    }
+}
+
+// ============================================================
+// JOB ORDERS — DEDICATED EXPORT HANDLER
+// ============================================================
+if (isset($_GET['export']) && $section === 'job_orders' && $sub_tab === 'jo_list') {
+    $format = trim($_GET['export']);
+
+    if (in_array($format, ['excel','csv'])) {
+        header('Content-Type: text/csv; charset=utf-8');
+        $fn = 'daily_job_orders_' . $date_start . '_to_' . $date_end . '.csv';
+        header("Content-Disposition: attachment; filename=\"{$fn}\"");
+        $out = fopen('php://output','w');
+        fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF));
+
+        fputcsv($out, ['DAILY JOB ORDER REPORT']);
+        fputcsv($out, ['Station:', $station_name]);
+        fputcsv($out, ['Period:', $date_start . ' to ' . $date_end]);
+        fputcsv($out, ['Generated:', date('Y-m-d H:i:s')]);
+        fputcsv($out, []);
+
+        // Job Order Table
+        fputcsv($out, ['JOB ORDERS TABLE']);
+        fputcsv($out, ['#','JO ID','Customer Name','Contact','Ref ID','Service Type','Parts/Materials','Qty','Unit Price (₱)','Labor Fee (₱)','Total Amount (₱)','Payment Mode','Shift','Status','Encoder','Remarks']);
+        foreach ($report_data as $i => $job) {
+            $hour  = (int)date('H', strtotime($job['created_at']));
+            $shift = ($hour >= 6 && $hour < 14) ? 'Shift 1' : 'Shift 2';
+            $parts = !empty($job['parts_used'])
+                ? implode(' | ', array_map(fn($p)=>$p['product_name'].'x'.$p['quantity_used'].' @₱'.number_format($p['unit_cost'],2), $job['parts_used']))
+                : '—';
+            fputcsv($out, [
+                $i + 1,
+                $job['job_order_id'],
+                $job['customer_name'],
+                $job['contact_number'] ?: '—',
+                $job['customer_ref_id'] ?: '—',
+                $job['service_type'],
+                $parts,
+                count($job['parts_used']),
+                '—',
+                number_format((float)$job['labor_fee'], 2),
+                number_format((float)$job['total_cost'], 2),
+                $job['payment_mode'],
+                $shift,
+                $job['status'],
+                $job['encoder_name'],
+                $job['remarks'] ?: '—',
+            ]);
+        }
+        if (empty($report_data)) fputcsv($out, ['(No job orders for this period)']);
+
+        // Shift 1 Summary
+        fputcsv($out, []);
+        fputcsv($out, ['SHIFT 1 SUMMARY (6:00 AM – 2:00 PM)']);
+        fputcsv($out, ['Total Services','Total Amount (₱)','Cash (₱)','Digital (₱)','Credit/AR (₱)']);
+        fputcsv($out, [$jo_s1['services'], number_format($jo_s1['amount'],2), number_format($jo_s1['cash'],2), number_format($jo_s1['digital'],2), number_format($jo_s1['credit'],2)]);
+
+        // Shift 2 Summary
+        fputcsv($out, []);
+        fputcsv($out, ['SHIFT 2 SUMMARY (2:00 PM – 12:00 MN)']);
+        fputcsv($out, ['Total Services','Total Amount (₱)','Cash (₱)','Digital (₱)','Credit/AR (₱)']);
+        fputcsv($out, [$jo_s2['services'], number_format($jo_s2['amount'],2), number_format($jo_s2['cash'],2), number_format($jo_s2['digital'],2), number_format($jo_s2['credit'],2)]);
+
+        // Overall Daily Summary
+        fputcsv($out, []);
+        fputcsv($out, ['OVERALL DAILY SUMMARY']);
+        fputcsv($out, ['METRIC','VALUE']);
+        fputcsv($out, ['Total Job Orders', count($report_data)]);
+        fputcsv($out, ['Grand Total Amount', '₱'.number_format($jo_s1['amount']+$jo_s2['amount'],2)]);
+        fputcsv($out, ['Total Cash Received', '₱'.number_format($jo_s1['cash']+$jo_s2['cash'],2)]);
+        fputcsv($out, ['Total Digital/Card', '₱'.number_format($jo_s1['digital']+$jo_s2['digital'],2)]);
+        fputcsv($out, ['Total Credit/AR', '₱'.number_format($jo_s1['credit']+$jo_s2['credit'],2)]);
+
+        fclose($out);
+        exit;
+    }
+
+    if ($format === 'pdf') {
+        $th_s  = 'background:#002F70;color:#fff;padding:7px 9px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;white-space:nowrap;';
+        $td_s  = 'border-bottom:1px solid #e9ecef;padding:6px 9px;font-size:10px;';
+        function _jo_badge($status) {
+            $s = strtolower($status);
+            $c = '#667085';
+            if (in_array($s,['completed','approved','validated','paid'])) $c='#15803d';
+            elseif (in_array($s,['pending','in progress','pending validation'])) $c='#1d4ed8';
+            elseif (in_array($s,['cancelled','rejected'])) $c='#cc0000';
+            return '<span style="color:'.$c.';font-weight:700;">'.htmlspecialchars(ucfirst($status)).'</span>';
+        }
+        $grand_amount = 0; $grand_cash = 0; $grand_digital = 0; $grand_credit = 0;
+        $rows_html = '';
+        foreach ($report_data as $i => $job) {
+            $hour  = (int)date('H', strtotime($job['created_at']));
+            $shift = ($hour >= 6 && $hour < 14) ? 'Shift 1' : 'Shift 2';
+            $amt   = (float)$job['total_cost'];
+            $grand_amount += $amt;
+            $parts_html = '';
+            foreach ($job['parts_used'] as $p) {
+                $parts_html .= '<div>'.htmlspecialchars($p['product_name']).' &times;'.htmlspecialchars($p['quantity_used']).' @&#8369;'.number_format((float)$p['unit_cost'],2).'</div>';
+            }
+            if (empty($parts_html)) $parts_html = '<span style="color:#9ca3af;">—</span>';
+            $cust_info = htmlspecialchars($job['customer_name']);
+            if (!empty($job['contact_number'])) $cust_info .= '<br><span style="font-size:9px;color:#64748b;">'.htmlspecialchars($job['contact_number']).'</span>';
+            if (!empty($job['customer_ref_id']) && $job['customer_ref_id'] != '0') $cust_info .= '<br><span style="font-size:9px;color:#9ca3af;">Ref #'.htmlspecialchars($job['customer_ref_id']).'</span>';
+            $rows_html .= '<tr>
+              <td style="'.$td_s.'">'.($i+1).'</td>
+              <td style="'.$td_s.'"><strong>'.htmlspecialchars($job['job_order_id']).'</strong></td>
+              <td style="'.$td_s.'">'.$cust_info.'</td>
+              <td style="'.$td_s.'">'.htmlspecialchars($job['service_type']).'</td>
+              <td style="'.$td_s.'">'.$parts_html.'</td>
+              <td style="'.$td_s.'">&#8369;'.number_format((float)$job['labor_fee'],2).'</td>
+              <td style="'.$td_s.'"><strong>&#8369;'.number_format($amt,2).'</strong></td>
+              <td style="'.$td_s.'">'.htmlspecialchars($job['payment_mode']).'</td>
+              <td style="'.$td_s.'">'.$shift.'</td>
+              <td style="'.$td_s.'">'._jo_badge($job['status']).'</td>
+              <td style="'.$td_s.'">'.htmlspecialchars($job['encoder_name']).'</td>
+              <td style="'.$td_s.';color:#64748b;">'.htmlspecialchars($job['remarks']).'</td>
+            </tr>';
+        }
+        if (empty($report_data)) $rows_html = '<tr><td colspan="12" style="text-align:center;color:#9ca3af;padding:16px;">No job orders for this period.</td></tr>';
+
+        echo '<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Daily Job Order Report — '.$date_start.' to '.$date_end.'</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Arial,sans-serif;color:#111;background:#fff;padding:18px;}
+.ph{text-align:center;margin-bottom:18px;border-bottom:3px solid #002F70;padding-bottom:10px;}
+.ph h1{font-size:18px;font-weight:800;color:#002F70;}
+.ph p{font-size:11px;color:#667085;margin-top:3px;}
+.sec{margin-bottom:16px;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;}
+.sh{background:#002F70;color:#fff;padding:8px 12px;font-size:11px;font-weight:700;text-transform:uppercase;}
+table{width:100%;border-collapse:collapse;}
+.sg{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}
+.sc{border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;border-left:4px solid #002F70;}
+.sc .v{font-size:15px;font-weight:800;color:#101828;}
+.sc .l{font-size:9px;color:#667085;text-transform:uppercase;letter-spacing:.4px;margin-top:2px;}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;}
+@media print{body{padding:8px;}.no-print{display:none;}}
+</style></head><body>
+<div class="no-print" style="margin-bottom:14px;">
+  <button onclick="window.print()" style="background:#002F70;color:#fff;border:none;padding:9px 20px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">&#128424; Print / Save as PDF</button>
+  <button onclick="window.close()" style="background:#6c757d;color:#fff;border:none;padding:9px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;margin-left:8px;">&#10005; Close</button>
+</div>
+<div class="ph">
+  <h1>DAILY JOB ORDER REPORT</h1>
+  <p>Station: '.htmlspecialchars($station_name).' &nbsp;|&nbsp; Period: '.htmlspecialchars($date_start).' to '.htmlspecialchars($date_end).' &nbsp;|&nbsp; Generated: '.date('Y-m-d H:i:s').'</p>
+</div>
+<div class="sg">
+  <div class="sc"><div class="v">'.count($report_data).'</div><div class="l">Total Job Orders</div></div>
+  <div class="sc" style="border-left-color:#22c55e;"><div class="v">&#8369;'.number_format($jo_s1['amount']+$jo_s2['amount'],2).'</div><div class="l">Grand Total Amount</div></div>
+  <div class="sc" style="border-left-color:#3b82f6;"><div class="v">&#8369;'.number_format($jo_s1['cash']+$jo_s2['cash'],2).'</div><div class="l">Cash Received</div></div>
+  <div class="sc" style="border-left-color:#8b5cf6;"><div class="v">&#8369;'.number_format($jo_s1['credit']+$jo_s2['credit'],2).'</div><div class="l">Credit / A/R</div></div>
+</div>
+<div class="sec">
+  <div class="sh">&#128295; Job Order Table</div>
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr>
+      <th style="'.$th_s.'">#</th>
+      <th style="'.$th_s.'">JO ID</th>
+      <th style="'.$th_s.'">Customer Info</th>
+      <th style="'.$th_s.'">Service Type</th>
+      <th style="'.$th_s.'">Parts / Materials</th>
+      <th style="'.$th_s.'">Labor Fee</th>
+      <th style="'.$th_s.'">Total Amount</th>
+      <th style="'.$th_s.'">Payment Mode</th>
+      <th style="'.$th_s.'">Shift</th>
+      <th style="'.$th_s.'">Status</th>
+      <th style="'.$th_s.'">Encoder</th>
+      <th style="'.$th_s.'">Remarks</th>
+    </tr></thead>
+    <tbody>'.$rows_html.'</tbody>
+  </table></div>
+</div>
+<div class="two">
+  <div class="sec">
+    <div class="sh">&#127774; Shift 1 Summary (6 AM – 2 PM)</div>
+    <table><thead><tr>
+      <th style="'.$th_s.'">Metric</th><th style="'.$th_s.'">Value</th>
+    </tr></thead><tbody>
+      <tr><td style="'.$td_s.'">Total Services</td><td style="'.$td_s.'"><strong>'.$jo_s1['services'].'</strong></td></tr>
+      <tr><td style="'.$td_s.'">Total Amount</td><td style="'.$td_s.'"><strong>&#8369;'.number_format($jo_s1['amount'],2).'</strong></td></tr>
+      <tr><td style="'.$td_s.'">Cash Received</td><td style="'.$td_s.'">&#8369;'.number_format($jo_s1['cash'],2).'</td></tr>
+      <tr><td style="'.$td_s.'">Digital / Card</td><td style="'.$td_s.'">&#8369;'.number_format($jo_s1['digital'],2).'</td></tr>
+      <tr><td style="'.$td_s.'">Credit / A/R</td><td style="'.$td_s.'">&#8369;'.number_format($jo_s1['credit'],2).'</td></tr>
+    </tbody></table>
+  </div>
+  <div class="sec">
+    <div class="sh">&#127762; Shift 2 Summary (2 PM – 12 MN)</div>
+    <table><thead><tr>
+      <th style="'.$th_s.'">Metric</th><th style="'.$th_s.'">Value</th>
+    </tr></thead><tbody>
+      <tr><td style="'.$td_s.'">Total Services</td><td style="'.$td_s.'"><strong>'.$jo_s2['services'].'</strong></td></tr>
+      <tr><td style="'.$td_s.'">Total Amount</td><td style="'.$td_s.'"><strong>&#8369;'.number_format($jo_s2['amount'],2).'</strong></td></tr>
+      <tr><td style="'.$td_s.'">Cash Received</td><td style="'.$td_s.'">&#8369;'.number_format($jo_s2['cash'],2).'</td></tr>
+      <tr><td style="'.$td_s.'">Digital / Card</td><td style="'.$td_s.'">&#8369;'.number_format($jo_s2['digital'],2).'</td></tr>
+      <tr><td style="'.$td_s.'">Credit / A/R</td><td style="'.$td_s.'">&#8369;'.number_format($jo_s2['credit'],2).'</td></tr>
+    </tbody></table>
+  </div>
+</div>
+<div class="sec">
+  <div class="sh">&#128202; Overall Daily Summary</div>
+  <table><thead><tr>
+    <th style="'.$th_s.'">Metric</th><th style="'.$th_s.'">Value</th>
+  </tr></thead><tbody>
+    <tr><td style="'.$td_s.'">Total Job Orders</td><td style="'.$td_s.'"><strong>'.count($report_data).'</strong></td></tr>
+    <tr><td style="'.$td_s.'">Grand Total Amount</td><td style="'.$td_s.'"><strong>&#8369;'.number_format($jo_s1['amount']+$jo_s2['amount'],2).'</strong></td></tr>
+    <tr><td style="'.$td_s.'">Shift 1 — Cash</td><td style="'.$td_s.'">&#8369;'.number_format($jo_s1['cash'],2).'</td></tr>
+    <tr><td style="'.$td_s.'">Shift 1 — Digital</td><td style="'.$td_s.'">&#8369;'.number_format($jo_s1['digital'],2).'</td></tr>
+    <tr><td style="'.$td_s.'">Shift 1 — Credit/AR</td><td style="'.$td_s.'">&#8369;'.number_format($jo_s1['credit'],2).'</td></tr>
+    <tr><td style="'.$td_s.'">Shift 2 — Cash</td><td style="'.$td_s.'">&#8369;'.number_format($jo_s2['cash'],2).'</td></tr>
+    <tr><td style="'.$td_s.'">Shift 2 — Digital</td><td style="'.$td_s.'">&#8369;'.number_format($jo_s2['digital'],2).'</td></tr>
+    <tr><td style="'.$td_s.'">Shift 2 — Credit/AR</td><td style="'.$td_s.'">&#8369;'.number_format($jo_s2['credit'],2).'</td></tr>
+    <tr style="background:#f0fdf4;"><td style="'.$td_s.'"><strong>Total Cash Received</strong></td><td style="'.$td_s.'"><strong style="color:#15803d;">&#8369;'.number_format($jo_s1['cash']+$jo_s2['cash'],2).'</strong></td></tr>
+    <tr style="background:#fefce8;"><td style="'.$td_s.'"><strong>Total Credit / A/R</strong></td><td style="'.$td_s.'"><strong style="color:#d97706;">&#8369;'.number_format($jo_s1['credit']+$jo_s2['credit'],2).'</strong></td></tr>
+  </tbody></table>
+</div>
+<script>window.onload=function(){window.print();}</script>
+</body></html>';
+        exit;
+    }
+}
+
+// ============================================================
+// MERCHANDISE SALES — DEDICATED EXPORT HANDLER
+// ============================================================
+if (isset($_GET['export']) && $sub_tab === 'merch_sales') {
+    $format = trim($_GET['export']);
+
+    if (in_array($format, ['excel','csv'])) {
+        header('Content-Type: text/csv; charset=utf-8');
+        $fn = 'daily_merch_sales_' . $date_start . '_to_' . $date_end . '.csv';
+        header("Content-Disposition: attachment; filename=\"{$fn}\"");
+        $out = fopen('php://output','w');
+        fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF)); // UTF-8 BOM
+
+        fputcsv($out, ['DAILY MERCHANDISE SALES REPORT']);
+        fputcsv($out, ['Station:', $station_name]);
+        fputcsv($out, ['Period:', $date_start . ' to ' . $date_end]);
+        fputcsv($out, ['Generated:', date('Y-m-d H:i:s')]);
+
+        // Merchandise Sales Table
+        fputcsv($out, []);
+        fputcsv($out, ['MERCHANDISE SALES TABLE']);
+        fputcsv($out, ['CATEGORY','PRODUCT NAME','SIZE','BEGINNING STOCK','STOCK IN (DELIVERIES)','STOCK OUT (SALES)','ENDING STOCK','UNIT PRICE (₱)','AMOUNT (₱)','ENCODER','REMARKS']);
+        foreach ($merch_items as $m) {
+            fputcsv($out, [
+                $m['category'],
+                $m['product_name'],
+                $m['size_variant'],
+                number_format($m['beginning_stock'],2),
+                number_format($m['stock_in'],2),
+                number_format($m['stock_out'],2),
+                number_format($m['ending_stock'],2),
+                number_format($m['unit_price'],2),
+                number_format($m['amount'],2),
+                $m['encoders'],
+                $m['remarks'],
+            ]);
+        }
+        if (empty($merch_items)) fputcsv($out, ['(No merchandise sales)']);
+
+        // Shift 1
+        fputcsv($out, []);
+        fputcsv($out, ['SHIFT 1 SALES SUMMARY (6:00 AM – 2:00 PM)']);
+        fputcsv($out, ['CATEGORY','ITEMS SOLD','TOTAL AMOUNT (₱)','CASH (₱)','DIGITAL (₱)','CREDIT/AR (₱)']);
+        foreach ($merch_shift1 as $r) {
+            fputcsv($out, [$r['category'],number_format($r['total_qty'],2),number_format($r['total_amount'],2),number_format($r['cash_amount'],2),number_format($r['digital_amount'],2),number_format($r['credit_amount'],2)]);
+        }
+        if (empty($merch_shift1)) fputcsv($out, ['(No Shift 1 data)']);
+
+        // Shift 2
+        fputcsv($out, []);
+        fputcsv($out, ['SHIFT 2 SALES SUMMARY (2:00 PM – 12:00 MN)']);
+        fputcsv($out, ['CATEGORY','ITEMS SOLD','TOTAL AMOUNT (₱)','CASH (₱)','DIGITAL (₱)','CREDIT/AR (₱)']);
+        foreach ($merch_shift2 as $r) {
+            fputcsv($out, [$r['category'],number_format($r['total_qty'],2),number_format($r['total_amount'],2),number_format($r['cash_amount'],2),number_format($r['digital_amount'],2),number_format($r['credit_amount'],2)]);
+        }
+        if (empty($merch_shift2)) fputcsv($out, ['(No Shift 2 data)']);
+
+        // Category Totals
+        fputcsv($out, []);
+        fputcsv($out, ['CATEGORY TOTALS']);
+        fputcsv($out, ['CATEGORY','ITEMS SOLD','TOTAL AMOUNT (₱)']);
+        foreach ($merch_cat_totals as $r) {
+            fputcsv($out, [$r['category'],number_format($r['total_qty'],2),number_format($r['total_amount'],2)]);
+        }
+        if (empty($merch_cat_totals)) fputcsv($out, ['(No data)']);
+
+        // A/R Summary
+        fputcsv($out, []);
+        fputcsv($out, ['ACCOUNTS RECEIVABLE SUMMARY']);
+        fputcsv($out, ['TRANSACTION ID','CUSTOMER','AMOUNT (₱)','STATUS','DUE DATE','CREATED AT']);
+        foreach ($merch_ar as $r) {
+            fputcsv($out, [$r['transaction_id'],$r['customer_name'],number_format($r['amount'],2),$r['status'],$r['due_date'],$r['created_at']]);
+        }
+        if (empty($merch_ar)) fputcsv($out, ['(No AR records)']);
+
+        // Overall Summary
+        fputcsv($out, []);
+        fputcsv($out, ['OVERALL DAILY SUMMARY']);
+        fputcsv($out, ['METRIC','VALUE']);
+        fputcsv($out, ['Total Merchandise Sales', '₱'.number_format($merch_grand_sales,2)]);
+        fputcsv($out, ['Total Items Sold', number_format($merch_grand_qty)]);
+        fputcsv($out, ['Total Cash Sales', '₱'.number_format($merch_cash_total,2)]);
+        fputcsv($out, ['Total Digital/Card Sales', '₱'.number_format($merch_digital_total,2)]);
+        fputcsv($out, ['Total Accounts Receivable', '₱'.number_format($merch_credit_total,2)]);
+        fputcsv($out, ['Total Cash in Bank (for Deposit)', '₱'.number_format($merch_cash_in_bank,2)]);
+
+        fclose($out);
+        exit;
+
+    } elseif ($format === 'pdf') {
+        $th  = 'background:#002F70;color:#fff;padding:8px 10px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;white-space:nowrap;';
+        $td2 = 'border-bottom:1px solid #e9ecef;padding:7px 10px;font-size:11px;';
+
+        function _ms_sec($title, $icon) {
+            return '<div class="section"><div class="section-head"><span>'.$icon.' '.$title.'</span></div>';
+        }
+        function _ms_shift_rows($rows) {
+            $out='';
+            foreach($rows as $r){
+                $out.='<tr><td>'.htmlspecialchars($r['category']).'</td><td>'.number_format($r['total_qty'],2).'</td><td>₱'.number_format($r['total_amount'],2).'</td><td>₱'.number_format($r['cash_amount'],2).'</td><td>₱'.number_format($r['digital_amount'],2).'</td><td>₱'.number_format($r['credit_amount'],2).'</td></tr>';
+            }
+            if(empty($rows)) $out='<tr><td colspan="6" style="text-align:center;color:#9ca3af;">No data</td></tr>';
+            return $out;
+        }
+
+        echo '<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Daily Merchandise Sales Report — '.$date_start.' to '.$date_end.'</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Arial,sans-serif;color:#111;background:#fff;padding:20px;}
+.print-header{text-align:center;margin-bottom:20px;border-bottom:3px solid #002F70;padding-bottom:12px;}
+.print-header h1{font-size:20px;font-weight:800;color:#002F70;letter-spacing:-.5px;}
+.print-header p{font-size:12px;color:#667085;margin-top:4px;}
+.section{margin-bottom:18px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;}
+.section-head{background:#002F70;color:#fff;padding:9px 14px;font-size:12px;font-weight:700;display:flex;align-items:center;gap:8px;}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;}
+table{width:100%;border-collapse:collapse;}
+th{'.$th.'}
+td{'.$td2.'}
+tr:last-child td{border-bottom:none;}
+.summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px;}
+.s-card{border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;border-left:4px solid #002F70;}
+.s-card .val{font-size:16px;font-weight:800;color:#101828;}
+.s-card .lbl{font-size:10px;color:#667085;text-transform:uppercase;letter-spacing:.4px;margin-top:2px;}
+.no-print{display:none;}
+@media print{.no-print{display:none!important;}}
+</style></head><body>
+<div class="no-print" style="padding:10px 0 14px;display:flex;gap:8px;">
+  <button onclick="window.print()" style="background:#002F70;color:#fff;border:none;padding:10px 22px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">🖨 Print / Save as PDF</button>
+  <button onclick="window.close()" style="background:#6c757d;color:#fff;border:none;padding:10px 16px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;margin-left:8px;">✕ Close</button>
+</div>
+<div class="print-header">
+  <h1>DAILY MERCHANDISE SALES REPORT</h1>
+  <p>Station: '.htmlspecialchars($station_name).' &nbsp;|&nbsp; Period: '.htmlspecialchars($date_start).' to '.htmlspecialchars($date_end).' &nbsp;|&nbsp; Generated: '.date('Y-m-d H:i:s').'</p>
+</div>
+
+<div class="summary-grid">
+  <div class="s-card" style="border-left-color:#002F70;"><div class="val">₱'.number_format($merch_grand_sales,2).'</div><div class="lbl">Total Merch Sales</div></div>
+  <div class="s-card" style="border-left-color:#cc0000;"><div class="val">'.number_format($merch_grand_qty).'</div><div class="lbl">Items Sold</div></div>
+  <div class="s-card" style="border-left-color:#22c55e;"><div class="val">₱'.number_format($merch_cash_total,2).'</div><div class="lbl">Cash Sales</div></div>
+  <div class="s-card" style="border-left-color:#8b5cf6;"><div class="val">₱'.number_format($merch_digital_total,2).'</div><div class="lbl">Digital / Card</div></div>
+  <div class="s-card" style="border-left-color:#f97316;"><div class="val">₱'.number_format($merch_credit_total,2).'</div><div class="lbl">Accounts Receivable</div></div>
+  <div class="s-card" style="border-left-color:#14b8a6;"><div class="val">₱'.number_format($merch_cash_in_bank,2).'</div><div class="lbl">Cash in Bank</div></div>
+</div>
+
+<div class="section">
+  <div class="section-head"><span>🏪 Merchandise Sales Table</span></div>
+  <div style="overflow-x:auto;"><table>
+    <thead><tr><th>Category</th><th>Product Name</th><th>Size</th><th>Beg. Stock</th><th>Stock In</th><th>Stock Out</th><th>End Stock</th><th>Unit Price</th><th>Amount</th><th>Encoder</th><th>Remarks</th></tr></thead>
+    <tbody>';
+        if (empty($merch_items)) {
+            echo '<tr><td colspan="11" style="text-align:center;color:#9ca3af;">No merchandise sales</td></tr>';
+        } else {
+            foreach ($merch_items as $m) {
+                echo '<tr>
+                  <td style="font-size:10px;color:#64748b;">'.htmlspecialchars($m['category']).'</td>
+                  <td><strong>'.htmlspecialchars($m['product_name']).'</strong></td>
+                  <td>'.htmlspecialchars($m['size_variant']).'</td>
+                  <td>'.number_format($m['beginning_stock'],2).'</td>
+                  <td style="color:#16a34a;font-weight:600;">'.number_format($m['stock_in'],2).'</td>
+                  <td style="color:#cc0000;font-weight:600;">'.number_format($m['stock_out'],2).'</td>
+                  <td><strong>'.number_format($m['ending_stock'],2).'</strong></td>
+                  <td>₱'.number_format($m['unit_price'],2).'</td>
+                  <td><strong>₱'.number_format($m['amount'],2).'</strong></td>
+                  <td style="font-size:10px;">'.htmlspecialchars($m['encoders']).'</td>
+                  <td style="font-size:10px;color:#64748b;">'.htmlspecialchars($m['remarks']).'</td>
+                </tr>';
+            }
+        }
+        echo '</tbody></table></div></div>
+
+<div class="two-col">
+  <div class="section">
+    <div class="section-head"><span>🌅 Shift 1 Sales (6:00 AM – 2:00 PM)</span></div>
+    <table><thead><tr><th>Category</th><th>Items</th><th>Total (₱)</th><th>Cash (₱)</th><th>Digital (₱)</th><th>Credit (₱)</th></tr></thead>
+    <tbody>'._ms_shift_rows($merch_shift1).'</tbody></table>
+  </div>
+  <div class="section">
+    <div class="section-head"><span>🌙 Shift 2 Sales (2:00 PM – 12:00 MN)</span></div>
+    <table><thead><tr><th>Category</th><th>Items</th><th>Total (₱)</th><th>Cash (₱)</th><th>Digital (₱)</th><th>Credit (₱)</th></tr></thead>
+    <tbody>'._ms_shift_rows($merch_shift2).'</tbody></table>
+  </div>
+</div>
+
+<div class="two-col">
+  <div class="section">
+    <div class="section-head"><span>📦 Category Totals</span></div>
+    <table><thead><tr><th>Category</th><th>Items Sold</th><th>Total Amount</th></tr></thead>
+    <tbody>';
+        foreach ($merch_cat_totals as $r) {
+            echo '<tr><td>'.htmlspecialchars($r['category']).'</td><td>'.number_format($r['total_qty'],2).'</td><td>₱'.number_format($r['total_amount'],2).'</td></tr>';
+        }
+        if (empty($merch_cat_totals)) echo '<tr><td colspan="3" style="text-align:center;color:#9ca3af;">No data</td></tr>';
+        echo '</tbody></table></div>
+  <div class="section">
+    <div class="section-head"><span>📋 Accounts Receivable Summary</span></div>
+    <table><thead><tr><th>Ref</th><th>Customer</th><th>Amount</th><th>Status</th><th>Due Date</th></tr></thead>
+    <tbody>';
+        foreach ($merch_ar as $r) {
+            $sc = strtolower($r['status'])==='paid'?'#16a34a':(strtolower($r['status'])==='overdue'?'#cc0000':'#d97706');
+            echo '<tr>
+              <td style="font-size:10px;">'.htmlspecialchars($r['transaction_id']).'</td>
+              <td>'.htmlspecialchars($r['customer_name']).'</td>
+              <td>₱'.number_format($r['amount'],2).'</td>
+              <td style="color:'.$sc.';font-weight:700;">'.ucfirst($r['status']).'</td>
+              <td style="font-size:10px;">'.htmlspecialchars($r['due_date']).'</td>
+            </tr>';
+        }
+        if (empty($merch_ar)) echo '<tr><td colspan="5" style="text-align:center;color:#9ca3af;">No accounts receivable</td></tr>';
+        echo '</tbody></table></div>
+</div>
+
+<div class="section">
+  <div class="section-head"><span>📊 Overall Daily Summary</span></div>
+  <table><thead><tr><th>Metric</th><th>Value</th></tr></thead>
+  <tbody>
+    <tr><td>Total Merchandise Sales</td><td><strong>₱'.number_format($merch_grand_sales,2).'</strong></td></tr>
+    <tr><td>Total Items Sold</td><td><strong>'.number_format($merch_grand_qty).'</strong></td></tr>
+    <tr><td>Shift 1 — Cash</td><td>₱'.number_format($merch_s1_cash,2).'</td></tr>
+    <tr><td>Shift 1 — Digital</td><td>₱'.number_format($merch_s1_digital,2).'</td></tr>
+    <tr><td>Shift 1 — Credit/AR</td><td>₱'.number_format($merch_s1_credit,2).'</td></tr>
+    <tr><td>Shift 2 — Cash</td><td>₱'.number_format($merch_s2_cash,2).'</td></tr>
+    <tr><td>Shift 2 — Digital</td><td>₱'.number_format($merch_s2_digital,2).'</td></tr>
+    <tr><td>Shift 2 — Credit/AR</td><td>₱'.number_format($merch_s2_credit,2).'</td></tr>
+    <tr><td>Total Cash Sales</td><td>₱'.number_format($merch_cash_total,2).'</td></tr>
+    <tr><td>Total Digital/Card Sales</td><td>₱'.number_format($merch_digital_total,2).'</td></tr>
+    <tr style="background:#fefce8;"><td><strong>Total Accounts Receivable (A/R)</strong></td><td>₱'.number_format($merch_credit_total,2).'</td></tr>
+    <tr style="background:#f0fdf4;"><td><strong>Total Cash in Bank (Ready for Deposit)</strong></td><td><strong style="color:#15803d;font-size:15px;">₱'.number_format($merch_cash_in_bank,2).'</strong></td></tr>
+  </tbody></table>
+</div>
+<script>window.onload=function(){window.print();}</script>
+</body></html>';
+        exit;
+    }
 }
 
 // ============================================================
@@ -1023,8 +2256,8 @@ require_once __DIR__ . '/../partials/header.php';
     <?php
     $sub_tabs_def = [
         'sales' => [
-            'daily_summary' => ['label' => 'Daily Sales Summary', 'icon' => 'fa-cash-register'],
-            'customer_linkage' => ['label' => 'Customer Linkage', 'icon' => 'fa-link']
+            'fuel_sales'  => ['label' => 'Daily Fuel Sales Report',        'icon' => 'fa-gas-pump'],
+            'merch_sales' => ['label' => 'Daily Merchandise Sales Report',  'icon' => 'fa-boxes-stacked'],
         ],
         'job_orders' => [
             'jo_list' => ['label' => 'Job Orders Tracker', 'icon' => 'fa-wrench'],
@@ -1032,8 +2265,7 @@ require_once __DIR__ . '/../partials/header.php';
         ],
         'deliveries' => [
             'fuel_deliveries' => ['label' => 'Fuel Deliveries', 'icon' => 'fa-truck-field'],
-            'merch_deliveries' => ['label' => 'Merchandise Deliveries', 'icon' => 'fa-boxes-stacked'],
-            'inventory_movement' => ['label' => 'Inventory Movement', 'icon' => 'fa-right-left']
+            'merch_deliveries' => ['label' => 'Merchandise Deliveries', 'icon' => 'fa-boxes-stacked']
         ],
         'meter' => [
             'readings' => ['label' => 'Meter Readings Log', 'icon' => 'fa-gauge']
@@ -1080,9 +2312,14 @@ require_once __DIR__ . '/../partials/header.php';
         'section' => $section, 'range' => $range,
         'start'   => $date_start, 'end'  => $date_end, 'sub_tab' => $sub_tab, 'export' => 'csv'
     ]);
+    $_pdf_url = 'staff_reports.php?' . http_build_query([
+        'section' => $section, 'range' => $range,
+        'start'   => $date_start, 'end'  => $date_end, 'sub_tab' => $sub_tab, 'export' => 'pdf'
+    ]);
     $card_btns = '<div class="card-actions">
         <a href="'.$_exp_url.'" class="btn-act btn-act-excel" title="Export Excel"><i class="fa-solid fa-file-excel"></i> Excel</a>
         <a href="'.$_csv_url.'" class="btn-act btn-act-csv"   title="Export CSV"><i class="fa-solid fa-file-csv"></i> CSV</a>
+        <a href="'.$_pdf_url.'" target="_blank" class="btn-act btn-act-pdf" title="Export PDF"><i class="fa-solid fa-file-pdf"></i> PDF</a>
     </div>';
     ?>
 
@@ -1104,6 +2341,846 @@ require_once __DIR__ . '/../partials/header.php';
             <?php endforeach; ?>
         </div>
     <?php endif; ?>
+
+    <!-- DAILY FUEL SALES REPORT — Compact Single-Screen Layout -->
+    <?php if ($sub_tab === 'fuel_sales'): ?>
+    <!-- Force browser to reload CSS -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <style>
+    .fs-wrap{font-size:12px;}
+    .fs-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px;background:#002F70;color:#fff;border-radius:8px;padding:10px 16px;}
+    .fs-header h2{font-size:14px;font-weight:800;margin:0;letter-spacing:-.2px;}
+    .fs-header .meta{font-size:11px;opacity:.75;margin-top:1px;}
+    .fs-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;}
+    .fs-col{display:flex;flex-direction:column;gap:10px;}
+    .fs-panel{background:#fff;border-radius:8px;border:1px solid #e2e8f0;overflow:hidden;}
+    .fs-panel-head{background:#002F70;color:#fff;padding:6px 10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;}
+    .fs-panel-head.red{background:#cc0000;}
+    .fs-panel-head.navy{background:#1a3a6b;}
+    .fs-tbl{width:100%;border-collapse:collapse;font-size:11px;}
+    .fs-tbl th{background:#f0f4ff;color:#002F70;padding:5px 7px;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;border-bottom:1px solid #dde3f0;white-space:nowrap;}
+    .fs-tbl td{padding:4px 7px;border-bottom:1px solid #f1f5f9;color:#1e293b;white-space:nowrap;}
+    .fs-tbl tr:last-child td{border-bottom:none;}
+    .fs-tbl .fs-tot td{background:#f0f4ff;font-weight:700;color:#002F70;border-top:2px solid #c7d2fe;}
+    .fs-tbl .fs-tot2 td{background:#fefce8;font-weight:700;color:#92400e;border-top:2px solid #fde68a;}
+    .fs-summary-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;}
+    .fs-overall{background:#fff;border-radius:8px;border:1px solid #e2e8f0;overflow:hidden;}
+    .fs-bank{background:linear-gradient(135deg,#002F70,#1a3a8f);color:#fff;border-radius:8px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;}
+    .fs-bank .big{font-size:22px;font-weight:900;letter-spacing:-1px;}
+    .fs-bank .sm{font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.3px;}
+    .fs-bank .items{display:flex;gap:14px;}
+    .fs-bank .item{text-align:center;}
+    .fs-bank .item .val{font-size:14px;font-weight:800;}
+    .fs-empty{padding:14px;text-align:center;color:#9ca3af;font-size:11px;}
+    @media print{
+        /* Set page size and hide system elements */
+        @page {
+            size: legal portrait;
+            margin: 0.3in 0.4in;
+        }
+        
+        * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+        
+        html, body { 
+            background: white !important; 
+            padding: 0 !important; 
+            margin: 0 auto !important;
+            width: 100% !important;
+        }
+        
+        /* Hide controls, sidebar, navigation, logo */
+        .no-print,
+        .sidebar,
+        .main-sidebar,
+        aside,
+        nav,
+        .navbar,
+        .main-header,
+        img,
+        .logo,
+        .brand-image,
+        body > header,
+        body > footer,
+        .main-footer { 
+            display: none !important;
+            visibility: hidden !important;
+        }
+        
+        /* Center content */
+        .wrapper,
+        .content-wrapper { 
+            margin: 0 auto !important;
+            padding: 0 !important;
+            width: 100% !important;
+        }
+        
+        .fs-wrap{
+            font-size:10px;
+            margin: 0 auto !important;
+        }
+        
+        .fs-header {
+            text-align: center !important;
+        }
+        
+        .fs-panel-head{
+            background:#002F70!important;
+            -webkit-print-color-adjust:exact;
+            print-color-adjust:exact;
+        }
+        .fs-bank{
+            background:#002F70!important;
+            -webkit-print-color-adjust:exact;
+            print-color-adjust:exact;
+        }
+    }
+    </style>
+    <div class="fs-wrap">
+    <!-- Header -->
+    <div class="fs-header">
+      <div>
+        <div class="meta">PETRON STATION MANAGEMENT SYSTEM &nbsp;|&nbsp; <?= htmlspecialchars($station_name) ?></div>
+        <h2><i class="fa-solid fa-gas-pump" style="margin-right:6px;"></i>DAILY FUEL SALES REPORT &nbsp;—&nbsp; <?= date('d M Y',strtotime($date_start)) ?><?= $date_start!==$date_end ? ' to '.date('d M Y',strtotime($date_end)) : '' ?></h2>
+      </div>
+      <div style="display:flex;gap:6px;" class="no-print"><?= $card_btns ?></div>
+    </div>
+
+    <!-- Main 3-Column Grid -->
+    <div class="fs-grid">
+
+      <!-- COL 1: Meter Reading Table -->
+      <div class="fs-panel">
+        <div class="fs-panel-head"><i class="fa-solid fa-gauge" style="margin-right:5px;"></i>Meter Reading Table <span style="opacity:.7;font-weight:400;">(Liters = Ending − Beginning ± Cal.)</span></div>
+        <?php if(empty($meter_readings)): ?>
+          <div class="fs-empty">No meter readings.</div>
+        <?php else: ?>
+        <table class="fs-tbl">
+          <thead><tr><th>#</th><th>Tanker ID</th><th>Fuel Type</th><th>Beginning Reading</th><th>Ending Reading</th><th>Cal.</th><th>Liters Sold</th><th>Unit Price</th><th>Amount</th><th>Shift</th><th>Payment</th></tr></thead>
+          <tbody>
+            <?php foreach($meter_readings as $i=>$r): ?>
+            <tr>
+              <td><?= $i+1 ?></td>
+              <td><strong><?= is_numeric($r['pump']) ? sprintf('TK-%02d',$r['pump']) : htmlspecialchars($r['pump']) ?></strong></td>
+              <td><strong><?= htmlspecialchars($r['fuel_type']) ?></strong></td>
+              <td><?= number_format((float)$r['beginning'],2) ?></td>
+              <td><?= number_format((float)$r['ending'],2) ?></td>
+              <td style="color:#b45309;"><?= number_format((float)$r['calibration'],2) ?></td>
+              <td><strong><?= number_format((float)$r['liters_sold'],2) ?> L</strong></td>
+              <td>₱<?= number_format((float)$r['price_per_liter'],2) ?></td>
+              <td><strong>₱<?= number_format((float)$r['amount'],2) ?></strong></td>
+              <td><?= htmlspecialchars($r['shift']) ?></td>
+              <td><?= htmlspecialchars($r['payment_type'] ?? '—') ?></td>
+            </tr>
+            <?php endforeach; ?>
+            <tr class="fs-tot"><td colspan="6" style="text-align:right;padding-right:8px;">TOTAL</td><td><?= number_format($grand_liters,2) ?> L</td><td>—</td><td>₱<?= number_format($grand_amount,2) ?></td><td colspan="2"></td></tr>
+          </tbody>
+        </table>
+        <?php endif; ?>
+      </div>
+
+      <!-- COL 2: Volume Sales + Tank Sales -->
+      <div class="fs-col">
+        <!-- Volume Sales Summary -->
+        <div class="fs-panel">
+          <div class="fs-panel-head"><i class="fa-solid fa-chart-column" style="margin-right:5px;"></i>Volume Sales Summary</div>
+          <?php if(empty($volume_sales)): ?>
+            <div class="fs-empty">No data.</div>
+          <?php else: ?>
+          <table class="fs-tbl">
+            <thead><tr><th>Fuel Type</th><th>Total Liters Sold</th><th>Avg Price/L</th><th>Total Amount</th></tr></thead>
+            <tbody>
+              <?php foreach($volume_sales as $vs): ?>
+              <tr>
+                <td><strong><?= htmlspecialchars($vs['fuel_type']) ?></strong></td>
+                <td><?= number_format((float)$vs['total_liters'],2) ?> L</td>
+                <td>₱<?= number_format((float)$vs['avg_price'],2) ?></td>
+                <td>₱<?= number_format((float)$vs['total_amount'],2) ?></td>
+              </tr>
+              <?php endforeach; ?>
+              <tr class="fs-tot"><td>TOTAL</td><td><?= number_format($grand_liters,2) ?> L</td><td>—</td><td>₱<?= number_format($grand_amount,2) ?></td></tr>
+            </tbody>
+          </table>
+          <?php endif; ?>
+        </div>
+        <!-- Tank Sales Summary -->
+        <div class="fs-panel">
+          <div class="fs-panel-head"><i class="fa-solid fa-database" style="margin-right:5px;"></i>Tank Sales Summary</div>
+          <table class="fs-tbl">
+            <thead><tr><th>Tank</th><th>Fuel Type</th><th>Tank Capacity</th><th>Dispensed Liters</th><th>Utilization %</th></tr></thead>
+            <tbody>
+              <?php foreach($PHYSICAL_TANKS as $pt):
+                $ft=$pt['fuel_type']; $cnt=$tank_counts[$ft]??1;
+                $disp=($dispensed_by_type[$ft]??0)/$cnt;
+                $util=$pt['capacity']>0?round($disp/$pt['capacity']*100,1):0;
+                $ucol=$util>80?'#cc0000':($util>50?'#d97706':'#16a34a');
+              ?>
+              <tr>
+                <td style="font-size:10px;color:#64748b;"><?= htmlspecialchars($pt['label']) ?></td>
+                <td><?= htmlspecialchars($ft) ?></td>
+                <td><?= number_format($pt['capacity'],0) ?></td>
+                <td><?= number_format($disp,2) ?></td>
+                <td style="color:<?= $ucol ?>;font-weight:700;"><?= $util ?>%</td>
+              </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+        <!-- Service Income Summary -->
+        <div class="fs-panel">
+          <div class="fs-panel-head navy"><i class="fa-solid fa-screwdriver-wrench" style="margin-right:5px;"></i>Service Income (Job Orders) <span style="opacity:.7;font-weight:400;">(<?= count($service_income_rows) ?> orders)</span></div>
+          <?php if(empty($service_income_rows)): ?>
+            <div class="fs-empty">No service income for this period.</div>
+          <?php else: ?>
+          <div style="overflow-y:auto; max-height:220px;">
+            <table class="fs-tbl">
+              <thead><tr><th>Job Ref</th><th>Customer</th><th>Plate</th><th>Service Type</th><th>Payment</th><th>Total Cost</th></tr></thead>
+              <tbody>
+                <?php foreach($service_income_rows as $sr): ?>
+                <tr>
+                  <td><strong><?= htmlspecialchars($sr['job_ref']) ?></strong></td>
+                  <td><?= htmlspecialchars($sr['customer_name']) ?></td>
+                  <td><code style="background:#f1f5f9;color:#0f172a;padding:1px 3px;border-radius:3px;font-size:10px;"><?= htmlspecialchars($sr['vehicle_plate']) ?></code></td>
+                  <td><span title="<?= htmlspecialchars($sr['service_type']) ?>"><?= htmlspecialchars(mb_strimwidth($sr['service_type'],0,20,'...')) ?></span></td>
+                  <td><span class="badge" style="background:#f1f5f9;color:#334155;font-size:9px;padding:2px 4px;border-radius:3px;font-weight:600;"><?= htmlspecialchars($sr['payment_method']) ?></span></td>
+                  <td><strong>₱<?= number_format((float)$sr['total_cost'],2) ?></strong></td>
+                </tr>
+                <?php endforeach; ?>
+                <tr class="fs-tot"><td colspan="5">TOTAL SERVICE INCOME</td><td>₱<?= number_format($service_income_total,2) ?></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <?php endif; ?>
+        </div>
+      </div>
+
+      <!-- COL 3: Shift Summaries + AR -->
+      <div class="fs-col">
+        <!-- Shift 1 -->
+        <div class="fs-panel">
+          <div class="fs-panel-head navy"><i class="fa-solid fa-sun" style="margin-right:5px;"></i>Shift 1 Sales &amp; Cash (6AM–2PM)</div>
+          <?php if(empty($shift1_sales)): ?>
+            <div class="fs-empty">No Shift 1 records.</div>
+          <?php else: ?>
+          <table class="fs-tbl">
+            <thead><tr><th>Fuel Type</th><th>Liters</th><th>Total Sales</th><th>Cash Received</th><th>Digital</th><th>Credit/AR</th></tr></thead>
+            <tbody>
+              <?php foreach($shift1_sales as $r): ?>
+              <tr>
+                <td><strong><?= htmlspecialchars($r['fuel_type']) ?></strong></td>
+                <td><?= number_format((float)$r['total_liters'],2) ?></td>
+                <td>₱<?= number_format((float)$r['total_amount'],2) ?></td>
+                <td>₱<?= number_format((float)$r['cash_amount'],2) ?></td>
+                <td>₱<?= number_format((float)$r['digital_amount'],2) ?></td>
+                <td>₱<?= number_format((float)$r['credit_amount'],2) ?></td>
+              </tr>
+              <?php endforeach; ?>
+              <tr class="fs-tot"><td>TOTAL</td><td><?= number_format(array_sum(array_column($shift1_sales,'total_liters')),2) ?></td><td>₱<?= number_format(array_sum(array_column($shift1_sales,'total_amount')),2) ?></td><td>₱<?= number_format($s1_cash,2) ?></td><td>₱<?= number_format($s1_digital,2) ?></td><td>₱<?= number_format($s1_credit,2) ?></td></tr>
+            </tbody>
+          </table>
+          <?php endif; ?>
+        </div>
+        <!-- Shift 2 -->
+        <div class="fs-panel">
+          <div class="fs-panel-head navy"><i class="fa-solid fa-moon" style="margin-right:5px;"></i>Shift 2 Sales &amp; Cash (2PM–12MN)</div>
+          <?php if(empty($shift2_sales)): ?>
+            <div class="fs-empty">No Shift 2 records.</div>
+          <?php else: ?>
+          <table class="fs-tbl">
+            <thead><tr><th>Fuel Type</th><th>Liters</th><th>Total Sales</th><th>Cash Received</th><th>Digital</th><th>Credit/AR</th></tr></thead>
+            <tbody>
+              <?php foreach($shift2_sales as $r): ?>
+              <tr>
+                <td><strong><?= htmlspecialchars($r['fuel_type']) ?></strong></td>
+                <td><?= number_format((float)$r['total_liters'],2) ?></td>
+                <td>₱<?= number_format((float)$r['total_amount'],2) ?></td>
+                <td>₱<?= number_format((float)$r['cash_amount'],2) ?></td>
+                <td>₱<?= number_format((float)$r['digital_amount'],2) ?></td>
+                <td>₱<?= number_format((float)$r['credit_amount'],2) ?></td>
+              </tr>
+              <?php endforeach; ?>
+              <tr class="fs-tot"><td>TOTAL</td><td><?= number_format(array_sum(array_column($shift2_sales,'total_liters')),2) ?></td><td>₱<?= number_format(array_sum(array_column($shift2_sales,'total_amount')),2) ?></td><td>₱<?= number_format($s2_cash,2) ?></td><td>₱<?= number_format($s2_digital,2) ?></td><td>₱<?= number_format($s2_credit,2) ?></td></tr>
+            </tbody>
+          </table>
+          <?php endif; ?>
+        </div>
+        <!-- AR Summary -->
+        <div class="fs-panel">
+          <div class="fs-panel-head red"><i class="fa-solid fa-file-invoice" style="margin-right:5px;"></i>A/R Summary <span style="opacity:.7;font-weight:400;">(<?= count($ar_summary) ?> records)</span></div>
+          <?php if(empty($ar_summary)): ?>
+            <div class="fs-empty">No accounts receivable.</div>
+          <?php else: ?>
+          <table class="fs-tbl">
+            <thead><tr><th>Customer Name</th><th>Outstanding Balance</th></tr></thead>
+            <tbody>
+              <?php foreach($ar_summary as $ar): ?>
+              <tr>
+                <td><strong><?= htmlspecialchars($ar['customer_name']) ?></strong></td>
+                <td><strong>₱<?= number_format((float)$ar['outstanding_balance'],2) ?></strong></td>
+              </tr>
+              <?php endforeach; ?>
+              <tr class="fs-tot"><td>TOTAL A/R</td><td>₱<?= number_format(array_sum(array_column($ar_summary,'outstanding_balance')),2) ?></td></tr>
+            </tbody>
+          </table>
+          <?php endif; ?>
+        </div>
+      </div>
+    </div><!-- /fs-grid -->
+
+    <!-- Bottom: Overall Summary + Cash in Bank side by side -->
+    <div class="fs-summary-row">
+      <!-- Overall Daily Summary -->
+      <div class="fs-overall">
+        <div class="fs-panel-head"><i class="fa-solid fa-chart-pie" style="margin-right:5px;"></i>Overall Daily Summary</div>
+        <table class="fs-tbl">
+          <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+          <tbody>
+            <tr><td>Total Liters Sold</td><td><strong><?= number_format($grand_liters,2) ?> L</strong></td></tr>
+            <tr><td>Total Fuel Sales</td><td>₱<?= number_format($grand_amount,2) ?></td></tr>
+            <tr><td>Total Service Income</td><td>₱<?= number_format($service_income_total,2) ?></td></tr>
+            <tr style="background:#f8fafc;border-top:1.5px solid #cbd5e1;"><td><strong>Grand Total (Fuel + Services)</strong></td><td><strong>₱<?= number_format($grand_total_all,2) ?></strong></td></tr>
+            <tr><td>Shift 1 &mdash; Cash Received</td><td>₱<?= number_format($s1_cash,2) ?></td></tr>
+            <tr><td>Shift 1 &mdash; Digital</td><td>₱<?= number_format($s1_digital,2) ?></td></tr>
+            <tr><td>Shift 1 &mdash; Credit/AR</td><td>₱<?= number_format($s1_credit,2) ?></td></tr>
+            <tr><td>Shift 2 &mdash; Cash Received</td><td>₱<?= number_format($s2_cash,2) ?></td></tr>
+            <tr><td>Shift 2 &mdash; Digital</td><td>₱<?= number_format($s2_digital,2) ?></td></tr>
+            <tr><td>Shift 2 &mdash; Credit/AR</td><td>₱<?= number_format($s2_credit,2) ?></td></tr>
+            <tr><td>Total Cash Sales (including Service Cash)</td><td>₱<?= number_format($total_cash,2) ?></td></tr>
+            <tr><td>Total Digital/Card Sales (including Service Digital)</td><td>₱<?= number_format($total_digital,2) ?></td></tr>
+            <tr><td>Total Accounts Receivable (A/R)</td><td>₱<?= number_format($total_ar_outstanding,2) ?></td></tr>
+            <tr style="background:#f0fdf4;"><td><strong>Total Cash in Bank (Deposits)</strong></td><td><strong style="color:#15803d;">₱<?= number_format($cash_in_bank_deposit,2) ?></strong></td></tr>
+            <tr style="background:#fef9c3;"><td><strong>Cash on Hand</strong></td><td><strong>₱<?= number_format($cash_on_hand,2) ?></strong></td></tr>
+            <tr class="fs-tot2"><td><strong>Variance</strong></td><td style="color:<?= $variance==0?'#15803d':'#cc0000' ?>;font-weight:800;">₱<?= number_format($variance,2) ?></strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <!-- Total Cash in Bank -->
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div class="fs-bank">
+          <div>
+            <div class="sm"><i class="fa-solid fa-building-columns" style="margin-right:5px;"></i>TOTAL CASH IN BANK</div>
+            <div class="big">₱<?= number_format($cash_in_bank,2) ?></div>
+            <div class="sm" style="margin-top:4px;">Cash + Digital · Ready for Deposit</div>
+          </div>
+          <div class="items">
+            <div class="item"><div class="val" style="color:#86efac;">₱<?= number_format($total_cash,2) ?></div><div class="sm">Cash</div></div>
+            <div class="item" style="opacity:.5;font-size:18px;align-self:center;">+</div>
+            <div class="item"><div class="val" style="color:#c4b5fd;">₱<?= number_format($total_digital,2) ?></div><div class="sm">Digital</div></div>
+            <?php if($total_credit>0): ?>
+            <div class="item" style="border-left:1px solid rgba(255,255,255,.25);padding-left:14px;"><div class="val" style="color:#fdba74;">₱<?= number_format($total_credit,2) ?></div><div class="sm">Pending A/R</div></div>
+            <?php endif; ?>
+          </div>
+        </div>
+      </div>
+    </div>
+    </div><!-- /fs-wrap -->
+
+    <?php elseif ($sub_tab === 'merch_sales'): ?>
+    <!-- Force browser to reload CSS -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <style>
+    .ms-wrap{font-size:12px;}
+    .ms-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px;background:#002F70;color:#fff;border-radius:8px;padding:10px 16px;}
+    .ms-header h2{font-size:14px;font-weight:800;margin:0;letter-spacing:-.2px;}
+    .ms-header .meta{font-size:11px;opacity:.75;margin-top:1px;}
+    .ms-panel{background:#fff;border-radius:8px;border:1px solid #e2e8f0;overflow:hidden;margin-bottom:10px;}
+    .ms-panel-head{background:#002F70;color:#fff;padding:6px 10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;}
+    .ms-panel-head.red{background:#cc0000;}
+    .ms-panel-head.green{background:#15803d;}
+    .ms-panel-head.navy{background:#1a3a6b;}
+    .ms-tbl{width:100%;border-collapse:collapse;font-size:11px;}
+    .ms-tbl th{background:#f0f4ff;color:#002F70;padding:5px 7px;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;border-bottom:1px solid #dde3f0;white-space:nowrap;}
+    .ms-tbl td{padding:4px 7px;border-bottom:1px solid #f1f5f9;color:#1e293b;white-space:nowrap;}
+    .ms-tbl tr:last-child td{border-bottom:none;}
+    .ms-tbl .ms-tot td{background:#f0f4ff;font-weight:700;color:#002F70;border-top:2px solid #c7d2fe;}
+    .ms-tbl .ms-tot2 td{background:#fefce8;font-weight:700;color:#92400e;border-top:2px solid #fde68a;}
+    .ms-two{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;}
+    .ms-three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;}
+    .ms-overall{background:#fff;border-radius:8px;border:1px solid #e2e8f0;overflow:hidden;}
+    .ms-bank{background:linear-gradient(135deg,#002F70,#1a3a8f);color:#fff;border-radius:8px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;}
+    .ms-bank .big{font-size:22px;font-weight:900;letter-spacing:-1px;}
+    .ms-bank .sm{font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.3px;}
+    .ms-bank .items{display:flex;gap:14px;}
+    .ms-bank .item{text-align:center;}
+    .ms-bank .item .val{font-size:14px;font-weight:800;}
+    .ms-empty{padding:14px;text-align:center;color:#9ca3af;font-size:11px;}
+    @media print{
+        /* Set page size and hide system elements */
+        @page {
+            size: legal portrait;
+            margin: 0.3in 0.4in;
+        }
+        
+        * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+        
+        html, body { 
+            background: white !important; 
+            padding: 0 !important; 
+            margin: 0 auto !important;
+            width: 100% !important;
+        }
+        
+        /* Hide controls, sidebar, navigation, logo */
+        .no-print,
+        .sidebar,
+        .main-sidebar,
+        aside,
+        nav,
+        .navbar,
+        .main-header,
+        img,
+        .logo,
+        .brand-image,
+        body > header,
+        body > footer,
+        .main-footer { 
+            display: none !important;
+            visibility: hidden !important;
+        }
+        
+        /* Center content */
+        .wrapper,
+        .content-wrapper { 
+            margin: 0 auto !important;
+            padding: 0 !important;
+            width: 100% !important;
+        }
+        
+        .ms-wrap{
+            font-size:10px;
+            margin: 0 auto !important;
+        }
+        
+        .ms-header {
+            text-align: center !important;
+        }
+        
+        .ms-panel-head{
+            background:#002F70!important;
+            -webkit-print-color-adjust:exact;
+            print-color-adjust:exact;
+        }
+        .ms-bank{
+            background:#002F70!important;
+            -webkit-print-color-adjust:exact;
+            print-color-adjust:exact;
+        }
+    }
+    </style>
+
+    <div class="ms-wrap">
+    <!-- Header -->
+    <div class="ms-header">
+      <div>
+        <div class="meta">PETRON STATION MANAGEMENT SYSTEM &nbsp;|&nbsp; <?= htmlspecialchars($station_name) ?></div>
+        <h2><i class="fa-solid fa-boxes-stacked" style="margin-right:6px;"></i>DAILY MERCHANDISE SALES REPORT &nbsp;—&nbsp; <?= date('d M Y',strtotime($date_start)) ?><?= $date_start!==$date_end ? ' to '.date('d M Y',strtotime($date_end)) : '' ?></h2>
+      </div>
+      <div style="display:flex;gap:6px;" class="no-print"><?= $card_btns ?></div>
+    </div>
+
+    <!-- Merchandise Sales Table (full width) -->
+    <div class="ms-panel">
+      <div class="ms-panel-head"><i class="fa-solid fa-store" style="margin-right:5px;"></i>Merchandise Sales Table <span style="opacity:.7;font-weight:400;">(Ending = Beginning + Stock-In − Stock-Out)</span></div>
+      <?php if(empty($merch_items)): ?>
+        <div class="ms-empty">No merchandise sales for this period.</div>
+      <?php else: ?>
+      <table class="ms-tbl">
+        <thead><tr>
+          <th>#</th><th>Category</th><th>Product Name</th><th>Size</th>
+          <th>Beg. Stock</th><th>Stock-In</th><th>Stock-Out</th><th>End Stock</th>
+          <th>Unit Price</th><th>Amount</th><th>Encoder</th><th>Remarks</th>
+        </tr></thead>
+        <tbody>
+          <?php
+          $merch_tot_qty = 0; $merch_tot_amt = 0;
+          foreach($merch_items as $mi => $m):
+            $merch_tot_qty += $m['stock_out'];
+            $merch_tot_amt += $m['amount'];
+          ?>
+          <tr>
+            <td><?= $mi+1 ?></td>
+            <td style="font-size:10px;color:#64748b;"><?= htmlspecialchars($m['category']) ?></td>
+            <td><strong><?= htmlspecialchars($m['product_name']) ?></strong></td>
+            <td><?= htmlspecialchars($m['size_variant']) ?></td>
+            <td><?= number_format($m['beginning_stock'],2) ?></td>
+            <td style="color:#16a34a;font-weight:600;"><?= number_format($m['stock_in'],2) ?></td>
+            <td style="color:#cc0000;font-weight:600;"><?= number_format($m['stock_out'],2) ?></td>
+            <td><strong><?= number_format($m['ending_stock'],2) ?></strong></td>
+            <td>₱<?= number_format($m['unit_price'],2) ?></td>
+            <td><strong>₱<?= number_format($m['amount'],2) ?></strong></td>
+            <td style="font-size:10px;"><?= htmlspecialchars($m['encoders']) ?></td>
+            <td style="font-size:10px;color:#64748b;"><?= htmlspecialchars($m['remarks']) ?></td>
+          </tr>
+          <?php endforeach; ?>
+          <tr class="ms-tot">
+            <td colspan="6" style="text-align:right;padding-right:8px;">TOTAL</td>
+            <td><?= number_format($merch_tot_qty,2) ?></td>
+            <td>—</td><td>—</td>
+            <td>₱<?= number_format($merch_tot_amt,2) ?></td>
+            <td colspan="2"></td>
+          </tr>
+        </tbody>
+      </table>
+      <?php endif; ?>
+    </div>
+
+    <!-- Shift 1 & 2 side by side -->
+    <div class="ms-two">
+      <!-- Shift 1 -->
+      <div class="ms-panel">
+        <div class="ms-panel-head navy"><i class="fa-solid fa-sun" style="margin-right:5px;"></i>Shift 1 Sales &amp; Cash (6AM–2PM)</div>
+        <?php if(empty($merch_shift1)): ?>
+          <div class="ms-empty">No Shift 1 records.</div>
+        <?php else: ?>
+        <table class="ms-tbl">
+          <thead><tr><th>Category</th><th>Items</th><th>Total</th><th>Cash</th><th>Digital</th><th>Credit/AR</th></tr></thead>
+          <tbody>
+            <?php foreach($merch_shift1 as $r): ?>
+            <tr>
+              <td><?= htmlspecialchars($r['category']) ?></td>
+              <td><?= number_format($r['total_qty'],2) ?></td>
+              <td>₱<?= number_format($r['total_amount'],2) ?></td>
+              <td>₱<?= number_format($r['cash_amount'],2) ?></td>
+              <td>₱<?= number_format($r['digital_amount'],2) ?></td>
+              <td>₱<?= number_format($r['credit_amount'],2) ?></td>
+            </tr>
+            <?php endforeach; ?>
+            <tr class="ms-tot"><td>TOTAL</td><td>—</td>
+              <td>₱<?= number_format(array_sum(array_column($merch_shift1,'total_amount')),2) ?></td>
+              <td>₱<?= number_format($merch_s1_cash,2) ?></td>
+              <td>₱<?= number_format($merch_s1_digital,2) ?></td>
+              <td>₱<?= number_format($merch_s1_credit,2) ?></td>
+            </tr>
+          </tbody>
+        </table>
+        <?php endif; ?>
+      </div>
+      <!-- Shift 2 -->
+      <div class="ms-panel">
+        <div class="ms-panel-head navy"><i class="fa-solid fa-moon" style="margin-right:5px;"></i>Shift 2 Sales &amp; Cash (2PM–12MN)</div>
+        <?php if(empty($merch_shift2)): ?>
+          <div class="ms-empty">No Shift 2 records.</div>
+        <?php else: ?>
+        <table class="ms-tbl">
+          <thead><tr><th>Category</th><th>Items</th><th>Total</th><th>Cash</th><th>Digital</th><th>Credit/AR</th></tr></thead>
+          <tbody>
+            <?php foreach($merch_shift2 as $r): ?>
+            <tr>
+              <td><?= htmlspecialchars($r['category']) ?></td>
+              <td><?= number_format($r['total_qty'],2) ?></td>
+              <td>₱<?= number_format($r['total_amount'],2) ?></td>
+              <td>₱<?= number_format($r['cash_amount'],2) ?></td>
+              <td>₱<?= number_format($r['digital_amount'],2) ?></td>
+              <td>₱<?= number_format($r['credit_amount'],2) ?></td>
+            </tr>
+            <?php endforeach; ?>
+            <tr class="ms-tot"><td>TOTAL</td><td>—</td>
+              <td>₱<?= number_format(array_sum(array_column($merch_shift2,'total_amount')),2) ?></td>
+              <td>₱<?= number_format($merch_s2_cash,2) ?></td>
+              <td>₱<?= number_format($merch_s2_digital,2) ?></td>
+              <td>₱<?= number_format($merch_s2_credit,2) ?></td>
+            </tr>
+          </tbody>
+        </table>
+        <?php endif; ?>
+      </div>
+    </div>
+
+    <!-- Category Totals + A/R side by side -->
+    <div class="ms-two">
+      <!-- Category Totals -->
+      <div class="ms-panel">
+        <div class="ms-panel-head green"><i class="fa-solid fa-layer-group" style="margin-right:5px;"></i>Category Totals</div>
+        <?php if(empty($merch_cat_totals)): ?>
+          <div class="ms-empty">No data.</div>
+        <?php else: ?>
+        <table class="ms-tbl">
+          <thead><tr><th>Category</th><th>Items Sold</th><th>Total Amount</th></tr></thead>
+          <tbody>
+            <?php foreach($merch_cat_totals as $r): ?>
+            <tr>
+              <td><?= htmlspecialchars($r['category']) ?></td>
+              <td><?= number_format($r['total_qty'],2) ?></td>
+              <td><strong>₱<?= number_format($r['total_amount'],2) ?></strong></td>
+            </tr>
+            <?php endforeach; ?>
+            <tr class="ms-tot">
+              <td>TOTAL</td>
+              <td><?= number_format(array_sum(array_column($merch_cat_totals,'total_qty')),2) ?></td>
+              <td>₱<?= number_format($merch_grand_sales,2) ?></td>
+            </tr>
+          </tbody>
+        </table>
+        <?php endif; ?>
+      </div>
+      <!-- A/R Summary -->
+      <div class="ms-panel">
+        <div class="ms-panel-head red"><i class="fa-solid fa-file-invoice" style="margin-right:5px;"></i>A/R Summary <span style="opacity:.7;font-weight:400;">(<?= count($merch_ar) ?> records)</span></div>
+        <?php if(empty($merch_ar)): ?>
+          <div class="ms-empty">No accounts receivable.</div>
+        <?php else: ?>
+        <table class="ms-tbl">
+          <thead><tr><th>Ref</th><th>Customer</th><th>Amount</th><th>Status</th><th>Due</th></tr></thead>
+          <tbody>
+            <?php foreach($merch_ar as $ar):
+              $sc=strtolower($ar['status'])==='paid'?'#16a34a':(strtolower($ar['status'])==='overdue'?'#cc0000':'#d97706');
+            ?>
+            <tr>
+              <td style="font-size:10px;"><?= htmlspecialchars($ar['transaction_id']) ?></td>
+              <td><?= htmlspecialchars($ar['customer_name']) ?></td>
+              <td>₱<?= number_format($ar['amount'],2) ?></td>
+              <td style="color:<?= $sc ?>;font-weight:700;"><?= ucfirst($ar['status']) ?></td>
+              <td style="font-size:10px;"><?= htmlspecialchars($ar['due_date']) ?></td>
+            </tr>
+            <?php endforeach; ?>
+            <tr class="ms-tot"><td colspan="2">TOTAL A/R</td><td>₱<?= number_format(array_sum(array_column($merch_ar,'amount')),2) ?></td><td colspan="2"></td></tr>
+          </tbody>
+        </table>
+        <?php endif; ?>
+      </div>
+    </div>
+
+    <!-- Bottom: Overall Summary + Cash in Bank -->
+    <div class="ms-two">
+      <!-- Overall Daily Summary -->
+      <div class="ms-overall">
+        <div class="ms-panel-head"><i class="fa-solid fa-chart-pie" style="margin-right:5px;"></i>Overall Daily Summary</div>
+        <table class="ms-tbl">
+          <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+          <tbody>
+            <tr><td>Total Merchandise Sales</td><td><strong>₱<?= number_format($merch_grand_sales,2) ?></strong></td></tr>
+            <tr><td>Total Items Sold</td><td><strong><?= number_format($merch_grand_qty) ?></strong></td></tr>
+            <tr><td>Shift 1 — Cash</td><td>₱<?= number_format($merch_s1_cash,2) ?></td></tr>
+            <tr><td>Shift 1 — Digital</td><td>₱<?= number_format($merch_s1_digital,2) ?></td></tr>
+            <tr><td>Shift 1 — Credit/AR</td><td>₱<?= number_format($merch_s1_credit,2) ?></td></tr>
+            <tr><td>Shift 2 — Cash</td><td>₱<?= number_format($merch_s2_cash,2) ?></td></tr>
+            <tr><td>Shift 2 — Digital</td><td>₱<?= number_format($merch_s2_digital,2) ?></td></tr>
+            <tr><td>Shift 2 — Credit/AR</td><td>₱<?= number_format($merch_s2_credit,2) ?></td></tr>
+            <tr><td>Total Cash Sales</td><td>₱<?= number_format($merch_cash_total,2) ?></td></tr>
+            <tr><td>Total Digital/Card Sales</td><td>₱<?= number_format($merch_digital_total,2) ?></td></tr>
+            <tr class="ms-tot2"><td>Total Accounts Receivable (A/R)</td><td>₱<?= number_format($merch_credit_total,2) ?></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <!-- Cash in Bank -->
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div class="ms-bank">
+          <div>
+            <div class="sm"><i class="fa-solid fa-building-columns" style="margin-right:5px;"></i>TOTAL CASH IN BANK</div>
+            <div class="big">₱<?= number_format($merch_cash_in_bank,2) ?></div>
+            <div class="sm" style="margin-top:4px;">Cash + Digital · Ready for Deposit</div>
+          </div>
+          <div class="items">
+            <div class="item"><div class="val" style="color:#86efac;">₱<?= number_format($merch_cash_total,2) ?></div><div class="sm">Cash</div></div>
+            <div class="item" style="opacity:.5;font-size:18px;align-self:center;">+</div>
+            <div class="item"><div class="val" style="color:#c4b5fd;">₱<?= number_format($merch_digital_total,2) ?></div><div class="sm">Digital</div></div>
+            <?php if($merch_credit_total>0): ?>
+            <div class="item" style="border-left:1px solid rgba(255,255,255,.25);padding-left:14px;"><div class="val" style="color:#fdba74;">₱<?= number_format($merch_credit_total,2) ?></div><div class="sm">Pending A/R</div></div>
+            <?php endif; ?>
+          </div>
+        </div>
+      </div>
+    </div>
+    </div><!-- /ms-wrap -->
+
+    <?php elseif ($section === 'job_orders' && $sub_tab === 'jo_list'): ?>
+    
+    <!-- MAIN JOB ORDER TABLE CARD -->
+    <div class="rpt-card">
+        <div class="rpt-card-head">
+            <h3>
+                <i class="fa-solid fa-wrench"></i> 
+                <?= htmlspecialchars($sub_tabs_def[$section][$sub_tab]['label'] ?? 'Job Orders Report') ?>
+                <span class="badge-count"><?= count($report_data) ?></span>
+            </h3>
+            <?= $card_btns ?>
+        </div>
+
+        <?php if (empty($report_data)): ?>
+            <div class="empty-state">
+                <i class="fa-solid fa-circle-info"></i>
+                <p>No job orders found for this period.</p>
+            </div>
+        <?php else: ?>
+            <div class="table-scroll">
+                <table class="mgr-table" id="report-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Job Order ID</th>
+                            <th>Customer Info</th>
+                            <th>Service Type</th>
+                            <th>Parts Used</th>
+                            <th>Quantity</th>
+                            <th>Unit Price</th>
+                            <th>Labor Fee</th>
+                            <th>Total Amount</th>
+                            <th>Payment Mode</th>
+                            <th>Shift</th>
+                            <th>Status</th>
+                            <th>Encoder</th>
+                            <th>Remarks</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($report_data as $i => $job): 
+                            $hour  = (int)date('H', strtotime($job['created_at']));
+                            $shift_name = ($hour >= 6 && $hour < 14) ? 'Shift 1' : 'Shift 2';
+                            
+                            $stat = strtolower($job['status']);
+                            $badge_class = 'badge-default';
+                            if (in_array($stat, ['completed', 'approved', 'validated', 'paid'])) $badge_class = 'badge-approved';
+                            elseif (in_array($stat, ['pending', 'in progress', 'pending validation'])) $badge_class = 'badge-pending';
+                            elseif (in_array($stat, ['rejected', 'unpaid', 'cancelled'])) $badge_class = 'badge-rejected';
+                            
+                            $cust_info = htmlspecialchars($job['customer_name']);
+                            if (!empty($job['contact_number'])) {
+                                $cust_info .= ' (' . htmlspecialchars($job['contact_number']) . ')';
+                            }
+                            if (!empty($job['customer_ref_id']) && $job['customer_ref_id'] != '0') {
+                                $cust_info .= ' [Ref: ' . htmlspecialchars($job['customer_ref_id']) . ']';
+                            }
+                        ?>
+                            <tr>
+                                <td><?= $i + 1 ?></td>
+                                <td><strong><?= htmlspecialchars($job['job_order_id']) ?></strong></td>
+                                <td><?= $cust_info ?></td>
+                                <td><?= htmlspecialchars($job['service_type']) ?></td>
+                                <td>
+                                    <?php if (!empty($job['parts_used'])): ?>
+                                        <?php foreach ($job['parts_used'] as $p): ?>
+                                            <div style="white-space: nowrap;">• <?= htmlspecialchars($p['product_name']) ?></div>
+                                        <?php endforeach; ?>
+                                    <?php else: ?>
+                                        —
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <?php if (!empty($job['parts_used'])): ?>
+                                        <?php foreach ($job['parts_used'] as $p): ?>
+                                            <div><?= htmlspecialchars($p['quantity_used']) ?></div>
+                                        <?php endforeach; ?>
+                                    <?php else: ?>
+                                        —
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <?php if (!empty($job['parts_used'])): ?>
+                                        <?php foreach ($job['parts_used'] as $p): ?>
+                                            <div>₱<?= number_format((float)$p['unit_cost'], 2) ?></div>
+                                        <?php endforeach; ?>
+                                    <?php else: ?>
+                                        —
+                                    <?php endif; ?>
+                                </td>
+                                <td>₱<?= number_format((float)$job['labor_fee'], 2) ?></td>
+                                <td><strong>₱<?= number_format((float)$job['total_cost'], 2) ?></strong></td>
+                                <td><?= htmlspecialchars($job['payment_mode']) ?></td>
+                                <td><?= $shift_name ?></td>
+                                <td><span class="badge <?= $badge_class ?>"><?= htmlspecialchars(ucfirst($job['status'])) ?></span></td>
+                                <td><?= htmlspecialchars($job['encoder_name']) ?></td>
+                                <td><span style="font-size: 11px; color: #64748b;"><?= htmlspecialchars($job['remarks'] ?: '—') ?></span></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+    </div>
+
+    <!-- SHIFT AND OVERALL SUMMARIES (CLEAN CORPORATE DESIGN) -->
+    <?php if (!empty($report_data)): ?>
+    <div class="two-col" style="margin-top: 20px;">
+        <!-- Shift Summaries Card -->
+        <div class="rpt-card" style="margin-bottom: 0;">
+            <div class="rpt-card-head">
+                <h3><i class="fa-solid fa-clock"></i> Shift Summaries</h3>
+            </div>
+            <div class="table-scroll">
+                <table class="mgr-table">
+                    <thead>
+                        <tr>
+                            <th>Shift</th>
+                            <th>Total Services</th>
+                            <th>Total Amount</th>
+                            <th>Cash</th>
+                            <th>Digital</th>
+                            <th>Credit / AR</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Shift 1</strong> (6:00 AM – 2:00 PM)</td>
+                            <td><?= $jo_s1['services'] ?></td>
+                            <td><strong>₱<?= number_format($jo_s1['amount'], 2) ?></strong></td>
+                            <td>₱<?= number_format($jo_s1['cash'], 2) ?></td>
+                            <td>₱<?= number_format($jo_s1['digital'], 2) ?></td>
+                            <td>₱<?= number_format($jo_s1['credit'], 2) ?></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Shift 2</strong> (2:00 PM – 12:00 MN)</td>
+                            <td><?= $jo_s2['services'] ?></td>
+                            <td><strong>₱<?= number_format($jo_s2['amount'], 2) ?></strong></td>
+                            <td>₱<?= number_format($jo_s2['cash'], 2) ?></td>
+                            <td>₱<?= number_format($jo_s2['digital'], 2) ?></td>
+                            <td>₱<?= number_format($jo_s2['credit'], 2) ?></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Overall Summary Card -->
+        <div class="rpt-card" style="margin-bottom: 0;">
+            <div class="rpt-card-head">
+                <h3><i class="fa-solid fa-chart-pie"></i> Overall Daily Summary</h3>
+            </div>
+            <div class="table-scroll">
+                <table class="mgr-table">
+                    <thead>
+                        <tr>
+                            <th>Metric</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Total Job Orders</td>
+                            <td><strong><?= count($report_data) ?></strong></td>
+                        </tr>
+                        <tr>
+                            <td>Grand Total Amount</td>
+                            <td><strong>₱<?= number_format($jo_s1['amount'] + $jo_s2['amount'], 2) ?></strong></td>
+                        </tr>
+                        <tr>
+                            <td>Total Cash Received</td>
+                            <td>₱<?= number_format($jo_s1['cash'] + $jo_s2['cash'], 2) ?></td>
+                        </tr>
+                        <tr>
+                            <td>Total Digital Payments</td>
+                            <td>₱<?= number_format($jo_s1['digital'] + $jo_s2['digital'], 2) ?></td>
+                        </tr>
+                        <tr>
+                            <td>Total Credit / Accounts Receivable</td>
+                            <td>₱<?= number_format($jo_s1['credit'] + $jo_s2['credit'], 2) ?></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <?php else: // Generic single-table render ?>
 
     <!-- DATA CARD -->
     <div class="rpt-card">
@@ -1163,7 +3240,9 @@ require_once __DIR__ . '/../partials/header.php';
             </div>
         <?php endif; ?>
     </div>
+<?php endif; // end fuel_sales vs generic ?>
 </div>
+
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {

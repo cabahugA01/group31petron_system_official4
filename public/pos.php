@@ -535,7 +535,7 @@ include __DIR__ . '/../partials/header.php';
 
     <form method="post">
         <div style="margin-bottom: 20px;">
-            <input type="password_hash" name="verify_password" class="inp" style="width: 100%; padding: 12px;" placeholder="Enter Password" required autofocus>
+            <input type="password" name="verify_password" class="inp" style="width: 100%; padding: 12px;" placeholder="Enter Password" required autofocus>
         </div>
         <button type="submit" name="verify" class="btn primary" style="width: 100%;">Verify & Continue</button>
     </form>

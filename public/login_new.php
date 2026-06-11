@@ -578,7 +578,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <label class="field-label">Password</label>
                     <div class="input-wrapper">
                         <i class="fas fa-lock input-icon"></i>
-                        <input type="password_hash" name="password_hash" class="form-input" 
+                        <input type="password" name="password_hash" class="form-input" 
                                placeholder="Enter Password" 
                                required>
                     </div>

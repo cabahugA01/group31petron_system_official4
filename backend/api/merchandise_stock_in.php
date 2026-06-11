@@ -202,7 +202,7 @@ function handle_submit_stock_in($pdo, $me, $role, $station_id) {
                    ON ip.product_name = do2.product AND ip.category != 'Fuel'
             WHERE do2.id = ? AND do2.station_id = ?
               AND do2.delivery_type = 'merchandise'
-              AND do2.status IN ('Validated', 'Partial Delivery', 'Damaged Items')
+              AND do2.status IN ('Ready for Stock-In', 'Validated', 'Partial Delivery', 'Damaged Items')
         ");
         $stmt->execute([$delivery_id, $station_id]);
         $po = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -214,7 +214,7 @@ function handle_submit_stock_in($pdo, $me, $role, $station_id) {
         
         // Map delivery data to legacy PO structure for compatibility
         $po['id'] = $delivery_id;
-        $po['quantity'] = $po['actual_quantity'] ?: $po['quantity'];
+        $po['quantity'] = (float)$po['actual_quantity'] ?: $po['quantity'];
         $po['supplier_name'] = $po['supplier'];
         if (!$batch_id && !empty($po['delivery_batch_id'])) {
             $batch_id = $po['delivery_batch_id'];
@@ -559,7 +559,7 @@ function handle_submit_fuel_stock_in($pdo, $me, $role, $station_id) {
             FROM deliveries_oversight do2
             WHERE do2.id = ? AND do2.station_id = ?
               AND do2.delivery_type = 'fuel'
-              AND do2.status IN ('Validated', 'Partial Delivery', 'Damaged Items')
+              AND do2.status IN ('Ready for Stock-In', 'Validated', 'Partial Delivery', 'Damaged Items')
         ");
         $stmt->execute([$oversight_delivery_id, $station_id]);
         $del = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -570,7 +570,7 @@ function handle_submit_fuel_stock_in($pdo, $me, $role, $station_id) {
         }
         
         $fuel_type = $del['fuel_type'];
-        $qty_expected = (float)($del['actual_quantity'] ?: $del['delivery_liters']);
+        $qty_expected = (float)((float)$del['actual_quantity'] ?: $del['delivery_liters']);
         $delivery_ref_id = $oversight_delivery_id;
         $is_new_flow = true;
         

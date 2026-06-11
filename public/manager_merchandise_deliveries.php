@@ -498,6 +498,88 @@ try {
     </div>
 </div>
 
+<!-- ══ BATCH APPROVE MODAL ════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="aprBatchModal">
+    <div class="modal-box">
+        <div class="modal-head">
+            <div class="modal-title"><i class="fas fa-check-circle" style="color:#28a745;"></i> Approve Batch</div>
+            <button class="modal-close" onclick="closeM('aprBatchModal')">&times;</button>
+        </div>
+        <div class="ibox"><i class="fas fa-info-circle"></i> Approving this batch will mark all pending items in it as <strong>Ready for Stock-In</strong>. Inventory will be updated by Staff during stock-in.</div>
+        <div class="fld"><label>Batch ID</label><input type="text" id="apr-batch-id" readonly></div>
+        <div class="fld"><label>Optional Remarks</label><textarea id="apr-batch-rmk" rows="2" placeholder="Optional notes..."></textarea></div>
+        <div class="modal-footer">
+            <button type="button" onclick="closeM('aprBatchModal')" class="btn ghost">Cancel</button>
+            <button type="button" onclick="doApproveBatch()" class="btn" style="background:#28a745;color:#fff;font-weight:700;"><i class="fas fa-check"></i> Approve Batch</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══ BATCH REJECT MODAL ════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="flagBatchModal">
+    <div class="modal-box">
+        <div class="modal-head">
+            <div class="modal-title"><i class="fas fa-times-circle" style="color:#dc3545;"></i> Reject Batch</div>
+            <button class="modal-close" onclick="closeM('flagBatchModal')">&times;</button>
+        </div>
+        <div class="obox"><i class="fas fa-info-circle"></i> Flag a discrepancy for all pending items in this batch. Status will change to Pending Resolution.</div>
+        <div class="fg2">
+            <div class="fld"><label>Batch ID</label><input type="text" id="flag-batch-id" readonly></div>
+            <div class="fld">
+                <label>Discrepancy Type <span style="color:#dc3545;">*</span></label>
+                <select id="flag-batch-type">
+                    <option value="shortage">Shortage (kulang)</option>
+                    <option value="damaged">Damaged items (guba)</option>
+                    <option value="both">Both shortage &amp; damaged</option>
+                    <option value="wrong_item">Wrong item delivered</option>
+                </select>
+            </div>
+        </div>
+        <div class="fld"><label>Discrepancy Details <span style="color:#dc3545;">*</span></label><textarea id="flag-batch-reason" rows="3" placeholder="Explain the reason for rejecting this batch..."></textarea></div>
+        <div class="modal-footer">
+            <button type="button" onclick="closeM('flagBatchModal')" class="btn ghost">Cancel</button>
+            <button type="button" onclick="doFlagBatch()" class="btn" style="background:#dc3545;color:#fff;font-weight:700;"><i class="fas fa-times-circle"></i> Reject Batch</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══ BATCH RETURN TO STAFF MODAL ═════════════════════════════════════════════ -->
+<div class="modal-overlay" id="rejBatchModal">
+    <div class="modal-box">
+        <div class="modal-head">
+            <div class="modal-title"><i class="fas fa-undo" style="color:#856404;"></i> Return Batch to Staff</div>
+            <button class="modal-close" onclick="closeM('rejBatchModal')">&times;</button>
+        </div>
+        <div class="wbox"><i class="fas fa-exclamation-triangle"></i> Return this entire batch to the encoding staff for correction. Staff will re-encode and resubmit.</div>
+        <div class="fld"><label>Batch ID</label><input type="text" id="rej-batch-id" readonly></div>
+        <div class="fld"><label>Reason for Return <span style="color:#dc3545;">*</span></label><textarea id="rej-batch-rsn" rows="3" placeholder="Mandatory: explain why you are returning this batch..."></textarea></div>
+        <div class="modal-footer">
+            <button type="button" onclick="closeM('rejBatchModal')" class="btn ghost">Cancel</button>
+            <button type="button" onclick="doRejectBatch()" class="btn" style="background:#856404;color:#fff;font-weight:700;"><i class="fas fa-undo"></i> Return Batch</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══ BATCH ADJUST MODAL ═════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="adjBatchModal">
+    <div class="modal-box">
+        <div class="modal-head">
+            <div class="modal-title"><i class="fas fa-sliders-h" style="color:#002F70;"></i> Adjust Batch Deliveries</div>
+            <button class="modal-close" onclick="closeM('adjBatchModal')">&times;</button>
+        </div>
+        <div class="ibox"><i class="fas fa-info-circle"></i> Enter the corrected quantities for each delivery in this batch. Status will be updated to Adjusted (Ready for Stock-In).</div>
+        <input type="hidden" id="adj-batch-id">
+        <div id="adj-batch-items-container" style="max-height: 250px; overflow-y: auto; margin-bottom: 12px; padding: 4px; border: 1px solid #e9ecef; border-radius: 6px;">
+            <!-- items rendered dynamically -->
+        </div>
+        <div class="fld"><label>Adjustment Reason <span style="color:#dc3545;">*</span></label><textarea id="adj-batch-rsn" rows="3" placeholder="Mandatory: explain the reason for this adjustment..."></textarea></div>
+        <div class="modal-footer">
+            <button type="button" onclick="closeM('adjBatchModal')" class="btn ghost">Cancel</button>
+            <button type="button" onclick="doAdjustBatch()" class="btn" style="background:#002F70;color:#fff;font-weight:700;"><i class="fas fa-save"></i> Save Batch Adjustments</button>
+        </div>
+    </div>
+</div>
+
 <!-- ══ REPLACEMENT RECEIVED MODAL ═══════════════════════════════════════════ -->
 <div class="modal-overlay" id="replRecvModal">
     <div class="modal-box">
@@ -570,7 +652,7 @@ var CID = null, _t = null, _selRes = null;
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Manager Merchandise Deliveries: Initializing...');
     try {
-        ['aprModal','flagModal','rejModal','resolveModal','remarksModal','replRecvModal','adjModal','dtlModal'].forEach(function(id) {
+        ['aprModal','flagModal','rejModal','resolveModal','remarksModal','replRecvModal','adjModal','dtlModal','aprBatchModal','flagBatchModal','rejBatchModal','adjBatchModal'].forEach(function(id) {
             var el = document.getElementById(id);
             if (el && el.parentNode !== document.body) document.body.appendChild(el);
         });
@@ -592,13 +674,13 @@ document.addEventListener('DOMContentLoaded', function() {
 function openM(id)  { document.getElementById(id).classList.add('open'); }
 function closeM(id) { document.getElementById(id).classList.remove('open'); }
 document.addEventListener('click', function(e) {
-    ['aprModal','flagModal','rejModal','resolveModal','remarksModal','replRecvModal','adjModal','dtlModal','poModal','poDtlModal'].forEach(function(id) {
+    ['aprModal','flagModal','rejModal','resolveModal','remarksModal','replRecvModal','adjModal','dtlModal','poModal','poDtlModal','aprBatchModal','flagBatchModal','rejBatchModal','adjBatchModal'].forEach(function(id) {
         var el = document.getElementById(id);
         if (el && e.target === el) closeM(id);
     });
 });
 document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') ['aprModal','flagModal','rejModal','resolveModal','remarksModal','replRecvModal','adjModal','dtlModal','poModal','poDtlModal'].forEach(closeM);
+    if (e.key === 'Escape') ['aprModal','flagModal','rejModal','resolveModal','remarksModal','replRecvModal','adjModal','dtlModal','poModal','poDtlModal','aprBatchModal','flagBatchModal','rejBatchModal','adjBatchModal'].forEach(closeM);
 });
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
@@ -737,16 +819,45 @@ function loadDeliveries() {
             return;
         }
 
-        var out = '';
+        // Group rows by batch_id
+        var batches = {};
+        var batchOrder = [];
         rows.forEach(function(d) {
-            var ds  = getDisplayStatus(d.status);
-            var qty = parseFloat(d.quantity_delivered||0).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:2});
-            var enc = d.encoded_by_name ? h(d.encoded_by_name) : '<span style="color:#adb5bd">—</span>';
-            var rem = (d.remarks||d.manager_reason||'');
-            var remDisplay = rem ? h(String(rem).substring(0,55)) + (rem.length > 55 ? '…' : '') : '<span style="color:#adb5bd">—</span>';
+            var bId = d.batch_id || ('NOBATCH-' + d.id);
+            if (!batches[bId]) {
+                batches[bId] = [];
+                batchOrder.push(bId);
+            }
+            batches[bId].push(d);
+        });
+        window.currentBatches = batches;
+
+        var out = '';
+        batchOrder.forEach(function(bId) {
+            var items = batches[bId];
+            var firstItem = items[0];
+            var ds = getDisplayStatus(firstItem.status);
+
+            // Compute total batch quantity and group suppliers/encoders
+            var suppliers = [];
+            var encoders = [];
+            items.forEach(function(item) {
+                if (item.supplier_name && !suppliers.includes(item.supplier_name)) {
+                    suppliers.push(item.supplier_name);
+                }
+                if (item.encoded_by_name && !encoders.includes(item.encoded_by_name)) {
+                    encoders.push(item.encoded_by_name);
+                }
+            });
+
+            var supplierDisplay = suppliers.join(', ');
+            if (supplierDisplay.length > 30) {
+                supplierDisplay = supplierDisplay.substring(0, 28) + '...';
+            }
+            var encoderDisplay = encoders.join(', ');
 
             // Type badge
-            var isFuel = (d.delivery_type === 'fuel');
+            var isFuel = (firstItem.delivery_type === 'fuel');
             var typeBadge = isFuel
                 ? '<span style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap;">⛽ Fuel</span>'
                 : '<span style="background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap;">📦 Merch</span>';
@@ -766,38 +877,165 @@ function loadDeliveries() {
             var dsLabel = ds === 'Ready for Stock-In' ? '✅ Ready for Stock-In' : ds;
             var badge = '<span class="sbadge ' + badgeCls + '">' + h(dsLabel) + '</span>';
 
-            // Action buttons
-            var acts = '';
-            if (ds === 'Pending') {
-                acts = '<button class="btn-act btn-approve" onclick="openApr(' + d.id + ',\'' + j(d.delivery_ref) + '\',\'' + j(d.product_name) + '\',' + parseFloat(d.quantity_delivered) + ',\'' + j(d.supplier_name) + '\',\'' + j(d.delivery_type||'merchandise') + '\')"><i class="fas fa-check"></i> Approve</button>'
-                     + '<button class="btn-act btn-flag"    onclick="openFlag(' + d.id + ',\'' + j(d.delivery_ref) + '\',\'' + j(d.product_name) + '\',' + parseFloat(d.quantity_delivered) + ')"><i class="fas fa-times-circle"></i> Reject</button>'
-                     + '<button class="btn-act btn-reject"  onclick="openRej(' + d.id + ',\'' + j(d.delivery_ref) + '\',\'' + j(d.product_name) + '\',' + parseFloat(d.quantity_delivered) + ')"><i class="fas fa-undo"></i> Return</button>'
-                     + '<button class="btn-act btn-adjust"  onclick="openAdj(' + d.id + ',\'' + j(d.delivery_ref) + '\',\'' + j(d.product_name) + '\',' + parseFloat(d.quantity_delivered) + ',\'' + j(d.supplier_name) + '\',\'' + j(d.remarks||'') + '\')"><i class="fas fa-sliders-h"></i> Adjust</button>';
-            } else if (ds === 'Pending Resolution') {
-                acts = '<button class="btn-act btn-resolve" onclick="openResolve(' + d.id + ',\'' + j(d.delivery_ref) + '\',\'' + j(d.product_name) + '\',' + parseFloat(d.quantity_delivered) + ',\'' + j(d.remarks||'') + '\',\'' + j(d.manager_reason||d.admin_notes||'') + '\')"><i class="fas fa-tools"></i> Resolve</button>'
-                     + '<button class="btn-act btn-view"    onclick="openRemarks(' + d.id + ',\'' + j(d.delivery_ref) + '\',\'' + j(d.manager_reason||d.admin_notes||'') + '\')"><i class="fas fa-comment-alt"></i> Add Remarks</button>';
-            } else if (ds === 'Awaiting Replacement') {
-                acts = '<button class="btn-act btn-replacement" onclick="openReplReceived(' + d.id + ',\'' + j(d.delivery_ref) + '\',\'' + j(d.product_name) + '\',' + parseFloat(d.quantity_delivered) + ')"><i class="fas fa-box-open"></i> Received</button>';
-            }
-            acts += '<button class="btn-act btn-view" onclick="openDtl(' + d.id + ')"><i class="fas fa-eye"></i> View</button>';
+            // Products and Quantities line-by-line list
+            var productsHtml = items.map(function(item) {
+                return '<div style="padding:4px 0; border-bottom:1px solid #f1f5f9; min-height:36px; display:flex; flex-direction:column; justify-content:center;">'
+                     + '<strong style="color:#334155;">' + h(item.product_name || '—') + '</strong>'
+                     + '<span style="font-size:10px;color:#94a3b8;font-family:monospace;">' + h(item.delivery_ref) + '</span>'
+                     + '</div>';
+            }).join('');
 
-            out += '<tr>'
-                + '<td><span class="del-ref">' + h(d.delivery_ref) + '</span></td>'
+            var qtyHtml = items.map(function(item) {
+                return '<div style="padding:4px 0; border-bottom:1px solid #f1f5f9; min-height:36px; display:flex; align-items:center; justify-content:flex-end; font-weight:700; color:#1e293b;">'
+                     + parseFloat(item.quantity_delivered||0).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:2})
+                     + '&nbsp;<span style="font-size:11px;color:#64748b;">' + h(item.unit||'pcs') + '</span>'
+                     + '</div>';
+            }).join('');
+
+            // Batch Action Buttons (only for Pending batch)
+            var batchActs = '';
+            var isVirtualBatch = bId.startsWith('NOBATCH-');
+            var batchIdLabel = isVirtualBatch ? firstItem.delivery_ref : bId;
+
+            if (ds === 'Pending') {
+                batchActs = '<button class="btn-act btn-approve" onclick="openAprBatch(\'' + j(batchIdLabel) + '\')"><i class="fas fa-check"></i> Approve</button>'
+                          + '<button class="btn-act btn-reject"  onclick="openFlagBatch(\'' + j(batchIdLabel) + '\')"><i class="fas fa-times-circle"></i> Reject</button>'
+                          + '<button class="btn-act btn-adjust"  onclick="openAdjBatch(\'' + j(batchIdLabel) + '\')"><i class="fas fa-sliders-h"></i> Adjust</button>';
+            }
+            batchActs += '<button class="btn-act btn-view" onclick="openBatchDtl(\'' + j(batchIdLabel) + '\')"><i class="fas fa-eye"></i> View</button>';
+
+            // Render Batch Row
+            out += '<tr style="background:#ffffff;">'
+                + '<td><strong style="color: #0f172a;"><i class="fas fa-folder-open" style="color: #fd7e14; margin-right: 4px;"></i> ' + h(batchIdLabel) + '</strong></td>'
                 + '<td>' + typeBadge + '</td>'
-                + '<td><strong>' + h(d.supplier_name||'—') + '</strong></td>'
-                + '<td><strong>' + h(d.product_name||'—') + '</strong></td>'
-                + '<td style="font-weight:700;color:#155724;text-align:right;">' + qty + ' <span style="font-size:11px;color:#6c757d;">' + h(d.unit||'pcs') + '</span></td>'
-                + '<td style="font-size:12px;color:#6c757d;">' + dt(d.delivery_date) + '</td>'
-                + '<td style="font-size:12px;">' + enc + '</td>'
+                + '<td><strong style="color: #334155;">' + h(supplierDisplay || '—') + '</strong></td>'
+                + '<td style="padding:0 16px;">' + productsHtml + '</td>'
+                + '<td style="padding:0 16px;">' + qtyHtml + '</td>'
+                + '<td style="font-size:12px;color:#64748b;">' + dt(firstItem.delivery_date) + '</td>'
+                + '<td style="font-size:12px;color:#475569;">' + h(encoderDisplay || '—') + '</td>'
                 + '<td>' + badge + '</td>'
-                + '<td style="font-size:12px;color:#6c757d;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + h(rem) + '">' + remDisplay + '</td>'
-                + '<td><div class="act-wrap">' + acts + '</div></td>'
+                + '<td style="font-size:12px;color:#64748b;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + h(firstItem.remarks || '') + '</td>'
+                + '<td><div class="act-wrap" style="flex-direction:row;gap:4px;">' + batchActs + '</div></td>'
                 + '</tr>';
         });
         tb.innerHTML = out;
     }).catch(function(err) {
         console.error('Fetch error:', err);
         tb.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#dc3545;padding:32px;"><i class="fas fa-exclamation-triangle" style="font-size:2rem;display:block;margin-bottom:12px;"></i><strong>Error loading deliveries</strong><br><span style="font-size:12px;color:#6c757d;">' + h(err.message) + '</span><br><button onclick="loadDeliveries()" class="btn" style="margin-top:12px;"><i class="fas fa-sync-alt"></i> Retry</button></td></tr>';
+    });
+}
+
+// ── BATCH OPERATION HANDLERS ───────────────────────────────────────────────────
+function openAprBatch(batchId) {
+    document.getElementById('apr-batch-id').value = batchId;
+    document.getElementById('apr-batch-rmk').value = '';
+    openM('aprBatchModal');
+}
+function doApproveBatch() {
+    var batchId = document.getElementById('apr-batch-id').value;
+    var reason = document.getElementById('apr-batch-rmk').value;
+    fetch(API + '?action=approve_batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batch_id: batchId, reason: reason })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+        closeM('aprBatchModal');
+        toast(res.message, res.success ? 'success' : 'error');
+        if (res.success) loadDeliveries();
+    });
+}
+
+function openFlagBatch(batchId) {
+    document.getElementById('flag-batch-id').value = batchId;
+    document.getElementById('flag-batch-reason').value = '';
+    document.getElementById('flag-batch-type').value = 'shortage';
+    openM('flagBatchModal');
+}
+function doFlagBatch() {
+    var batchId = document.getElementById('flag-batch-id').value;
+    var reason = document.getElementById('flag-batch-reason').value.trim();
+    var dtype = document.getElementById('flag-batch-type').value;
+    if (!reason) { toast('Discrepancy details are required.', 'error'); return; }
+    fetch(API + '?action=flag_batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batch_id: batchId, reason: reason, discrepancy_type: dtype })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+        closeM('flagBatchModal');
+        toast(res.message, res.success ? 'success' : 'error');
+        if (res.success) loadDeliveries();
+    });
+}
+
+function openRejBatch(batchId) {
+    document.getElementById('rej-batch-id').value = batchId;
+    document.getElementById('rej-batch-rsn').value = '';
+    openM('rejBatchModal');
+}
+function doRejectBatch() {
+    var batchId = document.getElementById('rej-batch-id').value;
+    var reason = document.getElementById('rej-batch-rsn').value.trim();
+    if (!reason) { toast('Reason for return is required.', 'error'); return; }
+    fetch(API + '?action=reject_batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batch_id: batchId, reason: reason })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+        closeM('rejBatchModal');
+        toast(res.message, res.success ? 'success' : 'error');
+        if (res.success) loadDeliveries();
+    });
+}
+
+function openAdjBatch(batchId) {
+    var items = window.currentBatches[batchId] || [];
+    document.getElementById('adj-batch-id').value = batchId;
+    document.getElementById('adj-batch-rsn').value = '';
+    var container = document.getElementById('adj-batch-items-container');
+    container.innerHTML = '';
+    items.forEach(function(item) {
+        var div = document.createElement('div');
+        div.className = 'fg2';
+        div.style.marginBottom = '8px';
+        div.innerHTML = '<div class="fld" style="margin-bottom:0;"><label>' + h(item.product_name) + ' (' + h(item.delivery_ref) + ')</label><input type="text" value="' + h(item.supplier_name) + '" readonly style="font-size:11px;"></div>'
+                      + '<div class="fld" style="margin-bottom:0;"><label>Qty Delivered (' + h(item.unit || 'pcs') + ')</label><input type="number" class="adj-batch-item-qty" data-id="' + item.id + '" value="' + parseFloat(item.quantity_delivered) + '" min="0.01" step="0.01"></div>';
+        container.appendChild(div);
+    });
+    openM('adjBatchModal');
+}
+function doAdjustBatch() {
+    var batchId = document.getElementById('adj-batch-id').value;
+    var reason = document.getElementById('adj-batch-rsn').value.trim();
+    if (!reason) { toast('Adjustment reason is mandatory.', 'error'); return; }
+
+    var adjustments = [];
+    var inputs = document.querySelectorAll('.adj-batch-item-qty');
+    for (var i = 0; i < inputs.length; i++) {
+        var id = inputs[i].getAttribute('data-id');
+        var qty = parseFloat(inputs[i].value);
+        if (isNaN(qty) || qty <= 0) {
+            toast('All quantities must be greater than 0.', 'error');
+            return;
+        }
+        adjustments.push({ id: id, quantity: qty });
+    }
+
+    fetch(API + '?action=adjust_batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batch_id: batchId, adjustments: adjustments, reason: reason })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+        closeM('adjBatchModal');
+        toast(res.message, res.success ? 'success' : 'error');
+        if (res.success) loadDeliveries();
     });
 }
 
@@ -975,6 +1213,35 @@ function openDtl(id) {
         if (d.resolution_action) html += dr('Resolution',h(d.resolution_action));
         document.getElementById('dtl-body').innerHTML = html;
     });
+}
+
+function openBatchDtl(batchId) {
+    var items = window.currentBatches[batchId] || [];
+    var html = '<div style="margin-bottom:12px;"><h4 style="color:#002F70;margin-bottom:8px;">Batch: ' + h(batchId) + '</h4></div>';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:12px;text-align:left;">'
+          + '<thead style="background:#f8fafc;border-bottom:2px solid #e2e8f0;">'
+          + '<tr>'
+          + '<th style="padding:8px;">Ref</th>'
+          + '<th style="padding:8px;">Product</th>'
+          + '<th style="padding:8px;text-align:right;">Qty</th>'
+          + '<th style="padding:8px;">Status</th>'
+          + '<th style="padding:8px;">Remarks</th>'
+          + '</tr>'
+          + '</thead>'
+          + '<tbody>';
+    items.forEach(function(item) {
+        var itemDs = getDisplayStatus(item.status);
+        html += '<tr style="border-bottom:1px solid #f1f5f9;">'
+              + '<td style="padding:8px;font-family:monospace;font-weight:700;">' + h(item.delivery_ref) + '</td>'
+              + '<td style="padding:8px;font-weight:600;">' + h(item.product_name) + '</td>'
+              + '<td style="padding:8px;text-align:right;font-weight:700;">' + parseFloat(item.quantity_delivered).toLocaleString() + ' ' + h(item.unit || 'pcs') + '</td>'
+              + '<td style="padding:8px;"><span class="sbadge sbadge-' + itemDs.toLowerCase().replace(/ /g,'-') + '">' + h(itemDs) + '</span></td>'
+              + '<td style="padding:8px;color:#64748b;">' + h(item.remarks || '—') + '</td>'
+              + '</tr>';
+    });
+    html += '</tbody></table>';
+    document.getElementById('dtl-body').innerHTML = html;
+    openM('dtlModal');
 }
 
 // ── EXPORT ────────────────────────────────────────────────────────────────────

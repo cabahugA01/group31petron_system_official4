@@ -197,15 +197,8 @@ try {
             $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
             
             // Update password
-            $stmt = $pdo->prepare("UPDATE users SET password = ?, updated_at = NOW() WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?");
             $stmt->execute([$hashed_password, $user_id]);
-            
-            // Set password expiry if column exists
-            try {
-                $expires = (new DateTime("+90 days"))->format('Y-m-d H:i:s');
-                $pdo->prepare("UPDATE users SET password_expires_at = ? WHERE id = ?")
-                    ->execute([$expires, $user_id]);
-            } catch(Exception $e){}
             
             log_user_action('Password Reset', "Reset password for user '$userInfo[username]'");
             

@@ -48,7 +48,18 @@ if ($action === 'export_excel' || $action === 'export_pdf') {
         // Default export: exclude raw Manager-queue records from Admin exports
         $w.=" AND do2.status NOT IN ('Pending Manager Approval')";
     }
-    $st=$pdo->prepare("SELECT do2.*,u_enc.name AS encoded_by_name,u_adm.name AS admin_name,u_mgr.name AS manager_name FROM deliveries_oversight do2 LEFT JOIN users u_enc ON do2.encoded_by=u_enc.id LEFT JOIN users u_adm ON do2.admin_id=u_adm.id LEFT JOIN users u_mgr ON do2.manager_id=u_mgr.id $w ORDER BY do2.delivery_date DESC");
+    $st=$pdo->prepare("
+        SELECT do2.*,
+               COALESCE(NULLIF(TRIM(u_enc.username), ''), 'Unknown') AS encoded_by_name,
+               COALESCE(NULLIF(TRIM(u_adm.username), ''), 'Unknown') AS admin_name,
+               COALESCE(NULLIF(TRIM(u_mgr.username), ''), 'Unknown') AS manager_name 
+        FROM deliveries_oversight do2 
+        LEFT JOIN users u_enc ON do2.encoded_by=u_enc.id 
+        LEFT JOIN users u_adm ON do2.admin_id=u_adm.id 
+        LEFT JOIN users u_mgr ON do2.manager_id=u_mgr.id 
+        $w 
+        ORDER BY do2.delivery_date DESC
+    ");
     $st->execute($p); $rows=$st->fetchAll(PDO::FETCH_ASSOC);
     if($action==='export_excel'){
         header('Content-Type: application/vnd.ms-excel; charset=utf-8');
@@ -184,7 +195,10 @@ try {
             if(!$id){echo'Invalid delivery ID';exit;}
             
             $st=$pdo->prepare("
-                SELECT do2.*,u_enc.name AS encoded_by_name,u_adm.name AS admin_name,s.name AS station_name
+                SELECT do2.*,
+                       COALESCE(NULLIF(TRIM(u_enc.username), ''), 'Unknown') AS encoded_by_name,
+                       COALESCE(NULLIF(TRIM(u_adm.username), ''), 'Unknown') AS admin_name,
+                       s.name AS station_name
                 FROM deliveries_oversight do2
                 LEFT JOIN users u_enc ON do2.encoded_by=u_enc.id
                 LEFT JOIN users u_adm ON do2.admin_id=u_adm.id
@@ -416,7 +430,18 @@ try {
             if($sf===''){
                 $w.=" AND do2.status NOT IN ('Pending Manager Approval')";
             }
-            $st=$pdo->prepare("SELECT do2.*,u_enc.name AS encoded_by_name,u_adm.name AS admin_name,u_mgr.name AS manager_name FROM deliveries_oversight do2 LEFT JOIN users u_enc ON do2.encoded_by=u_enc.id LEFT JOIN users u_adm ON do2.admin_id=u_adm.id LEFT JOIN users u_mgr ON do2.manager_id=u_mgr.id {$w} ORDER BY FIELD(do2.status,'Discrepancy','Flagged','Pending Admin Oversight','Pending Manager Confirmation','Pending Validation','Expected Delivery','Confirmed','Validated'),do2.delivery_date DESC");
+            $st=$pdo->prepare("
+                SELECT do2.*,
+                       COALESCE(NULLIF(TRIM(u_enc.username), ''), 'Unknown') AS encoded_by_name,
+                       COALESCE(NULLIF(TRIM(u_adm.username), ''), 'Unknown') AS admin_name,
+                       COALESCE(NULLIF(TRIM(u_mgr.username), ''), 'Unknown') AS manager_name 
+                FROM deliveries_oversight do2 
+                LEFT JOIN users u_enc ON do2.encoded_by=u_enc.id 
+                LEFT JOIN users u_adm ON do2.admin_id=u_adm.id 
+                LEFT JOIN users u_mgr ON do2.manager_id=u_mgr.id 
+                {$w} 
+                ORDER BY FIELD(do2.status,'Discrepancy','Flagged','Pending Admin Oversight','Pending Manager Confirmation','Pending Validation','Expected Delivery','Confirmed','Validated'),do2.delivery_date DESC
+            ");
             $st->execute($p); $rows=$st->fetchAll(PDO::FETCH_ASSOC);
             $counts=['Expected'=>0,'Pending Validation'=>0,'Validated'=>0,'Flagged'=>0];
             foreach($rows as $r){
@@ -429,10 +454,33 @@ try {
             echo json_encode(['success'=>true,'data'=>$rows,'counts'=>$counts]); break;
         case 'detail':
             $id=(int)($_GET['id']??0); if(!$id){echo json_encode(['success'=>false,'message'=>'ID required']);break;}
-            $st=$pdo->prepare("SELECT do2.*,u_enc.name AS encoded_by_name,u_adm.name AS admin_name,u_mgr.name AS manager_name FROM deliveries_oversight do2 LEFT JOIN users u_enc ON do2.encoded_by=u_enc.id LEFT JOIN users u_adm ON do2.admin_id=u_adm.id LEFT JOIN users u_mgr ON do2.manager_id=u_mgr.id WHERE do2.id=? AND do2.station_id=?");
+            $st=$pdo->prepare("
+                SELECT do2.*,
+                       COALESCE(NULLIF(TRIM(u_enc.username), ''), 'Unknown') AS encoded_by_name,
+                       COALESCE(NULLIF(TRIM(u_adm.username), ''), 'Unknown') AS admin_name,
+                       COALESCE(NULLIF(TRIM(u_mgr.username), ''), 'Unknown') AS manager_name 
+                FROM deliveries_oversight do2 
+                LEFT JOIN users u_enc ON do2.encoded_by=u_enc.id 
+                LEFT JOIN users u_adm ON do2.admin_id=u_adm.id 
+                LEFT JOIN users u_mgr ON do2.manager_id=u_mgr.id 
+                WHERE do2.id=? AND do2.station_id=?
+            ");
             $st->execute([$id,$station_id]); $rec=$st->fetch(PDO::FETCH_ASSOC);
             if(!$rec){echo json_encode(['success'=>false,'message'=>'Not found']);break;}
-            try{$st2=$pdo->prepare("SELECT at.*,u.name AS actor_name FROM audit_trail at LEFT JOIN users u ON at.manager_id=u.id WHERE at.transaction_id=? AND at.entity_type='delivery' ORDER BY at.timestamp DESC");$st2->execute([$id]);$rec['audit']=$st2->fetchAll(PDO::FETCH_ASSOC);}catch(Exception $e){$rec['audit']=[];}
+            try{
+                $st2=$pdo->prepare("
+                    SELECT at.*, 
+                           COALESCE(NULLIF(TRIM(u.username), ''), 'Unknown') AS actor_name 
+                    FROM audit_trail at 
+                    LEFT JOIN users u ON at.manager_id=u.id 
+                    WHERE at.transaction_id=? AND at.entity_type='delivery' 
+                    ORDER BY at.timestamp DESC
+                ");
+                $st2->execute([$id]);
+                $rec['audit']=$st2->fetchAll(PDO::FETCH_ASSOC);
+            }catch(Exception $e){
+                $rec['audit']=[];
+            }
             echo json_encode(['success'=>true,'data'=>$rec]); break;
         case 'validate':
             $inp=json_decode(file_get_contents('php://input'),true)??[]; $id=(int)($inp['id']??0); $notes=trim($inp['notes']??'');
@@ -515,7 +563,17 @@ try {
             $id=(int)($_GET['id']??0);
             if(!$id){http_response_code(400);echo 'Invalid delivery ID';exit;}
             
-            $st=$pdo->prepare("SELECT do2.*,u_enc.name AS encoded_by_name,u_adm.name AS admin_name,st.name AS station_name FROM deliveries_oversight do2 LEFT JOIN users u_enc ON do2.encoded_by=u_enc.id LEFT JOIN users u_adm ON do2.admin_id=u_adm.id LEFT JOIN stations st ON do2.station_id=st.id WHERE do2.id=? AND do2.station_id=?");
+            $st=$pdo->prepare("
+                SELECT do2.*,
+                       COALESCE(NULLIF(TRIM(u_enc.username), ''), 'Unknown') AS encoded_by_name,
+                       COALESCE(NULLIF(TRIM(u_adm.username), ''), 'Unknown') AS admin_name,
+                       st.name AS station_name 
+                FROM deliveries_oversight do2 
+                LEFT JOIN users u_enc ON do2.encoded_by=u_enc.id 
+                LEFT JOIN users u_adm ON do2.admin_id=u_adm.id 
+                LEFT JOIN stations st ON do2.station_id=st.id 
+                WHERE do2.id=? AND do2.station_id=?
+            ");
             $st->execute([$id,$station_id]);
             $del=$st->fetch(PDO::FETCH_ASSOC);
             if(!$del){http_response_code(404);echo 'Delivery not found';exit;}

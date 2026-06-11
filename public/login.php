@@ -612,11 +612,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .pw-toggle:hover { color: #93c5fd; text-shadow: 0 0 10px rgba(96,165,250,.6); }
 
         /* Hide browser native password reveal eye (Edge/IE/Chrome) */
-        input[type="password_hash"]::-ms-reveal,
-        input[type="password_hash"]::-ms-clear { display: none !important; }
-        input[type="password_hash"]::-webkit-contacts-auto-fill-button,
-        input[type="password_hash"]::-webkit-credentials-auto-fill-button,
-        input[type="password_hash"]::-webkit-strong-password-auto-fill-button {
+        input[type="password"]::-ms-reveal,
+        input[type="password"]::-ms-clear { display: none !important; }
+        input[type="password"]::-webkit-contacts-auto-fill-button,
+        input[type="password"]::-webkit-credentials-auto-fill-button,
+        input[type="password"]::-webkit-strong-password-auto-fill-button {
             display: none !important; visibility: hidden; pointer-events: none;
         }
 
@@ -1129,7 +1129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="input-wrap">
                     <i class="fas fa-lock input-icon"></i>
                     <input
-                        type="password_hash"
+                        type="password"
                         name="password_hash"
                         id="passwordField"
                         class="field-input"
@@ -1259,7 +1259,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     /* Password toggle */
     pwToggle.addEventListener('click', function () {
         var isText = pwField.type === 'text';
-        pwField.type = isText ? 'password_hash' : 'text';
+        pwField.type = isText ? 'password' : 'text';
         pwIcon.className = isText ? 'fas fa-eye' : 'fas fa-eye-slash';
     });
 

@@ -189,7 +189,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             
             $hashed = password_hash($new_pass, PASSWORD_DEFAULT);
-            $stmt = $pdo->prepare("UPDATE users SET password = ? WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?");
             $stmt->execute([$hashed, $id]);
             
             log_activity($pdo, $me['id'], 'Reset Password', "Reset password for user #$id");
@@ -403,7 +403,7 @@ include __DIR__ . '/../partials/header.php';
                 <div class="form-group mb-3">
                     <label class="lbl">Password</label>
                     <div style="position:relative;">
-                        <input type="password_hash" name="password_hash" id="add_password" class="inp full" placeholder="Leave empty to auto-generate">
+                        <input type="password" name="password_hash" id="add_password" class="inp full" placeholder="Leave empty to auto-generate">
                         <button type="button" onclick="togglePasswordVisibility('add_password', this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#6c757d;">
                             <i class="fas fa-eye"></i>
                         </button>
@@ -414,7 +414,7 @@ include __DIR__ . '/../partials/header.php';
                 <div class="form-group mb-3">
                     <label class="lbl">Confirm Password</label>
                     <div style="position:relative;">
-                        <input type="password_hash" name="confirm_password" id="add_confirm_password" class="inp full" placeholder="Re-enter password">
+                        <input type="password" name="confirm_password" id="add_confirm_password" class="inp full" placeholder="Re-enter password">
                         <button type="button" onclick="togglePasswordVisibility('add_confirm_password', this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#6c757d;">
                             <i class="fas fa-eye"></i>
                         </button>
@@ -543,11 +543,11 @@ function closeModal(id) {
 function togglePasswordVisibility(fieldId, btn) {
     const field = document.getElementById(fieldId);
     const icon = btn.querySelector('i');
-    if (field.type === 'password_hash') {
+    if (field.type === 'password') {
         field.type = 'text';
         icon.classList.replace('fa-eye', 'fa-eye-slash');
     } else {
-        field.type = 'password_hash';
+        field.type = 'password';
         icon.classList.replace('fa-eye-slash', 'fa-eye');
     }
 }

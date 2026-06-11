@@ -1271,7 +1271,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <div class="modal-body" style="padding: 20px;">
             <p style="color: #666; margin-bottom: 15px;">To finalize this reconciliation, please enter your password:</p>
             <input 
-                type="password_hash" 
+                type="password" 
                 id="managerPassword" 
                 class="filter-input" 
                 placeholder="Enter your password"

@@ -232,9 +232,6 @@ html,body{max-width:100vw;overflow-x:hidden}
         <i class="fas fa-truck-loading"></i> Fuel Deliveries
         <?php if ($pending_del > 0): ?><span class="badge-cnt"><?= $pending_del ?></span><?php endif; ?>
     </button>
-    <button class="tab-btn" onclick="switchTab('tab-pm','tbtn-pm')" id="tbtn-pm">
-        <i class="fas fa-gas-pump"></i> Pump Master Oversight
-    </button>
 </div>
 
 <!-- ══ TAB 1: FUEL TRANSACTIONS ══ -->
@@ -381,79 +378,6 @@ html,body{max-width:100vw;overflow-x:hidden}
 </div>
 </div>
 
-<!-- ══ TAB 3: PUMP MASTER OVERSIGHT ══ -->
-<div id="tab-pm" class="tab-content">
-<div class="tbl-card">
-    <div class="tbl-hd">
-        <span class="tbl-title"><i class="fas fa-gas-pump"></i> Pump Master Oversight — Admin View</span>
-        <span style="font-size:11px;color:#64748b;">17 Tanker Calibration Oversight</span>
-    </div>
-    <div style="overflow-x:auto;">
-    <table class="afao-tbl">
-        <colgroup>
-            <col style="width:13%"><col style="width:13%"><col style="width:10%">
-            <col style="width:14%"><col style="width:10%"><col style="width:10%">
-            <col style="width:20%"><col style="width:10%">
-        </colgroup>
-        <thead><tr>
-            <th>Fuel Type</th>
-            <th>Tanker Reference</th>
-            <th>Calibration Value</th>
-            <th>Last Calibration Date</th>
-            <th>Actual Value</th>
-            <th>Variance</th>
-            <th>Reason</th>
-            <th>Manager Name</th>
-        </tr></thead>
-        <tbody>
-        <?php foreach ($TANK_CONFIG_17 as $tc):
-            $k_fuel = strtolower(trim($tc['fuel_type']));
-            $hist = $pm_cal_history[$k_fuel] ?? null;
-            $inv = $pm_inv_lookup[$k_fuel] ?? null;
-            
-            // Calibration Value (latest calibration liters encoded/adjusted by Manager)
-            $cal_val = $hist ? (float)$hist['previous_calibration'] : ($inv ? (float)$inv['latest_calibration'] : 1.000);
-            
-            // Last Calibration Date
-            $cal_date = $hist ? date('M d, Y H:i', strtotime($hist['updated_at'])) : 'No Calibration Record';
-            
-            // Actual Value (corrected calibration input by Manager)
-            $actual_val = $hist ? (float)$hist['new_calibration'] : null;
-            
-            // Variance
-            $variance = $hist ? round($cal_val - $actual_val, 4) : null;
-            $vc = $variance === null ? 'var-zero' : ($variance == 0 ? 'var-zero' : ($variance > 0 ? 'var-pos' : 'var-neg'));
-            $vs = $variance === null ? '—' : (($variance > 0 ? '+' : '') . number_format($variance, 3));
-            
-            // Reason
-            $reason = $hist ? ($hist['reason'] ?: '—') : '—';
-            
-            // Manager Name
-            $mgr_name = $hist ? $hist['manager_name'] : '—';
-        ?>
-        <tr>
-            <td style="white-space:normal;">
-                <div style="font-weight:700;color:#00264D;font-size:11px;"><?= htmlspecialchars($tc['label']) ?></div>
-                <div style="font-size:10px;color:#64748b;"><?= htmlspecialchars($tc['fuel_type']) ?></div>
-            </td>
-            <td style="white-space:normal;">
-                <div style="font-weight:600;font-size:11px;color:#334155;"><?= htmlspecialchars($tc['tank']) ?></div>
-                <div style="font-size:10px;color:#0369a1;">Tanker #<?= htmlspecialchars($tc['tanker_num']) ?></div>
-            </td>
-            <td style="font-family:monospace;font-weight:700;"><?= number_format($cal_val, 3) ?> L</td>
-            <td style="font-size:10.5px;color:#475569;white-space:normal;"><?= htmlspecialchars($cal_date) ?></td>
-            <td style="font-family:monospace;font-weight:700;color:#002F6C;"><?= $actual_val !== null ? number_format($actual_val, 3) . ' L' : '—' ?></td>
-            <td class="<?= $vc ?>"><?= $vs ?></td>
-            <td style="white-space:normal;line-height:1.4;font-size:10.5px;" title="<?= htmlspecialchars($reason) ?>"><?= htmlspecialchars($reason) ?></td>
-            <td style="font-size:11px;"><?= htmlspecialchars($mgr_name) ?></td>
-        </tr>
-        <?php endforeach; ?>
-        </tbody>
-    </table>
-    </div>
-</div>
-</div>
-
 <script>
 function switchTab(id, btnId) {
     document.querySelectorAll('.tab-content').forEach(e => e.classList.remove('active'));
@@ -465,7 +389,6 @@ function switchTab(id, btnId) {
 (function(){
     const h = window.location.hash.substring(1);
     if (h === 'deliveries') switchTab('tab-del','tbtn-del');
-    else if (h === 'pump-master') switchTab('tab-pm','tbtn-pm');
 })();
 </script>
 

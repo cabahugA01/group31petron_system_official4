@@ -95,8 +95,8 @@ try {
             ip.category,
             ip.unit_cost,
             COALESCE(si.stock_level, ip.stock, 0) AS current_stock,
-            u_enc.name AS encoded_by_name,
-            u_adm.name AS admin_name
+            CONCAT(u_enc.first_name, ' ', u_enc.last_name) AS encoded_by_name,
+            CONCAT(u_adm.first_name, ' ', u_adm.last_name) AS admin_name
         FROM deliveries_oversight do2
         LEFT JOIN inventory_products ip 
                ON ip.product_name = do2.product AND ip.category != 'Fuel'
@@ -106,13 +106,13 @@ try {
         LEFT JOIN users u_adm ON do2.admin_id = u_adm.id
         WHERE do2.station_id = ?
           AND do2.delivery_type = 'merchandise'
-          AND do2.status IN ('Validated', 'Partial Delivery', 'Damaged Items')
+          AND do2.status IN ('Ready for Stock-In', 'Validated', 'Partial Delivery', 'Damaged Items')
           AND NOT EXISTS (
               SELECT 1 FROM merchandise_stock_in msi 
               WHERE msi.po_number = do2.delivery_ref 
                  OR msi.batch_ref = do2.batch_id
           )
-        ORDER BY do2.admin_action_at ASC, do2.delivery_date ASC
+        ORDER BY do2.manager_action_at ASC, do2.delivery_date ASC
     ");
     $stmt->execute([$station_id]);
     $pending_pos = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -140,20 +140,20 @@ try {
             do2.batch_id,
             do2.dr_number AS invoice_no,
             do2.dr_number AS tanker_number,
-            u_enc.name AS encoded_by_name,
-            u_adm.name AS admin_name
+            CONCAT(u_enc.first_name, ' ', u_enc.last_name) AS encoded_by_name,
+            CONCAT(u_adm.first_name, ' ', u_adm.last_name) AS admin_name
         FROM deliveries_oversight do2
         LEFT JOIN users u_enc ON do2.encoded_by = u_enc.id
         LEFT JOIN users u_adm ON do2.admin_id = u_adm.id
         WHERE do2.station_id = ?
           AND do2.delivery_type = 'fuel'
-          AND do2.status IN ('Validated', 'Partial Delivery', 'Damaged Items')
+          AND do2.status IN ('Ready for Stock-In', 'Validated', 'Partial Delivery', 'Damaged Items')
           AND NOT EXISTS (
               SELECT 1 FROM fuel_stock_in fsi 
               WHERE fsi.delivery_ref = do2.delivery_ref 
                  OR fsi.batch_ref = do2.batch_id
           )
-        ORDER BY do2.admin_action_at ASC, do2.delivery_date ASC
+        ORDER BY do2.manager_action_at ASC, do2.delivery_date ASC
     ");
     $stmtFuel->execute([$station_id]);
     $pending_fuel = $stmtFuel->fetchAll(PDO::FETCH_ASSOC);
@@ -168,121 +168,73 @@ if (!in_array($type_filter, ['merch', 'fuel'])) {
 }
 $active_tab = $_GET['tab'] ?? 'pending';
 
-// ── Fetch deliveries history for "Deliveries History" tab ──────────────────────
-$deliveries_history = [];
-$del_hist_date_from = $_GET['del_date_from'] ?? date('Y-m-d', strtotime('-30 days'));
-$del_hist_date_to   = $_GET['del_date_to']   ?? date('Y-m-d');
-if ($active_tab === 'deliveries') {
-    try {
-        if ($type_filter === 'fuel') {
-            $stmt = $pdo->prepare("
-                SELECT 
-                    do2.id,
-                    do2.delivery_ref,
-                    do2.delivery_type,
-                    do2.supplier,
-                    do2.product AS fuel_type,
-                    do2.quantity AS delivery_liters,
-                    do2.expected_quantity,
-                    do2.actual_quantity,
-                    do2.unit_price,
-                    do2.payable_amount,
-                    do2.discrepancy_type,
-                    do2.status,
-                    do2.delivery_date,
-                    do2.admin_action_at,
-                    do2.dr_number,
-                    u_enc.name AS encoded_by_name,
-                    u_adm.name AS admin_name
-                FROM deliveries_oversight do2
-                LEFT JOIN users u_enc ON do2.encoded_by = u_enc.id
-                LEFT JOIN users u_adm ON do2.admin_id = u_adm.id
-                WHERE do2.station_id = ?
-                  AND do2.delivery_type = 'fuel'
-                  AND do2.status IN ('Validated', 'Partial Delivery', 'Damaged Items', 'Stock-In Complete')
-                  AND DATE(do2.delivery_date) BETWEEN ? AND ?
-                ORDER BY 
-                    FIELD(do2.status, 'Validated', 'Partial Delivery', 'Damaged Items', 'Stock-In Complete'),
-                    do2.admin_action_at DESC
-                LIMIT 100
-            ");
-            $stmt->execute([$station_id, $del_hist_date_from, $del_hist_date_to]);
-            $deliveries_history = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } else {
-            $stmt = $pdo->prepare("
-                SELECT 
-                    do2.id,
-                    do2.delivery_ref,
-                    do2.delivery_type,
-                    do2.supplier,
-                    do2.product,
-                    do2.quantity,
-                    do2.expected_quantity,
-                    do2.actual_quantity,
-                    do2.damaged_quantity,
-                    do2.unit_price,
-                    do2.payable_amount,
-                    do2.discrepancy_type,
-                    do2.status,
-                    do2.delivery_date,
-                    do2.admin_action_at,
-                    do2.batch_id,
-                    do2.dr_number,
-                    ip.sku,
-                    ip.category,
-                    u_enc.name AS encoded_by_name,
-                    u_adm.name AS admin_name
-                FROM deliveries_oversight do2
-                LEFT JOIN inventory_products ip ON ip.product_name = do2.product AND ip.category != 'Fuel'
-                LEFT JOIN users u_enc ON do2.encoded_by = u_enc.id
-                LEFT JOIN users u_adm ON do2.admin_id = u_adm.id
-                WHERE do2.station_id = ?
-                  AND do2.delivery_type = 'merchandise'
-                  AND do2.status IN ('Validated', 'Partial Delivery', 'Damaged Items', 'Stock-In Complete')
-                  AND DATE(do2.delivery_date) BETWEEN ? AND ?
-                ORDER BY 
-                    FIELD(do2.status, 'Validated', 'Partial Delivery', 'Damaged Items', 'Stock-In Complete'),
-                    do2.admin_action_at DESC
-                LIMIT 100
-            ");
-            $stmt->execute([$station_id, $del_hist_date_from, $del_hist_date_to]);
-            $deliveries_history = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        }
-    } catch (Exception $e) {
-        error_log("Deliveries history fetch error: " . $e->getMessage());
-    }
-}
+// Deliveries History tab removed - all stock-in records go directly to Stock-In History
 
-// ── Fetch stock-in history (server-side, last 30 days) ────────────────────────
+// ── Fetch stock-in history (server-side, last 30 days) - COMBINED ────────────
 $history_rows = [];
-$fuel_history = [];
 $hist_date_from = $_GET['date_from'] ?? date('Y-m-d', strtotime('-30 days'));
 $hist_date_to   = $_GET['date_to']   ?? date('Y-m-d');
 try {
-    if ($type_filter === 'fuel') {
-        $stmt = $pdo->prepare("
-            SELECT fsi.*, u.name AS encoded_by_name
-            FROM fuel_stock_in fsi
-            LEFT JOIN users u ON fsi.encoded_by = u.id
-            WHERE fsi.station_id = ? AND DATE(fsi.encoded_at) BETWEEN ? AND ?
-            ORDER BY fsi.encoded_at DESC
-            LIMIT 50
-        ");
-        $stmt->execute([$station_id, $hist_date_from, $hist_date_to]);
-        $fuel_history = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } else {
-        $stmt = $pdo->prepare("
-            SELECT msi.*, u.name AS encoded_by_name
-            FROM merchandise_stock_in msi
-            LEFT JOIN users u ON msi.encoded_by = u.id
-            WHERE msi.station_id = ? AND DATE(msi.encoded_at) BETWEEN ? AND ?
-            ORDER BY msi.encoded_at DESC
-            LIMIT 50
-        ");
-        $stmt->execute([$station_id, $hist_date_from, $hist_date_to]);
-        $history_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-} catch (Exception $e) {}
+    // Fetch BOTH merchandise and fuel stock-in records combined
+    $stmt = $pdo->prepare("
+        SELECT 
+            'merchandise' AS type,
+            msi.id,
+            msi.batch_ref,
+            msi.po_number AS reference,
+            msi.product_name AS product,
+            msi.sku,
+            msi.category,
+            msi.qty_ordered AS qty_expected,
+            msi.qty_received,
+            msi.qty_variance,
+            msi.condition_flag,
+            msi.stock_before,
+            msi.stock_after,
+            msi.remarks,
+            msi.encoded_at,
+            u.name AS encoded_by_name,
+            NULL AS fuel_type,
+            NULL AS level_before,
+            NULL AS level_after
+        FROM merchandise_stock_in msi
+        LEFT JOIN users u ON msi.encoded_by = u.id
+        WHERE msi.station_id = ? AND DATE(msi.encoded_at) BETWEEN ? AND ?
+        
+        UNION ALL
+        
+        SELECT 
+            'fuel' AS type,
+            fsi.id,
+            fsi.batch_ref,
+            fsi.invoice_no AS reference,
+            fsi.fuel_type AS product,
+            NULL AS sku,
+            'Fuel' AS category,
+            fsi.qty_expected,
+            fsi.qty_received,
+            fsi.qty_variance,
+            fsi.condition_flag,
+            NULL AS stock_before,
+            NULL AS stock_after,
+            fsi.remarks,
+            fsi.encoded_at,
+            u.name AS encoded_by_name,
+            fsi.fuel_type,
+            fsi.level_before,
+            fsi.level_after
+        FROM fuel_stock_in fsi
+        LEFT JOIN users u ON fsi.encoded_by = u.id
+        WHERE fsi.station_id = ? AND DATE(fsi.encoded_at) BETWEEN ? AND ?
+        
+        ORDER BY encoded_at DESC
+        LIMIT 100
+    ");
+    $stmt->execute([$station_id, $hist_date_from, $hist_date_to, $station_id, $hist_date_from, $hist_date_to]);
+    $history_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    error_log("Stock-In History Error: " . $e->getMessage());
+}
 
 $flash_ok  = $_SESSION['si_ok']  ?? null; unset($_SESSION['si_ok']);
 $flash_err = $_SESSION['si_err'] ?? null; unset($_SESSION['si_err']);
@@ -295,16 +247,18 @@ include __DIR__ . '/../partials/header.php';
 .si-card-head{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #e9ecef;flex-wrap:wrap;gap:8px;}
 .si-card-title{font-size:1rem;font-weight:700;color:var(--blue);display:flex;align-items:center;gap:8px;}
 .si-card-body{padding:18px 20px;}
-.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;white-space:nowrap;}
-.badge-pending{background:#fff3cd;color:#856404;}
-.badge-done{background:#d4edda;color:#155724;}
-.badge-good{background:#d4edda;color:#155724;}
-.badge-damaged{background:#f8d7da;color:#721c24;}
-.badge-short{background:#fff3cd;color:#856404;}
-.badge-excess{background:#cce5ff;color:#004085;}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;white-space:nowrap;background:none !important;padding:0 !important;border:none !important;text-transform:uppercase;}
+.badge-pending{color:#fd7e14 !important;}
+.badge-done{color:#28a745 !important;}
+.badge-good{color:#28a745 !important;}
+.badge-damaged{color:#dc3545 !important;}
+.badge-short{color:#dc3545 !important;}
+.badge-excess{color:#17a2b8 !important;}
+.badge-ready{color:#fd7e14 !important;}
 .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .2s;text-decoration:none;}
 .btn-primary{background:var(--blue);color:#fff;}.btn-primary:hover{background:#001F4F;}
 .btn-success{background:var(--green);color:#fff;}.btn-success:hover{background:#218838;}
+.btn-outline{background:transparent;color:var(--blue);border:1px solid var(--blue) !important;}.btn-outline:hover{background:var(--blue);color:#fff;}
 .btn-sm{padding:5px 12px;font-size:12px;}
 .flash-ok{background:#d4edda;color:#155724;border:1px solid #c3e6cb;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
 .flash-err{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
@@ -317,10 +271,11 @@ include __DIR__ . '/../partials/header.php';
 .po-item{background:#fff;border:1px solid #dee2e6;border-radius:10px;padding:18px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.04);}
 .po-item-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;flex-wrap:wrap;gap:8px;}
 .po-meta{font-size:12px;color:var(--gray);margin-bottom:12px;display:flex;flex-wrap:wrap;gap:12px;}
-.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+.table-wrap{overflow-x:hidden;-webkit-overflow-scrolling:touch;}
 .si-table{width:100%;border-collapse:collapse;font-size:13px;min-width:760px;}
-.si-table th{background:#f8f9fa;padding:9px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--gray);border-bottom:2px solid #dee2e6;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;}
-.si-table td{padding:8px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle;}
+.si-table th{background:#002F70;padding:10px 12px;text-align:center;font-size:11px;font-weight:700;color:#fff;border-bottom:none;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;}
+.si-table td{padding:8px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle;text-align:center;}
+.si-table tbody tr:hover td{background:#eff6ff;}
 .si-table input[type=number]{width:80px;padding:6px 8px;border:1px solid #dee2e6;border-radius:5px;font-size:13px;text-align:center;}
 .si-table input[type=number]:focus{outline:none;border-color:var(--blue);}
 .si-table select{padding:6px 8px;border:1px solid #dee2e6;border-radius:5px;font-size:12px;}
@@ -331,10 +286,9 @@ include __DIR__ . '/../partials/header.php';
 .info-box{background:#e8f4fd;border-left:4px solid var(--blue);border-radius:6px;padding:10px 14px;font-size:12px;color:var(--blue);line-height:1.6;margin-bottom:16px;}
 .warn-box{background:#fff3cd;border-left:4px solid #fd7e14;border-radius:6px;padding:10px 14px;font-size:12px;color:#856404;line-height:1.6;margin-bottom:12px;}
 .hist-table{width:100%;border-collapse:collapse;font-size:12px;}
-.hist-table th{background:#f8f9fa;padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--gray);border-bottom:2px solid #dee2e6;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;}
-.hist-table td{padding:7px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle;}
-.hist-table tr:hover td{background:#f8f9fa;}
-.badge-ready{background:#fff3cd;color:#856404;border:1px solid #ffc107;}
+.hist-table th{background:#002F70;padding:10px 12px;text-align:center;font-size:11px;font-weight:700;color:#fff;border-bottom:none;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;}
+.hist-table td{padding:7px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle;text-align:center;}
+.hist-table tbody tr:hover td{background:#eff6ff;}
 </style>
 
 <div class="page-head">
@@ -354,7 +308,7 @@ include __DIR__ . '/../partials/header.php';
 <?php endif; ?>
 
 
-<!-- Tabs (simple anchor links) -->
+<!-- Tabs (only Pending Stock-In and Stock-In History) -->
 <div class="tab-nav">
   <a href="staff_stock_in.php?tab=pending&type=<?= $type_filter ?>" class="tab-btn <?= $active_tab === 'pending' ? 'active' : '' ?>">
     <i class="fas fa-dolly"></i> Pending Stock-In
@@ -365,11 +319,8 @@ include __DIR__ . '/../partials/header.php';
       <span style="background:#dc3545;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;"><?= $pending_count ?></span>
     <?php endif; ?>
   </a>
-  <a href="staff_stock_in.php?tab=deliveries&type=<?= $type_filter ?>" class="tab-btn <?= $active_tab === 'deliveries' ? 'active' : '' ?>">
-    <i class="fas fa-truck-loading"></i> Deliveries History
-  </a>
-  <a href="staff_stock_in.php?tab=history&type=<?= $type_filter ?>" class="tab-btn <?= $active_tab === 'history' ? 'active' : '' ?>">
-    <i class="fas fa-history"></i> Stock-In History
+  <a href="staff_stock_in.php?tab=history" class="tab-btn <?= $active_tab === 'history' ? 'active' : '' ?>">
+    <i class="fas fa-history"></i> Stock-In History (All)
   </a>
 </div>
 
@@ -405,7 +356,7 @@ include __DIR__ . '/../partials/header.php';
     <?php foreach ($pending_fuel as $fd):
       // Map deliveries_oversight fields for fuel
       $delivery_id = (int)$fd['delivery_id'];
-      $qty_expected = (float)($fd['actual_quantity'] ?: $fd['delivery_liters']);
+      $qty_expected = (float)((float)$fd['actual_quantity'] ?: $fd['delivery_liters']);
     ?>
     <div class="po-item" id="fuel-item-<?= $delivery_id ?>">
       <div class="po-item-header">
@@ -513,8 +464,8 @@ include __DIR__ . '/../partials/header.php';
     <?php foreach ($pending_pos as $po):
       $delivery_id = (int)($po['delivery_id'] ?? 0);
       $product_id  = (int)($po['product_id'] ?? 0);
-      $qty_ordered = (int)($po['expected_quantity'] ?: $po['quantity']);
-      $actual_qty  = (int)($po['actual_quantity'] ?: $qty_ordered);
+      $qty_ordered = (int)((float)$po['expected_quantity'] ?: $po['quantity']);
+      $actual_qty  = (int)((float)$po['actual_quantity'] ?: $qty_ordered);
       $unit_cost   = (float)($po['unit_price'] ?: $po['unit_cost'] ?: 0);
       $cur_stock   = (int)($po['current_stock'] ?? 0);
       
@@ -550,7 +501,7 @@ include __DIR__ . '/../partials/header.php';
       <?php if ($disc_type): ?>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
         <span style="font-size:12px;font-weight:700;color:#495057;">Discrepancy:</span>
-        <span style="background:<?= $flag_color ?>20;color:<?= $flag_color ?>;border:1px solid <?= $flag_color ?>40;border-radius:20px;padding:3px 12px;font-size:12px;font-weight:700;">
+        <span style="color:<?= $flag_color ?>;font-size:12px;font-weight:700;text-transform:uppercase;">
           <?= htmlspecialchars($disc_type) ?>
         </span>
         <?php if ((float)($po['damaged_quantity'] ?? 0) > 0): ?>
@@ -623,151 +574,16 @@ include __DIR__ . '/../partials/header.php';
     <?php endforeach; ?>
   <?php endif; ?>
 <?php endif; ?>
+<?php endif; ?>
 
-<?php elseif ($active_tab === 'deliveries'): ?>
-<!-- ══ DELIVERIES HISTORY TAB ══ -->
+<?php if ($active_tab === 'history'): ?>
+<!-- ══ STOCK-IN HISTORY TAB (COMBINED FUEL + MERCHANDISE) ══ -->
 <div class="si-card">
   <div class="si-card-head">
-    <div class="si-card-title"><i class="fas fa-truck-loading"></i> Deliveries History</div>
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-left:auto;">
-      <form method="get" action="staff_stock_in.php" style="display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0;">
-        <input type="hidden" name="tab" value="deliveries">
-        <input type="hidden" name="type" value="<?= htmlspecialchars($type_filter) ?>">
-        <input type="date" name="del_date_from" value="<?= htmlspecialchars($del_hist_date_from) ?>"
-               style="padding:6px 10px;border:1px solid #dee2e6;border-radius:5px;font-size:12px;height:36px;">
-        <span style="font-size:12px;color:var(--gray);">to</span>
-        <input type="date" name="del_date_to" value="<?= htmlspecialchars($del_hist_date_to) ?>"
-               style="padding:6px 10px;border:1px solid #dee2e6;border-radius:5px;font-size:12px;height:36px;">
-        <button type="submit" class="btn btn-sm" style="background:var(--blue);color:#fff;height:36px;">
-          <i class="fas fa-filter"></i> Filter
-        </button>
-      </form>
-    </div>
-  </div>
-  <div class="si-card-body">
-    <?php if (empty($deliveries_history)): ?>
-      <div class="empty-state">
-        <i class="fas fa-inbox"></i>
-        <strong>No deliveries found for the selected period.</strong>
-      </div>
-    <?php else: ?>
-      <div class="info-box" style="margin-bottom:16px;">
-        <i class="fas fa-info-circle"></i>
-        <strong>Status Legend:</strong>
-        <span class="badge" style="background:#fff3cd;color:#856404;margin-left:8px;">Ready for Stock-In</span> = Admin validated, awaiting staff stock-in
-        <span class="badge badge-done" style="margin-left:8px;">Stock-In Complete</span> = Already stocked in
-      </div>
-      <div class="table-wrap">
-        <table class="hist-table" style="font-size:13px;">
-          <thead>
-            <tr>
-              <th>Delivery Ref</th>
-              <th><?= $type_filter === 'fuel' ? 'Fuel Type' : 'Product' ?></th>
-              <th>Supplier</th>
-              <?php if ($type_filter === 'merch'): ?>
-              <th>SKU</th>
-              <th>Category</th>
-              <?php endif; ?>
-              <th>Expected Qty</th>
-              <th>Actual Qty</th>
-              <?php if ($type_filter === 'merch'): ?>
-              <th>Damaged</th>
-              <?php endif; ?>
-              <th>Unit Price</th>
-              <th>Payable</th>
-              <th>Delivery Date</th>
-              <th>Admin Processed</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <?php foreach ($deliveries_history as $dh): 
-              $status = $dh['status'];
-              $is_ready = in_array($status, ['Validated', 'Partial Delivery', 'Damaged Items']);
-              $status_badge_class = $is_ready ? 'badge-pending' : 'badge-done';
-              $status_text = $is_ready ? 'Ready for Stock-In' : $status;
-            ?>
-            <tr>
-              <td>
-                <strong style="color:var(--blue);font-size:12px;"><?= htmlspecialchars($dh['delivery_ref']) ?></strong>
-                <?php if ($dh['dr_number']): ?>
-                <br><span style="font-size:11px;color:#6c757d;">DR: <?= htmlspecialchars($dh['dr_number']) ?></span>
-                <?php endif; ?>
-              </td>
-              <td>
-                <strong><?= htmlspecialchars($type_filter === 'fuel' ? $dh['fuel_type'] : $dh['product']) ?></strong>
-                <?php if ($dh['discrepancy_type']): ?>
-                <br><span class="badge" style="background:#fff3cd;color:#856404;font-size:10px;margin-top:2px;"><?= htmlspecialchars($dh['discrepancy_type']) ?></span>
-                <?php endif; ?>
-              </td>
-              <td><?= htmlspecialchars($dh['supplier']) ?></td>
-              <?php if ($type_filter === 'merch'): ?>
-              <td><code style="font-size:11px;"><?= htmlspecialchars($dh['sku'] ?? '') ?></code></td>
-              <td><?= htmlspecialchars($dh['category'] ?? '') ?></td>
-              <?php endif; ?>
-              <td style="text-align:right;"><?= number_format((float)($dh['expected_quantity'] ?: $dh['quantity']), 2) ?></td>
-              <td style="text-align:right;font-weight:700;"><?= number_format((float)$dh['actual_quantity'], 2) ?></td>
-              <?php if ($type_filter === 'merch'): ?>
-              <td style="text-align:right;color:<?= (float)($dh['damaged_quantity'] ?? 0) > 0 ? '#dc3545' : '#6c757d' ?>;">
-                <?= number_format((float)($dh['damaged_quantity'] ?? 0), 2) ?>
-              </td>
-              <?php endif; ?>
-              <td style="text-align:right;">₱<?= number_format((float)$dh['unit_price'], 2) ?></td>
-              <td style="text-align:right;font-weight:700;color:#28a745;">₱<?= number_format((float)$dh['payable_amount'], 2) ?></td>
-              <td><?= date('M d, Y', strtotime($dh['delivery_date'])) ?></td>
-              <td>
-                <?php if ($dh['admin_name']): ?>
-                  <?= htmlspecialchars($dh['admin_name']) ?><br>
-                  <span style="font-size:11px;color:#6c757d;"><?= $dh['admin_action_at'] ? date('M d, H:i', strtotime($dh['admin_action_at'])) : '' ?></span>
-                <?php else: ?>
-                  <span style="color:#6c757d;">—</span>
-                <?php endif; ?>
-              </td>
-              <td>
-                <span class="badge <?= $status_badge_class ?>">
-                  <?php if ($is_ready): ?>
-                    <i class="fas fa-clock"></i> <?= $status_text ?>
-                  <?php else: ?>
-                    <i class="fas fa-check"></i> <?= $status_text ?>
-                  <?php endif; ?>
-                </span>
-              </td>
-              <td>
-                <?php if ($is_ready): ?>
-                  <a href="staff_stock_in.php?tab=pending&type=<?= $type_filter ?>" 
-                     class="btn btn-sm" 
-                     style="background:#28a745;color:#fff;padding:3px 8px;font-size:11px;white-space:nowrap;"
-                     title="Go to Stock-In">
-                    <i class="fas fa-dolly"></i>
-                  </a>
-                <?php else: ?>
-                  <span style="font-size:11px;color:#28a745;"><i class="fas fa-check-circle"></i></span>
-                <?php endif; ?>
-              </td>
-            </tr>
-            <?php endforeach; ?>
-          </tbody>
-        </table>
-      </div>
-      <div style="margin-top:16px;padding:12px;background:#f8f9fa;border-radius:6px;font-size:12px;color:#6c757d;">
-        <i class="fas fa-info-circle"></i> 
-        Showing <?= count($deliveries_history) ?> deliveries from <?= date('M d, Y', strtotime($del_hist_date_from)) ?> to <?= date('M d, Y', strtotime($del_hist_date_to)) ?>.
-        Deliveries with "Ready for Stock-In" status can be processed in the <strong>Pending Stock-In</strong> tab.
-      </div>
-    <?php endif; ?>
-  </div>
-</div>
-
-<?php else: ?>
-<!-- ══ HISTORY TAB ══ -->
-<div class="si-card">
-  <div class="si-card-head">
-    <div class="si-card-title"><i class="fas fa-history"></i> Stock-In History</div>
+    <div class="si-card-title"><i class="fas fa-history"></i> Stock-In History (Fuel + Merchandise)</div>
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-left:auto;">
       <form method="get" action="staff_stock_in.php" style="display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0;">
         <input type="hidden" name="tab" value="history">
-        <input type="hidden" name="type" value="<?= htmlspecialchars($type_filter) ?>">
         <input type="date" name="date_from" value="<?= htmlspecialchars($hist_date_from) ?>"
                style="padding:6px 10px;border:1px solid #dee2e6;border-radius:5px;font-size:12px;height:36px;">
         <span style="font-size:12px;color:var(--gray);">to</span>
@@ -776,116 +592,119 @@ include __DIR__ . '/../partials/header.php';
         <button type="submit" class="btn btn-primary" style="height:36px;padding:8px 14px;"><i class="fas fa-filter"></i> Filter</button>
       </form>
       <?php
-      $export_table_id       = ($type_filter === 'fuel') ? 'fuelStockInHistoryTable' : 'merchStockInHistoryTable';
-      $export_filename       = (($type_filter === 'fuel') ? 'fuel_stock_in_' : 'merch_stock_in_') . date('Ymd');
-      $export_title          = ($type_filter === 'fuel') ? 'Fuel Stock-In History' : 'Merchandise Stock-In History';
-      $export_rows_select_id = ($type_filter === 'fuel') ? 'fuelSiRowsLimit' : 'merchSiRowsLimit';
+      $export_table_id       = 'stockInHistoryTable';
+      $export_filename       = 'stock_in_history_' . date('Ymd');
+      $export_title          = 'Stock-In History';
+      $export_rows_select_id = 'stockInRowsLimit';
       $export_default_rows   = 25;
       require __DIR__ . '/../partials/export_buttons.php';
       ?>
     </div>
   </div>
   <div class="si-card-body">
-    <?php if ($type_filter === 'fuel'): ?>
-      <!-- ── FUEL HISTORY ── -->
-      <?php if (empty($fuel_history)): ?>
-        <div class="empty-state">
-          <i class="fas fa-history"></i>
-          <strong>No fuel stock-in records found.</strong><br>
-          <span style="font-size:13px;">Try a different date range.</span>
-        </div>
-      <?php else: ?>
-        <div class="table-wrap">
-          <table class="hist-table" id="fuelStockInHistoryTable">
-            <thead>
-              <tr>
-                <th>Batch Ref</th><th>Date & Time</th><th>Delivery ID</th><th>Invoice / DR</th><th>Fuel Product</th>
-                <th>Expected (L)</th><th>Received (L)</th><th>Variance (L)</th>
-                <th>Condition</th><th>Level Before</th><th>Level After</th>
-                <th>Encoded By</th><th>Remarks</th>
-              </tr>
-            </thead>
-            <tbody>
-              <?php foreach ($fuel_history as $r):
-                $v = (float)$r['qty_variance'];
-                $vc = $v > 0 ? 'variance-pos' : ($v < 0 ? 'variance-neg' : 'variance-zero');
-                $cf = strtolower($r['condition_flag'] ?? 'good');
-              ?>
-              <tr>
-                <td><code style="font-size:11px;"><?= htmlspecialchars($r['batch_ref'] ?? '') ?></code></td>
-                <td style="white-space:nowrap;font-size:12px;"><?= $r['encoded_at'] ? date('M d, Y H:i', strtotime($r['encoded_at'])) : '' ?></td>
-                <td>#<?= (int)$r['delivery_id'] ?></td>
-                <td><?= htmlspecialchars($r['invoice_no'] ?? '&mdash;') ?></td>
-                <td><strong><?= htmlspecialchars($r['fuel_type'] ?? '') ?></strong></td>
-                <td style="text-align:right;"><?= number_format($r['qty_expected'], 2) ?> L</td>
-                <td style="text-align:right;font-weight:700;"><?= number_format($r['qty_received'], 2) ?> L</td>
-                <td style="text-align:right;" class="<?= $vc ?>"><?= ($v >= 0 ? '+' : '') . number_format($v, 2) ?> L</td>
-                <td><span class="badge badge-<?= $cf ?>"><?= htmlspecialchars($r['condition_flag'] ?? '') ?></span></td>
-                <td style="text-align:right;"><?= number_format($r['level_before'], 2) ?> L</td>
-                <td style="text-align:right;font-weight:700;color:#28a745;"><?= number_format($r['level_after'], 2) ?> L</td>
-                <td><?= htmlspecialchars($r['encoded_by_name'] ?? '') ?></td>
-                <td style="font-size:11px;color:#6c757d;max-width:140px;"><?= htmlspecialchars($r['remarks'] ?? '') ?></td>
-              </tr>
-              <?php endforeach; ?>
-            </tbody>
-          </table>
-        </div>
-        <div id="fuelStockInHistoryPagination" style="margin-top:10px;"></div>
-        <div style="margin-top:10px;font-size:12px;color:var(--gray);">
-          Showing <?= count($fuel_history) ?> record(s) from <?= htmlspecialchars($hist_date_from) ?> to <?= htmlspecialchars($hist_date_to) ?>.
-          <a href="staff_stock_in.php?tab=history&type=fuel&date_from=<?= date('Y-m-01') ?>&date_to=<?= date('Y-m-d') ?>" style="margin-left:8px;">This month</a>
-        </div>
-      <?php endif; ?>
+    <?php if (empty($history_rows)): ?>
+      <div class="empty-state">
+        <i class="fas fa-history"></i>
+        <strong>No stock-in records found.</strong><br>
+        <span style="font-size:13px;">Try a different date range or encode your first stock-in.</span>
+      </div>
     <?php else: ?>
-      <!-- ── MERCHANDISE HISTORY ── -->
-      <?php if (empty($history_rows)): ?>
-        <div class="empty-state">
-          <i class="fas fa-history"></i>
-          <strong>No stock-in records found.</strong><br>
-          <span style="font-size:13px;">Try a different date range.</span>
-        </div>
-      <?php else: ?>
-        <div class="table-wrap">
-          <table class="hist-table" id="merchStockInHistoryTable">
-            <thead>
-              <tr>
-                <th>Batch Ref</th><th>Date</th><th>PO Number</th><th>Product</th>
-                <th>SKU</th><th>Ordered</th><th>Received</th><th>Variance</th>
-                <th>Condition</th><th>Stock Before</th><th>Stock After</th>
-                <th>Encoded By</th><th>Remarks</th>
-              </tr>
-            </thead>
-            <tbody>
-              <?php foreach ($history_rows as $r):
-                $v = (int)$r['qty_variance'];
-                $vc = $v > 0 ? 'variance-pos' : ($v < 0 ? 'variance-neg' : 'variance-zero');
-                $cf = strtolower($r['condition_flag'] ?? 'good');
-              ?>
-              <tr>
-                <td><code style="font-size:11px;"><?= htmlspecialchars($r['batch_ref'] ?? '') ?></code></td>
-                <td style="white-space:nowrap;font-size:12px;"><?= $r['encoded_at'] ? date('M d, Y', strtotime($r['encoded_at'])) : '' ?></td>
-                <td><?= htmlspecialchars($r['po_number'] ?? '&mdash;') ?></td>
-                <td><strong><?= htmlspecialchars($r['product_name'] ?? '') ?></strong></td>
-                <td><code style="font-size:11px;"><?= htmlspecialchars($r['sku'] ?? '') ?></code></td>
-                <td style="text-align:center;"><?= (int)$r['qty_ordered'] ?></td>
-                <td style="text-align:center;font-weight:700;"><?= (int)$r['qty_received'] ?></td>
-                <td style="text-align:center;" class="<?= $vc ?>"><?= ($v >= 0 ? '+' : '') . $v ?></td>
-                <td><span class="badge badge-<?= $cf ?>"><?= htmlspecialchars($r['condition_flag'] ?? '') ?></span></td>
-                <td style="text-align:center;"><?= (int)$r['stock_before'] ?></td>
-                <td style="text-align:center;font-weight:700;color:#28a745;"><?= (int)$r['stock_after'] ?></td>
-                <td><?= htmlspecialchars($r['encoded_by_name'] ?? '') ?></td>
-                <td style="font-size:11px;color:#6c757d;max-width:140px;"><?= htmlspecialchars($r['remarks'] ?? '') ?></td>
-              </tr>
-              <?php endforeach; ?>
-            </tbody>
-          </table>
-        </div>
-        <div id="merchStockInHistoryPagination" style="margin-top:10px;"></div>
-        <div style="margin-top:10px;font-size:12px;color:var(--gray);">
-          Showing <?= count($history_rows) ?> record(s) from <?= htmlspecialchars($hist_date_from) ?> to <?= htmlspecialchars($hist_date_to) ?>.
-          <a href="staff_stock_in.php?tab=history&type=merch&date_from=<?= date('Y-m-01') ?>&date_to=<?= date('Y-m-d') ?>" style="margin-left:8px;">This month</a>
-        </div>
-      <?php endif; ?>
+      <div class="table-wrap">
+        <table class="hist-table" id="stockInHistoryTable">
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Batch Ref</th>
+              <th>Date & Time</th>
+              <th>Reference</th>
+              <th>Product</th>
+              <th>SKU / Category</th>
+              <th>Expected</th>
+              <th>Received</th>
+              <th>Variance</th>
+              <th>Condition</th>
+              <th>Stock Before</th>
+              <th>Stock After</th>
+              <th>Encoded By</th>
+              <th>Remarks</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($history_rows as $r):
+              $is_fuel = ($r['type'] === 'fuel');
+              $v = $is_fuel ? (float)$r['qty_variance'] : (int)$r['qty_variance'];
+              $vc = $v > 0 ? 'variance-pos' : ($v < 0 ? 'variance-neg' : 'variance-zero');
+              $cf = strtolower($r['condition_flag'] ?? 'good');
+              $type_badge = $is_fuel ? 'badge-pending' : 'badge-done';
+              $type_icon = $is_fuel ? 'fas fa-gas-pump' : 'fas fa-boxes';
+            ?>
+            <tr>
+              <td>
+                <span class="badge <?= $type_badge ?>" style="font-size:10px;">
+                  <i class="<?= $type_icon ?>"></i> <?= $is_fuel ? 'Fuel' : 'Merch' ?>
+                </span>
+              </td>
+              <td><code style="font-size:11px;"><?= htmlspecialchars($r['batch_ref'] ?? '') ?></code></td>
+              <td style="white-space:nowrap;font-size:12px;"><?= $r['encoded_at'] ? date('M d, Y H:i', strtotime($r['encoded_at'])) : '' ?></td>
+              <td><?= htmlspecialchars($r['reference'] ?? '—') ?></td>
+              <td><strong><?= htmlspecialchars($r['product'] ?? '') ?></strong></td>
+              <td>
+                <?php if ($is_fuel): ?>
+                  <span style="font-size:11px;color:#6c757d;">Fuel</span>
+                <?php else: ?>
+                  <?php if ($r['sku']): ?><code style="font-size:11px;"><?= htmlspecialchars($r['sku']) ?></code><br><?php endif; ?>
+                  <span style="font-size:11px;color:#6c757d;"><?= htmlspecialchars($r['category'] ?? '') ?></span>
+                <?php endif; ?>
+              </td>
+              <td>
+                <?php if ($is_fuel): ?>
+                  <?= number_format($r['qty_expected'], 2) ?> L
+                <?php else: ?>
+                  <?= (int)$r['qty_expected'] ?>
+                <?php endif; ?>
+              </td>
+              <td style="font-weight:700;">
+                <?php if ($is_fuel): ?>
+                  <?= number_format($r['qty_received'], 2) ?> L
+                <?php else: ?>
+                  <?= (int)$r['qty_received'] ?>
+                <?php endif; ?>
+              </td>
+              <td class="<?= $vc ?>">
+                <?php if ($is_fuel): ?>
+                  <?= ($v >= 0 ? '+' : '') . number_format($v, 2) ?> L
+                <?php else: ?>
+                  <?= ($v >= 0 ? '+' : '') . $v ?>
+                <?php endif; ?>
+              </td>
+              <td><span class="badge badge-<?= $cf ?>"><?= htmlspecialchars($r['condition_flag'] ?? '') ?></span></td>
+              <td style="font-weight:600;">
+                <?php if ($is_fuel): ?>
+                  <?= number_format($r['level_before'] ?? 0, 2) ?> L
+                <?php else: ?>
+                  <?= (int)($r['stock_before'] ?? 0) ?>
+                <?php endif; ?>
+              </td>
+              <td style="font-weight:700;color:#28a745;">
+                <?php if ($is_fuel): ?>
+                  <?= number_format($r['level_after'] ?? 0, 2) ?> L
+                <?php else: ?>
+                  <?= (int)($r['stock_after'] ?? 0) ?>
+                <?php endif; ?>
+              </td>
+              <td><?= htmlspecialchars($r['encoded_by_name'] ?? '') ?></td>
+              <td style="font-size:11px;color:#6c757d;max-width:140px;"><?= htmlspecialchars($r['remarks'] ?? '') ?></td>
+            </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+      <div id="stockInHistoryPagination" style="margin-top:10px;"></div>
+      <div style="margin-top:10px;font-size:12px;color:var(--gray);">
+        Showing <?= count($history_rows) ?> record(s) from <?= htmlspecialchars($hist_date_from) ?> to <?= htmlspecialchars($hist_date_to) ?>.
+        <a href="staff_stock_in.php?tab=history&date_from=<?= date('Y-m-01') ?>&date_to=<?= date('Y-m-d') ?>" style="margin-left:8px;">This month</a> |
+        <a href="staff_stock_in.php?tab=history&date_from=<?= date('Y-m-d', strtotime('-30 days')) ?>&date_to=<?= date('Y-m-d') ?>" style="margin-left:8px;">Last 30 days</a>
+      </div>
     <?php endif; ?>
   </div>
 </div>
@@ -1041,11 +860,8 @@ function showToast(msg, type) {
     if (type === 'ok') setTimeout(function() { el.style.display = 'none'; }, 5000);
 }
 document.addEventListener('DOMContentLoaded', function() {
-    if (document.getElementById('fuelStockInHistoryTable')) {
-        setupTablePagination('fuelStockInHistoryTable', 'fuelSiRowsLimit', 'fuelStockInHistoryPagination', 25);
-    }
-    if (document.getElementById('merchStockInHistoryTable')) {
-        setupTablePagination('merchStockInHistoryTable', 'merchSiRowsLimit', 'merchStockInHistoryPagination', 25);
+    if (document.getElementById('stockInHistoryTable')) {
+        setupTablePagination('stockInHistoryTable', 'stockInRowsLimit', 'stockInHistoryPagination', 25);
     }
 });
 </script>

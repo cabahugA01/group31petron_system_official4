@@ -20,6 +20,7 @@ try {
         id INT AUTO_INCREMENT PRIMARY KEY,
         delivery_type ENUM('fuel','merchandise') NOT NULL DEFAULT 'fuel',
         delivery_ref VARCHAR(100) NOT NULL DEFAULT '',
+        batch_id VARCHAR(100) DEFAULT NULL,
         supplier VARCHAR(200) NOT NULL DEFAULT '',
         product VARCHAR(200) NOT NULL DEFAULT '',
         quantity DECIMAL(12,3) NOT NULL DEFAULT 0,
@@ -38,6 +39,8 @@ try {
         INDEX idx_station (station_id), INDEX idx_status (status), INDEX idx_date (delivery_date)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 } catch (Exception $e) {}
+// Add batch_id column if missing (older installs)
+try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN batch_id VARCHAR(100) DEFAULT NULL"); } catch (Exception $e) {}
 
 $msg      = '';
 $msg_type = 'success';
@@ -66,21 +69,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'encod
         $msg      = implode(' ', $errors);
         $msg_type = 'error';
     } else {
-        // Auto-generate delivery_ref: DR-YYYYMMDD-XXXXX
-        $date_part   = date('Ymd');
-        $rand_part   = strtoupper(substr(uniqid(), -5));
+        // Auto-generate delivery_ref: DR-YYYYMMDD-XXXXX (unique per record)
+        $date_part    = date('Ymd');
+        $rand_part    = strtoupper(substr(uniqid(), -5));
         $delivery_ref = "DR-{$date_part}-{$rand_part}";
+
+        // ── Batch ID: same date + same type at same station → same batch ──────
+        // Fuel      → FBATCH-YYYYMMDD-XXX
+        // Merchandise → MBATCH-YYYYMMDD-XXX
+        $batch_prefix = ($delivery_type === 'fuel' ? 'FBATCH-' : 'MBATCH-') . date('Ymd', strtotime($delivery_date)) . '-';
+        $batch_table  = 'deliveries_oversight'; // manager encodes always go here
+
+        try {
+            $bs = $pdo->prepare("
+                SELECT batch_id
+                FROM deliveries_oversight
+                WHERE batch_id LIKE ?
+                  AND station_id = ?
+                  AND DATE(delivery_date) = ?
+                  AND delivery_type = ?
+                LIMIT 1
+            ");
+            $bs->execute([$batch_prefix . '%', $station_id, $delivery_date, $delivery_type]);
+            $existing_batch = $bs->fetchColumn();
+
+            if ($existing_batch) {
+                $batch_id = $existing_batch;
+            } else {
+                $bn = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(batch_id,'-',-1) AS UNSIGNED)) FROM deliveries_oversight WHERE batch_id LIKE ?");
+                $bn->execute([$batch_prefix . '%']);
+                $batch_id = $batch_prefix . str_pad((int)$bn->fetchColumn() + 1, 3, '0', STR_PAD_LEFT);
+            }
+        } catch (Exception $e) {
+            // Fallback: generate a unique batch ID
+            $batch_id = $batch_prefix . '001';
+        }
 
         try {
             $stmt = $pdo->prepare("
                 INSERT INTO deliveries_oversight
-                    (delivery_type, delivery_ref, supplier, product, quantity, unit,
+                    (delivery_type, delivery_ref, batch_id, supplier, product, quantity, unit,
                      delivery_date, dr_number, encoded_by, station_id, status,
                      admin_notes, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Validation', ?, NOW(), NOW())
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Validation', ?, NOW(), NOW())
             ");
             $stmt->execute([
-                $delivery_type, $delivery_ref, $supplier, $product,
+                $delivery_type, $delivery_ref, $batch_id, $supplier, $product,
                 $quantity, $unit, $delivery_date,
                 $dr_number ?: null,
                 $me['id'], $station_id,
@@ -90,19 +124,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'encod
             // Activity log (if function exists)
             if (function_exists('log_activity')) {
                 log_activity($pdo, $me['id'], 'Encode Delivery',
-                    "Ref: {$delivery_ref} | {$product} | {$quantity} {$unit} | Supplier: {$supplier} | By: {$me['name']}");
+                    "Ref: {$delivery_ref} | Batch: {$batch_id} | {$product} | {$quantity} {$unit} | Supplier: {$supplier} | By: {$me['name']}");
             }
 
             // ── Audit log ──
             try {
                 $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
                 $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
-                $detail = "Manager encoded delivery | Ref: {$delivery_ref} | Supplier: {$supplier} | Product: {$product} | Qty: {$quantity} {$unit} | Date: {$delivery_date}" . ($dr_number ? " | DR#: {$dr_number}" : '');
+                $detail = "Manager encoded delivery | Ref: {$delivery_ref} | Batch: {$batch_id} | Supplier: {$supplier} | Product: {$product} | Qty: {$quantity} {$unit} | Date: {$delivery_date}" . ($dr_number ? " | DR#: {$dr_number}" : '');
                 $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'transaction', 'Create', ?, 'deliveries', ?, 'Success', ?, ?, NOW())")
                     ->execute([$me['id'], $detail, null, $ip, $ua]);
             } catch (Exception $e) {}
 
-            $msg      = "New delivery record encoded by Manager. Status: Pending Validation. Reference: <strong>" . htmlspecialchars($delivery_ref) . "</strong>";
+            $typeLabel = $delivery_type === 'fuel' ? '⛽ Fuel' : '📦 Merchandise';
+            $msg      = "New {$typeLabel} delivery encoded. Status: Pending Validation. Reference: <strong>" . htmlspecialchars($delivery_ref) . "</strong> | Batch: <strong>" . htmlspecialchars($batch_id) . "</strong>";
             $msg_type = 'success';
         } catch (Exception $e) {
             $msg      = 'Database error: ' . $e->getMessage();

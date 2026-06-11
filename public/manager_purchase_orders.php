@@ -203,7 +203,7 @@ include __DIR__ . '/../partials/header.php';
     background: #fff;
     border-radius: 12px;
     box-shadow: 0 2px 12px rgba(0,0,0,0.07);
-    overflow-x: auto;
+    overflow-x: hidden;
 }
 
 .po-table {
@@ -216,7 +216,7 @@ include __DIR__ . '/../partials/header.php';
     background: #002F70;
     color: #fff;
     padding: 12px 14px;
-    text-align: left;
+    text-align: center;
     font-weight: 600;
     white-space: nowrap;
 }
@@ -227,13 +227,14 @@ include __DIR__ . '/../partials/header.php';
 }
 
 .po-table tbody tr:hover {
-    background: #f5f8ff;
+    background: #eff6ff;
 }
 
 .po-table tbody td {
     padding: 11px 14px;
     vertical-align: middle;
     color: #333;
+    text-align: center;
 }
 
 /* ── Type Badges ── */

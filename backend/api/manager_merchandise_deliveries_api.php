@@ -179,6 +179,7 @@ try {
                 SELECT
                     do2.id,
                     do2.delivery_ref,
+                    do2.batch_id,
                     do2.delivery_type,
                     do2.supplier        AS supplier_name,
                     do2.product         AS product_name,
@@ -729,6 +730,200 @@ try {
             } catch (Exception $e) {}
 
             echo json_encode(['success' => true, 'message' => 'Delivery adjusted and marked as Ready for Stock-In. Staff can now update the inventory.']);
+            break;
+
+        // ── POST: approve all pending items in a batch ────────────────────────
+        case 'approve_batch':
+            $input  = json_decode(file_get_contents('php://input'), true) ?? [];
+            $batch_id = trim($input['batch_id'] ?? '');
+            $reason = trim($input['reason'] ?? '');
+
+            if ($batch_id === '') { echo json_encode(['success' => false, 'message' => 'Batch ID required']); break; }
+
+            $pdo->beginTransaction();
+            try {
+                $stmt = $pdo->prepare("SELECT * FROM deliveries_oversight WHERE batch_id = ? AND station_id = ? AND status IN ('Pending Manager Approval', 'Pending Manager Confirmation', 'Pending Validation') FOR UPDATE");
+                $stmt->execute([$batch_id, $station_id]);
+                $dels = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                if (empty($dels)) {
+                    if ($pdo->inTransaction()) $pdo->rollBack();
+                    echo json_encode(['success' => false, 'message' => 'No pending deliveries found in this batch']);
+                    break;
+                }
+
+                $pdo->prepare("
+                    UPDATE deliveries_oversight
+                    SET status = 'Ready for Stock-In',
+                        manager_id = ?,
+                        manager_action_at = NOW(),
+                        manager_notes = ?,
+                        updated_at = NOW()
+                    WHERE batch_id = ? AND station_id = ? AND status IN ('Pending Manager Approval', 'Pending Manager Confirmation', 'Pending Validation')
+                ")->execute([$me['id'], $reason ?: null, $batch_id, $station_id]);
+
+                if ($pdo->inTransaction()) $pdo->commit();
+
+                foreach ($dels as $del) {
+                    try_log_merch($pdo, $me['id'], 'Approve Batch Item',
+                        "Manager approved batch item #{$del['id']} ref:{$del['delivery_ref']} ({$del['product']}) as part of Batch: {$batch_id}");
+                }
+
+                echo json_encode(['success' => true, 'message' => 'Batch successfully approved. Marked as Ready for Stock-In.']);
+            } catch (Exception $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                echo json_encode(['success' => false, 'message' => 'Server error: ' . $e->getMessage()]);
+            }
+            break;
+
+        // ── POST: reject/return all pending items in a batch ──────────────────
+        case 'reject_batch':
+            $input  = json_decode(file_get_contents('php://input'), true) ?? [];
+            $batch_id = trim($input['batch_id'] ?? '');
+            $reason = trim($input['reason'] ?? '');
+
+            if ($batch_id === '') { echo json_encode(['success' => false, 'message' => 'Batch ID required']); break; }
+            if ($reason === '') { echo json_encode(['success' => false, 'message' => 'Rejection reason is required']); break; }
+
+            $pdo->beginTransaction();
+            try {
+                $stmt = $pdo->prepare("SELECT * FROM deliveries_oversight WHERE batch_id = ? AND station_id = ? AND status IN ('Pending Manager Approval', 'Pending Manager Confirmation', 'Pending Validation') FOR UPDATE");
+                $stmt->execute([$batch_id, $station_id]);
+                $dels = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                if (empty($dels)) {
+                    if ($pdo->inTransaction()) $pdo->rollBack();
+                    echo json_encode(['success' => false, 'message' => 'No pending deliveries found in this batch']);
+                    break;
+                }
+
+                $pdo->prepare("
+                    UPDATE deliveries_oversight
+                    SET status = 'Discrepancy',
+                        manager_id = ?,
+                        manager_action_at = NOW(),
+                        manager_notes = ?,
+                        updated_at = NOW()
+                    WHERE batch_id = ? AND station_id = ? AND status IN ('Pending Manager Approval', 'Pending Manager Confirmation', 'Pending Validation')
+                ")->execute([$me['id'], $reason, $batch_id, $station_id]);
+
+                if ($pdo->inTransaction()) $pdo->commit();
+
+                foreach ($dels as $del) {
+                    try_log_merch($pdo, $me['id'], 'Reject Batch Item',
+                        "Manager rejected batch item #{$del['id']} ref:{$del['delivery_ref']} ({$del['product']}) as part of Batch: {$batch_id}");
+                }
+
+                echo json_encode(['success' => true, 'message' => 'Batch successfully returned to staff.']);
+            } catch (Exception $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                echo json_encode(['success' => false, 'message' => 'Server error: ' . $e->getMessage()]);
+            }
+            break;
+
+        // ── POST: flag discrepancy on all pending items in a batch ───────────
+        case 'flag_batch':
+            $input     = json_decode(file_get_contents('php://input'), true) ?? [];
+            $batch_id  = trim($input['batch_id'] ?? '');
+            $reason    = trim($input['reason'] ?? '');
+            $disc_type = trim($input['discrepancy_type'] ?? 'shortage');
+
+            if ($batch_id === '') { echo json_encode(['success' => false, 'message' => 'Batch ID required']); break; }
+            if ($reason === '') { echo json_encode(['success' => false, 'message' => 'Discrepancy reason is required']); break; }
+
+            // Ensure discrepancy columns exist
+            try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN discrepancy_type VARCHAR(50) DEFAULT NULL"); } catch (Exception $e) {}
+            try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN resolution_action VARCHAR(50) DEFAULT NULL"); } catch (Exception $e) {}
+            try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN resolved_at DATETIME DEFAULT NULL"); } catch (Exception $e) {}
+            try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN resolved_by INT DEFAULT NULL"); } catch (Exception $e) {}
+
+            $pdo->beginTransaction();
+            try {
+                $stmt = $pdo->prepare("SELECT * FROM deliveries_oversight WHERE batch_id = ? AND station_id = ? AND status IN ('Pending Manager Approval', 'Pending Manager Confirmation', 'Pending Validation') FOR UPDATE");
+                $stmt->execute([$batch_id, $station_id]);
+                $dels = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                if (empty($dels)) {
+                    if ($pdo->inTransaction()) $pdo->rollBack();
+                    echo json_encode(['success' => false, 'message' => 'No pending deliveries found in this batch']);
+                    break;
+                }
+
+                $pdo->prepare("
+                    UPDATE deliveries_oversight
+                    SET status = 'Pending Resolution',
+                        manager_id = ?,
+                        manager_action_at = NOW(),
+                        manager_notes = ?,
+                        discrepancy_type = ?,
+                        updated_at = NOW()
+                    WHERE batch_id = ? AND station_id = ? AND status IN ('Pending Manager Approval', 'Pending Manager Confirmation', 'Pending Validation')
+                ")->execute([$me['id'], $reason, $disc_type, $batch_id, $station_id]);
+
+                if ($pdo->inTransaction()) $pdo->commit();
+
+                foreach ($dels as $del) {
+                    try_log_merch($pdo, $me['id'], 'Flag Batch Item Discrepancy',
+                        "Manager flagged batch item #{$del['id']} ref:{$del['delivery_ref']} ({$del['product']}) as part of Batch: {$batch_id}");
+                }
+
+                echo json_encode(['success' => true, 'message' => 'Batch successfully flagged. Awaiting staff remarks.']);
+            } catch (Exception $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                echo json_encode(['success' => false, 'message' => 'Server error: ' . $e->getMessage()]);
+            }
+            break;
+
+        // ── POST: adjust batch items ──────────────────────────────────────────
+        case 'adjust_batch':
+            $input    = json_decode(file_get_contents('php://input'), true) ?? [];
+            $batch_id = trim($input['batch_id'] ?? '');
+            $adjusts  = $input['adjustments'] ?? []; // Array of {id: X, quantity: Y}
+            $reason   = trim($input['reason'] ?? '');
+
+            if ($batch_id === '') { echo json_encode(['success' => false, 'message' => 'Batch ID required']); break; }
+            if ($reason === '') { echo json_encode(['success' => false, 'message' => 'Adjustment reason is required']); break; }
+            if (empty($adjusts)) { echo json_encode(['success' => false, 'message' => 'No adjustments provided']); break; }
+
+            $pdo->beginTransaction();
+            try {
+                foreach ($adjusts as $adj) {
+                    $id  = (int)($adj['id'] ?? 0);
+                    $qty = (float)($adj['quantity'] ?? 0);
+
+                    if (!$id || $qty <= 0) {
+                        throw new Exception("Invalid adjustment details provided");
+                    }
+
+                    $stmt = $pdo->prepare("SELECT * FROM deliveries_oversight WHERE id = ? AND batch_id = ? AND station_id = ? FOR UPDATE");
+                    $stmt->execute([$id, $batch_id, $station_id]);
+                    $del = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                    if (!$del) {
+                        throw new Exception("Delivery item #{$id} not found in this batch");
+                    }
+
+                    $pdo->prepare("
+                        UPDATE deliveries_oversight 
+                        SET quantity = ?, 
+                            status = 'Adjusted', 
+                            manager_id = ?, 
+                            manager_action_at = NOW(), 
+                            manager_notes = ?, 
+                            updated_at = NOW() 
+                        WHERE id = ?
+                    ")->execute([$qty, $me['id'], $reason, $id]);
+
+                    try_log_merch($pdo, $me['id'], 'Adjust Batch Item',
+                        "Adjusted item #{$id} in Batch {$batch_id} to qty {$qty}");
+                }
+
+                $pdo->commit();
+                echo json_encode(['success' => true, 'message' => 'Batch successfully adjusted and marked as Ready for Stock-In.']);
+            } catch (Exception $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                echo json_encode(['success' => false, 'message' => 'Adjustment failed: ' . $e->getMessage()]);
+            }
             break;
 
         // ── GET: export_excel ───────────────────────────────────────

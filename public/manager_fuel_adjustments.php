@@ -635,8 +635,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             header('Location: manager_fuel_adjustments.php'); exit;
 
 
-
-
         /* -- APPROVE DAILY LOG -- */
         case 'approve_daily_log':
             $txn_id = $_POST['txn_id'] ?? '';
@@ -1452,12 +1450,12 @@ function adjustColor($hex,$pct) {
 /* Anti-scroll / Compress Tables */
 .data-table {
     width: 100% !important;
-    table-layout:fixed; word-wrap:break-word; !important;
+    table-layout: fixed !important;
 }
 .data-table th, .data-table td {
     white-space: normal !important;
     word-break: break-word !important;
-    padding: 8px 6px !important;
+    padding: 10px 12px !important;
     font-size: .82rem !important;
 }
 .jo-act-btn {
@@ -1668,8 +1666,7 @@ $adj_type_labels = [
         </button>
     </div>
 
-    // Unused helper removed to keep UI focused on Deliveries and Transactions adjustments
-
+    
     <!-- TAB 1: Fuel Deliveries (Delivery Adjustments) -->
     <div id="adj-deliveries" class="adj-tab-panel" style="display:block;">
         <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
@@ -1677,22 +1674,18 @@ $adj_type_labels = [
             <form method="post" action="manager_fuel_adjustments.php" id="delivery_adj_form">
                 <input type="hidden" name="action" value="bulk_adjust_deliveries">
                 
-                <!-- Table -->
                 <div style="overflow-x:auto;padding:14px 16px 0;">
-                    <div style="font-size:.78rem;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:8px;letter-spacing:.5px;">
-                        <i class="fas fa-list-ul" style="color:#002F70;margin-right:5px;"></i> Fuel Delivery Adjustments - All 17 Fuel Types
-                    </div>
                     <table class="data-table" style="margin-bottom:0;font-size:.82rem;">
                         <thead>
                             <tr>
-                                <th style="background:#002F70;color:#fff;width:5%;">Sel.</th>
-                                <th style="background:#002F70;color:#fff;">Tank / Fuel Type</th>
-                                <th style="background:#002F70;color:#fff;">Supplier</th>
-                                <th style="background:#002F70;color:#fff;">Invoice/DR No.</th>
-                                <th style="background:#002F70;color:#fff;text-align:right;">DR Quantity (L)</th>
-                                <th style="background:#002F70;color:#fff;text-align:right;">Actual Quantity (L)</th>
-                                <th style="background:#002F70;color:#fff;text-align:right;">Variance</th>
-                                <th style="background:#002F70;color:#fff;">Status</th>
+                                <th style="background:#002F70;color:#fff;width:5%;text-align:center;">Sel.</th>
+                                <th style="background:#002F70;color:#fff;width:20%;">Tank / Fuel Type</th>
+                                <th style="background:#002F70;color:#fff;width:18%;">Supplier</th>
+                                <th style="background:#002F70;color:#fff;width:12%;">Invoice/DR No.</th>
+                                <th style="background:#002F70;color:#fff;width:11%;text-align:right;">DR Quantity (L)</th>
+                                <th style="background:#002F70;color:#fff;width:13%;text-align:right;">Actual Quantity (L)</th>
+                                <th style="background:#002F70;color:#fff;width:11%;text-align:right;">Variance</th>
+                                <th style="background:#002F70;color:#fff;width:10%;text-align:center;">Status</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1756,10 +1749,10 @@ $adj_type_labels = [
                                            value="<?php echo number_format($dr_qty, 2, '.', ''); ?>"
                                            onchange="calculateDeliveryVariance(<?php echo $idx; ?>, <?php echo $dr_qty; ?>)"
                                            onfocus="selectDeliveryRow(<?php echo $idx; ?>, <?php echo $dr_qty; ?>)"
-                                           style="width:120px;padding:4px 7px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;text-align:right;font-weight:700;">
+                                           style="width:100%;max-width:120px;box-sizing:border-box;padding:5px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;text-align:right;font-weight:700;">
                                     <?php else: ?>
                                     <input type="number" disabled placeholder="No delivery"
-                                           style="width:120px;padding:4px 7px;border:1px solid #e2e8f0;border-radius:5px;font-size:.82rem;text-align:right;background:#f8fafc;opacity:0.5;">
+                                           style="width:100%;max-width:120px;box-sizing:border-box;padding:5px 8px;border:1px solid #e2e8f0;border-radius:5px;font-size:.82rem;text-align:right;background:#f8fafc;opacity:0.5;">
                                     <?php endif; ?>
                                 </td>
                                 <td style="text-align:right;" id="variance_deliv_<?php echo $idx; ?>">
@@ -1813,24 +1806,20 @@ $adj_type_labels = [
             <form method="post" action="manager_fuel_adjustments.php" id="transaction_adj_form">
                 <input type="hidden" name="action" value="bulk_adjust_transactions">
                 
-                <!-- Table -->
                 <div style="overflow-x:auto;padding:14px 16px 0;">
-                    <div style="font-size:.78rem;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:8px;letter-spacing:.5px;">
-                        <i class="fas fa-list-ul" style="color:#002F70;margin-right:5px;"></i> Fuel Transaction (Meter Reading) Adjustments - All 17 Fuel Types
-                    </div>
                     <table class="data-table" style="margin-bottom:0;font-size:.82rem;">
                         <thead>
                             <tr>
-                                <th style="background:#002F70;color:#fff;width:5%;">Sel.</th>
-                                <th style="background:#002F70;color:#fff;">Tank / Fuel Type</th>
-                                <th style="background:#002F70;color:#fff;">Transaction ID</th>
-                                <th style="background:#002F70;color:#fff;text-align:right;">Beginning</th>
-                                <th style="background:#002F70;color:#fff;text-align:right;">Ending</th>
-                                <th style="background:#002F70;color:#fff;text-align:right;">Calibration</th>
-                                <th style="background:#002F70;color:#fff;text-align:right;">Liters (Computed)</th>
-                                <th style="background:#002F70;color:#fff;text-align:right;">Actual Liters</th>
-                                <th style="background:#002F70;color:#fff;text-align:right;">Variance</th>
-                                <th style="background:#002F70;color:#fff;">Status</th>
+                                <th style="background:#002F70;color:#fff;width:5%;text-align:center;">Sel.</th>
+                                <th style="background:#002F70;color:#fff;width:16%;">Tank / Fuel Type</th>
+                                <th style="background:#002F70;color:#fff;width:11%;">Transaction ID</th>
+                                <th style="background:#002F70;color:#fff;width:9%;text-align:right;">Beginning</th>
+                                <th style="background:#002F70;color:#fff;width:9%;text-align:right;">Ending</th>
+                                <th style="background:#002F70;color:#fff;width:9%;text-align:right;">Calibration</th>
+                                <th style="background:#002F70;color:#fff;width:10%;text-align:right;">Liters (Computed)</th>
+                                <th style="background:#002F70;color:#fff;width:12%;text-align:right;">Actual Liters</th>
+                                <th style="background:#002F70;color:#fff;width:10%;text-align:right;">Variance</th>
+                                <th style="background:#002F70;color:#fff;width:10%;text-align:center;">Status</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1902,10 +1891,10 @@ $adj_type_labels = [
                                            value="<?php echo number_format($computed_liters, 2, '.', ''); ?>"
                                            onchange="calculateTransactionVariance(<?php echo $idx; ?>, <?php echo $computed_liters; ?>)"
                                            onfocus="selectTransactionRow(<?php echo $idx; ?>, <?php echo $computed_liters; ?>)"
-                                           style="width:100px;padding:4px 7px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;text-align:right;font-weight:700;">
+                                           style="width:100%;max-width:120px;box-sizing:border-box;padding:5px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;text-align:right;font-weight:700;">
                                     <?php else: ?>
                                     <input type="number" disabled placeholder="No transaction"
-                                           style="width:100px;padding:4px 7px;border:1px solid #e2e8f0;border-radius:5px;font-size:.82rem;text-align:right;background:#f8fafc;opacity:0.5;">
+                                           style="width:100%;max-width:120px;box-sizing:border-box;padding:5px 8px;border:1px solid #e2e8f0;border-radius:5px;font-size:.82rem;text-align:right;background:#f8fafc;opacity:0.5;">
                                     <?php endif; ?>
                                 </td>
                                 <td style="text-align:right;" id="variance_tx_<?php echo $idx; ?>">
@@ -1952,6 +1941,7 @@ $adj_type_labels = [
         </div>
     </div><!-- End adj-transactions -->
 
+
     <!-- TAB 3: Adjustment History -->
     <div id="adj-history" class="adj-tab-panel" style="display:none;">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
@@ -1989,14 +1979,14 @@ $adj_type_labels = [
         <div style="overflow-x:auto;">
         <table class="data-table" style="font-size:.82rem;">
             <thead><tr>
-                <th style="min-width:50px;">ID</th>
-                <th style="min-width:80px;">Date</th>
-                <th style="min-width:130px;">Tank / Fuel Type</th>
-                <th style="min-width:180px;">Adjustment Type</th>
-                <th style="min-width:80px;text-align:right;">Liters</th>
-                <th style="min-width:200px;">Reason</th>
-                <th style="min-width:110px;">Manager</th>
-                <th style="min-width:120px;">Timestamp</th>
+                <th style="width:6%;">ID</th>
+                <th style="width:10%;">Date</th>
+                <th style="width:13%;">Tank / Fuel Type</th>
+                <th style="width:15%;">Adjustment Type</th>
+                <th style="width:10%;text-align:right;">Liters</th>
+                <th style="width:24%;">Reason</th>
+                <th style="width:12%;">Manager</th>
+                <th style="width:10%;">Timestamp</th>
             </tr></thead>
             <tbody>
             <?php foreach ($all_adjustments as $adj):

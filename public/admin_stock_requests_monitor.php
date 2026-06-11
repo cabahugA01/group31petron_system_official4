@@ -61,9 +61,9 @@ include __DIR__ . '/../partials/header.php';
 .toolbar input:focus,.toolbar select:focus{border-color:var(--blue);outline:none;}
 .table-wrap{overflow-x:hidden;}
 table.reqs{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed;}
-table.reqs th{background:#002F6C;color:#fff;padding:10px 11px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;}
-table.reqs td{padding:9px 11px;border-bottom:1px solid #f1f5f9;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-table.reqs tbody tr:hover td{background:#f0f4ff;}
+table.reqs th{background:#002F70;color:#fff;padding:10px 11px;text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;}
+table.reqs td{padding:9px 11px;border-bottom:1px solid #f1f5f9;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;}
+table.reqs tbody tr:hover td{background:#eff6ff;}
 .badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;}
 .badge-pending{background:#fff3cd;color:#856404;}
 .badge-forwarded{background:#dbeafe;color:#1e40af;}

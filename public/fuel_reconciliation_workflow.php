@@ -901,7 +901,7 @@ function getStepIcon($step, $current_step) {
 
                     <div class="form-group">
                         <label class="form-label">Manager Password (for verification)</label>
-                        <input type="password_hash" name="manager_password" class="form-input" required
+                        <input type="password" name="manager_password" class="form-input" required
                                placeholder="Enter your manager password">
                     </div>
 

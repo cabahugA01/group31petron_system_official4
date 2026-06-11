@@ -42,17 +42,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
                         
                         // Update password
-                        $stmt = $pdo->prepare("UPDATE users SET password = ? WHERE user_id = ?");
+                        $stmt = $pdo->prepare("UPDATE users SET password_hash = ?, updated_at = NOW() WHERE user_id = ?");
                         $result = $stmt->execute([$hashed_password, $user_id]);
-                        
-                        // Set password expiry and must_change flag if columns exist
-                        try {
-                            $expires = (new DateTime("+90 days"))->format('Y-m-d H:i:s');
-                            $pdo->prepare("UPDATE users SET password_expires_at = ? WHERE user_id = ?")
-                                ->execute([$expires, $user_id]);
-                        } catch(Exception $e){
-                            // Columns don't exist, continue without them
-                        }
                         
                         if ($result) {
                             log_user_action('Password Reset', "Reset password for user '$userInfo[username]'");

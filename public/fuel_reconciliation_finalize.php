@@ -339,7 +339,7 @@ include __DIR__ . '/../partials/header.php';
                 
                 <div>
                   <label>Admin Password (for report lock) *</label>
-                  <input type="password_hash" name="admin_password" placeholder="Enter your password to finalize" required>
+                  <input type="password" name="admin_password" placeholder="Enter your password to finalize" required>
                   <small style="color: #94a3b8; margin-top: 4px; display: block;">Required to lock report and prevent changes</small>
                 </div>
                 

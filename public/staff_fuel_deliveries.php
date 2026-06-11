@@ -46,11 +46,12 @@ $FT_STYLE = [
     'Kerosene'     => ['color'=>'#b45309', 'icon'=>'fas fa-fire'],
 ];
 
-// ── Auto batch ID (Same date = Same batch) ─────────────
+// ── Auto batch ID (Same date = Same batch for FUEL) ─────
+// Prefix: FBATCH- to distinguish from merchandise (MBATCH-)
 function genBatch(PDO $pdo, string $d, int $station_id): string {
-    $pfx = 'BATCH-'.date('Ymd', strtotime($d)).'-';
+    $pfx = 'FBATCH-'.date('Ymd', strtotime($d)).'-';
     
-    // Check if a batch already exists for this date at this station
+    // Check if a fuel batch already exists for this date at this station
     $s = $pdo->prepare("
         SELECT batch_id 
         FROM fuel_deliveries 
@@ -63,11 +64,11 @@ function genBatch(PDO $pdo, string $d, int $station_id): string {
     $existing = $s->fetchColumn();
     
     if ($existing) {
-        // Reuse existing batch for this date
+        // Reuse existing fuel batch for this date
         return $existing;
     }
     
-    // Create new batch for this date
+    // Create new fuel batch for this date
     $s = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(batch_id,'-',-1) AS UNSIGNED)) FROM fuel_deliveries WHERE batch_id LIKE ?");
     $s->execute([$pfx.'%']);
     return $pfx.str_pad((int)$s->fetchColumn()+1,3,'0',STR_PAD_LEFT);
@@ -469,10 +470,10 @@ function resetForm() {
     deselectPO();
 }
 
-// Preview batch ID when date changes
+// Preview batch ID when date changes (Fuel prefix: FBATCH-)
 document.getElementById('delDate').addEventListener('change', function() {
     const d = this.value.replace(/-/g,'');
-    if (d) document.getElementById('batchPrev').value = 'BATCH-' + d + '-***';
+    if (d) document.getElementById('batchPrev').value = 'FBATCH-' + d + '-***';
 });
 </script>
 

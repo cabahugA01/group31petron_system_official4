@@ -279,52 +279,74 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
             break;
 
         case 'job_orders':
-            // Export Job Orders
-            fputcsv($out, ['JOB ORDERS']);
-            fputcsv($out, ['JO Ref', 'Customer', 'Vehicle Plate', 'Service Type', 'Staff Assignment', 'Mechanic', 'Status', 'Labor Cost', 'Parts Cost', 'Total Amount', 'Created At']);
+            // Export Job Orders — updated columns
+            fputcsv($out, ['JOB ORDERS REPORT']);
+            fputcsv($out, ['JO Ref','Customer','Contact','Ref ID','Service Type','Parts / Materials','Qty','Unit Price','Labor Fee','Total Service Amount','Payment Mode','Shift','Status','Encoder','Remarks','Date']);
             try {
-                $s = $pdo->prepare("SELECT 
-                    COALESCE(jo.job_order_id, jo.jo_number, CONCAT('JO-', jo.id)) AS jo_ref,
-                    COALESCE(c.name, jo.customer_name, 'Walk-in') AS customer,
-                    COALESCE(jo.vehicle_plate, '—') AS vehicle_plate,
-                    COALESCE(jo.service_type, jo.service_description, '—') AS service_type,
-                    COALESCE(staff.name, '—') AS assigned_staff,
-                    COALESCE(m.full_name, m.name, '—') AS mechanic,
-                    CASE 
-                        WHEN jo.status IN ('Pending', 'In Progress') THEN 'Pending'
-                        WHEN jo.status = 'Completed' THEN 'Completed'
-                        WHEN jo.validation_status = 'Approved' THEN 'Approved'
-                        WHEN jo.validation_status = 'Rejected' THEN 'Rejected'
-                        WHEN jo.validation_status = 'Adjusted' THEN 'Adjusted'
-                        ELSE jo.status
-                    END as display_status,
-                    COALESCE(jo.labor_cost, 0) AS labor_cost,
-                    COALESCE(jo.parts_cost, 0) AS parts_cost,
-                    COALESCE(jo.total_amount, 0) AS total_amount,
-                    jo.created_at
-                    FROM job_orders jo 
-                    LEFT JOIN mechanics m ON m.id = jo.assigned_mechanic_id 
-                    LEFT JOIN customers c ON c.id = jo.customer_id
-                    LEFT JOIN users staff ON staff.user_id = jo.user_id
-                    WHERE jo.station_id = ? AND DATE(jo.created_at) BETWEEN ? AND ? 
+                $s = $pdo->prepare("
+                    SELECT
+                        jo.id,
+                        COALESCE(jo.job_order_id, jo.job_order_number, CONCAT('JO-', jo.id)) AS jo_ref,
+                        COALESCE(jo.customer_name, c.name, 'Walk-in')                         AS customer,
+                        c.contact_number                                                      AS contact_number,
+                        c.id                                                                  AS customer_ref_id,
+                        COALESCE(jo.service_type, jo.service_description, '—')                AS service_type,
+                        COALESCE(staff.name, '—')                                              AS assigned_staff,
+                        COALESCE(jo.status, '—')                                               AS jo_status,
+                        COALESCE(jo.payment_method, '—')                                       AS payment_method,
+                        COALESCE(jo.actual_labor_cost, jo.estimated_labor_cost, 0)             AS labor_cost,
+                        COALESCE(jo.total_cost, jo.estimated_cost, 0)                          AS total_cost,
+                        COALESCE(jo.notes, '')                                                 AS remarks,
+                        jo.created_at
+                    FROM job_orders jo
+                    LEFT JOIN customers c     ON c.id = jo.customer_id
+                    LEFT JOIN users staff     ON staff.user_id = jo.created_by
+                    WHERE jo.station_id = ? AND DATE(jo.created_at) BETWEEN ? AND ?
                     ORDER BY jo.created_at DESC");
                 $s->execute([$station_id, $date_start, $date_end]);
                 $jo_export_data = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
-                
+
+                // Fetch parts per JO
+                $has_jop_exp = !empty($pdo->query("SHOW TABLES LIKE 'job_order_parts'")->fetchAll());
                 foreach ($jo_export_data as $row) {
-                    fputcsv($out, [
-                        $row['jo_ref'],
-                        $row['customer'],
-                        $row['vehicle_plate'],
-                        $row['service_type'],
-                        $row['assigned_staff'],
-                        $row['mechanic'],
-                        $row['display_status'],
-                        number_format($row['labor_cost'], 2),
-                        number_format($row['parts_cost'], 2),
-                        number_format($row['total_amount'], 2),
-                        date('M j, Y', strtotime($row['created_at']))
-                    ]);
+                    $h = (int)date('G', strtotime($row['created_at']));
+                    $shift_label = ($h >= 6 && $h < 14) ? 'Shift 1' : 'Shift 2';
+                    $pm = strtolower(trim($row['payment_method'] ?? ''));
+                    if (in_array($pm, ['digital','gcash','maya','card','e-wallet','online','paymaya'])) $pm_lbl = 'Digital';
+                    elseif (in_array($pm, ['credit','suki','utang','account receivable','accounts receivable','ar'])) $pm_lbl = 'Suki/Credit';
+                    else $pm_lbl = 'Cash';
+                    $parts_exp = [];
+                    if ($has_jop_exp) {
+                        try {
+                            $ps = $pdo->prepare("SELECT jop.quantity_used, jop.unit_cost, COALESCE(p.product_name, p.name, 'Unknown') AS product_name FROM job_order_parts jop LEFT JOIN products p ON jop.product_id = p.id WHERE jop.job_order_id = ?");
+                            $ps->execute([$row['id']]);
+                            $parts_exp = $ps->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                        } catch (Exception $e) {}
+                    }
+                    if (empty($parts_exp)) {
+                        fputcsv($out, [$row['jo_ref'],$row['customer'],$row['contact_number']??'',$row['customer_ref_id']??'',$row['service_type'],'—','—','—',number_format($row['labor_cost'],2),number_format($row['total_cost'],2),$pm_lbl,$shift_label,$row['jo_status'],$row['assigned_staff'],$row['remarks'],date('M j, Y',strtotime($row['created_at']))]);
+                    } else {
+                        foreach ($parts_exp as $pi => $part) {
+                            fputcsv($out, [
+                                $pi === 0 ? $row['jo_ref'] : '',
+                                $pi === 0 ? $row['customer'] : '',
+                                $pi === 0 ? ($row['contact_number'] ?? '') : '',
+                                $pi === 0 ? ($row['customer_ref_id'] ?? '') : '',
+                                $pi === 0 ? $row['service_type'] : '',
+                                $part['product_name'],
+                                $part['quantity_used'] . ' pc',
+                                number_format((float)($part['unit_cost'] ?? 0), 2),
+                                $pi === 0 ? number_format($row['labor_cost'], 2) : '',
+                                $pi === 0 ? number_format($row['total_cost'], 2) : '',
+                                $pi === 0 ? $pm_lbl : '',
+                                $pi === 0 ? $shift_label : '',
+                                $pi === 0 ? $row['jo_status'] : '',
+                                $pi === 0 ? $row['assigned_staff'] : '',
+                                $pi === 0 ? $row['remarks'] : '',
+                                $pi === 0 ? date('M j, Y', strtotime($row['created_at'])) : '',
+                            ]);
+                        }
+                    }
                 }
             } catch (Exception $e) {}
             break;
@@ -887,12 +909,16 @@ if ($section === 'sales') {
 // DATA QUERIES — SECTION: job_orders
 // ============================================================
 $jo_rows = [];
+$jo_summary = ['ytd' => 0.0, 'monthly' => 0.0, 'weekly' => 0.0, 'total_records' => 0];
 if ($section === 'job_orders') {
     try {
         $s = $pdo->prepare("
             SELECT
+                jo.id,
                 COALESCE(jo.job_order_id, jo.job_order_number, CONCAT('JO-', jo.id)) AS jo_ref,
                 COALESCE(jo.customer_name, c.name, 'Walk-in')                         AS customer,
+                c.contact_number                                                      AS contact_number,
+                c.id                                                                  AS customer_ref_id,
                 COALESCE(jo.vehicle_plate, '—')                                        AS vehicle_plate,
                 COALESCE(jo.vehicle_type, '—')                                         AS vehicle_type,
                 COALESCE(jo.service_type, jo.service_description, '—')                AS service_type,
@@ -910,7 +936,8 @@ if ($section === 'job_orders') {
                 jo.created_at,
                 jo.validated_at,
                 COALESCE(validator.name, '—')                                          AS validated_by_name,
-                jo.adjustment_reason
+                jo.adjustment_reason,
+                COALESCE(jo.notes, '')                                                 AS remarks
             FROM job_orders jo
             LEFT JOIN customers c       ON c.id    = jo.customer_id
             LEFT JOIN users staff       ON staff.user_id = jo.created_by
@@ -922,6 +949,55 @@ if ($section === 'job_orders') {
         ");
         $s->execute([$station_id, $date_start, $date_end]);
         $jo_rows = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        // Fetch parts per job order
+        $has_jop = !empty($pdo->query("SHOW TABLES LIKE 'job_order_parts'")->fetchAll());
+        foreach ($jo_rows as &$job) {
+            $job['parts_used'] = [];
+            if ($has_jop) {
+                try {
+                    $ps = $pdo->prepare("
+                        SELECT jop.quantity_used,
+                               jop.unit_cost,
+                               COALESCE(p.product_name, p.name, 'Unknown Part') AS product_name
+                        FROM job_order_parts jop
+                        LEFT JOIN inventory_products p ON jop.product_id = p.id
+                        WHERE jop.job_order_id = ?
+                    ");
+                    $ps->execute([$job['id']]);
+                    $job['parts_used'] = $ps->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                    
+                    if (empty($job['parts_used'])) {
+                        $ps2 = $pdo->prepare("
+                            SELECT jop.quantity_used,
+                                   jop.unit_cost,
+                                   COALESCE(p.name, 'Unknown Part') AS product_name
+                            FROM job_order_parts jop
+                            LEFT JOIN products p ON jop.product_id = p.id
+                            WHERE jop.job_order_id = ?
+                        ");
+                        $ps2->execute([$job['id']]);
+                        $job['parts_used'] = $ps2->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                    }
+                } catch (Exception $e) {}
+            }
+        }
+        unset($job);
+    } catch (Exception $e) {}
+
+    // Job order summary aggregates
+    try {
+        $agg = $pdo->prepare("
+            SELECT
+                COALESCE(SUM(CASE WHEN YEAR(created_at) = YEAR(CURDATE()) THEN (COALESCE(total_cost, estimated_cost, 0)) ELSE 0 END), 0)                                                AS ytd,
+                COALESCE(SUM(CASE WHEN YEAR(created_at) = YEAR(CURDATE()) AND MONTH(created_at) = MONTH(CURDATE()) THEN (COALESCE(total_cost, estimated_cost, 0)) ELSE 0 END), 0)    AS monthly,
+                COALESCE(SUM(CASE WHEN created_at >= DATE_SUB(CURDATE(), INTERVAL 6 DAY) THEN (COALESCE(total_cost, estimated_cost, 0)) ELSE 0 END), 0)                                 AS weekly,
+                COUNT(*) AS total_records
+            FROM job_orders
+            WHERE station_id = ?
+        ");
+        $agg->execute([$station_id]);
+        $jo_summary = $agg->fetch(PDO::FETCH_ASSOC) ?: $jo_summary;
     } catch (Exception $e) {}
 }
 
@@ -2096,9 +2172,32 @@ require_once __DIR__ . '/../partials/header.php';
         arsort($staff_perf);
     ?>
 
-    <!-- ── MAIN JOB ORDERS TABLE ─────────────────────────────── -->
+    <!-- ── KPI Summary Cards (matches Fuel Deliveries design) ── -->
     <?php if ($sub_tab === 'jo_list'): ?>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:20px;">
+        <div style="background:#fff;border:1px solid #e2e8f0;border-top:4px solid #16a34a;border-radius:12px;padding:16px 18px;box-shadow:0 1px 4px rgba(0,0,0,.05);">
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;"><i class="fas fa-calendar" style="color:#16a34a;margin-right:4px;"></i> Year-to-Date</div>
+            <div style="font-size:1.6rem;font-weight:800;color:#15803d;">&#8369;<?= number_format((float)$jo_summary['ytd'], 2) ?></div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:4px;">Total revenue <?= date('Y') ?></div>
+        </div>
+        <div style="background:#fff;border:1px solid #e2e8f0;border-top:4px solid #0891b2;border-radius:12px;padding:16px 18px;box-shadow:0 1px 4px rgba(0,0,0,.05);">
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;"><i class="fas fa-calendar-alt" style="color:#0891b2;margin-right:4px;"></i> This Month</div>
+            <div style="font-size:1.6rem;font-weight:800;color:#0e7490;">&#8369;<?= number_format((float)$jo_summary['monthly'], 2) ?></div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:4px;"><?= date('F Y') ?></div>
+        </div>
+        <div style="background:#fff;border:1px solid #e2e8f0;border-top:4px solid #7c3aed;border-radius:12px;padding:16px 18px;box-shadow:0 1px 4px rgba(0,0,0,.05);">
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;"><i class="fas fa-calendar-week" style="color:#7c3aed;margin-right:4px;"></i> This Week</div>
+            <div style="font-size:1.6rem;font-weight:800;color:#6d28d9;">&#8369;<?= number_format((float)$jo_summary['weekly'], 2) ?></div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:4px;">Last 7 days</div>
+        </div>
+        <div style="background:#fff;border:1px solid #e2e8f0;border-top:4px solid #f59e0b;border-radius:12px;padding:16px 18px;box-shadow:0 1px 4px rgba(0,0,0,.05);">
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;"><i class="fas fa-list" style="color:#f59e0b;margin-right:4px;"></i> Total Records</div>
+            <div style="font-size:1.6rem;font-weight:800;color:#b45309;"><?= number_format((int)$jo_summary['total_records']) ?></div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:4px;">All-time job orders</div>
+        </div>
+    </div>
     <div class="rpt-card">
+
         <div class="rpt-card-head">
             <h3><i class="fa-solid fa-wrench"></i> Job Orders Report
                 <span class="badge-count"><?= count($jo_rows) ?></span>
@@ -2112,75 +2211,130 @@ require_once __DIR__ . '/../partials/header.php';
             <table class="mgr-table">
                 <thead><tr>
                     <th>JO Reference</th>
-                    <th>Customer</th>
-                    <th>Vehicle</th>
+                    <th>Customer Info</th>
                     <th>Service Type</th>
-                    <th>Staff / Mechanic</th>
-                    <th>Validation Status</th>
-                    <th>JO Status</th>
-                    <th>Labor Cost</th>
-                    <th>Parts Cost</th>
-                    <th>Total Cost</th>
-                    <th>Amount Paid</th>
-                    <th>Payment</th>
-                    <th>Date</th>
+                    <th>Parts / Materials Used</th>
+                    <th>Qty</th>
+                    <th>Unit Price</th>
+                    <th>Labor Fee</th>
+                    <th>Total Service Amount</th>
+                    <th>Payment Mode</th>
+                    <th>Shift</th>
+                    <th>Status</th>
+                    <th>Encoder</th>
+                    <th>Remarks</th>
                 </tr></thead>
                 <tbody>
                 <?php foreach ($jo_rows as $row):
+                    $jo_hour  = (int)date('G', strtotime($row['created_at']));
+                    $jo_shift = ($jo_hour >= 6 && $jo_hour < 14) ? 'Shift 1' : 'Shift 2';
+                    $pm_raw = strtolower(trim($row['payment_method'] ?? ''));
+                    if (in_array($pm_raw, ['digital','gcash','maya','card','e-wallet','online','paymaya'])) $pm_display = 'Digital';
+                    elseif (in_array($pm_raw, ['credit','suki','utang','account receivable','accounts receivable','ar'])) $pm_display = 'Suki/Credit';
+                    elseif ($pm_raw === '' || $pm_raw === '—') $pm_display = 'Cash';
+                    else $pm_display = htmlspecialchars($row['payment_method']);
+                    $parts = $row['parts_used'] ?? [];
+                    $row_count = max(1, count($parts));
                     $vs = $row['validation_status'];
                     $st = $row['jo_status'];
-                    if (in_array($vs, ['Approved'])) $bucket = 'Approved';
-                    elseif (in_array($vs, ['Adjusted'])) $bucket = 'Adjusted';
-                    elseif (in_array($vs, ['Rejected'])) $bucket = 'Rejected';
-                    elseif (in_array($st, ['Completed','Verified','finalized'])) $bucket = 'Completed';
-                    else $bucket = 'Pending';
+                    $display_status = $st ?: $vs ?: 'Pending';
+                    $encoder = $row['assigned_staff'] !== '—' ? $row['assigned_staff'] : ($row['mechanic'] !== '—' ? $row['mechanic'] : '—');
+                    $cust_info = htmlspecialchars($row['customer'] ?? 'Walk-in');
+                    if (!empty($row['contact_number'])) $cust_info .= '<br><small style="color:#64748b;font-size:10px;">' . htmlspecialchars($row['contact_number']) . '</small>';
+                    if (!empty($row['customer_ref_id'])) $cust_info .= '<small style="color:#94a3b8;font-size:10px;"> [Ref: ' . htmlspecialchars($row['customer_ref_id']) . ']</small>';
+                    for ($pi = 0; $pi < $row_count; $pi++):
+                        $part = $parts[$pi] ?? null;
                 ?>
                 <tr>
-                    <td><strong><?= htmlspecialchars($row['jo_ref']) ?></strong></td>
-                    <td><?= htmlspecialchars($row['customer']) ?></td>
-                    <td>
-                        <span><?= htmlspecialchars($row['vehicle_plate']) ?></span>
-                        <?php if ($row['vehicle_type'] !== '—'): ?>
-                        <small style="display:block;color:#667085;font-size:11px;"><?= htmlspecialchars($row['vehicle_type']) ?></small>
-                        <?php endif; ?>
-                    </td>
-                    <td><?= htmlspecialchars($row['service_type']) ?></td>
-                    <td>
-                        <?php if ($row['assigned_staff'] !== '—'): ?>
-                        <span style="display:block;font-size:12px;"><i class="fa-solid fa-user" style="color:#667085;margin-right:4px;"></i><?= htmlspecialchars($row['assigned_staff']) ?></span>
-                        <?php endif; ?>
-                        <?php if ($row['mechanic'] !== '—'): ?>
-                        <span style="display:block;font-size:11px;color:#667085;"><i class="fa-solid fa-wrench" style="margin-right:4px;"></i><?= htmlspecialchars($row['mechanic']) ?></span>
-                        <?php endif; ?>
-                    </td>
-                    <td><span class="badge <?= status_badge_class($bucket) ?>"><?= htmlspecialchars($vs) ?></span></td>
-                    <td><span class="badge <?= status_badge_class($st ?: 'Pending') ?>"><?= htmlspecialchars($st ?: 'Pending') ?></span></td>
-                    <td>&#8369;<?= number_format((float)$row['labor_cost'], 2) ?></td>
-                    <td>&#8369;<?= number_format((float)$row['parts_cost'], 2) ?></td>
-                    <td><strong>&#8369;<?= number_format((float)$row['total_cost'], 2) ?></strong></td>
-                    <td style="color:<?= (float)$row['amount_paid'] >= (float)$row['total_cost'] && (float)$row['total_cost'] > 0 ? '#16a34a' : '#dc3545' ?>;">
-                        &#8369;<?= number_format((float)$row['amount_paid'], 2) ?>
-                    </td>
-                    <td><?= htmlspecialchars($row['payment_method']) ?></td>
-                    <td style="white-space:nowrap;"><?= date('M j, Y', strtotime($row['created_at'])) ?></td>
+                    <?php if ($pi === 0): ?>
+                    <td rowspan="<?= $row_count ?>" style="vertical-align:top;"><strong><?= htmlspecialchars($row['jo_ref']) ?></strong></td>
+                    <td rowspan="<?= $row_count ?>" style="vertical-align:top;min-width:130px;"><?= $cust_info ?></td>
+                    <td rowspan="<?= $row_count ?>" style="vertical-align:top;"><?= htmlspecialchars($row['service_type']) ?></td>
+                    <?php endif; ?>
+                    <td><?= $part ? htmlspecialchars($part['product_name']) : '<span style="color:#94a3b8;">—</span>' ?></td>
+                    <td style="text-align:center;"><?= $part ? htmlspecialchars($part['quantity_used']) . ' pc' : '—' ?></td>
+                    <td><?= $part ? '&#8369;' . number_format((float)($part['unit_cost'] ?? 0), 2) : '—' ?></td>
+                    <?php if ($pi === 0): ?>
+                    <td rowspan="<?= $row_count ?>" style="vertical-align:top;">&#8369;<?= number_format((float)$row['labor_cost'], 2) ?></td>
+                    <td rowspan="<?= $row_count ?>" style="vertical-align:top;"><strong>&#8369;<?= number_format((float)$row['total_cost'], 2) ?></strong></td>
+                    <td rowspan="<?= $row_count ?>" style="vertical-align:top;"><?= $pm_display ?></td>
+                    <td rowspan="<?= $row_count ?>" style="vertical-align:top;white-space:nowrap;"><?= $jo_shift ?><br><small style="color:#94a3b8;font-size:10px;"><?= date('h:i A', strtotime($row['created_at'])) ?></small></td>
+                    <td rowspan="<?= $row_count ?>" style="vertical-align:top;"><span class="badge <?= status_badge_class($display_status) ?>"><?= htmlspecialchars($display_status) ?></span></td>
+                    <td rowspan="<?= $row_count ?>" style="vertical-align:top;font-size:12px;"><?= htmlspecialchars($encoder) ?></td>
+                    <td rowspan="<?= $row_count ?>" style="vertical-align:top;font-size:11px;color:#64748b;max-width:130px;overflow:hidden;text-overflow:ellipsis;" title="<?= htmlspecialchars($row['remarks'] ?? '') ?>"><?= htmlspecialchars($row['remarks'] ?? '') ?: '—' ?></td>
+                    <?php endif; ?>
                 </tr>
+                <?php endfor; ?>
                 <?php endforeach; ?>
                 </tbody>
                 <tfoot>
                 <tr style="font-weight:700;background:#f0f4f8;border-top:2px solid #EAEAEA;">
-                    <td colspan="7">TOTAL (<?= count($jo_rows) ?> Job Orders)</td>
+                    <td colspan="6" style="text-align:right;padding-right:10px;">TOTAL (<?= count($jo_rows) ?> Job Orders)</td>
                     <td>&#8369;<?= number_format($grand_labor, 2) ?></td>
-                    <td>&#8369;<?= number_format($grand_parts, 2) ?></td>
                     <td>&#8369;<?= number_format($grand_total, 2) ?></td>
-                    <td>&#8369;<?= number_format($grand_paid,  2) ?></td>
-                    <td colspan="2"></td>
+                    <td colspan="5"></td>
                 </tr>
                 </tfoot>
             </table>
         </div>
         <?php endif; ?>
     </div>
-    <?php endif; ?>
+
+    <?php
+    // Shift & Overall Daily Summaries
+    if (!empty($jo_rows)):
+        $jo_s1 = ['count'=>0,'total'=>0.0,'cash'=>0.0,'digital'=>0.0,'credit'=>0.0];
+        $jo_s2 = ['count'=>0,'total'=>0.0,'cash'=>0.0,'digital'=>0.0,'credit'=>0.0];
+        foreach ($jo_rows as $r) {
+            $h = (int)date('G', strtotime($r['created_at']));
+            $is_s1 = ($h >= 6 && $h < 14);
+            $pm = strtolower(trim($r['payment_method'] ?? ''));
+            if (in_array($pm, ['digital','gcash','maya','card','e-wallet','online','paymaya'])) $pt = 'digital';
+            elseif (in_array($pm, ['credit','suki','utang','account receivable','accounts receivable','ar'])) $pt = 'credit';
+            else $pt = 'cash';
+            $amt = (float)$r['total_cost'];
+            if ($is_s1) { $jo_s1['count']++; $jo_s1['total'] += $amt; $jo_s1[$pt] += $amt; }
+            else         { $jo_s2['count']++; $jo_s2['total'] += $amt; $jo_s2[$pt] += $amt; }
+        }
+        $jo_gc = $jo_s1['cash']    + $jo_s2['cash'];
+        $jo_gd = $jo_s1['digital'] + $jo_s2['digital'];
+        $jo_gr = $jo_s1['credit']  + $jo_s2['credit'];
+        $jo_gt = $jo_s1['total']   + $jo_s2['total'];
+    ?>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin:20px 0;">
+        <div style="background:#fff;border:1px solid #e2e8f0;border-top:4px solid #0891b2;border-radius:12px;padding:18px 20px;box-shadow:0 1px 4px rgba(0,0,0,.05);">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;"><i class="fas fa-sun" style="color:#0891b2;"></i><span style="font-size:13px;font-weight:700;color:#0e7490;">Shift 1 Summary</span><span style="font-size:11px;color:#94a3b8;">(6AM–2PM)</span></div>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                <tr><td style="color:#64748b;padding:3px 0;">Total Services</td><td style="text-align:right;font-weight:700;"><?= $jo_s1['count'] ?></td></tr>
+                <tr><td style="color:#64748b;padding:3px 0;">Total Amount</td><td style="text-align:right;font-weight:700;color:#0e7490;">&#8369;<?= number_format($jo_s1['total'],2) ?></td></tr>
+                <tr><td style="color:#64748b;padding:3px 0;">Cash</td><td style="text-align:right;">&#8369;<?= number_format($jo_s1['cash'],2) ?></td></tr>
+                <tr><td style="color:#64748b;padding:3px 0;">Digital</td><td style="text-align:right;">&#8369;<?= number_format($jo_s1['digital'],2) ?></td></tr>
+                <tr style="border-top:1px dashed #e2e8f0;"><td style="color:#64748b;padding:5px 0 2px;">Suki/Credit</td><td style="text-align:right;">&#8369;<?= number_format($jo_s1['credit'],2) ?></td></tr>
+            </table>
+        </div>
+        <div style="background:#fff;border:1px solid #e2e8f0;border-top:4px solid #7c3aed;border-radius:12px;padding:18px 20px;box-shadow:0 1px 4px rgba(0,0,0,.05);">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;"><i class="fas fa-moon" style="color:#7c3aed;"></i><span style="font-size:13px;font-weight:700;color:#6d28d9;">Shift 2 Summary</span><span style="font-size:11px;color:#94a3b8;">(2PM–12MN)</span></div>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                <tr><td style="color:#64748b;padding:3px 0;">Total Services</td><td style="text-align:right;font-weight:700;"><?= $jo_s2['count'] ?></td></tr>
+                <tr><td style="color:#64748b;padding:3px 0;">Total Amount</td><td style="text-align:right;font-weight:700;color:#6d28d9;">&#8369;<?= number_format($jo_s2['total'],2) ?></td></tr>
+                <tr><td style="color:#64748b;padding:3px 0;">Cash</td><td style="text-align:right;">&#8369;<?= number_format($jo_s2['cash'],2) ?></td></tr>
+                <tr><td style="color:#64748b;padding:3px 0;">Digital</td><td style="text-align:right;">&#8369;<?= number_format($jo_s2['digital'],2) ?></td></tr>
+                <tr style="border-top:1px dashed #e2e8f0;"><td style="color:#64748b;padding:5px 0 2px;">Suki/Credit</td><td style="text-align:right;">&#8369;<?= number_format($jo_s2['credit'],2) ?></td></tr>
+            </table>
+        </div>
+    </div>
+    <div style="background:#fff;border:1px solid #e2e8f0;border-top:4px solid #16a34a;border-radius:12px;padding:20px 24px;box-shadow:0 1px 4px rgba(0,0,0,.05);margin-bottom:24px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;"><i class="fas fa-chart-bar" style="color:#16a34a;"></i><span style="font-size:14px;font-weight:700;color:#15803d;">Overall Daily Summary</span></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;">
+            <div style="text-align:center;padding:12px;background:#f0fdf4;border-radius:8px;"><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:5px;">Total Job Orders</div><div style="font-size:1.5rem;font-weight:800;color:#15803d;"><?= count($jo_rows) ?></div></div>
+            <div style="text-align:center;padding:12px;background:#f0fdf4;border-radius:8px;"><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:5px;">Grand Total</div><div style="font-size:1.3rem;font-weight:800;color:#15803d;">&#8369;<?= number_format($jo_gt,2) ?></div></div>
+            <div style="text-align:center;padding:12px;background:#eff6ff;border-radius:8px;"><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:5px;">Total Cash</div><div style="font-size:1.3rem;font-weight:800;color:#1d4ed8;">&#8369;<?= number_format($jo_gc,2) ?></div></div>
+            <div style="text-align:center;padding:12px;background:#f5f3ff;border-radius:8px;"><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:5px;">Total Digital</div><div style="font-size:1.3rem;font-weight:800;color:#6d28d9;">&#8369;<?= number_format($jo_gd,2) ?></div></div>
+            <div style="text-align:center;padding:12px;background:#fff7ed;border-radius:8px;"><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:5px;">Total Credit/AR</div><div style="font-size:1.3rem;font-weight:800;color:#b45309;">&#8369;<?= number_format($jo_gr,2) ?></div></div>
+        </div>
+    </div>
+    <?php endif; // end shift summaries ?>
+    <?php endif; // end jo_list ?>
 
     <!-- Status Breakdown -->
     <?php if ($sub_tab === 'status_breakdown'): ?>

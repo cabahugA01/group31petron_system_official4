@@ -72,10 +72,9 @@ $master_menu = [
 
     // Reports - Staff, Manager, Admin
     ['id'=>'reports','label'=>'Reports','ico'=>'fas fa-chart-bar','href'=>'staff_reports.php','permissions'=>['view_personal_reports', 'view_operational_reports', 'view_financial_reports', 'view_all_reports'],'station_specific'=>true,'sub_items'=>[
-        ['id'=>'report_daily_sales',      'label'=>'Sales Reports',                    'href'=>'staff_reports.php?section=sales',       'permissions'=>['view_personal_reports','view_operational_reports']],
+        ['id'=>'report_daily_sales',      'label'=>'Sales Reports',                    'href'=>'staff_fuel_sales_summary.php',       'permissions'=>['view_personal_reports','view_operational_reports']],
         ['id'=>'report_jo_tracker',       'label'=>'Job Orders Reports',               'href'=>'staff_reports.php?section=job_orders',  'permissions'=>['view_personal_reports','view_operational_reports']],
-        ['id'=>'report_deliveries',       'label'=>'Deliveries Reports',               'href'=>'staff_reports.php?section=deliveries',  'permissions'=>['view_personal_reports','view_operational_reports']],
-        ['id'=>'report_meter',            'label'=>'Meter Reading Reports',            'href'=>'staff_reports.php?section=meter',       'permissions'=>['view_personal_reports','view_operational_reports']],
+        ['id'=>'report_deliveries',       'label'=>'Deliveries Reports',               'href'=>'staff_deliveries_report.php',           'permissions'=>['view_personal_reports','view_operational_reports']],
         ['id'=>'report_payments',         'label'=>'Payments Reports',                 'href'=>'staff_reports.php?section=payments',    'permissions'=>['view_personal_reports','view_operational_reports']],
         ['id'=>'report_customers',        'label'=>'Customer Reports',                 'href'=>'staff_reports.php?section=customers',   'permissions'=>['view_personal_reports','view_operational_reports']],
         ['id'=>'report_activity',         'label'=>'Activity Reports',                 'href'=>'staff_reports.php?section=activity',    'permissions'=>['view_personal_reports']],

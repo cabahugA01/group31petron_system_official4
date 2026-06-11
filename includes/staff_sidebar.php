@@ -122,22 +122,22 @@ function getStaffSidebar($current_page = 'dashboard') {
                 'report_sales' => [
                     'icon'  => 'fas fa-dollar-sign',
                     'title' => 'Sales Reports',
-                    'url'   => 'staff_reports.php?view=sales_reports&sub=daily_summary',
+                    'url'   => 'staff_fuel_sales_summary.php',
+                ],
+                'report_fuel_sales_summary' => [
+                    'icon'  => 'fas fa-gas-pump',
+                    'title' => 'Fuel Sales Summary',
+                    'url'   => 'staff_fuel_sales_summary.php',
                 ],
                 'report_job_orders' => [
                     'icon'  => 'fas fa-wrench',
                     'title' => 'Job Orders Reports',
-                    'url'   => 'staff_reports.php?view=job_orders_reports&sub=job_tracker',
+                    'url'   => 'staff_job_orders_report.php',
                 ],
                 'report_deliveries' => [
                     'icon'  => 'fas fa-truck',
                     'title' => 'Deliveries Reports',
-                    'url'   => 'staff_reports.php?view=deliveries_reports&sub=fuel_deliveries',
-                ],
-                'report_meter' => [
-                    'icon'  => 'fas fa-tachometer-alt',
-                    'title' => 'Meter Reading Reports',
-                    'url'   => 'staff_reports.php?view=meter_readings',
+                    'url'   => 'staff_deliveries_report.php',
                 ],
                 'report_payments' => [
                     'icon'  => 'fas fa-credit-card',

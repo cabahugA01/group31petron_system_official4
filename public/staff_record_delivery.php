@@ -182,26 +182,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
         $msg = 'At least one item must be added.'; $msg_type = 'error';
     } else {
         try {
-            // Generate batch ID based on delivery date - ONE batch per date
-            $batch_prefix = 'BATCH-' . date('Ymd', strtotime($delivery_date)) . '-';
+            // Generate batch ID based on delivery date - ONE merchandise batch per date
+            // Prefix: MBATCH- (Merchandise) — fuel uses FBATCH- — never overlap
+            $batch_prefix = 'MBATCH-' . date('Ymd', strtotime($delivery_date)) . '-';
             
-            // Check if a batch already exists for this date at this station
+            // Check if a merchandise batch already exists for this date at this station
             $stmt = $pdo->prepare("
                 SELECT batch_id 
                 FROM deliveries_oversight 
                 WHERE batch_id LIKE ? 
                   AND station_id = ? 
-                  AND DATE(delivery_date) = ? 
+                  AND DATE(delivery_date) = ?
+                  AND delivery_type = 'merchandise'
                 LIMIT 1
             ");
             $stmt->execute([$batch_prefix . '%', $station_id, $delivery_date]);
             $existing_batch = $stmt->fetchColumn();
             
             if ($existing_batch) {
-                // Use existing batch ID for this date
+                // Reuse existing merchandise batch for this date
                 $batch_id = $existing_batch;
             } else {
-                // Create new batch ID for this date
+                // Create new merchandise batch ID for this date
                 $stmt = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(batch_id, '-', -1) AS UNSIGNED)) FROM deliveries_oversight WHERE batch_id LIKE ?");
                 $stmt->execute([$batch_prefix . '%']);
                 $max_batch_num = (int)$stmt->fetchColumn();

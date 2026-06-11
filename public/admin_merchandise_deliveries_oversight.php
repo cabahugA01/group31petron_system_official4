@@ -27,9 +27,10 @@ try {
 } catch (Exception $e) {}
 
 /* ══════════════════════════════════════════════════════════
-   ADD PAYMENT COLUMNS TO deliveries_oversight TABLE
+   ADD REQUIRED COLUMNS TO deliveries_oversight TABLE
 ══════════════════════════════════════════════════════════ */
-$payment_columns = [
+$required_columns = [
+    "ALTER TABLE deliveries_oversight ADD COLUMN batch_id VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE deliveries_oversight ADD COLUMN unit_price DECIMAL(12,2) DEFAULT 0",
     "ALTER TABLE deliveries_oversight ADD COLUMN expected_quantity DECIMAL(12,3) DEFAULT 0",
     "ALTER TABLE deliveries_oversight ADD COLUMN actual_quantity DECIMAL(12,3) DEFAULT 0",
@@ -37,15 +38,19 @@ $payment_columns = [
     "ALTER TABLE deliveries_oversight ADD COLUMN expected_amount DECIMAL(12,2) DEFAULT 0",
     "ALTER TABLE deliveries_oversight ADD COLUMN payable_amount DECIMAL(12,2) DEFAULT 0",
     "ALTER TABLE deliveries_oversight ADD COLUMN discrepancy_type ENUM('','Partial','Damaged','Rejected','Mixed') DEFAULT ''",
+    "ALTER TABLE deliveries_oversight ADD COLUMN category VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE deliveries_oversight ADD COLUMN manager_id INT DEFAULT NULL",
+    "ALTER TABLE deliveries_oversight ADD COLUMN manager_action_at DATETIME DEFAULT NULL",
+    "ALTER TABLE deliveries_oversight ADD COLUMN manager_notes TEXT DEFAULT NULL",
 ];
-foreach ($payment_columns as $col_sql) {
+foreach ($required_columns as $col_sql) {
     try { $pdo->exec($col_sql); } catch (Exception $e) {}
 }
 
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
-:root{--blue:#002F70;--red:#dc3545;--green:#28a745;--orange:#fd7e14;--gray:#6c757d;--light:#f8f9fa;--purple:#6f42c1;--yellow:#ffc107;}
+:root{--blue:#002F70;--red:#dc3545;--green:#28a745;--orange:#fd7e14;--gray:#6c757d;--light:#f8f9fa;}
 .page-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;flex-wrap:wrap;gap:12px;}
 .page-head h1{margin:0;font-size:1.6rem;color:var(--blue);display:flex;align-items:center;gap:10px;}
 .page-subtitle{font-size:13px;color:var(--gray);margin:4px 0 0;}
@@ -71,61 +76,25 @@ include __DIR__ . '/../partials/header.php';
 .btn-sm{padding:5px 10px;font-size:12px;}
 .btn:disabled{opacity:.5;cursor:not-allowed;}
 /* ── Table ── */
-.table-wrap{overflow-x:auto;}
-table.dt{width:100%;border-collapse:collapse;font-size:13px;}
-table.dt th{background:var(--light);padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray);border-bottom:2px solid #dee2e6;white-space:nowrap;text-transform:uppercase;letter-spacing:.4px;}
-table.dt td{padding:10px 12px;border-bottom:1px solid #f0f0f0;vertical-align:middle;}
-table.dt tr:hover td{background:#f8f9fa;}
-/* ── Action Buttons ── */
-.action-btn { font-size:11px; padding:5px 8px; border:none; border-radius:4px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:4px; transition:all .15s; font-weight:600; min-width:90px; text-decoration:none; }
-.action-btn:hover { filter:brightness(.9); transform:translateY(-1px); }
-.btn-view    { background:#17a2b8; color:#fff; }
-.btn-process { background:#002F70; color:#fff; }
-.btn-partial { background:#fd7e14; color:#fff; }
-.btn-damaged { background:#dc3545; color:#fff; }
-.btn-reject  { background:#6c757d; color:#fff; }
-.btn-print   { background:#6f42c1; color:#fff; }
+.table-wrap{width:100%;overflow:visible;}
+table.dt{width:100%;table-layout:auto;border-collapse:collapse;font-size:11px;}
+table.dt th{background:var(--blue);color:#fff;padding:10px 8px;text-align:left;font-size:10px;font-weight:700;border:none;white-space:normal;text-transform:uppercase;letter-spacing:.3px;line-height:1.3;vertical-align:top;}
+table.dt td{padding:8px;border-bottom:1px solid #e9ecef;vertical-align:top;background:#fff;white-space:normal;word-wrap:break-word;line-height:1.5;}
+table.dt tr:hover td{background:#eff6ff;}
+/* Right-aligned columns */
+table.dt th:nth-child(7), table.dt td:nth-child(7),
+table.dt th:nth-child(8), table.dt td:nth-child(8),
+table.dt th:nth-child(9), table.dt td:nth-child(9),
+table.dt th:nth-child(10), table.dt td:nth-child(10){text-align:right;}
 /* ── Badges ── */
-.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;white-space:nowrap;}
+.badge{display:inline-block;padding:4px 10px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap;}
 .badge-expected{background:#e0f2fe;color:#0369a1;}
 .badge-pending{background:#fff3cd;color:#856404;}
-.badge-validated{background:#d1fae5;color:#065f46;}
 .badge-approved{background:#d1fae5;color:#065f46;}
 .badge-flagged{background:#fee2e2;color:#991b1b;}
-.badge-partial{background:#fff3cd;color:#f59e0b;border:1px solid #fbbf24;}
-.badge-damaged{background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;}
-.badge-rejected{background:#f3f4f6;color:#6b7280;border:1px solid #d1d5db;}
-.badge-fuel{background:#dbeafe;color:#1e40af;}
-.badge-merch{background:#ede9fe;color:#5b21b6;}
-/* ── Payment Info ── */
-.payment-info{background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:12px;margin:10px 0;font-size:13px;}
-.payment-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #d1f5e0;}
-.payment-row:last-child{border-bottom:none;font-weight:700;font-size:14px;color:var(--green);margin-top:5px;padding-top:10px;}
-.payment-label{color:#6c757d;}
-.payment-value{font-weight:600;color:#222;}
-/* ── Discrepancy Alert ── */
-.discrepancy-alert{background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:12px;margin:10px 0;font-size:13px;color:#856404;}
-.discrepancy-alert strong{color:#d97706;}
-/* ── Modals ── */
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9000;align-items:center;justify-content:center;}
-.modal-overlay.show{display:flex;}
-.modal-box{background:#fff;border-radius:12px;padding:28px;width:600px;max-width:96vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2);}
-.modal-box.wide{width:750px;}
-.modal-box h3{margin:0 0 16px;font-size:16px;color:var(--blue);display:flex;align-items:center;gap:8px;}
-.modal-box label{font-size:12px;font-weight:600;color:var(--gray);display:block;margin-bottom:5px;}
-.modal-box input,.modal-box select,.modal-box textarea{width:100%;padding:9px 11px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;box-sizing:border-box;}
-.modal-box input:focus,.modal-box select:focus,.modal-box textarea:focus{outline:none;border-color:var(--blue);}
-.modal-box textarea{resize:vertical;}
-.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:18px;}
-.form-group{margin-bottom:12px;}
-.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
-/* ── Detail Grid ── */
-.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
-.detail-item{background:var(--light);border-radius:6px;padding:10px 12px;}
-.detail-item .di-label{font-size:11px;color:var(--gray);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;}
-.detail-item .di-val{font-size:13px;color:#222;font-weight:500;}
-.detail-item.highlight{background:#f0fdf4;border:1px solid #86efac;}
-.detail-item.alert{background:#fff5f5;border:1px solid #fecaca;}
+.badge-partial{background:#fff3cd;color:#f59e0b;}
+.badge-damaged{background:#fee2e2;color:#dc2626;}
+.badge-rejected{background:#f3f4f6;color:#6b7280;}
 /* ── Empty State ── */
 .empty-state{text-align:center;padding:48px 20px;color:var(--gray);}
 .empty-state i{font-size:40px;margin-bottom:12px;opacity:.4;display:block;}
@@ -137,39 +106,19 @@ table.dt tr:hover td{background:#f8f9fa;}
 @keyframes tUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
 @media(max-width:768px){
   .filter-bar{flex-direction:column;}
-  .detail-grid{grid-template-columns:1fr;}
-  .form-row{grid-template-columns:1fr;}
 }
 </style>
 
 <div class="page-head">
   <div>
-    <h1><i class="fas fa-truck"></i> Deliveries Oversight</h1>
+    <h1><i class="fas fa-truck"></i> Merchandise Deliveries Oversight</h1>
     <div class="page-subtitle">
-      Review and validate delivery records, expected shipments, and flagged discrepancies.
+      Review manager-validated merchandise delivery records with quantities, variances, and adjustments. View-only monitoring.
     </div>
   </div>
   <div class="header-actions">
     <button class="btn btn-outline" onclick="loadDeliveries()"><i class="fas fa-sync-alt"></i> Refresh</button>
   </div>
-</div>
-
-<!-- ── Compliance Alerts Panel ─────────────────────────────────────────────── -->
-<div class="card" id="compliancePanel" style="display:none;">
-  <div class="card-header" style="background:#fff5f5;border-bottom-color:#fecaca;">
-    <div class="card-title" style="color:#991b1b;"><i class="fas fa-triangle-exclamation"></i> Compliance Alerts</div>
-    <span id="alertCount" style="font-size:12px;color:#991b1b;font-weight:700;"></span>
-  </div>
-  <div class="card-body" style="padding:12px 20px;" id="alertsList"></div>
-</div>
-
-<!-- ── Merchandise PO Stock-In Tracker ──────────────────────────────────────── -->
-<div class="card" id="stockInPanel" style="display:none;">
-  <div class="card-header" style="background:#f0f4ff;border-bottom-color:#c5d3f0;">
-    <div class="card-title" style="color:#002F70;"><i class="fas fa-dolly"></i> Merchandise POs Awaiting Stock-In</div>
-    <span id="stockInCount" style="font-size:12px;color:#002F70;font-weight:700;"></span>
-  </div>
-  <div class="card-body" style="padding:12px 20px;" id="stockInList"></div>
 </div>
 
 <!-- Deliveries Table -->
@@ -196,18 +145,10 @@ table.dt tr:hover td{background:#f8f9fa;}
         <label>Status</label>
         <select id="fStatus">
           <option value="">All (Manager-Validated)</option>
-          <option value="approved">Approved / Confirmed</option>
-          <option value="flagged">Flagged / Discrepancy</option>
+          <option value="approved">Approved / Confirmed Only</option>
+          <option value="flagged">Flagged / Discrepancy Only</option>
           <option value="expected">Expected Delivery</option>
           <option value="pending">Pending Admin Oversight</option>
-        </select>
-      </div>
-      <div class="fg">
-        <label>Type</label>
-        <select id="fType">
-          <option value="">All Types</option>
-          <option value="fuel">Fuel</option>
-          <option value="merchandise">Merchandise</option>
         </select>
       </div>
       <div class="fg">
@@ -228,13 +169,24 @@ table.dt tr:hover td{background:#f8f9fa;}
       <table class="dt">
         <thead>
           <tr>
-            <th>Delivery ID</th><th>Type</th><th>DR Number</th><th>Supplier</th>
-            <th>Product</th><th>Quantity</th><th>Payable Amount</th><th>Date</th>
-            <th>Status</th><th>Actions</th>
+            <th>Batch ID</th>
+            <th>Delivery ID</th>
+            <th>Supplier</th>
+            <th>DR No.</th>
+            <th>Item Name</th>
+            <th>Category</th>
+            <th>DR Qty</th>
+            <th>Encoded Qty</th>
+            <th>Actual Qty</th>
+            <th>Variance</th>
+            <th>Reason</th>
+            <th>Manager</th>
+            <th>Timestamp</th>
+            <th>Status</th>
           </tr>
         </thead>
         <tbody id="deliveriesBody">
-          <tr><td colspan="10"><div class="empty-state"><i class="fas fa-spinner fa-spin"></i> Loading…</div></td></tr>
+          <tr><td colspan="14"><div class="empty-state"><i class="fas fa-spinner fa-spin"></i> Loading…</div></td></tr>
         </tbody>
       </table>
     </div>
@@ -242,169 +194,13 @@ table.dt tr:hover td{background:#f8f9fa;}
   </div>
 </div>
 
-<!-- ── Detail Modal ──────────────────────────────────────────────────────────── -->
-<div class="modal-overlay" id="detailModal">
-  <div class="modal-box wide">
-    <h3><i class="fas fa-info-circle"></i> Delivery Details</h3>
-    <div id="detailContent">
-      <div style="text-align:center;padding:20px;color:var(--gray);"><i class="fas fa-spinner fa-spin"></i> Loading…</div>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-outline" onclick="closeModal('detailModal')">Close</button>
-      <button class="btn btn-success" id="detailValidateBtn" onclick="validateFromDetail()" style="display:none;"><i class="fas fa-check"></i> Validate</button>
-      <button class="btn btn-danger" id="detailFlagBtn" onclick="flagFromDetail()" style="display:none;"><i class="fas fa-flag"></i> Flag</button>
-      <button class="btn btn-primary" id="detailFinalizeBtn" onclick="finalizeFromDetail()" style="display:none;"><i class="fas fa-print"></i> Finalize &amp; Print</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── Validate Modal ────────────────────────────────────────────────────────── -->
-<div class="modal-overlay" id="validateModal">
-  <div class="modal-box">
-    <h3><i class="fas fa-check-circle" style="color:var(--green);"></i> Validate Delivery</h3>
-    <p style="font-size:13px;color:#555;margin:0 0 12px;">Confirm this delivery record is accurate and matches the physical Delivery Receipt.</p>
-    <div id="validateDetail" style="background:var(--light);border-radius:6px;padding:12px;font-size:13px;margin-bottom:14px;"></div>
-    <div class="form-group">
-      <label>Notes (optional)</label>
-      <textarea id="validateNotes" rows="3" placeholder="e.g. Verified against DR, quantities match."></textarea>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-outline" onclick="closeModal('validateModal')">Cancel</button>
-      <button class="btn btn-success" onclick="submitValidate()"><i class="fas fa-check"></i> Validate</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── Flag Modal ────────────────────────────────────────────────────────────── -->
-<div class="modal-overlay" id="flagModal">
-  <div class="modal-box">
-    <h3><i class="fas fa-flag" style="color:var(--red);"></i> Flag Delivery</h3>
-    <p style="font-size:13px;color:#555;margin:0 0 12px;">Flag this delivery if there is a discrepancy or issue that needs attention.</p>
-    <div id="flagDetail" style="background:#fff5f5;border-radius:6px;padding:12px;font-size:13px;margin-bottom:14px;"></div>
-    <div class="form-group">
-      <label>Reason for flagging <span style="color:var(--red);">*</span></label>
-      <textarea id="flagReason" rows="3" placeholder="e.g. Quantity mismatch: DR shows 5,000L but record shows 4,800L."></textarea>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-outline" onclick="closeModal('flagModal')">Cancel</button>
-      <button class="btn btn-danger" onclick="submitFlag()"><i class="fas fa-flag"></i> Flag Delivery</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── Finalize & Print Modal ─────────────────────────────────────────────── -->
-<div class="modal-overlay" id="finalizeModal">
-  <div class="modal-box">
-    <h3><i class="fas fa-print" style="color:var(--blue);"></i> Finalize &amp; Print</h3>
-    <p style="font-size:13px;color:#555;margin:0 0 12px;">Generate an official delivery record for Petron Corporation. This marks the delivery as finalized.</p>
-    <div id="finalizeDetail" style="background:var(--light);border-radius:6px;padding:12px;font-size:13px;margin-bottom:14px;"></div>
-    <div class="form-group">
-      <label>Final Remarks (optional)</label>
-      <textarea id="finalizeRemarks" rows="2" placeholder="e.g. Verified and finalized for official records."></textarea>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-outline" onclick="closeModal('finalizeModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="submitFinalize()"><i class="fas fa-print"></i> Finalize &amp; Print</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── Process Delivery Modal (with Payment Computation) ──────────────────── -->
-<div class="modal-overlay" id="processModal">
-  <div class="modal-box wide">
-    <h3><i class="fas fa-calculator" style="color:var(--blue);"></i> Process Delivery & Compute Payment</h3>
-    <p style="font-size:13px;color:#555;margin:0 0 14px;">Review delivery details, adjust quantities if needed, and compute the payable amount for supplier payment.</p>
-    
-    <!-- Delivery Info -->
-    <div id="processInfo" style="background:#f8f9fa;border-radius:6px;padding:14px;margin-bottom:14px;font-size:13px;">
-      <strong>Loading...</strong>
-    </div>
-
-    <form id="processForm">
-      <input type="hidden" id="proc_id" name="delivery_id">
-      
-      <div class="form-row">
-        <div class="form-group">
-          <label>Expected Quantity <span style="color:var(--gray);">(from PO/Staff)</span></label>
-          <input type="number" step="0.01" id="proc_expected" class="form-control" readonly style="background:#e9ecef;">
-        </div>
-        <div class="form-group">
-          <label>Unit Price (₱) <span style="color:var(--red);">*</span></label>
-          <input type="number" step="0.01" id="proc_unit_price" class="form-control" placeholder="e.g. 50.00" required oninput="recalcPayment()">
-        </div>
-      </div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label>Actual Received Quantity <span style="color:var(--red);">*</span></label>
-          <input type="number" step="0.01" id="proc_actual" class="form-control" placeholder="Actual qty received" required oninput="recalcPayment()">
-        </div>
-        <div class="form-group">
-          <label>Damaged/Defective Quantity</label>
-          <input type="number" step="0.01" id="proc_damaged" class="form-control" placeholder="0.00" value="0" oninput="recalcPayment()">
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label>Discrepancy Type</label>
-        <select id="proc_type" class="form-control">
-          <option value="">None (Full Delivery)</option>
-          <option value="Partial">Partial Delivery (Kulang ang qty)</option>
-          <option value="Damaged">Damaged Items (May guba)</option>
-          <option value="Mixed">Mixed (Kulang + Guba)</option>
-          <option value="Rejected">Rejected (Wrong item/batch)</option>
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label>Admin Remarks / Notes <span style="color:var(--red);">*</span></label>
-        <textarea id="proc_remarks" class="form-control" rows="3" placeholder="e.g. Partial delivery: Only 80 pcs received out of 100 pcs ordered. Damaged items: 5 pcs broken/unusable." required></textarea>
-      </div>
-
-      <!-- Payment Summary -->
-      <div class="payment-info" id="paymentSummary" style="display:none;">
-        <h4 style="margin:0 0 10px;font-size:14px;color:var(--blue);"><i class="fas fa-money-bill-wave"></i> Payment Computation</h4>
-        <div class="payment-row">
-          <span class="payment-label">Expected Amount (PO):</span>
-          <span class="payment-value" id="pay_expected">₱0.00</span>
-        </div>
-        <div class="payment-row">
-          <span class="payment-label">Actual Received:</span>
-          <span class="payment-value"><span id="pay_actual_qty">0</span> × ₱<span id="pay_unit_price">0</span> = <span id="pay_actual_amt">₱0.00</span></span>
-        </div>
-        <div class="payment-row" id="damagedRow" style="display:none;">
-          <span class="payment-label">Less: Damaged Items:</span>
-          <span class="payment-value" style="color:var(--red);">-<span id="pay_damaged_qty">0</span> × ₱<span id="pay_damaged_price">0</span> = -<span id="pay_damaged_amt">₱0.00</span></span>
-        </div>
-        <div class="payment-row">
-          <span class="payment-label">PAYABLE AMOUNT:</span>
-          <span class="payment-value" style="font-size:16px;color:var(--green);">₱<span id="pay_total">0.00</span></span>
-        </div>
-      </div>
-
-      <div class="discrepancy-alert" id="discrepancyAlert" style="display:none;">
-        <strong><i class="fas fa-exclamation-triangle"></i> Discrepancy Detected!</strong><br>
-        <span id="discrepancyMsg"></span>
-      </div>
-
-      <div class="modal-actions">
-        <button type="button" class="btn btn-outline" onclick="closeModal('processModal')">Cancel</button>
-        <button type="button" class="btn btn-success" onclick="submitProcess('approve')"><i class="fas fa-check"></i> Approve & Compute Payment</button>
-        <button type="button" class="btn btn-print" onclick="submitProcess('print')"><i class="fas fa-print"></i> Approve & Print Report</button>
-      </div>
-    </form>
-  </div>
-</div>
-
 <div class="toast" id="toast"></div>
 
 <script>
 const API = '../backend/api/admin_deliveries_oversight_api.php';
-let currentId = null, currentRec = null;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
-function closeModal(id){document.getElementById(id).classList.remove('show');}
 function toast(msg,type){
   const t=document.getElementById('toast');
   t.textContent=msg;
@@ -414,22 +210,20 @@ function toast(msg,type){
 function fmtQty(q,u){return parseFloat(q).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})+' '+esc(u);}
 function fmtDate(d){if(!d)return '—';try{return new Date(d).toLocaleDateString('en-PH',{year:'numeric',month:'short',day:'numeric'});}catch(e){return d;}}
 
-// ── Load deliveries ───────────────────────────────────────────────────────────
+// ── Load deliveries (VIEW ONLY) ───────────────────────────────────────────────
 async function loadDeliveries(){
   const start=document.getElementById('fStart').value;
   const end=document.getElementById('fEnd').value;
   const status=document.getElementById('fStatus').value;
-  const type=document.getElementById('fType').value;
   const supplier=document.getElementById('fSupplier').value;
 
   document.getElementById('deliveriesBody').innerHTML=
-    '<tr><td colspan="11"><div class="empty-state"><i class="fas fa-spinner fa-spin"></i> Loading…</div></td></tr>';
+    '<tr><td colspan="14"><div class="empty-state"><i class="fas fa-spinner fa-spin"></i> Loading…</div></td></tr>';
 
   try{
-    // Admin Oversight: when no status filter selected, default to manager-validated records only.
-    // 'pending' filter explicitly requested by admin to review unprocessed items.
-    const effectiveStatus = status === '' ? 'approved' : status;
-    const url=`${API}?action=list&start=${start}&end=${end}&status=${encodeURIComponent(effectiveStatus)}&type=${encodeURIComponent(type)}&supplier=${encodeURIComponent(supplier)}`;
+    // Admin Oversight: Show only manager-validated merchandise deliveries
+    const effectiveStatus = status;
+    const url=`${API}?action=list&start=${start}&end=${end}&status=${encodeURIComponent(effectiveStatus)}&type=merchandise&supplier=${encodeURIComponent(supplier)}`;
     const res=await fetch(url);
     const data=await res.json();
     if(!data.success){toast(data.message,'error');return;}
@@ -439,7 +233,7 @@ async function loadDeliveries(){
 
     if(rows.length===0){
       document.getElementById('deliveriesBody').innerHTML=
-        '<tr><td colspan="11"><div class="empty-state"><i class="fas fa-truck"></i> No delivery records found for the selected filters.</div></td></tr>';
+        '<tr><td colspan="14"><div class="empty-state"><i class="fas fa-truck"></i> No merchandise delivery records found for the selected filters.</div></td></tr>';
       return;
     }
 
@@ -453,11 +247,11 @@ function buildRow(r){
   // Map status to display labels
   const statusMap={
     'Expected Delivery':'Expected',
-    'Pending Manager Approval':'Pending Validation',
-    'Pending Manager Confirmation':'Pending Validation',
-    'Pending Validation':'Pending Validation',
-    'Confirmed':'Approved',
-    'Validated':'Approved',
+    'Pending Manager Approval':'Pending',
+    'Pending Manager Confirmation':'Pending',
+    'Pending Validation':'Pending',
+    'Confirmed':'Cleared',
+    'Validated':'Cleared',
     'Discrepancy':'Flagged',
     'Flagged':'Flagged',
     'Partial Delivery':'Partial',
@@ -467,104 +261,79 @@ function buildRow(r){
   const displayStatus=statusMap[r.status]||r.status;
 
   const statusBadge={
-    'Expected':'<span class="badge badge-expected"><i class="fas fa-clock"></i> Expected</span>',
-    'Pending Validation':'<span class="badge badge-pending"><i class="fas fa-hourglass-half"></i> Pending</span>',
-    'Approved':'<span class="badge badge-approved"><i class="fas fa-check-circle"></i> Approved</span>',
-    'Flagged':'<span class="badge badge-flagged"><i class="fas fa-exclamation-triangle"></i> Flagged</span>',
-    'Partial':'<span class="badge badge-partial"><i class="fas fa-box-open"></i> Partial</span>',
-    'Damaged':'<span class="badge badge-damaged"><i class="fas fa-hammer"></i> Damaged</span>',
-    'Rejected':'<span class="badge badge-rejected"><i class="fas fa-times-circle"></i> Rejected</span>',
+    'Expected':'<span class="badge badge-expected">Expected</span>',
+    'Pending':'<span class="badge badge-pending">Pending</span>',
+    'Cleared':'<span class="badge badge-approved">Cleared</span>',
+    'Flagged':'<span class="badge badge-flagged">Flagged</span>',
+    'Partial':'<span class="badge badge-partial">Partial</span>',
+    'Damaged':'<span class="badge badge-damaged">Damaged</span>',
+    'Rejected':'<span class="badge badge-rejected">Rejected</span>',
   }[displayStatus]||`<span class="badge">${esc(displayStatus)}</span>`;
 
-  const typeBadge=r.delivery_type==='fuel'
-    ?'<span class="badge badge-fuel">Fuel</span>'
-    :'<span class="badge badge-merch">Merchandise</span>';
-
-  // Payment amount display
-  const payableAmt = parseFloat(r.payable_amount||0);
-  const paymentDisplay = payableAmt > 0 
-    ? '<strong style="color:var(--green);">₱' + payableAmt.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2}) + '</strong>'
-    : '<span style="color:var(--gray);">Not computed</span>';
-
-  let actions=`<button class="action-btn btn-view" onclick="showDetail(${r.id})" title="View Details"><i class="fas fa-eye"></i> View</button>`;
+  // Calculate variance
+  const drQty = parseFloat(r.expected_quantity || r.quantity || 0);
+  const encodedQty = parseFloat(r.quantity || 0);
+  const actualQty = parseFloat(r.actual_quantity || r.quantity || 0);
+  const variance = actualQty - drQty;
   
-  // Add "Process" button for Approved deliveries (with payment computation)
-  if(displayStatus==='Approved' && r.delivery_type==='merchandise'){
-    actions+=` <button class="action-btn btn-process" onclick="openProcess(${r.id})" title="Process & Compute Payment"><i class="fas fa-calculator"></i> Process</button>`;
+  // Variance display with color
+  let varianceDisplay = '0.0';
+  let varianceStyle = 'color:#6c757d;';
+  if (Math.abs(variance) > 0.001) {
+    const varianceColor = variance < 0 ? '#dc3545' : '#28a745';
+    const varianceSign = variance > 0 ? '+' : '';
+    varianceStyle = `color:${varianceColor};font-weight:600;`;
+    varianceDisplay = `${varianceSign}${variance.toFixed(1)}`;
   }
+
+  // Get category
+  const category = r.category || '—';
   
-  // Show print button if already processed with payment
-  if(payableAmt > 0){
-    actions+=` <button class="action-btn btn-print" onclick="printDeliveryReport(${r.id})" title="Print Payment Report"><i class="fas fa-print"></i> Print</button>`;
-  }
+  // Manager name and timestamp
+  const managerName = r.manager_name || '—';
+  const timestamp = r.manager_action_at ? new Date(r.manager_action_at).toLocaleString('en-PH', {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+  }) : '—';
+  
+  // Reason/remarks - full text, will wrap naturally
+  const reason = r.manager_notes || r.admin_notes || r.remarks || '—';
 
   return `<tr>
-    <td style="font-size:11px;color:var(--gray);">${esc(r.delivery_ref)}</td>
-    <td>${typeBadge}</td>
-    <td>${esc(r.dr_number||'—')}</td>
+    <td style="font-family:monospace;font-weight:600;color:#002F70;">${esc(r.batch_id||'—')}</td>
+    <td style="color:#6c757d;">${esc(r.delivery_ref)}</td>
     <td>${esc(r.supplier)}</td>
-    <td>${esc(r.product)}</td>
-    <td>${fmtQty(r.quantity,r.unit)}</td>
-    <td>${paymentDisplay}</td>
-    <td>${fmtDate(r.delivery_date)}</td>
+    <td style="font-weight:600;">${esc(r.dr_number||'—')}</td>
+    <td style="font-weight:600;">${esc(r.product)}</td>
+    <td>${esc(category)}</td>
+    <td><span style="font-weight:600;">${drQty.toFixed(1)}</span> <span style="color:#6c757d;font-size:10px;">${esc(r.unit)}</span></td>
+    <td><span style="font-weight:600;">${encodedQty.toFixed(1)}</span> <span style="color:#6c757d;font-size:10px;">${esc(r.unit)}</span></td>
+    <td><span style="font-weight:700;color:#002F70;">${actualQty.toFixed(1)}</span> <span style="color:#6c757d;font-size:10px;">${esc(r.unit)}</span></td>
+    <td style="${varianceStyle}">${varianceDisplay}</td>
+    <td>${esc(reason)}</td>
+    <td>${esc(managerName)}</td>
+    <td style="color:#6c757d;">${timestamp}</td>
     <td>${statusBadge}</td>
-    <td style="vertical-align:middle;">
-      <div style="display:flex;flex-direction:column;gap:4px;align-items:stretch;">
-        ${actions}
-      </div>
-    </td>
   </tr>`;
 }
 
-// ── Detail View ───────────────────────────────────────────────────────────────
-async function showDetail(id){
-  currentId=id;
-  document.getElementById('detailContent').innerHTML=
-    '<div style="text-align:center;padding:20px;color:var(--gray);"><i class="fas fa-spinner fa-spin"></i> Loading…</div>';
-  document.getElementById('detailValidateBtn').style.display='none';
-  document.getElementById('detailFlagBtn').style.display='none';
-  document.getElementById('detailFinalizeBtn').style.display='none';
-  document.getElementById('detailModal').classList.add('show');
+// Export functions
+function exportReport(format){
+  const start=document.getElementById('fStart').value;
+  const end=document.getElementById('fEnd').value;
+  const status=document.getElementById('fStatus').value;
+  const supplier=document.getElementById('fSupplier').value;
+  
+  const url=`${API}?action=export_${format}&start=${start}&end=${end}&status=${encodeURIComponent(status)}&type=merchandise&supplier=${encodeURIComponent(supplier)}`;
+  window.open(url,'_blank');
+}
 
-  try{
-    const res=await fetch(`${API}?action=detail&id=${id}`);
-    const data=await res.json();
-    if(!data.success){document.getElementById('detailContent').innerHTML='<div class="empty-state">Record not found.</div>';return;}
-    const r=data.data;
-    currentRec=r;
+// Load on page load
+document.addEventListener('DOMContentLoaded',function(){
+  loadDeliveries();
+});
+</script>
 
-    const statusMap={
-      'Expected Delivery':'Expected',
-      'Pending Manager Approval':'Pending Validation',
-      'Pending Manager Confirmation':'Pending Validation',
-      'Pending Validation':'Pending Validation',
-      'Confirmed':'Approved',
-      'Validated':'Approved',
-      'Discrepancy':'Flagged',
-      'Flagged':'Flagged',
-    };
-    const displayStatus=statusMap[r.status]||r.status;
-
-    const statusBadge={
-      'Expected':'<span class="badge badge-expected"><i class="fas fa-clock"></i> Expected</span>',
-      'Pending Validation':'<span class="badge badge-pending"><i class="fas fa-hourglass-half"></i> Pending Validation</span>',
-      'Approved':'<span class="badge badge-validated"><i class="fas fa-check-circle"></i> Approved</span>',
-      'Flagged':'<span class="badge badge-flagged"><i class="fas fa-exclamation-triangle"></i> Flagged</span>',
-    }[displayStatus]||`<span class="badge">${esc(displayStatus)}</span>`;
-
-    document.getElementById('detailContent').innerHTML=`
-      <div class="detail-grid">
-        <div class="detail-item"><div class="di-label">Reference</div><div class="di-val">${esc(r.delivery_ref)}</div></div>
-        <div class="detail-item"><div class="di-label">Status</div><div class="di-val">${statusBadge}</div></div>
-        <div class="detail-item"><div class="di-label">Type</div><div class="di-val">${r.delivery_type==='fuel'?'Fuel':'Merchandise'}</div></div>
-        <div class="detail-item"><div class="di-label">DR Number</div><div class="di-val">${esc(r.dr_number||'—')}</div></div>
-        <div class="detail-item"><div class="di-label">Supplier</div><div class="di-val">${esc(r.supplier)}</div></div>
-        <div class="detail-item"><div class="di-label">Product</div><div class="di-val">${esc(r.product)}</div></div>
-        <div class="detail-item"><div class="di-label">Quantity</div><div class="di-val">${fmtQty(r.quantity,r.unit)}</div></div>
-        <div class="detail-item"><div class="di-label">Delivery Date</div><div class="di-val">${fmtDate(r.delivery_date)}</div></div>
-        <div class="detail-item"><div class="di-label">Encoded By</div><div class="di-val">${esc(r.encoded_by_name||'—')}</div></div>
-        <div class="detail-item"><div class="di-label">Admin</div><div class="di-val">${esc(r.admin_name||'—')}</div></div>
-        <div class="detail-item"><div class="di-label">Action Date</div><div class="di-val">${r.admin_action_at?new Date(r.admin_action_at).toLocaleString('en-PH'):'—'}</div></div>
+<?php include __DIR__ . '/../partials/footer.php'; ?>
         <div class="detail-item"><div class="di-label">Notes</div><div class="di-val">${esc(r.admin_notes||r.remarks||'—')}</div></div>
       </div>
     `;

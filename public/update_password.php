@@ -20,13 +20,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($new_password !== $confirm_password)             throw new Exception('New passwords do not match.');
         if ($current_password === $new_password)             throw new Exception('New password must be different from current password.');
 
-        $stmt = $pdo->prepare("SELECT password_hash FROM users WHERE user_id = ?");
+        $stmt = $pdo->prepare("SELECT password_hash FROM users WHERE id = ?");
         $stmt->execute([$me['id']]);
         $row = $stmt->fetch();
         if (!$row)                                           throw new Exception('User not found.');
         if (!password_verify($current_password, $row['password_hash'])) throw new Exception('Current password is incorrect.');
 
-        $pdo->prepare("UPDATE users SET password = ? WHERE user_id = ?")
+        $pdo->prepare("UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?")
             ->execute([password_hash($new_password, PASSWORD_DEFAULT), $me['id']]);
 
         try { log_activity($pdo, $me['id'], 'Change Password', 'User changed their own password'); } catch (Exception $e) {}
@@ -300,7 +300,7 @@ include __DIR__ . '/../partials/header.php';
                 <label for="current_password">Current Password</label>
                 <div class="cp-input-wrap">
                     <span class="cp-input-icon"><i class="fas fa-lock"></i></span>
-                    <input type="password_hash" id="current_password" name="current_password"
+                    <input type="password" id="current_password" name="current_password"
                            class="cp-input" placeholder="Enter your current password" required
                            autocomplete="current-password">
                     <button type="button" class="cp-eye" onclick="toggleEye('current_password','eye0')" tabindex="-1">
@@ -316,7 +316,7 @@ include __DIR__ . '/../partials/header.php';
                 <label for="new_password">New Password</label>
                 <div class="cp-input-wrap">
                     <span class="cp-input-icon"><i class="fas fa-key"></i></span>
-                    <input type="password_hash" id="new_password" name="new_password"
+                    <input type="password" id="new_password" name="new_password"
                            class="cp-input" placeholder="Enter your new password" required
                            autocomplete="new-password" oninput="checkStrength(); checkReqs();">
                     <button type="button" class="cp-eye" onclick="toggleEye('new_password','eye1')" tabindex="-1">
@@ -337,7 +337,7 @@ include __DIR__ . '/../partials/header.php';
                 <label for="confirm_password">Confirm New Password</label>
                 <div class="cp-input-wrap">
                     <span class="cp-input-icon"><i class="fas fa-check-circle"></i></span>
-                    <input type="password_hash" id="confirm_password" name="confirm_password"
+                    <input type="password" id="confirm_password" name="confirm_password"
                            class="cp-input" placeholder="Re-enter your new password" required
                            autocomplete="new-password" oninput="checkReqs();">
                     <button type="button" class="cp-eye" onclick="toggleEye('confirm_password','eye2')" tabindex="-1">
@@ -395,11 +395,11 @@ function toggleEye(inputId, iconId) {
     var inp  = document.getElementById(inputId);
     var icon = document.getElementById(iconId);
     if (!inp || !icon) return;
-    if (inp.type === 'password_hash') {
+    if (inp.type === 'password') {
         inp.type = 'text';
         icon.className = 'fas fa-eye-slash';
     } else {
-        inp.type = 'password_hash';
+        inp.type = 'password';
         icon.className = 'fas fa-eye';
     }
 }

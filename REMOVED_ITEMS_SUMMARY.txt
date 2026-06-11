@@ -1,0 +1,121 @@
+================================================================================
+REMOVED ITEMS FROM STAFF REPORTS - SUMMARY
+================================================================================
+Date: June 11, 2026
+Status: COMPLETE
+
+================================================================================
+WHAT WAS REMOVED:
+================================================================================
+
+1. INVENTORY MOVEMENT TAB
+   ✓ Removed from staff_reports.php tab definitions (line ~1950)
+   ✓ Removed from legacy mapping array (line ~63)
+   ✓ No longer appears in the Deliveries section tabs
+   
+   Files affected:
+   - c:\xampp\htdocs\group31petron_system_official4\public\staff_reports.php
+
+2. METER READING REPORTS (from sidebar)
+   ✓ Removed from staff sidebar navigation
+   ✓ No longer appears in Reports menu
+   
+   Files affected:
+   - c:\xampp\htdocs\group31petron_system_official4\includes\staff_sidebar.php
+
+================================================================================
+WHAT REMAINS IN REPORTS MENU (SIDEBAR):
+================================================================================
+
+Reports Menu Items (after removal):
+✓ Sales Reports
+✓ Job Orders Reports
+✓ Deliveries Reports (NEW - points to staff_deliveries_report.php)
+✓ Payments Reports
+✓ Customer Reports
+✓ Activity Reports
+
+================================================================================
+DELIVERIES SECTION (staff_reports.php):
+================================================================================
+
+Tabs that remain:
+✓ Fuel Deliveries
+✓ Merchandise Deliveries
+
+Tabs removed:
+✗ Inventory Movement (DELETED)
+
+================================================================================
+REASONING:
+================================================================================
+
+Inventory Movement was removed because:
+- Not needed in deliveries context
+- Creates confusion with actual delivery tracking
+- Users requested removal ("wala nay labot")
+
+Meter Reading Reports was removed from sidebar because:
+- Not relevant to staff daily operations
+- Users requested removal ("wala nay labot")
+- Clutters the reports menu
+
+================================================================================
+IMPACT:
+================================================================================
+
+POSITIVE:
+✓ Cleaner, simpler reports menu
+✓ Less confusion for users
+✓ Faster navigation (fewer options)
+✓ Focus on relevant reports only
+
+NO NEGATIVE IMPACT:
+✓ Data is not deleted, just UI hidden
+✓ Database tables remain intact
+✓ Can be re-enabled if needed
+
+================================================================================
+CURRENT REPORTS STRUCTURE:
+================================================================================
+
+STAFF REPORTS MENU:
+├── Sales Reports
+│   ├── Daily Summary
+│   ├── Customer Linkage
+│   ├── Fuel Sales
+│   └── Merchandise Sales
+│
+├── Job Orders Reports
+│   └── (Points to staff_job_orders_report.php)
+│
+├── Deliveries Reports
+│   └── (Points to staff_deliveries_report.php)
+│       ├── Fuel Deliveries section
+│       └── Merchandise Deliveries section
+│
+├── Payments Reports
+│   └── Payment Status Breakdown
+│
+├── Customer Reports
+│   ├── Customer Profiles
+│   └── Staff-Encoded History
+│
+└── Activity Reports
+    ├── Staff Activity
+    └── Audit Trail
+
+================================================================================
+FILES MODIFIED:
+================================================================================
+
+1. staff_reports.php
+   - Removed 'inventory_movement' from deliveries tab array
+   - Removed 'inventory_movement' from legacy_map array
+
+2. staff_sidebar.php
+   - Removed 'report_meter' entry from submenu array
+
+================================================================================
+HUMAN NA! INVENTORY MOVEMENT UG METER READING REPORTS NA DELETE!
+================================================================================

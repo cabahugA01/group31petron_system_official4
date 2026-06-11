@@ -133,13 +133,13 @@ include __DIR__ . "/../partials/header.php";
 ?>
 <style>
 /* ── Table wrapper ── */
-.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow-x:auto; }
+.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow-x:hidden; }
 /* ── Table ── */
 .po-table { width:100%; border-collapse:collapse; font-size:0.88rem; }
-.po-table thead th { background:#002F70; color:#fff; padding:12px 14px; text-align:left; font-weight:600; white-space:nowrap; }
+.po-table thead th { background:#002F70; color:#fff; padding:12px 14px; text-align:center; font-weight:600; white-space:nowrap; }
 .po-table tbody tr { border-bottom:1px solid #f0f0f0; transition:background 0.15s; }
-.po-table tbody tr:hover { background:#f5f8ff; }
-.po-table tbody td { padding:11px 14px; vertical-align:middle; color:#333; }
+.po-table tbody tr:hover { background:#eff6ff; }
+.po-table tbody td { padding:11px 14px; vertical-align:middle; color:#333; text-align:center; }
 /* ── Status badges — plain text, no background color ── */
 .status-badge { display:inline-block; font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; color:#333; }
 .badge-pending          { color:#002F70; }

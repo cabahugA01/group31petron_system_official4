@@ -51,15 +51,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $hashedPass = password_hash($new_password, PASSWORD_DEFAULT);
                             
                             // Update password
-                            $stmt = $pdo->prepare("UPDATE users SET password = ? WHERE user_id = ?");
+                            $stmt = $pdo->prepare("UPDATE users SET password_hash = ?, updated_at = NOW() WHERE user_id = ?");
                             $stmt->execute([$hashedPass, $user_id]);
-                            
-                            // Set password expiry if supported
-                            try {
-                                $expires = (new DateTime("+90 days"))->format('Y-m-d H:i:s');
-                                $pdo->prepare("UPDATE users SET password_expires_at = ? WHERE user_id = ?")
-                                    ->execute([$expires, $user_id]);
-                            } catch(Exception $e){}
                             
                             // Log action
                             log_activity($pdo, $me['id'], 'Password Reset', "Reset password for user '{$user['username']}'");
@@ -579,7 +572,7 @@ include __DIR__ . '/../partials/header.php';
                     <p style="color: #666; margin-bottom: 24px;">For security and audit logging, please verify your current password.</p>
                     
                     <div class="password-input-group">
-                        <input type="password_hash" 
+                        <input type="password" 
                                class="password-input" 
                                id="verify_password" 
                                placeholder="Enter your password..."
@@ -780,7 +773,7 @@ function togglePasswordVisibility() {
     const toggle = document.getElementById('password_toggle');
     
     if (passwordVisible) {
-        passwordInput.type = 'password_hash';
+        passwordInput.type = 'password';
         toggle.className = 'fas fa-eye password-toggle';
         passwordVisible = false;
     } else {

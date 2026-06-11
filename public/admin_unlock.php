@@ -222,7 +222,7 @@ include __DIR__ . '/../partials/header.php';
 
             <div style="margin-bottom:20px;">
                 <label class="lbl">Admin Password *</label>
-                <input type="password_hash" name="password_hash" class="inp full" required placeholder="Enter your admin password" style="width:100%; padding:12px; border:1px solid #cbd5e1; border-radius:8px;">
+                <input type="password" name="password_hash" class="inp full" required placeholder="Enter your admin password" style="width:100%; padding:12px; border:1px solid #cbd5e1; border-radius:8px;">
                 <small class="muted">You must verify your password to unlock this record.</small>
             </div>
 

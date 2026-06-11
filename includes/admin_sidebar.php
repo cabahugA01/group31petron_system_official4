@@ -19,6 +19,18 @@ function getAdminSidebar($current_page = 'transactions') {
             'url' => 'admin_purchase_orders.php',
             'description' => 'Validate and finalize POs to suppliers'
         ],
+        'fuel_deliveries_oversight' => [
+            'icon' => 'fas fa-truck-loading',
+            'title' => 'Fuel Deliveries Oversight',
+            'url' => 'admin_fuel_deliveries_oversight.php',
+            'description' => 'Monitor manager-validated fuel deliveries'
+        ],
+        'merchandise_deliveries_oversight' => [
+            'icon' => 'fas fa-boxes',
+            'title' => 'Merchandise Deliveries Oversight',
+            'url' => 'admin_merchandise_deliveries_oversight.php',
+            'description' => 'Monitor manager-validated merchandise deliveries'
+        ],
         'customers' => [
             'icon' => 'fas fa-users',
             'title' => 'Customers',

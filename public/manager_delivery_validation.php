@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = "mgr_del_validate";
 require_once __DIR__ . "/../backend/lib.php";
 require_once __DIR__ . "/db_connect.php";
@@ -46,13 +46,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 }
 $pending_pos = [];
 try {
-    $stmt = $pdo->prepare("SELECT po.*,u_mgr.name AS manager_name,u_adm.name AS admin_name,sr.item_sku,sr.item_category,sr.remarks AS sr_remarks,sr.current_stock FROM purchase_orders po LEFT JOIN users u_mgr ON po.created_by=u_mgr.id LEFT JOIN users u_adm ON po.admin_id=u_adm.id LEFT JOIN stock_requests sr ON po.request_id=sr.id WHERE po.station_id=? AND po.type='merch' AND po.admin_finalized=1 AND po.delivery_validated=0 AND po.stock_in_done=0 ORDER BY po.admin_finalized_at ASC");
+    $stmt = $pdo->prepare("SELECT po.*,CONCAT(u_mgr.first_name, ' ', u_mgr.last_name) AS manager_name,CONCAT(u_adm.first_name, ' ', u_adm.last_name) AS admin_name,sr.item_sku,sr.item_category,sr.remarks AS sr_remarks,sr.current_stock FROM purchase_orders po LEFT JOIN users u_mgr ON po.created_by=u_mgr.id LEFT JOIN users u_adm ON po.admin_id=u_adm.id LEFT JOIN stock_requests sr ON po.request_id=sr.id WHERE po.station_id=? AND po.type='merch' AND po.admin_finalized=1 AND po.delivery_validated=0 AND po.stock_in_done=0 ORDER BY po.admin_finalized_at ASC");
     $stmt->execute([$station_id]);
     $pending_pos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 $validated_pos = [];
 try {
-    $stmt = $pdo->prepare("SELECT po.*,u_mgr.name AS manager_name,u_adm.name AS admin_name,u_val.name AS validated_by_name FROM purchase_orders po LEFT JOIN users u_mgr ON po.created_by=u_mgr.id LEFT JOIN users u_adm ON po.admin_id=u_adm.id LEFT JOIN users u_val ON po.delivery_validated_by=u_val.id WHERE po.station_id=? AND po.type='merch' AND po.delivery_validated=1 ORDER BY po.delivery_validated_at DESC LIMIT 50");
+    $stmt = $pdo->prepare("SELECT po.*,CONCAT(u_mgr.first_name, ' ', u_mgr.last_name) AS manager_name,CONCAT(u_adm.first_name, ' ', u_adm.last_name) AS admin_name,CONCAT(u_val.first_name, ' ', u_val.last_name) AS validated_by_name FROM purchase_orders po LEFT JOIN users u_mgr ON po.created_by=u_mgr.id LEFT JOIN users u_adm ON po.admin_id=u_adm.id LEFT JOIN users u_val ON po.delivery_validated_by=u_val.id WHERE po.station_id=? AND po.type='merch' AND po.delivery_validated=1 ORDER BY po.delivery_validated_at DESC LIMIT 50");
     $stmt->execute([$station_id]);
     $validated_pos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
@@ -62,13 +62,13 @@ include __DIR__ . "/../partials/header.php";
 
 <style>
 /* ── Table wrapper ── */
-.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow-x:auto; }
+.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow-x:hidden; }
 /* ── Table ── */
 .po-table { width:100%; border-collapse:collapse; font-size:0.88rem; }
-.po-table thead th { background:#002F70; color:#fff; padding:12px 14px; text-align:left; font-weight:600; white-space:nowrap; }
+.po-table thead th { background:#002F70; color:#fff; padding:12px 14px; text-align:center; font-weight:600; white-space:nowrap; }
 .po-table tbody tr { border-bottom:1px solid #f0f0f0; transition:background 0.15s; }
-.po-table tbody tr:hover { background:#f5f8ff; }
-.po-table tbody td { padding:11px 14px; vertical-align:middle; color:#333; }
+.po-table tbody tr:hover { background:#eff6ff; }
+.po-table tbody td { padding:11px 14px; vertical-align:middle; color:#333; text-align:center; }
 /* ── Status badges — plain text, no background color ── */
 .status-badge { display:inline-block; font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; color:#333; }
 .badge-pending   { color:#002F70; }

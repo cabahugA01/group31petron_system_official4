@@ -285,7 +285,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $pending_merch_items = [];
 try {
     $stmt = $pdo->prepare("
-        SELECT po.*, u_mgr.name AS manager_name,
+        SELECT po.*, CONCAT(u_mgr.first_name, ' ', u_mgr.last_name) AS manager_name,
                sr.item_sku, sr.item_category, sr.remarks AS sr_remarks, sr.current_stock
         FROM purchase_orders po
         LEFT JOIN users u_mgr ON po.created_by = u_mgr.id
@@ -308,7 +308,7 @@ foreach ($pending_merch_items as $item) {
 $pending_fuel_items = [];
 try {
     $stmt = $pdo->prepare("
-        SELECT fpo.*, ft.name AS fuel_name, u_mgr.name AS manager_name
+        SELECT fpo.*, ft.name AS fuel_name, CONCAT(u_mgr.first_name, ' ', u_mgr.last_name) AS manager_name
         FROM fuel_purchase_orders fpo
         LEFT JOIN fuel_types ft ON fpo.fuel_type_id = ft.id
         LEFT JOIN users u_mgr ON fpo.created_by = u_mgr.id
@@ -333,7 +333,8 @@ $total_pending_count = count($grouped_pending_merch) + count($grouped_pending_fu
 $finalized_merch_items = [];
 try {
     $stmt = $pdo->prepare("
-        SELECT po.*, u_mgr.name AS manager_name, u_adm.name AS admin_name,
+        SELECT po.*, CONCAT(u_mgr.first_name, ' ', u_mgr.last_name) AS manager_name, 
+               CONCAT(u_adm.first_name, ' ', u_adm.last_name) AS admin_name,
                sr.item_sku
         FROM purchase_orders po
         LEFT JOIN users u_mgr ON po.created_by = u_mgr.id
@@ -356,7 +357,8 @@ foreach ($finalized_merch_items as $item) {
 $finalized_fuel_items = [];
 try {
     $stmt = $pdo->prepare("
-        SELECT fpo.*, ft.name AS fuel_name, u_mgr.name AS manager_name, u_adm.name AS admin_name
+        SELECT fpo.*, ft.name AS fuel_name, CONCAT(u_mgr.first_name, ' ', u_mgr.last_name) AS manager_name, 
+               CONCAT(u_adm.first_name, ' ', u_adm.last_name) AS admin_name
         FROM fuel_purchase_orders fpo
         LEFT JOIN fuel_types ft ON fpo.fuel_type_id = ft.id
         LEFT JOIN users u_mgr ON fpo.created_by = u_mgr.id
@@ -491,7 +493,7 @@ include __DIR__ . '/../partials/header.php';
 /* Standardized Responsive Table CSS */
 .table-wrap {
     width: 100%;
-    overflow-x: auto;
+    overflow-x: hidden;
     background: #fff;
     border-radius: 8px;
     border: 1px solid #e9ecef;
@@ -500,7 +502,7 @@ include __DIR__ . '/../partials/header.php';
     width: 100%;
     border-collapse: collapse;
     font-size: 13px;
-    text-align: left;
+    text-align: center;
 }
 .standard-table th {
     background: #002F70;
@@ -508,14 +510,16 @@ include __DIR__ . '/../partials/header.php';
     font-weight: 600;
     padding: 12px 16px;
     border: none;
+    text-align: center;
 }
 .standard-table td {
     padding: 12px 16px;
     border-bottom: 1px solid #e9ecef;
     vertical-align: middle;
+    text-align: center;
 }
 .standard-table tbody tr:hover {
-    background-color: #f8fafc;
+    background-color: #eff6ff;
 }
 .standard-table tbody tr:last-child td {
     border-bottom: none;

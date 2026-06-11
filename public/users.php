@@ -787,7 +787,7 @@ include __DIR__ . '/../partials/header.php';
                 
                 <div class="form-group mb-3">
                     <label class="lbl">Confirm Password</label>
-                    <input type="password_hash" name="confirm_password" id="confirm_password" class="inp full" placeholder="Re-enter password">
+                    <input type="password" name="confirm_password" id="confirm_password" class="inp full" placeholder="Re-enter password">
                 </div>
             </div>
             <div class="modal-footer">
@@ -849,7 +849,7 @@ include __DIR__ . '/../partials/header.php';
                 <div id="passwordFieldGroup" class="form-group mb-3" style="display: none;">
                     <label class="lbl">New Password</label>
                     <div style="display: flex; gap: 10px; align-items: center;">
-                        <input type="password_hash" name="new_password" id="edit_password" class="inp full" placeholder="Enter new password or leave empty for auto-generate">
+                        <input type="password" name="new_password" id="edit_password" class="inp full" placeholder="Enter new password or leave empty for auto-generate">
                         <button type="button" class="btn small ghost" onclick="generatePassword()" title="Generate random password">
                             <i class="fas fa-dice"></i> Generate
                         </button>
@@ -879,7 +879,7 @@ include __DIR__ . '/../partials/header.php';
                 <p>Reset password for <strong id="reset_username"></strong>?</p>
                 <div class="form-group mt-3">
                     <label class="lbl">New Password</label>
-                    <input type="password_hash" name="new_password" class="inp full" placeholder="Enter new password or leave empty to auto-generate">
+                    <input type="password" name="new_password" class="inp full" placeholder="Enter new password or leave empty to auto-generate">
                     <small class="muted">Leave empty for auto-generated secure password</small>
                 </div>
             </div>
