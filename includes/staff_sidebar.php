@@ -142,17 +142,17 @@ function getStaffSidebar($current_page = 'dashboard') {
                 'report_payments' => [
                     'icon'  => 'fas fa-credit-card',
                     'title' => 'Payments Reports',
-                    'url'   => 'staff_reports.php?view=payments_reports&sub=all',
+                    'url'   => 'staff_payments_report.php',
                 ],
                 'report_customers' => [
                     'icon'  => 'fas fa-users',
                     'title' => 'Customer Reports',
-                    'url'   => 'staff_reports.php?view=customer_reports&sub=customer_list',
+                    'url'   => 'staff_customers_report.php',
                 ],
                 'report_activity' => [
                     'icon'  => 'fas fa-chart-line',
                     'title' => 'Activity Reports',
-                    'url'   => 'staff_reports.php?view=activity_reports&sub=staff_activity',
+                    'url'   => 'staff_activity_report.php',
                 ],
             ],
         ],

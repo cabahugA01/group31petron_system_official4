@@ -318,7 +318,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
                     $parts_exp = [];
                     if ($has_jop_exp) {
                         try {
-                            $ps = $pdo->prepare("SELECT jop.quantity_used, jop.unit_cost, COALESCE(p.product_name, p.name, 'Unknown') AS product_name FROM job_order_parts jop LEFT JOIN products p ON jop.product_id = p.id WHERE jop.job_order_id = ?");
+                            $ps = $pdo->prepare("SELECT jop.quantity_used, jop.unit_cost, COALESCE(ip.product_name, p.name, 'Unknown') AS product_name FROM job_order_parts jop LEFT JOIN inventory_products ip ON jop.product_id = ip.id LEFT JOIN products p ON jop.product_id = p.id WHERE jop.job_order_id = ?");
                             $ps->execute([$row['id']]);
                             $parts_exp = $ps->fetchAll(PDO::FETCH_ASSOC) ?: [];
                         } catch (Exception $e) {}
@@ -1740,12 +1740,10 @@ require_once __DIR__ . '/../partials/header.php';
 
 /* Card-level export action bar */
 .card-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-.btn-act { display:inline-flex; align-items:center; gap:6px; padding:7px 16px; border-radius:7px; font-size:12px; font-weight:700; text-decoration:none; cursor:pointer; transition:.15s; border:none; white-space:nowrap; }
-.btn-act:hover { opacity:.85; transform:translateY(-1px); }
-.btn-act-excel  { background:#1e7e34; color:#fff; }
-.btn-act-csv    { background:#1a3a6b; color:#fff; }
-.btn-act-pdf    { background:#cc0000; color:#fff; }
-.btn-act-back   { background:#6c757d; color:#fff; }
+.btn-act { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:4px; font-size:12px; font-weight:500; text-decoration:none; cursor:pointer; transition:.15s; white-space:nowrap; background:#fff; color:#000; border:1px solid #000; }
+.btn-act:hover { background:#f5f5f5; color:#000; border-color:#000; }
+.btn-act-excel, .btn-act-csv, .btn-act-pdf, .btn-act-print, .btn-act-back { background:#fff; color:#000; border:1px solid #000; }
+.btn-act-excel:hover, .btn-act-csv:hover, .btn-act-pdf:hover, .btn-act-print:hover, .btn-act-back:hover { background:#f5f5f5; color:#000; }
 
 /* Stat cards */
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px; }
@@ -1933,10 +1931,10 @@ require_once __DIR__ . '/../partials/header.php';
         'start'   => $date_start, 'end'  => $date_end
     ]);
     $card_btns = '<div class="card-actions">
-        <a href="'.$_exp_url.'&format=excel" class="btn-act btn-act-excel" title="Export Excel"><i class="fa-solid fa-file-excel"></i> Excel</a>
-        <a href="'.$_exp_url.'&format=csv"   class="btn-act btn-act-csv"   title="Export CSV"><i class="fa-solid fa-file-csv"></i> CSV</a>
-        <a href="'.$_exp_url.'&format=pdf"   class="btn-act btn-act-pdf"   title="View PDF" target="_blank"><i class="fa-solid fa-file-pdf"></i> PDF</a>
-        <a href="'.$_back_url.'"             class="btn-act btn-act-back"  title="Back to Section"><i class="fa-solid fa-arrow-left"></i> Back</a>
+        <a href="'.$_exp_url.'&format=excel" class="btn-act btn-act-excel" title="Export Excel">Export Excel</a>
+        <a href="'.$_exp_url.'&format=csv"   class="btn-act btn-act-csv"   title="Export CSV">Export CSV</a>
+        <button onclick="window.print()"      class="btn-act btn-act-print" title="Print">Print Report</button>
+        <a href="'.$_back_url.'"             class="btn-act btn-act-back"  title="Back to Section">Back</a>
     </div>';
     ?>
 

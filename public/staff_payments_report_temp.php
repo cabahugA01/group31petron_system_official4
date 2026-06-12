@@ -56,21 +56,6 @@ function table_exists($pdo, $table) {
     }
 }
 
-/**
- * Normalize shift_period label to boolean: true = Shift 1, false = Shift 2.
- * Handles 'First Shift', 'General', 'Morning', '1st', 'Shift 1', etc.
- */
-if (!function_exists('is_shift1')) {
-    function is_shift1(string $shift): bool {
-        $s = strtolower(trim($shift));
-        $s2_keys = ['shift 2','shift2','second','2nd','evening','afternoon','night','pm'];
-        $s1_keys = ['shift 1','shift1','first','1st','morning','day','general','am'];
-        foreach ($s2_keys as $kw) { if (strpos($s, $kw) !== false) return false; }
-        foreach ($s1_keys as $kw) { if (strpos($s, $kw) !== false) return true; }
-        return strpos($s, '2') === false;
-    }
-}
-
 // Check available tables
 $has_job_orders = table_exists($pdo, 'job_orders');
 $has_service_transactions = table_exists($pdo, 'service_transactions');
@@ -89,37 +74,24 @@ if ($has_job_orders) {
     try {
         $sql = "SELECT 
                     jo.id,
-                    COALESCE(jo.job_order_id, jo.job_order_number, CONCAT('JO-', jo.id)) AS job_order_id,
-                    COALESCE(c.name, jo.customer_name, 'Walk-in') AS customer_name,
-                    COALESCE(c.contact_number, '—') AS customer_contact,
+                    jo.job_order_id,
+                    COALESCE(c.name, jo.customer_name) AS customer_name,
+                    COALESCE(c.contact_number, jo.customer_contact) AS customer_contact,
                     jo.service_type,
-                    (
-                        SELECT GROUP_CONCAT(CONCAT(ip.product_name, ' (x', jop.quantity_used, ')') SEPARATOR ', ')
-                        FROM job_order_parts jop
-                        LEFT JOIN inventory_products ip ON jop.product_id = ip.id
-                        WHERE jop.job_order_id = jo.id
-                    ) AS parts_materials_used,
-                    COALESCE((
-                        SELECT SUM(jop.quantity_used)
-                        FROM job_order_parts jop
-                        WHERE jop.job_order_id = jo.id
-                    ), 0) AS quantity,
-                    COALESCE((
-                        SELECT AVG(jop.unit_cost)
-                        FROM job_order_parts jop
-                        WHERE jop.job_order_id = jo.id
-                    ), 0) AS unit_price,
-                    COALESCE(jo.actual_labor_cost, jo.estimated_labor_cost, 0) AS labor_fee,
-                    COALESCE(jo.total_cost, jo.estimated_cost, 0) AS total_service_amount,
-                    COALESCE(jo.payment_method, 'Cash') AS payment_mode,
-                    CASE WHEN HOUR(jo.created_at) >= 6 AND HOUR(jo.created_at) < 14 THEN 'Shift 1' ELSE 'Shift 2' END AS shift,
+                    jo.parts_materials_used,
+                    jo.quantity,
+                    jo.unit_price,
+                    jo.labor_fee,
+                    jo.total_service_amount,
+                    jo.payment_mode,
+                    jo.shift,
                     jo.status,
                     u.username AS encoder,
-                    jo.notes AS remarks,
+                    jo.remarks,
                     jo.created_at
             FROM job_orders jo
             LEFT JOIN customers c ON jo.customer_id = c.id
-            LEFT JOIN users u ON COALESCE(jo.created_by, jo.user_id) = u.id
+            LEFT JOIN users u ON jo.encoder_id = u.id
             WHERE jo.station_id = ? 
               AND DATE(jo.created_at) BETWEEN ? AND ?
             ORDER BY jo.created_at DESC";
@@ -130,8 +102,10 @@ if ($has_job_orders) {
         
         // Calculate shift totals
         foreach ($job_orders as $jo) {
+            $shift = strtolower($jo['shift'] ?? '');
             $amount = (float)$jo['total_service_amount'];
-            if (is_shift1($jo['shift'] ?? '')) {
+            
+            if (strpos($shift, 'shift 1') !== false || strpos($shift, '1') !== false) {
                 $shift1_total += $amount;
                 $shift1_count++;
             } else {
@@ -268,9 +242,9 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
             echo '<td>' . htmlspecialchars($jo['job_order_id']) . '</td>';
             echo '<td>' . htmlspecialchars($jo['customer_name']) . '<br>' . htmlspecialchars($jo['customer_contact']) . '</td>';
             echo '<td>' . htmlspecialchars($jo['service_type']) . '</td>';
-            echo '<td>' . (!empty($jo['parts_materials_used']) ? htmlspecialchars($jo['parts_materials_used']) : '—') . '</td>';
-            echo '<td class="text-right">' . ($jo['quantity'] > 0 ? number_format($jo['quantity'], 0) : '—') . '</td>';
-            echo '<td class="text-right">' . ($jo['quantity'] > 0 ? '₱' . number_format($jo['unit_price'], 2) : '—') . '</td>';
+            echo '<td>' . htmlspecialchars($jo['parts_materials_used'] ?? '—') . '</td>';
+            echo '<td class="text-right">' . number_format($jo['quantity'], 0) . '</td>';
+            echo '<td class="text-right">₱' . number_format($jo['unit_price'], 2) . '</td>';
             echo '<td class="text-right">₱' . number_format($jo['labor_fee'], 2) . '</td>';
             echo '<td class="text-right font-bold">₱' . number_format($jo['total_service_amount'], 2) . '</td>';
             echo '<td>' . htmlspecialchars($jo['payment_mode']) . '</td>';
@@ -544,50 +518,188 @@ require_once __DIR__ . '/../partials/header.php';
     }
     
     @media print {
+        /* Set page size to Legal/Long Bond */
         @page {
             size: legal portrait;
-            margin: 0.5in 0.4in;
+            margin: 0.3in 0.4in;
         }
-
-        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-
-        body * { visibility: hidden !important; }
-        .print-area, .print-area * { visibility: visible !important; }
-        .print-area {
-            position: fixed !important; top: 0 !important; left: 0 !important;
-            width: 100% !important; margin: 0 !important; padding: 0 !important;
-            background: white !important;
+        
+        * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
         }
-        html, body { margin: 0 !important; padding: 0 !important; background: white !important; overflow: visible !important; }
-        .container, .content { margin: 0 !important; padding: 0 !important; }
-
-        /* ── Kill ALL icons ── */
-        i, svg, .fas, .far, .fab, .fa, [class*="fa-"] {
+        
+        html, body { 
+            background: white !important; 
+            padding: 0 !important; 
+            margin: 0 auto !important;
+            width: 100% !important;
+            height: auto !important;
+            overflow: visible !important;
+        }
+        
+        /* HIDE: controls, buttons, sidebar, navigation, logo, footer */
+        .controls,
+        .btn,
+        button,
+        input[type="date"],
+        label,
+        .date-controls,
+        .sidebar,
+        .main-sidebar,
+        aside,
+        nav,
+        .navbar,
+        .main-header,
+        .sidebar-wrapper,
+        #sidebar,
+        .nav-sidebar,
+        .brand-link,
+        .user-panel,
+        .elevation-4,
+        .content-header,
+        .breadcrumb,
+        img,
+        .logo,
+        .brand-image,
+        .brand-text { 
+            display: none !important; 
+            visibility: hidden !important;
+        }
+        
+        /* Hide ALL header and footer from system partials */
+        body > header,
+        body > footer,
+        .wrapper > header,
+        .wrapper > footer,
+        .wrapper > aside,
+        header.main-header,
+        footer.main-footer,
+        .main-footer,
+        .content-wrapper > footer,
+        div > footer { 
             display: none !important;
-            width: 0 !important; height: 0 !important;
-            font-size: 0 !important; line-height: 0 !important;
-            margin: 0 !important; padding: 0 !important;
+            visibility: hidden !important;
         }
-
-        .header { text-align: center !important; border-bottom: 2px solid #000 !important; padding: 6px 0 !important; margin: 0 0 8px 0 !important; }
-        .header h1 { font-size: 16px !important; font-weight: 700 !important; color: #000 !important; margin: 0 0 3px 0 !important; }
-        .header p { font-size: 10px !important; color: #000 !important; margin: 2px 0 !important; }
-        .section-title { font-size: 12px !important; font-weight: 700 !important; margin: 8px 0 4px 0 !important; padding-bottom: 3px !important; border-bottom: 2px solid #000 !important; page-break-after: avoid !important; }
-        .table-container { overflow: visible !important; width: 100% !important; text-align: center !important; }
-        table { width: 95% !important; max-width: 100% !important; border-collapse: collapse !important; font-size: 10px !important; table-layout: auto !important; margin: 0 auto 8px auto !important; }
-        thead { display: table-header-group !important; }
-        tbody { display: table-row-group !important; }
-        tr { page-break-inside: avoid !important; }
-        th { font-size: 10px !important; padding: 6px 8px !important; border: 1px solid #000 !important; background: #fff !important; color: #000 !important; font-weight: 700 !important; text-align: center !important; white-space: nowrap !important; }
-        td { font-size: 9px !important; padding: 5px 8px !important; border: 1px solid #000 !important; white-space: nowrap !important; vertical-align: top !important; }
-        .shift-summary { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 6px !important; margin: 6px 0 !important; page-break-inside: avoid !important; }
-        .shift-box { border: 1px solid #000 !important; padding: 5px !important; }
-        .shift-box h3 { font-size: 10px !important; border-bottom: 1px solid #000 !important; padding-bottom: 2px !important; margin: 0 0 4px 0 !important; }
-        .shift-box table { width: auto !important; margin: 0 !important; }
-        .shift-box td { border: none !important; border-bottom: 1px solid #ddd !important; font-size: 9px !important; }
-        .remarks-section { border: 1px solid #000 !important; padding: 5px !important; margin-top: 6px !important; }
-        .remarks-section h3 { font-size: 8px !important; border-bottom: 1px solid #000 !important; padding-bottom: 2px !important; margin: 0 0 4px 0 !important; }
-        .remarks-list li { font-size: 7px !important; padding: 2px !important; }
+        
+        /* Force visibility and CENTER positioning of main content */
+        .wrapper,
+        .content-wrapper { 
+            margin: 0 auto !important; 
+            padding: 0 !important;
+            width: 100% !important;
+            position: static !important;
+        }
+        
+        .main-content { 
+            display: block !important;
+            visibility: visible !important;
+            width: 100% !important; 
+            max-width: 100% !important;
+            margin: 0 auto !important; 
+            padding: 0 !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+            position: static !important;
+            overflow: visible !important;
+            left: 0 !important;
+            right: 0 !important;
+        }
+        
+        .container { 
+            display: block !important;
+            visibility: visible !important;
+            padding: 0 !important; 
+            margin: 0 auto !important;
+            max-width: 100% !important;
+            width: 100% !important;
+        }
+        
+        .print-area {
+            display: block !important;
+            visibility: visible !important;
+            width: 100% !important;
+            margin: 0 auto !important;
+            padding: 0 !important;
+            position: static !important;
+            opacity: 1 !important;
+        }
+        
+        .content { 
+            display: block !important;
+            visibility: visible !important;
+            padding: 5px 0 !important;
+            margin: 0 auto !important;
+            text-align: center !important;
+        }
+        
+        .header { 
+            display: block !important;
+            visibility: visible !important;
+            border-bottom: 1px solid #000; 
+            padding: 5px 0 !important;
+            margin: 0 auto 5px auto !important;
+            text-align: center !important;
+        }
+        
+        .header h1 {
+            display: block !important;
+            visibility: visible !important;
+            font-size: 14px !important;
+            margin: 0 auto 3px auto !important;
+            color: #000 !important;
+            text-align: center !important;
+        }
+        
+        .header p {
+            display: block !important;
+            visibility: visible !important;
+            font-size: 8px !important;
+            margin: 2px auto !important;
+            color: #000 !important;
+            text-align: center !important;
+        }
+        
+        .section-title {
+            display: block !important;
+            visibility: visible !important;
+            font-size: 10px !important;
+            margin: 8px 0 4px 0 !important;
+            padding-bottom: 3px !important;
+            border-bottom: 1px solid #000 !important;
+            page-break-after: avoid !important;
+            text-align: left !important;
+        }
+        
+        .table-container {
+            display: block !important;
+            visibility: visible !important;
+            margin: 0 auto 8px auto !important;
+            overflow: visible !important;
+            text-align: left !important;
+        }
+        
+        table { 
+            display: table !important;
+            visibility: visible !important;
+            font-size: 6px !important; 
+            page-break-inside: avoid !important;
+            width: 100% !important;
+            margin: 0 auto 5px auto !important;
+            border-collapse: collapse !important;
+        }
+        
+        th { 
+            font-size: 5.5px !important; 
+            padding: 2px 1px !important;
+            line-height: 1.1 !important;
+        }
+        
+        td {
+            font-size: 6px !important;
+            padding: 2px 1px !important;
+            line-height: 1.1 !important;
+        }
     }
 </style>
 
@@ -655,9 +767,9 @@ require_once __DIR__ . '/../partials/header.php';
                             <td><strong><?= htmlspecialchars($jo['job_order_id']) ?></strong></td>
                             <td><?= htmlspecialchars($jo['customer_name']) ?><br><small><?= htmlspecialchars($jo['customer_contact']) ?></small></td>
                             <td><?= htmlspecialchars($jo['service_type']) ?></td>
-                            <td><?= !empty($jo['parts_materials_used']) ? htmlspecialchars($jo['parts_materials_used']) : '—' ?></td>
-                            <td class="text-right"><?= $jo['quantity'] > 0 ? number_format($jo['quantity'], 0) : '—' ?></td>
-                            <td class="text-right"><?= $jo['quantity'] > 0 ? '₱' . number_format($jo['unit_price'], 2) : '—' ?></td>
+                            <td><?= htmlspecialchars($jo['parts_materials_used'] ?? '—') ?></td>
+                            <td class="text-right"><?= number_format($jo['quantity'], 0) ?></td>
+                            <td class="text-right">₱<?= number_format($jo['unit_price'], 2) ?></td>
                             <td class="text-right">₱<?= number_format($jo['labor_fee'], 2) ?></td>
                             <td class="text-right font-bold">₱<?= number_format($jo['total_service_amount'], 2) ?></td>
                             <td><?= htmlspecialchars($jo['payment_mode']) ?></td>

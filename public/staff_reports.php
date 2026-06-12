@@ -1497,8 +1497,8 @@ tr:last-child td{border-bottom:none;}
 @media print{body{padding:10px;} .no-print{display:none;}}
 </style></head><body>
 <div class="no-print" style="margin-bottom:16px;">
-  <button onclick="window.print()" style="background:#002F70;color:#fff;border:none;padding:10px 22px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">🖨 Print / Save as PDF</button>
-  <button onclick="window.close()" style="background:#6c757d;color:#fff;border:none;padding:10px 16px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;margin-left:8px;">✕ Close</button>
+  <button onclick="window.print()" style="background:#002F70;color:#fff;border:none;padding:10px 22px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">Print / Save as PDF</button>
+  <button onclick="window.close()" style="background:#6c757d;color:#fff;border:none;padding:10px 16px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;margin-left:8px;">Close</button>
 </div>
 <div class="print-header">
   <h1>DAILY SALES &amp; SERVICES REPORT</h1>
@@ -1515,7 +1515,7 @@ tr:last-child td{border-bottom:none;}
 </div>
 
 <div class="section">
-  <div class="section-head"><span>📊 Meter Reading Table (Liters = Ending − Beginning ± Calibration)</span></div>
+  <div class="section-head"><span>Meter Reading Table (Liters = Ending - Beginning +/- Calibration)</span></div>
   <div style="overflow-x:auto;"><table>
     <thead><tr><th>#</th><th>Tanker ID</th><th>Fuel Type</th><th>Beginning Reading</th><th>Ending Reading</th><th>Calibration</th><th>Liters Sold</th><th>Unit Price</th><th>Amount</th><th>Shift</th><th>Date</th></tr></thead>
     <tbody>'.($print_rows_meter ?: '<tr><td colspan="11" style="text-align:center;color:#9ca3af;">No meter readings</td></tr>').'</tbody>
@@ -1524,12 +1524,12 @@ tr:last-child td{border-bottom:none;}
 
 <div class="two-col">
   <div class="section">
-    <div class="section-head"><span>⚽ Volume Sales Summary</span></div>
+    <div class="section-head"><span>Volume Sales Summary</span></div>
     <table><thead><tr><th>Fuel Type</th><th>Total Liters Sold</th><th>Avg Price/L</th><th>Total Amount</th></tr></thead>
     <tbody>'.($print_rows_vol ?: '<tr><td colspan="4" style="text-align:center;color:#9ca3af;">No data</td></tr>').'</tbody></table>
   </div>
   <div class="section">
-    <div class="section-head"><span>🛢 Tank Sales Summary</span></div>
+    <div class="section-head"><span>Tank Sales Summary</span></div>
     <table><thead><tr><th>Tank</th><th>Fuel Type</th><th>Tank Capacity</th><th>Dispensed Liters</th><th>Utilization %</th></tr></thead>
     <tbody>'.$print_rows_tank.'</tbody></table>
   </div>
@@ -1537,31 +1537,31 @@ tr:last-child td{border-bottom:none;}
 
 <div class="two-col">
   <div class="section">
-    <div class="section-head"><span>🌅 Shift 1 Sales &amp; Cash (6:00 AM – 2:00 PM)</span></div>
+    <div class="section-head"><span>Shift 1 Sales &amp; Cash (6:00 AM - 2:00 PM)</span></div>
     <table><thead><tr><th>Fuel Type</th><th>Liters</th><th>Total Sales (₱)</th><th>Cash Received (₱)</th><th>Digital (₱)</th><th>Credit (₱)</th></tr></thead>
     <tbody>'.$print_rows_s1.'</tbody></table>
   </div>
   <div class="section">
-    <div class="section-head"><span>🌙 Shift 2 Sales &amp; Cash (2:00 PM – 12:00 MN)</span></div>
+    <div class="section-head"><span>Shift 2 Sales &amp; Cash (2:00 PM - 12:00 MN)</span></div>
     <table><thead><tr><th>Fuel Type</th><th>Liters</th><th>Total Sales (₱)</th><th>Cash Received (₱)</th><th>Digital (₱)</th><th>Credit (₱)</th></tr></thead>
     <tbody>'.$print_rows_s2.'</tbody></table>
   </div>
 </div>
 
 <div class="section">
-  <div class="section-head"><span>🔧 Service Income (Job Orders)</span></div>
+  <div class="section-head"><span>Service Income (Job Orders)</span></div>
   <table><thead><tr><th>Job Ref</th><th>Customer Name</th><th>Vehicle Plate</th><th>Service Type</th><th>Payment Method</th><th>Total Cost</th></tr></thead>
   <tbody>'.$print_rows_service.'</tbody></table>
 </div>
 
 <div class="section">
-  <div class="section-head"><span>📋 A/R Summary — Suki / Credit Customers</span></div>
+  <div class="section-head"><span>A/R Summary - Suki / Credit Customers</span></div>
   <table><thead><tr><th>Customer Name</th><th>Outstanding Balance</th></tr></thead>
   <tbody>'.$print_rows_ar.'</tbody></table>
 </div>
 
 <div class="section">
-  <div class="section-head"><span>📊 Overall Daily Summary</span></div>
+  <div class="section-head"><span>Overall Daily Summary</span></div>
   <table><thead><tr><th>Metric</th><th>Value</th></tr></thead>
   <tbody>
     <tr><td>Total Liters Sold</td><td><strong>'.number_format($grand_liters,2).' L</strong></td></tr>
@@ -1721,8 +1721,8 @@ table{width:100%;border-collapse:collapse;}
 @media print{body{padding:8px;}.no-print{display:none;}}
 </style></head><body>
 <div class="no-print" style="margin-bottom:14px;">
-  <button onclick="window.print()" style="background:#002F70;color:#fff;border:none;padding:9px 20px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">&#128424; Print / Save as PDF</button>
-  <button onclick="window.close()" style="background:#6c757d;color:#fff;border:none;padding:9px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;margin-left:8px;">&#10005; Close</button>
+  <button onclick="window.print()" style="background:#002F70;color:#fff;border:none;padding:9px 20px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">Print / Save as PDF</button>
+  <button onclick="window.close()" style="background:#6c757d;color:#fff;border:none;padding:9px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;margin-left:8px;">Close</button>
 </div>
 <div class="ph">
   <h1>DAILY JOB ORDER REPORT</h1>
@@ -1735,7 +1735,7 @@ table{width:100%;border-collapse:collapse;}
   <div class="sc" style="border-left-color:#8b5cf6;"><div class="v">&#8369;'.number_format($jo_s1['credit']+$jo_s2['credit'],2).'</div><div class="l">Credit / A/R</div></div>
 </div>
 <div class="sec">
-  <div class="sh">&#128295; Job Order Table</div>
+  <div class="sh">Job Order Table</div>
   <div style="overflow-x:auto;">
   <table>
     <thead><tr>
@@ -1757,7 +1757,7 @@ table{width:100%;border-collapse:collapse;}
 </div>
 <div class="two">
   <div class="sec">
-    <div class="sh">&#127774; Shift 1 Summary (6 AM – 2 PM)</div>
+    <div class="sh">Shift 1 Summary (6 AM - 2 PM)</div>
     <table><thead><tr>
       <th style="'.$th_s.'">Metric</th><th style="'.$th_s.'">Value</th>
     </tr></thead><tbody>
@@ -1769,7 +1769,7 @@ table{width:100%;border-collapse:collapse;}
     </tbody></table>
   </div>
   <div class="sec">
-    <div class="sh">&#127762; Shift 2 Summary (2 PM – 12 MN)</div>
+    <div class="sh">Shift 2 Summary (2 PM - 12 MN)</div>
     <table><thead><tr>
       <th style="'.$th_s.'">Metric</th><th style="'.$th_s.'">Value</th>
     </tr></thead><tbody>
@@ -1782,7 +1782,7 @@ table{width:100%;border-collapse:collapse;}
   </div>
 </div>
 <div class="sec">
-  <div class="sh">&#128202; Overall Daily Summary</div>
+  <div class="sh">Overall Daily Summary</div>
   <table><thead><tr>
     <th style="'.$th_s.'">Metric</th><th style="'.$th_s.'">Value</th>
   </tr></thead><tbody>
@@ -1932,8 +1932,8 @@ tr:last-child td{border-bottom:none;}
 @media print{.no-print{display:none!important;}}
 </style></head><body>
 <div class="no-print" style="padding:10px 0 14px;display:flex;gap:8px;">
-  <button onclick="window.print()" style="background:#002F70;color:#fff;border:none;padding:10px 22px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">🖨 Print / Save as PDF</button>
-  <button onclick="window.close()" style="background:#6c757d;color:#fff;border:none;padding:10px 16px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;margin-left:8px;">✕ Close</button>
+  <button onclick="window.print()" style="background:#002F70;color:#fff;border:none;padding:10px 22px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">Print / Save as PDF</button>
+  <button onclick="window.close()" style="background:#6c757d;color:#fff;border:none;padding:10px 16px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;margin-left:8px;">Close</button>
 </div>
 <div class="print-header">
   <h1>DAILY MERCHANDISE SALES REPORT</h1>
@@ -1950,7 +1950,7 @@ tr:last-child td{border-bottom:none;}
 </div>
 
 <div class="section">
-  <div class="section-head"><span>🏪 Merchandise Sales Table</span></div>
+  <div class="section-head"><span>Merchandise Sales Table</span></div>
   <div style="overflow-x:auto;"><table>
     <thead><tr><th>Category</th><th>Product Name</th><th>Size</th><th>Beg. Stock</th><th>Stock In</th><th>Stock Out</th><th>End Stock</th><th>Unit Price</th><th>Amount</th><th>Encoder</th><th>Remarks</th></tr></thead>
     <tbody>';
@@ -1977,12 +1977,12 @@ tr:last-child td{border-bottom:none;}
 
 <div class="two-col">
   <div class="section">
-    <div class="section-head"><span>🌅 Shift 1 Sales (6:00 AM – 2:00 PM)</span></div>
+    <div class="section-head"><span>Shift 1 Sales (6:00 AM - 2:00 PM)</span></div>
     <table><thead><tr><th>Category</th><th>Items</th><th>Total (₱)</th><th>Cash (₱)</th><th>Digital (₱)</th><th>Credit (₱)</th></tr></thead>
     <tbody>'._ms_shift_rows($merch_shift1).'</tbody></table>
   </div>
   <div class="section">
-    <div class="section-head"><span>🌙 Shift 2 Sales (2:00 PM – 12:00 MN)</span></div>
+    <div class="section-head"><span>Shift 2 Sales (2:00 PM - 12:00 MN)</span></div>
     <table><thead><tr><th>Category</th><th>Items</th><th>Total (₱)</th><th>Cash (₱)</th><th>Digital (₱)</th><th>Credit (₱)</th></tr></thead>
     <tbody>'._ms_shift_rows($merch_shift2).'</tbody></table>
   </div>
@@ -1990,7 +1990,7 @@ tr:last-child td{border-bottom:none;}
 
 <div class="two-col">
   <div class="section">
-    <div class="section-head"><span>📦 Category Totals</span></div>
+    <div class="section-head"><span>Category Totals</span></div>
     <table><thead><tr><th>Category</th><th>Items Sold</th><th>Total Amount</th></tr></thead>
     <tbody>';
         foreach ($merch_cat_totals as $r) {
@@ -1999,7 +1999,7 @@ tr:last-child td{border-bottom:none;}
         if (empty($merch_cat_totals)) echo '<tr><td colspan="3" style="text-align:center;color:#9ca3af;">No data</td></tr>';
         echo '</tbody></table></div>
   <div class="section">
-    <div class="section-head"><span>📋 Accounts Receivable Summary</span></div>
+    <div class="section-head"><span>Accounts Receivable Summary</span></div>
     <table><thead><tr><th>Ref</th><th>Customer</th><th>Amount</th><th>Status</th><th>Due Date</th></tr></thead>
     <tbody>';
         foreach ($merch_ar as $r) {
@@ -2017,7 +2017,7 @@ tr:last-child td{border-bottom:none;}
 </div>
 
 <div class="section">
-  <div class="section-head"><span>📊 Overall Daily Summary</span></div>
+  <div class="section-head"><span>Overall Daily Summary</span></div>
   <table><thead><tr><th>Metric</th><th>Value</th></tr></thead>
   <tbody>
     <tr><td>Total Merchandise Sales</td><td><strong>₱'.number_format($merch_grand_sales,2).'</strong></td></tr>

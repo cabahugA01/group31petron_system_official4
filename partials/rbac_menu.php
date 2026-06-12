@@ -73,11 +73,11 @@ $master_menu = [
     // Reports - Staff, Manager, Admin
     ['id'=>'reports','label'=>'Reports','ico'=>'fas fa-chart-bar','href'=>'staff_reports.php','permissions'=>['view_personal_reports', 'view_operational_reports', 'view_financial_reports', 'view_all_reports'],'station_specific'=>true,'sub_items'=>[
         ['id'=>'report_daily_sales',      'label'=>'Sales Reports',                    'href'=>'staff_fuel_sales_summary.php',       'permissions'=>['view_personal_reports','view_operational_reports']],
-        ['id'=>'report_jo_tracker',       'label'=>'Job Orders Reports',               'href'=>'staff_reports.php?section=job_orders',  'permissions'=>['view_personal_reports','view_operational_reports']],
+        ['id'=>'report_jo_tracker',       'label'=>'Job Orders Reports',               'href'=>'staff_job_orders_report.php',  'permissions'=>['view_personal_reports','view_operational_reports']],
         ['id'=>'report_deliveries',       'label'=>'Deliveries Reports',               'href'=>'staff_deliveries_report.php',           'permissions'=>['view_personal_reports','view_operational_reports']],
-        ['id'=>'report_payments',         'label'=>'Payments Reports',                 'href'=>'staff_reports.php?section=payments',    'permissions'=>['view_personal_reports','view_operational_reports']],
-        ['id'=>'report_customers',        'label'=>'Customer Reports',                 'href'=>'staff_reports.php?section=customers',   'permissions'=>['view_personal_reports','view_operational_reports']],
-        ['id'=>'report_activity',         'label'=>'Activity Reports',                 'href'=>'staff_reports.php?section=activity',    'permissions'=>['view_personal_reports']],
+        ['id'=>'report_payments',         'label'=>'Payments Reports',                 'href'=>'staff_payments_report.php',    'permissions'=>['view_personal_reports','view_operational_reports']],
+        ['id'=>'report_customers',        'label'=>'Customer Reports',                 'href'=>'staff_customers_report.php',   'permissions'=>['view_personal_reports','view_operational_reports']],
+        ['id'=>'report_activity',         'label'=>'Activity Reports',                 'href'=>'staff_activity_report.php',    'permissions'=>['view_personal_reports']],
     ]],
     
     // ── SUPERADMIN / DEVELOPER SIDEBAR ──────────────────────────────────────────
@@ -284,23 +284,27 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 'permissions' => ['view_all_reports', 'view_dashboard'],
                 'station_specific' => true,
             ],
-            // 10. Reports
+            // 10. Reports & Analytics - Comprehensive Admin Reporting
             [
                 'id' => 'reports_admin',
-                'label' => 'Reports',
+                'label' => 'Reports & Analytics',
                 'ico' => 'fas fa-chart-bar',
                 'href' => 'admin_reports.php',
                 'permissions' => ['view_all_reports', 'view_dashboard'],
                 'station_specific' => true,
                 'sub_items' => [
-                    ['id' => 'rpt_sales',       'label' => 'Transactions Reports',          'href' => 'admin_reports.php?tab=sales',       'permissions' => ['view_all_reports']],
-                    ['id' => 'rpt_fuel',        'label' => 'Fuel Management Reports',        'href' => 'admin_reports.php?tab=fuel',        'permissions' => ['view_all_reports']],
-                    ['id' => 'rpt_deliveries',  'label' => 'Merchandise Deliveries Reports', 'href' => 'admin_reports.php?tab=deliveries',  'permissions' => ['view_all_reports']],
-                    ['id' => 'rpt_inventory',   'label' => 'Inventory Reports',              'href' => 'admin_reports.php?tab=inventory',   'permissions' => ['view_all_reports']],
-                    ['id' => 'rpt_customers',   'label' => 'Customer Reports',               'href' => 'admin_reports.php?tab=customers',   'permissions' => ['view_all_reports']],
-                    ['id' => 'rpt_suppliers',   'label' => 'Supplier Reports',               'href' => 'admin_reports.php?tab=suppliers',   'permissions' => ['view_all_reports']],
-                    ['id' => 'rpt_payments',    'label' => 'Financial / Payables Reports',   'href' => 'admin_reports.php?tab=payments',    'permissions' => ['view_all_reports']],
-                    ['id' => 'rpt_calendar',    'label' => 'Calendar & Scheduling Reports',  'href' => 'admin_reports.php?tab=calendar',    'permissions' => ['view_all_reports']],
+                    ['id' => 'rpt_shift',           'label' => 'Shift Reports',              'href' => 'admin_reports.php?section=shift_reports',           'ico' => 'fas fa-clock',           'permissions' => ['view_all_reports'], 'desc' => 'Detailed breakdown for Shift 1 and Shift 2'],
+                    ['id' => 'rpt_daily',           'label' => 'Daily Consolidation',       'href' => 'admin_reports.php?section=daily_consolidation',     'ico' => 'fas fa-calendar-day',    'permissions' => ['view_all_reports'], 'desc' => 'Combined totals across shifts with charts'],
+                    ['id' => 'rpt_fuel_inv',        'label' => 'Fuel Inventory',            'href' => 'admin_reports.php?section=fuel_inventory',          'ico' => 'fas fa-gas-pump',        'permissions' => ['view_all_reports'], 'desc' => 'Meter readings and variance analysis'],
+                    ['id' => 'rpt_merch_inv',       'label' => 'Merchandise Inventory',     'href' => 'admin_reports.php?section=merchandise_inventory',    'ico' => 'fas fa-boxes',           'permissions' => ['view_all_reports'], 'desc' => 'Stock levels and reorder alerts'],
+                    ['id' => 'rpt_jobs',            'label' => 'Job Orders',                'href' => 'admin_reports.php?section=job_orders',              'ico' => 'fas fa-briefcase',       'permissions' => ['view_all_reports'], 'desc' => 'Service jobs by status and income'],
+                    ['id' => 'rpt_payments',        'label' => 'Payments',                  'href' => 'admin_reports.php?section=payments',                'ico' => 'fas fa-money-bill-wave', 'permissions' => ['view_all_reports'], 'desc' => 'Payment modes breakdown and variance'],
+                    ['id' => 'rpt_customers',       'label' => 'Customers',                 'href' => 'admin_reports.php?section=customers',               'ico' => 'fas fa-users',           'permissions' => ['view_all_reports'], 'desc' => 'Customer transactions and balances'],
+                    ['id' => 'rpt_suppliers',       'label' => 'Suppliers',                 'href' => 'admin_reports.php?section=suppliers',               'ico' => 'fas fa-truck',           'permissions' => ['view_all_reports'], 'desc' => 'Supplier deliveries and payables'],
+                    ['id' => 'rpt_financial',       'label' => 'Financial / Payables',      'href' => 'admin_reports.php?section=financial',               'ico' => 'fas fa-calculator',      'permissions' => ['view_all_reports'], 'desc' => 'Accounts payable and receivable'],
+                    ['id' => 'rpt_activity',        'label' => 'Activity Log',              'href' => 'admin_reports.php?section=activity_log',            'ico' => 'fas fa-history',         'permissions' => ['view_all_reports'], 'desc' => 'Staff actions timeline'],
+                    ['id' => 'rpt_audit',           'label' => 'Audit Trail',               'href' => 'admin_reports.php?section=audit_trail',             'ico' => 'fas fa-file-signature',  'permissions' => ['view_all_reports'], 'desc' => 'Compliance logs and change tracking'],
+                    ['id' => 'rpt_calendar',        'label' => 'Calendar & Schedule',       'href' => 'admin_reports.php?section=calendar_schedule',       'ico' => 'fas fa-calendar-alt',    'permissions' => ['view_all_reports'], 'desc' => 'Job orders and deliveries schedule'],
                 ],
             ],
             // 11. Audit Trail — standalone direct link for quick access

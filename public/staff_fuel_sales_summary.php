@@ -42,8 +42,16 @@ try {
 
 // Date handling
 $today = date('Y-m-d');
-$report_date = trim($_GET['report_date'] ?? $today);
-if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $report_date)) $report_date = $today;
+// Default to most recent date with fuel data for this station (fallback to today)
+$default_date = $today;
+try {
+    $dr = $pdo->prepare("SELECT DATE(transaction_date) AS d FROM fuel_transactions WHERE station_id=? ORDER BY transaction_date DESC LIMIT 1");
+    $dr->execute([$station_id]);
+    $dr_row = $dr->fetch(PDO::FETCH_ASSOC);
+    if ($dr_row && $dr_row['d']) $default_date = $dr_row['d'];
+} catch (Exception $e) {}
+$report_date = trim($_GET['report_date'] ?? $default_date);
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $report_date)) $report_date = $default_date;
 
 // Helper: Check table existence
 function table_exists($pdo, $table) {
@@ -62,6 +70,25 @@ function column_exists($pdo, $table, $column) {
     } catch (Exception $e) {
         return false;
     }
+}
+
+/**
+ * Normalize various shift_period values to Shift 1 (true) or Shift 2 (false).
+ * Handles: 'Shift 1','Shift1','First Shift','1st','Morning','General','Day' → shift1
+ *          'Shift 2','Shift2','Second Shift','2nd','Evening','Afternoon','Night' → shift2
+ */
+function is_shift1(string $shift): bool {
+    $s = strtolower(trim($shift));
+    $shift1_keywords = ['shift 1','shift1','first','1st','morning','day','general','am'];
+    $shift2_keywords = ['shift 2','shift2','second','2nd','evening','afternoon','night','pm'];
+    foreach ($shift2_keywords as $kw) {
+        if (strpos($s, $kw) !== false) return false;
+    }
+    foreach ($shift1_keywords as $kw) {
+        if (strpos($s, $kw) !== false) return true;
+    }
+    // Fallback: if it contains digit '2' treat as shift2, else shift1
+    return strpos($s, '2') === false;
 }
 
 // Check available tables
@@ -118,7 +145,7 @@ if ($has_fuel_readings) {
                     ";
         
         if ($has_fuel_pumps) {
-            $sql .= "COALESCE(fp.pump_name, CONCAT('Pump ', fr.pump_number)) AS pump_name, ";
+            $sql .= "COALESCE(fp.pump_number, CONCAT('Pump ', fr.pump_number)) AS pump_name, ";
         } else {
             $sql .= "CONCAT('Pump ', fr.pump_number) AS pump_name, ";
         }
@@ -132,14 +159,14 @@ if ($has_fuel_readings) {
         $sql .= "fr.previous_reading AS beginning_reading,
                  fr.present_reading AS ending_reading,
                  fr.difference AS liters_sold,
-                 COALESCE(fr.calibration_adjustment, 0) AS calibration,
+                 0.00 AS calibration,
                  fr.shift_period,
                  fr.status,
                  fr.encoded_at
             FROM fuel_readings fr ";
         
         if ($has_fuel_pumps) {
-            $sql .= "LEFT JOIN fuel_pumps fp ON fr.pump_number = fp.id ";
+            $sql .= "LEFT JOIN fuel_pumps fp ON fr.pump_number = fp.pump_number AND fp.station_id = fr.station_id ";
         }
         
         if ($has_fuel_types) {
@@ -164,30 +191,18 @@ if (count($meter_readings) == 0 && $has_fuel_transactions) {
         $sql = "SELECT 
                     ft.id,
                     CONCAT('Pump ', COALESCE(ft.pump_id, '—')) AS pump_name,
-                    ";
-        
-        if ($has_fuel_types) {
-            $sql .= "COALESCE(ftype.name, ft.fuel_type) AS fuel_type, ";
-        } else {
-            $sql .= "COALESCE(ft.fuel_type, 'Fuel') AS fuel_type, ";
-        }
-        
-        $sql .= "0 AS beginning_reading,
-                 0 AS ending_reading,
-                 SUM(ft.liters_sold) AS liters_sold,
-                 0 AS calibration,
-                 COALESCE(ft.shift, 'N/A') AS shift_period,
-                 'Completed' AS status,
-                 ft.created_at AS encoded_at
-            FROM fuel_transactions ft ";
-        
-        if ($has_fuel_types) {
-            $sql .= "LEFT JOIN fuel_types ftype ON ft.fuel_type_id = ftype.id ";
-        }
-        
-        $sql .= "WHERE ft.station_id = ? AND DATE(ft.created_at) = ?
-                 GROUP BY ft.fuel_type_id, ft.pump_id, ft.shift
-                 ORDER BY ft.fuel_type_id, ft.pump_id";
+                    ft.fuel_type,
+                    MIN(COALESCE(ft.previous_reading, 0)) AS beginning_reading,
+                    MAX(COALESCE(ft.present_reading, 0)) AS ending_reading,
+                    SUM(ft.liters_sold) AS liters_sold,
+                    0 AS calibration,
+                    COALESCE(ft.shift_period, 'Shift 1') AS shift_period,
+                    'Completed' AS status,
+                    ft.transaction_date AS encoded_at
+            FROM fuel_transactions ft
+            WHERE ft.station_id = ? AND DATE(ft.transaction_date) = ?
+                 GROUP BY ft.fuel_type, ft.pump_id, ft.shift_period
+                 ORDER BY ft.fuel_type, ft.pump_id";
         
         $stmt = $pdo->prepare($sql);
         $stmt->execute([$station_id, $report_date]);
@@ -203,28 +218,16 @@ if ($has_fuel_transactions) {
     try {
         $sql = "SELECT 
                     ft.id,
-                    ";
-        
-        if ($has_fuel_types) {
-            $sql .= "COALESCE(ftype.name, ft.fuel_type) AS fuel_type, ";
-        } else {
-            $sql .= "ft.fuel_type, ";
-        }
-        
-        $sql .= "ft.liters_sold,
-                 ft.unit_price,
-                 ft.total_amount,
-                 ft.payment_method,
-                 ft.shift,
-                 ft.created_at
-            FROM fuel_transactions ft ";
-        
-        if ($has_fuel_types) {
-            $sql .= "LEFT JOIN fuel_types ftype ON ft.fuel_type_id = ftype.id ";
-        }
-        
-        $sql .= "WHERE ft.station_id = ? AND DATE(ft.created_at) = ?
-                 ORDER BY ft.created_at";
+                    ft.fuel_type,
+                    ft.liters_sold,
+                    ft.price_per_liter AS unit_price,
+                    ft.total_amount,
+                    ft.payment_method,
+                    ft.shift_period AS shift,
+                    ft.transaction_date AS created_at
+            FROM fuel_transactions ft
+            WHERE ft.station_id = ? AND DATE(ft.transaction_date) = ?
+                 ORDER BY ft.transaction_date";
         
         $stmt = $pdo->prepare($sql);
         $stmt->execute([$station_id, $report_date]);
@@ -268,47 +271,36 @@ try {
     if ($has_fuel_transactions) {
         $stmt = $pdo->prepare("
             SELECT 
-                COALESCE(shift, 'Shift 1') AS shift_period,
+                COALESCE(shift_period, 'Shift 1') AS shift_period,
                 SUM(total_amount) AS total_amount,
                 SUM(liters_sold) AS total_liters,
                 payment_method,
                 COUNT(*) AS transaction_count
             FROM fuel_transactions
-            WHERE station_id = ? AND DATE(created_at) = ?
+            WHERE station_id = ? AND DATE(transaction_date) = ?
             GROUP BY shift_period, payment_method
         ");
         $stmt->execute([$station_id, $report_date]);
         $fuel_by_shift = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         foreach ($fuel_by_shift as $row) {
-            $shift = strtolower($row['shift_period']);
-            $amount = (float)$row['total_amount'];
-            $payment = strtolower($row['payment_method'] ?? 'cash');
-            
-            if (strpos($shift, 'shift 1') !== false || strpos($shift, '1') !== false) {
+            $amount   = (float)$row['total_amount'];
+            $payment  = strtolower($row['payment_method'] ?? 'cash');
+            $is_s1    = is_shift1($row['shift_period'] ?? '');
+            $target   = $is_s1 ? 'shift1' : 'shift2';
+
+            if ($is_s1) {
                 $shift1_summary['fuel_sales'] += $amount;
-                
-                if (in_array($payment, ['cash', 'cash payment'])) {
-                    $shift1_summary['cash'] += $amount;
-                } elseif (in_array($payment, ['card', 'credit card', 'debit card'])) {
-                    $shift1_summary['card'] += $amount;
-                } elseif (in_array($payment, ['gcash', 'maya', 'e-wallet', 'ewallet'])) {
-                    $shift1_summary['ewallet'] += $amount;
-                } else {
-                    $shift1_summary['credit'] += $amount;
-                }
+                if (in_array($payment, ['cash','cash payment'])) $shift1_summary['cash'] += $amount;
+                elseif (in_array($payment, ['card','credit card','debit card'])) $shift1_summary['card'] += $amount;
+                elseif (in_array($payment, ['gcash','maya','e-wallet','ewallet'])) $shift1_summary['ewallet'] += $amount;
+                else $shift1_summary['credit'] += $amount;
             } else {
                 $shift2_summary['fuel_sales'] += $amount;
-                
-                if (in_array($payment, ['cash', 'cash payment'])) {
-                    $shift2_summary['cash'] += $amount;
-                } elseif (in_array($payment, ['card', 'credit card', 'debit card'])) {
-                    $shift2_summary['card'] += $amount;
-                } elseif (in_array($payment, ['gcash', 'maya', 'e-wallet', 'ewallet'])) {
-                    $shift2_summary['ewallet'] += $amount;
-                } else {
-                    $shift2_summary['credit'] += $amount;
-                }
+                if (in_array($payment, ['cash','cash payment'])) $shift2_summary['cash'] += $amount;
+                elseif (in_array($payment, ['card','credit card','debit card'])) $shift2_summary['card'] += $amount;
+                elseif (in_array($payment, ['gcash','maya','e-wallet','ewallet'])) $shift2_summary['ewallet'] += $amount;
+                else $shift2_summary['credit'] += $amount;
             }
         }
     }
@@ -317,7 +309,7 @@ try {
     if ($has_merchandise_transactions) {
         $stmt = $pdo->prepare("
             SELECT 
-                COALESCE(shift, 'Shift 1') AS shift_period,
+                COALESCE(shift_period, 'Shift 1') AS shift_period,
                 SUM(total_amount) AS total_amount,
                 payment_method,
                 COUNT(*) AS transaction_count
@@ -329,34 +321,22 @@ try {
         $merch_by_shift = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         foreach ($merch_by_shift as $row) {
-            $shift = strtolower($row['shift_period']);
-            $amount = (float)$row['total_amount'];
+            $amount  = (float)$row['total_amount'];
             $payment = strtolower($row['payment_method'] ?? 'cash');
-            
-            if (strpos($shift, 'shift 1') !== false || strpos($shift, '1') !== false) {
+            $is_s1   = is_shift1($row['shift_period'] ?? '');
+
+            if ($is_s1) {
                 $shift1_summary['merchandise_sales'] += $amount;
-                
-                if (in_array($payment, ['cash', 'cash payment'])) {
-                    $shift1_summary['cash'] += $amount;
-                } elseif (in_array($payment, ['card', 'credit card', 'debit card'])) {
-                    $shift1_summary['card'] += $amount;
-                } elseif (in_array($payment, ['gcash', 'maya', 'e-wallet', 'ewallet'])) {
-                    $shift1_summary['ewallet'] += $amount;
-                } else {
-                    $shift1_summary['credit'] += $amount;
-                }
+                if (in_array($payment, ['cash','cash payment'])) $shift1_summary['cash'] += $amount;
+                elseif (in_array($payment, ['card','credit card','debit card'])) $shift1_summary['card'] += $amount;
+                elseif (in_array($payment, ['gcash','maya','e-wallet','ewallet'])) $shift1_summary['ewallet'] += $amount;
+                else $shift1_summary['credit'] += $amount;
             } else {
                 $shift2_summary['merchandise_sales'] += $amount;
-                
-                if (in_array($payment, ['cash', 'cash payment'])) {
-                    $shift2_summary['cash'] += $amount;
-                } elseif (in_array($payment, ['card', 'credit card', 'debit card'])) {
-                    $shift2_summary['card'] += $amount;
-                } elseif (in_array($payment, ['gcash', 'maya', 'e-wallet', 'ewallet'])) {
-                    $shift2_summary['ewallet'] += $amount;
-                } else {
-                    $shift2_summary['credit'] += $amount;
-                }
+                if (in_array($payment, ['cash','cash payment'])) $shift2_summary['cash'] += $amount;
+                elseif (in_array($payment, ['card','credit card','debit card'])) $shift2_summary['card'] += $amount;
+                elseif (in_array($payment, ['gcash','maya','e-wallet','ewallet'])) $shift2_summary['ewallet'] += $amount;
+                else $shift2_summary['credit'] += $amount;
             }
         }
     }
@@ -507,19 +487,19 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
                 $stmt = $pdo->prepare("
                     SELECT 
                         mt.id,
-                        COALESCE(p.category, 'General') AS category,
-                        COALESCE(p.name, mt.product_name) AS product_name,
-                        mt.quantity AS stock_out,
+                        COALESCE(mti.category, 'General') AS category,
+                        COALESCE(mti.product_name, mt.item_sku, 'Item') AS product_name,
+                        COALESCE(mti.quantity, mt.quantity) AS stock_out,
                         mt.unit_price,
                         mt.total_amount,
-                        mt.shift,
+                        mt.shift_period AS shift,
                         u.username AS encoder,
                         mt.created_at
                     FROM merchandise_transactions mt
-                    LEFT JOIN products p ON mt.product_id = p.id
-                    LEFT JOIN users u ON mt.user_id = u.id
+                    LEFT JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id
+                    LEFT JOIN users u ON mt.staff_id = u.id
                     WHERE mt.station_id = ? AND DATE(mt.created_at) = ?
-                    ORDER BY p.category, mt.created_at
+                    ORDER BY mti.category, mt.created_at
                 ");
                 $stmt->execute([$station_id, $report_date]);
                 $merch_transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -1209,8 +1189,8 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
                                 ];
                             }
                             
-                            $shift = strtolower($reading['shift_period']);
-                            if (strpos($shift, 'shift 1') !== false || strpos($shift, '1') !== false) {
+                            $shift = $reading['shift_period'] ?? '';
+                            if (is_shift1($shift)) {
                                 $pump_groups[$key]['shift1_begin'] = $reading['beginning_reading'];
                                 $pump_groups[$key]['shift1_end'] = $reading['ending_reading'];
                             } else {
@@ -1624,229 +1604,54 @@ require_once __DIR__ . '/../partials/header.php';
     }
     
     @media print {
-        /* Set page size to Legal/Long Bond */
         @page {
             size: legal portrait;
-            margin: 0.3in 0.4in;
+            margin: 0.5in 0.4in;
         }
-        
-        /* Reset all body/html styling for print */
-        * {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-        }
-        
-        html, body { 
-            background: white !important; 
-            padding: 0 !important; 
-            margin: 0 auto !important;
-            width: 100% !important;
-            height: auto !important;
-            overflow: visible !important;
-        }
-        
-        /* HIDE: controls, buttons, sidebar, navigation, logo, footer */
-        .controls,
-        .tab-navigation,
-        .tab-btn,
-        .btn,
-        button,
-        input[type="date"],
-        label,
-        .date-controls,
-        .sidebar,
-        .main-sidebar,
-        aside,
-        nav,
-        .navbar,
-        .main-header,
-        .sidebar-wrapper,
-        #sidebar,
-        .nav-sidebar,
-        .brand-link,
-        .user-panel,
-        .elevation-4,
-        .content-header,
-        .breadcrumb,
-        img,
-        .logo,
-        .brand-image,
-        .brand-text { 
-            display: none !important; 
-            visibility: hidden !important;
-        }
-        
-        /* Hide ALL header and footer from system partials */
-        body > header,
-        body > footer,
-        .wrapper > header,
-        .wrapper > footer,
-        .wrapper > aside,
-        header.main-header,
-        footer.main-footer,
-        .main-footer,
-        .content-wrapper > footer,
-        div > footer { 
-            display: none !important;
-            visibility: hidden !important;
-        }
-        
-        /* Force visibility and CENTER positioning of main content */
-        .wrapper,
-        .content-wrapper { 
-            margin: 0 auto !important; 
-            padding: 0 !important;
-            width: 100% !important;
-            position: static !important;
-        }
-        
-        .main-content { 
-            display: block !important;
-            visibility: visible !important;
-            width: 100% !important; 
-            max-width: 100% !important;
-            margin: 0 auto !important; 
-            padding: 0 !important;
-            margin-left: auto !important;
-            margin-right: auto !important;
-            position: static !important;
-            overflow: visible !important;
-            left: 0 !important;
-            right: 0 !important;
-        }
-        
-        .container { 
-            display: block !important;
-            visibility: visible !important;
-            padding: 0 !important; 
-            margin: 0 auto !important;
-            max-width: 100% !important;
-            width: 100% !important;
-        }
-        
+
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+        body * { visibility: hidden !important; }
+        .print-area, .print-area * { visibility: visible !important; }
         .print-area {
-            display: block !important;
-            visibility: visible !important;
-            width: 100% !important;
-            margin: 0 auto !important;
-            padding: 0 !important;
-            position: static !important;
-            opacity: 1 !important;
+            position: fixed !important; top: 0 !important; left: 0 !important;
+            width: 100% !important; margin: 0 !important; padding: 0 !important;
+            background: white !important;
         }
-        
-        .content { 
-            display: block !important;
-            visibility: visible !important;
-            padding: 5px 0 !important;
-            margin: 0 auto !important;
+        html, body { margin: 0 !important; padding: 0 !important; background: white !important; overflow: visible !important; }
+        .container, .content { margin: 0 !important; padding: 0 !important; }
+
+        /* ── Kill ALL icons ── */
+        i, svg, .fas, .far, .fab, .fa, [class*="fa-"] {
+            display: none !important;
+            width: 0 !important; height: 0 !important;
+            font-size: 0 !important; line-height: 0 !important;
+            margin: 0 !important; padding: 0 !important;
         }
-        
-        /* DOCUMENT HEADER (title, station, period) - SHOW THIS CENTERED */
-        .header { 
-            display: block !important;
-            visibility: visible !important;
-            border-bottom: 1px solid #000; 
-            padding: 5px 0 !important;
-            margin: 0 auto 5px auto !important;
-            text-align: center !important;
-        }
-        
-        .header h1 {
-            display: block !important;
-            visibility: visible !important;
-            font-size: 14px !important;
-            margin: 0 auto 3px auto !important;
-            color: #000 !important;
-            text-align: center !important;
-        }
-        
-        .header p {
-            display: block !important;
-            visibility: visible !important;
-            font-size: 8px !important;
-            margin: 2px auto !important;
-            color: #000 !important;
-            text-align: center !important;
-        }
-        
-        .section-title {
-            display: block !important;
-            visibility: visible !important;
-            font-size: 10px !important;
-            margin: 8px 0 4px 0 !important;
-            padding-bottom: 3px !important;
-            border-bottom: 1px solid #000 !important;
-            page-break-after: avoid !important;
-        }
-        
-        /* Tables - SHOW THESE */
-        .table-container {
-            display: block !important;
-            visibility: visible !important;
-            margin: 0 auto 8px auto !important;
-            overflow: visible !important;
-        }
-        
-        table { 
-            display: table !important;
-            visibility: visible !important;
-            font-size: 8px !important; 
-            page-break-inside: avoid !important;
-            width: 100% !important;
-            margin: 0 auto 5px auto !important;
-        }
-        
-        th { 
-            font-size: 7px !important; 
-            padding: 2px 1px !important;
-        }
-        
-        td {
-            font-size: 8px !important;
-            padding: 2px 1px !important;
-        }
-        
-        .shift-boxes {
-            display: grid !important;
-            visibility: visible !important;
-            grid-template-columns: 1fr 1fr !important;
-            gap: 5px !important;
-            page-break-inside: avoid !important;
-        }
-        
-        .shift-box {
-            display: block !important;
-            visibility: visible !important;
-            padding: 5px !important;
-            font-size: 7px !important;
-        }
-        
-        .shift-box h3 {
-            font-size: 8px !important;
-            padding-bottom: 2px !important;
-        }
-        
-        .summary-grid {
-            display: grid !important;
-            visibility: visible !important;
-            grid-template-columns: repeat(4, 1fr) !important;
-            gap: 5px !important;
-            font-size: 8px !important;
-        }
-        
-        .summary-card {
-            display: block !important;
-            visibility: visible !important;
-            padding: 5px !important;
-        }
-        
-        .summary-card .label {
-            font-size: 7px !important;
-        }
-        
-        .summary-card .value {
-            font-size: 10px !important;
-        }
+
+        .header { text-align: center !important; border-bottom: 2px solid #000 !important; padding: 6px 0 !important; margin: 0 0 8px 0 !important; }
+        .header h1 { font-size: 16px !important; font-weight: 700 !important; color: #000 !important; margin: 0 0 3px 0 !important; }
+        .header p { font-size: 10px !important; color: #000 !important; margin: 2px 0 !important; }
+        .section-title { font-size: 12px !important; font-weight: 700 !important; margin: 8px 0 4px 0 !important; padding-bottom: 3px !important; border-bottom: 2px solid #000 !important; page-break-after: avoid !important; }
+        .table-container { overflow: visible !important; width: 100% !important; text-align: center !important; }
+        table { width: 95% !important; max-width: 100% !important; border-collapse: collapse !important; font-size: 10px !important; table-layout: auto !important; margin: 0 auto 8px auto !important; }
+        thead { display: table-header-group !important; }
+        tbody { display: table-row-group !important; }
+        tr { page-break-inside: avoid !important; }
+        th { font-size: 10px !important; padding: 6px 8px !important; border: 1px solid #000 !important; background: #fff !important; color: #000 !important; font-weight: 700 !important; text-align: center !important; white-space: nowrap !important; }
+        td { font-size: 9px !important; padding: 5px 8px !important; border: 1px solid #000 !important; white-space: nowrap !important; vertical-align: top !important; }
+        .shift-boxes, .shift-summary { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 6px !important; margin: 6px 0 !important; page-break-inside: avoid !important; }
+        .shift-box { border: 1px solid #000 !important; padding: 5px !important; font-size: 9px !important; }
+        .shift-box h3 { font-size: 10px !important; border-bottom: 1px solid #000 !important; padding-bottom: 2px !important; margin: 0 0 4px 0 !important; }
+        .shift-box table { width: auto !important; margin: 0 !important; }
+        .shift-box td { border: none !important; border-bottom: 1px solid #ddd !important; font-size: 9px !important; }
+        .summary-grid { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 5px !important; margin: 6px 0 !important; page-break-inside: avoid !important; }
+        .summary-card { border: 1px solid #000 !important; padding: 5px !important; }
+        .summary-card .label { font-size: 7px !important; }
+        .summary-card .value { font-size: 10px !important; font-weight: 700 !important; }
+        .tab-navigation, .tab-btn, .controls { display: none !important; }
+        .tab-content { display: block !important; }
+        .tab-pane { display: block !important; }
     }
 </style>
 
@@ -2256,19 +2061,19 @@ require_once __DIR__ . '/../partials/header.php';
                                     $stmt = $pdo->prepare("
                                         SELECT 
                                             mt.id,
-                                            COALESCE(p.category, 'General') AS category,
-                                            COALESCE(p.name, mt.product_name) AS product_name,
-                                            mt.quantity AS stock_out,
+                                            COALESCE(mti.category, 'General') AS category,
+                                            COALESCE(mti.product_name, mt.item_sku, 'Item') AS product_name,
+                                            COALESCE(mti.quantity, mt.quantity) AS stock_out,
                                             mt.unit_price,
                                             mt.total_amount,
-                                            mt.shift,
+                                            mt.shift_period AS shift,
                                             u.username AS encoder,
                                             mt.created_at
                                         FROM merchandise_transactions mt
-                                        LEFT JOIN products p ON mt.product_id = p.id
-                                        LEFT JOIN users u ON mt.user_id = u.id
+                                        LEFT JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id
+                                        LEFT JOIN users u ON mt.staff_id = u.id
                                         WHERE mt.station_id = ? AND DATE(mt.created_at) = ?
-                                        ORDER BY p.category, mt.created_at
+                                        ORDER BY mti.category, mt.created_at
                                     ");
                                     $stmt->execute([$station_id, $report_date]);
                                     $merch_transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);

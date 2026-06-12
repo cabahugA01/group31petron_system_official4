@@ -87,45 +87,25 @@ if ($has_fuel_deliveries) {
     try {
         $sql = "SELECT 
                     fd.id,
-                    fd.delivery_id,
-                    ";
-        
-        if ($has_suppliers) {
-            $sql .= "COALESCE(s.name, fd.supplier) AS supplier, ";
-        } else {
-            $sql .= "fd.supplier, ";
-        }
-        
-        if ($has_fuel_types) {
-            $sql .= "COALESCE(ft.name, fd.fuel_type) AS fuel_type, ";
-        } else {
-            $sql .= "fd.fuel_type, ";
-        }
-        
-        $sql .= "fd.quantity,
-                 fd.unit_price,
-                 fd.total_amount,
-                 fd.delivery_date,
-                 fd.po_reference,
-                 fd.expected_quantity,
-                 fd.actual_quantity,
-                 fd.variance,
-                 fd.status,
-                 fd.shift,
-                 fd.remarks,
-                 fd.encoder,
-                 fd.created_at
-            FROM fuel_deliveries fd ";
-        
-        if ($has_suppliers) {
-            $sql .= "LEFT JOIN suppliers s ON fd.supplier_id = s.id ";
-        }
-        
-        if ($has_fuel_types) {
-            $sql .= "LEFT JOIN fuel_types ft ON fd.fuel_type_id = ft.id ";
-        }
-        
-        $sql .= "WHERE fd.station_id = ? 
+                    fd.batch_id AS delivery_id,
+                    fd.supplier AS supplier,
+                    fd.fuel_type AS fuel_type,
+                    fd.delivery_liters AS quantity,
+                    0 AS unit_price,
+                    0 AS total_amount,
+                    fd.delivery_date,
+                    COALESCE(fd.invoice_no, '—') AS po_reference,
+                    0 AS expected_quantity,
+                    fd.delivery_liters AS actual_quantity,
+                    0 AS variance,
+                    fd.status,
+                    CASE WHEN HOUR(fd.created_at) >= 6 AND HOUR(fd.created_at) < 14 THEN 'Shift 1' ELSE 'Shift 2' END AS shift,
+                    COALESCE(fd.notes, '—') AS remarks,
+                    COALESCE(u.username, COALESCE(fd.received_by, '—')) AS encoder,
+                    fd.created_at
+            FROM fuel_deliveries fd
+            LEFT JOIN users u ON fd.received_by = u.id
+            WHERE fd.station_id = ? 
                  AND DATE(fd.delivery_date) BETWEEN ? AND ?
                  ORDER BY fd.delivery_date DESC, fd.created_at DESC";
         
@@ -157,45 +137,25 @@ if ($has_merchandise_deliveries) {
     try {
         $sql = "SELECT 
                     md.id,
-                    md.delivery_id,
-                    ";
-        
-        if ($has_suppliers) {
-            $sql .= "COALESCE(s.name, md.supplier) AS supplier, ";
-        } else {
-            $sql .= "md.supplier, ";
-        }
-        
-        if ($has_products) {
-            $sql .= "COALESCE(p.name, md.product_name) AS product_name, ";
-        } else {
-            $sql .= "md.product_name, ";
-        }
-        
-        $sql .= "md.quantity,
-                 md.unit_price,
-                 md.total_amount,
-                 md.delivery_date,
-                 md.po_reference,
-                 md.expected_quantity,
-                 md.actual_quantity,
-                 md.variance,
-                 md.status,
-                 md.shift,
-                 md.remarks,
-                 md.encoder,
-                 md.created_at
-            FROM merchandise_deliveries md ";
-        
-        if ($has_suppliers) {
-            $sql .= "LEFT JOIN suppliers s ON md.supplier_id = s.id ";
-        }
-        
-        if ($has_products) {
-            $sql .= "LEFT JOIN products p ON md.product_id = p.id ";
-        }
-        
-        $sql .= "WHERE md.station_id = ? 
+                    COALESCE(md.batch_id, '—') AS delivery_id,
+                    md.supplier AS supplier,
+                    md.product AS product_name,
+                    md.quantity,
+                    COALESCE(md.unit_price, 0) AS unit_price,
+                    COALESCE(md.payable_amount, md.expected_amount, 0) AS total_amount,
+                    md.delivery_date,
+                    COALESCE(md.delivery_ref, '—') AS po_reference,
+                    COALESCE(md.expected_quantity, md.quantity, 0) AS expected_quantity,
+                    COALESCE(md.actual_quantity, md.quantity, 0) AS actual_quantity,
+                    0 AS variance,
+                    md.status,
+                    'Shift 1' AS shift,
+                    COALESCE(md.remarks, '—') AS remarks,
+                    COALESCE(u.username, '—') AS encoder,
+                    md.created_at
+            FROM deliveries_oversight md
+            LEFT JOIN users u ON md.encoded_by = u.id
+            WHERE md.station_id = ? AND md.delivery_type = 'merchandise'
                  AND DATE(md.delivery_date) BETWEEN ? AND ?
                  ORDER BY md.delivery_date DESC, md.created_at DESC";
         
@@ -708,288 +668,70 @@ require_once __DIR__ . '/../partials/header.php';
     }
     
     @media print {
-        /* Set page size to Legal/Long Bond */
         @page {
             size: legal portrait;
-            margin: 0.3in 0.4in;
+            margin: 0.5in 0.4in;
         }
-        
-        /* Reset all body/html styling for print */
-        * {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-        }
-        
-        html, body { 
-            background: white !important; 
-            padding: 0 !important; 
-            margin: 0 auto !important;
-            width: 100% !important;
-            height: auto !important;
-            overflow: visible !important;
-        }
-        
-        /* HIDE: controls, buttons, sidebar, navigation, logo, footer */
-        .controls,
-        .btn,
-        button,
-        input[type="date"],
-        label,
-        .date-controls,
-        .sidebar,
-        .main-sidebar,
-        aside,
-        nav,
-        .navbar,
-        .main-header,
-        .sidebar-wrapper,
-        #sidebar,
-        .nav-sidebar,
-        .brand-link,
-        .user-panel,
-        .elevation-4,
-        .content-header,
-        .breadcrumb,
-        img,
-        .logo,
-        .brand-image,
-        .brand-text { 
-            display: none !important; 
-            visibility: hidden !important;
-        }
-        
-        /* Hide ALL header and footer from system partials */
-        body > header,
-        body > footer,
-        .wrapper > header,
-        .wrapper > footer,
-        .wrapper > aside,
-        header.main-header,
-        footer.main-footer,
-        .main-footer,
-        .content-wrapper > footer,
-        div > footer { 
-            display: none !important;
-            visibility: hidden !important;
-        }
-        
-        /* Force visibility and CENTER positioning of main content */
-        .wrapper,
-        .content-wrapper { 
-            margin: 0 auto !important; 
-            padding: 0 !important;
-            width: 100% !important;
-            position: static !important;
-        }
-        
-        .main-content { 
-            display: block !important;
-            visibility: visible !important;
-            width: 100% !important; 
-            max-width: 100% !important;
-            margin: 0 auto !important; 
-            padding: 0 !important;
-            margin-left: auto !important;
-            margin-right: auto !important;
-            position: static !important;
-            overflow: visible !important;
-            left: 0 !important;
-            right: 0 !important;
-        }
-        
-        .container { 
-            display: block !important;
-            visibility: visible !important;
-            padding: 0 !important; 
-            margin: 0 auto !important;
-            max-width: 100% !important;
-            width: 100% !important;
-        }
-        
+
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+        body * { visibility: hidden !important; }
+        .print-area, .print-area * { visibility: visible !important; }
         .print-area {
-            display: block !important;
-            visibility: visible !important;
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
             width: 100% !important;
-            margin: 0 auto !important;
+            margin: 0 !important;
             padding: 0 !important;
-            position: static !important;
-            opacity: 1 !important;
+            background: white !important;
         }
-        
-        .content { 
-            display: block !important;
-            visibility: visible !important;
-            padding: 5px 0 !important;
-            margin: 0 auto !important;
-            text-align: center !important;
+        html, body { margin: 0 !important; padding: 0 !important; background: white !important; overflow: visible !important; }
+        .container, .content { margin: 0 !important; padding: 0 !important; }
+
+        /* ── Kill ALL icons ── */
+        i, svg, .fas, .far, .fab, .fa, [class*="fa-"] {
+            display: none !important;
+            width: 0 !important; height: 0 !important;
+            font-size: 0 !important; line-height: 0 !important;
+            margin: 0 !important; padding: 0 !important;
         }
-        
-        /* DOCUMENT HEADER (title, station, period) - SHOW THIS CENTERED */
-        .header { 
-            display: block !important;
-            visibility: visible !important;
-            border-bottom: 1px solid #000; 
-            padding: 5px 0 !important;
-            margin: 0 auto 5px auto !important;
-            text-align: center !important;
-        }
-        
-        .header h1 {
-            display: block !important;
-            visibility: visible !important;
-            font-size: 14px !important;
-            margin: 0 auto 3px auto !important;
+
+        .header { text-align: center !important; border-bottom: 2px solid #000 !important; padding: 6px 0 !important; margin: 0 0 8px 0 !important; }
+        .header h1 { font-size: 16px !important; font-weight: 700 !important; color: #000 !important; margin: 0 0 3px 0 !important; text-transform: uppercase !important; }
+        .header p { font-size: 10px !important; color: #000 !important; margin: 2px 0 !important; }
+
+        .section-title { font-size: 12px !important; font-weight: 700 !important; margin: 10px 0 4px 0 !important; padding-bottom: 3px !important; border-bottom: 2px solid #000 !important; text-transform: uppercase !important; color: #000 !important; page-break-after: avoid !important; }
+
+        .table-container { overflow: visible !important; margin-bottom: 6px !important; width: 100% !important; text-align: center !important; }
+
+        table { width: 95% !important; max-width: 100% !important; border-collapse: collapse !important; font-size: 10px !important; table-layout: auto !important; margin: 0 auto 8px auto !important; }
+        thead { display: table-header-group !important; }
+        tbody { display: table-row-group !important; }
+        tr { page-break-inside: avoid !important; }
+        th { font-size: 10px !important; padding: 6px 8px !important; border: 1px solid #000 !important; background: #fff !important; color: #000 !important; font-weight: 700 !important; text-align: center !important; white-space: nowrap !important; }
+        td { font-size: 9px !important; padding: 5px 8px !important; border: 1px solid #000 !important; white-space: nowrap !important; vertical-align: top !important; }
+
+        .shift-summary { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 6px !important; margin: 6px 0 !important; page-break-inside: avoid !important; }
+        .shift-box { border: 1px solid #000 !important; padding: 5px !important; page-break-inside: avoid !important; }
+        .shift-box h3 { font-size: 10px !important; font-weight: 700 !important; border-bottom: 1px solid #000 !important; padding-bottom: 2px !important; margin: 0 0 4px 0 !important; color: #000 !important; }
+        .shift-box table { width: auto !important; margin: 0 !important; }
+        .shift-box td { padding: 3px !important; font-size: 9px !important; border: none !important; border-bottom: 1px solid #ddd !important; }
+
+        .remarks-section { border: 1px solid #000 !important; padding: 5px !important; margin-top: 6px !important; page-break-inside: avoid !important; }
+        .remarks-section h3 { font-size: 8px !important; font-weight: 700 !important; border-bottom: 1px solid #000 !important; padding-bottom: 2px !important; margin: 0 0 4px 0 !important; }
             color: #000 !important;
-            text-align: center !important;
         }
-        
-        .header p {
-            display: block !important;
-            visibility: visible !important;
-            font-size: 8px !important;
-            margin: 2px auto !important;
-            color: #000 !important;
-            text-align: center !important;
-        }
-        
-        .section-title {
-            display: block !important;
-            visibility: visible !important;
-            font-size: 10px !important;
-            margin: 8px 0 4px 0 !important;
-            padding-bottom: 3px !important;
-            border-bottom: 1px solid #000 !important;
-            page-break-after: avoid !important;
-            text-align: left !important;
-        }
-        
-        /* Tables - SHOW THESE */
-        .table-container {
-            display: block !important;
-            visibility: visible !important;
-            margin: 0 auto 8px auto !important;
-            overflow: visible !important;
-            text-align: left !important;
-        }
-        
-        table { 
-            display: table !important;
-            visibility: visible !important;
-            font-size: 6px !important; 
-            page-break-inside: avoid !important;
-            width: 100% !important;
-            margin: 0 auto 5px auto !important;
-            border-collapse: collapse !important;
-        }
-        
-        thead {
-            display: table-header-group !important;
-            visibility: visible !important;
-        }
-        
-        tbody {
-            display: table-row-group !important;
-            visibility: visible !important;
-        }
-        
-        tr { 
-            display: table-row !important;
-            visibility: visible !important;
-            page-break-inside: avoid !important; 
-            page-break-after: auto !important; 
-        }
-        
-        th { 
-            display: table-cell !important;
-            visibility: visible !important;
-            font-size: 5.5px !important; 
-            padding: 2px 1px !important;
-            line-height: 1.1 !important;
-            border: 1px solid #000 !important;
-        }
-        
-        td { 
-            display: table-cell !important;
-            visibility: visible !important;
-            font-size: 6px !important; 
-            padding: 2px 1px !important;
-            line-height: 1.1 !important;
-            border: 1px solid #000 !important;
-        }
-        
-        /* Shift Summary - SHOW THESE */
-        .shift-summary {
-            display: grid !important;
-            visibility: visible !important;
-            gap: 8px !important;
-            margin: 8px 0 !important;
-            page-break-inside: avoid !important;
-        }
-        
-        .shift-box {
-            display: block !important;
-            visibility: visible !important;
-            padding: 5px !important;
-            page-break-inside: avoid !important;
-            border: 1px solid #000 !important;
-        }
-        
-        .shift-box h3 {
-            display: block !important;
-            visibility: visible !important;
-            font-size: 8px !important;
-            margin: 0 0 4px 0 !important;
-            padding-bottom: 3px !important;
-            border-bottom: 1px solid #000 !important;
-        }
-        
-        .shift-box table {
-            font-size: 7px !important;
-            margin-bottom: 0 !important;
-        }
-        
-        .shift-box td {
-            padding: 2px !important;
-            font-size: 7px !important;
-        }
-        
-        /* Remarks - SHOW THESE */
-        .remarks-section {
-            display: block !important;
-            visibility: visible !important;
-            margin-top: 8px !important;
-            padding: 5px !important;
-            page-break-inside: avoid !important;
-            border: 1px solid #000 !important;
-        }
-        
-        .remarks-section h3 {
-            display: block !important;
-            visibility: visible !important;
-            font-size: 8px !important;
-            margin: 0 0 4px 0 !important;
-            padding-bottom: 3px !important;
-            border-bottom: 1px solid #000 !important;
-        }
-        
-        .remarks-list {
-            display: block !important;
-            visibility: visible !important;
-            text-align: left !important;
-        }
-        
+
         .remarks-list li {
-            display: list-item !important;
-            visibility: visible !important;
-            padding: 3px !important;
-            font-size: 6px !important;
-            line-height: 1.2 !important;
-            border-bottom: 1px solid #ddd !important;
+            font-size: 7px !important;
+            padding: 2px !important;
+            border-bottom: 1px solid #eee !important;
         }
-        
+
         .status-badge {
-            padding: 1px 3px !important;
             font-size: 5px !important;
+            padding: 1px 2px !important;
             border: 1px solid #000 !important;
         }
     }

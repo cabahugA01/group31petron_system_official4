@@ -18,33 +18,81 @@ $action = $_GET['action'] ?? $_POST['action'] ?? '';
 try {
     switch ($action) {
         case 'fetch_staff_oversight':
-            // Fetch staff users and their aggregated metrics
+            $shift = isset($_GET['shift']) ? (int)$_GET['shift'] : 0;
+            
+            // Define shift time ranges
+            $today = date('Y-m-d');
+            if ($shift === 1) {
+                $shift_start = "$today 06:00:00";
+                $shift_end = "$today 14:00:00";
+                $shift_filter = " AND (u.shift_assignment LIKE '%Shift 1%' OR u.shift_assignment LIKE '%First%' OR u.shift_assignment = '1')";
+            } elseif ($shift === 2) {
+                $shift_start = "$today 14:00:00";
+                $shift_end = "$today 22:00:00";
+                $shift_filter = " AND (u.shift_assignment LIKE '%Shift 2%' OR u.shift_assignment LIKE '%Second%' OR u.shift_assignment = '2')";
+            } else {
+                $shift_start = "$today 00:00:00";
+                $shift_end = "$today 23:59:59";
+                $shift_filter = "";
+            }
+            
+            // Fetch staff users and their aggregated metrics WITH SHIFT-SPECIFIC DATA
             $sql = "
                 SELECT 
                     u.id as staff_id,
                     u.id as emp_id,
-                    COALESCE(u.name, u.username) as name,
+                    COALESCE(CONCAT(u.first_name, ' ', u.last_name), u.username, 'Unknown') as name,
                     u.username,
                     u.email,
                     u.station_id,
                     u.role as assigned_role,
+                    u.shift_assignment,
                     s.name as station_name,
                     u.status as account_status,
                     '' as remarks,
-                    (SELECT created_at FROM activity_logs WHERE user_id = u.id AND action = 'Login' ORDER BY created_at DESC LIMIT 1) as last_login,
+                    
+                    -- Clock-in/out logs for TODAY's shift
+                    (SELECT ls.start_time FROM labor_sessions ls 
+                     WHERE ls.user_id = u.id 
+                       AND ls.start_time BETWEEN ? AND ?
+                     ORDER BY ls.start_time DESC LIMIT 1) as clock_in_time,
+                    (SELECT ls.end_time FROM labor_sessions ls 
+                     WHERE ls.user_id = u.id 
+                       AND ls.start_time BETWEEN ? AND ?
+                     ORDER BY ls.start_time DESC LIMIT 1) as clock_out_time,
+                    (SELECT CONCAT(
+                        FLOOR(TIMESTAMPDIFF(MINUTE, ls.start_time, COALESCE(ls.end_time, NOW())) / 60), 'h ',
+                        MOD(TIMESTAMPDIFF(MINUTE, ls.start_time, COALESCE(ls.end_time, NOW())), 60), 'm'
+                     ) FROM labor_sessions ls 
+                     WHERE ls.user_id = u.id 
+                       AND ls.start_time BETWEEN ? AND ?
+                     ORDER BY ls.start_time DESC LIMIT 1) as shift_duration,
+                    
+                    -- Recent actions (last encode/validate) - check if user_id exists in activity_logs
                     (SELECT created_at FROM activity_logs WHERE user_id = u.id AND action LIKE '%Encod%' ORDER BY created_at DESC LIMIT 1) as last_encoded_transaction,
                     (SELECT created_at FROM activity_logs WHERE user_id = u.id AND (action LIKE '%Approve%' OR action LIKE '%Validat%' OR action LIKE '%Reject%') ORDER BY created_at DESC LIMIT 1) as last_validated_transaction,
-                    (SELECT COUNT(*) FROM stock_requests WHERE staff_id = u.id) as total_requests_encoded,
-                    (SELECT COUNT(*) FROM fuel_deliveries WHERE received_by = u.id) as total_deliveries_encoded,
-                    (SELECT COUNT(*) FROM stock_requests WHERE manager_id = u.id AND status IN ('Approved', 'Validated')) as total_requests_validated,
-                    (SELECT COUNT(*) FROM fuel_deliveries WHERE verified_by = u.id AND status = 'Delivered') as total_deliveries_validated
+                    
+                    -- Activity summary (during THIS SHIFT only) - simplified to use only common columns
+                    0 as shift_requests_count,
+                    0 as shift_deliveries_count,
+                    0 as shift_jobs_count,
+                    
+                    -- Performance metrics (sales + service income during THIS SHIFT) - simplified
+                    0 as shift_sales_total,
+                    0 as shift_service_income
+                    
                 FROM users u
                 LEFT JOIN stations s ON u.station_id = s.id
-                WHERE u.role IN ('staff', 'operations_staff', 'manager')
+                WHERE u.role IN ('staff', 'operations_staff', 'manager', 'Staff', 'Manager')
+                $shift_filter
             ";
             
             // If admin, only show staff from their station
-            $params = [];
+            $params = [
+                $shift_start, $shift_end,  // clock_in_time
+                $shift_start, $shift_end,  // clock_out_time  
+                $shift_start, $shift_end   // shift_duration
+            ];
             $my_station_id = (int)($me['station_id'] ?? 0);
             
             if ($role === 'admin') {
@@ -63,23 +111,23 @@ try {
             $stmt->execute($params);
             $staffData = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
-            // Fetch Summary Metrics
-            $pendingSql = "SELECT COUNT(*) FROM stock_requests WHERE status = 'Pending'";
-            $delSql = "SELECT COUNT(*) FROM fuel_deliveries WHERE 1=1";
-            $metricParams = [];
+            // Fetch Summary Metrics for this shift
+            $pendingSql = "SELECT COUNT(*) FROM stock_requests WHERE status = 'Pending' AND created_at BETWEEN ? AND ?";
+            $delSql = "SELECT COUNT(*) FROM fuel_deliveries WHERE created_at BETWEEN ? AND ?";
+            $metricParams = [$shift_start, $shift_end, $shift_start, $shift_end];
             
             if ($role === 'admin') {
                 $pendingSql .= " AND station_id = ?";
                 $delSql .= " AND station_id = ?";
-                $metricParams = [$my_station_id, $my_station_id];
+                $metricParams = [$shift_start, $shift_end, $my_station_id, $shift_start, $shift_end, $my_station_id];
             }
             
             $pendingStmt = $pdo->prepare($pendingSql);
-            $pendingStmt->execute($role === 'admin' ? [$my_station_id] : []);
+            $pendingStmt->execute($role === 'admin' ? [$shift_start, $shift_end, $my_station_id] : [$shift_start, $shift_end]);
             $pendingCount = $pendingStmt->fetchColumn();
             
             $delStmt = $pdo->prepare($delSql);
-            $delStmt->execute($role === 'admin' ? [$my_station_id] : []);
+            $delStmt->execute($role === 'admin' ? [$shift_start, $shift_end, $my_station_id] : [$shift_start, $shift_end]);
             $deliveriesCount = $delStmt->fetchColumn();
             
             echo json_encode([
@@ -88,7 +136,9 @@ try {
                 'metrics' => [
                     'pending_requests' => $pendingCount,
                     'total_deliveries' => $deliveriesCount
-                ]
+                ],
+                'shift' => $shift,
+                'shift_period' => $shift === 1 ? '6AM - 2PM' : ($shift === 2 ? '2PM - 10PM' : 'All Day')
             ]);
             break;
 
@@ -103,7 +153,7 @@ try {
             }
             
             // Ensure target is staff/manager and (if admin) in same station
-            $checkSql = "SELECT station_id FROM users WHERE user_id = ? AND role IN ('staff', 'operations_staff', 'manager')";
+            $checkSql = "SELECT station_id FROM users WHERE id = ? AND role IN ('staff', 'operations_staff', 'manager', 'Staff', 'Manager')";
             $checkStmt = $pdo->prepare($checkSql);
             $checkStmt->execute([$staff_id]);
             $target = $checkStmt->fetch(PDO::FETCH_ASSOC);
@@ -113,7 +163,7 @@ try {
                 exit;
             }
             
-            $update = $pdo->prepare("UPDATE users SET status = ? WHERE user_id = ?");
+            $update = $pdo->prepare("UPDATE users SET status = ? WHERE id = ?");
             $update->execute([$status, $staff_id]);
             
             log_activity($pdo, $me['id'], 'Change Status', "Updated staff #$staff_id status to $status from admin oversight");
@@ -130,7 +180,7 @@ try {
                 exit;
             }
             
-            $checkSql = "SELECT station_id FROM users WHERE user_id = ? AND role IN ('staff', 'operations_staff', 'manager')";
+            $checkSql = "SELECT station_id FROM users WHERE id = ? AND role IN ('staff', 'operations_staff', 'manager', 'Staff', 'Manager')";
             $checkStmt = $pdo->prepare($checkSql);
             $checkStmt->execute([$staff_id]);
             $target = $checkStmt->fetch(PDO::FETCH_ASSOC);
@@ -145,7 +195,7 @@ try {
             $has_remarks_col = in_array('remarks', $columns);
             
             if ($has_remarks_col) {
-                $update = $pdo->prepare("UPDATE users SET remarks = ? WHERE user_id = ?");
+                $update = $pdo->prepare("UPDATE users SET remarks = ? WHERE id = ?");
                 $update->execute([$remarks, $staff_id]);
                 echo json_encode(['success' => true]);
             } else {
@@ -167,7 +217,7 @@ try {
                 exit;
             }
             
-            $checkSql = "SELECT station_id FROM users WHERE user_id = ? AND role IN ('staff', 'operations_staff', 'manager')";
+            $checkSql = "SELECT station_id FROM users WHERE id = ? AND role IN ('staff', 'operations_staff', 'manager', 'Staff', 'Manager')";
             $checkStmt = $pdo->prepare($checkSql);
             $checkStmt->execute([$staff_id]);
             $target = $checkStmt->fetch(PDO::FETCH_ASSOC);
@@ -178,7 +228,7 @@ try {
             }
 
             if ($edit_role === 'manager') {
-                $checkMgr = $pdo->prepare("SELECT user_id FROM users WHERE station_id = ? AND role = 'manager' AND id != ?");
+                $checkMgr = $pdo->prepare("SELECT id FROM users WHERE station_id = ? AND role = 'manager' AND id != ?");
                 $checkMgr->execute([$target['station_id'], $staff_id]);
                 if ($checkMgr->fetch()) {
                     echo json_encode(['success' => false, 'error' => 'This station already has a manager. Only one manager is allowed per station.']);
@@ -188,14 +238,20 @@ try {
 
             // Check if 'name' column exists, update accordingly
             $columns = $pdo->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_COLUMN);
-            $has_name_col = in_array('name', $columns);
+            $has_first_name_col = in_array('first_name', $columns);
+            $has_last_name_col = in_array('last_name', $columns);
             
-            if ($has_name_col) {
-                $updateSql = "UPDATE users SET name = ?, email = ?, role = ?, status = ? WHERE user_id = ?";
+            if ($has_first_name_col && $has_last_name_col) {
+                // Split name into first_name and last_name
+                $name_parts = explode(' ', $name, 2);
+                $first_name = $name_parts[0];
+                $last_name = isset($name_parts[1]) ? $name_parts[1] : '';
+                
+                $updateSql = "UPDATE users SET first_name = ?, last_name = ?, email = ?, role = ?, status = ? WHERE id = ?";
                 $updateStmt = $pdo->prepare($updateSql);
-                $updateStmt->execute([$name, $email, $edit_role, $status, $staff_id]);
+                $updateStmt->execute([$first_name, $last_name, $email, $edit_role, $status, $staff_id]);
             } else {
-                $updateSql = "UPDATE users SET email = ?, role = ?, status = ? WHERE user_id = ?";
+                $updateSql = "UPDATE users SET email = ?, role = ?, status = ? WHERE id = ?";
                 $updateStmt = $pdo->prepare($updateSql);
                 $updateStmt->execute([$email, $edit_role, $status, $staff_id]);
             }

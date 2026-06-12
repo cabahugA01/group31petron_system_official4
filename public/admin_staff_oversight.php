@@ -52,38 +52,71 @@ require_once __DIR__ . '/../partials/header.php';
         <div class="col-12">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; width: 100%;">
                 <h2 style="margin: 0; text-transform: uppercase;"><i class="fas fa-users-cog me-2"></i>Staff Oversight – Admin View</h2>
-                <div style="display: flex; gap: 10px; margin-left: auto; margin-top: 10px;">
-                    <button class="btn btn-primary" onclick="loadStaffOversight()" style="font-weight:600;padding:6px 12px;border-radius:5px;">
-                        <i class="fas fa-sync-alt"></i> Refresh
-                    </button>
-                </div>
             </div>
 
-
-
-            <div class="card">
-                <div class="card-header bg-white">
-                    <h5 class="mb-0">Staff Activity & Oversight</h5>
+            <!-- Tab Content -->
+            <div class="tab-content" id="shiftTabContent">
+                <!-- Shift 1 Content -->
+                <div class="tab-pane fade show active" id="shift1" role="tabpanel">
+                    <div class="card">
+                        <div class="card-header bg-white">
+                            <h5 class="mb-0">Staff Activity & Oversight</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive" style="max-height: calc(100vh - 350px); overflow-y: auto;">
+                                <table class="table table-hover table-striped align-middle">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Account ID / Name</th>
+                                            <th>Assigned Role</th>
+                                            <th>Station / Branch</th>
+                                            <th>Account Status</th>
+                                            <th>Clock-in/out Logs</th>
+                                            <th>Activity Summary</th>
+                                            <th>Recent Actions</th>
+                                            <th>Performance Metrics</th>
+                                            <th>Remarks</th>
+                                            <th class="text-end">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="shift1StaffBody">
+                                        <!-- Data will be loaded via AJAX -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="card-body">
-                    <div class="table-responsive" style="max-height: calc(100vh - 250px); overflow-y: auto;">
-                        <table class="table table-hover table-striped align-middle" id="staffOversightTable">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Account ID / Name</th>
-                                    <th>Assigned Role</th>
-                                    <th>Station / Branch</th>
-                                    <th>Account Status</th>
-                                    <th>Recent Activity</th>
-                                    <th>Activity Summary</th>
-                                    <th>Remarks</th>
-                                    <th class="text-end">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="staffOversightBody">
-                                <!-- Data will be loaded via AJAX -->
-                            </tbody>
-                        </table>
+
+                <!-- Shift 2 Content -->
+                <div class="tab-pane fade" id="shift2" role="tabpanel">
+                    <div class="card">
+                        <div class="card-header bg-white">
+                            <h5 class="mb-0">Staff Activity & Oversight</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive" style="max-height: calc(100vh - 350px); overflow-y: auto;">
+                                <table class="table table-hover table-striped align-middle">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Account ID / Name</th>
+                                            <th>Assigned Role</th>
+                                            <th>Station / Branch</th>
+                                            <th>Account Status</th>
+                                            <th>Clock-in/out Logs</th>
+                                            <th>Activity Summary</th>
+                                            <th>Recent Actions</th>
+                                            <th>Performance Metrics</th>
+                                            <th>Remarks</th>
+                                            <th class="text-end">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="shift2StaffBody">
+                                        <!-- Data will be loaded via AJAX -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -198,7 +231,15 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function loadStaffOversight() {
-    fetch('../backend/api/admin_staff_oversight_api.php?action=fetch_staff_oversight')
+    // Load both shifts
+    loadShiftData(1);
+    loadShiftData(2);
+}
+
+function loadShiftData(shiftNumber) {
+    const targetBody = shiftNumber === 1 ? 'shift1StaffBody' : 'shift2StaffBody';
+    
+    fetch(`../backend/api/admin_staff_oversight_api.php?action=fetch_staff_oversight&shift=${shiftNumber}`)
         .then(response => {
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
@@ -207,11 +248,11 @@ function loadStaffOversight() {
         })
         .then(data => {
             if (data.success) {
-                const tbody = document.getElementById('staffOversightBody');
+                const tbody = document.getElementById(targetBody);
                 tbody.innerHTML = '';
                 
                 if (data.data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No staff records found.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">No staff records found for this shift.</td></tr>';
                     return;
                 }
                 
@@ -223,18 +264,27 @@ function loadStaffOversight() {
                         'suspended': 'bg-danger'
                     }[staff.account_status] || 'bg-secondary';
                     
-                    const lastLogin = staff.last_login ? new Date(staff.last_login).toLocaleString() : 'Never';
                     const isManager = staff.assigned_role.toLowerCase() === 'manager';
                     const roleLabel = isManager ? 'Manager' : 'Staff';
                     
+                    // Clock-in/out logs (today's shift)
+                    const clockInTime = staff.clock_in_time ? new Date(staff.clock_in_time).toLocaleTimeString() : 'Not clocked in';
+                    const clockOutTime = staff.clock_out_time ? new Date(staff.clock_out_time).toLocaleTimeString() : (staff.clock_in_time ? 'Still active' : '-');
+                    const duration = staff.shift_duration ? staff.shift_duration : '-';
+                    
+                    // Recent actions (encodes, validations, exports)
                     const lastTxnDate = isManager ? staff.last_validated_transaction : staff.last_encoded_transaction;
                     const lastTxnLabel = isManager ? 'Validated' : 'Encoded';
                     const lastTxn = lastTxnDate ? new Date(lastTxnDate).toLocaleString() : 'None';
                     
-                    const reqCount = isManager ? staff.total_requests_validated : staff.total_requests_encoded;
-                    const delCount = isManager ? staff.total_deliveries_validated : staff.total_deliveries_encoded;
-                    const reqLabel = isManager ? 'Requests Validated' : 'Requests Encoded';
-                    const delLabel = isManager ? 'Deliveries Validated' : 'Deliveries Encoded';
+                    // Activity summary
+                    const reqCount = staff.shift_requests_count || 0;
+                    const delCount = staff.shift_deliveries_count || 0;
+                    const jobCount = staff.shift_jobs_count || 0;
+                    
+                    // Performance metrics
+                    const salesTotal = staff.shift_sales_total ? '₱' + parseFloat(staff.shift_sales_total).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '₱0.00';
+                    const serviceIncome = staff.shift_service_income ? '₱' + parseFloat(staff.shift_service_income).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '₱0.00';
                     
                     // XSS Protection: Escape HTML in remarks before displaying
                     const remarks = staff.remarks 
@@ -254,12 +304,21 @@ function loadStaffOversight() {
                             <span class="badge ${statusBadgeClass} px-3 py-2">${staff.account_status.toUpperCase()}</span>
                         </td>
                         <td>
-                            <div class="small"><strong>Login:</strong> ${lastLogin}</div>
+                            <div class="small"><strong>In:</strong> ${clockInTime}</div>
+                            <div class="small"><strong>Out:</strong> ${clockOutTime}</div>
+                            <div class="small text-muted"><strong>Duration:</strong> ${duration}</div>
+                        </td>
+                        <td>
+                            <span class="badge bg-info me-1" title="Requests">${reqCount} Requests</span>
+                            <span class="badge bg-primary me-1" title="Deliveries">${delCount} Deliveries</span>
+                            <span class="badge bg-warning" title="Job Orders">${jobCount} Jobs</span>
+                        </td>
+                        <td>
                             <div class="small"><strong>${lastTxnLabel}:</strong> ${lastTxn}</div>
                         </td>
                         <td>
-                            <span class="badge bg-info me-1" title="${reqLabel}">${reqCount} Requests</span>
-                            <span class="badge bg-primary" title="${delLabel}">${delCount} Deliveries</span>
+                            <div class="small"><strong>Sales:</strong> ${salesTotal}</div>
+                            <div class="small"><strong>Service:</strong> ${serviceIncome}</div>
                         </td>
                         <td>
                             <div class="d-flex align-items-center">
@@ -293,7 +352,8 @@ function loadStaffOversight() {
         })
         .catch(err => {
             console.error('Fetch error:', err);
-            alert('An error occurred while fetching staff data: ' + err.message);
+            const tbody = document.getElementById(targetBody);
+            tbody.innerHTML = '<tr><td colspan="10" class="text-center text-danger py-4">Error loading data: ' + err.message + '</td></tr>';
         });
 }
 

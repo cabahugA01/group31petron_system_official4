@@ -1,18 +1,25 @@
 <?php
-// ============================================================
-// Admin Dashboard – public/admin_dashboard.php
-// Complete redesign: Centralized station oversight, compliance monitoring, and analytical reporting.
-// ============================================================
+/**
+ * COMPLETE ADMIN DASHBOARD - HYBRID LAYOUT
+ * Full implementation with Summary Cards, Charts, Graphs, and Operational Tables
+ * 
+ * Layout Structure:
+ * 1. Top Layer - Summary KPI Cards (Fuel, Merchandise, Service, Payments, Customers)
+ * 2. Middle Layer - Interactive Charts & Graphs (Bar, Pie, Line, Stacked)
+ * 3. Center Layer - Operational Tables (Shift Reports, Daily Consolidation, Inventory)
+ * 4. Bottom Layer - Compliance & Oversight (Activity Log, Audit Trail, Calendar)
+ */
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'admin_dashboard';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
 require_login();
 
-$me         = current_user();
-$role       = role_key($me['role'] ?? '');
+$me = current_user();
+$role = role_key($me['role'] ?? '');
 $station_id = (int) user_station_id();
 
+// Access control
 if (!in_array($role, ['admin', 'superadmin'])) {
     $_SESSION['error'] = 'Access denied. Admin access required.';
     header('Location: staff_dashboard.php'); exit;
@@ -74,6 +81,29 @@ $active_managers = (int) adm_val($pdo, "SELECT COUNT(*) FROM users WHERE station
 $active_customers = (int) adm_val($pdo, "SELECT COUNT(*) FROM customers WHERE station_id=? AND account_status = 'Active'", [$station_id]);
 $total_active_users = $active_staff + $active_managers + $active_customers;
 
+// NEW: Additional KPI Data for Summary Cards
+// Fuel Sales Liters
+$fuel_liters_sold = (float) adm_val($pdo, "SELECT COALESCE(SUM(liters_sold),0) FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ?", [$station_id,$date_from,$date_to]);
+
+// Merchandise Items Count
+$merch_items_sold = (int) adm_val($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND DATE(created_at) BETWEEN ? AND ?", [$station_id,$date_from,$date_to]);
+
+// Service Income from Job Orders
+$job_orders_completed = (int) adm_val($pdo, "SELECT COUNT(*) FROM job_orders WHERE station_id=? AND status='Completed' AND DATE(completed_at) BETWEEN ? AND ?", [$station_id,$date_from,$date_to]);
+$service_income = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_cost),0) FROM job_orders WHERE station_id=? AND status='Completed' AND DATE(completed_at) BETWEEN ? AND ?", [$station_id,$date_from,$date_to]);
+
+// Payments Breakdown
+$payments_cash = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ? AND LOWER(payment_method) LIKE '%cash%'", [$station_id,$date_from,$date_to]);
+$payments_card = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ? AND LOWER(payment_method) LIKE '%card%' AND LOWER(payment_method) NOT LIKE '%fleet%' AND LOWER(payment_method) NOT LIKE '%fuel%'", [$station_id,$date_from,$date_to]);
+$payments_ewallet = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ? AND (LOWER(payment_method) LIKE '%wallet%' OR LOWER(payment_method) LIKE '%gcash%' OR LOWER(payment_method) LIKE '%maya%')", [$station_id,$date_from,$date_to]);
+$payments_fleet = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ? AND LOWER(payment_method) LIKE '%fleet%'", [$station_id,$date_from,$date_to]);
+$payments_efuel = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ? AND (LOWER(payment_method) LIKE '%fuel card%' OR LOWER(payment_method) LIKE '%efuel%')", [$station_id,$date_from,$date_to]);
+$total_payments = $payments_cash + $payments_card + $payments_ewallet + $payments_fleet + $payments_efuel;
+
+// Customers Data
+$new_customers = (int) adm_val($pdo, "SELECT COUNT(*) FROM customers WHERE station_id=? AND DATE(created_at) BETWEEN ? AND ?", [$station_id,$date_from,$date_to]);
+$outstanding_balances = (float) adm_val($pdo, "SELECT COALESCE(SUM(outstanding_balance),0) FROM customers WHERE station_id=? AND outstanding_balance > 0", [$station_id]);
+
 
 // ══════════════════════════════════════════════════════════
 // 2. TRANSACTION CHART DATA
@@ -94,7 +124,7 @@ $daily_sales_data = adm_rows($pdo, "
     ORDER BY DATE(transaction_date) ASC
 ", [$station_id, $date_from, $date_to, $station_id, $date_from, $date_to]);
 
-// Category distribution
+// Category distribution (Merchandise only as requested)
 $category_sales_data = adm_rows($pdo, "
     SELECT COALESCE(c.name, 'Uncategorized') AS category, SUM(total_amount) AS total
     FROM merchandise_transactions mt
@@ -102,11 +132,7 @@ $category_sales_data = adm_rows($pdo, "
     LEFT JOIN categories c ON p.category_id = c.id
     WHERE mt.station_id = ? AND DATE(mt.transaction_date) BETWEEN ? AND ?
     GROUP BY category
-    UNION ALL
-    SELECT 'Fuel' AS category, SUM(total_amount) AS total
-    FROM fuel_transactions
-    WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ?
-", [$station_id, $date_from, $date_to, $station_id, $date_from, $date_to]);
+", [$station_id, $date_from, $date_to]);
 
 // Monthly revenue trend (last 6 months)
 $monthly_revenue_data = adm_rows($pdo, "
@@ -251,6 +277,65 @@ $complaints_trend_data = adm_rows($pdo, "
     GROUP BY DATE(n.created_at)
     ORDER BY date ASC
 ", [$station_id, $date_from, $date_to]);
+
+// Shift Performance Chart Data (Daily sales for Shift 1 vs Shift 2 over the selected period)
+$shift_perf_data = [];
+try {
+    $d = new DateTime($date_from);
+    $dend = new DateTime($date_to);
+    while ($d <= $dend) {
+        $date = $d->format('Y-m-d');
+        
+        // Shift 1 boundaries
+        $s1_start = "$date 06:00:00";
+        $s1_end   = "$date 14:00:00";
+        // Shift 2 boundaries
+        $s2_start = "$date 14:00:00";
+        $s2_end   = "$date 22:00:00";
+        
+        // Shift 1 Sales
+        $s1_fuel = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE station_id=? AND transaction_date BETWEEN ? AND ?", [$station_id, $s1_start, $s1_end]);
+        $s1_merch = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM merchandise_transactions WHERE station_id=? AND created_at BETWEEN ? AND ?", [$station_id, $s1_start, $s1_end]);
+        
+        // Shift 2 Sales
+        $s2_fuel = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE station_id=? AND transaction_date BETWEEN ? AND ?", [$station_id, $s2_start, $s2_end]);
+        $s2_merch = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM merchandise_transactions WHERE station_id=? AND created_at BETWEEN ? AND ?", [$station_id, $s2_start, $s2_end]);
+        
+        $shift_perf_data[] = [
+            'date' => $date,
+            'shift1' => $s1_fuel + $s1_merch,
+            'shift2' => $s2_fuel + $s2_merch
+        ];
+        $d->modify('+1 day');
+    }
+} catch (Exception $e) {}
+
+// Financial Variance Chart Data (collections vs payables per day)
+$fin_variance_data = [];
+try {
+    $d = new DateTime($date_from);
+    $dend = new DateTime($date_to);
+    while ($d <= $dend) {
+        $date = $d->format('Y-m-d');
+        
+        // Collections (Fuel + Merch + JO)
+        $c_fuel = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date)=?", [$station_id, $date]);
+        $c_merch = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM merchandise_transactions WHERE station_id=? AND DATE(created_at)=?", [$station_id, $date]);
+        $c_jo = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_cost),0) FROM job_orders WHERE station_id=? AND status='Completed' AND DATE(completed_at)=?", [$station_id, $date]);
+        $col_total = $c_fuel + $c_merch + $c_jo;
+        
+        // Payables (purchase orders created on this date)
+        $pay_total = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM purchase_orders WHERE station_id=? AND DATE(created_at)=?", [$station_id, $date]);
+        
+        $fin_variance_data[] = [
+            'date' => $date,
+            'collections' => $col_total,
+            'payables' => $pay_total,
+            'variance' => $col_total - $pay_total
+        ];
+        $d->modify('+1 day');
+    }
+} catch (Exception $e) {}
 
 
 // ══════════════════════════════════════════════════════════
@@ -414,33 +499,39 @@ body {
 .adm-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
-  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 28px;
+  padding: 0;
+  gap: 20px;
 }
 
 .adm-title h1 {
-  font-size: 28px;
+  font-size: 32px;
   font-weight: 700;
   color: var(--petron-blue, #00264D);
-  margin: 0;
+  margin: 0 0 8px 0;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+}
+
+.adm-title h1 i {
+  font-size: 28px;
+  opacity: 0.9;
 }
 
 .adm-title p {
-  margin: 4px 0 0 0;
-  font-size: 14px;
+  margin: 0;
+  font-size: 15px;
   color: var(--text-secondary, #64748b);
+  font-weight: 500;
 }
 
 .adm-filter-bar {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
 }
 
 .adm-btn-group {
@@ -449,21 +540,29 @@ body {
   border: 1px solid var(--border-color, #e2e8f0);
   border-radius: 8px;
   padding: 4px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
 .adm-btn-group a {
-  padding: 6px 12px;
+  padding: 8px 16px;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-secondary, #64748b);
   text-decoration: none;
   border-radius: 6px;
   transition: all var(--transition-speed);
+  white-space: nowrap;
+}
+
+.adm-btn-group a:hover {
+  background: var(--bg-body, #f8fafc);
+  color: var(--petron-blue, #00264D);
 }
 
 .adm-btn-group a.active {
   background-color: var(--petron-blue, #00264D);
-  color: #fff;
+  color: white;
+  box-shadow: 0 2px 4px rgba(0,38,77,0.15);
 }
 
 .adm-date-form {
@@ -471,33 +570,90 @@ body {
   align-items: center;
   gap: 8px;
   background: var(--bg-card, #ffffff);
-  padding: 4px 12px;
+  padding: 6px 14px;
   border-radius: 8px;
   border: 1px solid var(--border-color, #e2e8f0);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
 .adm-date-form input[type="date"] {
-  border: none;
-  background: transparent;
+  border: 1px solid var(--border-color, #e2e8f0);
+  background: var(--bg-body, #f8fafc);
   color: var(--text-primary);
   font-family: inherit;
   font-size: 13px;
+  font-weight: 500;
   outline: none;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+.adm-date-form span {
+  color: var(--text-secondary, #64748b);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0 4px;
 }
 
 .adm-date-form button {
   background: var(--petron-blue, #00264D);
-  color: #fff;
+  color: white;
   border: none;
-  padding: 6px 12px;
+  padding: 8px 14px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
-  transition: background var(--transition-speed);
+  font-weight: 600;
+  transition: all var(--transition-speed);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .adm-date-form button:hover {
   background: var(--petron-red, #CC0000);
+  transform: translateX(2px);
+}
+
+/* Responsive Header */
+@media (max-width: 1024px) {
+  .adm-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .adm-filter-bar {
+    align-items: stretch;
+    width: 100%;
+  }
+  
+  .adm-btn-group {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .adm-date-form {
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .adm-title h1 {
+    font-size: 24px;
+  }
+  
+  .adm-title p {
+    font-size: 13px;
+  }
+  
+  .adm-btn-group {
+    flex-wrap: wrap;
+  }
+  
+  .adm-btn-group a {
+    flex: 1 1 auto;
+    text-align: center;
+  }
 }
 
 /* ── KPI Cards ── */
@@ -519,28 +675,12 @@ body {
   box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
   transition: transform var(--transition-speed), box-shadow var(--transition-speed);
   position: relative;
-  overflow: hidden;
-}
-
-.adm-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 4px;
-  height: 100%;
 }
 
 .adm-card:hover {
   transform: translateY(-4px);
   box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
 }
-
-.adm-card.blue::before { background-color: var(--petron-blue, #00264D); }
-.adm-card.red::before { background-color: var(--petron-red, #CC0000); }
-.adm-card.green::before { background-color: #22c55e; }
-.adm-card.orange::before { background-color: #f59e0b; }
-.adm-card.purple::before { background-color: #8b5cf6; }
 
 .adm-card-details h3 {
   font-size: 13px;
@@ -582,14 +722,12 @@ body {
 
 /* ── Layout Grid ── */
 .adm-grid {
-  display: grid;
-  grid-template-columns: 3fr 1fr;
-  gap: 24px;
+  display: block;
   margin-bottom: 28px;
 }
 
 @media (max-width: 1200px) {
-  .adm-grid { grid-template-columns: 1fr; }
+  .adm-grid { display: block; }
 }
 
 /* ── Tabs & Charts Area ── */
@@ -1051,6 +1189,60 @@ body {
   align-items: center;
   gap: 6px;
 }
+
+/* ── Switchable Table Tabs ── */
+.adm-tab-btn2 {
+  background: none;
+  border: none;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  transition: all var(--transition-speed);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.adm-tab-btn2:hover {
+  color: var(--petron-blue, #00264D);
+}
+
+.adm-tab-btn2.active {
+  color: var(--petron-blue, #00264D);
+  border-bottom-color: var(--petron-blue, #00264D);
+}
+
+.adm-table-panel {
+  display: none;
+  animation: fadeIn 0.4s ease;
+}
+
+.adm-table-panel.active {
+  display: block;
+}
+
+/* Hide inner components from report subpages so only tables are displayed */
+.dashboard-table-wrapper > div:first-of-type,
+.dashboard-table-wrapper .summary-cards,
+.dashboard-table-wrapper .summary-card,
+.dashboard-table-wrapper .charts-grid,
+.dashboard-table-wrapper h2,
+.dashboard-table-wrapper h3,
+.dashboard-table-wrapper .reports-header,
+.dashboard-table-wrapper .date-filter,
+.dashboard-table-wrapper button[onclick*="print"],
+.dashboard-table-wrapper button[onclick*="window.print"] {
+  display: none !important;
+}
+
+.dashboard-table-wrapper .report-table {
+  margin-top: 10px !important;
+}
 </style>
 
 <div class="adm-wrap">
@@ -1058,8 +1250,8 @@ body {
   <!-- HEADER -->
   <div class="adm-header">
     <div class="adm-title">
-      <h1><i class="fas fa-shield-halved"></i> Admin Oversight Hub</h1>
-      <p>Petron Station Managerial Auditing, Reporting, &amp; Visual Analytics – <strong><?php echo htmlspecialchars($station_name); ?></strong></p>
+      <h1><i class="fas fa-tachometer-alt"></i> Welcome, <?php echo htmlspecialchars($me['first_name'] ?? $me['username'] ?? 'Admin'); ?>!</h1>
+      <p>Admin Dashboard - Comprehensive Overview, Analytics & Reporting</p>
     </div>
     
     <div class="adm-filter-bar">
@@ -1080,208 +1272,172 @@ body {
     </div>
   </div>
 
-  <!-- SUMMARY CARDS -->
+  <!-- SUMMARY CARDS - Top Layer KPIs -->
   <div class="adm-kpi-grid">
+    <!-- 1. Fuel Sales Card -->
     <div class="adm-card blue">
       <div class="adm-card-details">
-        <h3>Total Sales (₱)</h3>
-        <div class="adm-card-val">₱<?php echo number_format($total_sales_val, 2); ?></div>
-        <div class="adm-card-sub">Fuel: ₱<?php echo number_format($fuel_sales, 2); ?> | Merch: ₱<?php echo number_format($merch_sales, 2); ?></div>
-      </div>
-      <div class="adm-card-icon"><i class="fas fa-wallet"></i></div>
-    </div>
-    
-    <div class="adm-card green">
-      <div class="adm-card-details">
-        <h3>Fuel Stock (Liters)</h3>
-        <div class="adm-card-val"><?php echo number_format($fuel_stock_val, 2); ?> L</div>
-        <div class="adm-card-sub">Aggregated Tank Inventories</div>
+        <h3>Fuel Sales</h3>
+        <div class="adm-card-val">₱<?php echo number_format($fuel_sales, 2); ?></div>
+        <div class="adm-card-sub"><?php echo number_format($fuel_liters_sold, 2); ?> Liters Sold</div>
       </div>
       <div class="adm-card-icon"><i class="fas fa-gas-pump"></i></div>
     </div>
     
+    <!-- 2. Merchandise Sales Card -->
+    <div class="adm-card green">
+      <div class="adm-card-details">
+        <h3>Merchandise Sales</h3>
+        <div class="adm-card-val">₱<?php echo number_format($merch_sales, 2); ?></div>
+        <div class="adm-card-sub"><?php echo number_format($merch_items_sold, 0); ?> Items Sold</div>
+      </div>
+      <div class="adm-card-icon"><i class="fas fa-shopping-cart"></i></div>
+    </div>
+    
+    <!-- 3. Service Income Card -->
     <div class="adm-card purple">
       <div class="adm-card-details">
-        <h3>Merchandise Inventory</h3>
-        <div class="adm-card-val"><?php echo number_format($merch_stock_val, 0); ?> pcs</div>
-        <div class="adm-card-sub">Products Stock Level</div>
+        <h3>Service Income</h3>
+        <div class="adm-card-val">₱<?php echo number_format($service_income, 2); ?></div>
+        <div class="adm-card-sub"><?php echo $job_orders_completed; ?> Job Orders Completed</div>
       </div>
-      <div class="adm-card-icon"><i class="fas fa-boxes-stacked"></i></div>
+      <div class="adm-card-icon"><i class="fas fa-wrench"></i></div>
     </div>
     
-    <div class="adm-card orange">
-      <div class="adm-card-details">
-        <h3>Pending Deliveries</h3>
-        <div class="adm-card-val"><?php echo $pending_deliveries_val; ?> Records</div>
-        <div class="adm-card-sub">Awaiting Manager validation</div>
+    <!-- 4. Payments Card -->
+    <div class="adm-card orange" style="min-width: 280px;">
+      <div class="adm-card-details" style="width: 100%;">
+        <h3>Total Payments</h3>
+        <div class="adm-card-val" style="margin-bottom: 8px;">₱<?php echo number_format($total_payments, 2); ?></div>
+        <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.5; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px;">
+          <span>Cash: <strong>₱<?php echo number_format($payments_cash, 0); ?></strong></span>
+          <span>Card: <strong>₱<?php echo number_format($payments_card, 0); ?></strong></span>
+          <span>E-Wallet: <strong>₱<?php echo number_format($payments_ewallet, 0); ?></strong></span>
+          <span>Fleet: <strong>₱<?php echo number_format($payments_fleet, 0); ?></strong></span>
+          <span style="grid-column: span 2;">E-Fuel Card: <strong>₱<?php echo number_format($payments_efuel, 0); ?></strong></span>
+        </div>
       </div>
-      <div class="adm-card-icon"><i class="fas fa-truck-fast"></i></div>
+      <div class="adm-card-icon" style="align-self: flex-start; margin-top: 4px;"><i class="fas fa-money-bill-wave"></i></div>
     </div>
     
+    <!-- 5. Customers Card -->
     <div class="adm-card red">
       <div class="adm-card-details">
-        <h3>Active Users</h3>
-        <div class="adm-card-val"><?php echo $total_active_users; ?></div>
-        <div class="adm-card-sub">Staff: <?php echo $active_staff; ?> | Mgr: <?php echo $active_managers; ?> | Cust: <?php echo $active_customers; ?></div>
+        <h3>Customers</h3>
+        <div class="adm-card-val"><?php echo $new_customers; ?> New</div>
+        <div class="adm-card-sub">₱<?php echo number_format($outstanding_balances, 2); ?> Outstanding Balance</div>
       </div>
-      <div class="adm-card-icon"><i class="fas fa-users-viewfinder"></i></div>
+      <div class="adm-card-icon"><i class="fas fa-users"></i></div>
     </div>
   </div>
 
-  <!-- MAIN ANALYTICS ROW -->
-  <div class="adm-grid">
-    <!-- Charts Main Area -->
-    <div class="adm-main-panel">
-      <div class="adm-tabs-container">
-        <button class="adm-tab-btn active" onclick="switchTab('transactions', this)"><i class="fas fa-cash-register"></i> Transactions</button>
-        <button class="adm-tab-btn" onclick="switchTab('fuel', this)"><i class="fas fa-gauge-high"></i> Fuel Management</button>
-        <button class="adm-tab-btn" onclick="switchTab('deliveries', this)"><i class="fas fa-dolly"></i> Merchandise Deliveries</button>
-        <button class="adm-tab-btn" onclick="switchTab('inventory', this)"><i class="fas fa-warehouse"></i> Inventory</button>
-        <button class="adm-tab-btn" onclick="switchTab('customers', this)"><i class="fas fa-user-group"></i> Customers</button>
+  <!-- CHARTS & GRAPHS - Middle Layer -->
+  <div class="adm-main-panel" style="margin-bottom: 28px;">
+    <h2 style="margin:0 0 16px; font-size:18px; color:var(--petron-blue); display:flex; align-items:center; gap:8px;">
+      <i class="fas fa-chart-line"></i> Operations &amp; Financial Analytics (Visual Trends)
+    </h2>
+    <div class="adm-charts-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 20px;">
+      
+      <!-- Payments Chart (Stacked Bar) -->
+      <div class="adm-chart-box">
+        <h4>Payments Chart <span style="font-size:11px; font-weight:normal;">Cash vs Card vs E-Wallet vs E-Fuel</span></h4>
+        <div class="adm-chart-canvas-wrap"><canvas id="dailySalesChart"></canvas></div>
       </div>
 
-      <!-- Tab 1: Transactions -->
-      <div id="tab-transactions" class="adm-chart-panel active">
-        <div class="adm-charts-grid">
-          <div class="adm-chart-box">
-            <h4>Daily Sales Breakdown <span style="font-size:11px; font-weight:normal;">Cash vs Card vs E-Wallet vs E-Fuel Card</span></h4>
-            <div class="adm-chart-canvas-wrap"><canvas id="dailySalesChart"></canvas></div>
-          </div>
-          <div class="adm-chart-box">
-            <h4>Sales Distribution by Category</h4>
-            <div class="adm-chart-canvas-wrap"><canvas id="salesCategoryPie"></canvas></div>
-          </div>
-          <div class="adm-chart-box">
-            <h4>Monthly Revenue Trend <span style="font-size:11px; font-weight:normal;">Last 6 Months</span></h4>
-            <div class="adm-chart-canvas-wrap"><canvas id="monthlyRevenueLine"></canvas></div>
-          </div>
-        </div>
+      <!-- Fuel Sales Chart (Bar) -->
+      <div class="adm-chart-box">
+        <h4>Fuel Sales Chart <span style="font-size:11px; font-weight:normal;">Liters sold per fuel type</span></h4>
+        <div class="adm-chart-canvas-wrap"><canvas id="fuelTypeLitersBar"></canvas></div>
       </div>
 
-      <!-- Tab 2: Fuel Management -->
-      <div id="tab-fuel" class="adm-chart-panel">
-        <div class="adm-charts-grid">
-          <div class="adm-chart-box">
-            <h4>Fuel Tank Stock Levels <span style="font-size:11px; font-weight:normal;">Current Levels vs Capacity</span></h4>
-            <div class="adm-chart-canvas-wrap"><canvas id="fuelTankGauge"></canvas></div>
-          </div>
-          <div class="adm-chart-box">
-            <h4>Liters Sold per Fuel Type</h4>
-            <div class="adm-chart-canvas-wrap"><canvas id="fuelTypeLitersBar"></canvas></div>
-          </div>
-          <div class="adm-chart-box">
-            <h4>Expected vs Actual Pump Variance <span style="font-size:11px; font-weight:normal;">Liters Diff</span></h4>
-            <div class="adm-chart-canvas-wrap"><canvas id="fuelPumpVarianceLine"></canvas></div>
-          </div>
-        </div>
+      <!-- Merchandise Sales Chart (Pie) -->
+      <div class="adm-chart-box">
+        <h4>Merchandise Sales Chart <span style="font-size:11px; font-weight:normal;">Category distribution</span></h4>
+        <div class="adm-chart-canvas-wrap"><canvas id="salesCategoryPie"></canvas></div>
       </div>
 
-      <!-- Tab 3: Merchandise Deliveries -->
-      <div id="tab-deliveries" class="adm-chart-panel">
-        <div class="adm-charts-grid">
-          <div class="adm-chart-box">
-            <h4>Delivery Status Breakdown</h4>
-            <div class="adm-chart-canvas-wrap"><canvas id="deliveryStatusPie"></canvas></div>
-          </div>
-          <div class="adm-chart-box">
-            <h4>PO vs Actual Quantities Received</h4>
-            <div class="adm-chart-canvas-wrap"><canvas id="poVsActualQtyBar"></canvas></div>
-          </div>
-          <div class="adm-chart-box">
-            <h4>Supplier Delivery Performance <span style="font-size:11px; font-weight:normal;">On-Time vs Delayed</span></h4>
-            <div class="adm-chart-canvas-wrap"><canvas id="supplierPerformanceLine"></canvas></div>
-          </div>
-        </div>
+      <!-- Shift Performance Chart (Line) -->
+      <div class="adm-chart-box">
+        <h4>Shift Performance Chart <span style="font-size:11px; font-weight:normal;">Daily sales per shift</span></h4>
+        <div class="adm-chart-canvas-wrap"><canvas id="shiftPerformanceLine"></canvas></div>
       </div>
 
-      <!-- Tab 4: Inventory -->
-      <div id="tab-inventory" class="adm-chart-panel">
-        <div class="adm-charts-grid">
-          <div class="adm-chart-box">
-            <h4>Stock-In vs Stock-Out Volumes <span style="font-size:11px; font-weight:normal;">Top 10 Products</span></h4>
-            <div class="adm-chart-canvas-wrap"><canvas id="stockInOutBar"></canvas></div>
-          </div>
-          <div class="adm-chart-box">
-            <h4>Inventory Net Flow Trend <span style="font-size:11px; font-weight:normal;">Daily stock change</span></h4>
-            <div class="adm-chart-canvas-wrap"><canvas id="inventoryTrendLine"></canvas></div>
-          </div>
-          <div class="adm-chart-box">
-            <h4>Low Stock Flagged Items</h4>
-            <div class="adm-chart-canvas-wrap" style="height: auto; max-height:240px; overflow-y:auto;">
-              <?php if (empty($low_stock_alerts_data)): ?>
-                <div style="text-align:center; padding: 40px 0; color:var(--text-secondary);">
-                  <i class="fas fa-check-circle" style="font-size:32px; color:#22c55e; margin-bottom:8px;"></i>
-                  <p style="margin:0; font-size:13px;">All inventories are in healthy status.</p>
-                </div>
-              <?php else: ?>
-                <table style="width:100%; border-collapse:collapse; font-size:12px; text-align:left;">
-                  <thead>
-                    <tr style="border-bottom:1px solid var(--border-color); color:var(--text-secondary);">
-                      <th style="padding:6px;">Item</th>
-                      <th style="padding:6px;">Category</th>
-                      <th style="padding:6px; text-align:right;">Stock</th>
-                      <th style="padding:6px; text-align:right;">Min level</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <?php foreach ($low_stock_alerts_data as $alert): ?>
-                      <tr style="border-bottom:1px solid var(--border-color);">
-                        <td style="padding:8px 6px; font-weight:600;"><?php echo htmlspecialchars($alert['item_name']); ?></td>
-                        <td style="padding:8px 6px;"><?php echo htmlspecialchars($alert['category']); ?></td>
-                        <td style="padding:8px 6px; text-align:right; color:var(--petron-red); font-weight:700;"><?php echo number_format($alert['current_stock'], 2); ?></td>
-                        <td style="padding:8px 6px; text-align:right;"><?php echo number_format($alert['min_level'], 2); ?></td>
-                      </tr>
-                    <?php endforeach; ?>
-                  </tbody>
-                </table>
-              <?php endif; ?>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Tab 5: Customers -->
-      <div id="tab-customers" class="adm-chart-panel">
-        <div class="adm-charts-grid">
-          <div class="adm-chart-box">
-            <h4>Purchase Distribution <span style="font-size:11px; font-weight:normal;">Fuel vs Merchandise</span></h4>
-            <div class="adm-chart-canvas-wrap"><canvas id="customerPurchasePie"></canvas></div>
-          </div>
-          <div class="adm-chart-box">
-            <h4>Top Customers by Purchase Volume</h4>
-            <div class="adm-chart-canvas-wrap"><canvas id="topCustomersBar"></canvas></div>
-          </div>
-          <div class="adm-chart-box">
-            <h4>Customer Complaints &amp; Issues Trend</h4>
-            <div class="adm-chart-canvas-wrap"><canvas id="complaintsTrendLine"></canvas></div>
-          </div>
-        </div>
+      <!-- Financial Variance Chart (Line/Bar) -->
+      <div class="adm-chart-box">
+        <h4>Financial Variance Chart <span style="font-size:11px; font-weight:normal;">Collections vs Payables</span></h4>
+        <div class="adm-chart-canvas-wrap"><canvas id="financialVarianceChart"></canvas></div>
       </div>
 
     </div>
+  </div>
 
-    <!-- Live Alerts Side Panel -->
-    <div class="adm-side-panel">
-      <div class="adm-alerts-card">
-        <h2><i class="fas fa-bell"></i> Station Alerts</h2>
-        <div class="adm-alerts-list">
-          <?php if (empty($active_notifications)): ?>
-            <div style="text-align:center; padding: 20px 0; color:var(--text-secondary);">
-              <i class="fas fa-circle-check" style="font-size:24px; color:#22c55e; margin-bottom:6px;"></i>
-              <p style="margin:0; font-size:12px;">No active alerts or anomalies detected.</p>
-            </div>
-          <?php else: ?>
-            <?php foreach ($active_notifications as $notif): ?>
-              <div class="adm-alert-item <?php echo htmlspecialchars($notif['level']); ?>">
-                <div class="adm-alert-title">
-                  <i class="fas <?php echo $notif['level'] === 'critical' ? 'fa-circle-exclamation' : ($notif['level'] === 'warning' ? 'fa-triangle-exclamation' : 'fa-info-circle'); ?>" style="margin-right:6px;"></i>
-                  <?php echo htmlspecialchars($notif['title']); ?>
-                </div>
-                <div class="adm-alert-msg"><?php echo htmlspecialchars($notif['message']); ?></div>
-              </div>
-            <?php endforeach; ?>
-          <?php endif; ?>
-        </div>
+  <!-- OPERATIONAL TABLES - Center Layer -->
+  <div class="adm-main-panel" style="margin-bottom: 28px;">
+    <h2 style="margin:0 0 16px; font-size:18px; color:var(--petron-blue); display:flex; align-items:center; gap:8px;">
+      <i class="fas fa-table"></i> Operational Tables &amp; Records (Detailed Breakdown)
+    </h2>
+    
+    <div class="adm-tabs-container" style="border-bottom: 2px solid var(--border-color, #e2e8f0); margin-bottom: 20px; display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px;">
+      <button class="adm-tab-btn2 active" onclick="switchTableTab('shift', this)"><i class="fas fa-clock"></i> Shift Reports</button>
+      <button class="adm-tab-btn2" onclick="switchTableTab('consolidation', this)"><i class="fas fa-calculator"></i> Daily Consolidation</button>
+      <button class="adm-tab-btn2" onclick="switchTableTab('fuel_inv', this)"><i class="fas fa-gas-pump"></i> Fuel Inventory</button>
+      <button class="adm-tab-btn2" onclick="switchTableTab('merch_inv', this)"><i class="fas fa-boxes"></i> Merchandise Inventory</button>
+      <button class="adm-tab-btn2" onclick="switchTableTab('job_orders', this)"><i class="fas fa-tools"></i> Job Orders</button>
+      <button class="adm-tab-btn2" onclick="switchTableTab('customers_list', this)"><i class="fas fa-users"></i> Customers</button>
+      <button class="adm-tab-btn2" onclick="switchTableTab('suppliers_list', this)"><i class="fas fa-truck"></i> Suppliers</button>
+      <button class="adm-tab-btn2" onclick="switchTableTab('financial_recon', this)"><i class="fas fa-balance-scale"></i> Financial / Payables</button>
+    </div>
+
+    <?php
+    $date_start = $date_from;
+    $date_end = $date_to;
+    ?>
+    
+    <div id="table-tab-shift" class="adm-table-panel active">
+      <div class="dashboard-table-wrapper">
+        <?php include __DIR__ . '/reports/admin_shift_reports.php'; ?>
+      </div>
+    </div>
+    
+    <div id="table-tab-consolidation" class="adm-table-panel">
+      <div class="dashboard-table-wrapper">
+        <?php include __DIR__ . '/reports/admin_daily_consolidation.php'; ?>
+      </div>
+    </div>
+
+    <div id="table-tab-fuel_inv" class="adm-table-panel">
+      <div class="dashboard-table-wrapper">
+        <?php include __DIR__ . '/reports/admin_fuel_inventory.php'; ?>
+      </div>
+    </div>
+
+    <div id="table-tab-merch_inv" class="adm-table-panel">
+      <div class="dashboard-table-wrapper">
+        <?php include __DIR__ . '/reports/admin_merchandise_inventory.php'; ?>
+      </div>
+    </div>
+
+    <div id="table-tab-job_orders" class="adm-table-panel">
+      <div class="dashboard-table-wrapper">
+        <?php include __DIR__ . '/reports/admin_job_orders.php'; ?>
+      </div>
+    </div>
+
+    <div id="table-tab-customers_list" class="adm-table-panel">
+      <div class="dashboard-table-wrapper">
+        <?php include __DIR__ . '/reports/admin_customers.php'; ?>
+      </div>
+    </div>
+
+    <div id="table-tab-suppliers_list" class="adm-table-panel">
+      <div class="dashboard-table-wrapper">
+        <?php include __DIR__ . '/reports/admin_suppliers.php'; ?>
+      </div>
+    </div>
+
+    <div id="table-tab-financial_recon" class="adm-table-panel">
+      <div class="dashboard-table-wrapper">
+        <?php include __DIR__ . '/reports/admin_financial.php'; ?>
       </div>
     </div>
   </div>
@@ -1377,84 +1533,103 @@ body {
     </div>
   </div>
 
-  <!-- AUDIT TRAIL SNAPSHOT -->
-  <div class="adm-audit-sec">
-    <div class="adm-audit-header">
-      <h2><i class="fas fa-user-shield"></i> Audit Trail Oversight Snapshot</h2>
-      <div class="adm-audit-filters">
-        <input type="text" id="auditSearch" placeholder="Search audit trail..." onkeyup="filterAuditTrail()">
-        
-        <select id="auditRoleFilter" onchange="filterAuditTrail()">
-          <option value="">All Roles</option>
-          <option value="Admin">Admin</option>
-          <option value="Manager">Manager</option>
-          <option value="Staff">Staff</option>
-        </select>
-
-        <select id="auditModuleFilter" onchange="filterAuditTrail()">
-          <option value="">All Modules</option>
-          <option value="Fuel">Fuel</option>
-          <option value="Merchandise">Merchandise</option>
-          <option value="Delivery">Delivery</option>
-          <option value="User">User</option>
-          <option value="Job Order">Job Order</option>
-        </select>
-        
-        <button class="export-btn" onclick="exportAuditTrail()"><i class="fas fa-file-excel"></i> Export Snapshot</button>
+  <!-- COMPLIANCE LOGS - Bottom Layer -->
+  <div class="adm-audit-sec" style="margin-bottom: 28px;">
+    <div class="adm-audit-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+      <h2 style="margin:0; font-size:18px; color:var(--petron-blue); display:flex; align-items:center; gap:8px;">
+        <i class="fas fa-user-shield"></i> Compliance &amp; Oversight Logs
+      </h2>
+      <div class="adm-tabs-container" style="border-bottom: none; margin-bottom: 0; display: flex; gap: 8px;">
+        <button class="adm-tab-btn2 active" onclick="switchLogTab('audit', this)"><i class="fas fa-shield-halved"></i> Audit Trail</button>
+        <button class="adm-tab-btn2" onclick="switchLogTab('activity', this)"><i class="fas fa-history"></i> Activity Logs</button>
       </div>
     </div>
 
-    <div class="adm-table-wrap">
-      <table class="adm-table" id="auditTrailTable">
-        <thead>
-          <tr>
-            <th>Timestamp</th>
-            <th>User ID</th>
-            <th>User</th>
-            <th>Role</th>
-            <th>Action</th>
-            <th>Module</th>
-            <th>Remarks</th>
-            <th>Device/IP</th>
-            <th>Audit Rating</th>
-          </tr>
-        </thead>
-        <tbody id="auditTrailBody">
-          <?php if (empty($audit_trail_data)): ?>
+    <!-- Log Panel 1: Audit Trail -->
+    <div id="log-tab-audit" class="adm-table-panel active">
+      <div style="margin-bottom:16px; display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap;">
+        <div class="adm-audit-filters" style="display:flex; gap:8px; align-items:center;">
+          <input type="text" id="auditSearch" placeholder="Search audit trail..." onkeyup="filterAuditTrail()" style="padding:6px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:13px;">
+          
+          <select id="auditRoleFilter" onchange="filterAuditTrail()" style="padding:6px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:13px; background:white;">
+            <option value="">All Roles</option>
+            <option value="Admin">Admin</option>
+            <option value="Manager">Manager</option>
+            <option value="Staff">Staff</option>
+          </select>
+
+          <select id="auditModuleFilter" onchange="filterAuditTrail()" style="padding:6px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:13px; background:white;">
+            <option value="">All Modules</option>
+            <option value="Fuel">Fuel</option>
+            <option value="Merchandise">Merchandise</option>
+            <option value="Delivery">Delivery</option>
+            <option value="User">User</option>
+            <option value="Job Order">Job Order</option>
+          </select>
+          
+          <button class="export-btn" onclick="exportAuditTrail()"><i class="fas fa-file-excel"></i> Export Snapshot</button>
+        </div>
+      </div>
+
+      <div class="adm-table-wrap">
+        <table class="adm-table" id="auditTrailTable">
+          <thead>
             <tr>
-              <td colspan="9" style="text-align:center; color:var(--text-secondary);">No station actions logged in audit trail.</td>
+              <th>Timestamp</th>
+              <th>User ID</th>
+              <th>User</th>
+              <th>Role</th>
+              <th>Action</th>
+              <th>Module</th>
+              <th>Remarks</th>
+              <th>Device/IP</th>
+              <th>Audit Rating</th>
             </tr>
-          <?php else: ?>
-            <?php foreach ($audit_trail_data as $row): ?>
-              <tr class="audit-row" 
-                  data-user="<?php echo htmlspecialchars($row['user_name'] . ' ' . $row['username']); ?>"
-                  data-role="<?php echo htmlspecialchars($row['role']); ?>"
-                  data-module="<?php echo htmlspecialchars($row['module']); ?>"
-                  data-action="<?php echo htmlspecialchars($row['action_type']); ?>"
-                  data-remarks="<?php echo htmlspecialchars($row['remarks']); ?>"
-                  data-time="<?php echo htmlspecialchars($row['created_at']); ?>">
-                <td><?php echo date('M d, Y H:i:s', strtotime($row['created_at'])); ?></td>
-                <td>#<?php echo htmlspecialchars($row['user_id']); ?></td>
-                <td style="font-weight:600;"><?php echo htmlspecialchars($row['user_name'] ?: $row['username']); ?></td>
-                <td>
-                  <span class="badge <?php echo strtolower($row['role']); ?>">
-                    <?php echo htmlspecialchars($row['role']); ?>
-                  </span>
-                </td>
-                <td style="font-weight:500;"><?php echo htmlspecialchars($row['action_type']); ?></td>
-                <td><?php echo htmlspecialchars($row['module'] ?: 'System'); ?></td>
-                <td style="color:var(--text-secondary); max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="<?php echo htmlspecialchars($row['remarks']); ?>">
-                  <?php echo htmlspecialchars($row['remarks']); ?>
-                </td>
-                <td style="font-size:11px;"><?php echo htmlspecialchars($row['ip_address']); ?></td>
-                <td class="audit-status-cell">
-                  <span class="badge" style="background:rgba(34,197,94,0.1); color:#22c55e;">Normal</span>
-                </td>
+          </thead>
+          <tbody id="auditTrailBody">
+            <?php if (empty($audit_trail_data)): ?>
+              <tr>
+                <td colspan="9" style="text-align:center; color:var(--text-secondary);">No station actions logged in audit trail.</td>
               </tr>
-            <?php endforeach; ?>
-          <?php endif; ?>
-        </tbody>
-      </table>
+            <?php else: ?>
+              <?php foreach ($audit_trail_data as $row): ?>
+                <tr class="audit-row" 
+                    data-user="<?php echo htmlspecialchars($row['user_name'] . ' ' . $row['username']); ?>"
+                    data-role="<?php echo htmlspecialchars($row['role']); ?>"
+                    data-module="<?php echo htmlspecialchars($row['module']); ?>"
+                    data-action="<?php echo htmlspecialchars($row['action_type']); ?>"
+                    data-remarks="<?php echo htmlspecialchars($row['remarks']); ?>"
+                    data-time="<?php echo htmlspecialchars($row['created_at']); ?>">
+                  <td><?php echo date('M d, Y H:i:s', strtotime($row['created_at'])); ?></td>
+                  <td>#<?php echo htmlspecialchars($row['user_id']); ?></td>
+                  <td style="font-weight:600;"><?php echo htmlspecialchars($row['user_name'] ?: $row['username']); ?></td>
+                  <td>
+                    <span class="badge <?php echo strtolower($row['role']); ?>">
+                      <?php echo htmlspecialchars($row['role']); ?>
+                    </span>
+                  </td>
+                  <td style="font-weight:500;"><?php echo htmlspecialchars($row['action_type']); ?></td>
+                  <td><?php echo htmlspecialchars($row['module'] ?: 'System'); ?></td>
+                  <td style="color:var(--text-secondary); max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="<?php echo htmlspecialchars($row['remarks']); ?>">
+                    <?php echo htmlspecialchars($row['remarks']); ?>
+                  </td>
+                  <td style="font-size:11px;"><?php echo htmlspecialchars($row['ip_address']); ?></td>
+                  <td class="audit-status-cell">
+                    <span class="badge" style="background:rgba(34,197,94,0.1); color:#22c55e;">Normal</span>
+                  </td>
+                </tr>
+              <?php endforeach; ?>
+            <?php endif; ?>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Log Panel 2: Activity Logs -->
+    <div id="log-tab-activity" class="adm-table-panel">
+      <div class="dashboard-table-wrapper">
+        <?php include __DIR__ . '/reports/admin_activity_log.php'; ?>
+      </div>
     </div>
   </div>
 
@@ -1511,13 +1686,35 @@ body {
     }
   }
 
-  // ─── CHART BUILDERS ────────────────────────────────────────
-  function initTransactionsCharts() {
+  // ─── CENTER LAYER SWITCHER ─────────────────────────────────
+  window.switchTableTab = function(tabName, btn) {
+    document.querySelectorAll('#table-tab-shift, #table-tab-consolidation, #table-tab-fuel_inv, #table-tab-merch_inv, #table-tab-job_orders, #table-tab-customers_list, #table-tab-suppliers_list, #table-tab-financial_recon').forEach(el => {
+      el.classList.remove('active');
+    });
+    btn.parentElement.querySelectorAll('.adm-tab-btn2').forEach(el => el.classList.remove('active'));
+    
+    document.getElementById('table-tab-' + tabName).classList.add('active');
+    btn.classList.add('active');
+  };
+
+  // ─── BOTTOM LAYER SWITCHER ─────────────────────────────────
+  window.switchLogTab = function(tabName, btn) {
+    document.querySelectorAll('#log-tab-audit, #log-tab-activity').forEach(el => {
+      el.classList.remove('active');
+    });
+    btn.parentElement.querySelectorAll('.adm-tab-btn2').forEach(el => el.classList.remove('active'));
+    
+    document.getElementById('log-tab-' + tabName).classList.add('active');
+    btn.classList.add('active');
+  };
+
+  // ─── ALL CHARTS INITIALIZER ────────────────────────────────
+  function initAllDashboardCharts() {
     const C = getChartColors();
     Chart.defaults.color = C.textColor;
     Chart.defaults.scale.grid.color = C.gridColor;
 
-    // 1. Daily Sales Bar Chart
+    // 1. Daily Sales Stacked Bar Chart
     const dsLabels = dailySalesRaw.map(d => new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
     destroyChart('dailySalesChart');
     chartRegistry['dailySalesChart'] = new Chart(document.getElementById('dailySalesChart'), {
@@ -1541,77 +1738,7 @@ body {
       }
     });
 
-    // 2. Sales Distribution Pie Chart
-    destroyChart('salesCategoryPie');
-    chartRegistry['salesCategoryPie'] = new Chart(document.getElementById('salesCategoryPie'), {
-      type: 'pie',
-      data: {
-        labels: categorySalesRaw.map(c => c.category),
-        datasets: [{
-          data: categorySalesRaw.map(c => parseFloat(c.total)),
-          backgroundColor: [C.blue, C.red, C.green, C.yellow, C.purple, C.cyan]
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { position: 'right' } }
-      }
-    });
-
-    // 3. Monthly Revenue Trend Line
-    destroyChart('monthlyRevenueLine');
-    chartRegistry['monthlyRevenueLine'] = new Chart(document.getElementById('monthlyRevenueLine'), {
-      type: 'line',
-      data: {
-        labels: monthlyRevenueRaw.map(m => m.month),
-        datasets: [{
-          label: 'Total Revenue',
-          data: monthlyRevenueRaw.map(m => parseFloat(m.total)),
-          borderColor: C.blue,
-          backgroundColor: C.blue + '10',
-          fill: true,
-          tension: 0.3,
-          borderWidth: 2
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-          y: { beginAtZero: true, ticks: { callback: v => '₱' + v.toLocaleString() } }
-        }
-      }
-    });
-  }
-
-  function initFuelCharts() {
-    const C = getChartColors();
-    
-    // 1. Tank Stock Levels (Gauge/Bar Chart combo since Chart.js gauge is complex)
-    // We render multiple bar/doughnut charts representing current levels vs capacity
-    destroyChart('fuelTankGauge');
-    chartRegistry['fuelTankGauge'] = new Chart(document.getElementById('fuelTankGauge'), {
-      type: 'bar',
-      data: {
-        labels: tankLevelsRaw.map(t => t.fuel_type),
-        datasets: [
-          { label: 'Current Level', data: tankLevelsRaw.map(t => parseFloat(t.current_stock)), backgroundColor: C.green },
-          { label: 'Capacity', data: tankLevelsRaw.map(t => parseFloat(t.capacity) - parseFloat(t.current_stock)), backgroundColor: C.gridColor }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        indexAxis: 'y',
-        scales: {
-          x: { stacked: true, beginAtZero: true },
-          y: { stacked: true }
-        }
-      }
-    });
-
-    // 2. Liters Sold per Fuel Type (Bar)
+    // 2. Fuel Sales Liters per Fuel Type (Bar)
     destroyChart('fuelTypeLitersBar');
     chartRegistry['fuelTypeLitersBar'] = new Chart(document.getElementById('fuelTypeLitersBar'), {
       type: 'bar',
@@ -1631,214 +1758,69 @@ body {
       }
     });
 
-    // 3. Expected vs Actual Pump Readings Variance (Line)
-    const varDates = [...new Set(fuelVarianceRaw.map(v => v.date))];
-    const fuelTypes = [...new Set(fuelVarianceRaw.map(v => v.fuel_type))];
-    const datasets = fuelTypes.map((ft, idx) => {
-      const colorsList = [C.blue, C.red, C.green];
-      return {
-        label: ft,
-        data: varDates.map(d => {
-          const matched = fuelVarianceRaw.find(v => v.date === d && v.fuel_type === ft);
-          return matched ? parseFloat(matched.variance) : 0;
-        }),
-        borderColor: colorsList[idx % colorsList.length],
-        fill: false,
-        tension: 0.2
-      };
-    });
-
-    destroyChart('fuelPumpVarianceLine');
-    chartRegistry['fuelPumpVarianceLine'] = new Chart(document.getElementById('fuelPumpVarianceLine'), {
-      type: 'line',
-      data: { labels: varDates, datasets: datasets },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: { y: { beginAtZero: true } }
-      }
-    });
-  }
-
-  function initDeliveriesCharts() {
-    const C = getChartColors();
-
-    // 1. Delivery Status Pie
-    destroyChart('deliveryStatusPie');
-    chartRegistry['deliveryStatusPie'] = new Chart(document.getElementById('deliveryStatusPie'), {
+    // 3. Sales Category Pie Chart (Merchandise Only)
+    destroyChart('salesCategoryPie');
+    chartRegistry['salesCategoryPie'] = new Chart(document.getElementById('salesCategoryPie'), {
       type: 'pie',
       data: {
-        labels: deliveryStatusRaw.map(d => d.status),
+        labels: categorySalesRaw.map(c => c.category),
         datasets: [{
-          data: deliveryStatusRaw.map(d => parseInt(d.count)),
-          backgroundColor: [C.green, C.blue, C.yellow, C.red]
+          data: categorySalesRaw.map(c => parseFloat(c.total)),
+          backgroundColor: [C.blue, C.red, C.green, C.yellow, C.purple, C.cyan]
         }]
       },
       options: {
         responsive: true,
-        maintainAspectRatio: false
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'right' } }
       }
     });
 
-    // 2. PO vs Actual Quantities Received (Stacked Bar)
-    destroyChart('poVsActualQtyBar');
-    chartRegistry['poVsActualQtyBar'] = new Chart(document.getElementById('poVsActualQtyBar'), {
-      type: 'bar',
+    // 4. Shift Performance Chart (Line)
+    const shiftPerfRaw = <?php echo json_encode($shift_perf_data); ?>;
+    const spLabels = shiftPerfRaw.map(d => new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+    destroyChart('shiftPerformanceLine');
+    chartRegistry['shiftPerformanceLine'] = new Chart(document.getElementById('shiftPerformanceLine'), {
+      type: 'line',
       data: {
-        labels: poVsActualRaw.map(d => d.delivery_ref),
+        labels: spLabels,
         datasets: [
-          { label: 'Expected (PO)', data: poVsActualRaw.map(d => parseFloat(d.expected_quantity)), backgroundColor: C.blue },
-          { label: 'Actual Received', data: poVsActualRaw.map(d => parseFloat(d.actual_quantity)), backgroundColor: C.green }
+          { label: 'Shift 1 Sales', data: shiftPerfRaw.map(d => parseFloat(d.shift1)), borderColor: C.blue, backgroundColor: C.blue + '15', fill: true, tension: 0.3 },
+          { label: 'Shift 2 Sales', data: shiftPerfRaw.map(d => parseFloat(d.shift2)), borderColor: C.red, backgroundColor: C.red + '15', fill: true, tension: 0.3 }
         ]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         scales: {
-          y: { beginAtZero: true }
+          y: { beginAtZero: true, ticks: { callback: v => '₱' + v.toLocaleString() } }
         }
       }
     });
 
-    // 3. Supplier Performance (Trend Line)
-    destroyChart('supplierPerformanceLine');
-    chartRegistry['supplierPerformanceLine'] = new Chart(document.getElementById('supplierPerformanceLine'), {
+    // 5. Financial Variance Chart (Line)
+    const finVarianceRaw = <?php echo json_encode($fin_variance_data); ?>;
+    const fvLabels = finVarianceRaw.map(d => new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+    destroyChart('financialVarianceChart');
+    chartRegistry['financialVarianceChart'] = new Chart(document.getElementById('financialVarianceChart'), {
       type: 'line',
       data: {
-        labels: supplierPerfRaw.map(s => s.supplier_name),
+        labels: fvLabels,
         datasets: [
-          { label: 'On-Time', data: supplierPerfRaw.map(s => parseInt(s.on_time)), borderColor: C.green, backgroundColor: C.green + '10', fill: true },
-          { label: 'Delayed', data: supplierPerfRaw.map(s => parseInt(s.delayed)), borderColor: C.red, backgroundColor: C.red + '10', fill: true }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false
-      }
-    });
-  }
-
-  function initInventoryCharts() {
-    const C = getChartColors();
-
-    // 1. Stock-In vs Stock-Out per item (Bar)
-    destroyChart('stockInOutBar');
-    chartRegistry['stockInOutBar'] = new Chart(document.getElementById('stockInOutBar'), {
-      type: 'bar',
-      data: {
-        labels: stockInOutRaw.map(s => s.product_name),
-        datasets: [
-          { label: 'Stock In', data: stockInOutRaw.map(s => parseFloat(s.stock_in)), backgroundColor: C.green },
-          { label: 'Stock Out', data: stockInOutRaw.map(s => parseFloat(s.stock_out)), backgroundColor: C.red }
+          { label: 'Collections', data: finVarianceRaw.map(d => parseFloat(d.collections)), borderColor: C.green, backgroundColor: C.green + '10', fill: false, tension: 0.2 },
+          { label: 'Payables', data: finVarianceRaw.map(d => parseFloat(d.payables)), borderColor: C.red, backgroundColor: C.red + '10', fill: false, tension: 0.2 },
+          { label: 'Net Variance', data: finVarianceRaw.map(d => parseFloat(d.variance)), borderColor: C.purple, backgroundColor: C.purple + '15', fill: true, tension: 0.2 }
         ]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        scales: { y: { beginAtZero: true } }
-      }
-    });
-
-    // 2. Inventory Trend (Line)
-    destroyChart('inventoryTrendLine');
-    chartRegistry['inventoryTrendLine'] = new Chart(document.getElementById('inventoryTrendLine'), {
-      type: 'line',
-      data: {
-        labels: inventoryTrendRaw.map(i => i.date),
-        datasets: [{
-          label: 'Net Flow (L/pcs)',
-          data: inventoryTrendRaw.map(i => parseFloat(i.net_change)),
-          borderColor: C.purple,
-          tension: 0.3,
-          fill: false
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: { y: { beginAtZero: true } }
+        scales: {
+          y: { beginAtZero: true, ticks: { callback: v => '₱' + v.toLocaleString() } }
+        }
       }
     });
   }
-
-  function initCustomerCharts() {
-    const C = getChartColors();
-
-    // 1. Purchase Distribution (Pie)
-    destroyChart('customerPurchasePie');
-    chartRegistry['customerPurchasePie'] = new Chart(document.getElementById('customerPurchasePie'), {
-      type: 'pie',
-      data: {
-        labels: customerPurchaseRaw.map(c => c.category),
-        datasets: [{
-          data: customerPurchaseRaw.map(c => parseFloat(c.total)),
-          backgroundColor: [C.blue, C.cyan]
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false
-      }
-    });
-
-    // 2. Top Customers (Bar)
-    destroyChart('topCustomersBar');
-    chartRegistry['topCustomersBar'] = new Chart(document.getElementById('topCustomersBar'), {
-      type: 'bar',
-      data: {
-        labels: topCustomersRaw.map(c => c.customer_name),
-        datasets: [{
-          label: 'Purchases (₱)',
-          data: topCustomersRaw.map(c => parseFloat(c.total_purchases)),
-          backgroundColor: C.blue,
-          borderRadius: 6
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: { y: { beginAtZero: true, ticks: { callback: v => '₱' + v.toLocaleString() } } }
-      }
-    });
-
-    // 3. Complaints Trend (Line)
-    destroyChart('complaintsTrendLine');
-    chartRegistry['complaintsTrendLine'] = new Chart(document.getElementById('complaintsTrendLine'), {
-      type: 'line',
-      data: {
-        labels: complaintsTrendRaw.map(c => c.date),
-        datasets: [{
-          label: 'Issues/Returns Count',
-          data: complaintsTrendRaw.map(c => parseInt(c.count)),
-          borderColor: C.red,
-          backgroundColor: C.red + '10',
-          fill: true,
-          tension: 0.3
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: { y: { beginAtZero: true } }
-      }
-    });
-  }
-
-  // ─── TAB SWITCHER ──────────────────────────────────────────
-  window.switchTab = function(tabName, btn) {
-    document.querySelectorAll('.adm-chart-panel').forEach(el => el.classList.remove('active'));
-    document.querySelectorAll('.adm-tab-btn').forEach(el => el.classList.remove('active'));
-    
-    document.getElementById('tab-' + tabName).classList.add('active');
-    btn.classList.add('active');
-
-    // Lazy load / redraw charts for performance
-    if (tabName === 'transactions') initTransactionsCharts();
-    if (tabName === 'fuel') initFuelCharts();
-    if (tabName === 'deliveries') initDeliveriesCharts();
-    if (tabName === 'inventory') initInventoryCharts();
-    if (tabName === 'customers') initCustomerCharts();
-  };
 
   // ─── CALENDAR FILTERS ──────────────────────────────────────
   window.filterCalendar = function(category, btn) {
@@ -1950,7 +1932,6 @@ body {
   // ─── REPORTS EXPORTS ───────────────────────────────────────
   window.triggerExport = function(type) {
     alert(`Exporting ${type.toUpperCase()} Consolidated Report. This may take a few seconds...`);
-    // Direct CSV exporter mockup based on PHP loaded datasets
     let data = [];
     let headers = '';
     
@@ -1987,7 +1968,7 @@ body {
 
   // ─── ON INITIAL LOAD ───────────────────────────────────────
   window.addEventListener('load', () => {
-    initTransactionsCharts();
+    initAllDashboardCharts();
     performAuditAnomalyCheck();
     
     // Set active filter calendar button
@@ -2001,15 +1982,7 @@ body {
 
   // Watch for theme classes changes on the body
   const themeObserver = new MutationObserver(() => {
-    const activeTabBtn = document.querySelector('.adm-tab-btn.active');
-    if (activeTabBtn) {
-      const tabName = activeTabBtn.innerText.trim().toLowerCase().split(' ')[0];
-      if (tabName.includes('transaction')) initTransactionsCharts();
-      if (tabName.includes('fuel')) initFuelCharts();
-      if (tabName.includes('deliveries')) initDeliveriesCharts();
-      if (tabName.includes('inventory')) initInventoryCharts();
-      if (tabName.includes('customer')) initCustomerCharts();
-    }
+    initAllDashboardCharts();
   });
   themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
 
