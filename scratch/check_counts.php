@@ -1,12 +1,12 @@
 <?php
 require_once __DIR__ . '/../public/db_connect.php';
 
-$tables = ['fuel_transactions', 'fuel_readings', 'fuel_daily_readings', 'fuel_reconciliation', 'variance_alerts'];
+$tables = ['purchase_orders', 'suppliers', 'fuel_deliveries', 'fuel_batches', 'products', 'merchandise_transactions', 'fuel_transactions', 'job_orders'];
 foreach ($tables as $t) {
     try {
-        $count = $pdo->query("SELECT COUNT(*) FROM `$t`")->fetchColumn();
-        echo "$t: $count rows\n";
+        $c = $pdo->query("SELECT COUNT(*) FROM `$t`")->fetchColumn();
+        echo "Table: $t | Count: $c\n";
     } catch (Exception $e) {
-        echo "$t: error: " . $e->getMessage() . "\n";
+        echo "Table: $t | Error: " . $e->getMessage() . "\n";
     }
 }

@@ -199,6 +199,153 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_event') {
     exit;
 }
 
+if (isset($_GET['action']) && $_GET['action'] === 'get_details') {
+    header('Content-Type: application/json');
+    try {
+        $event_id = $_GET['event_id'] ?? '';
+        $event_type = $_GET['event_type'] ?? '';
+        
+        $details = [];
+        $audit = [];
+        $numeric_id = preg_replace('/[^0-9]/', '', $event_id);
+        
+        if ($event_type === 'staff_shift' || strpos($event_id, 'shift_') !== false) {
+            $stmt = $pdo->prepare("SELECT ss.*, CONCAT(u.first_name, ' ', u.last_name) AS staff_name, s.name as station_name
+                FROM staff_schedules ss
+                JOIN users u ON ss.user_id = u.id
+                LEFT JOIN stations s ON u.station_id = s.id
+                WHERE ss.id = ?");
+            $stmt->execute([$numeric_id]);
+            $details = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($details) {
+                $details['title'] = 'Staff Shift Assignment';
+                $details['description'] = 'Shift: ' . ($details['shift_name'] ?? 'Regular') . ' on ' . $details['scheduled_date'];
+                $details['status'] = $details['status'] ?? 'Active';
+                $details['date'] = $details['scheduled_date'];
+                
+                $audit_stmt = $pdo->prepare("SELECT action, details, created_at FROM activity_logs 
+                    WHERE user_id = ? AND (action LIKE '%shift%' OR action LIKE '%schedule%') 
+                    ORDER BY created_at DESC LIMIT 5");
+                $audit_stmt->execute([$details['user_id']]);
+                $audit = $audit_stmt->fetchAll(PDO::FETCH_ASSOC);
+            }
+        } elseif ($event_type === 'merchandise_delivery' || strpos($event_id, 'del_') !== false || $event_type === 'validation_delivery' || $event_type === 'fuel_delivery') {
+            $stmt = $pdo->prepare("SELECT d.*, s.name as station_name 
+                FROM deliveries_oversight d
+                LEFT JOIN stations s ON d.station_id = s.id
+                WHERE d.id = ?");
+            $stmt->execute([$numeric_id]);
+            $details = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($details) {
+                $details['title'] = 'Delivery Oversight';
+                $details['description'] = ($details['supplier'] ?? 'Petron Supplier') . ' - ' . ($details['product_name'] ?? 'Fuel/Merchandise') . ' (' . ($details['quantity'] ?? 0) . ' units)';
+                $details['status'] = $details['status'] ?? 'Pending';
+                $details['date'] = $details['delivery_date'] ?? date('Y-m-d');
+                
+                $audit_stmt = $pdo->prepare("SELECT action, details, created_at FROM activity_logs 
+                    WHERE details LIKE ? OR action LIKE '%delivery%' 
+                    ORDER BY created_at DESC LIMIT 5");
+                $audit_stmt->execute(['%' . $numeric_id . '%']);
+                $audit = $audit_stmt->fetchAll(PDO::FETCH_ASSOC);
+            }
+        } elseif ($event_type === 'job_order' || strpos($event_id, 'jo_') !== false) {
+            $stmt = $pdo->prepare("SELECT jo.*, CONCAT(u.first_name, ' ', u.last_name) AS staff_name, s.name as station_name
+                FROM job_orders jo
+                LEFT JOIN users u ON jo.assigned_mechanic_id = u.id
+                LEFT JOIN stations s ON jo.station_id = s.id
+                WHERE jo.id = ?");
+            $stmt->execute([$numeric_id]);
+            $details = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($details) {
+                $details['title'] = 'Job Order Oversight';
+                $details['description'] = 'Service: ' . ($details['service_type'] ?? 'Repair') . ' for Customer: ' . ($details['customer_name'] ?? 'Walk-in');
+                $details['status'] = $details['status'] ?? 'Pending';
+                $details['date'] = date('Y-m-d', strtotime($details['created_at']));
+                
+                $audit_stmt = $pdo->prepare("SELECT action, details, created_at FROM activity_logs 
+                    WHERE details LIKE ? OR action LIKE '%job_order%' 
+                    ORDER BY created_at DESC LIMIT 5");
+                $audit_stmt->execute(['%' . $numeric_id . '%']);
+                $audit = $audit_stmt->fetchAll(PDO::FETCH_ASSOC);
+            }
+        } elseif ($event_type === 'compliance_deadline' || strpos($event_id, 'compliance_') !== false || strpos($event_id, 'overdue_report_') !== false) {
+            $stmt = $pdo->prepare("SELECT c.*, s.name as station_name 
+                FROM admin_compliance_deadlines c
+                LEFT JOIN stations s ON c.station_id = s.id
+                WHERE c.id = ?");
+            $stmt->execute([$numeric_id]);
+            $details = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($details) {
+                $details['title'] = 'Compliance / Report Deadline';
+                $details['description'] = $details['title'] . ' (' . ($details['deadline_type'] ?? 'Monthly') . ')';
+                $details['status'] = $details['status'] ?? 'Pending';
+                $details['date'] = $details['deadline_date'];
+                
+                $audit_stmt = $pdo->prepare("SELECT action, details, created_at FROM activity_logs 
+                    WHERE action LIKE '%compliance%' OR action LIKE '%deadline%' 
+                    ORDER BY created_at DESC LIMIT 5");
+                $audit_stmt->execute();
+                $audit = $audit_stmt->fetchAll(PDO::FETCH_ASSOC);
+            }
+        } elseif ($event_type === 'financial_event' || strpos($event_id, 'high_value_') !== false) {
+            $stmt = $pdo->prepare("SELECT t.*, CONCAT(u.first_name, ' ', u.last_name) AS staff_name, s.name as station_name
+                FROM transactions t
+                LEFT JOIN users u ON t.user_id = u.id
+                LEFT JOIN stations s ON t.station_id = s.id
+                WHERE t.id = ?");
+            $stmt->execute([$numeric_id]);
+            $details = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($details) {
+                $details['title'] = 'High-Value / Financial Transaction';
+                $details['description'] = 'Customer: ' . ($details['customer_name'] ?? 'N/A') . ' - Amount: ₱' . number_format($details['total_amount'], 2) . ' (' . ($details['payment_method'] ?? 'Cash') . ')';
+                $details['status'] = $details['status'] ?? 'Completed';
+                $details['date'] = $details['transaction_date'] ?? date('Y-m-d');
+                
+                $audit_stmt = $pdo->prepare("SELECT action, details, created_at FROM activity_logs 
+                    WHERE details LIKE ? OR action LIKE '%transaction%' 
+                    ORDER BY created_at DESC LIMIT 5");
+                $audit_stmt->execute(['%' . $numeric_id . '%']);
+                $audit = $audit_stmt->fetchAll(PDO::FETCH_ASSOC);
+            }
+        } else {
+            $stmt = $pdo->prepare("SELECT sce.*, et.type_name, CONCAT(u.first_name, ' ', u.last_name) AS staff_name, s.name as station_name
+                FROM staff_calendar_events sce
+                LEFT JOIN staff_event_types et ON sce.event_type_id = et.id
+                LEFT JOIN users u ON sce.staff_encoder_id = u.id
+                LEFT JOIN stations s ON sce.station_id = s.id
+                WHERE sce.id = ?");
+            $stmt->execute([$numeric_id]);
+            $details = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($details) {
+                $details['title'] = $details['type_name'] ?? 'Calendar Event';
+                $details['description'] = $details['work_description'];
+                $details['status'] = $details['status'] ?? 'Pending';
+                $details['date'] = $details['event_date'];
+                
+                $audit_stmt = $pdo->prepare("SELECT action, details, created_at FROM activity_logs 
+                    WHERE action LIKE '%calendar%' OR action LIKE '%event%' 
+                    ORDER BY created_at DESC LIMIT 5");
+                $audit_stmt->execute();
+                $audit = $audit_stmt->fetchAll(PDO::FETCH_ASSOC);
+            }
+        }
+        
+        echo json_encode([
+            'success' => true,
+            'details' => $details ?: [
+                'title' => 'System Alert / Notification',
+                'description' => 'Automatic oversight entry generated by system monitor.',
+                'status' => 'active',
+                'date' => date('Y-m-d')
+            ],
+            'audit' => $audit
+        ]);
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    }
+    exit;
+}
+
 // Get summary stats for panels
 $summary_stats = [
     'today_events' => 0,
@@ -448,10 +595,10 @@ $staff_colors = ['#039be5', '#7986cb', '#33b679', '#8e24aa', '#e67c73', '#f6bf26
 try {
     // Load staff list with assigned colors (ALL STATIONS or filtered)
     if ($filter_station > 0) {
-        $staff_stmt = $pdo->prepare("SELECT `user_id`, name FROM users WHERE station_id = ? AND role IN ('staff','cashier','pump_attendant','manager','supervisor') AND status = 'Active' ORDER BY name");
+        $staff_stmt = $pdo->prepare("SELECT id, CONCAT(first_name, ' ', last_name) AS name FROM users WHERE station_id = ? AND role IN ('staff','cashier','pump_attendant','manager','supervisor') AND status = 'Active' ORDER BY first_name, last_name");
         $staff_stmt->execute([$filter_station]);
     } else {
-        $staff_stmt = $pdo->prepare("SELECT `user_id`, name FROM users WHERE role IN ('staff','cashier','pump_attendant','manager','supervisor') AND status = 'Active' ORDER BY name");
+        $staff_stmt = $pdo->prepare("SELECT id, CONCAT(first_name, ' ', last_name) AS name FROM users WHERE role IN ('staff','cashier','pump_attendant','manager','supervisor') AND status = 'Active' ORDER BY first_name, last_name");
         $staff_stmt->execute();
     }
     $all_staff = $staff_stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -781,18 +928,35 @@ try {
             ];
         }
     } catch (Exception $e) {}
-    
 } catch (Exception $e) {}
+
+if (isset($_GET['action']) && $_GET['action'] === 'export_csv') {
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="petron_calendar_report_'.date('Ymd').'.csv"');
+    $out = fopen('php://output', 'w');
+    fputcsv($out, ['Date', 'Event Type', 'Staff Assigned', 'Description', 'Status']);
+    foreach ($month_events as $date => $evts) {
+        foreach ($evts as $evt) {
+            fputcsv($out, [
+                $date,
+                $evt['type_name'] ?? '',
+                $evt['staff_name'] ?? '',
+                $evt['work_description'] ?? '',
+                $evt['status'] ?? 'pending'
+            ]);
+        }
+    }
+    fclose($out);
+    exit;
+}
 
 include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
 /* Google Calendar Style */
-* { box-sizing: border-box; }
-body { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; background: #fff; margin: 0; }
-
-.cal-layout { display: flex; height: calc(100vh - 60px); }
+.cal-layout { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; background: #fff; display: flex; height: calc(100vh - 60px); }
+.cal-layout * { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; box-sizing: border-box; }
 
 /* Sidebar */
 .cal-sidebar { width: 256px; border-right: 1px solid #dadce0; padding: 8px 0; overflow-y: auto; flex-shrink: 0; }
@@ -946,6 +1110,58 @@ body { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; background: #fff
             </div>
             <?php endforeach; ?>
         </div>
+
+        <!-- Event Categories -->
+        <div class="cal-calendars" style="border-top: 1px solid #dadce0; margin-top: 16px; padding-top: 8px;">
+            <div class="cal-calendars-title">Event Categories</div>
+            
+            <div class="cal-calendar-item" onclick="toggleCategory('staff_shift')">
+                <div class="cal-calendar-checkbox checked" id="cb_cat_staff_shift" style="background: #1a73e8; border-color: #1a73e8;"></div>
+                <div>Shifts</div>
+            </div>
+            <div class="cal-calendar-item" onclick="toggleCategory('job_order')">
+                <div class="cal-calendar-checkbox checked" id="cb_cat_job_order" style="background: #1a73e8; border-color: #1a73e8;"></div>
+                <div>Job Orders</div>
+            </div>
+            <div class="cal-calendar-item" onclick="toggleCategory('merchandise_delivery')">
+                <div class="cal-calendar-checkbox checked" id="cb_cat_merchandise_delivery" style="background: #1a73e8; border-color: #1a73e8;"></div>
+                <div>Deliveries</div>
+            </div>
+            <div class="cal-calendar-item" onclick="toggleCategory('compliance_deadline')">
+                <div class="cal-calendar-checkbox checked" id="cb_cat_compliance_deadline" style="background: #1a73e8; border-color: #1a73e8;"></div>
+                <div>Compliance</div>
+            </div>
+            <div class="cal-calendar-item" onclick="toggleCategory('validation_task')">
+                <div class="cal-calendar-checkbox checked" id="cb_cat_validation_task" style="background: #1a73e8; border-color: #1a73e8;"></div>
+                <div>Val. Tasks</div>
+            </div>
+            <div class="cal-calendar-item" onclick="toggleCategory('critical_stock')">
+                <div class="cal-calendar-checkbox checked" id="cb_cat_critical_stock" style="background: #1a73e8; border-color: #1a73e8;"></div>
+                <div>Critical Stock</div>
+            </div>
+        </div>
+
+        <!-- Event Statuses -->
+        <div class="cal-calendars" style="border-top: 1px solid #dadce0; margin-top: 16px; padding-top: 8px; margin-bottom: 20px;">
+            <div class="cal-calendars-title">Status Filters</div>
+            
+            <div class="cal-calendar-item" onclick="toggleStatus('pending')">
+                <div class="cal-calendar-checkbox checked" id="cb_stat_pending" style="background: #ea8600; border-color: #ea8600;"></div>
+                <div>Pending / Flagged</div>
+            </div>
+            <div class="cal-calendar-item" onclick="toggleStatus('approved')">
+                <div class="cal-calendar-checkbox checked" id="cb_stat_approved" style="background: #188038; border-color: #188038;"></div>
+                <div>Approved / Verified</div>
+            </div>
+            <div class="cal-calendar-item" onclick="toggleStatus('completed')">
+                <div class="cal-calendar-checkbox checked" id="cb_stat_completed" style="background: #1a73e8; border-color: #1a73e8;"></div>
+                <div>Completed</div>
+            </div>
+            <div class="cal-calendar-item" onclick="toggleStatus('rejected')">
+                <div class="cal-calendar-checkbox checked" id="cb_stat_rejected" style="background: #d93025; border-color: #d93025;"></div>
+                <div>Rejected / Cancelled</div>
+            </div>
+        </div>
     </div>
 
     <!-- Main calendar -->
@@ -960,6 +1176,9 @@ body { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; background: #fff
                     <i class="fas fa-chevron-left"></i>
                 </a>
                 <a href="admin_calendar.php?view=<?= $current_view ?>&month_offset=0<?= $filter_station > 0 ? '&station='.$filter_station : '' ?>" class="cal-view-btn">Today</a>
+                <a href="admin_calendar.php?action=export_csv&view=<?= $current_view ?>&month_offset=<?= $month_offset ?><?= $filter_station > 0 ? '&station='.$filter_station : '' ?>" class="cal-view-btn" style="background: #188038; color: #fff; border-color: #188038;" title="Export CSV Report">
+                    <i class="fas fa-file-excel"></i> Export CSV
+                </a>
                 <a href="admin_calendar.php?view=<?= $current_view ?>&month_offset=<?= $next_offset ?><?= $filter_station > 0 ? '&station='.$filter_station : '' ?>" class="cal-icon-btn" title="Next">
                     <i class="fas fa-chevron-right"></i>
                 </a>
@@ -1059,6 +1278,8 @@ body { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; background: #fff
                             ?>
                             <div class="cal-event" 
                                  data-staff="<?= $staff_id ?>"
+                                 data-type="<?= htmlspecialchars($event_type) ?>"
+                                 data-status="<?= htmlspecialchars($status) ?>"
                                  style="background: <?= $event_color ?>22; border-left-color: <?= $event_color ?>;" 
                                  title="<?= htmlspecialchars($event['staff_name'] ?? '') ?> - <?= htmlspecialchars($event['work_description'] ?? $event['type_name']) ?>"
                                  onclick="clickEvent('<?= htmlspecialchars($event_id) ?>', '<?= htmlspecialchars($event_type) ?>')">
@@ -1107,7 +1328,11 @@ body { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; background: #fff
                                 $event_color = $event['color'] ?? '#757575';
                                 $time_str = !empty($event['start_time']) && $event['start_time'] != '00:00:00' ? date('g:ia', strtotime($event['start_time'])) . ' ' : '';
                             ?>
-                            <div class="cal-event" style="background: <?= $event_color ?>22; border-left-color: <?= $event_color ?>;" 
+                            <div class="cal-event" 
+                                 data-staff="<?= htmlspecialchars($event['staff_encoder_id'] ?? '') ?>"
+                                 data-type="<?= htmlspecialchars($event['type_key'] ?? '') ?>"
+                                 data-status="<?= htmlspecialchars(strtolower($event['status'] ?? 'pending')) ?>"
+                                 style="background: <?= $event_color ?>22; border-left-color: <?= $event_color ?>;" 
                                  onclick="clickEvent('<?= htmlspecialchars($event['id'] ?? '') ?>', '<?= htmlspecialchars($event['type_key'] ?? '') ?>')">
                                 <?php if ($time_str): ?><span class="cal-event-time"><?= $time_str ?></span><?php endif; ?>
                                 <span class="cal-event-text"><?= htmlspecialchars($event['work_description'] ?? $event['type_name']) ?></span>
@@ -1145,7 +1370,11 @@ body { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; background: #fff
                                 }
                             }
                         ?>
-                        <div style="border-left: 4px solid <?= $event_color ?>; background: <?= $event_color ?>11; padding: 16px; margin-bottom: 12px; border-radius: 4px; cursor: pointer;"
+                        <div class="cal-event" 
+                             data-staff="<?= htmlspecialchars($event['staff_encoder_id'] ?? '') ?>"
+                             data-type="<?= htmlspecialchars($event['type_key'] ?? '') ?>"
+                             data-status="<?= htmlspecialchars(strtolower($event['status'] ?? 'pending')) ?>"
+                             style="border-left: 4px solid <?= $event_color ?>; background: <?= $event_color ?>11; padding: 16px; margin-bottom: 12px; border-radius: 4px; cursor: pointer; display: block;"
                              onclick="clickEvent('<?= htmlspecialchars($event['id'] ?? '') ?>', '<?= htmlspecialchars($event['type_key'] ?? '') ?>')">
                             <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                                 <div style="font-weight: 600; color: #3c4043;"><?= htmlspecialchars($event['work_description'] ?? $event['type_name']) ?></div>
@@ -1364,33 +1593,121 @@ function closeModal() {
 
 // Click on event
 function clickEvent(eventId, eventType) {
-    // Extract numeric ID if prefixed (e.g., "shift_123" -> "123")
-    const match = eventId.match(/\d+$/);
+    const match = eventId.toString().match(/\d+$/);
     const numericId = match ? match[0] : eventId;
     
-    if (eventType === 'staff_shift' || eventId.toString().startsWith('shift_')) {
-        alert('Shift scheduled. To modify, go to Staff Schedules page.');
-    } else if (eventType === 'merchandise_delivery' || eventId.toString().startsWith('del_')) {
-        if (confirm('View delivery details?')) {
-            window.location.href = '../public/staff_deliveries_module.php?delivery_id=' + numericId;
-        }
-    } else if (eventType === 'job_order' || eventId.toString().startsWith('jo_')) {
-        if (confirm('View job order details?')) {
-            window.location.href = '../public/staff_job_orders.php?job_id=' + numericId;
-        }
-    } else {
-        // Manual calendar event - show edit modal
-        fetch('staff_calendar.php?action=get_event&event_id=' + eventId)
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    showEventModal(null, data.event);
-                } else {
-                    alert('Event not found');
+    // Fetch details
+    fetch('admin_calendar.php?action=get_details&event_id=' + eventId + '&event_type=' + eventType)
+        .then(r => r.json())
+        .then(res => {
+            if (res.success) {
+                const det = res.details;
+                const audit = res.audit;
+                
+                // Show modal
+                document.getElementById('detailsTitle').innerText = det.title || 'Event Details';
+                
+                let detailsHTML = `
+                    <div style="margin-bottom: 12px;"><strong>Event Type:</strong> <span style="background: #e8f0fe; color: #1a73e8; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 600;">${eventType.toUpperCase()}</span></div>
+                    <div style="margin-bottom: 8px;"><strong>Date:</strong> ${det.date || det.event_date || 'N/A'}</div>
+                    <div style="margin-bottom: 8px;"><strong>Station:</strong> ${det.station_name || 'All Stations'}</div>
+                    <div style="margin-bottom: 8px;"><strong>Assigned / Encoder:</strong> ${det.staff_name || 'System Auto-Generated'}</div>
+                    <div style="margin-bottom: 8px;"><strong>Status:</strong> <span class="sla-badge" style="background: ${getStatusBg(det.status)}; color: ${getStatusColor(det.status)}; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700;">${(det.status || 'Active').toUpperCase()}</span></div>
+                    <div style="margin-top: 16px; padding: 12px; background: #f1f3f4; border-radius: 6px; font-style: italic;">
+                        "${det.description || det.work_description || 'No description provided.'}"
+                    </div>
+                `;
+                
+                // Add link buttons based on type
+                let actionsHTML = '';
+                if (eventType === 'merchandise_delivery' || eventId.toString().startsWith('del_')) {
+                    actionsHTML = `
+                        <a href="../public/staff_deliveries_module.php?delivery_id=${numericId}" class="cal-view-btn" style="background: #1a73e8; color: #fff; border-color: #1a73e8; text-decoration: none; padding: 10px 20px; border-radius: 4px; display: inline-block;">
+                            <i class="fas fa-eye"></i> Go to Deliveries Module
+                        </a>
+                    `;
+                } else if (eventType === 'job_order' || eventId.toString().startsWith('jo_')) {
+                    actionsHTML = `
+                        <a href="../public/staff_job_orders.php?job_id=${numericId}" class="cal-view-btn" style="background: #1a73e8; color: #fff; border-color: #1a73e8; text-decoration: none; padding: 10px 20px; border-radius: 4px; display: inline-block;">
+                            <i class="fas fa-eye"></i> Go to Job Orders Module
+                        </a>
+                    `;
+                } else if (!eventId.toString().startsWith('shift_') && !eventId.toString().startsWith('high_value_') && !eventId.toString().startsWith('compliance_')) {
+                    // Manual events can be edited
+                    actionsHTML = `
+                        <button type="button" onclick="editManualEvent('${eventId}')" style="padding: 10px 24px; border: none; background: #1a73e8; color: #fff; border-radius: 4px; font-size: 14px; cursor: pointer; font-weight: 500;">
+                            Edit Event
+                        </button>
+                    `;
                 }
-            })
-            .catch(e => alert('Error loading event'));
-    }
+                
+                document.getElementById('detailsContent').innerHTML = detailsHTML;
+                
+                // Add actions button if any
+                const btnContainer = document.getElementById('detailsActionsContainer');
+                if (btnContainer) {
+                    btnContainer.innerHTML = actionsHTML;
+                }
+                
+                // Render audit trail
+                let auditHTML = '';
+                if (audit && audit.length > 0) {
+                    audit.forEach(log => {
+                        auditHTML += `
+                            <div style="border-bottom: 1px solid #eaeaea; padding: 6px 0;">
+                                <span style="color: #1a73e8;">[${log.created_at}]</span> 
+                                <strong>${log.action}:</strong> ${log.details}
+                            </div>
+                        `;
+                    });
+                } else {
+                    auditHTML = 'No recent compliance audit trail logs found for this context.';
+                }
+                document.getElementById('detailsAuditTrail').innerHTML = auditHTML;
+                
+                // Show modal
+                document.getElementById('detailsModal').style.display = 'flex';
+            } else {
+                alert('Error fetching event details: ' + res.message);
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert('Failed to load event details.');
+        });
+}
+
+function getStatusBg(status) {
+    status = (status || '').toLowerCase();
+    if (status === 'approved' || status === 'verified' || status === 'completed' || status === 'active') return 'rgba(24, 128, 56, 0.15)';
+    if (status === 'pending') return 'rgba(234, 134, 0, 0.15)';
+    if (status === 'rejected' || status === 'cancelled') return 'rgba(217, 48, 37, 0.15)';
+    return 'rgba(95, 99, 104, 0.15)';
+}
+
+function getStatusColor(status) {
+    status = (status || '').toLowerCase();
+    if (status === 'approved' || status === 'verified' || status === 'completed' || status === 'active') return '#188038';
+    if (status === 'pending') return '#b06000';
+    if (status === 'rejected' || status === 'cancelled') return '#c5221f';
+    return '#5f6368';
+}
+
+function closeDetailsModal() {
+    document.getElementById('detailsModal').style.display = 'none';
+}
+
+function editManualEvent(eventId) {
+    closeDetailsModal();
+    fetch('staff_calendar.php?action=get_event&event_id=' + eventId)
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                showEventModal(null, data.event);
+            } else {
+                alert('Event not found');
+            }
+        });
 }
 
 // Click on day
@@ -1473,16 +1790,128 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// Toggle staff visibility
+// Toggle staff, category, and status filters
+const activeStaff = {};
+document.querySelectorAll('.cal-calendar-item[onclick^="toggleStaff"]').forEach(item => {
+    const match = item.getAttribute('onclick').match(/\d+/);
+    if (match) {
+        activeStaff[match[0]] = true;
+    }
+});
+
+const activeCategories = {
+    staff_shift: true,
+    job_order: true,
+    merchandise_delivery: true,
+    validation_delivery: true,
+    compliance_deadline: true,
+    validation_task: true,
+    critical_stock: true,
+    fuel_delivery: true,
+    fuel_calibration: true,
+    overdue_report: true,
+    financial_event: true,
+    payment_reminder: true,
+    restock_reminder: true
+};
+
+const activeStatuses = {
+    pending: true,
+    approved: true,
+    completed: true,
+    rejected: true,
+    verified: true,
+    cancelled: true
+};
+
 function toggleStaff(staffId) {
-    // This will hide/show events for specific staff
-    const checkbox = event.target.closest('.cal-calendar-item').querySelector('.cal-calendar-checkbox');
+    const item = event.currentTarget;
+    const checkbox = item.querySelector('.cal-calendar-checkbox');
     checkbox.classList.toggle('checked');
+    const isChecked = checkbox.classList.contains('checked');
     
-    // Hide/show events by data-staff attribute
-    const events = document.querySelectorAll(`[data-staff="${staffId}"]`);
+    if (isChecked) {
+        checkbox.style.background = checkbox.style.borderColor;
+    } else {
+        checkbox.style.background = 'transparent';
+    }
+    
+    activeStaff[staffId] = isChecked;
+    applyCalendarFilters();
+}
+
+function toggleCategory(cat) {
+    const checkbox = document.getElementById('cb_cat_' + cat);
+    checkbox.classList.toggle('checked');
+    const isChecked = checkbox.classList.contains('checked');
+    
+    if (isChecked) {
+        checkbox.style.background = '#1a73e8';
+    } else {
+        checkbox.style.background = 'transparent';
+    }
+    
+    activeCategories[cat] = isChecked;
+    if (cat === 'merchandise_delivery') {
+        activeCategories['validation_delivery'] = isChecked;
+        activeCategories['fuel_delivery'] = isChecked;
+    }
+    if (cat === 'validation_task') {
+        activeCategories['financial_event'] = isChecked;
+    }
+    if (cat === 'critical_stock') {
+        activeCategories['restock_reminder'] = isChecked;
+        activeCategories['payment_reminder'] = isChecked;
+    }
+    applyCalendarFilters();
+}
+
+function toggleStatus(stat) {
+    const checkbox = document.getElementById('cb_stat_' + stat);
+    checkbox.classList.toggle('checked');
+    const isChecked = checkbox.classList.contains('checked');
+    
+    const colors = { pending: '#ea8600', approved: '#188038', completed: '#1a73e8', rejected: '#d93025' };
+    if (isChecked) {
+        checkbox.style.background = colors[stat];
+    } else {
+        checkbox.style.background = 'transparent';
+    }
+    
+    activeStatuses[stat] = isChecked;
+    if (stat === 'approved') {
+        activeStatuses['verified'] = isChecked;
+    }
+    if (stat === 'rejected') {
+        activeStatuses['cancelled'] = isChecked;
+    }
+    applyCalendarFilters();
+}
+
+function applyCalendarFilters() {
+    const events = document.querySelectorAll('.cal-event');
     events.forEach(evt => {
-        evt.style.display = checkbox.classList.contains('checked') ? 'flex' : 'none';
+        const staff = evt.getAttribute('data-staff');
+        const type = evt.getAttribute('data-type');
+        const status = evt.getAttribute('data-status');
+        
+        let show = true;
+        
+        if (staff && activeStaff[staff] === false) {
+            show = false;
+        }
+        if (type && activeCategories[type] === false) {
+            show = false;
+        }
+        if (status && activeStatuses[status] === false) {
+            show = false;
+        }
+        
+        if (show) {
+            evt.style.setProperty('display', 'flex', 'important');
+        } else {
+            evt.style.setProperty('display', 'none', 'important');
+        }
     });
 }
 
@@ -1675,6 +2104,35 @@ function handleEventTypeChange() {
     }
 }
 </script>
+
+<!-- Read-Only Details Modal -->
+<div id="detailsModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1001; align-items: center; justify-content: center;">
+    <div style="background: #fff; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.2); width: 90%; max-width: 550px; max-height: 90vh; overflow-y: auto;">
+        <div style="padding: 24px; border-bottom: 1px solid #dadce0; display: flex; justify-content: space-between; align-items: center;">
+            <h2 id="detailsTitle" style="margin: 0; font-size: 20px; color: #1a73e8; font-weight: 600;">Event Details</h2>
+            <button onclick="closeDetailsModal()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #5f6368;">&times;</button>
+        </div>
+        <div style="padding: 24px;">
+            <div id="detailsContent" style="font-size: 14px; color: #3c4043; line-height: 1.6;">
+                <!-- Filled dynamically by JavaScript -->
+            </div>
+            
+            <div style="margin-top: 24px; border-top: 1px solid #dadce0; padding-top: 16px;">
+                <h4 style="margin: 0 0 12px; color: #3c4043; font-size: 14px; font-weight: 600;">COMPLIANCE AUDIT SNAPHOT</h4>
+                <div id="detailsAuditTrail" style="background: #f8f9fa; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 11px; max-height: 150px; overflow-y: auto; color: #5f6368;">
+                    No recent audit trail logs found for this context.
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 12px; justify-content: flex-end; padding-top: 20px; margin-top: 20px; border-top: 1px solid #dadce0;">
+                <div id="detailsActionsContainer" style="display: inline-flex; gap: 12px;"></div>
+                <button type="button" onclick="closeDetailsModal()" style="padding: 10px 24px; border: 1px solid #dadce0; background: #fff; color: #3c4043; border-radius: 4px; font-size: 14px; cursor: pointer; font-weight: 500;">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Event Modal -->
 <div id="eventModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">

@@ -1023,9 +1023,12 @@ if (!isset($pdo) || !$pdo) {
         font-weight: 600 !important;
     }
 
-    .nav-item { color: #eeeeee !important; transition: all 0.2s; display: flex; align-items: center; justify-content: flex-start; padding: 10px 15px; text-decoration: none; min-height: 44px; }
-    .nav-item:hover { background-color: rgba(255,255,255,0.1) !important; color: #ffffff !important; }
-    .nav-item.active { background-color: var(--petron-red) !important; color: #ffffff !important; }
+    .nav-item { color: #eeeeee !important; transition: all 0.2s; display: flex; align-items: center; justify-content: flex-start; padding: 10px 15px; text-decoration: none; min-height: 44px; font-size: 13px !important; font-weight: 500 !important; }
+    .nav-item:hover { background-color: rgba(255,255,255,0.1) !important; color: #ffffff !important; font-size: 13px !important; font-weight: 500 !important; }
+    .nav-item.active { background-color: var(--petron-red) !important; color: #ffffff !important; font-size: 13px !important; font-weight: 500 !important; }
+    .nav-item span { font-size: 13px !important; font-weight: 500 !important; }
+    .nav-item.active span { font-size: 13px !important; font-weight: 500 !important; }
+    .sidebar-sub-item { font-size: 12px !important; font-weight: 500 !important; }
     
     .nav-item .ico {
         display: flex;
@@ -2138,8 +2141,8 @@ require_once __DIR__ . '/rbac_menu.php';
         $dash_active = in_array($page_id, ['dashboard','staff_dashboard','manager_dashboard']) ? 'active' : '';
         echo '<div class="nav-item-wrapper">';
         echo '<a class="nav-item '.$dash_active.'" href="'.htmlspecialchars($dash_href).'" data-tooltip="Dashboard">';
-        echo '<span class="ico" style="margin-right:10px;width:24px;text-align:center;"><i class="fas fa-gauge"></i></span>';
-        echo '<span style="flex-grow:1;">Dashboard</span>';
+        echo '<span class="ico" style="margin-right:10px;width:24px;text-align:center;flex-shrink:0;"><i class="fas fa-gauge"></i></span>';
+        echo '<span style="flex-grow:1;font-size:13px;font-weight:500;">Dashboard</span>';
         echo '</a>';
         echo '</div>';
         continue;
@@ -2212,8 +2215,8 @@ require_once __DIR__ . '/rbac_menu.php';
         $should_highlight_parent = $parent_active && !in_array(($it['id'] ?? ''), ['inventory_manager', 'job_orders', 'product_management_main', 'transactions', 'fuel', 'inventory', 'customers', 'mgr_customers', 'reports']);
         $parent_cls = $should_highlight_parent ? 'nav-item active' : 'nav-item';
         echo '<a class="'.$parent_cls.' has-submenu" href="'.htmlspecialchars($it['href']).'" data-tooltip="'.htmlspecialchars($it['label']).'" onclick="toggleSidebarSub(event,\'sub-'.htmlspecialchars($it['id']).'\')">';
-        echo '<span class="ico" style="margin-right:10px;width:24px;text-align:center;"><i class="'.htmlspecialchars($it['ico']).'"></i></span>';
-        echo '<span style="flex-grow:1;">'.htmlspecialchars($it['label']).'</span>';
+        echo '<span class="ico" style="margin-right:10px;width:24px;text-align:center;flex-shrink:0;"><i class="'.htmlspecialchars($it['ico']).'"></i></span>';
+        echo '<span style="flex-grow:1;font-size:13px;font-weight:500;">'.htmlspecialchars($it['label']).'</span>';
         // Parent badge = sum of sub badges
         $parent_badge = 0;
         foreach ($it['sub_items'] as $sub) {
@@ -2296,8 +2299,8 @@ require_once __DIR__ . '/rbac_menu.php';
     } else {
         // Regular item — direct link
         echo '<a class="nav-item '.$active.'" href="'.htmlspecialchars($it['href']).'" data-tooltip="'.htmlspecialchars($it['label']).'">';
-        echo '<span class="ico" style="margin-right:10px;width:24px;text-align:center;"><i class="'.htmlspecialchars($it['ico']).'"></i></span>';
-        echo '<span style="flex-grow:1;">'.htmlspecialchars($it['label']).'</span>';
+        echo '<span class="ico" style="margin-right:10px;width:24px;text-align:center;flex-shrink:0;"><i class="'.htmlspecialchars($it['ico']).'"></i></span>';
+        echo '<span style="flex-grow:1;font-size:13px;font-weight:500;">'.htmlspecialchars($it['label']).'</span>';
         if (isset($badges[$it['id']]) && $badges[$it['id']] > 0) {
             echo '<span style="background:#E30613;color:white;padding:0 6px;border-radius:10px;font-size:11px;font-weight:bold;min-width:20px;height:20px;display:flex;align-items:center;justify-content:center;margin-left:10px;">'.$badges[$it['id']].'</span>';
         }

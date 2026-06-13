@@ -161,6 +161,71 @@ if (isset($_POST['action']) && $_POST['action'] === 'save_event') {
     exit;
 }
 
+if (isset($_POST['action']) && $_POST['action'] === 'validate_event') {
+    header('Content-Type: application/json');
+    $evt_type = $_POST['evt_type'] ?? '';
+    $numeric_id = $_POST['numeric_id'] ?? '';
+    $sub_action = $_POST['sub_action'] ?? '';
+    
+    try {
+        if ($evt_type === 'job_order') {
+            if ($sub_action === 'approve') {
+                $st = $pdo->prepare("UPDATE job_orders SET status = 'Verified', validated_by = ?, validated_at = NOW() WHERE id = ?");
+                $st->execute([$user_id, $numeric_id]);
+                echo json_encode(['success' => true, 'message' => 'Job Order approved/verified successfully']);
+            } elseif ($sub_action === 'reject') {
+                $reason = $_POST['reason'] ?? '';
+                $st = $pdo->prepare("UPDATE job_orders SET status = 'Rejected', validated_by = ?, validated_at = NOW(), rejection_reason = ? WHERE id = ?");
+                $st->execute([$user_id, $reason, $numeric_id]);
+                echo json_encode(['success' => true, 'message' => 'Job Order rejected successfully']);
+            } elseif ($sub_action === 'return') {
+                $reason = $_POST['reason'] ?? '';
+                $st = $pdo->prepare("UPDATE job_orders SET status = 'Pending', validation_status = 'returned', rejection_reason = ? WHERE id = ?");
+                $st->execute([$reason, $numeric_id]);
+                echo json_encode(['success' => true, 'message' => 'Job Order returned for review']);
+            } elseif ($sub_action === 'reassign') {
+                $new_staff = $_POST['new_staff_id'] ?? '';
+                $st = $pdo->prepare("UPDATE job_orders SET assigned_mechanic_id = ? WHERE id = ?");
+                $st->execute([$new_staff, $numeric_id]);
+                echo json_encode(['success' => true, 'message' => 'Job Order mechanic re-assigned successfully']);
+            }
+            exit;
+        } elseif ($evt_type === 'delivery') {
+            if ($sub_action === 'approve') {
+                $st = $pdo->prepare("UPDATE deliveries_oversight SET status = 'Approved', manager_id = ?, manager_action_at = NOW() WHERE id = ?");
+                $st->execute([$user_id, $numeric_id]);
+                echo json_encode(['success' => true, 'message' => 'Delivery approved successfully']);
+            } elseif ($sub_action === 'reject') {
+                $reason = $_POST['reason'] ?? '';
+                $st = $pdo->prepare("UPDATE deliveries_oversight SET status = 'Rejected', manager_id = ?, manager_action_at = NOW(), manager_notes = ? WHERE id = ?");
+                $st->execute([$user_id, $reason, $numeric_id]);
+                echo json_encode(['success' => true, 'message' => 'Delivery rejected successfully']);
+            }
+            exit;
+        } elseif ($evt_type === 'fuel_calibration') {
+            if ($sub_action === 'validate') {
+                // If it's a manual calibration event
+                $st = $pdo->prepare("UPDATE staff_calendar_events SET status = 'approved', manager_assigned_id = ?, updated_at = NOW() WHERE id = ?");
+                $st->execute([$user_id, $numeric_id]);
+                echo json_encode(['success' => true, 'message' => 'Calibration validated successfully']);
+            }
+            exit;
+        } elseif ($evt_type === 'staff_shift') {
+            if ($sub_action === 'reassign') {
+                $new_staff = $_POST['new_staff_id'] ?? '';
+                $st = $pdo->prepare("UPDATE staff_schedules SET user_id = ? WHERE id = ?");
+                $st->execute([$new_staff, $numeric_id]);
+                echo json_encode(['success' => true, 'message' => 'Shift staff re-assigned successfully']);
+            }
+            exit;
+        }
+        echo json_encode(['success' => false, 'message' => 'Unknown event type or action']);
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    }
+    exit;
+}
+
 if (isset($_GET['action']) && $_GET['action'] === 'get_event') {
     header('Content-Type: application/json');
     
@@ -260,7 +325,11 @@ try {
         $stmt->execute([$station_id]);
         $summary_stats['pending_validations'] += $stmt->fetchColumn();
         
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id = ? AND (status = 'pending' OR validated_by IS NULL)");
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id = ? AND (status = 'pending' OR manager_id IS NULL)");
+        $stmt->execute([$station_id]);
+        $summary_stats['pending_validations'] += $stmt->fetchColumn();
+
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id = ? AND (status = 'Pending' OR status = 'Reviewed')");
         $stmt->execute([$station_id]);
         $summary_stats['pending_validations'] += $stmt->fetchColumn();
     } catch (Exception $e) {}
@@ -390,7 +459,7 @@ $staff_colors = ['#039be5', '#7986cb', '#33b679', '#8e24aa', '#e67c73', '#f6bf26
 
 try {
     // Load staff list with assigned colors
-    $staff_stmt = $pdo->prepare("SELECT `user_id`, name FROM users WHERE station_id = ? AND role IN ('staff','cashier','pump_attendant') AND status = 'Active' ORDER BY name");
+    $staff_stmt = $pdo->prepare("SELECT id, CONCAT(first_name, ' ', last_name) AS name FROM users WHERE station_id = ? AND role IN ('staff','cashier','pump_attendant') AND status = 'Active' ORDER BY first_name, last_name");
     $staff_stmt->execute([$station_id]);
     $all_staff = $staff_stmt->fetchAll(PDO::FETCH_ASSOC);
     
@@ -645,10 +714,8 @@ include __DIR__ . '/../partials/header.php';
 
 <style>
 /* Google Calendar Style */
-* { box-sizing: border-box; }
-body { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; background: #fff; margin: 0; overflow: hidden; }
-
-.cal-layout { display: flex; height: 100vh; overflow: hidden; }
+.cal-layout { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; background: #fff; display: flex; height: 100vh; overflow: hidden; }
+.cal-layout * { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; box-sizing: border-box; }
 
 /* Sidebar */
 .cal-sidebar { width: 256px; border-right: 1px solid #dadce0; padding: 8px 0; overflow-y: auto; flex-shrink: 0; }
@@ -1254,24 +1321,28 @@ function closeModal() {
     document.getElementById('eventModal').style.display = 'none';
 }
 
+// Global events dictionary for lookup
+const allCalendarEvents = <?= json_encode($month_events) ?>;
+const activeStaffList = <?= json_encode($staff_list) ?>;
+
 // Click on event
 function clickEvent(eventId, eventType) {
-    // Extract numeric ID if prefixed (e.g., "shift_123" -> "123")
     const match = eventId.match(/\d+$/);
     const numericId = match ? match[0] : eventId;
     
-    if (eventType === 'staff_shift' || eventId.toString().startsWith('shift_')) {
-        alert('Shift scheduled. To modify, go to Staff Schedules page.');
-    } else if (eventType === 'merchandise_delivery' || eventId.toString().startsWith('del_')) {
-        if (confirm('View delivery details?')) {
-            window.location.href = '../public/staff_deliveries_module.php?delivery_id=' + numericId;
+    // Find the event in allCalendarEvents
+    let foundEvent = null;
+    for (const date in allCalendarEvents) {
+        const evts = allCalendarEvents[date];
+        const matchEvt = evts.find(e => e.id.toString() === eventId.toString());
+        if (matchEvt) {
+            foundEvent = matchEvt;
+            break;
         }
-    } else if (eventType === 'job_order' || eventId.toString().startsWith('jo_')) {
-        if (confirm('View job order details?')) {
-            window.location.href = '../public/staff_job_orders.php?job_id=' + numericId;
-        }
-    } else {
-        // Manual calendar event - show edit modal
+    }
+
+    if (!foundEvent) {
+        // Fallback for manual events
         fetch('manager_calendar.php?action=get_event&event_id=' + eventId)
             .then(r => r.json())
             .then(data => {
@@ -1282,7 +1353,221 @@ function clickEvent(eventId, eventType) {
                 }
             })
             .catch(e => alert('Error loading event'));
+        return;
     }
+
+    // Show manager details & validation modal
+    showManagerDetailsModal(foundEvent);
+}
+
+function showManagerDetailsModal(evt) {
+    const modal = document.getElementById('detailsModal');
+    const title = document.getElementById('detailsTitle');
+    const body = document.getElementById('detailsBody');
+    const actions = document.getElementById('detailsActions');
+    
+    let typeName = evt.type_name || 'Event Details';
+    title.textContent = 'Manage ' + typeName;
+    
+    let status = evt.status || 'pending';
+    let badgeColor = '#ea8600'; // Orange
+    if (status === 'completed' || status === 'approved' || status === 'verified') badgeColor = '#188038'; // Green
+    if (status === 'cancelled' || status === 'rejected') badgeColor = '#d93025'; // Red
+    
+    let html = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <span style="font-weight:600; font-size:12px; text-transform:uppercase; color:#70757a;">Event Date</span>
+            <span style="font-weight:500;">${evt.event_date || evt.scheduled_date}</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <span style="font-weight:600; font-size:12px; text-transform:uppercase; color:#70757a;">Status</span>
+            <span style="background:${badgeColor}22; color:${badgeColor}; padding:4px 8px; border-radius:4px; font-weight:600; font-size:11px; text-transform:uppercase;">${status}</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <span style="font-weight:600; font-size:12px; text-transform:uppercase; color:#70757a;">Staff / Encoder</span>
+            <span style="font-weight:500;">${evt.staff_name || 'System Auto-schedule'}</span>
+        </div>
+        <div style="margin-bottom:16px; border-top:1px solid #dadce0; padding-top:16px;">
+            <span style="font-weight:600; font-size:12px; text-transform:uppercase; color:#70757a; display:block; margin-bottom:4px;">Description</span>
+            <div style="background:#f1f3f4; padding:12px; border-radius:4px; font-size:13px;">${evt.work_description || 'No description provided.'}</div>
+        </div>
+    `;
+
+    // Type specific info & adjustments
+    const numericId = evt.id.toString().match(/\d+$/) ? evt.id.toString().match(/\d+$/)[0] : evt.id;
+    
+    if (evt.type_key === 'merchandise_delivery' || evt.type_key === 'fuel_delivery') {
+        html += `
+            <div style="margin-top:16px; padding-top:16px; border-top:1px solid #dadce0;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="font-weight:600; font-size:12px; color:#70757a;">Supplier:</span>
+                    <span>${evt.supplier || 'N/A'}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="font-weight:600; font-size:12px; color:#70757a;">Product:</span>
+                    <span>${evt.product || 'N/A'}</span>
+                </div>
+            </div>
+        `;
+    } else if (evt.type_key === 'job_order') {
+        html += `
+            <div style="margin-top:16px; padding-top:16px; border-top:1px solid #dadce0;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="font-weight:600; font-size:12px; color:#70757a;">Customer:</span>
+                    <span>${evt.customer_name || 'N/A'}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="font-weight:600; font-size:12px; color:#70757a;">Service Type:</span>
+                    <span>${evt.service_type || 'N/A'}</span>
+                </div>
+                <div style="margin-top:12px; padding-top:12px; border-top:1px dashed #dadce0;">
+                    <label style="font-weight:600; font-size:12px; color:#70757a; display:block; margin-bottom:6px;">Re-assign Mechanic / Staff</label>
+                    <select id="reassignSelect" style="width:100%; padding:8px; border:1px solid #dadce0; border-radius:4px; font-size:13px;">
+                        <option value="">Select new staff...</option>
+                        ${Object.keys(activeStaffList).map(id => `<option value="${id}" ${evt.staff_encoder_id == id ? 'selected' : ''}>${activeStaffList[id].name}</option>`).join('')}
+                    </select>
+                    <button onclick="submitManagerReassign('job_order', '${numericId}')" style="margin-top:8px; padding:6px 12px; border:none; background:#1a73e8; color:#fff; border-radius:4px; font-size:11px; cursor:pointer;">Apply Re-assignment</button>
+                </div>
+            </div>
+        `;
+    } else if (evt.type_key === 'staff_shift') {
+        html += `
+            <div style="margin-top:16px; padding-top:16px; border-top:1px solid #dadce0;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="font-weight:600; font-size:12px; color:#70757a;">Shift Hours:</span>
+                    <span>${evt.start_time || '00:00'} - ${evt.end_time || '00:00'}</span>
+                </div>
+                <div style="margin-top:12px; padding-top:12px; border-top:1px dashed #dadce0;">
+                    <label style="font-weight:600; font-size:12px; color:#70757a; display:block; margin-bottom:6px;">Adjust Schedule / Re-assign Staff</label>
+                    <select id="reassignSelect" style="width:100%; padding:8px; border:1px solid #dadce0; border-radius:4px; font-size:13px;">
+                        <option value="">Select new staff...</option>
+                        ${Object.keys(activeStaffList).map(id => `<option value="${id}" ${evt.staff_encoder_id == id ? 'selected' : ''}>${activeStaffList[id].name}</option>`).join('')}
+                    </select>
+                    <button onclick="submitManagerReassign('staff_shift', '${numericId}')" style="margin-top:8px; padding:6px 12px; border:none; background:#1a73e8; color:#fff; border-radius:4px; font-size:11px; cursor:pointer;">Apply Re-assignment</button>
+                </div>
+            </div>
+        `;
+    } else if (evt.type_key === 'fuel_calibration') {
+        html += `
+            <div style="margin-top:16px; padding-top:16px; border-top:1px solid #dadce0;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="font-weight:600; font-size:12px; color:#70757a;">Pump / Tank:</span>
+                    <span>${evt.pump_number || 'N/A'}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    body.innerHTML = html;
+
+    // Action buttons
+    let actionButtons = `
+        <button type="button" onclick="closeDetailsModal()" style="padding: 10px 20px; border: 1px solid #dadce0; background: #fff; color: #3c4043; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: 500;">
+            Close
+        </button>
+    `;
+
+    // Add validation decisions
+    if (evt.type_key === 'job_order') {
+        actionButtons += `
+            <button type="button" onclick="submitManagerAction('job_order', '${numericId}', 'return')" style="padding: 10px 20px; border: none; background: #ea8600; color: #fff; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: 500;">
+                Return for Review
+            </button>
+            <button type="button" onclick="submitManagerAction('job_order', '${numericId}', 'reject')" style="padding: 10px 20px; border: none; background: #d93025; color: #fff; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: 500;">
+                Reject Job Order
+            </button>
+            <button type="button" onclick="submitManagerAction('job_order', '${numericId}', 'approve')" style="padding: 10px 20px; border: none; background: #188038; color: #fff; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: 500;">
+                Approve/Verify
+            </button>
+        `;
+    } else if (evt.type_key === 'merchandise_delivery' || evt.type_key === 'fuel_delivery') {
+        actionButtons += `
+            <button type="button" onclick="submitManagerAction('delivery', '${numericId}', 'reject')" style="padding: 10px 20px; border: none; background: #d93025; color: #fff; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: 500;">
+                Reject Delivery
+            </button>
+            <button type="button" onclick="submitManagerAction('delivery', '${numericId}', 'approve')" style="padding: 10px 20px; border: none; background: #188038; color: #fff; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: 500;">
+                Approve Delivery
+            </button>
+        `;
+    } else if (evt.type_key === 'fuel_calibration') {
+        actionButtons += `
+            <button type="button" onclick="submitManagerAction('fuel_calibration', '${numericId}', 'validate')" style="padding: 10px 20px; border: none; background: #188038; color: #fff; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: 500;">
+                Validate Calibration
+            </button>
+        `;
+    }
+
+    actions.innerHTML = actionButtons;
+    modal.style.display = 'flex';
+}
+
+function submitManagerAction(evtType, numericId, subAction) {
+    let reason = '';
+    if (subAction === 'reject' || subAction === 'return') {
+        reason = prompt("Please provide notes/reason for this action:");
+        if (reason === null) return; // cancelled
+        if (!reason.trim()) {
+            alert("A reason is required to reject/return.");
+            return;
+        }
+    }
+    
+    const formData = new FormData();
+    formData.append('action', 'validate_event');
+    formData.append('evt_type', evtType);
+    formData.append('numeric_id', numericId);
+    formData.append('sub_action', subAction);
+    formData.append('reason', reason);
+    
+    fetch('manager_calendar.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert('✓ ' + data.message);
+            location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(e => alert('Network error processing request'));
+}
+
+function submitManagerReassign(evtType, numericId) {
+    const select = document.getElementById('reassignSelect');
+    const newStaffId = select.value;
+    if (!newStaffId) {
+        alert("Please select a staff member to re-assign.");
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('action', 'validate_event');
+    formData.append('evt_type', evtType);
+    formData.append('numeric_id', numericId);
+    formData.append('sub_action', 'reassign');
+    formData.append('new_staff_id', newStaffId);
+    
+    fetch('manager_calendar.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert('✓ ' + data.message);
+            location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(e => alert('Network error re-assigning staff'));
+}
+
+function closeDetailsModal() {
+    document.getElementById('detailsModal').style.display = 'none';
 }
 
 // Click on day
@@ -1567,6 +1852,24 @@ function handleEventTypeChange() {
     }
 }
 </script>
+
+<!-- Details Modal -->
+<div id="detailsModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: #fff; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.2); width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto;">
+        <div style="padding: 24px; border-bottom: 1px solid #dadce0; display: flex; justify-content: space-between; align-items: center;">
+            <h2 id="detailsTitle" style="margin: 0; font-size: 20px; color: #3c4043; font-weight: 500;">Event Details</h2>
+            <button onclick="closeDetailsModal()" style="background: none; border: none; font-size: 24px; color: #5f6368; cursor: pointer; line-height: 1;">&times;</button>
+        </div>
+        <div style="padding: 24px;">
+            <div id="detailsBody" style="font-size: 14px; color: #3c4043; line-height: 1.6;">
+                <!-- Filled dynamically via JS -->
+            </div>
+            <div id="detailsActions" style="display: flex; gap: 12px; justify-content: flex-end; padding-top: 16px; border-top: 1px solid #dadce0; margin-top: 20px;">
+                <!-- Filled dynamically via JS -->
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Event Modal -->
 <div id="eventModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">

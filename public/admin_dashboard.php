@@ -93,11 +93,56 @@ $job_orders_completed = (int) adm_val($pdo, "SELECT COUNT(*) FROM job_orders WHE
 $service_income = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_cost),0) FROM job_orders WHERE station_id=? AND status='Completed' AND DATE(completed_at) BETWEEN ? AND ?", [$station_id,$date_from,$date_to]);
 
 // Payments Breakdown
-$payments_cash = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ? AND LOWER(payment_method) LIKE '%cash%'", [$station_id,$date_from,$date_to]);
-$payments_card = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ? AND LOWER(payment_method) LIKE '%card%' AND LOWER(payment_method) NOT LIKE '%fleet%' AND LOWER(payment_method) NOT LIKE '%fuel%'", [$station_id,$date_from,$date_to]);
-$payments_ewallet = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ? AND (LOWER(payment_method) LIKE '%wallet%' OR LOWER(payment_method) LIKE '%gcash%' OR LOWER(payment_method) LIKE '%maya%')", [$station_id,$date_from,$date_to]);
-$payments_fleet = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ? AND LOWER(payment_method) LIKE '%fleet%'", [$station_id,$date_from,$date_to]);
-$payments_efuel = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ? AND (LOWER(payment_method) LIKE '%fuel card%' OR LOWER(payment_method) LIKE '%efuel%')", [$station_id,$date_from,$date_to]);
+$payments_cash = (float) adm_val($pdo, "
+    SELECT (
+        SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ? AND LOWER(payment_method) LIKE '%cash%'
+    ) + (
+        SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE station_id = ? AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ? AND LOWER(payment_method) LIKE '%cash%'
+    ) + (
+        SELECT COALESCE(SUM(total_cost), 0) FROM job_orders WHERE station_id = ? AND status='Completed' AND DATE(COALESCE(completed_at, created_at)) BETWEEN ? AND ? AND LOWER(payment_method) LIKE '%cash%'
+    )
+", [$station_id, $date_from, $date_to, $station_id, $date_from, $date_to, $station_id, $date_from, $date_to]);
+
+$payments_card = (float) adm_val($pdo, "
+    SELECT (
+        SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ? AND LOWER(payment_method) LIKE '%card%' AND LOWER(payment_method) NOT LIKE '%fleet%' AND LOWER(payment_method) NOT LIKE '%fuel%'
+    ) + (
+        SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE station_id = ? AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ? AND LOWER(payment_method) LIKE '%card%' AND LOWER(payment_method) NOT LIKE '%fleet%' AND LOWER(payment_method) NOT LIKE '%fuel%'
+    ) + (
+        SELECT COALESCE(SUM(total_cost), 0) FROM job_orders WHERE station_id = ? AND status='Completed' AND DATE(COALESCE(completed_at, created_at)) BETWEEN ? AND ? AND LOWER(payment_method) LIKE '%card%' AND LOWER(payment_method) NOT LIKE '%fleet%' AND LOWER(payment_method) NOT LIKE '%fuel%'
+    )
+", [$station_id, $date_from, $date_to, $station_id, $date_from, $date_to, $station_id, $date_from, $date_to]);
+
+$payments_ewallet = (float) adm_val($pdo, "
+    SELECT (
+        SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ? AND (LOWER(payment_method) LIKE '%wallet%' OR LOWER(payment_method) LIKE '%gcash%' OR LOWER(payment_method) LIKE '%maya%')
+    ) + (
+        SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE station_id = ? AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ? AND (LOWER(payment_method) LIKE '%wallet%' OR LOWER(payment_method) LIKE '%gcash%' OR LOWER(payment_method) LIKE '%maya%')
+    ) + (
+        SELECT COALESCE(SUM(total_cost), 0) FROM job_orders WHERE station_id = ? AND status='Completed' AND DATE(COALESCE(completed_at, created_at)) BETWEEN ? AND ? AND (LOWER(payment_method) LIKE '%wallet%' OR LOWER(payment_method) LIKE '%gcash%' OR LOWER(payment_method) LIKE '%maya%')
+    )
+", [$station_id, $date_from, $date_to, $station_id, $date_from, $date_to, $station_id, $date_from, $date_to]);
+
+$payments_fleet = (float) adm_val($pdo, "
+    SELECT (
+        SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ? AND (LOWER(payment_method) LIKE '%fleet%' OR LOWER(payment_method) LIKE '%credit%' OR LOWER(payment_method) LIKE '%internal%' OR LOWER(payment_method) LIKE '%charge%')
+    ) + (
+        SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE station_id = ? AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ? AND (LOWER(payment_method) LIKE '%fleet%' OR LOWER(payment_method) LIKE '%credit%' OR LOWER(payment_method) LIKE '%internal%' OR LOWER(payment_method) LIKE '%charge%')
+    ) + (
+        SELECT COALESCE(SUM(total_cost), 0) FROM job_orders WHERE station_id = ? AND status='Completed' AND DATE(COALESCE(completed_at, created_at)) BETWEEN ? AND ? AND (LOWER(payment_method) LIKE '%fleet%' OR LOWER(payment_method) LIKE '%credit%' OR LOWER(payment_method) LIKE '%internal%' OR LOWER(payment_method) LIKE '%charge%')
+    )
+", [$station_id, $date_from, $date_to, $station_id, $date_from, $date_to, $station_id, $date_from, $date_to]);
+
+$payments_efuel = (float) adm_val($pdo, "
+    SELECT (
+        SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ? AND (LOWER(payment_method) LIKE '%fuel card%' OR LOWER(payment_method) LIKE '%efuel%' OR LOWER(payment_method) LIKE '%e-fuel%')
+    ) + (
+        SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE station_id = ? AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ? AND (LOWER(payment_method) LIKE '%fuel card%' OR LOWER(payment_method) LIKE '%efuel%' OR LOWER(payment_method) LIKE '%e-fuel%')
+    ) + (
+        SELECT COALESCE(SUM(total_cost), 0) FROM job_orders WHERE station_id = ? AND status='Completed' AND DATE(COALESCE(completed_at, created_at)) BETWEEN ? AND ? AND (LOWER(payment_method) LIKE '%fuel card%' OR LOWER(payment_method) LIKE '%efuel%' OR LOWER(payment_method) LIKE '%e-fuel%')
+    )
+", [$station_id, $date_from, $date_to, $station_id, $date_from, $date_to, $station_id, $date_from, $date_to]);
+
 $total_payments = $payments_cash + $payments_card + $payments_ewallet + $payments_fleet + $payments_efuel;
 
 // Customers Data
@@ -111,18 +156,20 @@ $outstanding_balances = (float) adm_val($pdo, "SELECT COALESCE(SUM(outstanding_b
 // Daily Sales Totals: cash vs card vs e-wallet vs e-fuel card
 $daily_sales_data = adm_rows($pdo, "
     SELECT DATE(transaction_date) AS date,
-           SUM(CASE WHEN LOWER(payment_method) = 'cash' THEN total_amount ELSE 0 END) AS cash,
-           SUM(CASE WHEN LOWER(payment_method) IN ('card', 'credit', 'credit_card', 'debit_card') THEN total_amount ELSE 0 END) AS card,
-           SUM(CASE WHEN LOWER(payment_method) IN ('e-wallet', 'ewallet', 'gcash', 'paymaya', 'grabpay') THEN total_amount ELSE 0 END) AS ewallet,
-           SUM(CASE WHEN LOWER(payment_method) IN ('e-fuel card', 'efuel', 'e-fuel', 'efuel card') OR (efuel_card_number IS NOT NULL AND efuel_card_number != '') THEN total_amount ELSE 0 END) AS efuel
+           SUM(CASE WHEN LOWER(payment_method) LIKE '%cash%' THEN total_amount ELSE 0 END) AS cash,
+           SUM(CASE WHEN LOWER(payment_method) LIKE '%card%' AND LOWER(payment_method) NOT LIKE '%fleet%' AND LOWER(payment_method) NOT LIKE '%fuel%' THEN total_amount ELSE 0 END) AS card,
+           SUM(CASE WHEN LOWER(payment_method) LIKE '%wallet%' OR LOWER(payment_method) LIKE '%gcash%' OR LOWER(payment_method) LIKE '%maya%' THEN total_amount ELSE 0 END) AS ewallet,
+           SUM(CASE WHEN LOWER(payment_method) LIKE '%fuel card%' OR LOWER(payment_method) LIKE '%efuel%' OR LOWER(payment_method) LIKE '%e-fuel%' OR LOWER(payment_method) LIKE '%fleet%' OR LOWER(payment_method) LIKE '%credit%' OR LOWER(payment_method) LIKE '%internal%' OR LOWER(payment_method) LIKE '%charge%' THEN total_amount ELSE 0 END) AS efuel
     FROM (
-        SELECT transaction_date, payment_method, total_amount, NULL AS efuel_card_number FROM fuel_transactions WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ?
+        SELECT transaction_date, payment_method, total_amount FROM fuel_transactions WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ?
         UNION ALL
-        SELECT transaction_date, payment_method, total_amount, efuel_card_number FROM merchandise_transactions WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ?
+        SELECT COALESCE(transaction_date, created_at) AS transaction_date, payment_method, total_amount FROM merchandise_transactions WHERE station_id = ? AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?
+        UNION ALL
+        SELECT COALESCE(completed_at, created_at) AS transaction_date, payment_method, total_cost AS total_amount FROM job_orders WHERE station_id = ? AND status='Completed' AND DATE(COALESCE(completed_at, created_at)) BETWEEN ? AND ?
     ) combined
     GROUP BY DATE(transaction_date)
     ORDER BY DATE(transaction_date) ASC
-", [$station_id, $date_from, $date_to, $station_id, $date_from, $date_to]);
+", [$station_id, $date_from, $date_to, $station_id, $date_from, $date_to, $station_id, $date_from, $date_to]);
 
 // Category distribution (Merchandise only as requested)
 $category_sales_data = adm_rows($pdo, "
@@ -476,23 +523,35 @@ include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-/* ── Global Styles ── */
 :root {
   --transition-speed: 0.25s;
   --font-family: 'Outfit', 'Inter', sans-serif;
-}
-
-body {
-  font-family: var(--font-family);
-  background-color: var(--bg-body, #f4f6f9);
-  color: var(--text-primary, #1e293b);
-  margin: 0;
+  --petron-blue: #00264D;
+  --petron-red: #CC0000;
+  --color-green: #22c55e;
+  --color-gray: #64748b;
+  --text-primary: #1e293b;
+  --text-secondary: #64748b;
+  --bg-body: #f4f6f9;
+  --bg-card: #ffffff;
+  --border-color: #e2e8f0;
 }
 
 .adm-wrap {
+  font-family: var(--font-family);
+  background-color: var(--bg-body);
+  color: var(--text-primary);
   padding: 24px;
-  max-width: 1600px;
+  max-width: 100%;
+  width: 100%;
   margin: 0 auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+.adm-wrap * {
+  box-sizing: border-box;
+  font-family: var(--font-family);
 }
 
 /* ── Typography & Header ── */
@@ -503,12 +562,13 @@ body {
   margin-bottom: 28px;
   padding: 0;
   gap: 20px;
+  flex-wrap: wrap;
 }
 
 .adm-title h1 {
   font-size: 32px;
   font-weight: 700;
-  color: var(--petron-blue, #00264D);
+  color: var(--petron-blue);
   margin: 0 0 8px 0;
   display: flex;
   align-items: center;
@@ -523,7 +583,7 @@ body {
 .adm-title p {
   margin: 0;
   font-size: 15px;
-  color: var(--text-secondary, #64748b);
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
@@ -532,22 +592,24 @@ body {
   flex-direction: column;
   align-items: flex-end;
   gap: 10px;
+  flex-shrink: 0;
 }
 
 .adm-btn-group {
   display: flex;
-  background: var(--bg-card, #ffffff);
-  border: 1px solid var(--border-color, #e2e8f0);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 4px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  flex-wrap: wrap;
 }
 
 .adm-btn-group a {
   padding: 8px 16px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-secondary, #64748b);
+  color: var(--text-secondary);
   text-decoration: none;
   border-radius: 6px;
   transition: all var(--transition-speed);
@@ -555,12 +617,12 @@ body {
 }
 
 .adm-btn-group a:hover {
-  background: var(--bg-body, #f8fafc);
-  color: var(--petron-blue, #00264D);
+  background: var(--bg-body);
+  color: var(--petron-blue);
 }
 
 .adm-btn-group a.active {
-  background-color: var(--petron-blue, #00264D);
+  background-color: var(--petron-blue);
   color: white;
   box-shadow: 0 2px 4px rgba(0,38,77,0.15);
 }
@@ -569,16 +631,17 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--bg-card, #ffffff);
+  background: var(--bg-card);
   padding: 6px 14px;
   border-radius: 8px;
-  border: 1px solid var(--border-color, #e2e8f0);
+  border: 1px solid var(--border-color);
   box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  flex-wrap: wrap;
 }
 
 .adm-date-form input[type="date"] {
-  border: 1px solid var(--border-color, #e2e8f0);
-  background: var(--bg-body, #f8fafc);
+  border: 1px solid var(--border-color);
+  background: var(--bg-body);
   color: var(--text-primary);
   font-family: inherit;
   font-size: 13px;
@@ -586,17 +649,18 @@ body {
   outline: none;
   padding: 6px 10px;
   border-radius: 6px;
+  max-width: 150px;
 }
 
 .adm-date-form span {
-  color: var(--text-secondary, #64748b);
+  color: var(--text-secondary);
   font-size: 12px;
   font-weight: 600;
   padding: 0 4px;
 }
 
 .adm-date-form button {
-  background: var(--petron-blue, #00264D);
+  background: var(--petron-blue);
   color: white;
   border: none;
   padding: 8px 14px;
@@ -611,7 +675,7 @@ body {
 }
 
 .adm-date-form button:hover {
-  background: var(--petron-red, #CC0000);
+  background: var(--petron-red);
   transform: translateX(2px);
 }
 
@@ -635,9 +699,17 @@ body {
   .adm-date-form {
     width: 100%;
   }
+  
+  .adm-kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
+  .adm-wrap {
+    padding: 16px;
+  }
+  
   .adm-title h1 {
     font-size: 24px;
   }
@@ -653,6 +725,58 @@ body {
   .adm-btn-group a {
     flex: 1 1 auto;
     text-align: center;
+    min-width: 70px;
+  }
+  
+  .adm-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .adm-charts-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .adm-card {
+    padding: 16px;
+  }
+  
+  .adm-card-val {
+    font-size: 20px;
+  }
+  
+  .adm-main-panel {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 640px) {
+  .adm-title h1 {
+    font-size: 20px;
+  }
+  
+  .adm-title h1 i {
+    font-size: 18px;
+  }
+  
+  .adm-btn-group a {
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+  
+  .adm-date-form input[type="date"] {
+    font-size: 12px;
+    padding: 5px 8px;
+  }
+  
+  .adm-card-icon {
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+  }
+  
+  .adm-table th, .adm-table td {
+    padding: 8px 12px;
+    font-size: 12px;
   }
 }
 
@@ -662,11 +786,12 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 20px;
   margin-bottom: 28px;
+  width: 100%;
 }
 
 .adm-card {
-  background: var(--bg-card, #ffffff);
-  border: 1px solid var(--border-color, #e2e8f0);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
   border-radius: 12px;
   padding: 20px;
   display: flex;
@@ -675,6 +800,8 @@ body {
   box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
   transition: transform var(--transition-speed), box-shadow var(--transition-speed);
   position: relative;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .adm-card:hover {
@@ -682,12 +809,29 @@ body {
   box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
 }
 
+.adm-card-details {
+  flex: 1;
+  min-width: 0;
+}
+
 .adm-card-details h3 {
   font-size: 13px;
-  color: var(--text-secondary, #64748b);
+  color: var(--text-secondary);
   margin: 0 0 6px 0;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.adm-card-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0 0 6px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .adm-card-val {
@@ -695,12 +839,18 @@ body {
   font-weight: 700;
   margin: 0;
   color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .adm-card-sub {
   font-size: 12px;
-  color: var(--text-secondary, #64748b);
+  color: var(--text-secondary);
   margin: 4px 0 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .adm-card-icon {
@@ -712,31 +862,99 @@ body {
   justify-content: center;
   font-size: 20px;
   opacity: 0.85;
+  flex-shrink: 0;
+  margin-left: 12px;
 }
 
-.adm-card.blue .adm-card-icon { background: rgba(0,38,77,0.1); color: var(--petron-blue); }
-.adm-card.red .adm-card-icon { background: rgba(204,0,0,0.1); color: var(--petron-red); }
-.adm-card.green .adm-card-icon { background: rgba(34,197,94,0.1); color: #22c55e; }
-.adm-card.orange .adm-card-icon { background: rgba(245,158,11,0.1); color: #f59e0b; }
-.adm-card.purple .adm-card-icon { background: rgba(139,92,246,0.1); color: #8b5cf6; }
+/* Only use approved colors: blue, gray, green, red */
+.adm-card.blue .adm-card-icon { 
+  background: rgba(0,38,77,0.1); 
+  color: var(--petron-blue); 
+}
+.adm-card.red .adm-card-icon { 
+  background: rgba(204,0,0,0.1); 
+  color: var(--petron-red); 
+}
+.adm-card.green .adm-card-icon { 
+  background: rgba(34,197,94,0.1); 
+  color: var(--color-green); 
+}
+.adm-card.gray .adm-card-icon { 
+  background: rgba(100,116,139,0.1); 
+  color: var(--color-gray); 
+}
+/* Remove orange and purple - convert to approved colors */
+.adm-card.orange .adm-card-icon { 
+  background: rgba(100,116,139,0.1); 
+  color: var(--color-gray); 
+}
+.adm-card.purple .adm-card-icon { 
+  background: rgba(34,197,94,0.1); 
+  color: var(--color-green); 
+}
 
 /* ── Layout Grid ── */
 .adm-grid {
   display: block;
   margin-bottom: 28px;
+  width: 100%;
+  overflow-x: hidden;
 }
 
 @media (max-width: 1200px) {
-  .adm-grid { display: block; }
+  .adm-grid { 
+    display: block; 
+  }
 }
 
 /* ── Tabs & Charts Area ── */
 .adm-main-panel {
-  background: var(--bg-card, #ffffff);
-  border: 1px solid var(--border-color, #e2e8f0);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
   border-radius: 12px;
   padding: 24px;
   box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+  width: 100%;
+  overflow-x: hidden;
+}
+
+.adm-charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr));
+  gap: 20px;
+  width: 100%;
+}
+
+.adm-chart-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.adm-chart-box h4 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--petron-blue);
+  margin: 0 0 16px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adm-chart-canvas-wrap {
+  position: relative;
+  width: 100%;
+  height: 300px;
+  overflow: hidden;
+}
+
+.adm-chart-canvas-wrap canvas {
+  max-width: 100%;
+  height: auto !important;
 }
 
 .adm-tabs-container {
@@ -787,18 +1005,14 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
-.adm-charts-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 20px;
-}
-
 .adm-chart-box {
-  background: var(--bg-card, #ffffff);
-  border: 1px solid var(--border-color, #e2e8f0);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 16px;
   position: relative;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .adm-chart-box h4 {
@@ -809,11 +1023,15 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .adm-chart-canvas-wrap {
   height: 240px;
   position: relative;
+  width: 100%;
+  overflow: hidden;
 }
 
 /* ── Live Alerts Feed ── */
@@ -859,8 +1077,8 @@ body {
 }
 
 .adm-alert-item.critical { border-left-color: var(--petron-red); background: rgba(204,0,0,0.03); }
-.adm-alert-item.warning { border-left-color: #f59e0b; background: rgba(245,158,11,0.03); }
-.adm-alert-item.info { border-left-color: #3b82f6; background: rgba(59,130,246,0.03); }
+.adm-alert-item.warning { border-left-color: var(--color-gray); background: rgba(100,116,139,0.03); }
+.adm-alert-item.info { border-left-color: var(--petron-blue); background: rgba(0,38,77,0.03); }
 
 .adm-alert-title {
   font-weight: 600;
@@ -934,10 +1152,10 @@ body {
   border-radius: 50%;
 }
 
-.evt-blue { background-color: #3b82f6; color: #fff; }
-.evt-red { background-color: var(--petron-red, #CC0000); color: #fff; }
-.evt-green { background-color: #22c55e; color: #fff; }
-.evt-yellow { background-color: #eab308; color: #000; }
+.evt-blue { background-color: var(--petron-blue); color: #fff; }
+.evt-red { background-color: var(--petron-red); color: #fff; }
+.evt-green { background-color: var(--color-green); color: #fff; }
+.evt-yellow { background-color: var(--color-gray); color: #fff; }
 
 .adm-cal-grid {
   display: grid;
@@ -1106,6 +1324,9 @@ body {
 
 .adm-table-wrap {
   overflow-x: auto;
+  width: 100%;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
 }
 
 .adm-table {
@@ -1113,33 +1334,38 @@ body {
   border-collapse: collapse;
   text-align: left;
   font-size: 13px;
+  min-width: 0;
 }
 
 .adm-table th, .adm-table td {
   padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color, #e2e8f0);
+  border-bottom: 1px solid var(--border-color);
+  word-wrap: break-word;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .adm-table th {
   font-weight: 700;
-  background: var(--bg-body, #f8fafc);
+  background: var(--bg-body);
   color: var(--text-secondary);
   text-transform: uppercase;
   font-size: 11px;
   letter-spacing: 0.5px;
+  white-space: nowrap;
 }
 
 .adm-table tr:hover td {
   background-color: rgba(0,38,77,0.02);
 }
 
-/* Anomalies highlighting */
+/* Anomalies highlighting - use red */
 .adm-table tr.anomaly {
-  background-color: rgba(239, 68, 68, 0.05);
+  background-color: rgba(204, 0, 0, 0.05);
 }
 
 .adm-table tr.anomaly td {
-  border-bottom: 1px solid rgba(239, 68, 68, 0.2);
+  border-bottom: 1px solid rgba(204, 0, 0, 0.2);
 }
 
 .badge {
@@ -1249,26 +1475,28 @@ body {
 
   <!-- HEADER -->
   <div class="adm-header">
-    <div class="adm-title">
+    <div class="adm-title" style="flex:1;">
       <h1><i class="fas fa-tachometer-alt"></i> Welcome, <?php echo htmlspecialchars($me['first_name'] ?? $me['username'] ?? 'Admin'); ?>!</h1>
-      <p>Admin Dashboard - Comprehensive Overview, Analytics & Reporting</p>
-    </div>
-    
-    <div class="adm-filter-bar">
-      <div class="adm-btn-group">
-        <a href="?quick=today" class="<?php echo $quick === 'today' ? 'active' : ''; ?>">Today</a>
-        <a href="?quick=week" class="<?php echo $quick === 'week' ? 'active' : ''; ?>">This Week</a>
-        <a href="?quick=month" class="<?php echo $quick === 'month' ? 'active' : ''; ?>">This Month</a>
-        <a href="?quick=last_month" class="<?php echo $quick === 'last_month' ? 'active' : ''; ?>">Last Month</a>
-      </div>
+      <p style="margin-bottom:12px;">Admin Dashboard - Comprehensive Overview, Analytics & Reporting</p>
       
-      <form class="adm-date-form" method="GET">
-        <input type="hidden" name="quick" value="custom">
-        <input type="date" name="date_from" value="<?php echo htmlspecialchars($date_from); ?>" required>
-        <span style="color:var(--text-secondary); font-size:12px;">to</span>
-        <input type="date" name="date_to" value="<?php echo htmlspecialchars($date_to); ?>" required>
-        <button type="submit"><i class="fas fa-arrow-right"></i></button>
-      </form>
+      <!-- Quick Filter Buttons & Custom Date Range -->
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <a href="?quick=today" style="padding:6px 14px; font-size:12px; font-weight:600; color:<?= $quick === 'today' ? 'white' : 'var(--text-secondary)' ?>; background:<?= $quick === 'today' ? 'var(--petron-blue)' : 'white' ?>; border:1px solid var(--border-color); border-radius:6px; text-decoration:none; transition:all 0.2s; white-space:nowrap;">Today</a>
+        <a href="?quick=week" style="padding:6px 14px; font-size:12px; font-weight:600; color:<?= $quick === 'week' ? 'white' : 'var(--text-secondary)' ?>; background:<?= $quick === 'week' ? 'var(--petron-blue)' : 'white' ?>; border:1px solid var(--border-color); border-radius:6px; text-decoration:none; transition:all 0.2s; white-space:nowrap;">This Week</a>
+        <a href="?quick=month" style="padding:6px 14px; font-size:12px; font-weight:600; color:<?= $quick === 'month' ? 'white' : 'var(--text-secondary)' ?>; background:<?= $quick === 'month' ? 'var(--petron-blue)' : 'white' ?>; border:1px solid var(--border-color); border-radius:6px; text-decoration:none; transition:all 0.2s; white-space:nowrap;">This Month</a>
+        <a href="?quick=last_month" style="padding:6px 14px; font-size:12px; font-weight:600; color:<?= $quick === 'last_month' ? 'white' : 'var(--text-secondary)' ?>; background:<?= $quick === 'last_month' ? 'var(--petron-blue)' : 'white' ?>; border:1px solid var(--border-color); border-radius:6px; text-decoration:none; transition:all 0.2s; white-space:nowrap;">Last Month</a>
+        
+        <span style="color:var(--text-secondary); font-size:12px; margin:0 4px;">|</span>
+        
+        <!-- Custom Date Range -->
+        <form method="GET" style="display:flex; gap:6px; align-items:center; margin:0;">
+          <input type="hidden" name="quick" value="custom">
+          <input type="date" name="date_from" value="<?php echo htmlspecialchars($date_from); ?>" required style="padding:6px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:12px; background:white; max-width:130px;">
+          <span style="color:var(--text-secondary); font-size:11px;">to</span>
+          <input type="date" name="date_to" value="<?php echo htmlspecialchars($date_to); ?>" required style="padding:6px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:12px; background:white; max-width:130px;">
+          <button type="submit" style="padding:6px 12px; background:var(--petron-blue); color:white; border:none; border-radius:6px; cursor:pointer; font-size:12px;"><i class="fas fa-arrow-right"></i></button>
+        </form>
+      </div>
     </div>
   </div>
 
@@ -1277,7 +1505,7 @@ body {
     <!-- 1. Fuel Sales Card -->
     <div class="adm-card blue">
       <div class="adm-card-details">
-        <h3>Fuel Sales</h3>
+        <div class="adm-card-label">Fuel Sales</div>
         <div class="adm-card-val">₱<?php echo number_format($fuel_sales, 2); ?></div>
         <div class="adm-card-sub"><?php echo number_format($fuel_liters_sold, 2); ?> Liters Sold</div>
       </div>
@@ -1287,7 +1515,7 @@ body {
     <!-- 2. Merchandise Sales Card -->
     <div class="adm-card green">
       <div class="adm-card-details">
-        <h3>Merchandise Sales</h3>
+        <div class="adm-card-label">Merchandise Sales</div>
         <div class="adm-card-val">₱<?php echo number_format($merch_sales, 2); ?></div>
         <div class="adm-card-sub"><?php echo number_format($merch_items_sold, 0); ?> Items Sold</div>
       </div>
@@ -1297,7 +1525,7 @@ body {
     <!-- 3. Service Income Card -->
     <div class="adm-card purple">
       <div class="adm-card-details">
-        <h3>Service Income</h3>
+        <div class="adm-card-label">Service Income</div>
         <div class="adm-card-val">₱<?php echo number_format($service_income, 2); ?></div>
         <div class="adm-card-sub"><?php echo $job_orders_completed; ?> Job Orders Completed</div>
       </div>
@@ -1307,7 +1535,7 @@ body {
     <!-- 4. Payments Card -->
     <div class="adm-card orange" style="min-width: 280px;">
       <div class="adm-card-details" style="width: 100%;">
-        <h3>Total Payments</h3>
+        <div class="adm-card-label">Total Payments</div>
         <div class="adm-card-val" style="margin-bottom: 8px;">₱<?php echo number_format($total_payments, 2); ?></div>
         <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.5; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px;">
           <span>Cash: <strong>₱<?php echo number_format($payments_cash, 0); ?></strong></span>
@@ -1323,7 +1551,7 @@ body {
     <!-- 5. Customers Card -->
     <div class="adm-card red">
       <div class="adm-card-details">
-        <h3>Customers</h3>
+        <div class="adm-card-label">Customers</div>
         <div class="adm-card-val"><?php echo $new_customers; ?> New</div>
         <div class="adm-card-sub">₱<?php echo number_format($outstanding_balances, 2); ?> Outstanding Balance</div>
       </div>
@@ -1372,21 +1600,30 @@ body {
   </div>
 
   <!-- OPERATIONAL TABLES - Center Layer -->
-  <div class="adm-main-panel" style="margin-bottom: 28px;">
+  <div class="adm-main-panel" style="margin-bottom: 28px; max-width: 100%; overflow-x: hidden;">
     <h2 style="margin:0 0 16px; font-size:18px; color:var(--petron-blue); display:flex; align-items:center; gap:8px;">
-      <i class="fas fa-table"></i> Operational Tables &amp; Records (Detailed Breakdown)
+      <i class="fas fa-table"></i> Operational Tables &amp; Records
     </h2>
     
-    <div class="adm-tabs-container" style="border-bottom: 2px solid var(--border-color, #e2e8f0); margin-bottom: 20px; display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px;">
-      <button class="adm-tab-btn2 active" onclick="switchTableTab('shift', this)"><i class="fas fa-clock"></i> Shift Reports</button>
-      <button class="adm-tab-btn2" onclick="switchTableTab('consolidation', this)"><i class="fas fa-calculator"></i> Daily Consolidation</button>
-      <button class="adm-tab-btn2" onclick="switchTableTab('fuel_inv', this)"><i class="fas fa-gas-pump"></i> Fuel Inventory</button>
-      <button class="adm-tab-btn2" onclick="switchTableTab('merch_inv', this)"><i class="fas fa-boxes"></i> Merchandise Inventory</button>
-      <button class="adm-tab-btn2" onclick="switchTableTab('job_orders', this)"><i class="fas fa-tools"></i> Job Orders</button>
-      <button class="adm-tab-btn2" onclick="switchTableTab('customers_list', this)"><i class="fas fa-users"></i> Customers</button>
-      <button class="adm-tab-btn2" onclick="switchTableTab('suppliers_list', this)"><i class="fas fa-truck"></i> Suppliers</button>
-      <button class="adm-tab-btn2" onclick="switchTableTab('financial_recon', this)"><i class="fas fa-balance-scale"></i> Financial / Payables</button>
+    <div class="adm-tabs-container" style="border-bottom: 2px solid var(--border-color); margin-bottom: 20px; display: flex; gap: 4px; overflow-x: auto; padding-bottom: 6px; width: 100%; max-width: 100%; -webkit-overflow-scrolling: touch; scrollbar-width: none;">
+      <button class="adm-tab-btn2 active" onclick="switchTableTab('shift', this)" style="white-space: nowrap; font-size: 12px; padding: 8px 12px; flex-shrink: 0;"><i class="fas fa-clock"></i> Shifts</button>
+      <button class="adm-tab-btn2" onclick="switchTableTab('consolidation', this)" style="white-space: nowrap; font-size: 12px; padding: 8px 12px; flex-shrink: 0;"><i class="fas fa-calculator"></i> Daily</button>
+      <button class="adm-tab-btn2" onclick="switchTableTab('fuel_inv', this)" style="white-space: nowrap; font-size: 12px; padding: 8px 12px; flex-shrink: 0;"><i class="fas fa-gas-pump"></i> Fuel</button>
+      <button class="adm-tab-btn2" onclick="switchTableTab('merch_inv', this)" style="white-space: nowrap; font-size: 12px; padding: 8px 12px; flex-shrink: 0;"><i class="fas fa-boxes"></i> Merch</button>
+      <button class="adm-tab-btn2" onclick="switchTableTab('job_orders', this)" style="white-space: nowrap; font-size: 12px; padding: 8px 12px; flex-shrink: 0;"><i class="fas fa-tools"></i> Jobs</button>
+      <button class="adm-tab-btn2" onclick="switchTableTab('customers_list', this)" style="white-space: nowrap; font-size: 12px; padding: 8px 12px; flex-shrink: 0;"><i class="fas fa-users"></i> Customers</button>
+      <button class="adm-tab-btn2" onclick="switchTableTab('suppliers_list', this)" style="white-space: nowrap; font-size: 12px; padding: 8px 12px; flex-shrink: 0;"><i class="fas fa-truck"></i> Suppliers</button>
+      <button class="adm-tab-btn2" onclick="switchTableTab('financial_recon', this)" style="white-space: nowrap; font-size: 12px; padding: 8px 12px; flex-shrink: 0;"><i class="fas fa-balance-scale"></i> Financial</button>
     </div>
+<style>
+.adm-tabs-container::-webkit-scrollbar {
+  height: 4px;
+}
+.adm-tabs-container::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+</style>
 
     <?php
     $date_start = $date_from;
@@ -1513,25 +1750,108 @@ body {
 
   <!-- REPORTS QUICK ACCESS -->
   <div class="adm-shortcuts-sec">
-    <h2><i class="fas fa-file-invoice"></i> Reports Quick Access &amp; Compliance Center</h2>
-    <div class="adm-shortcut-grid">
-      <button class="adm-shortcut-card" onclick="triggerExport('sales')">
-        <i class="fas fa-file-invoice-dollar"></i> Export Sales Summary (Excel/CSV)
-      </button>
-      <button class="adm-shortcut-card" onclick="triggerExport('fuel')">
-        <i class="fas fa-gas-pump"></i> Fuel stock variance logs (PDF)
-      </button>
-      <button class="adm-shortcut-card" onclick="triggerExport('deliveries')">
-        <i class="fas fa-truck-loading"></i> Merchandise Delivery Reports
-      </button>
-      <button class="adm-shortcut-card" onclick="triggerExport('inventory')">
-        <i class="fas fa-boxes-packing"></i> Inventory Movement Audit
-      </button>
-      <button class="adm-shortcut-card" onclick="window.print()">
-        <i class="fas fa-print"></i> Generate Station Compliance Report
-      </button>
+    <h2 style="font-size:18px;"><i class="fas fa-file-invoice"></i> Reports Quick Access &amp; Compliance Center</h2>
+    <div class="adm-shortcut-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;">
+
+      <!-- Operations Reports (admin_reports.php) -->
+      <a href="admin_reports.php?tab=shift_reports&date_from=<?= $date_from ?>&date_to=<?= $date_to ?>"
+         class="adm-shortcut-card">
+        <i class="fas fa-exchange-alt" style="font-size:26px;color:var(--petron-blue);margin-bottom:8px;"></i>
+        <span class="adm-sc-label">Shift Reports<br><small>Operations</small></span>
+      </a>
+
+      <!-- Daily Consolidation (reports/admin_daily_consolidation.php – standalone) -->
+      <a href="reports/admin_daily_consolidation.php?date_from=<?= $date_from ?>&date_to=<?= $date_to ?>"
+         class="adm-shortcut-card">
+        <i class="fas fa-calendar-day" style="font-size:26px;color:var(--petron-blue);margin-bottom:8px;"></i>
+        <span class="adm-sc-label">Daily Consolidation<br><small>All shifts combined</small></span>
+      </a>
+
+      <!-- Fuel Inventory (reports/admin_fuel_inventory.php – standalone) -->
+      <a href="reports/admin_fuel_inventory.php?date_from=<?= $date_from ?>&date_to=<?= $date_to ?>"
+         class="adm-shortcut-card">
+        <i class="fas fa-gas-pump" style="font-size:26px;color:var(--petron-blue);margin-bottom:8px;"></i>
+        <span class="adm-sc-label">Fuel Inventory<br><small>Meter &amp; Tank Audit</small></span>
+      </a>
+
+      <!-- Fuel Variance (reports/fuel_variance_report.php – standalone) -->
+      <a href="reports/fuel_variance_report.php?station_id=<?= $station_id ?>&date_from=<?= $date_from ?>&date_to=<?= $date_to ?>"
+         class="adm-shortcut-card">
+        <i class="fas fa-balance-scale" style="font-size:26px;color:var(--petron-blue);margin-bottom:8px;"></i>
+        <span class="adm-sc-label">Fuel Variance<br><small>Stock Discrepancy Log</small></span>
+      </a>
+
+      <!-- Merchandise Inventory (reports/admin_merchandise_inventory.php – standalone) -->
+      <a href="reports/admin_merchandise_inventory.php?date_from=<?= $date_from ?>&date_to=<?= $date_to ?>"
+         class="adm-shortcut-card">
+        <i class="fas fa-boxes-packing" style="font-size:26px;color:var(--petron-blue);margin-bottom:8px;"></i>
+        <span class="adm-sc-label">Merchandise Inventory<br><small>Delivery &amp; Stock</small></span>
+      </a>
+
+      <!-- Finance Reports (admin_finance_reports.php – full page) -->
+      <a href="admin_finance_reports.php?date_from=<?= $date_from ?>&date_to=<?= $date_to ?>"
+         class="adm-shortcut-card">
+        <i class="fas fa-coins" style="font-size:26px;color:var(--petron-blue);margin-bottom:8px;"></i>
+        <span class="adm-sc-label">Finance Reports<br><small>Payments &amp; Payables</small></span>
+      </a>
+
+      <!-- Compliance Reports – Activity Logs (admin_compliance_reports.php) -->
+      <a href="admin_compliance_reports.php?section=activity&date_from=<?= $date_from ?>&date_to=<?= $date_to ?>"
+         class="adm-shortcut-card">
+        <i class="fas fa-history" style="font-size:26px;color:var(--petron-blue);margin-bottom:8px;"></i>
+        <span class="adm-sc-label">Activity Logs<br><small>Compliance Center</small></span>
+      </a>
+
+      <!-- Compliance Reports – Audit Trail (admin_compliance_reports.php) -->
+      <a href="admin_compliance_reports.php?section=audit&date_from=<?= $date_from ?>&date_to=<?= $date_to ?>"
+         class="adm-shortcut-card">
+        <i class="fas fa-shield-halved" style="font-size:26px;color:var(--petron-blue);margin-bottom:8px;"></i>
+        <span class="adm-sc-label">Audit Trail<br><small>Full Station Log</small></span>
+      </a>
+
     </div>
   </div>
+<style>
+.adm-shortcut-card {
+  text-decoration: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 12px;
+  background: var(--bg-card, white);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  min-height: 105px;
+  text-align: center;
+}
+.adm-shortcut-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 16px rgba(0,38,77,0.15);
+  border-color: var(--petron-blue);
+  background: var(--petron-blue);
+}
+.adm-shortcut-card:hover i,
+.adm-shortcut-card:hover .adm-sc-label {
+  color: #fff !important;
+}
+.adm-sc-label {
+  font-size: 12px;
+  color: var(--text-primary);
+  font-weight: 600;
+  line-height: 1.4;
+}
+.adm-sc-label small {
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+.adm-shortcut-card:hover .adm-sc-label small {
+  color: rgba(255,255,255,0.75) !important;
+}
+</style>
 
   <!-- COMPLIANCE LOGS - Bottom Layer -->
   <div class="adm-audit-sec" style="margin-bottom: 28px;">
@@ -1547,9 +1867,9 @@ body {
 
     <!-- Log Panel 1: Audit Trail -->
     <div id="log-tab-audit" class="adm-table-panel active">
-      <div style="margin-bottom:16px; display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap;">
-        <div class="adm-audit-filters" style="display:flex; gap:8px; align-items:center;">
-          <input type="text" id="auditSearch" placeholder="Search audit trail..." onkeyup="filterAuditTrail()" style="padding:6px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:13px;">
+      <div style="margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+        <div class="adm-audit-filters" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <input type="text" id="auditSearch" placeholder="Search audit trail..." onkeyup="filterAuditTrail()" style="padding:6px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:13px; min-width:200px;">
           
           <select id="auditRoleFilter" onchange="filterAuditTrail()" style="padding:6px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:13px; background:white;">
             <option value="">All Roles</option>
@@ -1560,68 +1880,89 @@ body {
 
           <select id="auditModuleFilter" onchange="filterAuditTrail()" style="padding:6px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:13px; background:white;">
             <option value="">All Modules</option>
-            <option value="Fuel">Fuel</option>
-            <option value="Merchandise">Merchandise</option>
-            <option value="Delivery">Delivery</option>
-            <option value="User">User</option>
-            <option value="Job Order">Job Order</option>
+            <option value="users">Users</option>
+            <option value="fuel">Fuel</option>
+            <option value="merchandise">Merchandise</option>
+            <option value="delivery">Delivery</option>
+            <option value="job_order">Job Order</option>
           </select>
           
-          <button class="export-btn" onclick="exportAuditTrail()"><i class="fas fa-file-excel"></i> Export Snapshot</button>
+          <button class="export-btn" onclick="exportAuditTrail()" style="padding:6px 12px; border:1px solid var(--petron-blue); background:var(--petron-blue); color:white; border-radius:6px; font-size:13px; cursor:pointer;"><i class="fas fa-file-excel"></i> Export</button>
+        </div>
+        
+        <!-- Rows per page selector -->
+        <div style="display:flex; gap:8px; align-items:center;">
+          <label style="font-size:13px; color:var(--text-secondary);">Rows per page:</label>
+          <select id="auditRowsPerPage" onchange="changeAuditRowsPerPage()" style="padding:6px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:13px; background:white;">
+            <option value="10">10</option>
+            <option value="25" selected>25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
         </div>
       </div>
 
-      <div class="adm-table-wrap">
-        <table class="adm-table" id="auditTrailTable">
+      <div class="adm-table-wrap" style="width:100%;overflow:hidden;">
+        <table class="adm-table" id="auditTrailTable" style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px;">
           <thead>
             <tr>
-              <th>Timestamp</th>
-              <th>User ID</th>
-              <th>User</th>
-              <th>Role</th>
-              <th>Action</th>
-              <th>Module</th>
-              <th>Remarks</th>
-              <th>Device/IP</th>
-              <th>Audit Rating</th>
+              <th style="width:12%;padding:10px 6px;">Timestamp</th>
+              <th style="width:6%;padding:10px 6px;">User ID</th>
+              <th style="width:12%;padding:10px 6px;">User</th>
+              <th style="width:8%;padding:10px 6px;">Role</th>
+              <th style="width:12%;padding:10px 6px;">Action</th>
+              <th style="width:10%;padding:10px 6px;">Module</th>
+              <th style="width:22%;padding:10px 6px;">Remarks</th>
+              <th style="width:10%;padding:10px 6px;">Device/IP</th>
+              <th style="width:8%;padding:10px 6px;">Rating</th>
             </tr>
           </thead>
           <tbody id="auditTrailBody">
             <?php if (empty($audit_trail_data)): ?>
               <tr>
-                <td colspan="9" style="text-align:center; color:var(--text-secondary);">No station actions logged in audit trail.</td>
+                <td colspan="9" style="text-align:center; color:var(--text-secondary); padding:40px;">No station actions logged in audit trail.</td>
               </tr>
             <?php else: ?>
               <?php foreach ($audit_trail_data as $row): ?>
                 <tr class="audit-row" 
-                    data-user="<?php echo htmlspecialchars($row['user_name'] . ' ' . $row['username']); ?>"
+                    data-user="<?php echo htmlspecialchars(strtolower($row['user_name'] . ' ' . $row['username'])); ?>"
                     data-role="<?php echo htmlspecialchars($row['role']); ?>"
-                    data-module="<?php echo htmlspecialchars($row['module']); ?>"
-                    data-action="<?php echo htmlspecialchars($row['action_type']); ?>"
-                    data-remarks="<?php echo htmlspecialchars($row['remarks']); ?>"
+                    data-module="<?php echo htmlspecialchars(strtolower($row['module'])); ?>"
+                    data-action="<?php echo htmlspecialchars(strtolower($row['action_type'])); ?>"
+                    data-remarks="<?php echo htmlspecialchars(strtolower($row['remarks'])); ?>"
                     data-time="<?php echo htmlspecialchars($row['created_at']); ?>">
-                  <td><?php echo date('M d, Y H:i:s', strtotime($row['created_at'])); ?></td>
-                  <td>#<?php echo htmlspecialchars($row['user_id']); ?></td>
-                  <td style="font-weight:600;"><?php echo htmlspecialchars($row['user_name'] ?: $row['username']); ?></td>
-                  <td>
-                    <span class="badge <?php echo strtolower($row['role']); ?>">
+                  <td style="padding:8px 6px;font-size:11px;overflow:hidden;text-overflow:ellipsis;" title="<?php echo date('M d, Y H:i:s', strtotime($row['created_at'])); ?>"><?php echo date('m/d H:i', strtotime($row['created_at'])); ?></td>
+                  <td style="padding:8px 6px;font-size:11px;">#<?php echo htmlspecialchars($row['user_id']); ?></td>
+                  <td style="padding:8px 6px;font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;" title="<?php echo htmlspecialchars($row['user_name'] ?: $row['username']); ?>"><?php echo htmlspecialchars($row['user_name'] ?: $row['username']); ?></td>
+                  <td style="padding:8px 6px;">
+                    <span class="badge" style="padding:3px 6px;border-radius:4px;font-size:10px;font-weight:600;background:rgba(100,116,139,0.1);color:var(--color-gray);overflow:hidden;text-overflow:ellipsis;display:block;">
                       <?php echo htmlspecialchars($row['role']); ?>
                     </span>
                   </td>
-                  <td style="font-weight:500;"><?php echo htmlspecialchars($row['action_type']); ?></td>
-                  <td><?php echo htmlspecialchars($row['module'] ?: 'System'); ?></td>
-                  <td style="color:var(--text-secondary); max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="<?php echo htmlspecialchars($row['remarks']); ?>">
+                  <td style="padding:8px 6px;font-size:11px;font-weight:500;overflow:hidden;text-overflow:ellipsis;" title="<?php echo htmlspecialchars($row['action_type']); ?>"><?php echo htmlspecialchars($row['action_type']); ?></td>
+                  <td style="padding:8px 6px;font-size:11px;overflow:hidden;text-overflow:ellipsis;"><?php echo htmlspecialchars($row['module'] ?: 'System'); ?></td>
+                  <td style="padding:8px 6px;font-size:10px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;" title="<?php echo htmlspecialchars($row['remarks']); ?>">
                     <?php echo htmlspecialchars($row['remarks']); ?>
                   </td>
-                  <td style="font-size:11px;"><?php echo htmlspecialchars($row['ip_address']); ?></td>
-                  <td class="audit-status-cell">
-                    <span class="badge" style="background:rgba(34,197,94,0.1); color:#22c55e;">Normal</span>
+                  <td style="padding:8px 6px;font-size:10px;overflow:hidden;text-overflow:ellipsis;"><?php echo htmlspecialchars($row['ip_address']); ?></td>
+                  <td class="audit-status-cell" style="padding:8px 6px;">
+                    <span class="badge" style="background:rgba(34,197,94,0.1);color:var(--color-green);padding:3px 6px;border-radius:4px;font-size:10px;font-weight:600;display:block;text-align:center;">OK</span>
                   </td>
                 </tr>
               <?php endforeach; ?>
             <?php endif; ?>
           </tbody>
         </table>
+      </div>
+      
+      <!-- Pagination Controls -->
+      <div id="auditPagination" style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; padding:16px; border-top:1px solid var(--border-color); flex-wrap:wrap; gap:12px;">
+        <div style="font-size:13px; color:var(--text-secondary);">
+          Showing <span id="auditShowingStart">0</span> to <span id="auditShowingEnd">0</span> of <span id="auditTotalRows">0</span> entries
+        </div>
+        <div style="display:flex; gap:4px;" id="auditPageButtons">
+          <!-- Pagination buttons will be inserted here -->
+        </div>
       </div>
     </div>
 
@@ -1842,29 +2183,118 @@ body {
     });
   };
 
+  // ─── AUDIT TRAIL PAGINATION ──────────────────────────────
+  let auditCurrentPage = 1;
+  let auditRowsPerPage = 25;
+  let auditAllRows = [];
+  let auditFilteredRows = [];
+
+  function initAuditPagination() {
+    auditAllRows = Array.from(document.querySelectorAll('.audit-row'));
+    auditFilteredRows = [...auditAllRows];
+    updateAuditPagination();
+  }
+
+  function updateAuditPagination() {
+    const totalRows = auditFilteredRows.length;
+    const totalPages = Math.ceil(totalRows / auditRowsPerPage) || 1;
+    
+    // Ensure current page is valid
+    if (auditCurrentPage > totalPages) {
+      auditCurrentPage = totalPages;
+    }
+    if (auditCurrentPage < 1) {
+      auditCurrentPage = 1;
+    }
+    
+    const start = (auditCurrentPage - 1) * auditRowsPerPage;
+    const end = Math.min(start + auditRowsPerPage, totalRows);
+    
+    // Hide all rows first
+    auditAllRows.forEach(row => row.style.display = 'none');
+    
+    // Show only current page rows
+    for (let i = start; i < end; i++) {
+      if (auditFilteredRows[i]) {
+        auditFilteredRows[i].style.display = '';
+      }
+    }
+    
+    // Update info text
+    document.getElementById('auditShowingStart').textContent = totalRows > 0 ? start + 1 : 0;
+    document.getElementById('auditShowingEnd').textContent = end;
+    document.getElementById('auditTotalRows').textContent = totalRows;
+    
+    // Generate pagination buttons
+    const pageButtonsContainer = document.getElementById('auditPageButtons');
+    pageButtonsContainer.innerHTML = '';
+    
+    // Previous button
+    const prevBtn = document.createElement('button');
+    prevBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
+    prevBtn.style.cssText = 'padding:6px 12px; border:1px solid var(--border-color); background:white; border-radius:4px; cursor:pointer; font-size:13px;';
+    prevBtn.disabled = auditCurrentPage === 1;
+    prevBtn.onclick = () => { auditCurrentPage--; updateAuditPagination(); };
+    if (prevBtn.disabled) prevBtn.style.opacity = '0.5';
+    pageButtonsContainer.appendChild(prevBtn);
+    
+    // Page number buttons
+    const maxButtons = 5;
+    let startPage = Math.max(1, auditCurrentPage - Math.floor(maxButtons / 2));
+    let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+    
+    if (endPage - startPage < maxButtons - 1) {
+      startPage = Math.max(1, endPage - maxButtons + 1);
+    }
+    
+    for (let i = startPage; i <= endPage; i++) {
+      const pageBtn = document.createElement('button');
+      pageBtn.textContent = i;
+      pageBtn.style.cssText = 'padding:6px 12px; border:1px solid var(--border-color); border-radius:4px; cursor:pointer; font-size:13px;';
+      pageBtn.style.background = i === auditCurrentPage ? 'var(--petron-blue)' : 'white';
+      pageBtn.style.color = i === auditCurrentPage ? 'white' : 'var(--text-primary)';
+      pageBtn.onclick = () => { auditCurrentPage = i; updateAuditPagination(); };
+      pageButtonsContainer.appendChild(pageBtn);
+    }
+    
+    // Next button
+    const nextBtn = document.createElement('button');
+    nextBtn.innerHTML = '<i class="fas fa-chevron-right"></i>';
+    nextBtn.style.cssText = 'padding:6px 12px; border:1px solid var(--border-color); background:white; border-radius:4px; cursor:pointer; font-size:13px;';
+    nextBtn.disabled = auditCurrentPage === totalPages;
+    nextBtn.onclick = () => { auditCurrentPage++; updateAuditPagination(); };
+    if (nextBtn.disabled) nextBtn.style.opacity = '0.5';
+    pageButtonsContainer.appendChild(nextBtn);
+  }
+
+  window.changeAuditRowsPerPage = function() {
+    auditRowsPerPage = parseInt(document.getElementById('auditRowsPerPage').value);
+    auditCurrentPage = 1;
+    updateAuditPagination();
+  };
+
   // ─── AUDIT TRAIL SEARCH & FILTERS ──────────────────────────
   window.filterAuditTrail = function() {
     const searchVal = document.getElementById('auditSearch').value.toLowerCase();
     const roleVal = document.getElementById('auditRoleFilter').value;
-    const moduleVal = document.getElementById('auditModuleFilter').value;
+    const moduleVal = document.getElementById('auditModuleFilter').value.toLowerCase();
 
-    document.querySelectorAll('.audit-row').forEach(row => {
+    auditFilteredRows = auditAllRows.filter(row => {
       const user = row.dataset.user.toLowerCase();
       const role = row.dataset.role;
-      const module = row.dataset.module;
+      const module = row.dataset.module.toLowerCase();
       const action = row.dataset.action.toLowerCase();
       const remarks = row.dataset.remarks.toLowerCase();
 
-      const matchesSearch = user.includes(searchVal) || action.includes(searchVal) || remarks.includes(searchVal);
+      const matchesSearch = !searchVal || user.includes(searchVal) || action.includes(searchVal) || remarks.includes(searchVal);
       const matchesRole = !roleVal || role === roleVal;
-      const matchesModule = !moduleVal || module.toLowerCase().includes(moduleVal.toLowerCase());
+      const matchesModule = !moduleVal || module.includes(moduleVal);
 
-      if (matchesSearch && matchesRole && matchesModule) {
-        row.style.display = '';
-      } else {
-        row.style.display = 'none';
-      }
+      return matchesSearch && matchesRole && matchesModule;
     });
+    
+    auditCurrentPage = 1;
+    updateAuditPagination();
   };
 
   // Anomaly detection in audit trails
@@ -1985,6 +2415,11 @@ body {
     initAllDashboardCharts();
   });
   themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  
+  // Initialize audit trail pagination on page load
+  if (document.getElementById('auditTrailBody')) {
+    setTimeout(() => initAuditPagination(), 100);
+  }
 
 })();
 </script>

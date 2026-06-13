@@ -1,9 +1,9 @@
 <?php
 /**
- * ADMIN REPORTS MODULE
- * Comprehensive reporting system with shift segregation
+ * Complete Admin Reports - Real Report Format
+ * Operations Reports with tabbed interface
+ * Design matches Staff Reports professional layout
  */
-if (session_status() === PHP_SESSION_NONE) session_start();
 
 $page_id = 'admin_reports';
 require_once __DIR__ . '/../backend/lib.php';
@@ -14,74 +14,31 @@ $me = current_user();
 $role = role_key($me['role'] ?? '');
 $station_id = user_station_id();
 
-// Only Admin and SuperAdmin can access
-if (!in_array($role, ['admin', 'superadmin'])) {
-    header('Location: dashboard.php'); exit;
+// Check if admin role
+if ($role !== 'admin') {
+    die('Access denied. Only administrators can view this page.');
 }
 
-// Get current section
-$valid_sections = [
-    'shift_reports',
-    'daily_consolidation', 
-    'fuel_inventory',
-    'merchandise_inventory',
-    'job_orders',
-    'payments',
-    'customers',
-    'suppliers',
-    'financial',
-    'activity_log',
-    'audit_trail',
-    'calendar_schedule'
-];
+// Get active tab from URL parameter
+$active_tab = $_GET['tab'] ?? 'shift_reports';
 
-$section = trim($_GET['section'] ?? 'shift_reports');
-if (!in_array($section, $valid_sections)) {
-    $section = 'shift_reports';
+// Get date range from GET or use current month as default
+$date_from = $_GET['date_from'] ?? date('Y-m-01');
+$date_to   = $_GET['date_to']   ?? date('Y-m-d');
+
+// Validate date format
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_from)) {
+    $date_from = date('Y-m-d');
+}
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_to)) {
+    $date_to = date('Y-m-d');
 }
 
-// Date range handling — default to last active date
-$range = strtolower(trim($_GET['range'] ?? 'latest'));
-$today = date('Y-m-d');
+// Pass these variables to included report files
+$date_start = $date_from;
+$date_end = $date_to;
 
-// Find latest date with any transaction data
-$latest_date = $today;
-try {
-    $ld1 = $pdo->prepare("SELECT MAX(DATE(transaction_date)) FROM fuel_transactions WHERE station_id=?");
-    $ld1->execute([$station_id]); $d1 = $ld1->fetchColumn();
-    $ld2 = $pdo->prepare("SELECT MAX(DATE(created_at)) FROM merchandise_transactions WHERE station_id=?");
-    $ld2->execute([$station_id]); $d2 = $ld2->fetchColumn();
-    $ld3 = $pdo->prepare("SELECT MAX(DATE(created_at)) FROM job_orders WHERE station_id=?");
-    $ld3->execute([$station_id]); $d3 = $ld3->fetchColumn();
-    if ($d1) $latest_date = $d1;
-    elseif ($d2) $latest_date = $d2;
-    elseif ($d3) $latest_date = $d3;
-} catch (Exception $e) {}
-
-switch ($range) {
-    case 'week':
-        $date_start = date('Y-m-d', strtotime('monday this week'));
-        $date_end = date('Y-m-d', strtotime('sunday this week'));
-        break;
-    case 'month':
-        $date_start = date('Y-m-01');
-        $date_end = date('Y-m-t');
-        break;
-    case 'custom':
-        $date_start = trim($_GET['start'] ?? $latest_date);
-        $date_end = trim($_GET['end'] ?? $latest_date);
-        break;
-    case 'today':
-        $date_start = $today;
-        $date_end = $today;
-        break;
-    default: // latest
-        $date_start = $latest_date;
-        $date_end = $latest_date;
-        break;
-}
-
-// Get station name
+// Get Station Name
 $station_name = 'Station';
 try {
     $s = $pdo->prepare("SELECT name FROM stations WHERE id=? LIMIT 1");
@@ -90,307 +47,531 @@ try {
     if ($st) $station_name = $st['name'];
 } catch (Exception $e) {}
 
-include __DIR__ . '/../partials/header.php';
+require_once __DIR__ . '/../partials/header.php';
 ?>
 
-<!-- Load Chart.js -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
 <style>
-    /* Main Container */
-    .main-content {
-        margin-left: 0;
-        padding: 20px;
-        background: #f5f5f5;
-    }
-    
-    /* Page Header */
-    .reports-header {
-        background: white;
-        padding: 20px 30px;
-        border-radius: 10px;
-        margin-bottom: 20px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    
-    .reports-header h1 {
-        margin: 0 0 5px 0;
-        color: #003366;
-        font-size: 28px;
-        font-weight: 700;
-    }
-    
-    .reports-header p {
-        margin: 0;
-        color: #666666;
-        font-size: 14px;
+/* ============================================================
+   ADMIN REPORTS - MATCHES STAFF REPORTS PROFESSIONAL DESIGN
+   Force application with !important for specificity
+   ============================================================ */
+
+/* Main Container */
+.reports-wrapper {
+    background: white !important;
+    border-radius: 8px !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+}
+
+/* Page Header */
+.rpt-page-header {
+    background: linear-gradient(135deg, #00264D 0%, #003d7a 100%) !important;
+    padding: 24px 28px !important;
+    color: white !important;
+    border-bottom: 3px solid #CC0000 !important;
+}
+
+.rpt-page-header h1 {
+    margin: 0 0 6px !important;
+    font-size: 24px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    color: white !important;
+}
+
+.rpt-page-header .subtitle {
+    margin: 0 !important;
+    font-size: 13px !important;
+    opacity: 0.9 !important;
+    color: white !important;
+}
+
+/* Tab Navigation - Matches Staff Style */
+.rpt-tabs {
+    display: flex !important;
+    background: #f8f9fa !important;
+    border-bottom: 2px solid #e2e8f0 !important;
+    overflow-x: auto !important;
+    gap: 0 !important;
+}
+
+.rpt-tab-btn {
+    flex: 1 !important;
+    min-width: 160px !important;
+    padding: 14px 18px !important;
+    text-align: center !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    color: #64748b !important;
+    background: transparent !important;
+    border: none !important;
+    border-bottom: 3px solid transparent !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.3px !important;
+}
+
+.rpt-tab-btn:hover {
+    background: rgba(0, 38, 77, 0.05) !important;
+    color: #00264D !important;
+}
+
+.rpt-tab-btn.active {
+    background: white !important;
+    color: #00264D !important;
+    border-bottom-color: #CC0000 !important;
+    font-weight: 700 !important;
+}
+
+.rpt-tab-btn i {
+    margin-right: 5px !important;
+    font-size: 13px !important;
+}
+
+/* Content Area */
+.rpt-content {
+    padding: 24px 28px !important;
+}
+
+/* Date Filter Bar - Clean Design */
+.rpt-filter-bar {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: 14px 18px !important;
+    background: #f8f9fa !important;
+    border-radius: 6px !important;
+    border: 1px solid #e2e8f0 !important;
+    margin-bottom: 24px !important;
+    flex-wrap: wrap !important;
+}
+
+.rpt-filter-bar label {
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    color: #00264D !important;
+    margin: 0 !important;
+}
+
+.rpt-filter-bar input[type="date"] {
+    padding: 7px 10px !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 4px !important;
+    font-size: 12px !important;
+    max-width: 140px !important;
+}
+
+.rpt-filter-bar button {
+    padding: 7px 16px !important;
+    background: #00264D !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 4px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    transition: all 0.2s !important;
+}
+
+.rpt-filter-bar button:hover {
+    background: #003d7a !important;
+}
+
+.rpt-filter-bar button i {
+    margin-right: 4px !important;
+}
+
+/* Export Actions */
+.rpt-export-actions {
+    display: flex !important;
+    gap: 6px !important;
+    margin-left: auto !important;
+}
+
+.rpt-export-btn {
+    padding: 7px 14px !important;
+    background: white !important;
+    color: #00264D !important;
+    border: 1px solid #00264D !important;
+    border-radius: 4px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    transition: all 0.2s !important;
+}
+
+.rpt-export-btn:hover {
+    background: #00264D !important;
+    color: white !important;
+}
+
+.rpt-export-btn i {
+    margin-right: 3px !important;
+}
+
+/* Tab Panel */
+.rpt-tab-panel {
+    display: none !important;
+}
+
+.rpt-tab-panel.active {
+    display: block !important;
+}
+
+/* Report Info Box */
+.rpt-info-box {
+    background: #f0f4ff !important;
+    padding: 14px 16px !important;
+    border-left: 4px solid #00264D !important;
+    border-radius: 4px !important;
+    margin-bottom: 20px !important;
+}
+
+.rpt-info-box p {
+    margin: 0 !important;
+    font-size: 12px !important;
+    color: #334155 !important;
+    line-height: 1.5 !important;
+}
+
+.rpt-info-box strong {
+    color: #00264D !important;
+}
+
+/* Station Info Header */
+.rpt-station-info {
+    text-align: center !important;
+    padding: 16px 0 !important;
+    border-bottom: 2px solid #e2e8f0 !important;
+    margin-bottom: 20px !important;
+}
+
+.rpt-station-info h2 {
+    margin: 0 0 4px !important;
+    font-size: 18px !important;
+    font-weight: 700 !important;
+    color: #00264D !important;
+    text-transform: uppercase !important;
+}
+
+.rpt-station-info p {
+    margin: 0 !important;
+    font-size: 12px !important;
+    color: #64748b !important;
+}
+
+/* Tables - Clean Professional Style */
+.rpt-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin-top: 16px !important;
+    font-size: 12px !important;
+    background: white !important;
+}
+
+.rpt-table thead {
+    background: #f8f9fa !important;
+    border-top: 2px solid #00264D !important;
+    border-bottom: 2px solid #e2e8f0 !important;
+}
+
+.rpt-table thead th {
+    padding: 12px 10px !important;
+    text-align: left !important;
+    font-weight: 700 !important;
+    color: #00264D !important;
+    font-size: 11px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.3px !important;
+}
+
+.rpt-table tbody tr {
+    border-bottom: 1px solid #f1f5f9 !important;
+    transition: background 0.15s !important;
+}
+
+.rpt-table tbody tr:hover {
+    background: #f8fafc !important;
+}
+
+.rpt-table tbody td {
+    padding: 10px !important;
+    color: #334155 !important;
+    font-size: 12px !important;
+}
+
+.rpt-table tfoot {
+    background: #f8f9fa !important;
+    border-top: 2px solid #00264D !important;
+    font-weight: 700 !important;
+}
+
+.rpt-table tfoot td {
+    padding: 12px 10px !important;
+    color: #00264D !important;
+    font-size: 12px !important;
+}
+
+/* Print Styles - matches staff_reports.php approach */
+@media print {
+    @page {
+        size: legal portrait;
+        margin: 0.3in 0.4in;
     }
 
-    /* Date Range Filter */
-    .date-filter {
-        background: white;
-        padding: 15px 20px;
-        border-radius: 10px;
-        margin-bottom: 20px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        display: flex;
-        align-items: center;
-        gap: 15px;
-        flex-wrap: wrap;
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
     }
-    
-    .date-filter label {
-        font-weight: 600;
-        color: #003366;
+
+    html, body {
+        background: white !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        width: 100% !important;
     }
-    
-    .date-filter select,
-    .date-filter input {
-        padding: 8px 12px;
-        border: 1px solid #ddd;
-        border-radius: 5px;
-        font-size: 14px;
+
+    /* Hide EVERYTHING except .rpt-printable */
+    body > * { display: none !important; }
+    .rpt-printable { display: block !important; }
+
+    /* Tables print clean */
+    .sr-tbl, .rpt-table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        font-size: 10px !important;
+        page-break-inside: auto !important;
     }
-    
-    .date-filter button {
-        padding: 8px 20px;
-        background: #003366;
-        color: white;
-        border: none;
-        border-radius: 5px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.3s;
+
+    .sr-tbl thead tr,
+    .rpt-table thead tr {
+        background: #f8f9fa !important;
     }
-    
-    .date-filter button:hover {
-        background: #002244;
+
+    .sr-tbl thead th,
+    .rpt-table thead th {
+        padding: 7px 6px !important;
+        font-size: 9px !important;
+        border-bottom: 1px solid #000 !important;
     }
-    
-    /* Report Content */
-    .report-content {
-        background: white;
-        padding: 25px;
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+
+    .sr-tbl tbody td,
+    .rpt-table tbody td {
+        padding: 6px !important;
+        font-size: 10px !important;
+        border-bottom: 1px solid #ddd !important;
     }
-    
-    .report-content h2 {
-        margin: 0 0 20px 0;
-        color: #003366;
-        font-size: 22px;
-        font-weight: 700;
-        padding-bottom: 10px;
-        border-bottom: 2px solid #003366;
+
+    .sr-tbl tfoot td,
+    .rpt-table tfoot td {
+        padding: 7px 6px !important;
+        font-size: 10px !important;
+        border-top: 2px solid #000 !important;
+        font-weight: 700 !important;
     }
-    
-    /* Summary Cards */
-    .summary-cards {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-        gap: 20px;
-        margin-bottom: 30px;
+
+    .sr-shift-block {
+        page-break-inside: avoid !important;
+        margin-bottom: 20px !important;
     }
-    
-    .summary-card {
-        background: linear-gradient(135deg, #003366 0%, #004d99 100%);
-        padding: 20px;
-        border-radius: 10px;
-        color: white;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+
+    /* Show all shift blocks when printing */
+    .sr-shift-block.hidden {
+        display: block !important;
     }
-    
-    .summary-card.red {
-        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
-    }
-    
-    .summary-card.green {
-        background: linear-gradient(135deg, #28a745 0%, #218838 100%);
-    }
-    
-    .summary-card.orange {
-        background: linear-gradient(135deg, #fd7e14 0%, #e8590c 100%);
-    }
-    
-    .summary-card-label {
-        font-size: 14px;
-        opacity: 0.9;
-        margin-bottom: 5px;
-    }
-    
-    .summary-card-value {
-        font-size: 28px;
-        font-weight: 700;
-        margin-bottom: 5px;
-    }
-    
-    .summary-card-subtitle {
-        font-size: 12px;
-        opacity: 0.8;
-    }
-    
-    /* Charts */
-    .charts-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
-        gap: 20px;
-        margin-bottom: 30px;
-    }
-    
-    .chart-card {
-        background: white;
-        padding: 20px;
-        border-radius: 10px;
-        border: 1px solid #e0e0e0;
-    }
-    
-    .chart-card h3 {
-        margin: 0 0 15px 0;
-        color: #003366;
-        font-size: 18px;
-        font-weight: 600;
-    }
-    
-    /* Tables */
-    .report-table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 20px;
-    }
-    
-    .report-table thead tr {
-        background: #003366;
-        color: white;
-    }
-    
-    .report-table th,
-    .report-table td {
-        padding: 12px;
-        text-align: left;
-        border-bottom: 1px solid #e0e0e0;
-    }
-    
-    .report-table tbody tr:hover {
-        background: #f7f7f7;
-    }
-    
-    /* Export Button */
-    .export-btn {
-        padding: 10px 20px;
-        background: #28a745;
-        color: white;
-        border: none;
-        border-radius: 5px;
-        font-weight: 600;
-        cursor: pointer;
-        float: right;
-        margin-bottom: 15px;
-    }
-    
-    .export-btn:hover {
-        background: #218838;
-    }
-    
-    /* Shift Tabs */
-    .shift-tabs {
-        display: flex;
-        gap: 10px;
-        margin-bottom: 20px;
-    }
-    
-    .shift-tab {
-        padding: 12px 30px;
-        background: #f7f7f7;
-        border: none;
-        border-radius: 8px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.3s;
-    }
-    
-    .shift-tab.active {
-        background: #003366;
-        color: white;
-    }
-    
-    .shift-tab:hover {
-        background: #e8e8e8;
-    }
-    
-    .shift-tab.active:hover {
-        background: #002244;
-    }
+}
 </style>
 
-<div class="main-content">
-    <!-- Page Header -->
-    <div class="reports-header">
-        <h1><i class="fas fa-chart-bar"></i> Admin Reports & Analytics</h1>
-        <p><?= htmlspecialchars($station_name) ?> - Comprehensive Reporting System</p>
-    </div>
-    
+<div class="reports-wrapper">
+    <!-- Content Area -->
+    <div class="rpt-content">
+        <!-- Date Filter Bar -->
+        <form method="GET" class="rpt-filter-bar">
+            <label><i class="fas fa-calendar"></i> Report Date:</label>
+            <input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>" required>
+            <span style="color: #64748b;">to</span>
+            <input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>" required>
+            <button type="submit"><i class="fas fa-sync-alt"></i> Apply</button>
+            
+            <div class="rpt-export-actions">
+                <button type="button" class="rpt-export-btn" onclick="exportReport('excel')">
+                    <i class="fas fa-file-excel"></i> Export Excel
+                </button>
+                <button type="button" class="rpt-export-btn" onclick="exportReport('csv')">
+                    <i class="fas fa-file-csv"></i> Export CSV
+                </button>
+                <button type="button" class="rpt-export-btn" onclick="printReport()">
+                    <i class="fas fa-print"></i> Print Report
+                </button>
+            </div>
+        </form>
 
-    <!-- Date Range Filter -->
-    <div class="date-filter">
-        <label>Date Range:</label>
-        <select id="rangeSelect" onchange="updateDateRange()">
-            <option value="latest" <?= $range === 'latest' ? 'selected' : '' ?>>Latest Active Date (<?= $latest_date ?>)</option>
-            <option value="today" <?= $range === 'today' ? 'selected' : '' ?>>Today</option>
-            <option value="week" <?= $range === 'week' ? 'selected' : '' ?>>This Week</option>
-            <option value="month" <?= $range === 'month' ? 'selected' : '' ?>>This Month</option>
-            <option value="custom" <?= $range === 'custom' ? 'selected' : '' ?>>Custom Range</option>
-        </select>
-        
-        <div id="customDates" style="display: <?= $range === 'custom' ? 'flex' : 'none' ?>; gap: 10px;">
-            <input type="date" id="startDate" value="<?= $date_start ?>" />
-            <input type="date" id="endDate" value="<?= $date_end ?>" />
+        <!-- Printable Report Content -->
+        <div class="rpt-printable">
+            <?php include __DIR__ . '/reports/admin_shift_reports.php'; ?>
         </div>
-        
-        <button onclick="applyFilter()">Apply Filter</button>
-        <button onclick="exportReport()" style="background: #28a745; margin-left: auto;">
-            <i class="fas fa-download"></i> Export
-        </button>
-    </div>
-    
-    <!-- Report Content -->
-    <div class="report-content">
-        <?php
-        $report_file = __DIR__ . "/reports/admin_{$section}.php";
-        if (file_exists($report_file)) {
-            include $report_file;
-        } else {
-            echo '<div style="text-align:center;padding:60px;color:#999;"><i class="fas fa-tools" style="font-size:40px;display:block;margin-bottom:12px;"></i>';
-            echo '<h2 style="color:#003366;">'.ucwords(str_replace('_',' ',$section)).'</h2>';
-            echo '<p>This report section will be available soon.</p></div>';
-        }
-        ?>
+
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
-function updateDateRange() {
-    const range = document.getElementById('rangeSelect').value;
-    const customDates = document.getElementById('customDates');
-    customDates.style.display = range === 'custom' ? 'flex' : 'none';
-}
-
-function applyFilter() {
-    const range = document.getElementById('rangeSelect').value;
-    const section = new URLSearchParams(window.location.search).get('section') || 'shift_reports';
-    let url = `?section=${section}&range=${range}`;
-    
-    if (range === 'custom') {
-        const start = document.getElementById('startDate').value;
-        const end = document.getElementById('endDate').value;
-        url += `&start=${start}&end=${end}`;
+function exportReport(type) {
+    if (typeof XLSX === 'undefined') {
+        alert('Export library not loaded. Please refresh the page and try again.');
+        return;
     }
-    
-    window.location.href = url;
+    const wrap = document.querySelector('.rpt-printable');
+    if (!wrap) { alert('No report content found.'); return; }
+
+    // Get active section panel
+    const activePanel = wrap.querySelector('.sr-section-panel.active') || wrap;
+
+    // Temporarily make hidden shift blocks visible so innerText works
+    const hiddenBlocks = Array.from(activePanel.querySelectorAll('.sr-shift-block.hidden'));
+    hiddenBlocks.forEach(b => { b.style.display = 'block'; b.dataset.wasHidden = '1'; });
+
+    // Grab all tables with actual tbody rows
+    const tables = Array.from(activePanel.querySelectorAll('table')).filter(
+        t => t.querySelector('tbody tr')
+    );
+
+    // Restore hidden blocks
+    hiddenBlocks.forEach(b => { b.style.display = 'none'; delete b.dataset.wasHidden; });
+
+    if (!tables.length) { alert('No table data found to export.'); return; }
+
+    const section  = new URL(window.location).searchParams.get('section') || 'operations';
+    const dateFrom = document.querySelector('input[name="date_from"]')?.value || '';
+    const dateTo   = document.querySelector('input[name="date_to"]')?.value || '';
+    const filename = `Admin_Report_${section}_${dateFrom}_to_${dateTo}`;
+
+    if (type === 'csv') {
+        exportCSV(tables, filename);
+    } else {
+        exportExcel(tables, filename);
+    }
 }
 
-function exportReport() {
-    alert('Export functionality will be implemented. This will generate PDF/Excel reports.');
+function tableToAoA(table) {
+    const aoa = [];
+    // Headers
+    table.querySelectorAll('thead tr').forEach(tr => {
+        aoa.push([...tr.querySelectorAll('th')].map(th => th.innerText.trim()));
+    });
+    // Body
+    table.querySelectorAll('tbody tr').forEach(tr => {
+        aoa.push([...tr.querySelectorAll('td')].map(td => td.innerText.trim()));
+    });
+    // Footer
+    table.querySelectorAll('tfoot tr').forEach(tr => {
+        aoa.push([...tr.querySelectorAll('td')].map(td => td.innerText.trim()));
+    });
+    return aoa;
+}
+
+function exportExcel(tables, filename) {
+    const wb = XLSX.utils.book_new();
+    const usedNames = {};
+
+    tables.forEach((tbl, i) => {
+        // Get heading from nearest shift block
+        const block = tbl.closest('.sr-shift-block');
+        let sheetName = block?.querySelector('.sr-shift-heading')?.innerText?.trim()
+                      || `Sheet ${i + 1}`;
+        // Clean sheet name (Excel limit: 31 chars, no special chars)
+        sheetName = sheetName.replace(/[:\\\/?*\[\]]/g, '').substring(0, 31).trim() || `Sheet${i+1}`;
+        // Deduplicate sheet names
+        if (usedNames[sheetName]) {
+            usedNames[sheetName]++;
+            sheetName = (sheetName.substring(0, 28) + ' ' + usedNames[sheetName]).substring(0,31);
+        } else {
+            usedNames[sheetName] = 1;
+        }
+
+        const aoa = tableToAoA(tbl);
+        const ws  = XLSX.utils.aoa_to_sheet(aoa);
+        // Auto column widths
+        if (aoa.length && aoa[0]) {
+            ws['!cols'] = aoa[0].map((_, ci) => ({
+                wch: Math.min(45, Math.max(10, ...aoa.map(row => String(row[ci] ?? '').length)))
+            }));
+        }
+        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    });
+
+    XLSX.writeFile(wb, filename + '.xlsx');
+}
+
+function exportCSV(tables, filename) {
+    let csv = '';
+    tables.forEach((tbl, i) => {
+        const block   = tbl.closest('.sr-shift-block');
+        const heading = block?.querySelector('.sr-shift-heading')?.innerText?.trim();
+        if (heading) csv += '"' + heading.replace(/"/g, '""') + '"\n';
+        else if (i > 0) csv += '\n';
+        tableToAoA(tbl).forEach(row => {
+            csv += row.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',') + '\n';
+        });
+    });
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = filename + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+}
+
+function autoWidth(ws, aoa) {
+    if (!aoa.length) return;
+    const colWidths = aoa[0].map((_, ci) =>
+        Math.min(40, Math.max(10, ...aoa.map(row => String(row[ci] ?? '').length)))
+    );
+    ws['!cols'] = colWidths.map(w => ({ wch: w }));
+}
+
+function printReport() {
+    const wrap   = document.querySelector('.rpt-printable');
+    const active = wrap?.querySelector('.sr-section-panel.active') || wrap;
+    if (!active) { window.print(); return; }
+
+    // Reveal hidden shift blocks before printing
+    const hidden = active.querySelectorAll('.sr-shift-block.hidden');
+    hidden.forEach(b => b.style.display = 'block');
+
+    const w = window.open('', '_blank', 'width=900,height=700');
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Admin Report</title>
+    <style>
+        @page{size:legal portrait;margin:.3in .4in;}
+        *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;box-sizing:border-box;}
+        body{font-family:Arial,sans-serif;font-size:11px;color:#000;background:white;margin:0;padding:0;}
+        .sr-section-tabs{display:none !important;}
+        .sr-shift-block{display:block !important;}
+        .sr-shift-heading{font-size:12px;font-weight:700;text-transform:uppercase;padding:6px 0;border-bottom:1px solid #ccc;margin-bottom:8px;margin-top:16px;}
+        div[style*="text-align:center"]{text-align:center;padding:10px 0 8px;border-bottom:2px solid #000;margin-bottom:12px;}
+        table{width:100%;border-collapse:collapse;font-size:9.5px;margin-bottom:6px;}
+        thead tr{background:#f0f0f0 !important;border-top:2px solid #000;border-bottom:1px solid #999;}
+        thead th{padding:6px 5px;text-align:left;font-weight:700;font-size:9px;text-transform:uppercase;}
+        tbody tr{border-bottom:1px solid #ddd;}
+        tbody td{padding:5px;}
+        tfoot tr{border-top:2px solid #000;background:#f0f0f0 !important;}
+        tfoot td{padding:6px 5px;font-weight:700;}
+        .sr-empty{text-align:center;padding:12px;color:#888;font-style:italic;}
+        .sr-status,.sr-badge,.cr-badge,.cr-status,.fr-badge{padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700;}
+    </style></head><body>${active.innerHTML}</body></html>`);
+    w.document.close();
+    w.focus();
+    setTimeout(() => { w.print(); w.close(); }, 500);
+
+    // Restore hidden blocks
+    hidden.forEach(b => b.style.display = 'none');
 }
 </script>
 
-<?php include __DIR__ . '/../partials/footer.php'; ?>
+<?php require_once __DIR__ . '/../partials/footer.php'; ?>

@@ -1,7 +1,53 @@
 <?php
 /**
  * Daily Consolidation Report — Shift 1 + Shift 2 totals with real charts
+ * Works as both standalone page and included file
  */
+
+// Initialize for standalone access
+$is_standalone = !isset($date_start) || !isset($date_end) || !isset($pdo) || !isset($station_id);
+
+if ($is_standalone) {
+    // Standalone mode - setup environment
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        session_start();
+    }
+    
+    // Include required files
+    require_once __DIR__ . '/../../backend/lib.php';
+    require_once __DIR__ . '/../db_connect.php';
+    
+    // Check authentication
+    require_login();
+    
+    // Get user info
+    $current_user = current_user();
+    $user_role = role_key($current_user['role'] ?? 'staff');
+    
+    // Get station_id from user session
+    $station_id = user_station_id();
+    
+    // Check if user has station assigned
+    if (!$station_id && in_array($user_role, ['admin', 'manager', 'staff'])) {
+        render_no_station_page('admin_dashboard.php');
+    }
+    
+    // Get date range from GET parameters with defaults
+    $date_start = $_GET['date_from'] ?? date('Y-m-d');
+    $date_end = $_GET['date_to'] ?? date('Y-m-d');
+    
+    // Validate date format
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_start)) {
+        $date_start = date('Y-m-d');
+    }
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_end)) {
+        $date_end = date('Y-m-d');
+    }
+    
+    // Include header for standalone page
+    $page_id = 'admin_reports';
+    require_once __DIR__ . '/../../partials/header.php';
+}
 
 $daily = [];
 try {
@@ -178,3 +224,10 @@ foreach($cards as [$l,$v,$s,$c1,$c2]): ?>
 })();
 </script>
 <?php endif; ?>
+
+<?php
+// Include footer if running in standalone mode
+if ($is_standalone) {
+    require_once __DIR__ . '/../../partials/footer.php';
+}
+?>

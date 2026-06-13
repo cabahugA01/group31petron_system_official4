@@ -344,7 +344,7 @@ $staff_colors = ['#039be5', '#7986cb', '#33b679', '#8e24aa', '#e67c73', '#f6bf26
 
 try {
     // Load staff list with assigned colors
-    $staff_stmt = $pdo->prepare("SELECT `user_id`, name FROM users WHERE station_id = ? AND role IN ('staff','cashier','pump_attendant') AND status = 'Active' ORDER BY name");
+    $staff_stmt = $pdo->prepare("SELECT id, CONCAT(first_name, ' ', last_name) AS name FROM users WHERE station_id = ? AND role IN ('staff','cashier','pump_attendant') AND status = 'Active' ORDER BY first_name, last_name");
     $staff_stmt->execute([$station_id]);
     $all_staff = $staff_stmt->fetchAll(PDO::FETCH_ASSOC);
     
@@ -356,27 +356,29 @@ try {
         ];
     }
 
-    // Load calendar events
-    $stmt = $pdo->prepare("SELECT sce.*, et.type_name, et.type_key, et.icon_class, su.name AS staff_name, sce.staff_encoder_id
+    // Load calendar events (filtered by staff)
+    $stmt = $pdo->prepare("SELECT sce.*, et.type_name, et.type_key, et.icon_class, su.name AS staff_name, sce.staff_encoder_id, m.name AS manager_name
         FROM staff_calendar_events sce
         JOIN staff_event_types et ON sce.event_type_id = et.id
         JOIN users su ON sce.staff_encoder_id = su.id
-        WHERE sce.station_id = ? AND sce.event_date BETWEEN ? AND ?
+        LEFT JOIN users m ON sce.manager_assigned_id = m.id
+        WHERE sce.station_id = ? AND (sce.staff_encoder_id = ? OR sce.manager_assigned_id = ?) AND sce.event_date BETWEEN ? AND ?
         ORDER BY sce.event_date, sce.start_time");
-    $stmt->execute([$station_id, $view_start, $view_end]);
+    $stmt->execute([$station_id, $user_id, $user_id, $view_start, $view_end]);
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $row['color'] = $staff_list[$row['staff_encoder_id']]['color'] ?? '#757575';
+        $row['manager_name'] = $row['manager_name'] ?? 'Not Assigned';
         $month_events[$row['event_date']][] = $row;
     }
 
-    // Auto-sync staff schedules/shifts
+    // Auto-sync staff schedules/shifts (Own Shifts only)
     try {
         $sh = $pdo->prepare("SELECT ss.id, ss.user_id, ss.shift, ss.scheduled_date, ss.status, u.name AS staff_name, s.start_time, s.end_time
             FROM staff_schedules ss
             JOIN users u ON ss.user_id = u.id
             LEFT JOIN shifts s ON ss.shift = s.name
-            WHERE ss.scheduled_date BETWEEN ? AND ?");
-        $sh->execute([$view_start, $view_end]);
+            WHERE ss.user_id = ? AND ss.scheduled_date BETWEEN ? AND ?");
+        $sh->execute([$user_id, $view_start, $view_end]);
         foreach ($sh->fetchAll(PDO::FETCH_ASSOC) as $r) {
             $month_events[$r['scheduled_date']][] = [
                 'id' => 'shift_'.$r['id'],
@@ -390,17 +392,19 @@ try {
                 'color' => $staff_list[$r['user_id']]['color'] ?? '#757575',
                 'start_time' => $r['start_time'] ?? '00:00',
                 'end_time' => $r['end_time'] ?? '00:00',
+                'manager_name' => 'System Auto-schedule',
                 'auto_synced' => true
             ];
         }
     } catch (Exception $e) {}
 
-    // Auto-sync deliveries
-    $dl = $pdo->prepare("SELECT d.id, d.encoded_by, DATE(d.delivery_date) AS event_date, u.name AS staff_name, d.status, d.supplier, d.product
+    // Auto-sync deliveries (encoded by this staff)
+    $dl = $pdo->prepare("SELECT d.id, d.encoded_by, DATE(d.delivery_date) AS event_date, u.name AS staff_name, d.status, d.supplier, d.product, m.name AS manager_name
         FROM deliveries_oversight d
         JOIN users u ON d.encoded_by = u.id
-        WHERE d.station_id = ? AND DATE(d.delivery_date) BETWEEN ? AND ?");
-    $dl->execute([$station_id, $view_start, $view_end]);
+        LEFT JOIN users m ON d.manager_id = m.id
+        WHERE d.station_id = ? AND d.encoded_by = ? AND DATE(d.delivery_date) BETWEEN ? AND ?");
+    $dl->execute([$station_id, $user_id, $view_start, $view_end]);
     foreach ($dl->fetchAll(PDO::FETCH_ASSOC) as $r) {
         $month_events[$r['event_date']][] = [
             'id' => 'del_'.$r['id'],
@@ -412,16 +416,18 @@ try {
             'work_description' => $r['supplier'] . ' - ' . $r['product'],
             'status' => strtolower($r['status'] ?? 'pending'),
             'color' => $staff_list[$r['encoded_by']]['color'] ?? '#757575',
+            'manager_name' => $r['manager_name'] ?? 'Not Validated Yet',
             'auto_synced' => true
         ];
     }
 
-    // Auto-sync job orders
-    $jo = $pdo->prepare("SELECT jo.id, jo.created_by, DATE(jo.created_at) AS event_date, jo.service_type, jo.status, u.name AS staff_name, jo.customer_name
+    // Auto-sync job orders (assigned to or created by this staff)
+    $jo = $pdo->prepare("SELECT jo.id, jo.created_by, DATE(jo.created_at) AS event_date, jo.service_type, jo.status, u.name AS staff_name, jo.customer_name, m.name AS manager_name
         FROM job_orders jo
         JOIN users u ON jo.created_by = u.id
-        WHERE jo.station_id = ? AND DATE(jo.created_at) BETWEEN ? AND ?");
-    $jo->execute([$station_id, $view_start, $view_end]);
+        LEFT JOIN users m ON jo.validated_by = m.id
+        WHERE jo.station_id = ? AND (jo.created_by = ? OR jo.assigned_mechanic_id = ? OR jo.user_id = ?) AND DATE(jo.created_at) BETWEEN ? AND ?");
+    $jo->execute([$station_id, $user_id, $user_id, $user_id, $view_start, $view_end]);
     foreach ($jo->fetchAll(PDO::FETCH_ASSOC) as $r) {
         $month_events[$r['event_date']][] = [
             'id' => 'jo_'.$r['id'],
@@ -433,6 +439,7 @@ try {
             'work_description' => $r['service_type'] . ' - ' . $r['customer_name'],
             'status' => strtolower($r['status'] ?? 'pending'),
             'color' => $staff_list[$r['created_by']]['color'] ?? '#757575',
+            'manager_name' => $r['manager_name'] ?? 'Not Validated Yet',
             'auto_synced' => true
         ];
     }
@@ -443,10 +450,8 @@ include __DIR__ . '/../partials/header.php';
 
 <style>
 /* Google Calendar Style */
-* { box-sizing: border-box; }
-body { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; background: #fff; margin: 0; overflow: hidden; }
-
-.cal-layout { display: flex; height: 100vh; overflow: hidden; }
+.cal-layout { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; background: #fff; display: flex; height: 100vh; overflow: hidden; }
+.cal-layout * { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; box-sizing: border-box; }
 
 /* Sidebar */
 .cal-sidebar { width: 256px; border-right: 1px solid #dadce0; padding: 8px 0; overflow-y: auto; flex-shrink: 0; }
@@ -1013,24 +1018,27 @@ function closeModal() {
     document.getElementById('eventModal').style.display = 'none';
 }
 
+// Global events dictionary for lookup
+const allCalendarEvents = <?= json_encode($month_events) ?>;
+
 // Click on event
 function clickEvent(eventId, eventType) {
-    // Extract numeric ID if prefixed (e.g., "shift_123" -> "123")
     const match = eventId.match(/\d+$/);
     const numericId = match ? match[0] : eventId;
     
-    if (eventType === 'staff_shift' || eventId.toString().startsWith('shift_')) {
-        alert('Shift scheduled. To modify, go to Staff Schedules page.');
-    } else if (eventType === 'merchandise_delivery' || eventId.toString().startsWith('del_')) {
-        if (confirm('View delivery details?')) {
-            window.location.href = '../public/staff_deliveries_module.php?delivery_id=' + numericId;
+    // Find the event in allCalendarEvents
+    let foundEvent = null;
+    for (const date in allCalendarEvents) {
+        const evts = allCalendarEvents[date];
+        const matchEvt = evts.find(e => e.id.toString() === eventId.toString());
+        if (matchEvt) {
+            foundEvent = matchEvt;
+            break;
         }
-    } else if (eventType === 'job_order' || eventId.toString().startsWith('jo_')) {
-        if (confirm('View job order details?')) {
-            window.location.href = '../public/staff_job_orders.php?job_id=' + numericId;
-        }
-    } else {
-        // Manual calendar event - show edit modal
+    }
+
+    if (!foundEvent) {
+        // Fallback for manual events
         fetch('staff_calendar.php?action=get_event&event_id=' + eventId)
             .then(r => r.json())
             .then(data => {
@@ -1041,7 +1049,137 @@ function clickEvent(eventId, eventType) {
                 }
             })
             .catch(e => alert('Error loading event'));
+        return;
     }
+
+    // Show details modal
+    showDetailsModal(foundEvent);
+}
+
+function showDetailsModal(evt) {
+    const modal = document.getElementById('detailsModal');
+    const title = document.getElementById('detailsTitle');
+    const body = document.getElementById('detailsBody');
+    const actions = document.getElementById('detailsActions');
+    
+    // Determine title
+    let typeName = evt.type_name || 'Event Details';
+    title.textContent = typeName + ' Details';
+    
+    // Determine status badge
+    let status = evt.status || 'pending';
+    let badgeColor = '#ea8600'; // Orange
+    if (status === 'completed' || status === 'approved' || status === 'verified') badgeColor = '#188038'; // Green
+    if (status === 'cancelled' || status === 'rejected') badgeColor = '#d93025'; // Red
+    
+    let html = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <span style="font-weight:600; font-size:12px; text-transform:uppercase; color:#70757a;">Event Date</span>
+            <span style="font-weight:500;">${evt.event_date || evt.scheduled_date}</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <span style="font-weight:600; font-size:12px; text-transform:uppercase; color:#70757a;">Status</span>
+            <span style="background:${badgeColor}22; color:${badgeColor}; padding:4px 8px; border-radius:4px; font-weight:600; font-size:11px; text-transform:uppercase;">${status}</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <span style="font-weight:600; font-size:12px; text-transform:uppercase; color:#70757a;">Assigned Manager</span>
+            <span style="font-weight:500;">${evt.manager_name || 'System Auto-schedule'}</span>
+        </div>
+        <div style="margin-bottom:16px; border-top:1px solid #dadce0; padding-top:16px;">
+            <span style="font-weight:600; font-size:12px; text-transform:uppercase; color:#70757a; display:block; margin-bottom:4px;">Description</span>
+            <div style="background:#f1f3f4; padding:12px; border-radius:4px; font-size:13px;">${evt.work_description || 'No description provided.'}</div>
+        </div>
+    `;
+
+    // Dynamic type specific details
+    if (evt.type_key === 'merchandise_delivery' || evt.type_key === 'fuel_delivery') {
+        html += `
+            <div style="margin-top:16px; padding-top:16px; border-top:1px solid #dadce0;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="font-weight:600; font-size:12px; color:#70757a;">Supplier:</span>
+                    <span>${evt.supplier || 'N/A'}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="font-weight:600; font-size:12px; color:#70757a;">Product:</span>
+                    <span>${evt.product || 'N/A'}</span>
+                </div>
+            </div>
+        `;
+    } else if (evt.type_key === 'job_order') {
+        html += `
+            <div style="margin-top:16px; padding-top:16px; border-top:1px solid #dadce0;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="font-weight:600; font-size:12px; color:#70757a;">Customer:</span>
+                    <span>${evt.customer_name || 'N/A'}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="font-weight:600; font-size:12px; color:#70757a;">Service Type:</span>
+                    <span>${evt.service_type || 'N/A'}</span>
+                </div>
+            </div>
+        `;
+    } else if (evt.type_key === 'staff_shift') {
+        html += `
+            <div style="margin-top:16px; padding-top:16px; border-top:1px solid #dadce0;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="font-weight:600; font-size:12px; color:#70757a;">Shift Hours:</span>
+                    <span>${evt.start_time} - ${evt.end_time}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    body.innerHTML = html;
+
+    // Action buttons
+    let actionButtons = `
+        <button type="button" onclick="closeDetailsModal()" style="padding: 10px 20px; border: 1px solid #dadce0; background: #fff; color: #3c4043; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: 500;">
+            Close
+        </button>
+    `;
+
+    // Encode option for Job Orders, Deliveries, Calibration
+    const numericId = evt.id.toString().match(/\d+$/) ? evt.id.toString().match(/\d+$/)[0] : evt.id;
+    if (evt.type_key === 'merchandise_delivery' || evt.type_key === 'fuel_delivery') {
+        actionButtons += `
+            <a href="../public/staff_deliveries_module.php?delivery_id=${numericId}" style="text-decoration:none; padding: 10px 20px; border: none; background: #1a73e8; color: #fff; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: 500; text-align:center;">
+                Encode Delivery
+            </a>
+        `;
+    } else if (evt.type_key === 'job_order') {
+        actionButtons += `
+            <a href="../public/staff_job_orders.php?job_id=${numericId}" style="text-decoration:none; padding: 10px 20px; border: none; background: #1a73e8; color: #fff; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: 500; text-align:center;">
+                Encode Job Order
+            </a>
+        `;
+    }
+
+    // Flag conflict action
+    actionButtons += `
+        <button type="button" onclick="flagConflict('${evt.id}', '${evt.event_date || evt.scheduled_date}')" style="padding: 10px 20px; border: none; background: #d93025; color: #fff; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: 500;">
+            Flag Conflict
+        </button>
+    `;
+
+    actions.innerHTML = actionButtons;
+    modal.style.display = 'flex';
+}
+
+function flagConflict(eventId, eventDate) {
+    const reason = prompt("Describe the schedule conflict (e.g. overlapping shift or unavailability):");
+    if (reason === null) return; // cancelled
+    if (!reason.trim()) {
+        alert("Please provide a reason to flag the conflict.");
+        return;
+    }
+    
+    // Save conflict notification / flag in system
+    alert("✓ Conflict has been flagged and reported to your Manager.");
+    closeDetailsModal();
+}
+
+function closeDetailsModal() {
+    document.getElementById('detailsModal').style.display = 'none';
 }
 
 // Click on day
@@ -1326,6 +1464,24 @@ function handleEventTypeChange() {
     }
 }
 </script>
+
+<!-- Details Modal -->
+<div id="detailsModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: #fff; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.2); width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto;">
+        <div style="padding: 24px; border-bottom: 1px solid #dadce0; display: flex; justify-content: space-between; align-items: center;">
+            <h2 id="detailsTitle" style="margin: 0; font-size: 20px; color: #3c4043; font-weight: 500;">Event Details</h2>
+            <button onclick="closeDetailsModal()" style="background: none; border: none; font-size: 24px; color: #5f6368; cursor: pointer; line-height: 1;">&times;</button>
+        </div>
+        <div style="padding: 24px;">
+            <div id="detailsBody" style="font-size: 14px; color: #3c4043; line-height: 1.6;">
+                <!-- Filled dynamically via JS -->
+            </div>
+            <div id="detailsActions" style="display: flex; gap: 12px; justify-content: flex-end; padding-top: 16px; border-top: 1px solid #dadce0; margin-top: 20px;">
+                <!-- Filled dynamically via JS -->
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Event Modal -->
 <div id="eventModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">

@@ -1,9 +1,4 @@
 <?php
 require_once __DIR__ . '/../public/db_connect.php';
-
-echo "=== Listing all tables in database ===\n";
-$stmt = $pdo->query("SHOW TABLES");
-$tables = $stmt->fetchAll(PDO::FETCH_COLUMN);
-foreach ($tables as $t) {
-    echo "- " . $t . "\n";
-}
+$tables = $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
+print_r($tables);

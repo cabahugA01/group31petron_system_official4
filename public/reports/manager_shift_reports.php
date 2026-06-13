@@ -1,7 +1,8 @@
 <?php
 /**
- * SHIFT REPORTS – COMPLETE CONTENTS
- * Matches staff_reports.php professional design with centered header + section tabs
+ * MANAGER SHIFT REPORTS – COMPLETE CONTENTS
+ * Matches admin_shift_reports.php professional design with centered header + section tabs
+ * Blue theme for Manager role
  */
 
 $is_standalone = !isset($date_start) || !isset($date_end) || !isset($pdo) || !isset($station_id);
@@ -12,15 +13,15 @@ if ($is_standalone) {
     require_once __DIR__ . '/../db_connect.php';
     require_login();
     $current_user = current_user();
-    $user_role    = role_key($current_user['role'] ?? 'staff');
+    $user_role    = role_key($current_user['role'] ?? 'manager');
     $station_id   = user_station_id();
-    if (!$station_id && in_array($user_role, ['admin','manager','staff']))
-        render_no_station_page('admin_dashboard.php');
+    if (!$station_id && in_array($user_role, ['manager','admin','staff']))
+        render_no_station_page('manager_dashboard.php');
     $date_start = $_GET['date_from'] ?? date('Y-m-01');
     $date_end   = $_GET['date_to']   ?? date('Y-m-d');
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_start)) $date_start = date('Y-m-d');
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_end))   $date_end   = date('Y-m-d');
-    $page_id = 'admin_reports';
+    $page_id = 'manager_reports';
     require_once __DIR__ . '/../../partials/header.php';
 }
 
@@ -48,7 +49,7 @@ $shifts = [
 ?>
 
 <style>
-/* Shift Reports – matches staff_reports.php design */
+/* Shift Reports – matches staff_reports.php design with Manager blue theme */
 .sr-report-title {
     text-align: center;
     padding: 20px 0 14px;
@@ -101,7 +102,7 @@ $shifts = [
 .sr-section-tab.active {
     background: #fff;
     color: #00264D;
-    border-bottom-color: #00264D;
+    border-bottom-color: #002F70;
     font-weight: 800;
 }
 /* Shift Filter Buttons */
@@ -148,16 +149,17 @@ $shifts = [
 .sr-table thead tr {
     border-top: 2px solid #00264D;
     border-bottom: 1px solid #e2e8f0;
-    background: #f8f9fa;
+    background: #002F70;
 }
 .sr-table thead th {
     padding: 10px 8px;
     text-align: left;
     font-weight: 700;
-    color: #00264D;
+    color: #ffffff;
     font-size: 11px;
     text-transform: uppercase;
     white-space: nowrap;
+    background: #002F70;
 }
 .sr-table tbody tr { border-bottom: 1px solid #f1f5f9; }
 .sr-table tbody tr:hover { background: #f8fafc; }
@@ -191,8 +193,6 @@ $shifts = [
     @page { size: legal portrait; margin: 0.3in 0.4in; }
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     html, body { background: white !important; padding: 0 !important; margin: 0 !important; }
-
-    /* Hide all system UI */
     .sidebar, aside, nav, .navbar, .header, .main-header, body > header,
     .main-footer, .fixed-footer, .footer-sidebar-area, .main,
     .sr-section-tabs, .rpt-filter-bar, .rpt-export-actions,
@@ -201,8 +201,6 @@ $shifts = [
         display: none !important;
         visibility: hidden !important;
     }
-
-    /* Reset layout so report fills page */
     .main, .content-wrapper, .wrapper {
         margin: 0 !important; padding: 0 !important;
         left: 0 !important; top: 0 !important;
@@ -210,18 +208,12 @@ $shifts = [
     }
     .reports-wrapper { box-shadow: none !important; border: none !important; }
     .rpt-content { padding: 0 !important; }
-
-    /* Show all shifts when printing */
     .sr-shift-block.hidden { display: block !important; }
-
-    /* Table print styles */
     .sr-tbl { font-size: 10px !important; page-break-inside: auto !important; }
     .sr-tbl thead th { font-size: 9px !important; padding: 6px 5px !important; }
     .sr-tbl tbody td { font-size: 10px !important; padding: 5px !important; }
     .sr-tbl tfoot td { font-size: 10px !important; padding: 6px 5px !important; }
     .sr-shift-block { page-break-inside: avoid !important; margin-bottom: 16px !important; }
-
-    /* Report header stays visible */
     .sr-section-tabs { display: none !important; }
 }
 </style>
@@ -320,7 +312,7 @@ function srFetch($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shi
                 $q->execute([$station_id, $date_start, $date_end]);
                 $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-                // Fallback without item_type filter (in case item_type column has different values)
+                // Fallback without item_type filter
                 if (empty($rows)) {
                     $q2 = $pdo->prepare("
                         SELECT
@@ -412,7 +404,7 @@ function srFetch($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shi
                 $q->execute([$station_id, $date_start, $date_end]);
                 $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-                // Also include merchandise payments
+                // Include merchandise payments
                 try {
                     $q2 = $pdo->prepare("
                         SELECT
@@ -434,7 +426,7 @@ function srFetch($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shi
                     ");
                     $q2->execute([$station_id, $date_start, $date_end]);
                     $merch_pay = $q2->fetchAll(PDO::FETCH_ASSOC) ?: [];
-                    // Merge with fuel payments
+                    // Merge
                     $merged = [];
                     foreach (array_merge($rows, $merch_pay) as $r) {
                         $m = $r['mode_of_payment'];
@@ -444,7 +436,7 @@ function srFetch($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shi
                     }
                     usort($merged, fn($a,$b) => $b['amount'] <=> $a['amount']);
                     $rows = array_values($merged);
-                } catch (Exception $e2) { /* keep fuel-only rows */ }
+                } catch (Exception $e2) { }
                 break;
 
             case 'job_orders':
@@ -475,13 +467,12 @@ function srFetch($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shi
                 break;
 
             case 'customers':
-                // Check if customer_id FK exists in merchandise_transactions
+                // Check columns
                 try {
                     $ck = $pdo->query("SHOW COLUMNS FROM merchandise_transactions LIKE 'customer_id'");
                     $has_cid = $ck && $ck->rowCount() > 0;
                 } catch (Exception $e) { $has_cid = false; }
 
-                // Check loyalty_points or points column
                 try {
                     $lk = $pdo->query("SHOW COLUMNS FROM customers LIKE 'loyalty_points'");
                     $has_lp = $lk && $lk->rowCount() > 0;
@@ -556,7 +547,7 @@ function srFetch($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shi
 }
 ?>
 
-<!-- Shift Filter Buttons (inside each panel) -->
+<!-- Section Panels -->
 <?php foreach ($tabs as $sec_key => $tab): ?>
 <div id="sr-panel-<?= $sec_key ?>" class="sr-section-panel <?= $section === $sec_key ? 'active' : '' ?>">
 
@@ -589,7 +580,7 @@ function srFetch($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shi
         </div>
     </div>
 
-    <!-- Section Heading only -->
+    <!-- Section Heading -->
     <div style="padding:14px 0 10px;border-bottom:1px solid #e2e8f0;margin-bottom:18px;">
         <div style="font-size:14px;font-weight:700;color:#00264D;text-transform:uppercase;letter-spacing:0.3px;">
             <i class="<?= $tab['ico'] ?>"></i> <?= $tab['label'] ?>
@@ -623,11 +614,13 @@ function srFetch($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shi
                 </tr>
             <?php endforeach; endif; ?>
             </tbody>
-            <?php if(!empty($rows)): ?>
+            <?php if (!empty($rows)): ?>
             <tfoot><tr>
-                <td colspan="4">TOTAL</td>
-                <td><?=number_format($tl,2)?> L</td><td></td>
-                <td>₱<?=number_format($ta,2)?></td><td></td>
+                <td colspan="4" style="text-align:right;"><strong>SHIFT TOTALS:</strong></td>
+                <td><strong><?=number_format($tl,2)?> L</strong></td>
+                <td></td>
+                <td><strong>₱<?=number_format($ta,2)?></strong></td>
+                <td></td>
             </tr></tfoot>
             <?php endif; ?>
         </table>
@@ -635,14 +628,15 @@ function srFetch($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shi
         <?php elseif ($sec_key === 'merchandise'): ?>
         <table class="sr-table">
             <thead><tr>
-                <th>Category / Product</th><th>Beg. Stock</th><th>Stock-In</th>
-                <th>Stock-Out</th><th>End Stock</th><th>Unit Price</th><th>Amount</th><th>Encoder</th>
+                <th>Category</th><th>Product</th><th>Beg Stock</th><th>Stock In</th>
+                <th>Stock Out</th><th>End Stock</th><th>Unit Price</th><th>Amount</th><th>Encoder</th>
             </tr></thead>
             <tbody>
-            <?php if (empty($rows)): ?><tr><td colspan="8" class="sr-empty">No merchandise sales for this shift</td></tr>
+            <?php if (empty($rows)): ?><tr><td colspan="9" class="sr-empty">No merchandise sales for this shift</td></tr>
             <?php else: $ta=0; foreach($rows as $r): $ta+=$r['amount']; ?>
                 <tr>
-                    <td><?=htmlspecialchars($r['category'])?> / <?=htmlspecialchars($r['product_name'])?></td>
+                    <td><?=htmlspecialchars($r['category'])?></td>
+                    <td><?=htmlspecialchars($r['product_name'])?></td>
                     <td><?=number_format($r['beg_stock'])?></td>
                     <td><?=number_format($r['stock_in'])?></td>
                     <td><?=number_format($r['stock_out'])?></td>
@@ -653,9 +647,11 @@ function srFetch($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shi
                 </tr>
             <?php endforeach; endif; ?>
             </tbody>
-            <?php if(!empty($rows)): ?>
+            <?php if (!empty($rows)): ?>
             <tfoot><tr>
-                <td colspan="6">TOTAL</td><td>₱<?=number_format($ta,2)?></td><td></td>
+                <td colspan="7" style="text-align:right;"><strong>SHIFT TOTALS:</strong></td>
+                <td><strong>₱<?=number_format($ta,2)?></strong></td>
+                <td></td>
             </tr></tfoot>
             <?php endif; ?>
         </table>
@@ -663,11 +659,11 @@ function srFetch($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shi
         <?php elseif ($sec_key === 'service_income'): ?>
         <table class="sr-table">
             <thead><tr>
-                <th>Service Type</th><th>Labor Fee</th><th>Parts Used</th><th>Total Service Amount</th><th>Encoder</th>
+                <th>Service Type</th><th>Labor Fee</th><th>Parts Used</th><th>Total Amount</th><th>Encoder</th>
             </tr></thead>
             <tbody>
             <?php if (empty($rows)): ?><tr><td colspan="5" class="sr-empty">No service income for this shift</td></tr>
-            <?php else: $tl=0;$tp=0;$ta=0; foreach($rows as $r): $tl+=$r['labor_fee'];$tp+=$r['parts_used'];$ta+=$r['total_amount']; ?>
+            <?php else: $ta=0; foreach($rows as $r): $ta+=$r['total_amount']; ?>
                 <tr>
                     <td><?=htmlspecialchars($r['service_type'])?></td>
                     <td>₱<?=number_format($r['labor_fee'],2)?></td>
@@ -677,10 +673,11 @@ function srFetch($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shi
                 </tr>
             <?php endforeach; endif; ?>
             </tbody>
-            <?php if(!empty($rows)): ?>
+            <?php if (!empty($rows)): ?>
             <tfoot><tr>
-                <td>TOTAL</td><td>₱<?=number_format($tl,2)?></td>
-                <td>₱<?=number_format($tp,2)?></td><td>₱<?=number_format($ta,2)?></td><td></td>
+                <td colspan="3" style="text-align:right;"><strong>SHIFT TOTALS:</strong></td>
+                <td><strong>₱<?=number_format($ta,2)?></strong></td>
+                <td></td>
             </tr></tfoot>
             <?php endif; ?>
         </table>
@@ -691,8 +688,8 @@ function srFetch($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shi
                 <th>Mode of Payment</th><th>Transaction Count</th><th>Amount</th>
             </tr></thead>
             <tbody>
-            <?php if (empty($rows)): ?><tr><td colspan="3" class="sr-empty">No payment transactions for this shift</td></tr>
-            <?php else: $tc=0;$ta=0; foreach($rows as $r): $tc+=$r['txn_count'];$ta+=$r['amount']; ?>
+            <?php if (empty($rows)): ?><tr><td colspan="3" class="sr-empty">No payment records for this shift</td></tr>
+            <?php else: $ta=0; foreach($rows as $r): $ta+=$r['amount']; ?>
                 <tr>
                     <td><?=htmlspecialchars($r['mode_of_payment'])?></td>
                     <td><?=number_format($r['txn_count'])?></td>
@@ -700,27 +697,25 @@ function srFetch($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shi
                 </tr>
             <?php endforeach; endif; ?>
             </tbody>
-            <?php if(!empty($rows)): ?>
+            <?php if (!empty($rows)): ?>
             <tfoot><tr>
-                <td>TOTAL</td><td><?=number_format($tc)?></td><td>₱<?=number_format($ta,2)?></td>
+                <td style="text-align:right;"><strong>SHIFT TOTALS:</strong></td>
+                <td></td>
+                <td><strong>₱<?=number_format($ta,2)?></strong></td>
             </tr></tfoot>
             <?php endif; ?>
         </table>
 
-        <?php elseif ($sec_key === 'job_orders'): 
-            $status_colors=['Pending'=>'#f59e0b','In Progress'=>'#3b82f6','Completed'=>'#22c55e','Cancelled'=>'#ef4444'];
-        ?>
+        <?php elseif ($sec_key === 'job_orders'): ?>
         <table class="sr-table">
             <thead><tr>
-                <th>Status</th><th>Service Type</th><th>Parts Used</th>
-                <th>Labor Fee</th><th>Total Service Amount</th><th>Encoder</th>
+                <th>Status</th><th>Service Type</th><th>Parts Used</th><th>Labor Fee</th><th>Total Amount</th><th>Encoder</th>
             </tr></thead>
             <tbody>
             <?php if (empty($rows)): ?><tr><td colspan="6" class="sr-empty">No job orders for this shift</td></tr>
-            <?php else: $tp=0;$tl=0;$ta=0; foreach($rows as $r): $tp+=$r['parts_used'];$tl+=$r['labor_fee'];$ta+=$r['total_amount'];
-                $sc=$status_colors[$r['status']]??'#64748b'; ?>
+            <?php else: $ta=0; foreach($rows as $r): $ta+=$r['total_amount']; ?>
                 <tr>
-                    <td><span class="sr-status" style="background:<?=$sc?>"><?=htmlspecialchars($r['status'])?></span></td>
+                    <td><?=htmlspecialchars($r['status'])?></td>
                     <td><?=htmlspecialchars($r['service_type'])?></td>
                     <td>₱<?=number_format($r['parts_used'],2)?></td>
                     <td>₱<?=number_format($r['labor_fee'],2)?></td>
@@ -729,12 +724,11 @@ function srFetch($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shi
                 </tr>
             <?php endforeach; endif; ?>
             </tbody>
-            <?php if(!empty($rows)): ?>
+            <?php if (!empty($rows)): ?>
             <tfoot><tr>
-                <td colspan="2">TOTAL</td>
-                <td>₱<?=number_format($tp,2)?></td>
-                <td>₱<?=number_format($tl,2)?></td>
-                <td>₱<?=number_format($ta,2)?></td><td></td>
+                <td colspan="4" style="text-align:right;"><strong>SHIFT TOTALS:</strong></td>
+                <td><strong>₱<?=number_format($ta,2)?></strong></td>
+                <td></td>
             </tr></tfoot>
             <?php endif; ?>
         </table>
@@ -742,62 +736,46 @@ function srFetch($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shi
         <?php elseif ($sec_key === 'customers'): ?>
         <table class="sr-table">
             <thead><tr>
-                <th>Customer Name / ID</th><th>Transactions Made</th><th>Balance</th><th>Loyalty Points</th>
+                <th>Customer Name</th><th>Customer Ref</th><th>Transaction Count</th><th>Balance</th><th>Loyalty Points</th>
             </tr></thead>
             <tbody>
-            <?php if (empty($rows)): ?><tr><td colspan="4" class="sr-empty">No customer transactions for this shift</td></tr>
-            <?php else: $tt=0;$tb=0;$tlp=0; foreach($rows as $r): $tt+=$r['txn_count'];$tb+=$r['balance'];$tlp+=$r['loyalty_points']; ?>
+            <?php if (empty($rows)): ?><tr><td colspan="5" class="sr-empty">No customer transactions for this shift</td></tr>
+            <?php else: foreach($rows as $r): ?>
                 <tr>
-                    <td><?=htmlspecialchars($r['customer_name'])?> / <?=htmlspecialchars($r['customer_ref'])?></td>
+                    <td><?=htmlspecialchars($r['customer_name'])?></td>
+                    <td><?=htmlspecialchars($r['customer_ref'])?></td>
                     <td><?=number_format($r['txn_count'])?></td>
                     <td>₱<?=number_format($r['balance'],2)?></td>
-                    <td><?=number_format($r['loyalty_points'])?> pts</td>
+                    <td><?=number_format($r['loyalty_points'])?></td>
                 </tr>
             <?php endforeach; endif; ?>
             </tbody>
-            <?php if(!empty($rows)): ?>
-            <tfoot><tr>
-                <td>TOTAL</td><td><?=number_format($tt)?></td>
-                <td>₱<?=number_format($tb,2)?></td><td><?=number_format($tlp)?> pts</td>
-            </tr></tfoot>
-            <?php endif; ?>
         </table>
+
         <?php endif; ?>
+    </div>
+    <?php endforeach; ?>
 
-    </div><!-- end sr-shift-block -->
-    <?php endforeach; // shifts ?>
-
-</div><!-- end sr-panel -->
-<?php endforeach; // tabs ?>
+</div>
+<?php endforeach; ?>
 
 <script>
-function srSwitchSection(key) {
-    // Update section panels
+function srSwitchSection(sectionKey) {
+    // Hide all panels
     document.querySelectorAll('.sr-section-panel').forEach(p => p.classList.remove('active'));
-    document.querySelectorAll('.sr-section-tab').forEach(t => t.classList.remove('active'));
-    const panel = document.getElementById('sr-panel-' + key);
+    // Show selected panel
+    const panel = document.getElementById('sr-panel-' + sectionKey);
     if (panel) panel.classList.add('active');
-    event.currentTarget.classList.add('active');
-}
-
-function srFilterShift(shift, section) {
-    // Update shift buttons inside this panel
-    const panel = document.getElementById('sr-panel-' + section);
-    if (!panel) return;
-    panel.querySelectorAll('.sr-shift-btn').forEach(b => b.classList.remove('active'));
-    event.currentTarget.classList.add('active');
-
-    // Show/hide shift blocks
-    panel.querySelectorAll('.sr-shift-block').forEach(block => {
-        if (shift === 0) {
-            block.classList.remove('hidden');
-        } else {
-            block.dataset.shift == shift
-                ? block.classList.remove('hidden')
-                : block.classList.add('hidden');
-        }
-    });
+    
+    // Update tab buttons
+    document.querySelectorAll('.sr-section-tab').forEach(btn => btn.classList.remove('active'));
+    event.target.closest('.sr-section-tab').classList.add('active');
+    
+    // Update URL without reload
+    const url = new URL(window.location);
+    url.searchParams.set('section', sectionKey);
+    window.history.pushState({}, '', url);
 }
 </script>
 
-<?php if ($is_standalone): require_once __DIR__ . '/../../partials/footer.php'; endif; ?>
+<?php if ($is_standalone) require_once __DIR__ . '/../../partials/footer.php'; ?>

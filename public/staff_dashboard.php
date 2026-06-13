@@ -660,7 +660,7 @@ include __DIR__ . '/../partials/header.php';
             max-width: 100%;
             margin: 0 auto;
             position: relative;
-            padding-top: 35px; /* Prevent overlap with tall fixed header */
+            padding-top: 0; /* Removed large top space */
         }
         
         .header-section {
@@ -1086,10 +1086,6 @@ include __DIR__ . '/../partials/header.php';
                     <?= date('F j, Y', strtotime($selected_date)) ?>
                 </span>
                 <?php if ($selected_date !== date('Y-m-d')): ?>
-                    <span style="background: #e2e8f0; color: #475569; border: 1px solid #cbd5e1; padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; gap: 5px;">
-                        <span style="width: 8px; height: 8px; background: #f59e0b; border-radius: 50%; display: inline-block;"></span>
-                        Showing Latest Active Shift Data
-                    </span>
                 <?php endif; ?>
             </div>
             <form method="GET" style="display: flex; align-items: center; gap: 8px; margin: 0; flex-wrap: wrap;">
@@ -1263,12 +1259,47 @@ include __DIR__ . '/../partials/header.php';
                     <?php endif; ?>
                 </div>
 
+                <!-- Fuel Tank Utilization Chart -->
+                <?php if (!empty($shift1_data['fuel_levels'])): ?>
+                <div class="chart-card" style="margin:20px 0;">
+                    <h3><i class="fas fa-gas-pump" style="color:#003366;"></i> Fuel Tank Utilization</h3>
+                    <canvas id="shift1TankChart" height="120"></canvas>
+                </div>
+                <?php endif; ?>
+
                 <!-- Merchandise Inventory — Low Stock Alerts -->
                 <div class="widget-card" style="margin:20px 0;">
                     <h3 style="color:#003366;">Merchandise Inventory — Low Stock Alerts</h3>
                     <?php if (!empty($shift1_data['merch_low_stock'])): ?>
+                    <div style="overflow-x:auto;margin-top:15px;">
+                        <table style="width:100%;border-collapse:collapse;">
+                            <thead>
+                                <tr style="background:#f7f7f7;">
+                                    <th style="padding:10px;text-align:left;border-bottom:2px solid #ddd;">Product</th>
+                                    <th style="padding:10px;text-align:left;border-bottom:2px solid #ddd;">Current</th>
+                                    <th style="padding:10px;text-align:left;border-bottom:2px solid #ddd;">Reorder</th>
+                                    <th style="padding:10px;text-align:left;border-bottom:2px solid #ddd;">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            <?php foreach($shift1_data['merch_low_stock'] as $item):
+                                $pct2=max(0,round(($item['current_stock']??0)/max(1,$item['reorder_level']??1)*100));
+                                $sc=$pct2<=25?'#dc3545':($pct2<=50?'#fd7e14':'#ffc107');
+                            ?>
+                            <tr>
+                                <td style="padding:10px;border-bottom:1px solid #eee;"><?=htmlspecialchars($item['product_name'])?></td>
+                                <td style="padding:10px;border-bottom:1px solid #eee;"><?=number_format($item['current_stock']??0)?></td>
+                                <td style="padding:10px;border-bottom:1px solid #eee;"><?=number_format($item['reorder_level']??0)?></td>
+                                <td style="padding:10px;border-bottom:1px solid #eee;"><span style="background:<?=$sc?>22;color:<?=$sc?>;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;"><?=$pct2?>%</span></td>
+                            </tr>
+                            <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- Low Stock Bar Chart -->
+                    <div style="margin-top:16px;"><canvas id="shift1MerchStockChart" height="100"></canvas></div>
                     <?php else: ?>
-                        <p style="text-align: center; color: #666666; padding: 20px;">All merchandise items are adequately stocked</p>
+                        <p style="text-align: center; color: #666666; padding: 20px;"><i class="fas fa-check-circle" style="color:#28a745;"></i> All merchandise items are adequately stocked</p>
                     <?php endif; ?>
                 </div>
                 
@@ -1571,6 +1602,14 @@ include __DIR__ . '/../partials/header.php';
                     <?php endif; ?>
                 </div>
 
+                <!-- Fuel Tank Utilization Chart Shift 2 -->
+                <?php if (!empty($shift2_data['fuel_levels'])): ?>
+                <div class="chart-card" style="margin:20px 0;">
+                    <h3><i class="fas fa-gas-pump" style="color:#003366;"></i> Fuel Tank Utilization</h3>
+                    <canvas id="shift2TankChart" height="120"></canvas>
+                </div>
+                <?php endif; ?>
+
                 <!-- Merchandise Inventory — Low Stock Alerts -->
                 <div class="widget-card" style="margin:20px 0;">
                     <h3 style="color:#003366;">Merchandise Inventory — Low Stock Alerts</h3>
@@ -1597,6 +1636,8 @@ include __DIR__ . '/../partials/header.php';
                             </tbody>
                         </table>
                     </div>
+                    <!-- Low Stock Bar Chart -->
+                    <div style="margin-top:16px;"><canvas id="shift2MerchStockChart" height="100"></canvas></div>
                     <?php else: ?>
                         <p style="text-align:center;color:#28a745;padding:20px;font-weight:600;">All merchandise items are adequately stocked.</p>
                     <?php endif; ?>
@@ -2064,6 +2105,53 @@ include __DIR__ . '/../partials/header.php';
         }
         <?php endif; // End Shift 1 Charts ?>
         
+        // Shift 1 - Fuel Tank Utilization Chart
+        <?php if ($shift1_data && !empty($shift1_data['fuel_levels'])): ?>
+        const s1TankCtx = document.getElementById('shift1TankChart')?.getContext('2d');
+        if (s1TankCtx) {
+            const s1TankLabels = <?= json_encode(array_column($shift1_data['fuel_levels'], 'fuel_type_name')) ?>;
+            const s1TankCurrent = <?= json_encode(array_map('floatval', array_column($shift1_data['fuel_levels'], 'current_stock'))) ?>;
+            const s1TankCapacity = <?= json_encode(array_map('floatval', array_column($shift1_data['fuel_levels'], 'capacity'))) ?>;
+            const s1TankColors = s1TankCurrent.map((v,i) => {
+                const pct = s1TankCapacity[i] > 0 ? (v/s1TankCapacity[i])*100 : 0;
+                return pct < 25 ? '#dc3545' : pct < 50 ? '#fd7e14' : '#28a745';
+            });
+            new Chart(s1TankCtx, {
+                type: 'bar',
+                data: {
+                    labels: s1TankLabels,
+                    datasets: [
+                        { label: 'Current (L)', data: s1TankCurrent, backgroundColor: s1TankColors, borderRadius: 4 },
+                        { label: 'Capacity (L)', data: s1TankCapacity, backgroundColor: 'rgba(0,38,77,0.08)', borderRadius: 4 }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } }, scales: { y: { beginAtZero: true, ticks: { callback: v => v.toLocaleString() + ' L' } } } }
+            });
+        }
+        <?php endif; ?>
+
+        // Shift 1 - Merchandise Low Stock Chart
+        <?php if ($shift1_data && !empty($shift1_data['merch_low_stock'])): ?>
+        const s1MerchStockCtx = document.getElementById('shift1MerchStockChart')?.getContext('2d');
+        if (s1MerchStockCtx) {
+            const s1MsLabels = <?= json_encode(array_column($shift1_data['merch_low_stock'], 'product_name')) ?>;
+            const s1MsCurrent = <?= json_encode(array_map('floatval', array_column($shift1_data['merch_low_stock'], 'current_stock'))) ?>;
+            const s1MsReorder = <?= json_encode(array_map('floatval', array_column($shift1_data['merch_low_stock'], 'reorder_level'))) ?>;
+            new Chart(s1MerchStockCtx, {
+                type: 'bar',
+                indexAxis: 'y',
+                data: {
+                    labels: s1MsLabels,
+                    datasets: [
+                        { label: 'Current Stock', data: s1MsCurrent, backgroundColor: '#dc354588', borderRadius: 4 },
+                        { label: 'Reorder Level', data: s1MsReorder, backgroundColor: '#fd7e1488', borderRadius: 4 }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } }, scales: { x: { beginAtZero: true } } }
+            });
+        }
+        <?php endif; ?>
+        
         <?php if ($shift2_data): ?>
         // Shift 2 - Fuel Sales Chart
         const shift2FuelCtx = document.getElementById('shift2FuelChart')?.getContext('2d');
@@ -2195,6 +2283,53 @@ include __DIR__ . '/../partials/header.php';
             });
         }
         <?php endif; // End Shift 2 Charts ?>
+        
+        // Shift 2 - Fuel Tank Utilization Chart
+        <?php if ($shift2_data && !empty($shift2_data['fuel_levels'])): ?>
+        const s2TankCtx = document.getElementById('shift2TankChart')?.getContext('2d');
+        if (s2TankCtx) {
+            const s2TankLabels = <?= json_encode(array_column($shift2_data['fuel_levels'], 'fuel_type_name')) ?>;
+            const s2TankCurrent = <?= json_encode(array_map('floatval', array_column($shift2_data['fuel_levels'], 'current_stock'))) ?>;
+            const s2TankCapacity = <?= json_encode(array_map('floatval', array_column($shift2_data['fuel_levels'], 'capacity'))) ?>;
+            const s2TankColors = s2TankCurrent.map((v,i) => {
+                const pct = s2TankCapacity[i] > 0 ? (v/s2TankCapacity[i])*100 : 0;
+                return pct < 25 ? '#dc3545' : pct < 50 ? '#fd7e14' : '#28a745';
+            });
+            new Chart(s2TankCtx, {
+                type: 'bar',
+                data: {
+                    labels: s2TankLabels,
+                    datasets: [
+                        { label: 'Current (L)', data: s2TankCurrent, backgroundColor: s2TankColors, borderRadius: 4 },
+                        { label: 'Capacity (L)', data: s2TankCapacity, backgroundColor: 'rgba(0,38,77,0.08)', borderRadius: 4 }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } }, scales: { y: { beginAtZero: true, ticks: { callback: v => v.toLocaleString() + ' L' } } } }
+            });
+        }
+        <?php endif; ?>
+
+        // Shift 2 - Merchandise Low Stock Chart
+        <?php if ($shift2_data && !empty($shift2_data['merch_low_stock'])): ?>
+        const s2MerchStockCtx = document.getElementById('shift2MerchStockChart')?.getContext('2d');
+        if (s2MerchStockCtx) {
+            const s2MsLabels = <?= json_encode(array_column($shift2_data['merch_low_stock'], 'product_name')) ?>;
+            const s2MsCurrent = <?= json_encode(array_map('floatval', array_column($shift2_data['merch_low_stock'], 'current_stock'))) ?>;
+            const s2MsReorder = <?= json_encode(array_map(function($i){ return isset($i['reorder_level']) ? (float)$i['reorder_level'] : (float)($i['threshold']??0); }, $shift2_data['merch_low_stock'])) ?>;
+            new Chart(s2MerchStockCtx, {
+                type: 'bar',
+                indexAxis: 'y',
+                data: {
+                    labels: s2MsLabels,
+                    datasets: [
+                        { label: 'Current Stock', data: s2MsCurrent, backgroundColor: '#dc354588', borderRadius: 4 },
+                        { label: 'Reorder Level', data: s2MsReorder, backgroundColor: '#fd7e1488', borderRadius: 4 }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } }, scales: { x: { beginAtZero: true } } }
+            });
+        }
+        <?php endif; ?>
         
         <?php if ($can_view_consolidation && $shift1_data && $shift2_data): ?>
         // Consolidation - Fuel Sales Comparison Chart

@@ -145,7 +145,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
     $admin_hidden_parent_items = ['stations', 'transactions', 'job_orders', 'fuel', 'customers', 'mgr_customers', 'inventory', 'inventory_manager', 'purchase_orders'];
     $admin_hidden_sub_items = ['stock_requests', 'staff_stock_in']; // Hide staff stock requests and Stock-In encoding from admin
     $manager_hidden_sub_items = ['stock_requests', 'fuel_variance_report', 'fuel_reading_tracker', 'fuel_calibration_logs', 'fuel_stock_levels', 'fuel_variance_reports']; // Hide old fuel items from manager (replaced by new sub-menu)
-    $manager_hidden_parent_items = ['purchase_orders', 'customers']; // Hide staff customers from manager (manager has own pages)
+    $manager_hidden_parent_items = ['purchase_orders', 'customers']; // Hide staff customers from manager - Manager now has Reports
     // Hide manager-only items from staff/admin
     // Audit Trail is a standalone top-level item injected after Reports for manager role
     
@@ -284,38 +284,39 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 'permissions' => ['view_all_reports', 'view_dashboard'],
                 'station_specific' => true,
             ],
-            // 10. Reports & Analytics - Comprehensive Admin Reporting
+            // 10. Reports - Complete Admin Reports
             [
-                'id' => 'reports_admin',
-                'label' => 'Reports & Analytics',
+                'id' => 'admin_reports',
+                'label' => 'Reports',
                 'ico' => 'fas fa-chart-bar',
                 'href' => 'admin_reports.php',
                 'permissions' => ['view_all_reports', 'view_dashboard'],
                 'station_specific' => true,
                 'sub_items' => [
-                    ['id' => 'rpt_shift',           'label' => 'Shift Reports',              'href' => 'admin_reports.php?section=shift_reports',           'ico' => 'fas fa-clock',           'permissions' => ['view_all_reports'], 'desc' => 'Detailed breakdown for Shift 1 and Shift 2'],
-                    ['id' => 'rpt_daily',           'label' => 'Daily Consolidation',       'href' => 'admin_reports.php?section=daily_consolidation',     'ico' => 'fas fa-calendar-day',    'permissions' => ['view_all_reports'], 'desc' => 'Combined totals across shifts with charts'],
-                    ['id' => 'rpt_fuel_inv',        'label' => 'Fuel Inventory',            'href' => 'admin_reports.php?section=fuel_inventory',          'ico' => 'fas fa-gas-pump',        'permissions' => ['view_all_reports'], 'desc' => 'Meter readings and variance analysis'],
-                    ['id' => 'rpt_merch_inv',       'label' => 'Merchandise Inventory',     'href' => 'admin_reports.php?section=merchandise_inventory',    'ico' => 'fas fa-boxes',           'permissions' => ['view_all_reports'], 'desc' => 'Stock levels and reorder alerts'],
-                    ['id' => 'rpt_jobs',            'label' => 'Job Orders',                'href' => 'admin_reports.php?section=job_orders',              'ico' => 'fas fa-briefcase',       'permissions' => ['view_all_reports'], 'desc' => 'Service jobs by status and income'],
-                    ['id' => 'rpt_payments',        'label' => 'Payments',                  'href' => 'admin_reports.php?section=payments',                'ico' => 'fas fa-money-bill-wave', 'permissions' => ['view_all_reports'], 'desc' => 'Payment modes breakdown and variance'],
-                    ['id' => 'rpt_customers',       'label' => 'Customers',                 'href' => 'admin_reports.php?section=customers',               'ico' => 'fas fa-users',           'permissions' => ['view_all_reports'], 'desc' => 'Customer transactions and balances'],
-                    ['id' => 'rpt_suppliers',       'label' => 'Suppliers',                 'href' => 'admin_reports.php?section=suppliers',               'ico' => 'fas fa-truck',           'permissions' => ['view_all_reports'], 'desc' => 'Supplier deliveries and payables'],
-                    ['id' => 'rpt_financial',       'label' => 'Financial / Payables',      'href' => 'admin_reports.php?section=financial',               'ico' => 'fas fa-calculator',      'permissions' => ['view_all_reports'], 'desc' => 'Accounts payable and receivable'],
-                    ['id' => 'rpt_activity',        'label' => 'Activity Log',              'href' => 'admin_reports.php?section=activity_log',            'ico' => 'fas fa-history',         'permissions' => ['view_all_reports'], 'desc' => 'Staff actions timeline'],
-                    ['id' => 'rpt_audit',           'label' => 'Audit Trail',               'href' => 'admin_reports.php?section=audit_trail',             'ico' => 'fas fa-file-signature',  'permissions' => ['view_all_reports'], 'desc' => 'Compliance logs and change tracking'],
-                    ['id' => 'rpt_calendar',        'label' => 'Calendar & Schedule',       'href' => 'admin_reports.php?section=calendar_schedule',       'ico' => 'fas fa-calendar-alt',    'permissions' => ['view_all_reports'], 'desc' => 'Job orders and deliveries schedule'],
+                    [
+                        'id' => 'rpt_operations',
+                        'label' => 'Operations Reports',
+                        'href' => 'admin_reports.php',
+                        'permissions' => ['view_all_reports'],
+                        'desc' => 'Shift Reports, Daily Consolidation, Fuel Inventory, Merchandise Inventory, Job Orders.',
+                    ],
+                    [
+                        'id' => 'rpt_finance',
+                        'label' => 'Finance Reports',
+                        'href' => 'admin_finance_reports.php',
+                        'permissions' => ['view_all_reports'],
+                        'desc' => 'Payments, Suppliers, Financial Payables & Reconciliation.',
+                    ],
+                    [
+                        'id' => 'rpt_compliance',
+                        'label' => 'Compliance Reports',
+                        'href' => 'admin_compliance_reports.php',
+                        'permissions' => ['view_all_reports'],
+                        'desc' => 'Activity Logs, Audit Trail, Calendar & Schedule.',
+                    ],
                 ],
             ],
-            // 11. Audit Trail — standalone direct link for quick access
-            [
-                'id'               => 'admin_audit_trail',
-                'label'            => 'Audit Trail',
-                'ico'              => 'fas fa-shield-halved',
-                'href'             => 'admin_audit_trail.php',
-                'permissions'      => ['view_all_reports', 'view_dashboard'],
-                'station_specific' => true,
-            ],
+
         ];
     }
     
@@ -377,7 +378,40 @@ function filter_menu_by_permissions($menu_items, $user_role) {
             if ($user_role === 'manager' && ($item['id'] ?? '') === 'manager_dashboard') {
                 $filtered_item['href'] = 'manager_dashboard.php';
                 $filtered_item['sub_items'] = [];
-                $force_direct_link = true;
+            }
+            
+            // Manager gets manager_reports.php with Operations Reports sub-menu
+            if ($user_role === 'manager' && ($item['id'] ?? '') === 'reports') {
+                $filtered_item['href'] = 'manager_reports.php';
+                $filtered_item['sub_items'] = [
+                    [
+                        'id'          => 'mgr_operations_reports',
+                        'label'       => 'Operations Reports',
+                        'href'        => 'manager_reports.php',
+                        'ico'         => 'fas fa-chart-line',
+                        'permissions' => ['view_operational_reports', 'approve_transactions', 'manage_job_orders'],
+                        'desc'        => 'Shift Reports, Daily Consolidation, Fuel Inventory, Merchandise Inventory, Job Orders with validation.'
+                    ],
+                    [
+                        'id'          => 'mgr_finance_reports',
+                        'label'       => 'Finance Reports',
+                        'href'        => 'manager_finance_reports.php',
+                        'ico'         => 'fas fa-file-invoice-dollar',
+                        'permissions' => ['view_operational_reports', 'approve_transactions', 'manage_job_orders'],
+                        'desc'        => 'Payments breakdown, Supplier deliveries & payables, Financial reconciliation with validation.'
+                    ],
+                    [
+                        'id'          => 'mgr_compliance_reports',
+                        'label'       => 'Compliance Reports',
+                        'href'        => 'manager_compliance_reports.php',
+                        'ico'         => 'fas fa-shield-alt',
+                        'permissions' => ['view_operational_reports', 'approve_transactions', 'manage_job_orders'],
+                        'desc'        => 'Activity Logs, Audit Trail, Calendar & Schedule monitoring with validation and compliance tracking.'
+                    ]
+                ];
+                // Add to menu immediately and skip further processing
+                $filtered_menu[] = $filtered_item;
+                continue;
             }
 
             if ($user_role === 'staff' && ($item['id'] ?? '') === 'dashboard') {
@@ -445,29 +479,11 @@ function filter_menu_by_permissions($menu_items, $user_role) {
             }
 
             if ($user_role === 'manager' && ($item['id'] ?? '') === 'reports') {
-                $filtered_item['href'] = 'manager_reports.php?section=sales';
                 $filtered_item['label'] = 'Reports';
                 $filtered_item['ico']   = 'fas fa-chart-bar';
-                $filtered_item['sub_items'] = [
-                    ['id'=>'mgr_report_sales',         'label'=>'Transactions Reports',        'href'=>'manager_reports.php?section=sales',        'permissions'=>['view_operational_reports','view_financial_reports']],
-                    ['id'=>'mgr_report_fuel',          'label'=>'Fuel Management Reports',     'href'=>'manager_reports.php?section=fuel',         'permissions'=>['view_operational_reports']],
-                    ['id'=>'mgr_report_deliveries',    'label'=>'Merchandise Deliveries',      'href'=>'manager_reports.php?section=deliveries',   'permissions'=>['view_operational_reports']],
-                    ['id'=>'mgr_report_inventory',     'label'=>'Inventory Reports',           'href'=>'manager_reports.php?section=inventory',    'permissions'=>['view_operational_reports']],
-                    ['id'=>'mgr_report_customers',     'label'=>'Customer Reports',            'href'=>'manager_reports.php?section=customers',    'permissions'=>['view_operational_reports','view_financial_reports']],
-                    ['id'=>'mgr_report_staff',         'label'=>'Staff Performance',           'href'=>'manager_reports.php?section=staff',        'permissions'=>['view_operational_reports','manage_job_orders']],
-                ];
+                $filtered_item['href']  = 'manager_reports.php';
+                $filtered_item['sub_items'] = [];
                 $filtered_menu[] = $filtered_item;
-
-                // ── Audit Trail — Manager validation action logs ──
-                $filtered_menu[] = [
-                    'id'               => 'mgr_audit_trail',
-                    'label'            => 'Audit Trail',
-                    'ico'              => 'fas fa-shield-alt',
-                    'href'             => 'manager_audit_trail.php',
-                    'permissions'      => ['view_operational_reports','approve_transactions'],
-                    'station_specific' => true,
-                    'sub_items'        => [],
-                ];
                 continue;
             }
 
@@ -485,7 +501,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
             }
 
             if ($user_role === 'manager' && ($item['id'] ?? '') === 'calendar') {
-                $filtered_item['label'] = 'Manager Calendar';
+                $filtered_item['label'] = 'Calendar';
                 $filtered_item['href']  = 'manager_calendar.php';
                 $filtered_item['sub_items'] = [];
                 $force_direct_link = true;
