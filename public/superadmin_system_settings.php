@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'system_settings';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -12,11 +12,20 @@ if (!in_array($role, ['superadmin', 'developer'])) {
     exit;
 }
 
+// Fetch all stations for the station selector
+$stations = [];
+try {
+    $stmt = $pdo->query("SELECT id, name, address, status FROM stations ORDER BY name ASC");
+    $stations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    $stations = [];
+}
+
 include __DIR__ . '/../partials/header.php';
 ?>
 <link rel="stylesheet" href="../backend/generate_theme_css.php">
 <style>
-/* ── CSS Variables ─────────────────────────────────────────────────────────── */
+/* -- CSS Variables ----------------------------------------------------------- */
 :root {
     --primary-color:    var(--petron-blue, #002F6C);
     --surface:          #ffffff;
@@ -29,108 +38,111 @@ include __DIR__ . '/../partials/header.php';
     --transition:       0.2s ease;
 }
 
-/* ── Page Layout ───────────────────────────────────────────────────────────── */
+/* -- Sidebar Protection (HARDCODED - immune to generate_theme_css.php) --------
+   IMPORTANT: Do NOT use CSS variables here - generate_theme_css.php overwrites
+   --sidebar-bg with var(--gradient-sidebar) which can become light/white.     */
+aside.sidebar,
+#mainSidebar,
+.sidebar {
+    background-color: #00264D !important;
+    background: #00264D !important;
+    background-image: none !important;
+}
+
+/* Force ALL sidebar icons to stay white - overrides .fas/.far/.fab in generate_theme_css */
+.sidebar i,
+.sidebar .fas,
+.sidebar .far,
+.sidebar .fab,
+.sidebar .fa {
+    color: #eeeeee !important;
+}
+
+/* Force nav-item text and background to stay correct on dark sidebar */
+.sidebar .nav-item,
+.sidebar a.nav-item {
+    color: #eeeeee !important;
+    background-color: transparent !important;
+    background: transparent !important;
+}
+
+.sidebar .nav-item span,
+.sidebar a.nav-item span {
+    color: #eeeeee !important;
+}
+
+.sidebar .nav-item:hover,
+.sidebar a.nav-item:hover {
+    background-color: rgba(255,255,255,0.10) !important;
+    background: rgba(255,255,255,0.10) !important;
+    color: #ffffff !important;
+}
+
+.sidebar .nav-item:hover span,
+.sidebar .nav-item:hover i {
+    color: #ffffff !important;
+}
+
+.sidebar .nav-item.active,
+.sidebar a.nav-item.active {
+    background-color: #CC0000 !important;
+    background: #CC0000 !important;
+    color: #ffffff !important;
+}
+
+.sidebar .nav-item.active span,
+.sidebar .nav-item.active i,
+.sidebar .nav-item.active .ico i {
+    color: #ffffff !important;
+}
+
+/* Sub-menu items */
+.sidebar .sidebar-sub-item {
+    color: rgba(238,238,238,0.85) !important;
+    background-color: transparent !important;
+}
+
+.sidebar .sidebar-sub-item:hover {
+    background-color: rgba(255,255,255,0.10) !important;
+    color: #ffffff !important;
+}
+
+.sidebar .sidebar-sub-item.active {
+    background-color: #CC0000 !important;
+    color: #ffffff !important;
+}
+
+/* -- Page Layout ------------------------------------------------------------- */
 .ss-wrapper {
     display: block;
     min-height: calc(100vh - 140px);
     background: var(--page-bg);
     position: relative;
+    width: 100%;
 }
 
-/* ── Settings Sidebar ──────────────────────────────────────────────────────── */
+/* -- Hide Settings Sidebar (Use Main Sidebar Only) -------------------------- */
 .ss-sidebar {
-    width: 260px;
-    flex-shrink: 0;
-    background: var(--surface);
-    border-right: 1px solid var(--border-color);
-    padding: 24px 0;
-    box-shadow: 2px 0 8px rgba(0,0,0,0.04);
-    position: sticky;
-    top: 0;
-    height: fit-content;
-    z-index: 10;
+    display: none !important;
 }
 
 .ss-sidebar-header {
-    padding: 0 20px 20px;
-    border-bottom: 1px solid var(--border-color);
-    margin-bottom: 12px;
-}
-
-.ss-sidebar-header h2 {
-    font-size: 13px !important;
-    font-weight: 700 !important;
-    color: var(--text-secondary) !important;
-    text-transform: uppercase !important;
-    letter-spacing: 1px !important;
-    margin: 0 !important;
+    display: none !important;
 }
 
 .ss-nav-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 20px;
-    cursor: pointer;
-    border-left: 3px solid transparent;
-    transition: all var(--transition);
-    color: var(--text-secondary);
-    font-size: 14px;
-    font-weight: 500;
-    text-decoration: none;
-    user-select: none;
-}
-
-.ss-nav-item:hover {
-    background: rgba(0,47,108,0.05);
-    color: var(--primary-color);
-    border-left-color: rgba(0,47,108,0.3);
-}
-
-.ss-nav-item.active {
-    background: rgba(0,47,108,0.08);
-    color: var(--primary-color);
-    border-left-color: var(--primary-color);
-    font-weight: 600;
-}
-
-.ss-nav-item .ss-nav-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(0,47,108,0.08);
-    flex-shrink: 0;
-    font-size: 14px;
-    transition: background var(--transition);
-}
-
-.ss-nav-item.active .ss-nav-icon,
-.ss-nav-item:hover .ss-nav-icon {
-    background: var(--primary-color);
-    color: #fff;
+    display: none !important;
 }
 
 .ss-nav-step-num {
-    font-size: 10px;
-    font-weight: 700;
-    color: var(--text-secondary);
-    margin-left: auto;
-    background: var(--page-bg);
-    padding: 2px 7px;
-    border-radius: 10px;
+    display: none !important;
 }
 
-.ss-nav-item.active .ss-nav-step-num {
-    background: var(--primary-color);
-    color: #fff;
-}
-
-/* ── Main Content ──────────────────────────────────────────────────────────── */
+/* -- Main Content ------------------------------------------------------------ */
 .ss-content {
     width: 100%;
+    max-width: 1400px;
+    margin: 0 auto;
     padding: 28px 32px;
     overflow-y: auto;
     position: relative;
@@ -202,7 +214,7 @@ include __DIR__ . '/../partials/header.php';
     to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Cards ─────────────────────────────────────────────────────────────────── */
+/* -- Cards ------------------------------------------------------------------- */
 .ss-card {
     background: var(--surface);
     border-radius: var(--radius-card);
@@ -230,7 +242,7 @@ include __DIR__ . '/../partials/header.php';
     font-size: 16px;
 }
 
-/* ── Panel Header ──────────────────────────────────────────────────────────── */
+/* -- Panel Header ------------------------------------------------------------ */
 .ss-panel-header {
     margin-bottom: 24px;
 }
@@ -249,7 +261,7 @@ include __DIR__ . '/../partials/header.php';
     margin: 0;
 }
 
-/* ── Form Controls ─────────────────────────────────────────────────────────── */
+/* -- Form Controls ----------------------------------------------------------- */
 .ss-form-group {
     margin-bottom: 18px;
 }
@@ -282,7 +294,7 @@ include __DIR__ . '/../partials/header.php';
     box-shadow: 0 0 0 3px rgba(0,47,108,0.1);
 }
 
-/* ── Buttons ───────────────────────────────────────────────────────────────── */
+/* -- Buttons ----------------------------------------------------------------- */
 .ss-btn {
     display: inline-flex;
     align-items: center;
@@ -345,7 +357,7 @@ include __DIR__ . '/../partials/header.php';
     background: #15803d;
 }
 
-/* ── Toggle Switch ─────────────────────────────────────────────────────────── */
+/* -- Toggle Switch ----------------------------------------------------------- */
 .ss-toggle-wrap {
     display: flex;
     align-items: center;
@@ -404,7 +416,7 @@ include __DIR__ . '/../partials/header.php';
     transform: translateX(20px);
 }
 
-/* ── Toast Notifications ───────────────────────────────────────────────────── */
+/* -- Toast Notifications ----------------------------------------------------- */
 #ss-toast-container {
     position: fixed;
     top: 80px;
@@ -449,7 +461,7 @@ include __DIR__ . '/../partials/header.php';
     to   { opacity: 1; transform: translateX(0); }
 }
 
-/* ── Loading Spinner ───────────────────────────────────────────────────────── */
+/* -- Loading Spinner --------------------------------------------------------- */
 .ss-spinner {
     display: inline-block;
     width: 16px;
@@ -462,7 +474,7 @@ include __DIR__ . '/../partials/header.php';
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── Logo Preview ──────────────────────────────────────────────────────────── */
+/* -- Logo Preview ------------------------------------------------------------ */
 .ss-logo-preview-box {
     width: 180px;
     height: 120px;
@@ -482,7 +494,7 @@ include __DIR__ . '/../partials/header.php';
     object-fit: contain;
 }
 
-/* ── Theme Preset Cards ────────────────────────────────────────────────────── */
+/* -- Theme Preset Cards ------------------------------------------------------ */
 .ss-theme-presets {
     display: flex;
     flex-wrap: wrap;
@@ -525,7 +537,7 @@ include __DIR__ . '/../partials/header.php';
     letter-spacing: 0.3px;
 }
 
-/* ── Color Pickers Row ─────────────────────────────────────────────────────── */
+/* -- Color Pickers Row ------------------------------------------------------- */
 .ss-color-row {
     display: flex;
     gap: 20px;
@@ -577,7 +589,7 @@ include __DIR__ . '/../partials/header.php';
     background: transparent;
 }
 
-/* ── Live Preview Panel ────────────────────────────────────────────────────── */
+/* -- Live Preview Panel ------------------------------------------------------ */
 .ss-live-preview {
     border-radius: 10px;
     overflow: hidden;
@@ -622,7 +634,7 @@ include __DIR__ . '/../partials/header.php';
     color: #fff;
 }
 
-/* ── Sidebar Style Toggle ──────────────────────────────────────────────────── */
+/* -- Sidebar Style Toggle ---------------------------------------------------- */
 .ss-sidebar-style-options {
     display: flex;
     gap: 16px;
@@ -671,7 +683,7 @@ include __DIR__ . '/../partials/header.php';
     background: #f4f6fb;
 }
 
-/* ── Drag & Drop Card Order ────────────────────────────────────────────────── */
+/* -- Drag & Drop Card Order -------------------------------------------------- */
 .ss-sortable-list {
     list-style: none;
     padding: 0;
@@ -717,7 +729,7 @@ include __DIR__ . '/../partials/header.php';
     cursor: grab;
 }
 
-/* ── Accessibility Slider ──────────────────────────────────────────────────── */
+/* -- Accessibility Slider ---------------------------------------------------- */
 .ss-slider-wrap {
     display: flex;
     align-items: center;
@@ -749,7 +761,7 @@ include __DIR__ . '/../partials/header.php';
     transition: font-size var(--transition);
 }
 
-/* ── Audit Table ───────────────────────────────────────────────────────────── */
+/* -- Audit Table ------------------------------------------------------------- */
 .ss-table-wrap {
     overflow-x: auto;
     border-radius: 10px;
@@ -806,7 +818,7 @@ include __DIR__ . '/../partials/header.php';
 .ss-badge-accessibility { background: #fef3c7; color: #92400e; }
 .ss-badge-general     { background: #f3f4f6; color: #374151; }
 
-/* ── Audit Filters ─────────────────────────────────────────────────────────── */
+/* -- Audit Filters ----------------------------------------------------------- */
 .ss-audit-filters {
     display: flex;
     gap: 12px;
@@ -831,7 +843,7 @@ include __DIR__ . '/../partials/header.php';
     border-color: var(--primary-color);
 }
 
-/* ── Pagination ────────────────────────────────────────────────────────────── */
+/* -- Pagination -------------------------------------------------------------- */
 .ss-pagination {
     display: flex;
     align-items: center;
@@ -864,15 +876,16 @@ include __DIR__ . '/../partials/header.php';
     cursor: not-allowed;
 }
 
-/* ── Responsive ────────────────────────────────────────────────────────────── */
+/* -- Responsive -------------------------------------------------------------- */
 @media (max-width: 768px) {
     .ss-wrapper {
         flex-direction: column;
     }
     .ss-sidebar {
         width: 100%;
+        height: auto;
         border-right: none;
-        border-bottom: 1px solid var(--border-color);
+        border-bottom: 1px solid rgba(255,255,255,0.1);
         padding: 12px 0;
         display: block !important;
         visibility: visible !important;
@@ -895,435 +908,62 @@ include __DIR__ . '/../partials/header.php';
 }
 </style>
 
-<!-- ── Toast Container ──────────────────────────────────────────────────────── -->
+<!-- -- Toast Container -------------------------------------------------------- -->
 <div id="ss-toast-container"></div>
 
-<!-- ── Page Wrapper ────────────────────────────────────────────────────────── -->
+<!-- -- Page Wrapper ---------------------------------------------------------- -->
 <div class="ss-wrapper">
 
-  <!-- ── Main Content ────────────────────────────────────────────────────────── -->
-  <main class="ss-content">
+  <!-- -- Main Content (No duplicate sidebar - use main sidebar only) ------------ -->
+  <main class="ss-content" style="margin-left:0;width:100%;">
 
-    <!-- ── Tab Navigation ──────────────────────────────────────────────────────── -->
-    <div style="display:flex;gap:12px;margin-bottom:24px;border-bottom:2px solid var(--border-color);padding-bottom:16px;flex-wrap:wrap;">
-      <button class="ss-btn ss-btn-primary" onclick="showStep('step-logo', this)" id="tab-logo">
-        <i class="fas fa-image"></i> Logo Management
-      </button>
-      <button class="ss-btn ss-btn-secondary" onclick="showStep('step-theme', this)" id="tab-theme">
-        <i class="fas fa-palette"></i> Color Theme / UI
-      </button>
-      <button class="ss-btn ss-btn-secondary" onclick="showStep('step-layout', this)" id="tab-layout">
-        <i class="fas fa-th-large"></i> Sidebar &amp; Cards
-      </button>
-      <button class="ss-btn ss-btn-secondary" onclick="showStep('step-accessibility', this)" id="tab-accessibility">
-        <i class="fas fa-universal-access"></i> Accessibility
-      </button>
-      <button class="ss-btn ss-btn-secondary" onclick="showStep('step-audit', this)" id="tab-audit">
-        <i class="fas fa-history"></i> Audit Trail
-      </button>
+    <!-- -- Page Title ------------------------------------------------------------ -->
+    <div class="ss-panel-header">
+      <h1><i class="fas fa-cog" style="margin-right:8px;color:var(--primary-color);"></i>System Settings  -  Estate Form</h1>
+      <p>Configure all system appearance, layout, and accessibility options in one view.</p>
     </div>
 
-    <!-- ════════════════════════════════════════════════════════════════════
-         STEP 1 — Logo Management
-    ═══════════════════════════════════════════════════════════════════════ -->
-    <section id="step-logo" class="ss-panel active">
-      <div class="ss-panel-header">
-        <h1><i class="fas fa-image" style="margin-right:8px;color:var(--primary-color);"></i>Logo Management</h1>
-        <p>Upload and manage the system logo displayed across all pages.</p>
-      </div>
-
-      <!-- Current Logo -->
-      <div class="ss-card">
-        <h3 class="ss-card-title"><i class="fas fa-eye"></i>Current Logo</h3>
-        <div class="ss-logo-preview-box" id="current-logo-box">
-          <img id="current-logo-img" src="../assets/img/Petron Logo.png" alt="Current Logo">
+    <!-- ====================================================================
+         🔹 STATION SELECTOR
+    ======================================================================= -->
+    <div class="ss-card" id="station-selector-card" style="margin-bottom:20px;">
+      <h3 class="ss-card-title"><i class="fas fa-map-marker-alt"></i>Station Selection</h3>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;">
+        Select a station to scope settings for that specific branch. Global settings apply to all stations.
+      </p>
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+        <div style="position:relative;flex:1;min-width:260px;max-width:480px;">
+          <i class="fas fa-search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:13px;pointer-events:none;"></i>
+          <input type="text" id="stationSearchInput" placeholder="Search stations..." autocomplete="off"
+                 style="width:100%;padding:10px 14px 10px 36px;border:1px solid var(--border-color);border-radius:8px;font-size:13px;color:var(--text-primary);background:var(--surface);box-sizing:border-box;"
+                 oninput="filterStations(this.value)">
+          <div id="stationDropdown" style="display:none;position:absolute;top:calc(100%+4px);left:0;right:0;background:#fff;border:1px solid var(--border-color);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:9999;max-height:220px;overflow-y:auto;"></div>
         </div>
-        <button class="ss-btn ss-btn-danger" onclick="resetLogo()" id="btn-reset-logo">
-          <i class="fas fa-undo"></i> Reset to Default
+        <input type="hidden" id="selectedStationId" value="">
+        <button class="ss-btn ss-btn-secondary" onclick="clearStationFilter()" id="clearStationBtn" style="display:none;">
+          <i class="fas fa-times"></i> Clear
         </button>
+        <span style="font-size:13px;color:var(--text-secondary);">
+          <i class="fas fa-globe" style="color:#3b82f6;"></i> Global (all stations)
+        </span>
       </div>
-
-      <!-- Upload New Logo -->
-      <div class="ss-card">
-        <h3 class="ss-card-title"><i class="fas fa-upload"></i>Upload New Logo</h3>
-        <div class="ss-form-group">
-          <label for="logo-file-input">Select Image File (PNG, JPG, GIF, SVG, WEBP — max 2MB)</label>
-          <input type="file" id="logo-file-input" accept="image/*" class="ss-form-control"
-                 onchange="previewLogoFile(this)">
-        </div>
-
-        <!-- Upload Preview -->
-        <div id="logo-upload-preview-wrap" style="display:none; margin-bottom:16px;">
-          <p style="font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;margin-bottom:8px;">Preview</p>
-          <div class="ss-logo-preview-box">
-            <img id="logo-upload-preview" src="" alt="Preview">
-          </div>
-        </div>
-
-        <div style="display:flex;gap:10px;flex-wrap:wrap;">
-          <button class="ss-btn ss-btn-primary" onclick="uploadLogo()" id="btn-upload-logo" disabled>
-            <i class="fas fa-cloud-upload-alt"></i> Upload Logo
-          </button>
-          <button class="ss-btn ss-btn-secondary" onclick="clearLogoInput()">
-            <i class="fas fa-times"></i> Clear
-          </button>
-        </div>
+      <!-- Selected station banner -->
+      <div id="selectedStationBanner" style="display:none;margin-top:12px;padding:10px 16px;background:#dbeafe;border-left:4px solid #3b82f6;border-radius:6px;font-size:13px;color:#1e40af;">
+        <i class="fas fa-building"></i> Configuring for: <strong id="selectedStationName"></strong>
       </div>
-    </section>
+    </div>
 
-    <!-- ════════════════════════════════════════════════════════════════════════
-         STEP 2 — Color Theme / UI Scheme
-    ═══════════════════════════════════════════════════════════════════════════ -->
-    <section id="step-theme" class="ss-panel">
-      <div class="ss-panel-header">
-        <h1><i class="fas fa-palette" style="margin-right:8px;color:var(--primary-color);"></i>Color Theme / UI Scheme</h1>
-        <p>Customize the visual appearance of the system.</p>
-      </div>
-
-      <!-- Preset Themes -->
-      <div class="ss-card">
-        <h3 class="ss-card-title"><i class="fas fa-swatchbook"></i>Preset Themes</h3>
-        <div class="ss-theme-presets" id="theme-presets">
-          <div class="ss-preset-card" data-preset="default" data-primary="#002F6C" data-secondary="#CC0000" data-accent="#FFC107" onclick="applyPreset(this)">
-            <div class="ss-preset-swatch" style="background:#002F6C;"></div>
-            <div class="ss-preset-label">Petron Blue</div>
-          </div>
-          <div class="ss-preset-card" data-preset="dark" data-primary="#0f172a" data-secondary="#334155" data-accent="#38bdf8" onclick="applyPreset(this)">
-            <div class="ss-preset-swatch" style="background:#0f172a;"></div>
-            <div class="ss-preset-label">Dark Mode</div>
-          </div>
-          <div class="ss-preset-card" data-preset="green" data-primary="#065f46" data-secondary="#047857" data-accent="#34d399" onclick="applyPreset(this)">
-            <div class="ss-preset-swatch" style="background:#065f46;"></div>
-            <div class="ss-preset-label">Green</div>
-          </div>
-          <div class="ss-preset-card" data-preset="red" data-primary="#7f1d1d" data-secondary="#991b1b" data-accent="#fca5a5" onclick="applyPreset(this)">
-            <div class="ss-preset-swatch" style="background:#7f1d1d;"></div>
-            <div class="ss-preset-label">Red</div>
-          </div>
-          <div class="ss-preset-card" data-preset="purple" data-primary="#4c1d95" data-secondary="#5b21b6" data-accent="#a78bfa" onclick="applyPreset(this)">
-            <div class="ss-preset-swatch" style="background:#4c1d95;"></div>
-            <div class="ss-preset-label">Purple</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Custom Colors -->
-      <div class="ss-card">
-        <h3 class="ss-card-title"><i class="fas fa-paint-brush"></i>Custom Colors</h3>
-        <div class="ss-color-row">
-          <div class="ss-color-item">
-            <label>Primary Color</label>
-            <div class="ss-color-picker-wrap">
-              <input type="color" id="color-primary" value="#002F6C" oninput="syncColorHex('primary')">
-              <input type="text" id="hex-primary" class="ss-color-hex" value="#002F6C" oninput="syncColorPicker('primary')" maxlength="7">
-            </div>
-          </div>
-          <div class="ss-color-item">
-            <label>Secondary Color</label>
-            <div class="ss-color-picker-wrap">
-              <input type="color" id="color-secondary" value="#CC0000" oninput="syncColorHex('secondary')">
-              <input type="text" id="hex-secondary" class="ss-color-hex" value="#CC0000" oninput="syncColorPicker('secondary')" maxlength="7">
-            </div>
-          </div>
-          <div class="ss-color-item">
-            <label>Accent Color</label>
-            <div class="ss-color-picker-wrap">
-              <input type="color" id="color-accent" value="#FFC107" oninput="syncColorHex('accent')">
-              <input type="text" id="hex-accent" class="ss-color-hex" value="#FFC107" oninput="syncColorPicker('accent')" maxlength="7">
-            </div>
-          </div>
-        </div>
-
-        <!-- Dark Mode Toggle -->
-        <div class="ss-toggle-wrap" style="margin-top:8px;">
-          <label class="ss-toggle">
-            <input type="checkbox" id="toggle-dark-mode" onchange="updateLivePreview()">
-            <span class="ss-toggle-slider"></span>
-          </label>
-          <label for="toggle-dark-mode">Dark Mode</label>
-        </div>
-      </div>
-
-      <!-- Typography -->
-      <div class="ss-card">
-        <h3 class="ss-card-title"><i class="fas fa-font"></i>Typography</h3>
-        <div style="display:flex;gap:20px;flex-wrap:wrap;">
-          <div class="ss-form-group" style="flex:1;min-width:180px;">
-            <label for="font-family">Font Family</label>
-            <select id="font-family" class="ss-form-control" onchange="updateLivePreview()">
-              <option value="Inter">Default (Inter)</option>
-              <option value="Roboto">Roboto</option>
-              <option value="Open Sans">Open Sans</option>
-              <option value="Lato">Lato</option>
-            </select>
-          </div>
-          <div class="ss-form-group" style="flex:1;min-width:180px;">
-            <label for="text-size">Text Size</label>
-            <select id="text-size" class="ss-form-control" onchange="updateLivePreview()">
-              <option value="small">Small</option>
-              <option value="medium" selected>Medium</option>
-              <option value="large">Large</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <!-- Live Preview -->
-      <div class="ss-card">
-        <h3 class="ss-card-title"><i class="fas fa-desktop"></i>Live Preview</h3>
-        <div class="ss-live-preview" id="theme-live-preview">
-          <div class="ss-preview-bar" id="preview-bar" style="background:#002F6C;">
-            <i class="fas fa-gas-pump"></i>
-            <span>Petron Management System</span>
-          </div>
-          <div class="ss-preview-body" id="preview-body">
-            <button class="ss-preview-btn" id="preview-primary-btn" style="background:#002F6C;">Primary</button>
-            <button class="ss-preview-accent-btn" id="preview-accent-btn" style="background:#FFC107;">Accent</button>
-            <span id="preview-text" style="font-size:14px;color:#1a1a2e;align-self:center;">Sample text preview</span>
-          </div>
-        </div>
-      </div>
-
-      <button class="ss-btn ss-btn-primary" onclick="saveTheme()" id="btn-save-theme">
-        <i class="fas fa-save"></i> Save Theme Settings
-      </button>
-    </section>
-
-    <!-- ════════════════════════════════════════════════════════════════════════
-         STEP 3 — Sidebar Layout & Dashboard Cards
-    ═══════════════════════════════════════════════════════════════════════════ -->
-    <section id="step-layout" class="ss-panel">
-      <div class="ss-panel-header">
-        <h1><i class="fas fa-th-large" style="margin-right:8px;color:var(--primary-color);"></i>Sidebar Layout &amp; Dashboard Cards</h1>
-        <p>Configure the sidebar style and the order of dashboard cards.</p>
-      </div>
-
-      <!-- Sidebar Style -->
-      <div class="ss-card">
-        <h3 class="ss-card-title"><i class="fas fa-columns"></i>Sidebar Style</h3>
-        <div class="ss-sidebar-style-options">
-          <label class="ss-sidebar-option selected" id="opt-expanded">
-            <input type="radio" name="sidebar_style" value="expanded" checked>
-            <div class="ss-sidebar-preview">
-              <div class="ss-sidebar-preview-bar" style="width:40px;"></div>
-              <div class="ss-sidebar-preview-content"></div>
-            </div>
-            <span style="font-size:12px;font-weight:600;color:var(--text-primary);">Expanded</span>
-          </label>
-          <label class="ss-sidebar-option" id="opt-collapsed">
-            <input type="radio" name="sidebar_style" value="collapsed">
-            <div class="ss-sidebar-preview">
-              <div class="ss-sidebar-preview-bar" style="width:18px;"></div>
-              <div class="ss-sidebar-preview-content"></div>
-            </div>
-            <span style="font-size:12px;font-weight:600;color:var(--text-primary);">Collapsed</span>
-          </label>
-        </div>
-      </div>
-
-      <!-- Dashboard Card Order -->
-      <div class="ss-card">
-        <h3 class="ss-card-title"><i class="fas fa-grip-vertical"></i>Dashboard Card Order</h3>
-        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;">
-          Drag and drop to reorder the dashboard cards.
-        </p>
-        <ul class="ss-sortable-list" id="card-order-list">
-          <li class="ss-sortable-item" draggable="true" data-card="system_health">
-            <i class="fas fa-grip-vertical ss-drag-handle"></i>
-            <i class="fas fa-heartbeat" style="color:#16a34a;"></i>
-            System Health
-          </li>
-          <li class="ss-sortable-item" draggable="true" data-card="reports">
-            <i class="fas fa-grip-vertical ss-drag-handle"></i>
-            <i class="fas fa-chart-bar" style="color:#2563eb;"></i>
-            Reports
-          </li>
-          <li class="ss-sortable-item" draggable="true" data-card="logs">
-            <i class="fas fa-grip-vertical ss-drag-handle"></i>
-            <i class="fas fa-list-alt" style="color:#d97706;"></i>
-            Logs
-          </li>
-          <li class="ss-sortable-item" draggable="true" data-card="users">
-            <i class="fas fa-grip-vertical ss-drag-handle"></i>
-            <i class="fas fa-users" style="color:#7c3aed;"></i>
-            Users
-          </li>
-          <li class="ss-sortable-item" draggable="true" data-card="stations">
-            <i class="fas fa-grip-vertical ss-drag-handle"></i>
-            <i class="fas fa-map-marker-alt" style="color:#dc2626;"></i>
-            Stations
-          </li>
-          <li class="ss-sortable-item" draggable="true" data-card="alerts">
-            <i class="fas fa-grip-vertical ss-drag-handle"></i>
-            <i class="fas fa-bell" style="color:#ea580c;"></i>
-            Alerts
-          </li>
-        </ul>
-      </div>
-
-      <button class="ss-btn ss-btn-primary" onclick="saveLayout()" id="btn-save-layout">
-        <i class="fas fa-save"></i> Save Layout Settings
-      </button>
-    </section>
-
-    <!-- ════════════════════════════════════════════════════════════════════════
-         STEP 4 — Accessibility Options
-    ═══════════════════════════════════════════════════════════════════════════ -->
-    <section id="step-accessibility" class="ss-panel">
-      <div class="ss-panel-header">
-        <h1><i class="fas fa-universal-access" style="margin-right:8px;color:var(--primary-color);"></i>Accessibility Options</h1>
-        <p>Improve usability for all users with accessibility enhancements.</p>
-      </div>
-
-      <div class="ss-card">
-        <h3 class="ss-card-title"><i class="fas fa-adjust"></i>Display Options</h3>
-
-        <div class="ss-toggle-wrap">
-          <label class="ss-toggle">
-            <input type="checkbox" id="toggle-high-contrast">
-            <span class="ss-toggle-slider"></span>
-          </label>
-          <label for="toggle-high-contrast">High Contrast Mode</label>
-        </div>
-
-        <div class="ss-toggle-wrap">
-          <label class="ss-toggle">
-            <input type="checkbox" id="toggle-reduce-motion">
-            <span class="ss-toggle-slider"></span>
-          </label>
-          <label for="toggle-reduce-motion">Reduce Motion</label>
-        </div>
-
-        <div class="ss-toggle-wrap">
-          <label class="ss-toggle">
-            <input type="checkbox" id="toggle-focus-indicators">
-            <span class="ss-toggle-slider"></span>
-          </label>
-          <label for="toggle-focus-indicators">Enhanced Focus Indicators</label>
-        </div>
-
-        <div class="ss-toggle-wrap">
-          <label class="ss-toggle">
-            <input type="checkbox" id="toggle-screen-reader">
-            <span class="ss-toggle-slider"></span>
-          </label>
-          <label for="toggle-screen-reader">Screen Reader Hints (ARIA)</label>
-        </div>
-      </div>
-
-      <div class="ss-card">
-        <h3 class="ss-card-title"><i class="fas fa-text-height"></i>Font Scale</h3>
-        <div class="ss-form-group">
-          <label>Scale Factor</label>
-          <div class="ss-slider-wrap">
-            <span style="font-size:12px;color:var(--text-secondary);">0.8×</span>
-            <input type="range" id="font-scale-slider" class="ss-slider"
-                   min="0.8" max="1.4" step="0.1" value="1.0"
-                   oninput="updateFontScalePreview(this.value)">
-            <span style="font-size:12px;color:var(--text-secondary);">1.4×</span>
-            <span class="ss-slider-value" id="font-scale-value">1.0×</span>
-          </div>
-          <div class="ss-font-preview" id="font-scale-preview">
-            <strong>Preview:</strong> The quick brown fox jumps over the lazy dog.
-          </div>
-        </div>
-      </div>
-
-      <button class="ss-btn ss-btn-primary" onclick="saveAccessibility()" id="btn-save-accessibility">
-        <i class="fas fa-save"></i> Save Accessibility Settings
-      </button>
-    </section>
-
-    <!-- ════════════════════════════════════════════════════════════════════════
-         STEP 5 — Audit Trail Logging
-    ═══════════════════════════════════════════════════════════════════════════ -->
-    <section id="step-audit" class="ss-panel">
-      <div class="ss-panel-header">
-        <h1><i class="fas fa-history" style="margin-right:8px;color:var(--primary-color);"></i>Audit Trail Logging</h1>
-        <p>View a complete history of all system settings changes.</p>
-      </div>
-
-      <div class="ss-card">
-        <h3 class="ss-card-title"><i class="fas fa-filter"></i>Filters &amp; Search</h3>
-        <div class="ss-audit-filters">
-          <select id="audit-filter-group" onchange="loadAudit(1)">
-            <option value="">All Groups</option>
-            <option value="branding">Branding</option>
-            <option value="theme">Theme</option>
-            <option value="layout">Layout</option>
-            <option value="accessibility">Accessibility</option>
-          </select>
-          <input type="text" id="audit-search" placeholder="Search key or user…"
-                 oninput="debounceAudit()" style="min-width:200px;">
-          <button class="ss-btn ss-btn-secondary" onclick="loadAudit(1)">
-            <i class="fas fa-search"></i> Search
-          </button>
-          <button class="ss-btn ss-btn-success" onclick="exportAuditCSV()" style="margin-left:auto;">
-            <i class="fas fa-file-csv"></i> Export CSV
-          </button>
-        </div>
-      </div>
-
-      <div class="ss-card" style="padding:0;">
-        <div id="audit-loading" style="display:none;padding:24px;text-align:center;color:var(--text-secondary);">
-          <i class="fas fa-spinner fa-spin" style="font-size:20px;margin-bottom:8px;"></i>
-          <p style="margin:0;">Loading audit records…</p>
-        </div>
-        <div class="ss-table-wrap" id="audit-table-wrap">
-          <table class="ss-table" id="audit-table">
-            <thead>
-              <tr>
-                <th>Date / Time</th>
-                <th>Setting Key</th>
-                <th>Group</th>
-                <th>Old Value</th>
-                <th>New Value</th>
-                <th>Changed By</th>
-                <th>IP Address</th>
-              </tr>
-            </thead>
-            <tbody id="audit-tbody">
-              <tr>
-                <td colspan="7" style="text-align:center;padding:32px;color:var(--text-secondary);">
-                  <i class="fas fa-history" style="font-size:24px;margin-bottom:8px;display:block;"></i>
-                  Click the Audit Trail tab to load records.
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="ss-pagination" id="audit-pagination"></div>
-      </div>
-    </section>
-
-  </main><!-- /.ss-content -->
-</div><!-- /.ss-wrapper -->
-
-<script>
+    <!-- Station data for JS -->
+    <script>
 /* ═══════════════════════════════════════════════════════════════════════════
-   SYSTEM SETTINGS — JavaScript
+   SYSTEM SETTINGS — JavaScript (Estate Form - All in One View)
    All API calls go to: backend/api/system_settings_api.php?action=...
 ═══════════════════════════════════════════════════════════════════════════ */
 
 const API = '../backend/api/system_settings_api.php';
 
-/* ── Step Navigation ──────────────────────────────────────────────────────── */
-function showStep(stepId, navEl) {
-    // Hide all panels
-    document.querySelectorAll('.ss-panel').forEach(p => p.classList.remove('active'));
-    // Deactivate all tab buttons
-    document.querySelectorAll('.ss-btn').forEach(b => b.classList.remove('active'));
-    // Show target panel
-    const panel = document.getElementById(stepId);
-    if (panel) panel.classList.add('active');
-    // Activate tab button
-    if (navEl) navEl.classList.add('active');
-
-    // Lazy-load audit when that step is opened
-    if (stepId === 'step-audit') {
-        loadAudit(1);
-    }
-}
+// Active station ID (0 = global)
+let currentStationId = 0;
 
 /* ── Toast Notifications ──────────────────────────────────────────────────── */
 function showToast(message, type = 'success', duration = 3500) {
@@ -1346,7 +986,7 @@ function showToast(message, type = 'success', duration = 3500) {
     }, duration);
 }
 
-/* ── Set button loading state ─────────────────────────────────────────────── */
+/* ── Set button loading state ────────────────────────────────────────────── */
 function setBtnLoading(btnId, loading) {
     const btn = document.getElementById(btnId);
     if (!btn) return;
@@ -1360,61 +1000,113 @@ function setBtnLoading(btnId, loading) {
     }
 }
 
-/* ── Load All Settings on Page Load ──────────────────────────────────────── */
+/* ── Station Selector Logic (Dropdown list) ────────────────────────────────── */
+function filterStations(query) {
+    const dropdown = document.getElementById('stationDropdown');
+    if (!dropdown) return;
+    dropdown.innerHTML = '';
+    
+    // Add global option first
+    const globalOpt = document.createElement('div');
+    globalOpt.style.padding = '10px 14px';
+    globalOpt.style.cursor = 'pointer';
+    globalOpt.style.fontSize = '13px';
+    globalOpt.innerHTML = '<i class="fas fa-globe" style="color:#3b82f6;margin-right:8px;"></i>Global (all stations)';
+    globalOpt.onclick = () => selectStation(0, 'Global');
+    dropdown.appendChild(globalOpt);
+
+    const filtered = STATIONS.filter(s => 
+        s.name.toLowerCase().includes(query.toLowerCase()) || 
+        s.address.toLowerCase().includes(query.toLowerCase())
+    );
+
+    if (filtered.length > 0 && query !== '') {
+        filtered.forEach(st => {
+            const opt = document.createElement('div');
+            opt.style.padding = '10px 14px';
+            opt.style.cursor = 'pointer';
+            opt.style.borderTop = '1px solid var(--border-color)';
+            opt.style.fontSize = '13px';
+            opt.innerHTML = `<i class="fas fa-building" style="color:#6b7280;margin-right:8px;"></i>\${escHtml(st.name)} <span style="font-size:11px;color:#9ca3af;">(\${escHtml(st.address)})</span>`;
+            opt.onclick = () => selectStation(st.id, st.name);
+            dropdown.appendChild(opt);
+        });
+    }
+    
+    dropdown.style.display = 'block';
+}
+
+function selectStation(id, name) {
+    currentStationId = id;
+    document.getElementById('selectedStationId').value = id;
+    document.getElementById('stationSearchInput').value = name === 'Global' ? '' : name;
+    document.getElementById('stationDropdown').style.display = 'none';
+
+    const clearBtn = document.getElementById('clearStationBtn');
+    const banner = document.getElementById('selectedStationBanner');
+    const bannerName = document.getElementById('selectedStationName');
+    const saveScopeLabel = document.getElementById('save-scope-label');
+
+    if (id > 0) {
+        if (clearBtn) clearBtn.style.display = 'inline-block';
+        if (banner) banner.style.display = 'block';
+        if (bannerName) bannerName.textContent = name;
+        if (saveScopeLabel) saveScopeLabel.textContent = `Station: \${name}`;
+    } else {
+        if (clearBtn) clearBtn.style.display = 'none';
+        if (banner) banner.style.display = 'none';
+        if (saveScopeLabel) saveScopeLabel.textContent = 'all stations globally';
+    }
+
+    showToast(`Switched view to: \${name}`, 'info');
+    
+    // Reload configurations for the chosen station scope
+    loadCurrentLogo();
+    loadAllSettings();
+    loadAudit(1);
+}
+
+function clearStationFilter() {
+    selectStation(0, 'Global');
+}
+
+// Close dropdown on click outside
+document.addEventListener('click', function(e) {
+    const container = document.getElementById('station-selector-card');
+    const dropdown = document.getElementById('stationDropdown');
+    if (container && !container.contains(e.target) && dropdown) {
+        dropdown.style.display = 'none';
+    }
+});
+
+/* ── Load All Settings on Page Load or Station Change ────────────────────── */
 async function loadAllSettings() {
     try {
-        const res  = await fetch(`${API}?action=get_all`);
+        const res  = await fetch(`\${API}?action=get_all&station_id=\${currentStationId}`);
         const data = await res.json();
         if (!data.success) return;
         const s = data.settings || {};
 
-        // Theme
-        if (s.primary_color)   setColorField('primary',   s.primary_color.value);
-        if (s.secondary_color) setColorField('secondary', s.secondary_color.value);
-        if (s.accent_color)    setColorField('accent',    s.accent_color.value);
-        if (s.theme_mode)      document.getElementById('toggle-dark-mode').checked = (s.theme_mode.value === 'dark');
-        if (s.font_family) {
-            const ff = document.getElementById('font-family');
-            if (ff) ff.value = s.font_family.value;
-        }
-        if (s.text_size) {
-            const ts = document.getElementById('text-size');
-            if (ts) ts.value = s.text_size.value;
-        }
-        if (s.theme_preset) {
-            document.querySelectorAll('.ss-preset-card').forEach(c => {
-                c.classList.toggle('selected', c.dataset.preset === s.theme_preset.value);
-            });
-        }
+        // Theme Colors
+        setColorField('primary',   s.primary_color?.value || '#002F6C');
+        setColorField('button',    s.button_color?.value || '#002F6C');
+        setColorField('sidebar',   s.sidebar_color?.value || '#1a1a2e');
 
         // Layout
-        if (s.sidebar_style) {
-            const val = s.sidebar_style.value;
-            document.querySelectorAll('input[name="sidebar_style"]').forEach(r => {
-                r.checked = (r.value === val);
-            });
-            document.getElementById('opt-expanded').classList.toggle('selected', val === 'expanded');
-            document.getElementById('opt-collapsed').classList.toggle('selected', val === 'collapsed');
-        }
-        if (s.dashboard_card_order) {
-            try {
-                const order = JSON.parse(s.dashboard_card_order.value);
-                reorderCardList(order);
-            } catch(e) {}
-        }
+        const style = document.getElementById('sidebar-style');
+        if (style) style.value = s.sidebar_style?.value || 'inline';
+
+        const scale = document.getElementById('font-scale');
+        if (scale) scale.value = s.font_scale_layout?.value || '100';
 
         // Accessibility
-        if (s.high_contrast)       document.getElementById('toggle-high-contrast').checked   = (s.high_contrast.value === '1' || s.high_contrast.value === 'true');
-        if (s.reduce_motion)       document.getElementById('toggle-reduce-motion').checked    = (s.reduce_motion.value === '1' || s.reduce_motion.value === 'true');
-        if (s.focus_indicators)    document.getElementById('toggle-focus-indicators').checked = (s.focus_indicators.value === '1' || s.focus_indicators.value === 'true');
-        if (s.screen_reader_hints) document.getElementById('toggle-screen-reader').checked    = (s.screen_reader_hints.value === '1' || s.screen_reader_hints.value === 'true');
-        if (s.font_scale) {
-            const scale = parseFloat(s.font_scale.value) || 1.0;
-            document.getElementById('font-scale-slider').value = scale;
-            updateFontScalePreview(scale);
-        }
+        document.getElementById('toggle-high-contrast').checked = (s.high_contrast?.value === '1' || s.high_contrast?.value === 'true');
 
-        updateLivePreview();
+        const slider = document.getElementById('accessibility-font-scale');
+        if (slider) {
+            slider.value = s.font_scale_accessibility?.value || '100';
+            updateFontScaleValue();
+        }
     } catch(e) {
         console.warn('Could not load settings:', e);
     }
@@ -1423,15 +1115,15 @@ async function loadAllSettings() {
 /* ── Load Current Logo ────────────────────────────────────────────────────── */
 async function loadCurrentLogo() {
     try {
-        const res  = await fetch(`${API}?action=get_logo`);
+        const res  = await fetch(`\${API}?action=get_logo&station_id=\${currentStationId}`);
         const data = await res.json();
         if (data.success && data.logo_url) {
-            document.getElementById('current-logo-img').src = '../' + data.logo_url;
+            document.getElementById('current-logo-img').src = '../' + data.logo_url + '?t=' + Date.now();
         }
     } catch(e) {}
 }
 
-/* ── Logo: Preview before upload ──────────────────────────────────────────── */
+/* ── Logo: Preview before upload ─────────────────────────────────────────── */
 function previewLogoFile(input) {
     const file = input.files[0];
     if (!file) return;
@@ -1444,8 +1136,7 @@ function previewLogoFile(input) {
 
     const reader = new FileReader();
     reader.onload = function(e) {
-        document.getElementById('logo-upload-preview').src = e.target.result;
-        document.getElementById('logo-upload-preview-wrap').style.display = 'block';
+        document.getElementById('current-logo-img').src = e.target.result;
         document.getElementById('btn-upload-logo').disabled = false;
     };
     reader.readAsDataURL(file);
@@ -1453,11 +1144,11 @@ function previewLogoFile(input) {
 
 function clearLogoInput() {
     document.getElementById('logo-file-input').value = '';
-    document.getElementById('logo-upload-preview-wrap').style.display = 'none';
     document.getElementById('btn-upload-logo').disabled = true;
+    loadCurrentLogo();
 }
 
-/* ── Logo: Upload ─────────────────────────────────────────────────────────── */
+/* ── Logo: Upload ────────────────────────────────────────────────────────── */
 async function uploadLogo() {
     const input = document.getElementById('logo-file-input');
     if (!input.files[0]) { showToast('Please select a file first.', 'warning'); return; }
@@ -1465,9 +1156,10 @@ async function uploadLogo() {
     setBtnLoading('btn-upload-logo', true);
     const formData = new FormData();
     formData.append('logo', input.files[0]);
+    formData.append('station_id', currentStationId);
 
     try {
-        const res  = await fetch(`${API}?action=save_logo`, { method: 'POST', body: formData });
+        const res  = await fetch(`\${API}?action=save_logo`, { method: 'POST', body: formData });
         const data = await res.json();
         if (data.success) {
             showToast('Logo updated successfully!', 'success');
@@ -1483,12 +1175,16 @@ async function uploadLogo() {
     }
 }
 
-/* ── Logo: Reset to Default ───────────────────────────────────────────────── */
+/* ── Logo: Reset to Default ──────────────────────────────────────────────── */
 async function resetLogo() {
     if (!confirm('Reset logo to the default Petron logo?')) return;
     setBtnLoading('btn-reset-logo', true);
+    
+    const formData = new FormData();
+    formData.append('station_id', currentStationId);
+
     try {
-        const res  = await fetch(`${API}?action=reset_logo`, { method: 'POST' });
+        const res  = await fetch(`\${API}?action=reset_logo`, { method: 'POST', body: formData });
         const data = await res.json();
         if (data.success) {
             showToast('Logo reset to default.', 'success');
@@ -1505,220 +1201,112 @@ async function resetLogo() {
 
 /* ── Theme: Color helpers ─────────────────────────────────────────────────── */
 function setColorField(name, value) {
-    const picker = document.getElementById(`color-${name}`);
-    const hex    = document.getElementById(`hex-${name}`);
+    const picker = document.getElementById(`color-\${name}`);
+    const hex    = document.getElementById(`hex-\${name}`);
     if (picker) picker.value = value;
     if (hex)    hex.value    = value;
-    updateLivePreview();
 }
 
 function syncColorHex(name) {
-    const picker = document.getElementById(`color-${name}`);
-    const hex    = document.getElementById(`hex-${name}`);
+    const picker = document.getElementById(`color-\${name}`);
+    const hex    = document.getElementById(`hex-\${name}`);
     if (picker && hex) hex.value = picker.value;
-    updateLivePreview();
 }
 
 function syncColorPicker(name) {
-    const picker = document.getElementById(`color-${name}`);
-    const hex    = document.getElementById(`hex-${name}`);
+    const picker = document.getElementById(`color-\${name}`);
+    const hex    = document.getElementById(`hex-\${name}`);
     if (hex && picker && /^#[0-9A-Fa-f]{6}$/.test(hex.value)) {
         picker.value = hex.value;
     }
-    updateLivePreview();
 }
 
-/* ── Theme: Apply Preset ──────────────────────────────────────────────────── */
-function applyPreset(card) {
-    document.querySelectorAll('.ss-preset-card').forEach(c => c.classList.remove('selected'));
-    card.classList.add('selected');
-    setColorField('primary',   card.dataset.primary);
-    setColorField('secondary', card.dataset.secondary);
-    setColorField('accent',    card.dataset.accent);
-    updateLivePreview();
-}
-
-/* ── Theme: Live Preview ──────────────────────────────────────────────────── */
-function updateLivePreview() {
-    const primary = document.getElementById('color-primary')?.value   || '#002F6C';
-    const accent  = document.getElementById('color-accent')?.value    || '#FFC107';
-    const isDark  = document.getElementById('toggle-dark-mode')?.checked;
-
-    const bar  = document.getElementById('preview-bar');
-    const body = document.getElementById('preview-body');
-    const pBtn = document.getElementById('preview-primary-btn');
-    const aBtn = document.getElementById('preview-accent-btn');
-    const txt  = document.getElementById('preview-text');
-
-    if (bar)  bar.style.background  = primary;
-    if (pBtn) pBtn.style.background = primary;
-    if (aBtn) aBtn.style.background = accent;
-
-    if (body) {
-        body.style.background = isDark ? '#1e293b' : '#f8fafc';
-    }
-    if (txt) {
-        txt.style.color = isDark ? '#e2e8f0' : '#1a1a2e';
-    }
-}
-
-/* ── Theme: Save ──────────────────────────────────────────────────────────── */
-async function saveTheme() {
-    setBtnLoading('btn-save-theme', true);
-    const selectedPreset = document.querySelector('.ss-preset-card.selected');
+/* ── Apply Color Scheme ───────────────────────────────────────────────────── */
+async function applyColorScheme() {
     const payload = {
-        primary_color:   document.getElementById('hex-primary').value,
-        secondary_color: document.getElementById('hex-secondary').value,
-        accent_color:    document.getElementById('hex-accent').value,
-        theme_mode:      document.getElementById('toggle-dark-mode').checked ? 'dark' : 'light',
-        font_family:     document.getElementById('font-family').value,
-        text_size:       document.getElementById('text-size').value,
-        theme_preset:    selectedPreset ? selectedPreset.dataset.preset : 'custom',
+        primary_color: document.getElementById('hex-primary')?.value || '#002F6C',
+        button_color: document.getElementById('hex-button')?.value || '#002F6C',
+        sidebar_color: document.getElementById('hex-sidebar')?.value || '#1a1a2e',
+        station_id: currentStationId
     };
 
     try {
-        const res  = await fetch(`${API}?action=save_theme`, {
+        const res = await fetch(`\${API}?action=save_theme`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
         });
         const data = await res.json();
         if (data.success) {
-            showToast('Theme settings saved!', 'success');
+            showToast('Color scheme applied successfully!', 'success');
         } else {
-            showToast(data.message || 'Save failed.', 'error');
+            showToast(data.message || 'Failed to apply color scheme.', 'error');
         }
     } catch(e) {
         showToast('Network error.', 'error');
-    } finally {
-        setBtnLoading('btn-save-theme', false);
     }
 }
 
-/* ── Layout: Sidebar radio visual ────────────────────────────────────────── */
-document.querySelectorAll('input[name="sidebar_style"]').forEach(radio => {
-    radio.addEventListener('change', function() {
-        document.getElementById('opt-expanded').classList.toggle('selected', this.value === 'expanded');
-        document.getElementById('opt-collapsed').classList.toggle('selected', this.value === 'collapsed');
-    });
-});
-
-/* ── Layout: Drag & Drop ──────────────────────────────────────────────────── */
-(function initDragDrop() {
-    const list = document.getElementById('card-order-list');
-    if (!list) return;
-
-    let dragSrc = null;
-
-    list.addEventListener('dragstart', function(e) {
-        dragSrc = e.target.closest('.ss-sortable-item');
-        if (dragSrc) {
-            dragSrc.classList.add('dragging');
-            e.dataTransfer.effectAllowed = 'move';
-        }
-    });
-
-    list.addEventListener('dragover', function(e) {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-        const target = e.target.closest('.ss-sortable-item');
-        if (target && target !== dragSrc) {
-            list.querySelectorAll('.ss-sortable-item').forEach(i => i.classList.remove('drag-over'));
-            target.classList.add('drag-over');
-        }
-    });
-
-    list.addEventListener('dragleave', function(e) {
-        const target = e.target.closest('.ss-sortable-item');
-        if (target) target.classList.remove('drag-over');
-    });
-
-    list.addEventListener('drop', function(e) {
-        e.preventDefault();
-        const target = e.target.closest('.ss-sortable-item');
-        if (target && dragSrc && target !== dragSrc) {
-            const items = [...list.querySelectorAll('.ss-sortable-item')];
-            const srcIdx = items.indexOf(dragSrc);
-            const tgtIdx = items.indexOf(target);
-            if (srcIdx < tgtIdx) {
-                list.insertBefore(dragSrc, target.nextSibling);
-            } else {
-                list.insertBefore(dragSrc, target);
-            }
-        }
-        list.querySelectorAll('.ss-sortable-item').forEach(i => i.classList.remove('drag-over'));
-    });
-
-    list.addEventListener('dragend', function() {
-        if (dragSrc) dragSrc.classList.remove('dragging');
-        dragSrc = null;
-    });
-})();
-
-function reorderCardList(order) {
-    const list = document.getElementById('card-order-list');
-    if (!list || !Array.isArray(order)) return;
-    order.forEach(cardKey => {
-        const item = list.querySelector(`[data-card="${cardKey}"]`);
-        if (item) list.appendChild(item);
-    });
+/* ── Preview Layout ──────────────────────────────────────────────────────── */
+function previewLayout() {
+    const style = document.getElementById('sidebar-style')?.value || 'inline';
+    const scale = document.getElementById('font-scale')?.value || '100';
+    
+    showToast(`Preview: Sidebar \${style}, Font \${scale}%`, 'info');
+    document.documentElement.style.fontSize = `\${scale}%`;
 }
 
-function getCardOrder() {
-    return [...document.querySelectorAll('#card-order-list .ss-sortable-item')]
-        .map(i => i.dataset.card);
-}
-
-/* ── Layout: Save ─────────────────────────────────────────────────────────── */
-async function saveLayout() {
-    setBtnLoading('btn-save-layout', true);
-    const sidebarStyle = document.querySelector('input[name="sidebar_style"]:checked')?.value || 'expanded';
-    const payload = {
-        sidebar_style:        sidebarStyle,
-        sidebar_state:        sidebarStyle,
-        dashboard_card_order: getCardOrder(),
-    };
-
-    try {
-        const res  = await fetch(`${API}?action=save_layout`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-        const data = await res.json();
-        if (data.success) {
-            showToast('Layout settings saved!', 'success');
-        } else {
-            showToast(data.message || 'Save failed.', 'error');
-        }
-    } catch(e) {
-        showToast('Network error.', 'error');
-    } finally {
-        setBtnLoading('btn-save-layout', false);
+/* ── High Contrast Toggle ────────────────────────────────────────────────── */
+function toggleHighContrast() {
+    const enabled = document.getElementById('toggle-high-contrast')?.checked;
+    if (enabled) {
+        document.body.classList.add('high-contrast-mode');
+        showToast('High contrast mode enabled', 'info');
+    } else {
+        document.body.classList.remove('high-contrast-mode');
+        showToast('High contrast mode disabled', 'info');
     }
 }
 
-/* ── Accessibility: Font Scale Preview ───────────────────────────────────── */
-function updateFontScalePreview(value) {
-    const val = parseFloat(value);
-    document.getElementById('font-scale-value').textContent = val.toFixed(1) + '×';
-    const preview = document.getElementById('font-scale-preview');
-    if (preview) preview.style.fontSize = (val * 14) + 'px';
+/* ── Update Font Scale Value ──────────────────────────────────────────────── */
+function updateFontScaleValue() {
+    const slider = document.getElementById('accessibility-font-scale');
+    const display = document.getElementById('font-scale-value');
+    const preview = document.getElementById('font-preview');
+    
+    if (slider && display) {
+        display.textContent = slider.value + '%';
+    }
+    
+    if (preview && slider) {
+        const baseSize = 14;
+        const scale = parseInt(slider.value) / 100;
+        preview.style.fontSize = (baseSize * scale) + 'px';
+    }
 }
 
-/* ── Accessibility: Save ──────────────────────────────────────────────────── */
-async function saveAccessibility() {
-    setBtnLoading('btn-save-accessibility', true);
+/* ── Preview Accessibility Theme ─────────────────────────────────────────── */
+function previewAccessibilityTheme() {
+    const highContrast = document.getElementById('toggle-high-contrast')?.checked;
+    const scale = document.getElementById('accessibility-font-scale')?.value || '100';
+    
+    let message = 'Preview: ';
+    if (highContrast) message += 'High Contrast ON, ';
+    message += `Font Scale \${scale}%`;
+    
+    showToast(message, 'info');
+}
+
+/* ── Save Accessibility Settings ─────────────────────────────────────────── */
+async function saveAccessibilitySettings() {
     const payload = {
-        high_contrast:       document.getElementById('toggle-high-contrast').checked   ? '1' : '0',
-        reduce_motion:       document.getElementById('toggle-reduce-motion').checked    ? '1' : '0',
-        focus_indicators:    document.getElementById('toggle-focus-indicators').checked ? '1' : '0',
-        screen_reader_hints: document.getElementById('toggle-screen-reader').checked    ? '1' : '0',
-        font_scale:          document.getElementById('font-scale-slider').value,
+        high_contrast: document.getElementById('toggle-high-contrast')?.checked ? '1' : '0',
+        font_scale: document.getElementById('accessibility-font-scale')?.value || '100',
+        station_id: currentStationId
     };
 
     try {
-        const res  = await fetch(`${API}?action=save_accessibility`, {
+        const res = await fetch(`\${API}?action=save_accessibility`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -1731,12 +1319,83 @@ async function saveAccessibility() {
         }
     } catch(e) {
         showToast('Network error.', 'error');
-    } finally {
-        setBtnLoading('btn-save-accessibility', false);
     }
 }
 
-/* ── Audit Trail ──────────────────────────────────────────────────────────── */
+/* ── Save All Settings ────────────────────────────────────────────────────── */
+async function saveAllSettings() {
+    const payload = {
+        primary_color: document.getElementById('hex-primary')?.value,
+        button_color: document.getElementById('hex-button')?.value,
+        sidebar_color: document.getElementById('hex-sidebar')?.value,
+        sidebar_style: document.getElementById('sidebar-style')?.value,
+        font_scale_layout: document.getElementById('font-scale')?.value,
+        high_contrast: document.getElementById('toggle-high-contrast')?.checked ? '1' : '0',
+        font_scale_accessibility: document.getElementById('accessibility-font-scale')?.value,
+        station_id: currentStationId
+    };
+
+    try {
+        const res = await fetch(`\${API}?action=save_all`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast('All settings saved successfully!', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showToast(data.message || 'Save failed.', 'error');
+        }
+    } catch(e) {
+        showToast('Network error.', 'error');
+    }
+}
+
+/* ── Initialize Drag & Drop for Card Arrangement ─────────────────────────── */
+(function initCardDragDrop() {
+    const list = document.getElementById('card-arrangement');
+    if (!list) return;
+
+    let draggedItem = null;
+
+    list.addEventListener('dragstart', function(e) {
+        draggedItem = e.target;
+        e.target.classList.add('dragging');
+    });
+
+    list.addEventListener('dragend', function(e) {
+        e.target.classList.remove('dragging');
+    });
+
+    list.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        const afterElement = getDragAfterElement(list, e.clientY);
+        if (afterElement == null) {
+            list.appendChild(draggedItem);
+        } else {
+            list.insertBefore(draggedItem, afterElement);
+        }
+    });
+
+    function getDragAfterElement(container, y) {
+        const draggableElements = [...container.querySelectorAll('.ss-sortable-item:not(.dragging)')];
+        
+        return draggableElements.reduce((closest, child) => {
+            const box = child.getBoundingClientRect();
+            const offset = y - box.top - box.height / 2;
+            
+            if (offset < 0 && offset > closest.offset) {
+                return { offset: offset, element: child };
+            } else {
+                return closest;
+            }
+        }, { offset: Number.NEGATIVE_INFINITY }).element;
+    }
+})();
+
+/* ── Audit Trail ─────────────────────────────────────────────────────────── */
 let auditCurrentPage = 1;
 let auditDebounceTimer = null;
 
@@ -1755,10 +1414,10 @@ async function loadAudit(page = 1) {
     if (loading) loading.style.display = 'block';
     if (wrap)    wrap.style.display    = 'none';
 
-    const params = new URLSearchParams({ action: 'get_audit', page, group, search });
+    const params = new URLSearchParams({ action: 'get_audit', page, group, search, station_id: currentStationId });
 
     try {
-        const res  = await fetch(`${API}?${params}`);
+        const res  = await fetch(`\${API}?\${params}`);
         const data = await res.json();
 
         if (loading) loading.style.display = 'none';
@@ -1793,7 +1452,7 @@ function renderAuditTable(rows) {
     const groupBadge = (g) => {
         const map = { branding: 'ss-badge-branding', theme: 'ss-badge-theme', layout: 'ss-badge-layout', accessibility: 'ss-badge-accessibility' };
         const cls = map[g] || 'ss-badge-general';
-        return `<span class="ss-badge ${cls}">${escHtml(g || 'general')}</span>`;
+        return `<span class="ss-badge \${cls}">\${escHtml(g || 'general')}</span>`;
     };
 
     const truncate = (v, n = 30) => {
@@ -1804,13 +1463,13 @@ function renderAuditTable(rows) {
 
     tbody.innerHTML = rows.map(r => `
         <tr>
-            <td style="white-space:nowrap;">${escHtml(r.created_at || '')}</td>
-            <td><code style="font-size:12px;background:#f3f4f6;padding:2px 6px;border-radius:4px;">${escHtml(r.setting_key || '')}</code></td>
-            <td>${groupBadge(r.setting_group)}</td>
-            <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(r.old_value || '')}">${truncate(r.old_value)}</td>
-            <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(r.new_value || '')}">${truncate(r.new_value)}</td>
-            <td>${escHtml(r.changed_by_name || 'System')}</td>
-            <td style="font-family:monospace;font-size:12px;">${escHtml(r.ip_address || '')}</td>
+            <td style="white-space:nowrap;">\${escHtml(r.created_at || '')}</td>
+            <td><code style="font-size:12px;background:#f3f4f6;padding:2px 6px;border-radius:4px;">\${escHtml(r.setting_key || '')}</code></td>
+            <td>\${groupBadge(r.setting_group)}</td>
+            <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="\${escHtml(r.old_value || '')}">\${truncate(r.old_value)}</td>
+            <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="\${escHtml(r.new_value || '')}">\${truncate(r.new_value)}</td>
+            <td>\${escHtml(r.changed_by_name || 'System')}</td>
+            <td style="font-family:monospace;font-size:12px;">\${escHtml(r.ip_address || '')}</td>
         </tr>
     `).join('');
 }
@@ -1819,41 +1478,40 @@ function renderAuditPagination(current, total, recordCount) {
     const container = document.getElementById('audit-pagination');
     if (!container || total <= 1) { if (container) container.innerHTML = ''; return; }
 
-    let html = `<span style="font-size:12px;color:var(--text-secondary);margin-right:8px;">${recordCount} records</span>`;
-    html += `<button class="ss-page-btn" onclick="loadAudit(${current - 1})" ${current <= 1 ? 'disabled' : ''}>
+    let html = `<span style="font-size:12px;color:var(--text-secondary);margin-right:8px;">\${recordCount} records</span>`;
+    html += `<button class="ss-page-btn" onclick="loadAudit(\${current - 1})" \${current <= 1 ? 'disabled' : ''}>
                 <i class="fas fa-chevron-left"></i>
              </button>`;
 
     const range = 2;
     for (let i = 1; i <= total; i++) {
         if (i === 1 || i === total || (i >= current - range && i <= current + range)) {
-            html += `<button class="ss-page-btn ${i === current ? 'active' : ''}" onclick="loadAudit(${i})">${i}</button>`;
+            html += `<button class="ss-page-btn \${i === current ? 'active' : ''}" onclick="loadAudit(\${i})">\${i}</button>`;
         } else if (i === current - range - 1 || i === current + range + 1) {
             html += `<span style="padding:0 4px;color:var(--text-secondary);">…</span>`;
         }
     }
 
-    html += `<button class="ss-page-btn" onclick="loadAudit(${current + 1})" ${current >= total ? 'disabled' : ''}>
+    html += `<button class="ss-page-btn" onclick="loadAudit(\${current + 1})" \${current >= total ? 'disabled' : ''}>
                 <i class="fas fa-chevron-right"></i>
              </button>`;
 
     container.innerHTML = html;
 }
 
-/* ── Audit: Export CSV ────────────────────────────────────────────────────── */
+/* ── Audit: Export CSV ───────────────────────────────────────────────────── */
 async function exportAuditCSV() {
     const group  = document.getElementById('audit-filter-group').value;
     const search = document.getElementById('audit-search').value;
 
     showToast('Preparing CSV export…', 'info');
 
-    // Fetch all pages
     let allRows = [];
     let page = 1, pages = 1;
     do {
-        const params = new URLSearchParams({ action: 'get_audit', page, group, search });
+        const params = new URLSearchParams({ action: 'get_audit', page, group, search, station_id: currentStationId });
         try {
-            const res  = await fetch(`${API}?${params}`);
+            const res  = await fetch(`\${API}?\${params}`);
             const data = await res.json();
             if (!data.success) break;
             allRows = allRows.concat(data.data || []);
@@ -1882,12 +1540,12 @@ async function exportAuditCSV() {
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    a.download = `system_settings_audit_${new Date().toISOString().slice(0,10)}.csv`;
+    a.download = `system_settings_audit_\${new Date().toISOString().slice(0,10)}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showToast(`Exported ${allRows.length} records.`, 'success');
+    showToast(`Exported \${allRows.length} records.`, 'success');
 }
 
 function csvCell(v) {
@@ -1904,12 +1562,12 @@ function escHtml(str) {
         .replace(/"/g, '&quot;');
 }
 
-/* ── Init ─────────────────────────────────────────────────────────────────── */
+/* ── Init ────────────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', function() {
     loadCurrentLogo();
     loadAllSettings();
-    updateLivePreview();
 });
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>
+

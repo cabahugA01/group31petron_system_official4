@@ -540,7 +540,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="login-wrap">
         <div class="login-card">
             <div class="brand">
-                <img src="../assets/img/Petron Logo.png" alt="Petron Logo" class="brand-logo">
+                <img src="<?php echo '../' . get_system_logo_url(isset($station_id) ? (int)$station_id : (isset($user['station_id']) ? (int)$user['station_id'] : 0)); ?>" alt="Petron Logo" class="brand-logo">
                 <span class="brand-tagline">Station Management</span>
             </div>
 

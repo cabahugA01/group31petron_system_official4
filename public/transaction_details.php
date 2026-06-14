@@ -129,7 +129,7 @@ include __DIR__ . '/../partials/header.php';
 <!-- Print Header with Logo and System Name -->
 <div class="print-header">
     <div class="print-logo">
-        <img src="../assets/img/Petron Logo.png" alt="Petron Logo" />
+        <img src="<?php echo '../' . get_system_logo_url(isset($station_id) ? (int)$station_id : (isset($user['station_id']) ? (int)$user['station_id'] : 0)); ?>" alt="Petron Logo" />
     </div>
     <div class="print-title">
         <h2>Petron Station Management System</h2>

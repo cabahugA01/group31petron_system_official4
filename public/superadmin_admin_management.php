@@ -154,12 +154,12 @@ include __DIR__ . '/../partials/header.php';
 /* Toolbar combo variant — matches toolbar height */
 .am-combo-toolbar .am-combo-input { padding-top: 9px; padding-bottom: 9px; font-size: 13px; }
 .am-combo { position: relative; }
-.am-combo-input { width: 100%; padding: 10px 36px 10px 13px; border: 1px solid #ddd; border-radius: 10px; font-size: 13px; outline: none; transition: border-color .2s; background: #fff; box-sizing: border-box; cursor: text; }
+.am-combo-input { width: 100% !important; padding: 10px 45px 10px 13px; border: 1px solid #ddd; border-radius: 10px; font-size: 13px; outline: none; transition: border-color .2s; background: #fff; box-sizing: border-box; cursor: text; }
 .am-combo-input:focus { border-color: var(--petron-blue); box-shadow: 0 0 0 3px rgba(0,38,77,.08); }
 .am-combo-input.has-value { border-color: var(--petron-blue); }
-.am-combo-arrow { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); color: #999; font-size: 12px; pointer-events: none; transition: transform .2s; z-index: 1; }
+.am-combo-arrow { position: absolute; right: 13px; top: 50%; transform: translateY(-50%); color: #999; font-size: 12px; pointer-events: none; transition: transform .2s; z-index: 1; }
 .am-combo.open .am-combo-arrow { transform: translateY(-50%) rotate(180deg); }
-.am-combo-clear { position: absolute; right: 30px; top: 50%; transform: translateY(-50%); color: #bbb; font-size: 13px; cursor: pointer; display: none; background: none; border: none; padding: 2px 4px; line-height: 1; }
+.am-combo-clear { position: absolute; right: 33px; top: 50%; transform: translateY(-50%); color: #bbb; font-size: 13px; cursor: pointer; display: none; background: none; border: none; padding: 2px 4px; line-height: 1; z-index: 2; }
 .am-combo-clear:hover { color: #cc0000; }
 .am-combo-dropdown { display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: #fff; border: 1px solid #ddd; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.12); z-index: 9999; max-height: 220px; overflow: hidden; flex-direction: column; }
 .am-combo.open .am-combo-dropdown { display: flex; }
@@ -290,25 +290,13 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
         <?php endforeach; ?>
     </select>
     <!-- Searchable station filter -->
-    <div class="am-combo am-combo-toolbar" id="tb_station_combo" style="width:280px;">
-        <input type="text" class="am-combo-input" id="tb_station_display" placeholder="All Stations" autocomplete="off" readonly style="padding-right:35px;">
+    <div class="am-combo am-combo-toolbar" id="tb_station_combo" style="width:280px; position: relative; z-index: 100;">
+        <input type="text" class="am-combo-input" id="tb_station_display" placeholder="Type to search stations..." autocomplete="off" style="padding-right:45px; cursor: text;">
         <button type="button" class="am-combo-clear" id="tb_station_clear" tabindex="-1" title="Clear filter"><i class="fas fa-times"></i></button>
         <i class="fas fa-chevron-down am-combo-arrow"></i>
         <input type="hidden" id="tb_station_val">
-        <div class="am-combo-dropdown" id="tb_station_dropdown">
-            <div class="am-combo-search">
-                <i class="fas fa-search"></i>
-                <input type="text" id="tb_station_search" placeholder="Search station…" autocomplete="off">
-            </div>
-            <div class="am-combo-list" id="tb_station_list">
-                <div class="am-combo-option" data-value="" data-label="All Stations" style="font-style:italic;color:#888;">All Stations</div>
-                <?php foreach ($stations as $st): ?>
-                <div class="am-combo-option" data-value="<?php echo htmlspecialchars($st['name']); ?>" data-label="<?php echo htmlspecialchars($st['name']); ?>">
-                    <i class="fas fa-building opt-icon"></i>
-                    <?php echo htmlspecialchars($st['name']); ?>
-                </div>
-                <?php endforeach; ?>
-            </div>
+        <div class="am-combo-dropdown" id="tb_station_dropdown" style="position: fixed; z-index: 99999;">
+            <div class="am-combo-list" id="tb_station_list"></div>
         </div>
     </div>
     <div class="am-toolbar-right">
@@ -678,6 +666,150 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
 </div>
 
 <script>
+const STATION_DATA = <?php echo json_encode(array_map(function($s) {
+    return ['id' => (int)$s['id'], 'name' => $s['name']];
+}, $stations), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG); ?>;
+
+function initVirtualStationFilter() {
+    const combo   = document.getElementById('tb_station_combo');
+    const list    = document.getElementById('tb_station_list');
+    const display = document.getElementById('tb_station_display');
+    const hidden  = document.getElementById('tb_station_val');
+    const clear   = document.getElementById('tb_station_clear');
+    if (!combo || !display || !list || !hidden || !clear) return;
+
+    const MAX = 50;
+    let currentVal = '';
+    let currentLabel = 'All Stations';
+
+    function esc(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function render(q) {
+        const lq = (q || '').toLowerCase().trim();
+        list.innerHTML = '';
+
+        if (!lq) {
+            const all = document.createElement('div');
+            all.className = 'am-combo-option' + (!currentVal ? ' selected' : '');
+            all.dataset.value = '';
+            all.dataset.label = 'All Stations';
+            all.style.cssText = 'font-style:italic;color:#888;';
+            all.textContent   = 'All Stations';
+            list.appendChild(all);
+        }
+
+        const filtered = lq
+            ? STATION_DATA.filter(s => s.name.toLowerCase().includes(lq))
+            : STATION_DATA;
+
+        function appendMore() {
+            const currentCount = list.querySelectorAll('.am-combo-option[data-value]').length;
+            const batch = filtered.slice(currentCount, currentCount + 100);
+            batch.forEach(s => {
+                const div = document.createElement('div');
+                div.className    = 'am-combo-option' + (currentVal === s.name ? ' selected' : '');
+                div.dataset.value = s.name;
+                div.dataset.label = s.name;
+                div.innerHTML    = '<i class="fas fa-building opt-icon"></i> ' + esc(s.name);
+                list.appendChild(div);
+            });
+        }
+
+        appendMore();
+
+        list.onscroll = () => {
+            if (list.scrollTop + list.clientHeight >= list.scrollHeight - 50) {
+                appendMore();
+            }
+        };
+
+        if (filtered.length === 0) {
+            const empty = document.createElement('div');
+            empty.className  = 'am-combo-empty';
+            empty.textContent = `No station matching "${q}"`;
+            list.appendChild(empty);
+        }
+    }
+
+    function pick(value, label) {
+        currentVal    = value;
+        currentLabel  = value ? label : 'All Stations';
+        hidden.value  = value;
+        display.value = value ? label : 'All Stations';
+        display.classList.toggle('has-value', !!value);
+        clear.style.display = value ? 'block' : 'none';
+        combo.classList.remove('open');
+        filterTable();
+    }
+
+    function open() {
+        combo.classList.add('open');
+        display.value = '';
+        const dd = combo.querySelector('.am-combo-dropdown');
+        if (dd) {
+            const rect = combo.getBoundingClientRect();
+            dd.style.left  = rect.left + 'px';
+            dd.style.top   = (rect.bottom + 4) + 'px';
+            dd.style.width = rect.width + 'px';
+        }
+        render('');
+    }
+
+    function close() {
+        combo.classList.remove('open');
+        display.value = currentVal ? currentLabel : 'All Stations';
+    }
+
+    display.addEventListener('click', () => combo.classList.contains('open') ? close() : open());
+    display.addEventListener('focus', () => { if (!combo.classList.contains('open')) open(); });
+
+    let dbt;
+    display.addEventListener('input', () => {
+        if (!combo.classList.contains('open')) combo.classList.add('open');
+        clearTimeout(dbt);
+        dbt = setTimeout(() => render(display.value), 130);
+    });
+
+    display.addEventListener('keydown', e => {
+        if (!combo.classList.contains('open') && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+            e.preventDefault();
+            open();
+            return;
+        }
+        const opts = [...list.querySelectorAll('.am-combo-option[data-value]')];
+        const foc  = list.querySelector('.am-combo-option.focused');
+        let idx    = foc ? opts.indexOf(foc) : -1;
+        if      (e.key === 'ArrowDown')           { e.preventDefault(); idx = Math.min(idx + 1, opts.length - 1); }
+        else if (e.key === 'ArrowUp')             { e.preventDefault(); idx = Math.max(idx - 1, 0); }
+        else if (e.key === 'Enter' && foc)        { e.preventDefault(); pick(foc.dataset.value, foc.dataset.label); return; }
+        else if (e.key === 'Escape')              { close(); return; }
+        else                                      { return; }
+        opts.forEach(o => o.classList.remove('focused'));
+        if (opts[idx]) { opts[idx].classList.add('focused'); opts[idx].scrollIntoView({ block: 'nearest' }); }
+    });
+
+    list.addEventListener('click', e => {
+        const opt = e.target.closest('.am-combo-option');
+        if (opt) pick(opt.dataset.value, opt.dataset.label);
+    });
+
+    list.addEventListener('mouseover', e => {
+        const opt = e.target.closest('.am-combo-option');
+        if (opt) {
+            list.querySelectorAll('.am-combo-option').forEach(o => o.classList.remove('focused'));
+            opt.classList.add('focused');
+        }
+    });
+
+    clear.addEventListener('click', e => { e.stopPropagation(); pick('', ''); });
+
+    document.addEventListener('click', e => { if (!combo.contains(e.target)) close(); });
+
+    pick('', '');
+}
+
 // ══════════════════════════════════════════════════════════════
 // Searchable Station Combobox
 // ══════════════════════════════════════════════════════════════
@@ -769,8 +901,8 @@ function initCombo(comboId, searchId, listId, displayId, hiddenId, clearId, onCh
 document.addEventListener('DOMContentLoaded', () => {
     initCombo('c_station_combo', 'c_station_search', 'c_station_list', 'c_station_display', 'c_station_id', 'c_station_clear');
     initCombo('e_station_combo', 'e_station_search', 'e_station_list', 'e_station_display', 'e_station_id', 'e_station_clear');
-    // Toolbar station filter — triggers filterTable on selection
-    initCombo('tb_station_combo', 'tb_station_search', 'tb_station_list', 'tb_station_display', 'tb_station_val', 'tb_station_clear', filterTable);
+    // Toolbar station filter using the new virtual/searchable combobox
+    initVirtualStationFilter();
     filterTable();
 });
 

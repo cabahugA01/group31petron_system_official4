@@ -597,7 +597,7 @@ $report_groups = $report_sections;
 <div class="page-head">
     <div>
         <h1 class="h1" style="font-weight: 800;">REPORTS (Developer View)</h1>
-        <div class="sub" style="font-weight: 400; color: #666;">Technical Monitoring</div>
+        <div class="sub" style="font-weight: 400; color: #666;">System/Domain Technical Monitoring & Security Audit</div>
     </div>
     <div class="actions">
         <button class="btn dark" onclick="location.reload()">
@@ -606,6 +606,7 @@ $report_groups = $report_sections;
     </div>
 </div>
 
+<main class="main-content">
     <div class="stats-grid">
         <?php foreach ($report_sections as $key => $section): ?>
             <div class="stat-card">
@@ -624,140 +625,17 @@ $report_groups = $report_sections;
                     </ul>
                 </div>
                 <div class="report-actions">
-                    <button type="button" class="btn btn-primary btn-sm" onclick="viewReport('<?php echo $key; ?>')">
+                    <a href="<?php 
+                        echo $key === 'technical' ? 'reports_technical.php' : 
+                             ($key === 'security' ? 'reports_security.php' : 
+                             ($key === 'developer_audit' ? 'reports_developer_audit.php' : 'reports_audit_trail.php')); 
+                    ?>" class="btn btn-primary btn-sm">
                         <i class="fas fa-eye"></i> View Report
-                    </button>
+                    </a>
                 </div>
             </div>
         <?php endforeach; ?>
     </div>
-
-
-    <div id="report-content" style="display: none;">
-        <!-- Dynamic report content will be loaded here -->
-    </div>
 </main>
-
-<script>
-function viewReport(reportType) {
-    const reportContent = document.getElementById('report-content');
-    const sections = document.querySelectorAll('.stat-card');
-    
-    // Hide all sections and show report content
-    sections.forEach(section => section.style.display = 'none');
-    reportContent.style.display = 'block';
-    
-    // Load report data based on type
-    loadReportData(reportType);
-}
-
-function loadReportData(reportType) {
-    const reportContent = document.getElementById('report-content');
-    
-    // Show loading state
-    reportContent.innerHTML = '<div style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin" style="font-size: 2rem;"></i><p>Loading report data...</p></div>';
-    
-    // Simulate loading data (replace with actual API call)
-    setTimeout(() => {
-        const reportData = getReportData(reportType);
-        displayReport(reportType, reportData);
-    }, 1000);
-}
-
-function getReportData(reportType) {
-    // Database-driven report data (simulated for demo)
-    const reports = {
-        technical: {
-            title: 'Technical Reports',
-            tables: ['audit_log', 'activity_logs', 'system_logs'],
-            data: [
-                { module: 'System Performance', usage_count: 1250, response_time: '2.3s', status: 'Active' },
-                { module: 'Database Operations', usage_count: 890, response_time: '1.8s', status: 'Active' },
-                { module: 'API Endpoints', usage_count: 2100, response_time: '0.9s', status: 'Active' }
-            ]
-        },
-        security: {
-            title: 'Security Reports',
-            tables: ['audit_log', 'users', 'login_attempts'],
-            data: [
-                { user: 'admin', ip_address: '192.168.1.1', attempts: 5, status: 'Success' },
-                { user: 'staff', ip_address: '192.168.1.2', attempts: 3, status: 'Success' },
-                { user: 'unknown', ip_address: '192.168.1.3', attempts: 1, status: 'Failed' }
-            ]
-        },
-        developer_audit: {
-            title: 'Developer Audit Reports',
-            tables: ['audit_log', 'system_config', 'module_config'],
-            data: [
-                { developer: 'admin', module: 'Database Config', change_type: 'Update', timestamp: '2024-01-15 10:30:00' },
-                { developer: 'admin', module: 'API Settings', change_type: 'Create', timestamp: '2024-01-15 09:15:00' },
-                { developer: 'dev', module: 'User Permissions', change_type: 'Modify', timestamp: '2024-01-14 16:45:00' }
-            ]
-        }
-    };
-    
-    return reports[reportType] || null;
-}
-
-function displayReport(reportType, reportData) {
-    const reportContent = document.getElementById('report-content');
-    
-    if (!reportData) {
-        reportContent.innerHTML = '<div style="text-align: center; padding: 40px;"><i class="fas fa-exclamation-triangle" style="font-size: 2rem; color: #ef4444;"></i><p>No report data available</p></div>';
-        return;
-    }
-    
-    let html = `
-        <div class="section-header">
-            <h2 class="section-title">
-                <span>${reportData.title}</span>
-                <button class="btn btn-secondary btn-sm" onclick="backToReports()">
-                    <i class="fas fa-arrow-left"></i> Back to Reports
-                </button>
-            </h2>
-        </div>
-        <div class="report-card">
-            <div class="report-card-body">
-                <div class="table-container">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                ${Object.keys(reportData.data[0]).map(key => `<th>${key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</th>`).join('')}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${reportData.data.map(row => 
-                                `<tr>${Object.values(row).map(value => `<td>${value}</td>`).join('')}</tr>`
-                            ).join('')}
-                        </tbody>
-                    </table>
-                </div>
-                <div class="report-details">
-                    <strong>Report Information</strong><br>
-                    Report Type: ${reportData.title}<br>
-                    Data Sources: ${reportData.tables.join(', ')}<br>
-                    Records: ${reportData.data.length}
-                </div>
-            </div>
-        </div>
-    `;
-    
-    reportContent.innerHTML = html;
-}
-
-function backToReports() {
-    const reportContent = document.getElementById('report-content');
-    const sections = document.querySelectorAll('.stat-card');
-    
-    // Hide report content and show sections
-    reportContent.style.display = 'none';
-    sections.forEach(section => section.style.display = 'block');
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize the page
-    console.log('Developer Reports loaded');
-});
-</script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

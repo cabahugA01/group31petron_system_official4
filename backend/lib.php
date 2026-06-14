@@ -1058,4 +1058,32 @@ function fifo_deduct_stock(PDO $pdo, int $station_id, $product_id_or_name, float
     }
 }
 
+function get_system_logo_url($station_id = null) {
+    global $pdo;
+    if ($station_id === null) {
+        $station_id = user_station_id() ?: 0;
+    }
+    
+    $default_logo = 'assets/img/Petron Logo.png';
+    try {
+        if ($pdo) {
+            $stmt = $pdo->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'system_logo' AND station_id = ?");
+            $stmt->execute([$station_id]);
+            $val = $stmt->fetchColumn();
+            if ($val) {
+                return $val;
+            }
+            if ($station_id > 0) {
+                $stmt->execute([0]);
+                $val = $stmt->fetchColumn();
+                if ($val) {
+                    return $val;
+                }
+            }
+        }
+    } catch (Exception $e) {}
+    
+    return $default_logo;
+}
+
 ?>

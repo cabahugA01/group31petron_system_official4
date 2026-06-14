@@ -97,18 +97,20 @@ $master_menu = [
     ['id'=>'database_management','label'=>'Database Management','ico'=>'fas fa-database','href'=>'database_management.php','permissions'=>['manage_stations'],'station_specific'=>false],
 
     // 6. Audit Trail  ← ONLY place for audit trail
-    ['id'=>'system_logs','label'=>'Audit Trail','ico'=>'fas fa-history','href'=>'superadmin_system_logs.php?section=audit_trail','permissions'=>['manage_stations'],'station_specific'=>false,'sub_items'=>[
-        ['id'=>'sla_audit_trail',   'label'=>'Audit Trail',       'href'=>'superadmin_system_logs.php?section=audit_trail',   'permissions'=>['manage_stations']],
-        ['id'=>'sla_error_tracking','label'=>'Error Tracking',    'href'=>'superadmin_system_logs.php?section=error_tracking', 'permissions'=>['manage_stations']],
-        ['id'=>'sla_export_logs',   'label'=>'Export Logs',       'href'=>'superadmin_system_logs.php?section=export_logs',    'permissions'=>['manage_stations']],
-        ['id'=>'sla_developer_log', 'label'=>'SuperAdmin Audit',  'href'=>'superadmin_system_logs.php?section=developer_log',  'permissions'=>['manage_stations']],
+    // 6. Integration Settings
+    ['id'=>'integration_settings','label'=>'Integration Settings','ico'=>'fas fa-plug','href'=>'superadmin_integration_settings.php?section=pos_import','permissions'=>['manage_stations', 'approve_transactions'],'station_specific'=>false,'sub_items'=>[
+        ['id'=>'int_pos_import',      'label'=>'POS Import Config',   'href'=>'superadmin_integration_settings.php?section=pos_import',      'permissions'=>['manage_stations', 'approve_transactions']],
+        ['id'=>'int_api_connections', 'label'=>'API Connections',     'href'=>'superadmin_integration_settings.php?section=api_connections', 'permissions'=>['manage_stations', 'approve_transactions']],
+        ['id'=>'int_git_workflow',    'label'=>'Git Workflow',        'href'=>'superadmin_integration_settings.php?section=git_workflow',    'permissions'=>['manage_stations', 'approve_transactions']],
+        ['id'=>'int_external_sync',   'label'=>'External System Sync','href'=>'superadmin_integration_settings.php?section=external_sync',   'permissions'=>['manage_stations', 'approve_transactions']],
     ]],
 
-    // 7. Integration Settings
-    ['id'=>'integration_settings','label'=>'Integration Settings','ico'=>'fas fa-plug','href'=>'superadmin_integration_settings.php?section=pos_import','permissions'=>['manage_stations'],'station_specific'=>false,'sub_items'=>[
-        ['id'=>'int_pos_import',    'label'=>'POS Import Config', 'href'=>'superadmin_integration_settings.php?section=pos_import',    'permissions'=>['manage_stations']],
-        ['id'=>'int_api_endpoints', 'label'=>'API Endpoints',     'href'=>'superadmin_integration_settings.php?section=api_endpoints', 'permissions'=>['manage_stations']],
-        ['id'=>'int_sync_rules',    'label'=>'Sync Rules',        'href'=>'superadmin_integration_settings.php?section=sync_rules',    'permissions'=>['manage_stations']],
+    // 7. System Settings
+    ['id'=>'system_settings','label'=>'System Settings','ico'=>'fas fa-cog','href'=>'superadmin_system_settings.php','permissions'=>['manage_stations'],'station_specific'=>false,'sub_items'=>[
+        ['id'=>'ss_logo',          'label'=>'Logo Management',    'href'=>'superadmin_system_settings.php#step-logo',          'permissions'=>['manage_stations']],
+        ['id'=>'ss_theme',         'label'=>'Color Theme / UI',   'href'=>'superadmin_system_settings.php#step-theme',         'permissions'=>['manage_stations']],
+        ['id'=>'ss_layout',        'label'=>'Sidebar & Cards',    'href'=>'superadmin_system_settings.php#step-layout',        'permissions'=>['manage_stations']],
+        ['id'=>'ss_accessibility', 'label'=>'Accessibility',      'href'=>'superadmin_system_settings.php#step-accessibility', 'permissions'=>['manage_stations']],
     ]],
 
     // 8. Reports (Developer View)
@@ -118,12 +120,12 @@ $master_menu = [
         ['id'=>'rpt_dev_audit',     'label'=>'Dev Audit Reports',  'href'=>'superadmin_reports.php?section=developer_audit','permissions'=>['manage_stations']],
     ]],
 
-    // 9. System Settings
-    ['id'=>'system_settings','label'=>'System Settings','ico'=>'fas fa-cog','href'=>'superadmin_system_settings.php','permissions'=>['manage_stations'],'station_specific'=>false,'sub_items'=>[
-        ['id'=>'ss_logo',          'label'=>'Logo Management',    'href'=>'superadmin_system_settings.php#step-logo',          'permissions'=>['manage_stations']],
-        ['id'=>'ss_theme',         'label'=>'Color Theme / UI',   'href'=>'superadmin_system_settings.php#step-theme',         'permissions'=>['manage_stations']],
-        ['id'=>'ss_layout',        'label'=>'Sidebar & Cards',    'href'=>'superadmin_system_settings.php#step-layout',        'permissions'=>['manage_stations']],
-        ['id'=>'ss_accessibility', 'label'=>'Accessibility',      'href'=>'superadmin_system_settings.php#step-accessibility', 'permissions'=>['manage_stations']],
+    // 9. Audit Trail (LAST!)
+    ['id'=>'system_logs','label'=>'Audit Trail','ico'=>'fas fa-history','href'=>'superadmin_system_logs.php?section=audit_trail','permissions'=>['manage_stations'],'station_specific'=>false,'sub_items'=>[
+        ['id'=>'sla_audit_trail',   'label'=>'Audit Trail',       'href'=>'superadmin_system_logs.php?section=audit_trail',   'permissions'=>['manage_stations']],
+        ['id'=>'sla_error_tracking','label'=>'Error Tracking',    'href'=>'superadmin_system_logs.php?section=error_tracking', 'permissions'=>['manage_stations']],
+        ['id'=>'sla_export_logs',   'label'=>'Export Logs',       'href'=>'superadmin_system_logs.php?section=export_logs',    'permissions'=>['manage_stations']],
+        ['id'=>'sla_developer_log', 'label'=>'SuperAdmin Audit',  'href'=>'superadmin_system_logs.php?section=developer_log',  'permissions'=>['manage_stations']],
     ]],
 
     ];
@@ -590,9 +592,9 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 continue;
             }
 
-            // Integration Settings — SuperAdmin / Developer only
-            if (in_array(($item['id'] ?? ''), ['integration_settings','int_pos_import','int_api_endpoints','int_sync_rules'], true)
-                && !in_array($user_role, ['superadmin', 'developer'], true)) {
+            // Integration Settings — SuperAdmin / Developer can edit, Admin / Manager can view
+            if (in_array(($item['id'] ?? ''), ['integration_settings','int_pos_import','int_api_connections','int_git_workflow','int_external_sync'], true)
+                && !in_array($user_role, ['superadmin', 'developer', 'admin', 'manager'], true)) {
                 continue;
             }
 

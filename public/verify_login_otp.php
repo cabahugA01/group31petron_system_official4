@@ -527,7 +527,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="login-card">
             
             <div class="brand">
-                <img src="../assets/img/Petron Logo.png?v=2" alt="Petron Logo" class="brand-logo" onerror="this.src='../assets/img/default-logo.png'">
+                <img src="<?php echo '../' . get_system_logo_url(isset($station_id) ? (int)$station_id : (isset($user['station_id']) ? (int)$user['station_id'] : 0)); ?>" alt="Petron Logo" class="brand-logo" onerror="this.src='../assets/img/default-logo.png'">
                 <div class="brand-title">PETRON</div>
                 <div class="brand-tagline">Station Management System</div>
             </div>

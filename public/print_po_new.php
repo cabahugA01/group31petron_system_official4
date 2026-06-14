@@ -446,7 +446,7 @@ body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:12px;line-heigh
     <!-- ── Document Header ── -->
     <div class="doc-header">
         <div class="doc-header-left">
-            <img src="../assets/img/Petron Logo.png" alt="Petron" class="doc-logo"
+            <img src="<?php echo '../' . get_system_logo_url(isset($station_id) ? (int)$station_id : (isset($user['station_id']) ? (int)$user['station_id'] : 0)); ?>" alt="Petron" class="doc-logo"
                  onerror="this.style.display='none'">
             <div class="doc-company">
                 <h1>Petron Station Management System</h1>

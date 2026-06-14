@@ -158,7 +158,7 @@ foreach ($TANK_CONFIG_17 as $tank) {
 <!-- Simple Top Bar -->
 <div style="background:#002F70;color:#fff;padding:12px 24px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 4px rgba(0,0,0,.1);">
     <div style="display:flex;align-items:center;gap:12px;">
-        <img src="../assets/img/Petron Logo.png" alt="Petron" style="height:32px;">
+        <img src="<?php echo '../' . get_system_logo_url(isset($station_id) ? (int)$station_id : (isset($user['station_id']) ? (int)$user['station_id'] : 0)); ?>" alt="Petron" style="height:32px;">
         <div>
             <div style="font-size:14px;font-weight:700;">Petron Station Management System</div>
             <div style="font-size:11px;opacity:0.9;"><?= htmlspecialchars($me['station_name'] ?? 'Station') ?></div>

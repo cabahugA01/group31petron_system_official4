@@ -240,6 +240,32 @@ if (!isset($pdo) || !$pdo) {
     $db_connection_color = 'var(--petron-red)';
 }
 ?>
+<?php 
+// --- FETCH SYSTEM SETTINGS (GLOBAL & STATION-SPECIFIC) ---
+$station_settings = [];
+try {
+    $stmt0 = $pdo->prepare("SELECT setting_key, setting_value FROM system_settings WHERE station_id = 0");
+    $stmt0->execute();
+    while ($row = $stmt0->fetch(PDO::FETCH_ASSOC)) {
+        $station_settings[$row['setting_key']] = $row['setting_value'];
+    }
+    if ($myStationId > 0) {
+        $stmtS = $pdo->prepare("SELECT setting_key, setting_value FROM system_settings WHERE station_id = ?");
+        $stmtS->execute([$myStationId]);
+        while ($row = $stmtS->fetch(PDO::FETCH_ASSOC)) {
+            if ($row['setting_value'] !== null && $row['setting_value'] !== '') {
+                $station_settings[$row['setting_key']] = $row['setting_value'];
+            }
+        }
+    }
+} catch (Exception $e) {}
+
+$theme_primary_color = $station_settings['primary_color'] ?? '#002F6C';
+$theme_button_color  = $station_settings['button_color'] ?? '#002F6C';
+$theme_sidebar_color = $station_settings['sidebar_color'] ?? '#00264D';
+$theme_font_scale    = $station_settings['font_scale_accessibility'] ?? '100';
+$theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_settings['high_contrast'] === '1' || $station_settings['high_contrast'] === 'true'));
+ ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -251,6 +277,21 @@ if (!isset($pdo) || !$pdo) {
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/manager_customer_management.css?v=2.0.2" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
+    :root {
+        --petron-blue: <?php echo htmlspecialchars($theme_primary_color); ?> !important;
+        --primary: <?php echo htmlspecialchars($theme_primary_color); ?> !important;
+        --sidebar-bg: <?php echo htmlspecialchars($theme_sidebar_color); ?> !important;
+        font-size: <?php echo htmlspecialchars($theme_font_scale); ?>% !important;
+    }
+    button, .btn, .ss-btn-primary {
+        background-color: <?php echo htmlspecialchars($theme_button_color); ?> !important;
+    }
+    <?php if ($theme_high_contrast): ?>
+    body, html, div, p, span, table, td, th, a, button, input, select {
+        filter: contrast(1.15) !important;
+    }
+    <?php endif; ?>
+    
     /* Global FontAwesome Icon Visibility Fix */
     .fas, .far, .fab, .fa {
         opacity: 1 !important;

@@ -32,6 +32,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+// Helper to extract specific tables from a SQL dump
+function extract_tables_from_sql($filepath, $tables) {
+    $fp = fopen($filepath, 'r');
+    if (!$fp) return false;
+    
+    $temp_filepath = tempnam(sys_get_temp_dir(), 'restore_');
+    $out_fp = fopen($temp_filepath, 'w');
+    if (!$out_fp) {
+        fclose($fp);
+        return false;
+    }
+    
+    $active_table = null;
+    $in_table_section = false;
+    $table_lookup = array_flip($tables);
+    
+    while (($line = fgets($fp)) !== false) {
+        if (preg_match('/^-- (Table structure for table|Dumping data for table|Temporary table structure for view|Final view structure for view) `([^`]+)`/', $line, $matches)) {
+            $active_table = $matches[2];
+            $in_table_section = isset($table_lookup[$active_table]);
+        }
+        
+        $is_generic_setup = false;
+        if (strpos($line, '/*!') === 0 || strpos($line, 'SET ') === 0 || (strpos($line, '--') === 0 && !preg_match('/^-- (Table structure for table|Dumping data for table|Temporary table structure for view|Final view structure for view)/', $line))) {
+            $is_generic_setup = true;
+        }
+        
+        if ($in_table_section || $is_generic_setup) {
+            fwrite($out_fp, $line);
+        }
+    }
+    
+    fclose($fp);
+    fclose($out_fp);
+    return $temp_filepath;
+}
+
 try {
     switch ($action) {
         
@@ -52,7 +89,7 @@ try {
             
             // Execute mysqldump
             $command = sprintf(
-                'C:\\xampp\\mysql\\bin\\mysqldump.exe -u root %s > %s 2>&1',
+                'C:\\xampp\\mysql\\bin\\mysqldump.exe --host=127.0.0.1 -u root %s > %s 2>&1',
                 escapeshellarg($db_name),
                 escapeshellarg($filepath)
             );
@@ -60,12 +97,27 @@ try {
             exec($command, $output, $return_code);
             
             if ($return_code === 0 && file_exists($filepath)) {
-                // Log backup
+                // Log backup inside system_backups
                 $stmt = $pdo->prepare("
-                    INSERT INTO database_backups (filename, file_size, created_by, created_at) 
-                    VALUES (?, ?, ?, NOW())
+                    INSERT INTO system_backups (backup_name, backup_type, file_path, file_size, status, created_by, created_at, completed_at, backup_path) 
+                    VALUES (?, 'database', ?, ?, 'completed', ?, NOW(), NOW(), ?)
                 ");
-                $stmt->execute([$filename, filesize($filepath), $me['id']]);
+                $stmt->execute([$filename, 'backups/' . $filename, filesize($filepath), $me['id'], $filepath]);
+                $backup_id = $pdo->lastInsertId();
+                
+                // Log action inside backup_logs
+                $stmt_log = $pdo->prepare("
+                    INSERT INTO backup_logs (backup_id, action, status, details) 
+                    VALUES (?, 'create', 'success', 'Database backup created successfully')
+                ");
+                $stmt_log->execute([$backup_id]);
+                
+                // Log in user activity
+                $stmt_act = $pdo->prepare("
+                    INSERT INTO user_activity_logs (user_id, action, details, ip_address)
+                    VALUES (?, 'Backup Database', ?, ?)
+                ");
+                $stmt_act->execute([$me['id'], "Created backup: $filename", $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1']);
                 
                 echo json_encode([
                     'ok' => true, 
@@ -118,29 +170,44 @@ try {
             
             echo json_encode(['ok' => true, 'message' => 'Backup configuration saved successfully']);
             break;
+
+        case 'get_backup_config':
+            $config = [];
+            $stmt = $pdo->query("
+                SELECT config_key, config_value 
+                FROM system_config 
+                WHERE config_key IN ('backup_frequency', 'backup_storage', 'backup_retention_days')
+            ");
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $config[$row['config_key']] = $row['config_value'];
+            }
+            echo json_encode([
+                'ok' => true,
+                'config' => [
+                    'frequency' => $config['backup_frequency'] ?? 'daily',
+                    'storage' => $config['backup_storage'] ?? 'local',
+                    'retention' => $config['backup_retention_days'] ?? '30'
+                ]
+            ]);
+            break;
             
         case 'get_backups':
-            $backup_dir = __DIR__ . '/../../backups/';
-            $backups = [];
+            $stmt = $pdo->query("
+                SELECT 
+                    backup_name as filename,
+                    ROUND(file_size / 1024 / 1024, 2) as size,
+                    DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') as date
+                FROM system_backups
+                WHERE status = 'completed'
+                ORDER BY created_at DESC
+                LIMIT 100
+            ");
+            $backups = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
-            if (is_dir($backup_dir)) {
-                $files = array_diff(scandir($backup_dir), ['.', '..']);
-                foreach ($files as $file) {
-                    if (pathinfo($file, PATHINFO_EXTENSION) === 'sql') {
-                        $filepath = $backup_dir . $file;
-                        $backups[] = [
-                            'filename' => $file,
-                            'size' => round(filesize($filepath) / 1024 / 1024, 2) . ' MB',
-                            'date' => date('Y-m-d H:i:s', filemtime($filepath))
-                        ];
-                    }
-                }
+            // Format size for UI
+            foreach ($backups as &$b) {
+                $b['size'] = ($b['size'] ?? 0) . ' MB';
             }
-            
-            // Sort by date descending
-            usort($backups, function($a, $b) {
-                return strtotime($b['date']) - strtotime($a['date']);
-            });
             
             echo json_encode(['ok' => true, 'backups' => $backups]);
             break;
@@ -161,11 +228,18 @@ try {
             }
             
             if (unlink($filepath)) {
-                // Log deletion
+                // Log deletion inside system_backups
                 $stmt = $pdo->prepare("
-                    DELETE FROM database_backups WHERE filename = ?
+                    DELETE FROM system_backups WHERE backup_name = ?
                 ");
                 $stmt->execute([$filename]);
+                
+                // Log in user activity
+                $stmt_act = $pdo->prepare("
+                    INSERT INTO user_activity_logs (user_id, action, details, ip_address)
+                    VALUES (?, 'Delete Backup', ?, ?)
+                ");
+                $stmt_act->execute([$me['id'], "Deleted backup file: $filename", $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1']);
                 
                 echo json_encode(['ok' => true, 'message' => 'Backup deleted successfully']);
             } else {
@@ -192,26 +266,76 @@ try {
                 exit;
             }
             
-            // Get database name
             $db_name = $pdo->query('SELECT DATABASE()')->fetchColumn();
+            $restore_file = $backup_path;
+            $temp_file = null;
+            
+            if ($scope === 'partial') {
+                $tables_str = $_POST['tables'] ?? '';
+                if (empty($tables_str)) {
+                    echo json_encode(['ok' => false, 'error' => 'No tables specified for partial restore']);
+                    exit;
+                }
+                $tables = explode(',', $tables_str);
+                
+                $stmt_t = $pdo->query("SHOW TABLES");
+                $db_tables = $stmt_t->fetchAll(PDO::FETCH_COLUMN);
+                $valid_tables = [];
+                foreach ($tables as $t) {
+                    $t = trim($t);
+                    if (in_array($t, $db_tables)) {
+                        $valid_tables[] = $t;
+                    }
+                }
+                
+                if (empty($valid_tables)) {
+                    echo json_encode(['ok' => false, 'error' => 'No valid tables specified for restore']);
+                    exit;
+                }
+                
+                $temp_file = extract_tables_from_sql($backup_path, $valid_tables);
+                if (!$temp_file) {
+                    echo json_encode(['ok' => false, 'error' => 'Failed to process partial restore file']);
+                    exit;
+                }
+                $restore_file = $temp_file;
+            }
             
             // Execute mysql restore
             $command = sprintf(
-                'C:\\xampp\\mysql\\bin\\mysql.exe -u root %s < %s 2>&1',
+                'C:\\xampp\\mysql\\bin\\mysql.exe --host=127.0.0.1 -u root %s < %s 2>&1',
                 escapeshellarg($db_name),
-                escapeshellarg($backup_path)
+                escapeshellarg($restore_file)
             );
             
             exec($command, $output, $return_code);
             
+            if ($temp_file && file_exists($temp_file)) {
+                unlink($temp_file);
+            }
+            
             if ($return_code === 0) {
-                // Log restore
+                // Log restore inside restore_logs
                 $stmt = $pdo->prepare("
-                    INSERT INTO database_restores (backup_filename, restored_by, restored_at) 
-                    VALUES (?, ?, NOW())
+                    INSERT INTO restore_logs (backup_name, restored_by, status, details) 
+                    VALUES (?, ?, 'success', ?)
                 ");
-                $stmt->execute([$backup_file, $me['id']]);
+                $stmt->execute([$backup_file, $me['id'], "Database restored successfully. Scope: $scope"]);
                 
+                // Log in user activity
+                $stmt_act = $pdo->prepare("
+                    INSERT INTO user_activity_logs (user_id, action, details, ip_address)
+                    VALUES (?, 'Restore Database', ?, ?)
+                ");
+                $stmt_act->execute([$me['id'], "Restored database from: $backup_file (Scope: $scope)", $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1']);
+                
+                // Log system event
+                $stmt_evt = $pdo->prepare("
+                    INSERT INTO system_events (event_type, severity, message, source)
+                    VALUES ('DATABASE_RESTORE', 'warning', ?, 'System Restore Manager')
+                ");
+                $stmt_evt->execute(["Database restored from backup: $backup_file by user ID: " . $me['id']]);
+
                 echo json_encode(['ok' => true, 'message' => 'Database restored successfully']);
             } else {
                 echo json_encode(['ok' => false, 'error' => 'Restore failed: ' . implode("\n", $output)]);
@@ -292,15 +416,27 @@ try {
             try {
                 $pdo->exec($sql);
                 
-                // Log migration
+                // Log into migration_history
+                $mig_name = "ADD COLUMN `$columnName` ($typeDefinition) TO `$table`";
                 $stmt = $pdo->prepare("
-                    INSERT INTO schema_migrations (migration_name, executed_by, executed_at)
-                    VALUES (?, ?, NOW())
+                    INSERT INTO migration_history (migration_name, status, executed_by)
+                    VALUES (?, 'success', ?)
                 ");
-                $stmt->execute(["ADD COLUMN $columnName TO $table", $me['id']]);
+                $stmt->execute([$mig_name, $me['id']]);
                 
-                echo json_encode(['ok' => true, 'message' => 'Column added successfully']);
+                // Update schema_versions with incremented patch version
+                $ver_row = $pdo->query("SELECT version FROM schema_versions ORDER BY applied_at DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+                $parts = explode('.', $ver_row['version'] ?? '1.0.0');
+                $parts[2] = (int)($parts[2] ?? 0) + 1;
+                $new_ver = implode('.', $parts);
+                $pdo->prepare("INSERT INTO schema_versions (version, description, applied_by) VALUES (?, ?, ?)")
+                    ->execute([$new_ver, $mig_name, $me['id']]);
+                
+                echo json_encode(['ok' => true, 'message' => 'Column added successfully', 'new_version' => $new_ver]);
             } catch (Exception $e) {
+                // Log failure
+                $pdo->prepare("INSERT INTO migration_history (migration_name, status, executed_by, error_message) VALUES (?, 'failed', ?, ?)")
+                    ->execute(["ADD COLUMN $columnName TO $table", $me['id'], $e->getMessage()]);
                 echo json_encode(['ok' => false, 'error' => 'Failed to add column: ' . $e->getMessage()]);
             }
             break;
@@ -342,15 +478,21 @@ try {
             try {
                 $pdo->exec($sql);
                 
-                // Log migration
-                $stmt = $pdo->prepare("
-                    INSERT INTO schema_migrations (migration_name, executed_by, executed_at)
-                    VALUES (?, ?, NOW())
-                ");
-                $stmt->execute(["MODIFY COLUMN $oldName TO $newName IN $table", $me['id']]);
+                $mig_name = "RENAME COLUMN `$oldName` -> `$newName` IN `$table`";
+                $pdo->prepare("INSERT INTO migration_history (migration_name, status, executed_by) VALUES (?, 'success', ?)")
+                    ->execute([$mig_name, $me['id']]);
                 
-                echo json_encode(['ok' => true, 'message' => 'Column modified successfully']);
+                $ver_row = $pdo->query("SELECT version FROM schema_versions ORDER BY applied_at DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+                $parts = explode('.', $ver_row['version'] ?? '1.0.0');
+                $parts[2] = (int)($parts[2] ?? 0) + 1;
+                $new_ver = implode('.', $parts);
+                $pdo->prepare("INSERT INTO schema_versions (version, description, applied_by) VALUES (?, ?, ?)")
+                    ->execute([$new_ver, $mig_name, $me['id']]);
+                
+                echo json_encode(['ok' => true, 'message' => 'Column modified successfully', 'new_version' => $new_ver]);
             } catch (Exception $e) {
+                $pdo->prepare("INSERT INTO migration_history (migration_name, status, executed_by, error_message) VALUES (?, 'failed', ?, ?)")
+                    ->execute(["RENAME COLUMN $oldName IN $table", $me['id'], $e->getMessage()]);
                 echo json_encode(['ok' => false, 'error' => 'Failed to modify column: ' . $e->getMessage()]);
             }
             break;
@@ -369,15 +511,21 @@ try {
             try {
                 $pdo->exec($sql);
                 
-                // Log migration
-                $stmt = $pdo->prepare("
-                    INSERT INTO schema_migrations (migration_name, executed_by, executed_at)
-                    VALUES (?, ?, NOW())
-                ");
-                $stmt->execute(["DROP COLUMN $columnName FROM $table", $me['id']]);
+                $mig_name = "DROP COLUMN `$columnName` FROM `$table`";
+                $pdo->prepare("INSERT INTO migration_history (migration_name, status, executed_by) VALUES (?, 'success', ?)")
+                    ->execute([$mig_name, $me['id']]);
                 
-                echo json_encode(['ok' => true, 'message' => 'Column removed successfully']);
+                $ver_row = $pdo->query("SELECT version FROM schema_versions ORDER BY applied_at DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+                $parts = explode('.', $ver_row['version'] ?? '1.0.0');
+                $parts[2] = (int)($parts[2] ?? 0) + 1;
+                $new_ver = implode('.', $parts);
+                $pdo->prepare("INSERT INTO schema_versions (version, description, applied_by) VALUES (?, ?, ?)")
+                    ->execute([$new_ver, $mig_name, $me['id']]);
+                
+                echo json_encode(['ok' => true, 'message' => 'Column removed successfully', 'new_version' => $new_ver]);
             } catch (Exception $e) {
+                $pdo->prepare("INSERT INTO migration_history (migration_name, status, executed_by, error_message) VALUES (?, 'failed', ?, ?)")
+                    ->execute(["DROP COLUMN $columnName FROM $table", $me['id'], $e->getMessage()]);
                 echo json_encode(['ok' => false, 'error' => 'Failed to remove column: ' . $e->getMessage()]);
             }
             break;
@@ -386,29 +534,45 @@ try {
         // 4. REPLICATION OPERATIONS
         // ══════════════════════════════════════════════════════════════
         case 'get_schema_history':
+            // Fetch current version from schema_versions
+            $cur_ver = $pdo->query("
+                SELECT version, description, DATE_FORMAT(applied_at, '%Y-%m-%d %H:%i:%s') as applied_at
+                FROM schema_versions ORDER BY applied_at DESC LIMIT 1
+            ")->fetch(PDO::FETCH_ASSOC);
+            
+            // Fetch migration history from migration_history
             $stmt = $pdo->query("
                 SELECT 
-                    sm.migration_name,
+                    mh.migration_name,
+                    mh.status,
                     CONCAT(u.first_name, ' ', u.last_name) as executed_by,
-                    DATE_FORMAT(sm.executed_at, '%Y-%m-%d %H:%i:%s') as executed_at
-                FROM schema_migrations sm
-                LEFT JOIN users u ON u.id = sm.executed_by
-                ORDER BY sm.executed_at DESC
+                    DATE_FORMAT(mh.executed_at, '%Y-%m-%d %H:%i:%s') as executed_at,
+                    mh.error_message
+                FROM migration_history mh
+                LEFT JOIN users u ON u.id = mh.executed_by
+                ORDER BY mh.executed_at DESC
                 LIMIT 100
             ");
             $migrations = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            echo json_encode(['ok' => true, 'migrations' => $migrations]);
+            echo json_encode([
+                'ok' => true,
+                'current_version' => $cur_ver['version'] ?? '1.0.0',
+                'version_date' => $cur_ver['applied_at'] ?? null,
+                'migrations' => $migrations
+            ]);
             break;
             
         case 'get_restore_history':
             $stmt = $pdo->query("
                 SELECT 
-                    dr.backup_filename,
+                    rl.backup_name,
+                    rl.status,
+                    rl.details,
                     CONCAT(u.first_name, ' ', u.last_name) as restored_by,
-                    DATE_FORMAT(dr.restored_at, '%Y-%m-%d %H:%i:%s') as restored_at
-                FROM database_restores dr
-                LEFT JOIN users u ON u.id = dr.restored_by
-                ORDER BY dr.restored_at DESC
+                    DATE_FORMAT(rl.restored_at, '%Y-%m-%d %H:%i:%s') as restored_at
+                FROM restore_logs rl
+                LEFT JOIN users u ON u.id = rl.restored_by
+                ORDER BY rl.restored_at DESC
                 LIMIT 100
             ");
             $restores = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -419,65 +583,115 @@ try {
         // 5. REPLICATION OPERATIONS
         // ══════════════════════════════════════════════════════════════
         case 'enable_replication':
-            $stmt = $pdo->prepare("
+            $rep_station = (int)($_POST['station_id'] ?? 0);
+            // Update replication_status table per station
+            if ($rep_station > 0) {
+                $pdo->prepare("
+                    INSERT INTO replication_status (station_id, status, last_sync_at)
+                    VALUES (?, 'enabled', NOW())
+                    ON DUPLICATE KEY UPDATE status = 'enabled', last_sync_at = NOW()
+                ")->execute([$rep_station]);
+                
+                // Log sync event
+                $pdo->prepare("INSERT INTO sync_logs (station_id, status, records_synced) VALUES (?, 'success', 0)")
+                    ->execute([$rep_station]);
+            }
+            // Also update global config
+            $pdo->prepare("
                 INSERT INTO system_config (config_key, config_value, updated_by, updated_at)
                 VALUES ('replication_enabled', '1', ?, NOW())
-                ON DUPLICATE KEY UPDATE 
-                    config_value = '1',
-                    updated_by = VALUES(updated_by),
-                    updated_at = NOW()
-            ");
-            $stmt->execute([$me['id']]);
-            
+                ON DUPLICATE KEY UPDATE config_value='1', updated_by=VALUES(updated_by), updated_at=NOW()
+            ")->execute([$me['id']]);
             echo json_encode(['ok' => true, 'message' => 'Replication enabled']);
             break;
             
         case 'disable_replication':
-            $stmt = $pdo->prepare("
+            $rep_station = (int)($_POST['station_id'] ?? 0);
+            if ($rep_station > 0) {
+                $pdo->prepare("
+                    INSERT INTO replication_status (station_id, status)
+                    VALUES (?, 'disabled')
+                    ON DUPLICATE KEY UPDATE status = 'disabled'
+                ")->execute([$rep_station]);
+            }
+            $pdo->prepare("
                 INSERT INTO system_config (config_key, config_value, updated_by, updated_at)
                 VALUES ('replication_enabled', '0', ?, NOW())
-                ON DUPLICATE KEY UPDATE 
-                    config_value = '0',
-                    updated_by = VALUES(updated_by),
-                    updated_at = NOW()
-            ");
-            $stmt->execute([$me['id']]);
-            
+                ON DUPLICATE KEY UPDATE config_value='0', updated_by=VALUES(updated_by), updated_at=NOW()
+            ")->execute([$me['id']]);
             echo json_encode(['ok' => true, 'message' => 'Replication disabled']);
             break;
             
         case 'save_replication_config':
-            $station = $_POST['station'] ?? '';
-            $frequency = $_POST['frequency'] ?? 'realtime';
-            $resolution = $_POST['resolution'] ?? 'overwrite';
+            $rep_station = (int)($_POST['station'] ?? 0);
+            $frequency = $_POST['frequency'] ?? 'daily';
+            $resolution = $_POST['resolution'] ?? 'server_wins';
             
-            $stmt = $pdo->prepare("
-                INSERT INTO system_config (config_key, config_value, updated_by, updated_at)
-                VALUES ('replication_station', ?, ?, NOW()),
-                       ('replication_frequency', ?, ?, NOW()),
-                       ('conflict_resolution', ?, ?, NOW())
-                ON DUPLICATE KEY UPDATE 
-                    config_value = VALUES(config_value),
-                    updated_by = VALUES(updated_by),
-                    updated_at = NOW()
-            ");
-            $stmt->execute([
-                $station, $me['id'],
-                $frequency, $me['id'],
-                $resolution, $me['id']
-            ]);
+            // Upsert replication_status row for this station
+            if ($rep_station > 0) {
+                $pdo->prepare("
+                    INSERT INTO replication_status (station_id, status, sync_frequency, conflict_resolution)
+                    VALUES (?, 'enabled', ?, ?)
+                    ON DUPLICATE KEY UPDATE 
+                        sync_frequency = VALUES(sync_frequency),
+                        conflict_resolution = VALUES(conflict_resolution)
+                ")->execute([$rep_station, $frequency, $resolution]);
+            }
             
+            // Also persist global config keys
+            foreach ([
+                ['replication_station', (string)$rep_station],
+                ['replication_frequency', $frequency],
+                ['conflict_resolution', $resolution]
+            ] as [$key, $val]) {
+                $pdo->prepare("
+                    INSERT INTO system_config (config_key, config_value, updated_by, updated_at)
+                    VALUES (?, ?, ?, NOW())
+                    ON DUPLICATE KEY UPDATE config_value=VALUES(config_value), updated_by=VALUES(updated_by), updated_at=NOW()
+                ")->execute([$key, $val, $me['id']]);
+            }
             echo json_encode(['ok' => true, 'message' => 'Replication settings saved']);
             break;
             
         case 'get_sync_status':
-            $config = [];
+            // Fetch per-station replication statuses
             $stmt = $pdo->query("
-                SELECT config_key, config_value 
-                FROM system_config 
-                WHERE config_key IN ('replication_enabled', 'replication_station', 'replication_frequency', 'conflict_resolution')
+                SELECT 
+                    rs.station_id,
+                    s.name as station_name,
+                    rs.status,
+                    rs.sync_frequency,
+                    rs.conflict_resolution,
+                    DATE_FORMAT(rs.last_sync_at, '%Y-%m-%d %H:%i:%s') as last_sync_at
+                FROM replication_status rs
+                LEFT JOIN stations s ON s.id = rs.station_id
+                ORDER BY s.name ASC
             ");
-            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $station_statuses = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Fetch recent sync logs
+            $stmt2 = $pdo->query("
+                SELECT 
+                    sl.station_id,
+                    s.name as station_name,
+                    sl.status,
+                    sl.records_synced,
+                    sl.error_message,
+                    DATE_FORMAT(sl.synced_at, '%Y-%m-%d %H:%i:%s') as synced_at
+                FROM sync_logs sl
+                LEFT JOIN stations s ON s.id = sl.station_id
+                ORDER BY sl.synced_at DESC
+                LIMIT 50
+            ");
+            $sync_logs_data = $stmt2->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Also fetch global config for backward compat
+            $config = [];
+            $cfg_stmt = $pdo->query("
+                SELECT config_key, config_value FROM system_config
+                WHERE config_key IN ('replication_enabled','replication_station','replication_frequency','conflict_resolution','replication_last_sync')
+            ");
+            while ($row = $cfg_stmt->fetch(PDO::FETCH_ASSOC)) {
                 $config[$row['config_key']] = $row['config_value'];
             }
             
@@ -486,10 +700,14 @@ try {
                 'status' => [
                     'enabled' => $config['replication_enabled'] ?? '0',
                     'station' => $config['replication_station'] ?? '',
-                    'frequency' => ucfirst($config['replication_frequency'] ?? ''),
-                    'resolution' => ucfirst($config['conflict_resolution'] ?? ''),
-                    'last_sync' => 'Never' // TODO: Implement last sync tracking
-                ]
+                    'frequency' => $config['replication_frequency'] ?? 'daily',
+                    'resolution' => $config['conflict_resolution'] ?? 'server_wins',
+                    'frequency_label' => ucfirst($config['replication_frequency'] ?? 'daily'),
+                    'resolution_label' => ucfirst(str_replace('_', ' ', $config['conflict_resolution'] ?? 'server_wins')),
+                    'last_sync' => $config['replication_last_sync'] ?? 'Never'
+                ],
+                'station_statuses' => $station_statuses,
+                'sync_logs' => $sync_logs_data
             ]);
             break;
 
@@ -497,19 +715,92 @@ try {
         // 5. SECURITY LOGS
         // ══════════════════════════════════════════════════════════════
         case 'get_security_logs':
-            $stmt = $pdo->query("
-                SELECT 
-                    DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') as timestamp,
-                    CONCAT(u.first_name, ' ', u.last_name) as user,
-                    action,
-                    ip_address as ip,
-                    CASE WHEN status = 1 THEN 'success' ELSE 'failed' END as status
-                FROM activity_logs al
-                LEFT JOIN users u ON u.id = al.user_id
-                WHERE action IN ('Login', 'Logout', 'Database Access', 'Configuration Change')
-                ORDER BY al.created_at DESC
+            $where = [];
+            $params = [];
+            
+            $date_from = $_GET['date_from'] ?? '';
+            $date_to = $_GET['date_to'] ?? '';
+            $user_id = $_GET['user_id'] ?? '';
+            $station = $_GET['station'] ?? '';
+            $action_type = $_GET['action_type'] ?? '';
+            
+            if (!empty($date_from)) {
+                $where[] = "DATE(raw_time) >= ?";
+                $params[] = $date_from;
+            }
+            if (!empty($date_to)) {
+                $where[] = "DATE(raw_time) <= ?";
+                $params[] = $date_to;
+            }
+            if (!empty($user_id)) {
+                $where[] = "(user_id = ? OR user LIKE ?)";
+                $params[] = $user_id;
+                $params[] = "%$user_id%";
+            }
+            if (!empty($station)) {
+                $where[] = "station_id = ?";
+                $params[] = $station;
+            }
+            if (!empty($action_type)) {
+                $where[] = "action = ?";
+                $params[] = $action_type;
+            }
+            
+            $where_clause = count($where) > 0 ? "WHERE " . implode(' AND ', $where) : "";
+            
+            $query = "
+                SELECT * FROM (
+                    (
+                        SELECT 
+                            al.created_at as raw_time,
+                            DATE_FORMAT(al.created_at, '%Y-%m-%d %H:%i:%s') as timestamp,
+                            CONCAT(u.first_name, ' ', u.last_name) as user,
+                            al.action_type as action,
+                            al.ip_address as ip,
+                            al.status as status,
+                            al.user_id,
+                            u.station_id,
+                            al.action_details as details
+                        FROM audit_logs al
+                        LEFT JOIN users u ON u.id = al.user_id
+                    )
+                    UNION ALL
+                    (
+                        SELECT 
+                            ual.created_at as raw_time,
+                            DATE_FORMAT(ual.created_at, '%Y-%m-%d %H:%i:%s') as timestamp,
+                            CONCAT(u.first_name, ' ', u.last_name) as user,
+                            ual.action as action,
+                            ual.ip_address as ip,
+                            'success' as status,
+                            ual.user_id,
+                            u.station_id,
+                            ual.details as details
+                        FROM user_activity_logs ual
+                        LEFT JOIN users u ON u.id = ual.user_id
+                    )
+                    UNION ALL
+                    (
+                        SELECT 
+                            se.created_at as raw_time,
+                            DATE_FORMAT(se.created_at, '%Y-%m-%d %H:%i:%s') as timestamp,
+                            se.source as user,
+                            se.event_type as action,
+                            'system' as ip,
+                            se.severity as status,
+                            NULL as user_id,
+                            NULL as station_id,
+                            se.message as details
+                        FROM system_events se
+                    )
+                ) AS unified_logs
+                $where_clause
+                ORDER BY raw_time DESC
                 LIMIT 100
-            ");
+            ";
+            
+            $stmt = $pdo->prepare($query);
+            $stmt->execute($params);
             
             $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
             echo json_encode(['ok' => true, 'logs' => $logs]);
@@ -520,29 +811,104 @@ try {
             header('Content-Type: application/vnd.ms-excel');
             header('Content-Disposition: attachment; filename="security_logs_' . date('Y-m-d') . '.xls"');
             
-            $stmt = $pdo->query("
-                SELECT 
-                    DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') as timestamp,
-                    CONCAT(u.first_name, ' ', u.last_name) as user,
-                    action,
-                    ip_address,
-                    status
-                FROM activity_logs al
-                LEFT JOIN users u ON u.id = al.user_id
-                ORDER BY al.created_at DESC
+            $where = [];
+            $params = [];
+            
+            $date_from = $_GET['date_from'] ?? $_POST['date_from'] ?? '';
+            $date_to = $_GET['date_to'] ?? $_POST['date_to'] ?? '';
+            $user_id = $_GET['user_id'] ?? $_POST['user_id'] ?? '';
+            $station = $_GET['station'] ?? $_POST['station'] ?? '';
+            $action_type = $_GET['action_type'] ?? $_POST['action_type'] ?? '';
+            
+            if (!empty($date_from)) {
+                $where[] = "DATE(raw_time) >= ?";
+                $params[] = $date_from;
+            }
+            if (!empty($date_to)) {
+                $where[] = "DATE(raw_time) <= ?";
+                $params[] = $date_to;
+            }
+            if (!empty($user_id)) {
+                $where[] = "(user_id = ? OR user LIKE ?)";
+                $params[] = $user_id;
+                $params[] = "%$user_id%";
+            }
+            if (!empty($station)) {
+                $where[] = "station_id = ?";
+                $params[] = $station;
+            }
+            if (!empty($action_type)) {
+                $where[] = "action = ?";
+                $params[] = $action_type;
+            }
+            
+            $where_clause = count($where) > 0 ? "WHERE " . implode(' AND ', $where) : "";
+            
+            $query = "
+                SELECT * FROM (
+                    (
+                        SELECT 
+                            al.created_at as raw_time,
+                            DATE_FORMAT(al.created_at, '%Y-%m-%d %H:%i:%s') as timestamp,
+                            CONCAT(u.first_name, ' ', u.last_name) as user,
+                            al.action_type as action,
+                            al.ip_address as ip,
+                            al.status as status,
+                            al.user_id,
+                            u.station_id,
+                            al.action_details as details
+                        FROM audit_logs al
+                        LEFT JOIN users u ON u.id = al.user_id
+                    )
+                    UNION ALL
+                    (
+                        SELECT 
+                            ual.created_at as raw_time,
+                            DATE_FORMAT(ual.created_at, '%Y-%m-%d %H:%i:%s') as timestamp,
+                            CONCAT(u.first_name, ' ', u.last_name) as user,
+                            ual.action as action,
+                            ual.ip_address as ip,
+                            'success' as status,
+                            ual.user_id,
+                            u.station_id,
+                            ual.details as details
+                        FROM user_activity_logs ual
+                        LEFT JOIN users u ON u.id = ual.user_id
+                    )
+                    UNION ALL
+                    (
+                        SELECT 
+                            se.created_at as raw_time,
+                            DATE_FORMAT(se.created_at, '%Y-%m-%d %H:%i:%s') as timestamp,
+                            se.source as user,
+                            se.event_type as action,
+                            'system' as ip,
+                            se.severity as status,
+                            NULL as user_id,
+                            NULL as station_id,
+                            se.message as details
+                        FROM system_events se
+                    )
+                ) AS unified_logs
+                $where_clause
+                ORDER BY raw_time DESC
                 LIMIT 1000
-            ");
+            ";
+            
+            $stmt = $pdo->prepare($query);
+            $stmt->execute($params);
             
             // Output as Excel
             echo "<table border='1'>";
-            echo "<tr><th>Timestamp</th><th>User</th><th>Action</th><th>IP Address</th><th>Status</th></tr>";
+            echo "<tr><th>Timestamp</th><th>User</th><th>Action</th><th>IP Address</th><th>Details</th><th>Status</th></tr>";
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 echo "<tr>";
                 echo "<td>" . htmlspecialchars($row['timestamp']) . "</td>";
                 echo "<td>" . htmlspecialchars($row['user']) . "</td>";
                 echo "<td>" . htmlspecialchars($row['action']) . "</td>";
-                echo "<td>" . htmlspecialchars($row['ip_address']) . "</td>";
-                echo "<td>" . ($row['status'] ? 'Success' : 'Failed') . "</td>";
+                echo "<td>" . htmlspecialchars($row['ip']) . "</td>";
+                echo "<td>" . htmlspecialchars($row['details'] ?? '') . "</td>";
+                echo "<td>" . ucfirst($row['status']) . "</td>";
                 echo "</tr>";
             }
             echo "</table>";

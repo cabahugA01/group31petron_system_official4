@@ -1,7 +1,6 @@
 <?php
 // ============================================================
-// SuperAdmin Reports (Developer View) — public/superadmin_reports.php
-// Steps: Technical Reports, Security Reports, Developer Audit, Audit Trail
+// SuperAdmin Reports (Developer View) — Auto-redirect to Technical Reports
 // ============================================================
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'superadmin_reports';
@@ -18,7 +17,10 @@ if (!in_array($role, ['superadmin', 'developer'], true)) {
     exit;
 }
 
-// Active section
+// Auto-redirect to Technical Reports as default
+header('Location: reports_technical.php');
+exit;
+?>// Active section
 $section = trim($_GET['section'] ?? 'technical');
 $allowed_sections = ['technical', 'security', 'developer_audit', 'audit_trail'];
 if (!in_array($section, $allowed_sections)) $section = 'technical';
@@ -820,22 +822,6 @@ require_once __DIR__ . '/../partials/header.php';
         </div>
     </div>
 
-    <!-- Tab Navigation -->
-    <div class="rpt-tabs">
-        <a href="?section=technical" class="rpt-tab <?php echo $section === 'technical' ? 'active' : ''; ?>">
-            <i class="fas fa-server"></i> Technical Reports
-        </a>
-        <a href="?section=security" class="rpt-tab <?php echo $section === 'security' ? 'active' : ''; ?>">
-            <i class="fas fa-shield-alt"></i> Security Reports
-        </a>
-        <a href="?section=developer_audit" class="rpt-tab <?php echo $section === 'developer_audit' ? 'active' : ''; ?>">
-            <i class="fas fa-code-branch"></i> Developer Audit
-        </a>
-        <a href="?section=audit_trail" class="rpt-tab <?php echo $section === 'audit_trail' ? 'active' : ''; ?>">
-            <i class="fas fa-history"></i> Audit Trail
-        </a>
-    </div>
-
     <!-- Filter Bar -->
     <form method="GET" action="" class="rpt-filter-bar">
         <input type="hidden" name="section" value="<?php echo htmlspecialchars($section); ?>">
@@ -890,14 +876,6 @@ require_once __DIR__ . '/../partials/header.php';
          STEP 1: TECHNICAL REPORTS
          ================================================================ -->
     <?php if ($section === 'technical'): ?>
-
-    <div class="rpt-alert rpt-alert-info">
-        <i class="fas fa-info-circle"></i>
-        <div class="rpt-alert-content">
-            <div class="rpt-alert-title">Step 1 — Technical Reports</div>
-            System usage metrics, database performance, PHP runtime info, and activity trends.
-        </div>
-    </div>
 
     <!-- KPI Cards -->
     <div class="rpt-stats-grid">
@@ -1096,15 +1074,6 @@ require_once __DIR__ . '/../partials/header.php';
          STEP 2: SECURITY REPORTS
          ================================================================ -->
     <?php if ($section === 'security'): ?>
-
-    <div class="rpt-alert rpt-alert-warning">
-        <i class="fas fa-shield-alt"></i>
-        <div class="rpt-alert-content">
-            <div class="rpt-alert-title">Step 2 — Security Reports</div>
-            Login attempts, failed authentications, suspicious IPs, and unauthorized access attempts.
-        </div>
-    </div>
-
     <!-- Security KPIs -->
     <div class="rpt-stats-grid">
         <div class="rpt-stat-card danger">
@@ -1128,16 +1097,6 @@ require_once __DIR__ . '/../partials/header.php';
             <div class="rpt-stat-desc">Unauthorized attempts</div>
         </div>
     </div>
-
-    <?php if (!empty($sec_data['suspicious_ips'])): ?>
-    <div class="rpt-alert rpt-alert-danger">
-        <i class="fas fa-exclamation-circle"></i>
-        <div class="rpt-alert-content">
-            <div class="rpt-alert-title">Security Alert — Suspicious IP Activity Detected</div>
-            <?php echo count($sec_data['suspicious_ips']); ?> IP address(es) have 3 or more failed login attempts in the selected period.
-        </div>
-    </div>
-    <?php endif; ?>
 
     <!-- Suspicious IPs -->
     <?php if (!empty($sec_data['suspicious_ips'])): ?>
@@ -1275,13 +1234,6 @@ require_once __DIR__ . '/../partials/header.php';
          ================================================================ -->
     <?php if ($section === 'developer_audit'): ?>
 
-    <div class="rpt-alert rpt-alert-info">
-        <i class="fas fa-code-branch"></i>
-        <div class="rpt-alert-content">
-            <div class="rpt-alert-title">Step 3 — Developer Audit Reports</div>
-            Track all configuration changes, module updates, and developer actions with full traceability.
-        </div>
-    </div>
 
     <!-- Dev Audit KPIs -->
     <div class="rpt-stats-grid">
@@ -1447,14 +1399,6 @@ require_once __DIR__ . '/../partials/header.php';
          STEP 4: AUDIT TRAIL LOGGING
          ================================================================ -->
     <?php if ($section === 'audit_trail'): ?>
-
-    <div class="rpt-alert rpt-alert-info">
-        <i class="fas fa-history"></i>
-        <div class="rpt-alert-content">
-            <div class="rpt-alert-title">Step 4 — Audit Trail Logging</div>
-            All report views and exports are logged for transparency and accountability. This section shows the complete audit trail.
-        </div>
-    </div>
 
     <!-- Audit Trail KPIs -->
     <div class="rpt-stats-grid">

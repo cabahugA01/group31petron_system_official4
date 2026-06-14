@@ -123,10 +123,29 @@ body {
     color: var(--text-primary);
 }
 
-/* Sidebar Dynamic Styling */
+/* Sidebar Dynamic Styling - only applies background gradient on non-sidebar-protected pages */
 .sidebar {
     background: var(--gradient-sidebar);
     --sidebar-bg: var(--gradient-sidebar);
+}
+
+/* Icons - scoped to content area only, NOT sidebar (sidebar sets its own icon colors) */
+.main-content .fas,
+.main-content .far,
+.main-content .fab,
+.content-area .fas,
+.content-area .far,
+.content-area .fab,
+.app-body .fas,
+.app-body .far,
+.app-body .fab,
+.card .fas,
+.card .far,
+.card .fab,
+.stat-card .fas,
+.stat-card .far,
+.stat-card .fab {
+    color: var(--icon-primary);
 }
 
 /* Cards & Surfaces */
@@ -143,11 +162,6 @@ body {
 
 .btn-primary:hover {
     background: var(--primary-dark);
-}
-
-/* Icons */
-.fas, .far, .fab {
-    color: var(--icon-primary);
 }
 
 /* Stat Cards */
