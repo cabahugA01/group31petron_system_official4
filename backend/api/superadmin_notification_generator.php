@@ -226,7 +226,7 @@ try {
             'Database Backup Error',
             mb_strimwidth($r['details'] ?? 'Database backup failed.', 0, 200, '…'),
             $key,
-            'superadmin_database_management.php?section=maintenance'
+            'database_management.php'
         );
     }
 } catch (Exception $e) {}

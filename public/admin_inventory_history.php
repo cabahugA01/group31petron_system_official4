@@ -6,6 +6,12 @@ require_login();
 $me = current_user();
 $role = role_key($me['role'] ?? '');
 $station_id = (int)user_station_id();
+
+// ── Module gate ───────────────────────────────────────────────
+if (!in_array($role, ['superadmin', 'developer']) && !is_module_enabled('inventory')) {
+    render_module_disabled_page('Inventory');
+}
+
 if (!in_array($role, ['admin','superadmin'])) { header('Location: dashboard.php'); exit; }
 
 $start_date = $_GET['start'] ?? date('Y-m-d', strtotime('-30 days'));

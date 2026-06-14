@@ -36,12 +36,22 @@ function sendPasswordResetOTP($to_email, $otp) {
         
         $mail->isHTML(true);
         $mail->Subject = 'Password Reset OTP - Petron Management System';
+        
+        // Embed the Petron logo
+        $logo_path = __DIR__ . '/../assets/img/Petron Logo.png';
+        if (file_exists($logo_path)) {
+            $mail->AddEmbeddedImage($logo_path, 'petron_logo', 'Petron Logo.png');
+            $logo_src = 'cid:petron_logo';
+        } else {
+            // Fallback to base64 if logo file not found
+            $logo_src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+        }
+        
         $mail->Body = "
             <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #dee2e6;'>
-                <div style='background: linear-gradient(135deg, #002F6C 0%, #004a9e 100%); color: white; padding: 30px 20px; text-align: center;'>
-                    <img src='https://i.imgur.com/your-petron-logo.png' alt='Petron Logo' style='height: 60px; margin-bottom: 15px;' />
-                    <h1 style='margin: 0; font-size: 28px; font-weight: 700;'>Petron POS System</h1>
-                    <p style='margin: 5px 0 0 0; font-size: 14px; opacity: 0.9;'>Station Management System</p>
+                <div style='background: linear-gradient(135deg, #002F6C 0%, #004a9e 100%); color: white; padding: 40px 20px; text-align: center;'>
+                    <img src='{$logo_src}' alt='Petron Logo' style='height: 70px; margin-bottom: 20px; display: block; margin-left: auto; margin-right: auto;' />
+                    <h1 style='margin: 0; font-size: 26px; font-weight: 700; letter-spacing: 0.5px;'>Station Management System</h1>
                 </div>
                 <div style='padding: 40px 30px; background-color: #ffffff;'>
                     <h2 style='color: #002F6C; margin-top: 0; font-size: 24px; font-weight: 600;'>Password Reset Request</h2>
@@ -96,13 +106,23 @@ function sendAdminCredentialsEmail($to_email, $admin_name, $station_name, $usern
 
         $mail->isHTML(true);
         $mail->Subject = 'Petron Station Management – Account Credentials';
+        
+        // Embed the Petron logo for credentials email
+        $logo_path = __DIR__ . '/../assets/img/Petron Logo.png';
+        if (file_exists($logo_path)) {
+            $mail->AddEmbeddedImage($logo_path, 'petron_logo_cred', 'Petron Logo.png');
+            $logo_src = 'cid:petron_logo_cred';
+        } else {
+            // Fallback to base64 if logo file not found
+            $logo_src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+        }
+        
         $mail->Body = "
             <div style='font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; border: 1px solid #dee2e6; border-radius: 8px; overflow: hidden;'>
                 <!-- Header with Logo -->
                 <div style='background: linear-gradient(135deg, #002F6C 0%, #004a9e 100%); color: white; padding: 40px 30px; text-align: center;'>
-                    <img src='https://i.imgur.com/your-petron-logo.png' alt='Petron Logo' style='height: 70px; margin-bottom: 20px;' />
-                    <h1 style='margin: 0; font-size: 32px; font-weight: 700; text-shadow: 0 2px 4px rgba(0,0,0,0.2);'>Petron Station Management System</h1>
-                    <p style='margin: 10px 0 0 0; font-size: 15px; opacity: 0.95;'>Professional Station Operations Platform</p>
+                    <img src='{$logo_src}' alt='Petron Logo' style='height: 80px; margin-bottom: 20px; display: block; margin-left: auto; margin-right: auto;' />
+                    <h1 style='margin: 0; font-size: 28px; font-weight: 700; letter-spacing: 0.5px;'>Station Management System</h1>
                 </div>
                 
                 <!-- Main Content -->

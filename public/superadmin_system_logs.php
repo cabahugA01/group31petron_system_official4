@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ============================================================
 // SuperAdmin – System Logs & Audit
 // public/superadmin_system_logs.php
@@ -143,9 +143,9 @@ if ($section === 'audit_trail') {
     // Fetch distinct users for filter dropdown
     try {
         $all_users = $pdo->query(
-            "SELECT DISTINCT u.id, u.name FROM activity_logs al
+            "SELECT DISTINCT u.id, COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS name FROM activity_logs al
              LEFT JOIN users u ON u.id = al.user_id
-             WHERE u.id IS NOT NULL ORDER BY u.name LIMIT 200"
+             WHERE u.id IS NOT NULL ORDER BY name LIMIT 200"
         )->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {}
 
@@ -439,7 +439,7 @@ include __DIR__ . '/../partials/header.php';
   <div class="sla-stat"><div class="sla-stat-icon" style="background:rgba(0,38,77,.1);color:var(--petron-blue);"><i class="fas fa-list-alt"></i></div><div><div class="sla-stat-val"><?php echo number_format($total_audit); ?></div><div class="sla-stat-lbl">Total Audit Logs</div></div></div>
   <div class="sla-stat"><div class="sla-stat-icon" style="background:rgba(204,0,0,.1);color:#cc0000;"><i class="fas fa-exclamation-triangle"></i></div><div><div class="sla-stat-val"><?php echo number_format($total_errors); ?></div><div class="sla-stat-lbl">Error Records</div></div></div>
   <div class="sla-stat"><div class="sla-stat-icon" style="background:rgba(40,167,69,.1);color:#28a745;"><i class="fas fa-download"></i></div><div><div class="sla-stat-val"><?php echo number_format($total_exports); ?></div><div class="sla-stat-lbl">Exports Done</div></div></div>
-  <div class="sla-stat"><div class="sla-stat-icon" style="background:rgba(111,66,193,.1);color:#6f42c1;"><i class="fas fa-user-shield"></i></div><div><div class="sla-stat-val" style="font-size:14px;"><?php echo htmlspecialchars($me['name']??'—'); ?></div><div class="sla-stat-lbl">Logged In As</div></div></div>
+  <div class="sla-stat"><div class="sla-stat-icon" style="background:rgba(111,66,193,.1);color:#6f42c1;"><i class="fas fa-user-shield"></i></div><div><div class="sla-stat-val" style="font-size:14px;"><?php echo htmlspecialchars(trim(($me['first_name']??'').(' '.($me['last_name']??''))) ?: ($me['username']??'—')); ?></div><div class="sla-stat-lbl">Logged In As</div></div></div>
 </div>
 
 <?php if($section==='audit_trail'): ?>

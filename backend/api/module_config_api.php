@@ -1,0 +1,596 @@
+<?php
+// ============================================================
+// Module Configuration API
+// backend/api/module_config_api.php
+// Handles all module configuration actions
+// ============================================================
+if (session_status() === PHP_SESSION_NONE) session_start();
+
+require_once __DIR__ . '/../lib.php';
+require_once __DIR__ . '/../../public/db_connect.php';
+require_once __DIR__ . '/../rbac.php';
+
+header('Content-Type: application/json');
+
+require_login();
+$me   = current_user();
+$role = role_key($me['role'] ?? '');
+
+if (!in_array($role, ['superadmin', 'developer'])) {
+    echo json_encode(['ok' => false, 'error' => 'Unauthorized.']);
+    exit;
+}
+
+// CSRF
+$csrf = $_POST['csrf_token'] ?? $_GET['csrf_token'] ?? '';
+if (empty($csrf) || $csrf !== ($_SESSION['csrf_token'] ?? '')) {
+    echo json_encode(['ok' => false, 'error' => 'Invalid CSRF token.']);
+    exit;
+}
+
+$action = $_POST['action'] ?? $_GET['action'] ?? '';
+
+try {
+    switch ($action) {
+
+        // ── Toggle module enabled/disabled ──────────────────────
+        case 'toggle_module':
+            $module_key = trim($_POST['module_key'] ?? '');
+            $enabled    = (int)($_POST['enabled'] ?? 0);
+
+            if (!$module_key) throw new Exception('module_key required.');
+
+            $stmt = $pdo->prepare("UPDATE module_settings SET is_enabled = ?, updated_at = NOW() WHERE module_key = ?");
+            $stmt->execute([$enabled, $module_key]);
+
+            // Audit trail
+            $pdo->prepare("INSERT INTO module_config_audit
+                (module_key, config_key, action_type, old_value, new_value, changed_by, changed_by_role, ip_address, user_agent)
+                VALUES (?, NULL, ?, 'null', ?, ?, ?, ?, ?)"
+            )->execute([
+                $module_key,
+                $enabled ? 'enable' : 'disable',
+                $enabled ? 'true' : 'false',
+                $me['id'],
+                $role,
+                $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+                substr($_SERVER['HTTP_USER_AGENT'] ?? 'unknown', 0, 255)
+            ]);
+
+            echo json_encode(['ok' => true, 'message' => 'Module ' . ($enabled ? 'enabled' : 'disabled') . ' successfully.']);
+            break;
+
+        // ── Save a config key/value for a module ────────────────
+        case 'save_config':
+            $module_key  = trim($_POST['module_key'] ?? '');
+            $config_key  = trim($_POST['config_key'] ?? '');
+            $config_value = trim($_POST['config_value'] ?? '');
+            $config_type = trim($_POST['config_type'] ?? 'string');
+            $description = trim($_POST['description'] ?? '');
+
+            if (!$module_key || !$config_key) throw new Exception('module_key and config_key required.');
+
+            // Get old value for audit
+            $old = $pdo->prepare("SELECT config_value FROM module_config WHERE module_key = ? AND config_key = ?");
+            $old->execute([$module_key, $config_key]);
+            $old_val = $old->fetchColumn();
+
+            // Upsert
+            $pdo->prepare("INSERT INTO module_config (module_key, config_key, config_value, config_type, description)
+                VALUES (?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE config_value = VALUES(config_value), config_type = VALUES(config_type),
+                description = VALUES(description), updated_at = NOW()"
+            )->execute([$module_key, $config_key, $config_value, $config_type, $description]);
+
+            // Audit trail
+            $pdo->prepare("INSERT INTO module_config_audit
+                (module_key, config_key, action_type, old_value, new_value, changed_by, changed_by_role, ip_address, user_agent)
+                VALUES (?, ?, 'update', ?, ?, ?, ?, ?, ?)"
+            )->execute([
+                $module_key, $config_key,
+                ($old_val !== false ? $old_val : 'N/A'),
+                $config_value,
+                $me['id'], $role,
+                $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+                substr($_SERVER['HTTP_USER_AGENT'] ?? 'unknown', 0, 255)
+            ]);
+
+            echo json_encode(['ok' => true, 'message' => 'Setting saved.']);
+            break;
+
+        // ── Save multiple configs at once (bulk) ─────────────────
+        case 'save_bulk_config':
+            $module_key = trim($_POST['module_key'] ?? '');
+            $configs    = json_decode($_POST['configs'] ?? '[]', true);
+
+            if (!$module_key) throw new Exception('module_key required.');
+            if (!is_array($configs)) throw new Exception('configs must be a JSON array.');
+
+            $pdo->beginTransaction();
+            foreach ($configs as $item) {
+                $ck  = trim($item['config_key'] ?? '');
+                $cv  = trim($item['config_value'] ?? '');
+                $ct  = trim($item['config_type'] ?? 'string');
+                $cd  = trim($item['description'] ?? '');
+                if (!$ck) continue;
+
+                $old = $pdo->prepare("SELECT config_value FROM module_config WHERE module_key = ? AND config_key = ?");
+                $old->execute([$module_key, $ck]);
+                $old_val = $old->fetchColumn();
+
+                $pdo->prepare("INSERT INTO module_config (module_key, config_key, config_value, config_type, description)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE config_value = VALUES(config_value), config_type = VALUES(config_type),
+                    description = VALUES(description), updated_at = NOW()"
+                )->execute([$module_key, $ck, $cv, $ct, $cd]);
+
+                $pdo->prepare("INSERT INTO module_config_audit
+                    (module_key, config_key, action_type, old_value, new_value, changed_by, changed_by_role, ip_address, user_agent)
+                    VALUES (?, ?, 'update', ?, ?, ?, ?, ?, ?)"
+                )->execute([
+                    $module_key, $ck,
+                    ($old_val !== false ? $old_val : 'N/A'),
+                    $cv, $me['id'], $role,
+                    $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+                    substr($_SERVER['HTTP_USER_AGENT'] ?? 'unknown', 0, 255)
+                ]);
+            }
+            $pdo->commit();
+            echo json_encode(['ok' => true, 'message' => 'All settings saved successfully.']);
+            break;
+
+        // ── Get module config values ─────────────────────────────
+        case 'get_config':
+            $module_key = trim($_GET['module_key'] ?? $_POST['module_key'] ?? '');
+            if (!$module_key) throw new Exception('module_key required.');
+
+            $rows = $pdo->prepare("SELECT * FROM module_config WHERE module_key = ? ORDER BY config_category, config_key");
+            $rows->execute([$module_key]);
+            $data = $rows->fetchAll(PDO::FETCH_ASSOC);
+
+            // Key-value map
+            $map = [];
+            foreach ($data as $r) {
+                $map[$r['config_key']] = $r['config_value'];
+            }
+
+            echo json_encode(['ok' => true, 'configs' => $data, 'map' => $map]);
+            break;
+
+        // ── Get audit log for a module ───────────────────────────
+        case 'get_audit_log':
+            $module_key = trim($_GET['module_key'] ?? $_POST['module_key'] ?? '');
+            $limit      = min((int)($_GET['limit'] ?? 30), 100);
+            if (!$module_key) throw new Exception('module_key required.');
+
+            $rows = $pdo->prepare("
+                SELECT a.*, u.first_name, u.last_name, u.email
+                FROM module_config_audit a
+                LEFT JOIN users u ON u.id = a.changed_by
+                WHERE a.module_key = ?
+                ORDER BY a.timestamp DESC
+                LIMIT ?
+            ");
+            $rows->execute([$module_key, $limit]);
+            echo json_encode(['ok' => true, 'logs' => $rows->fetchAll(PDO::FETCH_ASSOC)]);
+            break;
+
+        // ── Get fuel types from DB ────────────────────────────────
+        case 'get_fuel_types':
+            $rows = $pdo->query("SELECT * FROM fuel_types ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
+            echo json_encode(['ok' => true, 'fuel_types' => $rows]);
+            break;
+
+        // ── Save fuel type price ──────────────────────────────────
+        case 'save_fuel_price':
+            $fuel_type_id = (int)($_POST['fuel_type_id'] ?? 0);
+            $price        = (float)($_POST['price'] ?? 0);
+            if (!$fuel_type_id) throw new Exception('fuel_type_id required.');
+
+            // Get old price for audit
+            $old = $pdo->prepare("SELECT price_per_liter FROM fuel_types WHERE id = ?");
+            $old->execute([$fuel_type_id]);
+            $old_price = $old->fetchColumn();
+
+            $pdo->prepare("UPDATE fuel_types SET price_per_liter = ?, updated_at = NOW() WHERE id = ?")
+                ->execute([$price, $fuel_type_id]);
+
+            // Log to fuel_price_log
+            try {
+                $pdo->prepare("INSERT INTO fuel_price_log (fuel_type_id, old_price, new_price, changed_by, changed_at) VALUES (?,?,?,?,NOW())")
+                    ->execute([$fuel_type_id, $old_price, $price, $me['id']]);
+            } catch (Exception $e) { /* table may differ */ }
+
+            // Module config audit
+            $pdo->prepare("INSERT INTO module_config_audit
+                (module_key, config_key, action_type, old_value, new_value, changed_by, changed_by_role, ip_address, user_agent)
+                VALUES ('fuel_management', ?, 'update', ?, ?, ?, ?, ?, ?)"
+            )->execute([
+                'price_fuel_type_' . $fuel_type_id,
+                $old_price, $price,
+                $me['id'], $role,
+                $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+                substr($_SERVER['HTTP_USER_AGENT'] ?? 'unknown', 0, 255)
+            ]);
+
+            echo json_encode(['ok' => true, 'message' => 'Fuel price updated.']);
+            break;
+
+        // ── Get payment methods from DB ───────────────────────────
+        case 'get_payment_methods':
+            $rows = $pdo->query("SELECT * FROM payment_method_config ORDER BY sort_order, id")->fetchAll(PDO::FETCH_ASSOC);
+            echo json_encode(['ok' => true, 'methods' => $rows]);
+            break;
+
+        // ── Toggle payment method ─────────────────────────────────
+        case 'toggle_payment_method':
+            $method_id = (int)($_POST['method_id'] ?? 0);
+            $active    = (int)($_POST['active'] ?? 0);
+            if (!$method_id) throw new Exception('method_id required.');
+
+            $pdo->prepare("UPDATE payment_method_config SET is_active = ?, updated_at = NOW() WHERE id = ?")
+                ->execute([$active, $method_id]);
+
+            echo json_encode(['ok' => true, 'message' => 'Payment method updated.']);
+            break;
+
+        // ── Get job order service types ───────────────────────────
+        case 'get_service_types':
+            $rows = $pdo->query("SELECT * FROM job_order_service_types ORDER BY sort_order, id")->fetchAll(PDO::FETCH_ASSOC);
+            echo json_encode(['ok' => true, 'service_types' => $rows]);
+            break;
+
+        // ── Toggle service type active ────────────────────────────
+        case 'toggle_service_type':
+            $id     = (int)($_POST['id'] ?? 0);
+            $active = (int)($_POST['active'] ?? 0);
+            if (!$id) throw new Exception('id required.');
+
+            $pdo->prepare("UPDATE job_order_service_types SET active = ?, updated_at = NOW() WHERE id = ?")
+                ->execute([$active, $id]);
+
+            echo json_encode(['ok' => true, 'message' => 'Service type updated.']);
+            break;
+
+        // ── Get shift period config ───────────────────────────────
+        case 'get_shifts':
+            $rows = $pdo->query("SELECT * FROM shift_period_config ORDER BY sort_order")->fetchAll(PDO::FETCH_ASSOC);
+            echo json_encode(['ok' => true, 'shifts' => $rows]);
+            break;
+
+        // ── Save shift config ─────────────────────────────────────
+        case 'save_shift':
+            $id         = (int)($_POST['id'] ?? 0);
+            $shift_name = trim($_POST['shift_name'] ?? '');
+            $start_hour = (int)($_POST['start_hour'] ?? 0);
+            $end_hour   = (int)($_POST['end_hour'] ?? 0);
+            $is_active  = (int)($_POST['is_active'] ?? 1);
+
+            if (!$shift_name) throw new Exception('shift_name required.');
+
+            if ($id > 0) {
+                $pdo->prepare("UPDATE shift_period_config SET shift_name=?, start_hour=?, end_hour=?, is_active=? WHERE id=?")
+                    ->execute([$shift_name, $start_hour, $end_hour, $is_active, $id]);
+            } else {
+                $pdo->prepare("INSERT INTO shift_period_config (shift_name, start_hour, end_hour, is_active) VALUES (?,?,?,?)")
+                    ->execute([$shift_name, $start_hour, $end_hour, $is_active]);
+            }
+            echo json_encode(['ok' => true, 'message' => 'Shift saved.']);
+            break;
+
+        // ── Get calendar event type config ────────────────────────
+        case 'get_event_types':
+            $rows = $pdo->query("SELECT * FROM calendar_event_type_config ORDER BY sort_order")->fetchAll(PDO::FETCH_ASSOC);
+            echo json_encode(['ok' => true, 'event_types' => $rows]);
+            break;
+
+        // ── Toggle calendar event type ────────────────────────────
+        case 'toggle_event_type':
+            $id        = (int)($_POST['id'] ?? 0);
+            $is_active = (int)($_POST['is_active'] ?? 0);
+            if (!$id) throw new Exception('id required.');
+
+            $pdo->prepare("UPDATE calendar_event_type_config SET is_active = ? WHERE id = ?")
+                ->execute([$is_active, $id]);
+
+            echo json_encode(['ok' => true, 'message' => 'Event type updated.']);
+            break;
+
+        // ── Get calibration defaults ──────────────────────────────
+        case 'get_calibration_defaults':
+            $rows = $pdo->query("SELECT * FROM fuel_calibration_defaults ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
+            echo json_encode(['ok' => true, 'defaults' => $rows]);
+            break;
+
+        // ── Save calibration default ──────────────────────────────
+        case 'save_calibration_default':
+            $id     = (int)($_POST['id'] ?? 0);
+            $liters = (float)($_POST['calibration_liters'] ?? 0);
+            if (!$id || $liters <= 0) throw new Exception('id and calibration_liters required.');
+            $pdo->prepare("UPDATE fuel_calibration_defaults SET calibration_liters = ?, updated_at = NOW() WHERE id = ?")
+                ->execute([$liters, $id]);
+            echo json_encode(['ok' => true, 'message' => 'Calibration default updated.']);
+            break;
+
+        // ── Get all active stations ───────────────────────────────
+        case 'get_stations':
+            $rows = $pdo->query("SELECT id, name, location, region, status FROM stations WHERE status='active' ORDER BY name")
+                        ->fetchAll(PDO::FETCH_ASSOC);
+            echo json_encode(['ok' => true, 'stations' => $rows]);
+            break;
+
+        // ── Get module states for a station ───────────────────────
+        case 'get_station_modules':
+            $sid = (int)($_GET['station_id'] ?? 0);
+            if (!$sid) throw new Exception('station_id required.');
+            $stmt = $pdo->prepare("
+                SELECT sm.module_key, sm.is_enabled, sm.updated_at,
+                       ms.module_name
+                FROM station_modules sm
+                LEFT JOIN module_settings ms ON ms.module_key = sm.module_key
+                WHERE sm.station_id = ?
+                ORDER BY ms.module_order, sm.module_key
+            ");
+            $stmt->execute([$sid]);
+            echo json_encode(['ok' => true, 'modules' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+            break;
+
+        // ── Toggle module for a specific station ──────────────────
+        case 'toggle_station_module':
+            $sid        = (int)($_POST['station_id'] ?? 0);
+            $module_key = trim($_POST['module_key'] ?? '');
+            $enabled    = (int)($_POST['enabled'] ?? 0);
+            if (!$sid || !$module_key) throw new Exception('station_id and module_key required.');
+
+            // Upsert station_modules
+            $pdo->prepare("INSERT INTO station_modules (station_id, module_key, is_enabled, updated_by)
+                VALUES (?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE is_enabled=VALUES(is_enabled), updated_by=VALUES(updated_by), updated_at=NOW()")
+                ->execute([$sid, $module_key, $enabled, $me['id']]);
+
+            // Audit trail
+            $pdo->prepare("INSERT INTO station_module_audit
+                (station_id, module_key, action, old_value, new_value, developer_id, developer_name, ip_address)
+                VALUES (?, ?, ?, NULL, ?, ?, ?, ?)")
+                ->execute([
+                    $sid, $module_key,
+                    $enabled ? 'enable' : 'disable',
+                    $enabled ? 'enabled' : 'disabled',
+                    $me['id'],
+                    ($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? ''),
+                    $_SERVER['REMOTE_ADDR'] ?? 'unknown'
+                ]);
+
+            echo json_encode(['ok' => true, 'message' => "Module '{$module_key}' " . ($enabled ? 'enabled' : 'disabled') . " for station."]);
+            break;
+
+        // ── Get station fuel config ────────────────────────────────
+        case 'get_station_fuel_config':
+            $sid = (int)($_GET['station_id'] ?? 0);
+            if (!$sid) throw new Exception('station_id required.');
+            $stmt = $pdo->prepare("SELECT * FROM station_fuel_config WHERE station_id = ? ORDER BY fuel_type");
+            $stmt->execute([$sid]);
+            echo json_encode(['ok' => true, 'fuels' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+            break;
+
+        // ── Save station fuel config ──────────────────────────────
+        case 'save_station_fuel_config':
+            $sid     = (int)($_POST['station_id'] ?? 0);
+            $fuels   = json_decode($_POST['fuels'] ?? '[]', true);
+            if (!$sid || !is_array($fuels)) throw new Exception('station_id and fuels required.');
+
+            $pdo->beginTransaction();
+            foreach ($fuels as $f) {
+                $pdo->prepare("INSERT INTO station_fuel_config
+                    (station_id, fuel_type, official_price_per_liter, tank_capacity,
+                     calibration_schedule_days, variance_tolerance_percent, reconciliation_formula, updated_by)
+                    VALUES (?,?,?,?,?,?,?,?)
+                    ON DUPLICATE KEY UPDATE
+                        official_price_per_liter=VALUES(official_price_per_liter),
+                        tank_capacity=VALUES(tank_capacity),
+                        calibration_schedule_days=VALUES(calibration_schedule_days),
+                        variance_tolerance_percent=VALUES(variance_tolerance_percent),
+                        reconciliation_formula=VALUES(reconciliation_formula),
+                        updated_by=VALUES(updated_by), updated_at=NOW()")
+                    ->execute([
+                        $sid,
+                        $f['fuel_type'],
+                        (float)($f['official_price_per_liter'] ?? 0),
+                        (float)($f['tank_capacity'] ?? 10000),
+                        (int)($f['calibration_schedule_days'] ?? 30),
+                        (float)($f['variance_tolerance_percent'] ?? 5),
+                        $f['reconciliation_formula'] ?? '(present - previous - calibration) * price_per_liter',
+                        $me['id']
+                    ]);
+                $pdo->prepare("INSERT INTO station_module_audit
+                    (station_id, module_key, config_table, action, field_changed, new_value, developer_id, developer_name, ip_address)
+                    VALUES (?, 'fuel_management', 'station_fuel_config', 'update', ?, ?, ?, ?, ?)")
+                    ->execute([$sid, 'fuel_type_' . $f['fuel_type'], json_encode($f), $me['id'],
+                        ($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? ''), $_SERVER['REMOTE_ADDR'] ?? '']);
+            }
+            $pdo->commit();
+            echo json_encode(['ok' => true, 'message' => 'Station fuel config saved.']);
+            break;
+
+        // ── Save station payment config ───────────────────────────
+        case 'save_station_payment_config':
+            $sid     = (int)($_POST['station_id'] ?? 0);
+            $methods = json_decode($_POST['methods'] ?? '[]', true);
+            if (!$sid || !is_array($methods)) throw new Exception('station_id and methods required.');
+
+            $pdo->beginTransaction();
+            foreach ($methods as $m) {
+                $pdo->prepare("INSERT INTO station_payment_config
+                    (station_id, payment_method, require_reference_number, allow_partial_payment,
+                     payment_status_default, audit_trail_enabled, is_enabled, updated_by)
+                    VALUES (?,?,?,?,?,?,?,?)
+                    ON DUPLICATE KEY UPDATE
+                        require_reference_number=VALUES(require_reference_number),
+                        allow_partial_payment=VALUES(allow_partial_payment),
+                        payment_status_default=VALUES(payment_status_default),
+                        audit_trail_enabled=VALUES(audit_trail_enabled),
+                        is_enabled=VALUES(is_enabled),
+                        updated_by=VALUES(updated_by), updated_at=NOW()")
+                    ->execute([
+                        $sid, $m['payment_method'],
+                        (int)($m['require_reference_number'] ?? 0),
+                        (int)($m['allow_partial_payment'] ?? 1),
+                        $m['payment_status_default'] ?? 'Pending',
+                        (int)($m['audit_trail_enabled'] ?? 1),
+                        (int)($m['is_enabled'] ?? 1),
+                        $me['id']
+                    ]);
+            }
+            $pdo->commit();
+            echo json_encode(['ok' => true, 'message' => 'Station payment config saved.']);
+            break;
+
+        // ── Save station inventory config ─────────────────────────
+        case 'save_station_inventory_config':
+            $sid  = (int)($_POST['station_id'] ?? 0);
+            $data = $_POST;
+            if (!$sid) throw new Exception('station_id required.');
+
+            $pdo->prepare("INSERT INTO station_inventory_config
+                (station_id, stock_movement_rule, auto_update_on_delivery, auto_update_on_sale,
+                 adjustment_require_approval, low_stock_alert_enabled, low_stock_threshold,
+                 audit_trail_enabled, allow_negative_stock, updated_by)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
+                ON DUPLICATE KEY UPDATE
+                    stock_movement_rule=VALUES(stock_movement_rule),
+                    auto_update_on_delivery=VALUES(auto_update_on_delivery),
+                    auto_update_on_sale=VALUES(auto_update_on_sale),
+                    adjustment_require_approval=VALUES(adjustment_require_approval),
+                    low_stock_alert_enabled=VALUES(low_stock_alert_enabled),
+                    low_stock_threshold=VALUES(low_stock_threshold),
+                    audit_trail_enabled=VALUES(audit_trail_enabled),
+                    allow_negative_stock=VALUES(allow_negative_stock),
+                    updated_by=VALUES(updated_by), updated_at=NOW()")
+                ->execute([
+                    $sid,
+                    $data['stock_movement_rule'] ?? 'FIFO',
+                    (int)($data['auto_update_on_delivery'] ?? 1),
+                    (int)($data['auto_update_on_sale'] ?? 1),
+                    (int)($data['adjustment_require_approval'] ?? 1),
+                    (int)($data['low_stock_alert_enabled'] ?? 1),
+                    (int)($data['low_stock_threshold'] ?? 10),
+                    (int)($data['audit_trail_enabled'] ?? 1),
+                    (int)($data['allow_negative_stock'] ?? 0),
+                    $me['id']
+                ]);
+            echo json_encode(['ok' => true, 'message' => 'Station inventory config saved.']);
+            break;
+
+        // ── Save station calendar config ──────────────────────────
+        case 'save_station_calendar_config':
+            $sid  = (int)($_POST['station_id'] ?? 0);
+            $data = $_POST;
+            if (!$sid) throw new Exception('station_id required.');
+
+            $pdo->prepare("INSERT INTO station_calendar_config
+                (station_id, shift_schedule_enabled, delivery_schedule_enabled,
+                 calibration_events_enabled, system_notifications_enabled,
+                 notification_lead_time_hours, updated_by)
+                VALUES (?,?,?,?,?,?,?)
+                ON DUPLICATE KEY UPDATE
+                    shift_schedule_enabled=VALUES(shift_schedule_enabled),
+                    delivery_schedule_enabled=VALUES(delivery_schedule_enabled),
+                    calibration_events_enabled=VALUES(calibration_events_enabled),
+                    system_notifications_enabled=VALUES(system_notifications_enabled),
+                    notification_lead_time_hours=VALUES(notification_lead_time_hours),
+                    updated_by=VALUES(updated_by), updated_at=NOW()")
+                ->execute([
+                    $sid,
+                    (int)($data['shift_schedule_enabled'] ?? 1),
+                    (int)($data['delivery_schedule_enabled'] ?? 1),
+                    (int)($data['calibration_events_enabled'] ?? 1),
+                    (int)($data['system_notifications_enabled'] ?? 1),
+                    (int)($data['notification_lead_time_hours'] ?? 24),
+                    $me['id']
+                ]);
+            echo json_encode(['ok' => true, 'message' => 'Station calendar config saved.']);
+            break;
+
+        // ── Save station report config ────────────────────────────
+        case 'save_station_report_config':
+            $sid     = (int)($_POST['station_id'] ?? 0);
+            $reports = json_decode($_POST['reports'] ?? '[]', true);
+            if (!$sid || !is_array($reports)) throw new Exception('station_id and reports required.');
+
+            $pdo->beginTransaction();
+            foreach ($reports as $r) {
+                $pdo->prepare("INSERT INTO station_report_config
+                    (station_id, report_type, computation_formula, export_format_excel,
+                     export_format_pdf, role_access_staff, role_access_manager, role_access_admin,
+                     is_enabled, updated_by)
+                    VALUES (?,?,?,?,?,?,?,?,?,?)
+                    ON DUPLICATE KEY UPDATE
+                        computation_formula=VALUES(computation_formula),
+                        export_format_excel=VALUES(export_format_excel),
+                        export_format_pdf=VALUES(export_format_pdf),
+                        role_access_staff=VALUES(role_access_staff),
+                        role_access_manager=VALUES(role_access_manager),
+                        role_access_admin=VALUES(role_access_admin),
+                        is_enabled=VALUES(is_enabled),
+                        updated_by=VALUES(updated_by), updated_at=NOW()")
+                    ->execute([
+                        $sid, $r['report_type'],
+                        $r['computation_formula'] ?? '',
+                        (int)($r['export_format_excel'] ?? 1),
+                        (int)($r['export_format_pdf'] ?? 1),
+                        (int)($r['role_access_staff'] ?? 0),
+                        (int)($r['role_access_manager'] ?? 1),
+                        (int)($r['role_access_admin'] ?? 1),
+                        (int)($r['is_enabled'] ?? 1),
+                        $me['id']
+                    ]);
+            }
+            $pdo->commit();
+            echo json_encode(['ok' => true, 'message' => 'Station report config saved.']);
+            break;
+
+        // ── Get station payment config ────────────────────────────
+        case 'get_station_payment_config':
+            $sid = (int)($_GET['station_id'] ?? 0);
+            if (!$sid) throw new Exception('station_id required.');
+            $stmt = $pdo->prepare("SELECT * FROM station_payment_config WHERE station_id = ? ORDER BY payment_method");
+            $stmt->execute([$sid]);
+            echo json_encode(['ok' => true, 'methods' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+            break;
+
+        // ── Get station inventory config ──────────────────────────
+        case 'get_station_inventory_config':
+            $sid = (int)($_GET['station_id'] ?? 0);
+            if (!$sid) throw new Exception('station_id required.');
+            $stmt = $pdo->prepare("SELECT * FROM station_inventory_config WHERE station_id = ? LIMIT 1");
+            $stmt->execute([$sid]);
+            echo json_encode(['ok' => true, 'config' => $stmt->fetch(PDO::FETCH_ASSOC) ?: []]);
+            break;
+
+        // ── Get station calendar config ───────────────────────────
+        case 'get_station_calendar_config':
+            $sid = (int)($_GET['station_id'] ?? 0);
+            if (!$sid) throw new Exception('station_id required.');
+            $stmt = $pdo->prepare("SELECT * FROM station_calendar_config WHERE station_id = ? LIMIT 1");
+            $stmt->execute([$sid]);
+            echo json_encode(['ok' => true, 'config' => $stmt->fetch(PDO::FETCH_ASSOC) ?: []]);
+            break;
+
+        // ── Get station report config ─────────────────────────────
+        case 'get_station_report_config':
+            $sid = (int)($_GET['station_id'] ?? 0);
+            if (!$sid) throw new Exception('station_id required.');
+            $stmt = $pdo->prepare("SELECT * FROM station_report_config WHERE station_id = ? ORDER BY report_type");
+            $stmt->execute([$sid]);
+            echo json_encode(['ok' => true, 'reports' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+            break;
+
+        default:
+            throw new Exception('Invalid action: ' . $action);
+    }
+
+} catch (Exception $e) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+}
+?>

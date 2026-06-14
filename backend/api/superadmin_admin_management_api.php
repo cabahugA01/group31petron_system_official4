@@ -15,13 +15,25 @@ require_login();
 $me   = current_user();
 $role = role_key($me['role'] ?? '');
 if (!in_array($role, ['superadmin', 'developer'])) {
+    if (trim($_POST['action'] ?? $_GET['action'] ?? '') === 'export_admins') {
+        die('Unauthorized');
+    }
     echo json_encode(['ok' => false, 'error' => 'Unauthorized']); exit;
 }
 
+$action = trim($_POST['action'] ?? $_GET['action'] ?? '');
+
 // CSRF
-$csrf_token = $_POST['csrf_token'] ?? '';
-if (empty($csrf_token) || $csrf_token !== ($_SESSION['csrf_token'] ?? '')) {
-    echo json_encode(['ok' => false, 'error' => 'Invalid CSRF token.']); exit;
+if ($action === 'export_admins') {
+    $csrf_token = $_GET['csrf_token'] ?? '';
+    if (empty($csrf_token) || $csrf_token !== ($_SESSION['csrf_token'] ?? '')) {
+        die('Invalid CSRF token.');
+    }
+} else {
+    $csrf_token = $_POST['csrf_token'] ?? '';
+    if (empty($csrf_token) || $csrf_token !== ($_SESSION['csrf_token'] ?? '')) {
+        echo json_encode(['ok' => false, 'error' => 'Invalid CSRF token.']); exit;
+    }
 }
 
 // Dynamic Column Detection
@@ -34,8 +46,6 @@ try {
 } catch (Exception $e) { /* ignore */ }
 $s_phone = 'phone_number';
 $s_pass  = in_array('password_hash', $user_cols) ? 'password_hash' : 'password_hash';
-
-$action = trim($_POST['action'] ?? '');
 
 // ── Helper: send credentials email ───────────────────────────
 function send_admin_credentials_email(string $to_email, string $name, string $password, string $station_name): bool {
@@ -68,40 +78,34 @@ function generate_admin_password(): string {
 // ACTION: create_admin
 // ════════════════════════════════════════════════════════════
 if ($action === 'create_admin') {
-    $full_name  = trim($_POST['full_name']  ?? '');
-    $login_id   = trim($_POST['login_id']   ?? $_POST['email'] ?? '');
+    $first_name = trim($_POST['first_name'] ?? '');
+    $last_name  = trim($_POST['last_name']  ?? '');
+    $email      = trim($_POST['email']      ?? '');
     $station_id = (int)($_POST['station_id'] ?? 0);
     // Password is ALWAYS auto-generated — SuperAdmin cannot set it manually
 
     // Validate
-    if (empty($full_name))  { echo json_encode(['ok'=>false,'error'=>'Full name is required.']); exit; }
-    if (empty($login_id))   { echo json_encode(['ok'=>false,'error'=>'Login ID is required.']); exit; }
+    if (empty($first_name)) { echo json_encode(['ok'=>false,'error'=>'First name is required.']); exit; }
+    if (empty($last_name))  { echo json_encode(['ok'=>false,'error'=>'Last name is required.']); exit; }
+    if (empty($email))      { echo json_encode(['ok'=>false,'error'=>'Email address is required.']); exit; }
     if ($station_id <= 0)   { echo json_encode(['ok'=>false,'error'=>'Please select a station.']); exit; }
 
-    // Parse Login ID
-    $email    = null;
-    $phone    = null;
-    $username = $login_id;
-
-    if (strpos($login_id, '@') !== false) {
-        $email = $login_id;
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            echo json_encode(['ok'=>false,'error'=>'Invalid email address format.']); exit;
-        }
-    } elseif (preg_match('/^\d{11}$/', $login_id)) {
-        $phone = $login_id;
+    // Validate email format
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        echo json_encode(['ok'=>false,'error'=>'Invalid email address format.']); exit;
     }
 
+    // Build full name
+    $full_name = trim($first_name . ' ' . $last_name);
+    $username  = $email; // Email is the login credential
+    $phone     = null;
+
     try {
-        // Check login_id uniqueness
-        $dup_sql = 'SELECT user_id FROM users WHERE username = ?';
-        $dup_params = [$username];
-        if (!empty($email)) { $dup_sql .= ' OR email = ?'; $dup_params[] = $email; }
-        if (!empty($phone)) { $dup_sql .= " OR {$s_phone} = ?"; $dup_params[] = $phone; }
-        $chk = $pdo->prepare($dup_sql . ' LIMIT 1');
-        $chk->execute($dup_params);
+        // Check email uniqueness - use 'id' as primary key (most common)
+        $chk = $pdo->prepare('SELECT id FROM users WHERE email = ? OR username = ? LIMIT 1');
+        $chk->execute([$email, $email]);
         if ($chk->rowCount() > 0) {
-            echo json_encode(['ok'=>false,'error'=>'Login ID is already in use.']); exit;
+            echo json_encode(['ok'=>false,'error'=>'This email address is already in use.']); exit;
         }
 
         // Verify station exists
@@ -113,51 +117,45 @@ if ($action === 'create_admin') {
         }
 
         // Check one-admin-per-station rule
-        $admChk = $pdo->prepare("SELECT COUNT(*) FROM users WHERE role='admin' AND station_id=?");
+        $admChk = $pdo->prepare("SELECT COUNT(*) FROM users WHERE role='admin' AND station_id=? AND status='Active'");
         $admChk->execute([$station_id]);
         if ((int)$admChk->fetchColumn() > 0) {
-            echo json_encode(['ok'=>false,'error'=>'This station already has an Admin.']); exit;
+            echo json_encode(['ok'=>false,'error'=>'This station already has an active Admin.']); exit;
         }
 
         // Auto-generate password
         $plain_password = generate_admin_password();
         $hashed         = password_hash($plain_password, PASSWORD_DEFAULT);
 
-        // Split full name into first_name and last_name for legacy database compatibility
-        $fn_parts = explode(' ', trim($full_name));
-        if (count($fn_parts) > 1) {
-            $fn_last  = array_pop($fn_parts);
-            $fn_first = implode(' ', $fn_parts);
-        } else {
-            $fn_first = $full_name;
-            $fn_last  = '';
+        // Build INSERT query dynamically based on available columns
+        $insert_cols = ['username', 'first_name', 'last_name', 'email', $s_pass, 'role', 'station_id', 'status', 'created_at'];
+        $insert_vals = [$username, $first_name, $last_name, $email, $hashed, 'admin', $station_id, 'active', date('Y-m-d H:i:s')];
+        
+        // Add phone_number if available
+        if (in_array('phone_number', $user_cols) || in_array($s_phone, $user_cols)) {
+            $insert_cols[] = $s_phone;
+            $insert_vals[] = $phone;
         }
-
-        // Insert
-        $ins = $pdo->prepare(
-            "INSERT INTO users (username, name, first_name, last_name, email, {$s_phone}, {$s_pass}, role, station_id, status, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 'admin', ?, 'active', 1, NOW())"
-        );
-        $ins->execute([$username, $full_name, $fn_first, $fn_last, $email, $phone, $hashed, $station_id]);
+        
+        // Add name column if it exists
+        if (in_array('name', $user_cols)) {
+            $insert_cols[] = 'name';
+            $insert_vals[] = $full_name;
+        }
+        
+        $placeholders = implode(', ', array_fill(0, count($insert_vals), '?'));
+        $columns = implode(', ', $insert_cols);
+        
+        $ins = $pdo->prepare("INSERT INTO users ({$columns}) VALUES ({$placeholders})");
+        $ins->execute($insert_vals);
         $new_id = $pdo->lastInsertId();
 
         // Audit log
-        log_activity($pdo, $me['id'], 'Create Admin', "SuperAdmin created admin '{$full_name}' (login: {$login_id}) for station '{$station_name}'");
+        log_activity($pdo, $me['id'], 'Create Admin', "SuperAdmin created admin '{$full_name}' (email: {$email}) for station '{$station_name}'");
 
-        // Send credentials
-        $cred_sent_msg = '';
-        if (!empty($email)) {
-            $email_sent = send_admin_credentials_email($email, $full_name, $plain_password, $station_name);
-            $cred_sent_msg = $email_sent ? " Credentials sent to {$email}." : " Note: email delivery failed — share credentials manually.";
-        }
-        if (!empty($phone)) {
-            require_once __DIR__ . '/../../config/email_config.php';
-            sendSMS($phone, "Your Petron Admin account has been created. Login: {$username} | Temp Password: {$plain_password} | Station: {$station_name}");
-            $cred_sent_msg = " Credentials sent via SMS to {$phone}.";
-        }
-        if (empty($cred_sent_msg)) {
-            $cred_sent_msg = " Temp Password: {$plain_password} — share manually (no email/phone linked).";
-        }
+        // Send credentials via email
+        $email_sent = send_admin_credentials_email($email, $full_name, $plain_password, $station_name);
+        $cred_sent_msg = $email_sent ? " Credentials sent to {$email}." : " Note: email delivery failed — share credentials manually.";
 
         echo json_encode([
             'ok'         => true,
@@ -177,18 +175,28 @@ if ($action === 'create_admin') {
 // ════════════════════════════════════════════════════════════
 if ($action === 'edit_admin') {
     $admin_id   = (int)($_POST['admin_id']   ?? 0);
-    $full_name  = trim($_POST['full_name']   ?? '');
+    $first_name = trim($_POST['first_name']  ?? '');
+    $last_name  = trim($_POST['last_name']   ?? '');
     $station_id = (int)($_POST['station_id'] ?? 0);
-    $status     = in_array($_POST['status'] ?? '', ['active','inactive']) ? $_POST['status'] : 'active';
+    
+    $status_input = trim($_POST['status'] ?? 'Active');
+    $status = 'Active';
+    if (strcasecmp($status_input, 'inactive') === 0 || strcasecmp($status_input, 'Disabled') === 0) {
+        $status = 'Disabled';
+    }
     // Email is intentionally NOT accepted from POST — it cannot be changed after creation
 
-    if ($admin_id <= 0)    { echo json_encode(['ok'=>false,'error'=>'Invalid admin ID.']); exit; }
-    if (empty($full_name)) { echo json_encode(['ok'=>false,'error'=>'Full name is required.']); exit; }
-    if ($station_id <= 0)  { echo json_encode(['ok'=>false,'error'=>'Please select a station.']); exit; }
+    if ($admin_id <= 0)     { echo json_encode(['ok'=>false,'error'=>'Invalid admin ID.']); exit; }
+    if (empty($first_name)) { echo json_encode(['ok'=>false,'error'=>'First name is required.']); exit; }
+    if (empty($last_name))  { echo json_encode(['ok'=>false,'error'=>'Last name is required.']); exit; }
+    if ($station_id <= 0)   { echo json_encode(['ok'=>false,'error'=>'Please select a station.']); exit; }
+
+    // Build full name
+    $full_name = trim($first_name . ' ' . $last_name);
 
     try {
-        // Ensure admin exists and is actually an admin
-        $chk = $pdo->prepare("SELECT `user_id`, name FROM users WHERE user_id = ? AND LOWER(role) IN ('admin','station admin','station_admin') LIMIT 1");
+        // Ensure admin exists and is actually an admin - use 'id' column
+        $chk = $pdo->prepare("SELECT id FROM users WHERE id = ? AND LOWER(role) IN ('admin','station admin','station_admin') LIMIT 1");
         $chk->execute([$admin_id]);
         $existing = $chk->fetch(PDO::FETCH_ASSOC);
         if (!$existing) { echo json_encode(['ok'=>false,'error'=>'Admin account not found.']); exit; }
@@ -199,19 +207,30 @@ if ($action === 'edit_admin') {
         $station_name = $st->fetchColumn();
         if (!$station_name) { echo json_encode(['ok'=>false,'error'=>'Selected station not found.']); exit; }
 
-        // Split full name into first_name and last_name for legacy database compatibility
-        $eu_parts = explode(' ', trim($full_name));
-        if (count($eu_parts) > 1) {
-            $eu_last  = array_pop($eu_parts);
-            $eu_first = implode(' ', $eu_parts);
-        } else {
-            $eu_first = $full_name;
-            $eu_last  = '';
+        // Check one-admin-per-station rule
+        if ($status === 'Active') {
+            $admChk = $pdo->prepare("SELECT COUNT(*) FROM users WHERE role='admin' AND station_id=? AND id != ? AND status='Active'");
+            $admChk->execute([$station_id, $admin_id]);
+            if ((int)$admChk->fetchColumn() > 0) {
+                echo json_encode(['ok'=>false,'error'=>'This station already has an active Admin.']); exit;
+            }
         }
 
         // Update — email is excluded from update (fixed after creation)
-        $upd = $pdo->prepare("UPDATE users SET first_name = ?, last_name = ?, station_id=?, status=? WHERE user_id =?");
-        $upd->execute([$full_name, $eu_first, $eu_last, $station_id, $status, $admin_id]);
+        // Build UPDATE query dynamically based on available columns
+        $update_cols = ['first_name = ?', 'last_name = ?', 'station_id = ?', 'status = ?'];
+        $update_vals = [$first_name, $last_name, $station_id, $status];
+        
+        // Add name column if it exists
+        if (in_array('name', $user_cols)) {
+            $update_cols[] = 'name = ?';
+            $update_vals[] = $full_name;
+        }
+        
+        $update_vals[] = $admin_id; // WHERE clause parameter
+        
+        $upd = $pdo->prepare("UPDATE users SET " . implode(', ', $update_cols) . " WHERE id = ?");
+        $upd->execute($update_vals);
 
         log_activity($pdo, $me['id'], 'Edit Admin', "SuperAdmin updated admin ID {$admin_id} ('{$full_name}') — station: '{$station_name}', status: {$status}");
 
@@ -231,12 +250,12 @@ if ($action === 'deactivate_admin') {
     if ($admin_id <= 0) { echo json_encode(['ok'=>false,'error'=>'Invalid admin ID.']); exit; }
 
     try {
-        $chk = $pdo->prepare("SELECT name FROM users WHERE user_id = ? AND LOWER(role) IN ('admin','station admin','station_admin') LIMIT 1");
+        $chk = $pdo->prepare("SELECT CONCAT(first_name,' ',last_name) AS name FROM users WHERE id = ? AND LOWER(role) IN ('admin','station admin','station_admin') LIMIT 1");
         $chk->execute([$admin_id]);
         $adm = $chk->fetch(PDO::FETCH_ASSOC);
         if (!$adm) { echo json_encode(['ok'=>false,'error'=>'Admin not found.']); exit; }
 
-        $pdo->prepare("UPDATE users SET status = 'Disabled' WHERE user_id =?")->execute([$admin_id]);
+        $pdo->prepare("UPDATE users SET status = 'Disabled' WHERE id = ?")->execute([$admin_id]);
         log_activity($pdo, $me['id'], 'Deactivate Admin', "SuperAdmin deactivated admin '{$adm['name']}' (ID {$admin_id})");
 
         echo json_encode(['ok'=>true,'message'=>"Admin '{$adm['name']}' has been deactivated."]);
@@ -255,12 +274,12 @@ if ($action === 'activate_admin') {
     if ($admin_id <= 0) { echo json_encode(['ok'=>false,'error'=>'Invalid admin ID.']); exit; }
 
     try {
-        $chk = $pdo->prepare("SELECT name FROM users WHERE user_id = ? AND LOWER(role) IN ('admin','station admin','station_admin') LIMIT 1");
+        $chk = $pdo->prepare("SELECT CONCAT(first_name,' ',last_name) AS name FROM users WHERE id = ? AND LOWER(role) IN ('admin','station admin','station_admin') LIMIT 1");
         $chk->execute([$admin_id]);
         $adm = $chk->fetch(PDO::FETCH_ASSOC);
         if (!$adm) { echo json_encode(['ok'=>false,'error'=>'Admin not found.']); exit; }
 
-        $pdo->prepare("UPDATE users SET status = 'Active' WHERE user_id =?")->execute([$admin_id]);
+        $pdo->prepare("UPDATE users SET status = 'Active' WHERE id = ?")->execute([$admin_id]);
         log_activity($pdo, $me['id'], 'Activate Admin', "SuperAdmin activated admin '{$adm['name']}' (ID {$admin_id})");
 
         echo json_encode(['ok'=>true,'message'=>"Admin '{$adm['name']}' has been activated."]);
@@ -269,6 +288,110 @@ if ($action === 'activate_admin') {
         echo json_encode(['ok'=>false,'error'=>'Database error: ' . $e->getMessage()]);
     }
     exit;
+}
+
+// ════════════════════════════════════════════════════════════
+// ACTION: add_station
+// ════════════════════════════════════════════════════════════
+if ($action === 'add_station') {
+    $station_name = trim($_POST['station_name'] ?? '');
+    $location     = trim($_POST['location'] ?? '');
+    $region       = trim($_POST['region'] ?? '');
+    $contact      = trim($_POST['contact'] ?? '');
+
+    // Validate
+    if (empty($station_name)) { echo json_encode(['ok'=>false,'error'=>'Station name is required.']); exit; }
+    if (empty($location))     { echo json_encode(['ok'=>false,'error'=>'Location is required.']); exit; }
+
+    try {
+        // Check if station name already exists
+        $chk = $pdo->prepare('SELECT id FROM stations WHERE name = ? LIMIT 1');
+        $chk->execute([$station_name]);
+        if ($chk->rowCount() > 0) {
+            echo json_encode(['ok'=>false,'error'=>'A station with this name already exists.']); exit;
+        }
+
+        // Insert new station
+        $ins = $pdo->prepare(
+            "INSERT INTO stations (name, location, address, region, contact_number, status, created_at) 
+             VALUES (?, ?, ?, ?, ?, 'active', NOW())"
+        );
+        $ins->execute([$station_name, $location, $location, $region, $contact]);
+        $new_id = $pdo->lastInsertId();
+
+        // Audit log
+        log_activity($pdo, $me['id'], 'Create Station', "SuperAdmin created station '{$station_name}' (ID {$new_id})");
+
+        echo json_encode([
+            'ok'         => true,
+            'message'    => "Station '{$station_name}' has been created successfully.",
+            'station_id' => $new_id,
+        ]);
+
+    } catch (PDOException $e) {
+        echo json_encode(['ok'=>false,'error'=>'Database error: ' . $e->getMessage()]);
+    }
+    exit;
+}
+
+// ════════════════════════════════════════════════════════════
+// ACTION: export_admins
+// ════════════════════════════════════════════════════════════
+if ($action === 'export_admins') {
+    try {
+        $stmt = $pdo->query(
+            "SELECT u.id, u.first_name, u.last_name, u.email, u.status, u.station_id,
+                    s.name AS station_name, s.address AS station_address, s.region AS station_region, s.contact_number AS station_contact,
+                    (SELECT MAX(created_at) FROM activity_logs WHERE user_id = u.id AND action = 'Login') AS last_login
+             FROM users u
+             LEFT JOIN stations s ON s.id = u.station_id
+             WHERE u.role = 'admin'
+             ORDER BY u.first_name, u.last_name"
+        );
+        $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="admin_list_and_coverage_' . date('Ymd_His') . '.csv"');
+        
+        $out = fopen('php://output', 'w');
+        // BOM for Excel compatibility with UTF-8
+        fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF));
+        
+        fputcsv($out, [
+            'Admin ID',
+            'First Name',
+            'Last Name',
+            'Email',
+            'Status',
+            'Station ID',
+            'Station Name',
+            'Station Address',
+            'Region',
+            'Station Contact',
+            'Last Login'
+        ]);
+
+        foreach ($data as $r) {
+            fputcsv($out, [
+                $r['id'],
+                $r['first_name'],
+                $r['last_name'],
+                $r['email'],
+                $r['status'],
+                $r['station_id'] ?? '',
+                $r['station_name'] ?? 'Unassigned',
+                $r['station_address'] ?? '—',
+                $r['station_region'] ?? '—',
+                $r['station_contact'] ?? '—',
+                $r['last_login'] ? date('Y-m-d H:i:s', strtotime($r['last_login'])) : 'Never'
+            ]);
+        }
+        fclose($out);
+        log_activity($pdo, $me['id'], 'Export Admins', "SuperAdmin exported admin list and station coverage CSV");
+        exit;
+    } catch (Exception $e) {
+        die("Export failed: " . $e->getMessage());
+    }
 }
 
 echo json_encode(['ok'=>false,'error'=>'Unknown action.']);

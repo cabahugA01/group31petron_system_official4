@@ -50,8 +50,8 @@ function getAdminSidebar($current_page = 'transactions') {
         'database_management' => [
             'icon' => 'fas fa-database',
             'title' => 'Database Management',
-            'url' => 'superadmin_database_management.php',
-            'description' => 'View tables, maintenance scripts, soft deleted records'
+            'url' => 'database_management.php',
+            'description' => 'Backup, restore, schema updates, replication, security logs'
         ],
         'system_settings' => [
             'icon' => 'fas fa-cog',

@@ -1,8 +1,8 @@
 <?php
 $page_id = 'view_stations';
-require_once __DIR__ . '/../backend/lib.php';
-require_once __DIR__ . '/../backend/rbac.php';
-require_once __DIR__ . '/../public/db_connect.php';
+require_once __DIR__ . '/../../../backend/lib.php';
+require_once __DIR__ . '/../../../backend/rbac.php';
+require_once __DIR__ . '/../../../public/db_connect.php';
 require_login();
 require_permission(VIEW_ALL_STATIONS);
 
@@ -81,7 +81,7 @@ try {
     $notice = "Database Error: " . $e->getMessage();
 }
 
-include __DIR__ . '/../partials/header.php';
+include __DIR__ . '/../../../partials/header.php';
 ?>
 
 <style>
@@ -644,4 +644,4 @@ showToast('<?php echo htmlspecialchars($notice); ?>', '<?php echo strpos($notice
 <?php endif; ?>
 </script>
 
-<?php include __DIR__ . '/../partials/footer.php'; ?>
+<?php include __DIR__ . '/../../../partials/footer.php'; ?>

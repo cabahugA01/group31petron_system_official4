@@ -14,6 +14,11 @@ $me         = current_user();
 $role       = role_key($me['role'] ?? 'staff');
 $station_id = user_station_id();
 
+// ── Module gate ───────────────────────────────────────────────
+if (!in_array($role, ['superadmin', 'developer']) && !is_module_enabled('inventory')) {
+    render_module_disabled_page('Inventory');
+}
+
 if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
     header('Location: dashboard.php');
     exit;

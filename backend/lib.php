@@ -95,21 +95,82 @@ define('MODULE_PAGE_MAP', [
 
 // Maps module_key → sidebar item IDs that belong to that module.
 define('MODULE_MENU_MAP', [
-    'transactions'    => ['fuel_merch_transactions', 'variance_alerts',
-                          'shift_transactions_view', 'merchandise_transaction', 'shift_transactions',
-                          'staff_fuel_transactions', 'pending_transactions'],
-    'job_orders'      => ['job_orders', 'job_encode', 'job_tracker'],
-    'fuel_management' => ['fuel', 'fuel_readings', 'fuel_inventory', 'reconciliation',
-                          'fuel_transactions', 'fuel_deliveries', 'fuel_daily_ops',
-                          'fuel_reports', 'fuel_pump_master', 'staff_fuel_deliveries',
-                          'staff_daily_operations', 'staff_sales_summary', 'staff_pump_master'],
-    'calendar'        => ['admin_calendar', 'calendar', 'staff_calendar'],
-    'reports'         => ['reports', 'report_job_orders', 'report_transactions', 'report_customers',
-                          'report_activity', 'reports_audit_admin', 'rpt_sales', 'rpt_job_orders',
-                          'rpt_balances', 'rpt_deliveries', 'rpt_staff', 'rpt_audit',
-                          'mgr_report_sales', 'mgr_report_joborders', 'mgr_report_balances',
-                          'mgr_report_deliveries', 'mgr_report_staff', 'mgr_report_validation',
-                          'mgr_report_audit'],
+    // ── Core Operational Modules ──────────────────────────────────────────────
+    'transactions'          => [
+        'transactions', 'admin_transactions', 'fuel_merch_transactions', 'variance_alerts',
+        'shift_transactions_view', 'merchandise_transaction', 'shift_transactions',
+        'staff_fuel_transactions', 'pending_transactions', 'pending_transactions_manager',
+        'validated_transactions_manager', 'ato_oversight_dashboard', 'ato_variance_reports'
+    ],
+    'job_orders'            => [
+        'job_orders', 'job_encode', 'job_tracker', 'report_jo_tracker', 'mgr_prod_services',
+        'mgr_report_joborders', 'rpt_job_orders'
+    ],
+    'fuel_management'       => [
+        'fuel', 'admin_fuel_management', 'staff_fuel_deliveries_sub', 'staff_fuel_del_history',
+        'staff_fuel_transactions', 'admin_fuel_transactions_oversight', 'admin_fuel_deliveries_oversight',
+        'admin_fuel_adjustments_oversight', 'admin_pump_master_oversight', 'fuel_transactions_validation',
+        'fuel_deliveries_validation', 'fuel_adjustments', 'fuel_pump_master', 'mgr_prod_fuel',
+        'admin_inventory_fuel'
+    ],
+    // merchandise = Merchandise Deliveries (staff/manager recording)
+    'merchandise'           => [
+        'staff_deliveries', 'manager_deliveries', 'admin_merchandise_deliveries', 'mgr_del_record',
+        'mgr_del_history', 'mgr_del_discrepancies', 'staff_record_del', 'staff_delivery_history'
+    ],
+    // merchandise_deliveries = alias used in station_modules table — same sidebar items
+    'merchandise_deliveries' => [
+        'staff_deliveries', 'manager_deliveries', 'admin_merchandise_deliveries', 'mgr_del_record',
+        'mgr_del_history', 'mgr_del_discrepancies', 'staff_record_del', 'staff_delivery_history'
+    ],
+    // deliveries = generic alias used in station_modules table
+    'deliveries'            => [
+        'staff_deliveries', 'manager_deliveries', 'admin_merchandise_deliveries', 'mgr_del_record',
+        'mgr_del_history', 'mgr_del_discrepancies', 'staff_record_del', 'staff_delivery_history'
+    ],
+    'inventory'             => [
+        'inventory', 'admin_inventory', 'inv_merch', 'inv_fuel',
+        'inv_stock_request', 'staff_stock_in', 'inv_history', 'mgr_prod_merchandise',
+        'mgr_prod_prices', 'mgr_inv_merch', 'mgr_inv_fuel', 'mgr_inv_stock_request',
+        'mgr_inv_po_gen', 'mgr_del_validate', 'admin_inventory_merchandise', 'admin_purchase_orders',
+        'admin_stock_requests_monitor', 'admin_stock_in_oversight', 'admin_inventory_history',
+        'admin_product_pricing'
+    ],
+    'product_management'    => [
+        'product_management', 'mgr_prod_merchandise', 'mgr_prod_fuel', 'mgr_prod_services',
+        'mgr_prod_prices', 'mgr_prod_adjustment', 'admin_product_pricing'
+    ],
+    'purchase_orders'       => [
+        'mgr_inv_po_gen', 'admin_purchase_orders', 'purchase_orders'
+    ],
+    'calendar'              => [
+        'calendar', 'admin_calendar'
+    ],
+    'reports'               => [
+        'reports', 'admin_reports', 'manager_reports', 'report_daily_sales', 'report_deliveries',
+        'report_payments', 'report_customers', 'report_activity', 'rpt_operations', 'rpt_finance',
+        'rpt_compliance', 'mgr_operations_reports', 'mgr_finance_reports', 'mgr_compliance_reports',
+        'rpt_sales', 'rpt_balances', 'rpt_deliveries', 'rpt_staff', 'rpt_audit', 'mgr_report_sales',
+        'mgr_report_balances', 'mgr_report_deliveries', 'mgr_report_staff', 'mgr_report_validation',
+        'mgr_report_audit'
+    ],
+    'customers'             => [
+        'customers', 'mgr_customers', 'admin_customers', 'customer_add', 'customer_list',
+        'customer_history', 'mgr_cust_add', 'mgr_cust_list', 'mgr_cust_balances', 'mgr_cust_history',
+        'mgr_cust_validation', 'adm_cust_list', 'adm_cust_balances', 'adm_cust_history', 'adm_cust_oversight'
+    ],
+    'payments'              => [
+        // Payments module controls payment method related items in Transactions
+        // No dedicated sidebar item — toggling this hides the entire transactions flow
+        'transactions', 'admin_transactions', 'pending_transactions_manager', 'validated_transactions_manager'
+    ],
+    'staff_management'      => [
+        // Staff Management controls the staff oversight/attendance sidebar items
+        'staff_oversight_admin', 'users'
+    ],
+    'admin_unlock'          => [
+        // Admin Unlock is a privilege module — no direct sidebar item, controls override access
+    ],
 ]);
 
 /**
@@ -122,22 +183,60 @@ function get_module_states(): array {
     if ($cache !== null) return $cache;
 
     global $pdo;
+    
+    // Default modules (all enabled by default) — must include every key used in station_modules table
     $cache = [
-        'transactions'    => true,
-        'job_orders'      => true,
-        'fuel_management' => true,
-        'calendar'        => true,
-        'reports'         => true,
+        'transactions'           => true,
+        'job_orders'             => true,
+        'fuel_management'        => true,
+        'merchandise'            => true,
+        'merchandise_deliveries' => true,
+        'deliveries'             => true,
+        'payments'               => true,
+        'inventory'              => true,
+        'product_management'     => true,
+        'purchase_orders'        => true,
+        'calendar'               => true,
+        'reports'                => true,
+        'customers'              => true,
+        'staff_management'       => true,
+        'admin_unlock'           => true,
     ];
 
     if (!isset($pdo)) return $cache;
 
+    // ══════════════════════════════════════════════════════════════
+    // STATION-DEPENDENT MODULE CONFIGURATION
+    // Get module states for the current user's station
+    // ══════════════════════════════════════════════════════════════
+    
     try {
-        $rows = $pdo->query("SELECT module_key, is_enabled FROM module_settings")->fetchAll(PDO::FETCH_KEY_PAIR);
-        foreach ($rows as $key => $val) {
-            $cache[$key] = (bool)(int)$val;
+        // Get current user's station_id dynamically
+        $station_id = user_station_id();
+        
+        if ($station_id) {
+            // Query station_modules table for this station's configuration
+            $stmt = $pdo->prepare("
+                SELECT module_key, is_enabled 
+                FROM station_modules 
+                WHERE station_id = ?
+            ");
+            $stmt->execute([$station_id]);
+            $rows = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+            
+            foreach ($rows as $key => $val) {
+                $cache[$key] = (bool)(int)$val;
+            }
+        } else {
+            // Fallback: Try old module_settings table (if exists)
+            $rows = $pdo->query("SELECT module_key, is_enabled FROM module_settings")->fetchAll(PDO::FETCH_KEY_PAIR);
+            foreach ($rows as $key => $val) {
+                $cache[$key] = (bool)(int)$val;
+            }
         }
-    } catch (Exception $e) { /* table may not exist yet — use defaults */ }
+    } catch (Exception $e) { 
+        /* table may not exist yet — use defaults */ 
+    }
 
     return $cache;
 }
@@ -149,6 +248,55 @@ function get_module_states(): array {
 function is_module_enabled(string $module_key): bool {
     $states = get_module_states();
     return $states[$module_key] ?? true; // default enabled if unknown
+}
+
+/**
+ * Check if a user has access to a specific module based on their station.
+ * This function checks station-dependent module configuration.
+ * 
+ * @param int $user_id User ID to check
+ * @param string $module_key Module key (e.g., 'fuel_management', 'inventory')
+ * @return bool True if module is enabled for user's station
+ */
+function hasModuleAccess(int $user_id, string $module_key): bool {
+    global $pdo;
+    
+    if (!isset($pdo)) return true; // Default to enabled if no DB
+    
+    try {
+        // Get user's role and station
+        $stmt = $pdo->prepare("SELECT role, station_id FROM users WHERE id = ?");
+        $stmt->execute([$user_id]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$user) return false;
+        
+        // SuperAdmin and Developer always have access to all modules
+        $role = role_key($user['role'] ?? '');
+        if (in_array($role, ['superadmin', 'developer'], true)) {
+            return true;
+        }
+        
+        // Check if user has a station assigned
+        $station_id = $user['station_id'] ?? null;
+        if (!$station_id) return true; // No station = assume enabled
+        
+        // Query station_modules table
+        $stmt = $pdo->prepare("
+            SELECT is_enabled 
+            FROM station_modules 
+            WHERE station_id = ? AND module_key = ?
+        ");
+        $stmt->execute([$station_id, $module_key]);
+        $is_enabled = $stmt->fetchColumn();
+        
+        // Return the module status (default to enabled if not found)
+        return ($is_enabled !== false) ? (bool)(int)$is_enabled : true;
+        
+    } catch (Exception $e) {
+        // Table may not exist yet, default to enabled
+        return true;
+    }
 }
 
 /**
@@ -874,14 +1022,17 @@ function fifo_deduct_stock(PDO $pdo, int $station_id, $product_id_or_name, float
         $deductGlobalStmt->execute([$qty, $product_id]);
     } catch (Exception $e) {}
 
-    // 3. Deduct from merchandise_batches using FIFO
+    // 3. Deduct from merchandise_batches using FIFO/LIFO based on dynamic config
     try {
+        $fifo_enabled = get_module_setting('inventory', 'fifo_enabled', true);
+        $order = $fifo_enabled ? "date_received ASC, id ASC" : "date_received DESC, id DESC";
+        
         $qty_needed = $qty;
         $batchesStmt = $pdo->prepare("
             SELECT id, remaining_qty 
             FROM merchandise_batches 
             WHERE product_id = ? AND station_id = ? AND status = 'Active' AND remaining_qty > 0 
-            ORDER BY date_received ASC, id ASC
+            ORDER BY {$order}
         ");
         $batchesStmt->execute([$product_id, $station_id]);
         $batches = $batchesStmt->fetchAll(PDO::FETCH_ASSOC);

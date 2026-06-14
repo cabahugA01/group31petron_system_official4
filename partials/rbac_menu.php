@@ -90,21 +90,14 @@ $master_menu = [
     // 2. Admin Management
     ['id'=>'admin_management','label'=>'Admin Management','ico'=>'fas fa-user-shield','href'=>'superadmin_admin_management.php','permissions'=>['manage_all_users'],'station_specific'=>false],
 
-    // 3. Station Assignment
-    ['id'=>'station_management','label'=>'Station Assignment','ico'=>'fas fa-map-marker-alt','href'=>'superadmin_station_management.php','permissions'=>['manage_stations'],'station_specific'=>false],
-
-    // 4. Module Configuration
+    // 3. Module Configuration
     ['id'=>'module_config','label'=>'Module Configuration','ico'=>'fas fa-sliders-h','href'=>'module_configuration.php','permissions'=>['manage_stations'],'station_specific'=>false],
 
-    // 5. Database Management
-    ['id'=>'database_management','label'=>'Database Management','ico'=>'fas fa-database','href'=>'superadmin_database_management.php?section=view_tables','permissions'=>['manage_stations'],'station_specific'=>false,'sub_items'=>[
-        ['id'=>'dbm_view_tables', 'label'=>'View Tables',       'href'=>'superadmin_database_management.php?section=view_tables',  'permissions'=>['manage_stations']],
-        ['id'=>'dbm_maintenance', 'label'=>'Maintenance Scripts','href'=>'superadmin_database_management.php?section=maintenance', 'permissions'=>['manage_stations']],
-        ['id'=>'dbm_soft_delete', 'label'=>'Soft Delete Records','href'=>'superadmin_database_management.php?section=soft_delete', 'permissions'=>['manage_stations']],
-    ]],
+    // 4. Database Management (Tabbed Interface)
+    ['id'=>'database_management','label'=>'Database Management','ico'=>'fas fa-database','href'=>'database_management.php','permissions'=>['manage_stations'],'station_specific'=>false],
 
-    // 6. System Logs & Audit  ← ONLY place for audit trail
-    ['id'=>'system_logs','label'=>'System Logs & Audit','ico'=>'fas fa-shield-alt','href'=>'superadmin_system_logs.php?section=audit_trail','permissions'=>['manage_stations'],'station_specific'=>false,'sub_items'=>[
+    // 6. Audit Trail  ← ONLY place for audit trail
+    ['id'=>'system_logs','label'=>'Audit Trail','ico'=>'fas fa-history','href'=>'superadmin_system_logs.php?section=audit_trail','permissions'=>['manage_stations'],'station_specific'=>false,'sub_items'=>[
         ['id'=>'sla_audit_trail',   'label'=>'Audit Trail',       'href'=>'superadmin_system_logs.php?section=audit_trail',   'permissions'=>['manage_stations']],
         ['id'=>'sla_error_tracking','label'=>'Error Tracking',    'href'=>'superadmin_system_logs.php?section=error_tracking', 'permissions'=>['manage_stations']],
         ['id'=>'sla_export_logs',   'label'=>'Export Logs',       'href'=>'superadmin_system_logs.php?section=export_logs',    'permissions'=>['manage_stations']],
@@ -586,7 +579,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
             }
 
             // Database Management — SuperAdmin / Developer only
-            if (in_array(($item['id'] ?? ''), ['database_management','dbm_view_tables','dbm_maintenance','dbm_soft_delete'], true)
+            if (($item['id'] ?? '') === 'database_management'
                 && !in_array($user_role, ['superadmin', 'developer'], true)) {
                 continue;
             }

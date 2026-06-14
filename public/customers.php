@@ -7,6 +7,11 @@ $me         = current_user();
 $role       = role_key($me['role'] ?? '');
 $station_id = user_station_id();
 
+// ── Module gate ───────────────────────────────────────────────
+if (!in_array($role, ['superadmin', 'developer']) && !is_module_enabled('customers')) {
+    render_module_disabled_page('Customers');
+}
+
 if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
     header('Location: dashboard.php'); exit;
 }
