@@ -17,8 +17,17 @@ if (!in_array($role, ['superadmin', 'developer'], true)) {
     exit;
 }
 
-// Auto-redirect to Technical Reports as default
-header('Location: reports_technical.php');
+// Auto-redirect to specific reports if requested, default to Technical Reports
+$section = $_GET['section'] ?? '';
+if ($section === 'security') {
+    header('Location: reports_security.php');
+} elseif ($section === 'developer_audit') {
+    header('Location: reports_developer_audit.php');
+} elseif ($section === 'audit_trail') {
+    header('Location: reports_audit_trail.php');
+} else {
+    header('Location: reports_technical.php');
+}
 exit;
 ?>// Active section
 $section = trim($_GET['section'] ?? 'technical');
@@ -806,7 +815,7 @@ require_once __DIR__ . '/../partials/header.php';
 <div class="rpt-page">
     <div class="rpt-header">
         <div>
-            <h1><i class="fas fa-chart-line"></i> REPORTS (DEVELOPER VIEW)</h1>
+            <h1><i class="fas fa-chart-line"></i> SYSTEM MONITORING & AUDIT REPORTS</h1>
             <div class="subtitle">SuperAdmin Technical Monitoring & Security Audit</div>
         </div>
         <div class="rpt-actions">

@@ -2128,19 +2128,23 @@ require_once __DIR__ . '/../partials/header.php';
 .rpt-filter-bar input[type="date"] { padding: 6px 10px; border: 1px solid #EAEAEA; border-radius: 6px; font-size: 12px; color: #374151; background: #f8fafc; }
 .rpt-filter-bar .btn-apply { padding: 6px 16px; background: var(--petron-red); color: #fff; border: none; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer; transition: .15s; }
 .rpt-filter-bar .btn-apply:hover { background: #a80000; }
-.rpt-filter-bar .btn-export { display:inline-flex; align-items:center; gap:6px; padding:7px 14px; border-radius:7px; font-size:12px; font-weight:700; text-decoration:none; cursor:pointer; transition:.15s; border:none; }
-.rpt-filter-bar .btn-export:hover { opacity:.88; }
+.rpt-filter-bar .btn-export { display:inline-flex; align-items:center; gap:6px; padding:7px 14px; border-radius:7px; font-size:12px; font-weight:700; text-decoration:none; cursor:pointer; transition:.15s; background:#fff; border:1.5px solid #00264D; color:#00264D; }
+.rpt-filter-bar .btn-export:hover { background:#00264D; color:#fff; }
 .rpt-filter-bar .export-buttons { display: flex; gap: 8px; margin-left: auto; }
 #custom-range-inputs { display: flex; align-items: center; gap: 8px; }
 
-/* Card-level export action bar */
+/* Card-level export action bar — matches txn-btn outline style */
 .card-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-.btn-act { display:inline-flex; align-items:center; gap:6px; padding:7px 16px; border-radius:7px; font-size:12px; font-weight:700; text-decoration:none; cursor:pointer; transition:.15s; border:none; white-space:nowrap; }
-.btn-act:hover { opacity:.85; transform:translateY(-1px); }
-.btn-act-excel  { background:#1e7e34; color:#fff; }
-.btn-act-csv    { background:#1a3a6b; color:#fff; }
-.btn-act-pdf    { background:#cc0000; color:#fff; }
-.btn-act-back   { background:#6c757d; color:#fff; }
+.btn-act { display:inline-flex; align-items:center; gap:6px; padding:7px 16px; border-radius:7px; font-size:12px; font-weight:700; text-decoration:none; cursor:pointer; transition:all .2s; white-space:nowrap; }
+.btn-act:hover { transform:none; opacity:1; }
+.btn-act-excel  { background:#fff; color:#16a34a; border:1.5px solid #16a34a; }
+.btn-act-excel:hover  { background:#16a34a; color:#fff; }
+.btn-act-csv    { background:#fff; color:#00264D; border:1.5px solid #00264D; }
+.btn-act-csv:hover    { background:#00264D; color:#fff; }
+.btn-act-pdf    { background:#fff; color:#dc2626; border:1.5px solid #dc2626; }
+.btn-act-pdf:hover    { background:#dc2626; color:#fff; }
+.btn-act-back   { background:#fff; color:#6b7280; border:1.5px solid #6b7280; }
+.btn-act-back:hover   { background:#6b7280; color:#fff; }
 
 /* Stat cards */
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px; }

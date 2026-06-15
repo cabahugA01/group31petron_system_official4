@@ -963,7 +963,7 @@ function validateTransaction($pdo, $station_id, $role, $me) {
         // Stock is ONLY deducted here (on manager Approve), never at creation time.
         // Scenario 1 (JO only): no merchandise items → no deduction.
         // Scenario 2 (Merch only): all items deducted here.
-        // Scenario 3 (JO + Merch): only merchandise items deducted; service items skipped.
+        // Scenario 3 (JO + Merch / combined): only merchandise items deducted; service items skipped.
         foreach ($itemsForDeduction as $row) {
             try {
                 $pdo->prepare("
@@ -976,7 +976,25 @@ function validateTransaction($pdo, $station_id, $role, $me) {
                 error_log("Stock deduction on approve warning: " . $e->getMessage());
             }
         }
-        
+
+        // ── Ensure transaction_type is stored correctly for Merchandise History filtering ──
+        // If the stored value is NULL or empty (legacy record), compute and persist it now.
+        $computed_txn_type = ($has_service && $has_merch) ? 'combined'
+            : ($has_service ? 'job_order' : 'merchandise');
+        // Also consider job_order_service field for records that may not have item_type set
+        if (!$has_service && !empty($transaction['job_order_service'])) {
+            $computed_txn_type = $has_merch ? 'combined' : 'job_order';
+        }
+        if (empty($transaction['transaction_type'])) {
+            try {
+                $pdo->prepare("UPDATE merchandise_transactions SET transaction_type = ? WHERE id = ?")
+                    ->execute([$computed_txn_type, $transaction_id]);
+                $transaction['transaction_type'] = $computed_txn_type;
+            } catch (Exception $e) {
+                error_log("Could not update transaction_type: " . $e->getMessage());
+            }
+        }
+
         // Update customer balance if credit transaction
         if ($transaction['credit_customer_id']) {
             $cust_chk = $pdo->prepare("SELECT status FROM customers WHERE id = ?");

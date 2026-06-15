@@ -95,8 +95,8 @@ include __DIR__ . '/../partials/header.php';
 
 <style>
 /* ── Map Page Styles ── */
-.map-page { padding: 28px 24px; height: calc(100vh - 120px); display: flex; flex-direction: column; }
-.map-page-head { margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.map-page { padding: 0 24px 28px; height: calc(100vh - 120px); display: flex; flex-direction: column; }
+.map-page-head { margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: -12px !important; }
 .map-page-head h1 { font-size: 22px !important; font-weight: 700 !important; color: var(--petron-blue) !important; margin: 0 !important; text-transform: uppercase !important; }
 .map-page-head .sub { font-size: 13px; color: #666; margin-top: 4px; text-transform: none !important; }
 
@@ -823,8 +823,8 @@ function createPopupContent(station) {
     
     const coords = getCoordinates(station);
     const coordText = station.latitude && station.longitude 
-        ? `<div style="font-size:10px;color:#999;margin-top:4px;">📍 ${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}</div>`
-        : `<div style="font-size:10px;color:#ff9800;margin-top:4px;">⚠️ Using estimated coordinates</div>`;
+        ? `<div style="font-size:10px;color:#999;margin-top:4px;"><i class="fas fa-map-marker-alt"></i> ${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}</div>`
+        : `<div style="font-size:10px;color:#ff9800;margin-top:4px;"><i class="fas fa-exclamation-triangle"></i> Using estimated coordinates</div>`;
 
     // Google Maps directions URL — opens with station as destination
     const directionsUrl = (coords.lat && coords.lng)

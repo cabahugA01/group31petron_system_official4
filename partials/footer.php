@@ -257,6 +257,27 @@
             right: 12px !important;
         }
     }
+
+    /* ══ GLOBAL PRINT — hide all system chrome ══════════════════════ */
+    @media print {
+        .fixed-footer,
+        .footer-sidebar-area,
+        .footer-content,
+        .toggle-scroll-btn,
+        #toggleScrollBtn,
+        .toast {
+            display: none !important;
+            visibility: hidden !important;
+            height: 0 !important;
+            overflow: hidden !important;
+        }
+        body {
+            padding-bottom: 0 !important;
+        }
+        main {
+            padding-bottom: 0 !important;
+        }
+    }
 </style>
 
   <!-- TOGGLE SCROLL BUTTON — injected into body by JS to avoid fixed-in-overflow-container bug -->

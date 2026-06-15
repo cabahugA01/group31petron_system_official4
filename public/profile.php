@@ -20,10 +20,10 @@ $has_profile_picture = col_exists($pdo, 'users', 'profile_picture');
 
 if (!$has_first_name)      { try { $pdo->exec("ALTER TABLE users ADD COLUMN first_name VARCHAR(100) DEFAULT NULL AFTER id");           $has_first_name = true;      } catch (Exception $e) {} }
 if (!$has_last_name)       { try { $pdo->exec("ALTER TABLE users ADD COLUMN last_name VARCHAR(100) DEFAULT NULL AFTER first_name");    $has_last_name = true;       } catch (Exception $e) {} }
-$has_profile_picture = false; // profile_picture column removed from schema
+if (!$has_profile_picture) { try { $pdo->exec("ALTER TABLE users ADD COLUMN profile_picture VARCHAR(255) DEFAULT NULL");                $has_profile_picture = true; } catch (Exception $e) {} }
 
 try {
-    $stmt = $pdo->prepare("SELECT * FROM users WHERE user_id = ? LIMIT 1");
+    $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ? LIMIT 1");
     $stmt->execute([$me['id']]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($row) { unset($row['password_hash']); $me = $row; $_SESSION['user'] = array_merge($_SESSION['user'], $me); }
@@ -72,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $sets[] = "email = ?"; $params[] = $email;
                 if ($has_phone) { $sets[] = "phone_number = ?"; $params[] = $phone; }
                 $params[] = $me['id'];
-                $pdo->prepare("UPDATE users SET " . implode(', ', $sets) . " WHERE user_id = ?")->execute($params);
+                $pdo->prepare("UPDATE users SET " . implode(', ', $sets) . " WHERE id = ?")->execute($params);
                 $_SESSION['user']['name']       = $full_name;
                 $_SESSION['user']['first_name'] = $first_name;
                 $_SESSION['user']['last_name']  = $last_name;
@@ -86,9 +86,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // profile_picture removed
-    if (false && $has_profile_picture) {
-        if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] === UPLOAD_ERR_OK) {
+    if ($action === 'upload_picture') {
+        if (!$has_profile_picture) {
+            $msg = 'Profile picture feature not available.'; $msg_type = 'error';
+        } elseif (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] === UPLOAD_ERR_OK) {
             $file = $_FILES['profile_picture'];
             $finfo = finfo_open(FILEINFO_MIME_TYPE);
             $mime  = finfo_file($finfo, $file['tmp_name']);
@@ -106,13 +107,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $old = $me['profile_picture'] ?? '';
                     if ($old && file_exists(__DIR__ . '/../' . ltrim($old, '/'))) @unlink(__DIR__ . '/../' . ltrim($old, '/'));
                     $rel = 'uploads/profiles/' . $filename;
-                    // profile_picture removed
+                    $pdo->prepare("UPDATE users SET profile_picture = ? WHERE id = ?")->execute([$rel, $me['id']]);
                     $_SESSION['user']['profile_picture'] = $rel;
                     $me['profile_picture'] = $rel;
-                    $msg = 'Profile picture updated!';
+                    $msg = 'Profile picture updated successfully!';
                 } else { $msg = 'Failed to save image.'; $msg_type = 'error'; }
             }
-        } else { $msg = 'No file uploaded or upload error.'; $msg_type = 'error'; }
+        } else {
+            $msg = 'No file uploaded or upload error.'; $msg_type = 'error';
+        }
     }
 }
 
@@ -150,7 +153,7 @@ require_once __DIR__ . '/../partials/header.php';
 
 /* ── Hero banner ── */
 .pf-hero {
-    background: linear-gradient(135deg, var(--petron-blue,#00264D) 0%, #003a70 60%, #004d99 100%);
+    background: linear-gradient(135deg, #2c3e50 0%, #34495e 60%, #3d566e 100%);
     border-radius: 14px 14px 0 0;
     padding: 28px 28px 22px;
     display: flex;
@@ -241,22 +244,25 @@ require_once __DIR__ . '/../partials/header.php';
 /* Tab nav */
 .pf-tabs {
     display: flex;
-    border-bottom: 2px solid #f0f0f0;
-    background: #fafafa;
+    border-bottom: 2px solid #2c3e50;
+    background: #2c3e50;
 }
 .pf-tab {
     flex: 1; padding: 13px 10px;
     text-align: center; font-size: 12px; font-weight: 700;
-    color: #888; cursor: pointer; border: none; background: none;
+    color: rgba(255,255,255,0.7); cursor: pointer; border: none; background: none;
     border-bottom: 3px solid transparent; margin-bottom: -2px;
     transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.5px;
     display: flex; align-items: center; justify-content: center; gap: 6px;
 }
-.pf-tab:hover { color: var(--petron-blue,#00264D); background: rgba(0,38,77,0.04); }
+.pf-tab:hover { 
+    color: #fff; 
+    background: rgba(255,255,255,0.1); 
+}
 .pf-tab.active {
-    color: var(--petron-blue,#00264D);
-    border-bottom-color: var(--petron-blue,#00264D);
-    background: #fff;
+    color: #fff;
+    border-bottom-color: #CC0000;
+    background: rgba(255,255,255,0.05);
 }
 
 /* Tab panels */
@@ -265,7 +271,7 @@ require_once __DIR__ . '/../partials/header.php';
 
 /* Info rows */
 .pf-section-title {
-    font-size: 11px; font-weight: 800; color: #aaa;
+    font-size: 11px; font-weight: 800; color: #555;
     text-transform: uppercase; letter-spacing: 0.8px;
     margin: 0 0 12px; padding-bottom: 6px;
     border-bottom: 1px solid #f0f0f0;
@@ -287,7 +293,7 @@ require_once __DIR__ . '/../partials/header.php';
 .pf-row:nth-child(odd) { padding-right: 20px; border-right: 1px solid #f5f5f5; }
 .pf-row:nth-child(even) { padding-left: 20px; }
 .pf-row-label {
-    font-size: 10px; font-weight: 700; color: #aaa;
+    font-size: 10px; font-weight: 700; color: #666;
     text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px;
 }
 .pf-row-value {
@@ -303,7 +309,7 @@ require_once __DIR__ . '/../partials/header.php';
 .pf-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .pf-fg { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
 .pf-fg label {
-    font-size: 10px; font-weight: 800; color: #888;
+    font-size: 10px; font-weight: 800; color: #555;
     text-transform: uppercase; letter-spacing: 0.5px;
 }
 .pf-fg label span { color: #cc0000; }
@@ -325,25 +331,29 @@ require_once __DIR__ . '/../partials/header.php';
     cursor: not-allowed; border-color: #eee;
 }
 .pf-lock-note {
-    font-size: 10px; color: #bbb;
+    font-size: 10px; color: #999;
     display: flex; align-items: center; gap: 4px; margin-top: 2px;
 }
 
 /* Buttons */
 .pf-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
 .pf-btn {
-    padding: 9px 20px; border: none; border-radius: 8px;
+    padding: 9px 20px; border: 1px solid #00264D; border-radius: 6px;
     font-size: 13px; font-weight: 700; cursor: pointer;
     display: inline-flex; align-items: center; gap: 7px;
     transition: all 0.2s; text-decoration: none; letter-spacing: 0.2px;
+    background: transparent !important;
 }
 .pf-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
 .pf-btn:active { transform: translateY(0); }
-.pf-btn-primary   { background: var(--petron-blue,#00264D); color: #fff; }
-.pf-btn-secondary { background: #6c757d; color: #fff; }
-.pf-btn-danger    { background: #CC0000; color: #fff; }
-.pf-btn-ghost     { background: transparent; border: 1.5px solid #ddd; color: #555; }
-.pf-btn-ghost:hover { border-color: var(--petron-blue,#00264D); color: var(--petron-blue,#00264D); }
+.pf-btn-primary   { color: #00264D !important; border: 1px solid #00264D !important; }
+.pf-btn-primary:hover { background: #00264D !important; color: white !important; }
+.pf-btn-secondary { color: #00264D !important; border: 1px solid #00264D !important; }
+.pf-btn-secondary:hover { background: #00264D !important; color: white !important; }
+.pf-btn-danger    { color: #CC0000 !important; border: 1px solid #CC0000 !important; }
+.pf-btn-danger:hover { background: #CC0000 !important; color: white !important; }
+.pf-btn-ghost     { color: #00264D !important; border: 1px solid #00264D !important; }
+.pf-btn-ghost:hover { background: #00264D !important; color: white !important; }
 
 /* Alert */
 .pf-alert {

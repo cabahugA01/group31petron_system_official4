@@ -113,6 +113,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     ]);
                 }
 
+                // Sync status with fuel_readings table & record in fuel_audit_trail if transaction originated from there
+                $reading_db_id = null;
+                if (strpos($reading_id, 'FUEL') === 0 && strlen($reading_id) >= 17) {
+                    $reading_db_id = (int)substr($reading_id, 11);
+                }
+                if ($reading_db_id) {
+                    try {
+                        $mapped_status = ($status === 'verified') ? 'verified' : 'rejected';
+                        $pdo->prepare("UPDATE fuel_readings SET status = ? WHERE id = ? AND station_id = ?")->execute([$mapped_status, $reading_db_id, $station_id]);
+
+                        // Retrieve updated stock level
+                        $stock_stmt = $pdo->prepare("SELECT current_level FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))");
+                        $stock_stmt->execute([$station_id, $transaction['fuel_type']]);
+                        $stock_after_val = $stock_stmt->fetchColumn();
+                        $stock_after_amount = ($stock_after_val !== false) ? (float)$stock_after_val : 0.0;
+                        $stock_before_amount = $stock_after_amount + (($status === 'verified') ? (float)$transaction['liters_sold'] : 0.0);
+
+                        $audit_action = ($status === 'verified') ? 'FUEL_READING_VERIFIED' : 'FUEL_READING_REJECTED';
+                        $audit_notes = "Manager action: " . ucfirst($status) . " | Notes: " . $notes;
+
+                        $pdo->prepare("
+                            INSERT INTO fuel_audit_trail (
+                                reading_id, action, before_value, after_value, stock_before, stock_after,
+                                performed_by, performed_at, notes
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?)
+                        ")->execute([
+                            $reading_db_id,
+                            $audit_action,
+                            (float)($transaction['previous_reading'] ?? 0),
+                            (float)($transaction['present_reading'] ?? 0),
+                            $stock_before_amount,
+                            $stock_after_amount,
+                            $me['id'],
+                            $audit_notes
+                        ]);
+                    } catch (Exception $e) {
+                        error_log('manager validate_reading sync error: ' . $e->getMessage());
+                    }
+                }
+
                 log_activity($pdo, $me['id'], 'Validate Transaction', "Transaction #{$reading_id} {$status}. Variance: {$variance_liters} L. Notes: {$notes}");
                 $pdo->commit();
 
@@ -191,10 +231,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $transaction['fuel_type']
                 ]);
 
+                // Sync status with fuel_readings table & record in fuel_audit_trail if transaction originated from there
+                $reading_db_id = null;
+                if (strpos($reading_id, 'FUEL') === 0 && strlen($reading_id) >= 17) {
+                    $reading_db_id = (int)substr($reading_id, 11);
+                }
+                if ($reading_db_id) {
+                    try {
+                        $new_present_reading = (float)$transaction['previous_reading'] + $adjusted_liters;
+
+                        $pdo->prepare("UPDATE fuel_readings SET present_reading = ?, difference = ?, status = 'adjusted' WHERE id = ? AND station_id = ?")->execute([$new_present_reading, $adjusted_liters, $reading_db_id, $station_id]);
+
+                        // Retrieve updated stock level
+                        $stock_stmt = $pdo->prepare("SELECT current_level FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))");
+                        $stock_stmt->execute([$station_id, $transaction['fuel_type']]);
+                        $stock_after_val = $stock_stmt->fetchColumn();
+                        $stock_after_amount = ($stock_after_val !== false) ? (float)$stock_after_val : 0.0;
+                        $stock_before_amount = $stock_after_amount + $adjusted_liters;
+
+                        $audit_notes = "Manager adjusted liters: " . $original_liters . "L -> " . $adjusted_liters . "L | Reason: " . $adj_reason;
+
+                        $pdo->prepare("
+                            INSERT INTO fuel_audit_trail (
+                                reading_id, action, before_value, after_value, stock_before, stock_after,
+                                performed_by, performed_at, notes
+                            ) VALUES (?, 'FUEL_READING_ADJUSTED', ?, ?, ?, ?, ?, NOW(), ?)
+                        ")->execute([
+                            $reading_db_id,
+                            (float)($transaction['previous_reading'] ?? 0),
+                            $new_present_reading,
+                            $stock_before_amount,
+                            $stock_after_amount,
+                            $me['id'],
+                            $audit_notes
+                        ]);
+                    } catch (Exception $e) {
+                        error_log('manager adjust_reading sync error: ' . $e->getMessage());
+                    }
+                }
+
                 log_activity($pdo, $me['id'], 'Adjust Transaction',
-                    "Transaction #{$reading_id} adjusted: {$original_liters} L ? {$adjusted_liters} L. Reason: {$adj_reason}");
+                    "Transaction #{$reading_id} adjusted: {$original_liters} L -> {$adjusted_liters} L. Reason: {$adj_reason}");
                 $pdo->commit();
-                $_SESSION['success'] = "? Transaction #{$reading_id} adjusted to {$adjusted_liters} L and approved.";
+                $_SESSION['success'] = "Transaction #{$reading_id} adjusted to {$adjusted_liters} L and approved.";
             } catch (Exception $e) {
                 if ($pdo->inTransaction()) $pdo->rollBack();
                 $_SESSION['error'] = '? ' . $e->getMessage();
@@ -236,9 +315,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     FROM fuel_inventory WHERE station_id=? AND LOWER(TRIM(fuel_type))=LOWER(TRIM(?)) LIMIT 1
                 ")->execute([$station_id, -abs($txn['liters_sold']), $reason, $me['id'], $station_id, $txn['fuel_type']]);
 
+                // Sync status with fuel_readings table & record in fuel_audit_trail if transaction originated from there
+                $reading_db_id = null;
+                if (strpos($txn_id, 'FUEL') === 0 && strlen($txn_id) >= 17) {
+                    $reading_db_id = (int)substr($txn_id, 11);
+                }
+                if ($reading_db_id) {
+                    try {
+                        $pdo->prepare("UPDATE fuel_readings SET status = 'verified' WHERE id = ? AND station_id = ?")->execute([$reading_db_id, $station_id]);
+
+                        // Retrieve updated stock level
+                        $stock_stmt = $pdo->prepare("SELECT current_level FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))");
+                        $stock_stmt->execute([$station_id, $txn['fuel_type']]);
+                        $stock_after_val = $stock_stmt->fetchColumn();
+                        $stock_after_amount = ($stock_after_val !== false) ? (float)$stock_after_val : 0.0;
+                        $stock_before_amount = $stock_after_amount + (float)$txn['liters_sold'];
+
+                        $audit_notes = "Daily log approved by manager | Notes: " . $mgr_notes;
+
+                        $pdo->prepare("
+                            INSERT INTO fuel_audit_trail (
+                                reading_id, action, before_value, after_value, stock_before, stock_after,
+                                performed_by, performed_at, notes
+                            ) VALUES (?, 'FUEL_READING_VERIFIED', ?, ?, ?, ?, ?, NOW(), ?)
+                        ")->execute([
+                            $reading_db_id,
+                            (float)($txn['previous_reading'] ?? 0),
+                            (float)($txn['present_reading'] ?? 0),
+                            $stock_before_amount,
+                            $stock_after_amount,
+                            $me['id'],
+                            $audit_notes
+                        ]);
+                    } catch (Exception $e) {
+                        error_log('manager approve_daily_log sync error: ' . $e->getMessage());
+                    }
+                }
+
                 log_activity($pdo, $me['id'], 'Approve Daily Log', "Txn #{$txn_id} approved. {$txn['liters_sold']} L of {$txn['fuel_type']}. Notes: {$mgr_notes}");
                 $pdo->commit();
-                $_SESSION['success'] = "? Daily log #{$txn_id} approved. Tank levels and sales summary updated.";
+                $_SESSION['success'] = "Daily log #{$txn_id} approved. Tank levels and sales summary updated.";
             } catch (Exception $e) {
                 if ($pdo->inTransaction()) $pdo->rollBack();
                 $_SESSION['error'] = '? ' . $e->getMessage();
@@ -271,9 +387,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     FROM fuel_inventory WHERE station_id=? AND LOWER(TRIM(fuel_type))=LOWER(TRIM(?)) LIMIT 1
                 ")->execute([$station_id, $reason, $me['id'], $station_id, $txn['fuel_type']]);
 
+                // Sync status with fuel_readings table & record in fuel_audit_trail if transaction originated from there
+                $reading_db_id = null;
+                if (strpos($txn_id, 'FUEL') === 0 && strlen($txn_id) >= 17) {
+                    $reading_db_id = (int)substr($txn_id, 11);
+                }
+                if ($reading_db_id) {
+                    try {
+                        $pdo->prepare("UPDATE fuel_readings SET status = 'rejected' WHERE id = ? AND station_id = ?")->execute([$reading_db_id, $station_id]);
+
+                        // Retrieve stock level (unchanged)
+                        $stock_stmt = $pdo->prepare("SELECT current_level FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))");
+                        $stock_stmt->execute([$station_id, $txn['fuel_type']]);
+                        $stock_after_val = $stock_stmt->fetchColumn();
+                        $stock_after_amount = ($stock_after_val !== false) ? (float)$stock_after_val : 0.0;
+
+                        $audit_notes = "Daily log rejected by manager | Reason: " . $rej_notes;
+
+                        $pdo->prepare("
+                            INSERT INTO fuel_audit_trail (
+                                reading_id, action, before_value, after_value, stock_before, stock_after,
+                                performed_by, performed_at, notes
+                            ) VALUES (?, 'FUEL_READING_REJECTED', ?, ?, ?, ?, ?, NOW(), ?)
+                        ")->execute([
+                            $reading_db_id,
+                            (float)($txn['previous_reading'] ?? 0),
+                            (float)($txn['present_reading'] ?? 0),
+                            $stock_after_amount,
+                            $stock_after_amount,
+                            $me['id'],
+                            $audit_notes
+                        ]);
+                    } catch (Exception $e) {
+                        error_log('manager reject_daily_log sync error: ' . $e->getMessage());
+                    }
+                }
+
                 log_activity($pdo, $me['id'], 'Reject Daily Log', "Txn #{$txn_id} rejected. Reason: {$rej_notes}");
                 $pdo->commit();
-                $_SESSION['success'] = "?? Daily log #{$txn_id} rejected and returned to Staff for correction.";
+                $_SESSION['success'] = "Daily log #{$txn_id} rejected and returned to Staff for correction.";
             } catch (Exception $e) {
                 if ($pdo->inTransaction()) $pdo->rollBack();
                 $_SESSION['error'] = '? ' . $e->getMessage();
@@ -970,33 +1122,33 @@ function adjustColor($hex,$pct) {
 .tag-resolved { background:#28a745; color:#fff; padding:3px 8px; border-radius:4px; font-size:.72rem; font-weight:700; }
 .tag-investigating { background:#17a2b8; color:#fff; padding:3px 8px; border-radius:4px; font-size:.72rem; font-weight:700; }
 
-/* Buttons */
-.btn { padding:6px 14px; border:none; border-radius:6px; cursor:pointer; font-size:.8rem; font-weight:600; transition:all .2s; display:inline-flex; align-items:center; gap:5px; text-decoration:none; }
-.btn-lg { padding:10px 22px; font-size:.9rem; }
-/* Approve / Validate ? Green #28A745 */
-.btn-success { background:#28A745; color:#fff; }
-.btn-success:hover { background:#218838; transform:translateY(-1px); }
-/* Reject / Return ? Red #DC3545 */
-.btn-danger { background:#DC3545; color:#fff; }
-.btn-danger:hover { background:#c82333; transform:translateY(-1px); }
-/* Adjust / Edit / View / Save ? Petron Dark Blue #00264D */
-.btn-primary { background:#00264D; color:#fff; }
-.btn-primary:hover { background:#001a36; transform:translateY(-1px); }
-/* Stock Request / Urgent ? Petron Red #CC0000 */
-.btn-accent { background:#CC0000; color:#fff; }
-.btn-accent:hover { background:#aa0000; transform:translateY(-1px); }
-/* Print / Export / Info ? Info Blue #17A2B8 */
-.btn-info { background:#17A2B8; color:#fff; }
-.btn-info:hover { background:#138496; transform:translateY(-1px); }
-/* Warning / Pending ? Yellow #FFC107 */
-.btn-warning { background:#FFC107; color:#212529; }
-.btn-warning:hover { background:#e0a800; transform:translateY(-1px); }
-/* Reset / Clear / Neutral ? Gray #6C757D */
-.btn-secondary { background:#6C757D; color:#fff; }
-.btn-secondary:hover { background:#5a6268; transform:translateY(-1px); }
+/* Buttons — unified outline style matching staff Transaction module (txn-btn pattern) */
+.btn { padding:6px 14px; border:1px solid transparent; border-radius:6px; cursor:pointer; font-size:.8rem; font-weight:600; transition:all .2s; display:inline-flex; align-items:center; gap:5px; text-decoration:none; background:white !important; }
+.btn-lg { padding:10px 22px !important; font-size:.9rem; }
+/* Approve / Validate — Green outline */
+.btn-success { color:#16a34a !important; border-color:#16a34a !important; }
+.btn-success:hover { background:#16a34a !important; color:#fff !important; }
+/* Reject / Return — Red outline */
+.btn-danger { color:#dc2626 !important; border-color:#dc2626 !important; }
+.btn-danger:hover { background:#dc2626 !important; color:#fff !important; }
+/* Adjust / Edit / View / Save — Petron Dark Blue outline */
+.btn-primary { color:#00264D !important; border-color:#00264D !important; }
+.btn-primary:hover { background:#00264D !important; color:#fff !important; }
+/* Stock Request / Urgent — Petron Red outline */
+.btn-accent { color:#CC0000 !important; border-color:#CC0000 !important; }
+.btn-accent:hover { background:#CC0000 !important; color:#fff !important; }
+/* Print / Export / Info — Info Blue outline */
+.btn-info { color:#0891b2 !important; border-color:#0891b2 !important; }
+.btn-info:hover { background:#0891b2 !important; color:#fff !important; }
+/* Warning / Pending — Amber outline */
+.btn-warning { color:#b45309 !important; border-color:#d97706 !important; }
+.btn-warning:hover { background:#d97706 !important; color:#fff !important; }
+/* Reset / Clear / Neutral — Gray outline */
+.btn-secondary { color:#4b5563 !important; border-color:#6b7280 !important; }
+.btn-secondary:hover { background:#6b7280 !important; color:#fff !important; }
 /* Outline variant */
-.btn-outline { background:transparent; border:2px solid #00264D; color:#00264D; }
-.btn-outline:hover { background:#00264D; color:#fff; }
+.btn-outline { background:white !important; border:1px solid #00264D !important; color:#00264D !important; }
+.btn-outline:hover { background:#00264D !important; color:#fff !important; }
 
 /* Forms */
 .form-group { margin-bottom:14px; }

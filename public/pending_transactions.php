@@ -203,10 +203,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // ── Adjust Group ──────────────────────────────────────────────────────────
     if ($post_action === 'adjust_group') {
-        $group_ids = json_decode($_POST['group_ids'] ?? '[]', true);
-        $adj_type  = trim($_POST['adjustment_type'] ?? '');
-        $new_val   = trim($_POST['new_value'] ?? '');
-        $reason    = trim($_POST['reason'] ?? '');
+        $group_ids        = json_decode($_POST['group_ids'] ?? '[]', true);
+        $new_val          = trim($_POST['new_value'] ?? '');
+        $reason           = trim($_POST['reason'] ?? '');
+        $item_adjustments = json_decode($_POST['item_adjustments'] ?? '[]', true);
+
         if (!is_array($group_ids) || empty($group_ids)) {
             $_SESSION['error'] = 'No transactions in group.';
             header('Location: pending_transactions.php'); exit;
@@ -214,93 +215,85 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $pdo->beginTransaction();
             $adjusted = 0;
-            foreach ($group_ids as $item) {
-                $rid = (int)($item['id'] ?? 0);
-                $src = $item['source'] ?? 'merchandise_transactions';
-                if ($rid <= 0) continue;
-                if ($src === 'merchandise_transactions') {
-                    // Fetch transaction details
-                    $txStmt = $pdo->prepare("SELECT * FROM merchandise_transactions WHERE id = ? AND station_id = ?");
-                    $txStmt->execute([$rid, $station_id]);
-                    $transaction = $txStmt->fetch(PDO::FETCH_ASSOC);
 
-                    if ($transaction) {
-                        // Check customer locked/inactive if credit customer
-                        if (!empty($transaction['credit_customer_id'])) {
-                            $cust_chk = $pdo->prepare("SELECT status FROM customers WHERE id = ?");
-                            $cust_chk->execute([$transaction['credit_customer_id']]);
-                            $cust_status = $cust_chk->fetchColumn();
-                            if ($cust_status === 'locked') {
-                                throw new Exception("Adjustment blocked: Customer account is locked.");
-                            }
-                            if ($cust_status === 'inactive') {
-                                throw new Exception("Adjustment blocked: Customer account is inactive.");
-                            }
-                        }
-
-                        // Deduct stock for merchandise items
-                        $itemRows = $pdo->prepare("SELECT product_id, quantity, item_type FROM merchandise_transaction_items WHERE transaction_id = ?");
-                        $itemRows->execute([$rid]);
-                        foreach ($itemRows->fetchAll(PDO::FETCH_ASSOC) as $row) {
-                            if (($row['item_type'] ?? 'merchandise') !== 'service' && $row['product_id'] && $row['quantity'] > 0) {
-                                $pdo->prepare("
-                                    UPDATE station_inventory
-                                    SET stock_level = GREATEST(stock_level - ?, 0),
-                                        last_updated = NOW()
-                                    WHERE station_id = ? AND product_id = ?
-                                ")->execute([$row['quantity'], $station_id, $row['product_id']]);
-                            }
-                        }
-
-                        // Update customer balance if credit transaction
-                        if (!empty($transaction['credit_customer_id'])) {
-                            $pdo->prepare("UPDATE customers SET balance = balance + ? WHERE id = ?")
-                                ->execute([(float)$new_val, $transaction['credit_customer_id']]);
-                            
-                            // Fetch updated balance
-                            $bal_stmt = $pdo->prepare("SELECT balance FROM customers WHERE id = ?");
-                            $bal_stmt->execute([$transaction['credit_customer_id']]);
-                            $new_bal = (float)$bal_stmt->fetchColumn();
-                            
-                            $cct_stmt = $pdo->prepare("
-                                INSERT INTO customer_credit_transactions (
-                                    customer_id, transaction_id, transaction_type, amount, 
-                                    running_balance, description, station_id, created_by, created_at
-                                ) VALUES (?, ?, 'Sale', ?, ?, ?, ?, ?, NOW())
-                            ");
-                            $cct_stmt->execute([
-                                $transaction['credit_customer_id'],
-                                $transaction['transaction_id'],
-                                (float)$new_val,
-                                $new_bal,
-                                "Merchandise Sale (Credit Adjusted) - Ref: " . $transaction['transaction_id'],
-                                $station_id,
-                                $me['id']
-                            ]);
-                        }
-                    }
-
-                    $sp = ["validation_status='Adjusted'"];
-                    $sv = [];
-                    if (pt_has($mt_cols, 'validated_by')) { $sp[] = "validated_by = ?"; $sv[] = $me['id']; }
-                    if (pt_has($mt_cols, 'validated_at')) { $sp[] = "validated_at = NOW()"; }
-                    if (pt_has($mt_cols, 'remarks'))     { $sp[] = "remarks = ?"; $sv[] = "ADJUSTED [{$adj_type}]: {$reason}"; }
-                    if (pt_has($mt_cols, 'updated_at'))  { $sp[] = "updated_at = NOW()"; }
-                    if ($adj_type === 'price' && pt_has($mt_cols, 'total_amount')) { $sp[] = "total_amount = ?"; $sv[] = (float)$new_val; }
-                    $pdo->prepare("UPDATE merchandise_transactions SET " . implode(', ', $sp) . " WHERE id = ? AND station_id = ?")
-                        ->execute(array_merge($sv, [$rid, $station_id]));
-                } else {
-                    $sp = ["validation_status='Adjusted'", "validated_by=?", "validated_at=NOW()"];
-                    $sv = [$me['id']];
-                    if ($adj_type === 'price' && pt_has($jo_cols, 'total_cost')) { $sp[] = "total_cost = ?"; $sv[] = (float)$new_val; }
-                    $pdo->prepare("UPDATE job_orders SET " . implode(', ', $sp) . " WHERE id=? AND station_id=?")
-                        ->execute(array_merge($sv, [$rid, $station_id]));
+            // ── Apply item-level adjustments ──────────────────────────────────
+            if (!empty($item_adjustments) && is_array($item_adjustments)) {
+                $byTxn = [];
+                foreach ($item_adjustments as $adj) {
+                    $tid = (int)($adj['txn_id'] ?? 0);
+                    if ($tid <= 0) continue;
+                    $byTxn[$tid][] = $adj;
                 }
-                $insert_audit($rid, 'Adjust', "Group Adjusted [{$adj_type}]: {$reason}");
-                $adjusted++;
+                foreach ($byTxn as $txn_id => $adjs) {
+                    $src = $adjs[0]['source'] ?? 'merchandise_transactions';
+                    if ($src === 'merchandise_transactions') {
+                        $newTotal = 0;
+                        foreach ($adjs as $adj) {
+                            $item_id  = (int)($adj['item_id'] ?? 0);
+                            $qty      = max(0, (float)($adj['quantity']   ?? 0));
+                            $uprice   = max(0, (float)($adj['unit_price'] ?? 0));
+                            $subtotal = round($qty * $uprice, 2);
+                            $newTotal += $subtotal;
+                            if ($item_id > 0) {
+                                // merchandise_transaction_items has no updated_at column
+                                $pdo->prepare("
+                                    UPDATE merchandise_transaction_items
+                                    SET quantity = ?, unit_price = ?, subtotal = ?
+                                    WHERE id = ?
+                                ")->execute([$qty, $uprice, $subtotal, $item_id]);
+                            }
+                        }
+                        $finalTotal = ($new_val !== '' && is_numeric($new_val)) ? (float)$new_val : $newTotal;
+                        $sp = ["validation_status='Adjusted'", "total_amount=?"];
+                        $sv = [$finalTotal];
+                        if (pt_has($mt_cols, 'validated_by')) { $sp[] = "validated_by=?"; $sv[] = $me['id']; }
+                        if (pt_has($mt_cols, 'validated_at')) { $sp[] = "validated_at=NOW()"; }
+                        if (pt_has($mt_cols, 'remarks'))      { $sp[] = "remarks=?"; $sv[] = "ADJUSTED: {$reason}"; }
+                        if (pt_has($mt_cols, 'updated_at'))   { $sp[] = "updated_at=NOW()"; }
+                        $pdo->prepare("UPDATE merchandise_transactions SET " . implode(', ', $sp) . " WHERE id=? AND station_id=?")
+                            ->execute(array_merge($sv, [$txn_id, $station_id]));
+                    } else {
+                        $finalTotal = ($new_val !== '' && is_numeric($new_val))
+                            ? (float)$new_val
+                            : array_sum(array_map(fn($a) => (float)($a['quantity'] ?? 1) * (float)($a['unit_price'] ?? 0), $adjs));
+                        $sp = ["validation_status='Adjusted'", "validated_by=?", "validated_at=NOW()"];
+                        $sv = [$me['id']];
+                        if (pt_has($jo_cols, 'total_cost')) { $sp[] = "total_cost=?"; $sv[] = $finalTotal; }
+                        $pdo->prepare("UPDATE job_orders SET " . implode(', ', $sp) . " WHERE id=? AND station_id=?")
+                            ->execute(array_merge($sv, [$txn_id, $station_id]));
+                    }
+                    $insert_audit($txn_id, 'Adjust', "Item-level adjusted: {$reason}");
+                    $adjusted++;
+                }
+            } else {
+                // Fallback: pure total override
+                foreach ($group_ids as $item) {
+                    $rid = (int)($item['id'] ?? 0);
+                    $src = $item['source'] ?? 'merchandise_transactions';
+                    if ($rid <= 0) continue;
+                    if ($src === 'merchandise_transactions') {
+                        $sp = ["validation_status='Adjusted'"];
+                        $sv = [];
+                        if (pt_has($mt_cols, 'validated_by')) { $sp[] = "validated_by=?"; $sv[] = $me['id']; }
+                        if (pt_has($mt_cols, 'validated_at')) { $sp[] = "validated_at=NOW()"; }
+                        if (pt_has($mt_cols, 'remarks'))      { $sp[] = "remarks=?"; $sv[] = "ADJUSTED: {$reason}"; }
+                        if (pt_has($mt_cols, 'updated_at'))   { $sp[] = "updated_at=NOW()"; }
+                        if ($new_val !== '' && is_numeric($new_val) && pt_has($mt_cols, 'total_amount')) { $sp[] = "total_amount=?"; $sv[] = (float)$new_val; }
+                        $pdo->prepare("UPDATE merchandise_transactions SET " . implode(', ', $sp) . " WHERE id=? AND station_id=?")
+                            ->execute(array_merge($sv, [$rid, $station_id]));
+                    } else {
+                        $sp = ["validation_status='Adjusted'", "validated_by=?", "validated_at=NOW()"];
+                        $sv = [$me['id']];
+                        if ($new_val !== '' && is_numeric($new_val) && pt_has($jo_cols, 'total_cost')) { $sp[] = "total_cost=?"; $sv[] = (float)$new_val; }
+                        $pdo->prepare("UPDATE job_orders SET " . implode(', ', $sp) . " WHERE id=? AND station_id=?")
+                            ->execute(array_merge($sv, [$rid, $station_id]));
+                    }
+                    $insert_audit($rid, 'Adjust', "Price adjusted: {$reason}");
+                    $adjusted++;
+                }
             }
             $pdo->commit();
-            $_SESSION['success'] = "{$adjusted} transaction(s) adjusted.";
+            $_SESSION['success'] = "{$adjusted} transaction(s) adjusted successfully.";
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
             $_SESSION['error'] = 'Error: ' . $e->getMessage();
@@ -330,6 +323,11 @@ if ($search !== '') {
 
 $mt_rows = [];
 try {
+    // Detect if job_order_service column exists
+    $mt_jo_svc_col = pt_has($mt_cols, 'job_order_service') ? "COALESCE(mt.job_order_service,'')" : "''";
+    $mt_jo_veh_type_col = pt_has($mt_cols, 'job_order_vehicle_type') ? "COALESCE(mt.job_order_vehicle_type,'')" : "''";
+    $mt_jo_veh_plate_col = pt_has($mt_cols, 'job_order_vehicle_plate') ? "COALESCE(mt.job_order_vehicle_plate,'')" : "''";
+
     $stmt = $pdo->prepare("
         SELECT
             mt.id AS row_id,
@@ -340,11 +338,31 @@ try {
                 WHEN 'job_order'  THEN 'Job Order'
                 ELSE                   'Merchandise'
             END AS entry_type,
-            CASE mt.transaction_type
-                WHEN 'combined'  THEN CONCAT(COALESCE(mt.job_order_service,'Service'),' + Items')
-                WHEN 'job_order' THEN COALESCE(mt.job_order_service,'Service')
-                ELSE COALESCE(mt.item_sku, 'N/A')
-            END AS items_service,
+            COALESCE(
+                NULLIF((SELECT GROUP_CONCAT(
+                            CONCAT(i.product_name, ' - ', i.quantity, ' pcs @ ₱', FORMAT(i.unit_price, 2))
+                            ORDER BY i.id SEPARATOR ' | ')
+                        FROM merchandise_transaction_items i 
+                        WHERE i.transaction_id = mt.id 
+                        AND COALESCE(i.item_type, 'merchandise') = 'merchandise'),''),
+                mt.item_sku, 
+                CASE WHEN TRIM(COALESCE({$mt_jo_svc_col},'')) <> '' THEN '—' ELSE 'N/A' END
+            ) AS items_parts,
+            COALESCE(
+                NULLIF((SELECT GROUP_CONCAT(
+                            CONCAT(i.product_name, ' - ', i.quantity, ' pcs @ ₱', FORMAT(i.unit_price, 2))
+                            ORDER BY i.id SEPARATOR ' | ')
+                        FROM merchandise_transaction_items i 
+                        WHERE i.transaction_id = mt.id 
+                        AND i.item_type = 'service'),''),
+                NULLIF({$mt_jo_svc_col},''),
+                CASE WHEN mt.item_sku IS NOT NULL AND mt.item_sku <> '' THEN '—' ELSE 'N/A' END
+            ) AS service_type,
+            NULLIF(TRIM(CONCAT(
+                COALESCE({$mt_jo_veh_plate_col},''),
+                CASE WHEN TRIM(COALESCE({$mt_jo_veh_type_col},'')) <> ''
+                     THEN CONCAT(' · ', {$mt_jo_veh_type_col}) ELSE '' END
+            )),'') AS vehicle_info,
             mt.total_amount AS amount,
             {$mt_paid_col} AS amount_paid,
             COALESCE(mt.payment_method,'Cash') AS payment_method,
@@ -356,6 +374,7 @@ try {
         FROM merchandise_transactions mt
         LEFT JOIN users u ON u.id = mt.staff_id
         {$mt_where}
+        GROUP BY mt.id
         ORDER BY txn_date DESC
         LIMIT 100
     ");
@@ -384,9 +403,15 @@ try {
             CONCAT('JO-', jo.id) AS txn_id,
             COALESCE(NULLIF(TRIM(jo.customer_name),''),'Walk-in') AS customer,
             'Job Order' AS entry_type,
+            '—' AS items_parts,
             CONCAT(COALESCE(jo.service_type,'Service'), 
                    CASE WHEN jo.vehicle_plate IS NOT NULL AND jo.vehicle_plate != '' 
-                        THEN CONCAT(' | ', jo.vehicle_plate) ELSE '' END) AS items_service,
+                        THEN CONCAT(' | ', jo.vehicle_plate) ELSE '' END) AS service_type,
+            NULLIF(TRIM(CONCAT(
+                COALESCE(jo.vehicle_plate,''),
+                CASE WHEN jo.vehicle_type IS NOT NULL AND jo.vehicle_type != ''
+                     THEN CONCAT(' · ', jo.vehicle_type) ELSE '' END
+            )),'') AS vehicle_info,
             {$jo_cost_col} AS amount,
             {$jo_paid_col} AS amount_paid,
             {$jo_pay_col} AS payment_method,
@@ -418,26 +443,37 @@ foreach ($rows as $r) {
     $gkey      = $cust_key . '|' . $date_key;
     if (!isset($groups[$gkey])) {
         $groups[$gkey] = [
-            'customer'    => $r['customer'],
-            'date'        => $date_key,
-            'types'       => [],
-            'items'       => [],
-            'total'       => 0.0,
-            'pay_methods' => [],
-            'staff'       => $r['staff_name'] ?? 'Unknown',
-            'ids'         => [],   // [{id, source}]
-            'txn_ids'     => [],
+            'customer'      => $r['customer'],
+            'date'          => $date_key,
+            'types'         => [],
+            'items_parts'   => [],
+            'service_types' => [],
+            'vehicle_info'  => $r['vehicle_info'] ?? '',
+            'total'         => 0.0,
+            'pay_methods'   => [],
+            'staff'         => $r['staff_name'] ?? 'Unknown',
+            'ids'           => [],
+            'txn_ids'       => [],
         ];
     }
-    $groups[$gkey]['types'][]     = $r['entry_type'];
-    $groups[$gkey]['items'][]     = $r['items_service'];
-    $groups[$gkey]['total']      += (float)($r['amount'] ?? 0);
+    // Keep first non-empty vehicle_info
+    if (empty($groups[$gkey]['vehicle_info']) && !empty($r['vehicle_info'])) {
+        $groups[$gkey]['vehicle_info'] = $r['vehicle_info'];
+    }
+    $groups[$gkey]['types'][] = $r['entry_type'];
+    if (isset($r['items_parts']) && $r['items_parts'] !== '—' && $r['items_parts'] !== 'N/A') {
+        $groups[$gkey]['items_parts'][] = $r['items_parts'];
+    }
+    if (isset($r['service_type']) && $r['service_type'] !== '—' && $r['service_type'] !== 'N/A') {
+        $groups[$gkey]['service_types'][] = $r['service_type'];
+    }
+    $groups[$gkey]['total'] += (float)($r['amount'] ?? 0);
     $pay = trim($r['payment_method'] ?? '');
     if ($pay && !in_array($pay, $groups[$gkey]['pay_methods'])) {
         $groups[$gkey]['pay_methods'][] = $pay;
     }
-    $groups[$gkey]['txn_ids'][]   = $r['txn_id'];
-    $groups[$gkey]['ids'][]       = ['id' => (int)$r['row_id'], 'source' => $r['_source']];
+    $groups[$gkey]['txn_ids'][] = $r['txn_id'];
+    $groups[$gkey]['ids'][] = ['id' => (int)$r['row_id'], 'source' => $r['_source']];
 }
 $groups = array_values($groups);
 
@@ -451,19 +487,27 @@ include __DIR__ . '/../partials/header.php';
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <button type="button" onclick="exportPending('excel')" title="Export to Excel"
-                style="background:#1d6f42;color:#fff;height:38px;padding:9px 20px;border-radius:8px;border:none;font-size:14px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                style="background:white;color:#1d6f42;height:38px;padding:9px 20px;border-radius:8px;border:1px solid #1d6f42;font-size:14px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
+                onmouseover="this.style.background='#1d6f42';this.style.color='#fff'"
+                onmouseout="this.style.background='white';this.style.color='#1d6f42'">
             <i class="fas fa-file-excel"></i> Excel
         </button>
         <button type="button" onclick="exportPending('csv')" title="Export to CSV"
-                style="background:#003d7a;color:#fff;height:38px;padding:9px 20px;border-radius:8px;border:none;font-size:14px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                style="background:white;color:#003d7a;height:38px;padding:9px 20px;border-radius:8px;border:1px solid #003d7a;font-size:14px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
+                onmouseover="this.style.background='#003d7a';this.style.color='#fff'"
+                onmouseout="this.style.background='white';this.style.color='#003d7a'">
             <i class="fas fa-file-csv"></i> CSV
         </button>
         <button type="button" onclick="exportPending('pdf')" title="Export to PDF"
-                style="background:#dc2626;color:#fff;height:38px;padding:9px 20px;border-radius:8px;border:none;font-size:14px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                style="background:white;color:#dc2626;height:38px;padding:9px 20px;border-radius:8px;border:1px solid #dc2626;font-size:14px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
+                onmouseover="this.style.background='#dc2626';this.style.color='#fff'"
+                onmouseout="this.style.background='white';this.style.color='#dc2626'">
             <i class="fas fa-file-pdf"></i> PDF
         </button>
         <a href="<?= in_array($role, ['admin', 'superadmin']) ? 'admin_dashboard.php' : 'manager_dashboard.php'; ?>"
-           style="background:#6c757d;color:#fff;text-decoration:none;height:38px;padding:9px 20px;border-radius:8px;font-size:14px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">
+           style="background:white;color:#4b5563;text-decoration:none;height:38px;padding:9px 20px;border-radius:8px;border:1px solid #6b7280;font-size:14px;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
+           onmouseover="this.style.background='#6b7280';this.style.color='#fff'"
+           onmouseout="this.style.background='white';this.style.color='#4b5563'">
             <i class="fas fa-arrow-left"></i> Back
         </a>
     </div>
@@ -504,29 +548,33 @@ include __DIR__ . '/../partials/header.php';
 <div class="card" style="padding:0;overflow-x:auto;">
     <table class="pt-table" style="table-layout:auto;width:100%;">
         <colgroup>
-            <col style="width:12%;"><!-- Transaction ID(s) -->
-            <col style="width:12%;"><!-- Customer -->
-            <col style="width:10%;"><!-- Type -->
-            <col style="width:18%;"><!-- Items / Service -->
+            <col style="width:9%;"><!-- Txn ID(s) -->
+            <col style="width:10%;"><!-- Customer -->
+            <col style="width:8%;"><!-- Type -->
+            <col style="width:10%;"><!-- Vehicle -->
+            <col style="width:15%;"><!-- Items / Parts -->
+            <col style="width:12%;"><!-- Service Type -->
             <col style="width:8%;"><!-- Amount -->
-            <col style="width:9%;"><!-- Payment Method -->
-            <col style="width:8%;"><!-- Status -->
-            <col style="width:10%;"><!-- Date -->
-            <col style="width:11%;"><!-- Staff -->
-            <col style="width:10%;"><!-- Actions -->
+            <col style="width:8%;"><!-- Method -->
+            <col style="width:7%;"><!-- Status -->
+            <col style="width:7%;"><!-- Date -->
+            <col style="width:7%;"><!-- Staff -->
+            <col style="width:9%;"><!-- Actions -->
         </colgroup>
         <thead>
             <tr>
-                <th style="font-size:13px;">Txn ID(s)</th>
-                <th style="font-size:13px;">Customer</th>
-                <th style="font-size:13px;">Type</th>
-                <th style="font-size:13px;">Items / Service</th>
-                <th style="text-align:right;font-size:13px;">Total Amount</th>
-                <th style="font-size:13px;">Method</th>
-                <th style="font-size:13px;">Status</th>
-                <th style="font-size:13px;">Date</th>
-                <th style="font-size:13px;">Staff</th>
-                <th style="text-align:center;font-size:13px;">Actions</th>
+                <th style="font-size:12px;">Txn ID(s)</th>
+                <th style="font-size:12px;">Customer</th>
+                <th style="font-size:12px;">Type</th>
+                <th style="font-size:12px;">Vehicle</th>
+                <th style="font-size:12px;">Items / Parts</th>
+                <th style="font-size:12px;">Service Type</th>
+                <th style="text-align:right;font-size:12px;">Total Amount</th>
+                <th style="font-size:12px;">Method</th>
+                <th style="font-size:12px;">Status</th>
+                <th style="font-size:12px;">Date</th>
+                <th style="font-size:12px;">Staff</th>
+                <th style="text-align:center;font-size:12px;">Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -535,7 +583,8 @@ include __DIR__ . '/../partials/header.php';
                 <?php
                     $ids_json     = htmlspecialchars(json_encode($g['ids']), ENT_QUOTES, 'UTF-8');
                     $unique_types = array_unique($g['types']);
-                    $unique_items = array_unique($g['items']);
+                    $unique_items_parts = array_unique($g['items_parts']);
+                    $unique_services = array_unique($g['service_types']);
                     $pay_str      = implode(' / ', array_unique($g['pay_methods'])) ?: 'Cash';
                     $count        = count($g['ids']);
                     
@@ -547,44 +596,54 @@ include __DIR__ . '/../partials/header.php';
                     else                          $badge_class = 'pt-badge-type';
                     
                     $type_label   = implode(' + ', $unique_types);
+                    $items_display = !empty($unique_items_parts) ? implode(' | ', $unique_items_parts) : 'N/A';
+                    $service_display = !empty($unique_services) ? implode(' | ', $unique_services) : 'N/A';
+                    $vehicle_display = !empty($g['vehicle_info']) ? $g['vehicle_info'] : '—';
                 ?>
                 <tr>
-                    <td style="font-weight:600;font-size:12px;font-family:monospace;color:#64748b;">
+                    <td style="font-weight:600;font-size:11px;font-family:monospace;color:#64748b;">
                         <?php echo htmlspecialchars(implode(', ', $g['txn_ids'])); ?>
                     </td>
-                    <td style="font-size:13px;font-weight:600;" title="<?php echo htmlspecialchars($g['customer']); ?>">
+                    <td style="font-size:12px;font-weight:600;" title="<?php echo htmlspecialchars($g['customer']); ?>">
                         <?php echo htmlspecialchars($g['customer']); ?>
                     </td>
                     <td>
-                        <span class="pt-badge <?= $badge_class ?>">
+                        <span class="pt-badge <?= $badge_class ?>" style="font-size:10px;">
                             <?php echo htmlspecialchars($type_label); ?>
                         </span>
                     </td>
-                    <td style="font-size:12px;" title="<?php echo htmlspecialchars(implode(' | ', $unique_items)); ?>">
-                        <?php echo htmlspecialchars(implode(' | ', $unique_items)); ?>
+                    <td style="font-size:11px;line-height:1.4;color:#475569;"
+                        title="<?php echo htmlspecialchars($vehicle_display); ?>">
+                        <?php echo htmlspecialchars($vehicle_display); ?>
                     </td>
-                    <td style="font-weight:700;color:#002F70;text-align:right;white-space:nowrap;font-size:14px;">
+                    <td style="font-size:11px;line-height:1.4;" title="<?php echo htmlspecialchars($items_display); ?>">
+                        <?php echo htmlspecialchars($items_display); ?>
+                    </td>
+                    <td style="font-size:11px;line-height:1.4;" title="<?php echo htmlspecialchars($service_display); ?>">
+                        <?php echo htmlspecialchars($service_display); ?>
+                    </td>
+                    <td style="font-weight:700;color:#002F70;text-align:right;white-space:nowrap;font-size:13px;">
                         &#8369;<?php echo number_format($g['total'], 2); ?>
                     </td>
-                    <td style="font-size:13px;"><?php echo htmlspecialchars($pay_str); ?></td>
+                    <td style="font-size:12px;"><?php echo htmlspecialchars($pay_str); ?></td>
                     <td>
-                        <span class="pt-badge pt-badge-unpaid" style="background:#fef3c7;color:#92400e;border-color:#fde047;">
+                        <span class="pt-badge pt-badge-unpaid" style="background:#fef3c7;color:#92400e;border-color:#fde047;font-size:10px;">
                             Pending
                         </span>
                     </td>
-                    <td style="white-space:nowrap;font-size:13px;color:#64748b;">
+                    <td style="white-space:nowrap;font-size:11px;color:#64748b;">
                         <?php echo date('M d, Y', strtotime($g['date'])); ?>
                     </td>
-                    <td style="font-size:13px;color:#64748b;"><?php echo htmlspecialchars($g['staff']); ?></td>
-                    <td style="text-align:center;padding:10px 8px;">
-                        <div style="display:flex;flex-direction:column;gap:5px;align-items:center;">
-                            <button class="pt-btn-action-full pt-btn-approve" onclick="approveGroup('<?= $ids_json ?>')">
+                    <td style="font-size:11px;color:#64748b;"><?php echo htmlspecialchars($g['staff']); ?></td>
+                    <td style="text-align:center;padding:8px 6px;">
+                        <div style="display:flex;flex-direction:column;gap:4px;align-items:center;">
+                            <button class="pt-btn-action-full pt-btn-approve" onclick="approveGroup('<?= $ids_json ?>')" style="font-size:11px;padding:6px 10px;">
                                 <i class="fas fa-check-circle"></i> Approve
                             </button>
-                            <button class="pt-btn-action-full pt-btn-reject" onclick="rejectGroup('<?= $ids_json ?>')">
+                            <button class="pt-btn-action-full pt-btn-reject" onclick="rejectGroup('<?= $ids_json ?>')" style="font-size:11px;padding:6px 10px;">
                                 <i class="fas fa-times-circle"></i> Reject
                             </button>
-                            <button class="pt-btn-action-full pt-btn-adjust" onclick="adjustGroup('<?= $ids_json ?>')">
+                            <button class="pt-btn-action-full pt-btn-adjust" onclick="adjustGroup('<?= $ids_json ?>')" style="font-size:11px;padding:6px 10px;">
                                 <i class="fas fa-edit"></i> Adjust
                             </button>
                         </div>
@@ -642,7 +701,10 @@ include __DIR__ . '/../partials/header.php';
             <textarea name="reason" id="reject_reason" placeholder="Explain why this group of transactions is being rejected..." required style="min-height:80px;"></textarea>
             <div class="pt-modal-btns">
                 <button type="button" class="pt-modal-cancel" onclick="closeRejectModal()">Cancel</button>
-                <button type="submit" class="pt-modal-submit" style="background:#dc2626;">Reject Group</button>
+                <button type="submit" class="pt-modal-submit"
+                        style="color:#dc2626;border-color:#dc2626;"
+                        onmouseover="this.style.background='#dc2626';this.style.color='#fff'"
+                        onmouseout="this.style.background='white';this.style.color='#dc2626'">Reject Group</button>
             </div>
         </form>
     </div>
@@ -650,27 +712,87 @@ include __DIR__ . '/../partials/header.php';
 
 <!-- Adjust Modal -->
 <div class="pt-modal-overlay" id="adjustModal">
-    <div class="pt-modal" style="max-width:600px;">
-        <h3><i class="fas fa-edit" style="color:#f59e0b;margin-right:8px;"></i>Adjust Group</h3>
+    <div class="pt-modal" style="max-width:680px;max-height:90vh;overflow-y:auto;">
+        <h3><i class="fas fa-edit" style="color:#f59e0b;margin-right:8px;"></i>Adjust Transaction</h3>
         <form method="POST" id="adjustForm">
             <input type="hidden" name="action" value="adjust_group">
             <input type="hidden" name="group_ids" id="adjust_group_ids" value="">
-            
-            <label>Adjustment Type <span style="color:#dc2626;">*</span></label>
-            <select name="adjustment_type" id="adjust_type" class="pt-modal-input" required>
-                <option value="">Select adjustment type...</option>
-                <option value="price">Price Adjustment (Total)</option>
-            </select>
-            
-            <label style="margin-top:12px;">New Total Value</label>
-            <input type="text" name="new_value" id="adjust_value" class="pt-modal-input" placeholder="Enter new value..." required>
-            
-            <label style="margin-top:12px;">Reason for adjustment <span style="color:#dc2626;">*</span></label>
-            <textarea name="reason" id="adjust_reason" placeholder="Explain why this adjustment is needed..." required style="min-height:60px;"></textarea>
-            
+            <input type="hidden" name="item_adjustments" id="adjust_item_adjustments" value="">
+
+            <!-- Items Section -->
+            <div id="adjustItemsSection" style="display:none;margin-bottom:16px;">
+                <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;
+                            letter-spacing:.5px;margin-bottom:10px;padding-bottom:6px;
+                            border-bottom:1px solid #e2e8f0;">
+                    <i class="fas fa-boxes" style="margin-right:5px;color:#f59e0b;"></i>
+                    Adjust Items / Parts / Service
+                </div>
+                <div id="adjustItemsList"></div>
+            </div>
+
+            <!-- Price Override -->
+            <div id="adjustPriceSection" style="margin-bottom:12px;">
+                <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;
+                            letter-spacing:.5px;margin-bottom:10px;padding-bottom:6px;
+                            border-bottom:1px solid #e2e8f0;">
+                    <i class="fas fa-tag" style="margin-right:5px;color:#f59e0b;"></i>
+                    Override Total Price (optional)
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <label style="font-size:12px;color:#64748b;min-width:120px;">New Total Amount</label>
+                    <div style="position:relative;flex:1;min-width:180px;">
+                        <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);
+                                     color:#64748b;font-weight:600;">₱</span>
+                        <input type="number" name="new_value" id="adjust_value" step="0.01" min="0"
+                               class="pt-modal-input" 
+                               placeholder="Auto-computed from items above"
+                               style="padding-left:24px;"
+                               oninput="this.dataset.manualOverride = this.value.trim() !== '' ? 'true' : 'false'"
+                               onchange="this.dataset.manualOverride = this.value.trim() !== '' ? 'true' : 'false'">
+                    </div>
+                    <button type="button" onclick="clearTotalOverride()"
+                            style="font-size:11px;color:#64748b;background:none;border:1px solid #cbd5e1;
+                                   border-radius:6px;padding:5px 10px;cursor:pointer;">
+                        <i class="fas fa-sync-alt"></i> Reset to Auto
+                    </button>
+                </div>
+                <div style="font-size:10px;color:#94a3b8;margin-top:4px;padding-left:128px;">
+                    Leave blank or click "Reset to Auto" to use computed total from items.
+                </div>
+            </div>
+
+            <!-- Reason -->
+            <div style="margin-bottom:12px;">
+                <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:5px;">
+                    Reason for Adjustment <span style="color:#dc2626;">*</span>
+                </label>
+                <textarea name="reason" id="adjust_reason"
+                          placeholder="Explain why this adjustment is needed..."
+                          required style="min-height:60px;"
+                          class="pt-modal-input"></textarea>
+            </div>
+
+            <!-- Computed Total Preview -->
+            <div id="adjustTotalPreview"
+                 style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;
+                        padding:10px 14px;margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:12px;color:#166534;">
+                        <i class="fas fa-calculator" style="margin-right:6px;"></i>
+                        Computed Total from Items:
+                    </span>
+                    <strong id="adjustComputedTotal" style="font-size:18px;color:#002F70;">₱0.00</strong>
+                </div>
+            </div>
+
             <div class="pt-modal-btns">
                 <button type="button" class="pt-modal-cancel" onclick="closeAdjustModal()">Cancel</button>
-                <button type="submit" class="pt-modal-submit" style="background:#f59e0b;">Apply Adjustment</button>
+                <button type="submit" class="pt-modal-submit"
+                        style="color:#d97706;border-color:#d97706;"
+                        onmouseover="this.style.background='#d97706';this.style.color='#fff'"
+                        onmouseout="this.style.background='white';this.style.color='#d97706'">
+                    <i class="fas fa-save"></i> Apply Adjustment
+                </button>
             </div>
         </form>
     </div>
@@ -688,11 +810,15 @@ include __DIR__ . '/../partials/header.php';
 }
 .pt-inp:focus { border-color:#002F70;box-shadow:0 0 0 3px rgba(0,47,112,.1); }
 .pt-btn { 
-    display:inline-flex;align-items:center;gap:6px;padding:0 18px;height:40px;border:none;border-radius:7px;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap;transition:filter .15s; 
+    display:inline-flex;align-items:center;gap:6px;padding:0 18px;height:40px;
+    border:1px solid transparent;border-radius:7px;font-size:14px;font-weight:600;
+    cursor:pointer;text-decoration:none;white-space:nowrap;transition:all .15s;
+    background:white !important;
 }
-.pt-btn:hover { filter:brightness(.88); }
-.pt-btn-search { background:#002F70;color:#fff; }
-.pt-btn-reset  { background:#64748b;color:#fff; }
+.pt-btn-search { color:#002F70 !important; border-color:#002F70 !important; }
+.pt-btn-search:hover { background:#002F70 !important; color:#fff !important; }
+.pt-btn-reset  { color:#4b5563 !important; border-color:#6b7280 !important; }
+.pt-btn-reset:hover { background:#6b7280 !important; color:#fff !important; }
 
 /* Table */
 .pt-table { width:100%;border-collapse:collapse;font-size:13px; }
@@ -713,14 +839,14 @@ include __DIR__ . '/../partials/header.php';
 .pt-badge-partial { background:#fef3c7;color:#92400e;border-color:#fde047; }
 .pt-badge-unpaid { background:#fef2f2;color:#991b1b;border-color:#fecaca; }
 
-/* Action Buttons - MATCHING REFERENCE DESIGN */
+/* Action Buttons — unified outline style matching staff Transaction module */
 .pt-btn-action-full { 
-    color:#fff;
+    background: white !important;
     width:auto;
     min-width:100px;
     height:36px;
     border-radius:8px;
-    border:none;
+    border:1px solid transparent;
     cursor:pointer;
     font-size:13px;
     font-weight:600;
@@ -732,16 +858,18 @@ include __DIR__ . '/../partials/header.php';
     padding:0 12px;
 }
 .pt-btn-action-full:hover { 
-    transform:translateY(-2px);
-    box-shadow:0 4px 12px rgba(0,0,0,.2);
-    filter:brightness(1.05);
+    transform:none;
+    box-shadow:0 4px 12px rgba(0,0,0,.15);
 }
 .pt-btn-action-full:active {
     transform:translateY(0);
 }
-.pt-btn-approve { background:#28a745; } /* Bright Green */
-.pt-btn-reject { background:#dc3545; }  /* Bright Red */
-.pt-btn-adjust { background:#6c757d; }  /* Gray */
+.pt-btn-approve { color:#16a34a !important; border-color:#16a34a !important; }
+.pt-btn-approve:hover { background:#16a34a !important; color:#fff !important; }
+.pt-btn-reject  { color:#dc2626 !important; border-color:#dc2626 !important; }
+.pt-btn-reject:hover  { background:#dc2626 !important; color:#fff !important; }
+.pt-btn-adjust  { color:#4b5563 !important; border-color:#6b7280 !important; }
+.pt-btn-adjust:hover  { background:#6b7280 !important; color:#fff !important; }
 
 /* Modal */
 .pt-modal-overlay { display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center; }
@@ -753,10 +881,10 @@ include __DIR__ . '/../partials/header.php';
 .pt-modal-input { width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;box-sizing:border-box; }
 .pt-modal-input:focus, .pt-modal textarea:focus { border-color:#002F70;outline:none;box-shadow:0 0 0 3px rgba(0,47,112,.1); }
 .pt-modal-btns { display:flex;gap:8px;justify-content:flex-end;margin-top:16px; }
-.pt-modal-cancel { padding:8px 16px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer; }
-.pt-modal-cancel:hover { background:#e2e8f0; }
-.pt-modal-submit { padding:8px 18px;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer; }
-.pt-modal-submit:hover { filter:brightness(.9); }
+.pt-modal-cancel { padding:8px 16px;background:white;color:#475569;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s; }
+.pt-modal-cancel:hover { background:#6b7280;color:#fff;border-color:#6b7280; }
+.pt-modal-submit { padding:8px 18px;background:white;border:1px solid currentColor;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s; }
+.pt-modal-submit:hover { filter:brightness(.9); color:#fff !important; background:attr(style background) !important; }
 </style>
 
 <script>
@@ -793,11 +921,209 @@ function closeRejectModal() {
 }
 
 function adjustGroup(idsJson) {
+    const ids = JSON.parse(idsJson);
     document.getElementById('adjust_group_ids').value = idsJson;
-    document.getElementById('adjust_type').value = 'price';
-    document.getElementById('adjust_value').value = '';
+    const adjVal = document.getElementById('adjust_value');
+    if (adjVal) { adjVal.value = ''; adjVal.dataset.manualOverride = 'false'; }
     document.getElementById('adjust_reason').value = '';
+    document.getElementById('adjustItemsList').innerHTML = 
+        '<div style="text-align:center;padding:20px;color:#94a3b8;">' +
+        '<i class="fas fa-spinner fa-spin"></i> Loading items...</div>';
+    document.getElementById('adjustItemsSection').style.display = 'none';
+    document.getElementById('adjustTotalPreview').style.display = 'none';
     document.getElementById('adjustModal').classList.add('active');
+    isModalOpen = true;
+
+    // Fetch items for all transactions in the group
+    const fetchPromises = ids.map(item => {
+        // Always fetch from server — handles both merchandise_transactions and job_orders
+        return fetch('get_transaction_items.php?id=' + encodeURIComponent(item.id) + '&source=' + encodeURIComponent(item.source), {credentials:'same-origin'})
+            .then(r => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .catch(err => {
+                console.error('Failed to fetch items for id=' + item.id, err);
+                return { items: [], service_type: '', total_cost: 0, id: item.id, source: item.source };
+            });
+    });
+
+    Promise.all(fetchPromises).then(results => {
+        let allItems = [];
+        results.forEach((res, idx) => {
+            const sourceId = ids[idx].id;
+            const source   = ids[idx].source;
+
+            if (res.error) {
+                console.warn('Server error for id=' + sourceId + ':', res.error);
+            }
+
+            if (res.items && res.items.length > 0) {
+                // Has item breakdown — use it
+                res.items.forEach(it => {
+                    allItems.push({ ...it, _txn_id: sourceId, _source: source });
+                });
+            } else if (source === 'job_orders' && (res.service_type || res.total_cost)) {
+                // Job order fallback — single service line
+                allItems.push({
+                    id:           null,
+                    product_name: res.service_type || 'Service Fee',
+                    item_type:    'service',
+                    quantity:     1,
+                    unit_price:   parseFloat(res.total_cost) || 0,
+                    subtotal:     parseFloat(res.total_cost) || 0,
+                    _txn_id:      sourceId,
+                    _source:      source,
+                    _jo:          true
+                });
+            } else if (source === 'merchandise_transactions') {
+                // Fallback: single line from total_amount
+                allItems.push({
+                    id:           null,
+                    product_name: res.item_label || 'Item',
+                    item_type:    'merchandise',
+                    quantity:     1,
+                    unit_price:   parseFloat(res.total_amount) || 0,
+                    subtotal:     parseFloat(res.total_amount) || 0,
+                    _txn_id:      sourceId,
+                    _source:      source
+                });
+            }
+        });
+
+        if (allItems.length === 0) {
+            document.getElementById('adjustItemsList').innerHTML =
+                '<div style="font-size:12px;color:#e65c00;padding:12px;background:#fff7ed;border-radius:6px;border:1px solid #fed7aa;">' +
+                '<i class="fas fa-exclamation-triangle" style="margin-right:6px;"></i>' +
+                'Could not load item breakdown. Use the Total Price override below.</div>';
+            document.getElementById('adjustItemsSection').style.display = 'block';
+        } else {
+            renderAdjustItems(allItems);
+            document.getElementById('adjustItemsSection').style.display = 'block';
+        }
+    }).catch(err => {
+        console.error('adjustGroup fetchAll error:', err);
+        document.getElementById('adjustItemsList').innerHTML =
+            '<div style="font-size:12px;color:#dc2626;padding:12px;">Error loading items. Please try again.</div>';
+        document.getElementById('adjustItemsSection').style.display = 'block';
+    });
+}
+
+function renderAdjustItems(items) {
+    const container = document.getElementById('adjustItemsList');
+    let html = `
+    <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:6px 10px;
+                align-items:center;margin-bottom:8px;">
+        <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;padding:0 4px;">Item / Service</div>
+        <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;text-align:center;width:70px;">Qty (pcs)</div>
+        <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;text-align:right;width:100px;">Unit Price (₱)</div>
+        <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;text-align:right;width:90px;">Subtotal</div>
+    </div>`;
+
+    items.forEach((it, idx) => {
+        const isService = it.item_type === 'service';
+        const icon = isService ? 'fa-wrench' : 'fa-box';
+        const color = isService ? '#b45309' : '#1d4ed8';
+        const qty = parseFloat(it.quantity) || 1;
+        const price = parseFloat(it.unit_price) || 0;
+        const subtotal = (qty * price).toFixed(2);
+
+        html += `
+        <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:6px 10px;
+                    align-items:center;padding:8px 6px;background:${idx%2===0?'#f8fafc':'#fff'};
+                    border-radius:6px;margin-bottom:4px;">
+            <div style="font-size:12px;font-weight:600;color:#1e293b;display:flex;align-items:center;gap:6px;overflow:hidden;">
+                <i class="fas ${icon}" style="color:${color};font-size:11px;flex-shrink:0;"></i>
+                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                      title="${escHtml(it.product_name)}">${escHtml(it.product_name)}</span>
+            </div>
+            <div>
+                <input type="number" min="0.5" step="0.5"
+                       value="${qty}"
+                       data-idx="${idx}"
+                       onchange="recalcAdjust()"
+                       oninput="recalcAdjust()"
+                       class="adj-qty-input"
+                       style="width:70px;padding:5px 8px;border:1.5px solid #cbd5e1;border-radius:6px;
+                              font-size:12px;text-align:center;box-sizing:border-box;">
+            </div>
+            <div>
+                <input type="number" min="0" step="0.01"
+                       value="${price.toFixed(2)}"
+                       data-idx="${idx}"
+                       onchange="recalcAdjust()"
+                       oninput="recalcAdjust()"
+                       class="adj-price-input"
+                       style="width:100px;padding:5px 8px;border:1.5px solid #cbd5e1;border-radius:6px;
+                              font-size:12px;text-align:right;box-sizing:border-box;">
+            </div>
+            <div class="adj-subtotal" data-idx="${idx}"
+                 style="font-size:12px;font-weight:700;color:#002F70;text-align:right;
+                        width:90px;white-space:nowrap;">
+                ₱${subtotal}
+            </div>
+        </div>
+        <input type="hidden" class="adj-item-id"   data-idx="${idx}" value="${it.id || ''}">
+        <input type="hidden" class="adj-item-src"  data-idx="${idx}" value="${it._source}">
+        <input type="hidden" class="adj-txn-id"    data-idx="${idx}" value="${it._txn_id}">
+        <input type="hidden" class="adj-item-type" data-idx="${idx}" value="${it.item_type || 'merchandise'}">
+        <input type="hidden" class="adj-item-name" data-idx="${idx}" value="${escHtml(it.product_name)}">`;
+    });
+
+    container.innerHTML = html;
+    recalcAdjust();
+}
+
+function recalcAdjust() {
+    const qtys   = document.querySelectorAll('.adj-qty-input');
+    const prices = document.querySelectorAll('.adj-price-input');
+    const subs   = document.querySelectorAll('.adj-subtotal');
+    let total = 0;
+
+    qtys.forEach((qEl, i) => {
+        const q = parseFloat(qEl.value) || 0;
+        const p = parseFloat(prices[i]?.value) || 0;
+        const sub = q * p;
+        total += sub;
+        if (subs[i]) subs[i].textContent = '₱' + sub.toFixed(2);
+    });
+
+    // Auto-fill the New Total Amount field
+    const overrideField = document.getElementById('adjust_value');
+    if (overrideField && overrideField.dataset.manualOverride !== 'true') {
+        overrideField.value = total.toFixed(2);
+    }
+
+    document.getElementById('adjustComputedTotal').textContent = '₱' + total.toFixed(2);
+    document.getElementById('adjustTotalPreview').style.display = qtys.length > 0 ? 'block' : 'none';
+
+    // Build item_adjustments JSON
+    const items = [];
+    qtys.forEach((qEl, i) => {
+        items.push({
+            item_id:    document.querySelectorAll('.adj-item-id')[i]?.value || '',
+            txn_id:     document.querySelectorAll('.adj-txn-id')[i]?.value || '',
+            source:     document.querySelectorAll('.adj-item-src')[i]?.value || '',
+            item_type:  document.querySelectorAll('.adj-item-type')[i]?.value || 'merchandise',
+            name:       document.querySelectorAll('.adj-item-name')[i]?.value || '',
+            quantity:   parseFloat(qEl.value) || 0,
+            unit_price: parseFloat(document.querySelectorAll('.adj-price-input')[i]?.value) || 0,
+        });
+    });
+    document.getElementById('adjust_item_adjustments').value = JSON.stringify(items);
+}
+
+function escHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function clearTotalOverride() {
+    const f = document.getElementById('adjust_value');
+    if (f) {
+        f.value = '';
+        f.dataset.manualOverride = 'false';
+        recalcAdjust(); // re-populate with computed
+    }
 }
 
 function closeAdjustModal() {
@@ -845,19 +1171,145 @@ window.closeAdjustModal = function() {
 };
 
 function exportPending(format) {
-    const formatNames = {
-        'excel': 'Excel (.xls)',
-        'csv': 'CSV (.csv)',
-        'pdf': 'PDF (Print/Save)'
-    };
-    const urlParams = new URLSearchParams(window.location.search);
-    const search = urlParams.get('search') || '';
-    let exportUrl = '../backend/export_pending_transactions.php?format=' + format;
-    if (search) exportUrl += '&search=' + encodeURIComponent(search);
-    
-    if (confirm('Export pending transactions to ' + formatNames[format] + '?\n\nThis will download all pending transactions matching your current filters.')) {
-        window.location.href = exportUrl;
+    const table = document.querySelector('.pt-table');
+    if (!table) { alert('No pending transaction data found.'); return; }
+
+    const search = document.querySelector('input[name="search"]')?.value || '';
+    const filename = `Pending_Transactions_${search ? 'Search_' + search : 'All'}`;
+
+    // Temporarily show all rows for complete export
+    const rows = Array.from(table.querySelectorAll('tbody tr'));
+    const originalDisplays = rows.map(r => r.style.display);
+    rows.forEach(r => r.style.display = '');
+
+    if (format === 'excel') {
+        if (typeof XLSX === 'undefined') {
+            alert('Export library not loaded. Please try again.');
+            rows.forEach((r, idx) => r.style.display = originalDisplays[idx]);
+            return;
+        }
+        const aoa = [];
+        // Headers
+        table.querySelectorAll('thead tr').forEach(tr => {
+            const cells = [...tr.querySelectorAll('th')];
+            cells.pop(); // Remove "Actions"
+            aoa.push(cells.map(th => th.innerText.trim()));
+        });
+        // Body
+        table.querySelectorAll('tbody tr').forEach(tr => {
+            const cells = [...tr.querySelectorAll('td')];
+            if (cells.length > 1) { // Skip "No records" row if it spans
+                cells.pop(); // Remove "Actions"
+                aoa.push(cells.map(td => td.innerText.trim()));
+            } else {
+                aoa.push(cells.map(td => td.innerText.trim()));
+            }
+        });
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        if (aoa.length && aoa[0]) {
+            ws['!cols'] = aoa[0].map((_, ci) => ({
+                wch: Math.min(45, Math.max(10, ...aoa.map(row => String(row[ci] ?? '').length)))
+            }));
+        }
+        XLSX.utils.book_append_sheet(wb, ws, 'Pending Transactions');
+        XLSX.writeFile(wb, filename + '.xlsx');
+    } else if (format === 'csv') {
+        let csv = '';
+        // Headers
+        table.querySelectorAll('thead tr').forEach(tr => {
+            const cells = [...tr.querySelectorAll('th')];
+            cells.pop();
+            csv += cells.map(th => '"' + th.innerText.trim().replace(/"/g, '""') + '"').join(',') + '\n';
+        });
+        // Body
+        table.querySelectorAll('tbody tr').forEach(tr => {
+            const cells = [...tr.querySelectorAll('td')];
+            if (cells.length > 1) {
+                cells.pop();
+                csv += cells.map(td => '"' + td.innerText.trim().replace(/"/g, '""') + '"').join(',') + '\n';
+            } else {
+                csv += cells.map(td => '"' + td.innerText.trim().replace(/"/g, '""') + '"').join(',') + '\n';
+            }
+        });
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = filename + '.csv';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+    } else if (format === 'pdf') {
+        const logo_url  = '../assets/img/Petron%20Logo.png';
+        const generated = new Date().toLocaleString();
+        
+        // Let's clone the table and remove the last column from the print HTML
+        const tableClone = table.cloneNode(true);
+        tableClone.querySelectorAll('tr').forEach(tr => {
+            const lastCell = tr.lastElementChild;
+            if (lastCell) lastCell.remove();
+        });
+        
+        let tableHtml = tableClone.outerHTML;
+        
+        let iframe = document.getElementById('print-iframe');
+        if (!iframe) {
+            iframe = document.createElement('iframe');
+            iframe.id = 'print-iframe';
+            iframe.style.position = 'fixed';
+            iframe.style.right = '0';
+            iframe.style.bottom = '0';
+            iframe.style.width = '0';
+            iframe.style.height = '0';
+            iframe.style.border = '0';
+            document.body.appendChild(iframe);
+        }
+
+        const doc = iframe.contentDocument || iframe.contentWindow.document;
+        doc.open();
+        doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Pending Transactions Report</title>
+        <style>
+            @page{size:legal landscape;margin:.3in .4in;}
+            *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;box-sizing:border-box;}
+            body{font-family:Arial,sans-serif;font-size:11px;color:#000;background:white;margin:0;padding:20px;}
+            .header-container{display:flex;align-items:center;gap:15px;border-bottom:2px solid #002F70;padding-bottom:12px;margin-bottom:15px;}
+            .header-container img{height:45px;}
+            .header-title h1{font-size:16px;margin:0;color:#002F70;text-transform:uppercase;}
+            .header-title p{font-size:10px;margin:3px 0 0;color:#666;}
+            .meta-info{margin-left:auto;text-align:right;font-size:10px;color:#444;}
+            table{width:100%;border-collapse:collapse;font-size:9.5px;}
+            thead tr{background:#f2f2f2 !important;border-top:2px solid #002F70;border-bottom:1px solid #999;}
+            thead th{padding:6px 5px;text-align:left;font-weight:700;font-size:9px;text-transform:uppercase;color:#000;}
+            tbody tr{border-bottom:1px solid #ddd;}
+            tbody td{padding:5px;color:#333;}
+            .pt-badge, .badge{border:none;background:none;padding:0;font-weight:normal;}
+            tfoot tr{border-top:2px solid #002F70;background:#f2f2f2 !important;}
+            tfoot td{padding:6px 5px;font-weight:700;}
+        </style></head><body>
+            <div class="header-container">
+                <img src="${logo_url}" alt="Petron">
+                <div class="header-title">
+                    <h1>Petron Station Management System</h1>
+                    <p>Pending Transactions Report</p>
+                </div>
+                <div class="meta-info">
+                    Search Filter: ${search || 'None'}<br>
+                    Generated: ${generated}
+                </div>
+            </div>
+            ${tableHtml}
+        </body></html>`);
+        doc.close();
+
+        setTimeout(() => {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+        }, 250);
     }
+
+    // Restore original row displays
+    rows.forEach((r, idx) => r.style.display = originalDisplays[idx]);
 }
 
 // Start auto-refresh timer (30 seconds)
@@ -940,5 +1392,6 @@ refreshPendingTimer = setInterval(autoRefreshPendingTransactions, 30000);
     updateTable();
 })();
 </script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

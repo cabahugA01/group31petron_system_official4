@@ -219,23 +219,23 @@ require_once __DIR__ . '/../partials/header.php';
 .afto-subtitle { font-size:13px; color:#6b7280; text-transform:uppercase; letter-spacing:.3px; }
 .afto-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 
-/* Export buttons — same size/design as transaction module */
+/* Export/action buttons — unified outline style matching staff Transaction module */
 .afto-btn {
     display:inline-flex; align-items:center; gap:6px;
     padding:8px 16px; border-radius:8px; font-size:13px; font-weight:600;
-    cursor:pointer; border:none; text-decoration:none; transition:all .13s;
-    height:36px; white-space:nowrap;
+    cursor:pointer; border:1px solid transparent; text-decoration:none; transition:all .13s;
+    height:36px; white-space:nowrap; background:white !important;
 }
-.afto-btn-excel  { background:#1d6f42; color:#fff; }
-.afto-btn-excel:hover  { background:#155a34; color:#fff; }
-.afto-btn-csv    { background:#003d7a; color:#fff; }
-.afto-btn-csv:hover    { background:#002a58; color:#fff; }
-.afto-btn-pdf    { background:#dc2626; color:#fff; }
-.afto-btn-pdf:hover    { background:#b91c1c; color:#fff; }
-.afto-btn-back   { background:#6c757d; color:#fff; }
-.afto-btn-back:hover   { background:#545b62; color:#fff; }
-.afto-btn-filter { background:#002F6C; color:#fff; }
-.afto-btn-filter:hover { background:#001f4d; color:#fff; }
+.afto-btn-excel  { color:#1d6f42 !important; border-color:#1d6f42 !important; }
+.afto-btn-excel:hover  { background:#1d6f42 !important; color:#fff !important; }
+.afto-btn-csv    { color:#003d7a !important; border-color:#003d7a !important; }
+.afto-btn-csv:hover    { background:#003d7a !important; color:#fff !important; }
+.afto-btn-pdf    { color:#dc2626 !important; border-color:#dc2626 !important; }
+.afto-btn-pdf:hover    { background:#dc2626 !important; color:#fff !important; }
+.afto-btn-back   { color:#4b5563 !important; border-color:#6b7280 !important; }
+.afto-btn-back:hover   { background:#6b7280 !important; color:#fff !important; }
+.afto-btn-filter { color:#002F6C !important; border-color:#002F6C !important; }
+.afto-btn-filter:hover { background:#002F6C !important; color:#fff !important; }
 
 /* Summary cards */
 .afto-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-bottom:18px; }
@@ -285,9 +285,9 @@ html, body { max-width:100vw; overflow-x:hidden; }
         <div class="afto-subtitle">MONITOR AND AUDIT ALL FUEL TRANSACTIONS VALIDATED BY MANAGERS, ENSURING COMPLIANCE AND ACCURACY.</div>
     </div>
     <div class="afto-actions">
-        <a href="?<?= http_build_query(array_merge($_GET,['export'=>'excel'])) ?>" class="afto-btn afto-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
-        <a href="?<?= http_build_query(array_merge($_GET,['export'=>'csv'])) ?>"   class="afto-btn afto-btn-csv"><i class="fas fa-file-csv"></i> CSV</a>
-        <a href="?<?= http_build_query(array_merge($_GET,['export'=>'pdf'])) ?>"   class="afto-btn afto-btn-pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
+        <button type="button" onclick="aftoExport('excel')" class="afto-btn afto-btn-excel"><i class="fas fa-file-excel"></i> Excel</button>
+        <button type="button" onclick="aftoExport('csv')"   class="afto-btn afto-btn-csv"><i class="fas fa-file-csv"></i> CSV</button>
+        <button type="button" onclick="aftoExport('pdf')"   class="afto-btn afto-btn-pdf"><i class="fas fa-file-pdf"></i> PDF</button>
         <a href="admin_dashboard.php" class="afto-btn afto-btn-back"><i class="fas fa-arrow-left"></i> Back</a>
     </div>
 </div>
@@ -556,6 +556,127 @@ html, body { max-width:100vw; overflow-x:hidden; }
     // Initialize
     updateTable();
 })();
+
+function aftoExport(format) {
+    const table = document.querySelector('.afto-tbl');
+    if (!table) { alert('No transaction data found.'); return; }
+
+    const dateFrom = document.querySelector('input[name="date_from"]')?.value || '';
+    const dateTo   = document.querySelector('input[name="date_to"]')?.value || '';
+    const filename = `Fuel_Transactions_Oversight_${dateFrom || 'All'}_to_${dateTo || 'All'}`;
+
+    // Temporarily show all rows for complete export
+    const rows = Array.from(table.querySelectorAll('tbody tr'));
+    const originalDisplays = rows.map(r => r.style.display);
+    rows.forEach(r => r.style.display = '');
+
+    if (format === 'excel') {
+        if (typeof XLSX === 'undefined') {
+            alert('Export library not loaded. Please try again.');
+            rows.forEach((r, idx) => r.style.display = originalDisplays[idx]);
+            return;
+        }
+        const aoa = [];
+        // Headers
+        table.querySelectorAll('thead tr').forEach(tr => {
+            aoa.push([...tr.querySelectorAll('th')].map(th => th.innerText.trim()));
+        });
+        // Body
+        table.querySelectorAll('tbody tr').forEach(tr => {
+            aoa.push([...tr.querySelectorAll('td')].map(td => td.innerText.trim()));
+        });
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        if (aoa.length && aoa[0]) {
+            ws['!cols'] = aoa[0].map((_, ci) => ({
+                wch: Math.min(45, Math.max(10, ...aoa.map(row => String(row[ci] ?? '').length)))
+            }));
+        }
+        XLSX.utils.book_append_sheet(wb, ws, 'Fuel Transactions');
+        XLSX.writeFile(wb, filename + '.xlsx');
+    } else if (format === 'csv') {
+        let csv = '';
+        // Headers
+        table.querySelectorAll('thead tr').forEach(tr => {
+            csv += [...tr.querySelectorAll('th')].map(th => '"' + th.innerText.trim().replace(/"/g, '""') + '"').join(',') + '\n';
+        });
+        // Body
+        table.querySelectorAll('tbody tr').forEach(tr => {
+            csv += [...tr.querySelectorAll('td')].map(td => '"' + td.innerText.trim().replace(/"/g, '""') + '"').join(',') + '\n';
+        });
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = filename + '.csv';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+    } else if (format === 'pdf') {
+        const logo_url  = '../assets/img/Petron%20Logo.png';
+        const generated = new Date().toLocaleString();
+        
+        let tableHtml = table.outerHTML;
+        
+        let iframe = document.getElementById('print-iframe');
+        if (!iframe) {
+            iframe = document.createElement('iframe');
+            iframe.id = 'print-iframe';
+            iframe.style.position = 'fixed';
+            iframe.style.right = '0';
+            iframe.style.bottom = '0';
+            iframe.style.width = '0';
+            iframe.style.height = '0';
+            iframe.style.border = '0';
+            document.body.appendChild(iframe);
+        }
+
+        const doc = iframe.contentDocument || iframe.contentWindow.document;
+        doc.open();
+        doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Fuel Transactions Oversight Report</title>
+        <style>
+            @page{size:legal landscape;margin:.3in .4in;}
+            *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;box-sizing:border-box;}
+            body{font-family:Arial,sans-serif;font-size:11px;color:#000;background:white;margin:0;padding:20px;}
+            .header-container{display:flex;align-items:center;gap:15px;border-bottom:2px solid #002F6C;padding-bottom:12px;margin-bottom:15px;}
+            .header-container img{height:45px;}
+            .header-title h1{font-size:16px;margin:0;color:#002F6C;text-transform:uppercase;}
+            .header-title p{font-size:10px;margin:3px 0 0;color:#666;}
+            .meta-info{margin-left:auto;text-align:right;font-size:10px;color:#444;}
+            table{width:100%;border-collapse:collapse;font-size:9.5px;}
+            thead tr{background:#f2f2f2 !important;border-top:2px solid #002F6C;border-bottom:1px solid #999;}
+            thead th{padding:6px 5px;text-align:left;font-weight:700;font-size:9px;text-transform:uppercase;color:#000;}
+            tbody tr{border-bottom:1px solid #ddd;}
+            tbody td{padding:5px;color:#333;}
+            .afto-badge, .badge, .status-badge{border:none;background:none;padding:0;font-weight:normal;}
+            tfoot tr{border-top:2px solid #002F6C;background:#f2f2f2 !important;}
+            tfoot td{padding:6px 5px;font-weight:700;}
+        </style></head><body>
+            <div class="header-container">
+                <img src="${logo_url}" alt="Petron">
+                <div class="header-title">
+                    <h1>Petron Station Management System</h1>
+                    <p>Fuel Transactions Oversight Report</p>
+                </div>
+                <div class="meta-info">
+                    Date Range: ${dateFrom || 'All'} to ${dateTo || 'All'}<br>
+                    Generated: ${generated}
+                </div>
+            </div>
+            ${tableHtml}
+        </body></html>`);
+        doc.close();
+
+        setTimeout(() => {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+        }, 250);
+    }
+
+    // Restore original row displays
+    rows.forEach((r, idx) => r.style.display = originalDisplays[idx]);
+}
 </script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

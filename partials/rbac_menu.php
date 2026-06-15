@@ -106,27 +106,17 @@ $master_menu = [
     ]],
 
     // 7. System Settings
-    ['id'=>'system_settings','label'=>'System Settings','ico'=>'fas fa-cog','href'=>'superadmin_system_settings.php','permissions'=>['manage_stations'],'station_specific'=>false,'sub_items'=>[
-        ['id'=>'ss_logo',          'label'=>'Logo Management',    'href'=>'superadmin_system_settings.php#step-logo',          'permissions'=>['manage_stations']],
-        ['id'=>'ss_theme',         'label'=>'Color Theme / UI',   'href'=>'superadmin_system_settings.php#step-theme',         'permissions'=>['manage_stations']],
-        ['id'=>'ss_layout',        'label'=>'Sidebar & Cards',    'href'=>'superadmin_system_settings.php#step-layout',        'permissions'=>['manage_stations']],
-        ['id'=>'ss_accessibility', 'label'=>'Accessibility',      'href'=>'superadmin_system_settings.php#step-accessibility', 'permissions'=>['manage_stations']],
-    ]],
+    ['id'=>'system_settings','label'=>'System Settings','ico'=>'fas fa-cog','href'=>'superadmin_system_settings.php','permissions'=>['manage_stations'],'station_specific'=>false],
 
     // 8. Reports (Developer View)
-    ['id'=>'superadmin_reports','label'=>'Reports (Dev View)','ico'=>'fas fa-chart-line','href'=>'superadmin_reports.php','permissions'=>['manage_stations'],'station_specific'=>false,'sub_items'=>[
-        ['id'=>'rpt_dev_technical', 'label'=>'Technical Reports',  'href'=>'superadmin_reports.php?section=technical',      'permissions'=>['manage_stations']],
-        ['id'=>'rpt_dev_security',  'label'=>'Security Reports',   'href'=>'superadmin_reports.php?section=security',       'permissions'=>['manage_stations']],
-        ['id'=>'rpt_dev_audit',     'label'=>'Dev Audit Reports',  'href'=>'superadmin_reports.php?section=developer_audit','permissions'=>['manage_stations']],
+    ['id'=>'superadmin_reports','label'=>'Reports','ico'=>'fas fa-chart-line','href'=>'reports_technical.php','permissions'=>['manage_stations'],'station_specific'=>false,'sub_items'=>[
+        ['id'=>'rpt_dev_technical', 'label'=>'Technical Reports',  'href'=>'reports_technical.php',      'permissions'=>['manage_stations']],
+        ['id'=>'rpt_dev_security',  'label'=>'Security Reports',   'href'=>'reports_security.php',       'permissions'=>['manage_stations']],
+        ['id'=>'rpt_dev_audit',     'label'=>'Dev Audit Reports',  'href'=>'reports_developer_audit.php','permissions'=>['manage_stations']],
     ]],
 
-    // 9. Audit Trail (LAST!)
-    ['id'=>'system_logs','label'=>'Audit Trail','ico'=>'fas fa-history','href'=>'superadmin_system_logs.php?section=audit_trail','permissions'=>['manage_stations'],'station_specific'=>false,'sub_items'=>[
-        ['id'=>'sla_audit_trail',   'label'=>'Audit Trail',       'href'=>'superadmin_system_logs.php?section=audit_trail',   'permissions'=>['manage_stations']],
-        ['id'=>'sla_error_tracking','label'=>'Error Tracking',    'href'=>'superadmin_system_logs.php?section=error_tracking', 'permissions'=>['manage_stations']],
-        ['id'=>'sla_export_logs',   'label'=>'Export Logs',       'href'=>'superadmin_system_logs.php?section=export_logs',    'permissions'=>['manage_stations']],
-        ['id'=>'sla_developer_log', 'label'=>'SuperAdmin Audit',  'href'=>'superadmin_system_logs.php?section=developer_log',  'permissions'=>['manage_stations']],
-    ]],
+    // 9. Audit Trail
+    ['id'=>'audit_trail','label'=>'Audit Trail','ico'=>'fas fa-history','href'=>'superadmin_audit_trail.php','permissions'=>['manage_stations'],'station_specific'=>false],
 
     ];
 
@@ -152,7 +142,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
             [
                 'id' => 'admin_dashboard',
                 'label' => 'Dashboard',
-                'ico' => 'fas fa-tachometer-alt',
+                'ico' => 'fas fa-chart-line',
                 'href' => 'admin_dashboard.php',
                 'permissions' => ['view_dashboard'],
                 'station_specific' => false,
@@ -605,7 +595,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
             }
 
             // System Settings — SuperAdmin / Developer only
-            if (in_array(($item['id'] ?? ''), ['system_settings','ss_logo','ss_theme','ss_layout','ss_accessibility'], true)
+            if (($item['id'] ?? '') === 'system_settings'
                 && !in_array($user_role, ['superadmin', 'developer'], true)) {
                 continue;
             }

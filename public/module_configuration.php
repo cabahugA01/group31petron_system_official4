@@ -47,35 +47,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
                 
             case 'save_module_config':
-                $moduleKey = $_POST['module_key'] ?? '';
-                $stationId = $_POST['station_id'] ?? '';
+                $moduleKey  = $_POST['module_key']  ?? '';
+                $stationId  = $_POST['station_id']  ?? 'all';
                 $configData = $_POST['config_data'] ?? '{}';
                 $configArray = json_decode($configData, true);
                 
-                if ($moduleKey && $stationId && is_array($configArray)) {
-                    // Get station name for logging
-                    $stationName = 'Unknown Station';
-                    try {
-                        $stmt = $pdo->prepare("SELECT name FROM stations WHERE id = ?");
-                        $stmt->execute([$stationId]);
-                        $station = $stmt->fetch(PDO::FETCH_ASSOC);
-                        if ($station) {
-                            $stationName = $station['name'];
+                if ($moduleKey && is_array($configArray)) {
+                    // Resolve station name for logging
+                    $stationName = 'All Stations (Global)';
+                    if ($stationId && $stationId !== 'all') {
+                        try {
+                            $stmt = $pdo->prepare("SELECT name FROM stations WHERE id = ?");
+                            $stmt->execute([$stationId]);
+                            $station = $stmt->fetch(PDO::FETCH_ASSOC);
+                            if ($station) {
+                                $stationName = $station['name'];
+                            }
+                        } catch (Exception $e) {
+                            error_log("Failed to fetch station name: " . $e->getMessage());
                         }
-                    } catch (Exception $e) {
-                        error_log("Failed to fetch station name: " . $e->getMessage());
                     }
                     
-                    // Log the configuration save
-                    $settingCount = count($configArray);
-                    $success = "Configuration for '{$moduleKey}' saved successfully for station '{$stationName}'! ({$settingCount} settings updated)";
-                    log_activity($pdo, $me['id'], 'Module Configuration', "Saved configuration for {$moduleKey} at station {$stationName} (ID: {$stationId}): " . json_encode($configArray));
+                    // Persist into module_station_config table
+                    try {
+                        $pdo->exec("
+                            CREATE TABLE IF NOT EXISTS module_station_config (
+                                id INT AUTO_INCREMENT PRIMARY KEY,
+                                module_key VARCHAR(100) NOT NULL,
+                                station_id VARCHAR(20) NOT NULL DEFAULT 'all',
+                                config_data JSON NOT NULL,
+                                updated_by INT,
+                                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                                UNIQUE KEY uq_module_station (module_key, station_id)
+                            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                        ");
+                        $stmt = $pdo->prepare("
+                            INSERT INTO module_station_config (module_key, station_id, config_data, updated_by, updated_at)
+                            VALUES (?, ?, ?, ?, NOW())
+                            ON DUPLICATE KEY UPDATE
+                                config_data = VALUES(config_data),
+                                updated_by  = VALUES(updated_by),
+                                updated_at  = NOW()
+                        ");
+                        $stmt->execute([
+                            $moduleKey,
+                            $stationId ?: 'all',
+                            json_encode($configArray),
+                            $me['id']
+                        ]);
+                    } catch (Exception $e) {
+                        error_log("module_station_config save error: " . $e->getMessage());
+                    }
                     
-                    // TODO: Store configuration in database
-                    // INSERT INTO module_station_config (module_key, station_id, config_data, updated_by, updated_at)
-                    // VALUES (?, ?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE config_data = ?, updated_by = ?, updated_at = NOW()
+                    $settingCount = count($configArray);
+                    $success = "Configuration for '<strong>{$moduleKey}</strong>' saved successfully for <strong>{$stationName}</strong>! ({$settingCount} settings applied)";
+                    log_activity($pdo, $me['id'], 'Module Configuration', "Saved config for {$moduleKey} @ {$stationName}: " . json_encode($configArray));
                 } else {
-                    $msg = "Failed to save module configuration. Invalid data or station not selected.";
+                    $msg = "Failed to save module configuration. Module key is required.";
                 }
                 break;
                 
@@ -149,7 +177,7 @@ if (empty($stations)) {
 <!-- Station-Dependent Configuration Section -->
 <div class="card" id="tb_station_combo_card" style="margin-bottom: 30px; overflow: visible !important;">
     <div class="card-header" style="background: #f8f9fa; border-bottom: 2px solid #e9ecef;">
-        <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: #1f2937;">
+        <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: var(--petron-blue, #00264D);">
             <i class="fas fa-map-marker-alt" style="color: #3b82f6;"></i> Station-Dependent Configuration
         </h3>
     </div>
@@ -195,7 +223,7 @@ if (empty($stations)) {
 <!-- Global Module Settings Section -->
 <div class="card">
     <div class="card-header" style="background: #f8f9fa; border-bottom: 2px solid #e9ecef; display: flex; justify-content: space-between; align-items: center;">
-        <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: #1f2937;">
+        <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: var(--petron-blue, #00264D);">
             <i class="fas fa-globe" style="color: #10b981;"></i> Global Module Settings
         </h3>
         <button class="btn-add-module" onclick="openAddModuleModal()" title="Add New Module">
@@ -398,6 +426,35 @@ if (empty($stations)) {
         background: #f3f4f6;
     }
     
+    .page-head {
+        margin-top: -12px !important;
+        padding-top: 0 !important;
+    }
+    
+    .page-head h1, .page-head .h1 {
+        font-size: 22px !important;
+        font-weight: 700 !important;
+        color: var(--petron-blue, #00264D) !important;
+        margin: 0 !important;
+        text-transform: uppercase !important;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .page-head .sub {
+        font-size: 13px;
+        color: #666;
+        margin-top: 4px;
+    }
+    
+    .card-header h3 {
+        margin: 0 !important;
+        font-size: 16px !important;
+        font-weight: 600 !important;
+        color: var(--petron-blue, #00264D) !important;
+    }
+    
     /* Admin Management Combo Styles (EXACT COPY) */
     .am-combo-toolbar .am-combo-input { padding-top: 9px; padding-bottom: 9px; font-size: 13px; }
     .am-combo { position: relative; }
@@ -541,12 +598,14 @@ if (empty($stations)) {
     }
     
     .btn-configure {
-        background: #1e3a5f;
-        color: white;
+        background: white !important;
+        color: #00264D !important;
+        border: 1px solid #00264D !important;
     }
     
     .btn-configure:hover {
-        background: #152a47;
+        background: #00264D !important;
+        color: white !important;
     }
     
     /* Add Module Button */
@@ -556,9 +615,9 @@ if (empty($stations)) {
         font-size: 13px;
         font-weight: 600;
         cursor: pointer;
-        border: none;
-        background: #10b981;
-        color: white;
+        background: white !important;
+        color: #16a34a !important;
+        border: 1px solid #16a34a !important;
         transition: all .2s;
         display: inline-flex;
         align-items: center;
@@ -566,9 +625,10 @@ if (empty($stations)) {
     }
     
     .btn-add-module:hover {
-        background: #059669;
+        background: #16a34a !important;
+        color: white !important;
         transform: translateY(-1px);
-        box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
+        box-shadow: 0 4px 8px rgba(22, 163, 74, 0.3);
     }
     
     .btn-add-module i {
@@ -629,7 +689,7 @@ if (empty($stations)) {
         margin: 0;
         font-size: 18px;
         font-weight: 600;
-        color: #1f2937;
+        color: var(--petron-blue, #00264D) !important;
     }
     
     .modal-header h3 i {
@@ -721,21 +781,25 @@ if (empty($stations)) {
     }
     
     .btn-primary {
-        background: #10b981;
-        color: white;
+        background: white !important;
+        color: #00264D !important;
+        border: 1px solid #00264D !important;
     }
     
     .btn-primary:hover {
-        background: #059669;
+        background: #00264D !important;
+        color: white !important;
     }
     
     .btn-secondary {
-        background: #6c757d;
-        color: white;
+        background: white !important;
+        color: #6b7280 !important;
+        border: 1px solid #6b7280 !important;
     }
     
     .btn-secondary:hover {
-        background: #5a6268;
+        background: #6b7280 !important;
+        color: white !important;
     }
     
     /* Configuration Section Styles */
@@ -1354,19 +1418,22 @@ let defaultConfigValues = {};
 function showModuleSettings(moduleKey) {
     console.log('Opening configuration modal for:', moduleKey);
     
-    // Get currently selected station
+    // Get currently selected station (optional – can be set inside modal too)
     const stationInput = document.getElementById('tb_station_val');
     const stationDisplay = document.getElementById('tb_station_display');
     currentConfigStation = stationInput ? stationInput.value : '';
-    const stationName = stationDisplay ? stationDisplay.value : 'All Stations';
-    
-    // Check if station is selected
-    if (!currentConfigStation) {
-        alert('Please select a station first before configuring modules.');
-        return;
-    }
+    const stationName = (stationDisplay && stationDisplay.value && stationDisplay.value !== 'All Stations')
+        ? stationDisplay.value : 'All Stations';
     
     currentConfigModule = moduleKey;
+    
+    // Build station options HTML for in-modal selector
+    const STATIONS = <?php echo json_encode(array_map(fn($s) => ['id' => (int)$s['id'], 'name' => $s['name']], $stations), JSON_HEX_TAG | JSON_UNESCAPED_UNICODE); ?>;
+    let stationOptions = '<option value="">-- All Stations (Global) --</option>';
+    STATIONS.forEach(s => {
+        const sel = (String(s.name) === currentConfigStation) ? ' selected' : '';
+        stationOptions += `<option value="${s.id}" data-name="${s.name}"${sel}>${s.name}</option>`;
+    });
     
     console.log('Configuring module:', moduleKey, 'for station:', stationName);
     
@@ -1492,12 +1559,24 @@ function showModuleSettings(moduleKey) {
         <p>Configuration options for this module are being developed.</p>
     `;
     
-    // Load content into modal
-    document.getElementById('moduleConfigContent').innerHTML = configContent;
+    // Build station selector row for modal header
+    const stationRow = `
+        <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px 16px;margin-bottom:18px;display:flex;align-items:center;gap:12px;">
+            <i class="fas fa-map-marker-alt" style="color:#0284c7;font-size:16px;"></i>
+            <div style="flex:1;">
+                <label style="display:block;font-weight:600;font-size:12px;color:#0369a1;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Apply Configuration To:</label>
+                <select id="modalStationSelect" style="width:100%;padding:8px 12px;border:1px solid #bae6fd;border-radius:6px;font-size:13px;color:#1e3a5f;background:white;">
+                    ${stationOptions}
+                </select>
+            </div>
+        </div>
+    `;
     
-    // Add station info to modal title
-    const stationInfo = currentConfigStation ? ` - ${stationName}` : '';
-    document.getElementById('configModuleTitle').textContent = moduleKey.replace(/_/g, ' ').toUpperCase() + ' Configuration' + stationInfo;
+    // Load content into modal
+    document.getElementById('moduleConfigContent').innerHTML = stationRow + configContent;
+    
+    // Update modal title
+    document.getElementById('configModuleTitle').textContent = moduleKey.replace(/_/g, ' ').toUpperCase() + ' Configuration';
     
     // Store default values
     storeDefaultValues();
@@ -1568,32 +1647,32 @@ function saveModuleConfig(event) {
         return;
     }
     
-    if (!currentConfigStation) {
-        alert('No station selected. Configuration must be assigned to a station.');
-        return;
-    }
+    // Read station from in-modal selector (may be empty = All Stations)
+    const modalStationSelect = document.getElementById('modalStationSelect');
+    const selectedStationId   = modalStationSelect ? modalStationSelect.value : '';
+    const selectedOption      = modalStationSelect ? modalStationSelect.options[modalStationSelect.selectedIndex] : null;
+    const selectedStationName = selectedOption && selectedOption.value
+        ? (selectedOption.dataset.name || selectedOption.text)
+        : 'All Stations (Global)';
     
-    // Collect all configuration values
-    const configData = {
-        module_key: currentConfigModule,
-        station_id: currentConfigStation,
-        settings: {}
-    };
+    currentConfigStation = selectedStationId;
     
+    // Collect all configuration values from the modal (skip the station selector itself)
+    const configSettings = {};
     const modal = document.getElementById('moduleConfigModal');
     
-    // Collect all input values
     modal.querySelectorAll('input[name], select[name], textarea[name]').forEach(input => {
+        if (input.id === 'modalStationSelect' || input.name === 'modalStationSelect') return; // skip station picker
         if (input.name) {
             if (input.type === 'checkbox') {
-                configData.settings[input.name] = input.checked;
+                configSettings[input.name] = input.checked;
             } else {
-                configData.settings[input.name] = input.value;
+                configSettings[input.name] = input.value;
             }
         }
     });
     
-    console.log('Saving configuration for station:', currentConfigStation, 'module:', currentConfigModule, configData);
+    console.log('Saving config for module:', currentConfigModule, '| station:', selectedStationName, '| settings:', configSettings);
     
     // Create form and submit
     const form = document.createElement('form');
@@ -1601,8 +1680,8 @@ function saveModuleConfig(event) {
     form.innerHTML = `
         <input type="hidden" name="action" value="save_module_config">
         <input type="hidden" name="module_key" value="${currentConfigModule}">
-        <input type="hidden" name="station_id" value="${currentConfigStation}">
-        <input type="hidden" name="config_data" value='${JSON.stringify(configData.settings)}'>
+        <input type="hidden" name="station_id" value="${selectedStationId || 'all'}">
+        <input type="hidden" name="config_data" value='${JSON.stringify(configSettings)}'>
     `;
     document.body.appendChild(form);
     form.submit();

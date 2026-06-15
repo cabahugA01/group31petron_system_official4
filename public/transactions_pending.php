@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'pending_validation';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -204,8 +204,31 @@ include __DIR__ . '/../partials/header.php';
         <h1 class="h1"><i class="fas fa-clock"></i> Pending Validation</h1>
         <div class="sub">Transactions awaiting manager approval and validation</div>
     </div>
-    <div class="actions">
-        <a href="transactions.php" class="btn-primary"><i class="fas fa-arrow-left"></i> Back to Transactions</a>
+    <div class="actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <button type="button" onclick="exportPending('excel')" title="Export to Excel"
+                style="background:white;color:#1d6f42;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #1d6f42;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
+                onmouseover="this.style.background='#1d6f42';this.style.color='#fff'"
+                onmouseout="this.style.background='white';this.style.color='#1d6f42'">
+            <i class="fas fa-file-excel"></i> Excel
+        </button>
+        <button type="button" onclick="exportPending('csv')" title="Export to CSV"
+                style="background:white;color:#003d7a;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #003d7a;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
+                onmouseover="this.style.background='#003d7a';this.style.color='#fff'"
+                onmouseout="this.style.background='white';this.style.color='#003d7a'">
+            <i class="fas fa-file-csv"></i> CSV
+        </button>
+        <button type="button" onclick="exportPending('pdf')" title="Export to PDF"
+                style="background:white;color:#dc2626;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #dc2626;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
+                onmouseover="this.style.background='#dc2626';this.style.color='#fff'"
+                onmouseout="this.style.background='white';this.style.color='#dc2626'">
+            <i class="fas fa-file-pdf"></i> PDF
+        </button>
+        <a href="transactions.php"
+           style="background:white;color:#4b5563;text-decoration:none;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #6b7280;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
+           onmouseover="this.style.background='#6b7280';this.style.color='#fff'"
+           onmouseout="this.style.background='white';this.style.color='#4b5563'">
+            <i class="fas fa-arrow-left"></i> Back to Transactions
+        </a>
     </div>
 </div>
 
@@ -443,6 +466,137 @@ function validateAdjust() {
     }
     return confirm('Are you sure you want to adjust this transaction?');
 }
+
+function exportPending(format) {
+    const table = document.querySelector('.po-table');
+    if (!table) { alert('No pending transaction data found.'); return; }
+
+    const filename = `Pending_Validation_Transactions`;
+
+    if (format === 'excel') {
+        if (typeof XLSX === 'undefined') {
+            alert('Export library not loaded. Please try again.');
+            return;
+        }
+        const aoa = [];
+        // Headers
+        table.querySelectorAll('thead tr').forEach(tr => {
+            const cells = [...tr.querySelectorAll('th')];
+            cells.pop(); // Remove "Actions"
+            aoa.push(cells.map(th => th.innerText.trim()));
+        });
+        // Body
+        table.querySelectorAll('tbody tr').forEach(tr => {
+            const cells = [...tr.querySelectorAll('td')];
+            if (cells.length > 1) { // Skip "No records" row if it spans
+                cells.pop(); // Remove "Actions"
+                aoa.push(cells.map(td => td.innerText.trim()));
+            } else {
+                aoa.push(cells.map(td => td.innerText.trim()));
+            }
+        });
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        if (aoa.length && aoa[0]) {
+            ws['!cols'] = aoa[0].map((_, ci) => ({
+                wch: Math.min(45, Math.max(10, ...aoa.map(row => String(row[ci] ?? '').length)))
+            }));
+        }
+        XLSX.utils.book_append_sheet(wb, ws, 'Pending Validation');
+        XLSX.writeFile(wb, filename + '.xlsx');
+    } else if (format === 'csv') {
+        let csv = '';
+        // Headers
+        table.querySelectorAll('thead tr').forEach(tr => {
+            const cells = [...tr.querySelectorAll('th')];
+            cells.pop();
+            csv += cells.map(th => '"' + th.innerText.trim().replace(/"/g, '""') + '"').join(',') + '\n';
+        });
+        // Body
+        table.querySelectorAll('tbody tr').forEach(tr => {
+            const cells = [...tr.querySelectorAll('td')];
+            if (cells.length > 1) {
+                cells.pop();
+                csv += cells.map(td => '"' + td.innerText.trim().replace(/"/g, '""') + '"').join(',') + '\n';
+            } else {
+                csv += cells.map(td => '"' + td.innerText.trim().replace(/"/g, '""') + '"').join(',') + '\n';
+            }
+        });
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = filename + '.csv';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+    } else if (format === 'pdf') {
+        const logo_url  = '../assets/img/Petron%20Logo.png';
+        const generated = new Date().toLocaleString();
+        
+        // Let's clone the table and remove the last column from the print HTML
+        const tableClone = table.cloneNode(true);
+        tableClone.querySelectorAll('tr').forEach(tr => {
+            const lastCell = tr.lastElementChild;
+            if (lastCell) lastCell.remove();
+        });
+        
+        let tableHtml = tableClone.outerHTML;
+        
+        let iframe = document.getElementById('print-iframe');
+        if (!iframe) {
+            iframe = document.createElement('iframe');
+            iframe.id = 'print-iframe';
+            iframe.style.position = 'fixed';
+            iframe.style.right = '0';
+            iframe.style.bottom = '0';
+            iframe.style.width = '0';
+            iframe.style.height = '0';
+            iframe.style.border = '0';
+            document.body.appendChild(iframe);
+        }
+
+        const doc = iframe.contentDocument || iframe.contentWindow.document;
+        doc.open();
+        doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Pending Validation Report</title>
+        <style>
+            @page{size:legal landscape;margin:.3in .4in;}
+            *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;box-sizing:border-box;}
+            body{font-family:Arial,sans-serif;font-size:11px;color:#000;background:white;margin:0;padding:20px;}
+            .header-container{display:flex;align-items:center;gap:15px;border-bottom:2px solid #002F70;padding-bottom:12px;margin-bottom:15px;}
+            .header-container img{height:45px;}
+            .header-title h1{font-size:16px;margin:0;color:#002F70;text-transform:uppercase;}
+            .header-title p{font-size:10px;margin:3px 0 0;color:#666;}
+            .meta-info{margin-left:auto;text-align:right;font-size:10px;color:#444;}
+            table{width:100%;border-collapse:collapse;font-size:9.5px;}
+            thead tr{background:#f2f2f2 !important;border-top:2px solid #002F70;border-bottom:1px solid #999;}
+            thead th{padding:6px 5px;text-align:left;font-weight:700;font-size:9px;text-transform:uppercase;color:#000;}
+            tbody tr{border-bottom:1px solid #ddd;}
+            tbody td{padding:5px;color:#333;}
+            .status-badge {border:none;background:none;padding:0;font-weight:normal;}
+            tfoot tr{border-top:2px solid #002F70;background:#f2f2f2 !important;}
+            tfoot td{padding:6px 5px;font-weight:700;}
+        </style></head><body>
+            <div class="header-container">
+                <img src="${logo_url}" alt="Petron">
+                <div class="header-title">
+                    <h1>Petron Station Management System</h1>
+                    <p>Pending Validation Report</p>
+                </div>
+                <div class="meta-info">
+                    Generated: ${generated}
+                </div>
+            </div>
+            ${tableHtml}
+        </body></html>`);
+        doc.close();
+
+        setTimeout(() => {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+        }, 250);
+    }
+}
 </script>
 
 <style>
@@ -460,12 +614,16 @@ function validateAdjust() {
 .badge-validated { color:#28a745; }
 .badge-adjusted  { color:#6c757d; }
 .badge-other     { color:#6c757d; }
-.btn-action { display:inline-flex; align-items:center; gap:5px; padding:6px 14px; border:none; border-radius:6px; cursor:pointer; font-size:0.82rem; font-weight:600; text-decoration:none; transition:opacity 0.2s; white-space:nowrap; margin-bottom:3px; }
-.btn-action:hover { opacity:0.85; }
-.btn-approve { background:#28a745; color:#fff; }
-.btn-reject  { background:#dc3545; color:#fff; }
-.btn-adjust  { background:#002F70; color:#fff; }
-.btn-view    { background:#6c757d; color:#fff; }
+.btn-action { display:inline-flex; align-items:center; gap:5px; padding:6px 14px; border:1px solid transparent; border-radius:6px; cursor:pointer; font-size:0.82rem; font-weight:600; text-decoration:none; transition:all 0.15s; white-space:nowrap; margin-bottom:3px; background:white !important; }
+.btn-action:hover { opacity:1; }
+.btn-approve { color:#16a34a !important; border-color:#16a34a !important; }
+.btn-approve:hover { background:#16a34a !important; color:#fff !important; }
+.btn-reject  { color:#dc2626 !important; border-color:#dc2626 !important; }
+.btn-reject:hover  { background:#dc2626 !important; color:#fff !important; }
+.btn-adjust  { color:#002F70 !important; border-color:#002F70 !important; }
+.btn-adjust:hover  { background:#002F70 !important; color:#fff !important; }
+.btn-view    { color:#4b5563 !important; border-color:#6b7280 !important; }
+.btn-view:hover    { background:#6b7280 !important; color:#fff !important; }
 .page-head { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; flex-wrap:wrap; gap:6px; }
 .page-head h1 { margin:0 0 2px; font-size:1.4rem; font-weight:700; color:#002F70; }
 .page-head .sub { font-size:0.8rem; color:#6c757d; }
@@ -497,12 +655,13 @@ function validateAdjust() {
 .form-label { display:block; font-weight:600; color:#333; margin-bottom:6px; font-size:0.88rem; }
 .form-control { width:100%; padding:9px 12px; border:1px solid #ced4da; border-radius:6px; font-size:0.9rem; box-sizing:border-box; }
 .form-control:focus { outline:none; border-color:#002F70; box-shadow:0 0 0 3px rgba(0,47,112,0.1); }
-.btn-danger    { padding:9px 20px; background:#dc3545; color:#fff; border:none; border-radius:6px; font-size:0.9rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
-.btn-danger:hover { background:#b02a37; }
-.btn-warning   { padding:9px 20px; background:#002F70; color:#fff; border:none; border-radius:6px; font-size:0.9rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
-.btn-warning:hover { background:#001f50; }
-.btn-secondary { padding:9px 20px; background:#e9ecef; color:#333; border:none; border-radius:6px; font-size:0.9rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
-.btn-secondary:hover { background:#d3d7db; }
+.btn-danger    { padding:9px 20px; background:white; color:#dc3545; border:1px solid #dc3545; border-radius:6px; font-size:0.9rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:all .15s; }
+.btn-danger:hover { background:#dc3545; color:#fff; }
+.btn-warning   { padding:9px 20px; background:white; color:#002F70; border:1px solid #002F70; border-radius:6px; font-size:0.9rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:all .15s; }
+.btn-warning:hover { background:#002F70; color:#fff; }
+.btn-secondary { padding:9px 20px; background:white; color:#4b5563; border:1px solid #6b7280; border-radius:6px; font-size:0.9rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:all .15s; }
+.btn-secondary:hover { background:#6b7280; color:#fff; }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

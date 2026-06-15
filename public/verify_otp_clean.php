@@ -3,6 +3,7 @@ session_start();
 ob_start();
 
 require_once __DIR__ . '/../public/db_connect.php';
+require_once __DIR__ . '/../backend/lib.php';
 
 $error = '';
 

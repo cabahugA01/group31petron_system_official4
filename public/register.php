@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once 'db_connect.php';
+require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../backend/station_management.php';
 
 // 1. Redirect if already logged in (RBAC Logic)

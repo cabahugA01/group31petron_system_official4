@@ -73,13 +73,18 @@ try {
 $flash = $_SESSION['admin_mgmt_flash'] ?? null;
 unset($_SESSION['admin_mgmt_flash']);
 
+// Prevent caching
+header("Cache-Control: no-cache, no-store, must-revalidate");
+header("Pragma: no-cache");
+header("Expires: 0");
+
 include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-/* ── Admin Management Page Styles ── */
+/* ── Admin Management Page Styles - Updated v2.1 - June 15, 2026 ── */
 .am-page { padding: 0 24px 28px; }
-.am-page-head { margin-bottom: 24px; padding-top: 16px; display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.am-page-head { margin-bottom: 24px; padding-top: 0; display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: -12px !important; }
 .am-page-head h1 { font-size: 22px !important; font-weight: 700 !important; color: var(--petron-blue) !important; margin: 0 !important; text-transform: uppercase !important; }
 .am-page-head .sub { font-size: 13px; color: #666; margin-top: 4px; text-transform: none !important; }
 
@@ -117,17 +122,17 @@ include __DIR__ . '/../partials/header.php';
 .badge-inactive { background: rgba(204,0,0,.1);    color: #cc0000; border: 1px solid rgba(204,0,0,.2);    padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
 
 /* Action buttons */
-.am-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid transparent; transition: all .2s; text-decoration: none; }
-.am-btn-primary { background: var(--petron-blue); color: #fff; border-color: var(--petron-blue); }
-.am-btn-primary:hover { background: #001a3d; }
-.am-btn-secondary { background: #fff; color: var(--petron-blue); border-color: var(--petron-blue); }
-.am-btn-secondary:hover { background: rgba(0,38,77,.06); }
-.am-btn-edit    { background: #fff; color: var(--petron-blue); border-color: var(--petron-blue); }
-.am-btn-edit:hover { background: rgba(0,38,77,.06); }
-.am-btn-deact   { background: #fff; color: #cc0000; border-color: #cc0000; }
-.am-btn-deact:hover { background: rgba(204,0,0,.06); }
-.am-btn-activate { background: #fff; color: #28a745; border-color: #28a745; }
-.am-btn-activate:hover { background: rgba(40,167,69,.06); }
+.am-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid transparent; transition: all .2s; text-decoration: none; }
+.am-btn-primary { background: white !important; color: #00264D !important; border: 1px solid #00264D !important; }
+.am-btn-primary:hover { background: #00264D !important; color: white !important; }
+.am-btn-secondary { background: white !important; color: #00264D !important; border: 1px solid #00264D !important; }
+.am-btn-secondary:hover { background: #00264D !important; color: white !important; }
+.am-btn-edit { background: white !important; color: #00264D !important; border: 1px solid #00264D !important; }
+.am-btn-edit:hover { background: #00264D !important; color: white !important; }
+.am-btn-deact { background: white !important; color: #dc2626 !important; border: 1px solid #dc2626 !important; }
+.am-btn-deact:hover { background: #dc2626 !important; color: white !important; }
+.am-btn-activate { background: white !important; color: #16a34a !important; border: 1px solid #16a34a !important; }
+.am-btn-activate:hover { background: #16a34a !important; color: white !important; }
 
 /* Modal */
 .am-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 9000; align-items: center; justify-content: center; }
@@ -200,10 +205,10 @@ include __DIR__ . '/../partials/header.php';
 /* Export bar */
 .am-export-bar { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid #eaeaea; border-radius: 12px; padding: 10px 18px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.04); flex-wrap: wrap; }
 .am-export-label { font-size: 12px; font-weight: 700; color: #555; text-transform: uppercase; letter-spacing: .4px; margin-right: 4px; }
-.am-btn-export-excel { background: #fff; color: #1a7a35; border-color: #28a745; }
-.am-btn-export-excel:hover { background: rgba(40,167,69,.08); }
-.am-btn-export-pdf { background: #fff; color: #cc0000; border-color: #cc0000; }
-.am-btn-export-pdf:hover { background: rgba(204,0,0,.07); }
+.am-btn-export-excel { background: white !important; color: #16a34a !important; border: 1px solid #16a34a !important; }
+.am-btn-export-excel:hover { background: #16a34a !important; color: white !important; }
+.am-btn-export-pdf { background: white !important; color: #dc2626 !important; border: 1px solid #dc2626 !important; }
+.am-btn-export-pdf:hover { background: #dc2626 !important; color: white !important; }
 
 /* Footer and toggle scroll button styles are provided by partials/footer.php */
 </style>

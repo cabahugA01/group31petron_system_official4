@@ -1327,7 +1327,7 @@ include __DIR__ . '/../partials/header.php';
                 <div class="widget-card" style="margin:20px 0;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
                         <h3 style="color:#003366;margin:0;">Job Orders — Shift 1</h3>
-                        <a href="job_order_operations.php" style="font-size:13px;color:#003366;text-decoration:none;font-weight:600;">View All &rarr;</a>
+                        <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="font-size:13px;color:#003366;text-decoration:none;font-weight:600;">View All &rarr;</a>
                     </div>
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;">
                         <?php
@@ -1471,7 +1471,7 @@ include __DIR__ . '/../partials/header.php';
                     <div class="quick-actions">
                         <a href="staff_transactions_hub.php?section=merchandise" class="quick-action-btn"><div>POS / Merchandise</div></a>
                         <a href="staff_transactions_hub.php?section=merchandise" class="quick-action-btn"><div>Credit Sale</div></a>
-                        <a href="staff_transactions_hub.php?section=merchandise&active_tab=encode_jo" class="quick-action-btn"><div>Job Orders</div></a>
+                        <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker" class="quick-action-btn"><div>Job Orders</div></a>
                         <a href="staff_transactions_hub.php?section=fuel" class="quick-action-btn"><div>Fuel Transactions</div></a>
                         <a href="staff_record_delivery.php" class="quick-action-btn"><div>Receive Items</div></a>
                         <a href="my_shift.php" class="quick-action-btn"><div>My Shift</div></a>
@@ -1671,7 +1671,7 @@ include __DIR__ . '/../partials/header.php';
                 <div class="widget-card" style="margin:20px 0;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
                         <h3 style="color:#003366;margin:0;">Job Orders — Shift 2</h3>
-                        <a href="job_order_operations.php" style="font-size:13px;color:#003366;text-decoration:none;font-weight:600;">View All &rarr;</a>
+                        <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="font-size:13px;color:#003366;text-decoration:none;font-weight:600;">View All &rarr;</a>
                     </div>
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;">
                         <?php

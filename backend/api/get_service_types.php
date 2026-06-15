@@ -211,8 +211,9 @@ if ($method === 'POST') {
     }
 
     // ── Submit new service type (staff) ──────────────────────────────────────
-    $service_name = trim($data['service_name'] ?? '');
-    $notes        = trim($data['notes']        ?? '');
+    $service_name  = trim($data['service_name'] ?? '');
+    $service_price = floatval($data['service_price'] ?? $data['price'] ?? 0.00);
+    $notes         = trim($data['notes'] ?? $data['pricing_notes'] ?? '');
 
     if (!$service_name) {
         http_response_code(400);
@@ -252,9 +253,9 @@ if ($method === 'POST') {
 
     $pdo->prepare("
         INSERT INTO job_order_service_types
-            (service_key, service_name, pricing_notes, sort_order, status, submitted_by, active)
-        VALUES (?, ?, ?, ?, 'pending', ?, 1)
-    ")->execute([$service_key, $service_name, $notes ?: null, $maxSort + 1, $me['id']]);
+            (service_key, service_name, service_price, pricing_notes, sort_order, status, submitted_by, active)
+        VALUES (?, ?, ?, ?, ?, 'pending', ?, 1)
+    ")->execute([$service_key, $service_name, $service_price, $notes ?: null, $maxSort + 1, $me['id']]);
 
     $newId = (int)$pdo->lastInsertId();
     echo json_encode([
@@ -262,6 +263,7 @@ if ($method === 'POST') {
         'id'      => $newId,
         'key'     => $service_key,
         'name'    => $service_name,
+        'price'   => $service_price,
         'message' => 'Service type submitted for manager approval.',
     ]);
     exit;

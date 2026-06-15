@@ -217,14 +217,14 @@ include __DIR__ . '/../partials/header.php';?>
 #tb_station_combo_card, #tb_station_combo_card .card-body { overflow:visible !important; }
 
 .db-page { padding: 0 4px 40px; }
-.db-page-head { margin-bottom: 20px; padding-top: 16px; }
+.db-page-head { margin-bottom: 20px; padding-top: 0 !important; margin-top: -12px !important; }
 .db-page-head h1 { font-size: 22px; font-weight: 700; color: var(--petron-blue); margin: 0; text-transform: uppercase; }
 .db-page-head .sub { font-size: 13px; color: #666; margin-top: 4px; }
 
 /* Station card */
 .db-station-card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; margin-bottom:22px; overflow:visible!important; }
 .db-station-card .card-header { background:#f8f9fa; border-bottom:2px solid #e9ecef; padding:14px 20px; border-radius:12px 12px 0 0; }
-.db-station-card .card-header h3 { margin:0; font-size:14px; font-weight:700; color:#1f2937; text-transform:uppercase; letter-spacing:.5px; }
+.db-station-card .card-header h3 { margin:0; font-size:14px; font-weight:700; color:var(--petron-blue); text-transform:uppercase; letter-spacing:.5px; }
 .db-station-card .card-body { padding:16px 20px; overflow:visible!important; }
 .db-station-card .card-body .label { font-weight:600; color:#374151; font-size:12px; text-transform:uppercase; letter-spacing:.5px; min-width:120px; }
 
@@ -234,10 +234,10 @@ include __DIR__ . '/../partials/header.php';?>
 .db-flash.error   { background:rgba(204,0,0,.08);  border:1px solid rgba(204,0,0,.25);  color:#cc0000; }
 
 /* Tabs */
-.db-tabs { display:flex; gap:0; background:#fff; border:1px solid #e5e7eb; border-radius:12px 12px 0 0; overflow:hidden; margin-bottom:0; }
-.db-tab-btn { flex:1; padding:14px 10px; font-size:13px; font-weight:600; border:none; background:#fff; color:#6b7280; cursor:pointer; border-bottom:3px solid transparent; transition:all .2s; display:flex; align-items:center; justify-content:center; gap:6px; }
-.db-tab-btn:hover { background:#f9fafb; color:var(--petron-blue); }
-.db-tab-btn.active { color:var(--petron-blue); border-bottom-color:var(--petron-blue); background:#f0f5ff; }
+.db-tabs { display:flex !important; gap:0 !important; background:#f0f2f5 !important; border:1px solid #d1d5db !important; border-radius:10px 10px 0 0 !important; overflow:hidden !important; margin-bottom:0 !important; }
+.db-tab-btn { flex:1 !important; padding:13px 10px !important; font-size:13px !important; font-weight:600 !important; border:none !important; background:#f0f2f5 !important; color:#374151 !important; cursor:pointer !important; border-bottom:3px solid transparent !important; transition:all .2s !important; display:flex !important; align-items:center !important; justify-content:center !important; gap:6px !important; box-shadow:none !important; }
+.db-tab-btn:hover { background:#e5e7eb !important; color:#111827 !important; }
+.db-tab-btn.active { color:#00264D !important; border-bottom:3px solid #00264D !important; background:#ffffff !important; font-weight:700 !important; }
 
 /* Tab content */
 .db-tab-panel { display:none; background:#fff; border:1px solid #e5e7eb; border-top:none; border-radius:0 0 12px 12px; }
@@ -246,7 +246,7 @@ include __DIR__ . '/../partials/header.php';?>
 /* Form table */
 .db-form-table { width:100%; border-collapse:collapse; }
 .db-form-table thead tr { background:var(--petron-blue); color:#fff; }
-.db-form-table thead th { padding:12px 16px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; text-align:left; }
+.db-form-table thead th { padding:12px 16px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; text-align:left; color:#fff; }
 .db-form-table tbody tr { border-bottom:1px solid #f0f0f0; }
 .db-form-table tbody tr:last-child { border-bottom:none; }
 .db-form-table tbody td { padding:16px; vertical-align:top; }
@@ -269,15 +269,15 @@ include __DIR__ . '/../partials/header.php';?>
 
 /* Action bar */
 .db-action-bar { padding:16px 20px; background:#f9fafb; border-top:1px solid #e5e7eb; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-.db-btn { display:inline-flex; align-items:center; gap:7px; padding:9px 18px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; border:1px solid transparent; transition:all .2s; }
-.db-btn-primary { background:var(--petron-blue); color:#fff; border-color:var(--petron-blue); }
-.db-btn-primary:hover { background:#001a3d; }
-.db-btn-danger  { background:#fff; color:#cc0000; border-color:#cc0000; }
-.db-btn-danger:hover  { background:rgba(204,0,0,.06); }
-.db-btn-success { background:#fff; color:#1a7a35; border-color:#28a745; }
-.db-btn-success:hover { background:rgba(40,167,69,.06); }
-.db-btn-secondary { background:#fff; color:#374151; border-color:#d1d5db; }
-.db-btn-secondary:hover { background:#f9fafb; }
+.db-btn { display:inline-flex; align-items:center; gap:6px; padding:7px 16px; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer; border:1px solid transparent; transition:all .2s; text-decoration:none; }
+.db-btn-primary { background:white !important; color:#00264D !important; border:1px solid #00264D !important; }
+.db-btn-primary:hover { background:#00264D !important; color:white !important; }
+.db-btn-danger  { background:white !important; color:#dc2626 !important; border:1px solid #dc2626 !important; }
+.db-btn-danger:hover  { background:#dc2626 !important; color:white !important; }
+.db-btn-success { background:white !important; color:#16a34a !important; border:1px solid #16a34a !important; }
+.db-btn-success:hover { background:#16a34a !important; color:white !important; }
+.db-btn-secondary { background:white !important; color:#374151 !important; border:1px solid #d1d5db !important; }
+.db-btn-secondary:hover { background:#f1f5f9 !important; color:#111827 !important; }
 
 /* History table */
 .db-history-table { width:100%; border-collapse:collapse; font-size:13px; }
@@ -290,8 +290,9 @@ include __DIR__ . '/../partials/header.php';?>
 .badge-info { background:#dbeafe; color:#1e40af; padding:3px 8px; border-radius:20px; font-size:11px; font-weight:600; }
 
 /* Section header inside panel */
-.db-panel-header { padding:14px 20px; background:var(--petron-blue); color:#fff; display:flex; align-items:center; gap:8px; font-size:14px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; }
-.db-section-title { padding:14px 20px; background:#f9fafb; border-bottom:1px solid #e5e7eb; font-size:13px; font-weight:700; color:#374151; text-transform:uppercase; letter-spacing:.4px; margin:0; }
+.db-panel-header { padding:14px 20px; background:#f1f5f9; color:var(--petron-blue); border-bottom:2px solid #e2e8f0; display:flex; align-items:center; gap:8px; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; }
+.db-panel-header i { color:#00264D; }
+.db-section-title { padding:14px 20px; background:#f9fafb; border-bottom:1px solid #e5e7eb; font-size:12px; font-weight:700; color:#374151; text-transform:uppercase; letter-spacing:.4px; margin:0; }
 </style>
 
 <div class="db-page">

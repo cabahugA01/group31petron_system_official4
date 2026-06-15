@@ -274,6 +274,7 @@ if ($type_f === '' || $type_f === 'merchandise' || $type_f === 'job_order' || $t
         // Detect if job_order_service column exists for combined detection
         $mt_jo_svc_col = ato_has($mt_cols, 'job_order_service') ? "COALESCE(mt.job_order_service,'')" : "''";
         $mt_jo_veh_col = ato_has($mt_cols, 'job_order_vehicle_plate') ? "COALESCE(mt.job_order_vehicle_plate,'')" : "''";
+        $mt_jo_veh_type_col = ato_has($mt_cols, 'job_order_vehicle_type') ? "COALESCE(mt.job_order_vehicle_type,'')" : "''";
 
         $stmt = $pdo->prepare("
             SELECT
@@ -297,11 +298,30 @@ if ($type_f === '' || $type_f === 'merchandise' || $type_f === 'job_order' || $t
                     ELSE 'Merchandise'
                 END                                                     AS entry_type,
                 COALESCE(
-                    NULLIF((SELECT GROUP_CONCAT(i.product_name ORDER BY i.id SEPARATOR ', ')
-                            FROM merchandise_transaction_items i WHERE i.transaction_id = mt.id),''),
+                    NULLIF((SELECT GROUP_CONCAT(
+                                CONCAT(i.product_name, ' - ', i.quantity, ' pcs @ ₱', FORMAT(i.unit_price, 2))
+                                ORDER BY i.id SEPARATOR ' | ')
+                            FROM merchandise_transaction_items i 
+                            WHERE i.transaction_id = mt.id 
+                            AND COALESCE(i.item_type, 'merchandise') = 'merchandise'),''),
+                    mt.item_sku, 
+                    CASE WHEN TRIM(COALESCE({$mt_jo_svc_col},'')) <> '' THEN '—' ELSE 'N/A' END
+                )                                                       AS items_parts,
+                COALESCE(
+                    NULLIF((SELECT GROUP_CONCAT(
+                                CONCAT(i.product_name, ' - ', i.quantity, ' pcs @ ₱', FORMAT(i.unit_price, 2))
+                                ORDER BY i.id SEPARATOR ' | ')
+                            FROM merchandise_transaction_items i 
+                            WHERE i.transaction_id = mt.id 
+                            AND i.item_type = 'service'),''),
                     NULLIF({$mt_jo_svc_col},''),
-                    mt.item_sku, 'N/A'
-                )                                                       AS items_service,
+                    CASE WHEN mt.item_sku IS NOT NULL AND mt.item_sku <> '' THEN '—' ELSE 'N/A' END
+                )                                                       AS service_type,
+                NULLIF(TRIM(CONCAT(
+                    COALESCE({$mt_jo_veh_col},''),
+                    CASE WHEN TRIM(COALESCE({$mt_jo_veh_type_col},'')) <> ''
+                         THEN CONCAT(' · ', {$mt_jo_veh_type_col}) ELSE '' END
+                )),'')                                                  AS vehicle_info,
                 mt.total_amount                                         AS amount,
                 {$mt_paid_col}                                          AS amount_paid,
                 COALESCE(mt.payment_method,'Cash')                      AS payment_method,
@@ -361,13 +381,19 @@ if ($type_f === '' || $type_f === 'job_order') {
                 CONCAT('JO-', jo.id)                                        AS txn_id,
                 COALESCE(NULLIF(TRIM(jo.customer_name),''),'Walk-in')       AS customer,
                 'Job Order'                                                  AS entry_type,
+                '—'                                                          AS items_parts,
                 CONCAT(
                     COALESCE(jo.service_type,'Service'),
                     CASE WHEN jo.vehicle_plate IS NOT NULL AND jo.vehicle_plate != ''
                          THEN CONCAT(' | ', jo.vehicle_plate) ELSE '' END,
                     CASE WHEN {$jo_mechanic_col} != ''
                          THEN CONCAT(' | Mech: ', {$jo_mechanic_col}) ELSE '' END
-                )                                                            AS items_service,
+                )                                                            AS service_type,
+                NULLIF(TRIM(CONCAT(
+                    COALESCE(jo.vehicle_plate,''),
+                    CASE WHEN jo.vehicle_type IS NOT NULL AND jo.vehicle_type != ''
+                         THEN CONCAT(' · ', jo.vehicle_type) ELSE '' END
+                )),'')                                                       AS vehicle_info,
                 {$jo_cost_col}                                               AS amount,
                 {$jo_paid_col}                                               AS amount_paid,
                 {$jo_pay_col}                                                AS payment_method,
@@ -406,13 +432,15 @@ foreach ($rows as $r) {
 // ── Export output ────────────────────────────────────────────────────────────
 if ($export_type === 'csv') {
     $out = fopen('php://output', 'w');
-    fputcsv($out, ['Transaction ID', 'Customer', 'Type', 'Items/Service', 'Amount', 'Payment Method', 'Payment Status', 'Validation Status', 'Date/Time', 'Staff']);
+    fputcsv($out, ['Transaction ID', 'Customer', 'Type', 'Vehicle', 'Items/Parts', 'Service Type', 'Amount', 'Payment Method', 'Payment Status', 'Validation Status', 'Date/Time', 'Staff']);
     foreach ($rows as $r) {
         fputcsv($out, [
             $r['txn_id'],
             $r['customer'],
             $r['entry_type'],
-            $r['items_service'],
+            $r['vehicle_info'] ?? '—',
+            $r['items_parts'] ?? 'N/A',
+            $r['service_type'] ?? 'N/A',
             number_format((float)$r['amount'], 2),
             $r['payment_method'],
             ato_pay_status($r),
@@ -432,7 +460,7 @@ if ($export_type === 'excel') {
     echo '<h2>Transactions Oversight Report</h2>';
     echo '<p>Generated: ' . date('F d, Y h:i A') . ' | Records: ' . count($rows) . '</p>';
     echo '<table><thead><tr>';
-    foreach (['Transaction ID','Customer','Type','Items / Service','Amount','Payment Method','Payment Status','Validation Status','Date/Time','Staff'] as $h)
+    foreach (['Transaction ID','Customer','Type','Vehicle','Items / Parts','Service Type','Amount','Payment Method','Payment Status','Validation Status','Date/Time','Staff'] as $h)
         echo '<th>' . htmlspecialchars($h) . '</th>';
     echo '</tr></thead><tbody>';
     foreach ($rows as $r) {
@@ -441,7 +469,9 @@ if ($export_type === 'excel') {
         echo '<td>' . htmlspecialchars($r['txn_id'])            . '</td>';
         echo '<td>' . htmlspecialchars($r['customer'])          . '</td>';
         echo '<td>' . htmlspecialchars($r['entry_type'])        . '</td>';
-        echo '<td>' . htmlspecialchars($r['items_service'])     . '</td>';
+        echo '<td>' . htmlspecialchars($r['vehicle_info'] ?? '—') . '</td>';
+        echo '<td>' . htmlspecialchars($r['items_parts'] ?? 'N/A')     . '</td>';
+        echo '<td>' . htmlspecialchars($r['service_type'] ?? 'N/A')    . '</td>';
         echo '<td style="text-align:right">&#8369;' . number_format((float)$r['amount'], 2) . '</td>';
         echo '<td>' . htmlspecialchars($r['payment_method'])    . '</td>';
         echo '<td>' . htmlspecialchars($pay_st)                 . '</td>';
@@ -452,11 +482,11 @@ if ($export_type === 'excel') {
     }
     echo '<tr style="font-weight:800;background:#f0f7ff">';
     echo '<td colspan="9" style="text-align:right;padding-right:10px">TOTAL AMOUNT</td>';
-    echo '<td colspan="1"></td>';
+    echo '<td colspan="3"></td>';
     echo '</tr>';
     // correct total row
     echo '<tr style="font-weight:800;background:#f0f7ff">';
-    echo '<td colspan="4" style="text-align:right"><strong>TOTAL</strong></td>';
+    echo '<td colspan="6" style="text-align:right"><strong>TOTAL</strong></td>';
     echo '<td style="text-align:right"><strong>&#8369;' . number_format($total_amount, 2) . '</strong></td>';
     echo '<td colspan="5">' . count($rows) . ' record(s)</td>';
     echo '</tr>';
@@ -512,7 +542,7 @@ if ($export_type === 'pdf') {
     echo '  </div>';
     echo '</div>';
     echo '<div class="rpt-body"><table><thead><tr>';
-    foreach (['Transaction ID','Customer','Type','Items / Service','Amount','Payment Method','Payment Status','Validation Status','Date/Time','Staff'] as $h)
+    foreach (['Transaction ID','Customer','Type','Vehicle','Items / Parts','Service Type','Amount','Payment Method','Payment Status','Validation Status','Date/Time','Staff'] as $h)
         echo '<th>' . htmlspecialchars($h) . '</th>';
     echo '</tr></thead><tbody>';
     foreach ($rows as $r) {
@@ -521,7 +551,9 @@ if ($export_type === 'pdf') {
         echo '<td>' . htmlspecialchars($r['txn_id'])            . '</td>';
         echo '<td>' . htmlspecialchars($r['customer'])          . '</td>';
         echo '<td>' . htmlspecialchars($r['entry_type'])        . '</td>';
-        echo '<td>' . htmlspecialchars(mb_substr($r['items_service'], 0, 50)) . '</td>';
+        echo '<td>' . htmlspecialchars($r['vehicle_info'] ?? '—') . '</td>';
+        echo '<td>' . htmlspecialchars(mb_substr($r['items_parts'] ?? 'N/A', 0, 40)) . '</td>';
+        echo '<td>' . htmlspecialchars(mb_substr($r['service_type'] ?? 'N/A', 0, 30)) . '</td>';
         echo '<td class="amount">&#8369;' . number_format((float)$r['amount'], 2) . '</td>';
         echo '<td>' . htmlspecialchars($r['payment_method'])    . '</td>';
         echo '<td>' . htmlspecialchars($pay_st)                 . '</td>';
@@ -530,7 +562,7 @@ if ($export_type === 'pdf') {
         echo '<td>' . htmlspecialchars($r['staff_name'])        . '</td>';
         echo '</tr>';
     }
-    $col_count = 10;
+    $col_count = 12;
     echo '<tr class="total-row">';
     echo '<td colspan="' . ($col_count - 1) . '" style="text-align:right;padding-right:14px">TOTAL AMOUNT</td>';
     echo '<td class="amount" style="white-space:nowrap">&#8369;' . number_format($total_amount, 2) . '</td>';
@@ -552,27 +584,35 @@ include __DIR__ . '/../partials/header.php';
     <div class="actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <!-- Excel -->
         <button type="button"
-                onclick="window.location.href='?start=<?php echo urlencode($start); ?>&end=<?php echo urlencode($end); ?>&search=<?php echo urlencode($search); ?>&status=<?php echo urlencode($status_f); ?>&type=<?php echo urlencode($type_f); ?>&export=excel'"
-                style="background:#1d6f42;color:#fff;height:36px;padding:8px 14px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"
+                onclick="atoExport('excel')"
+                style="background:white;color:#1d6f42;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #1d6f42;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
+                onmouseover="this.style.background='#1d6f42';this.style.color='#fff'"
+                onmouseout="this.style.background='white';this.style.color='#1d6f42'"
                 title="Export to Excel">
             <i class="fas fa-file-excel"></i> Excel
         </button>
         <!-- CSV -->
         <button type="button"
-                onclick="window.location.href='?start=<?php echo urlencode($start); ?>&end=<?php echo urlencode($end); ?>&search=<?php echo urlencode($search); ?>&status=<?php echo urlencode($status_f); ?>&type=<?php echo urlencode($type_f); ?>&export=csv'"
-                style="background:#003d7a;color:#fff;height:36px;padding:8px 14px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"
+                onclick="atoExport('csv')"
+                style="background:white;color:#003d7a;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #003d7a;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
+                onmouseover="this.style.background='#003d7a';this.style.color='#fff'"
+                onmouseout="this.style.background='white';this.style.color='#003d7a'"
                 title="Export to CSV">
             <i class="fas fa-file-csv"></i> CSV
         </button>
         <!-- PDF -->
         <button type="button"
-                onclick="window.open('?start=<?php echo urlencode($start); ?>&end=<?php echo urlencode($end); ?>&search=<?php echo urlencode($search); ?>&status=<?php echo urlencode($status_f); ?>&type=<?php echo urlencode($type_f); ?>&export=pdf','_blank')"
-                style="background:#dc2626;color:#fff;height:36px;padding:8px 14px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"
-                title="Export to PDF">
+                onclick="atoExport('pdf')"
+                style="background:white;color:#dc2626;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #dc2626;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
+                onmouseover="this.style.background='#dc2626';this.style.color='#fff'"
+                onmouseout="this.style.background='white';this.style.color='#dc2626'"
+                title="Print / Save as PDF">
             <i class="fas fa-file-pdf"></i> PDF
         </button>
         <a href="<?= in_array($role, ['admin', 'superadmin']) ? 'admin_dashboard.php' : 'manager_dashboard.php'; ?>"
-           style="background:#6c757d;color:#fff;text-decoration:none;height:36px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">
+           style="background:white;color:#4b5563;text-decoration:none;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #6b7280;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
+           onmouseover="this.style.background='#6b7280';this.style.color='#fff'"
+           onmouseout="this.style.background='white';this.style.color='#4b5563'">
             <i class="fas fa-arrow-left"></i> Back
         </a>
     </div>
@@ -642,18 +682,35 @@ include __DIR__ . '/../partials/header.php';
 
 
 <!-- ── Unified Table ───────────────────────────────────────────────────────── -->
-<div class="card" style="padding:0;overflow-x:hidden;">
-    <table class="ato-table" style="table-layout:fixed; word-wrap:break-word;width:100%;">
+<div class="card" style="padding:0;overflow:hidden;">
+    <div style="overflow-x:auto;">
+    <table class="ato-table">
+        <colgroup>
+            <col style="width:8%;min-width:80px;">  <!-- Txn ID -->
+            <col style="width:9%;min-width:85px;">  <!-- Customer -->
+            <col style="width:6%;min-width:65px;">  <!-- Type -->
+            <col style="width:9%;min-width:90px;">  <!-- Vehicle -->
+            <col style="width:17%;min-width:160px;"> <!-- Items / Parts -->
+            <col style="width:12%;min-width:110px;"> <!-- Service -->
+            <col style="width:8%;min-width:80px;">  <!-- Amount -->
+            <col style="width:7%;min-width:70px;">  <!-- Payment -->
+            <col style="width:7%;min-width:70px;">  <!-- Pay Status -->
+            <col style="width:7%;min-width:75px;">  <!-- Validation -->
+            <col style="width:9%;min-width:95px;">  <!-- Date / Time -->
+            <col style="width:7%;min-width:65px;">  <!-- Staff -->
+        </colgroup>
         <thead>
             <tr>
-                <th>Transaction ID</th>
+                <th>Txn ID</th>
                 <th>Customer</th>
                 <th>Type</th>
-                <th>Items / Service</th>
+                <th>Vehicle</th>
+                <th>Items / Parts</th>
+                <th>Service</th>
                 <th style="text-align:right;">Amount</th>
-                <th>Payment Method</th>
-                <th>Payment Status</th>
-                <th>Validation Status</th>
+                <th style="text-align:center;">Payment</th>
+                <th style="text-align:center;">Pay Status</th>
+                <th style="text-align:center;">Validation</th>
                 <th>Date / Time</th>
                 <th>Staff</th>
             </tr>
@@ -667,42 +724,62 @@ include __DIR__ . '/../partials/header.php';
                     $et     = $r['entry_type'] ?? '';
                 ?>
                 <tr>
-                    <td style="font-weight:600;font-size:12px;font-family:monospace;white-space:nowrap;">
+                    <td style="font-weight:600;font-size:10px;font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+                        title="<?php echo htmlspecialchars($r['txn_id']); ?>">
                         <?php echo htmlspecialchars($r['txn_id']); ?>
                     </td>
-                    <td><?php echo htmlspecialchars($r['customer']); ?></td>
-                    <td>
-                        <span class="ato-badge ato-badge-type">
+                    <td style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+                        title="<?php echo htmlspecialchars($r['customer']); ?>">
+                        <?php echo htmlspecialchars($r['customer']); ?>
+                    </td>
+                    <td style="text-align:center;">
+                        <span class="ato-badge ato-badge-type" style="font-size:9px;padding:2px 5px;display:inline-block;">
                             <?php echo htmlspecialchars($et); ?>
                         </span>
                     </td>
-                    <td style="font-size:12px;"
-                        title="<?php echo htmlspecialchars($r['items_service']); ?>">
-                        <?php echo htmlspecialchars($r['items_service']); ?>
+                    <td style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#475569;"
+                        title="<?php echo htmlspecialchars($r['vehicle_info'] ?? '—'); ?>">
+                        <?php echo htmlspecialchars($r['vehicle_info'] ?? '—') ?: '—'; ?>
                     </td>
-                    <td style="font-weight:600;color:#002F70;text-align:right;white-space:nowrap;">
+                    <td style="font-size:10px;line-height:1.3;max-height:40px;overflow:hidden;word-wrap:break-word;"
+                        title="<?php echo htmlspecialchars($r['items_parts'] ?? 'N/A'); ?>">
+                        <?php echo htmlspecialchars($r['items_parts'] ?? 'N/A'); ?>
+                    </td>
+                    <td style="font-size:10px;line-height:1.3;max-height:40px;overflow:hidden;word-wrap:break-word;"
+                        title="<?php echo htmlspecialchars($r['service_type'] ?? 'N/A'); ?>">
+                        <?php echo htmlspecialchars($r['service_type'] ?? 'N/A'); ?>
+                    </td>
+                    <td style="font-weight:600;color:#002F70;text-align:right;white-space:nowrap;font-size:11px;">
                         &#8369;<?php echo number_format((float)$r['amount'], 2); ?>
                     </td>
-                    <td style="font-size:12px;"><?php echo htmlspecialchars($r['payment_method']); ?></td>
-                    <td>
-                        <span class="ato-badge ato-badge-<?php echo strtolower(str_replace(' ', '-', $pay_st)); ?>">
+                    <td style="font-size:10px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+                        title="<?php echo htmlspecialchars($r['payment_method']); ?>">
+                        <?php echo htmlspecialchars($r['payment_method']); ?>
+                    </td>
+                    <td style="text-align:center;">
+                        <span class="ato-badge ato-badge-<?php echo strtolower(str_replace(' ', '-', $pay_st)); ?>" 
+                              style="font-size:9px;padding:2px 5px;display:inline-block;white-space:nowrap;">
                             <?php echo $pay_st; ?>
                         </span>
                     </td>
-                    <td>
-                        <span class="ato-badge ato-badge-<?php echo $vs; ?>">
+                    <td style="text-align:center;">
+                        <span class="ato-badge ato-badge-<?php echo $vs; ?>" 
+                              style="font-size:9px;padding:2px 5px;display:inline-block;white-space:nowrap;">
                             <?php echo htmlspecialchars(ucfirst($r['validation_status'])); ?>
                         </span>
                     </td>
-                    <td style="white-space:nowrap;font-size:12px;color:#64748b;">
+                    <td style="white-space:nowrap;font-size:10px;color:#64748b;overflow:hidden;text-overflow:ellipsis;">
                         <?php echo date('M d, Y H:i', strtotime($r['txn_date'])); ?>
                     </td>
-                    <td style="font-size:12px;color:#64748b;"><?php echo htmlspecialchars($r['staff_name']); ?></td>
+                    <td style="font-size:10px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+                        title="<?php echo htmlspecialchars($r['staff_name']); ?>">
+                        <?php echo htmlspecialchars($r['staff_name']); ?>
+                    </td>
                 </tr>
                 <?php endforeach; ?>
             <?php else: ?>
                 <tr>
-                    <td colspan="10" style="text-align:center;padding:60px 20px;color:#94a3b8;">
+                    <td colspan="12" style="text-align:center;padding:60px 20px;color:#94a3b8;">
                         <i class="fas fa-inbox" style="font-size:48px;display:block;margin-bottom:12px;opacity:0.3;"></i>
                         <div style="font-size:16px;font-weight:600;color:#64748b;margin-bottom:4px;">No Transactions Found</div>
                         <div style="font-size:13px;">Try adjusting your filters or date range.</div>
@@ -711,6 +788,7 @@ include __DIR__ . '/../partials/header.php';
             <?php endif; ?>
         </tbody>
     </table>
+    </div>
 </div>
 
 <style>
@@ -752,44 +830,69 @@ include __DIR__ . '/../partials/header.php';
     gap:6px;
     padding:0 16px;
     height:36px;
-    border:none;
+    border:1px solid transparent;
     border-radius:7px;
     font-size:13px;
     font-weight:600;
     cursor:pointer;
     text-decoration:none;
     white-space:nowrap;
-    transition:filter .15s; 
+    background:white !important;
+    transition:all .15s; 
 }
-.ato-btn:hover { filter:brightness(.88); }
-.ato-btn-search { background:#002F70;color:#fff; }
-.ato-btn-reset  { background:#64748b;color:#fff; }
+.ato-btn-search { color:#002F70 !important; border-color:#002F70 !important; }
+.ato-btn-search:hover { background:#002F70 !important; color:#fff !important; }
+.ato-btn-reset  { color:#4b5563 !important; border-color:#6b7280 !important; }
+.ato-btn-reset:hover { background:#6b7280 !important; color:#fff !important; }
 
 /* ── Table Styles with Blue Headers ─────────────────────────────────────────── */
 .ato-table { 
     width:100%;
-    border-collapse:collapse;
-    font-size:13px;
+    border-collapse:separate;
+    border-spacing:0;
+    font-size:11px;
+    table-layout:fixed;
 }
 .ato-table thead th { 
     background:#002F70;
     color:#fff;
-    font-size:11px;
+    font-size:10px;
     font-weight:700;
     text-transform:uppercase;
-    letter-spacing:.4px;
-    padding:12px 10px;
+    letter-spacing:.3px;
+    padding:10px 8px;
     border-bottom:2px solid #001a3d;
     text-align:left;
+    vertical-align:middle;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
 }
 .ato-table tbody td { 
-    padding:10px;
+    padding:8px 6px;
     border-bottom:1px solid #f1f5f9;
     vertical-align:middle;
     background:#fff;
+    overflow:hidden;
+    text-overflow:ellipsis;
 }
 .ato-table tbody tr:hover td { 
     background:#eff6ff;
+}
+
+/* Specific column alignments */
+.ato-table th:nth-child(6),
+.ato-table td:nth-child(6) {
+    text-align:right;
+}
+
+.ato-table th:nth-child(7),
+.ato-table td:nth-child(7),
+.ato-table th:nth-child(8),
+.ato-table td:nth-child(8),
+.ato-table th:nth-child(9),
+.ato-table td:nth-child(9) {
+    text-align:center;
 }
 
 /* ── Plain Text Badges ──────────────────────────────────────────────────────── */
@@ -1182,6 +1285,120 @@ window.atoOpenAdjustModal = function(id, amount, start, end, status, search) {
 window.refreshAdminOversightTimer = setInterval(autoRefreshAdminOversight, 60000);
 
 console.log('✅ Auto-refresh enabled for Admin Transactions Oversight (60s interval)');
+
+function atoExport(format) {
+    const table = document.querySelector('.ato-table');
+    if (!table) { alert('No transaction data found.'); return; }
+
+    const dateFrom = document.querySelector('input[name="start"]')?.value || '';
+    const dateTo   = document.querySelector('input[name="end"]')?.value || '';
+    const filename = `Transactions_Oversight_${dateFrom || 'All'}_to_${dateTo || 'All'}`;
+
+    if (format === 'excel') {
+        if (typeof XLSX === 'undefined') {
+            alert('Export library not loaded. Please try again.');
+            return;
+        }
+        const aoa = [];
+        // Headers
+        table.querySelectorAll('thead tr').forEach(tr => {
+            aoa.push([...tr.querySelectorAll('th')].map(th => th.innerText.trim()));
+        });
+        // Body
+        table.querySelectorAll('tbody tr').forEach(tr => {
+            aoa.push([...tr.querySelectorAll('td')].map(td => td.innerText.trim()));
+        });
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        // Column widths
+        if (aoa.length && aoa[0]) {
+            ws['!cols'] = aoa[0].map((_, ci) => ({
+                wch: Math.min(45, Math.max(10, ...aoa.map(row => String(row[ci] ?? '').length)))
+            }));
+        }
+        XLSX.utils.book_append_sheet(wb, ws, 'Transactions');
+        XLSX.writeFile(wb, filename + '.xlsx');
+    } else if (format === 'csv') {
+        let csv = '';
+        // Headers
+        table.querySelectorAll('thead tr').forEach(tr => {
+            csv += [...tr.querySelectorAll('th')].map(th => '"' + th.innerText.trim().replace(/"/g, '""') + '"').join(',') + '\n';
+        });
+        // Body
+        table.querySelectorAll('tbody tr').forEach(tr => {
+            csv += [...tr.querySelectorAll('td')].map(td => '"' + td.innerText.trim().replace(/"/g, '""') + '"').join(',') + '\n';
+        });
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = filename + '.csv';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+    } else if (format === 'pdf') {
+        const logo_url  = '../assets/img/Petron%20Logo.png';
+        const generated = new Date().toLocaleString();
+        
+        // Construct printable HTML table
+        let tableHtml = table.outerHTML;
+        
+        let iframe = document.getElementById('print-iframe');
+        if (!iframe) {
+            iframe = document.createElement('iframe');
+            iframe.id = 'print-iframe';
+            iframe.style.position = 'fixed';
+            iframe.style.right = '0';
+            iframe.style.bottom = '0';
+            iframe.style.width = '0';
+            iframe.style.height = '0';
+            iframe.style.border = '0';
+            document.body.appendChild(iframe);
+        }
+
+        const doc = iframe.contentDocument || iframe.contentWindow.document;
+        doc.open();
+        doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Transactions Oversight Report</title>
+        <style>
+            @page{size:legal landscape;margin:.3in .4in;}
+            *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;box-sizing:border-box;}
+            body{font-family:Arial,sans-serif;font-size:11px;color:#000;background:white;margin:0;padding:20px;}
+            .header-container{display:flex;align-items:center;gap:15px;border-bottom:2px solid #002F70;padding-bottom:12px;margin-bottom:15px;}
+            .header-container img{height:45px;}
+            .header-title h1{font-size:16px;margin:0;color:#002F70;text-transform:uppercase;}
+            .header-title p{font-size:10px;margin:3px 0 0;color:#666;}
+            .meta-info{margin-left:auto;text-align:right;font-size:10px;color:#444;}
+            table{width:100%;border-collapse:collapse;font-size:9.5px;}
+            thead tr{background:#f2f2f2 !important;border-top:2px solid #002F70;border-bottom:1px solid #999;}
+            thead th{padding:6px 5px;text-align:left;font-weight:700;font-size:9px;text-transform:uppercase;color:#000;}
+            tbody tr{border-bottom:1px solid #ddd;}
+            tbody td{padding:5px;color:#333;}
+            .ato-badge, .badge, .status-badge{border:none;background:none;padding:0;font-weight:normal;}
+            tfoot tr{border-top:2px solid #002F70;background:#f2f2f2 !important;}
+            tfoot td{padding:6px 5px;font-weight:700;}
+        </style></head><body>
+            <div class="header-container">
+                <img src="${logo_url}" alt="Petron">
+                <div class="header-title">
+                    <h1>Petron Station Management System</h1>
+                    <p>Transactions Oversight Report</p>
+                </div>
+                <div class="meta-info">
+                    Date Range: ${dateFrom || 'All'} to ${dateTo || 'All'}<br>
+                    Generated: ${generated}
+                </div>
+            </div>
+            ${tableHtml}
+        </body></html>`);
+        doc.close();
+
+        setTimeout(() => {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+        }, 250);
+    }
+}
 </script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

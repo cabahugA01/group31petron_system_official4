@@ -1,0 +1,75 @@
+<?php
+/**
+ * Setup Script for System Settings
+ * Run this once to create the system_settings table and upload directories
+ */
+
+require_once __DIR__ . '/../public/db_connect.php';
+
+try {
+    // Create system_settings table
+    $sql = "
+    CREATE TABLE IF NOT EXISTS `system_settings` (
+        `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+        `setting_key` VARCHAR(100) NOT NULL COMMENT 'Unique key for the setting',
+        `setting_value` TEXT NULL COMMENT 'Value of the setting (JSON or plain text)',
+        `station_id` INT(11) UNSIGNED NOT NULL DEFAULT 0 COMMENT '0 = global, >0 = specific station',
+        `category` VARCHAR(50) NULL DEFAULT NULL COMMENT 'branding, theme, layout, accessibility',
+        `updated_by` INT(11) UNSIGNED NULL DEFAULT NULL COMMENT 'User ID who last updated',
+        `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `unique_setting` (`setting_key`, `station_id`),
+        KEY `idx_station_id` (`station_id`),
+        KEY `idx_category` (`category`),
+        KEY `idx_setting_key` (`setting_key`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    ";
+    
+    $pdo->exec($sql);
+    echo "✓ System settings table created successfully\n";
+    
+    // Insert default settings
+    $defaults = [
+        ['global_color_primary', '#002F6C', 'theme'],
+        ['global_color_accent', '#CC0000', 'theme'],
+        ['global_color_success', '#16a34a', 'theme'],
+        ['global_color_warning', '#d97706', 'theme'],
+        ['global_color_danger', '#dc2626', 'theme'],
+        ['global_layout_sidebar_style', 'inline', 'layout'],
+        ['global_layout_card_arrangement', 'grid', 'layout'],
+        ['global_layout_base_font_size', '14', 'layout'],
+        ['global_accessibility_high_contrast', '0', 'accessibility'],
+        ['global_accessibility_font_scale', '100', 'accessibility'],
+        ['global_accessibility_focus_indicators', '0', 'accessibility'],
+        ['global_accessibility_reduce_motion', '0', 'accessibility']
+    ];
+    
+    $stmt = $pdo->prepare("
+        INSERT INTO system_settings (setting_key, setting_value, station_id, category, updated_at)
+        VALUES (?, ?, 0, ?, NOW())
+        ON DUPLICATE KEY UPDATE updated_at = NOW()
+    ");
+    
+    foreach ($defaults as $default) {
+        $stmt->execute($default);
+    }
+    
+    echo "✓ Default settings inserted\n";
+    
+    // Create upload directories
+    $upload_dir = __DIR__ . '/../uploads/logos/';
+    if (!is_dir($upload_dir)) {
+        mkdir($upload_dir, 0755, true);
+        echo "✓ Upload directory created: $upload_dir\n";
+    } else {
+        echo "✓ Upload directory already exists\n";
+    }
+    
+    echo "\n✅ Setup completed successfully!\n";
+    echo "You can now access System Settings at: public/superadmin_system_settings.php\n";
+    
+} catch (Exception $e) {
+    echo "❌ Error: " . $e->getMessage() . "\n";
+    exit(1);
+}

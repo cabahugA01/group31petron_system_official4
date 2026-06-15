@@ -86,74 +86,148 @@ try {
     error_log("Security Reports table creation: " . $e->getMessage());
 }
 
-// Fetch filters
-$date_from = $_GET['date_from'] ?? date('Y-m-d', strtotime('-7 days'));
-$date_to = $_GET['date_to'] ?? date('Y-m-d');
+// Filters
+$date_from = $_GET['date_from'] ?? date('Y-m-d', strtotime('-30 days'));
+$date_to   = $_GET['date_to']   ?? date('Y-m-d');
 
-// Fetch data - Login Attempts
+// ── Login Attempts (real: login_attempts — 40 rows) ───────────
 $stmt_logins = $pdo->prepare("
-    SELECT 
-        username,
-        attempt_type,
-        COUNT(*) as attempt_count,
-        ip_address,
-        MAX(created_at) as last_attempt
-    FROM login_attempts_security
-    WHERE created_at BETWEEN ? AND ?
-    GROUP BY username, attempt_type, ip_address
+    SELECT username, status AS attempt_type,
+           COUNT(*) as attempt_count,
+           ip_address,
+           MAX(attempt_time) as last_attempt,
+           GROUP_CONCAT(DISTINCT failure_reason SEPARATOR '; ') AS failure_reasons
+    FROM login_attempts
+    WHERE attempt_time BETWEEN ? AND ?
+    GROUP BY username, status, ip_address
     ORDER BY last_attempt DESC
-    LIMIT 100
+    LIMIT 200
 ");
-$stmt_logins->execute([$date_from . ' 00:00:00', $date_to . ' 23:59:59']);
+$stmt_logins->execute([$date_from.' 00:00:00', $date_to.' 23:59:59']);
 $login_attempts = $stmt_logins->fetchAll(PDO::FETCH_ASSOC);
 
-// Summary stats for login attempts
+// Summary stats from login_attempts
 $stmt_login_stats = $pdo->prepare("
-    SELECT 
-        attempt_type,
-        COUNT(*) as count
-    FROM login_attempts_security
-    WHERE created_at BETWEEN ? AND ?
-    GROUP BY attempt_type
+    SELECT status AS attempt_type, COUNT(*) as count
+    FROM login_attempts
+    WHERE attempt_time BETWEEN ? AND ?
+    GROUP BY status
 ");
-$stmt_login_stats->execute([$date_from . ' 00:00:00', $date_to . ' 23:59:59']);
+$stmt_login_stats->execute([$date_from.' 00:00:00', $date_to.' 23:59:59']);
 $login_stats = [];
 foreach ($stmt_login_stats->fetchAll(PDO::FETCH_ASSOC) as $stat) {
     $login_stats[$stat['attempt_type']] = $stat['count'];
 }
+$sec_total_logins  = array_sum($login_stats);
+$sec_failed_logins = ($login_stats['failed'] ?? 0) + ($login_stats['fail'] ?? 0);
+$sec_success_logins = $login_stats['success'] ?? 0;
 
-// Access Violations
+// ── Access Violations (real: access_violations_log, fallback: audit_logs) ──
 $stmt_violations = $pdo->prepare("
     SELECT * FROM access_violations_log
     WHERE created_at BETWEEN ? AND ?
-    ORDER BY created_at DESC
-    LIMIT 100
+    ORDER BY created_at DESC LIMIT 100
 ");
-$stmt_violations->execute([$date_from . ' 00:00:00', $date_to . ' 23:59:59']);
+$stmt_violations->execute([$date_from.' 00:00:00', $date_to.' 23:59:59']);
 $access_violations = $stmt_violations->fetchAll(PDO::FETCH_ASSOC);
 
-// Password Reset Logs
+if (empty($access_violations)) {
+    // Fallback: look for 'Access Denied', 'Unauthorized' in audit_logs
+    $stmt_viol_fb = $pdo->prepare("
+        SELECT id,
+               user_id,
+               COALESCE(
+                   (SELECT username FROM users WHERE id = audit_logs.user_id LIMIT 1),
+                   'Unknown'
+               ) AS username,
+               action_details AS attempted_resource,
+               action_type    AS violation_type,
+               ip_address,
+               user_agent,
+               created_at
+        FROM audit_logs
+        WHERE (action_type LIKE '%denied%' OR action_type LIKE '%unauthorized%'
+               OR action_type LIKE '%Failed%' OR action_type LIKE '%blocked%')
+          AND created_at BETWEEN ? AND ?
+        ORDER BY created_at DESC LIMIT 100
+    ");
+    $stmt_viol_fb->execute([$date_from.' 00:00:00', $date_to.' 23:59:59']);
+    $access_violations = $stmt_viol_fb->fetchAll(PDO::FETCH_ASSOC);
+}
+
+// ── Password Reset Logs (real: password_reset_logs or password_reset_tokens) ──
 $stmt_resets = $pdo->prepare("
     SELECT * FROM password_reset_logs
     WHERE created_at BETWEEN ? AND ?
-    ORDER BY created_at DESC
-    LIMIT 100
+    ORDER BY created_at DESC LIMIT 100
 ");
-$stmt_resets->execute([$date_from . ' 00:00:00', $date_to . ' 23:59:59']);
+$stmt_resets->execute([$date_from.' 00:00:00', $date_to.' 23:59:59']);
 $password_resets = $stmt_resets->fetchAll(PDO::FETCH_ASSOC);
 
-// Suspicious Activity
+if (empty($password_resets)) {
+    // Fallback: password_reset_tokens table
+    try {
+        $cols = $pdo->query("SHOW COLUMNS FROM password_reset_tokens")->fetchAll(PDO::FETCH_COLUMN);
+        if (in_array('created_at', $cols)) {
+            $stmt_rst_fb = $pdo->prepare("
+                SELECT id, user_id,
+                       COALESCE(
+                           (SELECT username FROM users WHERE id = password_reset_tokens.user_id LIMIT 1),
+                           'Unknown'
+                       ) AS username,
+                       'email' AS reset_method,
+                       NULL AS ip_address,
+                       'completed' AS status,
+                       created_at,
+                       NULL AS completed_at
+                FROM password_reset_tokens
+                WHERE created_at BETWEEN ? AND ?
+                ORDER BY created_at DESC LIMIT 100
+            ");
+            $stmt_rst_fb->execute([$date_from.' 00:00:00', $date_to.' 23:59:59']);
+            $password_resets = $stmt_rst_fb->fetchAll(PDO::FETCH_ASSOC);
+        }
+    } catch (Exception $e) {}
+}
+
+// ── Suspicious Activity (real: suspicious_activity_alerts, fallback: audit_logs CAPTCHA fail) ──
 $stmt_suspicious = $pdo->prepare("
     SELECT * FROM suspicious_activity_alerts
     WHERE created_at BETWEEN ? AND ?
-    ORDER BY severity DESC, created_at DESC
-    LIMIT 100
+    ORDER BY severity DESC, created_at DESC LIMIT 100
 ");
-$stmt_suspicious->execute([$date_from . ' 00:00:00', $date_to . ' 23:59:59']);
+$stmt_suspicious->execute([$date_from.' 00:00:00', $date_to.' 23:59:59']);
 $suspicious_activity = $stmt_suspicious->fetchAll(PDO::FETCH_ASSOC);
+
+if (empty($suspicious_activity)) {
+    // Fallback: multiple failed logins from login_attempts grouped by IP
+    $stmt_susp_fb = $pdo->prepare("
+        SELECT ip_address,
+               GROUP_CONCAT(DISTINCT username ORDER BY attempt_time DESC SEPARATOR ', ') AS username,
+               COUNT(*) AS fail_count,
+               MAX(attempt_time) AS created_at,
+               'multiple_failed_logins' AS activity_type,
+               CASE WHEN COUNT(*) >= 10 THEN 'high'
+                    WHEN COUNT(*) >= 5  THEN 'medium'
+                    ELSE 'low' END AS severity,
+               CONCAT(COUNT(*), ' failed login attempt(s) from this IP') AS description,
+               'open' AS status
+        FROM login_attempts
+        WHERE status = 'failed'
+          AND attempt_time BETWEEN ? AND ?
+        GROUP BY ip_address
+        HAVING COUNT(*) >= 2
+        ORDER BY fail_count DESC LIMIT 50
+    ");
+    $stmt_susp_fb->execute([$date_from.' 00:00:00', $date_to.' 23:59:59']);
+    $suspicious_activity = $stmt_susp_fb->fetchAll(PDO::FETCH_ASSOC);
+}
 
 include __DIR__ . '/../partials/header.php';
 ?>
+
+
+
 
 <style>
 :root {
@@ -173,7 +247,7 @@ include __DIR__ . '/../partials/header.php';
 }
 
 .report-container {
-    padding: 24px;
+    padding: 0 24px 24px;
     background: var(--bg-secondary);
     min-height: 100vh;
 }
@@ -190,7 +264,7 @@ include __DIR__ . '/../partials/header.php';
 .page-title {
     font-size: 1.875rem;
     font-weight: 700;
-    color: var(--text-primary);
+    color: var(--primary-color) !important;
     margin: 0 0 8px 0;
 }
 
@@ -201,6 +275,7 @@ include __DIR__ . '/../partials/header.php';
     margin-bottom: 24px;
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--border-color);
+    margin-top: -12px !important;
 }
 
 .filters-grid {
@@ -238,9 +313,69 @@ include __DIR__ . '/../partials/header.php';
     gap: 8px;
 }
 
-.btn-primary { background: var(--primary-color); color: white; }
-.btn-success { background: var(--success-color); color: white; }
-.btn-secondary { background: #e5e7eb; color: var(--text-primary); }
+.btn-primary { 
+    padding: 7px 14px !important;
+    background: white !important;
+    color: #00264D !important;
+    border: 1px solid #00264D !important;
+    border-radius: 4px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    transition: all 0.2s !important;
+}
+
+.btn-primary:hover {
+    background: #00264D !important;
+    color: white !important;
+}
+
+.btn-secondary { 
+    padding: 7px 14px !important;
+    background: white !important;
+    color: #6b7280 !important;
+    border: 1px solid #6b7280 !important;
+    border-radius: 4px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    transition: all 0.2s !important;
+    text-decoration: none !important;
+    display: inline-block !important;
+}
+
+.btn-secondary:hover {
+    background: #6b7280 !important;
+    color: white !important;
+}
+
+/* Export Actions - Same as Audit Trail */
+.rpt-export-actions {
+    display: flex !important;
+    gap: 6px !important;
+    margin-left: auto !important;
+}
+
+.rpt-export-btn {
+    padding: 7px 14px !important;
+    background: white !important;
+    color: #00264D !important;
+    border: 1px solid #00264D !important;
+    border-radius: 4px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    transition: all 0.2s !important;
+}
+
+.rpt-export-btn:hover {
+    background: #00264D !important;
+    color: white !important;
+}
+
+.rpt-export-btn i {
+    margin-right: 3px !important;
+}
 
 .actions-bar {
     display: flex;
@@ -345,64 +480,220 @@ include __DIR__ . '/../partials/header.php';
 }
 
 @media print {
-    @page { size: legal portrait; margin: 0.3in 0.4in; }
-    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    
-    body { background: white !important; }
-    
-    .filters-card,
-    .btn,
-    .sidebar,
-    .top-header,
-    .footer-sidebar-area,
-    nav,
-    .no-print {
-        display: none !important;
+    @page {
+        size: A4 landscape;
+        margin: 0.4in 0.4in;
     }
-    
-    .report-container {
+
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        box-sizing: border-box !important;
+    }
+
+    html, body {
+        background: white !important;
+        padding: 0 !important;
+        margin: 0 auto !important;
+        width: 100% !important;
+        height: auto !important;
+        overflow: visible !important;
+    }
+
+    /* Hide ALL system chrome, navigation elements, filters, and summary cards */
+    .filters-card, .btn, .sidebar, .top-header,
+    .footer-sidebar-area, .footer-content, .fixed-footer, footer,
+    .toggle-scroll-btn, #toggleScrollBtn, .toast,
+    nav, header, .no-print, .stats-grid, .stat-box {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border: none !important;
+    }
+
+    /* Reset all structural layouts to remove sidebar offsets */
+    body .app,
+    body .main,
+    body.sidebar-expanded .main,
+    body.sidebar-collapsed .main,
+    body .ss-wrapper,
+    body .page-wrapper,
+    body main {
         margin: 0 !important;
         padding: 0 !important;
-        box-shadow: none !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        display: block !important;
+        float: none !important;
+        position: static !important;
+        left: 0 !important;
+        top: 0 !important;
+        right: auto !important;
+        bottom: auto !important;
+        overflow: visible !important;
     }
-    
+
+    /* Report container centering and width constraints */
+    .report-container {
+        display: block !important;
+        padding: 0 5px !important;
+        margin: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        background: white !important;
+        overflow: visible !important;
+    }
+
+    .rpt-printable {
+        display: block !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+    }
+
+    /* Professional top rule */
+    .rpt-printable::before {
+        content: '';
+        display: block;
+        width: 100%;
+        border-top: 3px solid #003366;
+        margin-bottom: 2px;
+    }
+
+    /* Reduce title spacing */
+    .rpt-printable > div:first-child {
+        padding: 8px 0 4px 0 !important;
+        margin-bottom: 8px !important;
+    }
+
+    /* Cards */
     .report-card {
-        page-break-inside: avoid;
+        page-break-inside: auto !important;
+        break-inside: auto !important;
+        margin-bottom: 12px !important;
+        border: 1px solid #b0bec8 !important;
         box-shadow: none !important;
-        border: 1px solid #ddd !important;
+        width: 100% !important;
+        overflow: visible !important;
     }
-    
+
+    .report-card-header {
+        background: #eef2f8 !important;
+        padding: 6px 10px !important;
+        border-bottom: 1px solid #b0bec8 !important;
+    }
+
+    .report-card-header h3,
+    .report-card-title {
+        font-size: 11px !important;
+        font-weight: 700 !important;
+        color: #003366 !important;
+        margin: 0 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
+    }
+
+    .report-card-body {
+        padding: 10px 12px !important;
+        overflow: visible !important;
+        height: auto !important;
+    }
+
+    /* Kill overflow wrappers around tables in print */
+    div[style*="overflow-x"],
+    .report-card-body > div {
+        overflow: visible !important;
+        overflow-x: visible !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    /* Tables — Landscape Optimized, Auto Width Distribution */
     .data-table {
-        font-size: 10px !important;
+        width: 100% !important;
+        border-collapse: collapse !important;
+        font-size: 8px !important;
+        page-break-inside: auto !important;
+        table-layout: auto !important;
+        word-break: break-all !important;
+        overflow-wrap: anywhere !important;
     }
-    
+
+    .data-table thead { display: table-header-group !important; }
+    .data-table tbody { display: table-row-group !important; }
+
+    .data-table thead tr {
+        background: #00264D !important;
+    }
+
     .data-table thead th {
-        background: #f0f0f0 !important;
-        border: 1px solid #000 !important;
+        padding: 6px 5px !important;
+        font-size: 7.5px !important;
+        font-weight: 700 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.3px !important;
+        border: 1px solid #00264D !important;
+        text-align: center !important;
+        color: white !important;
+        background: #00264D !important;
+        white-space: normal !important;
+    }
+
+    .data-table tbody td {
+        padding: 5px 5px !important;
+        font-size: 7.5px !important;
+        border: 1px solid #d0d8e4 !important;
+        text-align: center !important;
+        white-space: normal !important;
+        vertical-align: middle !important;
+    }
+
+    .data-table tbody tr:nth-child(even) {
+        background: #f8fafc !important;
+    }
+
+    .data-table tbody tr { page-break-inside: avoid !important; }
+
+    .data-table tfoot td {
+        padding: 6px !important;
+        font-size: 8px !important;
+        border-top: 2px solid #003366 !important;
+        border: 1px solid #9aafcc !important;
+        font-weight: 700 !important;
+        background: #eef2f8 !important;
+    }
+
+    /* Badges */
+    .badge {
+        border: 1px solid #999 !important;
+        padding: 1px 4px !important;
+        font-size: 6.5px !important;
+        border-radius: 2px !important;
+        font-weight: 600 !important;
+    }
+
+    .empty-state { display: none !important; }
+
+    /* Page footer */
+    .rpt-printable::after {
+        content: 'PETRON STATION MANAGEMENT SYSTEM  |  CONFIDENTIAL  |  Generated: ' attr(data-print-date);
+        display: block;
+        font-size: 7px;
+        color: #718096;
+        text-align: center;
+        border-top: 1px solid #cbd5e1;
+        padding-top: 6px;
+        margin-top: 20px;
     }
 }
 </style>
 
 <div class="report-container">
 
-    <!-- Page Header - Manager Style -->
-    <div style="text-align:center;padding:22px 0 14px;border-bottom:2px solid #e2e8f0;margin-bottom:20px;">
-        <div style="font-size:20px;font-weight:800;color:#003366;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">
-            SECURITY REPORTS
-        </div>
-        <div style="font-size:16px;font-weight:700;color:#003366;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:8px;">
-            DEVELOPER VIEW
-        </div>
-        <div style="font-size:12px;color:#64748b;margin-bottom:2px;">
-            Login Attempts • Access Violations • Password Resets • Suspicious Activity
-        </div>
-        <div style="font-size:12px;color:#334155;">
-            <strong>Date:</strong>
-            <?php echo date('F j, Y', strtotime($date_from)); ?>
-            <?php echo $date_from !== $date_to ? ' – ' . date('F j, Y', strtotime($date_to)) : ''; ?>
-        </div>
-    </div>
-
+    <!-- Date Filters - Moved to Top -->
     <div class="filters-card">
         <form method="GET">
             <div class="filters-grid">
@@ -424,17 +715,37 @@ include __DIR__ . '/../partials/header.php';
                         <i class="fas fa-times"></i> Clear
                     </a>
                 </div>
-                <div>
-                    <button type="button" class="btn btn-success" onclick="exportToCSV()">
-                        <i class="fas fa-file-csv"></i> Export CSV
+                <div class="rpt-export-actions">
+                    <button type="button" class="rpt-export-btn" onclick="window.print()">
+                        <i class="fas fa-print"></i> Print PDF
                     </button>
-                    <button type="button" class="btn btn-success" onclick="window.print()">
-                        <i class="fas fa-print"></i> Print Report
+                    <button type="button" class="rpt-export-btn" onclick="exportReport('excel')">
+                        <i class="fas fa-file-excel"></i> Export Excel
+                    </button>
+                    <button type="button" class="rpt-export-btn" onclick="exportReport('csv')">
+                        <i class="fas fa-file-csv"></i> Export CSV
                     </button>
                 </div>
             </div>
         </form>
     </div>
+
+    <!-- Printable Content: Title + Report Cards -->
+    <div class="rpt-printable" data-print-date="<?php echo date('F j, Y g:i A'); ?>">
+        <!-- Page Header - Manager Style (Moved below filters) -->
+        <div style="text-align:center;padding:22px 0 14px;border-bottom:2px solid #e2e8f0;margin-bottom:20px;">
+            <div style="font-size:20px;font-weight:800;color:#003366;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">
+                SECURITY REPORTS
+            </div>
+            <div style="font-size:12px;color:#64748b;margin-bottom:2px;">
+                Login Attempts • Access Violations • Password Resets • Suspicious Activity
+            </div>
+            <div style="font-size:12px;color:#334155;">
+                <strong>Date:</strong>
+                <?php echo date('F j, Y', strtotime($date_from)); ?>
+                <?php echo $date_from !== $date_to ? ' – ' . date('F j, Y', strtotime($date_to)) : ''; ?>
+            </div>
+        </div>
 
     <script>
     function exportToCSV() {
@@ -448,15 +759,21 @@ include __DIR__ . '/../partials/header.php';
     <!-- Login Attempts Summary -->
     <div class="stats-grid">
         <div class="stat-box">
+            <div class="stat-label">Total Login Attempts</div>
+            <div class="stat-value" style="color: var(--info-color);">
+                <?php echo number_format($sec_total_logins); ?>
+            </div>
+        </div>
+        <div class="stat-box">
             <div class="stat-label">Successful Logins</div>
             <div class="stat-value" style="color: var(--success-color);">
-                <?php echo number_format($login_stats['success'] ?? 0); ?>
+                <?php echo number_format($sec_success_logins); ?>
             </div>
         </div>
         <div class="stat-box">
             <div class="stat-label">Failed Logins</div>
             <div class="stat-value" style="color: var(--danger-color);">
-                <?php echo number_format($login_stats['failed'] ?? 0); ?>
+                <?php echo number_format($sec_failed_logins); ?>
             </div>
         </div>
         <div class="stat-box">
@@ -489,10 +806,11 @@ include __DIR__ . '/../partials/header.php';
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th>Username</th>
-                                <th>Type</th>
-                                <th>Attempt Count</th>
+                                <th>Username / Email</th>
+                                <th>Status</th>
+                                <th>Count</th>
                                 <th>IP Address</th>
+                                <th>Failure Reason</th>
                                 <th>Last Attempt</th>
                             </tr>
                         </thead>
@@ -507,6 +825,9 @@ include __DIR__ . '/../partials/header.php';
                                     </td>
                                     <td><?php echo number_format($attempt['attempt_count']); ?></td>
                                     <td><?php echo htmlspecialchars($attempt['ip_address'] ?? 'N/A'); ?></td>
+                                    <td style="font-size:0.8rem; color:var(--text-secondary);">
+                                        <?php echo htmlspecialchars($attempt['failure_reasons'] ?? '—'); ?>
+                                    </td>
                                     <td><?php echo date('Y-m-d H:i:s', strtotime($attempt['last_attempt'])); ?></td>
                                 </tr>
                             <?php endforeach; ?>
@@ -667,6 +988,99 @@ include __DIR__ . '/../partials/header.php';
             <?php endif; ?>
         </div>
     </div>
+    </div><!-- End .rpt-printable -->
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+function exportReport(type) {
+    if (typeof XLSX === 'undefined') {
+        alert('Export library not loaded. Please refresh the page and try again.');
+        return;
+    }
+    
+    const tables = Array.from(document.querySelectorAll('.report-card .data-table')).filter(
+        t => t.querySelector('tbody tr')
+    );
+    
+    if (!tables.length) { 
+        alert('No table data found to export.'); 
+        return; 
+    }
+    
+    const dateFrom = document.querySelector('input[name="date_from"]')?.value || '';
+    const dateTo = document.querySelector('input[name="date_to"]')?.value || '';
+    const filename = `Security_Report_${dateFrom}_to_${dateTo}`;
+    
+    if (type === 'csv') {
+        exportCSV(tables, filename);
+    } else {
+        exportExcel(tables, filename);
+    }
+}
+
+function tableToAoA(table) {
+    const aoa = [];
+    table.querySelectorAll('thead tr').forEach(tr => {
+        aoa.push([...tr.querySelectorAll('th')].map(th => th.innerText.trim()));
+    });
+    table.querySelectorAll('tbody tr').forEach(tr => {
+        aoa.push([...tr.querySelectorAll('td')].map(td => td.innerText.trim()));
+    });
+    return aoa;
+}
+
+function exportExcel(tables, filename) {
+    const wb = XLSX.utils.book_new();
+    const usedNames = {};
+    
+    tables.forEach((tbl, i) => {
+        const card = tbl.closest('.report-card');
+        let sheetName = card?.querySelector('.report-card-title')?.innerText?.trim() || `Sheet ${i + 1}`;
+        sheetName = sheetName.replace(/[:\\\/?*\[\]]/g, '').substring(0, 31).trim() || `Sheet${i+1}`;
+        
+        if (usedNames[sheetName]) {
+            usedNames[sheetName]++;
+            sheetName = (sheetName.substring(0, 28) + ' ' + usedNames[sheetName]).substring(0,31);
+        } else {
+            usedNames[sheetName] = 1;
+        }
+        
+        const aoa = tableToAoA(tbl);
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        
+        if (aoa.length && aoa[0]) {
+            ws['!cols'] = aoa[0].map((_, ci) => ({
+                wch: Math.min(45, Math.max(10, ...aoa.map(row => String(row[ci] ?? '').length)))
+            }));
+        }
+        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    });
+    
+    XLSX.writeFile(wb, filename + '.xlsx');
+}
+
+function exportCSV(tables, filename) {
+    let csv = '';
+    tables.forEach((tbl, i) => {
+        const card = tbl.closest('.report-card');
+        const heading = card?.querySelector('.report-card-title')?.innerText?.trim();
+        if (heading) csv += '"' + heading.replace(/"/g, '""') + '"\n';
+        else if (i > 0) csv += '\n';
+        tableToAoA(tbl).forEach(row => {
+            csv += row.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',') + '\n';
+        });
+        csv += '\n';
+    });
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+}
+</script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

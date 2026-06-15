@@ -224,6 +224,46 @@ try {
                 } catch (Exception $e) {}
             }
 
+            // Sync status with fuel_readings table & record in fuel_audit_trail if transaction originated from there
+            $reading_db_id = null;
+            if (strpos($txn_id, 'FUEL') === 0 && strlen($txn_id) >= 17) {
+                $reading_db_id = (int)substr($txn_id, 11);
+            }
+            if ($reading_db_id) {
+                try {
+                    $mapped_status = ($new_status === 'Approved') ? 'verified' : 'rejected';
+                    $pdo->prepare("UPDATE fuel_readings SET status = ? WHERE id = ? AND station_id = ?")->execute([$mapped_status, $reading_db_id, $station_id]);
+
+                    // Retrieve updated stock level
+                    $stock_stmt = $pdo->prepare("SELECT current_level FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))");
+                    $stock_stmt->execute([$station_id, $txn['fuel_type']]);
+                    $stock_after_val = $stock_stmt->fetchColumn();
+                    $stock_after_amount = ($stock_after_val !== false) ? (float)$stock_after_val : 0.0;
+                    $stock_before_amount = $stock_after_amount + (($new_status === 'Approved') ? (float)$txn['liters_sold'] : 0.0);
+
+                    $audit_action = ($new_status === 'Approved') ? 'FUEL_READING_VERIFIED' : 'FUEL_READING_REJECTED';
+                    $audit_notes = "Manager validation via API: " . $new_status . ($reject_reason ? " | Reason: " . $reject_reason : "");
+
+                    $pdo->prepare("
+                        INSERT INTO fuel_audit_trail (
+                            reading_id, action, before_value, after_value, stock_before, stock_after,
+                            performed_by, performed_at, notes
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?)
+                    ")->execute([
+                        $reading_db_id,
+                        $audit_action,
+                        (float)($txn['previous_reading'] ?? 0),
+                        (float)($txn['present_reading'] ?? 0),
+                        $stock_before_amount,
+                        $stock_after_amount,
+                        $me['id'],
+                        $audit_notes
+                    ]);
+                } catch (Exception $e) {
+                    error_log('API validate_reading sync error: ' . $e->getMessage());
+                }
+            }
+
             $pdo->commit();
 
             log_activity($pdo, $me['id'], "Fuel Reading {$new_status}",

@@ -122,7 +122,7 @@ include __DIR__ . '/../partials/header.php';
 }
 
 .report-container {
-    padding: 24px;
+    padding: 0 24px 24px;
     background: var(--bg-secondary);
     min-height: 100vh;
 }
@@ -345,7 +345,7 @@ include __DIR__ . '/../partials/header.php';
 <div class="report-container">
 
     <!-- Page Header - Manager Style -->
-    <div style="text-align:center;padding:22px 0 14px;border-bottom:2px solid #e2e8f0;margin-bottom:20px;">
+    <div style="text-align:center;padding:0 0 14px;border-bottom:2px solid #e2e8f0;margin-bottom:20px;margin-top:-12px;">
         <div style="font-size:20px;font-weight:800;color:#003366;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">
             AUDIT TRAIL REPORTS
         </div>

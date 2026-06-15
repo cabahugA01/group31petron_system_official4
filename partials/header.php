@@ -247,23 +247,27 @@ try {
     $stmt0 = $pdo->prepare("SELECT setting_key, setting_value FROM system_settings WHERE station_id = 0");
     $stmt0->execute();
     while ($row = $stmt0->fetch(PDO::FETCH_ASSOC)) {
-        $station_settings[$row['setting_key']] = $row['setting_value'];
+        // Strip 'global_' prefix so we just have 'color_primary', 'logo', etc.
+        $key = preg_replace('/^global_/', '', $row['setting_key']);
+        $station_settings[$key] = $row['setting_value'];
     }
     if ($myStationId > 0) {
         $stmtS = $pdo->prepare("SELECT setting_key, setting_value FROM system_settings WHERE station_id = ?");
         $stmtS->execute([$myStationId]);
         while ($row = $stmtS->fetch(PDO::FETCH_ASSOC)) {
             if ($row['setting_value'] !== null && $row['setting_value'] !== '') {
-                $station_settings[$row['setting_key']] = $row['setting_value'];
+                // Strip 'station_X_' prefix
+                $key = preg_replace('/^station_' . $myStationId . '_/', '', $row['setting_key']);
+                $station_settings[$key] = $row['setting_value'];
             }
         }
     }
 } catch (Exception $e) {}
 
-$theme_primary_color = $station_settings['primary_color'] ?? '#002F6C';
-$theme_button_color  = $station_settings['button_color'] ?? '#002F6C';
-$theme_sidebar_color = $station_settings['sidebar_color'] ?? '#00264D';
-$theme_font_scale    = $station_settings['font_scale_accessibility'] ?? '100';
+$theme_primary_color = $station_settings['color_primary'] ?? '#002F6C';
+$theme_button_color  = $station_settings['color_button'] ?? '#002F6C';
+$theme_sidebar_color = $station_settings['color_sidebar'] ?? '#00264D';
+$theme_font_scale    = $station_settings['font_scale'] ?? '100';
 $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_settings['high_contrast'] === '1' || $station_settings['high_contrast'] === 'true'));
  ?>
 <!DOCTYPE html>
@@ -276,6 +280,38 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/manager_table_design.css?v=2.0.2" />
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/manager_customer_management.css?v=2.0.2" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- GLOBAL TEXT VISIBILITY FIX - Ensures all text is readable while keeping original colors -->
+  <style>
+    /* ═══════════════════════════════════════════════════════════
+       TEXT VISIBILITY FIX - Keep all colors, just fix text contrast
+    ═══════════════════════════════════════════════════════════ */
+    
+    /* Only fix form labels and inputs - keep everything else as is */
+    label:not([style*="color:"]), 
+    .form-label:not([style*="color:"]), 
+    .field-label:not([style*="color:"]) {
+        color: #1e293b !important;
+    }
+    
+    /* Input fields - dark text */
+    input[type="text"]:not([readonly]):not([disabled]),
+    input[type="email"]:not([readonly]):not([disabled]),
+    input[type="password"]:not([readonly]):not([disabled]),
+    input[type="number"]:not([readonly]):not([disabled]),
+    input[type="tel"]:not([readonly]):not([disabled]),
+    input[type="search"]:not([readonly]):not([disabled]),
+    select:not([disabled]),
+    textarea:not([readonly]):not([disabled]) {
+        color: #1e293b !important;
+    }
+    
+    /* Placeholder text */
+    input::placeholder,
+    textarea::placeholder {
+        color: #94a3b8 !important;
+        opacity: 1 !important;
+    }
+  </style>
   <style>
     :root {
         --petron-blue: <?php echo htmlspecialchars($theme_primary_color); ?> !important;
@@ -2392,7 +2428,10 @@ require_once __DIR__ . '/rbac_menu.php';
             <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" aria-label="Toggle Sidebar" style="margin-right: 15px;">
                 <i class="fas fa-bars" id="sidebarToggleIcon"></i>
             </button>
-            <img src="../assets/img/Petron Logo.png" alt="Petron Logo" class="brand-mark" id="petronLogo">
+            <?php 
+                $logo_path = $station_settings['logo'] ?? '../assets/img/Petron Logo.png';
+            ?>
+            <img src="<?php echo htmlspecialchars($logo_path); ?>" alt="Petron Logo" class="brand-mark" id="petronLogo">
             <div class="brand-text">
                 <div class="brand-title">Petron Station Management System</div>
                 <?php if ($station_name && $role !== 'superadmin'): ?>
@@ -2445,7 +2484,7 @@ require_once __DIR__ . '/rbac_menu.php';
         </div>
         <div class="header-right">
             <!-- Notification Bell -->
-            <?php if(in_array($role, ['staff','admin','manager','superadmin'])): ?>
+            <?php if(in_array($role, ['staff','admin','manager','superadmin','developer'])): ?>
             <div class="notification-bell" id="notificationBell">
                 <i class="fas fa-bell"></i>
                 <span class="badge" id="notificationBadge" style="display: none;">0</span>
@@ -2930,13 +2969,20 @@ require_once __DIR__ . '/rbac_menu.php';
 
             // Icon + colour per result type (mirrors search.php $ICONS / $COLORS)
             const TYPE_META = {
-                'Transaction' : { icon: 'fas fa-shopping-cart', color: '#3b82f6' },
-                'Customer'    : { icon: 'fas fa-user',           color: '#10b981' },
-                'Product'     : { icon: 'fas fa-box',            color: '#f59e0b' },
-                'Job Order'   : { icon: 'fas fa-wrench',         color: '#8b5cf6' },
-                'Delivery'    : { icon: 'fas fa-truck',          color: '#ef4444' },
-                'Calendar'    : { icon: 'fas fa-calendar-alt',   color: '#06b6d4' },
-                'Report'      : { icon: 'fas fa-chart-bar',      color: '#64748b' },
+                'Transaction'   : { icon: 'fas fa-shopping-cart',   color: '#3b82f6' },
+                'Customer'      : { icon: 'fas fa-user',             color: '#10b981' },
+                'Product'       : { icon: 'fas fa-box',              color: '#f59e0b' },
+                'Job Order'     : { icon: 'fas fa-wrench',           color: '#8b5cf6' },
+                'Delivery'      : { icon: 'fas fa-truck',            color: '#ef4444' },
+                'Calendar'      : { icon: 'fas fa-calendar-alt',     color: '#06b6d4' },
+                'Report'        : { icon: 'fas fa-chart-bar',        color: '#64748b' },
+                'Station'       : { icon: 'fas fa-gas-pump',         color: '#002F6C' },
+                'Admin'         : { icon: 'fas fa-user-shield',      color: '#7c3aed' },
+                'System Log'    : { icon: 'fas fa-server',           color: '#dc2626' },
+                'Security'      : { icon: 'fas fa-shield-alt',       color: '#b91c1c' },
+                'Audit Trail'   : { icon: 'fas fa-history',          color: '#0891b2' },
+                'Product Mgmt'  : { icon: 'fas fa-tags',             color: '#e11d48' },
+                'Fuel Management': { icon: 'fas fa-gas-pump',        color: '#f97316' },
             };
 
             let debounceTimer;
@@ -2994,9 +3040,18 @@ require_once __DIR__ . '/rbac_menu.php';
                                     row.style.cssText =
                                         'display:flex;align-items:center;gap:10px;padding:9px 14px;' +
                                         'text-decoration:none;color:inherit;border-bottom:1px solid #f8fafc;' +
-                                        'transition:background .12s;';
+                                        'transition:background .12s;cursor:pointer;';
                                     row.onmouseenter = () => row.style.background = '#f8fafc';
                                     row.onmouseleave = () => row.style.background = '';
+                                    
+                                    // Add click handler to ensure navigation works
+                                    row.onclick = function(e) {
+                                        e.preventDefault();
+                                        if (item.link && item.link !== '#') {
+                                            window.location.href = item.link;
+                                        }
+                                    };
+                                    
                                     row.innerHTML =
                                         `<div style="width:30px;height:30px;border-radius:8px;background:${color}18;` +
                                         `display:flex;align-items:center;justify-content:center;flex-shrink:0;">` +
@@ -3116,9 +3171,11 @@ require_once __DIR__ . '/rbac_menu.php';
                     const color = SEV_COLOR[n.severity]   || SEV_COLOR.info;
                     const url   = n.redirect_url ? n.redirect_url : '#';
                     const unread = n.status === 'unread';
+                    // Escape quotes in URL to prevent breaking the onclick attribute
+                    const safeUrl = url.replace(/'/g, "\\'").replace(/"/g, '&quot;');
                     return `<div class="sa-notif-item${unread ? ' unread' : ''}"
                                  style="padding:12px 14px;border-bottom:1px solid #f0f0f0;cursor:pointer;background:${unread ? '#fff9f0' : '#fff'};transition:background .15s;"
-                                 onclick="saMarkRead(${n.id}, '${url}')"
+                                 onclick="saMarkRead(${n.id}, '${safeUrl}')"
                                  onmouseenter="this.style.background='#f8fafc'"
                                  onmouseleave="this.style.background='${unread ? '#fff9f0' : '#fff'}'">
                         <div style="display:flex;align-items:flex-start;gap:10px;">
@@ -3186,8 +3243,16 @@ require_once __DIR__ . '/rbac_menu.php';
                     fd.append('notification_id', id);
                     await fetch(API_LIST + '?action=mark_read', { method: 'POST', body: fd });
                 } catch (e) {}
-                if (url && url !== '#') window.location.href = url;
-                else loadNotifications();
+                
+                // Navigate to the URL after marking as read
+                if (url && url !== '#' && url.trim() !== '') {
+                    // Add a small delay to ensure the mark-read completes
+                    setTimeout(function() {
+                        window.location.href = url;
+                    }, 100);
+                } else {
+                    loadNotifications();
+                }
             };
 
             // Mark all read button

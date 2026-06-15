@@ -68,79 +68,102 @@ try {
     error_log("Technical Reports table creation: " . $e->getMessage());
 }
 
-// Fetch filters
-$date_from = $_GET['date_from'] ?? date('Y-m-d', strtotime('-7 days'));
-$date_to = $_GET['date_to'] ?? date('Y-m-d');
-$module_filter = $_GET['module'] ?? '';
+// Filters
+$date_from     = $_GET['date_from'] ?? date('Y-m-d', strtotime('-30 days'));
+$date_to       = $_GET['date_to']   ?? date('Y-m-d');
+$module_filter = $_GET['module']    ?? '';
 
-// Fetch data
+// ── System Usage Metrics (real: system_health_metrics) ────────
+$system_health_metrics = $pdo->query("
+    SELECT metric_name, metric_value, metric_unit, status, recorded_at
+    FROM system_health_metrics ORDER BY recorded_at DESC LIMIT 50
+")->fetchAll(PDO::FETCH_ASSOC);
+
+// Aggregated from system_performance_logs
 $stmt_metrics = $pdo->prepare("
-    SELECT 
-        metric_type,
-        AVG(metric_value) as avg_value,
-        MAX(metric_value) as max_value,
-        MIN(metric_value) as min_value,
-        metric_unit,
-        COUNT(*) as measurement_count
+    SELECT metric_type,
+           AVG(metric_value) as avg_value, MAX(metric_value) as max_value,
+           MIN(metric_value) as min_value, metric_unit, COUNT(*) as measurement_count
     FROM system_performance_logs
     WHERE created_at BETWEEN ? AND ?
     " . ($module_filter ? "AND module_name = ?" : "") . "
     GROUP BY metric_type, metric_unit
 ");
-if ($module_filter) {
-    $stmt_metrics->execute([$date_from . ' 00:00:00', $date_to . ' 23:59:59', $module_filter]);
-} else {
-    $stmt_metrics->execute([$date_from . ' 00:00:00', $date_to . ' 23:59:59']);
-}
+$module_filter
+    ? $stmt_metrics->execute([$date_from.' 00:00:00', $date_to.' 23:59:59', $module_filter])
+    : $stmt_metrics->execute([$date_from.' 00:00:00', $date_to.' 23:59:59']);
 $metrics = $stmt_metrics->fetchAll(PDO::FETCH_ASSOC);
 
+// ── Performance Logs ──────────────────────────────────────────
 $stmt_perf = $pdo->prepare("
-    SELECT 
-        module_name,
-        endpoint,
-        AVG(metric_value) as avg_response_time,
-        MAX(metric_value) as max_response_time,
-        COUNT(*) as request_count,
-        DATE(created_at) as log_date
+    SELECT module_name, endpoint,
+           AVG(metric_value) as avg_response_time,
+           MAX(metric_value) as max_response_time,
+           COUNT(*) as request_count, DATE(created_at) as log_date
     FROM system_performance_logs
-    WHERE metric_type = 'query_time'
-    AND created_at BETWEEN ? AND ?
+    WHERE metric_type = 'query_time' AND created_at BETWEEN ? AND ?
     " . ($module_filter ? "AND module_name = ?" : "") . "
     GROUP BY module_name, endpoint, DATE(created_at)
-    ORDER BY created_at DESC
-    LIMIT 100
+    ORDER BY log_date DESC LIMIT 100
 ");
-if ($module_filter) {
-    $stmt_perf->execute([$date_from . ' 00:00:00', $date_to . ' 23:59:59', $module_filter]);
-} else {
-    $stmt_perf->execute([$date_from . ' 00:00:00', $date_to . ' 23:59:59']);
-}
+$module_filter
+    ? $stmt_perf->execute([$date_from.' 00:00:00', $date_to.' 23:59:59', $module_filter])
+    : $stmt_perf->execute([$date_from.' 00:00:00', $date_to.' 23:59:59']);
 $performance_logs = $stmt_perf->fetchAll(PDO::FETCH_ASSOC);
 
+// ── Error Tracking (real: error_tracking_logs → fallback: audit_logs) ──
 $stmt_errors = $pdo->prepare("
-    SELECT * FROM error_tracking_logs
+    SELECT id, error_type, error_message, module_name, severity, status, created_at
+    FROM error_tracking_logs
     WHERE created_at BETWEEN ? AND ?
     " . ($module_filter ? "AND module_name = ?" : "") . "
-    ORDER BY created_at DESC, severity DESC
-    LIMIT 50
+    ORDER BY created_at DESC, severity DESC LIMIT 100
 ");
-if ($module_filter) {
-    $stmt_errors->execute([$date_from . ' 00:00:00', $date_to . ' 23:59:59', $module_filter]);
-} else {
-    $stmt_errors->execute([$date_from . ' 00:00:00', $date_to . ' 23:59:59']);
-}
+$module_filter
+    ? $stmt_errors->execute([$date_from.' 00:00:00', $date_to.' 23:59:59', $module_filter])
+    : $stmt_errors->execute([$date_from.' 00:00:00', $date_to.' 23:59:59']);
 $errors = $stmt_errors->fetchAll(PDO::FETCH_ASSOC);
 
+if (empty($errors)) {
+    $stmt_err_fb = $pdo->prepare("
+        SELECT id, action_type AS error_type, action_details AS error_message,
+               COALESCE(entity_type,'system') AS module_name,
+               'error' AS severity, status, created_at
+        FROM audit_logs
+        WHERE status = 'Failed' AND created_at BETWEEN ? AND ?
+        ORDER BY created_at DESC LIMIT 100
+    ");
+    $stmt_err_fb->execute([$date_from.' 00:00:00', $date_to.' 23:59:59']);
+    $errors = $stmt_err_fb->fetchAll(PDO::FETCH_ASSOC);
+}
+
+// ── Module Health (real: module_health_logs → fallback: activity_logs) ──
 $stmt_health = $pdo->prepare("
-    SELECT * FROM module_health_logs
-    WHERE last_check BETWEEN ? AND ?
-    ORDER BY health_score ASC
+    SELECT * FROM module_health_logs WHERE last_check BETWEEN ? AND ? ORDER BY health_score ASC
 ");
-$stmt_health->execute([$date_from . ' 00:00:00', $date_to . ' 23:59:59']);
+$stmt_health->execute([$date_from.' 00:00:00', $date_to.' 23:59:59']);
 $module_health = $stmt_health->fetchAll(PDO::FETCH_ASSOC);
 
-$stmt_modules = $pdo->query("SELECT DISTINCT module_name FROM system_performance_logs WHERE module_name IS NOT NULL ORDER BY module_name");
-$available_modules = $stmt_modules->fetchAll(PDO::FETCH_COLUMN);
+$module_health_derived = [];
+if (empty($module_health)) {
+    $module_health_derived = $pdo->query("
+        SELECT action AS module_name, COUNT(*) AS total_actions,
+               SUM(CASE WHEN action LIKE '%fail%' OR action LIKE '%error%' OR action LIKE '%denied%' THEN 1 ELSE 0 END) AS error_count,
+               MAX(created_at) AS last_check
+        FROM activity_logs GROUP BY action ORDER BY total_actions DESC LIMIT 20
+    ")->fetchAll(PDO::FETCH_ASSOC);
+}
+
+// ── Summary Stats ─────────────────────────────────────────────
+$total_errors        = count($errors);
+$total_perf_logs     = count($performance_logs);
+$total_health_checks = count($module_health) ?: count($module_health_derived);
+$total_actions       = (int) $pdo->query("SELECT COUNT(*) FROM activity_logs")->fetchColumn();
+
+$available_modules = [];
+try {
+    $available_modules = $pdo->query("SELECT DISTINCT module_name FROM system_performance_logs WHERE module_name IS NOT NULL ORDER BY module_name")->fetchAll(PDO::FETCH_COLUMN);
+} catch (Exception $e) {}
 
 include __DIR__ . '/../partials/header.php';
 ?>
@@ -163,7 +186,7 @@ include __DIR__ . '/../partials/header.php';
 }
 
 .report-container {
-    padding: 24px;
+    padding: 0 24px 24px;
     background: var(--bg-secondary);
     min-height: 100vh;
 }
@@ -180,7 +203,7 @@ include __DIR__ . '/../partials/header.php';
 .page-title {
     font-size: 1.875rem;
     font-weight: 700;
-    color: var(--text-primary);
+    color: var(--primary-color) !important;
     margin: 0 0 8px 0;
 }
 
@@ -191,6 +214,7 @@ include __DIR__ . '/../partials/header.php';
     margin-bottom: 24px;
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--border-color);
+    margin-top: -12px !important;
 }
 
 .filters-grid {
@@ -228,9 +252,69 @@ include __DIR__ . '/../partials/header.php';
     gap: 8px;
 }
 
-.btn-primary { background: var(--primary-color); color: white; }
-.btn-success { background: var(--success-color); color: white; }
-.btn-secondary { background: #e5e7eb; color: var(--text-primary); }
+.btn-primary { 
+    padding: 7px 14px !important;
+    background: white !important;
+    color: #00264D !important;
+    border: 1px solid #00264D !important;
+    border-radius: 4px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    transition: all 0.2s !important;
+}
+
+.btn-primary:hover {
+    background: #00264D !important;
+    color: white !important;
+}
+
+.btn-secondary { 
+    padding: 7px 14px !important;
+    background: white !important;
+    color: #6b7280 !important;
+    border: 1px solid #6b7280 !important;
+    border-radius: 4px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    transition: all 0.2s !important;
+    text-decoration: none !important;
+    display: inline-block !important;
+}
+
+.btn-secondary:hover {
+    background: #6b7280 !important;
+    color: white !important;
+}
+
+/* Export Actions - Same as Audit Trail */
+.rpt-export-actions {
+    display: flex !important;
+    gap: 6px !important;
+    margin-left: auto !important;
+}
+
+.rpt-export-btn {
+    padding: 7px 14px !important;
+    background: white !important;
+    color: #00264D !important;
+    border: 1px solid #00264D !important;
+    border-radius: 4px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    transition: all 0.2s !important;
+}
+
+.rpt-export-btn:hover {
+    background: #00264D !important;
+    color: white !important;
+}
+
+.rpt-export-btn i {
+    margin-right: 3px !important;
+}
 
 .actions-bar {
     display: flex;
@@ -333,64 +417,220 @@ include __DIR__ . '/../partials/header.php';
 }
 
 @media print {
-    @page { size: legal portrait; margin: 0.3in 0.4in; }
-    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    
-    body { background: white !important; }
-    
-    .filters-card,
-    .btn,
-    .sidebar,
-    .top-header,
-    .footer-sidebar-area,
-    nav,
-    .no-print {
-        display: none !important;
+    @page {
+        size: A4 landscape;
+        margin: 0.4in 0.4in;
     }
-    
-    .report-container {
+
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        box-sizing: border-box !important;
+    }
+
+    html, body {
+        background: white !important;
+        padding: 0 !important;
+        margin: 0 auto !important;
+        width: 100% !important;
+        height: auto !important;
+        overflow: visible !important;
+    }
+
+    /* Hide ALL system chrome, navigation elements, filters, and summary cards */
+    .filters-card, .btn, .sidebar, .top-header,
+    .footer-sidebar-area, .footer-content, .fixed-footer, footer,
+    .toggle-scroll-btn, #toggleScrollBtn, .toast,
+    nav, header, .no-print, .stats-grid, .stat-box {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border: none !important;
+    }
+
+    /* Reset all structural layouts to remove sidebar offsets */
+    body .app,
+    body .main,
+    body.sidebar-expanded .main,
+    body.sidebar-collapsed .main,
+    body .ss-wrapper,
+    body .page-wrapper,
+    body main {
         margin: 0 !important;
         padding: 0 !important;
-        box-shadow: none !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        display: block !important;
+        float: none !important;
+        position: static !important;
+        left: 0 !important;
+        top: 0 !important;
+        right: auto !important;
+        bottom: auto !important;
+        overflow: visible !important;
     }
-    
+
+    /* Report container centering and width constraints */
+    .report-container {
+        display: block !important;
+        padding: 0 5px !important;
+        margin: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        background: white !important;
+        overflow: visible !important;
+    }
+
+    .rpt-printable {
+        display: block !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+    }
+
+    /* Professional top rule */
+    .rpt-printable::before {
+        content: '';
+        display: block;
+        width: 100%;
+        border-top: 3px solid #003366;
+        margin-bottom: 2px;
+    }
+
+    /* Reduce title spacing */
+    .rpt-printable > div:first-child {
+        padding: 8px 0 4px 0 !important;
+        margin-bottom: 8px !important;
+    }
+
+    /* Cards */
     .report-card {
-        page-break-inside: avoid;
+        page-break-inside: auto !important;
+        break-inside: auto !important;
+        margin-bottom: 12px !important;
+        border: 1px solid #b0bec8 !important;
         box-shadow: none !important;
-        border: 1px solid #ddd !important;
+        width: 100% !important;
+        overflow: visible !important;
     }
-    
-    .data-table {
+
+    .report-card-header {
+        background: #eef2f8 !important;
+        padding: 6px 10px !important;
+        border-bottom: 1px solid #b0bec8 !important;
+    }
+
+    .report-card-header h3,
+    .report-card-title {
         font-size: 10px !important;
+        font-weight: 700 !important;
+        color: #003366 !important;
+        margin: 0 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
     }
-    
+
+    .report-card-body {
+        padding: 8px 10px !important;
+        overflow: visible !important;
+        height: auto !important;
+    }
+
+    /* Kill overflow wrappers around tables in print */
+    div[style*="overflow-x"],
+    .report-card-body > div {
+        overflow: visible !important;
+        overflow-x: visible !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    /* Tables — Landscape Optimized, Auto Width Distribution */
+    .data-table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        font-size: 8px !important;
+        page-break-inside: auto !important;
+        table-layout: auto !important;
+        word-break: break-all !important;
+        overflow-wrap: anywhere !important;
+    }
+
+    .data-table thead { display: table-header-group !important; }
+    .data-table tbody { display: table-row-group !important; }
+
+    .data-table thead tr {
+        background: #00264D !important;
+    }
+
     .data-table thead th {
-        background: #f0f0f0 !important;
-        border: 1px solid #000 !important;
+        padding: 6px 5px !important;
+        font-size: 7.5px !important;
+        font-weight: 700 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.3px !important;
+        border: 1px solid #00264D !important;
+        text-align: center !important;
+        color: white !important;
+        background: #00264D !important;
+        white-space: normal !important;
+    }
+
+    .data-table tbody td {
+        padding: 5px 5px !important;
+        font-size: 7.5px !important;
+        border: 1px solid #d0d8e4 !important;
+        text-align: center !important;
+        white-space: normal !important;
+        vertical-align: middle !important;
+    }
+
+    .data-table tbody tr:nth-child(even) {
+        background: #f8fafc !important;
+    }
+
+    .data-table tbody tr { page-break-inside: avoid !important; }
+
+    .data-table tfoot td {
+        padding: 6px !important;
+        font-size: 8px !important;
+        border-top: 2px solid #003366 !important;
+        border: 1px solid #9aafcc !important;
+        font-weight: 700 !important;
+        background: #eef2f8 !important;
+    }
+
+    /* Badges */
+    .badge {
+        border: 1px solid #999 !important;
+        padding: 1px 4px !important;
+        font-size: 6.5px !important;
+        border-radius: 2px !important;
+        font-weight: 600 !important;
+    }
+
+    .empty-state { display: none !important; }
+
+    /* Page footer */
+    .rpt-printable::after {
+        content: 'PETRON STATION MANAGEMENT SYSTEM  |  CONFIDENTIAL  |  Generated: ' attr(data-print-date);
+        display: block;
+        font-size: 7px;
+        color: #718096;
+        text-align: center;
+        border-top: 1px solid #cbd5e1;
+        padding-top: 6px;
+        margin-top: 20px;
     }
 }
 </style>
 
 <div class="report-container">
 
-    <!-- Page Header - Manager Style -->
-    <div style="text-align:center;padding:22px 0 14px;border-bottom:2px solid #e2e8f0;margin-bottom:20px;">
-        <div style="font-size:20px;font-weight:800;color:#003366;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">
-            TECHNICAL REPORTS
-        </div>
-        <div style="font-size:16px;font-weight:700;color:#003366;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:8px;">
-            DEVELOPER VIEW
-        </div>
-        <div style="font-size:12px;color:#64748b;margin-bottom:2px;">
-            System Usage Metrics • Performance Logs • Error Tracking • Module Health
-        </div>
-        <div style="font-size:12px;color:#334155;">
-            <strong>Date:</strong>
-            <?php echo date('F j, Y', strtotime($date_from)); ?>
-            <?php echo $date_from !== $date_to ? ' – ' . date('F j, Y', strtotime($date_to)) : ''; ?>
-        </div>
-    </div>
-
+    <!-- Date Filters - Moved to Top -->
     <div class="filters-card">
         <form method="GET">
             <div class="filters-grid">
@@ -423,17 +663,37 @@ include __DIR__ . '/../partials/header.php';
                         <i class="fas fa-times"></i> Clear
                     </a>
                 </div>
-                <div>
-                    <button type="button" class="btn btn-success" onclick="exportToCSV()">
-                        <i class="fas fa-file-csv"></i> Export CSV
+                <div class="rpt-export-actions">
+                    <button type="button" class="rpt-export-btn" onclick="window.print()">
+                        <i class="fas fa-print"></i> Print PDF
                     </button>
-                    <button type="button" class="btn btn-success" onclick="window.print()">
-                        <i class="fas fa-print"></i> Print Report
+                    <button type="button" class="rpt-export-btn" onclick="exportReport('excel')">
+                        <i class="fas fa-file-excel"></i> Export Excel
+                    </button>
+                    <button type="button" class="rpt-export-btn" onclick="exportReport('csv')">
+                        <i class="fas fa-file-csv"></i> Export CSV
                     </button>
                 </div>
             </div>
         </form>
     </div>
+
+    <!-- Printable Content: Title + Report Cards -->
+    <div class="rpt-printable" data-print-date="<?php echo date('F j, Y g:i A'); ?>">
+        <!-- Page Header - Manager Style (Moved below filters) -->
+        <div style="text-align:center;padding:22px 0 14px;border-bottom:2px solid #e2e8f0;margin-bottom:20px;">
+            <div style="font-size:20px;font-weight:800;color:#003366;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">
+                TECHNICAL REPORTS
+            </div>
+            <div style="font-size:12px;color:#64748b;margin-bottom:2px;">
+                System Usage Metrics • Performance Logs • Error Tracking • Module Health
+            </div>
+            <div style="font-size:12px;color:#334155;">
+                <strong>Date:</strong>
+                <?php echo date('F j, Y', strtotime($date_from)); ?>
+                <?php echo $date_from !== $date_to ? ' – ' . date('F j, Y', strtotime($date_to)) : ''; ?>
+            </div>
+        </div>
 
     <script>
     function exportToCSV() {
@@ -444,33 +704,62 @@ include __DIR__ . '/../partials/header.php';
     }
     </script>
 
-    <!-- System Usage Metrics -->
+    <!-- System Usage Metrics (real data: system_health_metrics) -->
     <div class="report-card">
         <div class="report-card-header">
             <h3 class="report-card-title"><i class="fas fa-tachometer-alt"></i> System Usage Metrics</h3>
         </div>
         <div class="report-card-body">
-            <?php if (empty($metrics)): ?>
-                <div class="empty-state">
-                    <i class="fas fa-chart-line" style="font-size: 3rem; opacity: 0.3;"></i>
-                    <p>No system metrics data available</p>
+            <?php if (!empty($system_health_metrics)): ?>
+                <div style="overflow-x: auto;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Metric</th>
+                                <th>Value</th>
+                                <th>Unit</th>
+                                <th>Status</th>
+                                <th>Recorded At</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($system_health_metrics as $m): ?>
+                                <tr>
+                                    <td><strong><?php echo htmlspecialchars(str_replace('_', ' ', ucwords($m['metric_name']))); ?></strong></td>
+                                    <td><?php echo htmlspecialchars($m['metric_value']); ?></td>
+                                    <td><?php echo htmlspecialchars($m['metric_unit']); ?></td>
+                                    <td>
+                                        <span class="badge badge-<?php echo $m['status'] === 'good' ? 'success' : ($m['status'] === 'warning' ? 'warning' : 'danger'); ?>">
+                                            <?php echo strtoupper($m['status']); ?>
+                                        </span>
+                                    </td>
+                                    <td><?php echo date('Y-m-d H:i', strtotime($m['recorded_at'])); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
                 </div>
-            <?php else: ?>
+            <?php elseif (!empty($metrics)): ?>
                 <div class="stats-grid">
                     <?php foreach ($metrics as $metric): ?>
                         <div class="stat-box">
                             <div class="stat-label"><?php echo strtoupper(str_replace('_', ' ', $metric['metric_type'])); ?></div>
                             <div class="stat-value">
-                                <?php echo number_format($metric['avg_value'], 2); ?> 
+                                <?php echo number_format($metric['avg_value'], 2); ?>
                                 <small style="font-size:0.5em; font-weight:400;"><?php echo htmlspecialchars($metric['metric_unit']); ?></small>
                             </div>
                             <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:8px;">
                                 <div>Min: <?php echo number_format($metric['min_value'], 2); ?></div>
                                 <div>Max: <?php echo number_format($metric['max_value'], 2); ?></div>
-                                <div>Count: <?php echo number_format($metric['measurement_count']); ?></div>
+                                <div>Samples: <?php echo number_format($metric['measurement_count']); ?></div>
                             </div>
                         </div>
                     <?php endforeach; ?>
+                </div>
+            <?php else: ?>
+                <div class="empty-state">
+                    <i class="fas fa-chart-line" style="font-size: 3rem; opacity: 0.3;"></i>
+                    <p>No system metrics data in selected period</p>
                 </div>
             <?php endif; ?>
         </div>
@@ -576,39 +865,21 @@ include __DIR__ . '/../partials/header.php';
             <h3 class="report-card-title"><i class="fas fa-heartbeat"></i> Module Health</h3>
         </div>
         <div class="report-card-body">
-            <?php if (empty($module_health)): ?>
-                <div class="empty-state">
-                    <i class="fas fa-heartbeat" style="font-size: 3rem; opacity: 0.3;"></i>
-                    <p>No module health data available</p>
-                </div>
-            <?php else: ?>
+            <?php if (!empty($module_health)): ?>
                 <div style="overflow-x: auto;">
                     <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Module</th>
-                                <th>Status</th>
-                                <th>Health Score</th>
-                                <th>Uptime</th>
-                                <th>Downtime</th>
-                                <th>Response Time (ms)</th>
-                                <th>Last Check</th>
-                            </tr>
-                        </thead>
+                        <thead><tr>
+                            <th>Module</th><th>Status</th><th>Health Score</th>
+                            <th>Uptime</th><th>Downtime</th><th>Response (ms)</th><th>Last Check</th>
+                        </tr></thead>
                         <tbody>
                             <?php foreach ($module_health as $health): ?>
                                 <tr>
                                     <td><?php echo htmlspecialchars($health['module_name']); ?></td>
-                                    <td>
-                                        <span class="badge badge-<?php echo $health['status'] === 'up' ? 'success' : ($health['status'] === 'degraded' ? 'warning' : 'danger'); ?>">
-                                            <?php echo strtoupper($health['status']); ?>
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <strong style="color: <?php echo $health['health_score'] >= 80 ? 'var(--success-color)' : ($health['health_score'] >= 50 ? 'var(--warning-color)' : 'var(--danger-color)'); ?>">
-                                            <?php echo $health['health_score']; ?>%
-                                        </strong>
-                                    </td>
+                                    <td><span class="badge badge-<?php echo $health['status'] === 'up' ? 'success' : ($health['status'] === 'degraded' ? 'warning' : 'danger'); ?>">
+                                        <?php echo strtoupper($health['status']); ?></span></td>
+                                    <td><strong style="color: <?php echo $health['health_score'] >= 80 ? 'var(--success-color)' : ($health['health_score'] >= 50 ? 'var(--warning-color)' : 'var(--danger-color)'); ?>">
+                                        <?php echo $health['health_score']; ?>%</strong></td>
                                     <td><?php echo gmdate('H:i:s', $health['uptime_seconds']); ?></td>
                                     <td><?php echo gmdate('H:i:s', $health['downtime_seconds']); ?></td>
                                     <td><?php echo number_format($health['response_time_ms'] ?? 0, 2); ?></td>
@@ -618,9 +889,142 @@ include __DIR__ . '/../partials/header.php';
                         </tbody>
                     </table>
                 </div>
+            <?php elseif (!empty($module_health_derived)): ?>
+                <!-- Fallback: derived from activity_logs -->
+                <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:12px;">
+                    <i class="fas fa-info-circle"></i> Derived from system activity logs. Install module health monitors to see detailed uptime data.
+                </p>
+                <div style="overflow-x: auto;">
+                    <table class="data-table">
+                        <thead><tr>
+                            <th>Action / Module</th>
+                            <th>Total Activity</th>
+                            <th>Error Count</th>
+                            <th>Health Est.</th>
+                            <th>Last Seen</th>
+                        </tr></thead>
+                        <tbody>
+                            <?php foreach ($module_health_derived as $h):
+                                $err_pct = $h['total_actions'] > 0 ? round(($h['error_count'] / $h['total_actions']) * 100) : 0;
+                                $health_est = 100 - $err_pct;
+                            ?>
+                                <tr>
+                                    <td><?php echo htmlspecialchars($h['module_name']); ?></td>
+                                    <td><?php echo number_format($h['total_actions']); ?></td>
+                                    <td>
+                                        <span class="badge badge-<?php echo $h['error_count'] > 0 ? 'danger' : 'success'; ?>">
+                                            <?php echo number_format($h['error_count']); ?>
+                                        </span>
+                                    </td>
+                                    <td><strong style="color: <?php echo $health_est >= 80 ? 'var(--success-color)' : ($health_est >= 50 ? 'var(--warning-color)' : 'var(--danger-color)'); ?>">
+                                        ~<?php echo $health_est; ?>%</strong></td>
+                                    <td><?php echo date('Y-m-d H:i', strtotime($h['last_check'])); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php else: ?>
+                <div class="empty-state">
+                    <i class="fas fa-heartbeat" style="font-size: 3rem; opacity: 0.3;"></i>
+                    <p>No module health data available</p>
+                </div>
             <?php endif; ?>
         </div>
     </div>
+    </div><!-- End .rpt-printable -->
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+function exportReport(type) {
+    if (typeof XLSX === 'undefined') {
+        alert('Export library not loaded. Please refresh the page and try again.');
+        return;
+    }
+    
+    const tables = Array.from(document.querySelectorAll('.report-card .data-table')).filter(
+        t => t.querySelector('tbody tr')
+    );
+    
+    if (!tables.length) { 
+        alert('No table data found to export.'); 
+        return; 
+    }
+    
+    const dateFrom = document.querySelector('input[name="date_from"]')?.value || '';
+    const dateTo = document.querySelector('input[name="date_to"]')?.value || '';
+    const filename = `Technical_Report_${dateFrom}_to_${dateTo}`;
+    
+    if (type === 'csv') {
+        exportCSV(tables, filename);
+    } else {
+        exportExcel(tables, filename);
+    }
+}
+
+function tableToAoA(table) {
+    const aoa = [];
+    table.querySelectorAll('thead tr').forEach(tr => {
+        aoa.push([...tr.querySelectorAll('th')].map(th => th.innerText.trim()));
+    });
+    table.querySelectorAll('tbody tr').forEach(tr => {
+        aoa.push([...tr.querySelectorAll('td')].map(td => td.innerText.trim()));
+    });
+    return aoa;
+}
+
+function exportExcel(tables, filename) {
+    const wb = XLSX.utils.book_new();
+    const usedNames = {};
+    
+    tables.forEach((tbl, i) => {
+        const card = tbl.closest('.report-card');
+        let sheetName = card?.querySelector('.report-card-title')?.innerText?.trim() || `Sheet ${i + 1}`;
+        sheetName = sheetName.replace(/[:\\\/?*\[\]]/g, '').substring(0, 31).trim() || `Sheet${i+1}`;
+        
+        if (usedNames[sheetName]) {
+            usedNames[sheetName]++;
+            sheetName = (sheetName.substring(0, 28) + ' ' + usedNames[sheetName]).substring(0,31);
+        } else {
+            usedNames[sheetName] = 1;
+        }
+        
+        const aoa = tableToAoA(tbl);
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        
+        if (aoa.length && aoa[0]) {
+            ws['!cols'] = aoa[0].map((_, ci) => ({
+                wch: Math.min(45, Math.max(10, ...aoa.map(row => String(row[ci] ?? '').length)))
+            }));
+        }
+        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    });
+    
+    XLSX.writeFile(wb, filename + '.xlsx');
+}
+
+function exportCSV(tables, filename) {
+    let csv = '';
+    tables.forEach((tbl, i) => {
+        const card = tbl.closest('.report-card');
+        const heading = card?.querySelector('.report-card-title')?.innerText?.trim();
+        if (heading) csv += '"' + heading.replace(/"/g, '""') + '"\n';
+        else if (i > 0) csv += '\n';
+        tableToAoA(tbl).forEach(row => {
+            csv += row.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',') + '\n';
+        });
+        csv += '\n';
+    });
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+}
+</script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

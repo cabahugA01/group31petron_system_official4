@@ -4,6 +4,7 @@ session_start();
 
 // Include database connection
 require_once __DIR__ . '/../public/db_connect.php';
+require_once __DIR__ . '/../backend/lib.php';
 
 $message = '';
 $message_type = '';

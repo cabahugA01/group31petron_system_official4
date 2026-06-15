@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 // ============================================================
 // SuperAdmin – Station Management
@@ -201,8 +201,8 @@ include __DIR__ . '/../partials/header.php';
 
 <style>
 /* ── Station Management Styles (sm- prefix) ── */
-.sm-page { padding: 28px 24px; }
-.sm-page-head { margin-bottom: 24px; display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.sm-page { padding: 0 24px 28px; }
+.sm-page-head { margin-bottom: 24px; display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: -12px !important; }
 .sm-page-head h1 { font-size: 22px !important; font-weight: 700 !important; color: var(--petron-blue) !important; margin: 0 !important; text-transform: uppercase !important; }
 .sm-page-head .sub { font-size: 13px; color: #666; margin-top: 4px; text-transform: none !important; }
 

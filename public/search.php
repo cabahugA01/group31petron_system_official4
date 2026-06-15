@@ -60,6 +60,11 @@ $ICONS = [
     'Report'           => 'fas fa-chart-bar',
     'Product Mgmt'     => 'fas fa-tags',
     'Fuel Management'  => 'fas fa-gas-pump',
+    'Station'          => 'fas fa-gas-pump',
+    'Admin'            => 'fas fa-user-shield',
+    'System Log'       => 'fas fa-server',
+    'Security'         => 'fas fa-shield-alt',
+    'Audit Trail'      => 'fas fa-history',
 ];
 
 $COLORS = [
@@ -72,6 +77,11 @@ $COLORS = [
     'Report'           => '#64748b',
     'Product Mgmt'     => '#e11d48',
     'Fuel Management'  => '#f97316',
+    'Station'          => '#002F6C',
+    'Admin'            => '#7c3aed',
+    'System Log'       => '#dc2626',
+    'Security'         => '#b91c1c',
+    'Audit Trail'      => '#0891b2',
 ];
 
 $is_manager = in_array($role, ['manager', 'admin', 'superadmin', 'developer']);
@@ -97,7 +107,7 @@ if (!empty($query)) {
                  WHERE (mt.transaction_id LIKE ?
                      OR mt.status LIKE ?
                      OR mt.payment_method LIKE ?
-                     OR u.name LIKE ?
+                     OR u.username LIKE ?
                      OR DATE(mt.created_at) LIKE ?)
                    {$sw}
                  ORDER BY mt.created_at DESC LIMIT 10"
@@ -107,12 +117,20 @@ if (!empty($query)) {
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $txn_id = $r['transaction_id'] ?? ('#' . $r['id']);
                 $ts     = date('M d, Y H:i', strtotime($r['created_at']));
+                
+                $txn_link = 'staff_transactions_hub.php?section=merchandise';
+                if ($role === 'manager') {
+                    $txn_link = 'pending_transactions.php';
+                } elseif (in_array($role, ['admin', 'superadmin', 'developer'])) {
+                    $txn_link = 'admin_transactions_oversight.php';
+                }
+                
                 $results[] = [
                     'type'     => 'Transaction',
                     'title'    => "Transaction {$txn_id}",
                     'subtitle' => "Status: {$r['status']} · {$ts}",
                     'meta'     => $r['payment_method'] ?? '',
-                    'link'     => 'staff_transactions_hub.php',
+                    'link'     => $txn_link,
                     'icon'     => $ICONS['Transaction'],
                     'color'    => $COLORS['Transaction'],
                 ];
@@ -138,12 +156,20 @@ if (!empty($query)) {
             $stmt->execute([$like, $like, $like, $like, $date_like]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $ts = date('M d, Y H:i', strtotime($r['transaction_date']));
+                
+                $txn_link = 'staff_transactions_hub.php?section=fuel';
+                if ($role === 'manager') {
+                    $txn_link = 'manager_fuel_transaction_validation.php';
+                } elseif (in_array($role, ['admin', 'superadmin', 'developer'])) {
+                    $txn_link = 'admin_fuel_transactions_oversight.php';
+                }
+                
                 $results[] = [
                     'type'     => 'Transaction',
                     'title'    => "Fuel Transaction #{$r['id']} — {$r['fuel_type']}",
                     'subtitle' => "Status: {$r['status']} · {$ts}",
                     'meta'     => $r['shift_period'] ?? '',
-                    'link'     => 'staff_transactions_hub.php?section=fuel',
+                    'link'     => $txn_link,
                     'icon'     => $ICONS['Transaction'],
                     'color'    => $COLORS['Transaction'],
                 ];
@@ -174,12 +200,20 @@ if (!empty($query)) {
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $contact = $r['phone'] ?: ($r['email'] ?: 'No contact');
                 $code    = $r['customer_code'] ? " · ID: {$r['customer_code']}" : '';
+                
+                $cust_link = 'customers.php?edit=' . $r['id'];
+                if ($role === 'manager') {
+                    $cust_link = 'manager_customers.php?edit=' . $r['id'];
+                } elseif (in_array($role, ['admin', 'superadmin', 'developer'])) {
+                    $cust_link = 'admin_customer_management.php?section=list';
+                }
+                
                 $results[] = [
                     'type'     => 'Customer',
                     'title'    => $r['name'],
                     'subtitle' => "{$contact}{$code} · Status: {$r['status']}",
                     'meta'     => $r['status'],
-                    'link'     => 'customers.php?edit=' . $r['id'],
+                    'link'     => $cust_link,
                     'icon'     => $ICONS['Customer'],
                     'color'    => $COLORS['Customer'],
                 ];
@@ -224,12 +258,20 @@ if (!empty($query)) {
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $stock  = (int)($r['stock_level'] ?? 0);
                 $avail  = $stock > 0 ? "In Stock ({$stock})" : 'Out of Stock';
+                
+                $inv_link = 'staff_inventory.php';
+                if ($role === 'manager') {
+                    $inv_link = 'manager_inventory_merchandise.php';
+                } elseif (in_array($role, ['admin', 'superadmin', 'developer'])) {
+                    $inv_link = 'admin_inventory_merchandise.php';
+                }
+                
                 $results[] = [
                     'type'     => 'Product',
                     'title'    => $r['product_name'],
                     'subtitle' => "SKU: {$r['sku']} · {$r['category']} · {$avail}",
                     'meta'     => $r['category'],
-                    'link'     => 'staff_inventory.php',
+                    'link'     => $inv_link,
                     'icon'     => $ICONS['Product'],
                     'color'    => $COLORS['Product'],
                 ];
@@ -256,7 +298,7 @@ if (!empty($query)) {
                      OR jo.customer_name LIKE ?
                      OR jo.service_type LIKE ?
                      OR jo.status LIKE ?
-                     OR u.name LIKE ?)
+                     OR u.username LIKE ?)
                    {$sw} {$uf}
                  ORDER BY jo.created_at DESC LIMIT 10"
             );
@@ -295,19 +337,27 @@ if (!empty($query)) {
                      OR do2.status LIKE ?
                      OR do2.supplier LIKE ?
                      OR do2.delivery_type LIKE ?
-                     OR u.name LIKE ?)
+                     OR u.username LIKE ?)
                    {$sw} {$uf}
                  ORDER BY do2.delivery_date DESC LIMIT 10"
             );
             $stmt->execute([$like, $like, $like, $like, $like]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $dt = $r['delivery_date'] ? date('M d, Y', strtotime($r['delivery_date'])) : 'TBD';
+                
+                $del_link = 'staff_record_delivery.php';
+                if ($role === 'manager') {
+                    $del_link = 'manager_merchandise_deliveries.php';
+                } elseif (in_array($role, ['admin', 'superadmin', 'developer'])) {
+                    $del_link = 'admin_merchandise_deliveries_oversight.php';
+                }
+                
                 $results[] = [
                     'type'     => 'Delivery',
                     'title'    => "Delivery #{$r['id']} — {$r['supplier']}",
                     'subtitle' => "Status: {$r['status']} · {$dt} · {$r['delivery_type']}",
                     'meta'     => $r['status'],
-                    'link'     => 'staff_record_delivery.php',
+                    'link'     => $del_link,
                     'icon'     => $ICONS['Delivery'],
                     'color'    => $COLORS['Delivery'],
                 ];
@@ -328,13 +378,13 @@ if (!empty($query)) {
             $stmt = $pdo->prepare(
                 "SELECT ce.id, ce.title, ce.start_time, ce.end_time,
                         ce.event_type, ce.description,
-                        u.name AS assigned_name
+                        u.username AS assigned_name
                  FROM calendar_events ce
                  LEFT JOIN users u ON u.id = ce.user_id
                  WHERE (ce.title LIKE ?
                      OR ce.event_type LIKE ?
                      OR ce.description LIKE ?
-                     OR u.name LIKE ?
+                     OR u.username LIKE ?
                      OR DATE(ce.start_time) LIKE ?)
                    {$sw} {$uf}
                  ORDER BY ce.start_time DESC LIMIT 10"
@@ -345,12 +395,20 @@ if (!empty($query)) {
                 $start = $r['start_time'] ? date('M d, Y h:i A', strtotime($r['start_time'])) : 'TBD';
                 $end   = $r['end_time']   ? date('h:i A', strtotime($r['end_time']))           : '';
                 $range = $end ? "{$start} – {$end}" : $start;
+                
+                $cal_link = 'staff_calendar.php';
+                if ($role === 'manager') {
+                    $cal_link = 'manager_calendar.php';
+                } elseif (in_array($role, ['admin', 'superadmin', 'developer'])) {
+                    $cal_link = 'admin_calendar.php';
+                }
+                
                 $results[] = [
                     'type'     => 'Calendar',
                     'title'    => $r['title'] ?: ucfirst($r['event_type'] ?? 'Event'),
                     'subtitle' => "{$range}" . ($r['assigned_name'] ? " · {$r['assigned_name']}" : ''),
                     'meta'     => $r['event_type'] ?? '',
-                    'link'     => 'staff_calendar.php',
+                    'link'     => $cal_link,
                     'icon'     => $ICONS['Calendar'],
                     'color'    => $COLORS['Calendar'],
                 ];
@@ -382,7 +440,16 @@ if (!empty($query)) {
             $stmt->execute([$like, $like]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $ts = date('M d, Y H:i', strtotime($r['created_at']));
-                $report_link = $is_manager ? 'manager_reports.php' : 'staff_reports.php';
+                
+                $report_link = 'staff_reports.php';
+                if ($role === 'manager') {
+                    $report_link = 'manager_reports.php';
+                } elseif ($role === 'admin') {
+                    $report_link = 'admin_reports.php';
+                } elseif (in_array($role, ['superadmin', 'developer'])) {
+                    $report_link = 'reports_technical.php';
+                }
+                
                 $results[] = [
                     'type'     => 'Report',
                     'title'    => $r['action'],
@@ -418,12 +485,18 @@ if (!empty($query)) {
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $price = $r['unit_price'] ? '₱' . number_format($r['unit_price'], 2) : 'No price';
                 $cost  = $r['cost_price']  ? ' · Cost: ₱' . number_format($r['cost_price'], 2) : '';
+                
+                $prod_mgmt_link = 'manager_product_merchandise.php';
+                if (in_array($role, ['admin', 'superadmin', 'developer'])) {
+                    $prod_mgmt_link = 'admin_set_prices.php';
+                }
+                
                 $results[] = [
                     'type'     => 'Product Mgmt',
                     'title'    => $r['product_name'],
                     'subtitle' => "SKU: {$r['sku']} · {$r['category']} · Price: {$price}{$cost}",
                     'meta'     => $r['category'],
-                    'link'     => 'manager_product_merchandise.php',
+                    'link'     => $prod_mgmt_link,
                     'icon'     => $ICONS['Product Mgmt'],
                     'color'    => $COLORS['Product Mgmt'],
                 ];
@@ -452,12 +525,18 @@ if (!empty($query)) {
             $stmt->execute([$like, $like, $like]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $pct  = $r['capacity'] > 0 ? round(($r['current_level'] / $r['capacity']) * 100) : 0;
+                
+                $fuel_mgmt_link = 'manager_fuel_management_complete.php';
+                if (in_array($role, ['admin', 'superadmin', 'developer'])) {
+                    $fuel_mgmt_link = 'admin_fuel_transactions_oversight.php';
+                }
+                
                 $results[] = [
                     'type'     => 'Fuel Management',
                     'title'    => "Fuel Tank — {$r['fuel_type']}",
                     'subtitle' => "Level: {$r['current_level']}L / {$r['capacity']}L ({$pct}%)",
                     'meta'     => $r['fuel_type'],
-                    'link'     => 'manager_fuel_management_complete.php',
+                    'link'     => $fuel_mgmt_link,
                     'icon'     => $ICONS['Fuel Management'],
                     'color'    => $COLORS['Fuel Management'],
                 ];
@@ -483,14 +562,228 @@ if (!empty($query)) {
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $dt   = date('M d, Y', strtotime($r['reading_date']));
                 $pump = $r['pump_number'] ?? $r['id'];
+                
+                $fuel_mgmt_link = 'manager_fuel_management_complete.php';
+                if (in_array($role, ['admin', 'superadmin', 'developer'])) {
+                    $fuel_mgmt_link = 'admin_fuel_transactions_oversight.php';
+                }
+                
                 $results[] = [
                     'type'     => 'Fuel Management',
                     'title'    => "Pump #{$pump} Reading — {$dt}",
                     'subtitle' => "Fuel: {$r['fuel_type']} · Computed: {$r['computed_liters']}L",
                     'meta'     => $r['fuel_type'] ?? '',
-                    'link'     => 'manager_fuel_management_complete.php',
+                    'link'     => $fuel_mgmt_link,
                     'icon'     => $ICONS['Fuel Management'],
                     'color'    => $COLORS['Fuel Management'],
+                ];
+            }
+        } catch (Exception $e) {}
+    }
+
+    // ════════════════════════════════════════════════════════
+    // 10. STATIONS (superadmin / developer only)
+    //     Fields: name, address, status, station code
+    // ════════════════════════════════════════════════════════
+    if (in_array($role, ['superadmin', 'developer'])) {
+        try {
+            $stmt = $pdo->prepare(
+                "SELECT id, name, address, status, station_code
+                 FROM stations
+                 WHERE (name LIKE ?
+                     OR address LIKE ?
+                     OR status LIKE ?
+                     OR station_code LIKE ?)
+                 ORDER BY name ASC LIMIT 8"
+            );
+            $stmt->execute([$like, $like, $like, $like]);
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $code = $r['station_code'] ? " · Code: {$r['station_code']}" : '';
+                $results[] = [
+                    'type'     => 'Station',
+                    'title'    => $r['name'],
+                    'subtitle' => ($r['address'] ?? 'No address') . $code . " · Status: {$r['status']}",
+                    'meta'     => $r['status'],
+                    'link'     => 'superadmin_station_management.php',
+                    'icon'     => $ICONS['Station'],
+                    'color'    => $COLORS['Station'],
+                ];
+            }
+        } catch (Exception $e) {}
+    }
+
+    // ════════════════════════════════════════════════════════
+    // 11. ADMINS / USERS (superadmin / developer only)
+    //     Fields: name, username, role, email, status
+    // ════════════════════════════════════════════════════════
+    if (in_array($role, ['superadmin', 'developer'])) {
+        try {
+            $stmt = $pdo->prepare(
+                "SELECT id, username,
+                        COALESCE(NULLIF(CONCAT(first_name,' ',last_name),' '), username) AS full_name,
+                        role, email, status
+                 FROM users
+                 WHERE (username LIKE ?
+                     OR first_name LIKE ?
+                     OR last_name LIKE ?
+                     OR email LIKE ?
+                     OR role LIKE ?
+                     OR status LIKE ?)
+                 ORDER BY full_name ASC LIMIT 10"
+            );
+            $stmt->execute([$like, $like, $like, $like, $like, $like]);
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $email = $r['email'] ? " · {$r['email']}" : '';
+                $results[] = [
+                    'type'     => 'Admin',
+                    'title'    => $r['full_name'] . ' (@' . $r['username'] . ')',
+                    'subtitle' => ucfirst($r['role']) . $email . " · Status: {$r['status']}",
+                    'meta'     => $r['role'],
+                    'link'     => 'superadmin_admin_management.php',
+                    'icon'     => $ICONS['Admin'],
+                    'color'    => $COLORS['Admin'],
+                ];
+            }
+        } catch (Exception $e) {}
+    }
+
+    // ════════════════════════════════════════════════════════
+    // 12. SYSTEM LOGS (superadmin / developer only)
+    //     Source: activity_logs — action, details, IP
+    // ════════════════════════════════════════════════════════
+    if (in_array($role, ['superadmin', 'developer'])) {
+        try {
+            $stmt = $pdo->prepare(
+                "SELECT al.id, al.action, al.details, al.ip_address,
+                        al.created_at,
+                        COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'System') AS user_name
+                 FROM activity_logs al
+                 LEFT JOIN users u ON u.id = al.user_id
+                 WHERE (al.action LIKE ?
+                     OR al.details LIKE ?
+                     OR al.ip_address LIKE ?
+                     OR u.username LIKE ?)
+                 ORDER BY al.created_at DESC LIMIT 8"
+            );
+            $stmt->execute([$like, $like, $like, $like]);
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $ts = date('M d, Y H:i', strtotime($r['created_at']));
+                $ip = $r['ip_address'] ? " · IP: {$r['ip_address']}" : '';
+                $results[] = [
+                    'type'     => 'System Log',
+                    'title'    => $r['action'],
+                    'subtitle' => mb_strimwidth($r['details'] ?? '', 0, 70, '…') . " · {$r['user_name']}{$ip} · {$ts}",
+                    'meta'     => $ts,
+                    'link'     => 'activity_logs.php',
+                    'icon'     => $ICONS['System Log'],
+                    'color'    => $COLORS['System Log'],
+                ];
+            }
+        } catch (Exception $e) {}
+    }
+
+    // ════════════════════════════════════════════════════════
+    // 13. SECURITY EVENTS (superadmin / developer only)
+    //     Source: activity_logs — failed logins, unauthorized
+    // ════════════════════════════════════════════════════════
+    if (in_array($role, ['superadmin', 'developer'])) {
+        try {
+            $stmt = $pdo->prepare(
+                "SELECT al.id, al.action, al.details, al.ip_address,
+                        al.created_at,
+                        COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS user_name
+                 FROM activity_logs al
+                 LEFT JOIN users u ON u.id = al.user_id
+                 WHERE (al.action LIKE ?
+                     OR al.details LIKE ?
+                     OR al.ip_address LIKE ?)
+                   AND (al.action LIKE '%fail%' OR al.action LIKE '%Failed%'
+                     OR al.action LIKE '%Unauthorized%' OR al.action LIKE '%unauthorized%'
+                     OR al.action LIKE '%lock%' OR al.action LIKE '%suspicious%'
+                     OR al.details LIKE '%denied%' OR al.details LIKE '%brute%')
+                 ORDER BY al.created_at DESC LIMIT 8"
+            );
+            $stmt->execute([$like, $like, $like]);
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $ts = date('M d, Y H:i', strtotime($r['created_at']));
+                $ip = $r['ip_address'] ? " · IP: {$r['ip_address']}" : '';
+                $results[] = [
+                    'type'     => 'Security',
+                    'title'    => $r['action'],
+                    'subtitle' => "User: {$r['user_name']}{$ip} · {$ts}",
+                    'meta'     => $ts,
+                    'link'     => 'reports_security.php',
+                    'icon'     => $ICONS['Security'],
+                    'color'    => $COLORS['Security'],
+                ];
+            }
+        } catch (Exception $e) {}
+    }
+
+    // ════════════════════════════════════════════════════════
+    // 14. AUDIT TRAIL (superadmin / developer / admin / manager)
+    //     Source: activity_logs / audit_logs
+    // ════════════════════════════════════════════════════════
+    if (in_array($role, ['superadmin', 'developer', 'admin', 'manager'])) {
+        try {
+            if (in_array($role, ['superadmin', 'developer'])) {
+                $stmt = $pdo->prepare(
+                    "SELECT al.id, al.action, al.details, al.created_at,
+                            COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'System') AS user_name
+                     FROM activity_logs al
+                     LEFT JOIN users u ON u.id = al.user_id
+                     WHERE (al.action LIKE ?
+                         OR al.details LIKE ?)
+                       AND (al.action LIKE '%Config%' OR al.action LIKE '%Setting%'
+                         OR al.action LIKE '%Export%' OR al.action LIKE '%Deploy%'
+                         OR al.action LIKE '%Backup%' OR al.action LIKE '%Restore%'
+                         OR al.action LIKE '%Integration%' OR al.action LIKE '%Module%')
+                     ORDER BY al.created_at DESC LIMIT 8"
+                );
+                $stmt->execute([$like, $like]);
+            } elseif ($role === 'admin') {
+                $stmt = $pdo->prepare(
+                    "SELECT al.id, al.action_type AS action, al.action_details AS details, al.created_at,
+                            COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'System') AS user_name
+                     FROM audit_logs al
+                     LEFT JOIN users u ON u.id = al.user_id
+                     WHERE (al.action_type LIKE ?
+                         OR al.action_details LIKE ?)
+                       AND u.station_id = ?
+                     ORDER BY al.created_at DESC LIMIT 8"
+                );
+                $stmt->execute([$like, $like, $station_id]);
+            } else { // manager
+                $stmt = $pdo->prepare(
+                    "SELECT al.id, al.action_type AS action, al.action_details AS details, al.created_at,
+                            COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'System') AS user_name
+                     FROM audit_logs al
+                     LEFT JOIN users u ON u.id = al.user_id
+                     WHERE (al.action_type LIKE ?
+                         OR al.action_details LIKE ?)
+                       AND al.user_id = ?
+                     ORDER BY al.created_at DESC LIMIT 8"
+                );
+                $stmt->execute([$like, $like, $user_id]);
+            }
+            
+            $audit_link = 'superadmin_audit_trail.php';
+            if ($role === 'admin') {
+                $audit_link = 'admin_audit_trail.php';
+            } elseif ($role === 'manager') {
+                $audit_link = 'manager_audit_trail.php';
+            }
+            
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $ts = date('M d, Y H:i', strtotime($r['created_at']));
+                $results[] = [
+                    'type'     => 'Audit Trail',
+                    'title'    => $r['action'],
+                    'subtitle' => mb_strimwidth($r['details'] ?? '', 0, 70, '…') . " · {$r['user_name']} · {$ts}",
+                    'meta'     => $ts,
+                    'link'     => $audit_link,
+                    'icon'     => $ICONS['Audit Trail'],
+                    'color'    => $COLORS['Audit Trail'],
                 ];
             }
         } catch (Exception $e) {}
@@ -527,163 +820,283 @@ include __DIR__ . '/../partials/header.php';
 
 <style>
 .srp-wrap {
-    max-width: 900px;
-    margin: 32px auto;
-    padding: 0 20px 60px;
-    font-family: 'Inter', system-ui, sans-serif;
+    max-width: 1000px;
+    margin: 20px auto;
+    padding: 0 24px 60px;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
+
+/* Header Section */
 .srp-header {
-    margin-bottom: 28px;
+    margin-bottom: 32px;
+    padding: 24px;
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
 }
 .srp-header h1 {
-    font-size: 22px;
-    font-weight: 700;
-    color: #1e293b;
-    margin: 0 0 6px;
+    font-size: 28px;
+    font-weight: 800;
+    color: #0f172a;
+    margin: 0 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.srp-header h1 i {
+    font-size: 24px;
+    color: #002F6C;
 }
 .srp-header p {
-    color: #64748b;
+    color: #475569;
     font-size: 14px;
     margin: 0;
+    font-weight: 500;
 }
+.srp-header p strong {
+    color: #002F6C;
+    font-weight: 700;
+}
+
+/* Search Form */
 .srp-search-form {
     display: flex;
-    gap: 8px;
-    margin-bottom: 28px;
+    gap: 12px;
+    margin-bottom: 32px;
+    padding: 0 4px;
 }
 .srp-search-form input {
     flex: 1;
-    padding: 10px 18px;
-    border-radius: 25px;
+    padding: 14px 20px;
+    border-radius: 10px;
     border: 2px solid #e2e8f0;
-    font-size: 14px;
+    font-size: 15px;
     outline: none;
-    transition: border-color .2s;
+    transition: all .2s;
+    background: #fff;
+    color: #1e293b;
+    font-weight: 500;
 }
-.srp-search-form input:focus { border-color: #002F6C; }
+.srp-search-form input:focus { 
+    border-color: #002F6C; 
+    box-shadow: 0 0 0 4px rgba(0, 47, 108, 0.1);
+}
+.srp-search-form input::placeholder {
+    color: #94a3b8;
+}
 .srp-search-form button {
-    padding: 10px 22px;
-    border-radius: 25px;
+    padding: 14px 28px;
+    border-radius: 10px;
     border: none;
     background: #002F6C;
     color: #fff;
     font-size: 14px;
-    font-weight: 600;
+    font-weight: 700;
     cursor: pointer;
-}
-.srp-group { margin-bottom: 32px; }
-.srp-group-title {
+    transition: all .2s;
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 13px;
-    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(0, 47, 108, 0.2);
+}
+.srp-search-form button:hover {
+    background: #001f4d;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 47, 108, 0.3);
+}
+.srp-search-form button:active {
+    transform: translateY(0);
+}
+
+/* Result Groups */
+.srp-group { 
+    margin-bottom: 36px;
+    padding: 0 4px;
+}
+.srp-group-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: .6px;
-    color: #64748b;
-    margin-bottom: 12px;
-    padding-bottom: 8px;
-    border-bottom: 2px solid #f1f5f9;
+    letter-spacing: 1px;
+    color: #475569;
+    margin-bottom: 16px;
+    padding: 10px 16px;
+    background: #f8fafc;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
 }
 .srp-group-title i {
-    width: 24px;
-    height: 24px;
-    border-radius: 6px;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 11px;
+    font-size: 12px;
     color: #fff;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
 }
+.srp-count {
+    display: inline-block;
+    background: #e2e8f0;
+    color: #475569;
+    font-size: 11px;
+    font-weight: 800;
+    padding: 4px 10px;
+    border-radius: 20px;
+    margin-left: 8px;
+}
+
+/* Result Items */
 .srp-item {
     display: flex;
     align-items: center;
-    gap: 14px;
-    padding: 12px 16px;
-    border-radius: 10px;
-    border: 1px solid #f1f5f9;
+    gap: 16px;
+    padding: 16px 20px;
+    border-radius: 12px;
+    border: 2px solid #f1f5f9;
     background: #fff;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
     text-decoration: none;
     color: inherit;
-    transition: box-shadow .15s, transform .15s;
+    transition: all .2s;
+    position: relative;
 }
 .srp-item:hover {
-    box-shadow: 0 4px 16px rgba(0,0,0,.08);
-    transform: translateY(-1px);
-    border-color: #e2e8f0;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+    transform: translateY(-2px);
+    border-color: #002F6C;
+}
+.srp-item:hover .srp-item-icon {
+    transform: scale(1.05);
 }
 .srp-item-icon {
-    width: 38px;
-    height: 38px;
+    width: 44px;
+    height: 44px;
     border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 15px;
+    font-size: 16px;
     flex-shrink: 0;
     color: #fff;
+    transition: transform .2s;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
 }
-.srp-item-body { flex: 1; min-width: 0; }
+.srp-item-body { 
+    flex: 1; 
+    min-width: 0; 
+}
 .srp-item-title {
-    font-size: 14px;
-    font-weight: 600;
-    color: #1e293b;
-    white-space: nowrap;
+    font-size: 15px;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 4px;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .srp-item-sub {
-    font-size: 12px;
+    font-size: 13px;
     color: #64748b;
-    margin-top: 2px;
-    white-space: nowrap;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
     overflow: hidden;
-    text-overflow: ellipsis;
 }
+.srp-item i.fa-chevron-right {
+    color: #cbd5e1;
+    font-size: 14px;
+    transition: all .2s;
+}
+.srp-item:hover i.fa-chevron-right {
+    color: #002F6C;
+    transform: translateX(2px);
+}
+
+/* Empty State */
 .srp-empty {
     text-align: center;
-    padding: 60px 20px;
+    padding: 80px 20px;
     color: #94a3b8;
+    background: #f8fafc;
+    border-radius: 12px;
+    border: 2px dashed #e2e8f0;
 }
-.srp-empty i { font-size: 40px; margin-bottom: 12px; display: block; }
-.srp-empty p { font-size: 15px; margin: 0; }
-.srp-count {
-    display: inline-block;
-    background: #f1f5f9;
+.srp-empty i { 
+    font-size: 48px; 
+    margin-bottom: 16px; 
+    display: block;
+    color: #cbd5e1;
+}
+.srp-empty p { 
+    font-size: 16px; 
+    margin: 0;
+    font-weight: 500;
     color: #64748b;
-    font-size: 11px;
+}
+.srp-empty p strong {
+    color: #002F6C;
     font-weight: 700;
-    padding: 2px 8px;
-    border-radius: 20px;
-    margin-left: 6px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .srp-wrap {
+        padding: 0 16px 40px;
+    }
+    .srp-header {
+        padding: 20px;
+    }
+    .srp-header h1 {
+        font-size: 24px;
+    }
+    .srp-search-form {
+        flex-direction: column;
+    }
+    .srp-search-form button {
+        justify-content: center;
+    }
+    .srp-item {
+        padding: 14px 16px;
+    }
+    .srp-item-icon {
+        width: 40px;
+        height: 40px;
+        font-size: 14px;
+    }
 }
 </style>
 
 <div class="srp-wrap">
     <div class="srp-header">
-        <h1><i class="fas fa-search" style="color:#002F6C;margin-right:8px;"></i>Search Results</h1>
+        <h1><i class="fas fa-search"></i>Search Results</h1>
         <?php if ($query): ?>
         <p>Showing results for <strong>"<?= htmlspecialchars($query) ?>"</strong>
-           — <?= count($results) ?> result<?= count($results) !== 1 ? 's' : '' ?> found</p>
+           — <strong><?= count($results) ?></strong> result<?= count($results) !== 1 ? 's' : '' ?> found</p>
         <?php endif; ?>
     </div>
 
     <form class="srp-search-form" method="get" action="search.php">
         <input type="text" name="q" value="<?= htmlspecialchars($query) ?>"
-               placeholder="Search transactions, customers, products, job orders…" autofocus>
+               placeholder="Search stations, admins, transactions, reports..." autofocus>
         <button type="submit"><i class="fas fa-search"></i> Search</button>
     </form>
 
     <?php if (empty($query)): ?>
     <div class="srp-empty">
         <i class="fas fa-search"></i>
-        <p>Enter a keyword to search across all your modules.</p>
+        <p>Enter a keyword to search across the system</p>
     </div>
     <?php elseif (empty($results)): ?>
     <div class="srp-empty">
         <i class="fas fa-inbox"></i>
-        <p>No results found for <strong>"<?= htmlspecialchars($query) ?>"</strong>.</p>
+        <p>No results found for <strong>"<?= htmlspecialchars($query) ?>"</strong></p>
+        <p style="font-size:14px;margin-top:8px;color:#94a3b8;">Try different keywords or check your spelling</p>
     </div>
     <?php else:
         // Group results by type
@@ -703,14 +1116,14 @@ include __DIR__ . '/../partials/header.php';
         </div>
         <?php foreach ($items as $r): ?>
         <a class="srp-item" href="<?= htmlspecialchars($r['link']) ?>">
-            <div class="srp-item-icon" style="background:<?= $color ?>20;">
-                <i class="<?= $icon ?>" style="color:<?= $color ?>;"></i>
+            <div class="srp-item-icon" style="background:<?= $color ?>;">
+                <i class="<?= $icon ?>"></i>
             </div>
             <div class="srp-item-body">
                 <div class="srp-item-title"><?= htmlspecialchars($r['title']) ?></div>
                 <div class="srp-item-sub"><?= htmlspecialchars($r['subtitle']) ?></div>
             </div>
-            <i class="fas fa-chevron-right" style="color:#cbd5e1;font-size:12px;"></i>
+            <i class="fas fa-chevron-right"></i>
         </a>
         <?php endforeach; ?>
     </div>

@@ -246,6 +246,7 @@ if ($format === 'csv') {
     echo '<meta charset="UTF-8">';
     echo '<meta name="viewport" content="width=device-width,initial-scale=1">';
     echo '<title>' . htmlspecialchars($title) . ' | Petron Station Management</title>';
+    echo '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">';
     echo '<style>';
 
     /* ── Base ── */
@@ -299,9 +300,9 @@ if ($format === 'csv') {
 
     /* ── Action bar ── */
     echo '<div class="action-bar">';
-    echo '  <h2>&#128438; ' . htmlspecialchars($title) . '</h2>';
-    echo '  <a href="javascript:window.print()" class="btn-print">&#128438; Print / Save as PDF</a>';
-    echo '  <a href="javascript:void(0)" onclick="window.history.length>1?window.history.back():window.close()" class="btn-back">&#8592; Back</a>';
+    echo '  <h2><i class="fas fa-file-alt" style="margin-right:8px;"></i>' . htmlspecialchars($title) . '</h2>';
+    echo '  <a href="javascript:window.print()" class="btn-print"><i class="fas fa-print" style="margin-right:6px;"></i> Print / Save as PDF</a>';
+    echo '  <a href="javascript:void(0)" onclick="window.history.length>1?window.history.back():window.close()" class="btn-back"><i class="fas fa-arrow-left" style="margin-right:6px;"></i> Back</a>';
     echo '</div>';
 
     /* ── Report ── */

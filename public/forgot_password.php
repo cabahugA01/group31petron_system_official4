@@ -4,6 +4,7 @@ session_start();
 
 // Include database connection and configs
 require_once __DIR__ . '/../public/db_connect.php';
+require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../config/email_config.php';
 
 $error = '';

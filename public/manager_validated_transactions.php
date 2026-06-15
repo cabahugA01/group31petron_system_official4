@@ -179,19 +179,27 @@ include __DIR__ . '/../partials/header.php';
     <!-- Export & Back Buttons (Header Right) -->
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <button type="button" onclick="exportTable('excel')" title="Export to Excel"
-                style="background:#1d6f42;color:#fff;height:36px;padding:8px 14px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                style="background:white;color:#1d6f42;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #1d6f42;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
+                onmouseover="this.style.background='#1d6f42';this.style.color='#fff'"
+                onmouseout="this.style.background='white';this.style.color='#1d6f42'">
             <i class="fas fa-file-excel"></i> Excel
         </button>
         <button type="button" onclick="exportTable('csv')" title="Export to CSV"
-                style="background:#003d7a;color:#fff;height:36px;padding:8px 14px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                style="background:white;color:#003d7a;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #003d7a;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
+                onmouseover="this.style.background='#003d7a';this.style.color='#fff'"
+                onmouseout="this.style.background='white';this.style.color='#003d7a'">
             <i class="fas fa-file-csv"></i> CSV
         </button>
         <button type="button" onclick="exportTable('pdf')" title="Export to PDF"
-                style="background:#dc2626;color:#fff;height:36px;padding:8px 14px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                style="background:white;color:#dc2626;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #dc2626;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
+                onmouseover="this.style.background='#dc2626';this.style.color='#fff'"
+                onmouseout="this.style.background='white';this.style.color='#dc2626'">
             <i class="fas fa-file-pdf"></i> PDF
         </button>
         <a href="<?= in_array($role, ['admin', 'superadmin']) ? 'admin_dashboard.php' : 'manager_dashboard.php'; ?>"
-           style="background:#6c757d;color:#fff;text-decoration:none;height:36px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">
+           style="background:white;color:#4b5563;text-decoration:none;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #6b7280;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
+           onmouseover="this.style.background='#6b7280';this.style.color='#fff'"
+           onmouseout="this.style.background='white';this.style.color='#4b5563'">
             <i class="fas fa-arrow-left"></i> Back
         </a>
     </div>
@@ -356,11 +364,15 @@ include __DIR__ . '/../partials/header.php';
 }
 .vt-inp:focus { border-color:#002F70;box-shadow:0 0 0 3px rgba(0,47,112,.1); }
 .vt-btn { 
-    display:inline-flex;align-items:center;gap:6px;padding:0 18px;height:40px;border:none;border-radius:7px;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap;transition:filter .15s; 
+    display:inline-flex;align-items:center;gap:6px;padding:0 18px;height:40px;
+    border:1px solid transparent;border-radius:7px;font-size:14px;font-weight:600;
+    cursor:pointer;text-decoration:none;white-space:nowrap;transition:all .15s;
+    background:white !important;
 }
-.vt-btn:hover { filter:brightness(.88); }
-.vt-btn-search { background:#002F70;color:#fff; }
-.vt-btn-reset  { background:#64748b;color:#fff; }
+.vt-btn-search { color:#002F70 !important; border-color:#002F70 !important; }
+.vt-btn-search:hover { background:#002F70 !important; color:#fff !important; }
+.vt-btn-reset  { color:#4b5563 !important; border-color:#6b7280 !important; }
+.vt-btn-reset:hover { background:#6b7280 !important; color:#fff !important; }
 
 /* Page Head Layout */
 .page-head { display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px; }
@@ -382,14 +394,14 @@ include __DIR__ . '/../partials/header.php';
 .vt-badge-partial { background:#fef3c7;color:#92400e;border-color:#fde047; }
 .vt-badge-unpaid { background:#fef2f2;color:#991b1b;border-color:#fecaca; }
 
-/* Action Buttons - View & Export */
+/* Action Buttons — unified outline style matching staff Transaction module */
 .vt-btn-action { 
-    color:#fff;
+    background: white !important;
     width:auto;
     min-width:90px;
     height:38px;
     border-radius:8px;
-    border:none;
+    border:1px solid transparent;
     cursor:pointer;
     font-size:13px;
     font-weight:600;
@@ -401,15 +413,16 @@ include __DIR__ . '/../partials/header.php';
     padding:0 14px;
 }
 .vt-btn-action:hover { 
-    transform:translateY(-2px);
-    box-shadow:0 4px 12px rgba(0,0,0,.2);
-    filter:brightness(1.05);
+    transform:none;
+    box-shadow:0 4px 12px rgba(0,0,0,.15);
 }
 .vt-btn-action:active {
     transform:translateY(0);
 }
-.vt-btn-view { background:#003d82; }    /* Navy Blue */
-.vt-btn-export { background:#28a745; }  /* Green */
+.vt-btn-view   { color:#003d82 !important; border-color:#003d82 !important; }  /* Navy Blue */
+.vt-btn-view:hover { background:#003d82 !important; color:#fff !important; }
+.vt-btn-export { color:#16a34a !important; border-color:#16a34a !important; }  /* Green */
+.vt-btn-export:hover { background:#16a34a !important; color:#fff !important; }
 
 /* View Modal */
 .vt-modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:9999; align-items:center; justify-content:center; }
@@ -508,29 +521,139 @@ function closeViewModal() {
 }
 
 function exportTable(format) {
-    const formatNames = {
-        'excel': 'Excel (.xls)',
-        'csv': 'CSV (.csv)',
-        'pdf': 'PDF (Print/Save)'
-    };
-    
-    // Get current search filter if exists
-    const urlParams = new URLSearchParams(window.location.search);
-    const search = urlParams.get('search') || '';
-    const dateFrom = urlParams.get('date_from') || '';
-    const dateTo = urlParams.get('date_to') || '';
-    
-    // Build export URL with filters
-    let exportUrl = '../backend/export_validated_transactions.php?format=' + format;
-    if (search) exportUrl += '&search=' + encodeURIComponent(search);
-    if (dateFrom) exportUrl += '&date_from=' + encodeURIComponent(dateFrom);
-    if (dateTo) exportUrl += '&date_to=' + encodeURIComponent(dateTo);
-    
-    // Confirm and redirect
-    if (confirm('Export validated transactions to ' + formatNames[format] + '?\n\nThis will download all validated transactions matching your current filters.')) {
-        window.location.href = exportUrl;
+    const table = document.querySelector('.vt-table');
+    if (!table) { alert('No transaction data found.'); return; }
+
+    const dateFrom = document.querySelector('input[name="date_from"]')?.value || '';
+    const dateTo   = document.querySelector('input[name="date_to"]')?.value || '';
+    const filename = `Validated_Transactions_${dateFrom || 'All'}_to_${dateTo || 'All'}`;
+
+    if (format === 'excel') {
+        if (typeof XLSX === 'undefined') {
+            alert('Export library not loaded. Please try again.');
+            return;
+        }
+        const aoa = [];
+        // Headers
+        table.querySelectorAll('thead tr').forEach(tr => {
+            const cells = [...tr.querySelectorAll('th')];
+            cells.pop(); // Remove "Actions"
+            aoa.push(cells.map(th => th.innerText.trim()));
+        });
+        // Body
+        table.querySelectorAll('tbody tr').forEach(tr => {
+            const cells = [...tr.querySelectorAll('td')];
+            if (cells.length > 1) { // Skip "No records" row if it spans
+                cells.pop(); // Remove "Actions"
+                aoa.push(cells.map(td => td.innerText.trim()));
+            } else {
+                aoa.push(cells.map(td => td.innerText.trim()));
+            }
+        });
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        if (aoa.length && aoa[0]) {
+            ws['!cols'] = aoa[0].map((_, ci) => ({
+                wch: Math.min(45, Math.max(10, ...aoa.map(row => String(row[ci] ?? '').length)))
+            }));
+        }
+        XLSX.utils.book_append_sheet(wb, ws, 'Validated Transactions');
+        XLSX.writeFile(wb, filename + '.xlsx');
+    } else if (format === 'csv') {
+        let csv = '';
+        // Headers
+        table.querySelectorAll('thead tr').forEach(tr => {
+            const cells = [...tr.querySelectorAll('th')];
+            cells.pop();
+            csv += cells.map(th => '"' + th.innerText.trim().replace(/"/g, '""') + '"').join(',') + '\n';
+        });
+        // Body
+        table.querySelectorAll('tbody tr').forEach(tr => {
+            const cells = [...tr.querySelectorAll('td')];
+            if (cells.length > 1) {
+                cells.pop();
+                csv += cells.map(td => '"' + td.innerText.trim().replace(/"/g, '""') + '"').join(',') + '\n';
+            } else {
+                csv += cells.map(td => '"' + td.innerText.trim().replace(/"/g, '""') + '"').join(',') + '\n';
+            }
+        });
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = filename + '.csv';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+    } else if (format === 'pdf') {
+        const logo_url  = '../assets/img/Petron%20Logo.png';
+        const generated = new Date().toLocaleString();
+        
+        // Let's clone the table and remove the last column from the print HTML
+        const tableClone = table.cloneNode(true);
+        tableClone.querySelectorAll('tr').forEach(tr => {
+            const lastCell = tr.lastElementChild;
+            if (lastCell) lastCell.remove();
+        });
+        
+        let tableHtml = tableClone.outerHTML;
+        
+        let iframe = document.getElementById('print-iframe');
+        if (!iframe) {
+            iframe = document.createElement('iframe');
+            iframe.id = 'print-iframe';
+            iframe.style.position = 'fixed';
+            iframe.style.right = '0';
+            iframe.style.bottom = '0';
+            iframe.style.width = '0';
+            iframe.style.height = '0';
+            iframe.style.border = '0';
+            document.body.appendChild(iframe);
+        }
+
+        const doc = iframe.contentDocument || iframe.contentWindow.document;
+        doc.open();
+        doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Validated Transactions Report</title>
+        <style>
+            @page{size:legal landscape;margin:.3in .4in;}
+            *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;box-sizing:border-box;}
+            body{font-family:Arial,sans-serif;font-size:11px;color:#000;background:white;margin:0;padding:20px;}
+            .header-container{display:flex;align-items:center;gap:15px;border-bottom:2px solid #002F70;padding-bottom:12px;margin-bottom:15px;}
+            .header-container img{height:45px;}
+            .header-title h1{font-size:16px;margin:0;color:#002F70;text-transform:uppercase;}
+            .header-title p{font-size:10px;margin:3px 0 0;color:#666;}
+            .meta-info{margin-left:auto;text-align:right;font-size:10px;color:#444;}
+            table{width:100%;border-collapse:collapse;font-size:9.5px;}
+            thead tr{background:#f2f2f2 !important;border-top:2px solid #002F70;border-bottom:1px solid #999;}
+            thead th{padding:6px 5px;text-align:left;font-weight:700;font-size:9px;text-transform:uppercase;color:#000;}
+            tbody tr{border-bottom:1px solid #ddd;}
+            tbody td{padding:5px;color:#333;}
+            .vt-badge, .badge, .status-badge{border:none;background:none;padding:0;font-weight:normal;}
+            tfoot tr{border-top:2px solid #002F70;background:#f2f2f2 !important;}
+            tfoot td{padding:6px 5px;font-weight:700;}
+        </style></head><body>
+            <div class="header-container">
+                <img src="${logo_url}" alt="Petron">
+                <div class="header-title">
+                    <h1>Petron Station Management System</h1>
+                    <p>Validated Transactions Report</p>
+                </div>
+                <div class="meta-info">
+                    Date Range: ${dateFrom || 'All'} to ${dateTo || 'All'}<br>
+                    Generated: ${generated}
+                </div>
+            </div>
+            ${tableHtml}
+        </body></html>`);
+        doc.close();
+
+        setTimeout(() => {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+        }, 250);
     }
 }
 </script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

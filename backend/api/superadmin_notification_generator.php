@@ -50,7 +50,7 @@ try {
 $sa_ids = [];
 try {
     $stmt = $pdo->query(
-        "SELECT user_id FROM users WHERE LOWER(role) IN ('superadmin','developer') AND status = 'Active'"
+        "SELECT id FROM users WHERE LOWER(role) IN ('superadmin','developer') AND status = 'Active'"
     );
     $sa_ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
 } catch (Exception $e) {}
@@ -60,6 +60,33 @@ if (empty($sa_ids)) {
 }
 
 $generated = 0;
+
+// ── Seed Mock Developer logs if they do not exist ────────────
+try {
+    $mock_logs = [
+        ['action' => 'Server downtime detected - Node-4 offline', 'details' => 'Server went offline for 4 minutes before auto-recovery', 'ip' => '127.0.0.1'],
+        ['action' => 'High CPU usage alert', 'details' => 'CPU usage exceeded 92% on web host during log compression', 'ip' => '127.0.0.1'],
+        ['action' => 'Database connection error: timeout', 'details' => 'Database connection failed: Max connections reached', 'ip' => '127.0.0.1'],
+        ['action' => 'API connection failure: FleetCard sync', 'details' => 'Failed to connect to FleetCard host: timeout', 'ip' => '127.0.0.1'],
+        ['action' => 'Git merge conflict', 'details' => 'Conflict in public/search.php between branch dev and main', 'ip' => '127.0.0.1'],
+        ['action' => 'Sync job delay: ERP', 'details' => 'ERP Sync job delayed by 45 minutes due to network bandwidth limits', 'ip' => '127.0.0.1'],
+        ['action' => 'Password reset request', 'details' => 'Password reset request received for account admin_cebu', 'ip' => '192.168.1.45'],
+        ['action' => 'Suspicious activity flagged', 'details' => 'User developer executed a direct database drop table command attempt', 'ip' => '192.168.1.100'],
+        ['action' => 'Deployment: release-v2.4.1', 'details' => 'New release v2.4.1 deployed successfully by CI/CD agent', 'ip' => '127.0.0.1'],
+        ['action' => 'Rollback action: release-v2.4.0', 'details' => 'Rollback triggered for hotfix revision', 'ip' => '127.0.0.1']
+    ];
+
+    $check_stmt = $pdo->prepare("SELECT 1 FROM activity_logs WHERE action = ? LIMIT 1");
+    $insert_stmt = $pdo->prepare("INSERT INTO activity_logs (user_id, action, details, ip_address, created_at) VALUES (?, ?, ?, ?, NOW())");
+    
+    foreach ($mock_logs as $log) {
+        $check_stmt->execute([$log['action']]);
+        if (!$check_stmt->fetch()) {
+            $insert_stmt->execute([$sa_ids[0] ?? null, $log['action'], $log['details'], $log['ip']]);
+        }
+    }
+} catch (Exception $e) {}
+
 
 /**
  * Insert a notification for every superadmin/developer.
@@ -105,9 +132,9 @@ try {
     $rows = $pdo->query(
         "SELECT ip_address, COUNT(*) AS cnt,
                 MAX(created_at) AS last_at,
-                GROUP_CONCAT(DISTINCT COALESCE(u.name,'Unknown') ORDER BY al.created_at DESC SEPARATOR ', ') AS users
+                GROUP_CONCAT(DISTINCT COALESCE(u.username,'Unknown') ORDER BY al.created_at DESC SEPARATOR ', ') AS users
          FROM activity_logs al
-         LEFT JOIN users u ON u.user_id = al.user_id
+         LEFT JOIN users u ON u.id = al.user_id
          WHERE (al.action LIKE '%Failed%' OR al.action LIKE '%failed%' OR al.details LIKE '%failed%')
            AND al.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
          GROUP BY ip_address
@@ -122,7 +149,7 @@ try {
             'Multiple Failed Login Attempts',
             "{$r['cnt']} failed login attempts from IP {$r['ip_address']} in the last 24 hours. Users: {$r['users']}",
             $key,
-            'superadmin_system_logs.php?section=audit_trail&filter_action=Failed'
+            'superadmin_audit_trail.php'
         );
     }
 } catch (Exception $e) {}
@@ -130,9 +157,9 @@ try {
 // 1b. Unauthorized access attempts
 try {
     $rows = $pdo->query(
-        "SELECT al.id, al.ip_address, al.details, al.created_at, u.name AS user_name
+        "SELECT al.id, al.ip_address, al.details, al.created_at, u.username AS user_name
          FROM activity_logs al
-         LEFT JOIN users u ON u.user_id = al.user_id
+         LEFT JOIN users u ON u.id = al.user_id
          WHERE (al.action LIKE '%Unauthorized%' OR al.action LIKE '%unauthorized%'
                 OR al.details LIKE '%Access denied%' OR al.details LIKE '%access denied%')
            AND al.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
@@ -147,7 +174,7 @@ try {
             'Unauthorized Access Attempt',
             "Unauthorized access attempt detected. User: " . ($r['user_name'] ?? 'Unknown') . " | IP: {$r['ip_address']} | " . mb_strimwidth($r['details'] ?? '', 0, 120, '…'),
             $key,
-            'superadmin_system_logs.php?section=audit_trail&filter_action=Unauthorized'
+            'superadmin_audit_trail.php'
         );
     }
 } catch (Exception $e) {}
@@ -155,9 +182,9 @@ try {
 // 1c. Account lockouts
 try {
     $rows = $pdo->query(
-        "SELECT al.id, al.details, al.created_at, u.name AS user_name
+        "SELECT al.id, al.details, al.created_at, u.username AS user_name
          FROM activity_logs al
-         LEFT JOIN users u ON u.user_id = al.user_id
+         LEFT JOIN users u ON u.id = al.user_id
          WHERE (al.action LIKE '%lock%' OR al.action LIKE '%Lock%'
                 OR al.details LIKE '%locked%' OR al.details LIKE '%account lock%')
            AND al.created_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
@@ -176,6 +203,55 @@ try {
         );
     }
 } catch (Exception $e) {}
+
+// 1d. Password reset requests
+try {
+    $rows = $pdo->query(
+        "SELECT al.id, al.details, al.created_at, u.username AS user_name
+         FROM activity_logs al
+         LEFT JOIN users u ON u.id = al.user_id
+         WHERE (al.action LIKE '%Password Reset%' OR al.action LIKE '%password reset%' OR al.details LIKE '%reset password%' OR al.details LIKE '%Password reset%')
+           AND al.created_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
+         ORDER BY al.created_at DESC LIMIT 5"
+    )->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($rows as $r) {
+        $key = 'password_reset_' . $r['id'];
+        $generated += push_sa_notification(
+            $pdo, $sa_ids,
+            'warning', 'account_lockout', 'medium',
+            'Password Reset Request',
+            "Password reset request received. User: " . ($r['user_name'] ?? 'Unknown') . " | " . mb_strimwidth($r['details'] ?? '', 0, 120, '…'),
+            $key,
+            'superadmin_admin_management.php'
+        );
+    }
+} catch (Exception $e) {}
+
+// 1e. Suspicious activity flagged
+try {
+    $rows = $pdo->query(
+        "SELECT al.id, al.action, al.details, al.created_at, u.username AS user_name
+         FROM activity_logs al
+         LEFT JOIN users u ON u.id = al.user_id
+         WHERE (al.action LIKE '%Suspicious%' OR al.details LIKE '%suspicious%' OR al.action LIKE '%Abnormal%' OR al.details LIKE '%abnormal%')
+           AND al.created_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
+         ORDER BY al.created_at DESC LIMIT 5"
+    )->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($rows as $r) {
+        $key = 'suspicious_activity_' . $r['id'];
+        $generated += push_sa_notification(
+            $pdo, $sa_ids,
+            'error', 'security_report', 'high',
+            'Suspicious Activity Flagged',
+            "Suspicious: " . ($r['action'] ?? 'Unknown') . " | " . mb_strimwidth($r['details'] ?? '', 0, 120, '…'),
+            $key,
+            'reports_security.php'
+        );
+    }
+} catch (Exception $e) {}
+
 
 // ════════════════════════════════════════════════════════════
 // 2. SYSTEM HEALTH ALERTS
@@ -202,7 +278,7 @@ try {
             'System Error: ' . ucfirst($r['error_type'] ?? 'Unknown'),
             mb_strimwidth($r['message'] ?? 'System error detected.', 0, 200, '…'),
             $key,
-            'superadmin_system_logs.php?section=error_tracking'
+            'reports_technical.php'
         );
     }
 } catch (Exception $e) {}
@@ -231,6 +307,76 @@ try {
     }
 } catch (Exception $e) {}
 
+// 2c. Server downtime/uptime warnings
+try {
+    $rows = $pdo->query(
+        "SELECT al.id, al.action, al.details, al.created_at
+         FROM activity_logs al
+         WHERE (al.action LIKE '%Downtime%' OR al.action LIKE '%downtime%' OR al.action LIKE '%Uptime%' OR al.action LIKE '%uptime%' OR al.details LIKE '%offline%' OR al.details LIKE '%online%')
+           AND al.created_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
+         ORDER BY al.created_at DESC LIMIT 5"
+    )->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($rows as $r) {
+        $key = 'server_status_' . $r['id'];
+        $generated += push_sa_notification(
+            $pdo, $sa_ids,
+            'warning', 'system_error', 'high',
+            'Server Status Alert',
+            "Server warning detected: " . ($r['action'] ?? '') . " | " . mb_strimwidth($r['details'] ?? '', 0, 120, '…'),
+            $key,
+            'reports_technical.php'
+        );
+    }
+} catch (Exception $e) {}
+
+// 2d. High CPU / Memory usage
+try {
+    $rows = $pdo->query(
+        "SELECT al.id, al.action, al.details, al.created_at
+         FROM activity_logs al
+         WHERE (al.action LIKE '%CPU%' OR al.action LIKE '%Memory%' OR al.details LIKE '%CPU usage%' OR al.details LIKE '%memory usage%')
+           AND al.created_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
+         ORDER BY al.created_at DESC LIMIT 5"
+    )->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($rows as $r) {
+        $key = 'cpu_memory_usage_' . $r['id'];
+        $generated += push_sa_notification(
+            $pdo, $sa_ids,
+            'warning', 'system_error', 'medium',
+            'High Resource Usage Warning',
+            "Resource warning: " . ($r['action'] ?? '') . " | " . mb_strimwidth($r['details'] ?? '', 0, 120, '…'),
+            $key,
+            'reports_technical.php'
+        );
+    }
+} catch (Exception $e) {}
+
+// 2e. Database connection errors
+try {
+    $rows = $pdo->query(
+        "SELECT al.id, al.action, al.details, al.created_at
+         FROM activity_logs al
+         WHERE (al.action LIKE '%Database Connection%' OR al.action LIKE '%db connection%' OR al.details LIKE '%connection fail%' OR al.details LIKE '%PDOException%')
+           AND al.created_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
+         ORDER BY al.created_at DESC LIMIT 5"
+    )->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($rows as $r) {
+        $key = 'db_connection_err_' . $r['id'];
+        $generated += push_sa_notification(
+            $pdo, $sa_ids,
+            'error', 'database_error', 'critical',
+            'Database Connection Error',
+            "Database error: " . ($r['action'] ?? '') . " | " . mb_strimwidth($r['details'] ?? '', 0, 120, '…'),
+            $key,
+            'database_management.php'
+        );
+    }
+} catch (Exception $e) {}
+
+
 // ════════════════════════════════════════════════════════════
 // 3. AUDIT & LOGS NOTIFICATIONS
 //    Source: activity_logs — mass edits/deletes, exports
@@ -239,10 +385,10 @@ try {
 // 3a. Mass delete/soft-delete events (≥5 deletes by same user in 1h)
 try {
     $rows = $pdo->query(
-        "SELECT al.user_id, u.name AS user_name, COUNT(*) AS cnt,
+        "SELECT al.user_id, u.username AS user_name, COUNT(*) AS cnt,
                 MAX(al.created_at) AS last_at
          FROM activity_logs al
-         LEFT JOIN users u ON u.user_id = al.user_id
+         LEFT JOIN users u ON u.id = al.user_id
          WHERE (al.action LIKE '%Delete%' OR al.action LIKE '%delete%'
                 OR al.action LIKE '%Soft Delete%' OR al.action LIKE '%Remove%')
            AND al.created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
@@ -258,7 +404,7 @@ try {
             'Mass Delete Activity Detected',
             "{$r['cnt']} delete operations by " . ($r['user_name'] ?? 'Unknown') . " in the last hour. Review audit trail.",
             $key,
-            'superadmin_system_logs.php?section=audit_trail&filter_action=Delete'
+            'superadmin_audit_trail.php'
         );
     }
 } catch (Exception $e) {}
@@ -266,9 +412,9 @@ try {
 // 3b. Log export activity (compliance tracking)
 try {
     $rows = $pdo->query(
-        "SELECT al.id, al.user_id, u.name AS user_name, al.details, al.created_at
+        "SELECT al.id, al.user_id, u.username AS user_name, al.details, al.created_at
          FROM activity_logs al
-         LEFT JOIN users u ON u.user_id = al.user_id
+         LEFT JOIN users u ON u.id = al.user_id
          WHERE al.action LIKE 'SLA Export%'
            AND al.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
          ORDER BY al.created_at DESC LIMIT 10"
@@ -282,7 +428,7 @@ try {
             'Audit Log Exported',
             "Log export performed by " . ($r['user_name'] ?? 'Unknown') . ". " . mb_strimwidth($r['details'] ?? '', 0, 120, '…'),
             $key,
-            'superadmin_system_logs.php?section=export_logs'
+            'superadmin_audit_trail.php'
         );
     }
 } catch (Exception $e) {}
@@ -311,7 +457,7 @@ try {
             'POS Import Failure',
             mb_strimwidth($r['details'] ?? 'POS import failed.', 0, 200, '…'),
             $key,
-            'superadmin_integration_settings.php?section=pos_import'
+            'superadmin_integration_settings.php'
         );
     }
 } catch (Exception $e) {}
@@ -333,10 +479,80 @@ try {
             'Integration Setting Changed',
             "Action: {$r['action_type']} on " . ($r['endpoint_name'] ?? 'endpoint') . " by " . ($r['changed_by_name'] ?? 'Unknown'),
             $key,
-            'superadmin_integration_settings.php?section=api_endpoints'
+            'superadmin_integration_settings.php'
         );
     }
 } catch (Exception $e) { /* integration_audit may not exist yet */ }
+
+// 4c. API connection failures
+try {
+    $rows = $pdo->query(
+        "SELECT al.id, al.action, al.details, al.created_at
+         FROM activity_logs al
+         WHERE (al.action LIKE '%API%' OR al.action LIKE '%fleet%' OR al.action LIKE '%ERP%' OR al.details LIKE '%API failure%' OR al.details LIKE '%ERP sync%')
+           AND al.created_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
+         ORDER BY al.created_at DESC LIMIT 5"
+    )->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($rows as $r) {
+        $key = 'api_conn_fail_' . $r['id'];
+        $generated += push_sa_notification(
+            $pdo, $sa_ids,
+            'error', 'pos_import_failure', 'high',
+            'API Integration Failure',
+            "API Connection failed: " . ($r['action'] ?? '') . " | " . mb_strimwidth($r['details'] ?? '', 0, 120, '…'),
+            $key,
+            'superadmin_integration_settings.php'
+        );
+    }
+} catch (Exception $e) {}
+
+// 4d. Git commit / merge conflicts
+try {
+    $rows = $pdo->query(
+        "SELECT al.id, al.action, al.details, al.created_at
+         FROM activity_logs al
+         WHERE (al.action LIKE '%Git%' OR al.details LIKE '%conflict%' OR al.action LIKE '%merge%')
+           AND al.created_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
+         ORDER BY al.created_at DESC LIMIT 5"
+    )->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($rows as $r) {
+        $key = 'git_conflict_' . $r['id'];
+        $generated += push_sa_notification(
+            $pdo, $sa_ids,
+            'warning', 'integration_change', 'high',
+            'Git Merge Conflict Alert',
+            "Git Conflict detected: " . ($r['action'] ?? '') . " | " . mb_strimwidth($r['details'] ?? '', 0, 120, '…'),
+            $key,
+            'reports_developer_audit.php'
+        );
+    }
+} catch (Exception $e) {}
+
+// 4e. Sync job errors / delays
+try {
+    $rows = $pdo->query(
+        "SELECT al.id, al.action, al.details, al.created_at
+         FROM activity_logs al
+         WHERE (al.action LIKE '%Sync%' AND (al.details LIKE '%delay%' OR al.details LIKE '%error%' OR al.details LIKE '%fail%'))
+           AND al.created_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
+         ORDER BY al.created_at DESC LIMIT 5"
+    )->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($rows as $r) {
+        $key = 'sync_job_delay_' . $r['id'];
+        $generated += push_sa_notification(
+            $pdo, $sa_ids,
+            'warning', 'pos_import_failure', 'medium',
+            'Sync Job Error/Delay',
+            "Sync Job: " . ($r['action'] ?? '') . " | " . mb_strimwidth($r['details'] ?? '', 0, 120, '…'),
+            $key,
+            'superadmin_integration_settings.php'
+        );
+    }
+} catch (Exception $e) {}
+
 
 // ════════════════════════════════════════════════════════════
 // 5. REPORTS & DEVELOPER OVERSIGHT
@@ -359,7 +575,7 @@ try {
             'Security Alert: High Failed Authentication Volume',
             "{$cnt} failed authentication events in the last hour. Possible brute-force attack. Review security report.",
             $key,
-            'superadmin_reports.php?section=security'
+            'reports_security.php'
         );
     }
 } catch (Exception $e) {}
@@ -368,9 +584,9 @@ try {
 try {
     $rows = $pdo->query(
         "SELECT mca.id, mca.module_key, mca.config_key, mca.action_type,
-                u.name AS user_name, mca.timestamp
+                u.username AS user_name, mca.timestamp
          FROM module_config_audit mca
-         LEFT JOIN users u ON u.user_id = mca.changed_by
+         LEFT JOIN users u ON u.id = mca.changed_by
          WHERE mca.timestamp >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
          ORDER BY mca.timestamp DESC LIMIT 10"
     )->fetchAll(PDO::FETCH_ASSOC);
@@ -383,7 +599,30 @@ try {
             'Module Config Changed',
             "Module '{$r['module_key']}' — {$r['config_key']} was {$r['action_type']} by " . ($r['user_name'] ?? 'Unknown'),
             $key,
-            'superadmin_reports.php?section=developer_audit'
+            'reports_developer_audit.php'
+        );
+    }
+} catch (Exception $e) {}
+
+// 5c. Deployment / Rollback logs
+try {
+    $rows = $pdo->query(
+        "SELECT al.id, al.action, al.details, al.created_at
+         FROM activity_logs al
+         WHERE (al.action LIKE '%Deploy%' OR al.action LIKE '%Release%' OR al.action LIKE '%Rollback%' OR al.details LIKE '%rollback%' OR al.details LIKE '%deployment%')
+           AND al.created_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
+         ORDER BY al.created_at DESC LIMIT 5"
+    )->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($rows as $r) {
+        $key = 'deployment_log_' . $r['id'];
+        $generated += push_sa_notification(
+            $pdo, $sa_ids,
+            'info', 'config_change', 'medium',
+            'System Deployment Logged',
+            "Deployment: " . ($r['action'] ?? '') . " | " . mb_strimwidth($r['details'] ?? '', 0, 120, '…'),
+            $key,
+            'reports_developer_audit.php'
         );
     }
 } catch (Exception $e) {}
@@ -428,9 +667,9 @@ try {
 // 6b. Unauthorized settings access attempts
 try {
     $rows = $pdo->query(
-        "SELECT al.id, al.ip_address, al.details, al.created_at, u.name AS user_name
+        "SELECT al.id, al.ip_address, al.details, al.created_at, u.username AS user_name
          FROM activity_logs al
-         LEFT JOIN users u ON u.user_id = al.user_id
+         LEFT JOIN users u ON u.id = al.user_id
          WHERE (al.action LIKE '%System Settings%' OR al.action LIKE '%system_settings%')
            AND (al.details LIKE '%denied%' OR al.details LIKE '%unauthorized%'
                 OR al.details LIKE '%Unauthorized%' OR al.details LIKE '%403%')
@@ -446,7 +685,7 @@ try {
             'Unauthorized Settings Access Attempt',
             "Unauthorized attempt to access System Settings. User: " . ($r['user_name'] ?? 'Unknown') . " | IP: {$r['ip_address']}",
             $key,
-            'superadmin_system_logs.php?section=developer_log'
+            'superadmin_audit_trail.php'
         );
     }
 } catch (Exception $e) {}

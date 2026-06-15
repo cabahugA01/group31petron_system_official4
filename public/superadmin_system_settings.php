@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'system_settings';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -10,6 +10,23 @@ $role = function_exists('role_key') ? role_key($me['role'] ?? '') : strtolower(t
 if (!in_array($role, ['superadmin', 'developer'])) {
     header('Location: super_admin_dashboard.php');
     exit;
+}
+
+try {
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS system_settings (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            station_id INT DEFAULT 0 COMMENT '0 for global, or specific station ID',
+            setting_key VARCHAR(100) NOT NULL,
+            setting_value TEXT,
+            category VARCHAR(50) DEFAULT 'general',
+            updated_by INT,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY idx_station_key (station_id, setting_key)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ");
+} catch (Exception $e) {
+    error_log("System Settings table creation failed: " . $e->getMessage());
 }
 
 // Fetch all stations for the station selector
@@ -38,9 +55,7 @@ include __DIR__ . '/../partials/header.php';
     --transition:       0.2s ease;
 }
 
-/* -- Sidebar Protection (HARDCODED - immune to generate_theme_css.php) --------
-   IMPORTANT: Do NOT use CSS variables here - generate_theme_css.php overwrites
-   --sidebar-bg with var(--gradient-sidebar) which can become light/white.     */
+/* -- Sidebar Protection (HARDCODED - immune to generate_theme_css.php) -------- */
 aside.sidebar,
 #mainSidebar,
 .sidebar {
@@ -49,7 +64,7 @@ aside.sidebar,
     background-image: none !important;
 }
 
-/* Force ALL sidebar icons to stay white - overrides .fas/.far/.fab in generate_theme_css */
+/* Force ALL sidebar icons to stay white */
 .sidebar i,
 .sidebar .fas,
 .sidebar .far,
@@ -78,11 +93,6 @@ aside.sidebar,
     color: #ffffff !important;
 }
 
-.sidebar .nav-item:hover span,
-.sidebar .nav-item:hover i {
-    color: #ffffff !important;
-}
-
 .sidebar .nav-item.active,
 .sidebar a.nav-item.active {
     background-color: #CC0000 !important;
@@ -91,24 +101,7 @@ aside.sidebar,
 }
 
 .sidebar .nav-item.active span,
-.sidebar .nav-item.active i,
-.sidebar .nav-item.active .ico i {
-    color: #ffffff !important;
-}
-
-/* Sub-menu items */
-.sidebar .sidebar-sub-item {
-    color: rgba(238,238,238,0.85) !important;
-    background-color: transparent !important;
-}
-
-.sidebar .sidebar-sub-item:hover {
-    background-color: rgba(255,255,255,0.10) !important;
-    color: #ffffff !important;
-}
-
-.sidebar .sidebar-sub-item.active {
-    background-color: #CC0000 !important;
+.sidebar .nav-item.active i {
     color: #ffffff !important;
 }
 
@@ -117,25 +110,7 @@ aside.sidebar,
     display: block;
     min-height: calc(100vh - 140px);
     background: var(--page-bg);
-    position: relative;
     width: 100%;
-}
-
-/* -- Hide Settings Sidebar (Use Main Sidebar Only) -------------------------- */
-.ss-sidebar {
-    display: none !important;
-}
-
-.ss-sidebar-header {
-    display: none !important;
-}
-
-.ss-nav-item {
-    display: none !important;
-}
-
-.ss-nav-step-num {
-    display: none !important;
 }
 
 /* -- Main Content ------------------------------------------------------------ */
@@ -143,75 +118,9 @@ aside.sidebar,
     width: 100%;
     max-width: 1400px;
     margin: 0 auto;
-    padding: 28px 32px;
+    padding: 15px 32px 28px !important;
     overflow-y: auto;
-    position: relative;
     background: var(--page-bg);
-}
-
-.ss-panel {
-    display: none;
-}
-
-.ss-panel.active {
-    display: block;
-    animation: fadeInPanel 0.25s ease;
-}
-
-/* Prevent duplicate navigation in content area */
-.ss-panel .ss-sidebar,
-.ss-panel .ss-nav-item {
-    display: none !important;
-}
-
-.ss-panel > nav,
-.ss-panel > .ss-sidebar-header {
-    display: none !important;
-}
-
-/* Ensure only main sidebar is visible */
-.ss-wrapper > .ss-sidebar {
-    display: block !important;
-}
-
-/* Hide any navigation that might appear in content */
-.ss-content .ss-sidebar,
-.ss-content .ss-nav-item,
-.ss-content nav,
-.ss-content .ss-sidebar-header,
-.ss-content .ss-nav-icon,
-.ss-content .ss-nav-step-num {
-    display: none !important;
-}
-
-/* Completely remove any navigation inside content panels */
-.ss-panel .ss-sidebar,
-.ss-panel nav,
-.ss-panel .ss-sidebar-header,
-.ss-panel .ss-nav-item,
-.ss-panel .ss-nav-icon,
-.ss-panel .ss-nav-step-num {
-    display: none !important;
-    visibility: hidden !important;
-    opacity: 0 !important;
-    height: 0 !important;
-    width: 0 !important;
-    overflow: hidden !important;
-}
-
-/* Ensure only main sidebar navigation is visible */
-.ss-wrapper > .ss-sidebar {
-    display: block !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-    height: auto !important;
-    width: 260px !important;
-    overflow: visible !important;
-}
-
-@keyframes fadeInPanel {
-    from { opacity: 0; transform: translateY(8px); }
-    to   { opacity: 1; transform: translateY(0); }
 }
 
 /* -- Cards ------------------------------------------------------------------- */
@@ -227,7 +136,7 @@ aside.sidebar,
 .ss-card-title {
     font-size: 15px !important;
     font-weight: 700 !important;
-    color: var(--text-primary) !important;
+    color: var(--primary-color, #002F6C) !important;
     margin: 0 0 16px !important;
     padding-bottom: 12px;
     border-bottom: 1px solid var(--border-color);
@@ -245,12 +154,13 @@ aside.sidebar,
 /* -- Panel Header ------------------------------------------------------------ */
 .ss-panel-header {
     margin-bottom: 24px;
+    margin-top: -12px !important;
 }
 
 .ss-panel-header h1 {
     font-size: 22px !important;
     font-weight: 700 !important;
-    color: var(--text-primary) !important;
+    color: var(--primary-color, #002F6C) !important;
     margin: 0 0 4px !important;
     text-transform: uppercase !important;
 }
@@ -310,51 +220,50 @@ aside.sidebar,
     letter-spacing: 0.4px;
 }
 
-/* Tab button active state */
-.ss-btn.active {
-    background: var(--primary-color);
-    color: #fff;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0,47,108,0.3);
-}
-
 .ss-btn-primary {
-    background: var(--primary-color);
-    color: #fff;
+    background: white !important;
+    color: #00264D !important;
+    border: 1px solid #00264D !important;
 }
 
 .ss-btn-primary:hover {
-    background: #003d8f;
+    background: #00264D !important;
+    color: white !important;
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(0,47,108,0.3);
 }
 
 .ss-btn-secondary {
-    background: var(--page-bg);
-    color: var(--text-primary);
-    border: 1px solid var(--border-color);
+    background: white !important;
+    color: #6b7280 !important;
+    border: 1px solid #6b7280 !important;
 }
 
 .ss-btn-secondary:hover {
-    background: #e5e7eb;
-}
-
-.ss-btn-danger {
-    background: #dc2626;
-    color: #fff;
-}
-
-.ss-btn-danger:hover {
-    background: #b91c1c;
+    background: #6b7280 !important;
+    color: white !important;
 }
 
 .ss-btn-success {
-    background: #16a34a;
-    color: #fff;
+    background: white !important;
+    color: #16a34a !important;
+    border: 1px solid #16a34a !important;
 }
 
 .ss-btn-success:hover {
-    background: #15803d;
+    background: #16a34a !important;
+    color: white !important;
+}
+
+.ss-btn-danger {
+    background: white !important;
+    color: #dc2626 !important;
+    border: 1px solid #dc2626 !important;
+}
+
+.ss-btn-danger:hover {
+    background: #dc2626 !important;
+    color: white !important;
 }
 
 /* -- Toggle Switch ----------------------------------------------------------- */
@@ -363,14 +272,6 @@ aside.sidebar,
     align-items: center;
     gap: 12px;
     margin-bottom: 14px;
-}
-
-.ss-toggle-wrap label {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--text-primary);
-    cursor: pointer;
-    margin: 0;
 }
 
 .ss-toggle {
@@ -425,7 +326,6 @@ aside.sidebar,
     display: flex;
     flex-direction: column;
     gap: 10px;
-    pointer-events: none;
 }
 
 .ss-toast {
@@ -439,7 +339,6 @@ aside.sidebar,
     border-left: 4px solid #16a34a;
     min-width: 280px;
     max-width: 380px;
-    pointer-events: all;
     animation: toastIn 0.3s ease;
     font-size: 14px;
     font-weight: 500;
@@ -450,7 +349,6 @@ aside.sidebar,
 .ss-toast.warning { border-left-color: #d97706; }
 .ss-toast.info    { border-left-color: #2563eb; }
 
-.ss-toast i { font-size: 18px; }
 .ss-toast.success i { color: #16a34a; }
 .ss-toast.error   i { color: #dc2626; }
 .ss-toast.warning i { color: #d97706; }
@@ -476,8 +374,8 @@ aside.sidebar,
 
 /* -- Logo Preview ------------------------------------------------------------ */
 .ss-logo-preview-box {
-    width: 180px;
-    height: 120px;
+    width: 200px;
+    height: 140px;
     border: 2px dashed var(--border-color);
     border-radius: 10px;
     display: flex;
@@ -492,49 +390,6 @@ aside.sidebar,
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
-}
-
-/* -- Theme Preset Cards ------------------------------------------------------ */
-.ss-theme-presets {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-bottom: 20px;
-}
-
-.ss-preset-card {
-    width: 110px;
-    border-radius: 10px;
-    border: 2px solid var(--border-color);
-    cursor: pointer;
-    overflow: hidden;
-    transition: all var(--transition);
-    text-align: center;
-}
-
-.ss-preset-card:hover {
-    border-color: var(--primary-color);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
-}
-
-.ss-preset-card.selected {
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px rgba(0,47,108,0.15);
-}
-
-.ss-preset-swatch {
-    height: 50px;
-    width: 100%;
-}
-
-.ss-preset-label {
-    padding: 6px 4px;
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-primary);
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
 }
 
 /* -- Color Pickers Row ------------------------------------------------------- */
@@ -576,7 +431,6 @@ aside.sidebar,
     border-radius: 6px;
     cursor: pointer;
     padding: 0;
-    background: none;
 }
 
 .ss-color-hex {
@@ -594,139 +448,35 @@ aside.sidebar,
     border-radius: 10px;
     overflow: hidden;
     border: 1px solid var(--border-color);
+    margin-top: 20px;
 }
 
 .ss-preview-bar {
-    height: 40px;
+    height: 50px;
     display: flex;
     align-items: center;
     padding: 0 16px;
-    gap: 8px;
+    gap: 12px;
     font-size: 13px;
     font-weight: 600;
     color: #fff;
 }
 
 .ss-preview-body {
-    padding: 16px;
+    padding: 20px;
     background: #f8fafc;
     display: flex;
     gap: 10px;
-}
-
-.ss-preview-btn {
-    padding: 8px 16px;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
-    border: none;
-    cursor: default;
-    color: #fff;
-}
-
-.ss-preview-accent-btn {
-    padding: 8px 16px;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
-    border: none;
-    cursor: default;
-    color: #fff;
-}
-
-/* -- Sidebar Style Toggle ---------------------------------------------------- */
-.ss-sidebar-style-options {
-    display: flex;
-    gap: 16px;
     flex-wrap: wrap;
 }
 
-.ss-sidebar-option {
-    border: 2px solid var(--border-color);
-    border-radius: 10px;
-    padding: 16px;
-    cursor: pointer;
-    transition: all var(--transition);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-    width: 140px;
-}
-
-.ss-sidebar-option:hover,
-.ss-sidebar-option.selected {
-    border-color: var(--primary-color);
-    background: rgba(0,47,108,0.04);
-}
-
-.ss-sidebar-option input[type="radio"] {
-    accent-color: var(--primary-color);
-}
-
-.ss-sidebar-preview {
-    width: 100px;
-    height: 60px;
-    border-radius: 6px;
-    overflow: hidden;
-    border: 1px solid #e5e7eb;
-    display: flex;
-}
-
-.ss-sidebar-preview-bar {
-    background: #002F6C;
-    height: 100%;
-}
-
-.ss-sidebar-preview-content {
-    flex: 1;
-    background: #f4f6fb;
-}
-
-/* -- Drag & Drop Card Order -------------------------------------------------- */
-.ss-sortable-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.ss-sortable-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 16px;
-    background: var(--surface);
-    border: 1px solid var(--border-color);
+.ss-preview-btn {
+    padding: 10px 20px;
     border-radius: 8px;
-    cursor: grab;
-    transition: all var(--transition);
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--text-primary);
-}
-
-.ss-sortable-item:hover {
-    border-color: var(--primary-color);
-    box-shadow: 0 2px 8px rgba(0,47,108,0.1);
-}
-
-.ss-sortable-item.dragging {
-    opacity: 0.5;
-    cursor: grabbing;
-}
-
-.ss-sortable-item.drag-over {
-    border-color: var(--primary-color);
-    background: rgba(0,47,108,0.04);
-}
-
-.ss-drag-handle {
-    color: var(--text-secondary);
-    font-size: 16px;
-    cursor: grab;
+    font-size: 13px;
+    font-weight: 600;
+    border: none;
+    color: #fff;
 }
 
 /* -- Accessibility Slider ---------------------------------------------------- */
@@ -734,7 +484,7 @@ aside.sidebar,
     display: flex;
     align-items: center;
     gap: 14px;
-    margin-bottom: 4px;
+    margin-bottom: 20px;
 }
 
 .ss-slider {
@@ -745,188 +495,47 @@ aside.sidebar,
 }
 
 .ss-slider-value {
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 700;
     color: var(--primary-color);
-    min-width: 36px;
+    min-width: 50px;
     text-align: right;
 }
 
 .ss-font-preview {
-    padding: 12px 16px;
+    padding: 16px 20px;
     background: var(--page-bg);
     border-radius: 8px;
     border: 1px solid var(--border-color);
-    margin-top: 8px;
+    margin-top: 12px;
     transition: font-size var(--transition);
-}
-
-/* -- Audit Table ------------------------------------------------------------- */
-.ss-table-wrap {
-    overflow-x: auto;
-    border-radius: 10px;
-    border: 1px solid var(--border-color);
-}
-
-.ss-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-}
-
-.ss-table thead th {
-    background: var(--page-bg);
-    padding: 12px 14px;
-    text-align: left;
-    font-weight: 700;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    font-size: 11px;
-    letter-spacing: 0.5px;
-    border-bottom: 1px solid var(--border-color);
-    white-space: nowrap;
-}
-
-.ss-table tbody td {
-    padding: 11px 14px;
-    border-bottom: 1px solid #f3f4f6;
-    color: var(--text-primary);
-    vertical-align: middle;
-}
-
-.ss-table tbody tr:last-child td {
-    border-bottom: none;
-}
-
-.ss-table tbody tr:hover td {
-    background: rgba(0,47,108,0.02);
-}
-
-.ss-badge {
-    display: inline-block;
-    padding: 3px 9px;
-    border-radius: 20px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-}
-
-.ss-badge-branding    { background: #dbeafe; color: #1d4ed8; }
-.ss-badge-theme       { background: #ede9fe; color: #6d28d9; }
-.ss-badge-layout      { background: #d1fae5; color: #065f46; }
-.ss-badge-accessibility { background: #fef3c7; color: #92400e; }
-.ss-badge-general     { background: #f3f4f6; color: #374151; }
-
-/* -- Audit Filters ----------------------------------------------------------- */
-.ss-audit-filters {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-    align-items: center;
-    margin-bottom: 16px;
-}
-
-.ss-audit-filters select,
-.ss-audit-filters input {
-    padding: 8px 12px;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    font-size: 13px;
-    color: var(--text-primary);
-    background: var(--surface);
-}
-
-.ss-audit-filters select:focus,
-.ss-audit-filters input:focus {
-    outline: none;
-    border-color: var(--primary-color);
-}
-
-/* -- Pagination -------------------------------------------------------------- */
-.ss-pagination {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    justify-content: center;
-    margin-top: 16px;
-    flex-wrap: wrap;
-}
-
-.ss-page-btn {
-    padding: 6px 12px;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    background: var(--surface);
-    color: var(--text-primary);
-    font-size: 13px;
-    cursor: pointer;
-    transition: all var(--transition);
-}
-
-.ss-page-btn:hover,
-.ss-page-btn.active {
-    background: var(--primary-color);
-    color: #fff;
-    border-color: var(--primary-color);
-}
-
-.ss-page-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
 }
 
 /* -- Responsive -------------------------------------------------------------- */
 @media (max-width: 768px) {
-    .ss-wrapper {
-        flex-direction: column;
-    }
-    .ss-sidebar {
-        width: 100%;
-        height: auto;
-        border-right: none;
-        border-bottom: 1px solid rgba(255,255,255,0.1);
-        padding: 12px 0;
-        display: block !important;
-        visibility: visible !important;
-        opacity: 1 !important;
-    }
-    .ss-sidebar-header { display: none; }
-    .ss-nav-item { padding: 10px 16px; }
     .ss-content { padding: 16px; }
     .ss-color-row { flex-direction: column; }
-    .ss-theme-presets { gap: 8px; }
-    .ss-preset-card { width: 90px; }
-    
-    /* Ensure no duplicate navigation in mobile content */
-    .ss-content .ss-sidebar,
-    .ss-content .ss-nav-item,
-    .ss-content nav {
-        display: none !important;
-        visibility: hidden !important;
-    }
 }
 </style>
 
-<!-- -- Toast Container -------------------------------------------------------- -->
+
+<!-- Toast Container -->
 <div id="ss-toast-container"></div>
 
-<!-- -- Page Wrapper ---------------------------------------------------------- -->
+<!-- Page Wrapper -->
 <div class="ss-wrapper">
+  <main class="ss-content">
 
-  <!-- -- Main Content (No duplicate sidebar - use main sidebar only) ------------ -->
-  <main class="ss-content" style="margin-left:0;width:100%;">
-
-    <!-- -- Page Title ------------------------------------------------------------ -->
+    <!-- Page Title -->
     <div class="ss-panel-header">
-      <h1><i class="fas fa-cog" style="margin-right:8px;color:var(--primary-color);"></i>System Settings  -  Estate Form</h1>
+      <h1><i class="fas fa-cog" style="margin-right:8px;color:var(--primary-color);"></i>System Settings - Estate Form</h1>
       <p>Configure all system appearance, layout, and accessibility options in one view.</p>
     </div>
 
-    <!-- ====================================================================
+    <!-- ====================================================================
          🔹 STATION SELECTOR
-    ======================================================================= -->
-    <div class="ss-card" id="station-selector-card" style="margin-bottom:20px;">
+    ======================================================================= -->
+    <div class="ss-card" id="station-selector-card">
       <h3 class="ss-card-title"><i class="fas fa-map-marker-alt"></i>Station Selection</h3>
       <p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;">
         Select a station to scope settings for that specific branch. Global settings apply to all stations.
@@ -936,34 +545,436 @@ aside.sidebar,
           <i class="fas fa-search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:13px;pointer-events:none;"></i>
           <input type="text" id="stationSearchInput" placeholder="Search stations..." autocomplete="off"
                  style="width:100%;padding:10px 14px 10px 36px;border:1px solid var(--border-color);border-radius:8px;font-size:13px;color:var(--text-primary);background:var(--surface);box-sizing:border-box;"
-                 oninput="filterStations(this.value)">
+                 onfocus="showStationDropdown()">
           <div id="stationDropdown" style="display:none;position:absolute;top:calc(100%+4px);left:0;right:0;background:#fff;border:1px solid var(--border-color);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:9999;max-height:220px;overflow-y:auto;"></div>
         </div>
-        <input type="hidden" id="selectedStationId" value="">
+        <input type="hidden" id="selectedStationId" value="0">
         <button class="ss-btn ss-btn-secondary" onclick="clearStationFilter()" id="clearStationBtn" style="display:none;">
           <i class="fas fa-times"></i> Clear
         </button>
-        <span style="font-size:13px;color:var(--text-secondary);">
+        <span style="font-size:13px;color:var(--text-secondary);" id="current-scope-indicator">
           <i class="fas fa-globe" style="color:#3b82f6;"></i> Global (all stations)
         </span>
       </div>
-      <!-- Selected station banner -->
       <div id="selectedStationBanner" style="display:none;margin-top:12px;padding:10px 16px;background:#dbeafe;border-left:4px solid #3b82f6;border-radius:6px;font-size:13px;color:#1e40af;">
         <i class="fas fa-building"></i> Configuring for: <strong id="selectedStationName"></strong>
       </div>
     </div>
 
-    <!-- Station data for JS -->
-    <script>
+
+    <!-- ====================================================================
+         🔹 LOGO MANAGEMENT
+    ======================================================================= -->
+    <div class="ss-card">
+      <h3 class="ss-card-title"><i class="fas fa-image"></i>Logo Management</h3>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">
+        Upload or replace company/station logo. Changes reflect on dashboard, receipts, and reports.
+      </p>
+      
+      <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;">
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;text-transform:uppercase;">
+            Current Logo Preview
+          </label>
+          <div class="ss-logo-preview-box" id="logo-preview-box">
+            <img id="logo-preview-img" src="../assets/img/Petron Logo.png" alt="Logo Preview">
+          </div>
+        </div>
+
+        <div style="flex:1;min-width:300px;">
+          <div class="ss-form-group">
+            <label for="logo-upload-input"><i class="fas fa-upload"></i> Upload New Logo</label>
+            <input type="file" id="logo-upload-input" accept="image/*" class="ss-form-control" onchange="handleLogoUpload(event)">
+            <p style="font-size:11px;color:var(--text-secondary);margin-top:6px;">
+              Accepted formats: JPG, PNG, GIF. Max size: 2MB. Recommended: 200x80px
+            </p>
+          </div>
+
+          <div style="display:flex;gap:10px;margin-top:16px;">
+            <button class="ss-btn ss-btn-primary" id="save-logo-btn" onclick="saveLogo()">
+              <i class="fas fa-save"></i> Apply Logo
+            </button>
+            <button class="ss-btn ss-btn-danger" onclick="removeLogo()">
+              <i class="fas fa-trash"></i> Remove Logo
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ====================================================================
+         🔹 COLOR THEME / UI SCHEME
+    ======================================================================= -->
+    <div class="ss-card">
+      <h3 class="ss-card-title"><i class="fas fa-palette"></i>Color Theme / UI Scheme</h3>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">
+        Set branding colors for dashboard, buttons, sidebar navigation, and more.
+      </p>
+
+      <div class="ss-color-row">
+        <div class="ss-color-item">
+          <label>Primary Color</label>
+          <div class="ss-color-picker-wrap">
+            <input type="color" id="color-primary" value="#002F6C" onchange="updateColorHex('primary', this.value)">
+            <input type="text" class="ss-color-hex" id="hex-primary" value="#002F6C" oninput="updateColorPicker('primary', this.value)">
+          </div>
+        </div>
+
+        <div class="ss-color-item">
+          <label>Accent Color</label>
+          <div class="ss-color-picker-wrap">
+            <input type="color" id="color-accent" value="#CC0000" onchange="updateColorHex('accent', this.value)">
+            <input type="text" class="ss-color-hex" id="hex-accent" value="#CC0000" oninput="updateColorPicker('accent', this.value)">
+          </div>
+        </div>
+
+        <div class="ss-color-item">
+          <label>Button Color</label>
+          <div class="ss-color-picker-wrap">
+            <input type="color" id="color-button" value="#002F6C" onchange="updateColorHex('button', this.value)">
+            <input type="text" class="ss-color-hex" id="hex-button" value="#002F6C" oninput="updateColorPicker('button', this.value)">
+          </div>
+        </div>
+
+        <div class="ss-color-item">
+          <label>Sidebar Color</label>
+          <div class="ss-color-picker-wrap">
+            <input type="color" id="color-sidebar" value="#00264D" onchange="updateColorHex('sidebar', this.value)">
+            <input type="text" class="ss-color-hex" id="hex-sidebar" value="#00264D" oninput="updateColorPicker('sidebar', this.value)">
+          </div>
+        </div>
+
+        <div class="ss-color-item">
+          <label>Success Color</label>
+          <div class="ss-color-picker-wrap">
+            <input type="color" id="color-success" value="#16a34a" onchange="updateColorHex('success', this.value)">
+            <input type="text" class="ss-color-hex" id="hex-success" value="#16a34a" oninput="updateColorPicker('success', this.value)">
+          </div>
+        </div>
+
+        <div class="ss-color-item">
+          <label>Warning Color</label>
+          <div class="ss-color-picker-wrap">
+            <input type="color" id="color-warning" value="#d97706" onchange="updateColorHex('warning', this.value)">
+            <input type="text" class="ss-color-hex" id="hex-warning" value="#d97706" oninput="updateColorPicker('warning', this.value)">
+          </div>
+        </div>
+
+        <div class="ss-color-item">
+          <label>Danger Color</label>
+          <div class="ss-color-picker-wrap">
+            <input type="color" id="color-danger" value="#dc2626" onchange="updateColorHex('danger', this.value)">
+            <input type="text" class="ss-color-hex" id="hex-danger" value="#dc2626" oninput="updateColorPicker('danger', this.value)">
+          </div>
+        </div>
+      </div>
+
+      <div class="ss-live-preview" id="color-preview">
+        <div class="ss-preview-bar" id="preview-bar" style="background:#002F6C;">
+          <i class="fas fa-tachometer-alt"></i> Dashboard Preview
+        </div>
+        <div class="ss-preview-body">
+          <button class="ss-preview-btn" id="preview-btn-success" style="background:#16a34a;">Approve</button>
+          <button class="ss-preview-btn" id="preview-btn-danger" style="background:#dc2626;">Reject</button>
+          <button class="ss-preview-btn" id="preview-btn-accent" style="background:#CC0000;">View</button>
+        </div>
+      </div>
+
+      <div style="margin-top:20px;">
+        <button class="ss-btn ss-btn-primary" onclick="saveColorScheme()">
+          <i class="fas fa-check"></i> Apply Color Scheme
+        </button>
+      </div>
+    </div>
+
+
+    <!-- ====================================================================
+         🔹 LAYOUT SETTINGS
+    ======================================================================= -->
+    <div class="ss-card">
+      <h3 class="ss-card-title"><i class="fas fa-th-large"></i>Layout Settings</h3>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">
+        Customize sidebar style, dashboard arrangement, font sizes, and scaling.
+      </p>
+
+      <div class="ss-form-group">
+        <label><i class="fas fa-bars"></i> Sidebar Style</label>
+        <select id="sidebar-style" class="ss-form-control">
+          <option value="inline">Inline Navigation</option>
+          <option value="stacked">Stacked Navigation</option>
+          <option value="compact">Compact Mode</option>
+        </select>
+      </div>
+
+      <div class="ss-form-group">
+        <label><i class="fas fa-grip-horizontal"></i> Dashboard Card Arrangement</label>
+        <select id="card-arrangement" class="ss-form-control">
+          <option value="grid">Grid Layout (2 columns)</option>
+          <option value="list">List Layout (1 column)</option>
+          <option value="masonry">Masonry Layout</option>
+        </select>
+      </div>
+
+      <div class="ss-form-group">
+        <label><i class="fas fa-text-height"></i> Base Font Size</label>
+        <div class="ss-slider-wrap">
+          <input type="range" id="font-size-slider" class="ss-slider" min="12" max="18" value="14" step="1" oninput="updateFontPreview(this.value)">
+          <span class="ss-slider-value" id="font-size-value">14px</span>
+        </div>
+        <div class="ss-font-preview" id="font-preview" style="font-size:14px;">
+          This is a preview of how text will appear at the selected font size.
+        </div>
+      </div>
+
+      <div style="margin-top:20px;">
+        <button class="ss-btn ss-btn-primary" onclick="saveLayoutSettings()">
+          <i class="fas fa-save"></i> Save Layout Settings
+        </button>
+        <button class="ss-btn ss-btn-secondary" onclick="previewLayout()">
+          <i class="fas fa-eye"></i> Preview Layout
+        </button>
+      </div>
+    </div>
+
+
+    <!-- ====================================================================
+         🔹 ACCESSIBILITY OPTIONS
+    ======================================================================= -->
+    <div class="ss-card">
+      <h3 class="ss-card-title"><i class="fas fa-universal-access"></i>Accessibility Options</h3>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">
+        Enable accessibility features for better visibility and usability.
+      </p>
+
+      <div class="ss-toggle-wrap">
+        <div class="ss-toggle">
+          <input type="checkbox" id="high-contrast-toggle">
+          <span class="ss-toggle-slider" onclick="toggleHighContrast()"></span>
+        </div>
+        <label for="high-contrast-toggle" style="cursor:pointer;margin:0;font-size:14px;">
+          <i class="fas fa-adjust"></i> Enable High Contrast Mode
+        </label>
+      </div>
+
+      <div class="ss-form-group">
+        <label><i class="fas fa-font"></i> Text Scaling (Accessibility)</label>
+        <div class="ss-slider-wrap">
+          <input type="range" id="accessibility-font-scale" class="ss-slider" min="100" max="150" value="100" step="10" oninput="updateAccessibilityScale(this.value)">
+          <span class="ss-slider-value" id="accessibility-scale-value">100%</span>
+        </div>
+        <p style="font-size:11px;color:var(--text-secondary);margin-top:6px;">
+          Scales all text for users with visual impairments. 100% = default, 150% = maximum
+        </p>
+      </div>
+
+      <div class="ss-toggle-wrap">
+        <div class="ss-toggle">
+          <input type="checkbox" id="focus-indicators-toggle">
+          <span class="ss-toggle-slider" onclick="toggleFocusIndicators()"></span>
+        </div>
+        <label for="focus-indicators-toggle" style="cursor:pointer;margin:0;font-size:14px;">
+          <i class="fas fa-crosshairs"></i> Enhanced Focus Indicators
+        </label>
+      </div>
+
+      <div class="ss-toggle-wrap">
+        <div class="ss-toggle">
+          <input type="checkbox" id="reduce-motion-toggle">
+          <span class="ss-toggle-slider" onclick="toggleReduceMotion()"></span>
+        </div>
+        <label for="reduce-motion-toggle" style="cursor:pointer;margin:0;font-size:14px;">
+          <i class="fas fa-ban"></i> Reduce Motion / Animations
+        </label>
+      </div>
+
+      <div style="margin-top:20px;padding:16px;background:#fef3c7;border-left:4px solid #d97706;border-radius:8px;">
+        <p style="font-size:13px;color:#92400e;margin:0;">
+          <i class="fas fa-info-circle"></i> <strong>Preview Mode:</strong> Enable settings above to see changes before applying.
+        </p>
+      </div>
+
+      <div style="margin-top:20px;">
+        <button class="ss-btn ss-btn-success" onclick="saveAccessibilitySettings()">
+          <i class="fas fa-check-circle"></i> Enable Accessibility
+        </button>
+        <button class="ss-btn ss-btn-secondary" onclick="resetAccessibilityDefaults()">
+          <i class="fas fa-undo"></i> Reset to Defaults
+        </button>
+      </div>
+    </div>
+
+    <!-- ====================================================================
+         🔹 SYSTEM PREFERENCES
+    ======================================================================= -->
+    <div class="ss-card">
+      <h3 class="ss-card-title"><i class="fas fa-sliders-h"></i>System Preferences</h3>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">
+        Configure system-wide preferences for language, timezone, notifications, and default views.
+      </p>
+
+      <div class="ss-form-group">
+        <label><i class="fas fa-language"></i> Language Settings</label>
+        <select id="system-language" class="ss-form-control">
+          <option value="en">English</option>
+          <option value="tl">Tagalog</option>
+          <option value="ceb">Cebuano</option>
+        </select>
+        <p style="font-size:11px;color:var(--text-secondary);margin-top:6px;">
+          Choose default language for UI elements and system messages
+        </p>
+      </div>
+
+      <div class="ss-form-group">
+        <label><i class="fas fa-clock"></i> Time Zone Settings</label>
+        <select id="system-timezone" class="ss-form-control">
+          <option value="Asia/Manila" selected>Asia/Manila (PHT - GMT+8)</option>
+          <option value="Asia/Hong_Kong">Asia/Hong_Kong (HKT - GMT+8)</option>
+          <option value="Asia/Singapore">Asia/Singapore (SGT - GMT+8)</option>
+          <option value="Asia/Tokyo">Asia/Tokyo (JST - GMT+9)</option>
+        </select>
+        <p style="font-size:11px;color:var(--text-secondary);margin-top:6px;">
+          Set system time zone per station for accurate timestamps
+        </p>
+      </div>
+
+      <div class="ss-form-group">
+        <label><i class="fas fa-bell"></i> Notification Preferences</label>
+        
+        <div class="ss-toggle-wrap">
+          <div class="ss-toggle">
+            <input type="checkbox" id="email-notifications-toggle" checked>
+            <span class="ss-toggle-slider" onclick="toggleEmailNotifications()"></span>
+          </div>
+          <label for="email-notifications-toggle" style="cursor:pointer;margin:0;font-size:14px;">
+            <i class="fas fa-envelope"></i> Enable Email Alerts
+          </label>
+        </div>
+
+        <div class="ss-toggle-wrap">
+          <div class="ss-toggle">
+            <input type="checkbox" id="sms-notifications-toggle">
+            <span class="ss-toggle-slider" onclick="toggleSMSNotifications()"></span>
+          </div>
+          <label for="sms-notifications-toggle" style="cursor:pointer;margin:0;font-size:14px;">
+            <i class="fas fa-sms"></i> Enable SMS Alerts
+          </label>
+        </div>
+
+        <p style="font-size:11px;color:var(--text-secondary);margin-top:6px;">
+          Toggle email/SMS alerts for system notifications and critical updates
+        </p>
+      </div>
+
+      <div class="ss-form-group">
+        <label><i class="fas fa-home"></i> Default Station View</label>
+        <select id="default-station-view" class="ss-form-control">
+          <option value="0">All Stations (Global View)</option>
+          <?php foreach ($stations as $st): ?>
+            <option value="<?php echo htmlspecialchars($st['id']); ?>">
+              <?php echo htmlspecialchars($st['name']); ?>
+            </option>
+          <?php endforeach; ?>
+        </select>
+        <p style="font-size:11px;color:var(--text-secondary);margin-top:6px;">
+          Define default landing dashboard station for system users
+        </p>
+      </div>
+
+      <div style="margin-top:20px;">
+        <button class="ss-btn ss-btn-primary" onclick="saveSystemPreferences()">
+          <i class="fas fa-save"></i> Save Preferences
+        </button>
+      </div>
+    </div>
+
+    <!-- ====================================================================
+         🔹 AUDIT & COMPLIANCE
+    ======================================================================= -->
+    <div class="ss-card">
+      <h3 class="ss-card-title"><i class="fas fa-shield-alt"></i>Audit & Compliance</h3>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">
+        Track configuration changes, export settings, and restore system defaults.
+      </p>
+
+      <!-- Change Logs Table -->
+      <div style="margin-bottom:24px;">
+        <h4 style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:12px;">
+          <i class="fas fa-history"></i> Recent Configuration Changes
+        </h4>
+        <div style="overflow-x:auto;border-radius:8px;border:1px solid var(--border-color);">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead>
+              <tr style="background:var(--page-bg);">
+                <th style="padding:10px 12px;text-align:left;font-weight:600;border-bottom:1px solid var(--border-color);">Date/Time</th>
+                <th style="padding:10px 12px;text-align:left;font-weight:600;border-bottom:1px solid var(--border-color);">User</th>
+                <th style="padding:10px 12px;text-align:left;font-weight:600;border-bottom:1px solid var(--border-color);">Category</th>
+                <th style="padding:10px 12px;text-align:left;font-weight:600;border-bottom:1px solid var(--border-color);">Setting Changed</th>
+                <th style="padding:10px 12px;text-align:left;font-weight:600;border-bottom:1px solid var(--border-color);">Old Value</th>
+                <th style="padding:10px 12px;text-align:left;font-weight:600;border-bottom:1px solid var(--border-color);">New Value</th>
+              </tr>
+            </thead>
+            <tbody id="audit-logs-tbody">
+              <tr>
+                <td colspan="6" style="padding:20px;text-align:center;color:var(--text-secondary);">
+                  <i class="fas fa-spinner fa-spin"></i> Loading change logs...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Export & Restore Actions -->
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;">
+        <button class="ss-btn ss-btn-success" onclick="exportSettings('excel')">
+          <i class="fas fa-file-excel"></i> Export to Excel
+        </button>
+        <button class="ss-btn ss-btn-success" onclick="exportSettings('pdf')">
+          <i class="fas fa-file-pdf"></i> Export to PDF
+        </button>
+        <button class="ss-btn ss-btn-secondary" onclick="exportSettings('json')">
+          <i class="fas fa-file-code"></i> Export to JSON
+        </button>
+      </div>
+
+      <div style="padding:16px;background:#fee2e2;border-left:4px solid #dc2626;border-radius:8px;margin-bottom:16px;">
+        <p style="font-size:13px;color:#991b1b;margin:0;">
+          <i class="fas fa-exclamation-triangle"></i> <strong>Warning:</strong> Restoring defaults will reset all custom settings. This action cannot be undone.
+        </p>
+      </div>
+
+      <div style="display:flex;gap:12px;">
+        <button class="ss-btn ss-btn-danger" onclick="confirmRestoreDefaults()">
+          <i class="fas fa-undo-alt"></i> Restore System Defaults
+        </button>
+        <button class="ss-btn ss-btn-secondary" onclick="loadAuditLogs()">
+          <i class="fas fa-sync"></i> Refresh Logs
+        </button>
+      </div>
+    </div>
+
+
+  </main>
+</div>
+
+<script>
 /* ═══════════════════════════════════════════════════════════════════════════
-   SYSTEM SETTINGS — JavaScript (Estate Form - All in One View)
-   All API calls go to: backend/api/system_settings_api.php?action=...
+   SYSTEM SETTINGS — JavaScript (Estate Form - All Features)
+   API: backend/api/system_settings_api.php
 ═══════════════════════════════════════════════════════════════════════════ */
 
 const API = '../backend/api/system_settings_api.php';
-
-// Active station ID (0 = global)
+const STATIONS = <?php echo json_encode($stations); ?>;
 let currentStationId = 0;
+let currentLogoFile = null;
+
+/* ── Utility: HTML Escape ─────────────────────────────────────────────────── */
+function escHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
 
 /* ── Toast Notifications ──────────────────────────────────────────────────── */
 function showToast(message, type = 'success', duration = 3500) {
@@ -986,7 +997,7 @@ function showToast(message, type = 'success', duration = 3500) {
     }, duration);
 }
 
-/* ── Set button loading state ────────────────────────────────────────────── */
+/* ── Button Loading State ─────────────────────────────────────────────────── */
 function setBtnLoading(btnId, loading) {
     const btn = document.getElementById(btnId);
     if (!btn) return;
@@ -1000,38 +1011,35 @@ function setBtnLoading(btnId, loading) {
     }
 }
 
-/* ── Station Selector Logic (Dropdown list) ────────────────────────────────── */
-function filterStations(query) {
+
+/* ══════════════════════════════════════════════════════════════════════════
+   🔹 STATION SELECTOR
+══════════════════════════════════════════════════════════════════════════ */
+function showStationDropdown() {
     const dropdown = document.getElementById('stationDropdown');
     if (!dropdown) return;
+    
     dropdown.innerHTML = '';
     
-    // Add global option first
+    // Global option
     const globalOpt = document.createElement('div');
-    globalOpt.style.padding = '10px 14px';
-    globalOpt.style.cursor = 'pointer';
-    globalOpt.style.fontSize = '13px';
+    globalOpt.style.cssText = 'padding:10px 14px;cursor:pointer;font-size:13px;';
     globalOpt.innerHTML = '<i class="fas fa-globe" style="color:#3b82f6;margin-right:8px;"></i>Global (all stations)';
     globalOpt.onclick = () => selectStation(0, 'Global');
+    globalOpt.onmouseenter = function() { this.style.background = '#f3f4f6'; };
+    globalOpt.onmouseleave = function() { this.style.background = 'transparent'; };
     dropdown.appendChild(globalOpt);
 
-    const filtered = STATIONS.filter(s => 
-        s.name.toLowerCase().includes(query.toLowerCase()) || 
-        s.address.toLowerCase().includes(query.toLowerCase())
-    );
-
-    if (filtered.length > 0 && query !== '') {
-        filtered.forEach(st => {
-            const opt = document.createElement('div');
-            opt.style.padding = '10px 14px';
-            opt.style.cursor = 'pointer';
-            opt.style.borderTop = '1px solid var(--border-color)';
-            opt.style.fontSize = '13px';
-            opt.innerHTML = `<i class="fas fa-building" style="color:#6b7280;margin-right:8px;"></i>\${escHtml(st.name)} <span style="font-size:11px;color:#9ca3af;">(\${escHtml(st.address)})</span>`;
-            opt.onclick = () => selectStation(st.id, st.name);
-            dropdown.appendChild(opt);
-        });
-    }
+    // Station options
+    STATIONS.forEach(st => {
+        const opt = document.createElement('div');
+        opt.style.cssText = 'padding:10px 14px;cursor:pointer;border-top:1px solid var(--border-color);font-size:13px;';
+        opt.innerHTML = `<i class="fas fa-building" style="color:#6b7280;margin-right:8px;"></i>${escHtml(st.name)} <span style="font-size:11px;color:#9ca3af;">(${escHtml(st.address)})</span>`;
+        opt.onclick = () => selectStation(st.id, st.name);
+        opt.onmouseenter = function() { this.style.background = '#f3f4f6'; };
+        opt.onmouseleave = function() { this.style.background = 'transparent'; };
+        dropdown.appendChild(opt);
+    });
     
     dropdown.style.display = 'block';
 }
@@ -1045,32 +1053,25 @@ function selectStation(id, name) {
     const clearBtn = document.getElementById('clearStationBtn');
     const banner = document.getElementById('selectedStationBanner');
     const bannerName = document.getElementById('selectedStationName');
-    const saveScopeLabel = document.getElementById('save-scope-label');
 
     if (id > 0) {
-        if (clearBtn) clearBtn.style.display = 'inline-block';
+        if (clearBtn) clearBtn.style.display = 'inline-flex';
         if (banner) banner.style.display = 'block';
         if (bannerName) bannerName.textContent = name;
-        if (saveScopeLabel) saveScopeLabel.textContent = `Station: \${name}`;
     } else {
         if (clearBtn) clearBtn.style.display = 'none';
         if (banner) banner.style.display = 'none';
-        if (saveScopeLabel) saveScopeLabel.textContent = 'all stations globally';
     }
 
-    showToast(`Switched view to: \${name}`, 'info');
-    
-    // Reload configurations for the chosen station scope
-    loadCurrentLogo();
+    showToast(`Settings scope: ${name}`, 'info');
     loadAllSettings();
-    loadAudit(1);
 }
 
 function clearStationFilter() {
     selectStation(0, 'Global');
 }
 
-// Close dropdown on click outside
+// Close dropdown on outside click
 document.addEventListener('click', function(e) {
     const container = document.getElementById('station-selector-card');
     const dropdown = document.getElementById('stationDropdown');
@@ -1079,187 +1080,196 @@ document.addEventListener('click', function(e) {
     }
 });
 
-/* ── Load All Settings on Page Load or Station Change ────────────────────── */
-async function loadAllSettings() {
-    try {
-        const res  = await fetch(`\${API}?action=get_all&station_id=\${currentStationId}`);
-        const data = await res.json();
-        if (!data.success) return;
-        const s = data.settings || {};
 
-        // Theme Colors
-        setColorField('primary',   s.primary_color?.value || '#002F6C');
-        setColorField('button',    s.button_color?.value || '#002F6C');
-        setColorField('sidebar',   s.sidebar_color?.value || '#1a1a2e');
-
-        // Layout
-        const style = document.getElementById('sidebar-style');
-        if (style) style.value = s.sidebar_style?.value || 'inline';
-
-        const scale = document.getElementById('font-scale');
-        if (scale) scale.value = s.font_scale_layout?.value || '100';
-
-        // Accessibility
-        document.getElementById('toggle-high-contrast').checked = (s.high_contrast?.value === '1' || s.high_contrast?.value === 'true');
-
-        const slider = document.getElementById('accessibility-font-scale');
-        if (slider) {
-            slider.value = s.font_scale_accessibility?.value || '100';
-            updateFontScaleValue();
-        }
-    } catch(e) {
-        console.warn('Could not load settings:', e);
-    }
-}
-
-/* ── Load Current Logo ────────────────────────────────────────────────────── */
-async function loadCurrentLogo() {
-    try {
-        const res  = await fetch(`\${API}?action=get_logo&station_id=\${currentStationId}`);
-        const data = await res.json();
-        if (data.success && data.logo_url) {
-            document.getElementById('current-logo-img').src = '../' + data.logo_url + '?t=' + Date.now();
-        }
-    } catch(e) {}
-}
-
-/* ── Logo: Preview before upload ─────────────────────────────────────────── */
-function previewLogoFile(input) {
-    const file = input.files[0];
+/* ══════════════════════════════════════════════════════════════════════════
+   🔹 LOGO MANAGEMENT
+══════════════════════════════════════════════════════════════════════════ */
+function handleLogoUpload(event) {
+    const file = event.target.files[0];
     if (!file) return;
 
+    // Validate file size (2MB)
     if (file.size > 2 * 1024 * 1024) {
-        showToast('File exceeds 2MB limit.', 'error');
-        input.value = '';
+        showToast('File size exceeds 2MB limit', 'error');
         return;
     }
 
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+        showToast('Please upload a valid image file', 'error');
+        return;
+    }
+
+    currentLogoFile = file;
+
+    // Preview the image
     const reader = new FileReader();
     reader.onload = function(e) {
-        document.getElementById('current-logo-img').src = e.target.result;
-        document.getElementById('btn-upload-logo').disabled = false;
+        document.getElementById('logo-preview-img').src = e.target.result;
     };
     reader.readAsDataURL(file);
+
+    showToast('Logo ready to upload. Click "Apply Logo" to save.', 'info');
 }
 
-function clearLogoInput() {
-    document.getElementById('logo-file-input').value = '';
-    document.getElementById('btn-upload-logo').disabled = true;
-    loadCurrentLogo();
-}
+async function saveLogo() {
+    if (!currentLogoFile) {
+        showToast('Please select a logo file first', 'warning');
+        return;
+    }
 
-/* ── Logo: Upload ────────────────────────────────────────────────────────── */
-async function uploadLogo() {
-    const input = document.getElementById('logo-file-input');
-    if (!input.files[0]) { showToast('Please select a file first.', 'warning'); return; }
+    setBtnLoading('save-logo-btn', true);
 
-    setBtnLoading('btn-upload-logo', true);
     const formData = new FormData();
-    formData.append('logo', input.files[0]);
+    formData.append('action', 'upload_logo');
     formData.append('station_id', currentStationId);
+    formData.append('logo', currentLogoFile);
 
     try {
-        const res  = await fetch(`\${API}?action=save_logo`, { method: 'POST', body: formData });
+        const res = await fetch(API, {
+            method: 'POST',
+            body: formData
+        });
         const data = await res.json();
+        
         if (data.success) {
-            showToast('Logo updated successfully!', 'success');
-            document.getElementById('current-logo-img').src = '../' + data.logo_url + '?t=' + Date.now();
-            clearLogoInput();
+            showToast('Logo uploaded successfully!', 'success');
+            currentLogoFile = null;
+            document.getElementById('logo-upload-input').value = '';
         } else {
-            showToast(data.message || 'Upload failed.', 'error');
+            showToast(data.message || 'Failed to upload logo', 'error');
         }
-    } catch(e) {
-        showToast('Network error. Please try again.', 'error');
+    } catch (error) {
+        showToast('Network error: ' + error.message, 'error');
     } finally {
-        setBtnLoading('btn-upload-logo', false);
+        setBtnLoading('save-logo-btn', false);
     }
 }
 
-/* ── Logo: Reset to Default ──────────────────────────────────────────────── */
-async function resetLogo() {
-    if (!confirm('Reset logo to the default Petron logo?')) return;
-    setBtnLoading('btn-reset-logo', true);
-    
-    const formData = new FormData();
-    formData.append('station_id', currentStationId);
+async function removeLogo() {
+    if (!confirm('Are you sure you want to remove the current logo?')) return;
 
     try {
-        const res  = await fetch(`\${API}?action=reset_logo`, { method: 'POST', body: formData });
+        const res = await fetch(`${API}?action=remove_logo&station_id=${currentStationId}`);
         const data = await res.json();
+        
         if (data.success) {
-            showToast('Logo reset to default.', 'success');
-            document.getElementById('current-logo-img').src = '../' + data.logo_url + '?t=' + Date.now();
+            showToast('Logo removed successfully', 'success');
+            document.getElementById('logo-preview-img').src = '../assets/img/Petron Logo.png';
         } else {
-            showToast(data.message || 'Reset failed.', 'error');
+            showToast(data.message || 'Failed to remove logo', 'error');
         }
-    } catch(e) {
-        showToast('Network error.', 'error');
-    } finally {
-        setBtnLoading('btn-reset-logo', false);
+    } catch (error) {
+        showToast('Network error: ' + error.message, 'error');
     }
 }
 
-/* ── Theme: Color helpers ─────────────────────────────────────────────────── */
-function setColorField(name, value) {
-    const picker = document.getElementById(`color-\${name}`);
-    const hex    = document.getElementById(`hex-\${name}`);
-    if (picker) picker.value = value;
-    if (hex)    hex.value    = value;
+
+/* ══════════════════════════════════════════════════════════════════════════
+   🔹 COLOR THEME / UI SCHEME
+══════════════════════════════════════════════════════════════════════════ */
+function updateColorHex(name, value) {
+    document.getElementById(`hex-${name}`).value = value.toUpperCase();
+    updatePreview();
 }
 
-function syncColorHex(name) {
-    const picker = document.getElementById(`color-\${name}`);
-    const hex    = document.getElementById(`hex-\${name}`);
-    if (picker && hex) hex.value = picker.value;
-}
-
-function syncColorPicker(name) {
-    const picker = document.getElementById(`color-\${name}`);
-    const hex    = document.getElementById(`hex-\${name}`);
-    if (hex && picker && /^#[0-9A-Fa-f]{6}$/.test(hex.value)) {
-        picker.value = hex.value;
+function updateColorPicker(name, value) {
+    if (/^#[0-9A-F]{6}$/i.test(value)) {
+        document.getElementById(`color-${name}`).value = value;
+        updatePreview();
     }
 }
 
-/* ── Apply Color Scheme ───────────────────────────────────────────────────── */
-async function applyColorScheme() {
-    const payload = {
-        primary_color: document.getElementById('hex-primary')?.value || '#002F6C',
-        button_color: document.getElementById('hex-button')?.value || '#002F6C',
-        sidebar_color: document.getElementById('hex-sidebar')?.value || '#1a1a2e',
-        station_id: currentStationId
+function updatePreview() {
+    const primary = document.getElementById('color-primary').value;
+    const accent = document.getElementById('color-accent').value;
+    const success = document.getElementById('color-success').value;
+    const danger = document.getElementById('color-danger').value;
+
+    document.getElementById('preview-bar').style.background = primary;
+    document.getElementById('preview-btn-success').style.background = success;
+    document.getElementById('preview-btn-danger').style.background = danger;
+    document.getElementById('preview-btn-accent').style.background = accent;
+}
+
+async function saveColorScheme() {
+    const colors = {
+        primary: document.getElementById('color-primary').value,
+        button:  document.getElementById('color-button').value,
+        sidebar: document.getElementById('color-sidebar').value,
+        accent:  document.getElementById('color-accent').value,
+        success: document.getElementById('color-success').value,
+        warning: document.getElementById('color-warning').value,
+        danger:  document.getElementById('color-danger').value
     };
 
     try {
-        const res = await fetch(`\${API}?action=save_theme`, {
+        const res = await fetch(`${API}?action=save_colors&station_id=${currentStationId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
+            body: JSON.stringify({ colors })
         });
         const data = await res.json();
         if (data.success) {
-            showToast('Color scheme applied successfully!', 'success');
+            showToast('Color scheme applied! Reloading...', 'success');
+            setTimeout(() => location.reload(), 1500);
         } else {
-            showToast(data.message || 'Failed to apply color scheme.', 'error');
+            showToast(data.message || 'Failed to save color scheme', 'error');
         }
-    } catch(e) {
-        showToast('Network error.', 'error');
+    } catch (error) {
+        showToast('Network error: ' + error.message, 'error');
     }
 }
 
-/* ── Preview Layout ──────────────────────────────────────────────────────── */
-function previewLayout() {
-    const style = document.getElementById('sidebar-style')?.value || 'inline';
-    const scale = document.getElementById('font-scale')?.value || '100';
-    
-    showToast(`Preview: Sidebar \${style}, Font \${scale}%`, 'info');
-    document.documentElement.style.fontSize = `\${scale}%`;
+
+/* ══════════════════════════════════════════════════════════════════════════
+   🔹 LAYOUT SETTINGS
+══════════════════════════════════════════════════════════════════════════ */
+function updateFontPreview(value) {
+    document.getElementById('font-size-value').textContent = value + 'px';
+    document.getElementById('font-preview').style.fontSize = value + 'px';
 }
 
-/* ── High Contrast Toggle ────────────────────────────────────────────────── */
+async function saveLayoutSettings() {
+    const settings = {
+        sidebar_style:    document.getElementById('sidebar-style').value,
+        card_arrangement: document.getElementById('card-arrangement').value,
+        base_font_size:   document.getElementById('font-size-slider').value
+    };
+
+    try {
+        const res = await fetch(`${API}?action=save_layout&station_id=${currentStationId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ settings })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast('Layout settings saved successfully!', 'success');
+        } else {
+            showToast(data.message || 'Failed to save layout settings', 'error');
+        }
+    } catch (error) {
+        showToast('Network error: ' + error.message, 'error');
+    }
+}
+
+function previewLayout() {
+    showToast('Preview mode activated. Review changes before saving.', 'info', 5000);
+    // Apply temporary preview styles
+    const fontSize = document.getElementById('font-size-slider').value + 'px';
+    document.documentElement.style.fontSize = fontSize;
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   🔹 ACCESSIBILITY OPTIONS
+══════════════════════════════════════════════════════════════════════════ */
 function toggleHighContrast() {
-    const enabled = document.getElementById('toggle-high-contrast')?.checked;
-    if (enabled) {
+    const toggle = document.getElementById('high-contrast-toggle');
+    toggle.checked = !toggle.checked;
+    
+    if (toggle.checked) {
         document.body.classList.add('high-contrast-mode');
         showToast('High contrast mode enabled', 'info');
     } else {
@@ -1268,306 +1278,284 @@ function toggleHighContrast() {
     }
 }
 
-/* ── Update Font Scale Value ──────────────────────────────────────────────── */
-function updateFontScaleValue() {
-    const slider = document.getElementById('accessibility-font-scale');
-    const display = document.getElementById('font-scale-value');
-    const preview = document.getElementById('font-preview');
+function updateAccessibilityScale(value) {
+    document.getElementById('accessibility-scale-value').textContent = value + '%';
+    // Preview the scaling
+    const scale = value / 100;
+    document.documentElement.style.setProperty('--accessibility-scale', scale);
+}
+
+function toggleFocusIndicators() {
+    const toggle = document.getElementById('focus-indicators-toggle');
+    toggle.checked = !toggle.checked;
     
-    if (slider && display) {
-        display.textContent = slider.value + '%';
-    }
-    
-    if (preview && slider) {
-        const baseSize = 14;
-        const scale = parseInt(slider.value) / 100;
-        preview.style.fontSize = (baseSize * scale) + 'px';
+    if (toggle.checked) {
+        document.body.classList.add('enhanced-focus');
+        showToast('Enhanced focus indicators enabled', 'info');
+    } else {
+        document.body.classList.remove('enhanced-focus');
+        showToast('Enhanced focus indicators disabled', 'info');
     }
 }
 
-/* ── Preview Accessibility Theme ─────────────────────────────────────────── */
-function previewAccessibilityTheme() {
-    const highContrast = document.getElementById('toggle-high-contrast')?.checked;
-    const scale = document.getElementById('accessibility-font-scale')?.value || '100';
+function toggleReduceMotion() {
+    const toggle = document.getElementById('reduce-motion-toggle');
+    toggle.checked = !toggle.checked;
     
-    let message = 'Preview: ';
-    if (highContrast) message += 'High Contrast ON, ';
-    message += `Font Scale \${scale}%`;
-    
-    showToast(message, 'info');
+    if (toggle.checked) {
+        document.body.classList.add('reduce-motion');
+        showToast('Reduced motion enabled', 'info');
+    } else {
+        document.body.classList.remove('reduce-motion');
+        showToast('Reduced motion disabled', 'info');
+    }
 }
 
-/* ── Save Accessibility Settings ─────────────────────────────────────────── */
 async function saveAccessibilitySettings() {
-    const payload = {
-        high_contrast: document.getElementById('toggle-high-contrast')?.checked ? '1' : '0',
-        font_scale: document.getElementById('accessibility-font-scale')?.value || '100',
-        station_id: currentStationId
+    const settings = {
+        high_contrast:    document.getElementById('high-contrast-toggle').checked,
+        font_scale:       document.getElementById('accessibility-font-scale').value,
+        focus_indicators: document.getElementById('focus-indicators-toggle').checked,
+        reduce_motion:    document.getElementById('reduce-motion-toggle').checked
     };
 
     try {
-        const res = await fetch(`\${API}?action=save_accessibility`, {
+        const res = await fetch(`${API}?action=save_accessibility&station_id=${currentStationId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
+            body: JSON.stringify({ settings })
         });
         const data = await res.json();
         if (data.success) {
             showToast('Accessibility settings saved!', 'success');
         } else {
-            showToast(data.message || 'Save failed.', 'error');
+            showToast(data.message || 'Failed to save accessibility settings', 'error');
         }
-    } catch(e) {
-        showToast('Network error.', 'error');
+    } catch (error) {
+        showToast('Network error: ' + error.message, 'error');
     }
 }
 
-/* ── Save All Settings ────────────────────────────────────────────────────── */
-async function saveAllSettings() {
-    const payload = {
-        primary_color: document.getElementById('hex-primary')?.value,
-        button_color: document.getElementById('hex-button')?.value,
-        sidebar_color: document.getElementById('hex-sidebar')?.value,
-        sidebar_style: document.getElementById('sidebar-style')?.value,
-        font_scale_layout: document.getElementById('font-scale')?.value,
-        high_contrast: document.getElementById('toggle-high-contrast')?.checked ? '1' : '0',
-        font_scale_accessibility: document.getElementById('accessibility-font-scale')?.value,
-        station_id: currentStationId
+function resetAccessibilityDefaults() {
+    document.getElementById('high-contrast-toggle').checked = false;
+    document.getElementById('accessibility-font-scale').value = 100;
+    document.getElementById('accessibility-scale-value').textContent = '100%';
+    document.getElementById('focus-indicators-toggle').checked = false;
+    document.getElementById('reduce-motion-toggle').checked = false;
+    
+    document.body.classList.remove('high-contrast-mode', 'enhanced-focus', 'reduce-motion');
+    document.documentElement.style.removeProperty('--accessibility-scale');
+    
+    showToast('Reset to default accessibility settings', 'info');
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   🔹 LOAD ALL SETTINGS
+══════════════════════════════════════════════════════════════════════════ */
+async function loadAllSettings() {
+    try {
+        const res  = await fetch(`${API}?action=get_settings&station_id=${currentStationId}`);
+        const data = await res.json();
+
+        if (!data.success || !data.settings) return;
+        const s = data.settings;
+
+        // ── Colors ────────────────────────────────────────────────────────
+        if (s.colors) {
+            ['primary','button','sidebar','accent','success','warning','danger'].forEach(name => {
+                if (s.colors[name]) {
+                    const picker = document.getElementById(`color-${name}`);
+                    const hex    = document.getElementById(`hex-${name}`);
+                    if (picker) picker.value = s.colors[name];
+                    if (hex)    hex.value    = s.colors[name].toUpperCase();
+                }
+            });
+            updatePreview();
+        }
+
+        // ── Layout ────────────────────────────────────────────────────────
+        if (s.layout) {
+            if (s.layout.sidebar_style)    document.getElementById('sidebar-style').value    = s.layout.sidebar_style;
+            if (s.layout.card_arrangement) document.getElementById('card-arrangement').value = s.layout.card_arrangement;
+            if (s.layout.base_font_size) {
+                document.getElementById('font-size-slider').value = s.layout.base_font_size;
+                updateFontPreview(s.layout.base_font_size);
+            }
+        }
+
+        // ── Accessibility ─────────────────────────────────────────────────
+        if (s.accessibility) {
+            const hc = s.accessibility.high_contrast;
+            document.getElementById('high-contrast-toggle').checked     = (hc === '1' || hc === true);
+            document.getElementById('focus-indicators-toggle').checked  = (s.accessibility.focus_indicators === '1' || s.accessibility.focus_indicators === true);
+            document.getElementById('reduce-motion-toggle').checked     = (s.accessibility.reduce_motion   === '1' || s.accessibility.reduce_motion   === true);
+            if (s.accessibility.font_scale) {
+                document.getElementById('accessibility-font-scale').value = s.accessibility.font_scale;
+                updateAccessibilityScale(s.accessibility.font_scale);
+            }
+        }
+
+        // ── Preferences ───────────────────────────────────────────────────
+        if (s.preferences) {
+            const p = s.preferences;
+            if (p.language)        document.getElementById('system-language').value        = p.language;
+            if (p.timezone)        document.getElementById('system-timezone').value        = p.timezone;
+            if (p.default_station) document.getElementById('default-station-view').value  = p.default_station;
+            const emailT = document.getElementById('email-notifications-toggle');
+            const smsT   = document.getElementById('sms-notifications-toggle');
+            if (emailT) emailT.checked = (p.email_notifications === '1' || p.email_notifications === true);
+            if (smsT)   smsT.checked   = (p.sms_notifications   === '1' || p.sms_notifications   === true);
+        }
+
+        // ── Logo ──────────────────────────────────────────────────────────
+        if (s.logo_url) {
+            document.getElementById('logo-preview-img').src = s.logo_url;
+        }
+
+    } catch (error) {
+        console.error('Error loading settings:', error);
+    }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   🔹 SYSTEM PREFERENCES
+══════════════════════════════════════════════════════════════════════════ */
+function toggleEmailNotifications() {
+    const toggle = document.getElementById('email-notifications-toggle');
+    toggle.checked = !toggle.checked;
+    showToast(toggle.checked ? 'Email notifications enabled' : 'Email notifications disabled', 'info');
+}
+
+function toggleSMSNotifications() {
+    const toggle = document.getElementById('sms-notifications-toggle');
+    toggle.checked = !toggle.checked;
+    showToast(toggle.checked ? 'SMS notifications enabled' : 'SMS notifications disabled', 'info');
+}
+
+async function saveSystemPreferences() {
+    const preferences = {
+        language:            document.getElementById('system-language').value,
+        timezone:            document.getElementById('system-timezone').value,
+        email_notifications: document.getElementById('email-notifications-toggle').checked,
+        sms_notifications:   document.getElementById('sms-notifications-toggle').checked,
+        default_station:     document.getElementById('default-station-view').value
     };
 
     try {
-        const res = await fetch(`\${API}?action=save_all`, {
+        const res = await fetch(`${API}?action=save_preferences&station_id=${currentStationId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
+            body: JSON.stringify({ preferences })
         });
         const data = await res.json();
         if (data.success) {
-            showToast('All settings saved successfully!', 'success');
-            setTimeout(() => location.reload(), 1500);
+            showToast('System preferences saved successfully!', 'success');
         } else {
-            showToast(data.message || 'Save failed.', 'error');
+            showToast(data.message || 'Failed to save preferences', 'error');
         }
-    } catch(e) {
-        showToast('Network error.', 'error');
+    } catch (error) {
+        showToast('Network error: ' + error.message, 'error');
     }
 }
 
-/* ── Initialize Drag & Drop for Card Arrangement ─────────────────────────── */
-(function initCardDragDrop() {
-    const list = document.getElementById('card-arrangement');
-    if (!list) return;
-
-    let draggedItem = null;
-
-    list.addEventListener('dragstart', function(e) {
-        draggedItem = e.target;
-        e.target.classList.add('dragging');
-    });
-
-    list.addEventListener('dragend', function(e) {
-        e.target.classList.remove('dragging');
-    });
-
-    list.addEventListener('dragover', function(e) {
-        e.preventDefault();
-        const afterElement = getDragAfterElement(list, e.clientY);
-        if (afterElement == null) {
-            list.appendChild(draggedItem);
-        } else {
-            list.insertBefore(draggedItem, afterElement);
-        }
-    });
-
-    function getDragAfterElement(container, y) {
-        const draggableElements = [...container.querySelectorAll('.ss-sortable-item:not(.dragging)')];
-        
-        return draggableElements.reduce((closest, child) => {
-            const box = child.getBoundingClientRect();
-            const offset = y - box.top - box.height / 2;
-            
-            if (offset < 0 && offset > closest.offset) {
-                return { offset: offset, element: child };
-            } else {
-                return closest;
-            }
-        }, { offset: Number.NEGATIVE_INFINITY }).element;
-    }
-})();
-
-/* ── Audit Trail ─────────────────────────────────────────────────────────── */
-let auditCurrentPage = 1;
-let auditDebounceTimer = null;
-
-function debounceAudit() {
-    clearTimeout(auditDebounceTimer);
-    auditDebounceTimer = setTimeout(() => loadAudit(1), 400);
-}
-
-async function loadAudit(page = 1) {
-    auditCurrentPage = page;
-    const group  = document.getElementById('audit-filter-group').value;
-    const search = document.getElementById('audit-search').value;
-
-    const loading = document.getElementById('audit-loading');
-    const wrap    = document.getElementById('audit-table-wrap');
-    if (loading) loading.style.display = 'block';
-    if (wrap)    wrap.style.display    = 'none';
-
-    const params = new URLSearchParams({ action: 'get_audit', page, group, search, station_id: currentStationId });
-
-    try {
-        const res  = await fetch(`\${API}?\${params}`);
-        const data = await res.json();
-
-        if (loading) loading.style.display = 'none';
-        if (wrap)    wrap.style.display    = 'block';
-
-        if (!data.success) {
-            showToast(data.message || 'Failed to load audit log.', 'error');
-            return;
-        }
-
-        renderAuditTable(data.data || []);
-        renderAuditPagination(data.page, data.pages, data.total);
-    } catch(e) {
-        if (loading) loading.style.display = 'none';
-        if (wrap)    wrap.style.display    = 'block';
-        showToast('Network error loading audit log.', 'error');
-    }
-}
-
-function renderAuditTable(rows) {
-    const tbody = document.getElementById('audit-tbody');
+/* ══════════════════════════════════════════════════════════════════════════
+   🔹 AUDIT & COMPLIANCE
+══════════════════════════════════════════════════════════════════════════ */
+async function loadAuditLogs() {
+    const tbody = document.getElementById('audit-logs-tbody');
     if (!tbody) return;
+    
+    tbody.innerHTML = '<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--text-secondary);"><i class="fas fa-spinner fa-spin"></i> Loading change logs...</td></tr>';
+    
+    try {
+        const res = await fetch(`${API}?action=get_audit_logs&station_id=${currentStationId}&limit=20`);
+        const data = await res.json();
+        
+        if (data.success && data.logs && data.logs.length > 0) {
+            let html = '';
+            data.logs.forEach(log => {
+                html += `<tr style="border-bottom:1px solid var(--border-color);">
+                    <td style="padding:10px 12px;">${log.timestamp}</td>
+                    <td style="padding:10px 12px;">${log.user}</td>
+                    <td style="padding:10px 12px;"><span style="padding:3px 8px;background:#dbeafe;color:#1e40af;border-radius:12px;font-size:11px;font-weight:600;">${log.category}</span></td>
+                    <td style="padding:10px 12px;">${log.setting}</td>
+                    <td style="padding:10px 12px;color:#dc2626;">${log.old_value || '-'}</td>
+                    <td style="padding:10px 12px;color:#16a34a;font-weight:600;">${log.new_value}</td>
+                </tr>`;
+            });
+            tbody.innerHTML = html;
+        } else {
+            tbody.innerHTML = '<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--text-secondary);">No change logs found</td></tr>';
+        }
+    } catch (error) {
+        tbody.innerHTML = '<tr><td colspan="6" style="padding:20px;text-align:center;color:#dc2626;">Failed to load logs</td></tr>';
+    }
+}
 
-    if (!rows.length) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-secondary);">
-            <i class="fas fa-inbox" style="font-size:24px;margin-bottom:8px;display:block;"></i>
-            No audit records found.
-        </td></tr>`;
+async function exportSettings(format) {
+    showToast(`Exporting settings as ${format.toUpperCase()}...`, 'info');
+    
+    try {
+        const res = await fetch(`${API}?action=export_settings&station_id=${currentStationId}&format=${format}`);
+        const blob = await res.blob();
+        
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `system_settings_${currentStationId}_${new Date().toISOString().split('T')[0]}.${format}`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        showToast('Settings exported successfully!', 'success');
+    } catch (error) {
+        showToast('Export failed: ' + error.message, 'error');
+    }
+}
+
+function confirmRestoreDefaults() {
+    if (!confirm('⚠️ WARNING: This will reset ALL custom settings to system defaults. This action CANNOT be undone.\n\nAre you sure you want to continue?')) {
         return;
     }
-
-    const groupBadge = (g) => {
-        const map = { branding: 'ss-badge-branding', theme: 'ss-badge-theme', layout: 'ss-badge-layout', accessibility: 'ss-badge-accessibility' };
-        const cls = map[g] || 'ss-badge-general';
-        return `<span class="ss-badge \${cls}">\${escHtml(g || 'general')}</span>`;
-    };
-
-    const truncate = (v, n = 30) => {
-        if (!v) return '<span style="color:#9ca3af;">—</span>';
-        const s = String(v);
-        return escHtml(s.length > n ? s.substring(0, n) + '…' : s);
-    };
-
-    tbody.innerHTML = rows.map(r => `
-        <tr>
-            <td style="white-space:nowrap;">\${escHtml(r.created_at || '')}</td>
-            <td><code style="font-size:12px;background:#f3f4f6;padding:2px 6px;border-radius:4px;">\${escHtml(r.setting_key || '')}</code></td>
-            <td>\${groupBadge(r.setting_group)}</td>
-            <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="\${escHtml(r.old_value || '')}">\${truncate(r.old_value)}</td>
-            <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="\${escHtml(r.new_value || '')}">\${truncate(r.new_value)}</td>
-            <td>\${escHtml(r.changed_by_name || 'System')}</td>
-            <td style="font-family:monospace;font-size:12px;">\${escHtml(r.ip_address || '')}</td>
-        </tr>
-    `).join('');
-}
-
-function renderAuditPagination(current, total, recordCount) {
-    const container = document.getElementById('audit-pagination');
-    if (!container || total <= 1) { if (container) container.innerHTML = ''; return; }
-
-    let html = `<span style="font-size:12px;color:var(--text-secondary);margin-right:8px;">\${recordCount} records</span>`;
-    html += `<button class="ss-page-btn" onclick="loadAudit(\${current - 1})" \${current <= 1 ? 'disabled' : ''}>
-                <i class="fas fa-chevron-left"></i>
-             </button>`;
-
-    const range = 2;
-    for (let i = 1; i <= total; i++) {
-        if (i === 1 || i === total || (i >= current - range && i <= current + range)) {
-            html += `<button class="ss-page-btn \${i === current ? 'active' : ''}" onclick="loadAudit(\${i})">\${i}</button>`;
-        } else if (i === current - range - 1 || i === current + range + 1) {
-            html += `<span style="padding:0 4px;color:var(--text-secondary);">…</span>`;
-        }
+    
+    if (!confirm('Final confirmation: Restore all settings to defaults?')) {
+        return;
     }
-
-    html += `<button class="ss-page-btn" onclick="loadAudit(\${current + 1})" \${current >= total ? 'disabled' : ''}>
-                <i class="fas fa-chevron-right"></i>
-             </button>`;
-
-    container.innerHTML = html;
+    
+    restoreDefaults();
 }
 
-/* ── Audit: Export CSV ───────────────────────────────────────────────────── */
-async function exportAuditCSV() {
-    const group  = document.getElementById('audit-filter-group').value;
-    const search = document.getElementById('audit-search').value;
-
-    showToast('Preparing CSV export…', 'info');
-
-    let allRows = [];
-    let page = 1, pages = 1;
-    do {
-        const params = new URLSearchParams({ action: 'get_audit', page, group, search, station_id: currentStationId });
-        try {
-            const res  = await fetch(`\${API}?\${params}`);
-            const data = await res.json();
-            if (!data.success) break;
-            allRows = allRows.concat(data.data || []);
-            pages = data.pages || 1;
-            page++;
-        } catch(e) { break; }
-    } while (page <= pages);
-
-    if (!allRows.length) { showToast('No records to export.', 'warning'); return; }
-
-    const headers = ['Date/Time', 'Setting Key', 'Group', 'Old Value', 'New Value', 'Changed By', 'IP Address'];
-    const csvRows = [headers.join(',')];
-    allRows.forEach(r => {
-        csvRows.push([
-            csvCell(r.created_at),
-            csvCell(r.setting_key),
-            csvCell(r.setting_group),
-            csvCell(r.old_value),
-            csvCell(r.new_value),
-            csvCell(r.changed_by_name),
-            csvCell(r.ip_address),
-        ].join(','));
-    });
-
-    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = `system_settings_audit_\${new Date().toISOString().slice(0,10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast(`Exported \${allRows.length} records.`, 'success');
+async function restoreDefaults() {
+    showToast('Restoring system defaults...', 'info');
+    try {
+        const res = await fetch(`${API}?action=restore_defaults&station_id=${currentStationId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast('Settings restored to defaults successfully!', 'success');
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            showToast(data.message || 'Failed to restore defaults', 'error');
+        }
+    } catch (error) {
+        showToast('Network error: ' + error.message, 'error');
+    }
 }
 
-function csvCell(v) {
-    if (v === null || v === undefined) return '';
-    return '"' + String(v).replace(/"/g, '""') + '"';
-}
-
-function escHtml(str) {
-    if (!str) return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
-
-/* ── Init ────────────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════
+   🔹 INITIALIZE ON PAGE LOAD
+══════════════════════════════════════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', function() {
-    loadCurrentLogo();
     loadAllSettings();
+    updatePreview();
+    loadAuditLogs();
 });
+
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>
-

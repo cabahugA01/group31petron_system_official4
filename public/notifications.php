@@ -70,150 +70,179 @@ include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-    /* Exact Facebook-style Notifications UI */
+    /* Modern Professional Notifications UI */
     body {
-        background-color: #f0f2f5;
+        background-color: #f5f7fa;
     }
     
     .fb-notifications-wrapper {
         padding: 24px;
         display: flex;
         justify-content: center;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     }
 
     .fb-notifications-container {
         background: #fff;
-        border-radius: 12px;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        border-radius: 16px;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
         width: 100%;
-        max-width: 1400px; /* Stretch left and right */
+        max-width: 1200px;
         min-height: 80vh;
-        padding-bottom: 20px;
+        padding-bottom: 24px;
+        border: 1px solid #e5e7eb;
     }
     
     .fb-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 20px 16px 12px;
+        padding: 28px 24px 20px;
+        border-bottom: 2px solid #f1f3f5;
     }
     
     .fb-title {
-        font-size: 24px;
-        font-weight: 700;
-        color: #050505;
+        font-size: 32px;
+        font-weight: 800;
+        color: #1a202c;
         margin: 0;
         letter-spacing: -0.5px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    
+    .fb-title i {
+        color: #002F6C;
+        font-size: 28px;
     }
     
     .fb-header-actions {
         display: flex;
-        gap: 8px;
+        gap: 10px;
     }
 
     .fb-icon-btn {
-        width: 36px;
-        height: 36px;
-        border-radius: 50%;
-        background: #fff;
-        border: none;
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        background: #f8fafc;
+        border: 1px solid #e5e7eb;
         display: flex;
         align-items: center;
         justify-content: center;
-        color: #65676B;
+        color: #64748b;
         cursor: pointer;
-        transition: background 0.2s;
+        transition: all 0.2s;
+        font-size: 14px;
     }
     .fb-icon-btn:hover {
-        background: #f0f2f5;
+        background: #002F6C;
+        color: white;
+        border-color: #002F6C;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(0, 47, 108, 0.2);
     }
 
     .fb-filters {
         display: flex;
-        padding: 0 16px 12px;
-        gap: 8px;
+        padding: 16px 24px;
+        gap: 12px;
+        background: #f8fafc;
+        border-bottom: 1px solid #e5e7eb;
     }
 
     .fb-filter-pill {
-        padding: 8px 12px;
-        border-radius: 20px;
-        font-size: 15px;
-        font-weight: 600;
+        padding: 10px 18px;
+        border-radius: 10px;
+        font-size: 14px;
+        font-weight: 700;
         cursor: pointer;
         text-decoration: none;
-        transition: background 0.2s;
+        transition: all 0.2s;
+        border: 2px solid transparent;
     }
 
     .fb-filter-pill.active {
-        background: #e7f3ff;
-        color: #1877f2;
+        background: #002F6C;
+        color: white;
+        box-shadow: 0 2px 8px rgba(0, 47, 108, 0.25);
     }
 
     .fb-filter-pill:not(.active) {
-        background: transparent;
-        color: #050505;
+        background: white;
+        color: #64748b;
+        border-color: #e5e7eb;
     }
 
     .fb-filter-pill:not(.active):hover {
-        background: #f0f2f5;
+        background: #f1f5f9;
+        color: #002F6C;
+        border-color: #002F6C;
     }
 
     .fb-group-title {
-        padding: 8px 16px;
-        font-size: 17px;
-        font-weight: 600;
-        color: #050505;
+        padding: 16px 24px 8px;
+        font-size: 13px;
+        font-weight: 800;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
         margin-top: 8px;
     }
 
     .fb-notif-item {
         display: flex;
         align-items: center;
-        padding: 12px 16px;
+        padding: 16px 24px;
         cursor: pointer;
         text-decoration: none;
         position: relative;
-        transition: background 0.2s;
-        border-radius: 8px;
-        margin: 4px 8px;
+        transition: all 0.2s;
+        border-radius: 12px;
+        margin: 6px 16px;
+        border: 2px solid transparent;
     }
     
     .fb-notif-item:hover {
-        background: #f0f2f5;
+        background: #f8fafc;
+        border-color: #e5e7eb;
+        transform: translateX(4px);
     }
     
     .fb-notif-item.unread {
-        /* Unread has no background by default on FB, wait FB unread has a subtle tint? Or just the blue dot. Let's use a VERY subtle tint */
-        background: #f7f9fd;
+        background: #eff6ff;
+        border-color: #bfdbfe;
     }
     .fb-notif-item.unread:hover {
-        background: #eef3f8;
+        background: #dbeafe;
+        border-color: #93c5fd;
     }
 
     .fb-avatar-container {
         position: relative;
-        width: 56px;
-        height: 56px;
+        width: 60px;
+        height: 60px;
         flex-shrink: 0;
-        margin-right: 12px;
+        margin-right: 16px;
     }
 
     .fb-avatar {
         width: 100%;
         height: 100%;
-        border-radius: 50%;
-        background: #e4e6eb;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
         display: flex;
         align-items: center;
         justify-content: center;
         overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        border: 2px solid white;
     }
 
-    /* Use a generic system logo or avatar */
     .fb-avatar i {
-        font-size: 28px;
-        color: #bcc0c4;
+        font-size: 26px;
+        color: #94a3b8;
     }
     .fb-avatar img {
         width: 100%;
@@ -223,99 +252,153 @@ include __DIR__ . '/../partials/header.php';
 
     .fb-badge {
         position: absolute;
-        bottom: -2px;
-        right: -2px;
-        width: 28px;
-        height: 28px;
-        border-radius: 50%;
+        bottom: -4px;
+        right: -4px;
+        width: 32px;
+        height: 32px;
+        border-radius: 10px;
         display: flex;
         align-items: center;
         justify-content: center;
-        border: 2px solid #fff;
+        border: 3px solid #fff;
         color: #fff;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
     }
 
-    .badge-transaction { background: #1877f2; }
-    .badge-joborder { background: #f5b041; }
-    .badge-inventory { background: #e74c3c; }
-    .badge-customer { background: #9b59b6; }
-    .badge-delivery { background: #2ecc71; }
-    .badge-calendar { background: #3498db; }
-    .badge-report { background: #34495e; }
-    .badge-default { background: #1877f2; }
+    .badge-transaction { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+    .badge-joborder { background: linear-gradient(135deg, #f59e0b, #d97706); }
+    .badge-inventory { background: linear-gradient(135deg, #ef4444, #dc2626); }
+    .badge-customer { background: linear-gradient(135deg, #8b5cf6, #7c3aed); }
+    .badge-delivery { background: linear-gradient(135deg, #10b981, #059669); }
+    .badge-calendar { background: linear-gradient(135deg, #06b6d4, #0891b2); }
+    .badge-report { background: linear-gradient(135deg, #64748b, #475569); }
+    .badge-default { background: linear-gradient(135deg, #002F6C, #001f4d); }
 
     .fb-badge i {
-        font-size: 12px;
+        font-size: 13px;
     }
 
     .fb-content {
         flex: 1;
         min-width: 0;
-        line-height: 1.3;
+        line-height: 1.5;
         display: flex;
         flex-direction: column;
         justify-content: center;
-        padding-right: 16px;
+        padding-right: 20px;
     }
 
     .fb-message {
         font-size: 15px;
-        color: #050505;
-        margin-bottom: 4px;
+        color: #1e293b;
+        margin-bottom: 0;
         word-break: break-word;
     }
 
     .fb-message strong {
-        font-weight: 600;
+        font-weight: 700;
+        color: #0f172a;
+    }
+    
+    .fb-message-detail {
+        color: #64748b;
+        font-size: 14px;
+        margin-top: 4px;
+        line-height: 1.4;
     }
 
     .fb-time {
         font-size: 13px;
-        color: #1877f2;
-        font-weight: 600;
-        margin-left: auto; /* Push to the right edge */
-        margin-right: 12px;
+        color: #3b82f6;
+        font-weight: 700;
+        margin-left: auto;
         white-space: nowrap;
         flex-shrink: 0;
+        padding: 4px 12px;
+        background: #eff6ff;
+        border-radius: 20px;
+        border: 1px solid #bfdbfe;
     }
 
     .fb-notif-item:not(.unread) .fb-time {
-        color: #65676B;
-        font-weight: normal;
+        color: #94a3b8;
+        font-weight: 600;
+        background: #f1f5f9;
+        border-color: #e2e8f0;
     }
 
     .fb-unread-dot {
-        width: 12px;
-        height: 12px;
+        width: 14px;
+        height: 14px;
         border-radius: 50%;
-        background: #1877f2;
+        background: #3b82f6;
         flex-shrink: 0;
-        margin-left: auto;
+        margin-left: 12px;
+        box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
     }
 
     .fb-empty {
-        padding: 40px 20px;
+        padding: 80px 20px;
         text-align: center;
-        color: #65676B;
-        font-size: 15px;
+        color: #94a3b8;
+        font-size: 16px;
+    }
+    
+    .fb-empty i {
+        font-size: 64px;
+        color: #cbd5e1;
+        margin-bottom: 16px;
+        display: block;
     }
 
     .fb-load-more {
         display: block;
-        margin: 16px 16px 0;
-        padding: 8px 0;
+        margin: 24px 16px 0;
+        padding: 14px 0;
         text-align: center;
-        background: #e4e6eb;
-        color: #050505;
-        border-radius: 6px;
-        font-weight: 600;
-        font-size: 15px;
+        background: #f8fafc;
+        color: #002F6C;
+        border-radius: 10px;
+        font-weight: 700;
+        font-size: 14px;
         cursor: pointer;
         text-decoration: none;
-        transition: background 0.2s;
+        transition: all 0.2s;
+        border: 2px solid #e5e7eb;
     }
     .fb-load-more:hover {
-        background: #d8dadf;
+        background: #002F6C;
+        color: white;
+        border-color: #002F6C;
+        box-shadow: 0 4px 12px rgba(0, 47, 108, 0.2);
+    }
+    
+    /* Responsive */
+    @media (max-width: 768px) {
+        .fb-notifications-wrapper {
+            padding: 16px;
+        }
+        .fb-header {
+            padding: 20px 16px;
+        }
+        .fb-title {
+            font-size: 24px;
+        }
+        .fb-filters {
+            padding: 12px 16px;
+        }
+        .fb-notif-item {
+            padding: 14px 16px;
+            margin: 4px 12px;
+        }
+        .fb-avatar-container {
+            width: 50px;
+            height: 50px;
+        }
+        .fb-badge {
+            width: 28px;
+            height: 28px;
+        }
     }
 </style>
 
@@ -323,10 +406,13 @@ include __DIR__ . '/../partials/header.php';
     <div class="fb-notifications-container">
         
         <div class="fb-header">
-            <h1 class="fb-title">Notifications</h1>
+            <h1 class="fb-title">
+                <i class="fas fa-bell"></i>
+                Notifications
+            </h1>
             <div class="fb-header-actions">
                 <button class="fb-icon-btn" onclick="markAllRead()" title="Mark all as read">
-                    <i class="fas fa-check"></i>
+                    <i class="fas fa-check-double"></i>
                 </button>
             </div>
         </div>
@@ -338,7 +424,8 @@ include __DIR__ . '/../partials/header.php';
         
         <?php if (empty($notifications)): ?>
             <div class="fb-empty">
-                You have no notifications.
+                <i class="fas fa-bell-slash"></i>
+                <p>You have no notifications</p>
             </div>
         <?php else: ?>
             
@@ -435,19 +522,19 @@ function renderFbNotif($n) {
     echo '<div class="fb-notif-item ' . ($unread ? 'unread' : '') . '" onclick="' . $onClick . '">
             <div class="fb-avatar-container">
                 <div class="fb-avatar">
-                    <img src="../assets/img/petron-logo.png" style="width: 32px; height: 32px; object-fit: contain;" onerror="this.style.display=\'none\'; this.parentElement.innerHTML=\'<i class=\\\'fas fa-desktop\\\'></i>\';" />
+                    <img src="../assets/img/Petron Logo.png" style="width: 36px; height: 36px; object-fit: contain;" onerror="this.style.display=\'none\'; this.parentElement.innerHTML=\'<i class=\\\'fas fa-building\\\'></i>\';" />
                 </div>
                 <div class="fb-badge ' . $badgeClass . '">
                     <i class="fas fa-' . $faIcon . '"></i>
                 </div>
             </div>
-            <div class="fb-content" style="flex-direction: row; align-items: center; width: 100%;">
-                <div class="fb-message" style="margin-bottom: 0;">
-                    <strong>' . htmlspecialchars($n['title']) . '</strong><br>
-                    <span style="color: #65676B; font-size: 14px;">' . htmlspecialchars($n['message']) . '</span>
+            <div class="fb-content">
+                <div class="fb-message">
+                    <strong>' . htmlspecialchars($n['title']) . '</strong>
                 </div>
-                <div class="fb-time">' . $ago . '</div>
-            </div>';
+                <div class="fb-message-detail">' . htmlspecialchars($n['message']) . '</div>
+            </div>
+            <div class="fb-time">' . $ago . '</div>';
             
     if ($unread) {
         echo '<div class="fb-unread-dot"></div>';

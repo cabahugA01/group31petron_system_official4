@@ -250,11 +250,22 @@ if (empty($system_fields)) {
 // Log this page view
 log_activity($pdo, $me['id'], 'Integration Settings View', "Viewed section: {$section}");
 
+// ── Fetch all stations for station selector ───────────────────
+$stations = [];
+try {
+    $stmt = $pdo->query("SELECT id, name FROM stations WHERE status = 'active' ORDER BY name ASC");
+    $stations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    try {
+        $stations = $pdo->query("SELECT id, name FROM stations ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e2) { $stations = []; }
+}
+
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
-.int-page{padding:28px 24px}
-.int-head{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px}
+.int-page{padding:0 24px 28px}
+.int-head{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;margin-top:-12px!important}
 .int-head h1{font-size:22px!important;font-weight:700!important;color:var(--petron-blue)!important;margin:0!important;text-transform:uppercase!important}
 .int-head .sub{font-size:13px;color:#666;margin-top:4px;text-transform:none!important}
 .int-steps{display:flex;gap:0;margin-bottom:22px;background:#fff;border:1px solid #eaeaea;border-radius:14px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.04)}
@@ -279,16 +290,20 @@ include __DIR__ . '/../partials/header.php';
 .int-table tbody tr:last-child{border-bottom:none}
 .int-table tbody tr:hover{background:#f8fafc}
 .int-table td{padding:9px 14px;vertical-align:middle;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.int-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .2s;background:none}
-.int-btn-primary{background:var(--petron-blue);color:#fff;border-color:var(--petron-blue)}
-.int-btn-primary:hover{background:#001a3d}
-.int-btn-success{background:#28a745;color:#fff;border-color:#28a745}
-.int-btn-success:hover{background:#1e7e34}
-.int-btn-outline{color:var(--petron-blue);border-color:var(--petron-blue)}
-.int-btn-outline:hover{background:rgba(0,38,77,.06)}
-.int-btn-danger{color:#cc0000;border-color:#cc0000}
-.int-btn-danger:hover{background:rgba(204,0,0,.06)}
-.int-btn-sm{padding:5px 11px;font-size:11px;border-radius:7px}
+.int-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .2s;background:none}
+.int-btn-primary{background:white !important;color:#00264D !important;border:1px solid #00264D !important}
+.int-btn-primary:hover{background:#00264D !important;color:white !important}
+.int-btn-secondary{background:white !important;color:#6b7280 !important;border:1px solid #6b7280 !important}
+.int-btn-secondary:hover{background:#6b7280 !important;color:white !important}
+.int-btn-success{background:white !important;color:#16a34a !important;border:1px solid #16a34a !important}
+.int-btn-success:hover{background:#16a34a !important;color:white !important}
+.int-btn-danger{background:white !important;color:#dc2626 !important;border:1px solid #dc2626 !important}
+.int-btn-danger:hover{background:#dc2626 !important;color:white !important}
+.int-btn-info{background:white !important;color:#3b82f6 !important;border:1px solid #3b82f6 !important}
+.int-btn-info:hover{background:#3b82f6 !important;color:white !important}
+.int-btn-outline{background:white !important;color:#00264D !important;border:1px solid #00264D !important}
+.int-btn-outline:hover{background:#00264D !important;color:white !important}
+.int-btn-sm{padding:5px 11px;font-size:11px;border-radius:4px}
 .int-btn:disabled{opacity:.5;cursor:not-allowed}
 .int-form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
 .int-form-row.full{grid-template-columns:1fr}
@@ -328,6 +343,29 @@ include __DIR__ . '/../partials/header.php';
 .col-map-row input{flex:1;padding:7px 10px;border:1px solid #ddd;border-radius:8px;font-size:12px;outline:none}
 .col-map-row select{flex:1;padding:7px 10px;border:1px solid #ddd;border-radius:8px;font-size:12px;outline:none;background:#fff}
 .col-map-row .rm-btn{background:none;border:none;color:#cc0000;cursor:pointer;font-size:14px;padding:4px}
+
+/* ── Station Combo (same as module_configuration) ─────────── */
+.int-station-card{background:#fff;border:1px solid #eaeaea;border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,.04);margin-bottom:20px;overflow:visible !important;}
+.int-station-card .int-card-header{padding:14px 20px;border-bottom:1px solid #eee;background:#f8f9fa;border-radius:14px 14px 0 0;}
+.int-station-card .int-card-header h3{font-size:13px!important;font-weight:700!important;color:var(--petron-blue)!important;margin:0!important;text-transform:uppercase!important;display:flex;align-items:center;gap:8px;}
+.int-station-card .int-card-body{padding:18px 20px;overflow:visible !important;}
+.am-combo{position:relative}
+.am-combo-input{width:100%;padding:10px 36px 10px 13px;border:1px solid #ddd;border-radius:10px;font-size:13px;outline:none;transition:border-color .2s;background:#fff;box-sizing:border-box;cursor:text}
+.am-combo-input:focus{border-color:var(--petron-blue);box-shadow:0 0 0 3px rgba(0,38,77,.08)}
+.am-combo-input.has-value{border-color:var(--petron-blue)}
+.am-combo-arrow{position:absolute;right:32px;top:50%;transform:translateY(-50%);color:#999;font-size:12px;pointer-events:none;transition:transform .2s;z-index:1}
+.am-combo.open .am-combo-arrow{transform:translateY(-50%) rotate(180deg)}
+.am-combo-clear{position:absolute;right:52px;top:50%;transform:translateY(-50%);color:#bbb;font-size:13px;cursor:pointer;display:none;background:none;border:none;padding:2px 4px;line-height:1;z-index:2}
+.am-combo-clear:hover{color:#cc0000}
+.am-combo-dropdown{display:none;position:fixed;background:#fff;border:1px solid #ddd;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:99999;max-height:220px;overflow:hidden;flex-direction:column}
+.am-combo.open .am-combo-dropdown{display:flex}
+.am-combo-list{overflow-y:auto;flex:1}
+.am-combo-option{padding:10px 14px;font-size:13px;cursor:pointer;transition:background .12s;display:flex;align-items:flex-start;gap:8px}
+.am-combo-option:hover,.am-combo-option.focused{background:#f0f5ff;color:var(--petron-blue)}
+.am-combo-option.selected{background:rgba(0,38,77,.08);font-weight:600;color:var(--petron-blue)}
+.am-combo-option .opt-icon{color:#bbb;font-size:11px;flex-shrink:0}
+.am-combo-option.selected .opt-icon{color:var(--petron-blue)}
+.am-combo-empty{padding:18px 14px;font-size:13px;color:#bbb;text-align:center}
 </style>
 
 <div class="int-page">
@@ -340,6 +378,51 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
+
+<!-- Station Selector Card (same as Module Configuration) -->
+<div class="int-station-card" id="int_station_card">
+    <div class="int-card-header">
+        <h3><i class="fas fa-map-marker-alt"></i> Station-Dependent Configuration</h3>
+    </div>
+    <div class="int-card-body">
+        <div style="display:flex;align-items:center;gap:15px;position:relative;margin-bottom:15px;">
+            <label style="font-weight:600;color:#374151;min-width:130px;font-size:13px;text-transform:uppercase;letter-spacing:.5px;flex-shrink:0;">
+                Search Station
+            </label>
+            <div class="am-combo" id="int_station_combo" style="width:450px;position:relative;z-index:100;">
+                <input type="text" class="am-combo-input" id="int_station_display"
+                       placeholder="Type to search stations..." autocomplete="off"
+                       style="padding-right:80px;cursor:text;">
+                <button type="button" class="am-combo-clear" id="int_station_clear" tabindex="-1" title="Clear">
+                    <i class="fas fa-times"></i>
+                </button>
+                <i class="fas fa-chevron-down am-combo-arrow"></i>
+                <input type="hidden" id="int_station_val">
+                <div class="am-combo-dropdown" id="int_station_dropdown">
+                    <div class="am-combo-list" id="int_station_list"></div>
+                </div>
+            </div>
+        </div>
+        <div id="int_station_banner" style="display:none;padding:12px 16px;background:#dbeafe;border-left:4px solid #3b82f6;border-radius:6px;margin-top:12px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <i class="fas fa-info-circle" style="color:#3b82f6;font-size:17px;"></i>
+                <div style="flex:1;">
+                    <div style="font-weight:600;color:#1e40af;font-size:13px;">Configuring for station:</div>
+                    <div id="int_station_name" style="color:#1f2937;font-size:13px;margin-top:2px;"></div>
+                </div>
+                <span style="font-size:11px;color:#3b82f6;font-weight:600;">Settings below apply to this station</span>
+            </div>
+        </div>
+        <div id="int_no_station_warn" style="padding:12px 16px;background:#fef3c7;border-left:4px solid #f59e0b;border-radius:6px;margin-top:12px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <i class="fas fa-exclamation-triangle" style="color:#f59e0b;font-size:17px;"></i>
+                <div style="flex:1;color:#92400e;font-size:13px;">
+                    <strong>No station selected.</strong> Select a station above to scope these integration settings to a specific location, or leave empty to apply globally.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 <!-- Section: POS Import Configuration -->
 <?php if ($section === 'pos_import'): ?>
 <div class="int-card">
@@ -1518,11 +1601,12 @@ document.addEventListener('DOMContentLoaded', function() {
     <?php if (!$can_edit): ?>
     // Enforce view-only for admin/manager
     document.querySelectorAll('.int-page input, .int-page select, .int-page textarea').forEach(el => {
+        if (el.id === 'int_station_display' || el.id === 'int_station_val') return; // always allow station picker
         el.disabled = true;
     });
     document.querySelectorAll('.int-page button').forEach(btn => {
+        if (btn.id === 'int_station_clear' || btn.closest('#int_station_combo')) return;
         if (!btn.closest('.int-head') && !btn.closest('.int-steps') && !btn.closest('.sidebar-menu')) {
-            // Disable modification actions
             if (btn.innerText.includes('Save') || btn.innerText.includes('Delete') || btn.innerText.includes('Push') || btn.innerText.includes('Pull') || btn.innerText.includes('Add')) {
                 btn.disabled = true;
                 btn.style.opacity = '0.5';
@@ -1532,6 +1616,146 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     <?php endif; ?>
 });
+
+// ── Station Combo for Integration Settings ─────────────────────
+(function initIntStationCombo() {
+    const STATION_DATA = <?php echo json_encode(
+        array_map(fn($s) => ['id' => (int)$s['id'], 'name' => $s['name']], $stations),
+        JSON_UNESCAPED_UNICODE | JSON_HEX_TAG
+    ); ?>;
+
+    const combo   = document.getElementById('int_station_combo');
+    const list    = document.getElementById('int_station_list');
+    const display = document.getElementById('int_station_display');
+    const hidden  = document.getElementById('int_station_val');
+    const clear   = document.getElementById('int_station_clear');
+    const banner  = document.getElementById('int_station_banner');
+    const warning = document.getElementById('int_no_station_warn');
+    const nameDiv = document.getElementById('int_station_name');
+
+    if (!combo || !display || !list || !hidden || !clear) return;
+
+    let currentVal   = '';
+    let currentLabel = 'All Stations';
+
+    function esc(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function render(q) {
+        const lq = (q || '').toLowerCase().trim();
+        list.innerHTML = '';
+        if (!lq) {
+            const all = document.createElement('div');
+            all.className   = 'am-combo-option' + (!currentVal ? ' selected' : '');
+            all.dataset.value = '';
+            all.dataset.label = 'All Stations';
+            all.style.cssText = 'font-style:italic;color:#888;';
+            all.textContent   = 'All Stations (Global)';
+            list.appendChild(all);
+        }
+        const filtered = lq
+            ? STATION_DATA.filter(s => s.name.toLowerCase().includes(lq))
+            : STATION_DATA;
+        filtered.slice(0, 100).forEach(s => {
+            const div = document.createElement('div');
+            div.className     = 'am-combo-option' + (currentVal === String(s.id) ? ' selected' : '');
+            div.dataset.value = String(s.id);
+            div.dataset.label = s.name;
+            div.innerHTML     = '<i class="fas fa-building opt-icon"></i> ' + esc(s.name);
+            list.appendChild(div);
+        });
+        if (filtered.length === 0) {
+            const empty = document.createElement('div');
+            empty.className   = 'am-combo-empty';
+            empty.textContent = 'No station matching "' + q + '"';
+            list.appendChild(empty);
+        }
+    }
+
+    function pick(value, label) {
+        currentVal    = value;
+        currentLabel  = value ? label : 'All Stations';
+        hidden.value  = value;
+        display.value = value ? label : 'All Stations';
+        display.classList.toggle('has-value', !!value);
+        clear.style.display = value ? 'block' : 'none';
+        combo.classList.remove('open');
+        // Update banner
+        if (value && label && label !== 'All Stations') {
+            banner.style.display  = 'block';
+            warning.style.display = 'none';
+            nameDiv.textContent   = label;
+        } else {
+            banner.style.display  = 'none';
+            warning.style.display = 'block';
+        }
+    }
+
+    function reanchor() {
+        const dd   = combo.querySelector('.am-combo-dropdown');
+        const rect = combo.getBoundingClientRect();
+        if (dd) {
+            dd.style.left  = rect.left + 'px';
+            dd.style.top   = (rect.bottom + 4) + 'px';
+            dd.style.width = rect.width + 'px';
+        }
+    }
+
+    function open() {
+        combo.classList.add('open');
+        display.value = '';
+        reanchor();
+        render('');
+    }
+    function close() {
+        combo.classList.remove('open');
+        display.value = currentVal ? currentLabel : 'All Stations';
+    }
+
+    display.addEventListener('click',  () => combo.classList.contains('open') ? close() : open());
+    display.addEventListener('focus',  () => { if (!combo.classList.contains('open')) open(); });
+
+    let dbt;
+    display.addEventListener('input', () => {
+        if (!combo.classList.contains('open')) combo.classList.add('open');
+        reanchor();
+        clearTimeout(dbt);
+        dbt = setTimeout(() => render(display.value), 130);
+    });
+
+    display.addEventListener('keydown', e => {
+        if (!combo.classList.contains('open') && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); open(); return; }
+        const opts = [...list.querySelectorAll('.am-combo-option[data-value]')];
+        const foc  = list.querySelector('.am-combo-option.focused');
+        let idx    = foc ? opts.indexOf(foc) : -1;
+        if      (e.key === 'ArrowDown') { e.preventDefault(); idx = Math.min(idx+1, opts.length-1); }
+        else if (e.key === 'ArrowUp')   { e.preventDefault(); idx = Math.max(idx-1, 0); }
+        else if (e.key === 'Enter' && foc) { e.preventDefault(); pick(foc.dataset.value, foc.dataset.label); return; }
+        else if (e.key === 'Escape')    { close(); return; }
+        else { return; }
+        opts.forEach(o => o.classList.remove('focused'));
+        if (opts[idx]) { opts[idx].classList.add('focused'); opts[idx].scrollIntoView({ block: 'nearest' }); }
+    });
+
+    list.addEventListener('click', e => {
+        const opt = e.target.closest('.am-combo-option');
+        if (opt) pick(opt.dataset.value, opt.dataset.label);
+    });
+    list.addEventListener('mouseover', e => {
+        const opt = e.target.closest('.am-combo-option');
+        if (opt) {
+            list.querySelectorAll('.am-combo-option').forEach(o => o.classList.remove('focused'));
+            opt.classList.add('focused');
+        }
+    });
+    clear.addEventListener('click', e => { e.stopPropagation(); pick('', ''); });
+    document.addEventListener('click', e => { if (!combo.contains(e.target)) close(); });
+    window.addEventListener('scroll', () => { if (combo.classList.contains('open')) reanchor(); }, true);
+
+    // Init
+    pick('', '');
+})();
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

@@ -497,13 +497,13 @@ html, body {
 }
 .align-right { text-align: right !important; }
 
-/* Compact action buttons */
+/* Compact action buttons — unified outline style matching staff Transaction module */
 .action-btn {
     padding: 6px 12px;
     border-radius: 6px;
     font-size: 11px;
     font-weight: 700;
-    border: none;
+    border: 1px solid transparent;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -513,13 +513,14 @@ html, body {
     text-transform: uppercase;
     letter-spacing: 0.3px;
     box-sizing: border-box;
+    background: white !important;
 }
-.btn-approve { background: #28a745; color: #fff; }
-.btn-approve:hover { background: #218838; transform: scale(1.02); }
-.btn-reject  { background: #dc2626; color: #fff; }
-.btn-reject:hover  { background: #b91c1c; transform: scale(1.02); }
-.btn-adjust  { background: #002F70; color: #fff; }
-.btn-adjust:hover  { background: #001a42; transform: scale(1.02); }
+.btn-approve { color: #16a34a !important; border-color: #16a34a !important; }
+.btn-approve:hover { background: #16a34a !important; color: #fff !important; }
+.btn-reject  { color: #dc2626 !important; border-color: #dc2626 !important; }
+.btn-reject:hover  { background: #dc2626 !important; color: #fff !important; }
+.btn-adjust  { color: #002F70 !important; border-color: #002F70 !important; }
+.btn-adjust:hover  { background: #002F70 !important; color: #fff !important; }
 
 /* Modal */
 .modal {
@@ -564,25 +565,33 @@ html, body {
         <div class="actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
             <!-- Excel -->
             <button type="button"
-                    onclick="window.location.href='?date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>&export=excel'"
-                    style="background:#1d6f42;color:#fff;height:36px;padding:8px 14px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                    onclick="mftvExport('excel')"
+                    style="background:white;color:#1d6f42;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #1d6f42;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
+                    onmouseover="this.style.background='#1d6f42';this.style.color='#fff'"
+                    onmouseout="this.style.background='white';this.style.color='#1d6f42'">
                 <i class="fas fa-file-excel"></i> Excel
             </button>
             <!-- CSV -->
             <button type="button"
-                    onclick="window.location.href='?date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>&export=csv'"
-                    style="background:#003d7a;color:#fff;height:36px;padding:8px 14px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                    onclick="mftvExport('csv')"
+                    style="background:white;color:#003d7a;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #003d7a;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
+                    onmouseover="this.style.background='#003d7a';this.style.color='#fff'"
+                    onmouseout="this.style.background='white';this.style.color='#003d7a'">
                 <i class="fas fa-file-csv"></i> CSV
             </button>
             <!-- PDF -->
             <button type="button"
-                    onclick="window.open('?date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>&export=pdf','_blank')"
-                    style="background:#dc2626;color:#fff;height:36px;padding:8px 14px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                    onclick="mftvExport('pdf')"
+                    style="background:white;color:#dc2626;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #dc2626;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
+                    onmouseover="this.style.background='#dc2626';this.style.color='#fff'"
+                    onmouseout="this.style.background='white';this.style.color='#dc2626'">
                 <i class="fas fa-file-pdf"></i> PDF
             </button>
             <!-- Back -->
             <a href="manager_dashboard.php"
-               style="background:#6c757d;color:#fff;text-decoration:none;height:36px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">
+               style="background:white;color:#4b5563;text-decoration:none;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #6b7280;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
+               onmouseover="this.style.background='#6b7280';this.style.color='#fff'"
+               onmouseout="this.style.background='white';this.style.color='#4b5563'">
                 <i class="fas fa-arrow-left"></i> Back
             </a>
         </div>
@@ -599,7 +608,9 @@ html, body {
             <input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>">
         </div>
         <button type="submit"
-                style="background:#00264D;color:#fff;height:36px;padding:8px 14px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;">
+                style="background:white;color:#16a34a;padding:8px 16px;border-radius:6px;border:1px solid #16a34a;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s;"
+                onmouseover="this.style.background='#16a34a';this.style.color='#fff'"
+                onmouseout="this.style.background='white';this.style.color='#16a34a'">
             <i class="fas fa-filter"></i> Apply Filter
         </button>
     </form>
@@ -791,11 +802,15 @@ html, body {
             </div>
             <div style="display:flex;gap:8px;justify-content:flex-end;">
                 <button type="button" onclick="closeModal('approveModal')"
-                        style="background:#6c757d;color:#fff;padding:8px 16px;border-radius:6px;border:none;cursor:pointer;">
+                        style="background:white;color:#4b5563;padding:8px 16px;border-radius:6px;border:1px solid #6b7280;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s;"
+                        onmouseover="this.style.background='#6b7280';this.style.color='#fff'"
+                        onmouseout="this.style.background='white';this.style.color='#4b5563'">
                     Cancel
                 </button>
                 <button type="submit"
-                        style="background:#28a745;color:#fff;padding:8px 16px;border-radius:6px;border:none;cursor:pointer;">
+                        style="background:white;color:#16a34a;padding:8px 16px;border-radius:6px;border:1px solid #16a34a;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s;"
+                        onmouseover="this.style.background='#16a34a';this.style.color='#fff'"
+                        onmouseout="this.style.background='white';this.style.color='#16a34a'">
                     <i class="fas fa-check"></i> Approve
                 </button>
             </div>
@@ -819,11 +834,15 @@ html, body {
             </div>
             <div style="display:flex;gap:8px;justify-content:flex-end;">
                 <button type="button" onclick="closeModal('rejectModal')"
-                        style="background:#6c757d;color:#fff;padding:8px 16px;border-radius:6px;border:none;cursor:pointer;">
+                        style="background:white;color:#4b5563;padding:8px 16px;border-radius:6px;border:1px solid #6b7280;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s;"
+                        onmouseover="this.style.background='#6b7280';this.style.color='#fff'"
+                        onmouseout="this.style.background='white';this.style.color='#4b5563'">
                     Cancel
                 </button>
                 <button type="submit"
-                        style="background:#dc2626;color:#fff;padding:8px 16px;border-radius:6px;border:none;cursor:pointer;">
+                        style="background:white;color:#dc2626;padding:8px 16px;border-radius:6px;border:1px solid #dc2626;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s;"
+                        onmouseover="this.style.background='#dc2626';this.style.color='#fff'"
+                        onmouseout="this.style.background='white';this.style.color='#dc2626'">
                     <i class="fas fa-times"></i> Reject
                 </button>
             </div>
@@ -851,11 +870,15 @@ html, body {
             </div>
             <div style="display:flex;gap:8px;justify-content:flex-end;">
                 <button type="button" onclick="closeModal('adjustModal')"
-                        style="background:#6c757d;color:#fff;padding:8px 16px;border-radius:6px;border:none;cursor:pointer;">
+                        style="background:white;color:#4b5563;padding:8px 16px;border-radius:6px;border:1px solid #6b7280;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s;"
+                        onmouseover="this.style.background='#6b7280';this.style.color='#fff'"
+                        onmouseout="this.style.background='white';this.style.color='#4b5563'">
                     Cancel
                 </button>
                 <button type="submit"
-                        style="background:#002F70;color:#fff;padding:8px 16px;border-radius:6px;border:none;cursor:pointer;">
+                        style="background:white;color:#002F70;padding:8px 16px;border-radius:6px;border:1px solid #002F70;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s;"
+                        onmouseover="this.style.background='#002F70';this.style.color='#fff'"
+                        onmouseout="this.style.background='white';this.style.color='#002F70'">
                     <i class="fas fa-edit"></i> Save Adjustments
                 </button>
             </div>
@@ -941,7 +964,164 @@ window.onclick = function(event) {
         event.target.style.display = 'none';
     }
 }
+
+function mftvExport(format) {
+    // Grab all tables with data
+    const tables = Array.from(document.querySelectorAll('.data-table')).filter(
+        t => t.querySelector('tbody tr')
+    );
+
+    if (!tables.length) { alert('No pending pump readings found to export.'); return; }
+
+    const dateFrom = document.querySelector('input[name="date_from"]')?.value || '';
+    const dateTo   = document.querySelector('input[name="date_to"]')?.value || '';
+    const filename = `Fuel_Validation_${dateFrom || 'All'}_to_${dateTo || 'All'}`;
+
+    if (format === 'excel') {
+        if (typeof XLSX === 'undefined') {
+            alert('Export library not loaded. Please try again.');
+            return;
+        }
+        const wb = XLSX.utils.book_new();
+        const usedNames = {};
+
+        tables.forEach((tbl, i) => {
+            // Get heading from shift group card
+            const card = tbl.closest('.shift-group-card');
+            let sheetName = card?.querySelector('.shift-group-header')?.innerText?.split('|')[0]?.trim() || `Sheet ${i + 1}`;
+            // Clean sheet name
+            sheetName = sheetName.replace(/[:\\\/?*\[\]]/g, '').substring(0, 31).trim() || `Sheet${i+1}`;
+            if (usedNames[sheetName]) {
+                usedNames[sheetName]++;
+                sheetName = (sheetName.substring(0, 28) + ' ' + usedNames[sheetName]).substring(0,31);
+            } else {
+                usedNames[sheetName] = 1;
+            }
+
+            const aoa = [];
+            // Headers
+            tbl.querySelectorAll('thead tr').forEach(tr => {
+                aoa.push([...tr.querySelectorAll('th')].map(th => th.innerText.trim()));
+            });
+            // Body
+            tbl.querySelectorAll('tbody tr').forEach(tr => {
+                aoa.push([...tr.querySelectorAll('td')].map(td => td.innerText.trim()));
+            });
+
+            const ws = XLSX.utils.aoa_to_sheet(aoa);
+            if (aoa.length && aoa[0]) {
+                ws['!cols'] = aoa[0].map((_, ci) => ({
+                    wch: Math.min(45, Math.max(10, ...aoa.map(row => String(row[ci] ?? '').length)))
+                }));
+            }
+            XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        });
+
+        XLSX.writeFile(wb, filename + '.xlsx');
+    } else if (format === 'csv') {
+        let csv = '';
+        tables.forEach((tbl, i) => {
+            const card = tbl.closest('.shift-group-card');
+            const heading = card?.querySelector('.shift-group-header')?.innerText?.replace(/\n/g, ' ') || '';
+            if (heading) csv += '"' + heading.replace(/"/g, '""') + '"\n';
+            else if (i > 0) csv += '\n';
+
+            tbl.querySelectorAll('thead tr').forEach(tr => {
+                csv += [...tr.querySelectorAll('th')].map(th => '"' + th.innerText.trim().replace(/"/g, '""') + '"').join(',') + '\n';
+            });
+            tbl.querySelectorAll('tbody tr').forEach(tr => {
+                csv += [...tr.querySelectorAll('td')].map(td => '"' + td.innerText.trim().replace(/"/g, '""') + '"').join(',') + '\n';
+            });
+            csv += '\n';
+        });
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = filename + '.csv';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+    } else if (format === 'pdf') {
+        const logo_url  = '../assets/img/Petron%20Logo.png';
+        const generated = new Date().toLocaleString();
+        
+        let contentHtml = '';
+        tables.forEach(tbl => {
+            const card = tbl.closest('.shift-group-card');
+            const heading = card?.querySelector('.shift-group-header')?.innerHTML || '';
+            
+            // Clean action buttons from the printable heading
+            let cleanHeading = heading.replace(/<div style="display:\s*flex;[^>]*>[\s\S]*?<\/div>/i, '');
+            cleanHeading = cleanHeading.replace(/<div style="display:\s*flex;[^>]*>[\s\S]*?<\/div>/gi, '');
+            
+            contentHtml += `
+            <div class="print-section">
+                <div class="print-section-header">${cleanHeading}</div>
+                <table>
+                    ${tbl.innerHTML}
+                </table>
+            </div>`;
+        });
+        
+        let iframe = document.getElementById('print-iframe');
+        if (!iframe) {
+            iframe = document.createElement('iframe');
+            iframe.id = 'print-iframe';
+            iframe.style.position = 'fixed';
+            iframe.style.right = '0';
+            iframe.style.bottom = '0';
+            iframe.style.width = '0';
+            iframe.style.height = '0';
+            iframe.style.border = '0';
+            document.body.appendChild(iframe);
+        }
+
+        const doc = iframe.contentDocument || iframe.contentWindow.document;
+        doc.open();
+        doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Fuel Transaction Validation Report</title>
+        <style>
+            @page{size:legal landscape;margin:.3in .4in;}
+            *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;box-sizing:border-box;}
+            body{font-family:Arial,sans-serif;font-size:11px;color:#000;background:white;margin:0;padding:20px;}
+            .header-container{display:flex;align-items:center;gap:15px;border-bottom:2px solid #002F70;padding-bottom:12px;margin-bottom:20px;}
+            .header-container img{height:45px;}
+            .header-title h1{font-size:16px;margin:0;color:#002F70;text-transform:uppercase;}
+            .header-title p{font-size:10px;margin:3px 0 0;color:#666;}
+            .meta-info{margin-left:auto;text-align:right;font-size:10px;color:#444;}
+            .print-section{margin-bottom:25px; page-break-inside:avoid;}
+            .print-section-header{font-size:12px;font-weight:700;background:#f2f2f2;padding:8px 10px;border:1px solid #ddd;border-bottom:none;color:#002F70;}
+            table{width:100%;border-collapse:collapse;font-size:9.5px;}
+            thead tr{background:#002F70;color:#fff;}
+            thead th{padding:6px 5px;text-align:left;font-weight:700;font-size:9px;text-transform:uppercase;color:#fff;}
+            tbody tr{border-bottom:1px solid #ddd;}
+            tbody td{padding:5px;color:#333;}
+            .align-right{text-align:right;}
+            .align-center{text-align:center;}
+        </style></head><body>
+            <div class="header-container">
+                <img src="${logo_url}" alt="Petron">
+                <div class="header-title">
+                    <h1>Petron Station Management System</h1>
+                    <p>Fuel Transaction Validation Report</p>
+                </div>
+                <div class="meta-info">
+                    Date Range: ${dateFrom || 'All'} to ${dateTo || 'All'}<br>
+                    Generated: ${generated}
+                </div>
+            </div>
+            ${contentHtml}
+        </body></html>`);
+        doc.close();
+
+        setTimeout(() => {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+        }, 250);
+    }
+}
 </script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>
 

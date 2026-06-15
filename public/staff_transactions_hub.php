@@ -288,7 +288,46 @@ if ($section === 'merchandise') {
         $mh_status_col = isset($mh_cols['validation_status']) ? 'mt.validation_status' : (isset($mh_cols['status']) ? 'mt.status' : "'Pending'");
         $mh_txnid_col  = isset($mh_cols['transaction_id'])   ? 'mt.transaction_id'   : 'mt.id';
 
-        $mh_where  = "WHERE mt.station_id = ? AND mt.staff_id = ?";
+        // ── Self-healing migration: backfill transaction_type for legacy records ──
+        // Fixes legacy rows where transaction_type is NULL but job_order_service is set.
+        // This ensures the Merchandise History filter never shows service-linked records.
+        if (isset($mh_cols['transaction_type']) && isset($mh_cols['job_order_service'])) {
+            try {
+                // Fix job_order-only records (no merchandise items alongside the service)
+                $pdo->prepare("
+                    UPDATE merchandise_transactions mt
+                    SET mt.transaction_type = IF(
+                        (SELECT COUNT(*) FROM merchandise_transaction_items i
+                         WHERE i.transaction_id = mt.id AND COALESCE(i.item_type,'merchandise') = 'merchandise') > 0,
+                        'combined', 'job_order'
+                    )
+                    WHERE mt.station_id = ?
+                      AND (mt.transaction_type IS NULL OR mt.transaction_type = '')
+                      AND mt.job_order_service IS NOT NULL
+                      AND TRIM(mt.job_order_service) <> ''
+                ")->execute([$station_id]);
+                // Fix remaining NULL rows (pure merchandise, no service)
+                $pdo->prepare("
+                    UPDATE merchandise_transactions
+                    SET transaction_type = 'merchandise'
+                    WHERE station_id = ?
+                      AND (transaction_type IS NULL OR transaction_type = '')
+                ")->execute([$station_id]);
+            } catch (Exception $e) {
+                error_log('staff_transactions_hub migration warning: ' . $e->getMessage());
+            }
+        }
+
+        // ── Inventory Deduction Rule: Merchandise History shows ONLY standalone merchandise.
+        // Job Order (service-linked) transactions are excluded here — they appear in the
+        // Job Order Tracker instead. Double guard:
+        //   1. transaction_type must equal 'merchandise' (or be NULL with no service marker)
+        //   2. job_order_service must be empty/NULL (catches legacy rows missing transaction_type)
+        $mh_has_jo_svc_col = isset($mh_cols['job_order_service']);
+        $mh_jo_svc_guard = $mh_has_jo_svc_col
+            ? "AND (COALESCE(mt.transaction_type, 'merchandise') = 'merchandise' AND (mt.job_order_service IS NULL OR TRIM(mt.job_order_service) = ''))"
+            : "AND COALESCE(mt.transaction_type, 'merchandise') = 'merchandise'";
+        $mh_where  = "WHERE mt.station_id = ? AND mt.staff_id = ? $mh_jo_svc_guard";
         $mh_params = [$station_id, $me['id']];
         if ($mh_filter_shift !== '') { $mh_where .= " AND mt.shift_period = ?"; $mh_params[] = $mh_filter_shift; }
         if ($mh_filter_date  !== '') { $mh_where .= " AND DATE($mh_date_col) = ?"; $mh_params[] = $mh_filter_date; }
@@ -309,7 +348,15 @@ if ($section === 'merchandise') {
                    $mh_date_col  AS transaction_date,
                    $mh_status_col AS status,
                    mt.shift_name,
-                   mt.shift_period
+                   mt.shift_period,
+                   COALESCE(
+                       NULLIF(
+                           (SELECT GROUP_CONCAT(CONCAT(i.product_name, ' (', i.quantity, ')') ORDER BY i.id SEPARATOR ', ')
+                            FROM merchandise_transaction_items i 
+                            WHERE i.transaction_id = mt.id), ''
+                       ),
+                       '—'
+                   ) AS products
             FROM merchandise_transactions mt
             $mh_where
             ORDER BY $mh_date_col DESC
@@ -646,7 +693,15 @@ if ($section === 'merchandise') {
                     NULL AS customer_id,
                     NULL AS job_order_id,
                     NULL AS job_order_number,
-                    NULL AS required_parts,
+                    COALESCE(
+                        NULLIF(
+                            (SELECT GROUP_CONCAT(CONCAT(i.product_name, ' (', i.quantity, ')') ORDER BY i.id SEPARATOR ', ')
+                             FROM merchandise_transaction_items i 
+                             WHERE i.transaction_id = mt.id
+                             AND COALESCE(i.item_type, 'merchandise') != 'service'), ''
+                        ),
+                        NULL
+                    ) AS required_parts,
                     NULL AS additional_notes,
                     NULL AS shift_id,
                     mt.updated_at,
@@ -707,10 +762,138 @@ include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
+/* ── Sub-tab & Icon Button Styles (immune to global button / text overrides) ── */
+.txn-subtab-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 4px !important;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease-in-out;
+}
+
+/* Green theme (Merchandise subtabs & main tabs) */
+.txn-subtab-btn.green.active {
+    background: #28a745 !important;
+    border: 1px solid #28a745 !important;
+    color: #ffffff !important;
+}
+.txn-subtab-btn.green.active i {
+    color: #ffffff !important;
+}
+.txn-subtab-btn.green.inactive {
+    background: #ffffff !important;
+    border: 1px solid #28a745 !important;
+    color: #28a745 !important;
+}
+.txn-subtab-btn.green.inactive i {
+    color: #28a745 !important;
+}
+
+/* Blue theme (Fuel & JO subtabs & main tabs) */
+.txn-subtab-btn.blue.active {
+    background: #002F6C !important;
+    border: 1px solid #002F6C !important;
+    color: #ffffff !important;
+}
+.txn-subtab-btn.blue.active i {
+    color: #ffffff !important;
+}
+.txn-subtab-btn.blue.inactive {
+    background: #ffffff !important;
+    border: 1px solid #002F6C !important;
+    color: #002F6C !important;
+}
+.txn-subtab-btn.blue.inactive i {
+    color: #002F6C !important;
+}
+
+/* Dark blue theme (Job Order Tracker subtabs) */
+.txn-subtab-btn.darkblue.active {
+    background: #003d7a !important;
+    border: 1px solid #003d7a !important;
+    color: #ffffff !important;
+}
+.txn-subtab-btn.darkblue.active i {
+    color: #ffffff !important;
+}
+.txn-subtab-btn.darkblue.inactive {
+    background: #ffffff !important;
+    border: 1px solid #003d7a !important;
+    color: #003d7a !important;
+}
+.txn-subtab-btn.darkblue.inactive i {
+    color: #003d7a !important;
+}
+
+/* Icon Buttons next to inputs (immune to overrides) */
+.txn-icon-btn {
+    flex-shrink: 0;
+    width: 34px !important;
+    height: 34px !important;
+    border-radius: 4px !important;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease-in-out;
+}
+.txn-icon-btn i {
+    font-size: 14px !important;
+}
+
+.txn-icon-btn.green {
+    border: 1px solid #28a745 !important;
+    background: #ffffff !important;
+    color: #28a745 !important;
+}
+.txn-icon-btn.green i {
+    color: #28a745 !important;
+}
+.txn-icon-btn.green:hover {
+    background: #28a745 !important;
+    color: #ffffff !important;
+}
+.txn-icon-btn.green:hover i {
+    color: #ffffff !important;
+}
+
+.txn-icon-btn.blue {
+    border: 1px solid #003d7a !important;
+    background: #ffffff !important;
+    color: #003d7a !important;
+}
+.txn-icon-btn.blue i {
+    color: #003d7a !important;
+}
+.txn-icon-btn.blue:hover {
+    background: #003d7a !important;
+    color: #ffffff !important;
+}
+.txn-icon-btn.blue:hover i {
+    color: #ffffff !important;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    TRANSACTIONS HUB — Page-level styles
    Uses existing Petron CSS variables from style.css
 ═══════════════════════════════════════════════════════════════ */
+
+/* ── Text Color Fix — Ensure form text is visible ──────────────── */
+.txn-field, .txn-field * {
+    color: #1e293b;
+}
+
+.txn-field label {
+    color: #1e293b !important;
+}
+
+.txn-input, .txn-select {
+    color: #1e293b !important;
+}
 
 /* ── Main Content Panel ──────────────────────────────────────── */
 .txn-content {
@@ -852,6 +1035,8 @@ main.main {
     overflow: visible;
     margin-bottom: 16px;
     width: 100%;
+    position: relative;
+    z-index: 1;
 }
 
 .txn-card-header {
@@ -871,7 +1056,11 @@ main.main {
     letter-spacing: .5px !important;
 }
 
-.txn-card-body { padding: 22px; }
+.txn-card-body { 
+    padding: 22px;
+    position: relative;
+    z-index: auto;
+}
 
 /* ── Form elements ───────────────────────────────────────────── */
 .txn-form-grid {
@@ -879,17 +1068,31 @@ main.main {
     grid-template-columns: 1fr 1fr;
     gap: 14px;
     width: 100%;
+    position: relative;
+    z-index: auto;
 }
 
 .txn-form-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
 .txn-form-grid.cols-1 { grid-template-columns: 1fr; }
 
-.txn-field { display: flex; flex-direction: column; gap: 6px; }
+.txn-field { 
+    display: flex; 
+    flex-direction: column; 
+    gap: 6px;
+    position: relative;
+    z-index: auto;
+}
+
+/* Ensure input fields with datalist work properly */
+input[list] {
+    position: relative;
+    z-index: 10;
+}
 
 .txn-field label {
     font-size: 12px;
     font-weight: 600;
-    color: #475569;
+    color: #1e293b !important;
     text-transform: uppercase;
     letter-spacing: .4px;
 }
@@ -908,10 +1111,15 @@ main.main {
     border: 1.5px solid #e2e8f0;
     border-radius: 8px;
     font-size: 14px;
-    color: #1e293b;
+    color: #1e293b !important;
     background: #fff;
     transition: border-color .15s, box-shadow .15s;
     width: 100%;
+}
+
+.txn-input::placeholder, .txn-select::placeholder {
+    color: #94a3b8 !important;
+    opacity: 1;
 }
 
 .txn-input:focus, .txn-select:focus {
@@ -1095,42 +1303,56 @@ main.main {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    padding: 11px 20px;
-    border-radius: 9px;
-    font-size: 13px;
-    font-weight: 700;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
     cursor: pointer;
-    border: none;
-    transition: all .18s ease;
+    border: 1px solid transparent;
+    transition: all .2s;
     text-decoration: none;
 }
 
 .txn-btn.primary {
-    background: var(--petron-blue);
-    color: #fff;
+    background: white !important;
+    color: #00264D !important;
+    border: 1px solid #00264D !important;
 }
-.txn-btn.primary:hover { background: #001f4d; }
+.txn-btn.primary:hover {
+    background: #00264D !important;
+    color: white !important;
+}
 
 .txn-btn.success {
-    background: #28a745;
-    color: #fff;
+    background: white !important;
+    color: #16a34a !important;
+    border: 1px solid #16a34a !important;
 }
-.txn-btn.success:hover { background: #1e7e34; }
+.txn-btn.success:hover {
+    background: #16a34a !important;
+    color: white !important;
+}
 
 .txn-btn.secondary {
-    background: #f1f5f9;
-    color: #475569;
-    border: 1px solid #e2e8f0;
+    background: white !important;
+    color: #00264D !important;
+    border: 1px solid #00264D !important;
 }
-.txn-btn.secondary:hover { background: #e2e8f0; }
+.txn-btn.secondary:hover {
+    background: #00264D !important;
+    color: white !important;
+}
 
 .txn-btn.danger {
-    background: #fee2e2;
-    color: #dc2626;
-    border: 1px solid #fca5a5;
+    background: white !important;
+    color: #dc2626 !important;
+    border: 1px solid #dc2626 !important;
 }
-.txn-btn.danger:hover { background: #fecaca; }
+.txn-btn.danger:hover {
+    background: #dc2626 !important;
+    color: white !important;
+}
 
 .txn-btn:disabled {
     opacity: .5;
@@ -1345,7 +1567,7 @@ main.main {
             </div>
             <div>
                 <button type="button" onclick="window.location.href='staff_dashboard.php'" 
-                        style="display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;background:#6c757d;color:#fff;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;" title="Back to Staff Dashboard">
+                        class="txn-btn secondary" title="Back to Staff Dashboard">
                     <i class="fas fa-arrow-left"></i> <span>Back</span>
                 </button>
             </div>
@@ -1459,35 +1681,43 @@ main.main {
 
         /* Submit button per row */
         .fet-submit-btn {
-            padding: 8px 16px;
-            background: #002f6c;
-            color: #fff;
-            border: none;
-            border-radius: 7px;
-            font-size: 12px;
-            font-weight: 700;
-            cursor: pointer;
-            white-space: nowrap;
             display: inline-flex;
             align-items: center;
+            justify-content: center;
             gap: 6px;
-            transition: background .15s;
+            padding: 7px 14px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid #002f6c;
+            background: white !important;
+            color: #002f6c !important;
+            transition: all .2s;
+            text-decoration: none;
+            white-space: nowrap;
         }
-        .fet-submit-btn:hover   { background: #001f4d; }
+        .fet-submit-btn:hover   { background: #002f6c !important; color: white !important; }
         .fet-submit-btn:disabled { opacity: .5; cursor: not-allowed; }
 
         .fet-reset-btn {
-            padding: 8px 12px;
-            background: #f1f5f9;
-            color: #475569;
-            border: 1.5px solid #e2e8f0;
-            border-radius: 7px;
-            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 7px 14px;
+            border-radius: 4px;
+            font-size: 11px;
             font-weight: 600;
             cursor: pointer;
-            transition: background .15s;
+            border: 1px solid #64748b;
+            background: white !important;
+            color: #64748b !important;
+            transition: all .2s;
+            text-decoration: none;
+            white-space: nowrap;
         }
-        .fet-reset-btn:hover { background: #e2e8f0; }
+        .fet-reset-btn:hover { background: #64748b !important; color: white !important; }
 
         /* Row message */
         .fet-row-msg {
@@ -1498,17 +1728,18 @@ main.main {
         </style>
 
         <!-- ── Fuel Sub-tabs ─────────────────────────────── -->
-        <div style="display:flex;gap:0;border-bottom:2px solid #e2e8f0;margin-bottom:20px;padding:0 4px;">
+        <div style="display:flex;gap:10px;margin-bottom:20px;padding:0 4px;">
+            <?php $is_enc = ($fuel_tab_default === 'encode'); ?>
             <button onclick="switchFuelSubTab('encode')" id="fuelSubTabBtn_encode"
-                    style="padding:9px 18px;border:none;background:#fff;border-bottom:2px solid #002F6C;
-                           margin-bottom:-2px;font-size:13px;font-weight:700;color:#002F6C;
-                           cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;">
+                    class="txn-subtab-btn blue <?= $is_enc ? 'active' : 'inactive' ?>">
+
+
                 <i class="fas fa-edit"></i> Encode Meter Readings
             </button>
             <button onclick="switchFuelSubTab('readings')" id="fuelSubTabBtn_readings"
-                    style="padding:9px 18px;border:none;background:#f8fafc;border-bottom:2px solid transparent;
-                           margin-bottom:-2px;font-size:13px;font-weight:500;color:#64748b;
-                           cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;">
+                    class="txn-subtab-btn blue <?= !$is_enc ? 'active' : 'inactive' ?>">
+
+
                 <i class="fas fa-history"></i> Meter Reading History
             </button>
         </div>
@@ -1829,14 +2060,12 @@ main.main {
             <div style="display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-top:16px;padding:0 8px;">
                 <button type="button"
                         onclick="resetAllFuelRows()"
-                        class="fet-reset-btn"
-                        style="padding:10px 20px;font-size:13px;font-weight:600;">
+                        class="fet-reset-btn">
                     <i class="fas fa-undo"></i> Reset All
                 </button>
                 <button type="button"
                         onclick="submitAllFuelRows()"
-                        class="fet-submit-btn"
-                        style="padding:10px 24px;font-size:13px;font-weight:700;">
+                        class="fet-submit-btn">
                     <i class="fas fa-paper-plane"></i> Submit All Readings
                 </button>
             </div>
@@ -1919,19 +2148,13 @@ main.main {
                         <i class="fas fa-download" style="color:var(--petron-blue); margin-right:4px;"></i>Export Options
                     </span>
                     <div style="display:inline-flex; align-items:center; gap:8px;">
-                        <button onclick="exportTodayReadings('excel');" 
-                                style="background:#1d6f42; color:#ffffff; border:none; border-radius:8px; height:38px; padding:0 14px; font-size:13px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:background 0.2s;"
-                                onmouseover="this.style.background='#155231'" onmouseout="this.style.background='#1d6f42'">
+                        <button onclick="exportTodayReadings('excel');" class="txn-btn success">
                             <i class="fas fa-file-excel"></i> Excel
                         </button>
-                        <button onclick="exportTodayReadings('csv');" 
-                                style="background:#0284c7; color:#ffffff; border:none; border-radius:8px; height:38px; padding:0 14px; font-size:13px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:background 0.2s;"
-                                onmouseover="this.style.background='#0369a1'" onmouseout="this.style.background='#0284c7'">
+                        <button onclick="exportTodayReadings('csv');" class="txn-btn primary">
                             <i class="fas fa-file-csv"></i> CSV
                         </button>
-                        <button onclick="exportTodayReadings('pdf');" 
-                                style="background:#dc2626; color:#ffffff; border:none; border-radius:8px; height:38px; padding:0 14px; font-size:13px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:background 0.2s;"
-                                onmouseover="this.style.background='#b91c1c'" onmouseout="this.style.background='#dc2626'">
+                        <button onclick="exportTodayReadings('pdf');" class="txn-btn danger">
                             <i class="fas fa-file-pdf"></i> PDF
                         </button>
                     </div>
@@ -1960,15 +2183,21 @@ main.main {
             encodeCard.style.display = isReadings ? 'none' : 'block';
             todayCard.style.display  = isReadings ? 'block' : 'none';
 
-            encodeBtn.style.fontWeight   = isReadings ? '500' : '700';
-            encodeBtn.style.color        = isReadings ? '#64748b' : '#002F6C';
-            encodeBtn.style.background   = isReadings ? '#f8fafc' : '#fff';
-            encodeBtn.style.borderBottom = isReadings ? '2px solid transparent' : '2px solid #002F6C';
+            encodeBtn.className  = 'txn-subtab-btn blue ' + (isReadings ? 'inactive' : 'active');
+            readingsBtn.className = 'txn-subtab-btn blue ' + (isReadings ? 'active' : 'inactive');
 
-            readingsBtn.style.fontWeight   = isReadings ? '700' : '500';
-            readingsBtn.style.color        = isReadings ? '#002F6C' : '#64748b';
-            readingsBtn.style.background   = isReadings ? '#fff' : '#f8fafc';
-            readingsBtn.style.borderBottom = isReadings ? '2px solid #002F6C' : '2px solid transparent';
+
+
+
+
+
+
+
+
+
+
+
+
 
             if (isReadings) {
                 refreshTodayEntries();
@@ -2400,8 +2629,8 @@ main.main {
                         <div style="font-size:22px;color:#002F6C;margin-bottom:12px;"><i class="fas fa-question-circle"></i></div>
                         <p style="font-size:15px;font-weight:600;color:#1e293b;margin:0 0 20px;">${msg}</p>
                         <div style="display:flex;gap:12px;justify-content:center;">
-                            <button id="confirmNo"  style="padding:9px 24px;border-radius:8px;border:1.5px solid #cbd5e1;background:#f8fafc;color:#64748b;font-weight:600;cursor:pointer;font-size:13px;">Cancel</button>
-                            <button id="confirmYes" style="padding:9px 24px;border-radius:8px;border:none;background:#002F6C;color:#fff;font-weight:700;cursor:pointer;font-size:13px;">Submit</button>
+                            <button id="confirmNo"  style="padding:7px 20px;border-radius:4px;border:1px solid #64748b;background:white;color:#64748b;font-weight:600;cursor:pointer;font-size:11px;transition:all .2s;" onmouseover="this.style.background='#64748b';this.style.color='white'" onmouseout="this.style.background='white';this.style.color='#64748b'">Cancel</button>
+                            <button id="confirmYes" style="padding:7px 20px;border-radius:4px;border:1px solid #002F6C;background:white;color:#002F6C;font-weight:600;cursor:pointer;font-size:11px;transition:all .2s;" onmouseover="this.style.background='#002F6C';this.style.color='white'" onmouseout="this.style.background='white';this.style.color='#002F6C'">Submit</button>
                         </div>
                     </div>`;
                 document.body.appendChild(overlay);
@@ -2680,6 +2909,8 @@ main.main {
         document.addEventListener('DOMContentLoaded', loadTodayEntries);
         </script>
 
+
+
         <?php /* ══════════════════════════════════════════════════════
                SECTION: MERCHANDISE TRANSACTION (Customer-facing)
         ══════════════════════════════════════════════════════ */ ?>
@@ -2707,14 +2938,14 @@ main.main {
             <div style="display:flex;gap:8px;align-items:center;">
                 <span class="status-badge customer" style="display:none;"></span>
                 <button type="button" onclick="window.location.href='staff_dashboard.php'" 
-                        style="display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;background:#6c757d;color:#fff;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;" title="Back to Staff Dashboard">
+                        class="txn-btn secondary" title="Back to Staff Dashboard">
                     <i class="fas fa-arrow-left"></i> <span>Back</span>
                 </button>
             </div>
         </div>
 
         <!-- ── Inner Tabs ─────────────────────────────────────────────── -->
-        <div style="display:flex;gap:0;margin-bottom:24px;border-bottom:2px solid #e2e8f0;flex-wrap:wrap;">
+        <div style="display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap;">
             <?php
             $inner_tabs = [
                 'merchandise'   => ['label'=>'Merchandise/Service Transaction', 'icon'=>'fa-shopping-cart', 'color'=>'#28a745'],
@@ -2726,19 +2957,19 @@ main.main {
             ?>
             <button onclick="switchInnerTab('<?= $tk ?>')"
                     id="innerTabBtn_<?= $tk ?>"
-                    style="padding:11px 22px;border:none;background:<?= $ia ? '#fff' : '#f8fafc' ?>;
-                           border-bottom:<?= $ia ? '2px solid '.$tc['color'] : '2px solid transparent' ?>;
-                           margin-bottom:-2px;font-size:13px;font-weight:<?= $ia ? '700' : '500' ?>;
-                           color:<?= $ia ? $tc['color'] : '#64748b' ?>;cursor:pointer;
-                           display:inline-flex;align-items:center;gap:7px;transition:all .15s;white-space:nowrap;">
+                    class="txn-subtab-btn <?= $tc['color'] === '#28a745' ? 'green' : 'darkblue' ?> <?= $ia ? 'active' : 'inactive' ?>"
+                    style="white-space:nowrap;">
                 <i class="fas <?= $tc['icon'] ?>"></i>
                 <?= $tc['label'] ?>
                 <?php if (!empty($tc['badge'])): ?>
-                <span style="background:<?= $tc['color'] ?>;color:#fff;font-size:10px;font-weight:800;
+                <span style="background:<?= $ia ? '#ffffff' : $tc['color'] ?>;color:<?= $ia ? $tc['color'] : '#fff' ?>;font-size:10px;font-weight:800;
                              padding:1px 7px;border-radius:20px;"><?= $tc['badge'] ?></span>
                 <?php endif; ?>
             </button>
             <?php endforeach; ?>
+
+
+
         </div>
 
 
@@ -2751,15 +2982,15 @@ main.main {
         <div class="cart-wrapper" style="display:grid; grid-template-columns:<?= !empty($_GET['mh_open']) ? '1fr' : '1fr 340px' ?>; gap:16px; align-items:start;">
 
             <!-- Left: Job Order section (top) + Merchandise section (bottom) + Customer/Payment -->
-            <div style="min-width:0;overflow:hidden;">
+            <div style="min-width:0;overflow:visible;">
 
                 <!-- ══ JOB ORDER SECTION (TOP) ══════════════════════════════ -->
-                <div class="txn-card" id="joCard">
+                <div class="txn-card" id="joCard" style="overflow:visible;position:relative;z-index:10;">
                     <div class="txn-card-header" style="background:#fffbeb;">
                         <i class="fas fa-tools" style="color:#b45309;"></i>
                         <h3 style="color:#92400e;">Job Order</h3>
                     </div>
-                    <div class="txn-card-body">
+                    <div class="txn-card-body" style="overflow:visible;">
 
                         <!-- Customer Details — captured here at the Job Order level -->
                         <div style="font-size:11px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">
@@ -2807,27 +3038,28 @@ main.main {
                             <div class="txn-field">
                                 <label>Vehicle Type</label>
                                 <div style="display:flex;gap:6px;align-items:flex-start;">
-                                    <input type="text" 
-                                           id="joVehicleType" 
-                                           class="txn-input" 
-                                           list="vehicleTypeList"
-                                           style="flex:1;" 
-                                           placeholder="Type or select vehicle type..."
-                                           autocomplete="off"
-                                           onchange="onVehicleTypeChange()">
-                                    <datalist id="vehicleTypeList">
-                                        <option value="">— Loading… —</option>
-                                    </datalist>
+                                    <div style="flex:1;position:relative;z-index:100;">
+                                        <input type="text" 
+                                               id="joVehicleType" 
+                                               class="txn-input" 
+                                               style="flex:1;width:100%;" 
+                                               placeholder="Type or select vehicle type..."
+                                               autocomplete="off"
+                                               oninput="filterVehicleDropdown(this.value)"
+                                               onfocus="showVehicleDropdown()"
+                                               onblur="setTimeout(hideVehicleDropdown,200)"
+                                               onchange="onVehicleTypeChange()">
+                                        <div id="vehicleTypeDropdown"
+                                             style="display:none;position:absolute;top:100%;left:0;right:0;
+                                                    background:#fff;border:1.5px solid #cbd5e1;border-top:none;
+                                                    border-radius:0 0 8px 8px;max-height:220px;overflow-y:auto;
+                                                    z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.12);">
+                                        </div>
+                                    </div>
                                     <button type="button"
                                             onclick="openAddVehicleModal()"
                                             title="Add a new vehicle type"
-                                            style="flex-shrink:0;width:34px;height:34px;border:1.5px solid #e2e8f0;
-                                                   background:#f8fafc;border-radius:6px;cursor:pointer;
-                                                   font-size:18px;font-weight:700;color:#003d7a;
-                                                   display:flex;align-items:center;justify-content:center;
-                                                   transition:background .15s,border-color .15s;"
-                                            onmouseover="this.style.background='#eff6ff';this.style.borderColor='#003d7a';"
-                                            onmouseout="this.style.background='#f8fafc';this.style.borderColor='#e2e8f0';">
+                                            class="txn-icon-btn blue">
                                         +
                                     </button>
                                 </div>
@@ -2873,31 +3105,31 @@ main.main {
                                             <div id="joServiceTypeList"></div>
                                         </div>
                                     </div>
-                                    <!-- Add Service to Cart Button -->
-                                    <button type="button"
-                                            onclick="addServiceFromFormToCart()"
-                                            title="Add Job Order Service to Cart"
-                                            style="flex-shrink:0;width:34px;height:34px;border:1.5px solid #7dd3fc;
-                                                   background:#e0f2fe;border-radius:6px;cursor:pointer;
-                                                   font-size:15px;font-weight:700;color:#0369a1;
-                                                   display:flex;align-items:center;justify-content:center;
-                                                   transition:background .15s,border-color .15s;"
-                                            onmouseover="this.style.background='#bae6fd';this.style.borderColor='#0369a1';"
-                                            onmouseout="this.style.background='#e0f2fe';this.style.borderColor='#7dd3fc';">
-                                        <i class="fas fa-cart-plus"></i>
-                                    </button>
-                                    <button type="button"
-                                            onclick="openAddServiceModal()"
-                                            title="Add a new service type"
-                                            style="flex-shrink:0;width:34px;height:34px;border:1.5px solid #e2e8f0;
-                                                   background:#f8fafc;border-radius:6px;cursor:pointer;
-                                                   font-size:18px;font-weight:700;color:#b45309;
-                                                   display:flex;align-items:center;justify-content:center;
-                                                   transition:background .15s,border-color .15s;"
-                                            onmouseover="this.style.background='#fffbeb';this.style.borderColor='#b45309';"
-                                            onmouseout="this.style.background='#f8fafc';this.style.borderColor='#e2e8f0';">
-                                        +
-                                    </button>
+                                     <button type="button"
+                                             onclick="addServiceFromFormToCart()"
+                                             title="Add Job Order Service to Cart"
+                                             class="txn-icon-btn blue">
+                                         <i class="fas fa-cart-plus"></i>
+                                     </button>
+                                     <button type="button"
+                                             onclick="openAddServiceModal()"
+                                             title="Add a new service type"
+                                             class="txn-icon-btn blue">
+                                         +
+                                     </button>
+
+
+
+
+
+
+
+
+
+
+
+
+
                                 </div>
                                 <!-- Pricing notes (shown when service type selected) -->
                                 <div id="joServicePriceNotes" style="display:none;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin-top:8px;font-size:12px;color:#92400e;">
@@ -2989,17 +3221,18 @@ main.main {
                     </div>
 
                     <!-- ── Merchandise sub-tabs ─────────────────────────────── -->
-                    <div style="display:flex;gap:0;border-bottom:2px solid #e2e8f0;padding:0 16px;">
+                    <div style="display:flex;gap:10px;padding:0 16px;margin-bottom:12px;margin-top:12px;">
+                        <?php $mh_open = isset($_GET['mh_open']) && $_GET['mh_open'] == '1'; ?>
                         <button onclick="switchMerchTab('form')" id="merchTabBtn_form"
-                                style="padding:9px 18px;border:none;background:#fff;border-bottom:2px solid #28a745;
-                                       margin-bottom:-2px;font-size:12px;font-weight:700;color:#28a745;
-                                       cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;">
+                                class="txn-subtab-btn green <?= !$mh_open ? 'active' : 'inactive' ?>">
+
+
                             <i class="fas fa-shopping-cart"></i> Merchandise
                         </button>
                         <button onclick="switchMerchTab('history')" id="merchTabBtn_history"
-                                style="padding:9px 18px;border:none;background:#f8fafc;border-bottom:2px solid transparent;
-                                       margin-bottom:-2px;font-size:12px;font-weight:500;color:#64748b;
-                                       cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;">
+                                class="txn-subtab-btn green <?= $mh_open ? 'active' : 'inactive' ?>">
+
+
                             <i class="fas fa-history"></i> Merchandise History
                         </button>
                     </div>
@@ -3059,11 +3292,13 @@ main.main {
                                             </span>
                                         </div>
                                         <!-- Add Selected to Cart -->
-                                        <button type="button" onclick="addProductFromFormToCart()" title="Add selected product to cart" style="width:36px;height:36px;background:#e0f2fe;border:1px solid #7dd3fc;border-radius:8px;cursor:pointer;font-size:16px;font-weight:700;color:#0369a1;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                        <button type="button" onclick="addProductFromFormToCart()" title="Add selected product to cart" 
+                                                class="txn-icon-btn green">
                                             <i class="fas fa-cart-plus"></i>
                                         </button>
                                         <!-- Register brand new product -->
-                                        <button type="button" onclick="openAddProductModal()" title="Add new product to database" style="width:36px;height:36px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;cursor:pointer;font-size:16px;font-weight:700;color:#166534;display:flex;align-items:center;justify-content:center;flex-shrink:0;">+</button>
+                                        <button type="button" onclick="openAddProductModal()" title="Add new product to database" 
+                                                class="txn-icon-btn green">+</button>
                                     </div>
                                     <!-- Dropdown list -->
                                     <div id="productDropdownList"
@@ -3203,33 +3438,33 @@ main.main {
                                         <?php endforeach; ?>
                                     </select>
                                 </div>
-                                <button type="submit" class="txn-btn primary" style="padding:7px 14px;font-size:12px;">
+                                <button type="submit" class="txn-btn primary">
                                     <i class="fas fa-filter"></i> Filter
                                 </button>
-                                <a href="staff_transactions_hub.php?section=merchandise&mh_open=1" class="txn-btn secondary" style="padding:7px 12px;font-size:12px;">
+                                <a href="staff_transactions_hub.php?section=merchandise&mh_open=1" class="txn-btn secondary">
                                     <i class="fas fa-times"></i> Clear
                                 </a>
                                 <!-- Export buttons -->
                                 <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                                     <a href="../backend/export_staff_transactions.php?type=merchandise&format=excel"
                                        title="Export to Excel"
-                                       style="background:#1d6f42;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;">
+                                       class="txn-btn success">
                                         <i class="fas fa-file-excel"></i> Excel
                                     </a>
                                     <a href="../backend/export_staff_transactions.php?type=merchandise&format=csv"
                                        title="Export to CSV"
-                                       style="background:#003d7a;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;">
+                                       class="txn-btn primary">
                                         <i class="fas fa-file-csv"></i> CSV
                                     </a>
                                     <a href="../backend/export_staff_transactions.php?type=merchandise&format=pdf"
                                        target="_blank"
                                        title="Export to PDF"
-                                       style="background:#dc2626;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;">
+                                       class="txn-btn danger">
                                         <i class="fas fa-file-pdf"></i> PDF
                                     </a>
                                     <a href="staff_transactions_hub.php?section=merchandise&active_tab=merchandise"
                                        title="Back to Merchandise Form"
-                                       style="background:#6c7280;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;">
+                                       class="txn-btn secondary">
                                         <i class="fas fa-arrow-left"></i> Back
                                     </a>
                                 </div>
@@ -3250,20 +3485,22 @@ main.main {
                             </style>
                             <table class="txn-table" id="mhHistoryTable" style="width:100%;table-layout:fixed;">
                                 <colgroup>
-                                    <col style="width:9%;"><!-- Txn ID -->
-                                    <col style="width:12%;"><!-- Customer -->
-                                    <col style="width:8%;"><!-- Total -->
-                                    <col style="width:8%;"><!-- Method -->
-                                    <col style="width:9%;"><!-- Balance Due -->
-                                    <col style="width:14%;"><!-- Shift -->
-                                    <col style="width:13%;"><!-- Date -->
+                                    <col style="width:7%;"><!-- Txn ID -->
+                                    <col style="width:10%;"><!-- Customer -->
+                                    <col style="width:14%;"><!-- Product -->
+                                    <col style="width:6%;"><!-- Total -->
+                                    <col style="width:6%;"><!-- Method -->
+                                    <col style="width:7%;"><!-- Balance Due -->
+                                    <col style="width:10%;"><!-- Shift -->
+                                    <col style="width:10%;"><!-- Date -->
                                     <col style="width:12%;"><!-- Payment Status -->
-                                    <col style="width:15%;"><!-- Actions (increased width) -->
+                                    <col style="width:18%;"><!-- Actions -->
                                 </colgroup>
                                 <thead>
                                     <tr>
                                         <th style="font-size:14px;">Txn ID</th>
                                         <th style="font-size:14px;">Customer</th>
+                                        <th style="font-size:14px;">Product</th>
                                         <th style="font-size:14px;">Total</th>
                                         <th style="font-size:14px;">Method</th>
                                         <th style="font-size:14px;">Balance Due</th>
@@ -3281,10 +3518,12 @@ main.main {
                                     $mh_paid       = (float)($txn['amount_paid'] ?? 0);
                                     $mh_total      = (float)($txn['total_amount'] ?? 0);
                                     $mh_can_settle = !in_array(strtolower($mh_pay_status), ['paid']) && $mh_balance > 0.009;
+                                    $mh_products   = $txn['products'] ?? '—';
                                 ?>
                                 <tr class="mh-row">
                                     <td style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><strong style="color:var(--petron-blue);"><?= htmlspecialchars($txn['transaction_id'] ?? ('#'.$txn['id'])) ?></strong></td>
                                     <td style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($txn['customer_name'] ?? '') ?>"><?= htmlspecialchars($txn['customer_name'] ?? '—') ?></td>
+                                    <td style="font-size:12px;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($mh_products) ?>"><?= htmlspecialchars($mh_products) ?></td>
                                     <td style="font-size:14px;font-weight:700;color:var(--petron-blue);white-space:nowrap;">₱<?= number_format($mh_total, 2) ?></td>
                                     <td style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= htmlspecialchars($txn['payment_method'] ?? '—') ?></td>
                                     <td style="font-size:13px;white-space:nowrap;">
@@ -3295,36 +3534,30 @@ main.main {
                                     <td><?= status_badge($mh_pay_status) ?></td>
                                     <td>
                                         <div style="display:flex;flex-direction:column;gap:4px;">
-                                            <!-- View Button (Always visible) - DARK BLUE -->
+                                            <!-- View Button (Always visible) -->
                                             <button type="button"
                                                     onclick="viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? '') ?>')"
-                                                    style="padding:6px 12px;font-size:13px;border:none;background:#002F70;color:#fff;border-radius:6px;cursor:pointer;white-space:nowrap;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px;transition:background 0.2s ease;"
-                                                    onmouseover="this.style.background='#001a3d'"
-                                                    onmouseout="this.style.background='#002F70'">
+                                                    class="txn-btn primary">
                                                 <i class="fas fa-eye"></i> View
                                             </button>
                                             
                                             <?php if ($mh_can_settle): ?>
-                                            <!-- Settle / Paid Button - GREEN (Only if NOT yet paid) -->
+                                            <!-- Settle / Paid Button (Only if NOT yet paid) -->
                                             <button type="button"
                                                     onclick="openPaymentModal(<?= (int)$txn['id'] ?>,'merchandise_transactions',<?= $mh_total ?>,<?= $mh_paid ?>,<?= $mh_balance ?>,'<?= addslashes($txn['customer_name'] ?? '') ?>',false,'merchandise')"
-                                                    style="padding:6px 12px;font-size:13px;border:none;background:#16a34a;color:#fff;border-radius:6px;cursor:pointer;white-space:nowrap;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px;transition:background 0.2s ease;"
-                                                    onmouseover="this.style.background='#15803d'"
-                                                    onmouseout="this.style.background='#16a34a'">
+                                                    class="txn-btn success">
                                                 <i class="fas fa-coins"></i>
                                                 <?= strtolower($mh_pay_status) === 'partial payment' ? 'Settle Balance' : 'Settle Payment' ?>
                                             </button>
                                             <?php elseif (strtolower($mh_pay_status) === 'paid'): ?>
-                                            <!-- Paid = Complete, Print Receipt Only (NO re-issue) - GRAY -->
+                                            <!-- Paid = Complete, Print Receipt Only -->
                                             <button type="button"
                                                     onclick="printMerchandiseReceipt('<?= addslashes($txn['transaction_id'] ?? '') ?>')"
-                                                    style="padding:6px 12px;font-size:13px;border:none;background:#6b7280;color:#fff;border-radius:6px;cursor:pointer;white-space:nowrap;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px;transition:background 0.2s ease;"
-                                                    onmouseover="this.style.background='#4b5563'"
-                                                    onmouseout="this.style.background='#6b7280'">
+                                                    class="txn-btn secondary">
                                                 <i class="fas fa-print"></i> Print Receipt
                                             </button>
                                             <span style="font-size:10px;color:#16a34a;font-weight:600;text-align:center;display:block;margin-top:2px;">
-                                                <i class="fas fa-check-circle"></i> Paid & Complete
+                                                <i class="fas fa-check-circle"></i> Paid &amp; Complete
                                             </span>
                                             <?php endif; ?>
                                         </div>
@@ -3438,16 +3671,21 @@ main.main {
                                 }
                             }
 
-                            // Tab button styles
-                            formBtn.style.fontWeight   = isHistory ? '500' : '700';
-                            formBtn.style.color        = isHistory ? '#64748b' : '#28a745';
-                            formBtn.style.background   = isHistory ? '#f8fafc' : '#fff';
-                            formBtn.style.borderBottom = isHistory ? '2px solid transparent' : '2px solid #28a745';
-                            histBtn.style.fontWeight   = isHistory ? '700' : '500';
-                            histBtn.style.color        = isHistory ? '#28a745' : '#64748b';
-                            histBtn.style.background   = isHistory ? '#fff' : '#f8fafc';
-                            histBtn.style.borderBottom = isHistory ? '2px solid #28a745' : '2px solid transparent';
-                            if (isHistory) mhRender();
+                            // Tab button styles — use CSS classes to override global button rule
+                            formBtn.className = 'txn-subtab-btn green ' + (isHistory ? 'inactive' : 'active');
+                            histBtn.className = 'txn-subtab-btn green ' + (isHistory ? 'active' : 'inactive');
+
+
+
+
+
+
+
+
+
+
+
+
 
                             // Update URL so refresh keeps the tab open
                             if (window.history && window.history.replaceState) {
@@ -3584,7 +3822,7 @@ main.main {
                     <span style="font-size:12px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:6px;">
                         <i class="fas fa-shopping-basket" style="color:#28a745;"></i>Cart
                     </span>
-                    <button type="button" class="txn-btn danger" style="padding:4px 10px;font-size:11px;" onclick="clearCart()">
+                    <button type="button" class="txn-btn danger" onclick="clearCart()">
                         <i class="fas fa-trash"></i> Clear
                     </button>
                 </div>
@@ -3666,16 +3904,17 @@ main.main {
                     </div>
                 </div>
 
-                <!-- Notes / Description -->
+                <!-- Service Price -->
                 <div style="margin-bottom:18px;">
                     <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:5px;">
-                        Pricing Notes <span style="color:#94a3b8;font-weight:400;">(optional)</span>
+                        Price (₱) <span style="color:#dc2626;">*</span>
                     </label>
-                    <textarea id="newServiceNotes" rows="2"
-                              style="width:100%;border:1.5px solid #e2e8f0;border-radius:8px;
-                                     padding:9px 12px;font-size:12px;resize:vertical;
-                                     box-sizing:border-box;font-family:inherit;"
-                              placeholder="e.g. Price varies by vehicle type and parts needed…"></textarea>
+                    <input type="number" id="newServicePrice" class="txn-input"
+                           placeholder="0.00"
+                           step="0.01"
+                           min="0"
+                           style="font-size:13px;"
+                           required>
                 </div>
 
                 <!-- Info banner -->
@@ -3698,12 +3937,12 @@ main.main {
                 <!-- Buttons -->
                 <div style="display:flex;gap:10px;justify-content:flex-end;">
                     <button type="button" onclick="closeAddServiceModal()"
-                            class="txn-btn secondary" style="font-size:12px;padding:8px 16px;">
+                            class="txn-btn secondary">
                         Cancel
                     </button>
                     <button type="button" id="addServiceSubmitBtn"
                             onclick="submitNewServiceType()"
-                            class="txn-btn primary" style="font-size:12px;padding:8px 18px;background:#b45309;border-color:#b45309;">
+                            class="txn-btn primary">
                         <i class="fas fa-paper-plane"></i> Submit for Approval
                     </button>
                 </div>
@@ -3792,12 +4031,12 @@ main.main {
                 <!-- Buttons -->
                 <div style="display:flex;gap:10px;justify-content:flex-end;">
                     <button type="button" onclick="closeAddVehicleModal()"
-                            class="txn-btn secondary" style="font-size:12px;padding:8px 16px;">
+                            class="txn-btn secondary">
                         Cancel
                     </button>
                     <button type="button" id="addVehicleSubmitBtn"
                             onclick="submitNewVehicleType()"
-                            class="txn-btn primary" style="font-size:12px;padding:8px 18px;">
+                            class="txn-btn primary">
                         <i class="fas fa-paper-plane"></i> Submit for Approval
                     </button>
                 </div>
@@ -3914,12 +4153,12 @@ main.main {
                 <!-- Buttons -->
                 <div style="display:flex;gap:10px;justify-content:flex-end;">
                     <button type="button" onclick="closeAddProductModal()"
-                            class="txn-btn secondary" style="font-size:12px;padding:8px 16px;">
+                            class="txn-btn secondary">
                         Cancel
                     </button>
                     <button type="button" id="addProductSubmitBtn"
                             onclick="submitNewProduct()"
-                            class="txn-btn primary" style="font-size:12px;padding:8px 18px;">
+                            class="txn-btn primary">
                         <i class="fas fa-paper-plane"></i> Submit for Approval
                     </button>
                 </div>
@@ -4106,8 +4345,7 @@ main.main {
                          onclick="selectServiceType('${escapeHtml(t.name)}')"
                          style="padding:10px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f1f5f9;
                                 transition:background 0.15s;"
-                         onmouseover="this.style.background='#f8fafc'"
-                         onmouseout="this.style.background='white'">
+                         >
                         ${escapeHtml(t.name)}
                     </div>
                 `).join('');
@@ -4337,9 +4575,9 @@ main.main {
         // ── Add Service Type modal ────────────────────────────────────────────
         function openAddServiceModal() {
             const nameEl  = document.getElementById('newServiceName');
-            const notesEl = document.getElementById('newServiceNotes');
+            const priceEl = document.getElementById('newServicePrice');
             if (nameEl)  nameEl.value  = '';
-            if (notesEl) notesEl.value = '';
+            if (priceEl) priceEl.value = '';
             setAddServiceError('');
             const modal = document.getElementById('addServiceModal');
             if (modal) modal.style.display = 'flex';
@@ -4361,12 +4599,13 @@ main.main {
 
         async function submitNewServiceType() {
             const name  = (document.getElementById('newServiceName')?.value  || '').trim();
-            const notes = (document.getElementById('newServiceNotes')?.value || '').trim();
+            const price = (document.getElementById('newServicePrice')?.value || '').trim();
             const btn   = document.getElementById('addServiceSubmitBtn');
 
             setAddServiceError('');
             if (!name) { setAddServiceError('Please enter the service name.'); return; }
             if (name.length > 100) { setAddServiceError('Name is too long (max 100 characters).'); return; }
+            if (!price || isNaN(price) || parseFloat(price) < 0) { setAddServiceError('Please enter a valid positive price.'); return; }
 
             if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting\u2026'; }
 
@@ -4375,7 +4614,7 @@ main.main {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'same-origin',
-                    body: JSON.stringify({ service_name: name, notes }),
+                    body: JSON.stringify({ service_name: name, service_price: parseFloat(price) }),
                 });
                 const data = await res.json();
 
@@ -4470,34 +4709,85 @@ main.main {
         // ── Vehicle type change ───────────────────────────────────────────────
         function onVehicleTypeChange() { /* reserved */ }
 
+        // ── Vehicle Type Custom Dropdown ──────────────────────────────────────
+        let _vehicleTypesAll = []; // flat list: [{name, category}]
+
+        function showVehicleDropdown() {
+            filterVehicleDropdown(document.getElementById('joVehicleType')?.value || '');
+            document.getElementById('vehicleTypeDropdown').style.display = 'block';
+        }
+        function hideVehicleDropdown() {
+            document.getElementById('vehicleTypeDropdown').style.display = 'none';
+        }
+        function filterVehicleDropdown(query) {
+            const dd  = document.getElementById('vehicleTypeDropdown');
+            if (!dd) return;
+            const q   = query.trim().toLowerCase();
+            const matches = q === ''
+                ? _vehicleTypesAll
+                : _vehicleTypesAll.filter(v =>
+                    v.name.toLowerCase().includes(q) ||
+                    v.category.toLowerCase().includes(q));
+
+            if (matches.length === 0) {
+                dd.innerHTML = '<div style="padding:10px 14px;font-size:12px;color:#94a3b8;">No matches found</div>';
+                dd.style.display = 'block';
+                return;
+            }
+
+            // Group by category
+            const grouped = {};
+            matches.forEach(v => {
+                if (!grouped[v.category]) grouped[v.category] = [];
+                grouped[v.category].push(v.name);
+            });
+
+            let html = '';
+            Object.entries(grouped).forEach(([cat, names]) => {
+                html += `<div style="padding:6px 12px 2px;font-size:10px;font-weight:700;
+                                     color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;
+                                     background:#f8fafc;border-bottom:1px solid #f1f5f9;">${cat}</div>`;
+                names.forEach(name => {
+                    html += `<div onclick="selectVehicleType('${name.replace(/'/g,"&#39;")}')"
+                                  style="padding:9px 16px;font-size:13px;cursor:pointer;color:#1e293b;
+                                         border-bottom:1px solid #f8fafc;transition:background .15s;"
+                                  onmouseover="this.style.background='#eff6ff'"
+                                  onmouseout="this.style.background=''">${name}</div>`;
+                });
+            });
+            dd.innerHTML = html;
+            dd.style.display = 'block';
+        }
+        function selectVehicleType(name) {
+            const inp = document.getElementById('joVehicleType');
+            if (inp) inp.value = name;
+            hideVehicleDropdown();
+            onVehicleTypeChange();
+        }
+
         // ── Load vehicle types from database ─────────────────────────────────
         async function loadVehicleTypes(selectValue) {
             const input = document.getElementById('joVehicleType');
-            const datalist = document.getElementById('vehicleTypeList');
-            if (!input || !datalist) return;
+            if (!input) return;
             try {
                 const res  = await fetch('../backend/api/get_vehicle_types.php', { credentials: 'same-origin' });
                 const data = await res.json();
                 if (!data.success) throw new Error(data.error || 'Failed to load vehicle types');
 
                 const prev = selectValue !== undefined ? selectValue : input.value;
-                datalist.innerHTML = '';
-                
-                // Add all vehicle types to datalist (flat list, datalist doesn't support optgroups visually)
+                _vehicleTypesAll = [];
+
+                // Build flat list from grouped data for custom dropdown
                 Object.entries(data.groups).forEach(([category, vehicles]) => {
                     vehicles.forEach(v => {
-                        const opt = document.createElement('option');
-                        opt.value = v.name;
-                        // Show category in the label for context
-                        opt.textContent = `${v.name} (${category})`;
-                        datalist.appendChild(opt);
+                        _vehicleTypesAll.push({ name: v.name, category });
                     });
                 });
-                
+
                 // Restore previous value if any
                 if (prev) input.value = prev;
             } catch (err) {
-                datalist.innerHTML = '<option value="">— Could not load vehicle types —</option>';
+                _vehicleTypesAll = [];
                 console.error('loadVehicleTypes error:', err);
             }
         }
@@ -5281,6 +5571,15 @@ main.main {
             renderCart();
             updateCheckoutBtn();
             onPaymentChange();
+
+            // Close vehicle dropdown when clicking outside
+            document.addEventListener('click', function(e) {
+                const input = document.getElementById('joVehicleType');
+                const dd    = document.getElementById('vehicleTypeDropdown');
+                if (dd && input && !input.contains(e.target) && !dd.contains(e.target)) {
+                    dd.style.display = 'none';
+                }
+            });
         });
         </script>
 
@@ -5322,47 +5621,47 @@ main.main {
         <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px;">
             <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px;">
                 <div style="width:36px;height:36px;border-radius:50%;background:#fef9c3;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                    <i class="fas fa-clock" style="color:#b45309;font-size:14px;"></i>
+                    <i class="fas fa-clock" style="color:#b45309 !important;font-size:14px;"></i>
                 </div>
                 <div>
-                    <div style="font-size:20px;font-weight:800;color:#b45309;"><?= $jo_count_pending ?></div>
-                    <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Pending</div>
+                    <div style="font-size:20px;font-weight:800;color:#b45309 !important;"><?= $jo_count_pending ?></div>
+                    <div style="font-size:10px;color:#64748b !important;font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Pending</div>
                 </div>
             </div>
             <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px;">
                 <div style="width:36px;height:36px;border-radius:50%;background:#d1fae5;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                    <i class="fas fa-check" style="color:#065f46;font-size:14px;"></i>
+                    <i class="fas fa-check" style="color:#065f46 !important;font-size:14px;"></i>
                 </div>
                 <div>
-                    <div style="font-size:20px;font-weight:800;color:#065f46;"><?= $jo_count_approved ?></div>
-                    <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Approved</div>
+                    <div style="font-size:20px;font-weight:800;color:#065f46 !important;"><?= $jo_count_approved ?></div>
+                    <div style="font-size:10px;color:#64748b !important;font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Approved</div>
                 </div>
             </div>
             <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px;">
                 <div style="width:36px;height:36px;border-radius:50%;background:#dbeafe;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                    <i class="fas fa-play" style="color:#1d4ed8;font-size:14px;"></i>
+                    <i class="fas fa-play" style="color:#1d4ed8 !important;font-size:14px;"></i>
                 </div>
                 <div>
-                    <div style="font-size:20px;font-weight:800;color:#1d4ed8;"><?= $jo_count_inprogress ?></div>
-                    <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.4px;">In Progress</div>
+                    <div style="font-size:20px;font-weight:800;color:#1d4ed8 !important;"><?= $jo_count_inprogress ?></div>
+                    <div style="font-size:10px;color:#64748b !important;font-weight:600;text-transform:uppercase;letter-spacing:.4px;">In Progress</div>
                 </div>
             </div>
             <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px;">
                 <div style="width:36px;height:36px;border-radius:50%;background:#dcfce7;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                    <i class="fas fa-check-double" style="color:#16a34a;font-size:14px;"></i>
+                    <i class="fas fa-check-double" style="color:#16a34a !important;font-size:14px;"></i>
                 </div>
                 <div>
-                    <div style="font-size:20px;font-weight:800;color:#16a34a;"><?= $jo_count_completed ?></div>
-                    <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Completed</div>
+                    <div style="font-size:20px;font-weight:800;color:#16a34a !important;"><?= $jo_count_completed ?></div>
+                    <div style="font-size:10px;color:#64748b !important;font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Completed</div>
                 </div>
             </div>
             <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px;">
                 <div style="width:36px;height:36px;border-radius:50%;background:#fee2e2;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                    <i class="fas fa-times-circle" style="color:#dc2626;font-size:14px;"></i>
+                    <i class="fas fa-times-circle" style="color:#dc2626 !important;font-size:14px;"></i>
                 </div>
                 <div>
-                    <div style="font-size:20px;font-weight:800;color:#dc2626;"><?= $jo_count_rejected ?></div>
-                    <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Rejected</div>
+                    <div style="font-size:20px;font-weight:800;color:#dc2626 !important;"><?= $jo_count_rejected ?></div>
+                    <div style="font-size:10px;color:#64748b !important;font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Rejected</div>
                 </div>
             </div>
         </div>
@@ -5370,46 +5669,48 @@ main.main {
         <!-- Filter bar -->
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
             <span style="font-size:15px;color:#64748b;font-weight:600;">Filter:</span>
-            <button onclick="joFilterTable('all')"    id="joFilter_all"       class="jo-filter-btn jo-filter-active">All</button>
-            <button onclick="joFilterTable('pending')"  id="joFilter_pending"   class="jo-filter-btn">Pending</button>
-            <button onclick="joFilterTable('approved')" id="joFilter_approved"  class="jo-filter-btn">Approved</button>
-            <button onclick="joFilterTable('inprogress')" id="joFilter_inprogress" class="jo-filter-btn">In Progress</button>
-            <button onclick="joFilterTable('completed')" id="joFilter_completed" class="jo-filter-btn">Completed</button>
-            <button onclick="joFilterTable('rejected')" id="joFilter_rejected"  class="jo-filter-btn">Rejected</button>
+            <button onclick="joFilterTable('all')"    id="joFilter_all"       class="jo-filter-btn jo-filter-active" style="color:#1e293b !important;">All</button>
+            <button onclick="joFilterTable('pending')"  id="joFilter_pending"   class="jo-filter-btn" style="color:#1e293b !important;">Pending</button>
+            <button onclick="joFilterTable('approved')" id="joFilter_approved"  class="jo-filter-btn" style="color:#1e293b !important;">Approved</button>
+            <button onclick="joFilterTable('inprogress')" id="joFilter_inprogress" class="jo-filter-btn" style="color:#1e293b !important;">In Progress</button>
+            <button onclick="joFilterTable('completed')" id="joFilter_completed" class="jo-filter-btn" style="color:#1e293b !important;">Completed</button>
+            <button onclick="joFilterTable('rejected')" id="joFilter_rejected"  class="jo-filter-btn" style="color:#1e293b !important;">Rejected</button>
             <!-- Export buttons -->
             <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                 <a href="../backend/export_staff_transactions.php?type=job_orders&format=excel"
                    title="Export to Excel"
-                   style="background:#1d6f42;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;">
+                   class="txn-btn success">
                     <i class="fas fa-file-excel"></i> Excel
                 </a>
                 <a href="../backend/export_staff_transactions.php?type=job_orders&format=csv"
                    title="Export to CSV"
-                   style="background:#003d7a;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;">
+                   class="txn-btn primary">
                     <i class="fas fa-file-csv"></i> CSV
                 </a>
                 <a href="../backend/export_staff_transactions.php?type=job_orders&format=pdf"
                    target="_blank"
                    title="Export to PDF"
-                   style="background:#dc2626;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;">
+                   class="txn-btn danger">
                     <i class="fas fa-file-pdf"></i> PDF
                 </a>
-                <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker"
-                   title="Back to Job Order Tracker"
-                   style="background:#6c7280;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;">
+                <a href="javascript:void(0)" 
+                   onclick="goBackFromTracker()"
+                   title="Back"
+                   class="txn-btn secondary">
                     <i class="fas fa-arrow-left"></i> Back
                 </a>
             </div>
         </div>
         <style>
         .jo-filter-btn {
-            padding:7px 16px;border:1px solid #e2e8f0;border-radius:20px;
-            background:#f8fafc;color:#64748b;font-size:14px;font-weight:600;
-            cursor:pointer;transition:all .15s;
+            display:inline-flex;align-items:center;gap:6px;
+            padding:7px 14px;border:1px solid #003d7a;border-radius:4px;
+            background:white !important;color:#003d7a !important;font-size:11px;font-weight:600;
+            cursor:pointer;transition:all .2s;text-decoration:none;
         }
-        .jo-filter-btn:hover { background:#e2e8f0; }
+        .jo-filter-btn:hover { background:#003d7a !important; color:white !important; }
         .jo-filter-btn.jo-filter-active {
-            background:#003d7a;color:#fff;border-color:#003d7a;
+            background:#003d7a !important;color:white !important;border-color:#003d7a;
         }
         </style>
 
@@ -5431,16 +5732,16 @@ main.main {
                 <div style="overflow-x:hidden;">
                 <table class="txn-table" id="joUnifiedTable" style="table-layout:fixed; word-wrap:break-word;width:100%;">
                     <colgroup>
-                        <col style="width:6%;"  ><!-- JO ID -->
-                        <col style="width:9%;"  ><!-- Customer -->
-                        <col style="width:14%;"><!-- Vehicle / Service -->
-                        <col style="width:10%;"><!-- Items / Parts -->
-                        <col style="width:9%;" ><!-- Mechanic -->
-                        <col style="width:9%;" ><!-- Workflow Status -->
-                        <col style="width:10%;"><!-- Payment Status -->
-                        <col style="width:8%;" ><!-- Remarks -->
-                        <col style="width:9%;" ><!-- Date/Time -->
-                        <col style="width:16%;"><!-- Actions -->
+                        <col style="width:5%;"  ><!-- JO ID -->
+                        <col style="width:8%;"  ><!-- Customer -->
+                        <col style="width:13%;"><!-- Vehicle / Service -->
+                        <col style="width:9%;"><!-- Items / Parts -->
+                        <col style="width:8%;" ><!-- Mechanic -->
+                        <col style="width:13%;" ><!-- Workflow Status (increased) -->
+                        <col style="width:11%;"><!-- Payment Status (increased) -->
+                        <col style="width:7%;" ><!-- Remarks -->
+                        <col style="width:8%;" ><!-- Date/Time -->
+                        <col style="width:18%;"><!-- Actions (increased) -->
                     </colgroup>
                     <thead>
                         <tr>
@@ -5530,13 +5831,13 @@ main.main {
                             <?= htmlspecialchars($parts_display) ?>
                         </td>
                         <td style="font-size:14px;"><?= htmlspecialchars($job['mechanic_name'] ?? 'Unassigned') ?></td>
-                        <td>
-                            <span style="color:<?= $wf_color ?>;font-size:12px;font-weight:600;white-space:nowrap;">
+                        <td style="word-break:break-word;overflow-wrap:break-word;">
+                            <span style="color:<?= $wf_color ?>;font-size:11px;font-weight:600;line-height:1.3;">
                                 <?= $wf_label ?>
                             </span>
                         </td>
-                        <td>
-                            <span style="color:<?= $pay_color ?>;font-size:12px;font-weight:600;white-space:nowrap;">
+                        <td style="word-break:break-word;overflow-wrap:break-word;">
+                            <span style="color:<?= $pay_color ?>;font-size:11px;font-weight:600;line-height:1.3;">
                                 <?= $pay_label ?>
                             </span>
                         </td>
@@ -5581,10 +5882,8 @@ main.main {
                                     <!-- View Button (Always visible) - DARK BLUE -->
                                     <button type="button"
                                             onclick='viewJobOrderDetails(<?= htmlspecialchars($jo_data, ENT_QUOTES) ?>)'
-                                            class="txn-btn" 
-                                            style="padding:6px 12px;font-size:13px;flex:1;background:#002F70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px;transition:background 0.2s ease;"
-                                            onmouseover="this.style.background='#001a3d'"
-                                            onmouseout="this.style.background='#002F70'">
+                                            class="txn-btn primary" 
+                                            >
                                         <i class="fas fa-eye"></i> View
                                     </button>
                                     
@@ -5592,10 +5891,8 @@ main.main {
                                     <!-- Adjust Button (only before In Progress) - GRAY -->
                                     <button type="button"
                                             onclick='openAdjustJobOrderModal(<?= htmlspecialchars($jo_data, ENT_QUOTES) ?>)'
-                                            class="txn-btn" 
-                                            style="padding:6px 12px;font-size:13px;flex:1;background:#6b7280;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px;transition:background 0.2s ease;"
-                                            onmouseover="this.style.background='#4b5563'"
-                                            onmouseout="this.style.background='#6b7280'">
+                                            class="txn-btn secondary" 
+                                            >
                                         <i class="fas fa-edit"></i> Adjust
                                     </button>
                                     <?php endif; ?>
@@ -5605,10 +5902,7 @@ main.main {
                                 <?php if ($wf_status === 'Rejected'): ?>
                                     <!-- Rejected: Re-encode - GRAY -->
                                     <a href="joborder.php" 
-                                       class="txn-btn secondary" 
-                                       style="padding:7px 14px;font-size:13px;text-align:center;text-decoration:none;background:#6b7280;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px;transition:background 0.2s ease;"
-                                       onmouseover="this.style.background='#4b5563'"
-                                       onmouseout="this.style.background='#6b7280'">
+                                       class="txn-btn secondary">
                                         <i class="fas fa-redo"></i> Re-encode
                                     </a>
                                     
@@ -5624,10 +5918,7 @@ main.main {
                                         <!-- Paid = COMPLETE, Print Receipt Only (NO re-issue) - GRAY -->
                                         <button type="button"
                                                 onclick="printJobOrderReceipt(<?= (int)$job['id'] ?>,'<?= addslashes($job['job_order_id'] ?? ('#'.$job['id'])) ?>')"
-                                                class="txn-btn" 
-                                                style="padding:7px 14px;font-size:13px;background:#6b7280;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px;transition:background 0.2s ease;"
-                                                onmouseover="this.style.background='#4b5563'"
-                                                onmouseout="this.style.background='#6b7280'">
+                                                class="txn-btn secondary">
                                             <i class="fas fa-print"></i> Print Receipt
                                         </button>
                                         <span style="font-size:11px;color:#16a34a;font-weight:600;text-align:center;padding:4px 0;display:flex;align-items:center;justify-content:center;gap:4px;">
@@ -5637,10 +5928,7 @@ main.main {
                                         <!-- Pending/Partial = Settle Balance - GREEN -->
                                         <button type="button"
                                                 onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',false,'tracker')"
-                                                class="txn-btn success" 
-                                                style="padding:7px 14px;font-size:13px;background:#16a34a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px;transition:background 0.2s ease;"
-                                                onmouseover="this.style.background='#15803d'"
-                                                onmouseout="this.style.background='#16a34a'">
+                                                class="txn-btn success">
                                             <i class="fas fa-money-bill-wave"></i>
                                             <?= $pay_status === 'Partial Payment' ? 'Settle Balance' : 'Mark Paid' ?>
                                         </button>
@@ -5655,10 +5943,7 @@ main.main {
                                         <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
                                         <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
                                         <button type="submit" 
-                                                class="txn-btn primary" 
-                                                style="padding:7px 14px;font-size:13px;width:100%;background:#002F70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px;transition:background 0.2s ease;"
-                                                onmouseover="this.style.background='#001a3d'"
-                                                onmouseout="this.style.background='#002F70'">
+                                                class="txn-btn primary">
                                             <i class="fas fa-play"></i> Start In Progress
                                         </button>
                                     </form>
@@ -5671,10 +5956,7 @@ main.main {
                                         <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
                                         <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
                                         <button type="submit" 
-                                                class="txn-btn success" 
-                                                style="padding:7px 14px;font-size:13px;width:100%;background:#16a34a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px;transition:background 0.2s ease;"
-                                                onmouseover="this.style.background='#15803d'"
-                                                onmouseout="this.style.background='#16a34a'">
+                                                class="txn-btn success">
                                             <i class="fas fa-check"></i> Mark Complete
                                         </button>
                                     </form>
@@ -5682,10 +5964,7 @@ main.main {
                                     <!-- ELSE: Complete with payment - GREEN -->
                                     <button type="button"
                                             onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',true,'tracker')"
-                                            class="txn-btn success" 
-                                            style="padding:7px 14px;font-size:13px;width:100%;background:#16a34a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px;transition:background 0.2s ease;"
-                                            onmouseover="this.style.background='#15803d'"
-                                            onmouseout="this.style.background='#16a34a'">
+                                            class="txn-btn success">
                                         <i class="fas fa-check"></i> Complete & Settle
                                     </button>
                                     <?php endif; ?>
@@ -5694,10 +5973,7 @@ main.main {
                                     <!-- Downpayment option - GREEN -->
                                     <button type="button"
                                             onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',false,'tracker')"
-                                            class="txn-btn" 
-                                            style="padding:7px 14px;font-size:13px;width:100%;background:#16a34a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px;transition:background 0.2s ease;"
-                                            onmouseover="this.style.background='#15803d'"
-                                            onmouseout="this.style.background='#16a34a'">
+                                            class="txn-btn success">
                                         <i class="fas fa-coins"></i> Accept Downpayment
                                     </button>
                                     <?php endif; ?>
@@ -5732,9 +6008,9 @@ main.main {
                         </button>
                     </div>
                 </div>
-                <?php endif; ?>
             </div>
         </div>
+        <?php endif; ?>
 
         <script>
         var joState = {
@@ -6422,12 +6698,10 @@ main.main {
                 </div>
               </div>
               <div style="padding:15px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end;">
-                <button type="button" onclick="closeUpdateStatusModal()" style="padding:9px 18px;background:#f1f5f9;color:#475569;
-                        border:1px solid #e2e8f0;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
+                <button type="button" onclick="closeUpdateStatusModal()" class="txn-btn secondary">
                   Cancel
                 </button>
-                <button type="submit" style="padding:9px 18px;background:#003d7a;color:#fff;border:none;
-                        border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;">
+                <button type="submit" class="txn-btn primary">
                   <i class="fas fa-check"></i> Update Status
                 </button>
               </div>
@@ -6517,12 +6791,10 @@ main.main {
                 </div>
               </div>
               <div style="padding:15px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end;">
-                <button type="button" onclick="closeAdjustJobOrderModal()" style="padding:9px 18px;background:#f1f5f9;color:#475569;
-                        border:1px solid #e2e8f0;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
+                <button type="button" onclick="closeAdjustJobOrderModal()" class="txn-btn secondary">
                   Cancel
                 </button>
-                <button type="submit" style="padding:9px 18px;background:#f59e0b;color:#fff;border:none;
-                        border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;">
+                <button type="submit" class="txn-btn primary">
                   <i class="fas fa-save"></i> Save Changes
                 </button>
               </div>
@@ -6704,13 +6976,12 @@ main.main {
                 var panel = document.getElementById('innerTab_' + t);
                 var btn   = document.getElementById('innerTabBtn_' + t);
                 if (!panel || !btn) return;
-                var colors = {merchandise:'#28a745', tracker:'#003d7a'};
+                var themeMap = {merchandise:'green', tracker:'darkblue'};
+                var themeMap = {merchandise:'green', tracker:'darkblue'};
                 var active = (t === tab);
-                panel.style.display    = active ? 'block' : 'none';
-                btn.style.fontWeight   = active ? '700' : '500';
-                btn.style.color        = active ? colors[t] : '#64748b';
-                btn.style.background   = active ? '#fff' : '#f8fafc';
-                btn.style.borderBottom = active ? '2px solid ' + colors[t] : '2px solid transparent';
+                panel.style.display = active ? 'block' : 'none';
+                btn.className = 'txn-subtab-btn ' + themeMap[t] + ' ' + (active ? 'active' : 'inactive');
+                btn.style.whiteSpace = 'nowrap';
             });
             var descElem = document.getElementById('txnSectionDesc');
             if (descElem) {
@@ -6720,7 +6991,31 @@ main.main {
             url.searchParams.set('active_tab', tab);
             history.replaceState(null, '', url.toString());
         }
+
+        function goBackFromTracker() {
+            // Check if user came from dashboard (referrer contains staff_dashboard.php)
+            var referrer = document.referrer || '';
+            var fromDashboard = referrer.indexOf('staff_dashboard.php') !== -1;
+            
+            // Check URL parameters - if came from encode_jo, go back to merchandise tab
+            var urlParams = new URLSearchParams(window.location.search);
+            var hasEncodeJo = window.location.href.indexOf('encode_jo') !== -1;
+            
+            if (fromDashboard && !hasEncodeJo) {
+                // User came from dashboard → go back to dashboard
+                window.location.href = 'staff_dashboard.php';
+            } else {
+                // User came from within the page (merchandise tab) → switch to merchandise tab
+                switchInnerTab('merchandise');
+            }
+        }
+
+
+
+
         </script>
+
+
 
         <?php /* ══════════════════════════════════════════════════════
                SECTION: SHIFT HISTORY
@@ -6736,7 +7031,7 @@ main.main {
             </div>
             <div>
                 <button type="button" onclick="window.location.href='staff_dashboard.php'" 
-                        style="display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;background:#6c757d;color:#fff;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;" title="Back to Staff Dashboard">
+                        class="txn-btn secondary" title="Back to Staff Dashboard">
                     <i class="fas fa-arrow-left"></i> <span>Back</span>
                 </button>
             </div>

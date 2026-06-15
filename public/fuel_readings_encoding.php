@@ -239,95 +239,135 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     // System compute difference
                     $difference = $present_reading - $previous_reading;
-                    
-                    // Get current stock before update
+
+                    // ── INVENTORY DEDUCTION RULE: Staff Encoding ─────────────────────────────
+                    // Deduction does NOT happen here. Stock is only deducted upon Manager Approval.
+                    // Staff encode creates a 'Pending Manager Validation' record.
+                    // Reason: Reject = no deduction, Adjust = manager corrects liters first.
+                    // ─────────────────────────────────────────────────────────────────────────
+
+                    // Get current stock for projected low-stock warning (display only, no deduction)
                     $stmt = $pdo->prepare("SELECT current_level AS current_stock FROM fuel_inventory WHERE station_id = ? AND fuel_type = ?");
                     $stmt->execute([$station_id, $fuel_type]);
-                    $stock_before = $stmt->fetch(PDO::FETCH_ASSOC);
-                    $stock_before_amount = $stock_before['current_stock'] ?? 0;
-                    
-                    // Validate stock availability
-                    if ($difference > $stock_before_amount) {
-                        $_SESSION['error'] = 'Insufficient stock! Available: ' . number_format($stock_before_amount, 2) . 'L, Requested: ' . number_format($difference, 2) . 'L';
+                    $stock_row = $stmt->fetch(PDO::FETCH_ASSOC);
+                    $stock_before_amount = (float)($stock_row['current_stock'] ?? 0);
+
+                    // Soft check: warn if projected balance would be negative (staff info only)
+                    $projected_stock = $stock_before_amount - $difference;
+                    if ($projected_stock < 0) {
+                        $_SESSION['error'] = 'Warning: Projected liters sold (' . number_format($difference, 2) . 'L) exceeds current inventory (' . number_format($stock_before_amount, 2) . 'L). Please recheck your reading and resubmit. The actual deduction will be verified by the manager.';
                         header('Location: fuel_readings_encoding.php');
                         exit;
                     }
-                    
-                    // Create fuel reading record
+
+                    // Create fuel reading record (pending manager validation)
                     $stmt = $pdo->prepare("
                         INSERT INTO fuel_readings (
                             pump_number, fuel_type, present_reading, previous_reading,
                             difference, shift_period, status, station_id, encoded_by, encoded_at
                         ) VALUES (?, ?, ?, ?, ?, ?, 'Pending Manager Validation', ?, ?, NOW())
                     ");
-                    
                     $stmt->execute([
                         $pump_number, $fuel_type, $present_reading, $previous_reading,
                         $difference, $shift_period, $station_id, $me['id']
-                    ]);                    
+                    ]);
                     $reading_id = $pdo->lastInsertId();
-                    
-                    // Update stock levels
-                    $new_stock = $stock_before_amount - $difference;
-                    $stmt = $pdo->prepare("
-                        UPDATE fuel_inventory SET current_level = ?, last_updated = NOW() 
-                        WHERE station_id = ? AND fuel_type = ?
-                    ");
-                    $stmt->execute([$new_stock, $station_id, $fuel_type]);
-                    
-                    // Check for low stock alert — pull thresholds from DB
+
+                    // ── Also insert into fuel_transactions so manager approval queue picks it up ──
+                    // This ensures the Manager can approve/reject from manager_fuel_transactions.php
+                    $txn_id = 'FUEL' . date('Y') . str_pad($station_id, 3, '0', STR_PAD_LEFT)
+                            . str_pad($reading_id, 6, '0', STR_PAD_LEFT);
+                    $price_per_liter = 0.0;
+                    try {
+                        $priceStmt = $pdo->prepare("SELECT price_per_liter FROM fuel_inventory WHERE station_id = ? AND fuel_type = ? LIMIT 1");
+                        $priceStmt->execute([$station_id, $fuel_type]);
+                        $price_per_liter = (float)($priceStmt->fetchColumn() ?? 0);
+                    } catch (Exception $e) {}
+                    $total_amount = round($difference * $price_per_liter, 2);
+
+                    try {
+                        // Ensure required columns exist
+                        $ftCols = array_column($pdo->query("SHOW COLUMNS FROM fuel_transactions")->fetchAll(PDO::FETCH_ASSOC), 'Field');
+                        foreach (['shift_period','shift_name','shift_id','notes','status','validated_by','validated_at','reject_reason'] as $rc) {
+                            if (!in_array($rc, $ftCols)) {
+                                $def = ($rc === 'status') ? "VARCHAR(50) NULL DEFAULT 'Pending Validation'" : "TEXT NULL";
+                                $pdo->exec("ALTER TABLE fuel_transactions ADD COLUMN `$rc` $def");
+                            }
+                        }
+                        $pdo->prepare("
+                            INSERT INTO fuel_transactions
+                                (transaction_id, station_id, fuel_type,
+                                 present_reading, previous_reading, calibration,
+                                 liters_sold, price_per_liter, total_amount,
+                                 staff_id, transaction_date,
+                                 shift_period, shift_name, shift_id, notes, status)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'Encoded via Reading Form','Pending Validation')
+                        ")->execute([
+                            $txn_id, $station_id, $fuel_type,
+                            $present_reading, $previous_reading, 0,
+                            $difference, $price_per_liter, $total_amount,
+                            $me['id'], date('Y-m-d H:i:s'),
+                            $shift_period, '', null,
+                        ]);
+                    } catch (Exception $e) {
+                        error_log('fuel_readings_encoding: could not insert fuel_transactions: ' . $e->getMessage());
+                    }
+
+                    // ── Check for projected low stock alert (informational only) ──────────────
                     $threshold = 500.0; // safe default
                     $critical_threshold = 100.0;
                     try {
                         $thr_stmt = $pdo->query("SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('low_stock_threshold','critical_stock_threshold')");
                         if ($thr_stmt) {
                             foreach ($thr_stmt->fetchAll(PDO::FETCH_KEY_PAIR) as $k => $v) {
-                                if ($k === 'low_stock_threshold'     && (float)$v > 0) $threshold          = (float)$v;
+                                if ($k === 'low_stock_threshold'      && (float)$v > 0) $threshold          = (float)$v;
                                 if ($k === 'critical_stock_threshold' && (float)$v > 0) $critical_threshold = (float)$v;
                             }
                         }
                     } catch (Exception $e) {}
-                    // Also check fuel_inventory.reorder_threshold for this specific fuel type
                     if (fm_has_column($pdo, 'fuel_inventory', 'reorder_threshold')) {
-                        $thr2 = $pdo->prepare("SELECT reorder_threshold FROM fuel_inventory WHERE station_id = ? AND fuel_type = ? AND reorder_threshold > 0 LIMIT 1");
-                        $thr2->execute([$station_id, $fuel_type]);
-                        $rt = $thr2->fetchColumn();
-                        if ($rt !== false && (float)$rt > 0) $threshold = (float)$rt;
+                        try {
+                            $thr2 = $pdo->prepare("SELECT reorder_threshold FROM fuel_inventory WHERE station_id = ? AND fuel_type = ? AND reorder_threshold > 0 LIMIT 1");
+                            $thr2->execute([$station_id, $fuel_type]);
+                            $rt = $thr2->fetchColumn();
+                            if ($rt !== false && (float)$rt > 0) $threshold = (float)$rt;
+                        } catch (Exception $e) {}
                     }
 
+                    // Record projected alert (using projected_stock, not actual deduction)
                     $low_stock_alert = false;
-                    if ($new_stock < $threshold) {
+                    if ($projected_stock < $threshold) {
                         $low_stock_alert = true;
-                        $stmt = $pdo->prepare("
-                            INSERT INTO low_stock_alerts (
-                                station_id, fuel_type, current_stock, threshold, alert_level,
-                                created_by, created_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, NOW())
-                        ");
-                        $alert_level = $new_stock < $critical_threshold ? 'Critical' : 'Warning';
-                        $stmt->execute([$station_id, $fuel_type, $new_stock, $threshold, $alert_level, $me['id']]);
+                        try {
+                            $alert_level = $projected_stock < $critical_threshold ? 'Critical' : 'Warning';
+                            $pdo->prepare("
+                                INSERT INTO low_stock_alerts (
+                                    station_id, fuel_type, current_stock, threshold, alert_level,
+                                    created_by, created_at
+                                ) VALUES (?, ?, ?, ?, ?, ?, NOW())
+                            ")->execute([$station_id, $fuel_type, $projected_stock, $threshold, $alert_level, $me['id']]);
+                        } catch (Exception $e) {}
                     }
-                    
-                    // Create comprehensive audit trail
-                    $stmt = $pdo->prepare("
-                        INSERT INTO fuel_audit_trail (
-                            reading_id, action, before_value, after_value, stock_before, stock_after,
-                            performed_by, performed_at, notes
-                        ) VALUES (?, 'FUEL_READING', ?, ?, ?, ?, ?, NOW(), ?)
-                    ");
-                    
-                    $notes = "Pump #$pump_number, $fuel_type, Difference: " . number_format($difference, 2) . "L";
-                    if ($low_stock_alert) {
-                        $notes .= " [LOW STOCK ALERT: " . number_format($new_stock, 2) . "L]";
-                    }
-                    
-                    $stmt->execute([
-                        $reading_id, $previous_reading, $present_reading, 
-                        $stock_before_amount, $new_stock, $me['id'], $notes
-                    ]);
-                    
-                    $_SESSION['success'] = "✅ Fuel reading encoded successfully! 📊 Difference: " . number_format($difference, 2) . "L" . 
-                                        ($low_stock_alert ? " ⚠️ [LOW STOCK ALERT!]" : "");
+
+                    // ── Audit trail: record stock_before; stock_after deferred to manager approval ──
+                    try {
+                        $notes_audit = "Pump #{$pump_number} | {$fuel_type} | Prev: {$previous_reading}L → Present: {$present_reading}L | Diff: " . number_format($difference, 2) . "L | Shift: {$shift_period} | PENDING MANAGER APPROVAL — no deduction yet.";
+                        if ($low_stock_alert) {
+                            $notes_audit .= ' [PROJECTED LOW STOCK: ' . number_format($projected_stock, 2) . 'L after approval]';
+                        }
+                        $pdo->prepare("
+                            INSERT INTO fuel_audit_trail (
+                                reading_id, action, before_value, after_value, stock_before, stock_after,
+                                performed_by, performed_at, notes
+                            ) VALUES (?, 'FUEL_READING_ENCODED', ?, ?, ?, NULL, ?, NOW(), ?)
+                        ")->execute([
+                            $reading_id, $previous_reading, $present_reading,
+                            $stock_before_amount, $me['id'], $notes_audit
+                        ]);
+                    } catch (Exception $e) {}
+
+                    $_SESSION['success'] = 'Fuel reading encoded and submitted for manager approval. Liters computed: ' . number_format($difference, 2) . 'L. Inventory will be deducted after manager approves.'
+                                        . ($low_stock_alert ? ' ⚠ Projected low stock after approval!' : '');
 
                     // ── Audit log ──
                     try {

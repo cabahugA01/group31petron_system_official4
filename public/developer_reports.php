@@ -596,7 +596,7 @@ $report_groups = $report_sections;
 
 <div class="page-head">
     <div>
-        <h1 class="h1" style="font-weight: 800;">REPORTS (Developer View)</h1>
+        <h1 class="h1" style="font-weight: 800;">REPORTS</h1>
         <div class="sub" style="font-weight: 400; color: #666;">System/Domain Technical Monitoring & Security Audit</div>
     </div>
     <div class="actions">
