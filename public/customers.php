@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
@@ -727,7 +727,7 @@ include __DIR__ . '/../partials/header.php';
 /* Prevent horizontal scroll */
 .cust-card-body,
 .cust-table-wrap {
-    overflow-x: auto;
+    overflow:hidden;
     max-width: 100%;
 }
 
@@ -1062,20 +1062,20 @@ include __DIR__ . '/../partials/header.php';
 
     <!-- Summary Cards -->
     <div style="display:flex;gap:12px;padding:14px 18px;background:#f9fafb;border-bottom:1px solid #f0f0f0;flex-wrap:wrap;">
-        <div style="flex:1;min-width:120px;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #002F70;border-radius:6px;padding:10px 14px;">
+        <div style="flex:1;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #002F70;border-radius:6px;padding:10px 14px;">
             <div style="font-size:20px;font-weight:800;color:#002F70;"><?= $summary_total ?></div>
             <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px;">Total Customers</div>
         </div>
-        <div style="flex:1;min-width:120px;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #28a745;border-radius:6px;padding:10px 14px;">
+        <div style="flex:1;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #28a745;border-radius:6px;padding:10px 14px;">
             <div style="font-size:20px;font-weight:800;color:#28a745;"><?= $summary_active ?></div>
             <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px;">Active</div>
         </div>
-        <div style="flex:1;min-width:120px;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #6c757d;border-radius:6px;padding:10px 14px;">
+        <div style="flex:1;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #6c757d;border-radius:6px;padding:10px 14px;">
             <div style="font-size:20px;font-weight:800;color:#6c757d;"><?= $summary_inactive ?></div>
             <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px;">Inactive</div>
         </div>
         <?php if ($summary_locked > 0): ?>
-        <div style="flex:1;min-width:120px;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #7c3aed;border-radius:6px;padding:10px 14px;">
+        <div style="flex:1;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #7c3aed;border-radius:6px;padding:10px 14px;">
             <div style="font-size:20px;font-weight:800;color:#7c3aed;"><?= $summary_locked ?></div>
             <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px;">Locked</div>
         </div>
@@ -1281,10 +1281,10 @@ include __DIR__ . '/../partials/header.php';
     box-shadow: 0 0 0 3px rgba(0,47,112,.08);
 }
 
-.ch-field-customer { flex: 1; min-width: 220px; max-width: 340px; }
+.ch-field-customer { flex: 1; max-width: 340px; }
 .ch-field-type,
 .ch-field-status,
-.ch-field-date { min-width: 140px; }
+.ch-field-date { }
 
 .ch-filter-actions {
     display: flex;
@@ -1422,7 +1422,7 @@ include __DIR__ . '/../partials/header.php';
 }
 
 .ch-table-wrap {
-    overflow-x: auto;
+    overflow:hidden;
     max-width: 100%;
 }
 
@@ -1702,19 +1702,19 @@ if ($hist_customer_info) {
     $hist_unpaid_count = count(array_filter($hist_records, fn($r) => $r['payment_status'] === 'Unpaid'));
 ?>
 <div id="histSummaryCards" style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
-    <div style="flex:1;min-width:130px;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #002F70;border-radius:6px;padding:10px 14px;">
+    <div style="flex:1;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #002F70;border-radius:6px;padding:10px 14px;">
         <div style="font-size:20px;font-weight:800;color:#002F70;"><?= $ci_total_txns ?></div>
         <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px;">Total Records</div>
     </div>
-    <div style="flex:1;min-width:130px;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #dc3545;border-radius:6px;padding:10px 14px;">
+    <div style="flex:1;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #dc3545;border-radius:6px;padding:10px 14px;">
         <div style="font-size:20px;font-weight:800;color:#dc3545;">₱<?= number_format($hist_total_amount, 2) ?></div>
         <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px;">Total Amount</div>
     </div>
-    <div style="flex:1;min-width:130px;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #28a745;border-radius:6px;padding:10px 14px;">
+    <div style="flex:1;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #28a745;border-radius:6px;padding:10px 14px;">
         <div style="font-size:20px;font-weight:800;color:#28a745;"><?= $hist_paid_count ?></div>
         <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px;">Paid</div>
     </div>
-    <div style="flex:1;min-width:130px;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #fd7e14;border-radius:6px;padding:10px 14px;">
+    <div style="flex:1;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #fd7e14;border-radius:6px;padding:10px 14px;">
         <div style="font-size:20px;font-weight:800;color:#fd7e14;"><?= $hist_unpaid_count ?></div>
         <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px;">Unpaid</div>
     </div>
@@ -1879,7 +1879,7 @@ function printHistoryPDF() {
   h2 { color: #002F6C; margin-bottom: 4px; }
   .meta { color: #666; font-size: 11px; margin-bottom: 16px; }
   .cards { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-  .card { flex: 1; min-width: 120px; border: 1px solid #ddd; border-left: 4px solid #002F6C; padding: 8px 12px; border-radius: 4px; }
+  .card { flex: 1; border: 1px solid #ddd; border-left: 4px solid #002F6C; padding: 8px 12px; border-radius: 4px; }
   .card-val { font-size: 18px; font-weight: 800; color: #002F6C; }
   .card-lbl { font-size: 10px; text-transform: uppercase; color: #888; }
   table { width: 100%; border-collapse: collapse; font-size: 11px; }
@@ -1912,7 +1912,7 @@ function printStaffListPDF() {
   h2 { color: #002F6C; margin-bottom: 4px; }
   .meta { color: #666; font-size: 11px; margin-bottom: 16px; }
   .kpis { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-  .kpi { flex: 1; min-width: 100px; border: 1px solid #ddd; border-left: 4px solid #002F6C; padding: 8px 12px; border-radius: 4px; background: #fcfcfc; }
+  .kpi { flex: 1; border: 1px solid #ddd; border-left: 4px solid #002F6C; padding: 8px 12px; border-radius: 4px; background: #fcfcfc; }
   .kpi-val { font-size: 18px; font-weight: 800; color: #002F6C; }
   .kpi-lbl { font-size: 10px; text-transform: uppercase; color: #888; margin-top: 2px; }
   table { width: 100%; border-collapse: collapse; font-size: 11px; }

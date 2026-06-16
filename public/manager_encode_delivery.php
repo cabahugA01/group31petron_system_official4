@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'manager_encode_delivery';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -187,7 +187,7 @@ include __DIR__ . '/../partials/header.php';
 .enc-page-head p  { font-size: 13px; color: var(--gray); margin: 0; }
 
 /* ── Process Steps ── */
-.process-steps { display: flex; align-items: center; gap: 0; margin-bottom: 24px; background: #fff; border-radius: 10px; padding: 16px 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); overflow-x: auto; }
+.process-steps { display: flex; align-items: center; gap: 0; margin-bottom: 24px; background: #fff; border-radius: 10px; padding: 16px 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); overflow:hidden; }
 .step { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .step-num { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; }
 .step.done   .step-num { background: #d1fae5; color: #065f46; }
@@ -242,7 +242,7 @@ include __DIR__ . '/../partials/header.php';
 .btn-sm { padding: 5px 12px; font-size: 12px; }
 
 /* ── Table ── */
-.enc-table-wrap { overflow-x: auto; }
+.enc-table-wrap { overflow:hidden; }
 table.enc-dt { width: 100%; border-collapse: collapse; }
 table.enc-dt th { background: var(--light); padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 700; color: var(--gray); border-bottom: 2px solid #e5e7eb; white-space: nowrap; text-transform: uppercase; letter-spacing: .4px; }
 table.enc-dt td { padding: 10px 14px; font-size: 13px; color: #333; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // ============================================================
 // Admin Map - Database Setup Test
 // public/test_map_setup.php
@@ -112,7 +112,7 @@ if (!in_array($role, ['superadmin', 'developer'])) {
             border-radius: 6px;
             font-family: 'Courier New', monospace;
             font-size: 13px;
-            overflow-x: auto;
+            overflow:hidden;
             margin-top: 12px;
         }
         .stats {

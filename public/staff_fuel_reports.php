@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * STAFF FUEL REPORTS
  *
@@ -313,8 +313,7 @@ require_once __DIR__ . '/../partials/header.php';
     display: flex;
     flex-direction: column;
     gap: 5px;
-    min-width: 150px;
-}
+    }
 
 .sfr-field label {
     font-size: 11px;
@@ -396,7 +395,7 @@ require_once __DIR__ . '/../partials/header.php';
 }
 
 /* Table */
-.sfr-table-wrap { overflow-x: auto; }
+.sfr-table-wrap { overflow:hidden; }
 
 .sfr-table {
     width: 100%;
@@ -527,7 +526,7 @@ require_once __DIR__ . '/../partials/header.php';
 
                 <!-- Shift Period — from DB -->
                 <?php if ($view === 'meter_readings'): ?>
-                <div class="sfr-field" style="min-width:200px;">
+                <div class="sfr-field" style="">
                     <label><i class="fas fa-clock" style="margin-right:3px;color:#64748b;"></i> Shift Period</label>
                     <select name="shift" class="sfr-select">
                         <option value="">All Shifts</option>

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * verify.php — QR Code Scan Target / Transaction Verification Page
  * Accessible without login for QR scan purposes (read-only, no sensitive mutations).
@@ -284,8 +284,8 @@ body {
 .vrow-purple { color: #7e22ce; font-weight: 800; }
 
 /* Items Table */
-.vtbl-container { border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; margin-top: 8px; width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.vtbl { width: 100%; border-collapse: collapse; font-size: 13px; background: #ffffff; min-width: 280px; }
+.vtbl-container { border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; margin-top: 8px; width: 100%; overflow:hidden; -webkit-overflow-scrolling: touch; }
+.vtbl { width: 100%; border-collapse: collapse; font-size: 13px; background: #ffffff; }
 .vtbl thead th { background: #f1f5f9; color: #475569; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
 .vtbl thead th:nth-child(2) { text-align: center; }
 .vtbl thead th:nth-child(3) { text-align: right; }

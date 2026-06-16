@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'mgr_inv_po_gen';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -218,8 +218,7 @@ include __DIR__ . '/../partials/header.php';
     padding: 12px 14px;
     text-align: center;
     font-weight: 600;
-    white-space: nowrap;
-}
+    }
 
 .po-table tbody tr {
     border-bottom: 1px solid #f0f0f0;
@@ -437,7 +436,6 @@ include __DIR__ . '/../partials/header.php';
 .detail-label {
     font-weight: 600;
     color: #555;
-    min-width: 170px;
     flex-shrink: 0;
 }
 .detail-value { color: #222; }

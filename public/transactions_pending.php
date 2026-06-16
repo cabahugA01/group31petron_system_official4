@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'pending_validation';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -601,9 +601,9 @@ function exportPending(format) {
 
 <style>
 /* ── Design System ── */
-.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow-x:auto; }
+.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow:hidden; }
 .po-table { width:100%; border-collapse:collapse; font-size:0.88rem; }
-.po-table thead th { background:#002F70; color:#fff; padding:12px 14px; text-align:left; font-weight:600; white-space:nowrap; }
+.po-table thead th { background:#002F70; color:#fff; padding:12px 14px; text-align:left; font-weight:600; }
 .po-table tbody tr { border-bottom:1px solid #f0f0f0; transition:background 0.15s; }
 .po-table tbody tr:hover { background:#f5f8ff; }
 .po-table tbody td { padding:11px 14px; vertical-align:middle; color:#333; }
@@ -630,7 +630,7 @@ function exportPending(format) {
 .alert { padding:12px 18px; border-radius:8px; margin-bottom:20px; font-size:0.9rem; font-weight:500; }
 .alert-success { background:#d4edda; color:#155724; border:1px solid #c3e6cb; }
 .alert-error   { background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; }
-.actions-cell { display:flex; flex-direction:column; gap:4px; min-width:110px; }
+.actions-cell { display:flex; flex-direction:column; gap:4px; }
 .actions-cell .btn-action { width:100%; justify-content:center; margin-bottom:0; }
 .empty-state { text-align:center; padding:60px 20px; color:#666; }
 .empty-state i { font-size:3rem; color:#002F70; margin-bottom:16px; display:block; opacity:0.4; }

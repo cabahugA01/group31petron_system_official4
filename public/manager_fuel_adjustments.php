@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'mgr_prod_adjustment';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -1674,7 +1674,7 @@ $adj_type_labels = [
             <form method="post" action="manager_fuel_adjustments.php" id="delivery_adj_form">
                 <input type="hidden" name="action" value="bulk_adjust_deliveries">
                 
-                <div style="overflow-x:auto;padding:14px 16px 0;">
+                <div style="overflow:hidden;padding:14px 16px 0;">
                     <table class="data-table" style="margin-bottom:0;font-size:.82rem;">
                         <thead>
                             <tr>
@@ -1806,7 +1806,7 @@ $adj_type_labels = [
             <form method="post" action="manager_fuel_adjustments.php" id="transaction_adj_form">
                 <input type="hidden" name="action" value="bulk_adjust_transactions">
                 
-                <div style="overflow-x:auto;padding:14px 16px 0;">
+                <div style="overflow:hidden;padding:14px 16px 0;">
                     <table class="data-table" style="margin-bottom:0;font-size:.82rem;">
                         <thead>
                             <tr>
@@ -1976,7 +1976,7 @@ $adj_type_labels = [
             <p style="font-size:.82rem;color:#999;margin-top:8px;">Adjustments will appear here once corrections are saved.</p>
         </div>
         <?php else: ?>
-        <div style="overflow-x:auto;">
+        <div style="overflow:hidden;">
         <table class="data-table" style="font-size:.82rem;">
             <thead><tr>
                 <th style="width:6%;">ID</th>

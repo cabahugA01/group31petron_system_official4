@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 // ============================================================
 // SuperAdmin – Admin Management
@@ -109,7 +109,7 @@ include __DIR__ . '/../partials/header.php';
 /* Table */
 .am-table-wrap { background: #fff; border: 1px solid #eaeaea; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.05); }
 .am-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.am-table thead th { background: var(--petron-blue); color: #fff; padding: 13px 16px; text-align: left; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; }
+.am-table thead th { background: var(--petron-blue); color: #fff; padding: 13px 16px; text-align: left; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; }
 .am-table tbody tr { border-bottom: 1px solid #f0f0f0; transition: background .15s; }
 .am-table tbody tr:last-child { border-bottom: none; }
 .am-table tbody tr:hover { background: #f8fafc; }
@@ -1177,7 +1177,7 @@ function showPageFlash(type, msg) {
     if (!el) {
         el = document.createElement('div');
         el.id = 'pageFlash';
-        el.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9999;min-width:400px;max-width:600px;';
+        el.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9999;max-width:600px;';
         document.body.appendChild(el);
     }
     el.className = 'am-flash ' + type;

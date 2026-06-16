@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'staff_record_delivery';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -374,7 +374,7 @@ include __DIR__ . '/../partials/header.php';
 <style>
 /* ── Layout & Cards ── */
 .layout-grid { display: grid; grid-template-columns: 1fr; gap: 24px; margin-bottom: 30px; }
-@media (min-width: 1100px) { .layout-grid { grid-template-columns: 1fr 1fr; } }
+@media () { .layout-grid { grid-template-columns: 1fr 1fr; } }
 
 .del-card { background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.06); border: 1px solid #e9ecef; height: 100%; display: flex; flex-direction: column; }
 .del-card-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #e9ecef; }

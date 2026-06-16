@@ -964,16 +964,31 @@ function validateTransaction($pdo, $station_id, $role, $me) {
         // Scenario 1 (JO only): no merchandise items → no deduction.
         // Scenario 2 (Merch only): all items deducted here.
         // Scenario 3 (JO + Merch / combined): only merchandise items deducted; service items skipped.
+        $did_deduct = false;
         foreach ($itemsForDeduction as $row) {
             try {
-                $pdo->prepare("
+                $deductStmt = $pdo->prepare("
                     UPDATE station_inventory
                     SET stock_level = GREATEST(stock_level - ?, 0),
                         last_updated = NOW()
                     WHERE station_id = ? AND product_id = ?
-                ")->execute([$row['quantity'], $station_id, $row['product_id']]);
+                ");
+                $deductStmt->execute([$row['quantity'], $station_id, $row['product_id']]);
+                if ($deductStmt->rowCount() > 0) {
+                    $did_deduct = true;
+                }
             } catch (Exception $e) {
                 error_log("Stock deduction on approve warning: " . $e->getMessage());
+            }
+        }
+        // Mark inventory_deducted = 1 so UI and reports correctly show deduction status
+        if ($did_deduct) {
+            try {
+                $pdo->prepare("UPDATE merchandise_transactions SET inventory_deducted = 1, updated_at = NOW() WHERE id = ? AND station_id = ?")
+                    ->execute([$transaction_id, $station_id]);
+            } catch (Exception $_ide) {
+                // Column may not exist on older schemas — non-fatal
+                error_log("inventory_deducted update warning: " . $_ide->getMessage());
             }
         }
 

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'mgr_inv_fuel';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -176,7 +176,7 @@ include __DIR__ . '/../partials/header.php';
 
 /* ── Summary Cards ── */
 .mif-stats { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px; }
-.mif-stat  { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px 18px; min-width:140px; flex:1; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+.mif-stat  { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px 18px; flex:1; box-shadow:0 1px 3px rgba(0,0,0,.04); }
 .mif-stat .n { font-size:1.6rem; font-weight:800; color:#002F70; line-height:1.1; }
 .mif-stat .l { font-size:12px; font-weight:700; color:#6c757d; text-transform:uppercase; letter-spacing:.4px; margin-top:3px; }
 .mif-stat.ok   .n { color:#28a745; }

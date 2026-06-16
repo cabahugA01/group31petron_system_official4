@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'database_management';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -76,7 +76,7 @@ include __DIR__ . '/../partials/header.php';
     </div>
     <div class="card-body" style="padding: 20px; overflow: visible !important;">
         <div style="display: flex; align-items: center; gap: 15px; position: relative;">
-            <label for="stationSelect" style="font-weight: 600; color: #374151; min-width: 120px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">
+            <label for="stationSelect" style="font-weight: 600; color: #374151; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">
                 Search Station
             </label>
             <!-- Searchable station select (SAME AS MODULE CONFIGURATION) -->
@@ -495,7 +495,7 @@ include __DIR__ . '/../partials/header.php';
             <h4 style="margin: 0 0 15px; font-size: 14px; font-weight: 600; color: #1e3a5f;">
                 <i class="fas fa-list"></i> Security Log Results
             </h4>
-            <div style="overflow-x: auto;">
+            <div style="overflow:hidden;">
                 <table class="results-table">
                     <thead>
                         <tr>

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Manager Dashboard - Rebuilt with Correct Data Fetching Flow
  * 
@@ -857,7 +857,7 @@ $jo_total_amt=array_sum(array_column($jo_rows,'amount'));
     <?php if(empty($jo_rows)): ?>
         <div class="mgr-empty">No job orders for today.</div>
     <?php else: ?>
-        <div style="overflow-x:auto;">
+        <div style="overflow:hidden;">
         <table class="mgr-table">
             <thead><tr><th>Reference</th><th>Service</th><th>Customer</th><th>Status</th><th>Amount</th><th>Encoder</th><th>Action</th></tr></thead>
             <tbody>
@@ -957,7 +957,7 @@ $jo_total_amt=array_sum(array_column($jo_rows,'amount'));
     <?php if(empty($staff_perf)): ?>
         <div class="mgr-empty">No staff performance data for this month.</div>
     <?php else: ?>
-        <div style="overflow-x:auto;">
+        <div style="overflow:hidden;">
         <table class="mgr-table">
             <thead><tr><th>#</th><th>Staff Name</th><th>Transactions</th><th>Total Encoded</th><th>Performance Bar</th></tr></thead>
             <tbody>

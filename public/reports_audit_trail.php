@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Audit Trail Reports - Standalone Page
  * Complete Report Access Audit Trail
@@ -485,7 +485,7 @@ include __DIR__ . '/../partials/header.php';
                     <p>No audit trail records found</p>
                 </div>
             <?php else: ?>
-                <div style="overflow-x: auto;">
+                <div style="overflow:hidden;">
                     <table class="data-table">
                         <thead>
                             <tr>

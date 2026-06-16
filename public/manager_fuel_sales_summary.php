@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * MANAGER FUEL SALES SUMMARY
  * 
@@ -267,7 +267,7 @@ require_once __DIR__ . '/../partials/header.php';
 }
 
 .mfss-table-wrap {
-    overflow-x: auto;
+    overflow:hidden;
 }
 
 .mfss-table {

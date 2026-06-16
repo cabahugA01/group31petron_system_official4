@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'staff_fuel_delivery_status';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -126,7 +126,7 @@ include __DIR__ . '/../partials/header.php';
 /* ── Table ── */
 .del-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .del-table thead th { background: #002F70 !important; color: #fff !important; font-weight: 600; padding: 14px 16px; text-align: left; 
-  text-transform: uppercase; letter-spacing: 0.3px; border: none !important; white-space: nowrap; font-size: 11px; }
+  text-transform: uppercase; letter-spacing: 0.3px; border: none !important; font-size: 11px; }
 .del-table td { padding: 12px 14px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
 .del-table tr:hover td { background: #f8f9fa; }
 .del-table tr.row-rejected td { background: #fff8f8; }
@@ -228,7 +228,7 @@ include __DIR__ . '/../partials/header.php';
                 </p>
             </div>
         <?php else: ?>
-            <div style="overflow-x: auto;">
+            <div style="overflow:hidden;">
                 <table class="del-table">
                     <thead>
                         <tr>

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'manager_deliveries';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -178,7 +178,7 @@ include __DIR__ . '/../partials/header.php';
   </div>
   <div class="mgrc-body">
     <input class="mgrc-search" id="recordSearch" placeholder="&#128269; Search deliveries..." oninput="filterRows('recordSearch','recordTable')">
-    <div style="overflow-x:auto;">
+    <div style="overflow:hidden;">
       <table class="mgrc-table" id="recordTable">
         <thead><tr>
           <th>Batch ID</th>
@@ -231,7 +231,7 @@ include __DIR__ . '/../partials/header.php';
   </div>
   <div class="mgrc-body">
     <input class="mgrc-search" id="historySearch" placeholder="&#128269; Search history..." oninput="filterRows('historySearch','historyTable')">
-    <div style="overflow-x:auto;">
+    <div style="overflow:hidden;">
       <table class="mgrc-table" id="historyTable">
         <thead><tr>
           <th>Batch ID</th>

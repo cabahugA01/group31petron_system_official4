@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'module_config';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -183,7 +183,7 @@ if (empty($stations)) {
     </div>
     <div class="card-body" style="padding: 20px; overflow: visible !important;">
         <div style="display: flex; align-items: center; gap: 15px; position: relative; margin-bottom: 15px;">
-            <label for="stationFilter" style="font-weight: 600; color: #374151; min-width: 120px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">
+            <label for="stationFilter" style="font-weight: 600; color: #374151; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">
                 Search Station
             </label>
             <!-- Searchable station filter (SEARCHABLE SELECT) -->
@@ -238,7 +238,7 @@ if (empty($stations)) {
                    style="flex: 1; padding: 10px 15px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px;"
                    oninput="filterModules()">
             <select id="statusFilter" 
-                    style="padding: 10px 15px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; min-width: 150px;"
+                    style="padding: 10px 15px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; "
                     onchange="filterModules()">
                 <option value="">All Status</option>
                 <option value="enabled">Enabled</option>

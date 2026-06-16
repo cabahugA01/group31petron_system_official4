@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'manager_fuel_management';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -1074,7 +1074,7 @@ function adjustColor($hex,$pct) {
     <?php if (empty($deliveries)): ?>
         <div class="empty-state"><i class="fas fa-truck"></i><p>No deliveries recorded yet.</p></div>
     <?php else: ?>
-    <div style="overflow-x:auto;">
+    <div style="overflow:hidden;">
     <table class="data-table">
         <thead><tr>
             <th>#</th>
@@ -1252,12 +1252,12 @@ function adjustColor($hex,$pct) {
             <input type="hidden" name="action" value="update_price">
             <input type="hidden" name="fuel_type_id" id="calEditFuelTypeId">
             <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
-                <div class="form-group" style="margin:0;flex:1;min-width:120px;">
+                <div class="form-group" style="margin:0;flex:1;">
                     <label class="form-label" style="font-size:.82rem;">New Price (?/L)</label>
                     <input type="number" name="new_price" id="calEditNewPrice"
                         class="form-control" step="0.01" min="0.01" placeholder="e.g. 58.50">
                 </div>
-                <div class="form-group" style="margin:0;flex:2;min-width:160px;">
+                <div class="form-group" style="margin:0;flex:2;">
                     <label class="form-label" style="font-size:.82rem;">Reason <span class="required">*</span></label>
                     <input type="text" name="reason" class="form-control"
                         placeholder="e.g. Petron price update" minlength="10">

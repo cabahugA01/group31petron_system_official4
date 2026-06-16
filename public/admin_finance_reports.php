@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Admin Finance Reports
  * Payments | Suppliers | Financial / Payables
@@ -281,7 +281,7 @@ require_once __DIR__ . '/../partials/header.php';
 .fr-filter-bar button { padding:7px 16px; background:#00264D; color:white; border:none; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer; }
 .fr-export-btn { padding:7px 14px; background:white; color:#00264D; border:1px solid #00264D; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; margin-left:auto; }
 .fr-export-btn:hover { background:#00264D; color:white; }
-.fr-tabs { display:flex; border-bottom:2px solid #e2e8f0; overflow-x:auto; }
+.fr-tabs { display:flex; border-bottom:2px solid #e2e8f0; overflow:hidden; }
 .fr-tab { padding:13px 20px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; color:#64748b; background:#f8f9fa; border:none; border-bottom:3px solid transparent; cursor:pointer; white-space:nowrap; transition:all .2s; }
 .fr-tab:hover { background:#fff; color:#00264D; }
 .fr-tab.active { background:#fff; color:#00264D; border-bottom-color:#00264D; font-weight:800; }
@@ -299,7 +299,7 @@ require_once __DIR__ . '/../partials/header.php';
 /* Table */
 .fr-tbl { width:100%; border-collapse:collapse; font-size:12px; }
 .fr-tbl thead tr { border-top:2px solid #00264D; border-bottom:1px solid #e2e8f0; background:#f8f9fa; }
-.fr-tbl thead th { padding:10px 8px; text-align:left; font-weight:700; color:#00264D; font-size:11px; text-transform:uppercase; white-space:nowrap; }
+.fr-tbl thead th { padding:10px 8px; text-align:left; font-weight:700; color:#00264D; font-size:11px; text-transform:uppercase; }
 .fr-tbl tbody tr { border-bottom:1px solid #f1f5f9; }
 .fr-tbl tbody tr:hover { background:#f8fafc; }
 .fr-tbl tbody td { padding:9px 8px; color:#334155; font-size:12px; }

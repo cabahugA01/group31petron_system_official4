@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * MANAGER PENDING TRANSACTIONS - NEW DESIGN
  * 
@@ -54,16 +54,64 @@ function pt_pay_status(array $row): string {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $post_action = $_POST['action'] ?? '';
 
-    $insert_audit = function(int $txn_id, string $action_type, ?string $new_val = null) use ($pdo, $me, $station_id) {
+    $insert_audit = function(int $txn_id, string $action_type, ?string $new_val = null, ?string $src = null) use ($pdo, $me, $station_id) {
+        $old_val = null;
         try {
-            $pdo->prepare("INSERT INTO audit_trail (transaction_id, manager_id, action_type, new_value, station_id) VALUES (?, ?, ?, ?, ?)")
-                ->execute([$txn_id, $me['id'], $action_type, $new_val, $station_id]);
-        } catch (Exception $ae) {}
+            if ($src === 'job_orders') {
+                $check = $pdo->prepare("SELECT validation_status, total_cost FROM job_orders WHERE id = ?");
+                $check->execute([$txn_id]);
+                $r = $check->fetch(PDO::FETCH_ASSOC);
+                if ($r) {
+                    $old_val = "Status: " . ($r['validation_status'] ?? 'Pending') . " | Cost: ₱" . number_format((float)($r['total_cost'] ?? 0), 2);
+                }
+            } else {
+                $check = $pdo->prepare("SELECT validation_status, total_amount FROM merchandise_transactions WHERE id = ?");
+                $check->execute([$txn_id]);
+                $r = $check->fetch(PDO::FETCH_ASSOC);
+                if ($r) {
+                    $old_val = "Status: " . ($r['validation_status'] ?? 'Pending') . " | Cost: ₱" . number_format((float)($r['total_amount'] ?? 0), 2);
+                }
+            }
+        } catch (Exception $ex) {}
+
+        try {
+            $pdo->prepare("INSERT INTO audit_trail (transaction_id, manager_id, action_type, old_value, new_value, station_id) VALUES (?, ?, ?, ?, ?, ?)")
+                ->execute([$txn_id, $me['id'], $action_type, $old_val, $new_val, $station_id]);
+        } catch (Exception $ae) {
+            error_log("Failed to insert into audit_trail: " . $ae->getMessage());
+        }
+
+        try {
+            $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+            $ua = $_SERVER['HTTP_USER_AGENT'] ?? 'System';
+            $ref = ($src === 'job_orders') ? "JO-{$txn_id}" : "TXN-{$txn_id}";
+            $details = "Manager " . htmlspecialchars($me['name'] ?? $me['username'] ?? 'User') . " executed validation action '$action_type' on transaction {$ref}." . ($new_val ? " Details: {$new_val}" : "");
+            
+            $pdo->prepare("
+                INSERT INTO audit_logs (
+                    user_id, log_type, action_type, action_details, entity_type, entity_id, 
+                    old_values, new_values, ip_address, user_agent, status, created_at
+                ) VALUES (?, 'TRANSACTION', ?, ?, ?, ?, ?, ?, ?, ?, 'SUCCESS', NOW())
+            ")->execute([
+                $me['id'],
+                $action_type,
+                $details,
+                $src ?: 'transaction',
+                $txn_id,
+                $old_val,
+                $new_val,
+                $ip,
+                $ua
+            ]);
+        } catch (Exception $al_err) {
+            error_log("Failed to insert into audit_logs: " . $al_err->getMessage());
+        }
     };
 
     // ── Approve Group (same customer + same date) ─────────────────────────────
     if ($post_action === 'approve_group') {
         $group_ids = json_decode($_POST['group_ids'] ?? '[]', true);
+        $notes     = trim($_POST['notes'] ?? '');
         if (!is_array($group_ids) || empty($group_ids)) {
             $_SESSION['error'] = 'No transactions in group.';
             header('Location: pending_transactions.php'); exit;
@@ -98,14 +146,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         // Deduct stock for merchandise items
                         $itemRows = $pdo->prepare("SELECT product_id, quantity, item_type FROM merchandise_transaction_items WHERE transaction_id = ?");
                         $itemRows->execute([$rid]);
+                        $pt_did_deduct = false;
                         foreach ($itemRows->fetchAll(PDO::FETCH_ASSOC) as $row) {
                             if (($row['item_type'] ?? 'merchandise') !== 'service' && $row['product_id'] && $row['quantity'] > 0) {
-                                $pdo->prepare("
+                                $deductSt = $pdo->prepare("
                                     UPDATE station_inventory
                                     SET stock_level = GREATEST(stock_level - ?, 0),
                                         last_updated = NOW()
                                     WHERE station_id = ? AND product_id = ?
-                                ")->execute([$row['quantity'], $station_id, $row['product_id']]);
+                                ");
+                                $deductSt->execute([$row['quantity'], $station_id, $row['product_id']]);
+                                if ($deductSt->rowCount() > 0) $pt_did_deduct = true;
+                            }
+                        }
+                        // Flag inventory_deducted = 1 so UI shows correct deduction status
+                        if ($pt_did_deduct) {
+                            try {
+                                $pdo->prepare("UPDATE merchandise_transactions SET inventory_deducted = 1 WHERE id = ? AND station_id = ?")
+                                    ->execute([$rid, $station_id]);
+                            } catch (Exception $_ptide) {
+                                error_log("pending_transactions inventory_deducted flag warning: " . $_ptide->getMessage());
                             }
                         }
 
@@ -141,14 +201,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $sv = [];
                     if (pt_has($mt_cols, 'validated_by')) { $sp[] = "validated_by = ?"; $sv[] = $me['id']; }
                     if (pt_has($mt_cols, 'validated_at')) { $sp[] = "validated_at = NOW()"; }
+                    if ($notes !== '' && pt_has($mt_cols, 'remarks')) { $sp[] = "remarks = ?"; $sv[] = "APPROVED: {$notes}"; }
                     if (pt_has($mt_cols, 'updated_at'))   { $sp[] = "updated_at = NOW()"; }
                     $pdo->prepare("UPDATE merchandise_transactions SET " . implode(', ', $sp) . " WHERE id = ? AND station_id = ?")
                         ->execute(array_merge($sv, [$rid, $station_id]));
                 } else {
-                    $pdo->prepare("UPDATE job_orders SET validation_status='Approved', status='Pending', validated_by=?, validated_at=NOW() WHERE id=? AND station_id=?")
-                        ->execute([$me['id'], $rid, $station_id]);
+                    $admin_rem = $notes !== '' ? "APPROVED: {$notes}" : "APPROVED";
+                    $pdo->prepare("UPDATE job_orders SET validation_status='Approved', status='Pending', validated_by=?, validated_at=NOW(), admin_remarks=? WHERE id=? AND station_id=?")
+                        ->execute([$me['id'], $admin_rem, $rid, $station_id]);
                 }
-                $insert_audit($rid, 'Approve', 'Group Approved');
+                $insert_audit($rid, 'Approve', 'Group Approved' . ($notes !== '' ? ": {$notes}" : ''), $src);
                 $approved++;
             }
             $pdo->commit();
@@ -186,10 +248,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pdo->prepare("UPDATE merchandise_transactions SET " . implode(', ', $sp) . " WHERE id = ? AND station_id = ?")
                         ->execute(array_merge($sv, [$rid, $station_id]));
                 } else {
-                    $pdo->prepare("UPDATE job_orders SET validation_status='Rejected', status='Cancelled', validated_by=?, validated_at=NOW() WHERE id=? AND station_id=?")
-                        ->execute([$me['id'], $rid, $station_id]);
+                    $pdo->prepare("UPDATE job_orders SET validation_status='Rejected', status='Cancelled', validated_by=?, validated_at=NOW(), rejection_reason=?, admin_remarks=? WHERE id=? AND station_id=?")
+                        ->execute([$me['id'], $reason, "REJECTED: {$reason}", $rid, $station_id]);
                 }
-                $insert_audit($rid, 'Reject', "Group Rejected: {$reason}");
+                $insert_audit($rid, 'Reject', "Group Rejected: {$reason}", $src);
                 $rejected++;
             }
             $pdo->commit();
@@ -256,13 +318,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $finalTotal = ($new_val !== '' && is_numeric($new_val))
                             ? (float)$new_val
                             : array_sum(array_map(fn($a) => (float)($a['quantity'] ?? 1) * (float)($a['unit_price'] ?? 0), $adjs));
-                        $sp = ["validation_status='Adjusted'", "validated_by=?", "validated_at=NOW()"];
-                        $sv = [$me['id']];
+                        $sp = ["validation_status='Adjusted'", "validated_by=?", "validated_at=NOW()", "adjustment_reason=?", "admin_remarks=?"];
+                        $sv = [$me['id'], $reason, "ADJUSTED: {$reason}"];
                         if (pt_has($jo_cols, 'total_cost')) { $sp[] = "total_cost=?"; $sv[] = $finalTotal; }
                         $pdo->prepare("UPDATE job_orders SET " . implode(', ', $sp) . " WHERE id=? AND station_id=?")
                             ->execute(array_merge($sv, [$txn_id, $station_id]));
                     }
-                    $insert_audit($txn_id, 'Adjust', "Item-level adjusted: {$reason}");
+                    $insert_audit($txn_id, 'Adjust', "Item-level adjusted: {$reason}", $src);
                     $adjusted++;
                 }
             } else {
@@ -282,13 +344,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $pdo->prepare("UPDATE merchandise_transactions SET " . implode(', ', $sp) . " WHERE id=? AND station_id=?")
                             ->execute(array_merge($sv, [$rid, $station_id]));
                     } else {
-                        $sp = ["validation_status='Adjusted'", "validated_by=?", "validated_at=NOW()"];
-                        $sv = [$me['id']];
+                        $sp = ["validation_status='Adjusted'", "validated_by=?", "validated_at=NOW()", "adjustment_reason=?", "admin_remarks=?"];
+                        $sv = [$me['id'], $reason, "ADJUSTED: {$reason}"];
                         if ($new_val !== '' && is_numeric($new_val) && pt_has($jo_cols, 'total_cost')) { $sp[] = "total_cost=?"; $sv[] = (float)$new_val; }
                         $pdo->prepare("UPDATE job_orders SET " . implode(', ', $sp) . " WHERE id=? AND station_id=?")
                             ->execute(array_merge($sv, [$rid, $station_id]));
                     }
-                    $insert_audit($rid, 'Adjust', "Price adjusted: {$reason}");
+                    $insert_audit($rid, 'Adjust', "Price adjusted: {$reason}", $src);
                     $adjusted++;
                 }
             }
@@ -310,11 +372,17 @@ $rows = [];
 $total_amount = 0.0;
 
 // Merchandise PENDING transactions
-$mt_status_col = pt_has($mt_cols, 'validation_status') ? 'mt.validation_status' : "'Pending'";
-$mt_date_col   = "CASE WHEN mt.created_at > '2000-01-01' THEN mt.created_at ELSE mt.created_at END";
-$mt_paid_col   = pt_has($mt_cols, 'amount_paid') ? 'mt.amount_paid' : 'NULL';
+$mt_status_col  = pt_has($mt_cols, 'validation_status') ? 'mt.validation_status' : (pt_has($mt_cols, 'status') ? 'mt.status' : "'Pending'");
+$mt_date_col    = pt_has($mt_cols, 'transaction_date')  ? 'mt.transaction_date'  : 'mt.created_at';
+$mt_paid_col    = pt_has($mt_cols, 'amount_paid')       ? 'mt.amount_paid'       : 'NULL';
+$mt_sku_col     = pt_has($mt_cols, 'item_sku')          ? 'mt.item_sku'          : "NULL";
+$mt_cust_id_col = pt_has($mt_cols, 'credit_customer_id')
+    ? "CASE WHEN mt.credit_customer_id IS NOT NULL AND mt.credit_customer_id > 0 THEN 'Registered' ELSE 'Walk-in' END"
+    : "'Walk-in'";
+$mt_txntype_col = pt_has($mt_cols, 'transaction_type')  ? 'mt.transaction_type'  : "NULL";
 
-$mt_where = "WHERE mt.station_id = ? AND LOWER(TRIM(COALESCE(mt.validation_status,''))) = 'pending'";
+// Use $mt_status_col in WHERE too (not hardcoded column name)
+$mt_where  = "WHERE mt.station_id = ? AND LOWER(TRIM(COALESCE({$mt_status_col},''))) = 'pending'";
 $mt_params = [$station_id];
 if ($search !== '') {
     $mt_where .= " AND (mt.customer_name LIKE ? OR mt.transaction_id LIKE ?)";
@@ -323,76 +391,106 @@ if ($search !== '') {
 
 $mt_rows = [];
 try {
-    // Detect if job_order_service column exists
-    $mt_jo_svc_col = pt_has($mt_cols, 'job_order_service') ? "COALESCE(mt.job_order_service,'')" : "''";
-    $mt_jo_veh_type_col = pt_has($mt_cols, 'job_order_vehicle_type') ? "COALESCE(mt.job_order_vehicle_type,'')" : "''";
-    $mt_jo_veh_plate_col = pt_has($mt_cols, 'job_order_vehicle_plate') ? "COALESCE(mt.job_order_vehicle_plate,'')" : "''";
+    $mt_jo_svc_col      = pt_has($mt_cols, 'job_order_service')       ? "COALESCE(mt.job_order_service,'')"       : "''";
+    $mt_jo_veh_type_col = pt_has($mt_cols, 'job_order_vehicle_type')  ? "COALESCE(mt.job_order_vehicle_type,'')"  : "''";
+    $mt_jo_veh_plate_col= pt_has($mt_cols, 'job_order_vehicle_plate') ? "COALESCE(mt.job_order_vehicle_plate,'')" : "''";
+
+    // items_parts fallback: use item_sku only if column exists
+    $items_sku_fallback = pt_has($mt_cols, 'item_sku') ? "mt.item_sku" : "NULL";
+    $svc_sku_cond       = pt_has($mt_cols, 'item_sku')
+        ? "CASE WHEN mt.item_sku IS NOT NULL AND mt.item_sku <> '' THEN '—' ELSE 'N/A' END"
+        : "'N/A'";
 
     $stmt = $pdo->prepare("
         SELECT
             mt.id AS row_id,
             mt.transaction_id AS txn_id,
             COALESCE(NULLIF(TRIM(mt.customer_name),''),'Walk-in') AS customer,
-            CASE mt.transaction_type
+            {$mt_cust_id_col} AS customer_type,
+            CASE COALESCE({$mt_txntype_col},'merchandise')
                 WHEN 'combined'   THEN 'JO + Merchandise'
                 WHEN 'job_order'  THEN 'Job Order'
                 ELSE                   'Merchandise'
             END AS entry_type,
             COALESCE(
                 NULLIF((SELECT GROUP_CONCAT(
-                            CONCAT(i.product_name, ' - ', i.quantity, ' pcs @ ₱', FORMAT(i.unit_price, 2))
+                            CONCAT(i.product_name, ' - ', CAST(i.quantity AS UNSIGNED), IF(CAST(i.quantity AS UNSIGNED)=1,' pc',' pcs'), ' @ ₱', FORMAT(i.unit_price, 2))
                             ORDER BY i.id SEPARATOR ' | ')
-                        FROM merchandise_transaction_items i 
-                        WHERE i.transaction_id = mt.id 
+                        FROM merchandise_transaction_items i
+                        WHERE i.transaction_id = mt.id
                         AND COALESCE(i.item_type, 'merchandise') = 'merchandise'),''),
-                mt.item_sku, 
+                {$items_sku_fallback},
                 CASE WHEN TRIM(COALESCE({$mt_jo_svc_col},'')) <> '' THEN '—' ELSE 'N/A' END
             ) AS items_parts,
             COALESCE(
                 NULLIF((SELECT GROUP_CONCAT(
-                            CONCAT(i.product_name, ' - ', i.quantity, ' pcs @ ₱', FORMAT(i.unit_price, 2))
+                            CONCAT(i.product_name, ' - ', CAST(i.quantity AS UNSIGNED), IF(CAST(i.quantity AS UNSIGNED)=1,' pc',' pcs'), ' @ ₱', FORMAT(i.unit_price, 2))
                             ORDER BY i.id SEPARATOR ' | ')
-                        FROM merchandise_transaction_items i 
-                        WHERE i.transaction_id = mt.id 
+                        FROM merchandise_transaction_items i
+                        WHERE i.transaction_id = mt.id
                         AND i.item_type = 'service'),''),
                 NULLIF({$mt_jo_svc_col},''),
-                CASE WHEN mt.item_sku IS NOT NULL AND mt.item_sku <> '' THEN '—' ELSE 'N/A' END
+                {$svc_sku_cond}
             ) AS service_type,
             NULLIF(TRIM(CONCAT(
                 COALESCE({$mt_jo_veh_plate_col},''),
                 CASE WHEN TRIM(COALESCE({$mt_jo_veh_type_col},'')) <> ''
                      THEN CONCAT(' · ', {$mt_jo_veh_type_col}) ELSE '' END
             )),'') AS vehicle_info,
-            mt.total_amount AS amount,
+            COALESCE(mt.total_amount, 0) AS amount,
+            COALESCE((SELECT SUM(COALESCE(i.subtotal,0))
+                      FROM merchandise_transaction_items i
+                      WHERE i.transaction_id = mt.id
+                      AND COALESCE(i.item_type,'merchandise') = 'merchandise'), 0) AS merch_subtotal,
+            COALESCE((SELECT SUM(COALESCE(i.subtotal,0))
+                      FROM merchandise_transaction_items i
+                      WHERE i.transaction_id = mt.id
+                      AND i.item_type = 'service'), 0) AS service_fee,
             {$mt_paid_col} AS amount_paid,
             COALESCE(mt.payment_method,'Cash') AS payment_method,
             {$mt_date_col} AS txn_date,
             COALESCE({$mt_status_col},'Pending') AS validation_status,
-            COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS staff_name,
+            COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Unknown') AS staff_name,
             'merchandise_transactions' AS _source,
-            COALESCE(mt.transaction_type,'merchandise') AS txn_type
+            COALESCE({$mt_txntype_col},'merchandise') AS txn_type,
+            COALESCE(mt.remarks, '') AS encoder_remarks
         FROM merchandise_transactions mt
         LEFT JOIN users u ON u.id = mt.staff_id
         {$mt_where}
         GROUP BY mt.id
-        ORDER BY txn_date DESC
-        LIMIT 100
+        ORDER BY {$mt_date_col} DESC
+        LIMIT 200
     ");
     $stmt->execute($mt_params);
     $mt_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) { $mt_rows = []; }
+} catch (Exception $e) {
+    $mt_rows = [];
+    error_log('pending_transactions mt_rows error: ' . $e->getMessage());
+}
 
 // Job Orders PENDING VALIDATION
-$jo_status_col = pt_has($jo_cols, 'validation_status') ? 'jo.validation_status' : 'jo.status';
-$jo_pay_col    = pt_has($jo_cols, 'payment_method') ? 'COALESCE(jo.payment_method,\'N/A\')' : "'N/A'";
-$jo_cost_col   = pt_has($jo_cols, 'total_cost') ? 'COALESCE(jo.total_cost,0)' : 'COALESCE(jo.estimated_cost,0)';
-$jo_paid_col   = pt_has($jo_cols, 'amount_paid') ? 'jo.amount_paid' : 'NULL';
+$jo_status_col  = pt_has($jo_cols, 'validation_status') ? 'jo.validation_status' : (pt_has($jo_cols, 'status') ? 'jo.status' : "'Pending Validation'");
+$jo_pay_col     = pt_has($jo_cols, 'payment_method')    ? "COALESCE(jo.payment_method,'N/A')" : "'N/A'";
+$jo_cost_col    = pt_has($jo_cols, 'total_cost')        ? 'COALESCE(jo.total_cost,0)'    : (pt_has($jo_cols, 'estimated_cost') ? 'COALESCE(jo.estimated_cost,0)' : '0');
+$jo_paid_col    = pt_has($jo_cols, 'amount_paid')       ? 'jo.amount_paid'               : 'NULL';
+$jo_svc_fee_col = pt_has($jo_cols, 'service_fee')       ? 'COALESCE(jo.service_fee,0)'   : $jo_cost_col; // fallback to total_cost if no dedicated column
+$jo_cust_id_col = pt_has($jo_cols, 'credit_customer_id')
+    ? "CASE WHEN jo.credit_customer_id IS NOT NULL AND jo.credit_customer_id > 0 THEN 'Registered' ELSE 'Walk-in' END"
+    : (pt_has($jo_cols, 'customer_id')
+        ? "CASE WHEN jo.customer_id IS NOT NULL AND jo.customer_id > 0 THEN 'Registered' ELSE 'Walk-in' END"
+        : "'Walk-in'");
+$jo_veh_type_col  = pt_has($jo_cols, 'vehicle_type')  ? 'jo.vehicle_type'  : "NULL";
+$jo_veh_plate_col = pt_has($jo_cols, 'vehicle_plate') ? 'jo.vehicle_plate' : "NULL";
+$jo_created_by_col = pt_has($jo_cols, 'created_by') ? 'jo.created_by' : (pt_has($jo_cols, 'user_id') ? 'jo.user_id' : 'NULL');
 
-$jo_where = "WHERE jo.station_id = ? AND LOWER(TRIM(COALESCE({$jo_status_col},''))) = 'pending validation'";
+$jo_where  = "WHERE jo.station_id = ? AND LOWER(TRIM(COALESCE({$jo_status_col},''))) = 'pending validation'";
 $jo_params = [$station_id];
 if ($search !== '') {
-    $jo_where .= " AND (jo.customer_name LIKE ? OR jo.service_type LIKE ? OR jo.vehicle_plate LIKE ?)";
-    $jo_params[] = "%$search%"; $jo_params[] = "%$search%"; $jo_params[] = "%$search%";
+    $jo_where .= " AND (jo.customer_name LIKE ?";
+    $jo_params[] = "%$search%";
+    if (pt_has($jo_cols, 'service_type')) { $jo_where .= " OR jo.service_type LIKE ?"; $jo_params[] = "%$search%"; }
+    if (pt_has($jo_cols, 'vehicle_plate')) { $jo_where .= " OR jo.vehicle_plate LIKE ?"; $jo_params[] = "%$search%"; }
+    $jo_where .= ")";
 }
 
 $jo_rows = [];
@@ -400,35 +498,40 @@ try {
     $stmt = $pdo->prepare("
         SELECT
             jo.id AS row_id,
-            CONCAT('JO-', jo.id) AS txn_id,
+            CONCAT('JO-', LPAD(jo.id, 3, '0')) AS txn_id,
             COALESCE(NULLIF(TRIM(jo.customer_name),''),'Walk-in') AS customer,
+            {$jo_cust_id_col} AS customer_type,
             'Job Order' AS entry_type,
             '—' AS items_parts,
-            CONCAT(COALESCE(jo.service_type,'Service'), 
-                   CASE WHEN jo.vehicle_plate IS NOT NULL AND jo.vehicle_plate != '' 
-                        THEN CONCAT(' | ', jo.vehicle_plate) ELSE '' END) AS service_type,
+            COALESCE(NULLIF(TRIM(COALESCE(jo.service_type,'')), ''), 'Service') AS service_type,
             NULLIF(TRIM(CONCAT(
-                COALESCE(jo.vehicle_plate,''),
-                CASE WHEN jo.vehicle_type IS NOT NULL AND jo.vehicle_type != ''
-                     THEN CONCAT(' · ', jo.vehicle_type) ELSE '' END
+                COALESCE({$jo_veh_plate_col},''),
+                CASE WHEN TRIM(COALESCE({$jo_veh_type_col},'')) <> ''
+                     THEN CONCAT(' · ', COALESCE({$jo_veh_type_col},'')) ELSE '' END
             )),'') AS vehicle_info,
             {$jo_cost_col} AS amount,
+            {$jo_svc_fee_col} AS service_fee,
+            0 AS merch_subtotal,
             {$jo_paid_col} AS amount_paid,
             {$jo_pay_col} AS payment_method,
             jo.created_at AS txn_date,
-            COALESCE(NULLIF(TRIM({$jo_status_col}),''),'Pending') AS validation_status,
-            COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS staff_name,
+            COALESCE(NULLIF(TRIM(COALESCE({$jo_status_col},'')), ''), 'Pending Validation') AS validation_status,
+            COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Unknown') AS staff_name,
             'job_orders' AS _source,
-            'job_order' AS txn_type
+            'job_order' AS txn_type,
+            COALESCE(NULLIF(TRIM(COALESCE(jo.notes,'')), ''), COALESCE(jo.additional_notes, ''), '') AS encoder_remarks
         FROM job_orders jo
-        LEFT JOIN users u ON u.id = COALESCE(jo.created_by, jo.created_by)
+        LEFT JOIN users u ON u.id = {$jo_created_by_col}
         {$jo_where}
         ORDER BY jo.created_at DESC
-        LIMIT 100
+        LIMIT 200
     ");
     $stmt->execute($jo_params);
     $jo_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) { $jo_rows = []; }
+} catch (Exception $e) {
+    $jo_rows = [];
+    error_log('pending_transactions jo_rows error: ' . $e->getMessage());
+}
 
 // Merge and sort
 $rows = array_merge($mt_rows, $jo_rows);
@@ -444,16 +547,21 @@ foreach ($rows as $r) {
     if (!isset($groups[$gkey])) {
         $groups[$gkey] = [
             'customer'      => $r['customer'],
+            'customer_type' => $r['customer_type'] ?? 'Walk-in',
             'date'          => $date_key,
             'types'         => [],
             'items_parts'   => [],
             'service_types' => [],
-            'vehicle_info'  => $r['vehicle_info'] ?? '',
-            'total'         => 0.0,
-            'pay_methods'   => [],
-            'staff'         => $r['staff_name'] ?? 'Unknown',
-            'ids'           => [],
-            'txn_ids'       => [],
+            'vehicle_info'   => $r['vehicle_info'] ?? '',
+            'total'          => 0.0,
+            'service_fee'    => 0.0,
+            'merch_subtotal' => 0.0,
+            'pay_methods'    => [],
+            'staff'          => $r['staff_name'] ?? 'Unknown',
+            'ids'            => [],
+            'txn_ids'        => [],
+            'has_merch_items'=> false,
+            'encoder_remarks'=> [],
         ];
     }
     // Keep first non-empty vehicle_info
@@ -467,13 +575,20 @@ foreach ($rows as $r) {
     if (isset($r['service_type']) && $r['service_type'] !== '—' && $r['service_type'] !== 'N/A') {
         $groups[$gkey]['service_types'][] = $r['service_type'];
     }
-    $groups[$gkey]['total'] += (float)($r['amount'] ?? 0);
+    $groups[$gkey]['total']          += (float)($r['amount'] ?? 0);
+    $groups[$gkey]['service_fee']    += (float)($r['service_fee'] ?? 0);
+    $groups[$gkey]['merch_subtotal'] += (float)($r['merch_subtotal'] ?? 0);
+    if ((float)($r['merch_subtotal'] ?? 0) > 0) $groups[$gkey]['has_merch_items'] = true;
     $pay = trim($r['payment_method'] ?? '');
     if ($pay && !in_array($pay, $groups[$gkey]['pay_methods'])) {
         $groups[$gkey]['pay_methods'][] = $pay;
     }
     $groups[$gkey]['txn_ids'][] = $r['txn_id'];
     $groups[$gkey]['ids'][] = ['id' => (int)$r['row_id'], 'source' => $r['_source']];
+    $rem = trim($r['encoder_remarks'] ?? '');
+    if ($rem !== '' && !in_array($rem, $groups[$gkey]['encoder_remarks'])) {
+        $groups[$gkey]['encoder_remarks'][] = $rem;
+    }
 }
 $groups = array_values($groups);
 
@@ -486,28 +601,16 @@ include __DIR__ . '/../partials/header.php';
         <div class="sub">Review staff-encoded records awaiting validation.</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <button type="button" onclick="exportPending('excel')" title="Export to Excel"
-                style="background:white;color:#1d6f42;height:38px;padding:9px 20px;border-radius:8px;border:1px solid #1d6f42;font-size:14px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
-                onmouseover="this.style.background='#1d6f42';this.style.color='#fff'"
-                onmouseout="this.style.background='white';this.style.color='#1d6f42'">
+        <button type="button" onclick="exportPending('excel')" title="Export to Excel" class="txn-btn success">
             <i class="fas fa-file-excel"></i> Excel
         </button>
-        <button type="button" onclick="exportPending('csv')" title="Export to CSV"
-                style="background:white;color:#003d7a;height:38px;padding:9px 20px;border-radius:8px;border:1px solid #003d7a;font-size:14px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
-                onmouseover="this.style.background='#003d7a';this.style.color='#fff'"
-                onmouseout="this.style.background='white';this.style.color='#003d7a'">
+        <button type="button" onclick="exportPending('csv')" title="Export to CSV" class="txn-btn primary">
             <i class="fas fa-file-csv"></i> CSV
         </button>
-        <button type="button" onclick="exportPending('pdf')" title="Export to PDF"
-                style="background:white;color:#dc2626;height:38px;padding:9px 20px;border-radius:8px;border:1px solid #dc2626;font-size:14px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
-                onmouseover="this.style.background='#dc2626';this.style.color='#fff'"
-                onmouseout="this.style.background='white';this.style.color='#dc2626'">
+        <button type="button" onclick="exportPending('pdf')" title="Export to PDF" class="txn-btn danger">
             <i class="fas fa-file-pdf"></i> PDF
         </button>
-        <a href="<?= in_array($role, ['admin', 'superadmin']) ? 'admin_dashboard.php' : 'manager_dashboard.php'; ?>"
-           style="background:white;color:#4b5563;text-decoration:none;height:38px;padding:9px 20px;border-radius:8px;border:1px solid #6b7280;font-size:14px;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
-           onmouseover="this.style.background='#6b7280';this.style.color='#fff'"
-           onmouseout="this.style.background='white';this.style.color='#4b5563'">
+        <a href="<?= in_array($role, ['admin', 'superadmin']) ? 'admin_dashboard.php' : 'manager_dashboard.php'; ?>" class="txn-btn secondary">
             <i class="fas fa-arrow-left"></i> Back
         </a>
     </div>
@@ -545,36 +648,36 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 <!-- Table -->
-<div class="card" style="padding:0;overflow-x:auto;">
-    <table class="pt-table" style="table-layout:auto;width:100%;">
+<div class="pt-table-wrap">
+    <table class="pt-table" style="table-layout:fixed;width:100%;">
         <colgroup>
-            <col style="width:9%;"><!-- Txn ID(s) -->
-            <col style="width:10%;"><!-- Customer -->
-            <col style="width:8%;"><!-- Type -->
-            <col style="width:10%;"><!-- Vehicle -->
-            <col style="width:15%;"><!-- Items / Parts -->
-            <col style="width:12%;"><!-- Service Type -->
-            <col style="width:8%;"><!-- Amount -->
-            <col style="width:8%;"><!-- Method -->
-            <col style="width:7%;"><!-- Status -->
-            <col style="width:7%;"><!-- Date -->
-            <col style="width:7%;"><!-- Staff -->
-            <col style="width:9%;"><!-- Actions -->
+            <col style="width:8%;"><!-- Txn ID(s) -->
+            <col style="width:9%;"><!-- Customer + Type -->
+            <col style="width:6%;"><!-- Txn Type -->
+            <col style="width:6%;"><!-- Vehicle -->
+            <col style="width:13%;"><!-- Items / Parts -->
+            <col style="width:11%;"><!-- Service Type -->
+            <col style="width:9%;"><!-- Amount Breakdown -->
+            <col style="width:5%;"><!-- Method -->
+            <col style="width:9%;"><!-- Status (val + inv merged) -->
+            <col style="width:6%;"><!-- Date -->
+            <col style="width:6%;"><!-- Staff -->
+            <col style="width:12%;"><!-- Actions -->
         </colgroup>
         <thead>
             <tr>
-                <th style="font-size:12px;">Txn ID(s)</th>
-                <th style="font-size:12px;">Customer</th>
-                <th style="font-size:12px;">Type</th>
-                <th style="font-size:12px;">Vehicle</th>
-                <th style="font-size:12px;">Items / Parts</th>
-                <th style="font-size:12px;">Service Type</th>
-                <th style="text-align:right;font-size:12px;">Total Amount</th>
-                <th style="font-size:12px;">Method</th>
-                <th style="font-size:12px;">Status</th>
-                <th style="font-size:12px;">Date</th>
-                <th style="font-size:12px;">Staff</th>
-                <th style="text-align:center;font-size:12px;">Actions</th>
+                <th>Txn ID(s)</th>
+                <th>Customer</th>
+                <th>Type</th>
+                <th>Vehicle</th>
+                <th>Items / Parts</th>
+                <th>Service</th>
+                <th style="text-align:right;">Amount</th>
+                <th>Method</th>
+                <th>Status</th>
+                <th>Date</th>
+                <th>Staff</th>
+                <th style="text-align:center;">Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -587,63 +690,90 @@ include __DIR__ . '/../partials/header.php';
                     $unique_services = array_unique($g['service_types']);
                     $pay_str      = implode(' / ', array_unique($g['pay_methods'])) ?: 'Cash';
                     $count        = count($g['ids']);
-                    
-                    $has_jo       = in_array('Job Order', $g['types']) || in_array('JO + Merchandise', $g['types']);
-                    $has_merch    = in_array('Merchandise', $g['types']) || in_array('JO + Merchandise', $g['types']);
-                    
+
+                    $has_jo    = in_array('Job Order', $g['types']) || in_array('JO + Merchandise', $g['types']);
+                    $has_merch = in_array('Merchandise', $g['types']) || in_array('JO + Merchandise', $g['types']);
+
                     if ($has_jo && $has_merch)   $badge_class = 'pt-badge-type-combined';
                     elseif ($has_jo)              $badge_class = 'pt-badge-type-jo';
                     else                          $badge_class = 'pt-badge-type';
-                    
-                    $type_label   = implode(' + ', $unique_types);
-                    $items_display = !empty($unique_items_parts) ? implode(' | ', $unique_items_parts) : 'N/A';
+
+                    $type_label      = implode('+', array_map('trim', $unique_types));
+                    $items_display   = !empty($unique_items_parts) ? implode(' | ', $unique_items_parts) : 'N/A';
                     $service_display = !empty($unique_services) ? implode(' | ', $unique_services) : 'N/A';
                     $vehicle_display = !empty($g['vehicle_info']) ? $g['vehicle_info'] : '—';
+
+                    $cust_type = $g['customer_type'] ?? 'Walk-in';
+                    $cust_tag_style = $cust_type === 'Registered'
+                        ? 'color:#1e40af;font-size:11px;font-weight:600;'
+                        : 'color:#94a3b8;font-size:11px;';
+
+                    $svc_fee   = (float)($g['service_fee'] ?? 0);
+                    $merch_sub = (float)($g['merch_subtotal'] ?? 0);
+                    $total     = (float)($g['total'] ?? 0);
+
+                    // Inventory tag
+                    $inv_tag = $has_merch ? '<span style="font-size:11px;color:#d97706;">Inv: Pending</span>' : '';
+
+                    // Notes tooltip
+                    $remarks_display = !empty($g['encoder_remarks']) ? implode(' | ', $g['encoder_remarks']) : '';
                 ?>
                 <tr>
-                    <td style="font-weight:600;font-size:11px;font-family:monospace;color:#64748b;">
-                        <?php echo htmlspecialchars(implode(', ', $g['txn_ids'])); ?>
+                    <td style="font-weight:600;font-family:monospace;color:#64748b;line-height:1.4;overflow:hidden;text-overflow:ellipsis;">
+                        <?php echo htmlspecialchars(implode('<br>', $g['txn_ids'])); ?>
                     </td>
-                    <td style="font-size:12px;font-weight:600;" title="<?php echo htmlspecialchars($g['customer']); ?>">
-                        <?php echo htmlspecialchars($g['customer']); ?>
+                    <!-- Customer + Customer Type merged -->
+                    <td title="<?php echo htmlspecialchars($g['customer']); ?>" style="overflow:hidden;text-overflow:ellipsis;">
+                        <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;"><?php echo htmlspecialchars($g['customer']); ?></div>
+                        <div style="<?= $cust_tag_style ?>"><?= htmlspecialchars($cust_type) ?></div>
                     </td>
                     <td>
-                        <span class="pt-badge <?= $badge_class ?>" style="font-size:10px;">
+                        <span class="pt-badge <?= $badge_class ?>" style="font-size:10px;padding:1px 4px;">
                             <?php echo htmlspecialchars($type_label); ?>
                         </span>
                     </td>
-                    <td style="font-size:11px;line-height:1.4;color:#475569;"
-                        title="<?php echo htmlspecialchars($vehicle_display); ?>">
+                    <td style="color:#475569;overflow:hidden;text-overflow:ellipsis;" title="<?php echo htmlspecialchars($vehicle_display); ?>">
                         <?php echo htmlspecialchars($vehicle_display); ?>
                     </td>
-                    <td style="font-size:11px;line-height:1.4;" title="<?php echo htmlspecialchars($items_display); ?>">
-                        <?php echo htmlspecialchars($items_display); ?>
+                    <td style="line-height:1.3;overflow:hidden;" title="<?php echo htmlspecialchars($items_display); ?>">
+                        <?php echo htmlspecialchars(mb_strimwidth($items_display, 0, 50, '…')); ?>
                     </td>
-                    <td style="font-size:11px;line-height:1.4;" title="<?php echo htmlspecialchars($service_display); ?>">
-                        <?php echo htmlspecialchars($service_display); ?>
+                    <td style="line-height:1.3;overflow:hidden;" title="<?php echo htmlspecialchars($service_display); ?>">
+                        <?php echo htmlspecialchars(mb_strimwidth($service_display, 0, 40, '…')); ?>
                     </td>
-                    <td style="font-weight:700;color:#002F70;text-align:right;white-space:nowrap;font-size:13px;">
-                        &#8369;<?php echo number_format($g['total'], 2); ?>
+                    <td style="text-align:right;line-height:1.6;">
+                        <?php if ($svc_fee > 0): ?>
+                        <div style="color:#7c3aed;font-size:10px;">Svc: &#8369;<?= number_format($svc_fee, 2) ?></div>
+                        <?php endif; ?>
+                        <?php if ($merch_sub > 0): ?>
+                        <div style="color:#0284c7;font-size:10px;">Merch: &#8369;<?= number_format($merch_sub, 2) ?></div>
+                        <?php endif; ?>
+                        <div style="font-weight:700;color:#002F70;white-space:nowrap;">&#8369;<?= number_format($total, 2) ?></div>
                     </td>
-                    <td style="font-size:12px;"><?php echo htmlspecialchars($pay_str); ?></td>
-                    <td>
-                        <span class="pt-badge pt-badge-unpaid" style="background:#fef3c7;color:#92400e;border-color:#fde047;font-size:10px;">
+                    <td style="overflow:hidden;text-overflow:ellipsis;"><?php echo htmlspecialchars($pay_str); ?></td>
+                    <!-- Val Status + Inv Status merged, Notes as tooltip -->
+                    <td title="<?= htmlspecialchars($remarks_display ?: 'No notes') ?>">
+                        <span class="pt-badge" style="font-size:10px;padding:1px 4px;background:#fef3c7;color:#92400e;border-color:#fde047;display:block;margin-bottom:2px;">
                             Pending
                         </span>
+                        <?= $inv_tag ?>
+                        <?php if ($remarks_display): ?>
+                        <div style="font-size:10px;color:#7c3aed;margin-top:2px;"><i class="fas fa-comment-alt"></i></div>
+                        <?php endif; ?>
                     </td>
-                    <td style="white-space:nowrap;font-size:11px;color:#64748b;">
+                    <td style="color:#64748b;overflow:hidden;text-overflow:ellipsis;">
                         <?php echo date('M d, Y', strtotime($g['date'])); ?>
                     </td>
-                    <td style="font-size:11px;color:#64748b;"><?php echo htmlspecialchars($g['staff']); ?></td>
-                    <td style="text-align:center;padding:8px 6px;">
-                        <div style="display:flex;flex-direction:column;gap:4px;align-items:center;">
-                            <button class="pt-btn-action-full pt-btn-approve" onclick="approveGroup('<?= $ids_json ?>')" style="font-size:11px;padding:6px 10px;">
+                    <td style="color:#64748b;overflow:hidden;text-overflow:ellipsis;"><?php echo htmlspecialchars(mb_strimwidth($g['staff'], 0, 14, '…')); ?></td>
+                    <td style="padding:5px 4px;vertical-align:middle;">
+                        <div style="display:flex;flex-direction:column;gap:3px;align-items:stretch;width:100%;">
+                            <button class="pt-btn-action-full pt-btn-approve" onclick="openApproveModal('<?= $ids_json ?>')" style="width:100%;">
                                 <i class="fas fa-check-circle"></i> Approve
                             </button>
-                            <button class="pt-btn-action-full pt-btn-reject" onclick="rejectGroup('<?= $ids_json ?>')" style="font-size:11px;padding:6px 10px;">
+                            <button class="pt-btn-action-full pt-btn-reject" onclick="rejectGroup('<?= $ids_json ?>')" style="width:100%;">
                                 <i class="fas fa-times-circle"></i> Reject
                             </button>
-                            <button class="pt-btn-action-full pt-btn-adjust" onclick="adjustGroup('<?= $ids_json ?>')" style="font-size:11px;padding:6px 10px;">
+                            <button class="pt-btn-action-full pt-btn-adjust" onclick="adjustGroup('<?= $ids_json ?>')" style="width:100%;">
                                 <i class="fas fa-edit"></i> Adjust
                             </button>
                         </div>
@@ -652,7 +782,7 @@ include __DIR__ . '/../partials/header.php';
                 <?php endforeach; ?>
             <?php else: ?>
                 <tr>
-                    <td colspan="10" style="text-align:center;padding:60px 20px;color:#94a3b8;">
+                    <td colspan="12" style="text-align:center;padding:60px 20px;color:#94a3b8;">
                         <i class="fas fa-check-circle" style="font-size:48px;display:block;margin-bottom:12px;opacity:0.3;"></i>
                         <div style="font-size:16px;font-weight:600;color:#64748b;margin-bottom:4px;">No Pending Transactions</div>
                         <div style="font-size:13px;">All transactions have been validated.</div>
@@ -667,8 +797,8 @@ include __DIR__ . '/../partials/header.php';
 <?php if (count($groups) > 0): ?>
 <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:#fff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px;flex-wrap:wrap;gap:12px;">
     <div style="display:flex;align-items:center;gap:8px;">
-        <label style="font-size:12px;color:#64748b;font-weight:600;">Rows per page:</label>
-        <select id="rowsPerPage" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;cursor:pointer;">
+        <label style="font-size:12px;font-weight:600;">Rows per page:</label>
+        <select id="rowsPerPage" class="pag-select">
             <option value="10" selected>10</option>
             <option value="20">20</option>
             <option value="30">30</option>
@@ -677,18 +807,43 @@ include __DIR__ . '/../partials/header.php';
         </select>
     </div>
     <div style="display:flex;align-items:center;gap:10px;">
-        <span id="pageInfo" style="font-size:12px;color:#64748b;font-weight:600;">Page 1 of 1</span>
+        <span id="pageInfo" style="font-size:12px;font-weight:600;">Page 1 of 1</span>
         <div style="display:flex;gap:4px;">
-            <button id="prevPage" class="pt-page-btn" style="padding:6px 12px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;color:#64748b;font-size:12px;cursor:pointer;transition:all .15s;" disabled>
-                <i class="fas fa-chevron-left"></i> Prev
+            <button id="prevPage" class="pag-btn" disabled>
+                <i class="fas fa-chevron-left"></i>
             </button>
-            <button id="nextPage" class="pt-page-btn" style="padding:6px 12px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;color:#64748b;font-size:12px;cursor:pointer;transition:all .15s;">
-                Next <i class="fas fa-chevron-right"></i>
+            <button id="nextPage" class="pag-btn">
+                <i class="fas fa-chevron-right"></i>
             </button>
         </div>
     </div>
 </div>
 <?php endif; ?>
+
+<!-- Approve Modal -->
+<div class="pt-modal-overlay" id="approveModal">
+    <div class="pt-modal">
+        <h3><i class="fas fa-check-circle" style="color:#16a34a;margin-right:8px;"></i>Approve Group</h3>
+        <form method="POST" id="approveForm">
+            <input type="hidden" name="action" value="approve_group">
+            <input type="hidden" name="group_ids" id="approve_group_ids" value="">
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:#166534;">
+                <i class="fas fa-info-circle" style="margin-right:6px;"></i>
+                Approving will deduct merchandise stock and update customer balances.
+            </div>
+            <label>Validation Notes <span style="color:#94a3b8;font-weight:400;">(optional — for audit trail)</span></label>
+            <textarea name="notes" id="approve_notes" placeholder="e.g. Verified items match delivery slip, customer confirmed..." style="min-height:70px;"></textarea>
+            <div class="pt-modal-btns">
+                <button type="button" class="pt-modal-cancel" onclick="closeApproveModal()">Cancel</button>
+                <button type="submit" class="pt-modal-submit" style="color:#16a34a;border-color:#16a34a;"
+                        onmouseover="this.style.background='#16a34a';this.style.color='#fff'"
+                        onmouseout="this.style.background='white';this.style.color='#16a34a'">
+                    <i class="fas fa-check-circle"></i> Approve Group
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
 
 <!-- Reject Modal -->
 <div class="pt-modal-overlay" id="rejectModal">
@@ -739,8 +894,8 @@ include __DIR__ . '/../partials/header.php';
                     Override Total Price (optional)
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                    <label style="font-size:12px;color:#64748b;min-width:120px;">New Total Amount</label>
-                    <div style="position:relative;flex:1;min-width:180px;">
+                    <label style="font-size:12px;color:#64748b;">New Total Amount</label>
+                    <div style="position:relative;flex:1;">
                         <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);
                                      color:#64748b;font-weight:600;">₱</span>
                         <input type="number" name="new_value" id="adjust_value" step="0.01" min="0"
@@ -799,6 +954,63 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 <style>
+/* ── Shared export/action buttons (matches staff_transactions_hub) ── */
+.txn-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all .2s;
+    text-decoration: none;
+    background: white !important;
+}
+.txn-btn.success { color: #16a34a !important; border-color: #16a34a !important; }
+.txn-btn.success:hover { background: #16a34a !important; color: white !important; }
+.txn-btn.primary { color: #00264D !important; border-color: #00264D !important; }
+.txn-btn.primary:hover { background: #00264D !important; color: white !important; }
+.txn-btn.danger { color: #dc2626 !important; border-color: #dc2626 !important; }
+.txn-btn.danger:hover { background: #dc2626 !important; color: white !important; }
+.txn-btn.secondary { color: #4b5563 !important; border-color: #6b7280 !important; }
+.txn-btn.secondary:hover { background: #6b7280 !important; color: white !important; }
+
+/* ── Pagination buttons ── */
+.pag-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 28px !important;
+    height: 28px !important;
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 4px !important;
+    color: inherit !important;
+    font-size: 12px !important;
+    cursor: pointer !important;
+    transition: all .15s !important;
+}
+.pag-btn i { color: inherit !important; }
+.pag-btn:hover:not(:disabled) { background: #00264D !important; border-color: #00264D !important; color: #ffffff !important; }
+.pag-btn:hover:not(:disabled) i { color: #ffffff !important; }
+.pag-btn:disabled { opacity: .4 !important; cursor: not-allowed !important; }
+
+/* ── Rows per page select ── */
+.pag-select {
+    font-size: 12px !important;
+    padding: 4px 8px !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 4px !important;
+    background: #ffffff !important;
+    color: inherit !important;
+    outline: none !important;
+    cursor: pointer !important;
+}
+
 /* Filter Card */
 .pt-filter-card { 
     background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 18px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.05); 
@@ -821,11 +1033,12 @@ include __DIR__ . '/../partials/header.php';
 .pt-btn-reset:hover { background:#6b7280 !important; color:#fff !important; }
 
 /* Table */
-.pt-table { width:100%;border-collapse:collapse;font-size:13px; }
+.pt-table-wrap { width:100%; overflow:hidden; max-width:100% !important; border-radius:10px; border:1px solid #e2e8f0; }
+.pt-table { width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;word-wrap:break-word; }
 .pt-table thead th { 
-    background:#002F70;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:12px 10px;border-bottom:2px solid #001a3d;text-align:left;
+    background:#002F70;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.2px;padding:10px 6px;border-bottom:2px solid #001a3d;text-align:left;overflow:hidden;text-overflow:ellipsis;
 }
-.pt-table tbody td { padding:10px;border-bottom:1px solid #f1f5f9;vertical-align:middle;background:#fff; }
+.pt-table tbody td { padding:8px 6px;border-bottom:1px solid #f1f5f9;vertical-align:middle;background:#fff;font-size:11px;overflow:hidden;text-overflow:ellipsis;word-break:break-word;max-width:0; }
 .pt-table tbody tr:hover td { background:#eff6ff; }
 
 /* Badges */
@@ -842,20 +1055,22 @@ include __DIR__ . '/../partials/header.php';
 /* Action Buttons — unified outline style matching staff Transaction module */
 .pt-btn-action-full { 
     background: white !important;
-    width:auto;
-    min-width:100px;
-    height:36px;
-    border-radius:8px;
+    width:100%;
+    min-width:72px;
+    height:32px;
+    border-radius:5px;
     border:1px solid transparent;
     cursor:pointer;
-    font-size:13px;
+    font-size:12px;
     font-weight:600;
-    display:inline-flex;
+    display:flex;
     align-items:center;
     justify-content:center;
-    gap:6px;
+    gap:4px;
     transition:all .15s;
-    padding:0 12px;
+    padding:0 8px;
+    box-sizing:border-box;
+    white-space:nowrap;
 }
 .pt-btn-action-full:hover { 
     transform:none;
@@ -888,26 +1103,18 @@ include __DIR__ . '/../partials/header.php';
 </style>
 
 <script>
+function openApproveModal(idsJson) {
+    document.getElementById('approve_group_ids').value = idsJson;
+    document.getElementById('approve_notes').value = '';
+    document.getElementById('approveModal').classList.add('active');
+}
+
+function closeApproveModal() {
+    document.getElementById('approveModal').classList.remove('active');
+}
+
 function approveGroup(idsJson) {
-    if (confirm('Approve all transactions in this group?')) {
-        const form = document.createElement('form');
-        form.method = 'POST';
-        
-        const actionInput = document.createElement('input');
-        actionInput.type = 'hidden';
-        actionInput.name = 'action';
-        actionInput.value = 'approve_group';
-        form.appendChild(actionInput);
-        
-        const idsInput = document.createElement('input');
-        idsInput.type = 'hidden';
-        idsInput.name = 'group_ids';
-        idsInput.value = idsJson;
-        form.appendChild(idsInput);
-        
-        document.body.appendChild(form);
-        form.submit();
-    }
+    openApproveModal(idsJson);
 }
 
 function rejectGroup(idsJson) {
@@ -1131,6 +1338,9 @@ function closeAdjustModal() {
 }
 
 // Close modals on overlay click
+document.getElementById('approveModal').addEventListener('click', function(e) {
+    if (e.target === this) closeApproveModal();
+});
 document.getElementById('rejectModal').addEventListener('click', function(e) {
     if (e.target === this) closeRejectModal();
 });
@@ -1155,7 +1365,8 @@ function autoRefreshPendingTransactions() {
 function updateModalState() {
     const rejectModal = document.getElementById('rejectModal');
     const adjustModal = document.getElementById('adjustModal');
-    isModalOpen = rejectModal.classList.contains('active') || adjustModal.classList.contains('active');
+    isModalOpen = rejectModal.classList.contains('active') || adjustModal.classList.contains('active')
+               || document.getElementById('approveModal').classList.contains('active');
 }
 
 const originalCloseRejectModal = window.closeRejectModal;

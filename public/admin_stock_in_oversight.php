@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'admin_stock_in';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -87,7 +87,7 @@ include __DIR__ . '/../partials/header.php';
 <style>
 :root{--blue:#002F6C;--red:#dc3545;--orange:#fd7e14;--green:#28a745;--gray:#6c757d;}
 .kpi-grid{display:flex;gap:14px;margin-bottom:20px;flex-wrap:wrap;}
-.kpi-card{flex:1;min-width:160px;background:#fff;border-radius:10px;padding:16px 18px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(0,0,0,.06);}
+.kpi-card{flex:1;background:#fff;border-radius:10px;padding:16px 18px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(0,0,0,.06);}
 .kpi-card .kv{font-size:24px;font-weight:800;line-height:1;} .kpi-card .kl{font-size:12px;color:var(--gray);margin-top:4px;}
 .main-tab-nav{display:flex;border-bottom:2px solid #e2e8f0;margin-bottom:20px;}
 .tab-btn{padding:10px 22px;background:none;border:none;border-bottom:3px solid transparent;font-size:14px;font-weight:600;color:var(--gray);cursor:pointer;margin-bottom:-2px;transition:all .15s;display:inline-flex;align-items:center;gap:6px;}
@@ -100,7 +100,7 @@ include __DIR__ . '/../partials/header.php';
 .filter-bar .fg{display:flex;flex-direction:column;gap:4px;}
 .filter-bar label{font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.4px;}
 .filter-bar input,.filter-bar select{padding:7px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;}
-.table-wrap{overflow-x:auto;}
+.table-wrap{overflow:hidden;}
 table.stockin{width:100%;border-collapse:collapse;font-size:12.5px;}
 table.stockin th{background:#002F70;color:#fff;padding:10px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;}
 table.stockin td{padding:9px 12px;border-bottom:1px solid #f1f5f9;vertical-align:middle;white-space:nowrap;}

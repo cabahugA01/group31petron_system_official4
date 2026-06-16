@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'staff_fuel_del_history';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -103,7 +103,7 @@ include __DIR__ . '/../partials/header.php';
 /* ── Table ── */
 .del-table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
 .del-table thead th { background: #002F70 !important; color: #fff !important; font-weight: 600; padding: 10px 8px; text-align: left; 
-  text-transform: uppercase; letter-spacing: 0.3px; border: none !important; white-space: nowrap; font-size: 10px; }
+  text-transform: uppercase; letter-spacing: 0.3px; border: none !important; font-size: 10px; }
 .del-table td { padding: 10px 8px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; }
 .del-table tr:hover td { background: #f8f9fa; }
 .del-table tr.row-rejected td { background: #fff8f8; }

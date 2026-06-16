@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Developer Dashboard - Complete Technical Control Center
  * System Health, Integration Monitoring, Database Management, Security, Audit Trail, Developer Tools
@@ -258,8 +258,7 @@ include __DIR__ . '/../partials/header.php';
 
 .dev-header-left {
     flex: 1;
-    min-width: 300px;
-}
+    }
 
 .dev-header-left h1 {
     font-size: 1.875rem;

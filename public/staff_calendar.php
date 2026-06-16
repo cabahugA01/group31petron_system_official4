@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'calendar';
 require_once __DIR__ . '/../backend/lib.php';
@@ -489,7 +489,7 @@ include __DIR__ . '/../partials/header.php';
 .cal-view-btn:hover { background: #f1f3f4; }
 
 /* View dropdown */
-.cal-view-dropdown { position: absolute; top: 100%; right: 0; margin-top: 4px; background: #fff; border: 1px solid #dadce0; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.2); min-width: 160px; z-index: 100; display: none; }
+.cal-view-dropdown { position: absolute; top: 100%; right: 0; margin-top: 4px; background: #fff; border: 1px solid #dadce0; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.2); z-index: 100; display: none; }
 .cal-view-dropdown.show { display: block; }
 .cal-view-option { padding: 12px 16px; cursor: pointer; font-size: 14px; color: #3c4043; display: flex; align-items: center; justify-content: space-between; }
 .cal-view-option:hover { background: #f1f3f4; }

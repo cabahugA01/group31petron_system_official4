@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Staff Stock-In
  * Inventory is updated ONLY here, after Admin finalizes a PO.
@@ -272,7 +272,7 @@ include __DIR__ . '/../partials/header.php';
 .po-item-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;flex-wrap:wrap;gap:8px;}
 .po-meta{font-size:12px;color:var(--gray);margin-bottom:12px;display:flex;flex-wrap:wrap;gap:12px;}
 .table-wrap{overflow-x:hidden;-webkit-overflow-scrolling:touch;}
-.si-table{width:100%;border-collapse:collapse;font-size:13px;min-width:760px;}
+.si-table{width:100%;border-collapse:collapse;font-size:13px;}
 .si-table th{background:#002F70;padding:10px 12px;text-align:center;font-size:11px;font-weight:700;color:#fff;border-bottom:none;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;}
 .si-table td{padding:8px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle;text-align:center;}
 .si-table tbody tr:hover td{background:#eff6ff;}
@@ -521,7 +521,7 @@ include __DIR__ . '/../partials/header.php';
         <label style="font-size:12px;font-weight:700;color:#002F70;white-space:nowrap;margin:0;"><i class="fas fa-tag"></i> Batch ID:</label>
         <input type="text" id="batch-<?= $delivery_id ?>" value="<?= htmlspecialchars($po['batch_id'] ?? '') ?>"
                placeholder="Enter Batch ID (e.g. BATCH-001)"
-               style="font-family:monospace;font-size:0.9rem;padding:5px 10px;border:1px solid #bcd2ee;border-radius:5px;min-width:180px;color:#002F70;font-weight:700;">
+               style="font-family:monospace;font-size:0.9rem;padding:5px 10px;border:1px solid #bcd2ee;border-radius:5px;color:#002F70;font-weight:700;">
         <?php if (!empty($po['batch_id'])): ?>
         <span style="font-size:11px;color:#6c757d;"><i class="fas fa-info-circle"></i> Pre-filled from delivery. Edit if different from actual.</span>
         <?php else: ?>

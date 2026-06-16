@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * PRICING FOR RECEIVED ITEMS
  * 
@@ -248,7 +248,7 @@ include __DIR__ . '/../partials/header.php';
         <form method="post" style="margin-top: 30px;">
             <input type="hidden" name="action" value="save_pricing">
             
-            <div style="overflow-x: auto;">
+            <div style="overflow:hidden;">
                 <table style="width: 100%; border-collapse: collapse;">
                     <thead>
                         <tr style="background: #002F6C; color: white;">

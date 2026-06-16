@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'settings';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -665,8 +665,7 @@ include __DIR__ . '/../partials/header.php';
         align-items: center;
         gap: 12px;
         z-index: 2000;
-        min-width: 300px;
-    }
+        }
     
     .toast.show {
         display: flex;

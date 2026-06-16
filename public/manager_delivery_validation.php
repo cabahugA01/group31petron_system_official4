@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = "mgr_del_validate";
 require_once __DIR__ . "/../backend/lib.php";
 require_once __DIR__ . "/db_connect.php";
@@ -65,7 +65,7 @@ include __DIR__ . "/../partials/header.php";
 .po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow-x:hidden; }
 /* ── Table ── */
 .po-table { width:100%; border-collapse:collapse; font-size:0.88rem; }
-.po-table thead th { background:#002F70; color:#fff; padding:12px 14px; text-align:center; font-weight:600; white-space:nowrap; }
+.po-table thead th { background:#002F70; color:#fff; padding:12px 14px; text-align:center; font-weight:600; }
 .po-table tbody tr { border-bottom:1px solid #f0f0f0; transition:background 0.15s; }
 .po-table tbody tr:hover { background:#eff6ff; }
 .po-table tbody td { padding:11px 14px; vertical-align:middle; color:#333; text-align:center; }
@@ -115,7 +115,7 @@ include __DIR__ . "/../partials/header.php";
 .dv-card-title { font-size:1rem; font-weight:700; color:#002F70; display:flex; align-items:center; gap:8px; }
 .dv-card-body { padding:0; }
 /* ── Actions cell: stacked buttons ── */
-.actions-cell { display:flex; flex-direction:column; gap:4px; min-width:130px; }
+.actions-cell { display:flex; flex-direction:column; gap:4px; }
 .actions-cell .btn-action { width:100%; justify-content:center; margin-bottom:0; }
 /* ── Modal ── */
 .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1050; align-items:center; justify-content:center; }

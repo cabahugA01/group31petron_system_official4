@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Manager Compliance Reports - Real Report Format
  * Activity Logs, Audit Trail, Calendar & Schedule
@@ -139,7 +139,7 @@ require_once __DIR__ . '/../partials/header.php';
     display: flex;
     border-bottom: 2px solid #e2e8f0;
     margin-bottom: 0;
-    overflow-x: auto;
+    overflow:hidden;
 }
 
 .cr-section-tab {
@@ -189,7 +189,6 @@ require_once __DIR__ . '/../partials/header.php';
     color: #ffffff;
     font-size: 11px;
     text-transform: uppercase;
-    white-space: nowrap;
     background: #002F70;
 }
 

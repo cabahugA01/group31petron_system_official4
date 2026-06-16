@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * MANAGER VALIDATED TRANSACTIONS
  * 
@@ -97,7 +97,13 @@ try {
             COALESCE({$mt_status_col},'Approved') AS validation_status,
             COALESCE({$mt_staff_col},'Unknown') AS staff_name,
             COALESCE({$mt_vby_col},'N/A') AS validated_by,
-            'merchandise_transactions' AS _source
+            'merchandise_transactions' AS _source,
+            COALESCE(
+                NULLIF(TRIM(COALESCE(mt.remarks,'')), ''),
+                NULLIF(TRIM(COALESCE(mt.adjustment_reason,'')), ''),
+                NULLIF(TRIM(COALESCE(mt.rejection_reason,'')), ''),
+                ''
+            ) AS validation_remarks
         FROM merchandise_transactions mt
         LEFT JOIN users u ON u.id = mt.staff_id
         LEFT JOIN users v ON v.id = mt.validated_by
@@ -150,7 +156,13 @@ try {
             COALESCE(NULLIF(TRIM({$jo_status_col}),''),'Approved') AS validation_status,
             COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS staff_name,
             COALESCE({$jo_vby_col},'N/A') AS validated_by,
-            'job_orders' AS _source
+            'job_orders' AS _source,
+            COALESCE(
+                NULLIF(TRIM(COALESCE(jo.admin_remarks,'')), ''),
+                NULLIF(TRIM(COALESCE(jo.adjustment_reason,'')), ''),
+                NULLIF(TRIM(COALESCE(jo.rejection_reason,'')), ''),
+                ''
+            ) AS validation_remarks
         FROM job_orders jo
         LEFT JOIN users u ON u.id = COALESCE(jo.created_by, jo.user_id)
         LEFT JOIN users v ON v.id = jo.validated_by
@@ -178,28 +190,16 @@ include __DIR__ . '/../partials/header.php';
     
     <!-- Export & Back Buttons (Header Right) -->
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-        <button type="button" onclick="exportTable('excel')" title="Export to Excel"
-                style="background:white;color:#1d6f42;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #1d6f42;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
-                onmouseover="this.style.background='#1d6f42';this.style.color='#fff'"
-                onmouseout="this.style.background='white';this.style.color='#1d6f42'">
+        <button type="button" onclick="exportTable('excel')" title="Export to Excel" class="txn-btn success">
             <i class="fas fa-file-excel"></i> Excel
         </button>
-        <button type="button" onclick="exportTable('csv')" title="Export to CSV"
-                style="background:white;color:#003d7a;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #003d7a;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
-                onmouseover="this.style.background='#003d7a';this.style.color='#fff'"
-                onmouseout="this.style.background='white';this.style.color='#003d7a'">
+        <button type="button" onclick="exportTable('csv')" title="Export to CSV" class="txn-btn primary">
             <i class="fas fa-file-csv"></i> CSV
         </button>
-        <button type="button" onclick="exportTable('pdf')" title="Export to PDF"
-                style="background:white;color:#dc2626;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #dc2626;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
-                onmouseover="this.style.background='#dc2626';this.style.color='#fff'"
-                onmouseout="this.style.background='white';this.style.color='#dc2626'">
+        <button type="button" onclick="exportTable('pdf')" title="Export to PDF" class="txn-btn danger">
             <i class="fas fa-file-pdf"></i> PDF
         </button>
-        <a href="<?= in_array($role, ['admin', 'superadmin']) ? 'admin_dashboard.php' : 'manager_dashboard.php'; ?>"
-           style="background:white;color:#4b5563;text-decoration:none;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #6b7280;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
-           onmouseover="this.style.background='#6b7280';this.style.color='#fff'"
-           onmouseout="this.style.background='white';this.style.color='#4b5563'">
+        <a href="<?= in_array($role, ['admin', 'superadmin']) ? 'admin_dashboard.php' : 'manager_dashboard.php'; ?>" class="txn-btn secondary">
             <i class="fas fa-arrow-left"></i> Back
         </a>
     </div>
@@ -251,34 +251,36 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 <!-- Table -->
-<div class="card" style="padding:0;overflow-x:auto;">
+<div class="card" style="padding:0;overflow:hidden;">
     <table class="vt-table" style="table-layout:auto;width:100%;">
         <colgroup>
-            <col style="width:8%;"><!-- Transaction ID -->
+            <col style="width:7%;"><!-- Transaction ID -->
             <col style="width:9%;"><!-- Customer -->
-            <col style="width:7%;"><!-- Type -->
-            <col style="width:14%;"><!-- Items / Service -->
-            <col style="width:8%;"><!-- Amount -->
-            <col style="width:8%;"><!-- Payment Method -->
-            <col style="width:9%;"><!-- Payment Status -->
-            <col style="width:11%;"><!-- Date / Time -->
-            <col style="width:9%;"><!-- Staff -->
-            <col style="width:9%;"><!-- Validated By -->
-            <col style="width:8%;"><!-- Actions -->
+            <col style="width:6%;"><!-- Type -->
+            <col style="width:12%;"><!-- Items / Service -->
+            <col style="width:7%;"><!-- Amount -->
+            <col style="width:7%;"><!-- Payment Method -->
+            <col style="width:8%;"><!-- Payment Status -->
+            <col style="width:9%;"><!-- Date / Time -->
+            <col style="width:8%;"><!-- Staff -->
+            <col style="width:8%;"><!-- Validated By -->
+            <col style="width:12%;"><!-- Validation Remarks -->
+            <col style="width:7%;"><!-- Actions -->
         </colgroup>
         <thead>
             <tr>
-                <th style="font-size:13px;">Txn ID</th>
-                <th style="font-size:13px;">Customer</th>
-                <th style="font-size:13px;">Type</th>
-                <th style="font-size:13px;">Items / Service</th>
-                <th style="text-align:right;font-size:13px;">Amount</th>
-                <th style="font-size:13px;">Method</th>
-                <th style="font-size:13px;">Status</th>
-                <th style="font-size:13px;">Date</th>
-                <th style="font-size:13px;">Staff</th>
-                <th style="font-size:13px;">Validated</th>
-                <th style="text-align:center;font-size:13px;">Actions</th>
+                <th>Txn ID</th>
+                <th>Customer</th>
+                <th>Type</th>
+                <th>Items / Service</th>
+                <th style="text-align:right;">Amount</th>
+                <th>Method</th>
+                <th>Status</th>
+                <th>Date</th>
+                <th>Staff</th>
+                <th>Validated</th>
+                <th>Validation Remarks</th>
+                <th style="text-align:center;">Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -313,6 +315,14 @@ include __DIR__ . '/../partials/header.php';
                     </td>
                     <td style="font-size:13px;color:#64748b;"><?php echo htmlspecialchars($r['staff_name']); ?></td>
                     <td style="font-size:13px;color:#64748b;"><?php echo htmlspecialchars($r['validated_by']); ?></td>
+                    <?php $val_rem = trim($r['validation_remarks'] ?? ''); ?>
+                    <td style="font-size:11px;font-style:italic;color:#64748b;line-height:1.4;" title="<?= htmlspecialchars($val_rem ?: '—') ?>">
+                        <?php if ($val_rem !== ''): ?>
+                            <span style="display:inline-block;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($val_rem) ?>"><?= htmlspecialchars($val_rem) ?></span>
+                        <?php else: ?>
+                            <span style="color:#cbd5e1;font-style:normal;">—</span>
+                        <?php endif; ?>
+                    </td>
                     <td style="text-align:center;padding:8px 4px;">
                         <button class="vt-btn-action vt-btn-view" onclick="viewValidatedTransaction('<?php echo $r['_source']; ?>', <?php echo $r['row_id']; ?>)" title="View transaction details" style="padding:6px 10px;font-size:12px;">
                             <i class="fas fa-eye"></i> View
@@ -322,7 +332,7 @@ include __DIR__ . '/../partials/header.php';
                 <?php endforeach; ?>
             <?php else: ?>
                 <tr>
-                    <td colspan="11" style="text-align:center;padding:60px 20px;color:#94a3b8;">
+                    <td colspan="12" style="text-align:center;padding:60px 20px;color:#94a3b8;">
                         <i class="fas fa-inbox" style="font-size:48px;display:block;margin-bottom:12px;opacity:0.3;"></i>
                         <div style="font-size:16px;font-weight:600;color:#64748b;margin-bottom:4px;">No Validated Transactions</div>
                         <div style="font-size:13px;">No approved transactions found matching your filters.</div>
@@ -353,6 +363,31 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 <style>
+/* ── Shared export/action buttons (matches staff_transactions_hub) ── */
+.txn-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all .2s;
+    text-decoration: none;
+    background: white !important;
+}
+.txn-btn.success { color: #16a34a !important; border-color: #16a34a !important; }
+.txn-btn.success:hover { background: #16a34a !important; color: white !important; }
+.txn-btn.primary { color: #00264D !important; border-color: #00264D !important; }
+.txn-btn.primary:hover { background: #00264D !important; color: white !important; }
+.txn-btn.danger { color: #dc2626 !important; border-color: #dc2626 !important; }
+.txn-btn.danger:hover { background: #dc2626 !important; color: white !important; }
+.txn-btn.secondary { color: #4b5563 !important; border-color: #6b7280 !important; }
+.txn-btn.secondary:hover { background: #6b7280 !important; color: white !important; }
+
 /* Filter Card */
 .vt-filter-card { 
     background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 18px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.05);

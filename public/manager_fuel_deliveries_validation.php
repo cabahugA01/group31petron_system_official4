@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // ============================================================
 // Manager Fuel Deliveries Validation – manager_fuel_deliveries_validation.php
 // Purpose: Validate staff-encoded fuel delivery receipts
@@ -333,7 +333,7 @@ html, body {
     padding: 12px 16px; margin-bottom: 18px; display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap;
     max-width: 100%;
 }
-.filter-group { display: flex; flex-direction: column; gap: 4px; min-width: 150px; }
+.filter-group { display: flex; flex-direction: column; gap: 4px; }
 .filter-group label { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; }
 .filter-group input[type=date] { padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; width: 100%; }
 
@@ -481,26 +481,31 @@ html, body {
         </div>
         <div class="actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
             <!-- Excel -->
-            <button type="button"
-                    onclick="window.location.href='?date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>&export=excel'"
-                    style="background:#1d6f42;color:#fff;height:36px;padding:8px 14px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+            <button type="button" onclick="window.location.href='?date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>&export=excel'"
+                    style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid #16a34a;background:white;color:#16a34a;transition:all .2s;"
+                    onmouseover="this.style.background='#16a34a';this.style.color='#fff'"
+                    onmouseout="this.style.background='white';this.style.color='#16a34a'">
                 <i class="fas fa-file-excel"></i> Excel
             </button>
             <!-- CSV -->
-            <button type="button"
-                    onclick="window.location.href='?date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>&export=csv'"
-                    style="background:#003d7a;color:#fff;height:36px;padding:8px 14px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+            <button type="button" onclick="window.location.href='?date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>&export=csv'"
+                    style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid #00264D;background:white;color:#00264D;transition:all .2s;"
+                    onmouseover="this.style.background='#00264D';this.style.color='#fff'"
+                    onmouseout="this.style.background='white';this.style.color='#00264D'">
                 <i class="fas fa-file-csv"></i> CSV
             </button>
             <!-- PDF -->
-            <button type="button"
-                    onclick="window.open('?date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>&export=pdf','_blank')"
-                    style="background:#dc2626;color:#fff;height:36px;padding:8px 14px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+            <button type="button" onclick="window.open('?date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>&export=pdf','_blank')"
+                    style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid #dc2626;background:white;color:#dc2626;transition:all .2s;"
+                    onmouseover="this.style.background='#dc2626';this.style.color='#fff'"
+                    onmouseout="this.style.background='white';this.style.color='#dc2626'">
                 <i class="fas fa-file-pdf"></i> PDF
             </button>
             <!-- Back -->
             <a href="manager_dashboard.php"
-               style="background:#6c757d;color:#fff;text-decoration:none;height:36px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">
+               style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid #6b7280;background:white;color:#4b5563;text-decoration:none;transition:all .2s;"
+               onmouseover="this.style.background='#6b7280';this.style.color='#fff'"
+               onmouseout="this.style.background='white';this.style.color='#4b5563'">
                 <i class="fas fa-arrow-left"></i> Back
             </a>
         </div>
@@ -517,7 +522,9 @@ html, body {
             <input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>">
         </div>
         <button type="submit"
-                style="background:#00264D;color:#fff;height:36px;padding:8px 14px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;">
+                style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid #16a34a;background:white;color:#16a34a;transition:all .2s;"
+                onmouseover="this.style.background='#16a34a';this.style.color='#fff'"
+                onmouseout="this.style.background='white';this.style.color='#16a34a'">
             <i class="fas fa-filter"></i> Apply Filter
         </button>
     </form>
@@ -616,7 +623,7 @@ html, body {
             </div>
 
             <!-- Entries Table -->
-            <div style="overflow-x:auto;">
+            <div style="overflow:hidden;">
                 <table class="entry-tbl">
                     <thead>
                         <tr>

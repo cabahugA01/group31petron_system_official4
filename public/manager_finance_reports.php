@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Manager Finance Reports - Real Report Format
  * Finance Reports with tabbed interface matching design
@@ -152,7 +152,7 @@ require_once __DIR__ . '/../partials/header.php';
     display: flex;
     border-bottom: 2px solid #e2e8f0;
     margin-bottom: 0;
-    overflow-x: auto;
+    overflow:hidden;
 }
 .fr-section-tab {
     padding: 12px 20px;
@@ -201,7 +201,6 @@ require_once __DIR__ . '/../partials/header.php';
     color: #ffffff;
     font-size: 11px;
     text-transform: uppercase;
-    white-space: nowrap;
     background: #002F70;
 }
 

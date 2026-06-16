@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'system_settings';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -337,7 +337,6 @@ aside.sidebar,
     background: var(--surface);
     box-shadow: 0 4px 20px rgba(0,0,0,0.15);
     border-left: 4px solid #16a34a;
-    min-width: 280px;
     max-width: 380px;
     animation: toastIn 0.3s ease;
     font-size: 14px;
@@ -541,7 +540,7 @@ aside.sidebar,
         Select a station to scope settings for that specific branch. Global settings apply to all stations.
       </p>
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
-        <div style="position:relative;flex:1;min-width:260px;max-width:480px;">
+        <div style="position:relative;flex:1;max-width:480px;">
           <i class="fas fa-search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:13px;pointer-events:none;"></i>
           <input type="text" id="stationSearchInput" placeholder="Search stations..." autocomplete="off"
                  style="width:100%;padding:10px 14px 10px 36px;border:1px solid var(--border-color);border-radius:8px;font-size:13px;color:var(--text-primary);background:var(--surface);box-sizing:border-box;"
@@ -581,7 +580,7 @@ aside.sidebar,
           </div>
         </div>
 
-        <div style="flex:1;min-width:300px;">
+        <div style="flex:1;">
           <div class="ss-form-group">
             <label for="logo-upload-input"><i class="fas fa-upload"></i> Upload New Logo</label>
             <input type="file" id="logo-upload-input" accept="image/*" class="ss-form-control" onchange="handleLogoUpload(event)">
@@ -902,7 +901,7 @@ aside.sidebar,
         <h4 style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:12px;">
           <i class="fas fa-history"></i> Recent Configuration Changes
         </h4>
-        <div style="overflow-x:auto;border-radius:8px;border:1px solid var(--border-color);">
+        <div style="overflow:hidden;border-radius:8px;border:1px solid var(--border-color);">
           <table style="width:100%;border-collapse:collapse;font-size:13px;">
             <thead>
               <tr style="background:var(--page-bg);">

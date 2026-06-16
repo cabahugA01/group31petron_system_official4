@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // ============================================================
 // Verify Station Cleanup Results
 // public/verify_cleanup.php
@@ -193,7 +193,7 @@ header('Content-Type: text/html; charset=UTF-8');
             color: #f8f8f2;
             padding: 16px;
             border-radius: 8px;
-            overflow-x: auto;
+            overflow:hidden;
             font-size: 13px;
             line-height: 1.5;
         }

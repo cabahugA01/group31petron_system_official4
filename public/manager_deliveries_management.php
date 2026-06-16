@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'manager_deliveries_management';
 require_once __DIR__ . '/../backend/rbac.php';
 require_once __DIR__ . '/../backend/lib.php';
@@ -1059,8 +1059,7 @@ include __DIR__ . '/../partials/header.php';
     }
     
     .step {
-        min-width: 200px;
-    }
+        }
     
     .step-arrow {
         transform: rotate(90deg);

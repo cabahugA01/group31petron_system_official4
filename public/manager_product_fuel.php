@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'mgr_prod_fuel';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -189,7 +189,7 @@ include __DIR__ . '/../partials/header.php';
 .card-header { padding:16px 20px; border-bottom:1px solid #e9ecef; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
 .card-header h3 { font-size:16px; font-weight:700; color:#002F70; margin:0; display:flex; align-items:center; gap:8px; }
 .card-body { padding:20px; overflow-x:hidden; }
-.table-wrap { overflow-x:auto; width:100%; }
+.table-wrap { overflow:hidden; width:100%; }
 .pm-table { width:100%; border-collapse:collapse; table-layout:auto; }
 .pm-table thead th { background:#002F70 !important; color:#fff !important; font-weight:600; padding:14px 12px !important; text-align:left !important; text-transform:uppercase; letter-spacing:0.3px; border:none !important; font-size:11px; }
 .pm-table thead th:last-child { text-align:center !important; }

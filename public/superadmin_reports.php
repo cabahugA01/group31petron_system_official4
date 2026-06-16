@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // ============================================================
 // SuperAdmin Reports (Developer View) — Auto-redirect to Technical Reports
 // ============================================================
@@ -598,7 +598,7 @@ require_once __DIR__ . '/../partials/header.php';
 
 /* Table */
 .rpt-table-container {
-    overflow-x: auto;
+    overflow:hidden;
     max-width: 100%;
 }
 
@@ -780,7 +780,7 @@ require_once __DIR__ . '/../partials/header.php';
     border-radius: 8px;
     font-family: 'Courier New', monospace;
     font-size: 12px;
-    overflow-x: auto;
+    overflow:hidden;
     margin: 12px 0;
 }
 

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Manager / Admin — Vehicle Types Validation
  * Approve or reject vehicle types submitted by staff.
@@ -174,7 +174,7 @@ include __DIR__ . '/../partials/header.php';
             No <?= $filter !== 'all' ? $filter : '' ?> vehicle types found.
         </div>
         <?php else: ?>
-        <div style="overflow-x:auto;">
+        <div style="overflow:hidden;">
         <table class="vt-table">
             <thead>
                 <tr>

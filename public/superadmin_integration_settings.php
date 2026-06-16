@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // ============================================================
 // SuperAdmin – Integration Settings
 // public/superadmin_integration_settings.php
@@ -283,9 +283,9 @@ include __DIR__ . '/../partials/header.php';
 .int-card-header{padding:16px 20px;border-bottom:1px solid #eee;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .int-card-header h3{font-size:14px!important;font-weight:700!important;color:var(--petron-blue)!important;margin:0!important;text-transform:uppercase!important;display:flex;align-items:center;gap:8px}
 .int-card-body{padding:18px 20px}
-.int-table-wrap{overflow-x:auto;border-radius:10px;border:1px solid #eee}
-.int-table{width:100%;border-collapse:collapse;font-size:12px;min-width:600px}
-.int-table thead th{background:var(--petron-blue);color:#fff;padding:10px 14px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap}
+.int-table-wrap{overflow:hidden;border-radius:10px;border:1px solid #eee}
+.int-table{width:100%;border-collapse:collapse;font-size:12px;}
+.int-table thead th{background:var(--petron-blue);color:#fff;padding:10px 14px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;}
 .int-table tbody tr{border-bottom:1px solid #f5f5f5;transition:background .12s}
 .int-table tbody tr:last-child{border-bottom:none}
 .int-table tbody tr:hover{background:#f8fafc}
@@ -386,7 +386,7 @@ include __DIR__ . '/../partials/header.php';
     </div>
     <div class="int-card-body">
         <div style="display:flex;align-items:center;gap:15px;position:relative;margin-bottom:15px;">
-            <label style="font-weight:600;color:#374151;min-width:130px;font-size:13px;text-transform:uppercase;letter-spacing:.5px;flex-shrink:0;">
+            <label style="font-weight:600;color:#374151;font-size:13px;text-transform:uppercase;letter-spacing:.5px;flex-shrink:0;">
                 Search Station
             </label>
             <div class="am-combo" id="int_station_combo" style="width:450px;position:relative;z-index:100;">

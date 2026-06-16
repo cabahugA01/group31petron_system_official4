@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'fuel_pump_master';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -1348,7 +1348,7 @@ function adjustColor($hex,$pct) {
         <style>
         .pm-tbl{width:100%;border-collapse:collapse;font-size:.8rem;table-layout:fixed;}
         .pm-tbl thead tr{background:#002F70;}
-        .pm-tbl thead th{padding:9px 8px;color:#fff;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;}
+        .pm-tbl thead th{padding:9px 8px;color:#fff;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;}
         .pm-tbl tbody tr{border-bottom:1px solid #eef0f3;transition:background .12s;}
         .pm-tbl tbody tr:hover{background:#f8fafc;}
         .pm-tbl tbody td{padding:8px;vertical-align:middle;word-break:break-word;}
@@ -1376,7 +1376,7 @@ function adjustColor($hex,$pct) {
         <form method="post" action="manager_fuel_pump_master.php" id="pmBulkForm">
         <input type="hidden" name="action" value="pump_calibration_adjust">
 
-        <div style="overflow-x:auto;">
+        <div style="overflow:hidden;">
         <table class="pm-tbl">
             <colgroup>
                 <col style="width:13%"><col style="width:13%"><col style="width:10%">
@@ -1611,12 +1611,12 @@ function adjustColor($hex,$pct) {
             <input type="hidden" name="action" value="update_price">
             <input type="hidden" name="fuel_type_id" id="calEditFuelTypeId">
             <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
-                <div class="form-group" style="margin:0;flex:1;min-width:120px;">
+                <div class="form-group" style="margin:0;flex:1;">
                     <label class="form-label" style="font-size:.82rem;">New Price (?/L)</label>
                     <input type="number" name="new_price" id="calEditNewPrice"
                         class="form-control" step="0.01" min="0.01" placeholder="e.g. 58.50">
                 </div>
-                <div class="form-group" style="margin:0;flex:2;min-width:160px;">
+                <div class="form-group" style="margin:0;flex:2;">
                     <label class="form-label" style="font-size:.82rem;">Reason <span class="required">*</span></label>
                     <input type="text" name="reason" class="form-control"
                         placeholder="e.g. Petron price update" minlength="10">

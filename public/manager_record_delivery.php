@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'mgr_record_delivery';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -256,7 +256,7 @@ include __DIR__ . '/../partials/header.php';
 }
 .workflow-step {
     display: flex; flex-direction: column; align-items: center;
-    flex: 1; min-width: 120px; position: relative;
+    flex: 1; position: relative;
 }
 .workflow-step:not(:last-child)::after {
     content: '';

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'fuel_staff';
 
@@ -1090,7 +1090,7 @@ input[name="calibration"]:hover {
       <?php if($isSuper): ?>
         <form method="get" style="display:inline-flex; align-items:center; gap:10px;">
             <label for="station_filter" class="sub">Viewing Station:</label>
-            <select name="station" id="station_filter" onchange="this.form.submit()" class="select" style="width:auto;min-width:200px;">
+            <select name="station" id="station_filter" onchange="this.form.submit()" class="select" style="width:auto;">
                 <option value="">-- Select a Station --</option>
                 <?php foreach($stations as $id => $name): ?>
                     <option value="<?php echo $id; ?>" <?php echo $station_id == $id ? 'selected' : ''; ?>><?php echo htmlspecialchars($name); ?></option>

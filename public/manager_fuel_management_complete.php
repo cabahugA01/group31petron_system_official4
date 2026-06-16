@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = match($_GET['tab'] ?? '') {
     'deliveries'    => 'fuel_deliveries_validation',
     'transactions'  => 'fuel_transactions_oversight',
@@ -1759,7 +1759,7 @@ html, body {
     background:#fff; 
     border-radius:12px; 
     box-shadow:0 2px 12px rgba(0,0,0,0.07); 
-    overflow-x: auto; 
+    overflow:hidden; 
     max-width: 100%; 
     width: 100%; 
     -webkit-overflow-scrolling: touch;
@@ -1834,7 +1834,6 @@ html, body {
 .data-table th.col-actions,
 .data-table td.col-actions {
     width: 110px;
-    min-width: 110px;
     text-align: center;
     white-space: nowrap;
     overflow: visible;
@@ -2033,7 +2032,7 @@ html, body {
             <th style="min-width:60px;">Date</th>
             <th style="min-width:45px;">Var%</th>
             <th style="min-width:60px;">Status</th>
-            <th class="col-actions" style="min-width:100px;">Actions</th>
+            <th class="col-actions" style="">Actions</th>
         </tr></thead>
         <tbody>
         <?php foreach ($pending_readings as $r):
@@ -2200,7 +2199,7 @@ html, body {
     </button>
 </div>
 
-<div style="overflow-x:auto;">
+<div style="overflow:hidden;">
 <table class="data-table" id="dailyLogsTable">
     <thead><tr>
         <th>Log ID</th>
@@ -2351,14 +2350,14 @@ html, body {
             <th style="min-width:45px;">#</th>
             <th style="min-width:85px;">Fuel Type</th>
             <th style="min-width:75px;">Status</th>
-            <th style="min-width:120px;">Supplier</th>
-            <th style="min-width:100px;">Invoice No.</th>
+            <th style="">Supplier</th>
+            <th style="">Invoice No.</th>
             <th style="min-width:75px;">Volume (L)</th>
-            <th style="min-width:100px;">Tank Level</th>
-            <th style="min-width:100px;">Encoded By</th>
-            <th style="min-width:110px;">Date &amp; Time</th>
-            <th style="min-width:110px;">Validated By</th>
-            <th class="col-actions" style="min-width:100px;">Actions</th>
+            <th style="">Tank Level</th>
+            <th style="">Encoded By</th>
+            <th style="">Date &amp; Time</th>
+            <th style="">Validated By</th>
+            <th class="col-actions" style="">Actions</th>
         </tr></thead>
         <tbody>
         <?php foreach ($deliveries as $d):
@@ -2621,7 +2620,7 @@ try {
                                 <select name="adjustment_type" 
                                     form="form_adj_<?php echo $t['fuel_type_id']; ?>" 
                                     class="form-control" required 
-                                    style="width: 100%; box-sizing: border-box; padding: 6px 10px; font-size: 0.82rem; min-width: 130px;">
+                                    style="width: 100%; box-sizing: border-box; padding: 6px 10px; font-size: 0.82rem; ">
                                     <option value="">Select type...</option>
                                     <option value="delivery">Fuel Delivery</option>
                                     <option value="calibration">Calibration Adjustment</option>
@@ -3156,7 +3155,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
     <?php if (empty($shift_history)): ?>
         <div class="empty-state"><i class="fas fa-history"></i><p>No shift history found.</p></div>
     <?php else: ?>
-    <div style="overflow-x:auto;">
+    <div style="overflow:hidden;">
     <table class="data-table" id="historyTable">
         <thead><tr>
             <th>Transaction ID</th><th>Date</th><th>Shift</th><th>Fuel Type</th>
@@ -3313,7 +3312,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
                 <i class="fas fa-check-circle"></i> Approved Only
             </span>
         </div>
-        <div style="overflow-x:auto;margin-bottom:28px;">
+        <div style="overflow:hidden;margin-bottom:28px;">
         <table style="width:100%;border-collapse:collapse;font-size:.82rem;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);">
             <thead>
                 <tr style="background:<?php echo $colors['primary']; ?>;color:#fff;">
@@ -3427,7 +3426,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
             <div class="section-title"><i class="fas fa-balance-scale"></i> Pump Readings vs Sales Comparison</div>
             <span style="font-size:.75rem;color:#888;">Variance &gt;5% auto-flagged</span>
         </div>
-        <div style="display:none;overflow-x:auto;margin-bottom:24px;">
+        <div style="display:none;overflow:hidden;margin-bottom:24px;">
         <table class="data-table" id="rptCompareTable">
             <thead><tr>
                 <th>Fuel Type</th>
@@ -3455,7 +3454,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
                 </button>
             </div>
         </div>
-        <div style="display:none;overflow-x:auto;">
+        <div style="display:none;overflow:hidden;">
         <table class="data-table" id="rptDailyTable">
             <thead>
                 <tr id="rptDailyHead">
@@ -3493,13 +3492,13 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
     <?php if (empty($pump_master_fuel_types)): ?>
         <div class="empty-state"><i class="fas fa-cog"></i><p>No fuel types found.</p></div>
     <?php else: ?>
-    <div class="po-table-wrap" style="margin-top:12px;overflow-x:auto;">
+    <div class="po-table-wrap" style="margin-top:12px;overflow:hidden;">
     <table class="data-table" style="font-size:0.78rem;width:100%;table-layout:auto;">
         <thead><tr>
-            <th style="min-width:110px;">Fuel Type</th>
-            <th style="min-width:130px;">Current Calibration</th>
-            <th style="min-width:180px;">New Calibration Value (Liters)</th>
-            <th class="col-actions" style="min-width:100px;">Action</th>
+            <th style="">Fuel Type</th>
+            <th style="">Current Calibration</th>
+            <th style="">New Calibration Value (Liters)</th>
+            <th class="col-actions" style="">Action</th>
         </tr></thead>
         <tbody>
         <?php foreach ($pump_master_fuel_types as $f):
@@ -3547,15 +3546,15 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
     <?php if (empty($pump_master_fuel_types)): ?>
         <div class="empty-state"><i class="fas fa-cog"></i><p>No fuel types found.</p></div>
     <?php else: ?>
-    <div class="po-table-wrap" style="margin-top:12px;overflow-x:auto;">
+    <div class="po-table-wrap" style="margin-top:12px;overflow:hidden;">
     <table class="data-table" style="font-size:0.78rem;width:100%;table-layout:auto;">
         <thead><tr>
-            <th style="min-width:100px;">Fuel Type</th>
-            <th style="min-width:110px;">Stock</th>
-            <th style="min-width:100px;">Calibration</th>
+            <th style="">Fuel Type</th>
+            <th style="">Stock</th>
+            <th style="">Calibration</th>
             <th style="min-width:80px;">Price/L</th>
-            <th style="min-width:120px;">Last Updated</th>
-            <th class="col-actions" style="min-width:100px;">Action</th>
+            <th style="">Last Updated</th>
+            <th class="col-actions" style="">Action</th>
         </tr></thead>
         <tbody>
         <?php foreach ($pump_master_fuel_types as $f):
@@ -3659,12 +3658,12 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
             <input type="hidden" name="action" value="update_price">
             <input type="hidden" name="fuel_type_id" id="calEditFuelTypeId">
             <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
-                <div class="form-group" style="margin:0;flex:1;min-width:120px;">
+                <div class="form-group" style="margin:0;flex:1;">
                     <label class="form-label" style="font-size:.82rem;">New Price (?/L)</label>
                     <input type="number" name="new_price" id="calEditNewPrice"
                         class="form-control" step="0.01" min="0.01" placeholder="e.g. 58.50">
                 </div>
-                <div class="form-group" style="margin:0;flex:2;min-width:160px;">
+                <div class="form-group" style="margin:0;flex:2;">
                     <label class="form-label" style="font-size:.82rem;">Reason <span style="font-weight:400;color:#aaa;font-size:.75rem;">(Optional)</span></label>
                     <input type="text" name="reason" class="form-control"
                         placeholder="e.g. Petron price update">

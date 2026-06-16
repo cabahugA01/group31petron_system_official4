@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // ============================================================
 // Manager Fuel Reconciliation – manager_fuel_reconciliation.php
 // Purpose: Compare pump sales with tank levels and resolve variances
@@ -349,7 +349,7 @@ html, body {
     padding: 12px 16px; margin-bottom: 18px; display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap;
     max-width: 100%;
 }
-.filter-group { display: flex; flex-direction: column; gap: 4px; min-width: 150px; }
+.filter-group { display: flex; flex-direction: column; gap: 4px; }
 .filter-group label { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; }
 .filter-group input[type=date] { padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; width: 100%; }
 
@@ -363,7 +363,7 @@ html, body {
 }
 .table-wrap { 
     width: 100%;
-    overflow-x: auto;
+    overflow:hidden;
     box-sizing: border-box;
 }
 .data-table {
@@ -376,8 +376,7 @@ html, body {
     background: #002F70; padding: 10px 10px; text-align: left;
     font-size: 11px; font-weight: 700; color: #fff;
     text-transform: uppercase; border-bottom: 2px solid #002F70;
-    white-space: nowrap;
-}
+    }
 /* Remove fixed column widths — let the browser auto-size them */
 .data-table th, .data-table td {
     padding: 10px 10px;

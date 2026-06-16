@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Manager Audit Trail
  * Logs all validation actions: approve, reject, adjust
@@ -240,7 +240,7 @@ include __DIR__ . '/../partials/header.php';
     <div class="audit-card-head">
         <div class="audit-card-title"><i class="fas fa-list"></i> Audit Logs (<?= $total_logs ?> records)</div>
     </div>
-    <div style="overflow-x:auto;">
+    <div style="overflow:hidden;">
         <table class="audit-table">
             <thead>
                 <tr>

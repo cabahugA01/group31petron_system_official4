@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'mgr_prod_prices';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -136,10 +136,10 @@ include __DIR__ . '/../partials/header.php';
 .card-header { padding:16px 20px; border-bottom:1px solid #e9ecef; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
 .card-header h3 { font-size:15px; font-weight:700; color:#002F70; margin:0; display:flex; align-items:center; gap:8px; }
 .rec-count { font-size:12px; color:#6c757d; background:#f8f9fa; border:1px solid #e9ecef; padding:4px 10px; border-radius:20px; }
-.card-body { padding:0; overflow-x:auto; }
+.card-body { padding:0; overflow:hidden; }
 
 /* Table */
-.ph-table { width:100%; border-collapse:collapse; min-width:800px; }
+.ph-table { width:100%; border-collapse:collapse; }
 .ph-table thead th {
     background:#002F70;
     color:#fff;
@@ -149,7 +149,6 @@ include __DIR__ . '/../partials/header.php';
     text-transform:uppercase;
     letter-spacing:0.3px;
     font-size:11px;
-    white-space:nowrap;
     border:none;
 }
 .ph-table tbody td {

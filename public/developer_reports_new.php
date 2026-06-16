@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Developer Reports - Complete Implementation
  * Real data capture from database (NO precoded data)
@@ -531,7 +531,7 @@ include __DIR__ . '/../partials/header.php';
 }
 
 .data-table-container {
-    overflow-x: auto;
+    overflow:hidden;
     margin-top: 20px;
 }
 
@@ -548,8 +548,7 @@ include __DIR__ . '/../partials/header.php';
     font-weight: 600;
     color: var(--text-primary);
     border-bottom: 2px solid var(--border-color);
-    white-space: nowrap;
-}
+    }
 
 .data-table tbody td {
     padding: 12px 16px;

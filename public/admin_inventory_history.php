@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'admin_inventory_history';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -208,7 +208,7 @@ include __DIR__ . '/../partials/header.php';
 .filter-bar .fg{display:flex;flex-direction:column;gap:4px;}
 .filter-bar label{font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.4px;}
 .filter-bar input,.filter-bar select{padding:7px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;}
-.table-wrap{overflow-x:auto;}
+.table-wrap{overflow:hidden;}
 table.hist{width:100%;border-collapse:collapse;font-size:12.5px;}
 table.hist th{background:#002F70;color:#fff;padding:10px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;}
 table.hist td{padding:9px 12px;border-bottom:1px solid #f1f5f9;vertical-align:middle;white-space:nowrap;}
@@ -222,7 +222,7 @@ table.hist tbody tr:hover td{background:#eff6ff;}
 .in-val{color:#166534;font-weight:700;}
 .out-val{color:#dc3545;font-weight:700;}
 .kpi-strip{display:flex;gap:14px;margin-bottom:20px;flex-wrap:wrap;}
-.kpi-card{flex:1;min-width:140px;background:#fff;border-radius:10px;padding:14px 18px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(0,0,0,.05);}
+.kpi-card{flex:1;background:#fff;border-radius:10px;padding:14px 18px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(0,0,0,.05);}
 .kpi-card .kv{font-size:22px;font-weight:800;line-height:1;}.kpi-card .kl{font-size:11px;color:var(--gray);margin-top:4px;}
 </style>
 

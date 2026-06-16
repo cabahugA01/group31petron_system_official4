@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'dashboard';
 require_once __DIR__ . '/../backend/lib.php';
@@ -1145,7 +1145,7 @@ include __DIR__ . '/../partials/header.php';
                 <!-- Shift Tracker -->
                 <div class="widget-card" style="margin-bottom: 20px;">
                     <h3 style="color: #003366;">Shift Tracker - Staff Clock In/Out</h3>
-                    <div style="overflow-x: auto;">
+                    <div style="overflow:hidden;">
                         <table style="width: 100%; border-collapse: collapse;">
                             <thead>
                                 <tr style="background: #f7f7f7;">
@@ -1271,7 +1271,7 @@ include __DIR__ . '/../partials/header.php';
                 <div class="widget-card" style="margin:20px 0;">
                     <h3 style="color:#003366;">Merchandise Inventory — Low Stock Alerts</h3>
                     <?php if (!empty($shift1_data['merch_low_stock'])): ?>
-                    <div style="overflow-x:auto;margin-top:15px;">
+                    <div style="overflow:hidden;margin-top:15px;">
                         <table style="width:100%;border-collapse:collapse;">
                             <thead>
                                 <tr style="background:#f7f7f7;">
@@ -1377,11 +1377,11 @@ include __DIR__ . '/../partials/header.php';
                         <a href="staff_customers_report.php" style="font-size:13px;color:#003366;text-decoration:none;font-weight:600;">View All &rarr;</a>
                     </div>
                     <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:15px;">
-                        <div style="background:#d4edda;border-radius:10px;padding:15px 25px;text-align:center;flex:1;min-width:120px;">
+                        <div style="background:#d4edda;border-radius:10px;padding:15px 25px;text-align:center;flex:1;">
                             <div style="font-size:28px;font-weight:700;color:#28a745;"><?= $shift1_data['new_customers'] ?></div>
                             <div style="font-size:12px;color:#155724;font-weight:600;">New This Shift</div>
                         </div>
-                        <div style="background:#fff3cd;border-radius:10px;padding:15px 25px;text-align:center;flex:1;min-width:120px;">
+                        <div style="background:#fff3cd;border-radius:10px;padding:15px 25px;text-align:center;flex:1;">
                             <div style="font-size:28px;font-weight:700;color:#856404;"><?= count($shift1_data['credit_customers']) ?></div>
                             <div style="font-size:12px;color:#856404;font-weight:600;">With Balance</div>
                         </div>
@@ -1488,7 +1488,7 @@ include __DIR__ . '/../partials/header.php';
                 <!-- Shift Tracker -->
                 <div class="widget-card" style="margin-bottom: 20px;">
                     <h3 style="color: #003366;">Shift Tracker - Staff Clock In/Out</h3>
-                    <div style="overflow-x: auto;">
+                    <div style="overflow:hidden;">
                         <table style="width: 100%; border-collapse: collapse;">
                             <thead>
                                 <tr style="background: #f7f7f7;">
@@ -1614,7 +1614,7 @@ include __DIR__ . '/../partials/header.php';
                 <div class="widget-card" style="margin:20px 0;">
                     <h3 style="color:#003366;">Merchandise Inventory — Low Stock Alerts</h3>
                     <?php if (!empty($shift2_data['merch_low_stock'])): ?>
-                    <div style="overflow-x:auto;margin-top:15px;">
+                    <div style="overflow:hidden;margin-top:15px;">
                         <table style="width:100%;border-collapse:collapse;">
                             <thead>
                                 <tr style="background:#f7f7f7;">
@@ -1721,11 +1721,11 @@ include __DIR__ . '/../partials/header.php';
                         <a href="staff_customers_report.php" style="font-size:13px;color:#003366;text-decoration:none;font-weight:600;">View All &rarr;</a>
                     </div>
                     <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:15px;">
-                        <div style="background:#d4edda;border-radius:10px;padding:15px 25px;text-align:center;flex:1;min-width:120px;">
+                        <div style="background:#d4edda;border-radius:10px;padding:15px 25px;text-align:center;flex:1;">
                             <div style="font-size:28px;font-weight:700;color:#28a745;"><?= $shift2_data['new_customers'] ?></div>
                             <div style="font-size:12px;color:#155724;font-weight:600;">New This Shift</div>
                         </div>
-                        <div style="background:#fff3cd;border-radius:10px;padding:15px 25px;text-align:center;flex:1;min-width:120px;">
+                        <div style="background:#fff3cd;border-radius:10px;padding:15px 25px;text-align:center;flex:1;">
                             <div style="font-size:28px;font-weight:700;color:#856404;"><?= count($shift2_data['credit_customers']) ?></div>
                             <div style="font-size:12px;color:#856404;font-weight:600;">With Balance</div>
                         </div>

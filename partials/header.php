@@ -2483,6 +2483,52 @@ require_once __DIR__ . '/rbac_menu.php';
             <?php endif; ?>
         </div>
         <div class="header-right">
+            <!-- Variance Alert Badge (Job Order Tracker) — shown only to staff on merchandise page -->
+            <?php if (isset($variance_alert_count) && $variance_alert_count > 0): ?>
+            <div class="notification-bell" id="varianceAlertBell" title="Variance Alerts"
+                 style="position:relative;cursor:pointer;"
+                 onclick="document.getElementById('varianceAlertDropdown').classList.toggle('show')">
+                <i class="fas fa-exclamation-triangle" style="color:#dc2626;font-size:15px;"></i>
+                <span class="badge" style="display:inline-flex;align-items:center;justify-content:center;
+                      background:#dc2626;color:#fff;border-radius:50%;width:17px;height:17px;
+                      font-size:10px;font-weight:700;position:absolute;top:-2px;right:-2px;">
+                    <?= (int)$variance_alert_count ?>
+                </span>
+                <div id="varianceAlertDropdown" class="notif-dropdown"
+                     style="min-width:320px;max-width:400px;">
+                    <div class="notif-dropdown-header" style="background:#fff3f3;border-bottom:1px solid #fecaca;">
+                        <span style="color:#dc2626;font-weight:600;">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            Variance Alerts (<?= (int)$variance_alert_count ?>)
+                        </span>
+                    </div>
+                    <div style="max-height:320px;overflow-y:auto;padding:8px 0;">
+                        <?php foreach ($variance_alerts as $_va): ?>
+                        <div style="padding:8px 14px;border-bottom:1px solid #f1f5f9;font-size:12px;">
+                            <strong style="color:#002F6C;">
+                                <?= htmlspecialchars($_va['jo_ref']) ?>
+                            </strong>
+                            <span style="margin-left:6px;padding:2px 6px;border-radius:3px;
+                                         background:<?= $_va['type']==='qty' ? '#fef3c7' : '#fee2e2' ?>;
+                                         color:<?= $_va['type']==='qty' ? '#92400e' : '#991b1b' ?>;
+                                         font-size:11px;font-weight:600;">
+                                <?= $_va['type']==='qty' ? 'Qty Mismatch' : 'Amount Mismatch' ?>
+                            </span>
+                            <div style="color:#64748b;margin-top:3px;"><?= htmlspecialchars($_va['message']) ?></div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <div class="notif-dropdown-footer">
+                        <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker"
+                           style="display:block;text-align:center;padding:8px;font-size:12px;
+                                  color:#dc2626;text-decoration:none;border-top:1px solid #eee;">
+                            View Job Order Tracker
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+
             <!-- Notification Bell -->
             <?php if(in_array($role, ['staff','admin','manager','superadmin','developer'])): ?>
             <div class="notification-bell" id="notificationBell">
@@ -2847,6 +2893,10 @@ require_once __DIR__ . '/rbac_menu.php';
         document.addEventListener('click', function(e) {
             if (!e.target.closest('#notificationBell') && !e.target.closest('#notificationDropdown')) {
                 if (notifDropdown) notifDropdown.classList.remove('show');
+            }
+            if (!e.target.closest('#varianceAlertBell')) {
+                var vd = document.getElementById('varianceAlertDropdown');
+                if (vd) vd.classList.remove('show');
             }
             if (!e.target.closest('#profileMenu') && !e.target.closest('#profileDropdown')) {
                 if (profileDropdown) profileDropdown.classList.remove('show');

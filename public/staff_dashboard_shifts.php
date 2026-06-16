@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'dashboard';
 require_once __DIR__ . '/../backend/lib.php';
@@ -770,7 +770,7 @@ try {
                 <!-- Shift Tracker -->
                 <div class="widget-card" style="margin-bottom: 20px;">
                     <h3 style="color: #003366;">Shift Tracker - Staff Clock In/Out</h3>
-                    <div style="overflow-x: auto;">
+                    <div style="overflow:hidden;">
                         <table style="width: 100%; border-collapse: collapse;">
                             <thead>
                                 <tr style="background: #f7f7f7;">
@@ -876,7 +876,7 @@ try {
                 <div class="widget-card" style="margin: 20px 0;">
                     <h3 style="color: #003366;">Merchandise Low Stock Alerts</h3>
                     <?php if (!empty($shift1_data['merch_low_stock'])): ?>
-                        <div style="overflow-x: auto; margin-top: 15px;">
+                        <div style="overflow:hidden; margin-top: 15px;">
                             <table style="width: 100%; border-collapse: collapse;">
                                 <thead>
                                     <tr style="background: #f7f7f7;">
@@ -1018,7 +1018,7 @@ try {
                 <!-- Shift Tracker -->
                 <div class="widget-card" style="margin-bottom: 20px;">
                     <h3 style="color: #003366;">Shift Tracker - Staff Clock In/Out</h3>
-                    <div style="overflow-x: auto;">
+                    <div style="overflow:hidden;">
                         <table style="width: 100%; border-collapse: collapse;">
                             <thead>
                                 <tr style="background: #f7f7f7;">
@@ -1124,7 +1124,7 @@ try {
                 <div class="widget-card" style="margin: 20px 0;">
                     <h3 style="color: #003366;">Merchandise Stock Updates</h3>
                     <?php if (!empty($shift2_data['merch_low_stock'])): ?>
-                        <div style="overflow-x: auto; margin-top: 15px;">
+                        <div style="overflow:hidden; margin-top: 15px;">
                             <table style="width: 100%; border-collapse: collapse;">
                                 <thead>
                                     <tr style="background: #f7f7f7;">

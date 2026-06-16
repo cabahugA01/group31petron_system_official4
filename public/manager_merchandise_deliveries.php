@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'manager_deliveries';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -158,7 +158,7 @@ include __DIR__ . '/../partials/header.php';
 .btn-view{background:#f0f4ff;color:#002F70;border:1px solid #c5d3f0;} .btn-view:hover{background:#e0e8ff;}
 
 /* ── Table ── */
-.table-wrap{overflow-x:auto;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.08);border:1px solid #e9ecef;overflow:hidden;}
+.table-wrap{overflow:hidden;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.08);border:1px solid #e9ecef;overflow:hidden;}
 body #del-table{width:100%;border-collapse:collapse;font-size:0.875rem;}
 body #del-table thead th{background:#002F70 !important;color:#fff !important;padding:14px 16px !important;font-weight:600 !important;font-size:0.813rem !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;white-space:nowrap;}
 body #del-table tbody td{padding:12px 16px;border-bottom:1px solid #e9ecef;vertical-align:middle;color:#212529;}
@@ -169,7 +169,7 @@ body #del-table tbody tr:last-child td{border-bottom:none;}
 .filter-row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:16px;}
 .filter-row .fg{display:flex;flex-direction:column;gap:3px;}
 .filter-row .fg label{font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;letter-spacing:.4px;}
-.filter-row select,.filter-row input{padding:10px 12px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;min-width:130px;}
+.filter-row select,.filter-row input{padding:10px 12px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;}
 .filter-row select:focus,.filter-row input:focus{border-color:#002F70;outline:none;box-shadow:0 0 0 3px rgba(0,47,112,.1);}
 
 /* ── Summary cards ── */
@@ -205,7 +205,7 @@ body #del-table tbody tr:last-child td{border-bottom:none;}
 .obox{background:#fff3e0;border-left:4px solid #fd7e14;border-radius:6px;padding:9px 13px;margin-bottom:12px;font-size:12px;color:#7d4e00;line-height:1.6;}
 .drow{display:flex;gap:8px;padding:7px 0;border-bottom:1px solid #f0f0f0;font-size:13px;}
 .drow:last-child{border-bottom:none;}
-.dlbl{font-weight:600;color:#6c757d;min-width:140px;font-size:11px;text-transform:uppercase;letter-spacing:.3px;}
+.dlbl{font-weight:600;color:#6c757d;font-size:11px;text-transform:uppercase;letter-spacing:.3px;}
 .dval{color:#212529;flex:1;}
 
 /* ── Resolution option cards ── */

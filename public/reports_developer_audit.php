@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Developer Audit Reports - Standalone Page
  * Code Changes, Configuration Updates, Deployment Logs, Integration Changes
@@ -1157,7 +1157,7 @@ include __DIR__ . '/../partials/header.php';
                     <h3 class="report-card-title"><i class="fas fa-history"></i> Login & Logout Events</h3>
                 </div>
                 <div class="report-card-body">
-                    <div style="overflow-x: auto;">
+                    <div style="overflow:hidden;">
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -1193,7 +1193,7 @@ include __DIR__ . '/../partials/header.php';
                     <h3 class="report-card-title"><i class="fas fa-stopwatch"></i> Session Durations</h3>
                 </div>
                 <div class="report-card-body">
-                    <div style="overflow-x: auto;">
+                    <div style="overflow:hidden;">
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -1232,7 +1232,7 @@ include __DIR__ . '/../partials/header.php';
                     <h3 class="report-card-title"><i class="fas fa-cog"></i> System Settings Updates</h3>
                 </div>
                 <div class="report-card-body">
-                    <div style="overflow-x: auto;">
+                    <div style="overflow:hidden;">
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -1272,7 +1272,7 @@ include __DIR__ . '/../partials/header.php';
                     <h3 class="report-card-title"><i class="fas fa-plug"></i> Integration Settings Updates</h3>
                 </div>
                 <div class="report-card-body">
-                    <div style="overflow-x: auto;">
+                    <div style="overflow:hidden;">
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -1314,7 +1314,7 @@ include __DIR__ . '/../partials/header.php';
                     <h3 class="report-card-title"><i class="fas fa-database"></i> Database Config Changes</h3>
                 </div>
                 <div class="report-card-body">
-                    <div style="overflow-x: auto;">
+                    <div style="overflow:hidden;">
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -1353,7 +1353,7 @@ include __DIR__ . '/../partials/header.php';
                     <h3 class="report-card-title"><i class="fas fa-code"></i> Git Commits</h3>
                 </div>
                 <div class="report-card-body">
-                    <div style="overflow-x: auto;">
+                    <div style="overflow:hidden;">
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -1392,7 +1392,7 @@ include __DIR__ . '/../partials/header.php';
                     <h3 class="report-card-title"><i class="fas fa-code-merge"></i> Merge Actions</h3>
                 </div>
                 <div class="report-card-body">
-                    <div style="overflow-x: auto;">
+                    <div style="overflow:hidden;">
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -1430,7 +1430,7 @@ include __DIR__ . '/../partials/header.php';
                     <h3 class="report-card-title"><i class="fas fa-rocket"></i> Deployment Pipeline</h3>
                 </div>
                 <div class="report-card-body">
-                    <div style="overflow-x: auto;">
+                    <div style="overflow:hidden;">
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -1486,7 +1486,7 @@ include __DIR__ . '/../partials/header.php';
                     <h3 class="report-card-title"><i class="fas fa-bug"></i> System Errors & Anomalies</h3>
                 </div>
                 <div class="report-card-body">
-                    <div style="overflow-x: auto;">
+                    <div style="overflow:hidden;">
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -1522,7 +1522,7 @@ include __DIR__ . '/../partials/header.php';
                     <h3 class="report-card-title"><i class="fas fa-shield-alt"></i> Security Alerts</h3>
                 </div>
                 <div class="report-card-body">
-                    <div style="overflow-x: auto;">
+                    <div style="overflow:hidden;">
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -1568,7 +1568,7 @@ include __DIR__ . '/../partials/header.php';
                     <h3 class="report-card-title"><i class="fas fa-key"></i> Password Reset Logs</h3>
                 </div>
                 <div class="report-card-body">
-                    <div style="overflow-x: auto;">
+                    <div style="overflow:hidden;">
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -1609,7 +1609,7 @@ include __DIR__ . '/../partials/header.php';
                     <h3 class="report-card-title"><i class="fas fa-file-export"></i> Document & Data Export Logs</h3>
                 </div>
                 <div class="report-card-body">
-                    <div style="overflow-x: auto;">
+                    <div style="overflow:hidden;">
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -1645,7 +1645,7 @@ include __DIR__ . '/../partials/header.php';
                     <h3 class="report-card-title"><i class="fas fa-user-cog"></i> Audit Trail of Developer Actions</h3>
                 </div>
                 <div class="report-card-body">
-                    <div style="overflow-x: auto;">
+                    <div style="overflow:hidden;">
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -1681,7 +1681,7 @@ include __DIR__ . '/../partials/header.php';
                     <h3 class="report-card-title"><i class="fas fa-file-signature"></i> Compliance Controls Registry Checklist</h3>
                 </div>
                 <div class="report-card-body">
-                    <div style="overflow-x: auto;">
+                    <div style="overflow:hidden;">
                         <table class="data-table">
                             <thead>
                                 <tr>

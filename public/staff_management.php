@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'staff_management';
 require_once __DIR__ . '/../backend/lib.php';
@@ -122,7 +122,7 @@ $staff = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 <p>No staff members found</p>
             </div>
         <?php else: ?>
-            <div style="overflow-x: auto;">
+            <div style="overflow:hidden;">
                 <table style="width: 100%; border-collapse: collapse;">
                     <thead>
                         <tr style="background: #f9fafb; border-bottom: 1px solid #e5e7eb;">
@@ -181,7 +181,7 @@ $staff = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         <input type="hidden" name="action" value="update_shift">
                         <input type="hidden" name="user_id" value="<?php echo $s['id']; ?>">
                         <input type="date" name="scheduled_date" style="flex: 0 1 120px; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px;" value="<?php echo date('Y-m-d'); ?>">
-                        <select name="shift" style="flex: 1; min-width: 150px; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px;" required>
+                        <select name="shift" style="flex: 1; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px;" required>
                             <option value="">Select shift</option>
                             <?php echo $shift_config->generateShiftSelectOptions(); ?>
                         </select>
@@ -193,7 +193,7 @@ $staff = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             <div style="margin-top: 24px;">
                 <h4 style="margin: 0 0 12px 0; color: #1f2937;">Scheduled Shifts</h4>
-                <div style="overflow-x: auto;">
+                <div style="overflow:hidden;">
                     <table style="width: 100%; border-collapse: collapse;">
                         <thead>
                             <tr style="background: #f9fafb; border-bottom: 1px solid #e5e7eb;">
@@ -286,7 +286,7 @@ $staff = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         <div style="margin-top: 20px;">
             <h4 style="margin: 0 0 12px 0; color: #1f2937;">Pending Tasks</h4>
-            <div style="overflow-x: auto;">
+            <div style="overflow:hidden;">
                 <table style="width: 100%; border-collapse: collapse;">
                     <thead>
                         <tr style="background: #f9fafb; border-bottom: 1px solid #e5e7eb;">
@@ -388,7 +388,7 @@ $staff = $stmt->fetchAll(PDO::FETCH_ASSOC);
         <div class="muted">Monitor staff quality metrics</div>
     </div>
     <div style="padding: 20px;">
-        <div style="overflow-x: auto;">
+        <div style="overflow:hidden;">
             <table style="width: 100%; border-collapse: collapse;">
                 <thead>
                     <tr style="background: #f9fafb; border-bottom: 1px solid #e5e7eb;">
@@ -435,7 +435,7 @@ $staff = $stmt->fetchAll(PDO::FETCH_ASSOC);
         <div class="muted">Monitor staff compliance and certifications</div>
     </div>
     <div style="padding: 20px;">
-        <div style="overflow-x: auto;">
+        <div style="overflow:hidden;">
             <table style="width: 100%; border-collapse: collapse;">
                 <thead>
                     <tr style="background: #f9fafb; border-bottom: 1px solid #e5e7eb;">

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = ($_GET['tab'] ?? 'pending') === 'validated' ? 'mgr_txn_validated' : 'mgr_txn_pending';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -1560,9 +1560,9 @@ function validatePaymentModal() {
 <style>
 
 /* ── Uniform table design ── */
-.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow-x:auto; }
+.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow:hidden; }
 .po-table { width:100%; border-collapse:collapse; font-size:0.78rem; }
-.po-table thead th { background:#002F70; color:#fff; padding:10px; text-align:left; font-weight:600; font-size:0.82rem; white-space:nowrap; border-bottom:2px solid #002F70; }
+.po-table thead th { background:#002F70; color:#fff; padding:10px; text-align:left; font-weight:600; font-size:0.82rem; border-bottom:2px solid #002F70; }
 .po-table tbody tr { border-bottom:1px solid #f0f0f0; transition:background 0.15s; }
 .po-table tbody tr:hover { background:#f5f8ff; }
 .po-table tbody td { padding:9px 10px; vertical-align:middle; color:#333; }
@@ -1781,7 +1781,7 @@ function validatePaymentModal() {
 /* ══ TABLE LAYOUT ══════════════════════════════════════════════════════════════ */
 .txn-table-wrap {
     width: 100%;
-    overflow-x: auto;
+    overflow:hidden;
     -webkit-overflow-scrolling: touch;
     position: relative;
 }
@@ -1803,7 +1803,6 @@ function validatePaymentModal() {
     letter-spacing: .4px;
     padding: 9px 8px;
     border-bottom: 2px solid #001a50;
-    white-space: nowrap;
     position: sticky;
     top: 0;
     z-index: 2;

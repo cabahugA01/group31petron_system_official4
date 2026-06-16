@@ -24,13 +24,18 @@ require_once __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-    .action-btn { font-size:12px; padding:5px 8px; border:none; border-radius:4px; cursor:pointer; display:inline-flex; align-items:center; gap:5px; transition:all .15s; font-weight:600; text-decoration:none; justify-content:center; width:100px;}
-    .action-btn:hover { filter:brightness(.9); transform:translateY(-1px); }
-    .btn-view    { background:#28a745; color:#fff; }
-    .btn-edit    { background:#002F70; color:#fff; }
-    .btn-reset   { background:#ffc107; color:#333; }
-    .btn-danger  { background:#dc3545; color:#fff; }
-    .btn-success { background:#28a745; color:#fff; }
+    .action-btn { font-size:11px; padding:5px 10px; border-radius:4px; cursor:pointer; display:inline-flex; align-items:center; gap:5px; transition:all .2s; font-weight:600; text-decoration:none; justify-content:center; width:100px; background:white !important; border:1px solid transparent; }
+    .action-btn:hover { filter:none; transform:none; }
+    .btn-view    { color:#16a34a !important; border-color:#16a34a !important; }
+    .btn-view:hover { background:#16a34a !important; color:#fff !important; }
+    .btn-edit    { color:#00264D !important; border-color:#00264D !important; }
+    .btn-edit:hover { background:#00264D !important; color:#fff !important; }
+    .btn-reset   { color:#d97706 !important; border-color:#d97706 !important; }
+    .btn-reset:hover { background:#d97706 !important; color:#fff !important; }
+    .btn-danger  { color:#dc2626 !important; border-color:#dc2626 !important; }
+    .btn-danger:hover { background:#dc2626 !important; color:#fff !important; }
+    .btn-success { color:#16a34a !important; border-color:#16a34a !important; }
+    .btn-success:hover { background:#16a34a !important; color:#fff !important; }
     
     /* Modal scroll fix to prevent bottom from being covered */
     .modal { align-items: flex-start !important; overflow-y: auto !important; padding: 20px !important; }
@@ -323,7 +328,7 @@ function loadShiftData(shiftNumber) {
                         <td>
                             <div class="d-flex align-items-center">
                                 <span class="me-2 remarks-text">${remarks}</span>
-                                <button class="btn btn-sm btn-link text-primary p-0" onclick="openRemarkModal(${staff.staff_id}, \`${staff.remarks || ''}\`)">
+                                <button style="background:none;border:none;color:#64748b;cursor:pointer;padding:2px 4px;font-size:12px;line-height:1;" onclick="openRemarkModal(${staff.staff_id}, \`${staff.remarks || ''}\`)">
                                     <i class="fas fa-edit"></i>
                                 </button>
                             </div>

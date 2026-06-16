@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Staff Transactions Hub
  * Sidebar navigation for Fuel (internal) and Merchandise (customer-facing) transactions.
@@ -62,6 +62,24 @@ foreach ([
     try { $pdo->exec($_fix); } catch (Exception $_e) {}
 }
 unset($_fix, $_e);
+
+// ── Job Order Tracker enhancements — idempotent column additions ──────────────
+// Adds: due_date, balance_due on job_orders; staff_remarks, manager_notes,
+//       due_date, inventory_deducted on merchandise_transactions.
+// Uses try/catch so existing columns are ignored silently.
+foreach ([
+    "ALTER TABLE `job_orders` ADD COLUMN `due_date` DATE DEFAULT NULL COMMENT 'Payment due date for receivables'",
+    "ALTER TABLE `job_orders` ADD COLUMN `balance_due` DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'Outstanding balance'",
+    "ALTER TABLE `merchandise_transactions` ADD COLUMN `staff_remarks` TEXT DEFAULT NULL COMMENT 'Staff-entered notes (separate from legacy remarks)'",
+    "ALTER TABLE `merchandise_transactions` ADD COLUMN `manager_notes` TEXT DEFAULT NULL COMMENT 'Manager validation / approval notes'",
+    "ALTER TABLE `merchandise_transactions` ADD COLUMN `due_date` DATE DEFAULT NULL COMMENT 'Payment due date for receivables'",
+    "ALTER TABLE `merchandise_transactions` ADD COLUMN `inventory_deducted` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1=stock deducted from station_inventory on approval'",
+] as $_col_fix) {
+    try { $pdo->exec($_col_fix); } catch (Exception $_ce) {
+        // Column already exists — ignore Duplicate column error (1060)
+    }
+}
+unset($_col_fix, $_ce);
 
 // Active sub-section: merchandise | history | fuel | fuel_history
 $section = $_GET['section'] ?? 'merchandise';
@@ -275,7 +293,12 @@ $mh_filter_date   = $_GET['mh_date']  ?? '';
 $mh_page          = max(1, (int)($_GET['mh_page'] ?? 1));
 $mh_per_page      = isset($_GET['mh_per_page']) && in_array((int)$_GET['mh_per_page'], [10,20,30,50]) ? (int)$_GET['mh_per_page'] : 10;
 $mh_offset        = ($mh_page - 1) * $mh_per_page;
-$mh_available_shifts = [];
+$mh_available_shifts     = [];
+$mh_inv_impact           = [];
+$mh_variance_alerts      = [];
+$mh_kpi_txn_count        = 0;
+$mh_kpi_items_released   = 0;
+$mh_kpi_total_encoded    = 0.00;
 
 if ($section === 'merchandise') {
     try {
@@ -336,6 +359,12 @@ if ($section === 'merchandise') {
         $cnt->execute($mh_params);
         $mh_total = (int)$cnt->fetchColumn();
 
+        // ── Detect new columns for merchandise history query ──────────────────
+        $mh_col_staff_remarks      = isset($mh_cols['staff_remarks'])      ? 'mt.staff_remarks'      : 'NULL';
+        $mh_col_manager_notes      = isset($mh_cols['manager_notes'])      ? 'mt.manager_notes'      : 'NULL';
+        $mh_col_due_date           = isset($mh_cols['due_date'])           ? 'mt.due_date'           : 'NULL';
+        $mh_col_inventory_deducted = isset($mh_cols['inventory_deducted']) ? 'mt.inventory_deducted' : '0';
+
         $stmt_mh = $pdo->prepare("
             SELECT mt.id,
                    $mh_txnid_col AS transaction_id,
@@ -351,12 +380,20 @@ if ($section === 'merchandise') {
                    mt.shift_period,
                    COALESCE(
                        NULLIF(
-                           (SELECT GROUP_CONCAT(CONCAT(i.product_name, ' (', i.quantity, ')') ORDER BY i.id SEPARATOR ', ')
-                            FROM merchandise_transaction_items i 
+                           (SELECT GROUP_CONCAT(
+                                       CONCAT(i.product_name, ' (', CAST(i.quantity AS UNSIGNED),
+                                              IF(CAST(i.quantity AS UNSIGNED)=1,' pc',' pcs'), ')')
+                                       ORDER BY i.id SEPARATOR ', ')
+                            FROM merchandise_transaction_items i
                             WHERE i.transaction_id = mt.id), ''
                        ),
                        '—'
-                   ) AS products
+                   ) AS products,
+                   COALESCE($mh_col_staff_remarks, mt.remarks, '')  AS staff_remarks,
+                   COALESCE($mh_col_manager_notes, '')               AS manager_notes,
+                   $mh_col_due_date                                  AS due_date,
+                   $mh_col_inventory_deducted                        AS inventory_deducted,
+                   COALESCE(mt.validation_status, mt.status, 'Pending') AS validation_status
             FROM merchandise_transactions mt
             $mh_where
             ORDER BY $mh_date_col DESC
@@ -365,11 +402,145 @@ if ($section === 'merchandise') {
         $stmt_mh->execute($mh_params);
         $mh_recent = $stmt_mh->fetchAll(PDO::FETCH_ASSOC);
 
+        // ── Build inventory impact for merchandise history rows ───────────────
+        $mh_inv_impact = [];
+        if (!empty($mh_recent)) {
+            // Batch load product stock levels for this station
+            $mh_product_stock = [];
+            try {
+                $mh_ps_stmt = $pdo->prepare("
+                    SELECT ip.id AS product_id, LOWER(TRIM(ip.product_name)) AS pname,
+                           COALESCE(si.stock_level, 0) AS stock_level
+                    FROM inventory_products ip
+                    LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
+                    WHERE ip.category != 'Fuel' OR ip.category IS NULL
+                ");
+                $mh_ps_stmt->execute([$station_id]);
+                foreach ($mh_ps_stmt->fetchAll(PDO::FETCH_ASSOC) as $_mhps)
+                    $mh_product_stock[$_mhps['pname']] = $_mhps;
+            } catch (Exception $_mhpse) {}
+
+            // Fetch items for all visible transactions
+            $mh_ids = array_column($mh_recent, 'id');
+            $mh_items_map = [];
+            if (!empty($mh_ids)) {
+                try {
+                    $mh_iph = implode(',', array_fill(0, count($mh_ids), '?'));
+                    $mh_is = $pdo->prepare("
+                        SELECT mti.transaction_id, mti.product_name, mti.product_id,
+                               mti.quantity, mti.unit_price,
+                               COALESCE(mti.item_type,'merchandise') AS item_type
+                        FROM merchandise_transaction_items mti
+                        WHERE mti.transaction_id IN ($mh_iph)
+                        ORDER BY mti.id
+                    ");
+                    $mh_is->execute($mh_ids);
+                    foreach ($mh_is->fetchAll(PDO::FETCH_ASSOC) as $_mhi)
+                        $mh_items_map[$_mhi['transaction_id']][] = $_mhi;
+                } catch (Exception $_mhie) {}
+            }
+
+            foreach ($mh_recent as $_mhtxn) {
+                $mh_is_approved = in_array(strtolower($_mhtxn['validation_status'] ?? ''), ['approved','validated','adjusted','']);
+                $mh_items = $mh_items_map[$_mhtxn['id']] ?? [];
+                $mh_parts = [];
+                foreach ($mh_items as $_mhitem) {
+                    $pn = strtolower(trim($_mhitem['product_name'] ?? ''));
+                    $sr = $mh_product_stock[$pn] ?? null;
+                    $st = $sr ? (float)$sr['stock_level'] : null;
+                    $ded = (int)($_mhtxn['inventory_deducted'] ?? 0);
+                    if ($mh_is_approved && $ded) { $ist = 'yes'; }
+                    elseif ($mh_is_approved && !$ded) { $ist = 'no'; }
+                    elseif ($st === null) { $ist = 'na'; }
+                    else { $ist = 'pending'; }
+                    $mh_parts[] = [
+                        'part'   => $_mhitem['product_name'],
+                        'qty'    => (int)$_mhitem['quantity'],
+                        'stock'  => $st,
+                        'unit_price' => (float)$_mhitem['unit_price'],
+                        'status' => $ist,
+                    ];
+                }
+                $mh_inv_impact[$_mhtxn['id']] = $mh_parts;
+            }
+        }
+
+        // ── Variance alerts for merchandise history ───────────────────────────
+        $mh_variance_alerts = [];
+        foreach ($mh_recent as $_mvt) {
+            $mvst = strtolower($_mvt['payment_status'] ?? '');
+            if ($mvst === 'paid') continue;
+            $mh_vitems = $mh_inv_impact[$_mvt['id']] ?? [];
+            $mv_ref = $_mvt['transaction_id'] ?? ('#'.$_mvt['id']);
+            foreach ($mh_vitems as $_mvit) {
+                if ($_mvit['stock'] !== null && $_mvit['qty'] > $_mvit['stock']) {
+                    $mh_variance_alerts[] = [
+                        'txn_ref' => $mv_ref,
+                        'type'    => 'qty',
+                        'message' => 'Quantity mismatch: ' . htmlspecialchars($_mvit['part'])
+                                   . ' — encoded ' . $_mvit['qty'] . ' pc(s), stock ' . (int)$_mvit['stock'],
+                    ];
+                }
+            }
+            if (!empty($mh_vitems)) {
+                $mv_sum   = array_sum(array_map(fn($i) => $i['qty'] * $i['unit_price'], $mh_vitems));
+                $mv_total = (float)$_mvt['total_amount'];
+                if ($mv_total > 0 && abs($mv_sum - $mv_total) > 0.01) {
+                    $mh_variance_alerts[] = [
+                        'txn_ref' => $mv_ref,
+                        'type'    => 'amount',
+                        'message' => 'Amount mismatch: computed ₱' . number_format($mv_sum, 2)
+                                   . ' vs encoded ₱' . number_format($mv_total, 2),
+                    ];
+                }
+            }
+        }
+        // Merge merch variance alerts into global variance_alerts (for header badge)
+        foreach ($mh_variance_alerts as $_mva) {
+            $variance_alerts[] = [
+                'jo_ref'  => $_mva['txn_ref'],
+                'source'  => 'merchandise_transactions',
+                'id'      => 0,
+                'type'    => $_mva['type'],
+                'message' => $_mva['message'],
+            ];
+        }
+        $variance_alert_count = count($variance_alerts);
+
+        // ── Merchandise KPI (today) ───────────────────────────────────────────
+        $mh_kpi_txn_count     = 0;
+        $mh_kpi_items_released = 0;
+        $mh_kpi_total_encoded  = 0.00;
+        try {
+            $mhkpi = $pdo->prepare("
+                SELECT COUNT(DISTINCT mt.id)   AS txn_count,
+                       COALESCE(SUM(mti.quantity), 0) AS items_released,
+                       COALESCE(SUM(mt.total_amount), 0) AS total_encoded
+                FROM merchandise_transactions mt
+                LEFT JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id
+                WHERE mt.station_id = ?
+                  AND mt.staff_id   = ?
+                  AND DATE(mt.created_at) = CURDATE()
+                  AND COALESCE(mt.transaction_type,'merchandise') = 'merchandise'
+            ");
+            $mhkpi->execute([$station_id, $me['id']]);
+            $mhkpi_row = $mhkpi->fetch(PDO::FETCH_ASSOC);
+            if ($mhkpi_row) {
+                $mh_kpi_txn_count      = (int)$mhkpi_row['txn_count'];
+                $mh_kpi_items_released = (int)$mhkpi_row['items_released'];
+                $mh_kpi_total_encoded  = (float)$mhkpi_row['total_encoded'];
+            }
+        } catch (Exception $_mhkpie) {}
+
         $stmt_sh = $pdo->query("SELECT shift_key, shift_name FROM shift_periods WHERE is_active = 1 ORDER BY sort_order ASC");
         $mh_available_shifts = $stmt_sh ? $stmt_sh->fetchAll(PDO::FETCH_ASSOC) : [];
     } catch (Exception $e) { 
         $mh_recent = []; 
         $mh_total = 0; 
+        $mh_inv_impact = [];
+        $mh_variance_alerts = [];
+        $mh_kpi_txn_count = $mh_kpi_items_released = 0;
+        $mh_kpi_total_encoded = 0.00;
         echo '<!-- MERCH ERROR: ' . htmlspecialchars($e->getMessage()) . ' -->';
     }
 }
@@ -532,6 +703,13 @@ $job_orders        = [];
 $jo_pending_count  = 0;
 $jo_approved_count = 0;
 $jo_rejected_count = 0;
+// Enhancement data — safe defaults (populated inside merchandise section block below)
+$inv_impact           = [];
+$variance_alerts      = [];
+$variance_alert_count = 0;
+$kpi_jo_count         = 0;
+$kpi_merch_released   = 0;
+$kpi_total_encoded    = 0.00;
 if ($section === 'merchandise') {
     // Handle status-update POST from the tracker
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['jo_action'])) {
@@ -626,6 +804,25 @@ if ($section === 'merchandise') {
                     } elseif ($jo_action === 'set_paid') {
                         $pdo->prepare("UPDATE merchandise_transactions SET payment_status='Paid', balance_due=0, updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
                         $_SESSION['success'] = 'Payment recorded as Paid.';
+                    } elseif ($jo_action === 'set_due_date') {
+                        // ── Receivables: set/update due date ──────────────────────────────────
+                        $raw_due = trim($_POST['due_date'] ?? '');
+                        $parsed  = DateTime::createFromFormat('Y-m-d', $raw_due);
+                        if ($parsed && $parsed->format('Y-m-d') === $raw_due) {
+                            $pdo->prepare("UPDATE merchandise_transactions SET due_date=?, updated_at=NOW() WHERE id=? AND station_id=?")
+                                ->execute([$raw_due, $jo_id, $station_id]);
+                            $_SESSION['success'] = 'Due date set to ' . $raw_due . '.';
+                        } else {
+                            $_SESSION['error'] = 'Invalid due date format. Use YYYY-MM-DD.';
+                        }
+                    } elseif ($jo_action === 'save_staff_remark') {
+                        // ── Validation Notes: save staff remark ───────────────────────────────
+                        if (in_array($role, ['staff','cashier','pump_attendant'])) {
+                            $remark_text = trim($_POST['remark_text'] ?? '');
+                            $pdo->prepare("UPDATE merchandise_transactions SET staff_remarks=?, updated_at=NOW() WHERE id=? AND station_id=?")
+                                ->execute([$remark_text, $jo_id, $station_id]);
+                            $_SESSION['success'] = 'Staff remark saved.';
+                        }
                     }
                 } else {
                     if ($jo_action === 'set_in_progress') {
@@ -637,6 +834,25 @@ if ($section === 'merchandise') {
                     } elseif ($jo_action === 'set_paid') {
                         $pdo->prepare("UPDATE job_orders SET payment_status='Paid', balance_due=0, updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
                         $_SESSION['success'] = 'Payment recorded as Paid.';
+                    } elseif ($jo_action === 'set_due_date') {
+                        // ── Receivables: set/update due date ──────────────────────────────────
+                        $raw_due = trim($_POST['due_date'] ?? '');
+                        $parsed  = DateTime::createFromFormat('Y-m-d', $raw_due);
+                        if ($parsed && $parsed->format('Y-m-d') === $raw_due) {
+                            $pdo->prepare("UPDATE job_orders SET due_date=?, updated_at=NOW() WHERE id=? AND station_id=?")
+                                ->execute([$raw_due, $jo_id, $station_id]);
+                            $_SESSION['success'] = 'Due date set to ' . $raw_due . '.';
+                        } else {
+                            $_SESSION['error'] = 'Invalid due date format. Use YYYY-MM-DD.';
+                        }
+                    } elseif ($jo_action === 'save_staff_remark') {
+                        // ── Validation Notes: save staff remark ───────────────────────────────
+                        if (in_array($role, ['staff','cashier','pump_attendant'])) {
+                            $remark_text = trim($_POST['remark_text'] ?? '');
+                            $pdo->prepare("UPDATE job_orders SET notes=?, updated_at=NOW() WHERE id=? AND station_id=?")
+                                ->execute([$remark_text, $jo_id, $station_id]);
+                            $_SESSION['success'] = 'Staff remark saved.';
+                        }
                     }
                 }
             } catch (Exception $e) {
@@ -648,14 +864,25 @@ if ($section === 'merchandise') {
     }
 
     try {
-        // Part 1: native job_orders rows
+        // Part 1: native job_orders rows — fetch all columns including due_date, balance_due, admin_remarks
         $jo_rows = [];
         try {
+            // Check which columns exist in job_orders (graceful for any schema state)
+            $jo_cols_check = [];
+            try {
+                foreach ($pdo->query("SHOW COLUMNS FROM job_orders")->fetchAll(PDO::FETCH_ASSOC) as $_jc)
+                    $jo_cols_check[strtolower($_jc['Field'])] = true;
+            } catch (Exception $_jce) {}
+            $jo_col_due_date    = isset($jo_cols_check['due_date'])    ? 'jo.due_date'    : 'NULL';
+            $jo_col_balance_due = isset($jo_cols_check['balance_due']) ? 'jo.balance_due' : '0';
+
             $stmt = $pdo->prepare("
                 SELECT jo.*,
-                       COALESCE(NULLIF(CONCAT(u.first_name, ' ', u.last_name), ' '), u.username) AS mechanic_name,
-                       COALESCE(NULLIF(CONCAT(cb.first_name, ' ', cb.last_name), ' '), cb.username) AS created_by_name,
-                       'job_orders' AS _source
+                       u.name AS mechanic_name,
+                       cb.name AS created_by_name,
+                       'job_orders' AS _source,
+                       $jo_col_due_date    AS due_date,
+                       $jo_col_balance_due AS balance_due_col
                 FROM job_orders jo
                 LEFT JOIN users u  ON u.id = jo.assigned_mechanic_id
                 LEFT JOIN users cb ON cb.id = jo.created_by
@@ -664,11 +891,33 @@ if ($section === 'merchandise') {
             ");
             $stmt->execute([$station_id]);
             $jo_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            // Normalize: map balance_due_col → balance_due if not already present
+            foreach ($jo_rows as &$_jr) {
+                if (!isset($_jr['balance_due']) || $_jr['balance_due'] == 0) {
+                    $_jr['balance_due'] = $_jr['balance_due_col'] ?? 0;
+                }
+                $_jr['staff_remarks']      = $_jr['notes'] ?? '';
+                $_jr['manager_notes']      = $_jr['admin_remarks'] ?? '';
+                $_jr['inventory_deducted'] = 0; // job_orders uses required_parts JSON, handled below
+            }
+            unset($_jr);
         } catch (Exception $e) { $jo_rows = []; }
 
         // Part 2: merchandise_transactions with job_order/combined type
+        // Fetch new columns: staff_remarks, manager_notes, due_date, inventory_deducted
         $mt_rows = [];
         try {
+            // Detect which new columns exist (graceful — migration runs above but just in case)
+            $mt_tracker_cols = [];
+            try {
+                foreach ($pdo->query("SHOW COLUMNS FROM merchandise_transactions")->fetchAll(PDO::FETCH_ASSOC) as $_c)
+                    $mt_tracker_cols[strtolower($_c['Field'])] = true;
+            } catch (Exception $_e) {}
+            $mt_col_staff_remarks      = isset($mt_tracker_cols['staff_remarks'])      ? 'mt.staff_remarks'      : 'NULL';
+            $mt_col_manager_notes      = isset($mt_tracker_cols['manager_notes'])      ? 'mt.manager_notes'      : 'NULL';
+            $mt_col_due_date           = isset($mt_tracker_cols['due_date'])           ? 'mt.due_date'           : 'NULL';
+            $mt_col_inventory_deducted = isset($mt_tracker_cols['inventory_deducted']) ? 'mt.inventory_deducted' : '0';
+
             $stmt2 = $pdo->prepare("
                 SELECT
                     mt.id,
@@ -679,33 +928,40 @@ if ($section === 'merchandise') {
                     COALESCE(mt.validation_status, 'Pending') AS validation_status,
                     mt.total_amount AS estimated_cost,
                     mt.total_amount AS total_cost,
-                    '' AS notes,
+                    COALESCE($mt_col_staff_remarks, mt.remarks, '') AS notes,
                     COALESCE(mt.job_order_vehicle_plate, '') AS vehicle_plate,
                     COALESCE(mt.job_order_vehicle_type, '') AS vehicle_type,
                     mt.created_at,
                     COALESCE(mt.job_order_mechanic_name, '') AS mechanic_name,
-                    COALESCE(NULLIF(CONCAT(u.first_name, ' ', u.last_name), ' '), u.username) AS created_by_name,
+                    u.name AS created_by_name,
                     mt.payment_method,
                     COALESCE(mt.payment_status, 'Pending Payment') AS payment_status,
                     COALESCE(mt.amount_paid, 0)                    AS amount_paid,
                     COALESCE(mt.balance_due, mt.total_amount)      AS balance_due,
                     NULL AS assigned_mechanic_id,
                     NULL AS customer_id,
-                    NULL AS job_order_id,
+                    mt.id AS job_order_id,
                     NULL AS job_order_number,
                     COALESCE(
                         NULLIF(
-                            (SELECT GROUP_CONCAT(CONCAT(i.product_name, ' (', i.quantity, ')') ORDER BY i.id SEPARATOR ', ')
-                             FROM merchandise_transaction_items i 
+                            (SELECT GROUP_CONCAT(
+                                        CONCAT(i.product_name, ' (', CAST(i.quantity AS UNSIGNED),
+                                               IF(CAST(i.quantity AS UNSIGNED)=1,' pc',' pcs'), ')')
+                                        ORDER BY i.id SEPARATOR ', ')
+                             FROM merchandise_transaction_items i
                              WHERE i.transaction_id = mt.id
-                             AND COALESCE(i.item_type, 'merchandise') != 'service'), ''
+                               AND COALESCE(i.item_type, 'merchandise') != 'service'), ''
                         ),
                         NULL
                     ) AS required_parts,
                     NULL AS additional_notes,
                     NULL AS shift_id,
                     mt.updated_at,
-                    'merchandise_transactions' AS _source
+                    'merchandise_transactions' AS _source,
+                    COALESCE($mt_col_staff_remarks, mt.remarks, '')  AS staff_remarks,
+                    COALESCE($mt_col_manager_notes, '')               AS manager_notes,
+                    $mt_col_due_date                                  AS due_date,
+                    $mt_col_inventory_deducted                        AS inventory_deducted
                 FROM merchandise_transactions mt
                 LEFT JOIN users u ON u.id = mt.staff_id
                 WHERE mt.station_id = ?
@@ -722,6 +978,202 @@ if ($section === 'merchandise') {
         // Merge and sort by created_at DESC
         $job_orders = array_merge($jo_rows, $mt_rows);
         usort($job_orders, fn($a, $b) => strtotime($b['created_at']) - strtotime($a['created_at']));
+
+        // ── Build inventory impact lookup (per JO, per part) ─────────────────────
+        // Keyed by "{_source}:{id}" → array of ['part','qty','stock','status']
+        $inv_impact = [];
+        if (!empty($job_orders)) {
+            // Collect all product names used across all JOs (for batch station_inventory lookup)
+            $product_name_map = []; // product_name (lower) → ['product_id', 'stock_level']
+            try {
+                $pi_stmt = $pdo->prepare("
+                    SELECT ip.id AS product_id, LOWER(TRIM(ip.product_name)) AS pname,
+                           COALESCE(si.stock_level, 0) AS stock_level
+                    FROM inventory_products ip
+                    LEFT JOIN station_inventory si
+                           ON si.product_id = ip.id AND si.station_id = ?
+                    WHERE ip.category != 'Fuel' OR ip.category IS NULL
+                ");
+                $pi_stmt->execute([$station_id]);
+                foreach ($pi_stmt->fetchAll(PDO::FETCH_ASSOC) as $_pi) {
+                    $product_name_map[$_pi['pname']] = $_pi;
+                }
+            } catch (Exception $_pie) {}
+
+            // For merchandise_transactions rows: get per-item data from merchandise_transaction_items
+            $mt_item_map = []; // transaction_id → [['product_name','product_id','quantity','unit_price']]
+            $mt_ids = array_column(
+                array_filter($job_orders, fn($j) => ($j['_source'] ?? '') === 'merchandise_transactions'),
+                'id'
+            );
+            if (!empty($mt_ids)) {
+                try {
+                    $mt_ph = implode(',', array_fill(0, count($mt_ids), '?'));
+                    $mti_stmt = $pdo->prepare("
+                        SELECT mti.transaction_id, mti.product_name, mti.product_id,
+                               mti.quantity, mti.unit_price,
+                               COALESCE(mti.item_type, 'merchandise') AS item_type
+                        FROM merchandise_transaction_items mti
+                        WHERE mti.transaction_id IN ($mt_ph)
+                          AND COALESCE(mti.item_type, 'merchandise') != 'service'
+                        ORDER BY mti.id
+                    ");
+                    $mti_stmt->execute($mt_ids);
+                    foreach ($mti_stmt->fetchAll(PDO::FETCH_ASSOC) as $_mti) {
+                        $mt_item_map[$_mti['transaction_id']][] = $_mti;
+                    }
+                } catch (Exception $_mtie) {}
+            }
+
+            foreach ($job_orders as $_jo) {
+                $key        = ($_jo['_source'] ?? 'job_orders') . ':' . $_jo['id'];
+                $val_st     = strtolower($_jo['validation_status'] ?? '');
+                $is_approved = in_array($val_st, ['approved', 'validated', 'adjusted']);
+                $parts_info = [];
+
+                if (($_jo['_source'] ?? '') === 'merchandise_transactions') {
+                    // Use merchandise_transaction_items data
+                    $items = $mt_item_map[$_jo['id']] ?? [];
+                    foreach ($items as $_item) {
+                        $pname = strtolower(trim($_item['product_name'] ?? ''));
+                        $stock_row = $product_name_map[$pname] ?? null;
+                        $stock = $stock_row ? (float)$stock_row['stock_level'] : null;
+                        $deducted = (int)($_jo['inventory_deducted'] ?? 0);
+
+                        if ($is_approved && $deducted) {
+                            $status = 'yes';
+                        } elseif ($is_approved && !$deducted) {
+                            $status = 'no';
+                        } elseif ($stock === null) {
+                            $status = 'na';
+                        } else {
+                            $status = 'pending';
+                        }
+                        $parts_info[] = [
+                            'part'   => $_item['product_name'],
+                            'qty'    => (int)$_item['quantity'],
+                            'stock'  => $stock,
+                            'unit_price' => (float)$_item['unit_price'],
+                            'status' => $status,
+                        ];
+                    }
+                } else {
+                    // job_orders — parse required_parts JSON
+                    $rp_raw = $_jo['required_parts'] ?? '';
+                    $rp_decoded = is_string($rp_raw) ? (json_decode($rp_raw, true) ?? []) : ($rp_raw ?? []);
+                    if (is_array($rp_decoded)) {
+                        foreach ($rp_decoded as $_rp) {
+                            if (!is_array($_rp)) continue;
+                            $pname = strtolower(trim($_rp['name'] ?? $_rp['part_name'] ?? ''));
+                            $stock_row = $product_name_map[$pname] ?? null;
+                            $stock = $stock_row ? (float)$stock_row['stock_level'] : null;
+                            // job_orders doesn't have inventory_deducted col — derive from validation
+                            $status = $is_approved ? 'yes' : ($stock === null ? 'na' : 'pending');
+                            $parts_info[] = [
+                                'part'   => $_rp['name'] ?? $_rp['part_name'] ?? '?',
+                                'qty'    => (int)($_rp['qty'] ?? $_rp['quantity'] ?? 1),
+                                'stock'  => $stock,
+                                'unit_price' => (float)($_rp['unit_price'] ?? 0),
+                                'status' => $status,
+                            ];
+                        }
+                    }
+                }
+                $inv_impact[$key] = $parts_info;
+            }
+        }
+
+        // ── Variance alerts detection ─────────────────────────────────────────────
+        // Scans active (non-rejected/completed) job orders for qty or amount mismatches.
+        $variance_alerts = [];
+        $today_str = date('Y-m-d');
+        foreach ($job_orders as $_vjo) {
+            $vst = strtolower($_vjo['status'] ?? '');
+            if (in_array($vst, ['rejected','cancelled','completed'])) continue;
+            $vval = strtolower($_vjo['validation_status'] ?? '');
+            if ($vval === 'rejected') continue;
+
+            $vkey = ($_vjo['_source'] ?? 'job_orders') . ':' . $_vjo['id'];
+            $vitems = $inv_impact[$vkey] ?? [];
+            $jo_ref = $_vjo['job_order_id'] ?? ('#' . $_vjo['id']);
+
+            // A) Quantity variance: encoded qty > current stock level
+            foreach ($vitems as $_vit) {
+                if ($_vit['stock'] !== null && $_vit['qty'] > $_vit['stock']) {
+                    $variance_alerts[] = [
+                        'jo_ref'  => $jo_ref,
+                        'source'  => $_vjo['_source'] ?? 'job_orders',
+                        'id'      => $_vjo['id'],
+                        'type'    => 'qty',
+                        'message' => 'Quantity mismatch: ' . htmlspecialchars($_vit['part'])
+                                   . ' — encoded ' . $_vit['qty'] . ' pc(s), stock ' . (int)$_vit['stock'],
+                    ];
+                }
+            }
+
+            // B) Amount variance: sum(qty × unit_price) vs total_cost
+            if (!empty($vitems)) {
+                $computed_sum = array_sum(array_map(fn($i) => $i['qty'] * $i['unit_price'], $vitems));
+                $total_cost   = (float)($_vjo['total_cost'] ?? $_vjo['estimated_cost'] ?? 0);
+                if ($total_cost > 0 && abs($computed_sum - $total_cost) > 0.01) {
+                    $variance_alerts[] = [
+                        'jo_ref'  => $jo_ref,
+                        'source'  => $_vjo['_source'] ?? 'job_orders',
+                        'id'      => $_vjo['id'],
+                        'type'    => 'amount',
+                        'message' => 'Amount mismatch: computed ₱' . number_format($computed_sum, 2)
+                                   . ' vs encoded ₱' . number_format($total_cost, 2),
+                    ];
+                }
+            }
+        }
+        $variance_alert_count = count($variance_alerts);
+
+        // ── Staff KPI Snapshot (today, current station, current user) ─────────────
+        $kpi_jo_count       = 0;
+        $kpi_merch_released = 0;
+        $kpi_total_encoded  = 0.00;
+        try {
+            // Count JOs encoded today from merchandise_transactions
+            $kpi_stmt = $pdo->prepare("
+                SELECT COUNT(DISTINCT mt.id)   AS jo_count,
+                       COALESCE(SUM(
+                           CASE WHEN COALESCE(mti.item_type,'merchandise') != 'service'
+                                THEN mti.quantity ELSE 0 END
+                       ), 0)                   AS merch_released,
+                       COALESCE(SUM(mt.total_amount), 0) AS total_encoded
+                FROM merchandise_transactions mt
+                LEFT JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id
+                WHERE mt.station_id = ?
+                  AND mt.staff_id   = ?
+                  AND DATE(mt.created_at) = CURDATE()
+                  AND mt.transaction_type IN ('job_order','combined')
+            ");
+            $kpi_stmt->execute([$station_id, $me['id']]);
+            $kpi_row = $kpi_stmt->fetch(PDO::FETCH_ASSOC);
+            if ($kpi_row) {
+                $kpi_jo_count       += (int)$kpi_row['jo_count'];
+                $kpi_merch_released += (int)$kpi_row['merch_released'];
+                $kpi_total_encoded  += (float)$kpi_row['total_encoded'];
+            }
+        } catch (Exception $_kpie) {}
+        try {
+            // Also count from native job_orders table
+            $kpi_jo_stmt = $pdo->prepare("
+                SELECT COUNT(*) AS jo_count,
+                       COALESCE(SUM(COALESCE(total_cost, estimated_cost, 0)), 0) AS total_encoded
+                FROM job_orders
+                WHERE station_id  = ?
+                  AND created_by  = ?
+                  AND DATE(created_at) = CURDATE()
+            ");
+            $kpi_jo_stmt->execute([$station_id, $me['id']]);
+            $kpi_jo_row = $kpi_jo_stmt->fetch(PDO::FETCH_ASSOC);
+            if ($kpi_jo_row) {
+                $kpi_jo_count      += (int)$kpi_jo_row['jo_count'];
+                $kpi_total_encoded += (float)$kpi_jo_row['total_encoded'];
+            }
+        } catch (Exception $_kpije) {}
 
     } catch (Exception $e) {
         $job_orders = [];
@@ -1361,7 +1813,37 @@ input[list] {
 
 .txn-btn.full { width: 100%; }
 
-/* ── Info banner ─────────────────────────────────────────────── */
+/* ── Pagination buttons ───────────────────────────────────────── */
+.pag-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 28px !important;
+    height: 28px !important;
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 4px !important;
+    color: #475569 !important;
+    font-size: 12px !important;
+    cursor: pointer !important;
+    transition: all .15s !important;
+}
+.pag-btn i { color: #475569 !important; }
+.pag-btn:hover:not(:disabled) { background: #00264D !important; border-color: #00264D !important; color: #ffffff !important; }
+.pag-btn:hover:not(:disabled) i { color: #ffffff !important; }
+.pag-btn:disabled { opacity: .4 !important; cursor: not-allowed !important; }
+
+/* ── Rows per page select ─────────────────────────────────────── */
+.pag-select {
+    font-size: 12px !important;
+    padding: 4px 8px !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 4px !important;
+    background: #ffffff !important;
+    color: inherit !important;
+    outline: none !important;
+    cursor: pointer !important;
+}
 .txn-info-banner {
     display: flex;
     align-items: flex-start;
@@ -1600,7 +2082,7 @@ input[list] {
         .fet th {
             padding: 11px 14px;
             text-align: left;
-            font-size: 11px;
+            font-size: 14px;
             font-weight: 700;
             color: #475569;
             text-transform: uppercase;
@@ -1832,13 +2314,13 @@ input[list] {
             endforeach; // End fuel type loop
             ?>
 
-            <div class="fet-wrap" style="overflow-x:auto;">
+            <div class="fet-wrap" style="overflow:hidden;">
                 <table class="fet" style="width:100%;border-collapse:collapse;">
                     <thead>
                         <tr style="background:#002F70;">
-                            <th rowspan="2" style="border:1px solid #001f4d;padding:12px;vertical-align:middle;min-width:120px;font-weight:700;font-size:13px;color:#fff;">NAME</th>
+                            <th rowspan="2" style="border:1px solid #001f4d;padding:12px;vertical-align:middle;font-weight:700;font-size:13px;color:#fff;">NAME</th>
                             <th colspan="6" style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:14px;font-weight:700;color:#fff;">METER READING</th>
-                            <th rowspan="2" style="border:1px solid #001f4d;padding:12px;vertical-align:middle;min-width:120px;font-weight:700;font-size:11px;color:#fff;">NOTES</th>
+                            <th rowspan="2" style="border:1px solid #001f4d;padding:12px;vertical-align:middle;font-weight:700;font-size:11px;color:#fff;">NOTES</th>
                         </tr>
                         <tr style="background:#002F70;">
                             <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">BEGINNING</th>
@@ -2123,7 +2605,7 @@ input[list] {
                             <i class="fas fa-calendar-alt" style="color:var(--petron-blue); margin-right:4px;"></i>Filter by Date
                         </label>
                         <input type="date" id="subtab_date" value="<?= date('Y-m-d') ?>" onchange="loadTodayEntries();"
-                               style="padding:8px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:13px; color:#0f172a; outline:none; background:#ffffff; height:38px; min-width:160px; box-sizing:border-box; transition:border-color 0.15s ease-in-out;"
+                               style="padding:8px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:13px; color:#0f172a; outline:none; background:#ffffff; height:38px; box-sizing:border-box; transition:border-color 0.15s ease-in-out;"
                                onfocus="this.style.borderColor='var(--petron-blue)'" onblur="this.style.borderColor='#cbd5e1'">
                     </div>
 
@@ -2133,7 +2615,7 @@ input[list] {
                             <i class="fas fa-clock" style="color:var(--petron-blue); margin-right:4px;"></i>Filter by Shift
                         </label>
                         <select id="subtab_shift" onchange="loadTodayEntries();"
-                                style="padding:8px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:13px; color:#0f172a; outline:none; background:#ffffff; height:38px; min-width:180px; box-sizing:border-box; cursor:pointer; transition:border-color 0.15s ease-in-out;"
+                                style="padding:8px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:13px; color:#0f172a; outline:none; background:#ffffff; height:38px; box-sizing:border-box; cursor:pointer; transition:border-color 0.15s ease-in-out;"
                                 onfocus="this.style.borderColor='var(--petron-blue)'" onblur="this.style.borderColor='#cbd5e1'">
                             <option value="">All Shifts</option>
                             <option value="first">First Shift (6 AM–2 PM)</option>
@@ -2765,11 +3247,11 @@ input[list] {
                 return shiftPeriod;
             }
 
-            const TH  = 'padding:8px 6px; font-size:10px; font-weight:700; color:#ffffff; text-transform:uppercase; letter-spacing:.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;';
+            const TH  = 'padding:8px 6px; font-size:14px; font-weight:700; color:#ffffff; text-transform:uppercase; letter-spacing:.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;';
             const THR = TH + ' text-align:right;';
 
             let html = `<div style="overflow-x:hidden; border-bottom:1px solid #e2e8f0; background:#ffffff;">
-                <table id="todayReadingsTable" style="width:100%; border-collapse:collapse; font-size:11px; text-align:left; table-layout:fixed;">
+                <table id="todayReadingsTable" style="width:100%; border-collapse:collapse; font-size:13px; text-align:left; table-layout:fixed;">
                     <thead>
                         <tr style="background:#002F70; border-bottom:2px solid #001f4d;">
                             <th style="${TH}; width:8%;">Date</th>
@@ -2812,18 +3294,18 @@ input[list] {
                 const staffStr = r.staff_name || '—';
 
                 html += `<tr style="border-bottom:1px solid #f1f5f9; background:#ffffff; transition: background-color 0.15s ease;" onmouseover="this.style.backgroundColor='#f0f5ff';" onmouseout="this.style.backgroundColor='#ffffff';">
-                    <td style="padding:8px 6px; color:#1e293b; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${dateStr}">${dateStr}</td>
-                    <td style="padding:8px 6px; color:#334155; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${shiftStr}">${shiftStr}</td>
-                    <td style="padding:8px 6px; font-weight:700; color:#0f172a; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fuelStr}">${fuelStr}</td>
-                    <td style="padding:8px 6px; text-align:right; font-variant-numeric:tabular-nums; color:#1e293b; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.beginning)}">${fmt(r.beginning)}</td>
-                    <td style="padding:8px 6px; text-align:right; font-variant-numeric:tabular-nums; color:#1e293b; font-weight:600; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.ending)}">${fmt(r.ending)}</td>
-                    <td style="padding:8px 6px; text-align:right; font-variant-numeric:tabular-nums; color:#334155; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.cal,3)}">${fmt(r.cal,3)}</td>
-                    <td style="padding:8px 6px; text-align:right; font-weight:700; font-variant-numeric:tabular-nums; color:#1e293b; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.volume_liters)} L">${fmt(r.volume_liters)} L</td>
-                    <td style="padding:8px 6px; text-align:right; font-variant-numeric:tabular-nums; color:#334155; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="₱${fmt(r.price_per_liter)}">₱${fmt(r.price_per_liter)}</td>
-                    <td style="padding:8px 6px; text-align:right; font-weight:800; font-variant-numeric:tabular-nums; color:#0f172a; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="₱${fmt(r.amount)}">₱${fmt(r.amount)}</td>
-                    <td style="padding:8px 6px; color:#334155; font-weight:500; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${staffStr}">${staffStr}</td>
-                    <td style="padding:8px 6px; font-size:11px; overflow:visible; vertical-align:middle;">${badge(r.status)}</td>
-                    <td style="padding:8px 6px; color:#475569; font-size:11px; max-width:160px; overflow:hidden; vertical-align:middle;">${notesCellContent}</td>
+                    <td style="padding:8px 6px; color:#1e293b; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${dateStr}">${dateStr}</td>
+                    <td style="padding:8px 6px; color:#334155; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${shiftStr}">${shiftStr}</td>
+                    <td style="padding:8px 6px; font-weight:700; color:#0f172a; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fuelStr}">${fuelStr}</td>
+                    <td style="padding:8px 6px; text-align:right; font-variant-numeric:tabular-nums; color:#1e293b; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.beginning)}">${fmt(r.beginning)}</td>
+                    <td style="padding:8px 6px; text-align:right; font-variant-numeric:tabular-nums; color:#1e293b; font-weight:600; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.ending)}">${fmt(r.ending)}</td>
+                    <td style="padding:8px 6px; text-align:right; font-variant-numeric:tabular-nums; color:#334155; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.cal,3)}">${fmt(r.cal,3)}</td>
+                    <td style="padding:8px 6px; text-align:right; font-weight:700; font-variant-numeric:tabular-nums; color:#1e293b; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.volume_liters)} L">${fmt(r.volume_liters)} L</td>
+                    <td style="padding:8px 6px; text-align:right; font-variant-numeric:tabular-nums; color:#334155; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="₱${fmt(r.price_per_liter)}">₱${fmt(r.price_per_liter)}</td>
+                    <td style="padding:8px 6px; text-align:right; font-weight:800; font-variant-numeric:tabular-nums; color:#0f172a; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="₱${fmt(r.amount)}">₱${fmt(r.amount)}</td>
+                    <td style="padding:8px 6px; color:#334155; font-weight:500; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${staffStr}">${staffStr}</td>
+                    <td style="padding:8px 6px; font-size:13px; overflow:visible; vertical-align:middle;">${badge(r.status)}</td>
+                    <td style="padding:8px 6px; color:#475569; font-size:13px; max-width:160px; overflow:hidden; vertical-align:middle;">${notesCellContent}</td>
                 </tr>`;
             });
 
@@ -2937,8 +3419,8 @@ input[list] {
             </div>
             <div style="display:flex;gap:8px;align-items:center;">
                 <span class="status-badge customer" style="display:none;"></span>
-                <button type="button" onclick="window.location.href='staff_dashboard.php'" 
-                        class="txn-btn secondary" title="Back to Staff Dashboard">
+                <button type="button" onclick="window.location.href='staff_transactions_hub.php?section=merchandise&amp;active_tab=merchandise'" 
+                        class="txn-btn secondary" title="Back to Merchandise/Service Transaction">
                     <i class="fas fa-arrow-left"></i> <span>Back</span>
                 </button>
             </div>
@@ -3483,74 +3965,268 @@ input[list] {
                             #mhHistoryTable th { padding: 8px 6px; }
                             #mhHistoryTable td { padding: 8px 6px; }
                             </style>
+
+                            <!-- ── Merchandise KPI Snapshot ─────────────────── -->
+                            <div style="margin:12px 16px 4px;">
+                                <button type="button"
+                                        onclick="var p=document.getElementById('mhKpiPanel');p.style.display=(p.style.display==='none'?'block':'none');"
+                                        style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;
+                                               border:1px solid #003d7a;border-radius:4px;background:#fff;
+                                               color:#003d7a;font-size:11px;font-weight:600;cursor:pointer;">
+                                    <i class="fas fa-chart-bar"></i> My KPI Today (Merchandise)
+                                </button>
+                            </div>
+                            <div id="mhKpiPanel"
+                                 style="display:none;margin:8px 16px 12px;background:#f0f7ff;
+                                        border:1px solid #bfdbfe;border-radius:8px;padding:12px 16px;">
+                                <div style="font-size:12px;font-weight:700;color:#003d7a;margin-bottom:8px;">
+                                    <i class="fas fa-chart-bar"></i> My Merchandise KPI — <?= date('F j, Y') ?>
+                                </div>
+                                <div style="display:flex;gap:14px;flex-wrap:wrap;">
+                                    <div style="flex:1;background:#fff;border-radius:6px;
+                                                padding:10px 12px;border:1px solid #dbeafe;text-align:center;">
+                                        <div style="font-size:20px;font-weight:700;color:#002F6C;">
+                                            <?= (int)$mh_kpi_txn_count ?>
+                                        </div>
+                                        <div style="font-size:10px;color:#64748b;margin-top:2px;">Transactions Today</div>
+                                    </div>
+                                    <div style="flex:1;background:#fff;border-radius:6px;
+                                                padding:10px 12px;border:1px solid #dbeafe;text-align:center;">
+                                        <div style="font-size:20px;font-weight:700;color:#002F6C;">
+                                            <?= (int)$mh_kpi_items_released ?>
+                                        </div>
+                                        <div style="font-size:10px;color:#64748b;margin-top:2px;">Items Released (pcs)</div>
+                                    </div>
+                                    <div style="flex:1;background:#fff;border-radius:6px;
+                                                padding:10px 12px;border:1px solid #dbeafe;text-align:center;">
+                                        <div style="font-size:20px;font-weight:700;color:#002F6C;">
+                                            ₱<?= number_format($mh_kpi_total_encoded, 2) ?>
+                                        </div>
+                                        <div style="font-size:10px;color:#64748b;margin-top:2px;">Total Amount Encoded</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <?php if (!empty($mh_variance_alerts)): ?>
+                            <div style="margin:0 16px 10px;background:#fff3f3;border:1px solid #fecaca;
+                                        border-radius:6px;padding:10px 14px;font-size:11px;">
+                                <div style="font-weight:700;color:#dc2626;margin-bottom:6px;">
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                    Variance Alerts (<?= count($mh_variance_alerts) ?>)
+                                </div>
+                                <?php foreach ($mh_variance_alerts as $_mva): ?>
+                                <div style="padding:3px 0;border-bottom:1px solid #fee2e2;color:#64748b;">
+                                    <strong style="color:#dc2626;"><?= htmlspecialchars($_mva['txn_ref']) ?></strong>
+                                    <span style="margin-left:5px;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600;
+                                                 background:<?= $_mva['type']==='qty'?'#fef3c7':'#fee2e2' ?>;
+                                                 color:<?= $_mva['type']==='qty'?'#92400e':'#991b1b' ?>;">
+                                        <?= $_mva['type']==='qty'?'Qty Mismatch':'Amount Mismatch' ?>
+                                    </span>
+                                    — <?= htmlspecialchars($_mva['message']) ?>
+                                </div>
+                                <?php endforeach; ?>
+                            </div>
+                            <?php endif; ?>
+
                             <table class="txn-table" id="mhHistoryTable" style="width:100%;table-layout:fixed;">
                                 <colgroup>
                                     <col style="width:7%;"><!-- Txn ID -->
-                                    <col style="width:10%;"><!-- Customer -->
-                                    <col style="width:14%;"><!-- Product -->
+                                    <col style="width:9%;"><!-- Customer -->
+                                    <col style="width:12%;"><!-- Product -->
                                     <col style="width:6%;"><!-- Total -->
                                     <col style="width:6%;"><!-- Method -->
-                                    <col style="width:7%;"><!-- Balance Due -->
-                                    <col style="width:10%;"><!-- Shift -->
-                                    <col style="width:10%;"><!-- Date -->
-                                    <col style="width:12%;"><!-- Payment Status -->
-                                    <col style="width:18%;"><!-- Actions -->
+                                    <col style="width:8%;"><!-- Balance Due + Due Date -->
+                                    <col style="width:9%;"><!-- Inv. Impact -->
+                                    <col style="width:9%;"><!-- Shift -->
+                                    <col style="width:8%;"><!-- Date -->
+                                    <col style="width:9%;"><!-- Payment Status -->
+                                    <col style="width:11%;"><!-- Remarks -->
+                                    <col style="width:16%;"><!-- Actions -->
                                 </colgroup>
                                 <thead>
                                     <tr>
-                                        <th style="font-size:14px;">Txn ID</th>
-                                        <th style="font-size:14px;">Customer</th>
-                                        <th style="font-size:14px;">Product</th>
-                                        <th style="font-size:14px;">Total</th>
-                                        <th style="font-size:14px;">Method</th>
-                                        <th style="font-size:14px;">Balance Due</th>
-                                        <th style="font-size:14px;">Shift</th>
-                                        <th style="font-size:14px;">Date</th>
-                                        <th style="font-size:14px;">Payment Status</th>
-                                        <th style="font-size:14px;">Actions</th>
+                                        <th style="font-size:12px;">Txn ID</th>
+                                        <th style="font-size:12px;">Customer</th>
+                                        <th style="font-size:12px;">Product</th>
+                                        <th style="font-size:12px;">Total</th>
+                                        <th style="font-size:12px;">Method</th>
+                                        <th style="font-size:12px;">Balance / Due</th>
+                                        <th style="font-size:12px;">Inv. Impact</th>
+                                        <th style="font-size:12px;">Shift</th>
+                                        <th style="font-size:12px;">Date</th>
+                                        <th style="font-size:12px;">Payment Status</th>
+                                        <th style="font-size:12px;">Remarks</th>
+                                        <th style="font-size:12px;">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="mhTableBody">
-                                <?php foreach ($mh_recent as $txn): ?>
-                                <?php
+                                <?php foreach ($mh_recent as $txn):
                                     $mh_pay_status = $txn['payment_status'] ?? $txn['status'] ?? 'Pending Payment';
                                     $mh_balance    = (float)($txn['balance_due'] ?? 0);
                                     $mh_paid       = (float)($txn['amount_paid'] ?? 0);
-                                    $mh_total      = (float)($txn['total_amount'] ?? 0);
+                                    $mh_total_amt  = (float)($txn['total_amount'] ?? 0);
                                     $mh_can_settle = !in_array(strtolower($mh_pay_status), ['paid']) && $mh_balance > 0.009;
                                     $mh_products   = $txn['products'] ?? '—';
+
+                                    // Receivables
+                                    $mh_due_date   = $txn['due_date'] ?? null;
+                                    $mh_is_overdue = false;
+                                    if ($mh_due_date && strtolower($mh_pay_status) !== 'paid') {
+                                        $mh_is_overdue = (strtotime(date('Y-m-d')) >= strtotime($mh_due_date));
+                                    }
+
+                                    // Inventory Impact
+                                    $mh_imp_items  = $mh_inv_impact[$txn['id']] ?? [];
+
+                                    // Separated Remarks
+                                    $mh_staff_rem  = trim($txn['staff_remarks'] ?? '');
+                                    $mh_mgr_rem    = trim($txn['manager_notes'] ?? '');
                                 ?>
                                 <tr class="mh-row">
-                                    <td style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><strong style="color:var(--petron-blue);"><?= htmlspecialchars($txn['transaction_id'] ?? ('#'.$txn['id'])) ?></strong></td>
-                                    <td style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($txn['customer_name'] ?? '') ?>"><?= htmlspecialchars($txn['customer_name'] ?? '—') ?></td>
-                                    <td style="font-size:12px;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($mh_products) ?>"><?= htmlspecialchars($mh_products) ?></td>
-                                    <td style="font-size:14px;font-weight:700;color:var(--petron-blue);white-space:nowrap;">₱<?= number_format($mh_total, 2) ?></td>
-                                    <td style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= htmlspecialchars($txn['payment_method'] ?? '—') ?></td>
-                                    <td style="font-size:13px;white-space:nowrap;">
-                                        <?= $mh_balance > 0 ? '<span style="color:#9a3412;font-weight:700;">₱' . number_format($mh_balance, 2) . '</span>' : '<span style="color:#166534;">—</span>' ?>
+                                    <td style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                                        <strong style="color:var(--petron-blue);">
+                                            <?= htmlspecialchars($txn['transaction_id'] ?? ('#'.$txn['id'])) ?>
+                                        </strong>
                                     </td>
-                                    <td style="font-size:13px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($txn['shift_name'] ?? $txn['shift_period'] ?? '') ?>"><?= htmlspecialchars($txn['shift_name'] ?? $txn['shift_period'] ?? '—') ?></td>
-                                    <td style="font-size:13px;color:#64748b;white-space:nowrap;"><?= date('M j, Y h:i A', strtotime($txn['transaction_date'] ?? 'now')) ?></td>
+                                    <td style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                                        title="<?= htmlspecialchars($txn['customer_name'] ?? '') ?>">
+                                        <?= htmlspecialchars($txn['customer_name'] ?? '—') ?>
+                                    </td>
+                                    <td style="font-size:11px;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                                        title="<?= htmlspecialchars($mh_products) ?>">
+                                        <?= htmlspecialchars($mh_products) ?>
+                                    </td>
+                                    <td style="font-size:13px;font-weight:700;color:var(--petron-blue);white-space:nowrap;">
+                                        ₱<?= number_format($mh_total_amt, 2) ?>
+                                    </td>
+                                    <td style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                                        <?= htmlspecialchars($txn['payment_method'] ?? '—') ?>
+                                    </td>
+
+                                    <!-- Balance Due + Due Date + Overdue -->
+                                    <td style="font-size:11px;">
+                                        <?php if ($mh_balance > 0.009): ?>
+                                        <div style="color:#9a3412;font-weight:700;">₱<?= number_format($mh_balance, 2) ?></div>
+                                        <?php else: ?>
+                                        <div style="color:#166534;">—</div>
+                                        <?php endif; ?>
+
+                                        <?php if (strtolower($mh_pay_status) !== 'paid'): ?>
+                                        <div style="margin-top:3px;">
+                                            <?php if ($mh_due_date): ?>
+                                                <span style="color:<?= $mh_is_overdue?'#dc2626':'#64748b' ?>;font-size:10px;">
+                                                    Due: <?= htmlspecialchars($mh_due_date) ?>
+                                                </span>
+                                                <?php if ($mh_is_overdue): ?>
+                                                <span style="display:inline-block;background:#fee2e2;color:#dc2626;
+                                                             font-size:10px;font-weight:700;padding:1px 4px;
+                                                             border-radius:3px;margin-left:2px;">⚠ OVERDUE</span>
+                                                <?php endif; ?>
+                                            <?php else: ?>
+                                                <span style="color:#cbd5e1;font-size:10px;">No due date</span>
+                                            <?php endif; ?>
+                                            <form method="POST" action="staff_transactions_hub.php?section=merchandise&mh_open=1"
+                                                  style="margin-top:3px;">
+                                                <input type="hidden" name="jo_action" value="set_due_date">
+                                                <input type="hidden" name="jo_id" value="<?= (int)$txn['id'] ?>">
+                                                <input type="hidden" name="jo_source" value="merchandise_transactions">
+                                                <input type="hidden" name="redirect_tab" value="merchandise">
+                                                <input type="date" name="due_date"
+                                                       value="<?= htmlspecialchars($mh_due_date ?? '') ?>"
+                                                       style="font-size:10px;border:1px solid #cbd5e1;border-radius:3px;
+                                                              padding:1px 3px;width:100%;cursor:pointer;"
+                                                       onchange="this.form.submit()"
+                                                       title="Set due date">
+                                            </form>
+                                        </div>
+                                        <?php endif; ?>
+                                    </td>
+
+                                    <!-- Inventory Impact -->
+                                    <td style="font-size:11px;line-height:1.5;">
+                                        <?php if (empty($mh_imp_items)): ?>
+                                            <span style="color:#cbd5e1;">—</span>
+                                        <?php else: foreach ($mh_imp_items as $_mhii):
+                                            if ($_mhii['status'] === 'yes') {
+                                                $mhii_c = '#16a34a'; $mhii_l = '✓ Yes';
+                                            } elseif ($_mhii['status'] === 'no') {
+                                                $mhii_c = '#d97706'; $mhii_l = '✗ No';
+                                            } elseif ($_mhii['status'] === 'na') {
+                                                $mhii_c = '#94a3b8'; $mhii_l = 'N/A';
+                                            } else {
+                                                $mhii_c = '#64748b'; $mhii_l = 'Pending';
+                                            }
+                                        ?>
+                                        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+                                             title="<?= htmlspecialchars($_mhii['part']) ?>">
+                                            <span style="color:#374151;"><?= htmlspecialchars(mb_strimwidth($_mhii['part'],0,18,'…')) ?> (<?= (int)$_mhii['qty'] ?>pc)</span>
+                                            <span style="color:<?= $mhii_c ?>;font-weight:700;"> → <?= $mhii_l ?></span>
+                                        </div>
+                                        <?php endforeach; endif; ?>
+                                    </td>
+
+                                    <td style="font-size:12px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                                        title="<?= htmlspecialchars($txn['shift_name'] ?? $txn['shift_period'] ?? '') ?>">
+                                        <?= htmlspecialchars($txn['shift_name'] ?? $txn['shift_period'] ?? '—') ?>
+                                    </td>
+                                    <td style="font-size:12px;color:#64748b;white-space:nowrap;">
+                                        <?= date('M j, Y', strtotime($txn['transaction_date'] ?? 'now')) ?><br>
+                                        <span style="font-size:10px;"><?= date('h:i A', strtotime($txn['transaction_date'] ?? 'now')) ?></span>
+                                    </td>
                                     <td><?= status_badge($mh_pay_status) ?></td>
+
+                                    <!-- Remarks: Staff + Manager separated -->
+                                    <td style="font-size:11px;color:#64748b;word-break:break-word;max-width:120px;">
+                                        <?php if (!empty($mh_staff_rem)): ?>
+                                        <div>
+                                            <span style="font-weight:700;color:#475569;">Staff:</span>
+                                            <?= htmlspecialchars($mh_staff_rem) ?>
+                                        </div>
+                                        <?php endif; ?>
+                                        <?php if (!empty($mh_mgr_rem)): ?>
+                                        <div style="margin-top:2px;">
+                                            <span style="font-weight:700;color:#002F6C;">Mgr:</span>
+                                            <?= htmlspecialchars($mh_mgr_rem) ?>
+                                        </div>
+                                        <?php endif; ?>
+                                        <?php if (empty($mh_staff_rem) && empty($mh_mgr_rem)): ?>
+                                            <span style="color:#cbd5e1;">—</span>
+                                        <?php endif; ?>
+                                        <form method="POST" action="staff_transactions_hub.php?section=merchandise&mh_open=1"
+                                              style="margin-top:4px;">
+                                            <input type="hidden" name="jo_action" value="save_staff_remark">
+                                            <input type="hidden" name="jo_id" value="<?= (int)$txn['id'] ?>">
+                                            <input type="hidden" name="jo_source" value="merchandise_transactions">
+                                            <input type="hidden" name="redirect_tab" value="merchandise">
+                                            <div style="display:flex;gap:3px;align-items:center;">
+                                                <input type="text" name="remark_text"
+                                                       value="<?= htmlspecialchars($mh_staff_rem) ?>"
+                                                       placeholder="Add remark…"
+                                                       style="font-size:10px;border:1px solid #e2e8f0;border-radius:3px;
+                                                              padding:2px 4px;flex:1;min-width:0;">
+                                                <button type="submit"
+                                                        style="font-size:10px;padding:2px 5px;background:#002F6C;
+                                                               color:#fff;border:none;border-radius:3px;cursor:pointer;
+                                                               flex-shrink:0;">✓</button>
+                                            </div>
+                                        </form>
+                                    </td>
+
                                     <td>
                                         <div style="display:flex;flex-direction:column;gap:4px;">
-                                            <!-- View Button (Always visible) -->
                                             <button type="button"
                                                     onclick="viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? '') ?>')"
                                                     class="txn-btn primary">
                                                 <i class="fas fa-eye"></i> View
                                             </button>
-                                            
                                             <?php if ($mh_can_settle): ?>
-                                            <!-- Settle / Paid Button (Only if NOT yet paid) -->
                                             <button type="button"
-                                                    onclick="openPaymentModal(<?= (int)$txn['id'] ?>,'merchandise_transactions',<?= $mh_total ?>,<?= $mh_paid ?>,<?= $mh_balance ?>,'<?= addslashes($txn['customer_name'] ?? '') ?>',false,'merchandise')"
+                                                    onclick="openPaymentModal(<?= (int)$txn['id'] ?>,'merchandise_transactions',<?= $mh_total_amt ?>,<?= $mh_paid ?>,<?= $mh_balance ?>,'<?= addslashes($txn['customer_name'] ?? '') ?>',false,'merchandise')"
                                                     class="txn-btn success">
                                                 <i class="fas fa-coins"></i>
                                                 <?= strtolower($mh_pay_status) === 'partial payment' ? 'Settle Balance' : 'Settle Payment' ?>
                                             </button>
                                             <?php elseif (strtolower($mh_pay_status) === 'paid'): ?>
-                                            <!-- Paid = Complete, Print Receipt Only -->
                                             <button type="button"
                                                     onclick="printMerchandiseReceipt('<?= addslashes($txn['transaction_id'] ?? '') ?>')"
                                                     class="txn-btn secondary">
@@ -3571,8 +4247,8 @@ input[list] {
                             <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-top:1px solid #e2e8f0;">
                                 <!-- Rows per page -->
                                 <div style="display:flex;align-items:center;gap:7px;">
-                                    <label style="font-size:12px;color:#6c757d;white-space:nowrap;">Rows per page:</label>
-                                    <select id="mhPerPage" onchange="mhChangePerPage()" style="font-size:12px;padding:5px 8px;border:1px solid #dee2e6;border-radius:5px;color:#495057;">
+                                    <label style="font-size:12px;white-space:nowrap;">Rows per page:</label>
+                                    <select id="mhPerPage" onchange="mhChangePerPage()" class="pag-select">
                                         <option value="10" selected>10</option>
                                         <option value="20">20</option>
                                         <option value="30">30</option>
@@ -3582,13 +4258,11 @@ input[list] {
                                 </div>
                                 <!-- Page indicator + arrows -->
                                 <div style="display:flex;align-items:center;gap:8px;">
-                                    <button id="mhPrevBtn" onclick="mhGoPage(mhState.page - 1)"
-                                        style="padding:5px 12px;border:1px solid #dee2e6;border-radius:5px;background:#fff;cursor:pointer;font-size:13px;color:#495057;">
+                                    <button id="mhPrevBtn" onclick="mhGoPage(mhState.page - 1)" class="pag-btn">
                                         <i class="fas fa-chevron-left"></i>
                                     </button>
                                     <span id="mhPageLabel" style="font-size:13px;color:#495057;white-space:nowrap;">Page 1 of 1</span>
-                                    <button id="mhNextBtn" onclick="mhGoPage(mhState.page + 1)"
-                                        style="padding:5px 12px;border:1px solid #dee2e6;border-radius:5px;background:#fff;cursor:pointer;font-size:13px;color:#495057;">
+                                    <button id="mhNextBtn" onclick="mhGoPage(mhState.page + 1)" class="pag-btn">
                                         <i class="fas fa-chevron-right"></i>
                                     </button>
                                 </div>
@@ -5714,6 +6388,60 @@ input[list] {
         }
         </style>
 
+        <!-- KPI Snapshot Panel — collapsible, today's stats for logged-in staff -->
+        <div style="margin-bottom:12px;">
+            <button type="button"
+                    onclick="document.getElementById('kpiSnapshotPanel').classList.toggle('d-none')"
+                    style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;
+                           border:1px solid #003d7a;border-radius:4px;background:#fff;
+                           color:#003d7a;font-size:11px;font-weight:600;cursor:pointer;">
+                <i class="fas fa-chart-bar"></i> My KPI Today
+            </button>
+        </div>
+        <div id="kpiSnapshotPanel" class="d-none"
+             style="display:none;margin-bottom:16px;background:#f0f7ff;border:1px solid #bfdbfe;
+                    border-radius:8px;padding:14px 18px;">
+            <div style="font-size:12px;font-weight:700;color:#003d7a;margin-bottom:10px;">
+                <i class="fas fa-chart-bar"></i> My KPI — <?= date('F j, Y') ?>
+            </div>
+            <div style="display:flex;gap:16px;flex-wrap:wrap;">
+                <div style="flex:1;background:#fff;border-radius:6px;
+                            padding:10px 14px;border:1px solid #dbeafe;text-align:center;">
+                    <div style="font-size:22px;font-weight:700;color:#002F6C;">
+                        <?= (int)$kpi_jo_count ?>
+                    </div>
+                    <div style="font-size:11px;color:#64748b;margin-top:2px;">Job Orders Encoded Today</div>
+                </div>
+                <div style="flex:1;background:#fff;border-radius:6px;
+                            padding:10px 14px;border:1px solid #dbeafe;text-align:center;">
+                    <div style="font-size:22px;font-weight:700;color:#002F6C;">
+                        <?= (int)$kpi_merch_released ?>
+                    </div>
+                    <div style="font-size:11px;color:#64748b;margin-top:2px;">Merchandise Released (pcs)</div>
+                </div>
+                <div style="flex:1;background:#fff;border-radius:6px;
+                            padding:10px 14px;border:1px solid #dbeafe;text-align:center;">
+                    <div style="font-size:22px;font-weight:700;color:#002F6C;">
+                        ₱<?= number_format($kpi_total_encoded, 2) ?>
+                    </div>
+                    <div style="font-size:11px;color:#64748b;margin-top:2px;">Total Amount Encoded</div>
+                </div>
+            </div>
+        </div>
+        <script>
+        // KPI toggle — use inline display since d-none may be overridden by Bootstrap
+        (function(){
+            var kpiPanel = document.getElementById('kpiSnapshotPanel');
+            if (kpiPanel) kpiPanel.style.display = 'none';
+            var kpiBtn = kpiPanel ? kpiPanel.previousElementSibling.querySelector('button') : null;
+            if (kpiBtn && kpiPanel) {
+                kpiBtn.onclick = function() {
+                    kpiPanel.style.display = (kpiPanel.style.display === 'none') ? 'block' : 'none';
+                };
+            }
+        })();
+        </script>
+
         <!-- Unified Job Order Table -->
         <div class="txn-card" style="margin-bottom: 80px;">
             <div class="txn-card-header" style="background:#f0f7ff;">
@@ -5734,14 +6462,15 @@ input[list] {
                     <colgroup>
                         <col style="width:5%;"  ><!-- JO ID -->
                         <col style="width:8%;"  ><!-- Customer -->
-                        <col style="width:13%;"><!-- Vehicle / Service -->
-                        <col style="width:9%;"><!-- Items / Parts -->
-                        <col style="width:8%;" ><!-- Mechanic -->
-                        <col style="width:13%;" ><!-- Workflow Status (increased) -->
-                        <col style="width:11%;"><!-- Payment Status (increased) -->
-                        <col style="width:7%;" ><!-- Remarks -->
-                        <col style="width:8%;" ><!-- Date/Time -->
-                        <col style="width:18%;"><!-- Actions (increased) -->
+                        <col style="width:12%;"><!-- Vehicle / Service -->
+                        <col style="width:8%;"><!-- Items / Parts -->
+                        <col style="width:8%;" ><!-- Inv. Impact -->
+                        <col style="width:6%;" ><!-- Mechanic -->
+                        <col style="width:11%;" ><!-- Workflow Status -->
+                        <col style="width:11%;"><!-- Payment Status -->
+                        <col style="width:10%;" ><!-- Remarks -->
+                        <col style="width:7%;" ><!-- Date/Time -->
+                        <col style="width:14%;"><!-- Actions -->
                     </colgroup>
                     <thead>
                         <tr>
@@ -5749,6 +6478,7 @@ input[list] {
                             <th style="font-size:11px;">Customer</th>
                             <th style="font-size:11px;">Vehicle / Service</th>
                             <th style="font-size:11px;">Items / Parts</th>
+                            <th style="font-size:11px;">Inv. Impact</th>
                             <th style="font-size:11px;">Mechanic</th>
                             <th style="font-size:11px;">Status</th>
                             <th style="font-size:11px;">Payment</th>
@@ -5806,6 +6536,26 @@ input[list] {
                             }
                             if (strlen($parts_display) > 60) $parts_display = substr($parts_display, 0, 57) . '…';
                         }
+
+                        // ── Inventory Impact for this row ─────────────────────────────────────
+                        $inv_key      = ($job['_source'] ?? 'job_orders') . ':' . $job['id'];
+                        $inv_items    = $inv_impact[$inv_key] ?? [];
+
+                        // ── Receivables: due date + overdue ──────────────────────────────────
+                        $jo_due_date  = $job['due_date'] ?? null;
+                        $jo_is_overdue = false;
+                        if ($jo_due_date && !in_array($pay_status, ['Paid','Completed'])) {
+                            $jo_is_overdue = (strtotime(date('Y-m-d')) >= strtotime($jo_due_date));
+                        }
+                        $jo_balance_display = (float)($job['balance_due'] ?? 0);
+                        $jo_total_for_bal   = (float)($job['total_cost'] ?? $job['estimated_cost'] ?? 0);
+                        $jo_paid_for_bal    = (float)($job['amount_paid'] ?? 0);
+                        if ($jo_balance_display <= 0.009 && $jo_total_for_bal > 0)
+                            $jo_balance_display = max(0, $jo_total_for_bal - $jo_paid_for_bal);
+
+                        // ── Separated remarks ────────────────────────────────────────────────
+                        $staff_remark   = trim($job['staff_remarks'] ?? $job['notes'] ?? '');
+                        $manager_remark = trim($job['manager_notes'] ?? $job['admin_remarks'] ?? '');
                     ?>
                     <tr data-jo-filter="<?= $row_filter ?>" style="<?= $wf_status === 'Rejected' ? 'background:#fff8f8;' : '' ?>">
                         <td>
@@ -5830,20 +6580,115 @@ input[list] {
                         <td style="font-size:13px;color:#475569;">
                             <?= htmlspecialchars($parts_display) ?>
                         </td>
+
+                        <!-- ── Inventory Impact Column ───────────────────────── -->
+                        <td style="font-size:11px;line-height:1.5;">
+                            <?php if (empty($inv_items)): ?>
+                                <span style="color:#cbd5e1;">—</span>
+                            <?php else: foreach ($inv_items as $_ii):
+                                if ($_ii['status'] === 'yes') {
+                                    $ii_color = '#16a34a'; $ii_label = '✓ Deducted: Yes';
+                                } elseif ($_ii['status'] === 'no') {
+                                    $ii_color = '#d97706'; $ii_label = '✗ Deducted: No';
+                                } elseif ($_ii['status'] === 'na') {
+                                    $ii_color = '#94a3b8'; $ii_label = 'N/A';
+                                } else {
+                                    $ii_color = '#64748b'; $ii_label = 'Pending';
+                                }
+                            ?>
+                            <div style="white-space:nowrap;">
+                                <span style="color:#374151;"><?= htmlspecialchars($_ii['part']) ?> (<?= (int)$_ii['qty'] ?> pc)</span>
+                                <span style="color:<?= $ii_color ?>;font-weight:600;"> → <?= $ii_label ?></span>
+                            </div>
+                            <?php endforeach; endif; ?>
+                        </td>
+
                         <td style="font-size:14px;"><?= htmlspecialchars($job['mechanic_name'] ?? 'Unassigned') ?></td>
                         <td style="word-break:break-word;overflow-wrap:break-word;">
                             <span style="color:<?= $wf_color ?>;font-size:11px;font-weight:600;line-height:1.3;">
                                 <?= $wf_label ?>
                             </span>
                         </td>
-                        <td style="word-break:break-word;overflow-wrap:break-word;">
-                            <span style="color:<?= $pay_color ?>;font-size:11px;font-weight:600;line-height:1.3;">
+
+                        <!-- ── Payment + Receivables Column ──────────────────── -->
+                        <td style="word-break:break-word;overflow-wrap:break-word;font-size:11px;">
+                            <span style="color:<?= $pay_color ?>;font-weight:600;line-height:1.3;">
                                 <?= $pay_label ?>
                             </span>
+                            <?php if (!in_array($pay_status, ['Paid','Completed']) && $jo_balance_display > 0): ?>
+                            <div style="color:#64748b;margin-top:2px;">
+                                Bal: <strong>₱<?= number_format($jo_balance_display, 2) ?></strong>
+                            </div>
+                            <?php endif; ?>
+                            <?php if (!in_array($pay_status, ['Paid','Completed'])): ?>
+                            <div style="margin-top:3px;">
+                                <?php if ($jo_due_date): ?>
+                                    <span style="color:<?= $jo_is_overdue ? '#dc2626' : '#64748b' ?>;">
+                                        Due: <?= htmlspecialchars($jo_due_date) ?>
+                                    </span>
+                                    <?php if ($jo_is_overdue): ?>
+                                    <span style="display:inline-block;background:#fee2e2;color:#dc2626;
+                                                 font-size:10px;font-weight:700;padding:1px 5px;
+                                                 border-radius:3px;margin-left:3px;">⚠ OVERDUE</span>
+                                    <?php endif; ?>
+                                <?php else: ?>
+                                    <span style="color:#cbd5e1;font-size:10px;">No due date</span>
+                                <?php endif; ?>
+                                <!-- Inline due date set form -->
+                                <form method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker"
+                                      style="display:inline;margin-left:4px;"
+                                      title="Set due date">
+                                    <input type="hidden" name="jo_action" value="set_due_date">
+                                    <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
+                                    <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
+                                    <input type="date" name="due_date"
+                                           value="<?= htmlspecialchars($jo_due_date ?? '') ?>"
+                                           style="font-size:10px;border:1px solid #cbd5e1;border-radius:3px;
+                                                  padding:1px 3px;width:105px;cursor:pointer;"
+                                           onchange="this.form.submit()"
+                                           title="Click to set due date">
+                                </form>
+                            </div>
+                            <?php endif; ?>
                         </td>
-                        <td style="font-size:13px;color:#64748b;max-width:150px;">
-                            <?= !empty($remarks) ? htmlspecialchars($remarks) : '<span style="color:#cbd5e1;">—</span>' ?>
+
+                        <!-- ── Remarks: Staff + Manager separated ─────────────── -->
+                        <td style="font-size:11px;color:#64748b;max-width:160px;word-break:break-word;">
+                            <?php if (!empty($staff_remark)): ?>
+                            <div>
+                                <span style="font-weight:700;color:#475569;">Staff:</span>
+                                <?= htmlspecialchars($staff_remark) ?>
+                            </div>
+                            <?php endif; ?>
+                            <?php if (!empty($manager_remark)): ?>
+                            <div style="margin-top:3px;">
+                                <span style="font-weight:700;color:#002F6C;">Manager:</span>
+                                <?= htmlspecialchars($manager_remark) ?>
+                            </div>
+                            <?php endif; ?>
+                            <?php if (empty($staff_remark) && empty($manager_remark)): ?>
+                                <span style="color:#cbd5e1;">—</span>
+                            <?php endif; ?>
+                            <!-- Staff remark inline edit -->
+                            <form method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker"
+                                  style="margin-top:4px;">
+                                <input type="hidden" name="jo_action" value="save_staff_remark">
+                                <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
+                                <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
+                                <div style="display:flex;gap:3px;align-items:center;">
+                                    <input type="text" name="remark_text"
+                                           value="<?= htmlspecialchars($staff_remark) ?>"
+                                           placeholder="Add remark…"
+                                           style="font-size:10px;border:1px solid #e2e8f0;border-radius:3px;
+                                                  padding:2px 5px;flex:1;min-width:0;">
+                                    <button type="submit"
+                                            style="font-size:10px;padding:2px 6px;background:#002F6C;
+                                                   color:#fff;border:none;border-radius:3px;cursor:pointer;
+                                                   flex-shrink:0;">✓</button>
+                                </div>
+                            </form>
                         </td>
+
                         <td style="font-size:13px;color:#64748b;white-space:nowrap;">
                             <?= date('M j, Y', strtotime($job['created_at'])) ?><br>
                             <?= date('h:i A', strtotime($job['created_at'])) ?>
@@ -5988,9 +6833,8 @@ input[list] {
                 <!-- Pagination Footer -->
                 <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 20px; border-top:1px solid #e2e8f0; background:#fff; font-size:13px; color:#475569; border-radius:0 0 12px 12px;">
                     <div style="display:flex; align-items:center; gap:8px;">
-                        <label style="margin:0; font-weight:400; color:#475569;">Rows per page:</label>
-                        <select id="joPerPage" onchange="joChangePerPage()"
-                                style="padding:4px 24px 4px 8px; border:1px solid #cbd5e1; border-radius:4px; font-size:13px; color:#1e293b; background:#fff; outline:none; cursor:pointer;">
+                        <label style="margin:0; font-weight:400;">Rows per page:</label>
+                        <select id="joPerPage" onchange="joChangePerPage()" class="pag-select">
                             <option value="10" selected>10</option>
                             <option value="20">20</option>
                             <option value="30">30</option>
@@ -5999,11 +6843,11 @@ input[list] {
                         </select>
                     </div>
                     <div style="display:flex; align-items:center; gap:8px;">
-                        <button id="joPrevBtn" onclick="joGoPage(joState.page - 1)" style="width:28px; height:28px; background:#fff; border:1px solid #cbd5e1; border-radius:4px; font-size:12px; color:#475569; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all .15s;">
+                        <button id="joPrevBtn" onclick="joGoPage(joState.page - 1)" class="pag-btn">
                             <i class="fas fa-chevron-left"></i>
                         </button>
                         <span id="joPageLabel" style="color:#475569; font-size:13px; padding:0 4px;">Page 1 of 1</span>
-                        <button id="joNextBtn" onclick="joGoPage(joState.page + 1)" style="width:28px; height:28px; background:#fff; border:1px solid #cbd5e1; border-radius:4px; font-size:12px; color:#475569; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all .15s;">
+                        <button id="joNextBtn" onclick="joGoPage(joState.page + 1)" class="pag-btn">
                             <i class="fas fa-chevron-right"></i>
                         </button>
                     </div>
@@ -6935,7 +7779,7 @@ input[list] {
                                         <div style="font-weight:600;color:#1e293b;">${item.product_name || '—'}</div>
                                         ${item.category ? `<div style="font-size:10px;color:#94a3b8;margin-top:2px;">${item.category}${item.size_variant ? ' • ' + item.size_variant : ''}</div>` : ''}
                                     </td>
-                                    <td style="padding:8px;text-align:center;color:#475569;">${item.quantity || 0}</td>
+                                    <td style="padding:8px;text-align:center;color:#475569;">${parseInt(item.quantity) || 0} ${parseInt(item.quantity) === 1 ? 'pc' : 'pcs'}</td>
                                     <td style="padding:8px;text-align:right;color:#475569;">₱${parseFloat(item.unit_price || 0).toFixed(2)}</td>
                                     <td style="padding:8px;text-align:right;color:#003d7a;font-weight:700;">₱${parseFloat(item.subtotal || 0).toFixed(2)}</td>
                                 </tr>
@@ -7030,8 +7874,8 @@ input[list] {
                 </div>
             </div>
             <div>
-                <button type="button" onclick="window.location.href='staff_dashboard.php'" 
-                        class="txn-btn secondary" title="Back to Staff Dashboard">
+                <button type="button" onclick="window.location.href='staff_transactions_hub.php?section=merchandise&amp;active_tab=merchandise'" 
+                        class="txn-btn secondary" title="Back to Merchandise/Service Transaction">
                     <i class="fas fa-arrow-left"></i> <span>Back</span>
                 </button>
             </div>
@@ -7077,8 +7921,8 @@ input[list] {
                 <!-- Rows per page + Pagination controls -->
                 <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-top:1px solid #e2e8f0;">
                     <div style="display:flex;align-items:center;gap:7px;">
-                        <label style="font-size:12px;color:#6c757d;white-space:nowrap;">Rows per page:</label>
-                        <select id="slPerPage" onchange="slChangePerPage()" style="font-size:12px;padding:5px 8px;border:1px solid #dee2e6;border-radius:5px;color:#495057;">
+                        <label style="font-size:12px;white-space:nowrap;">Rows per page:</label>
+                        <select id="slPerPage" onchange="slChangePerPage()" class="pag-select">
                             <option value="10" selected>10</option>
                             <option value="20">20</option>
                             <option value="30">30</option>
@@ -7087,13 +7931,11 @@ input[list] {
                         </select>
                     </div>
                     <div style="display:flex;align-items:center;gap:8px;">
-                        <button id="slPrevBtn" onclick="slGoPage(slState.page - 1)"
-                            style="padding:5px 12px;border:1px solid #dee2e6;border-radius:5px;background:#fff;cursor:pointer;font-size:13px;color:#495057;">
+                        <button id="slPrevBtn" onclick="slGoPage(slState.page - 1)" class="pag-btn">
                             <i class="fas fa-chevron-left"></i>
                         </button>
                         <span id="slPageLabel" style="font-size:13px;color:#495057;white-space:nowrap;">Page 1 of 1</span>
-                        <button id="slNextBtn" onclick="slGoPage(slState.page + 1)"
-                            style="padding:5px 12px;border:1px solid #dee2e6;border-radius:5px;background:#fff;cursor:pointer;font-size:13px;color:#495057;">
+                        <button id="slNextBtn" onclick="slGoPage(slState.page + 1)" class="pag-btn">
                             <i class="fas fa-chevron-right"></i>
                         </button>
                     </div>
@@ -7159,8 +8001,8 @@ input[list] {
                 </div>
             </div>
             <div>
-                <button type="button" onclick="window.location.href='staff_dashboard.php'" 
-                        style="display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;background:#6c757d;color:#fff;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;" title="Back to Staff Dashboard">
+                <button type="button" onclick="window.location.href='staff_transactions_hub.php?section=fuel'" 
+                        class="txn-btn secondary" title="Back to Fuel Transaction">
                     <i class="fas fa-arrow-left"></i> <span>Back</span>
                 </button>
             </div>
@@ -7209,8 +8051,8 @@ input[list] {
                 <!-- Rows per page + Pagination controls -->
                 <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-top:1px solid #e2e8f0;">
                     <div style="display:flex;align-items:center;gap:7px;">
-                        <label style="font-size:12px;color:#6c757d;white-space:nowrap;">Rows per page:</label>
-                        <select id="fhPerPage" onchange="fhChangePerPage()" style="font-size:12px;padding:5px 8px;border:1px solid #dee2e6;border-radius:5px;color:#495057;">
+                        <label style="font-size:12px;white-space:nowrap;">Rows per page:</label>
+                        <select id="fhPerPage" onchange="fhChangePerPage()" class="pag-select">
                             <option value="10" selected>10</option>
                             <option value="20">20</option>
                             <option value="30">30</option>
@@ -7219,13 +8061,11 @@ input[list] {
                         </select>
                     </div>
                     <div style="display:flex;align-items:center;gap:8px;">
-                        <button id="fhPrevBtn" onclick="fhGoPage(fhState.page - 1)"
-                            style="padding:5px 12px;border:1px solid #dee2e6;border-radius:5px;background:#fff;cursor:pointer;font-size:13px;color:#495057;">
+                        <button id="fhPrevBtn" onclick="fhGoPage(fhState.page - 1)" class="pag-btn">
                             <i class="fas fa-chevron-left"></i>
                         </button>
                         <span id="fhPageLabel" style="font-size:13px;color:#495057;white-space:nowrap;">Page 1 of 1</span>
-                        <button id="fhNextBtn" onclick="fhGoPage(fhState.page + 1)"
-                            style="padding:5px 12px;border:1px solid #dee2e6;border-radius:5px;background:#fff;cursor:pointer;font-size:13px;color:#495057;">
+                        <button id="fhNextBtn" onclick="fhGoPage(fhState.page + 1)" class="pag-btn">
                             <i class="fas fa-chevron-right"></i>
                         </button>
                     </div>

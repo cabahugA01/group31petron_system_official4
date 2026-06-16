@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'reset_password';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../backend/rbac.php';
@@ -318,7 +318,6 @@ include __DIR__ . '/../partials/header.php';
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    min-width: 140px;
     justify-content: center;
 }
 

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * STAFF REPORTS & ADD-ONS MODULE
  * Professional implementation matching Manager Reports theme and styling.
@@ -1516,7 +1516,7 @@ tr:last-child td{border-bottom:none;}
 
 <div class="section">
   <div class="section-head"><span>Meter Reading Table (Liters = Ending - Beginning +/- Calibration)</span></div>
-  <div style="overflow-x:auto;"><table>
+  <div style="overflow:hidden;"><table>
     <thead><tr><th>#</th><th>Tanker ID</th><th>Fuel Type</th><th>Beginning Reading</th><th>Ending Reading</th><th>Calibration</th><th>Liters Sold</th><th>Unit Price</th><th>Amount</th><th>Shift</th><th>Date</th></tr></thead>
     <tbody>'.($print_rows_meter ?: '<tr><td colspan="11" style="text-align:center;color:#9ca3af;">No meter readings</td></tr>').'</tbody>
   </table></div>
@@ -1736,7 +1736,7 @@ table{width:100%;border-collapse:collapse;}
 </div>
 <div class="sec">
   <div class="sh">Job Order Table</div>
-  <div style="overflow-x:auto;">
+  <div style="overflow:hidden;">
   <table>
     <thead><tr>
       <th style="'.$th_s.'">#</th>
@@ -1951,7 +1951,7 @@ tr:last-child td{border-bottom:none;}
 
 <div class="section">
   <div class="section-head"><span>Merchandise Sales Table</span></div>
-  <div style="overflow-x:auto;"><table>
+  <div style="overflow:hidden;"><table>
     <thead><tr><th>Category</th><th>Product Name</th><th>Size</th><th>Beg. Stock</th><th>Stock In</th><th>Stock Out</th><th>End Stock</th><th>Unit Price</th><th>Amount</th><th>Encoder</th><th>Remarks</th></tr></thead>
     <tbody>';
         if (empty($merch_items)) {
@@ -2192,7 +2192,7 @@ require_once __DIR__ . '/../partials/header.php';
 .mgr-table tbody tr:hover td { background: #e3f2fd !important; }
 .mgr-table tbody tr { transition: background 0.2s ease; }
 .mgr-table tbody tr:last-child td { border-bottom: 1px solid #e9ecef !important; }
-.table-scroll { overflow-x: auto; width: 100%; -webkit-overflow-scrolling: touch; }
+.table-scroll { overflow:hidden; width: 100%; -webkit-overflow-scrolling: touch; }
 
 /* Badges - Plain Text Only (No Backgrounds) */
 .badge { 
@@ -3270,14 +3270,16 @@ document.addEventListener('DOMContentLoaded', function() {
         const style = document.createElement('style');
         style.id = 'client-pagination-style';
         style.innerHTML = `
-            .rows-per-page { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #6b7280; }
-            .rows-per-page select { padding: 6px; border: 1px solid #e5e7eb; border-radius: 4px; outline: none; cursor: pointer; }
-            .page-info { font-size: 13px; color: #6b7280; }
+            .rows-per-page { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+            .rows-per-page select { padding: 6px; border: 1px solid #cbd5e1 !important; border-radius: 4px; outline: none; cursor: pointer; background: #ffffff !important; color: inherit !important; }
+            .page-info { font-size: 13px; }
             .pagination-controls { display: flex; align-items: center; gap: 10px; }
-            .btn-page { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; color: #374151; text-decoration: none; transition: 0.2s; cursor: pointer; }
-            .btn-page:hover:not(.disabled) { background: #f3f4f6; }
-            .btn-page.disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
-            .current-page { font-size: 13px; font-weight: 500; color: #111827; }
+            .btn-page { display: inline-flex !important; align-items: center !important; justify-content: center !important; width: 32px !important; height: 32px !important; background: #ffffff !important; border: 1px solid #d1d5db !important; border-radius: 6px !important; color: #374151 !important; text-decoration: none !important; transition: all 0.2s !important; cursor: pointer !important; font-size: 13px !important; }
+            .btn-page i { color: #374151 !important; }
+            .btn-page:hover:not(.disabled) { background: #00264D !important; border-color: #00264D !important; color: #ffffff !important; }
+            .btn-page:hover:not(.disabled) i { color: #ffffff !important; }
+            .btn-page.disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+            .current-page { font-size: 13px; font-weight: 500; }
         `;
         document.head.appendChild(style);
     }

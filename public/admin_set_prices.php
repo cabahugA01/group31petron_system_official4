@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'admin_set_prices';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -611,7 +611,7 @@ include __DIR__ . '/../partials/header.php';
                 No service types found.
             </div>
         <?php else: ?>
-            <div class="table-wrap" style="overflow-x:auto;">
+            <div class="table-wrap" style="overflow:hidden;">
                 <table class="pricing-table">
                     <thead>
                         <tr>

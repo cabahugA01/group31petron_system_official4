@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'system_alerts';
 require_once __DIR__ . '/../backend/lib.php';
@@ -426,8 +426,7 @@ if ($filter_type && isset($alert_types[$filter_type])) {
 }
 
 .filter-form .inp {
-    min-width: 200px;
-}
+    }
 
 .btn-secondary {
     background: #6b7280;

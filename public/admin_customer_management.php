@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Admin Customer Management
  * Five-section module: Master List | Balances | Receivable | History | Oversight | Audit Trail
@@ -697,7 +697,7 @@ include __DIR__ . '/../partials/header.php';
     align-items: center;
     gap: 8px;
 }
-.acm-table-wrap { overflow-x: auto; }
+.acm-table-wrap { overflow:hidden; }
 .acm-table {
     width: 100%;
     border-collapse: collapse;
@@ -753,8 +753,7 @@ include __DIR__ . '/../partials/header.php';
     font-size: 13px;
     color: #333;
     background: #fff;
-    min-width: 180px;
-}
+    }
 .acm-toolbar input[type=text]:focus,
 .acm-toolbar select:focus {
     outline: none;
@@ -1103,7 +1102,7 @@ include __DIR__ . '/../partials/header.php';
                         ₱<?php echo number_format($bal, 2); ?>
                     </td>
                     <td>₱<?php echo number_format($limit, 2); ?></td>
-                    <td style="min-width:120px;">
+                    <td style="">
                         <?php if ($limit > 0): ?>
                             <div style="font-size:11px;color:#666;margin-bottom:2px;"><?php echo $util; ?>%</div>
                             <div class="credit-bar">
@@ -1202,7 +1201,7 @@ include __DIR__ . '/../partials/header.php';
                     <td style="font-weight:700;color:#dc3545;">₱<?php echo number_format($bal, 2); ?></td>
                     <td>₱<?php echo number_format($limit, 2); ?></td>
                     <td style="color:#28a745;font-weight:600;">₱<?php echo number_format($paid, 2); ?></td>
-                    <td style="min-width:120px;">
+                    <td style="">
                         <div style="font-size:11px;color:#666;margin-bottom:2px;"><?php echo $pct; ?>% collected</div>
                         <div class="credit-bar">
                             <div class="credit-bar-fill" style="width:<?php echo $pct; ?>%;background:#28a745;"></div>
@@ -1251,7 +1250,7 @@ include __DIR__ . '/../partials/header.php';
             <form method="get" action="" style="margin:0;">
                 <input type="hidden" name="section" value="history">
                 <div class="acm-toolbar" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                    <select name="cid" onchange="this.form.submit()" style="min-width:220px;height:36px;box-sizing:border-box;">
+                    <select name="cid" onchange="this.form.submit()" style="height:36px;box-sizing:border-box;">
                         <option value="0">— Select a customer —</option>
                         <?php foreach ($hist_customers as $hc): ?>
                             <option value="<?php echo $hc['id']; ?>"
@@ -1506,7 +1505,7 @@ include __DIR__ . '/../partials/header.php';
                     <label style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;display:block;margin-bottom:4px;">Search</label>
                     <input type="text" name="aq" value="<?php echo htmlspecialchars($audit_search); ?>"
                            placeholder="Search details / actor…"
-                           style="padding:7px 11px;border:1px solid var(--adm-border);border-radius:6px;font-size:13px;min-width:220px;">
+                           style="padding:7px 11px;border:1px solid var(--adm-border);border-radius:6px;font-size:13px;">
                 </div>
                 <div>
                     <label style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;display:block;margin-bottom:4px;">From</label>
@@ -1547,7 +1546,7 @@ include __DIR__ . '/../partials/header.php';
                         <th>Actor</th>
                         <th>Role</th>
                         <th>Station</th>
-                        <th style="min-width:320px;">Details</th>
+                        <th style="">Details</th>
                         <th>Entity</th>
                         <th>Result</th>
                     </tr>
@@ -1821,7 +1820,7 @@ function printAdminListPDF() {
   h2 { color: #002f6c; margin-bottom: 4px; }
   .meta { color: #666; font-size: 11px; margin-bottom: 16px; }
   .kpis { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-  .kpi { flex: 1; min-width: 120px; border: 1px solid #ddd; border-top: 4px solid #002f6c; padding: 8px 12px; border-radius: 4px; background: #fcfcfc; }
+  .kpi { flex: 1; border: 1px solid #ddd; border-top: 4px solid #002f6c; padding: 8px 12px; border-radius: 4px; background: #fcfcfc; }
   .kpi-val { font-size: 18px; font-weight: 800; color: #002f6c; }
   .kpi-lbl { font-size: 10px; text-transform: uppercase; color: #777; margin-top: 4px; }
   table { width: 100%; border-collapse: collapse; font-size: 11px; }

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // ============================================================
 // Manager Purchase Requests — public/manager_purchase_requests.php
 // Flow: Staff Stock Request → Manager encodes Qty+Remarks → Forward to Admin
@@ -149,15 +149,15 @@ include __DIR__ . '/../partials/header.php';
 .pr-tab:hover  { color:#002F70; }
 .pr-badge { background:#dc3545; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; }
 .pr-summary { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
-.pr-card    { flex:1; min-width:110px; background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px 18px; text-align:center; box-shadow:0 1px 4px rgba(0,0,0,.05); }
+.pr-card    { flex:1; background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px 18px; text-align:center; box-shadow:0 1px 4px rgba(0,0,0,.05); }
 .pr-card-num { font-size:26px; font-weight:800; color:#002F6C; }
 .pr-card-lbl { font-size:11px; color:#888; text-transform:uppercase; letter-spacing:.5px; margin-top:2px; }
 .pr-card-pending  .pr-card-num { color:#002F70; }
 .pr-card-forwarded .pr-card-num { color:#6f42c1; }
 .pr-card-rejected .pr-card-num { color:#721c24; }
-.pr-table-wrap { overflow-x:auto; }
-.pr-table { width:100%; border-collapse:collapse; font-size:12px; min-width:860px; }
-.pr-table thead th { background:#f8f9fa; color:#495057; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; padding:9px 10px; border-bottom:2px solid #dee2e6; white-space:nowrap; }
+.pr-table-wrap { overflow:hidden; }
+.pr-table { width:100%; border-collapse:collapse; font-size:12px; }
+.pr-table thead th { background:#f8f9fa; color:#495057; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; padding:9px 10px; border-bottom:2px solid #dee2e6; }
 .pr-table tbody td { padding:8px 10px; border-bottom:1px solid #f0f0f0; vertical-align:middle; }
 .pr-table tbody tr:hover td { background:#f8fbff; }
 .pr-sbadge { display:inline-block; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:600; white-space:nowrap; }

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Staff Merchandise Inventory
  * One "Stock Request" button → modal with checkboxes to pick items → submit (no qty, manager sets it).
@@ -162,7 +162,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
 /* ══ FIX: Remove horizontal scrolling ══ */
 .table-wrap { 
     padding: 0; 
-    overflow-x: auto;
+    overflow:hidden;
     overflow-y: visible;
     width: 100%;
     max-width: 100%;
@@ -294,7 +294,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
 
 /* ── Success popup ── */
 .sr-success-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:10998; }
-.sr-success-popup { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:10999; background:#fff; padding:28px; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.25); text-align:center; min-width:300px; }
+.sr-success-popup { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:10999; background:#fff; padding:28px; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.25); text-align:center; }
 </style>
 
 <div class="page-head">

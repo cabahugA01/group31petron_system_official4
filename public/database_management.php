@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'database_management';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -226,7 +226,7 @@ include __DIR__ . '/../partials/header.php';?>
 .db-station-card .card-header { background:#f8f9fa; border-bottom:2px solid #e9ecef; padding:14px 20px; border-radius:12px 12px 0 0; }
 .db-station-card .card-header h3 { margin:0; font-size:14px; font-weight:700; color:var(--petron-blue); text-transform:uppercase; letter-spacing:.5px; }
 .db-station-card .card-body { padding:16px 20px; overflow:visible!important; }
-.db-station-card .card-body .label { font-weight:600; color:#374151; font-size:12px; text-transform:uppercase; letter-spacing:.5px; min-width:120px; }
+.db-station-card .card-body .label { font-weight:600; color:#374151; font-size:12px; text-transform:uppercase; letter-spacing:.5px; }
 
 /* Flash */
 .db-flash { padding:12px 16px; border-radius:10px; margin-bottom:18px; font-size:13px; font-weight:500; display:flex; align-items:center; gap:10px; }
@@ -250,7 +250,7 @@ include __DIR__ . '/../partials/header.php';?>
 .db-form-table tbody tr { border-bottom:1px solid #f0f0f0; }
 .db-form-table tbody tr:last-child { border-bottom:none; }
 .db-form-table tbody td { padding:16px; vertical-align:top; }
-.db-form-table .field-label { font-weight:600; font-size:14px; color:#1f2937; min-width:200px; }
+.db-form-table .field-label { font-weight:600; font-size:14px; color:#1f2937; }
 .db-form-table .field-type-badge { display:inline-block; font-size:10px; font-weight:700; color:#9ca3af; text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px; }
 .db-form-table .field-hint { font-size:11px; color:#9ca3af; margin-top:5px; }
 
@@ -746,7 +746,7 @@ include __DIR__ . '/../partials/header.php';?>
         <i class="fas fa-list" style="margin-right:6px;"></i>Activity Log Results
         <span style="float:right;font-size:12px;color:#9ca3af;font-weight:400;text-transform:none;">Showing <?php echo count($security_logs); ?> records</span>
     </div>
-    <div style="padding:0 20px 20px;overflow-x:auto;">
+    <div style="padding:0 20px 20px;overflow:hidden;">
         <?php if(empty($security_logs)): ?>
             <p style="color:#9ca3af;text-align:center;padding:30px 0;font-size:13px;"><i class="fas fa-inbox" style="display:block;font-size:32px;margin-bottom:10px;opacity:.4;"></i>No log entries match your filters.</p>
         <?php else: ?>

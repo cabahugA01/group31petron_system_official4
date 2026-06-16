@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../public/db_connect.php';
 require_once __DIR__ . '/../backend/lib.php';
 
@@ -607,7 +607,7 @@ include __DIR__ . '/../partials/header.php';
 }
 
 .table-container {
-    overflow-x: auto;
+    overflow:hidden;
 }
 
 .reconciliation-table {
@@ -735,7 +735,6 @@ include __DIR__ . '/../partials/header.php';
     display: none;
     animation: slideIn 0.3s ease;
     box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-    min-width: 200px;
     text-align: center;
 }
 

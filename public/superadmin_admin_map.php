@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // ============================================================
 // SuperAdmin – Admin Management Map View
 // public/superadmin_admin_map.php
@@ -164,8 +164,7 @@ include __DIR__ . '/../partials/header.php';
     border-radius: 12px; 
     box-shadow: 0 4px 16px rgba(0,0,0,.12); 
     z-index: 1000; 
-    min-width: 200px; 
-}
+    }
 .map-stats h3 { 
     font-size: 13px !important; 
     font-weight: 600 !important; 
@@ -839,7 +838,7 @@ function createPopupContent(station) {
     const addressLine = station.address || station.location || '';
 
     return `
-        <div style="padding:10px;min-width:270px;font-family:inherit;">
+        <div style="padding:10px;font-family:inherit;">
 
             <!-- Station Title -->
             <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #eee;">
@@ -1282,7 +1281,7 @@ function showPageFlash(type, msg) {
     if (!el) {
         el = document.createElement('div');
         el.id = 'pageFlash';
-        el.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9999;min-width:400px;max-width:600px;';
+        el.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9999;max-width:600px;';
         document.body.appendChild(el);
     }
     el.className = 'map-flash ' + type;

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Technical Reports - Standalone Page
  * System Usage Metrics, Performance Logs, Error Tracking, Module Health
@@ -711,7 +711,7 @@ include __DIR__ . '/../partials/header.php';
         </div>
         <div class="report-card-body">
             <?php if (!empty($system_health_metrics)): ?>
-                <div style="overflow-x: auto;">
+                <div style="overflow:hidden;">
                     <table class="data-table">
                         <thead>
                             <tr>
@@ -777,7 +777,7 @@ include __DIR__ . '/../partials/header.php';
                     <p>No performance logs available</p>
                 </div>
             <?php else: ?>
-                <div style="overflow-x: auto;">
+                <div style="overflow:hidden;">
                     <table class="data-table">
                         <thead>
                             <tr>
@@ -819,7 +819,7 @@ include __DIR__ . '/../partials/header.php';
                     <p>No errors recorded. System running smoothly!</p>
                 </div>
             <?php else: ?>
-                <div style="overflow-x: auto;">
+                <div style="overflow:hidden;">
                     <table class="data-table">
                         <thead>
                             <tr>
@@ -866,7 +866,7 @@ include __DIR__ . '/../partials/header.php';
         </div>
         <div class="report-card-body">
             <?php if (!empty($module_health)): ?>
-                <div style="overflow-x: auto;">
+                <div style="overflow:hidden;">
                     <table class="data-table">
                         <thead><tr>
                             <th>Module</th><th>Status</th><th>Health Score</th>
@@ -894,7 +894,7 @@ include __DIR__ . '/../partials/header.php';
                 <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:12px;">
                     <i class="fas fa-info-circle"></i> Derived from system activity logs. Install module health monitors to see detailed uptime data.
                 </p>
-                <div style="overflow-x: auto;">
+                <div style="overflow:hidden;">
                     <table class="data-table">
                         <thead><tr>
                             <th>Action / Module</th>

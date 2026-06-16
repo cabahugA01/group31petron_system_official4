@@ -165,7 +165,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 'permissions' => ['manage_staff_oversight', 'view_all_reports', 'view_dashboard'],
                 'station_specific' => true,
             ],
-            // 4. Transactions — Oversight Dashboard & Variance Reports
+            // 4. Transactions — Oversight Dashboard (direct link, no sub-items)
             [
                 'id' => 'admin_transactions',
                 'label' => 'Transactions',
@@ -173,10 +173,6 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 'href' => 'admin_transactions_oversight.php',
                 'permissions' => ['view_all_reports', 'view_dashboard'],
                 'station_specific' => true,
-                'sub_items' => [
-                    ['id' => 'ato_oversight_dashboard', 'label' => 'Oversight Dashboard', 'href' => 'admin_transactions_oversight.php', 'ico' => 'fas fa-eye', 'permissions' => ['view_all_reports'], 'desc' => 'System‑wide monitoring of validated transactions and receivables.'],
-                    ['id' => 'ato_variance_reports', 'label' => 'Variance Reports', 'href' => 'admin_variance_reports.php', 'ico' => 'fas fa-chart-line', 'permissions' => ['view_all_reports'], 'desc' => 'System‑wide anomalies flagged for compliance review.'],
-                ],
             ],
             // 5. Fuel Management — Admin Oversight Module
             [
@@ -582,9 +578,9 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 continue;
             }
 
-            // Integration Settings — SuperAdmin / Developer can edit, Admin / Manager can view
+            // Integration Settings — SuperAdmin / Developer / Admin can view (Manager excluded)
             if (in_array(($item['id'] ?? ''), ['integration_settings','int_pos_import','int_api_connections','int_git_workflow','int_external_sync'], true)
-                && !in_array($user_role, ['superadmin', 'developer', 'admin', 'manager'], true)) {
+                && !in_array($user_role, ['superadmin', 'developer', 'admin'], true)) {
                 continue;
             }
 

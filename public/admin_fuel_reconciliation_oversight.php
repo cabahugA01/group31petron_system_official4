@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // Admin Fuel Reconciliation Oversight
 $page_id = 'admin_fuel_reconciliation_oversight';
 require_once __DIR__ . '/../backend/lib.php';
@@ -134,7 +134,7 @@ html,body{max-width:100vw;overflow-x:hidden}
 .afao-table-title{font-size:13px;font-weight:700;color:#00264D;text-transform:uppercase;letter-spacing:.3px;margin:0}
 .afao-tbl{width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px}
 .afao-tbl thead tr{background:#002F6C}
-.afao-tbl thead th{padding:9px 10px;text-align:left;font-size:10px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.afao-tbl thead th{padding:9px 10px;text-align:left;font-size:10px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;overflow:hidden;text-overflow:ellipsis;}
 .afao-tbl tbody tr{border-bottom:1px solid #f1f5f9;transition:background .1s}
 .afao-tbl tbody tr:hover{background:#eff6ff}
 .afao-tbl tbody td{padding:9px 10px;color:#334155;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

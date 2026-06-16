@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Manager Customer Management
  * Three-section module: Customer List, Customer Balances, Customer History
@@ -674,7 +674,7 @@ body #customer-management-module .badge-excess,
             <form method="GET" action="manager_customer_management.php" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
                 <input type="hidden" name="section" value="records">
                 
-                <div style="flex: 1; min-width: 200px;">
+                <div style="flex: 1; ">
                     <label class="modal-label">Search</label>
                     <input type="text" name="search" class="modal-input" 
                            placeholder="Name, contact, or ID number" 
@@ -683,7 +683,7 @@ body #customer-management-module .badge-excess,
                            style="margin-bottom: 0;">
                 </div>
 
-                <div style="min-width: 150px;">
+                <div style="">
                     <label class="modal-label">Status</label>
                     <select name="status" class="modal-input" style="margin-bottom: 0;">
                         <option value="all" <?= $status_filter === 'all' ? 'selected' : '' ?>>All</option>
@@ -692,7 +692,7 @@ body #customer-management-module .badge-excess,
                     </select>
                 </div>
 
-                <div style="min-width: 150px;">
+                <div style="">
                     <label class="modal-label">Type</label>
                     <select name="type" class="modal-input" style="margin-bottom: 0;">
                         <option value="all" <?= $type_filter === 'all' ? 'selected' : '' ?>>All</option>

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Complete Admin Reports - Real Report Format
  * Operations Reports with tabbed interface
@@ -94,13 +94,13 @@ require_once __DIR__ . '/../partials/header.php';
     display: flex !important;
     background: #f8f9fa !important;
     border-bottom: 2px solid #e2e8f0 !important;
-    overflow-x: auto !important;
+    overflow:hidden !important;
     gap: 0 !important;
 }
 
 .rpt-tab-btn {
     flex: 1 !important;
-    min-width: 160px !important;
+    !important;
     padding: 14px 18px !important;
     text-align: center !important;
     font-size: 12px !important;

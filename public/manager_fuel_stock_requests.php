@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'mgr_fuel_stock_requests';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -598,7 +598,7 @@ include __DIR__ . '/../partials/header.php';
 .alert-error   { background:#f8d7da;color:#721c24;padding:12px 16px;border-radius:8px;margin-bottom:16px; }
 
 .fsr-summary-row { display:flex;gap:14px;flex-wrap:wrap;margin-bottom:18px; }
-.fsr-card { flex:1;min-width:120px;background:#fff;border:1px solid#e2e8f0;border-radius:10px;padding:14px 18px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.05); }
+.fsr-card { flex:1;background:#fff;border:1px solid#e2e8f0;border-radius:10px;padding:14px 18px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.05); }
 .fsr-card-num { font-size:26px;font-weight:800;color:#002F6C; }
 .fsr-card-lbl { font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-top:2px; }
 .fsr-card-total .fsr-card-num { color:#002F6C; }
@@ -609,9 +609,9 @@ include __DIR__ . '/../partials/header.php';
 .fsr-btn-generate-po { background:#667eea;color:#fff; }
 .fsr-btn-generate-po:hover { background:#5568d3; }
 
-.fsr-table-wrap { overflow-x:auto; }
-.fsr-table { width:100%;border-collapse:collapse;font-size:12px;min-width:900px; }
-.fsr-table thead th { background:#f8f9fa;color:#495057;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:9px 10px;border-bottom:2px solid#dee2e6;white-space:nowrap; }
+.fsr-table-wrap { overflow:hidden; }
+.fsr-table { width:100%;border-collapse:collapse;font-size:12px;}
+.fsr-table thead th { background:#f8f9fa;color:#495057;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:9px 10px;border-bottom:2px solid#dee2e6;}
 .fsr-table tbody td { padding:8px 10px;border-bottom:1px solid#f0f0f0;vertical-align:middle; }
 .fsr-table tbody tr:hover td { background:#f8fbff; }
 

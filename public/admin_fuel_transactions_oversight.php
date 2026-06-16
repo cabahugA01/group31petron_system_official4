@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // ============================================================
 // Admin Fuel Transactions Oversight
 // Fetch Source: fuel_transactions (staff-encoded → manager-verified)
@@ -245,8 +245,8 @@ require_once __DIR__ . '/../partials/header.php';
 .afto-card.c-green { border-left:4px solid #16a34a; }
 .afto-card.c-navy  { border-left:4px solid #002F6C; }
 .afto-card-ico { width:40px; height:40px; display:flex; align-items:center; justify-content:center; font-size:19px; flex-shrink:0; color:#002F6C; }
-.afto-card-meta h3 { margin:0; font-size:10px; color:#64748b; text-transform:uppercase; letter-spacing:.5px; font-weight:700; }
-.afto-card-meta h2 { margin:2px 0 0; font-size:24px; font-weight:900; color:#00264D; line-height:1; }
+.afto-card-meta h3 { margin:0; font-size:11px; color:#64748b; text-transform:uppercase; letter-spacing:.5px; font-weight:700; }
+.afto-card-meta h2 { margin:2px 0 0; font-size:22px; font-weight:700; color:#00264D; line-height:1; } /* KPI standard: 18px-22px semi-bold */
 .afto-card-meta span { font-size:11px; color:#94a3b8; }
 
 /* Filter bar */
@@ -255,20 +255,20 @@ require_once __DIR__ . '/../partials/header.php';
 .afto-fg label { font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.4px; }
 .afto-fg input, .afto-fg select { padding:6px 10px; border:1px solid #e2e8f0; border-radius:6px; font-size:12px; }
 
-/* Force no horizontal scroll */
+/* Force no horizontal scroll on body but allow on table */
 html, body { max-width:100vw; overflow-x:hidden; }
-.container { max-width:100%; overflow-x:hidden; }
+.container { max-width:100%; }
 /* Table */
 .afto-table-card { background:#fff; border:1px solid #e2e8f0; border-radius:11px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.04); width:100%; }
 .afto-table-hd { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid #f1f5f9; flex-wrap:wrap; gap:8px; }
 .afto-table-title { font-size:13px; font-weight:700; color:#00264D; text-transform:uppercase; letter-spacing:.3px; margin:0; }
-.afto-tbl-wrap { width:100%; overflow-x:hidden; }
-.afto-tbl { width:100%; table-layout:fixed; border-collapse:collapse; font-size:13px; }
+.afto-tbl-wrap { width:100%; overflow:hidden; } /* Allow horizontal scroll if needed */
+.afto-tbl { width:100%; table-layout:fixed; border-collapse:collapse; font-size:13px; } /* Table Content Standard: 12px-14px */
 .afto-tbl thead tr { background:#002F6C; }
-.afto-tbl thead th { padding:10px 8px; text-align:left; font-size:11px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.4; }
+.afto-tbl thead th { padding:12px 8px; text-align:left; font-size:14px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.3px; overflow:hidden; text-overflow:ellipsis; line-height:1.4; } /* Header standard: 14px-16px bold */
 .afto-tbl tbody tr { border-bottom:1px solid #f1f5f9; transition:background .1s; }
 .afto-tbl tbody tr:hover { background:#eff6ff; }
-.afto-tbl tbody td { padding:10px 8px; color:#334155; vertical-align:middle; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.5; }
+.afto-tbl tbody td { padding:10px 8px; color:#334155; vertical-align:middle; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.5; font-size:13px; } /* Content standard: 12px-14px */
 .afto-badge { display:inline-block; padding:4px 9px; border-radius:4px; font-size:11px; font-weight:700; white-space:nowrap; }
 .bg-green  { background:#dcfce7; color:#15803d; }
 .bg-amber  { background:#fef9c3; color:#a16207; }

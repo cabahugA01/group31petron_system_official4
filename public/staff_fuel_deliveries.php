@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'staff_fuel_deliveries';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -208,7 +208,7 @@ body{overflow-x:hidden;max-width:100vw}
 /* ── Tank Table ── */
 .tank-tbl-wrap{padding:14px 18px;max-width:100%}
 .tank-tbl{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
-.tank-tbl thead th{background:#002F70;color:#fff;padding:8px 6px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap}
+.tank-tbl thead th{background:#002F70;color:#fff;padding:8px 6px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;}
 .tank-tbl thead th:nth-child(1){width:5%}
 .tank-tbl thead th:nth-child(2){width:35%}
 .tank-tbl thead th:nth-child(3){width:40%}

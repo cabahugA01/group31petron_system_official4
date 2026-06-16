@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Admin Compliance Reports
  * Activity Logs | Audit Trail | Calendar & Schedule
@@ -157,7 +157,7 @@ require_once __DIR__ . '/../partials/header.php';
 .cr-filter-bar button{padding:7px 16px;background:#00264D;color:white;border:none;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;}
 .cr-export-btn{padding:7px 14px;background:white;color:#00264D;border:1px solid #00264D;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;}
 .cr-export-btn:hover{background:#00264D;color:white;}
-.cr-tabs{display:flex;border-bottom:2px solid #e2e8f0;overflow-x:auto;}
+.cr-tabs{display:flex;border-bottom:2px solid #e2e8f0;overflow:hidden;}
 .cr-tab{padding:13px 20px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:#64748b;background:#f8f9fa;border:none;border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap;transition:all .2s;}
 .cr-tab:hover{background:#fff;color:#00264D;}
 .cr-tab.active{background:#fff;color:#00264D;border-bottom-color:#00264D;font-weight:800;}
@@ -175,7 +175,7 @@ require_once __DIR__ . '/../partials/header.php';
 /* Table */
 .cr-tbl{width:100%;border-collapse:collapse;font-size:12px;}
 .cr-tbl thead tr{border-top:2px solid #00264D;border-bottom:1px solid #e2e8f0;background:#f8f9fa;}
-.cr-tbl thead th{padding:10px 8px;text-align:left;font-weight:700;color:#00264D;font-size:11px;text-transform:uppercase;white-space:nowrap;}
+.cr-tbl thead th{padding:10px 8px;text-align:left;font-weight:700;color:#00264D;font-size:11px;text-transform:uppercase;}
 .cr-tbl tbody tr{border-bottom:1px solid #f1f5f9;}
 .cr-tbl tbody tr:hover{background:#f8fafc;}
 .cr-tbl tbody td{padding:9px 8px;color:#334155;font-size:12px;}

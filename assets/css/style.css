@@ -1604,3 +1604,87 @@ canvas{width:100%;padding:0 16px 16px 16px}
     font-size: 12px;
     flex-shrink: 0;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   GLOBAL TYPOGRAPHY STANDARDS
+   Applies consistently across ALL user roles (staff, manager, admin, superadmin)
+   ══════════════════════════════════════════════════════════════════════════════
+
+   🔹 Table Content        → 13px  (row data: ID, Customer, Items, Amount)
+   🔹 Column Headers       → 14px bold (thead th labels)
+   🔹 Dashboard KPIs       → 20px–22px, font-weight 700 (metric values)
+   🔹 Sub-labels / Notes   → 11px–12px, lighter color (remarks, aging, notes)
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Main content area default text ─────────────────────────────────── */
+.main, .main-content {
+    font-size: 14px;
+    line-height: 1.55;
+}
+
+/* ── Generic table body rows ─────────────────────────────────────────── */
+.table tbody td,
+table tbody td {
+    font-size: 13px;
+}
+
+/* ── Generic table column headers ────────────────────────────────────── */
+.table thead th,
+table thead th {
+    font-size: 14px;
+    font-weight: 700;
+}
+
+/* ── Dashboard / KPI metric values ───────────────────────────────────── */
+.metric-value,
+.mini-value,
+.kpi-value,
+.stat-value {
+    font-size: 20px;
+    font-weight: 700;
+}
+
+/* ── KPI card labels / sub-text ──────────────────────────────────────── */
+.metric-label,
+.metric-sub,
+.mini-label,
+.mini-date,
+.kpi-label,
+.kpi-subtext,
+.stat-label {
+    font-size: 11px;
+}
+
+/* ── Card titles and panel headings ──────────────────────────────────── */
+.card-title,
+.panel-title,
+.section-title,
+.chart-title {
+    font-size: 14px;
+    font-weight: 700;
+}
+
+/* ── Generic badges ──────────────────────────────────────────────────── */
+.badge,
+.card-meta {
+    font-size: 11px;
+}
+
+/* ── Muted / sub-label text ──────────────────────────────────────────── */
+.sub,
+.muted,
+.card-meta {
+    font-size: 12px;
+}
+
+/* ── Sidebar nav items ───────────────────────────────────────────────── */
+.nav-item {
+    font-size: 13px;
+}
+
+/* ── Page heading h1 ─────────────────────────────────────────────────── */
+.page-head h1,
+.h1 {
+    font-size: 22px;
+    font-weight: 700;
+}

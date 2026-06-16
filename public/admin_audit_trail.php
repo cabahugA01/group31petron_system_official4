@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // Admin Audit Trail Module — Full Compliance Log (All Roles)
 $page_id = 'admin_audit_trail';
 require_once __DIR__ . '/../backend/lib.php';
@@ -126,9 +126,9 @@ require_once __DIR__ . '/../partials/header.php';
 .btn-export.pdf:hover { background:#fef2f2; }
 
 /* Table */
-.aud-table-wrap { overflow-x:auto; border-radius:12px; border:1px solid var(--line); }
+.aud-table-wrap { overflow:hidden; border-radius:12px; border:1px solid var(--line); }
 .aud-table { width:100%; border-collapse:collapse; font-size:13px; }
-.aud-table thead th { background:var(--blue); color:#fff; padding:10px 14px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.4px; white-space:nowrap; }
+.aud-table thead th { background:var(--blue); color:#fff; padding:10px 14px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.4px; }
 .aud-table tbody td { padding:10px 14px; border-bottom:1px solid var(--line); vertical-align:top; }
 .aud-table tbody tr:last-child td { border-bottom:none; }
 .aud-table tbody tr:hover td { background:#f8fafc; }
@@ -288,13 +288,14 @@ require_once __DIR__ . '/../partials/header.php';
             <th>Role</th>
             <th>Action</th>
             <th>Module</th>
+            <th>Source</th>
             <th>Details</th>
             <th>IP Address</th>
             <th>Status</th>
           </tr>
         </thead>
         <tbody id="auditTbody">
-          <tr><td colspan="8" class="aud-loading"><i class="fas fa-spinner fa-spin"></i>Loading compliance records...</td></tr>
+          <tr><td colspan="9" class="aud-loading"><i class="fas fa-spinner fa-spin"></i>Loading compliance records...</td></tr>
         </tbody>
       </table>
     </div>
@@ -402,22 +403,30 @@ function loadAuditTrail() {
         .then(res => {
             const tbody = document.getElementById('auditTbody');
             if (!res.ok || !res.data?.length) {
-                tbody.innerHTML = `<tr><td colspan="8" class="aud-empty"><i class="fas fa-shield-slash"></i>No compliance records found for the selected filters.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="9" class="aud-empty"><i class="fas fa-shield-slash"></i>No compliance records found for the selected filters.</td></tr>`;
                 return;
             }
-            tbody.innerHTML = res.data.map(r => `<tr>
+            tbody.innerHTML = res.data.map(r => {
+                const src = (r.log_source || '').toLowerCase();
+                const srcLabel = src === 'validation_trail' ? 'Validation' : 'System';
+                const srcStyle = src === 'validation_trail'
+                    ? 'background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;'
+                    : 'background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;';
+                return `<tr>
                 <td style="white-space:nowrap">${fmt(r.created_at)}</td>
                 <td><strong>${esc(r.user_name)}</strong><br><small style="color:var(--muted)">ID: ${parseInt(r.user_id)||'—'}</small></td>
                 <td>${roleBadge(r.role)}</td>
                 <td><strong>${esc(r.action_type)}</strong></td>
                 <td><code style="font-size:11px">${esc(r.module)}</code></td>
-                <td style="max-width:280px;word-break:break-word;font-size:12px">${esc(r.details)}</td>
-                <td><code style="font-size:11px">${esc(r.ip_address)}</code></td>
+                <td><span style="${srcStyle}">${srcLabel}</span></td>
+                <td style="max-width:260px;word-break:break-word;font-size:12px">${esc(r.details)}</td>
+                <td><code style="font-size:11px">${esc(r.ip_address) || '—'}</code></td>
                 <td>${statusBadge(r.status)}</td>
-            </tr>`).join('');
+            </tr>`;
+            }).join('');
         })
         .catch(err => {
-            document.getElementById('auditTbody').innerHTML = `<tr><td colspan="8" class="aud-empty">Error: ${err.message}</td></tr>`;
+            document.getElementById('auditTbody').innerHTML = `<tr><td colspan="9" class="aud-empty">Error: ${err.message}</td></tr>`;
         });
 }
 

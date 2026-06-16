@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'admin_purchase_orders';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -402,7 +402,7 @@ include __DIR__ . '/../partials/header.php';
     color: #155724 !important;
     border: 1px solid #c3e6cb !important;
     box-shadow: 0 4px 16px rgba(0,0,0,0.15) !important;
-    min-width: 320px !important;
+    !important;
     max-width: 90% !important;
     margin: 0 !important;
     display: flex !important;
@@ -422,7 +422,7 @@ include __DIR__ . '/../partials/header.php';
     color: #721c24 !important;
     border: 1px solid #f5c6cb !important;
     box-shadow: 0 4px 16px rgba(0,0,0,0.15) !important;
-    min-width: 320px !important;
+    !important;
     max-width: 90% !important;
     margin: 0 !important;
     display: flex !important;

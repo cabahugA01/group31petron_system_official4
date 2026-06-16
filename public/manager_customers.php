@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
@@ -787,11 +787,11 @@ include __DIR__ . '/../partials/header.php';
 .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:6px;}
 .flash-ok{background:#d1fae5;border:1px solid #6ee7b7;border-radius:8px;padding:12px 16px;margin-bottom:16px;color:#065f46;font-weight:600;}
 .flash-err{background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:12px 16px;margin-bottom:16px;color:#991b1b;font-weight:600;}
-.cust-sel{padding:9px 12px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;min-width:260px;}
+.cust-sel{padding:9px 12px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;}
 
 /* Prevent horizontal scroll */
 body{overflow-x:hidden !important;max-width:100vw !important;}
-.mgrc-table-wrap{overflow-x:auto !important;-webkit-overflow-scrolling:touch;}
+.mgrc-table-wrap{overflow:hidden !important;-webkit-overflow-scrolling:touch;}
 @media(max-width:640px){.mgrc-bal-grid{grid-template-columns:1fr;}}
 
 /* Tab Navigation - Clean Staff Design */
@@ -1172,19 +1172,19 @@ select.upd-input{padding:8px 11px;}
   
   <!-- Summary Cards -->
   <div style="display:flex;gap:12px;padding:14px 18px;background:#f9fafb;border-bottom:1px solid #e5e7eb;flex-wrap:wrap;">
-    <div style="flex:1;min-width:145px;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #002F70;border-radius:6px;padding:10px 14px;">
+    <div style="flex:1;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #002F70;border-radius:6px;padding:10px 14px;">
       <div style="font-size:18px;font-weight:800;color:#002F70;"><?php echo $mgr_total; ?></div>
       <div style="font-size:10px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px;">Total Customers</div>
     </div>
-    <div style="flex:1;min-width:145px;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #28a745;border-radius:6px;padding:10px 14px;">
+    <div style="flex:1;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #28a745;border-radius:6px;padding:10px 14px;">
       <div style="font-size:18px;font-weight:800;color:#28a745;"><?php echo $mgr_active; ?></div>
       <div style="font-size:10px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px;">Active Accounts</div>
     </div>
-    <div style="flex:1;min-width:145px;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #7c3aed;border-radius:6px;padding:10px 14px;">
+    <div style="flex:1;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #7c3aed;border-radius:6px;padding:10px 14px;">
       <div style="font-size:18px;font-weight:800;color:#7c3aed;"><?php echo $mgr_locked; ?></div>
       <div style="font-size:10px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px;">Locked Accounts</div>
     </div>
-    <div style="flex:1;min-width:145px;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #dc3545;border-radius:6px;padding:10px 14px;">
+    <div style="flex:1;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #dc3545;border-radius:6px;padding:10px 14px;">
       <div style="font-size:18px;font-weight:800;color:#dc3545;">₱<?php echo number_format($mgr_total_balance, 2); ?></div>
       <div style="font-size:10px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px;">Total Balance</div>
     </div>
@@ -1192,7 +1192,7 @@ select.upd-input{padding:8px 11px;}
   
   <div class="mgrc-body">
     <input class="mgrc-search" id="recordSearch" placeholder="&#128269; Search by name, contact, or ID type..." oninput="filterRows('recordSearch','recordTable')">
-    <div style="overflow-x:auto;">
+    <div style="overflow:hidden;">
       <table class="mgrc-table" id="recordTable">
         <thead><tr>
           <th>ID</th>
@@ -1306,7 +1306,7 @@ select.upd-input{padding:8px 11px;}
       </div>
     </div>
     
-    <div style="overflow-x:auto;">
+    <div style="overflow:hidden;">
       <table class="mgrc-table" id="balTable">
         <thead>
           <tr>
@@ -1455,15 +1455,15 @@ select.upd-input{padding:8px 11px;}
     <!-- History KPI summary cards -->
     <?php if (!empty($history_transactions)): ?>
     <div id="mgrHistSummaryCards" style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap;">
-      <div style="flex:1;min-width:145px;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #002F70;border-radius:6px;padding:10px 14px;">
+      <div style="flex:1;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #002F70;border-radius:6px;padding:10px 14px;">
         <div style="font-size:18px;font-weight:800;color:#002F70;"><?php echo $hist_total_count; ?></div>
         <div style="font-size:10px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px;">Total Transactions</div>
       </div>
-      <div style="flex:1;min-width:145px;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #dc3545;border-radius:6px;padding:10px 14px;">
+      <div style="flex:1;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #dc3545;border-radius:6px;padding:10px 14px;">
         <div style="font-size:18px;font-weight:800;color:#dc3545;">₱<?php echo number_format($hist_total_sales, 2); ?></div>
         <div style="font-size:10px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px;">Total Credit Sales</div>
       </div>
-      <div style="flex:1;min-width:145px;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #28a745;border-radius:6px;padding:10px 14px;">
+      <div style="flex:1;background:#fff;border:1px solid #e5e7eb;border-left:4px solid #28a745;border-radius:6px;padding:10px 14px;">
         <div style="font-size:18px;font-weight:800;color:#28a745;">₱<?php echo number_format($hist_total_payments, 2); ?></div>
         <div style="font-size:10px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px;">Total Payments</div>
       </div>
@@ -1477,7 +1477,7 @@ select.upd-input{padding:8px 11px;}
         <p style="font-size:12px;margin-top:8px;">Try adjusting your date range or customer filter.</p>
       </div>
     <?php else: ?>
-    <div style="overflow-x:auto;">
+    <div style="overflow:hidden;">
       <table class="mgrc-table">
         <thead>
           <tr>
@@ -1531,7 +1531,7 @@ select.upd-input{padding:8px 11px;}
     <span style="font-size:13px;color:#6c757d;"><?php echo count($pending_new_customers); ?> pending</span>
   </div>
   <div class="mgrc-body">
-    <div style="overflow-x:auto;">
+    <div style="overflow:hidden;">
       <table class="mgrc-table">
         <thead><tr>
           <th>ID</th><th>Name</th><th>Contact</th><th>ID Type</th><th>Date Added</th><th>Action</th>
@@ -1566,7 +1566,7 @@ select.upd-input{padding:8px 11px;}
     <span style="font-size:13px;color:#6c757d;"><?php echo count($pending_update_requests); ?> requests</span>
   </div>
   <div class="mgrc-body">
-    <div style="overflow-x:auto;">
+    <div style="overflow:hidden;">
       <table class="mgrc-table">
         <thead><tr>
           <th>Req ID</th><th>Customer</th><th>Requested By</th><th>Field to Update</th><th>Old Value</th><th>New Value</th><th>Date</th><th>Action</th>
@@ -1614,7 +1614,7 @@ select.upd-input{padding:8px 11px;}
     <?php if (!$transaction_customer): ?>
       <div class="mgrc-empty"><i class="fas fa-user-times"></i><strong>Customer not found.</strong></div>
     <?php else: ?>
-      <div style="overflow-x:auto;">
+      <div style="overflow:hidden;">
         <table class="mgrc-table">
           <thead><tr>
             <th>Txn ID</th><th>Type</th><th>Total Amount</th><th>Processed By</th><th>Date</th><th>Status</th>
@@ -1837,7 +1837,7 @@ function printManagerHistoryPDF() {
   h2 { color: #002F6C; margin-bottom: 4px; }
   .meta { color: #666; font-size: 11px; margin-bottom: 16px; }
   .cards { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-  .card { flex: 1; min-width: 120px; border: 1px solid #ddd; border-left: 4px solid #002F6C; padding: 8px 12px; border-radius: 4px; }
+  .card { flex: 1; border: 1px solid #ddd; border-left: 4px solid #002F6C; padding: 8px 12px; border-radius: 4px; }
   .card-val { font-size: 18px; font-weight: 800; color: #002F6C; }
   .card-lbl { font-size: 10px; text-transform: uppercase; color: #888; }
   table { width: 100%; border-collapse: collapse; font-size: 11px; }

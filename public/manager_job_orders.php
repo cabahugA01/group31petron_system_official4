@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'mgr_job_orders';
 require_once __DIR__ . '/../backend/lib.php';
@@ -292,7 +292,7 @@ include __DIR__ . '/../partials/header.php';
 <!-- TABLE -->
 <div class="jo-card">
   <form method="GET" action="manager_job_orders.php" class="filter-bar">
-    <select name="status" style="padding:7px 12px;border:1px solid #ddd;border-radius:8px;font-size:13px;min-width:180px;">
+    <select name="status" style="padding:7px 12px;border:1px solid #ddd;border-radius:8px;font-size:13px;">
       <option value="">All Statuses</option>
       <?php foreach (['Pending Validation','Approved','Validated','In Progress','Completed','Rejected','Cancelled','Adjusted'] as $opt): ?>
       <option value="<?php echo $opt; ?>" <?php echo $status_filter === $opt ? 'selected' : ''; ?>><?php echo $opt; ?></option>
@@ -308,7 +308,7 @@ include __DIR__ . '/../partials/header.php';
     </span>
   </form>
 
-  <div style="overflow-x:auto;">
+  <div style="overflow:hidden;">
     <table class="jo-table">
       <thead>
         <tr><th>Job ID</th><th>Customer</th><th>Service</th><th>Staff</th><th>Status</th><th>Cost</th><th>Created</th><th>Actions</th></tr>

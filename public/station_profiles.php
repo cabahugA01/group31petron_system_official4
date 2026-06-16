@@ -1,4 +1,4 @@
-    <?php
+﻿    <?php
 $page_id = 'station_profiles';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../backend/rbac.php';
@@ -201,8 +201,7 @@ include __DIR__ . '/../partials/header.php';
 
 .filter-input {
     flex: 1;
-    min-width: 260px;
-}
+    }
 
 .table-container {
     flex: 1;
@@ -214,7 +213,6 @@ include __DIR__ . '/../partials/header.php';
 
 .profiles-table {
     width: 100%;
-    min-width: 1280px;
     border-collapse: collapse;
 }
 

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'mgr_inv_stock_request';
 require_once __DIR__ . "/../backend/lib.php";
 require_once __DIR__ . "/db_connect.php";
@@ -136,7 +136,7 @@ include __DIR__ . "/../partials/header.php";
 .po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow-x:hidden; }
 /* ── Table ── */
 .po-table { width:100%; border-collapse:collapse; font-size:0.88rem; }
-.po-table thead th { background:#002F70; color:#fff; padding:12px 14px; text-align:center; font-weight:600; white-space:nowrap; }
+.po-table thead th { background:#002F70; color:#fff; padding:12px 14px; text-align:center; font-weight:600; }
 .po-table tbody tr { border-bottom:1px solid #f0f0f0; transition:background 0.15s; }
 .po-table tbody tr:hover { background:#eff6ff; }
 .po-table tbody td { padding:11px 14px; vertical-align:middle; color:#333; text-align:center; }
@@ -212,13 +212,13 @@ include __DIR__ . "/../partials/header.php";
 .info-box { background:#e8f4fd; border-left:4px solid #002F70; border-radius:6px; padding:10px 14px; margin-bottom:16px; font-size:12px; color:#002F70; line-height:1.6; }
 /* ── Summary cards ── */
 .summary-row { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
-.sum-card { flex:1; min-width:110px; background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px 18px; text-align:center; box-shadow:0 1px 4px rgba(0,0,0,.05); }
+.sum-card { flex:1; background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px 18px; text-align:center; box-shadow:0 1px 4px rgba(0,0,0,.05); }
 .sum-card-num { font-size:26px; font-weight:800; color:#002F70; }
 .sum-card-lbl { font-size:11px; color:#888; text-transform:uppercase; letter-spacing:.5px; margin-top:2px; }
 .sum-approved .sum-card-num { color:#28a745; }
 .sum-rejected .sum-card-num { color:#dc3545; }
 /* ── Actions cell: stacked buttons ── */
-.actions-cell { display:flex; flex-direction:column; gap:4px; min-width:110px; }
+.actions-cell { display:flex; flex-direction:column; gap:4px; }
 .actions-cell .btn-action { width:100%; justify-content:center; margin-bottom:0; }
 </style>
 

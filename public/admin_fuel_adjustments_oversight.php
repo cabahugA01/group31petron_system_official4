@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'admin_fuel_adjustments_oversight';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -175,7 +175,7 @@ html,body{max-width:100vw;overflow-x:hidden}
 .tbl-title{font-size:13px;font-weight:700;color:#00264D;display:flex;align-items:center;gap:7px}
 .afao-tbl{width:100%;table-layout:fixed;border-collapse:collapse;font-size:11.5px}
 .afao-tbl thead tr{background:#002F6C}
-.afao-tbl thead th{padding:9px 7px;text-align:left;font-size:10px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.afao-tbl thead th{padding:9px 7px;text-align:left;font-size:10px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;overflow:hidden;text-overflow:ellipsis;}
 .afao-tbl tbody tr{border-bottom:1px solid #f1f5f9;transition:background .1s}
 .afao-tbl tbody tr:hover{background:#f0f9ff}
 .afao-tbl tbody td{padding:8px 7px;color:#334155;vertical-align:middle;overflow:hidden;text-overflow:ellipsis}
@@ -244,7 +244,7 @@ html,body{max-width:100vw;overflow-x:hidden}
     <?php if (empty($txn_rows)): ?>
         <div class="empty-s"><i class="fas fa-inbox"></i><div style="font-size:14px;font-weight:700;color:#64748b;">No transaction records found for this period.</div></div>
     <?php else: ?>
-    <div style="overflow-x:auto;">
+    <div style="overflow:hidden;">
     <table class="afao-tbl">
         <colgroup>
             <col style="width:8%"><col style="width:8%"><col style="width:7%"><col style="width:6%">
@@ -315,7 +315,7 @@ html,body{max-width:100vw;overflow-x:hidden}
     <?php if (empty($del_rows)): ?>
         <div class="empty-s"><i class="fas fa-inbox"></i><div style="font-size:14px;font-weight:700;color:#64748b;">No delivery records found for this period.</div></div>
     <?php else: ?>
-    <div style="overflow-x:auto;">
+    <div style="overflow:hidden;">
     <table class="afao-tbl">
         <colgroup>
             <col style="width:6%"><col style="width:7%"><col style="width:11%"><col style="width:9%">

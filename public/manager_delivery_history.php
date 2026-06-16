@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = "mgr_delivery_history";
 require_once __DIR__ . "/../backend/lib.php";
 require_once __DIR__ . "/db_connect.php";
@@ -428,7 +428,7 @@ include __DIR__ . '/../partials/header.php';
             </a>
         </div>
         <?php else: ?>
-        <div style="overflow-x:auto;">
+        <div style="overflow:hidden;">
             <table class="del-table">
                 <thead>
                     <tr>

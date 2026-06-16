@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'view_stations';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../backend/rbac.php';
@@ -336,7 +336,7 @@ include __DIR__ . '/../partials/header.php';
     </div>
 
     <div class="filters-section">
-        <input type="text" class="filter-input" placeholder="Search Station Code / Location" id="searchInput" style="flex: 1; min-width: 300px;">
+        <input type="text" class="filter-input" placeholder="Search Station Code / Location" id="searchInput" style="flex: 1; ">
     </div>
 
     <div class="table-container">

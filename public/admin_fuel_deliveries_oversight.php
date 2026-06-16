@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // ============================================================
 // Admin Fuel Deliveries Oversight
 // Fetch Source: fuel_deliveries (staff-encoded → manager-verified)
@@ -226,7 +226,7 @@ html, body { max-width:100vw; overflow-x:hidden; }
 .afdo-tbl-wrap { width:100%; overflow-x:hidden; }
 .afdo-tbl { width:100%; table-layout:fixed; border-collapse:collapse; font-size:13px; }
 .afdo-tbl thead tr { background:#002F6C; }
-.afdo-tbl thead th { padding:10px 8px; text-align:left; font-size:11px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.4; }
+.afdo-tbl thead th { padding:10px 8px; text-align:left; font-size:11px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.3px; overflow:hidden; text-overflow:ellipsis; line-height:1.4; }
 .afdo-tbl tbody tr { border-bottom:1px solid #f1f5f9; transition:background .1s; }
 .afdo-tbl tbody tr:hover { background:#eff6ff; }
 .afdo-tbl tbody td { padding:10px 8px; color:#334155; vertical-align:middle; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.5; }

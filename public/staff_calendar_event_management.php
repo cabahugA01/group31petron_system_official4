@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'staff_calendar_management';
 require_once __DIR__ . '/../config/database_config.php';
 require_once __DIR__ . '/../includes/session.php';
@@ -394,7 +394,7 @@ try {
             }
             
             .events-table {
-                overflow-x: auto;
+                overflow:hidden;
             }
         }
     </style>

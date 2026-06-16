@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // ============================================================
 // Manager Fuel Transaction Validation – manager_fuel_transaction_validation.php
 // Purpose: Validate staff-encoded pump readings
@@ -462,7 +462,7 @@ html, body {
     padding: 12px 16px; margin-bottom: 18px; display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap;
     max-width: 100%;
 }
-.filter-group { display: flex; flex-direction: column; gap: 4px; min-width: 150px; }
+.filter-group { display: flex; flex-direction: column; gap: 4px; }
 .filter-group label { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; }
 .filter-group input[type=date] { padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; width: 100%; }
 
@@ -473,7 +473,7 @@ html, body {
     width: 100%; overflow: hidden; box-sizing: border-box;
 }
 .table-wrap { 
-    width: 100%; overflow-x: auto;
+    width: 100%; overflow:hidden;
     box-sizing: border-box; display: block;
 }
 .data-table {
@@ -608,7 +608,7 @@ html, body {
             <input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>">
         </div>
         <button type="submit"
-                style="background:white;color:#16a34a;padding:8px 16px;border-radius:6px;border:1px solid #16a34a;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s;"
+                style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid #16a34a;background:white;color:#16a34a;transition:all .2s;"
                 onmouseover="this.style.background='#16a34a';this.style.color='#fff'"
                 onmouseout="this.style.background='white';this.style.color='#16a34a'">
             <i class="fas fa-filter"></i> Apply Filter

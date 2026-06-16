@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'merchandise_oversight_dashboard';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -859,7 +859,7 @@ function exportStaffData() {
 function showNotification(message, type) {
     const notification = document.createElement('div');
     notification.className = `alert alert-${type === 'error' ? 'danger' : type === 'warning' ? 'warning' : 'success'}`;
-    notification.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    notification.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 9999; ';
     notification.innerHTML = `
         <i class="fas fa-${type === 'error' ? 'exclamation-triangle' : type === 'warning' ? 'exclamation-triangle' : 'check-circle'}"></i>
         ${message}

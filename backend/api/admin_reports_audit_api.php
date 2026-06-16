@@ -387,9 +387,8 @@ switch ($action) {
         api_ok($rows);
 
     // ── AUDIT TRAIL ──────────────────────────────────────────────────────────
-    // Logs ALL roles: Staff, Manager, Admin oversight actions.
-    // audit_logs columns: user_id, action_type, entity_type, action_details,
-    //                     ip_address, status, created_at  (all lowercase)
+    // Unified compliance log: merges system-wide audit_logs with manager
+    // validation events in audit_trail into one chronological view.
     case 'audit_trail':
         $user_filter   = (int)($_GET['user_id']   ?? 0);
         $action_filter = trim($_GET['action_type'] ?? '');
@@ -399,39 +398,80 @@ switch ($action) {
         // Scope: Staff, Manager, Admin only — SuperAdmin excluded
         $role_excl = "AND LOWER(TRIM(COALESCE(u.role,''))) NOT IN ('superadmin','super admin','super_admin')";
 
-        $sql = "SELECT al.id,
-                       al.created_at,
-                       COALESCE(u.name, 'System') AS user_name,
-                       COALESCE(u.id, 0)          AS user_id,
-                       COALESCE(u.role, 'system')  AS role,
-                       al.action_type,
-                       al.entity_type              AS module,
-                       al.action_details           AS details,
-                       al.ip_address,
-                       al.status
+        // ── Branch 1: system-wide audit_logs ─────────────────────────────────
+        $sql_logs = "SELECT
+                       al.id                              AS id,
+                       al.created_at                      AS created_at,
+                       COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'System') AS user_name,
+                       COALESCE(u.id, 0)                  AS user_id,
+                       COALESCE(u.role, 'system')          AS role,
+                       al.action_type COLLATE utf8mb4_general_ci AS action_type,
+                       al.entity_type COLLATE utf8mb4_general_ci AS module,
+                       al.action_details COLLATE utf8mb4_general_ci AS details,
+                       al.ip_address COLLATE utf8mb4_general_ci AS ip_address,
+                       COALESCE(al.status,'Success') COLLATE utf8mb4_general_ci AS status,
+                       'system_log' COLLATE utf8mb4_general_ci AS log_source
                 FROM audit_logs al
-                LEFT JOIN users u ON u.user_id = al.user_id
+                LEFT JOIN users u ON u.id = al.user_id
                 WHERE u.station_id = ?
                   AND DATE(al.created_at) BETWEEN ? AND ?
                   $role_excl";
-        $params = [$station_id, $date_from, $date_to];
+        $params_logs = [$station_id, $date_from, $date_to];
 
-        if ($user_filter)   { $sql .= " AND al.user_id = ?";       $params[] = $user_filter; }
-        if ($action_filter) { $sql .= " AND al.action_type = ?";   $params[] = $action_filter; }
-        if ($module_filter) { $sql .= " AND al.entity_type = ?";   $params[] = $module_filter; }
-        if ($status_filter) { $sql .= " AND LOWER(al.status) = ?"; $params[] = strtolower($status_filter); }
-        $sql .= " ORDER BY al.created_at DESC LIMIT 1000";
+        if ($user_filter)   { $sql_logs .= " AND al.user_id = ?";       $params_logs[] = $user_filter; }
+        if ($action_filter) { $sql_logs .= " AND al.action_type = ?";   $params_logs[] = $action_filter; }
+        if ($module_filter) { $sql_logs .= " AND al.entity_type = ?";   $params_logs[] = $module_filter; }
+        if ($status_filter) { $sql_logs .= " AND LOWER(al.status) = ?"; $params_logs[] = strtolower($status_filter); }
 
-        $rows = safe_rows($pdo, $sql, $params);
+        // ── Branch 2: manager validation audit_trail ──────────────────────────
+        $sql_trail = "SELECT
+                        at.id                              AS id,
+                        at.timestamp                       AS created_at,
+                        COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Manager') AS user_name,
+                        COALESCE(u.id, 0)                  AS user_id,
+                        COALESCE(u.role, 'manager')         AS role,
+                        at.action_type COLLATE utf8mb4_general_ci AS action_type,
+                        'transaction_validation' COLLATE utf8mb4_general_ci AS module,
+                        CONCAT(
+                            'Validation: ', at.action_type,
+                            ' on TXN ID ', at.transaction_id,
+                            CASE WHEN at.new_value IS NOT NULL AND at.new_value != ''
+                                 THEN CONCAT(' | ', at.new_value)
+                                 ELSE '' END
+                        ) COLLATE utf8mb4_general_ci        AS details,
+                        NULL                               AS ip_address,
+                        'Success' COLLATE utf8mb4_general_ci AS status,
+                        'validation_trail' COLLATE utf8mb4_general_ci AS log_source
+                FROM audit_trail at
+                LEFT JOIN users u ON u.id = at.manager_id
+                WHERE at.station_id = ?
+                  AND DATE(at.timestamp) BETWEEN ? AND ?";
+        $params_trail = [$station_id, $date_from, $date_to];
+
+        if ($user_filter)   { $sql_trail .= " AND at.manager_id = ?";   $params_trail[] = $user_filter; }
+        if ($action_filter) { $sql_trail .= " AND at.action_type = ?";  $params_trail[] = $action_filter; }
+        // module filter only applies to audit_logs side; no equivalent in audit_trail
+        if ($status_filter && strtolower($status_filter) !== 'success') {
+            // validation trail always succeeds — skip it if filtering by non-success
+            $sql_trail .= " AND 1=0";
+        }
+
+        // ── UNION and sort ────────────────────────────────────────────────────
+        $union_sql = "SELECT * FROM ({$sql_logs} UNION ALL {$sql_trail}) combined_log
+                      ORDER BY created_at DESC
+                      LIMIT 1000";
+        $union_params = array_merge($params_logs, $params_trail);
+
+        $rows = safe_rows($pdo, $union_sql, $union_params);
         api_ok($rows);
 
     // ── AUDIT SUMMARY STATS ───────────────────────────────────────────────────
     case 'audit_summary':
         $rx = "AND LOWER(TRIM(COALESCE(u.role,''))) NOT IN ('superadmin','super admin','super_admin')";
-        $total        = safe_val($pdo, "SELECT COUNT(*) FROM audit_logs al LEFT JOIN users u ON u.user_id=al.user_id WHERE u.station_id=? AND DATE(al.created_at) BETWEEN ? AND ? $rx", [$station_id,$date_from,$date_to]);
-        $failed       = safe_val($pdo, "SELECT COUNT(*) FROM audit_logs al LEFT JOIN users u ON u.user_id=al.user_id WHERE u.station_id=? AND DATE(al.created_at) BETWEEN ? AND ? AND LOWER(al.status)='failed' $rx", [$station_id,$date_from,$date_to]);
-        $users_active = safe_val($pdo, "SELECT COUNT(DISTINCT al.user_id) FROM audit_logs al LEFT JOIN users u ON u.user_id=al.user_id WHERE u.station_id=? AND DATE(al.created_at) BETWEEN ? AND ? $rx", [$station_id,$date_from,$date_to]);
-        $anomalies    = safe_val($pdo, "SELECT COUNT(*) FROM (SELECT ip_address, COUNT(*) c FROM audit_logs al LEFT JOIN users u ON u.user_id=al.user_id WHERE u.station_id=? AND DATE(al.created_at) BETWEEN ? AND ? AND LOWER(al.status)='failed' $rx GROUP BY ip_address HAVING c >= 3) sub", [$station_id,$date_from,$date_to]);
+        $total        = safe_val($pdo, "SELECT COUNT(*) FROM audit_logs al LEFT JOIN users u ON u.id=al.user_id WHERE u.station_id=? AND DATE(al.created_at) BETWEEN ? AND ? $rx", [$station_id,$date_from,$date_to]);
+        $failed       = safe_val($pdo, "SELECT COUNT(*) FROM audit_logs al LEFT JOIN users u ON u.id=al.user_id WHERE u.station_id=? AND DATE(al.created_at) BETWEEN ? AND ? AND LOWER(al.status)='failed' $rx", [$station_id,$date_from,$date_to]);
+        $users_active = safe_val($pdo, "SELECT COUNT(DISTINCT al.user_id) FROM audit_logs al LEFT JOIN users u ON u.id=al.user_id WHERE u.station_id=? AND DATE(al.created_at) BETWEEN ? AND ? $rx", [$station_id,$date_from,$date_to]);
+        $anomalies    = safe_val($pdo, "SELECT COUNT(*) FROM (SELECT ip_address, COUNT(*) c FROM audit_logs al LEFT JOIN users u ON u.id=al.user_id WHERE u.station_id=? AND DATE(al.created_at) BETWEEN ? AND ? AND LOWER(al.status)='failed' $rx GROUP BY ip_address HAVING c >= 3) sub", [$station_id,$date_from,$date_to]);
         api_ok(['total'=>(int)$total,'failed'=>(int)$failed,'users_active'=>(int)$users_active,'anomalies'=>(int)$anomalies]);
 
     // ── ANOMALY DETECTION ─────────────────────────────────────────────────────
@@ -441,12 +481,12 @@ switch ($action) {
 
         // Repeated failures per user/IP
         $repeated = safe_rows($pdo, "
-            SELECT COALESCE(u.name,'Unknown') AS user_name, u.role, al.ip_address,
+            SELECT COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS user_name, u.role, al.ip_address,
                    COUNT(*) AS fail_count,
                    MAX(al.created_at) AS last_attempt,
                    GROUP_CONCAT(DISTINCT al.action_type ORDER BY al.action_type SEPARATOR ', ') AS actions
             FROM audit_logs al
-            LEFT JOIN users u ON u.user_id = al.user_id
+            LEFT JOIN users u ON u.id = al.user_id
             WHERE u.station_id=?
               AND DATE(al.created_at) BETWEEN ? AND ?
               AND LOWER(al.status) = 'failed'
@@ -458,11 +498,11 @@ switch ($action) {
 
         // Repeated rejections (validation rejections)
         $rejections = safe_rows($pdo, "
-            SELECT COALESCE(u.name,'Unknown') AS user_name, u.role,
+            SELECT COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS user_name, u.role,
                    al.action_type, COUNT(*) AS reject_count,
                    MAX(al.created_at) AS last_seen
             FROM audit_logs al
-            LEFT JOIN users u ON u.user_id = al.user_id
+            LEFT JOIN users u ON u.id = al.user_id
             WHERE u.station_id=?
               AND DATE(al.created_at) BETWEEN ? AND ?
               AND LOWER(al.action_type) IN ('reject','rejected','rejection','return')

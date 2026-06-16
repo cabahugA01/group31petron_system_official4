@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Service Type Management
  * Manager view: list, add, edit, activate/deactivate service types for Job Orders.
@@ -253,9 +253,9 @@ include __DIR__ . '/../partials/header.php';
 .card-header { padding:16px 20px; border-bottom:1px solid #e9ecef; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
 .card-header h3 { font-size:16px; font-weight:700; color:#002F70; margin:0; display:flex; align-items:center; gap:8px; }
 .card-body { padding:20px; overflow-x:hidden; }
-.st-table-wrap { overflow-x:auto; width:100%; }
+.st-table-wrap { overflow:hidden; width:100%; }
 .st-table { min-width:100%; width:100%; border-collapse:collapse; table-layout:auto; }
-.st-table thead th { background:#002F70 !important; color:#fff !important; font-weight:600; padding:14px 12px !important; text-align:left !important; text-transform:uppercase; letter-spacing:0.3px; border:none !important; white-space:nowrap; font-size:11px; }
+.st-table thead th { background:#002F70 !important; color:#fff !important; font-weight:600; padding:14px 12px !important; text-align:left !important; text-transform:uppercase; letter-spacing:0.3px; border:none !important; font-size:11px; }
 .st-table thead th:last-child { text-align:center !important; }
 .st-table tbody td { vertical-align:middle; padding:12px !important; border-bottom:1px solid #e9ecef !important; font-size:13px; }
 .st-table tbody td:last-child { text-align:center !important; }
@@ -339,7 +339,7 @@ include __DIR__ . '/../partials/header.php';
                         <th>Base Fee</th>
                         <th>Price Range</th>
                         <th>Status</th>
-                        <th style="min-width:120px;text-align:center;">Actions</th>
+                        <th style="text-align:center;">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="serviceTableBody">

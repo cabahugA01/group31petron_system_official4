@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'manager_fuel_management';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -1243,7 +1243,7 @@ function adjustColor($hex,$pct) {
 </div>
     <style>
     /* Modern Internal Tabs */
-    .mfm-tabs { display:flex; gap:12px; margin-bottom:20px; border-bottom:2px solid #e9ecef; padding-bottom:10px; overflow-x:auto; }
+    .mfm-tabs { display:flex; gap:12px; margin-bottom:20px; border-bottom:2px solid #e9ecef; padding-bottom:10px; overflow:hidden; }
     .mfm-tab-btn { background:transparent; border:none; color:#666; font-size:.9rem; font-weight:700; padding:8px 16px; border-radius:6px; cursor:pointer; transition:all 0.2s; white-space:nowrap; display:flex; align-items:center; gap:8px; }
     .mfm-tab-btn:hover { background:#f8f9fa; color:#333; }
     .mfm-tab-btn.active { background:#00264D; color:#fff; }
@@ -1336,7 +1336,7 @@ function adjustColor($hex,$pct) {
     <?php if (empty($pending_readings)): ?>
         <div class="empty-state"><i class="fas fa-check-circle"></i><p>No pending staff readings to validate.</p></div>
     <?php else: ?>
-    <div style="overflow-x:auto;">
+    <div style="overflow:hidden;">
     <table class="data-table">
         <thead><tr>
             <th>Transaction ID</th>
@@ -1467,7 +1467,7 @@ function adjustColor($hex,$pct) {
     <?php if (empty($shift_history)): ?>
         <div class="empty-state"><i class="fas fa-history"></i><p>No transactions found.</p></div>
     <?php else: ?>
-    <div style="overflow-x:auto;">
+    <div style="overflow:hidden;">
     <table class="data-table">
         <thead><tr>
             <th>Transaction ID</th><th>Date</th><th>Fuel Type</th>
@@ -1547,7 +1547,7 @@ function adjustColor($hex,$pct) {
     </button>
 </div>
 
-<div style="overflow-x:auto;">
+<div style="overflow:hidden;">
 <table class="data-table" id="dailyLogsTable">
     <thead><tr>
         <th>Daily Log ID</th>
@@ -1734,7 +1734,7 @@ foreach ($reconciliation_data as $rec) {
     <!-- Today's Pump Sales vs Tank Summary -->
     <?php if (!empty($reconciliation_data)): ?>
     </div>
-    <div style="overflow-x:auto;margin-bottom:4px;">
+    <div style="overflow:hidden;margin-bottom:4px;">
     <table class="data-table">
         <thead><tr>
             <th>Fuel Type</th><th>Current Stock</th><th>Capacity</th>
@@ -1821,7 +1821,7 @@ foreach ($reconciliation_data as $rec) {
     <?php if (empty($variance_reports)): ?>
         <div class="empty-state"><i class="fas fa-check-circle"></i><p>No discrepancies found. All reconciled.</p></div>
     <?php else: ?>
-    <div style="overflow-x:auto;">
+    <div style="overflow:hidden;">
     <table class="data-table">
         <thead><tr>
             <th>#</th><th>Date</th><th>Fuel Type</th>

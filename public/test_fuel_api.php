@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Fuel API Diagnostic v2 — no HTTP loopback, tests directly
  * Visit: http://localhost/group31petron_system_official4/public/test_fuel_api.php
@@ -12,7 +12,7 @@ $uid = $session_user['id'] ?? 0;
 echo "<!DOCTYPE html><html><head><title>Fuel API Test v2</title>
 <style>
 body{font-family:monospace;padding:20px;background:#f8fafc;font-size:13px;}
-pre{background:#1e293b;color:#e2e8f0;padding:14px;border-radius:8px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;}
+pre{background:#1e293b;color:#e2e8f0;padding:14px;border-radius:8px;overflow:hidden;white-space:pre-wrap;word-break:break-all;}
 .ok{color:#22c55e;font-weight:bold;} .err{color:#ef4444;font-weight:bold;} .warn{color:#f59e0b;font-weight:bold;}
 h2{color:#00264D;margin-top:0;} .box{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin:12px 0;}
 </style></head><body><h2>🔍 Fuel API Diagnostic v2</h2>";

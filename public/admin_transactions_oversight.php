@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'ato_oversight_dashboard';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -429,6 +429,363 @@ foreach ($rows as $r) {
     $type_counts[$t] = ($type_counts[$t] ?? 0) + 1;
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// NEW: Enhancements — all DB-driven, zero hardcoded
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── 1. Performance Metrics (KPI panel) ───────────────────────────────────────
+// Total sales, total services, top items, top encoder — scoped to station + filter dates
+$kpi_total_sales     = 0.0;
+$kpi_total_services  = 0;
+$kpi_top_items       = [];  // [['name'=>..., 'qty'=>...], ...]
+$kpi_top_encoder     = null; // ['name'=>..., 'count'=>...]
+
+try {
+    // Total sales (approved/completed merchandise + job orders in date range)
+    $kpi_sales_stmt = $pdo->prepare("
+        SELECT COALESCE(SUM(mt.total_amount), 0) AS total_sales,
+               COUNT(*) AS txn_count
+        FROM merchandise_transactions mt
+        WHERE mt.station_id = ?
+          AND DATE(mt.transaction_date) BETWEEN ? AND ?
+          AND LOWER(TRIM(COALESCE(mt.validation_status,''))) IN ('approved','completed','adjusted')
+    ");
+    $kpi_sales_stmt->execute([$station_id, $start, $end]);
+    $kpi_sales_row = $kpi_sales_stmt->fetch(PDO::FETCH_ASSOC);
+    $kpi_total_sales = (float)($kpi_sales_row['total_sales'] ?? 0);
+} catch (Exception $_kpie) {}
+
+try {
+    // Add job order amounts too
+    $jo_cost_expr = ato_has($jo_cols,'total_cost') ? 'COALESCE(jo.total_cost,0)' : 'COALESCE(jo.estimated_cost,0)';
+    $jo_val_expr  = ato_has($jo_cols,'validation_status') ? 'jo.validation_status' : 'jo.status';
+    $kpi_jo_stmt = $pdo->prepare("
+        SELECT COALESCE(SUM({$jo_cost_expr}), 0) AS jo_total
+        FROM job_orders jo
+        WHERE jo.station_id = ?
+          AND DATE(jo.created_at) BETWEEN ? AND ?
+          AND LOWER(TRIM(COALESCE({$jo_val_expr},''))) IN ('approved','completed')
+    ");
+    $kpi_jo_stmt->execute([$station_id, $start, $end]);
+    $kpi_total_sales += (float)($kpi_jo_stmt->fetchColumn() ?? 0);
+} catch (Exception $_kpie2) {}
+
+try {
+    // Total services (job orders)
+    $jo_val_expr2 = ato_has($jo_cols,'validation_status') ? 'jo.validation_status' : 'jo.status';
+    $kpi_svc_stmt = $pdo->prepare("
+        SELECT COUNT(*) AS svc_count
+        FROM job_orders jo
+        WHERE jo.station_id = ?
+          AND DATE(jo.created_at) BETWEEN ? AND ?
+          AND LOWER(TRIM(COALESCE({$jo_val_expr2},''))) IN ('approved','completed','in progress')
+    ");
+    $kpi_svc_stmt->execute([$station_id, $start, $end]);
+    $kpi_total_services = (int)($kpi_svc_stmt->fetchColumn() ?? 0);
+    // Also count job_order type from merchandise_transactions
+    $kpi_jo_mt_stmt = $pdo->prepare("
+        SELECT COUNT(*) FROM merchandise_transactions
+        WHERE station_id = ?
+          AND DATE(transaction_date) BETWEEN ? AND ?
+          AND transaction_type IN ('job_order','combined')
+          AND LOWER(TRIM(COALESCE(validation_status,''))) IN ('approved','completed','adjusted')
+    ");
+    $kpi_jo_mt_stmt->execute([$station_id, $start, $end]);
+    $kpi_total_services += (int)($kpi_jo_mt_stmt->fetchColumn() ?? 0);
+} catch (Exception $_kpie3) {}
+
+try {
+    // Top 5 items sold in date range
+    $kpi_items_stmt = $pdo->prepare("
+        SELECT mti.product_name,
+               SUM(mti.quantity) AS total_qty
+        FROM merchandise_transaction_items mti
+        JOIN merchandise_transactions mt ON mt.id = mti.transaction_id
+        WHERE mt.station_id = ?
+          AND DATE(mt.transaction_date) BETWEEN ? AND ?
+          AND COALESCE(mti.item_type,'merchandise') = 'merchandise'
+          AND LOWER(TRIM(COALESCE(mt.validation_status,''))) IN ('approved','completed','adjusted')
+        GROUP BY mti.product_name
+        ORDER BY total_qty DESC
+        LIMIT 5
+    ");
+    $kpi_items_stmt->execute([$station_id, $start, $end]);
+    $kpi_top_items = $kpi_items_stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $_kpie4) {}
+
+try {
+    // Top encoder by transaction count (staff with most approved records)
+    $kpi_enc_stmt = $pdo->prepare("
+        SELECT u.name AS staff_name, COUNT(*) AS enc_count
+        FROM merchandise_transactions mt
+        JOIN users u ON u.id = mt.staff_id
+        WHERE mt.station_id = ?
+          AND DATE(mt.transaction_date) BETWEEN ? AND ?
+          AND LOWER(TRIM(COALESCE(mt.validation_status,''))) IN ('approved','completed','adjusted')
+        GROUP BY mt.staff_id
+        ORDER BY enc_count DESC
+        LIMIT 1
+    ");
+    $kpi_enc_stmt->execute([$station_id, $start, $end]);
+    $kpi_top_encoder = $kpi_enc_stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+} catch (Exception $_kpie5) {}
+
+// ── 2. Variance Alerts ────────────────────────────────────────────────────────
+// Scans approved/completed merch transactions in the date range for:
+//   A) qty > current stock_level
+//   B) sum(item qty × unit_price) != total_amount by > ₱0.01
+$variance_alerts     = [];
+$variance_alert_count = 0;
+try {
+    // Load product stock map for this station
+    $va_stock_map = []; // product_id → stock_level
+    $va_stock_stmt = $pdo->prepare("
+        SELECT product_id, COALESCE(stock_level, 0) AS stock_level
+        FROM station_inventory WHERE station_id = ?
+    ");
+    $va_stock_stmt->execute([$station_id]);
+    foreach ($va_stock_stmt->fetchAll(PDO::FETCH_ASSOC) as $_vs)
+        $va_stock_map[(int)$_vs['product_id']] = (float)$_vs['stock_level'];
+
+    // Fetch IDs + totals of approved transactions in range
+    $va_txn_stmt = $pdo->prepare("
+        SELECT mt.id, mt.transaction_id AS txn_ref, mt.total_amount
+        FROM merchandise_transactions mt
+        WHERE mt.station_id = ?
+          AND DATE(CASE WHEN mt.transaction_date > '2000-01-01' THEN mt.transaction_date ELSE mt.created_at END) BETWEEN ? AND ?
+          AND LOWER(TRIM(COALESCE(mt.validation_status,''))) IN ('approved','completed','adjusted')
+        LIMIT 500
+    ");
+    $va_txn_stmt->execute([$station_id, $start, $end]);
+    $va_txns = $va_txn_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (!empty($va_txns)) {
+        $va_ids = array_column($va_txns, 'id');
+        $va_ph  = implode(',', array_fill(0, count($va_ids), '?'));
+        $va_items_stmt = $pdo->prepare("
+            SELECT mti.transaction_id, mti.product_id, mti.product_name,
+                   mti.quantity, mti.unit_price
+            FROM merchandise_transaction_items mti
+            WHERE mti.transaction_id IN ($va_ph)
+              AND COALESCE(mti.item_type,'merchandise') = 'merchandise'
+        ");
+        $va_items_stmt->execute($va_ids);
+        $va_items_by_txn = [];
+        foreach ($va_items_stmt->fetchAll(PDO::FETCH_ASSOC) as $_vi)
+            $va_items_by_txn[$_vi['transaction_id']][] = $_vi;
+
+        foreach ($va_txns as $_vt) {
+            $items = $va_items_by_txn[$_vt['id']] ?? [];
+            $computed_sum = 0;
+            foreach ($items as $_vitem) {
+                $computed_sum += $_vitem['quantity'] * $_vitem['unit_price'];
+                $pid = (int)$_vitem['product_id'];
+                if ($pid && isset($va_stock_map[$pid]) && $_vitem['quantity'] > $va_stock_map[$pid]) {
+                    $variance_alerts[] = [
+                        'txn_ref' => $_vt['txn_ref'],
+                        'id'      => $_vt['id'],
+                        'type'    => 'qty',
+                        'message' => 'Qty mismatch: ' . htmlspecialchars($_vitem['product_name'])
+                                   . ' — encoded ' . (int)$_vitem['quantity']
+                                   . ' pc(s), stock ' . (int)$va_stock_map[$pid],
+                    ];
+                }
+            }
+            if (!empty($items) && (float)$_vt['total_amount'] > 0
+                && abs($computed_sum - (float)$_vt['total_amount']) > 0.01) {
+                $variance_alerts[] = [
+                    'txn_ref' => $_vt['txn_ref'],
+                    'id'      => $_vt['id'],
+                    'type'    => 'amount',
+                    'message' => 'Amount mismatch: computed ₱' . number_format($computed_sum, 2)
+                               . ' vs encoded ₱' . number_format((float)$_vt['total_amount'], 2),
+                ];
+            }
+        }
+    }
+    $variance_alert_count = count($variance_alerts);
+} catch (Exception $_vae) {}
+
+// ── 3. Inventory Impact lookup ────────────────────────────────────────────────
+// Keyed by "{_source}:{row_id}" → array of per-item deduction info
+// Uses merchandise_transaction_items + station_inventory
+$inv_impact = [];
+try {
+    $ii_mt_ids = array_column(
+        array_filter($rows, fn($r) => ($r['_source'] ?? '') === 'merchandise_transactions'),
+        'row_id'
+    );
+    if (!empty($ii_mt_ids)) {
+        // Check if inventory_deducted column exists
+        $mt_has_deducted = ato_has($mt_cols, 'inventory_deducted');
+        $mt_deducted_col = $mt_has_deducted ? 'mt.inventory_deducted' : '0';
+
+        $ii_ph = implode(',', array_fill(0, count($ii_mt_ids), '?'));
+        $ii_stmt = $pdo->prepare("
+            SELECT mti.transaction_id, mti.product_id, mti.product_name,
+                   mti.quantity, mti.unit_price,
+                   COALESCE(si.stock_level, 0) AS stock_level,
+                   mt.validation_status,
+                   {$mt_deducted_col} AS inventory_deducted
+            FROM merchandise_transaction_items mti
+            JOIN merchandise_transactions mt ON mt.id = mti.transaction_id
+            LEFT JOIN station_inventory si
+                   ON si.product_id = mti.product_id AND si.station_id = ?
+            WHERE mti.transaction_id IN ($ii_ph)
+              AND COALESCE(mti.item_type,'merchandise') = 'merchandise'
+            ORDER BY mti.id
+        ");
+        $ii_stmt->execute(array_merge([$station_id], $ii_mt_ids));
+        foreach ($ii_stmt->fetchAll(PDO::FETCH_ASSOC) as $_ii) {
+            $ikey = 'merchandise_transactions:' . $_ii['transaction_id'];
+            $is_approved = in_array(strtolower($_ii['validation_status'] ?? ''),
+                                    ['approved','completed','adjusted']);
+            $ded = (int)$_ii['inventory_deducted'];
+            if ($is_approved && $ded)       $ist = 'yes';
+            elseif ($is_approved && !$ded)  $ist = 'no';
+            elseif (!$_ii['product_id'])    $ist = 'na';
+            else                            $ist = 'pending';
+            $inv_impact[$ikey][] = [
+                'part'   => $_ii['product_name'],
+                'qty'    => (int)$_ii['quantity'],
+                'stock'  => (float)$_ii['stock_level'],
+                'status' => $ist,
+            ];
+        }
+    }
+    // For job_orders rows — parse required_parts JSON
+    foreach ($rows as $_jor) {
+        if (($_jor['_source'] ?? '') !== 'job_orders') continue;
+        $ikey = 'job_orders:' . $_jor['row_id'];
+        $rp   = is_string($_jor['items_parts'] ?? '') ? $_jor['items_parts'] : '';
+        // items_parts is text from GROUP_CONCAT, not JSON — show N/A
+        $inv_impact[$ikey] = []; // job_orders: shown as service-only
+    }
+} catch (Exception $_iie) {}
+
+// ── 4. Receivables Aging ──────────────────────────────────────────────────────
+// Checks balance_due + due_date per row. Overdue = due_date <= today and not paid.
+$receivables = []; // row_id → ['balance'=>..., 'due_date'=>..., 'overdue_days'=>..., 'aging_label'=>...]
+$today_ts = strtotime(date('Y-m-d'));
+try {
+    $mt_has_due    = ato_has($mt_cols, 'due_date');
+    $mt_has_bal    = ato_has($mt_cols, 'balance_due');
+    $mt_has_paid   = ato_has($mt_cols, 'amount_paid');
+
+    if (!empty($ii_mt_ids ?? [])) {
+        $rec_ph = implode(',', array_fill(0, count($ii_mt_ids), '?'));
+        $due_col = $mt_has_due  ? 'mt.due_date'    : 'NULL';
+        $bal_col = $mt_has_bal  ? 'mt.balance_due' : 'NULL';
+        $pai_col = $mt_has_paid ? 'mt.amount_paid' : 'NULL';
+        $rec_stmt = $pdo->prepare("
+            SELECT mt.id, $due_col AS due_date, $bal_col AS balance_due,
+                   $pai_col AS amount_paid, mt.total_amount,
+                   COALESCE(mt.payment_status,'') AS payment_status
+            FROM merchandise_transactions mt
+            WHERE mt.id IN ($rec_ph)
+        ");
+        $rec_stmt->execute($ii_mt_ids);
+        foreach ($rec_stmt->fetchAll(PDO::FETCH_ASSOC) as $_rec) {
+            $ps = strtolower(trim($_rec['payment_status'] ?? ''));
+            if ($ps === 'paid') { $receivables[$_rec['id']] = ['settled' => true]; continue; }
+
+            $bal = (float)($_rec['balance_due'] ?? 0);
+            if ($bal <= 0.009) {
+                $total = (float)$_rec['total_amount'];
+                $paid  = (float)($_rec['amount_paid'] ?? 0);
+                $bal   = max(0, $total - $paid);
+            }
+            $due_date = $_rec['due_date'] ?? null;
+            $overdue_days = 0;
+            $aging_label  = '';
+            if ($due_date && strtotime($due_date) !== false) {
+                $diff = (int)floor(($today_ts - strtotime($due_date)) / 86400);
+                if ($diff > 0) {
+                    $overdue_days = $diff;
+                    $aging_label  = $diff . ' day' . ($diff === 1 ? '' : 's') . ' overdue';
+                } elseif ($diff === 0) {
+                    $aging_label = 'Due today';
+                } else {
+                    $aging_label = abs($diff) . 'd remaining';
+                }
+            }
+            $receivables[$_rec['id']] = [
+                'settled'      => false,
+                'balance'      => $bal,
+                'due_date'     => $due_date,
+                'overdue_days' => $overdue_days,
+                'aging_label'  => $aging_label,
+            ];
+        }
+    }
+} catch (Exception $_rece) {}
+
+// ── 5. Validation Notes (manager remarks) ────────────────────────────────────
+// Fetches admin_remarks / manager_notes / rejection_reason per row from DB
+$validation_notes = []; // "{_source}:{row_id}" → string
+try {
+    // Merchandise transactions
+    if (!empty($ii_mt_ids ?? [])) {
+        $vn_has_mgr = ato_has($mt_cols, 'manager_notes');
+        $vn_has_adj = ato_has($mt_cols, 'adjustment_reason');
+        $vn_has_rej = ato_has($mt_cols, 'rejection_reason');
+        $vn_has_rem = ato_has($mt_cols, 'remarks');
+
+        $vn_note_col = $vn_has_mgr ? 'mt.manager_notes'
+                     : ($vn_has_rej ? 'mt.rejection_reason'
+                     : ($vn_has_adj ? 'mt.adjustment_reason'
+                     : ($vn_has_rem ? 'mt.remarks' : 'NULL')));
+
+        $vn_ph = implode(',', array_fill(0, count($ii_mt_ids), '?'));
+        $vn_stmt = $pdo->prepare("
+            SELECT mt.id, COALESCE($vn_note_col,'') AS note,
+                   COALESCE(u.name,'') AS validated_by_name,
+                   mt.validated_at
+            FROM merchandise_transactions mt
+            LEFT JOIN users u ON u.id = mt.validated_by
+            WHERE mt.id IN ($vn_ph)
+        ");
+        $vn_stmt->execute($ii_mt_ids);
+        foreach ($vn_stmt->fetchAll(PDO::FETCH_ASSOC) as $_vn) {
+            $note = trim($_vn['note'] ?? '');
+            if (empty($note) && !empty($_vn['validated_by_name'])) {
+                $note = 'Reviewed by ' . $_vn['validated_by_name'];
+                if (!empty($_vn['validated_at']))
+                    $note .= ' on ' . date('M d, Y', strtotime($_vn['validated_at']));
+            }
+            $validation_notes['merchandise_transactions:' . $_vn['id']] = $note;
+        }
+    }
+    // Job orders
+    $jo_ids = array_column(
+        array_filter($rows, fn($r) => ($r['_source'] ?? '') === 'job_orders'),
+        'row_id'
+    );
+    if (!empty($jo_ids)) {
+        $vn_jo_has_adm = ato_has($jo_cols, 'admin_remarks');
+        $vn_jo_has_adj = ato_has($jo_cols, 'adjustment_reason');
+        $vn_jo_note_col = $vn_jo_has_adm ? 'jo.admin_remarks'
+                        : ($vn_jo_has_adj ? 'jo.adjustment_reason' : 'NULL');
+        $jo_vn_ph = implode(',', array_fill(0, count($jo_ids), '?'));
+        $jo_vn_stmt = $pdo->prepare("
+            SELECT jo.id, COALESCE($vn_jo_note_col,'') AS note,
+                   COALESCE(u.name,'') AS validated_by_name,
+                   jo.validated_at
+            FROM job_orders jo
+            LEFT JOIN users u ON u.id = jo.validated_by
+            WHERE jo.id IN ($jo_vn_ph)
+        ");
+        $jo_vn_stmt->execute($jo_ids);
+        foreach ($jo_vn_stmt->fetchAll(PDO::FETCH_ASSOC) as $_jvn) {
+            $note = trim($_jvn['note'] ?? '');
+            if (empty($note) && !empty($_jvn['validated_by_name'])) {
+                $note = 'Reviewed by ' . $_jvn['validated_by_name'];
+            }
+            $validation_notes['job_orders:' . $_jvn['id']] = $note;
+        }
+    }
+} catch (Exception $_vne) {}
+
 // ── Export output ────────────────────────────────────────────────────────────
 if ($export_type === 'csv') {
     $out = fopen('php://output', 'w');
@@ -630,6 +987,100 @@ include __DIR__ . '/../partials/header.php';
 </div>
 <?php endif; ?>
 
+<!-- ── Performance Metrics KPI Panel ─────────────────────────────────────── -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:14px;">
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;">
+        <div style="width:38px;height:38px;border-radius:50%;background:#dbeafe;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="fas fa-peso-sign" style="color:#1d4ed8;font-size:15px;"></i>
+        </div>
+        <div>
+            <div style="font-size:18px;font-weight:800;color:#002F70;">₱<?= number_format($kpi_total_sales, 2) ?></div>
+            <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.4px;font-weight:600;">Total Sales</div>
+            <div style="font-size:10px;color:#94a3b8;"><?= htmlspecialchars($start) ?> – <?= htmlspecialchars($end) ?></div>
+        </div>
+    </div>
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;">
+        <div style="width:38px;height:38px;border-radius:50%;background:#dcfce7;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="fas fa-wrench" style="color:#16a34a;font-size:15px;"></i>
+        </div>
+        <div>
+            <div style="font-size:18px;font-weight:800;color:#002F70;"><?= (int)$kpi_total_services ?></div>
+            <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.4px;font-weight:600;">Total Services</div>
+            <div style="font-size:10px;color:#94a3b8;">Approved / Completed</div>
+        </div>
+    </div>
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;">
+        <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.4px;font-weight:700;margin-bottom:6px;">
+            <i class="fas fa-star" style="color:#d97706;"></i> Top Items Sold
+        </div>
+        <?php if (empty($kpi_top_items)): ?>
+            <div style="font-size:12px;color:#94a3b8;">No data</div>
+        <?php else: foreach ($kpi_top_items as $_idx => $_ti): ?>
+            <div style="font-size:11px;display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #f1f5f9;">
+                <span style="color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:75%;">
+                    <?= htmlspecialchars($_ti['product_name']) ?>
+                </span>
+                <strong style="color:#002F70;flex-shrink:0;margin-left:6px;"><?= (int)$_ti['total_qty'] ?> pc</strong>
+            </div>
+        <?php endforeach; endif; ?>
+    </div>
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;">
+        <div style="width:38px;height:38px;border-radius:50%;background:#fef3c7;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="fas fa-user-check" style="color:#d97706;font-size:15px;"></i>
+        </div>
+        <div>
+            <div style="font-size:15px;font-weight:800;color:#002F70;">
+                <?= $kpi_top_encoder ? htmlspecialchars($kpi_top_encoder['staff_name']) : '—' ?>
+            </div>
+            <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.4px;font-weight:600;">Top Encoder</div>
+            <div style="font-size:10px;color:#94a3b8;">
+                <?= $kpi_top_encoder ? (int)$kpi_top_encoder['enc_count'] . ' txn(s) validated' : 'No data' ?>
+            </div>
+        </div>
+    </div>
+    <div style="background:<?= $variance_alert_count > 0 ? '#fff3f3' : '#f0fdf4' ?>;
+                border:1px solid <?= $variance_alert_count > 0 ? '#fecaca' : '#bbf7d0' ?>;
+                border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;"
+         onclick="document.getElementById('varianceAlertsPanel').style.display=(document.getElementById('varianceAlertsPanel').style.display==='none'?'block':'none');">
+        <div style="width:38px;height:38px;border-radius:50%;background:<?= $variance_alert_count > 0 ? '#fee2e2' : '#dcfce7' ?>;
+                    display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="fas fa-<?= $variance_alert_count > 0 ? 'exclamation-triangle' : 'check-circle' ?>"
+               style="color:<?= $variance_alert_count > 0 ? '#dc2626' : '#16a34a' ?>;font-size:15px;"></i>
+        </div>
+        <div>
+            <div style="font-size:18px;font-weight:800;color:<?= $variance_alert_count > 0 ? '#dc2626' : '#16a34a' ?>;">
+                <?= (int)$variance_alert_count ?>
+            </div>
+            <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.4px;font-weight:600;">Variance Alerts</div>
+            <div style="font-size:10px;color:#94a3b8;"><?= $variance_alert_count > 0 ? 'Click to view' : 'All clear' ?></div>
+        </div>
+    </div>
+</div>
+
+<!-- Variance Alerts expandable panel -->
+<?php if ($variance_alert_count > 0): ?>
+<div id="varianceAlertsPanel" style="display:none;background:#fff3f3;border:1px solid #fecaca;
+     border-radius:10px;padding:14px 18px;margin-bottom:14px;">
+    <div style="font-weight:700;color:#dc2626;margin-bottom:10px;font-size:13px;">
+        <i class="fas fa-exclamation-triangle"></i>
+        Variance Alerts — <?= (int)$variance_alert_count ?> flag(s) in <?= htmlspecialchars($start) ?> – <?= htmlspecialchars($end) ?>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto;">
+        <?php foreach ($variance_alerts as $_va): ?>
+        <div style="background:#fff;border:1px solid #fecaca;border-radius:6px;padding:8px 12px;font-size:12px;">
+            <strong style="color:#002F70;"><?= htmlspecialchars($_va['txn_ref']) ?></strong>
+            <span style="margin-left:6px;padding:1px 6px;border-radius:3px;font-size:11px;font-weight:600;
+                         background:<?= $_va['type']==='qty'?'#fef3c7':'#fee2e2' ?>;
+                         color:<?= $_va['type']==='qty'?'#92400e':'#991b1b' ?>;">
+                <?= $_va['type']==='qty'?'Qty Mismatch':'Amount Mismatch' ?>
+            </span>
+            <span style="color:#64748b;margin-left:6px;"><?= htmlspecialchars($_va['message']) ?></span>
+        </div>
+        <?php endforeach; ?>
+    </div>
+</div>
+<?php endif; ?>
+
 <!-- ── Filter Bar ──────────────────────────────────────────────────────────── -->
 <div class="ato-filter-card">
     <form method="get" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
@@ -682,22 +1133,24 @@ include __DIR__ . '/../partials/header.php';
 
 
 <!-- ── Unified Table ───────────────────────────────────────────────────────── -->
-<div class="card" style="padding:0;overflow:hidden;">
-    <div style="overflow-x:auto;">
+<div class="card" style="padding:0;">
+    <div style="overflow:hidden;border-radius:12px;">
     <table class="ato-table">
         <colgroup>
-            <col style="width:8%;min-width:80px;">  <!-- Txn ID -->
-            <col style="width:9%;min-width:85px;">  <!-- Customer -->
-            <col style="width:6%;min-width:65px;">  <!-- Type -->
-            <col style="width:9%;min-width:90px;">  <!-- Vehicle -->
-            <col style="width:17%;min-width:160px;"> <!-- Items / Parts -->
-            <col style="width:12%;min-width:110px;"> <!-- Service -->
-            <col style="width:8%;min-width:80px;">  <!-- Amount -->
-            <col style="width:7%;min-width:70px;">  <!-- Payment -->
-            <col style="width:7%;min-width:70px;">  <!-- Pay Status -->
-            <col style="width:7%;min-width:75px;">  <!-- Validation -->
-            <col style="width:9%;min-width:95px;">  <!-- Date / Time -->
-            <col style="width:7%;min-width:65px;">  <!-- Staff -->
+            <col style="width:7%;">   <!-- Txn ID -->
+            <col style="width:8%;">   <!-- Customer -->
+            <col style="width:5%;">   <!-- Type -->
+            <col style="width:6%;">   <!-- Vehicle -->
+            <col style="width:11%;">  <!-- Items / Parts -->
+            <col style="width:8%;">   <!-- Service -->
+            <col style="width:6%;">   <!-- Amount -->
+            <col style="width:5%;">   <!-- Payment -->
+            <col style="width:7%;">   <!-- Pay Status + Aging -->
+            <col style="width:5%;">   <!-- Validation -->
+            <col style="width:8%;">   <!-- Inv. Impact -->
+            <col style="width:9%;">   <!-- Validation Notes -->
+            <col style="width:7%;">   <!-- Date / Time -->
+            <col style="width:8%;">   <!-- Staff -->
         </colgroup>
         <thead>
             <tr>
@@ -711,78 +1164,142 @@ include __DIR__ . '/../partials/header.php';
                 <th style="text-align:center;">Payment</th>
                 <th style="text-align:center;">Pay Status</th>
                 <th style="text-align:center;">Validation</th>
+                <th>Inv. Impact</th>
+                <th>Validation Notes</th>
                 <th>Date / Time</th>
                 <th>Staff</th>
             </tr>
         </thead>
         <tbody>
             <?php if (count($rows) > 0): ?>
-                <?php foreach ($rows as $r): ?>
-                <?php
-                    $vs   = strtolower(trim($r['validation_status'] ?? ''));
-                    $pay_st = ato_pay_status($r);
-                    $et     = $r['entry_type'] ?? '';
+                <?php foreach ($rows as $r):
+                    $vs      = strtolower(trim($r['validation_status'] ?? ''));
+                    $pay_st  = ato_pay_status($r);
+                    $et      = $r['entry_type'] ?? '';
+                    $ikey    = ($r['_source'] ?? 'job_orders') . ':' . $r['row_id'];
+                    $ii_items = $inv_impact[$ikey] ?? [];
+
+                    // Receivables aging
+                    $rec_data    = $receivables[$r['row_id']] ?? null;
+                    $aging_label = '';
+                    $aging_color = '#64748b';
+                    $show_bal    = false;
+                    $rec_bal     = 0;
+                    if ($rec_data && !($rec_data['settled'] ?? false)) {
+                        $rec_bal  = (float)($rec_data['balance'] ?? 0);
+                        $show_bal = $rec_bal > 0.009;
+                        if (!empty($rec_data['aging_label'])) {
+                            $aging_label = $rec_data['aging_label'];
+                            $aging_color = $rec_data['overdue_days'] > 0 ? '#dc2626' : '#16a34a';
+                        }
+                    }
+
+                    // Validation note
+                    $val_note = trim($validation_notes[$ikey] ?? '');
                 ?>
                 <tr>
-                    <td style="font-weight:600;font-size:10px;font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
-                        title="<?php echo htmlspecialchars($r['txn_id']); ?>">
-                        <?php echo htmlspecialchars($r['txn_id']); ?>
+                    <td style="font-weight:600;font-size:11px;font-family:monospace;overflow:hidden;text-overflow:ellipsis;"
+                        title="<?= htmlspecialchars($r['txn_id']) ?>">
+                        <?= htmlspecialchars($r['txn_id']) ?>
                     </td>
-                    <td style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
-                        title="<?php echo htmlspecialchars($r['customer']); ?>">
-                        <?php echo htmlspecialchars($r['customer']); ?>
-                    </td>
-                    <td style="text-align:center;">
-                        <span class="ato-badge ato-badge-type" style="font-size:9px;padding:2px 5px;display:inline-block;">
-                            <?php echo htmlspecialchars($et); ?>
-                        </span>
-                    </td>
-                    <td style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#475569;"
-                        title="<?php echo htmlspecialchars($r['vehicle_info'] ?? '—'); ?>">
-                        <?php echo htmlspecialchars($r['vehicle_info'] ?? '—') ?: '—'; ?>
-                    </td>
-                    <td style="font-size:10px;line-height:1.3;max-height:40px;overflow:hidden;word-wrap:break-word;"
-                        title="<?php echo htmlspecialchars($r['items_parts'] ?? 'N/A'); ?>">
-                        <?php echo htmlspecialchars($r['items_parts'] ?? 'N/A'); ?>
-                    </td>
-                    <td style="font-size:10px;line-height:1.3;max-height:40px;overflow:hidden;word-wrap:break-word;"
-                        title="<?php echo htmlspecialchars($r['service_type'] ?? 'N/A'); ?>">
-                        <?php echo htmlspecialchars($r['service_type'] ?? 'N/A'); ?>
-                    </td>
-                    <td style="font-weight:600;color:#002F70;text-align:right;white-space:nowrap;font-size:11px;">
-                        &#8369;<?php echo number_format((float)$r['amount'], 2); ?>
-                    </td>
-                    <td style="font-size:10px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
-                        title="<?php echo htmlspecialchars($r['payment_method']); ?>">
-                        <?php echo htmlspecialchars($r['payment_method']); ?>
+                    <td style="overflow:hidden;text-overflow:ellipsis;"
+                        title="<?= htmlspecialchars($r['customer']) ?>">
+                        <?= htmlspecialchars($r['customer']) ?>
                     </td>
                     <td style="text-align:center;">
-                        <span class="ato-badge ato-badge-<?php echo strtolower(str_replace(' ', '-', $pay_st)); ?>" 
-                              style="font-size:9px;padding:2px 5px;display:inline-block;white-space:nowrap;">
-                            <?php echo $pay_st; ?>
+                        <span class="ato-badge ato-badge-type" style="font-size:10px;padding:1px 4px;">
+                            <?= htmlspecialchars($et) ?>
                         </span>
                     </td>
+                    <td style="color:#475569;overflow:hidden;text-overflow:ellipsis;"
+                        title="<?= htmlspecialchars($r['vehicle_info'] ?? '—') ?>">
+                        <?= htmlspecialchars($r['vehicle_info'] ?? '—') ?: '—' ?>
+                    </td>
+                    <td style="line-height:1.3;overflow:hidden;"
+                        title="<?= htmlspecialchars($r['items_parts'] ?? 'N/A') ?>">
+                        <?= htmlspecialchars(mb_strimwidth($r['items_parts'] ?? 'N/A', 0, 50, '…')) ?>
+                    </td>
+                    <td style="line-height:1.3;overflow:hidden;"
+                        title="<?= htmlspecialchars($r['service_type'] ?? 'N/A') ?>">
+                        <?= htmlspecialchars(mb_strimwidth($r['service_type'] ?? 'N/A', 0, 40, '…')) ?>
+                    </td>
+                    <td style="font-weight:700;color:#002F70;text-align:right;white-space:nowrap;">
+                        ₱<?= number_format((float)$r['amount'], 2) ?>
+                    </td>
+                    <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;"
+                        title="<?= htmlspecialchars($r['payment_method']) ?>">
+                        <?= htmlspecialchars(mb_strimwidth($r['payment_method'], 0, 10, '…')) ?>
+                    </td>
+
+                    <!-- Pay Status + Receivables Aging -->
                     <td style="text-align:center;">
-                        <span class="ato-badge ato-badge-<?php echo $vs; ?>" 
-                              style="font-size:9px;padding:2px 5px;display:inline-block;white-space:nowrap;">
-                            <?php echo htmlspecialchars(ucfirst($r['validation_status'])); ?>
+                        <span class="ato-badge ato-badge-<?= strtolower(str_replace(' ', '-', $pay_st)) ?>"
+                              style="font-size:10px;padding:1px 4px;">
+                            <?= htmlspecialchars($pay_st) ?>
+                        </span>
+                        <?php if ($show_bal): ?>
+                        <div style="font-size:10px;color:#9a3412;font-weight:700;margin-top:2px;white-space:nowrap;">
+                            ₱<?= number_format($rec_bal, 2) ?>
+                        </div>
+                        <?php endif; ?>
+                        <?php if (!empty($aging_label)): ?>
+                        <div style="font-size:10px;color:<?= $aging_color ?>;font-weight:600;margin-top:1px;">
+                            <?= $rec_data['overdue_days'] > 0 ? '⚠ ' : '' ?><?= htmlspecialchars($aging_label) ?>
+                        </div>
+                        <?php endif; ?>
+                    </td>
+
+                    <td style="text-align:center;">
+                        <span class="ato-badge ato-badge-<?= $vs ?>"
+                              style="font-size:10px;padding:1px 4px;">
+                            <?= htmlspecialchars(ucfirst($r['validation_status'])) ?>
                         </span>
                     </td>
-                    <td style="white-space:nowrap;font-size:10px;color:#64748b;overflow:hidden;text-overflow:ellipsis;">
-                        <?php echo date('M d, Y H:i', strtotime($r['txn_date'])); ?>
+
+                    <!-- Inventory Impact -->
+                    <td style="line-height:1.4;">
+                        <?php if (empty($ii_items) && ($r['_source'] ?? '') === 'job_orders'): ?>
+                            <span style="color:#cbd5e1;">Svc only</span>
+                        <?php elseif (empty($ii_items)): ?>
+                            <span style="color:#cbd5e1;">—</span>
+                        <?php else: foreach ($ii_items as $_ii):
+                            if ($_ii['status'] === 'yes')    { $ic = '#16a34a'; $il = '✓ Yes'; }
+                            elseif ($_ii['status'] === 'no') { $ic = '#d97706'; $il = '✗ No'; }
+                            elseif ($_ii['status'] === 'na') { $ic = '#94a3b8'; $il = 'N/A'; }
+                            else                             { $ic = '#64748b'; $il = 'Pend'; }
+                        ?>
+                        <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                             title="<?= htmlspecialchars($_ii['part']) ?> → <?= $il ?>">
+                            <span style="color:#374151;"><?= htmlspecialchars(mb_strimwidth($_ii['part'],0,10,'…')) ?></span>
+                            <span style="color:<?= $ic ?>;font-weight:700;"> <?= $il ?></span>
+                        </div>
+                        <?php endforeach; endif; ?>
                     </td>
-                    <td style="font-size:10px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
-                        title="<?php echo htmlspecialchars($r['staff_name']); ?>">
-                        <?php echo htmlspecialchars($r['staff_name']); ?>
+
+                    <!-- Validation Notes -->
+                    <td style="color:#475569;line-height:1.3;overflow:hidden;"
+                        title="<?= htmlspecialchars($val_note) ?>">
+                        <?= !empty($val_note)
+                            ? htmlspecialchars(mb_strimwidth($val_note, 0, 60, '…'))
+                            : '<span style="color:#cbd5e1;">—</span>' ?>
+                    </td>
+
+                    <td style="color:#64748b;overflow:hidden;text-overflow:ellipsis;">
+                        <?= date('M j, Y', strtotime($r['txn_date'])) ?><br>
+                        <span style="font-size:10px;"><?= date('H:i', strtotime($r['txn_date'])) ?></span>
+                    </td>
+                    <td style="color:#64748b;overflow:hidden;text-overflow:ellipsis;"
+                        title="<?= htmlspecialchars($r['staff_name']) ?>">
+                        <?= htmlspecialchars(mb_strimwidth($r['staff_name'], 0, 14, '…')) ?>
                     </td>
                 </tr>
                 <?php endforeach; ?>
             <?php else: ?>
                 <tr>
-                    <td colspan="12" style="text-align:center;padding:60px 20px;color:#94a3b8;">
-                        <i class="fas fa-inbox" style="font-size:48px;display:block;margin-bottom:12px;opacity:0.3;"></i>
-                        <div style="font-size:16px;font-weight:600;color:#64748b;margin-bottom:4px;">No Transactions Found</div>
-                        <div style="font-size:13px;">Try adjusting your filters or date range.</div>
+                    <td colspan="14" style="text-align:center;padding:40px 20px;color:#94a3b8;">
+                        <i class="fas fa-inbox" style="font-size:36px;display:block;margin-bottom:10px;opacity:0.3;"></i>
+                        <div style="font-size:14px;font-weight:600;color:#64748b;margin-bottom:4px;">No Transactions Found</div>
+                        <div style="font-size:12px;">Try adjusting your filters or date range.</div>
                     </td>
                 </tr>
             <?php endif; ?>
@@ -792,15 +1309,6 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 <style>
-/* ── Blue Header Table Design ──────────────────────────────────────────────── */
-.ato-filter-card { 
-    background:#fff;
-    border:1px solid #e2e8f0;
-    border-radius:12px;
-    padding:14px 18px;
-    margin-bottom:14px;
-    box-shadow:0 1px 4px rgba(0,0,0,.05); 
-}
 .ato-flt-grp { display:flex;flex-direction:column;gap:4px; }
 .ato-lbl { 
     font-size:11px;
@@ -848,52 +1356,53 @@ include __DIR__ . '/../partials/header.php';
 /* ── Table Styles with Blue Headers ─────────────────────────────────────────── */
 .ato-table { 
     width:100%;
-    border-collapse:separate;
+    border-collapse:collapse;
     border-spacing:0;
     font-size:11px;
     table-layout:fixed;
+    word-wrap:break-word;
+    overflow-wrap:break-word;
 }
 .ato-table thead th { 
     background:#002F70;
     color:#fff;
-    font-size:10px;
+    font-size:11px;
     font-weight:700;
     text-transform:uppercase;
-    letter-spacing:.3px;
-    padding:10px 8px;
+    letter-spacing:.2px;
+    padding:9px 6px;
     border-bottom:2px solid #001a3d;
     text-align:left;
     vertical-align:middle;
-    white-space:nowrap;
     overflow:hidden;
     text-overflow:ellipsis;
 }
 .ato-table tbody td { 
-    padding:8px 6px;
+    padding:7px 6px;
     border-bottom:1px solid #f1f5f9;
     vertical-align:middle;
     background:#fff;
     overflow:hidden;
     text-overflow:ellipsis;
+    font-size:11px;
+    word-break:break-word;
+    overflow-wrap:break-word;
+    white-space:normal;
+    max-width:0; /* forces text-overflow on fixed-layout table */
 }
 .ato-table tbody tr:hover td { 
     background:#eff6ff;
 }
 
 /* Specific column alignments */
-.ato-table th:nth-child(6),
-.ato-table td:nth-child(6) {
-    text-align:right;
-}
-
 .ato-table th:nth-child(7),
-.ato-table td:nth-child(7),
+.ato-table td:nth-child(7) { text-align:right; }
 .ato-table th:nth-child(8),
 .ato-table td:nth-child(8),
 .ato-table th:nth-child(9),
-.ato-table td:nth-child(9) {
-    text-align:center;
-}
+.ato-table td:nth-child(9),
+.ato-table th:nth-child(10),
+.ato-table td:nth-child(10) { text-align:center; }
 
 /* ── Plain Text Badges ──────────────────────────────────────────────────────── */
 .ato-badge { 

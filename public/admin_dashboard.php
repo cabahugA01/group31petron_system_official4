@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * COMPLETE ADMIN DASHBOARD - HYBRID LAYOUT
  * Full implementation with Summary Cards, Charts, Graphs, and Operational Tables
@@ -962,7 +962,7 @@ include __DIR__ . '/../partials/header.php';
   border-bottom: 2px solid var(--border-color, #e2e8f0);
   margin-bottom: 24px;
   gap: 8px;
-  overflow-x: auto;
+  overflow:hidden;
 }
 
 .adm-tab-btn {
@@ -1323,7 +1323,7 @@ include __DIR__ . '/../partials/header.php';
 }
 
 .adm-table-wrap {
-  overflow-x: auto;
+  overflow:hidden;
   width: 100%;
   max-width: 100%;
   -webkit-overflow-scrolling: touch;
@@ -1533,7 +1533,7 @@ include __DIR__ . '/../partials/header.php';
     </div>
     
     <!-- 4. Payments Card -->
-    <div class="adm-card orange" style="min-width: 280px;">
+    <div class="adm-card orange" style="">
       <div class="adm-card-details" style="width: 100%;">
         <div class="adm-card-label">Total Payments</div>
         <div class="adm-card-val" style="margin-bottom: 8px;">₱<?php echo number_format($total_payments, 2); ?></div>
@@ -1605,7 +1605,7 @@ include __DIR__ . '/../partials/header.php';
       <i class="fas fa-table"></i> Operational Tables &amp; Records
     </h2>
     
-    <div class="adm-tabs-container" style="border-bottom: 2px solid var(--border-color); margin-bottom: 20px; display: flex; gap: 4px; overflow-x: auto; padding-bottom: 6px; width: 100%; max-width: 100%; -webkit-overflow-scrolling: touch; scrollbar-width: none;">
+    <div class="adm-tabs-container" style="border-bottom: 2px solid var(--border-color); margin-bottom: 20px; display: flex; gap: 4px; overflow:hidden; padding-bottom: 6px; width: 100%; max-width: 100%; -webkit-overflow-scrolling: touch; scrollbar-width: none;">
       <button class="adm-tab-btn2 active" onclick="switchTableTab('shift', this)" style="white-space: nowrap; font-size: 12px; padding: 8px 12px; flex-shrink: 0;"><i class="fas fa-clock"></i> Shifts</button>
       <button class="adm-tab-btn2" onclick="switchTableTab('consolidation', this)" style="white-space: nowrap; font-size: 12px; padding: 8px 12px; flex-shrink: 0;"><i class="fas fa-calculator"></i> Daily</button>
       <button class="adm-tab-btn2" onclick="switchTableTab('fuel_inv', this)" style="white-space: nowrap; font-size: 12px; padding: 8px 12px; flex-shrink: 0;"><i class="fas fa-gas-pump"></i> Fuel</button>
@@ -1869,7 +1869,7 @@ include __DIR__ . '/../partials/header.php';
     <div id="log-tab-audit" class="adm-table-panel active">
       <div style="margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
         <div class="adm-audit-filters" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-          <input type="text" id="auditSearch" placeholder="Search audit trail..." onkeyup="filterAuditTrail()" style="padding:6px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:13px; min-width:200px;">
+          <input type="text" id="auditSearch" placeholder="Search audit trail..." onkeyup="filterAuditTrail()" style="padding:6px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:13px; ">
           
           <select id="auditRoleFilter" onchange="filterAuditTrail()" style="padding:6px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:13px; background:white;">
             <option value="">All Roles</option>

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Security Reports - Standalone Page
  * Login Attempts, Access Violations, Password Resets, Suspicious Activity
@@ -802,7 +802,7 @@ include __DIR__ . '/../partials/header.php';
                     <p>No login attempts recorded</p>
                 </div>
             <?php else: ?>
-                <div style="overflow-x: auto;">
+                <div style="overflow:hidden;">
                     <table class="data-table">
                         <thead>
                             <tr>
@@ -850,7 +850,7 @@ include __DIR__ . '/../partials/header.php';
                     <p>No access violations. System is secure!</p>
                 </div>
             <?php else: ?>
-                <div style="overflow-x: auto;">
+                <div style="overflow:hidden;">
                     <table class="data-table">
                         <thead>
                             <tr>
@@ -896,7 +896,7 @@ include __DIR__ . '/../partials/header.php';
                     <p>No password resets recorded</p>
                 </div>
             <?php else: ?>
-                <div style="overflow-x: auto;">
+                <div style="overflow:hidden;">
                     <table class="data-table">
                         <thead>
                             <tr>
@@ -944,7 +944,7 @@ include __DIR__ . '/../partials/header.php';
                     <p>No suspicious activity detected. All clear!</p>
                 </div>
             <?php else: ?>
-                <div style="overflow-x: auto;">
+                <div style="overflow:hidden;">
                     <table class="data-table">
                         <thead>
                             <tr>

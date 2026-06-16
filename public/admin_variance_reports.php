@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Admin Variance Reports - Merchandise (Admin Functional Form)
  * Access: admin and superadmin roles only.
@@ -258,15 +258,14 @@ html,body{max-width:100vw;overflow-x:hidden}
 .mvr-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap}
 .mvr-head h1{margin:0 0 4px;font-size:22px;font-weight:700;color:#00264D;display:flex;align-items:center;gap:9px}
 .mvr-subtitle{font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:.3px}
-.mvr-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;text-decoration:none;transition:all .13s;height:36px;white-space:nowrap}
-.mvr-btn-primary{background:#002F6C;color:#fff}.mvr-btn-primary:hover{background:#001f4d;color:#fff}
-.mvr-btn-excel{background:#1d6f42;color:#fff}.mvr-btn-excel:hover{background:#155a34;color:#fff}
-.mvr-btn-back{background:#6c757d;color:#fff}.mvr-btn-back:hover{background:#545b62;color:#fff}
-.mvr-btn-filter{background:#002F6C;color:#fff}.mvr-btn-filter:hover{background:#001f4d;color:#fff}
+.mvr-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid transparent;text-decoration:none;transition:all .2s;white-space:nowrap;background:white !important}
+.mvr-btn-primary{color:#00264D !important;border-color:#00264D !important}.mvr-btn-primary:hover{background:#00264D !important;color:#fff !important}
+.mvr-btn-excel{color:#16a34a !important;border-color:#16a34a !important}.mvr-btn-excel:hover{background:#16a34a !important;color:#fff !important}
+.mvr-btn-back{color:#4b5563 !important;border-color:#6b7280 !important}.mvr-btn-back:hover{background:#6b7280 !important;color:#fff !important}
+.mvr-btn-filter{color:#00264D !important;border-color:#00264D !important}.mvr-btn-filter:hover{background:#00264D !important;color:#fff !important}
+.mvr-btn-danger{color:#dc2626 !important;border-color:#dc2626 !important}.mvr-btn-danger:hover{background:#dc2626 !important;color:#fff !important}
 .mvr-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:18px}
 .mvr-card{background:#fff;border:1px solid #e2e8f0;border-radius:11px;padding:16px;display:flex;align-items:center;gap:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
-.mvr-card.c-blue{border-left:4px solid #1e40af}.mvr-card.c-red{border-left:4px solid #dc2626}
-.mvr-card.c-amber{border-left:4px solid #d97706}.mvr-card.c-green{border-left:4px solid #16a34a}
 .mvr-card-ico{width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0;color:#002F6C}
 .mvr-card-meta h3{margin:0;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;font-weight:700}
 .mvr-card-meta h2{margin:2px 0 0;font-size:24px;font-weight:900;color:#00264D;line-height:1}
@@ -280,7 +279,7 @@ html,body{max-width:100vw;overflow-x:hidden}
 .mvr-table-title{font-size:13px;font-weight:700;color:#00264D;text-transform:uppercase;letter-spacing:.3px;margin:0}
 .mvr-tbl{width:100%;border-collapse:collapse;font-size:12px}
 .mvr-tbl thead tr{background:#002F6C}
-.mvr-tbl thead th{padding:10px 12px;text-align:left;font-size:10px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap}
+.mvr-tbl thead th{padding:10px 12px;text-align:left;font-size:10px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;}
 .mvr-tbl tbody tr{border-bottom:1px solid #f1f5f9;transition:background .1s}
 .mvr-tbl tbody tr:hover{background:#eff6ff}
 .mvr-tbl tbody td{padding:10px 12px;color:#334155;vertical-align:middle;word-break:break-all}
@@ -333,7 +332,7 @@ html,body{max-width:100vw;overflow-x:hidden}
 
 <!-- Summary Cards -->
 <div class="mvr-cards">
-    <div class="mvr-card c-blue">
+    <div class="mvr-card">
         <div class="mvr-card-ico"><i class="fas fa-list-ul"></i></div>
         <div class="mvr-card-meta">
             <h3>Total Reports</h3>
@@ -341,7 +340,7 @@ html,body{max-width:100vw;overflow-x:hidden}
             <span>All status categories</span>
         </div>
     </div>
-    <div class="mvr-card c-red">
+    <div class="mvr-card">
         <div class="mvr-card-ico"><i class="fas fa-flag"></i></div>
         <div class="mvr-card-meta">
             <h3>Flagged</h3>
@@ -349,7 +348,7 @@ html,body{max-width:100vw;overflow-x:hidden}
             <span>Discrepancies flagged</span>
         </div>
     </div>
-    <div class="mvr-card c-amber">
+    <div class="mvr-card">
         <div class="mvr-card-ico"><i class="fas fa-history"></i></div>
         <div class="mvr-card-meta">
             <h3>Pending Review</h3>
@@ -357,7 +356,7 @@ html,body{max-width:100vw;overflow-x:hidden}
             <span>Manager investigation</span>
         </div>
     </div>
-    <div class="mvr-card c-green">
+    <div class="mvr-card">
         <div class="mvr-card-ico"><i class="fas fa-check-circle"></i></div>
         <div class="mvr-card-meta">
             <h3>Cleared</h3>
@@ -397,7 +396,7 @@ html,body{max-width:100vw;overflow-x:hidden}
             <option value="cleared" <?= $filter_status==='cleared'?'selected':'' ?>>Cleared</option>
         </select>
     </div>
-    <div class="mvr-fg" style="flex-grow:1;min-width:180px;">
+    <div class="mvr-fg" style="flex-grow:1;">
         <label>Search Keyword</label>
         <input type="text" name="q" placeholder="Txn ID, item, encoder, manager..." value="<?= htmlspecialchars($search_q) ?>">
     </div>
@@ -419,7 +418,7 @@ html,body{max-width:100vw;overflow-x:hidden}
         <div style="font-size:13px;">No merchandise variances match your active filter search.</div>
     </div>
     <?php else: ?>
-    <div style="overflow-x:auto;max-width:100%;">
+    <div style="overflow:hidden;max-width:100%;">
         <table class="mvr-tbl" id="mvrTable">
             <thead>
                 <tr>
@@ -653,7 +652,7 @@ html,body{max-width:100vw;overflow-x:hidden}
                 </div>
             </div>
             <div class="mvr-modal-foot">
-                <button type="submit" class="mvr-btn" style="background:#0284c7;color:#fff;">Save Changes</button>
+                <button type="submit" class="mvr-btn mvr-btn-primary">Save Changes</button>
                 <button type="button" onclick="closeMvrModal('editModal')" class="mvr-btn mvr-btn-back">Cancel</button>
             </div>
         </form>

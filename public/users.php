@@ -593,8 +593,11 @@ include __DIR__ . '/../partials/header.php';
         <div class="sub" style="font-weight: 500;">PROFESSIONAL USER ACCOUNT MANAGEMENT AND ACCESS CONTROL - SUPERADMIN/DEVELOPER/ADMIN/MANAGER</div>
     </div>
     <div class="actions">
-        <button class="btn" onclick="openAddModal()">
-            <i class="fas fa-user-plus me-2"></i> Add User
+        <button onclick="openAddModal()"
+                style="display:inline-flex !important;align-items:center;gap:6px;padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid #00264D !important;background:white !important;color:#00264D !important;transition:all .2s;"
+                onmouseover="this.style.background='#00264D';this.style.color='#fff'"
+                onmouseout="this.style.background='white';this.style.color='#00264D'">
+            <i class="fas fa-user-plus"></i> Add User
         </button>
     </div>
 </div>
@@ -1180,13 +1183,18 @@ document.addEventListener('DOMContentLoaded', function () {
     .mb-3 { margin-bottom: 1rem; }
     .mt-3 { margin-top: 1rem; }
     
-    .action-btn { font-size:12px; padding:5px 8px; border:none; border-radius:4px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:5px; transition:all .15s; font-weight:600; width:100px; text-decoration:none; }
-    .action-btn:hover { filter:brightness(.9); transform:translateY(-1px); }
-    .btn-view    { background:#28a745; color:#fff; }
-    .btn-edit    { background:#002F70; color:#fff; }
-    .btn-reset   { background:#ffc107; color:#333; }
-    .btn-danger  { background:#dc3545; color:#fff; }
-    .btn-success { background:#28a745; color:#fff; }
+    .action-btn { font-size:11px; padding:5px 10px; border-radius:4px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:5px; transition:all .2s; font-weight:600; width:100px; text-decoration:none; background:white !important; border:1px solid transparent; }
+    .action-btn:hover { transform:none; filter:none; }
+    .btn-view    { color:#16a34a !important; border-color:#16a34a !important; }
+    .btn-view:hover { background:#16a34a !important; color:#fff !important; }
+    .btn-edit    { color:#00264D !important; border-color:#00264D !important; }
+    .btn-edit:hover { background:#00264D !important; color:#fff !important; }
+    .btn-reset   { color:#d97706 !important; border-color:#d97706 !important; }
+    .btn-reset:hover { background:#d97706 !important; color:#fff !important; }
+    .btn-danger  { color:#dc2626 !important; border-color:#dc2626 !important; }
+    .btn-danger:hover { background:#dc2626 !important; color:#fff !important; }
+    .btn-success { color:#16a34a !important; border-color:#16a34a !important; }
+    .btn-success:hover { background:#16a34a !important; color:#fff !important; }
 
     /* Modal improvements - Database-driven configuration */
     #addModal .modal-content,

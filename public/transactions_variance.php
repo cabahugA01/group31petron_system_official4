@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Variance Alerts — Full Anomaly-Handling Workflow
  * Merchandise & Job Orders only. Fuel has its own reconciliation flow.
@@ -361,7 +361,7 @@ include __DIR__ . '/../partials/header.php';
         <strong style="color:#842029;font-size:14px;"><?= count($detected_anomalies); ?> New Anomal<?= count($detected_anomalies)>1?'ies':'y'; ?> Detected</strong>
         <span style="font-size:12px;color:#6c757d;">— Not yet logged. Review and flag below.</span>
     </div>
-    <div style="overflow-x:auto;">
+    <div style="overflow:hidden;">
         <table class="va-table" style="font-size:12px;">
             <thead><tr><th>Type</th><th>Anomaly</th><th>Reference</th><th>Item / Service</th><th>Variance</th><th>Staff</th><th>Date</th><th>Action</th></tr></thead>
             <tbody>
@@ -413,7 +413,7 @@ include __DIR__ . '/../partials/header.php';
             <label>Date Flagged</label>
             <input type="date" name="date" class="va-select" value="<?= htmlspecialchars($filter_date); ?>" onchange="this.form.submit()">
         </div>
-        <div class="va-filter-group" style="flex:1;min-width:180px;">
+        <div class="va-filter-group" style="flex:1;">
             <label>Search</label>
             <input type="text" name="q" class="va-select" placeholder="SKU / item / notes…" value="<?= htmlspecialchars($search_q); ?>">
         </div>
@@ -903,7 +903,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 /* ── Stat cards — white background, no colored icon circles ── */
 .va-stat-row { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
-.va-stat-card { display:flex; align-items:center; gap:12px; background:#fff; border:1px solid #e9ecef; border-radius:10px; padding:14px 18px; flex:1; min-width:130px; transition:box-shadow .15s, transform .15s; }
+.va-stat-card { display:flex; align-items:center; gap:12px; background:#fff; border:1px solid #e9ecef; border-radius:10px; padding:14px 18px; flex:1; transition:box-shadow .15s, transform .15s; }
 .va-stat-card:hover { box-shadow:0 4px 14px rgba(0,0,0,.1); transform:translateY(-2px); }
 .va-stat-icon { width:40px; height:40px; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; color:#002F70; }
 .va-stat-num  { font-size:22px; font-weight:800; color:#002F70; line-height:1; }
@@ -916,7 +916,7 @@ document.addEventListener('DOMContentLoaded', function() {
 .va-filter-bar { background:#fff; border:1px solid #e9ecef; border-radius:10px; padding:16px 18px; margin-bottom:16px; }
 .va-filter-group { display:flex; flex-direction:column; gap:4px; }
 .va-filter-group label { font-size:11px; font-weight:700; color:#495057; text-transform:uppercase; letter-spacing:.4px; }
-.va-select { padding:8px 12px; border:1px solid #ced4da; border-radius:6px; font-size:13px; background:#fff; min-width:140px; transition:border-color .2s; }
+.va-select { padding:8px 12px; border:1px solid #ced4da; border-radius:6px; font-size:13px; background:#fff; transition:border-color .2s; }
 .va-select:focus { outline:none; border-color:#002F70; box-shadow:0 0 0 2px rgba(0,47,112,.15); }
 
 /* ── Generic modal buttons ── */
@@ -928,9 +928,9 @@ document.addEventListener('DOMContentLoaded', function() {
 .va-btn-danger    { background:#dc3545; color:#fff; }
 
 /* ── Main table — purchase-order style ── */
-.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow-x:auto; }
+.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow:hidden; }
 .po-table { width:100%; border-collapse:collapse; font-size:0.88rem; }
-.po-table thead th { background:#002F70; color:#fff; padding:12px 14px; text-align:left; font-weight:600; white-space:nowrap; }
+.po-table thead th { background:#002F70; color:#fff; padding:12px 14px; text-align:left; font-weight:600; }
 .po-table tbody tr { border-bottom:1px solid #f0f0f0; transition:background 0.15s; }
 .po-table tbody tr:hover { background:#f5f8ff; }
 .po-table tbody td { padding:11px 14px; vertical-align:middle; color:#333; }
@@ -963,7 +963,7 @@ document.addEventListener('DOMContentLoaded', function() {
 .btn-reopen  { background:#dc3545; color:#fff; }
 .btn-approve { background:#28a745; color:#fff; }
 .btn-reject  { background:#dc3545; color:#fff; }
-.actions-cell { display:flex; flex-direction:column; gap:4px; min-width:110px; }
+.actions-cell { display:flex; flex-direction:column; gap:4px; }
 .actions-cell .btn-action { width:100%; justify-content:center; margin-bottom:0; }
 
 /* ── Anomaly banner flag button ── */

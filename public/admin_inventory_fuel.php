@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'admin_inventory_fuel';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -166,7 +166,7 @@ body,html{overflow-x:hidden!important;}
 .flash-err{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb;border-radius:7px;padding:11px 15px;margin-bottom:14px;font-size:13px;}
 /* KPI bar */
 .aif-kpi{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;}
-.aif-kpi-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;min-width:130px;flex:1;box-shadow:0 1px 3px rgba(0,0,0,.04);}
+.aif-kpi-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;flex:1;box-shadow:0 1px 3px rgba(0,0,0,.04);}
 .aif-kpi-card .n{font-size:1.6rem;font-weight:800;color:#002F70;line-height:1.1;}
 .aif-kpi-card .l{font-size:12px;font-weight:700;color:#6c757d;text-transform:uppercase;letter-spacing:.4px;margin-top:3px;}
 .aif-kpi-card.ok   .n{color:#28a745;}

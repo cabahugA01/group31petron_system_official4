@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'inventory';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -157,8 +157,7 @@ include __DIR__ . '/../partials/header.php';
 /* ── For dropdowns with specific width ── */
 .select.auto-width {
     width: auto;
-    min-width: 200px;
-}
+    }
 .sbadge-completed { background: #d4edda; color: #155724; }
 
 /* ── History legend ── */
@@ -281,7 +280,7 @@ include __DIR__ . '/../partials/header.php';
                         <td><strong><?php echo htmlspecialchars($fuel['name']); ?></strong></td>
                         <td><?php echo number_format($fl, 2); ?> L</td>
                         <td><?php echo number_format($cap, 2); ?> L</td>
-                        <td style="min-width:120px;">
+                        <td style="">
                             <div style="background:#e9ecef;border-radius:4px;height:8px;overflow:hidden;">
                                 <div style="width:<?php echo min(100, round($pct)); ?>%;height:100%;background:<?php echo $sc; ?>;border-radius:4px;"></div>
                             </div>
@@ -381,7 +380,7 @@ include __DIR__ . '/../partials/header.php';
 
 <!-- Fuel Request Success Popup -->
 <div id="fsrSuccessOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2999;"></div>
-<div id="fsrSuccessPopup" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:3000;background:#fff;padding:28px 32px;border-radius:14px;box-shadow:0 10px 40px rgba(0,0,0,.25);text-align:center;min-width:300px;max-width:400px;">
+<div id="fsrSuccessPopup" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:3000;background:#fff;padding:28px 32px;border-radius:14px;box-shadow:0 10px 40px rgba(0,0,0,.25);text-align:center;max-width:400px;">
     <div style="width:60px;height:60px;background:linear-gradient(135deg,#c0392b,#e74c3c);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;">
         <i class="fas fa-check" style="color:#fff;font-size:24px;"></i>
     </div>
@@ -576,7 +575,7 @@ include __DIR__ . '/../partials/header.php';
 
 <!-- Merchandise Stock Request Success Popup -->
 <div id="msrSuccessOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2999;"></div>
-<div id="msrSuccessPopup" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:3000;background:#fff;padding:28px 32px;border-radius:14px;box-shadow:0 10px 40px rgba(0,0,0,.25);text-align:center;min-width:300px;max-width:420px;">
+<div id="msrSuccessPopup" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:3000;background:#fff;padding:28px 32px;border-radius:14px;box-shadow:0 10px 40px rgba(0,0,0,.25);text-align:center;max-width:420px;">
     <div style="width:60px;height:60px;background:linear-gradient(135deg,#002F70,#004aad);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;">
         <i class="fas fa-check" style="color:#fff;font-size:24px;"></i>
     </div>
@@ -588,7 +587,7 @@ include __DIR__ . '/../partials/header.php';
 
 <!-- ── Legacy success popup (kept for backward compat) ── -->
 <div id="successOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1999;"></div>
-<div id="successPopup"  style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:2000;background:#fff;padding:28px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);text-align:center;min-width:300px;">
+<div id="successPopup"  style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:2000;background:#fff;padding:28px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);text-align:center;">
     <div style="width:56px;height:56px;background:linear-gradient(135deg,#28a745,#20c997);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
         <i class="fas fa-check" style="color:#fff;font-size:22px;"></i>
     </div>
@@ -1052,7 +1051,7 @@ function buildFuelRows(fuels) {
             '</td>' +
 
             // Fuel name + bar
-            '<td style="padding:10px 10px;vertical-align:middle;min-width:130px;">' +
+            '<td style="padding:10px 10px;vertical-align:middle;">' +
                 '<label for="' + cbId + '" style="cursor:pointer;">' +
                     '<strong style="font-size:13px;color:#002F70;">' + escHtml(f.fuel_type) + '</strong>' +
                 '</label>' +

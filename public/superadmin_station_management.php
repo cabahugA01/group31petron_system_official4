@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 // ============================================================
 // SuperAdmin – Station Management
@@ -225,9 +225,9 @@ include __DIR__ . '/../partials/header.php';
 .sm-toolbar-right { margin-left: auto; }
 
 /* Table */
-.sm-table-wrap { background: #fff; border: 1px solid #eaeaea; border-radius: 16px; overflow-x: auto; overflow-y: visible; box-shadow: 0 2px 12px rgba(0,0,0,.05); }
-.sm-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 860px; }
-.sm-table thead th { background: var(--petron-blue); color: #fff; padding: 13px 16px; text-align: left; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; }
+.sm-table-wrap { background: #fff; border: 1px solid #eaeaea; border-radius: 16px; overflow:hidden; overflow-y: visible; box-shadow: 0 2px 12px rgba(0,0,0,.05); }
+.sm-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sm-table thead th { background: var(--petron-blue); color: #fff; padding: 13px 16px; text-align: left; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; }
 .sm-table tbody tr { border-bottom: 1px solid #f0f0f0; transition: background .15s; }
 .sm-table tbody tr:last-child { border-bottom: none; }
 .sm-table tbody tr:hover { background: #f8fafc; }
@@ -374,7 +374,7 @@ include __DIR__ . '/../partials/header.php';
     position: sticky;
     top: 73px; /* below the sticky modal header */
     z-index: 1;
-    overflow-x: auto;
+    overflow:hidden;
     scrollbar-width: none;
 }
 .cfg-tabs::-webkit-scrollbar { display: none; }
@@ -414,7 +414,7 @@ include __DIR__ . '/../partials/header.php';
 .sm-combo.open .sm-combo-arrow { transform: translateY(-50%) rotate(180deg); }
 .sm-combo-clear { position: absolute; right: 30px; top: 50%; transform: translateY(-50%); color: #bbb; font-size: 13px; cursor: pointer; display: none; background: none; border: none; padding: 2px 4px; line-height: 1; }
 .sm-combo-clear:hover { color: #cc0000; }
-.sm-combo-dropdown { display: none; position: fixed; background: #fff; border: 1px solid #ddd; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.12); z-index: 99999; max-height: 220px; overflow: hidden; flex-direction: column; min-width: 200px; }
+.sm-combo-dropdown { display: none; position: fixed; background: #fff; border: 1px solid #ddd; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.12); z-index: 99999; max-height: 220px; overflow: hidden; flex-direction: column; }
 .sm-combo.open .sm-combo-dropdown { display: flex; }
 .sm-combo-search { padding: 9px 12px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .sm-combo-search i { color: #bbb; font-size: 13px; }
@@ -885,7 +885,7 @@ include __DIR__ . '/../partials/header.php';
 
         <!-- Catalog search + add -->
         <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;">
-          <input type="text" id="e_merch_search" placeholder="Search global catalog…" style="flex:1;min-width:180px;padding:9px 13px;border:1px solid #ddd;border-radius:10px;font-size:13px;outline:none;" oninput="searchMerchCatalog()">
+          <input type="text" id="e_merch_search" placeholder="Search global catalog…" style="flex:1;padding:9px 13px;border:1px solid #ddd;border-radius:10px;font-size:13px;outline:none;" oninput="searchMerchCatalog()">
           <select id="e_merch_cat_filter" onchange="searchMerchCatalog()" style="padding:9px 13px;border:1px solid #ddd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
             <option value="">All Categories</option>
           </select>
@@ -1577,7 +1577,7 @@ async function openProfileModal(stationId, stationName) {
           <!-- Pumps -->
           <div style="background:#fff;border:1px solid #eee;border-radius:10px;overflow:hidden;margin-bottom:16px;">
             <div style="padding:12px 16px;border-bottom:1px solid #f0f0f0;font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:.5px;"><i class="fas fa-gas-pump" style="margin-right:5px;color:var(--petron-blue);"></i>Fuel Pumps</div>
-            <div style="overflow-x:auto;">
+            <div style="overflow:hidden;">
               <table style="width:100%;border-collapse:collapse;font-size:13px;">
                 <thead><tr style="background:#f8fafc;">
                   <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;">Pump #</th>
@@ -1593,7 +1593,7 @@ async function openProfileModal(stationId, stationName) {
           <!-- Fuel Inventory -->
           <div style="background:#fff;border:1px solid #eee;border-radius:10px;overflow:hidden;margin-bottom:16px;">
             <div style="padding:12px 16px;border-bottom:1px solid #f0f0f0;font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:.5px;"><i class="fas fa-tint" style="margin-right:5px;color:var(--petron-blue);"></i>Fuel Inventory (Current Stock)</div>
-            <div style="overflow-x:auto;">
+            <div style="overflow:hidden;">
               <table style="width:100%;border-collapse:collapse;font-size:13px;">
                 <thead><tr style="background:#f8fafc;">
                   <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;">Fuel Type</th>
@@ -1607,7 +1607,7 @@ async function openProfileModal(stationId, stationName) {
           <!-- Merchandise -->
           <div style="background:#fff;border:1px solid #eee;border-radius:10px;overflow:hidden;">
             <div style="padding:12px 16px;border-bottom:1px solid #f0f0f0;font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:.5px;"><i class="fas fa-boxes" style="margin-right:5px;color:var(--petron-blue);"></i>Merchandise Stock</div>
-            <div style="overflow-x:auto;">
+            <div style="overflow:hidden;">
               <table style="width:100%;border-collapse:collapse;font-size:13px;">
                 <thead><tr style="background:#f8fafc;">
                   <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;">Product</th>
@@ -1631,7 +1631,7 @@ function showFlash(type, msg) {
     if (!el) {
         el = document.createElement('div');
         el.id = 'smPageFlash';
-        el.style.cssText = 'position:fixed;top:80px;right:24px;z-index:9999;min-width:280px;max-width:420px;';
+        el.style.cssText = 'position:fixed;top:80px;right:24px;z-index:9999;max-width:420px;';
         document.body.appendChild(el);
     }
     el.className = 'sm-flash ' + type;

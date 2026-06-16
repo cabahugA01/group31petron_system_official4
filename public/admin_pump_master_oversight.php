@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'admin_pump_master_oversight';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -146,7 +146,7 @@ include __DIR__ . '/../partials/header.php';
 :root{--blue:#002F70;--green:#28a745;--red:#dc3545;--orange:#fd7e14;--gray:#6c757d;}
 .page-head{margin-bottom:22px;}
 .stats-row{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:22px;}
-.stat-card{background:#fff;border:1px solid #e9ecef;border-radius:10px;padding:14px 18px;min-width:150px;flex:1;box-shadow:0 1px 4px rgba(0,0,0,.05);}
+.stat-card{background:#fff;border:1px solid #e9ecef;border-radius:10px;padding:14px 18px;flex:1;box-shadow:0 1px 4px rgba(0,0,0,.05);}
 .stat-card .stat-num{font-size:1.6rem;font-weight:800;color:var(--blue);}
 .stat-card .stat-lbl{font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.4px;margin-top:2px;}
 .stat-card.green .stat-num{color:#28a745;}
@@ -156,7 +156,7 @@ include __DIR__ . '/../partials/header.php';
 .card-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #f0f0f0;flex-wrap:wrap;gap:8px;}
 .card-title{font-size:.95rem;font-weight:700;color:var(--blue);display:flex;align-items:center;gap:8px;}
 .card-body{padding:16px 18px;}
-.table-wrap{overflow-x:auto;}
+.table-wrap{overflow:hidden;}
 table{width:100%;border-collapse:collapse;font-size:12px;}
 thead th{background:var(--blue);color:#fff;padding:10px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;}
 tbody td{padding:8px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle;}

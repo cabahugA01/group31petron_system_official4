@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'admin_inventory_merch';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -105,7 +105,7 @@ include __DIR__ . '/../partials/header.php';
 body, html { overflow-x: hidden !important; }
 
 .kpi-row { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px; }
-.kpi-box { background:#fff; border-radius:10px; padding:14px 18px; min-width:130px; flex:1; border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+.kpi-box { background:#fff; border-radius:10px; padding:14px 18px; flex:1; border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,.04); }
 .kpi-box .n { font-size:1.5rem; font-weight:800; color:#002F70; line-height:1.1; }
 .kpi-box .l { font-size:12px; font-weight:700; color:#6c757d; text-transform:uppercase; letter-spacing:.4px; margin-top:3px; }
 .kpi-box.ok   .n { color:#28a745; }

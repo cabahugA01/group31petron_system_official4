@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'transactions';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -487,7 +487,7 @@ Merchandise Inventory
                     </h3>
                 </div>
                 <div style="padding: 20px;">
-                    <div style="overflow-x: auto;">
+                    <div style="overflow:hidden;">
                         <table style="width: 100%; border-collapse: collapse;">
                             <thead>
                                 <tr style="background: #f8f9fa; border-bottom: 2px solid #e9ecef;">
@@ -766,7 +766,7 @@ Merchandise Inventory
                         </div>
                     </div>
                     
-                    <div style="overflow-x: auto;">
+                    <div style="overflow:hidden;">
                         <table style="width: 100%; border-collapse: collapse;">
                             <thead>
                                 <tr style="background: #f8f9fa; border-bottom: 2px solid #e9ecef;">

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'job_orders';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -1716,7 +1716,6 @@ include __DIR__ . '/../partials/header.php';
 }
 
 .toast {
-    min-width: 300px;
     padding: 16px 20px;
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -3928,7 +3927,7 @@ window.addEventListener('DOMContentLoaded', function() {
                                 <div id="other-panel-inventory" style="margin-bottom:6px;">
                                     <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                                         <select id="other-inventory-select"
-                                                style="flex:1; min-width:200px; max-width:300px; padding:6px 8px; border:1.5px solid #ced4da; border-radius:4px; font-size:12px;">
+                                                style="flex:1; max-width:300px; padding:6px 8px; border:1.5px solid #ced4da; border-radius:4px; font-size:12px;">
                                             <option value="">— Select from inventory —</option>
                                             <?php foreach ($merch_inventory as $item): ?>
                                             <option value="<?php echo htmlspecialchars($item['product_name']); ?>"
@@ -3955,7 +3954,7 @@ window.addEventListener('DOMContentLoaded', function() {
                                 <div id="other-panel-freetext" style="display:none; margin-bottom:6px;">
                                     <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                                         <input type="text" id="other-freetext-name" placeholder="Part / material name"
-                                               style="flex:1; min-width:160px; padding:6px 8px; border:1.5px solid #ced4da; border-radius:4px; font-size:12px;">
+                                               style="flex:1; padding:6px 8px; border:1.5px solid #ced4da; border-radius:4px; font-size:12px;">
                                         <input type="number" id="other-freetext-qty" min="1" max="999" value="1"
                                                style="width:56px; padding:6px; border:1.5px solid #ced4da; border-radius:4px; font-size:12px; text-align:center;">
                                         <input type="text" id="other-freetext-remarks" placeholder="Remarks"
