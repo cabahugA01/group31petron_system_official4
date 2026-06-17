@@ -579,14 +579,14 @@ html, body {
                     onmouseout="this.style.background='white';this.style.color='#003d7a'">
                 <i class="fas fa-file-csv"></i> CSV
             </button>
-            <!-- PDF -->
-            <button type="button"
-                    onclick="mftvExport('pdf')"
-                    style="background:white;color:#dc2626;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #dc2626;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
-                    onmouseover="this.style.background='#dc2626';this.style.color='#fff'"
-                    onmouseout="this.style.background='white';this.style.color='#dc2626'">
-                <i class="fas fa-file-pdf"></i> PDF
-            </button>
+            <!-- Audit Trail -->
+            <a href="manager_reports.php?section=audit_trail"
+               style="background:white;color:#7c3aed;text-decoration:none;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #7c3aed;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
+               onmouseover="this.style.background='#7c3aed';this.style.color='#fff'"
+               onmouseout="this.style.background='white';this.style.color='#7c3aed'"
+               title="View Audit Trail Report - Consolidated logs across shifts">
+                <i class="fas fa-history"></i> Audit Trail
+            </a>
             <!-- Back -->
             <a href="manager_dashboard.php"
                style="background:white;color:#4b5563;text-decoration:none;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #6b7280;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"

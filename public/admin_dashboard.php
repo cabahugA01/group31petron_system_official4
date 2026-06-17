@@ -63,22 +63,30 @@ function adm_rows(PDO $pdo, string $sql, array $p = []): array {
 // ══════════════════════════════════════════════════════════
 // Total Sales
 $fuel_sales = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ?", [$station_id,$date_from,$date_to]);
-$merch_sales = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM merchandise_transactions WHERE station_id=? AND DATE(COALESCE(transaction_date,created_at)) BETWEEN ? AND ?", [$station_id,$date_from,$date_to]);
+$merch_sales = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM merchandise_transactions WHERE station_id=? AND DATE(COALESCE(transaction_date,created_at)) BETWEEN ? AND ? AND LOWER(TRIM(COALESCE(validation_status,''))) IN ('approved','completed','adjusted')", [$station_id,$date_from,$date_to]);
 $total_sales_val = $fuel_sales + $merch_sales;
 
 // Fuel Stock (Liters)
 $fuel_stock_val = (float) adm_val($pdo, "SELECT COALESCE(SUM(current_stock),0) FROM fuel_inventory WHERE station_id=?", [$station_id]);
 
-// Merchandise Stock
-$merch_stock_val = (float) adm_val($pdo, "SELECT COALESCE(SUM(stock_level),0) FROM inventory WHERE station_id=?", [$station_id]);
+// Merchandise Stock — use station_inventory
+$merch_stock_val = (float) adm_val($pdo, "SELECT COALESCE(SUM(stock_level),0) FROM station_inventory WHERE station_id=?", [$station_id]);
 
 // Pending Deliveries
 $pending_deliveries_val = (int) adm_val($pdo, "SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status LIKE 'Pending%'", [$station_id]);
 
-// Active Users (Staff, Manager, Customers)
-$active_staff = (int) adm_val($pdo, "SELECT COUNT(*) FROM users WHERE station_id=? AND status = 'Active' AND role='Staff'", [$station_id]);
-$active_managers = (int) adm_val($pdo, "SELECT COUNT(*) FROM users WHERE station_id=? AND status = 'Active' AND role='Manager'", [$station_id]);
-$active_customers = (int) adm_val($pdo, "SELECT COUNT(*) FROM customers WHERE station_id=? AND account_status = 'Active'", [$station_id]);
+// Pending Transactions (merch + JO awaiting manager validation)
+$pending_txn_val = (int) adm_val($pdo,
+    "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND LOWER(TRIM(COALESCE(validation_status,'')))='pending'",
+    [$station_id]);
+$pending_txn_val += (int) adm_val($pdo,
+    "SELECT COUNT(*) FROM job_orders WHERE station_id=? AND LOWER(TRIM(COALESCE(validation_status,''))) IN ('pending validation','pending')",
+    [$station_id]);
+
+// Active Users
+$active_staff     = (int) adm_val($pdo, "SELECT COUNT(*) FROM users WHERE station_id=? AND status='Active' AND LOWER(TRIM(role))='staff'", [$station_id]);
+$active_managers  = (int) adm_val($pdo, "SELECT COUNT(*) FROM users WHERE station_id=? AND status='Active' AND LOWER(TRIM(role))='manager'", [$station_id]);
+$active_customers = (int) adm_val($pdo, "SELECT COUNT(*) FROM customers WHERE station_id=? AND LOWER(TRIM(COALESCE(status,'')))='active'", [$station_id]);
 $total_active_users = $active_staff + $active_managers + $active_customers;
 
 // NEW: Additional KPI Data for Summary Cards
@@ -147,7 +155,7 @@ $total_payments = $payments_cash + $payments_card + $payments_ewallet + $payment
 
 // Customers Data
 $new_customers = (int) adm_val($pdo, "SELECT COUNT(*) FROM customers WHERE station_id=? AND DATE(created_at) BETWEEN ? AND ?", [$station_id,$date_from,$date_to]);
-$outstanding_balances = (float) adm_val($pdo, "SELECT COALESCE(SUM(outstanding_balance),0) FROM customers WHERE station_id=? AND outstanding_balance > 0", [$station_id]);
+$outstanding_balances = (float) adm_val($pdo, "SELECT COALESCE(SUM(balance),0) FROM customers WHERE station_id=? AND balance > 0", [$station_id]);
 
 
 // ══════════════════════════════════════════════════════════
@@ -171,25 +179,36 @@ $daily_sales_data = adm_rows($pdo, "
     ORDER BY DATE(transaction_date) ASC
 ", [$station_id, $date_from, $date_to, $station_id, $date_from, $date_to, $station_id, $date_from, $date_to]);
 
-// Category distribution (Merchandise only as requested)
+// Category distribution (Merchandise only)
 $category_sales_data = adm_rows($pdo, "
-    SELECT COALESCE(c.name, 'Uncategorized') AS category, SUM(total_amount) AS total
-    FROM merchandise_transactions mt
-    LEFT JOIN products p ON mt.item_sku = p.sku AND mt.station_id = p.station_id
-    LEFT JOIN categories c ON p.category_id = c.id
-    WHERE mt.station_id = ? AND DATE(mt.transaction_date) BETWEEN ? AND ?
-    GROUP BY category
+    SELECT COALESCE(ip.category, 'Uncategorized') AS category, SUM(mti.subtotal) AS total
+    FROM merchandise_transaction_items mti
+    JOIN merchandise_transactions mt ON mti.transaction_id = mt.id
+    LEFT JOIN inventory_products ip ON mti.product_id = ip.id
+    WHERE mt.station_id = ?
+      AND DATE(COALESCE(NULLIF(mt.transaction_date,'0000-00-00'), mt.created_at)) BETWEEN ? AND ?
+      AND COALESCE(mti.item_type,'merchandise') = 'merchandise'
+    GROUP BY COALESCE(ip.category,'Uncategorized')
+    ORDER BY total DESC
+    LIMIT 10
 ", [$station_id, $date_from, $date_to]);
 
 // Monthly revenue trend (last 6 months)
 $monthly_revenue_data = adm_rows($pdo, "
-    SELECT DATE_FORMAT(transaction_date, '%b %Y') AS month, SUM(total_amount) AS total, DATE_FORMAT(transaction_date, '%Y-%m') AS order_month
+    SELECT DATE_FORMAT(txn_date, '%b %Y') AS month,
+           SUM(total_amount) AS total,
+           DATE_FORMAT(txn_date, '%Y-%m') AS order_month
     FROM (
-        SELECT transaction_date, total_amount FROM fuel_transactions WHERE station_id = ? AND transaction_date >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+        SELECT transaction_date AS txn_date, total_amount
+        FROM fuel_transactions
+        WHERE station_id = ? AND transaction_date >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
         UNION ALL
-        SELECT transaction_date, total_amount FROM merchandise_transactions WHERE station_id = ? AND transaction_date >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+        SELECT COALESCE(NULLIF(transaction_date,'0000-00-00'), created_at) AS txn_date, total_amount
+        FROM merchandise_transactions
+        WHERE station_id = ?
+          AND COALESCE(NULLIF(transaction_date,'0000-00-00'), created_at) >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
     ) combined
-    GROUP BY DATE_FORMAT(transaction_date, '%b %Y'), DATE_FORMAT(transaction_date, '%Y-%m')
+    GROUP BY DATE_FORMAT(txn_date, '%b %Y'), DATE_FORMAT(txn_date, '%Y-%m')
     ORDER BY order_month ASC
 ", [$station_id, $station_id]);
 
@@ -301,7 +320,7 @@ $customer_purchase_data = adm_rows($pdo, "
     UNION ALL
     SELECT 'Merchandise' AS category, COALESCE(SUM(total_amount), 0) AS total
     FROM merchandise_transactions
-    WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ?
+    WHERE station_id = ? AND DATE(COALESCE(NULLIF(transaction_date,'0000-00-00'),created_at)) BETWEEN ? AND ?
 ", [$station_id, $date_from, $date_to, $station_id, $date_from, $date_to]);
 
 // Top customers by purchase volume
@@ -309,7 +328,7 @@ $top_customers_data = adm_rows($pdo, "
     SELECT c.name AS customer_name, COALESCE(SUM(mt.total_amount), 0) AS total_purchases
     FROM customers c
     JOIN merchandise_transactions mt ON c.id = mt.credit_customer_id
-    WHERE mt.station_id = ? AND DATE(mt.transaction_date) BETWEEN ? AND ?
+    WHERE mt.station_id = ? AND DATE(COALESCE(NULLIF(mt.transaction_date,'0000-00-00'),mt.created_at)) BETWEEN ? AND ?
     GROUP BY c.id, c.name
     ORDER BY total_purchases DESC
     LIMIT 10
@@ -509,6 +528,13 @@ if ($pending_deliveries_val > 0) {
         'level' => 'warning',
         'title' => 'Pending Deliveries awaiting Validation',
         'message' => "{$pending_deliveries_val} delivery records need manager/admin validation and final stock-in approval."
+    ];
+}
+if ($pending_txn_val > 0) {
+    $active_notifications[] = [
+        'level' => 'warning',
+        'title' => 'Transactions Pending Manager Validation',
+        'message' => "{$pending_txn_val} transaction(s) are awaiting manager approval. <a href='pending_transactions.php' style='color:#002F70;font-weight:700;'>Review now →</a>"
     ];
 }
 foreach ($low_stock_alerts_data as $alert) {

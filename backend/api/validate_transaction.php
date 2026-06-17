@@ -1,6 +1,6 @@
 <?php
 // API endpoint for validating transactions
-require_once __DIR__ . '/../../lib.php';
+require_once __DIR__ . '/../lib.php';
 require_once __DIR__ . '/../../public/db_connect.php';
 require_login();
 header('Content-Type: application/json');

@@ -297,27 +297,6 @@ function get_fuel_audit_trail($pdo, $filters = []) {
 }
 
 /**
- * Log RBAC violation attempts
- */
-function log_rbac_violation($pdo, $user_id, $attempted_action, $resource, $details = '') {
-    $action_details = "RBAC Violation: User attempted '$attempted_action' on '$resource'";
-    if (!empty($details)) {
-        $action_details .= " - $details";
-    }
-    
-    $metadata = [
-        'violation_type' => 'rbac_access_denied',
-        'attempted_action' => $attempted_action,
-        'resource' => $resource,
-        'ip_address' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
-        'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'unknown',
-        'timestamp' => date('Y-m-d H:i:s')
-    ];
-    
-    return log_fuel_activity($pdo, $user_id, 'RBAC Violation', $action_details, null, $metadata);
-}
-
-/**
  * Generate audit summary report
  */
 function generate_audit_summary($pdo, $date_range = '7days') {

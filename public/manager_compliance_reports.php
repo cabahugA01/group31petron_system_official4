@@ -304,25 +304,50 @@ require_once __DIR__ . '/../partials/header.php';
                 </div>
 
                 <?php
-                // Fetch activity logs from database
+                // Fetch activity logs from audit_logs + activity_logs (both sources)
                 try {
+                    // Source A: audit_logs (API-level actions)
                     $q = $pdo->prepare("
                         SELECT
                             al.id,
-                            al.action,
-                            al.details,
+                            al.action_type                                                              AS action,
+                            COALESCE(al.action_details,'')                                             AS details,
                             al.created_at,
-                            COALESCE(CONCAT(u.first_name, ' ', u.last_name), CAST(al.user_id AS CHAR), 'System') AS staff_name,
-                            u.role AS staff_role
-                        FROM activity_logs al
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),
+                                     u.username, CONCAT('User #',al.user_id))                          AS staff_name,
+                            COALESCE(u.role,'unknown')                                                 AS staff_role
+                        FROM audit_logs al
                         LEFT JOIN users u ON al.user_id = u.id
-                        WHERE (u.station_id = ? OR al.user_id IS NULL)
+                        WHERE u.station_id = ?
                           AND DATE(al.created_at) BETWEEN ? AND ?
                         ORDER BY al.created_at DESC
-                        LIMIT 500
+                        LIMIT 400
                     ");
                     $q->execute([$station_id, $date_start, $date_end]);
                     $activity_rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+                    // Source B: activity_logs (lib.php log_activity() calls)
+                    $q2 = $pdo->prepare("
+                        SELECT
+                            al2.id,
+                            al2.action                                                                 AS action,
+                            COALESCE(al2.details,'')                                                   AS details,
+                            al2.created_at,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),
+                                     u.username, CONCAT('User #',al2.user_id))                         AS staff_name,
+                            COALESCE(u.role,'unknown')                                                 AS staff_role
+                        FROM activity_logs al2
+                        LEFT JOIN users u ON al2.user_id = u.id
+                        WHERE u.station_id = ?
+                          AND DATE(al2.created_at) BETWEEN ? AND ?
+                        ORDER BY al2.created_at DESC
+                        LIMIT 300
+                    ");
+                    $q2->execute([$station_id, $date_start, $date_end]);
+                    $al2_rows = $q2->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                    $activity_rows = array_merge($activity_rows, $al2_rows);
+                    usort($activity_rows, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['created_at']));
+                    $activity_rows = array_slice($activity_rows, 0, 600);
                 } catch (Exception $e) {
                     $activity_rows = [];
                 }
@@ -396,23 +421,21 @@ require_once __DIR__ . '/../partials/header.php';
                 </div>
 
                 <?php
-                // Fetch audit trail - consolidated logs grouped by shift
+                // Audit trail: audit_logs + audit_trail merged, grouped by date+shift+action
                 try {
+                    // From audit_logs
                     $q = $pdo->prepare("
                         SELECT
-                            DATE(al.created_at) AS log_date,
-                            CASE
-                                WHEN HOUR(al.created_at) >= 6 AND HOUR(al.created_at) < 14 THEN 'Shift 1'
-                                ELSE 'Shift 2'
-                            END AS shift_period,
-                            al.action,
-                            COUNT(*) AS action_count,
-                            GROUP_CONCAT(DISTINCT COALESCE(CONCAT(u.first_name, ' ', u.last_name), 'System') SEPARATOR ', ') AS staff_list
-                        FROM activity_logs al
+                            DATE(al.created_at)                                                         AS log_date,
+                            CASE WHEN HOUR(al.created_at)>=6 AND HOUR(al.created_at)<14 THEN 'Shift 1' ELSE 'Shift 2' END AS shift_period,
+                            al.action_type                                                              AS action,
+                            COUNT(*)                                                                    AS action_count,
+                            GROUP_CONCAT(DISTINCT COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),u.username) ORDER BY u.id SEPARATOR ', ') AS staff_list
+                        FROM audit_logs al
                         LEFT JOIN users u ON al.user_id = u.id
-                        WHERE (u.station_id = ? OR al.user_id IS NULL)
+                        WHERE u.station_id = ?
                           AND DATE(al.created_at) BETWEEN ? AND ?
-                        GROUP BY DATE(al.created_at), shift_period, al.action
+                        GROUP BY log_date, shift_period, al.action_type
                         ORDER BY log_date DESC, shift_period, action_count DESC
                     ");
                     $q->execute([$station_id, $date_start, $date_end]);
@@ -420,6 +443,48 @@ require_once __DIR__ . '/../partials/header.php';
                 } catch (Exception $e) {
                     $audit_rows = [];
                 }
+
+                // Also from audit_trail (manager validation actions)
+                try {
+                    $q2 = $pdo->prepare("
+                        SELECT
+                            DATE(at2.timestamp)                                                        AS log_date,
+                            CASE WHEN HOUR(at2.timestamp)>=6 AND HOUR(at2.timestamp)<14 THEN 'Shift 1' ELSE 'Shift 2' END AS shift_period,
+                            at2.action_type                                                            AS action,
+                            COUNT(*)                                                                   AS action_count,
+                            GROUP_CONCAT(DISTINCT COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),u.username) ORDER BY u.id SEPARATOR ', ') AS staff_list
+                        FROM audit_trail at2
+                        LEFT JOIN users u ON u.id = at2.manager_id
+                        WHERE at2.station_id = ?
+                          AND DATE(at2.timestamp) BETWEEN ? AND ?
+                        GROUP BY log_date, shift_period, at2.action_type
+                        ORDER BY log_date DESC, shift_period, action_count DESC
+                    ");
+                    $q2->execute([$station_id, $date_start, $date_end]);
+                    $at_rows = $q2->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+                    // Also from activity_logs (lib.php log_activity calls at manager level)
+                    $q3 = $pdo->prepare("
+                        SELECT
+                            DATE(al.created_at)                                                        AS log_date,
+                            CASE WHEN HOUR(al.created_at)>=6 AND HOUR(al.created_at)<14 THEN 'Shift 1' ELSE 'Shift 2' END AS shift_period,
+                            al.action                                                                  AS action,
+                            COUNT(*)                                                                   AS action_count,
+                            GROUP_CONCAT(DISTINCT COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),u.username) ORDER BY u.id SEPARATOR ', ') AS staff_list
+                        FROM activity_logs al
+                        LEFT JOIN users u ON al.user_id = u.id
+                        WHERE u.station_id = ?
+                          AND DATE(al.created_at) BETWEEN ? AND ?
+                        GROUP BY log_date, shift_period, al.action
+                        ORDER BY log_date DESC, shift_period, action_count DESC
+                        LIMIT 200
+                    ");
+                    $q3->execute([$station_id, $date_start, $date_end]);
+                    $al3_rows = $q3->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+                    $audit_rows = array_merge($audit_rows, $at_rows, $al3_rows);
+                    usort($audit_rows, fn($a,$b) => strcmp($b['log_date'],$a['log_date']));
+                } catch (Exception $e2) { /* keep audit_logs results */ }
                 ?>
 
                 <table class="cr-table">

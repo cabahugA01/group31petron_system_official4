@@ -1,6 +1,6 @@
 <?php
 // API endpoint for staff to submit transactions
-require_once __DIR__ . '/../../lib.php';
+require_once __DIR__ . '/../lib.php';
 require_once __DIR__ . '/../../public/db_connect.php';
 require_login();
 header('Content-Type: application/json');

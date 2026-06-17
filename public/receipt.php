@@ -1,7 +1,4 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
 require_once __DIR__ . '/../backend/lib.php';
 require_login();
 
@@ -233,15 +230,13 @@ if ($type === 'job_order') {
         $stmt->execute([$id, $id.'%', $numeric_id]);
         $txn = $stmt->fetch(PDO::FETCH_ASSOC);
         
-        // Debug log
-        if ($txn) {
-            error_log("Receipt: Transaction found - ID={$txn['id']}, Staff Name={$txn['staff_name']}, Items to query for txn_id={$txn['id']}");
-        } else {
-            error_log("Receipt: No transaction found for id=$id");
+        // Log only on error for production
+        if (!$txn) {
+            error_log("Receipt: No transaction found for id=$id type=$type");
         }
 
         if ($txn) {
-            // Get items - use explicit transaction_id match
+            // Get items
             $stmt2 = $pdo->prepare("
                 SELECT product_name, category, size_variant, quantity, unit_price, subtotal,
                        COALESCE(item_type, 'merchandise') AS item_type
@@ -250,23 +245,17 @@ if ($type === 'job_order') {
             ");
             $stmt2->execute([$txn['id']]);
             $items = $stmt2->fetchAll(PDO::FETCH_ASSOC);
-            
-            // Debug log
-            error_log("Receipt items query: Found " . count($items) . " items for txn ID " . $txn['id']);
 
-            // Build job order data if exists (check multiple fields)
+            // Build job order data if exists
             $job_order_data = null;
             if (!empty($txn['job_order_service']) || !empty($txn['job_order_vehicle_plate'])) {
                 $job_order_data = [
-                    'service_type' => $txn['job_order_service'] ?? '',
-                    'mechanic_name' => $txn['job_order_mechanic_name'] ?? null,
-                    'vehicle_plate' => $txn['job_order_vehicle_plate'] ?? null,
-                    'vehicle_type' => $txn['job_order_vehicle_type'] ?? null,
+                    'service_type'        => $txn['job_order_service'] ?? '',
+                    'mechanic_name'       => $txn['job_order_mechanic_name'] ?? null,
+                    'vehicle_plate'       => $txn['job_order_vehicle_plate'] ?? null,
+                    'vehicle_type'        => $txn['job_order_vehicle_type'] ?? null,
                     'service_description' => $txn['job_order_description'] ?? '',
                 ];
-                error_log("Receipt: Job order data built with service=" . ($txn['job_order_service'] ?? 'NULL'));
-            } else {
-                error_log("Receipt: No job order data - job_order_service is empty");
             }
 
             // Transaction type
@@ -305,8 +294,7 @@ if ($type === 'job_order') {
                 'transaction_type'    => $txn_type,
             ];
             
-            // Debug log final sale object
-            error_log("Receipt: Sale object built - staff_name={$sale['staff_name']}, items_count=" . count($items) . ", has_job_order=" . ($job_order_data ? 'YES' : 'NO'));
+            // Log build success
         }
     } catch (Exception $e) {
         error_log("Receipt error: " . $e->getMessage());
@@ -591,7 +579,7 @@ $qr_url = 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&ecc=M&data='
   margin: 4mm 3mm;          /* small margins — real receipt printers use ~3–4mm */
 }
 @media print{
-  body{margin:0;padding:0;background:#fff}
+  html, body{width: 80mm; margin:0; padding:0; background:#fff}
   .jo-page{box-shadow:none;border-radius:0;padding:0;max-width:80mm;width:80mm}
   .jo-toolbar{display:none!important}
   .no-print{display:none!important}

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = ($_GET['tab'] ?? 'pending') === 'validated' ? 'mgr_txn_validated' : 'mgr_txn_pending';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -1059,12 +1059,12 @@ try {
                             <!-- Receipt: only after approval + payment finalised -->
                             <?php if ($ns === 'verified' && $is_paid_ps && !$isJO): ?>
                             <button type="button" class="jo-act-btn" style="background:#6c757d;" title="Print Receipt"
-                                onclick="window.open('receipt.php?id=<?php echo $receiptId; ?>&type=merchandise','_blank','width=520,height=800,scrollbars=yes')">
+                                onclick="printReceiptPopupImmune('<?php echo htmlspecialchars($receiptId, ENT_QUOTES); ?>', 'merchandise')">
                                 <i class="fas fa-receipt"></i> Receipt
                             </button>
                             <?php elseif ($ns === 'verified' && $is_paid_ps && ($isJO || $isCombined)): ?>
                             <button type="button" class="jo-act-btn" style="background:#6c757d;" title="Print Receipt"
-                                onclick="window.open('receipt.php?id=<?php echo $receiptId; ?>&type=job_order','_blank','width=520,height=800,scrollbars=yes')">
+                                onclick="printReceiptPopupImmune('<?php echo htmlspecialchars($receiptId, ENT_QUOTES); ?>', 'job_order')">
                                 <i class="fas fa-receipt"></i> Receipt
                             </button>
                             <?php endif; ?>
@@ -1299,7 +1299,29 @@ try {
     </div>
 </div>
 
-<script>
+// ── Print Receipt (Popup-Immune) ──────────────────────────────────────────────
+function printReceiptPopupImmune(id, type) {
+    let iframe = document.getElementById('print-receipt-iframe');
+    if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.id = 'print-receipt-iframe';
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        document.body.appendChild(iframe);
+    }
+    iframe.src = `receipt.php?id=${encodeURIComponent(id)}&type=${encodeURIComponent(type)}`;
+    iframe.onload = function() {
+        setTimeout(function() {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+        }, 250);
+    };
+}
+
 // ── View Details ──────────────────────────────────────────────────────────────
 function viewDetails(d) {
     document.getElementById('viewDetailsModal').style.display = 'flex';
@@ -1386,7 +1408,7 @@ function viewDetails(d) {
     const footer = document.getElementById('vd_footer');
     if (!isJO || isCombined) {
         footer.innerHTML = `
-            <button class="btn-receipt-lg" onclick="window.open('receipt.php?id=${encodeURIComponent(txnRef)}&type=merchandise','_blank','width=520,height=800,scrollbars=yes')">
+            <button class="btn-receipt-lg" onclick="printReceiptPopupImmune(decodeURIComponent('${encodeURIComponent(txnRef)}'), 'merchandise')">
                 <i class="fas fa-receipt"></i> Print Receipt
             </button>
             <button class="btn-secondary" onclick="closeViewModal()"><i class="fas fa-times"></i> Close</button>`;

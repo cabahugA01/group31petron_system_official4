@@ -295,7 +295,7 @@ try {
         'price_per_liter' => $price_per_liter,
         'liters_sold' => $liters_sold,
         'total_amount' => $total_amount,
-        'payment_type' => $_POST['payment_type'],
+        'payment_type' => $_POST['payment_type'] ?? ($_POST['payment_method'] ?? 'Internal'),
         'expected_stock' => $expected_stock,
         'actual_stock' => $actual_stock,
         'variance_liters' => $variance_liters,

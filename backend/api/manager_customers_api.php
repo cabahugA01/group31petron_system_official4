@@ -286,10 +286,4 @@ switch ($action) {
         http_response_code(400);
         echo json_encode(['success' => false, 'message' => 'Unknown action: ' . htmlspecialchars($action)]);
 }
-
-} catch (Exception $e) {
-    error_log("Manager Customer API Error: " . $e->getMessage());
-    http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Server error: ' . $e->getMessage()]);
-}
 ?>

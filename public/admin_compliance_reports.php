@@ -14,7 +14,7 @@ $me         = current_user();
 $role       = role_key($me['role'] ?? '');
 $station_id = user_station_id();
 
-if ($role !== 'admin') die('Access denied.');
+if (!in_array($role, ['admin', 'superadmin'])) die('Access denied.');
 
 $section   = in_array($_GET['section'] ?? '', ['activity','audit','calendar']) ? $_GET['section'] : 'activity';
 $date_from = $_GET['date_from'] ?? date('Y-m-01');
@@ -31,72 +31,121 @@ try {
 
 // ── DATA FETCH ────────────────────────────────────────────────────────────────
 
-// ACTIVITY LOGS
+// ACTIVITY LOGS — from audit_logs (API-level) + activity_logs (lib-level log_activity calls)
 $activity_rows = [];
 try {
+    // Source A: audit_logs (richer — has entity_type, log_type, action_details)
     $q = $pdo->prepare("
         SELECT
-            TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) AS staff_name,
-            COALESCE(al.action, '—') AS action_type,
-            al.created_at AS timestamp,
-            CASE
-                WHEN LOWER(al.action) LIKE '%login%' OR LOWER(al.action) LIKE '%logout%' THEN 'Authentication'
-                WHEN LOWER(al.action) LIKE '%user%' OR LOWER(al.action) LIKE '%staff%' OR LOWER(al.action) LIKE '%role%' THEN 'User Management'
-                WHEN LOWER(al.action) LIKE '%product%' OR LOWER(al.action) LIKE '%inventory%' OR LOWER(al.action) LIKE '%stock%' OR LOWER(al.action) LIKE '%price%' THEN 'Inventory'
-                WHEN LOWER(al.action) LIKE '%job order%' OR LOWER(al.action) LIKE '%jo%' OR LOWER(al.action) LIKE '%mechanic%' THEN 'Job Orders'
-                WHEN LOWER(al.action) LIKE '%fuel%' OR LOWER(al.action) LIKE '%pump%' OR LOWER(al.action) LIKE '%tank%' OR LOWER(al.action) LIKE '%delivery%' OR LOWER(al.action) LIKE '%calibration%' OR LOWER(al.action) LIKE '%nozzle%' THEN 'Fuel Management'
-                WHEN LOWER(al.action) LIKE '%transaction%' OR LOWER(al.action) LIKE '%sale%' OR LOWER(al.action) LIKE '%payment%' THEN 'Transactions'
-                WHEN LOWER(al.action) LIKE '%customer%' THEN 'Customers'
-                ELSE 'System'
-            END AS module_affected,
-            COALESCE(al.details, '') AS remarks
-        FROM activity_logs al
+            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),
+                     u.username, CONCAT('User #', al.user_id))  AS staff_name,
+            al.action_type                                        AS action_type,
+            al.created_at                                         AS timestamp,
+            UPPER(COALESCE(al.log_type,'SYSTEM'))                 AS module_affected,
+            COALESCE(al.action_details,'')                        AS remarks
+        FROM audit_logs al
         LEFT JOIN users u ON al.user_id = u.id
         WHERE u.station_id = ?
           AND DATE(al.created_at) BETWEEN ? AND ?
         ORDER BY al.created_at DESC
-        LIMIT 500
+        LIMIT 400
     ");
     $q->execute([$station_id, $date_from, $date_to]);
     $activity_rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
-} catch (Exception $e) {
-    $activity_rows = [];
-}
+} catch (Exception $e) { $activity_rows = []; }
 
-// AUDIT TRAIL
-$audit_rows = [];
+// Source B: activity_logs (from log_activity() calls in lib.php)
 try {
-    $q = $pdo->prepare("
+    $q2 = $pdo->prepare("
         SELECT
-            TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) AS staff_name,
-            COALESCE(al.action, '—') AS action_performed,
-            al.created_at AS timestamp,
+            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),
+                     u.username, CONCAT('User #', al.user_id))  AS staff_name,
+            al.action                                             AS action_type,
+            al.created_at                                         AS timestamp,
             CASE
-                WHEN TIME(al.created_at) >= '06:00:00' AND TIME(al.created_at) < '14:00:00' THEN 'Shift 1 (6AM–2PM)'
-                WHEN TIME(al.created_at) >= '14:00:00' OR TIME(al.created_at) < '06:00:00' THEN 'Shift 2 (2PM–12AM)'
-                ELSE '—'
-            END AS shift_assignment,
-            COALESCE(NULLIF(al.reference,''), '—') AS system_reference,
-            CASE
-                WHEN LOWER(al.action) LIKE '%login%' OR LOWER(al.action) LIKE '%logout%' THEN 'Authentication'
-                WHEN LOWER(al.action) LIKE '%user%' OR LOWER(al.action) LIKE '%staff%' OR LOWER(al.action) LIKE '%role%' THEN 'User Management'
-                WHEN LOWER(al.action) LIKE '%product%' OR LOWER(al.action) LIKE '%inventory%' OR LOWER(al.action) LIKE '%stock%' OR LOWER(al.action) LIKE '%price%' THEN 'Inventory'
-                WHEN LOWER(al.action) LIKE '%job order%' OR LOWER(al.action) LIKE '%jo%' OR LOWER(al.action) LIKE '%mechanic%' THEN 'Job Orders'
-                WHEN LOWER(al.action) LIKE '%fuel%' OR LOWER(al.action) LIKE '%pump%' OR LOWER(al.action) LIKE '%tank%' OR LOWER(al.action) LIKE '%delivery%' OR LOWER(al.action) LIKE '%calibration%' OR LOWER(al.action) LIKE '%nozzle%' THEN 'Fuel Management'
-                WHEN LOWER(al.action) LIKE '%transaction%' OR LOWER(al.action) LIKE '%sale%' OR LOWER(al.action) LIKE '%payment%' THEN 'Transactions'
-                WHEN LOWER(al.action) LIKE '%customer%' THEN 'Customers'
-                ELSE 'System'
-            END AS module_affected
+                WHEN LOWER(al.action) LIKE '%fuel%'        THEN 'FUEL'
+                WHEN LOWER(al.action) LIKE '%transaction%'
+                  OR LOWER(al.action) LIKE '%merchandise%' THEN 'TRANSACTION'
+                WHEN LOWER(al.action) LIKE '%inventory%'
+                  OR LOWER(al.action) LIKE '%stock%'       THEN 'INVENTORY'
+                WHEN LOWER(al.action) LIKE '%job%'         THEN 'JOB_ORDER'
+                WHEN LOWER(al.action) LIKE '%user%'
+                  OR LOWER(al.action) LIKE '%login%'       THEN 'USER'
+                ELSE 'SYSTEM'
+            END                                                   AS module_affected,
+            COALESCE(al.details,'')                               AS remarks
         FROM activity_logs al
         LEFT JOIN users u ON al.user_id = u.id
         WHERE u.station_id = ?
           AND DATE(al.created_at) BETWEEN ? AND ?
         ORDER BY al.created_at DESC
-        LIMIT 500
+        LIMIT 300
+    ");
+    $q2->execute([$station_id, $date_from, $date_to]);
+    $al_rows = $q2->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    $activity_rows = array_merge($activity_rows, $al_rows);
+    usort($activity_rows, fn($a,$b) => strtotime($b['timestamp']) - strtotime($a['timestamp']));
+    $activity_rows = array_slice($activity_rows, 0, 600);
+} catch (Exception $e) { /* keep source A results */ }
+
+// AUDIT TRAIL — fetch from ALL audit sources: audit_logs + audit_trail + merchandise_transaction_audit
+$audit_rows = [];
+try {
+    // Source 1: audit_logs (richest — staff create, manager validate, admin actions)
+    $q = $pdo->prepare("
+        SELECT
+            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),
+                     u.username, CONCAT('User #', al.user_id))  AS staff_name,
+            al.action_type                                        AS action_performed,
+            al.created_at                                         AS timestamp,
+            CASE
+                WHEN TIME(al.created_at) >= '06:00:00' AND TIME(al.created_at) < '14:00:00' THEN 'Shift 1 (6AM–2PM)'
+                ELSE 'Shift 2 (2PM–12AM)'
+            END                                                   AS shift_assignment,
+            CONCAT(UPPER(COALESCE(al.entity_type,'system')),
+                   CASE WHEN al.entity_id IS NOT NULL THEN CONCAT(' #', al.entity_id) ELSE '' END)
+                                                                  AS system_reference,
+            UPPER(COALESCE(al.log_type,'SYSTEM'))                 AS module_affected
+        FROM audit_logs al
+        LEFT JOIN users u ON al.user_id = u.id
+        WHERE u.station_id = ?
+          AND DATE(al.created_at) BETWEEN ? AND ?
+        ORDER BY al.created_at DESC
+        LIMIT 400
     ");
     $q->execute([$station_id, $date_from, $date_to]);
     $audit_rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
 } catch (Exception $e) { $audit_rows = []; }
+
+// Source 2: audit_trail (transaction-level manager actions)
+try {
+    $at_src = '';
+    try { $at_src = $pdo->query("SHOW COLUMNS FROM audit_trail LIKE 'source_table'")->rowCount() ? 'COALESCE(at2.source_table,\'TXN\')' : "'TXN'"; } catch(Exception $e){ $at_src = "'TXN'"; }
+    $q2 = $pdo->prepare("
+        SELECT
+            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),
+                     u.username, CONCAT('User #', at2.manager_id))  AS staff_name,
+            at2.action_type                                           AS action_performed,
+            at2.timestamp                                             AS timestamp,
+            CASE
+                WHEN TIME(at2.timestamp) >= '06:00:00' AND TIME(at2.timestamp) < '14:00:00' THEN 'Shift 1 (6AM–2PM)'
+                ELSE 'Shift 2 (2PM–12AM)'
+            END                                                       AS shift_assignment,
+            CONCAT($at_src,' #', at2.transaction_id)                 AS system_reference,
+            'TRANSACTION'                                             AS module_affected
+        FROM audit_trail at2
+        LEFT JOIN users u ON u.id = at2.manager_id
+        WHERE at2.station_id = ?
+          AND DATE(at2.timestamp) BETWEEN ? AND ?
+        ORDER BY at2.timestamp DESC
+        LIMIT 300
+    ");
+    $q2->execute([$station_id, $date_from, $date_to]);
+    $at_rows = $q2->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    $audit_rows = array_merge($audit_rows, $at_rows);
+    usort($audit_rows, fn($a,$b) => strtotime($b['timestamp']) - strtotime($a['timestamp']));
+    $audit_rows = array_slice($audit_rows, 0, 600);
+} catch (Exception $e) { /* source 2 failed — keep source 1 results */ }
 
 // CALENDAR & SCHEDULE — Job Orders + Deliveries
 $calendar_tasks = [];

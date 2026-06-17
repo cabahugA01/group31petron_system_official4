@@ -129,12 +129,45 @@ foreach ([1 => ['06:00:00','14:00:00'], 2 => ['14:00:00','23:59:59']] as $snum =
     }
 }
 
-// Activity logs
+// Activity logs — from activity_logs (lib-level) + audit_logs (API-level)
 $activity_logs = [];
 try {
-    $q = $pdo->prepare("SELECT TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))) AS staff_name, COALESCE(al.action,'—') AS action_type, COALESCE(al.created_at,al.timestamp) AS ts, COALESCE(al.module,al.details,'—') AS module_affected FROM activity_logs al LEFT JOIN users u ON al.user_id=u.id WHERE (al.station_id=? OR u.station_id=?) AND DATE(COALESCE(al.created_at,al.timestamp))=? ORDER BY ts DESC LIMIT 10");
-    $q->execute([$station_id,$station_id,$today]); $activity_logs=$q->fetchAll(PDO::FETCH_ASSOC)?:[];
+    // Source A: activity_logs
+    $q = $pdo->prepare("
+        SELECT COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),
+                         u.username,'Unknown')                             AS staff_name,
+               COALESCE(al.action,'—')                                     AS action_type,
+               al.created_at                                               AS ts,
+               COALESCE(al.details,'—')                                    AS module_affected
+        FROM activity_logs al
+        LEFT JOIN users u ON al.user_id = u.id
+        WHERE u.station_id = ?
+          AND DATE(al.created_at) = ?
+        ORDER BY al.created_at DESC LIMIT 8
+    ");
+    $q->execute([$station_id, $today]);
+    $activity_logs = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
 } catch(Exception $e) { $activity_logs=[]; }
+
+// Source B: audit_logs (merge if activity_logs is empty)
+if (empty($activity_logs)) {
+    try {
+        $q2 = $pdo->prepare("
+            SELECT COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),
+                             u.username,'Unknown')                         AS staff_name,
+                   al.action_type                                          AS action_type,
+                   al.created_at                                           AS ts,
+                   UPPER(COALESCE(al.log_type,'SYSTEM'))                   AS module_affected
+            FROM audit_logs al
+            LEFT JOIN users u ON al.user_id = u.id
+            WHERE u.station_id = ?
+              AND DATE(al.created_at) = ?
+            ORDER BY al.created_at DESC LIMIT 8
+        ");
+        $q2->execute([$station_id, $today]);
+        $activity_logs = $q2->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch(Exception $e) { $activity_logs=[]; }
+}
 
 // Staff performance
 $staff_perf = [];

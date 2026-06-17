@@ -819,19 +819,18 @@ function loadMerchandiseInventory() {
     `;
     
     // Fetch merchandise inventory from database
-    fetch('../backend/api/inventory_products.php')
+    fetch('../backend/api/merchandise_transactions.php?action=get_products')
         .then(response => response.json())
         .then(data => {
             if (data.success && data.products) {
                 displayMerchandiseInventory(data.products);
             } else {
-                // Show sample data if API fails
-                showSampleMerchandiseData();
+                displayMerchandiseInventory([]);
             }
         })
         .catch(error => {
             console.error('Error loading merchandise inventory:', error);
-            showSampleMerchandiseData();
+            displayMerchandiseInventory([]);
         });
 }
 
@@ -871,42 +870,6 @@ function displayMerchandiseInventory(products) {
                 <td style="padding: 12px;">
                     <span style="background: ${statusColor}20; color: ${statusColor}; padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 0.85rem;">
                         ${status}
-                    </span>
-                </td>
-            </tr>
-        `;
-    }).join('');
-}
-
-function showSampleMerchandiseData() {
-    const tbody = document.getElementById('merchandise-tbody');
-    const sampleData = [
-        { name: 'Engine Oil 5W-30', category: 'Oils/Lubes', stock: 24, price: 320.00, status: 'Available' },
-        { name: 'Brake Fluid DOT3', category: 'Brake System', stock: 8, price: 150.00, status: 'Low Stock' },
-        { name: 'Air Filter', category: 'Maintenance', stock: 15, price: 280.00, status: 'Available' },
-        { name: 'Coolant 1L', category: 'Maintenance', stock: 3, price: 180.00, status: 'Critical' },
-        { name: 'Spark Plug', category: 'Maintenance', stock: 32, price: 95.00, status: 'Available' }
-    ];
-    
-    tbody.innerHTML = sampleData.map(item => {
-        const statusColor = item.status === 'Available' ? '#28a745' : (item.status === 'Low Stock' ? '#ffc107' : '#dc3545');
-        return `
-            <tr style="border-bottom: 1px solid #e9ecef;">
-                <td style="padding: 12px; font-weight: 600;">${item.name}</td>
-                <td style="padding: 12px;">
-                    <span style="background: #e9ecef; padding: 2px 8px; border-radius: 4px; font-size: 0.85rem;">
-                        ${item.category}
-                    </span>
-                </td>
-                <td style="padding: 12px;">
-                    <span style="background: ${statusColor}20; color: ${statusColor}; padding: 4px 8px; border-radius: 4px; font-weight: 600;">
-                        ${item.stock}
-                    </span>
-                </td>
-                <td style="padding: 12px;">₱${item.price.toFixed(2)}</td>
-                <td style="padding: 12px;">
-                    <span style="background: ${statusColor}20; color: ${statusColor}; padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 0.85rem;">
-                        ${item.status}
                     </span>
                 </td>
             </tr>

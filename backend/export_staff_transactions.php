@@ -350,11 +350,18 @@ if ($format === 'csv') {
         echo '</tr>';
     }
 
-    // Total row — label spans all columns except the last; amount in rightmost column
-    $col_count = count($headers);
+    // Determine which column index holds the "primary total" value
+    // and render a structurally correct total row
+    $total_col_idx  = ($type === 'job_orders') ? 5 : 2;   // 0-based index
+    $col_count      = count($headers);
+    $trailing_count = $col_count - $total_col_idx - 1;     // columns after the total
+
     echo '<tr class="total-row">';
-    echo '<td colspan="' . ($col_count - 1) . '" style="text-align:right;padding-right:14px;font-size:12px;">TOTAL AMOUNT</td>';
+    echo '<td colspan="' . $total_col_idx . '" style="text-align:right;padding-right:14px;font-size:12px;font-weight:800;">TOTAL</td>';
     echo '<td class="amount" style="white-space:nowrap;">&#8369;' . number_format($total_val, 2) . '</td>';
+    for ($i = 0; $i < $trailing_count; $i++) {
+        echo '<td class="amount" style="color:#94a3b8;">&mdash;</td>';
+    }
     echo '</tr>';
 
     echo '</tbody></table>';

@@ -81,47 +81,62 @@ $is_staff_only = in_array($role, ['staff', 'cashier', 'pump_attendant']);
 // 1. PRIORITY: Fetch from audit_logs table (main activity tracker)
 if ($has_audit_log) {
     try {
-        $sql = "SELECT 
-                    al.id,
-                    al.user_id,
-                    u.username,
-                    al.action_type as activity_type,
-                    al.created_at as timestamp,
-                    CONCAT(al.action_type, 
-                           CASE 
-                               WHEN al.action_details IS NOT NULL AND al.action_details != '' THEN CONCAT(' - ', al.action_details)
-                               WHEN al.entity_type IS NOT NULL THEN CONCAT(' - ', al.entity_type, ' (ID: ', al.entity_id, ')')
-                               ELSE ''
-                           END) as description,
-                    COALESCE(al.status, 'LOGGED') as status,
-                    '' as remarks
+        $sql = "
+            SELECT 
+                al.id,
+                al.user_id,
+                COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),
+                         u.username, CONCAT('User #', al.user_id))  AS username,
+                al.action_type                                        AS activity_type,
+                al.created_at                                         AS timestamp,
+                COALESCE(al.action_details, '')                       AS description,
+                COALESCE(al.status,'SUCCESS')                         AS status,
+                ''                                                    AS remarks
             FROM audit_logs al
-            LEFT JOIN users u ON al.user_id = u.id ";
-        
-        $where_clauses = ["DATE(al.created_at) BETWEEN ? AND ?"];
-        $params = [$date_start, $date_end];
-        
-        if ($is_staff_only) {
-            $where_clauses[] = "al.user_id = ?";
-            $params[] = $user_id;
-        } else {
-            $where_clauses[] = "u.station_id = ?";
-            $params[] = $station_id;
-        }
-        
-        $sql .= " WHERE " . implode(" AND ", $where_clauses);
-        $sql .= " ORDER BY al.created_at DESC LIMIT 1000";
-        
+            LEFT JOIN users u ON al.user_id = u.id
+            WHERE al.user_id = ?
+              AND DATE(al.created_at) BETWEEN ? AND ?
+            ORDER BY al.created_at DESC
+            LIMIT 500
+        ";
         $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
+        $stmt->execute([$user_id, $date_start, $date_end]);
         $audit_logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
         if (count($audit_logs) > 0) {
             $all_activities = array_merge($all_activities, $audit_logs);
         }
     } catch (Exception $e) {
         error_log("Audit logs fetch error: " . $e->getMessage());
     }
+}
+
+// 1b. Also from activity_logs (lib.php log_activity() calls — staff login, encode, etc.)
+try {
+    $stmt2 = $pdo->prepare("
+        SELECT
+            al.id,
+            al.user_id,
+            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),
+                     u.username, CONCAT('User #', al.user_id))  AS username,
+            al.action                                             AS activity_type,
+            al.created_at                                         AS timestamp,
+            COALESCE(al.details,'')                               AS description,
+            'LOGGED'                                              AS status,
+            ''                                                    AS remarks
+        FROM activity_logs al
+        LEFT JOIN users u ON al.user_id = u.id
+        WHERE al.user_id = ?
+          AND DATE(al.created_at) BETWEEN ? AND ?
+        ORDER BY al.created_at DESC
+        LIMIT 300
+    ");
+    $stmt2->execute([$user_id, $date_start, $date_end]);
+    $al_rows = $stmt2->fetchAll(PDO::FETCH_ASSOC);
+    if (count($al_rows) > 0) {
+        $all_activities = array_merge($all_activities, $al_rows);
+    }
+} catch (Exception $e) {
+    error_log("Activity logs fetch error: " . $e->getMessage());
 }
 
 // 2. Fetch from user_sessions for login/logout (if not in audit_log)
@@ -177,31 +192,32 @@ if ($has_user_sessions) {
     }
 }
 
-// 3. Fuel Transaction Encoding
+// 3. Fuel Transaction Encoding — staff's own records only
 if (table_exists($pdo, 'fuel_transactions')) {
     try {
-        $sql = "SELECT 
-                    ft.id,
-                    ft.user_id,
-                    u.username,
-                    'Fuel Encoding' as activity_type,
-                    ft.created_at as timestamp,
-                    CONCAT('Encoded fuel transaction - ', COALESCE(ft.fuel_type, 'N/A'), ' - ', ft.volume_liters, ' liters - ₱', FORMAT(ft.total_amount, 2)) as description,
-                    ft.remarks
+        $sql = "
+            SELECT 
+                ft.id,
+                ft.staff_id                                                              AS user_id,
+                COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),
+                         u.username, CONCAT('User #', ft.staff_id))                     AS username,
+                CONCAT('Fuel Reading — ', COALESCE(ft.fuel_type,'N/A'))                AS activity_type,
+                COALESCE(ft.transaction_date, ft.created_at)                            AS timestamp,
+                CONCAT('Fuel: ', COALESCE(ft.fuel_type,'N/A'),
+                       ' | Vol: ', FORMAT(ft.volume_liters,2), 'L',
+                       ' | ₱', FORMAT(ft.total_amount,2),
+                       ' | Status: ', COALESCE(ft.status,'Pending'))                    AS description,
+                COALESCE(ft.status,'Pending')                                           AS status,
+                COALESCE(ft.notes,'')                                                   AS remarks
             FROM fuel_transactions ft
-            LEFT JOIN users u ON ft.user_id = u.id ";
-            
-        $where_clauses = ["ft.station_id = ?", "DATE(ft.created_at) BETWEEN ? AND ?"];
-        $params = [$station_id, $date_start, $date_end];
-        if ($is_staff_only) {
-            $where_clauses[] = "ft.user_id = ?";
-            $params[] = $user_id;
-        }
-        $sql .= " WHERE " . implode(" AND ", $where_clauses);
-        $sql .= " ORDER BY ft.created_at DESC";
-        
+            LEFT JOIN users u ON u.id = ft.staff_id
+            WHERE ft.staff_id = ?
+              AND ft.station_id = ?
+              AND DATE(COALESCE(ft.transaction_date, ft.created_at)) BETWEEN ? AND ?
+            ORDER BY COALESCE(ft.transaction_date, ft.created_at) DESC
+        ";
         $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
+        $stmt->execute([$user_id, $station_id, $date_start, $date_end]);
         $fuel_logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
         $all_activities = array_merge($all_activities, $fuel_logs);
     } catch (Exception $e) {
@@ -209,31 +225,32 @@ if (table_exists($pdo, 'fuel_transactions')) {
     }
 }
 
-// 4. Merchandise Transaction Encoding
+// 4. Merchandise Transaction Encoding — staff's own transactions only
 if (table_exists($pdo, 'merchandise_transactions')) {
     try {
-        $sql = "SELECT 
-                    mt.id,
-                    mt.staff_id as user_id,
-                    u.username,
-                    'Merchandise Encoding' as activity_type,
-                    mt.created_at as timestamp,
-                    CONCAT('Encoded merchandise sale - Customer: ', COALESCE(mt.customer_name, 'Walk-in'), ' - Items: ', COALESCE(mt.item_sku, 'N/A'), ' - ₱', FORMAT(mt.total_amount, 2)) as description,
-                    mt.remarks
+        $sql = "
+            SELECT 
+                mt.id,
+                mt.staff_id AS user_id,
+                COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),
+                         u.username, CONCAT('User #', mt.staff_id))  AS username,
+                CONCAT('Merchandise — ', COALESCE(mt.transaction_type,'merchandise'))  AS activity_type,
+                mt.created_at                                                           AS timestamp,
+                CONCAT('Txn: ', COALESCE(mt.transaction_id,'#'.mt.id),
+                       ' | Customer: ', COALESCE(NULLIF(mt.customer_name,''),'Walk-in'),
+                       ' | Total: ₱', FORMAT(mt.total_amount,2),
+                       ' | Status: ', COALESCE(mt.validation_status,'Pending'))        AS description,
+                COALESCE(mt.validation_status,'Pending')                               AS status,
+                COALESCE(mt.staff_remarks, mt.remarks, '')                             AS remarks
             FROM merchandise_transactions mt
-            LEFT JOIN users u ON mt.staff_id = u.id ";
-            
-        $where_clauses = ["mt.station_id = ?", "DATE(mt.created_at) BETWEEN ? AND ?"];
-        $params = [$station_id, $date_start, $date_end];
-        if ($is_staff_only) {
-            $where_clauses[] = "mt.staff_id = ?";
-            $params[] = $user_id;
-        }
-        $sql .= " WHERE " . implode(" AND ", $where_clauses);
-        $sql .= " ORDER BY mt.created_at DESC";
-        
+            LEFT JOIN users u ON mt.staff_id = u.id
+            WHERE mt.staff_id = ?
+              AND mt.station_id = ?
+              AND DATE(mt.created_at) BETWEEN ? AND ?
+            ORDER BY mt.created_at DESC
+        ";
         $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
+        $stmt->execute([$user_id, $station_id, $date_start, $date_end]);
         $merch_logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
         $all_activities = array_merge($all_activities, $merch_logs);
     } catch (Exception $e) {
@@ -241,31 +258,32 @@ if (table_exists($pdo, 'merchandise_transactions')) {
     }
 }
 
-// 5. Job Orders Encoding
+// 5. Job Orders Encoding — staff's own records only
 if (table_exists($pdo, 'job_orders')) {
     try {
-        $sql = "SELECT 
-                    jo.id,
-                    COALESCE(jo.created_by, jo.user_id) as user_id,
-                    u.username,
-                    'Job Order Encoding' as activity_type,
-                    jo.created_at as timestamp,
-                    CONCAT('Encoded job order - ', COALESCE(jo.job_order_number, jo.job_order_id, jo.id), ' - ', COALESCE(jo.service_type, 'Service'), ' - ₱', FORMAT(COALESCE(jo.total_cost, jo.estimated_cost, 0), 2)) as description,
-                    COALESCE(jo.notes, jo.additional_notes) as remarks
+        $sql = "
+            SELECT 
+                jo.id,
+                COALESCE(jo.created_by, jo.user_id)                                     AS user_id,
+                COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),
+                         u.username, CONCAT('User #', COALESCE(jo.created_by, jo.user_id)))  AS username,
+                CONCAT('Job Order — ', COALESCE(jo.service_type,'Service'))              AS activity_type,
+                jo.created_at                                                             AS timestamp,
+                CONCAT('JO: ', COALESCE(jo.job_order_id, COALESCE(jo.job_order_number, CONCAT('JO-', jo.id))),
+                       ' | Service: ', COALESCE(jo.service_type,'N/A'),
+                       ' | Total: ₱', FORMAT(COALESCE(jo.total_cost, jo.estimated_cost,0),2),
+                       ' | Status: ', COALESCE(jo.validation_status, jo.status,'Pending')) AS description,
+                COALESCE(jo.validation_status, jo.status,'Pending')                      AS status,
+                COALESCE(jo.notes, jo.additional_notes,'')                               AS remarks
             FROM job_orders jo
-            LEFT JOIN users u ON COALESCE(jo.created_by, jo.user_id) = u.id ";
-            
-        $where_clauses = ["jo.station_id = ?", "DATE(jo.created_at) BETWEEN ? AND ?"];
-        $params = [$station_id, $date_start, $date_end];
-        if ($is_staff_only) {
-            $where_clauses[] = "COALESCE(jo.created_by, jo.user_id) = ?";
-            $params[] = $user_id;
-        }
-        $sql .= " WHERE " . implode(" AND ", $where_clauses);
-        $sql .= " ORDER BY jo.created_at DESC";
-        
+            LEFT JOIN users u ON u.id = COALESCE(jo.created_by, jo.user_id)
+            WHERE COALESCE(jo.created_by, jo.user_id) = ?
+              AND jo.station_id = ?
+              AND DATE(jo.created_at) BETWEEN ? AND ?
+            ORDER BY jo.created_at DESC
+        ";
         $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
+        $stmt->execute([$user_id, $station_id, $date_start, $date_end]);
         $jo_logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
         $all_activities = array_merge($all_activities, $jo_logs);
     } catch (Exception $e) {
@@ -748,11 +766,9 @@ require_once __DIR__ . '/../partials/header.php';
                         <?php endforeach; else: ?>
                         <tr>
                             <td colspan="7" style="text-align: center; padding: 40px;">
-                                <p style="margin-bottom: 10px;">No activity logs found for this period.</p>
-                                <p style="font-size: 10px; color: #666;">
-                                    Debug: Audit Log Table: <?= $has_audit_log ? 'EXISTS' : 'NOT FOUND' ?> | 
-                                    Date Range: <?= $date_start ?> to <?= $date_end ?> | 
-                                    Total Activities: <?= count($all_activities) ?>
+                                <p style="margin-bottom: 10px;color:#64748b;">No activity logs found for this period.</p>
+                                <p style="font-size: 10px; color: #94a3b8;">
+                                    Period: <?= htmlspecialchars($date_start) ?> to <?= htmlspecialchars($date_end) ?>
                                 </p>
                             </td>
                         </tr>

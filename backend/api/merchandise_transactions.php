@@ -317,7 +317,6 @@ function getTransactionDetails($pdo, $station_id, $role) {
 
 function getPaymentMethods($pdo) {
     try {
-        // Database-driven payment methods
         $stmt = $pdo->prepare("
             SELECT method_key, method_name, icon_class, color_class
             FROM payment_method_config
@@ -326,31 +325,16 @@ function getPaymentMethods($pdo) {
         ");
         $stmt->execute();
         $payment_methods = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        // Fallback to hardcoded methods if table doesn't exist
-        if (empty($payment_methods)) {
-            $payment_methods = [
-                ['method_key' => 'cash', 'method_name' => 'Cash', 'icon_class' => 'fas fa-money-bill-wave', 'color_class' => 'text-success'],
-                ['method_key' => 'card', 'method_name' => 'Credit Card', 'icon_class' => 'fas fa-credit-card', 'color_class' => 'text-primary'],
-                ['method_key' => 'credit', 'method_name' => 'Account Receivable', 'icon_class' => 'fas fa-hand-holding-usd', 'color_class' => 'text-warning']
-            ];
-        }
-        
+
         echo json_encode([
             'success' => true,
             'payment_methods' => $payment_methods
         ]);
     } catch (Exception $e) {
-        // Fallback to hardcoded methods
-        $payment_methods = [
-            ['method_key' => 'cash', 'method_name' => 'Cash', 'icon_class' => 'fas fa-money-bill-wave', 'color_class' => 'text-success'],
-            ['method_key' => 'card', 'method_name' => 'Credit Card', 'icon_class' => 'fas fa-credit-card', 'color_class' => 'text-primary'],
-            ['method_key' => 'credit', 'method_name' => 'Account Receivable', 'icon_class' => 'fas fa-hand-holding-usd', 'color_class' => 'text-warning']
-        ];
-        
         echo json_encode([
-            'success' => true,
-            'payment_methods' => $payment_methods
+            'success' => false,
+            'payment_methods' => [],
+            'error' => 'Payment methods are not configured in the database.'
         ]);
     }
 }
@@ -1393,6 +1377,38 @@ function logMerchandiseTransactionAudit($pdo, $user_id, $transaction_id, $action
         $pdo->prepare("INSERT INTO merchandise_transaction_audit (transaction_id, user_id, action, details, ip_address, user_agent) VALUES (?, ?, ?, ?, ?, ?)")
             ->execute([$transaction_id, $user_id, $action, $details_json, $ip, $ua]);
 
+        // ── Write to audit_trail with staff_id for full chronological log ────
+        try {
+            $txn_ref    = $data['transaction_id'] ?? "MT-{$transaction_id}";
+            $detail_val = json_encode($data);
+            // Detect columns available (idempotent — columns added by install script)
+            $at_has_staff  = false;
+            $at_has_source = false;
+            try {
+                $atc = $pdo->query("SHOW COLUMNS FROM audit_trail")->fetchAll(\PDO::FETCH_COLUMN);
+                $at_has_staff  = in_array('staff_id',     $atc);
+                $at_has_source = in_array('source_table', $atc);
+            } catch (\Exception $e) {}
+
+            // Fetch station_id from the transaction row
+            $at_station = 0;
+            try {
+                $st_r = $pdo->prepare("SELECT station_id FROM merchandise_transactions WHERE id=? LIMIT 1");
+                $st_r->execute([$transaction_id]);
+                $at_station = (int)($st_r->fetchColumn() ?: 0);
+            } catch (\Exception $e) {}
+
+            if ($at_has_staff && $at_has_source) {
+                $pdo->prepare("INSERT INTO audit_trail (transaction_id, manager_id, staff_id, action_type, new_value, station_id, source_table) VALUES (?,?,?,?,?,?,?)")
+                    ->execute([$transaction_id, $user_id, $user_id, strtoupper($action), $detail_val, $at_station, 'merchandise_transactions']);
+            } else {
+                $pdo->prepare("INSERT INTO audit_trail (transaction_id, manager_id, action_type, new_value, station_id) VALUES (?,?,?,?,?)")
+                    ->execute([$transaction_id, $user_id, strtoupper($action), $detail_val, $at_station]);
+            }
+        } catch (\Exception $at_err) {
+            error_log("audit_trail write warning: " . $at_err->getMessage());
+        }
+
         // ── Also write to audit_logs so the Audit Trail report shows it ──────
         $action_map = [
             'CREATED'  => 'Create',
@@ -1403,17 +1419,17 @@ function logMerchandiseTransactionAudit($pdo, $user_id, $transaction_id, $action
         ];
         $action_type = $action_map[strtoupper($action)] ?? ucfirst(strtolower($action));
 
-        // Build a human-readable detail string
         $txn_ref   = $data['transaction_id'] ?? "MT-{$transaction_id}";
         $amount    = isset($data['total_amount']) ? '₱' . number_format((float)$data['total_amount'], 2) : '';
         $items     = isset($data['item_count'])   ? $data['item_count'] . ' item(s)' : '';
         $customer  = $data['customer_name'] ?? '';
         $payment   = $data['payment_method'] ?? '';
-        $parts = array_filter(["Merchandise Transaction {$action_type}", "Ref: {$txn_ref}", $amount, $items, $customer ? "Customer: {$customer}" : '', $payment ? "Payment: {$payment}" : '']);
+        $parts = array_filter(["Merchandise Transaction {$action_type}", "Ref: {$txn_ref}", $amount, $items,
+            $customer ? "Customer: {$customer}" : '', $payment ? "Payment: {$payment}" : '']);
         $detail_str = implode(' | ', $parts);
 
         $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, new_values, status, ip_address, user_agent, created_at)
-                       VALUES (?, 'transaction', ?, ?, 'merchandise_transactions', ?, ?, 'Success', ?, ?, NOW())")
+                       VALUES (?, 'TRANSACTION', ?, ?, 'merchandise_transactions', ?, ?, 'SUCCESS', ?, ?, NOW())")
             ->execute([$user_id, $action_type, $detail_str, $transaction_id, $details_json, $ip, $ua]);
 
     } catch (Exception $e) {

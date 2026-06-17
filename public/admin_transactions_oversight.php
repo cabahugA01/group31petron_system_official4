@@ -14,8 +14,8 @@ if (!in_array($role, ['admin', 'superadmin'])) {
     header('Location: admin_dashboard.php'); exit;
 }
 
-// ── POST: Admin transaction actions ──────────────────────────────────────────
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['export'])) {
+// â”€â”€ POST: Admin transaction actions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && !isset($_GET['export'])) {
     $post_action = $_POST['action'] ?? '';
 
     // Detect available columns dynamically
@@ -36,18 +36,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['export'])) {
     // Safe audit trail insert
     $insert_audit = function(int $txn_id, string $action_type, ?string $new_val = null) use ($pdo, $me, $station_id) {
         try {
-            $pdo->prepare("INSERT INTO audit_trail (transaction_id, manager_id, action_type, new_value, station_id) VALUES (?, ?, ?, ?, ?)")
-                ->execute([$txn_id, $me['id'], $action_type, $new_val, $station_id]);
+            $at_cols = [];
+            try {
+                foreach ($pdo->query("SHOW COLUMNS FROM audit_trail")->fetchAll(PDO::FETCH_COLUMN) as $c)
+                    $at_cols[$c] = true;
+            } catch (Exception $_ce) {}
+
+            if (isset($at_cols['staff_id']) && isset($at_cols['source_table'])) {
+                $pdo->prepare("INSERT INTO audit_trail (transaction_id, manager_id, staff_id, action_type, new_value, station_id, source_table) VALUES (?, ?, ?, ?, ?, ?, ?)")
+                    ->execute([$txn_id, $me['id'], $me['id'], $action_type, $new_val, $station_id, 'merchandise_transactions']);
+            } else {
+                $pdo->prepare("INSERT INTO audit_trail (transaction_id, manager_id, action_type, new_value, station_id) VALUES (?, ?, ?, ?, ?)")
+                    ->execute([$txn_id, $me['id'], $action_type, $new_val, $station_id]);
+            }
         } catch (Exception $ae) {}
+
+        // Also write to audit_logs for Audit Trail report
+        try {
+            $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+            $ua = $_SERVER['HTTP_USER_AGENT'] ?? 'System';
+            $detail = "Admin " . htmlspecialchars($me['name'] ?? $me['username'] ?? 'Admin') . " executed '$action_type' on TXN #{$txn_id}." . ($new_val ? " Details: {$new_val}" : "");
+            $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, new_values, status, ip_address, user_agent, created_at)
+                           VALUES (?, 'TRANSACTION', ?, ?, 'merchandise_transactions', ?, ?, 'SUCCESS', ?, ?, NOW())")
+                ->execute([$me['id'], $action_type, $detail, $txn_id, $new_val, $ip, $ua]);
+        } catch (Exception $al_err) {}
     };
 
-    // ── Approve Merchandise Transaction ──────────────────────────────────────
+    // â”€â”€ Approve Merchandise Transaction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Admin oversight only acts on records already validated by Manager.
     // Raw 'Pending' staff encodings must go through Manager first.
     if ($post_action === 'approve_transaction') {
         $row_id = (int)($_POST['transaction_id'] ?? 0);
+        $notes  = trim($_POST['notes'] ?? '');
         try {
-            // Guard: ensure this record has already passed Manager validation
             $chk = $pdo->prepare("SELECT validation_status FROM merchandise_transactions WHERE id = ? AND station_id = ? LIMIT 1");
             $chk->execute([$row_id, $station_id]);
             $cur_status = strtolower(trim($chk->fetchColumn() ?: ''));
@@ -60,11 +81,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['export'])) {
             $set_vals  = [];
             if ($has_mt('validated_by')) { $set_parts[] = "validated_by = ?"; $set_vals[] = $me['id']; }
             if ($has_mt('validated_at')) { $set_parts[] = "validated_at = NOW()"; }
+            if ($has_mt('manager_notes')) {
+                $set_parts[] = "manager_notes = ?";
+                $set_vals[]  = $notes !== '' ? "Admin Approved: {$notes}" : "Admin Approved by " . ($me['name'] ?? $me['username']);
+            }
             if ($has_mt('updated_at'))   { $set_parts[] = "updated_at = NOW()"; }
             $stmt = $pdo->prepare("UPDATE merchandise_transactions SET " . implode(', ', $set_parts) . " WHERE id = ? AND station_id = ?");
             $stmt->execute(array_merge($set_vals, [$row_id, $station_id]));
             if ($stmt->rowCount() > 0) {
-                $insert_audit($row_id, 'Approve');
+                $insert_audit($row_id, 'Admin_Approve', $notes ?: null);
                 log_activity($pdo, $me['id'], 'Approve Transaction', "Merchandise transaction #{$row_id} approved by admin {$me['name']}");
                 $_SESSION['success'] = 'Transaction approved successfully.';
             } else {
@@ -77,7 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['export'])) {
         exit;
     }
 
-    // ── Reject Merchandise Transaction ───────────────────────────────────────
+    // â”€â”€ Reject Merchandise Transaction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if ($post_action === 'reject_transaction') {
         $row_id = (int)($_POST['transaction_id'] ?? 0);
         $reason = trim($_POST['reason'] ?? '');
@@ -88,11 +113,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['export'])) {
             if ($has_mt('validated_at'))     { $set_parts[] = "validated_at = NOW()"; }
             if ($has_mt('rejection_reason')) { $set_parts[] = "rejection_reason = ?"; $set_vals[] = $reason; }
             elseif ($has_mt('remarks'))      { $set_parts[] = "remarks = ?";          $set_vals[] = 'RETURNED: ' . $reason; }
+            if ($has_mt('manager_notes'))    { $set_parts[] = "manager_notes = ?";    $set_vals[] = "Admin Rejected: {$reason}"; }
             if ($has_mt('updated_at'))       { $set_parts[] = "updated_at = NOW()"; }
             $stmt = $pdo->prepare("UPDATE merchandise_transactions SET " . implode(', ', $set_parts) . " WHERE id = ? AND station_id = ?");
             $stmt->execute(array_merge($set_vals, [$row_id, $station_id]));
             if ($stmt->rowCount() > 0) {
-                $insert_audit($row_id, 'Return', $reason);
+                $insert_audit($row_id, 'Admin_Return', $reason);
                 log_activity($pdo, $me['id'], 'Return Transaction', "Merchandise transaction #{$row_id} returned by admin {$me['name']}. Reason: {$reason}");
                 $_SESSION['success'] = 'Transaction returned to staff for correction.';
             } else {
@@ -105,7 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['export'])) {
         exit;
     }
 
-    // ── Adjust Merchandise Transaction ────────────────────────────────────────
+    // â”€â”€ Adjust Merchandise Transaction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if ($post_action === 'adjust_transaction') {
         $row_id    = (int)($_POST['transaction_id'] ?? 0);
         $new_total = (float)($_POST['adj_total'] ?? 0);
@@ -116,12 +142,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['export'])) {
             if ($has_mt('validated_by')) { $set_parts[] = "validated_by = ?"; $set_vals[] = $me['id']; }
             if ($has_mt('validated_at')) { $set_parts[] = "validated_at = NOW()"; }
             if ($has_mt('remarks'))      { $set_parts[] = "remarks = ?"; $set_vals[] = 'ADJUSTED: ' . $adj_note; }
+            if ($has_mt('manager_notes')){ $set_parts[] = "manager_notes = ?"; $set_vals[] = "Admin Adjusted: â‚±" . number_format($new_total,2) . ". " . $adj_note; }
             if ($has_mt('updated_at'))   { $set_parts[] = "updated_at = NOW()"; }
             $stmt = $pdo->prepare("UPDATE merchandise_transactions SET " . implode(', ', $set_parts) . " WHERE id = ? AND station_id = ?");
             $stmt->execute(array_merge($set_vals, [$row_id, $station_id]));
             if ($stmt->rowCount() > 0) {
-                $insert_audit($row_id, 'Adjust', "New total: ₱{$new_total}. Note: {$adj_note}");
-                log_activity($pdo, $me['id'], 'Adjust Transaction', "Merchandise #{$row_id} adjusted to ₱{$new_total} by admin {$me['name']}.");
+                $insert_audit($row_id, 'Admin_Adjust', "New total: â‚±{$new_total}. Note: {$adj_note}");
+                log_activity($pdo, $me['id'], 'Adjust Transaction', "Merchandise #{$row_id} adjusted to â‚±{$new_total} by admin {$me['name']}.");
                 $_SESSION['success'] = "Transaction #{$row_id} adjusted successfully.";
             } else {
                 $_SESSION['error'] = 'Transaction not found or already processed.';
@@ -133,7 +160,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['export'])) {
         exit;
     }
 
-    // ── Approve Job Order ─────────────────────────────────────────────────────
+    // â”€â”€ Approve Job Order â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if ($post_action === 'approve_job_order') {
         $jo_id  = (int)($_POST['jo_id'] ?? 0);
         $jo_src = $_POST['jo_source'] ?? 'job_orders';
@@ -160,7 +187,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['export'])) {
         exit;
     }
 
-    // ── Reject Job Order ──────────────────────────────────────────────────────
+    // â”€â”€ Reject Job Order â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if ($post_action === 'reject_job_order') {
         $jo_id  = (int)($_POST['jo_id'] ?? 0);
         $jo_src = $_POST['jo_source'] ?? 'job_orders';
@@ -188,12 +215,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['export'])) {
         exit;
     }
 
-    // ── Fuel transactions removed ─────────────────────────────────────────────
+    // â”€â”€ Fuel transactions removed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Admin Oversight Dashboard shows ONLY Merchandise + Job Orders (NO Fuel).
     // Fuel variance is monitored in separate admin_variance_reports.php page.
 }
 
-// ── Dynamic column detection ──────────────────────────────────────────────────
+// â”€â”€ Dynamic column detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function ato_cols(PDO $pdo, string $table): array {
     try {
         $rows = $pdo->query("SHOW COLUMNS FROM `{$table}`")->fetchAll(PDO::FETCH_ASSOC);
@@ -207,7 +234,7 @@ function ato_has(array $map, string $col): bool { return isset($map[strtolower($
 $mt_cols = ato_cols($pdo, 'merchandise_transactions');
 $jo_cols = ato_cols($pdo, 'job_orders');
 
-// ── Payment status helper ─────────────────────────────────────────────────────
+// â”€â”€ Payment status helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Derives Paid / Partial / Unpaid from amount_paid vs total_amount columns if available.
 // Falls back to payment_method presence as a proxy.
 function ato_pay_status(array $row): string {
@@ -223,7 +250,7 @@ function ato_pay_status(array $row): string {
     return 'Paid';
 }
 
-// ── Filters ───────────────────────────────────────────────────────────────────
+// â”€â”€ Filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Admin Oversight Dashboard: ONLY Merchandise + Job Orders (NO Fuel transactions)
 $start      = $_GET['start']  ?? date('Y-m-d', strtotime('-30 days'));
 $end        = $_GET['end']    ?? date('Y-m-d');
@@ -231,7 +258,7 @@ $search     = trim($_GET['search'] ?? '');
 $status_f   = trim($_GET['status'] ?? '');
 $type_f     = trim($_GET['type']   ?? ''); // 'merchandise' | 'job_order' | ''
 
-// ── Export header (early, before any output) ─────────────────────────────────
+// â”€â”€ Export header (early, before any output) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $export_type = $_GET['export'] ?? '';
 $is_export   = in_array($export_type, ['excel', 'csv']);
 if ($export_type === 'excel') {
@@ -244,15 +271,18 @@ if ($export_type === 'excel') {
     header('Pragma: no-cache');
 }
 
-// ── Fetch unified Merchandise + Job Orders (NO Fuel) ──────────────────────────
+// â”€â”€ Fetch unified Merchandise + Job Orders (NO Fuel) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $rows         = [];
 $total_amount = 0.0;
 
-// ── Merchandise rows ──────────────────────────────────────────────────────
-$mt_status_col  = ato_has($mt_cols, 'validation_status') ? 'mt.validation_status' : "'Pending'";
-$mt_staff_col   = ato_has($mt_cols, 'staff_id') ? "COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown')" : "'Unknown'";
-$mt_date_col    = "CASE WHEN mt.transaction_date > '2000-01-01' THEN mt.transaction_date ELSE mt.created_at END";
-$mt_paid_col    = ato_has($mt_cols, 'amount_paid')        ? 'mt.amount_paid'       : 'NULL';
+// â”€â”€ Merchandise rows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+$mt_status_col   = ato_has($mt_cols, 'validation_status') ? 'mt.validation_status' : "'Pending'";
+$mt_staff_col    = ato_has($mt_cols, 'staff_id') ? "COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown')" : "'Unknown'";
+$mt_date_col     = ato_has($mt_cols, 'transaction_date')
+    ? (ato_has($mt_cols, 'created_at') ? "CASE WHEN mt.transaction_date > '2000-01-01' THEN mt.transaction_date ELSE mt.created_at END" : 'mt.transaction_date')
+    : 'mt.created_at';
+$mt_paid_col     = ato_has($mt_cols, 'amount_paid') ? 'mt.amount_paid' : 'NULL';
+$mt_item_sku_col = ato_has($mt_cols, 'item_sku') ? 'mt.item_sku' : 'NULL';
 
 $mt_where  = "WHERE mt.station_id = ? AND DATE({$mt_date_col}) BETWEEN ? AND ?";
 $mt_params = [$station_id, $start, $end];
@@ -261,11 +291,11 @@ if ($search !== '') {
     $mt_params[] = "%$search%"; $mt_params[] = "%$search%";
 }
 if ($status_f !== '') {
-    $mt_where .= " AND LOWER(TRIM(COALESCE(mt.validation_status,''))) = LOWER(?)";
+    $mt_where .= " AND LOWER(TRIM(COALESCE({$mt_status_col},''))) = LOWER(?)";
     $mt_params[] = $status_f;
 } else {
-    // Admin Oversight: only show APPROVED and COMPLETED transactions validated by Manager
-    $mt_where .= " AND LOWER(TRIM(COALESCE(mt.validation_status,''))) IN ('approved', 'completed')";
+    // Admin Oversight: show all manager-processed records
+    $mt_where .= " AND LOWER(TRIM(COALESCE({$mt_status_col},''))) IN ('approved','completed','adjusted','rejected')";
 }
 
 $mt_rows = [];
@@ -299,28 +329,28 @@ if ($type_f === '' || $type_f === 'merchandise' || $type_f === 'job_order' || $t
                 END                                                     AS entry_type,
                 COALESCE(
                     NULLIF((SELECT GROUP_CONCAT(
-                                CONCAT(i.product_name, ' - ', i.quantity, ' pcs @ ₱', FORMAT(i.unit_price, 2))
+                                CONCAT(i.product_name, ' - ', i.quantity, ' pcs @ â‚±', FORMAT(i.unit_price, 2))
                                 ORDER BY i.id SEPARATOR ' | ')
                             FROM merchandise_transaction_items i 
                             WHERE i.transaction_id = mt.id 
                             AND COALESCE(i.item_type, 'merchandise') = 'merchandise'),''),
-                    mt.item_sku, 
-                    CASE WHEN TRIM(COALESCE({$mt_jo_svc_col},'')) <> '' THEN '—' ELSE 'N/A' END
+                    {$mt_item_sku_col}, 
+                    CASE WHEN TRIM(COALESCE({$mt_jo_svc_col},'')) <> '' THEN 'â€”' ELSE 'N/A' END
                 )                                                       AS items_parts,
                 COALESCE(
                     NULLIF((SELECT GROUP_CONCAT(
-                                CONCAT(i.product_name, ' - ', i.quantity, ' pcs @ ₱', FORMAT(i.unit_price, 2))
+                                CONCAT(i.product_name, ' - ', i.quantity, ' pcs @ â‚±', FORMAT(i.unit_price, 2))
                                 ORDER BY i.id SEPARATOR ' | ')
                             FROM merchandise_transaction_items i 
                             WHERE i.transaction_id = mt.id 
                             AND i.item_type = 'service'),''),
                     NULLIF({$mt_jo_svc_col},''),
-                    CASE WHEN mt.item_sku IS NOT NULL AND mt.item_sku <> '' THEN '—' ELSE 'N/A' END
+                    CASE WHEN {$mt_item_sku_col} IS NOT NULL AND {$mt_item_sku_col} <> '' THEN 'â€”' ELSE 'N/A' END
                 )                                                       AS service_type,
                 NULLIF(TRIM(CONCAT(
                     COALESCE({$mt_jo_veh_col},''),
                     CASE WHEN TRIM(COALESCE({$mt_jo_veh_type_col},'')) <> ''
-                         THEN CONCAT(' · ', {$mt_jo_veh_type_col}) ELSE '' END
+                         THEN CONCAT(' Â· ', {$mt_jo_veh_type_col}) ELSE '' END
                 )),'')                                                  AS vehicle_info,
                 mt.total_amount                                         AS amount,
                 {$mt_paid_col}                                          AS amount_paid,
@@ -349,7 +379,7 @@ if ($type_f === '' || $type_f === 'merchandise' || $type_f === 'job_order' || $t
     } catch (Exception $e) { $mt_rows = []; }
 }
 
-// ── Job Order rows ────────────────────────────────────────────────────────
+// â”€â”€ Job Order rows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $jo_status_col   = ato_has($jo_cols, 'validation_status') ? 'jo.validation_status' : 'jo.status';
 $jo_staff_col    = ato_has($jo_cols, 'created_by')        ? 'COALESCE(jo.created_by, jo.user_id)' : 'jo.user_id';
 $jo_mechanic_col = ato_has($jo_cols, 'assigned_mechanic_id') ? "COALESCE(NULLIF(CONCAT(m.first_name,' ',m.last_name),' '), m.username, '')" : "''";
@@ -368,8 +398,8 @@ if ($status_f !== '') {
     $jo_where .= " AND LOWER(TRIM(COALESCE({$jo_status_col},''))) = LOWER(?)";
     $jo_params[] = $status_f;
 } else {
-    // Admin Oversight: only show APPROVED and COMPLETED job orders validated by Manager
-    $jo_where .= " AND LOWER(TRIM(COALESCE({$jo_status_col},''))) IN ('approved', 'completed')";
+    // Admin Oversight: show all manager-processed job orders
+    $jo_where .= " AND LOWER(TRIM(COALESCE({$jo_status_col},''))) IN ('approved','completed','adjusted','rejected','in progress')";
 }
 
 $jo_rows = [];
@@ -381,7 +411,7 @@ if ($type_f === '' || $type_f === 'job_order') {
                 CONCAT('JO-', jo.id)                                        AS txn_id,
                 COALESCE(NULLIF(TRIM(jo.customer_name),''),'Walk-in')       AS customer,
                 'Job Order'                                                  AS entry_type,
-                '—'                                                          AS items_parts,
+                'â€”'                                                          AS items_parts,
                 CONCAT(
                     COALESCE(jo.service_type,'Service'),
                     CASE WHEN jo.vehicle_plate IS NOT NULL AND jo.vehicle_plate != ''
@@ -392,7 +422,7 @@ if ($type_f === '' || $type_f === 'job_order') {
                 NULLIF(TRIM(CONCAT(
                     COALESCE(jo.vehicle_plate,''),
                     CASE WHEN jo.vehicle_type IS NOT NULL AND jo.vehicle_type != ''
-                         THEN CONCAT(' · ', jo.vehicle_type) ELSE '' END
+                         THEN CONCAT(' Â· ', jo.vehicle_type) ELSE '' END
                 )),'')                                                       AS vehicle_info,
                 {$jo_cost_col}                                               AS amount,
                 {$jo_paid_col}                                               AS amount_paid,
@@ -419,7 +449,7 @@ usort($rows, fn($a, $b) => strtotime($b['txn_date']) - strtotime($a['txn_date'])
 
 foreach ($rows as $r) $total_amount += (float)($r['amount'] ?? 0);
 
-// ── Status counts ─────────────────────────────────────────────────────────────
+// â”€â”€ Status counts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $status_counts = [];
 $type_counts   = [];
 foreach ($rows as $r) {
@@ -429,12 +459,12 @@ foreach ($rows as $r) {
     $type_counts[$t] = ($type_counts[$t] ?? 0) + 1;
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// NEW: Enhancements — all DB-driven, zero hardcoded
-// ══════════════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// NEW: Enhancements â€” all DB-driven, zero hardcoded
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-// ── 1. Performance Metrics (KPI panel) ───────────────────────────────────────
-// Total sales, total services, top items, top encoder — scoped to station + filter dates
+// â”€â”€ 1. Performance Metrics (KPI panel) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Total sales, total services, top items, top encoder â€” scoped to station + filter dates
 $kpi_total_sales     = 0.0;
 $kpi_total_services  = 0;
 $kpi_top_items       = [];  // [['name'=>..., 'qty'=>...], ...]
@@ -516,7 +546,9 @@ try {
 try {
     // Top encoder by transaction count (staff with most approved records)
     $kpi_enc_stmt = $pdo->prepare("
-        SELECT u.name AS staff_name, COUNT(*) AS enc_count
+        SELECT COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),
+                       u.username, 'Unknown')                            AS staff_name,
+               COUNT(*) AS enc_count
         FROM merchandise_transactions mt
         JOIN users u ON u.id = mt.staff_id
         WHERE mt.station_id = ?
@@ -530,15 +562,15 @@ try {
     $kpi_top_encoder = $kpi_enc_stmt->fetch(PDO::FETCH_ASSOC) ?: null;
 } catch (Exception $_kpie5) {}
 
-// ── 2. Variance Alerts ────────────────────────────────────────────────────────
+// â”€â”€ 2. Variance Alerts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Scans approved/completed merch transactions in the date range for:
 //   A) qty > current stock_level
-//   B) sum(item qty × unit_price) != total_amount by > ₱0.01
+//   B) sum(item qty Ã— unit_price) != total_amount by > â‚±0.01
 $variance_alerts     = [];
 $variance_alert_count = 0;
 try {
     // Load product stock map for this station
-    $va_stock_map = []; // product_id → stock_level
+    $va_stock_map = []; // product_id â†’ stock_level
     $va_stock_stmt = $pdo->prepare("
         SELECT product_id, COALESCE(stock_level, 0) AS stock_level
         FROM station_inventory WHERE station_id = ?
@@ -586,7 +618,7 @@ try {
                         'id'      => $_vt['id'],
                         'type'    => 'qty',
                         'message' => 'Qty mismatch: ' . htmlspecialchars($_vitem['product_name'])
-                                   . ' — encoded ' . (int)$_vitem['quantity']
+                                   . ' â€” encoded ' . (int)$_vitem['quantity']
                                    . ' pc(s), stock ' . (int)$va_stock_map[$pid],
                     ];
                 }
@@ -597,8 +629,8 @@ try {
                     'txn_ref' => $_vt['txn_ref'],
                     'id'      => $_vt['id'],
                     'type'    => 'amount',
-                    'message' => 'Amount mismatch: computed ₱' . number_format($computed_sum, 2)
-                               . ' vs encoded ₱' . number_format((float)$_vt['total_amount'], 2),
+                    'message' => 'Amount mismatch: computed â‚±' . number_format($computed_sum, 2)
+                               . ' vs encoded â‚±' . number_format((float)$_vt['total_amount'], 2),
                 ];
             }
         }
@@ -606,8 +638,8 @@ try {
     $variance_alert_count = count($variance_alerts);
 } catch (Exception $_vae) {}
 
-// ── 3. Inventory Impact lookup ────────────────────────────────────────────────
-// Keyed by "{_source}:{row_id}" → array of per-item deduction info
+// â”€â”€ 3. Inventory Impact lookup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Keyed by "{_source}:{row_id}" â†’ array of per-item deduction info
 // Uses merchandise_transaction_items + station_inventory
 $inv_impact = [];
 try {
@@ -653,19 +685,19 @@ try {
             ];
         }
     }
-    // For job_orders rows — parse required_parts JSON
+    // For job_orders rows â€” parse required_parts JSON
     foreach ($rows as $_jor) {
         if (($_jor['_source'] ?? '') !== 'job_orders') continue;
         $ikey = 'job_orders:' . $_jor['row_id'];
         $rp   = is_string($_jor['items_parts'] ?? '') ? $_jor['items_parts'] : '';
-        // items_parts is text from GROUP_CONCAT, not JSON — show N/A
+        // items_parts is text from GROUP_CONCAT, not JSON â€” show N/A
         $inv_impact[$ikey] = []; // job_orders: shown as service-only
     }
 } catch (Exception $_iie) {}
 
-// ── 4. Receivables Aging ──────────────────────────────────────────────────────
+// â”€â”€ 4. Receivables Aging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Checks balance_due + due_date per row. Overdue = due_date <= today and not paid.
-$receivables = []; // row_id → ['balance'=>..., 'due_date'=>..., 'overdue_days'=>..., 'aging_label'=>...]
+$receivables = []; // row_id â†’ ['balance'=>..., 'due_date'=>..., 'overdue_days'=>..., 'aging_label'=>...]
 $today_ts = strtotime(date('Y-m-d'));
 try {
     $mt_has_due    = ato_has($mt_cols, 'due_date');
@@ -720,9 +752,9 @@ try {
     }
 } catch (Exception $_rece) {}
 
-// ── 5. Validation Notes (manager remarks) ────────────────────────────────────
+// â”€â”€ 5. Validation Notes (manager remarks) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Fetches admin_remarks / manager_notes / rejection_reason per row from DB
-$validation_notes = []; // "{_source}:{row_id}" → string
+$validation_notes = []; // "{_source}:{row_id}" â†’ string
 try {
     // Merchandise transactions
     if (!empty($ii_mt_ids ?? [])) {
@@ -739,7 +771,7 @@ try {
         $vn_ph = implode(',', array_fill(0, count($ii_mt_ids), '?'));
         $vn_stmt = $pdo->prepare("
             SELECT mt.id, COALESCE($vn_note_col,'') AS note,
-                   COALESCE(u.name,'') AS validated_by_name,
+                   COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''), u.username,'') AS validated_by_name,
                    mt.validated_at
             FROM merchandise_transactions mt
             LEFT JOIN users u ON u.id = mt.validated_by
@@ -769,7 +801,7 @@ try {
         $jo_vn_ph = implode(',', array_fill(0, count($jo_ids), '?'));
         $jo_vn_stmt = $pdo->prepare("
             SELECT jo.id, COALESCE($vn_jo_note_col,'') AS note,
-                   COALESCE(u.name,'') AS validated_by_name,
+                   COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''), u.username,'') AS validated_by_name,
                    jo.validated_at
             FROM job_orders jo
             LEFT JOIN users u ON u.id = jo.validated_by
@@ -786,7 +818,7 @@ try {
     }
 } catch (Exception $_vne) {}
 
-// ── Export output ────────────────────────────────────────────────────────────
+// â”€â”€ Export output â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($export_type === 'csv') {
     $out = fopen('php://output', 'w');
     fputcsv($out, ['Transaction ID', 'Customer', 'Type', 'Vehicle', 'Items/Parts', 'Service Type', 'Amount', 'Payment Method', 'Payment Status', 'Validation Status', 'Date/Time', 'Staff']);
@@ -795,7 +827,7 @@ if ($export_type === 'csv') {
             $r['txn_id'],
             $r['customer'],
             $r['entry_type'],
-            $r['vehicle_info'] ?? '—',
+            $r['vehicle_info'] ?? 'â€”',
             $r['items_parts'] ?? 'N/A',
             $r['service_type'] ?? 'N/A',
             number_format((float)$r['amount'], 2),
@@ -826,7 +858,7 @@ if ($export_type === 'excel') {
         echo '<td>' . htmlspecialchars($r['txn_id'])            . '</td>';
         echo '<td>' . htmlspecialchars($r['customer'])          . '</td>';
         echo '<td>' . htmlspecialchars($r['entry_type'])        . '</td>';
-        echo '<td>' . htmlspecialchars($r['vehicle_info'] ?? '—') . '</td>';
+        echo '<td>' . htmlspecialchars($r['vehicle_info'] ?? 'â€”') . '</td>';
         echo '<td>' . htmlspecialchars($r['items_parts'] ?? 'N/A')     . '</td>';
         echo '<td>' . htmlspecialchars($r['service_type'] ?? 'N/A')    . '</td>';
         echo '<td style="text-align:right">&#8369;' . number_format((float)$r['amount'], 2) . '</td>';
@@ -851,7 +883,7 @@ if ($export_type === 'excel') {
     exit;
 }
 
-// ── PDF export ────────────────────────────────────────────────────────────────
+// â”€â”€ PDF export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($export_type === 'pdf') {
     header('Content-Type: text/html; charset=utf-8');
     $logo_url  = '../assets/img/Petron%20Logo.png';
@@ -861,7 +893,7 @@ if ($export_type === 'pdf') {
     echo '<title>Transactions Oversight | Petron Station Management</title>';
     echo '<style>';
     echo 'body{font-family:Arial,Helvetica,sans-serif;font-size:14px;margin:0;padding:0;background:#f1f5f9;color:#1e293b;}';
-    echo '.action-bar{background:#002F70;padding:12px 24px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:999;}';
+    echo '.action-bar{background:#002F70;padding:12px 24px;display:flex;flex-direction:column;align-items:center;text-align:center;position:sticky;top:0;z-index:999;}';
     echo '.action-bar h2{color:#fff;font-size:15px;margin:0;flex:1;}';
     echo '.btn-print{display:inline-flex;align-items:center;gap:7px;padding:9px 20px;background:#DC0032;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;text-decoration:none;}';
     echo '.btn-back{display:inline-flex;align-items:center;gap:7px;padding:9px 18px;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;}';
@@ -908,7 +940,7 @@ if ($export_type === 'pdf') {
         echo '<td>' . htmlspecialchars($r['txn_id'])            . '</td>';
         echo '<td>' . htmlspecialchars($r['customer'])          . '</td>';
         echo '<td>' . htmlspecialchars($r['entry_type'])        . '</td>';
-        echo '<td>' . htmlspecialchars($r['vehicle_info'] ?? '—') . '</td>';
+        echo '<td>' . htmlspecialchars($r['vehicle_info'] ?? 'â€”') . '</td>';
         echo '<td>' . htmlspecialchars(mb_substr($r['items_parts'] ?? 'N/A', 0, 40)) . '</td>';
         echo '<td>' . htmlspecialchars(mb_substr($r['service_type'] ?? 'N/A', 0, 30)) . '</td>';
         echo '<td class="amount">&#8369;' . number_format((float)$r['amount'], 2) . '</td>';
@@ -936,40 +968,22 @@ include __DIR__ . '/../partials/header.php';
 <div class="page-head">
     <div>
         <h1 class="h1">Oversight Dashboard</h1>
-        <div class="sub">System‑wide monitoring of validated transactions and receivables.</div>
+        <div class="sub">Systemâ€‘wide monitoring of validated transactions and receivables.</div>
     </div>
     <div class="actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <!-- Excel -->
-        <button type="button"
-                onclick="atoExport('excel')"
-                style="background:white;color:#1d6f42;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #1d6f42;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
-                onmouseover="this.style.background='#1d6f42';this.style.color='#fff'"
-                onmouseout="this.style.background='white';this.style.color='#1d6f42'"
-                title="Export to Excel">
+        <button type="button" onclick="atoExport('excel')" class="ato-btn ato-btn-excel">
             <i class="fas fa-file-excel"></i> Excel
         </button>
         <!-- CSV -->
-        <button type="button"
-                onclick="atoExport('csv')"
-                style="background:white;color:#003d7a;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #003d7a;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
-                onmouseover="this.style.background='#003d7a';this.style.color='#fff'"
-                onmouseout="this.style.background='white';this.style.color='#003d7a'"
-                title="Export to CSV">
+        <button type="button" onclick="atoExport('csv')" class="ato-btn ato-btn-csv">
             <i class="fas fa-file-csv"></i> CSV
         </button>
         <!-- PDF -->
-        <button type="button"
-                onclick="atoExport('pdf')"
-                style="background:white;color:#dc2626;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #dc2626;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
-                onmouseover="this.style.background='#dc2626';this.style.color='#fff'"
-                onmouseout="this.style.background='white';this.style.color='#dc2626'"
-                title="Print / Save as PDF">
+        <button type="button" onclick="atoExport('pdf')" class="ato-btn ato-btn-pdf">
             <i class="fas fa-file-pdf"></i> PDF
         </button>
-        <a href="<?= in_array($role, ['admin', 'superadmin']) ? 'admin_dashboard.php' : 'manager_dashboard.php'; ?>"
-           style="background:white;color:#4b5563;text-decoration:none;height:36px;padding:8px 14px;border-radius:8px;border:1px solid #6b7280;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:all .15s;"
-           onmouseover="this.style.background='#6b7280';this.style.color='#fff'"
-           onmouseout="this.style.background='white';this.style.color='#4b5563'">
+        <a href="<?= in_array($role, ['admin', 'superadmin']) ? 'admin_dashboard.php' : 'manager_dashboard.php'; ?>" class="ato-btn ato-btn-back">
             <i class="fas fa-arrow-left"></i> Back
         </a>
     </div>
@@ -987,75 +1001,87 @@ include __DIR__ . '/../partials/header.php';
 </div>
 <?php endif; ?>
 
-<!-- ── Performance Metrics KPI Panel ─────────────────────────────────────── -->
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:14px;">
-    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;">
-        <div style="width:38px;height:38px;border-radius:50%;background:#dbeafe;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-            <i class="fas fa-peso-sign" style="color:#1d4ed8;font-size:15px;"></i>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px;">
+    <!-- Total Sales Card -->
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;display:flex;align-items:center;gap:14px;">
+        <div style="width:44px;height:44px;border-radius:50%;background:#dbeafe;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="fas fa-peso-sign" style="color:#1d4ed8;font-size:18px;"></i>
         </div>
-        <div>
-            <div style="font-size:18px;font-weight:800;color:#002F70;">₱<?= number_format($kpi_total_sales, 2) ?></div>
-            <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.4px;font-weight:600;">Total Sales</div>
-            <div style="font-size:10px;color:#94a3b8;"><?= htmlspecialchars($start) ?> – <?= htmlspecialchars($end) ?></div>
-        </div>
-    </div>
-    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;">
-        <div style="width:38px;height:38px;border-radius:50%;background:#dcfce7;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-            <i class="fas fa-wrench" style="color:#16a34a;font-size:15px;"></i>
-        </div>
-        <div>
-            <div style="font-size:18px;font-weight:800;color:#002F70;"><?= (int)$kpi_total_services ?></div>
-            <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.4px;font-weight:600;">Total Services</div>
-            <div style="font-size:10px;color:#94a3b8;">Approved / Completed</div>
+        <div style="flex:1;min-width:0;">
+            <div style="font-size:20px;font-weight:700;color:#002F70;line-height:1.2;">₱<?= number_format($kpi_total_sales, 2) ?></div>
+            <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.3px;font-weight:600;margin-top:4px;">TOTAL SALES</div>
+            <div style="font-size:10px;color:#94a3b8;margin-top:2px;"><?= htmlspecialchars($start) ?> to <?= htmlspecialchars($end) ?></div>
         </div>
     </div>
-    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;">
-        <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.4px;font-weight:700;margin-bottom:6px;">
-            <i class="fas fa-star" style="color:#d97706;"></i> Top Items Sold
+    
+    <!-- Total Services Card -->
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;display:flex;align-items:center;gap:14px;">
+        <div style="width:44px;height:44px;border-radius:50%;background:#dcfce7;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="fas fa-wrench" style="color:#16a34a;font-size:18px;"></i>
+        </div>
+        <div style="flex:1;min-width:0;">
+            <div style="font-size:20px;font-weight:700;color:#002F70;line-height:1.2;"><?= (int)$kpi_total_services ?></div>
+            <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.3px;font-weight:600;margin-top:4px;">TOTAL SERVICES</div>
+            <div style="font-size:10px;color:#94a3b8;margin-top:2px;">Approved / Completed</div>
+        </div>
+    </div>
+    
+    <!-- Top Items Sold Card -->
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+            <div style="width:32px;height:32px;border-radius:50%;background:#fef3c7;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <i class="fas fa-star" style="color:#d97706;font-size:14px;"></i>
+            </div>
+            <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.3px;font-weight:700;">TOP ITEMS SOLD</div>
         </div>
         <?php if (empty($kpi_top_items)): ?>
-            <div style="font-size:12px;color:#94a3b8;">No data</div>
+            <div style="font-size:12px;color:#94a3b8;text-align:center;padding:8px 0;">No data</div>
         <?php else: foreach ($kpi_top_items as $_idx => $_ti): ?>
-            <div style="font-size:11px;display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #f1f5f9;">
-                <span style="color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:75%;">
+            <div style="font-size:11px;display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #f1f5f9;">
+                <span style="color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">
                     <?= htmlspecialchars($_ti['product_name']) ?>
                 </span>
-                <strong style="color:#002F70;flex-shrink:0;margin-left:6px;"><?= (int)$_ti['total_qty'] ?> pc</strong>
+                <strong style="color:#002F70;margin-left:8px;white-space:nowrap;"><?= (int)$_ti['total_qty'] ?> pc</strong>
             </div>
         <?php endforeach; endif; ?>
     </div>
-    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;">
-        <div style="width:38px;height:38px;border-radius:50%;background:#fef3c7;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-            <i class="fas fa-user-check" style="color:#d97706;font-size:15px;"></i>
+    
+    <!-- Top Encoder Card -->
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;display:flex;align-items:center;gap:14px;">
+        <div style="width:44px;height:44px;border-radius:50%;background:#fef3c7;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="fas fa-user-check" style="color:#d97706;font-size:18px;"></i>
         </div>
-        <div>
-            <div style="font-size:15px;font-weight:800;color:#002F70;">
+        <div style="flex:1;min-width:0;">
+            <div style="font-size:16px;font-weight:700;color:#002F70;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
                 <?= $kpi_top_encoder ? htmlspecialchars($kpi_top_encoder['staff_name']) : '—' ?>
             </div>
-            <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.4px;font-weight:600;">Top Encoder</div>
-            <div style="font-size:10px;color:#94a3b8;">
+            <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.3px;font-weight:600;margin-top:4px;">TOP ENCODER</div>
+            <div style="font-size:10px;color:#94a3b8;margin-top:2px;">
                 <?= $kpi_top_encoder ? (int)$kpi_top_encoder['enc_count'] . ' txn(s) validated' : 'No data' ?>
             </div>
         </div>
     </div>
+    
+    <!-- Variance Alerts Card -->
     <div style="background:<?= $variance_alert_count > 0 ? '#fff3f3' : '#f0fdf4' ?>;
                 border:1px solid <?= $variance_alert_count > 0 ? '#fecaca' : '#bbf7d0' ?>;
-                border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;"
+                border-radius:10px;padding:16px;display:flex;align-items:center;gap:14px;cursor:pointer;"
          onclick="document.getElementById('varianceAlertsPanel').style.display=(document.getElementById('varianceAlertsPanel').style.display==='none'?'block':'none');">
-        <div style="width:38px;height:38px;border-radius:50%;background:<?= $variance_alert_count > 0 ? '#fee2e2' : '#dcfce7' ?>;
+        <div style="width:44px;height:44px;border-radius:50%;background:<?= $variance_alert_count > 0 ? '#fee2e2' : '#dcfce7' ?>;
                     display:flex;align-items:center;justify-content:center;flex-shrink:0;">
             <i class="fas fa-<?= $variance_alert_count > 0 ? 'exclamation-triangle' : 'check-circle' ?>"
-               style="color:<?= $variance_alert_count > 0 ? '#dc2626' : '#16a34a' ?>;font-size:15px;"></i>
+               style="color:<?= $variance_alert_count > 0 ? '#dc2626' : '#16a34a' ?>;font-size:18px;"></i>
         </div>
-        <div>
-            <div style="font-size:18px;font-weight:800;color:<?= $variance_alert_count > 0 ? '#dc2626' : '#16a34a' ?>;">
+        <div style="flex:1;min-width:0;">
+            <div style="font-size:20px;font-weight:700;color:<?= $variance_alert_count > 0 ? '#dc2626' : '#16a34a' ?>;line-height:1.2;">
                 <?= (int)$variance_alert_count ?>
             </div>
-            <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.4px;font-weight:600;">Variance Alerts</div>
-            <div style="font-size:10px;color:#94a3b8;"><?= $variance_alert_count > 0 ? 'Click to view' : 'All clear' ?></div>
+            <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.3px;font-weight:600;margin-top:4px;">VARIANCE ALERTS</div>
+            <div style="font-size:10px;color:#94a3b8;margin-top:2px;"><?= $variance_alert_count > 0 ? 'Click to view' : 'All clear' ?></div>
         </div>
     </div>
 </div>
+
 
 <!-- Variance Alerts expandable panel -->
 <?php if ($variance_alert_count > 0): ?>
@@ -1063,7 +1089,7 @@ include __DIR__ . '/../partials/header.php';
      border-radius:10px;padding:14px 18px;margin-bottom:14px;">
     <div style="font-weight:700;color:#dc2626;margin-bottom:10px;font-size:13px;">
         <i class="fas fa-exclamation-triangle"></i>
-        Variance Alerts — <?= (int)$variance_alert_count ?> flag(s) in <?= htmlspecialchars($start) ?> – <?= htmlspecialchars($end) ?>
+        Variance Alerts â€” <?= (int)$variance_alert_count ?> flag(s) in <?= htmlspecialchars($start) ?> â€“ <?= htmlspecialchars($end) ?>
     </div>
     <div style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto;">
         <?php foreach ($variance_alerts as $_va): ?>
@@ -1081,7 +1107,7 @@ include __DIR__ . '/../partials/header.php';
 </div>
 <?php endif; ?>
 
-<!-- ── Filter Bar ──────────────────────────────────────────────────────────── -->
+<!-- â”€â”€ Filter Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
 <div class="ato-filter-card">
     <form method="get" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
         <div class="ato-flt-grp">
@@ -1111,8 +1137,7 @@ include __DIR__ . '/../partials/header.php';
             <select name="status" class="ato-inp ato-select">
                 <option value="">All Statuses</option>
                 <?php
-                // Admin sees only manager-processed records (Approved/Completed)
-                $status_opts = ['Approved', 'Completed'];
+                $status_opts = ['Approved','Adjusted','Completed','Rejected'];
                 foreach ($status_opts as $opt):
                 ?>
                 <option value="<?php echo strtolower($opt); ?>" <?php echo strtolower($status_f) === strtolower($opt) ? 'selected' : ''; ?>>
@@ -1132,7 +1157,7 @@ include __DIR__ . '/../partials/header.php';
 
 
 
-<!-- ── Unified Table ───────────────────────────────────────────────────────── -->
+<!-- â”€â”€ Unified Table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
 <div class="card" style="padding:0;">
     <div style="overflow:hidden;border-radius:12px;">
     <table class="ato-table">
@@ -1212,23 +1237,23 @@ include __DIR__ . '/../partials/header.php';
                         </span>
                     </td>
                     <td style="color:#475569;overflow:hidden;text-overflow:ellipsis;"
-                        title="<?= htmlspecialchars($r['vehicle_info'] ?? '—') ?>">
-                        <?= htmlspecialchars($r['vehicle_info'] ?? '—') ?: '—' ?>
+                        title="<?= htmlspecialchars($r['vehicle_info'] ?? 'â€”') ?>">
+                        <?= htmlspecialchars($r['vehicle_info'] ?? 'â€”') ?: 'â€”' ?>
                     </td>
                     <td style="line-height:1.3;overflow:hidden;"
                         title="<?= htmlspecialchars($r['items_parts'] ?? 'N/A') ?>">
-                        <?= htmlspecialchars(mb_strimwidth($r['items_parts'] ?? 'N/A', 0, 50, '…')) ?>
+                        <?= htmlspecialchars(mb_strimwidth($r['items_parts'] ?? 'N/A', 0, 50, 'â€¦')) ?>
                     </td>
                     <td style="line-height:1.3;overflow:hidden;"
                         title="<?= htmlspecialchars($r['service_type'] ?? 'N/A') ?>">
-                        <?= htmlspecialchars(mb_strimwidth($r['service_type'] ?? 'N/A', 0, 40, '…')) ?>
+                        <?= htmlspecialchars(mb_strimwidth($r['service_type'] ?? 'N/A', 0, 40, 'â€¦')) ?>
                     </td>
                     <td style="font-weight:700;color:#002F70;text-align:right;white-space:nowrap;">
-                        ₱<?= number_format((float)$r['amount'], 2) ?>
+                        â‚±<?= number_format((float)$r['amount'], 2) ?>
                     </td>
                     <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;"
                         title="<?= htmlspecialchars($r['payment_method']) ?>">
-                        <?= htmlspecialchars(mb_strimwidth($r['payment_method'], 0, 10, '…')) ?>
+                        <?= htmlspecialchars(mb_strimwidth($r['payment_method'], 0, 10, 'â€¦')) ?>
                     </td>
 
                     <!-- Pay Status + Receivables Aging -->
@@ -1239,12 +1264,12 @@ include __DIR__ . '/../partials/header.php';
                         </span>
                         <?php if ($show_bal): ?>
                         <div style="font-size:10px;color:#9a3412;font-weight:700;margin-top:2px;white-space:nowrap;">
-                            ₱<?= number_format($rec_bal, 2) ?>
+                            â‚±<?= number_format($rec_bal, 2) ?>
                         </div>
                         <?php endif; ?>
                         <?php if (!empty($aging_label)): ?>
                         <div style="font-size:10px;color:<?= $aging_color ?>;font-weight:600;margin-top:1px;">
-                            <?= $rec_data['overdue_days'] > 0 ? '⚠ ' : '' ?><?= htmlspecialchars($aging_label) ?>
+                            <?= $rec_data['overdue_days'] > 0 ? 'âš  ' : '' ?><?= htmlspecialchars($aging_label) ?>
                         </div>
                         <?php endif; ?>
                     </td>
@@ -1257,31 +1282,54 @@ include __DIR__ . '/../partials/header.php';
                     </td>
 
                     <!-- Inventory Impact -->
-                    <td style="line-height:1.4;">
+                    <td style="line-height:1.6;">
                         <?php if (empty($ii_items) && ($r['_source'] ?? '') === 'job_orders'): ?>
-                            <span style="color:#cbd5e1;">Svc only</span>
+                            <span style="color:#94a3b8;font-size:10px;">Svc only</span>
                         <?php elseif (empty($ii_items)): ?>
-                            <span style="color:#cbd5e1;">—</span>
+                            <span style="color:#cbd5e1;font-size:10px;">â€”</span>
                         <?php else: foreach ($ii_items as $_ii):
-                            if ($_ii['status'] === 'yes')    { $ic = '#16a34a'; $il = '✓ Yes'; }
-                            elseif ($_ii['status'] === 'no') { $ic = '#d97706'; $il = '✗ No'; }
-                            elseif ($_ii['status'] === 'na') { $ic = '#94a3b8'; $il = 'N/A'; }
-                            else                             { $ic = '#64748b'; $il = 'Pend'; }
+                            if ($_ii['status'] === 'yes')    {
+                                $ic_bg='#dcfce7'; $ic_c='#166534'; $ic_b='#86efac'; $ic_icon='âœ“'; $il='Deducted';
+                            } elseif ($_ii['status'] === 'no') {
+                                $ic_bg='#fef9c3'; $ic_c='#92400e'; $ic_b='#fde68a'; $ic_icon='âœ—'; $il='Not Yet';
+                            } elseif ($_ii['status'] === 'na') {
+                                $ic_bg='#f1f5f9'; $ic_c='#94a3b8'; $ic_b='#e2e8f0'; $ic_icon='â€”'; $il='N/A';
+                            } else {
+                                $ic_bg='#eff6ff'; $ic_c='#1d4ed8'; $ic_b='#bfdbfe'; $ic_icon='â³'; $il='Pending';
+                            }
                         ?>
-                        <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-                             title="<?= htmlspecialchars($_ii['part']) ?> → <?= $il ?>">
-                            <span style="color:#374151;"><?= htmlspecialchars(mb_strimwidth($_ii['part'],0,10,'…')) ?></span>
-                            <span style="color:<?= $ic ?>;font-weight:700;"> <?= $il ?></span>
+                        <div style="margin-bottom:3px;"
+                             title="<?= htmlspecialchars($_ii['part']) ?> Ã— <?= (int)$_ii['qty'] ?> pc">
+                            <div style="font-size:10px;color:#475569;white-space:nowrap;
+                                        overflow:hidden;text-overflow:ellipsis;max-width:100px;">
+                                <?= htmlspecialchars(mb_strimwidth($_ii['part'],0,12,'â€¦')) ?> Ã—<?= (int)$_ii['qty'] ?>
+                            </div>
+                            <span style="display:inline-block;background:<?= $ic_bg ?>;color:<?= $ic_c ?>;
+                                         border:1px solid <?= $ic_b ?>;font-size:10px;font-weight:700;
+                                         padding:1px 5px;border-radius:10px;margin-top:1px;white-space:nowrap;">
+                                <?= $ic_icon ?> <?= $il ?>
+                            </span>
                         </div>
                         <?php endforeach; endif; ?>
                     </td>
 
                     <!-- Validation Notes -->
-                    <td style="color:#475569;line-height:1.3;overflow:hidden;"
+                    <td style="color:#475569;line-height:1.4;overflow:hidden;"
                         title="<?= htmlspecialchars($val_note) ?>">
-                        <?= !empty($val_note)
-                            ? htmlspecialchars(mb_strimwidth($val_note, 0, 60, '…'))
-                            : '<span style="color:#cbd5e1;">—</span>' ?>
+                        <?php if (!empty($val_note)): ?>
+                        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;
+                                    padding:3px 6px;font-size:10px;">
+                            <span style="font-size:9px;font-weight:700;color:#1d4ed8;
+                                         text-transform:uppercase;letter-spacing:.3px;display:block;">
+                                âœ… Manager
+                            </span>
+                            <div style="color:#1e3a5f;margin-top:1px;">
+                                <?= htmlspecialchars(mb_strimwidth($val_note, 0, 55, 'â€¦')) ?>
+                            </div>
+                        </div>
+                        <?php else: ?>
+                            <span style="color:#cbd5e1;font-size:10px;">â€”</span>
+                        <?php endif; ?>
                     </td>
 
                     <td style="color:#64748b;overflow:hidden;text-overflow:ellipsis;">
@@ -1290,7 +1338,7 @@ include __DIR__ . '/../partials/header.php';
                     </td>
                     <td style="color:#64748b;overflow:hidden;text-overflow:ellipsis;"
                         title="<?= htmlspecialchars($r['staff_name']) ?>">
-                        <?= htmlspecialchars(mb_strimwidth($r['staff_name'], 0, 14, '…')) ?>
+                        <?= htmlspecialchars(mb_strimwidth($r['staff_name'], 0, 14, 'â€¦')) ?>
                     </td>
                 </tr>
                 <?php endforeach; ?>
@@ -1353,7 +1401,17 @@ include __DIR__ . '/../partials/header.php';
 .ato-btn-reset  { color:#4b5563 !important; border-color:#6b7280 !important; }
 .ato-btn-reset:hover { background:#6b7280 !important; color:#fff !important; }
 
-/* ── Table Styles with Blue Headers ─────────────────────────────────────────── */
+/* Export button styles - color-coded outline design */
+.ato-btn-excel  { color:#1d6f42 !important; border-color:#1d6f42 !important; }
+.ato-btn-excel:hover  { background:#1d6f42 !important; color:#fff !important; }
+.ato-btn-csv    { color:#003d7a !important; border-color:#003d7a !important; }
+.ato-btn-csv:hover    { background:#003d7a !important; color:#fff !important; }
+.ato-btn-pdf    { color:#dc2626 !important; border-color:#dc2626 !important; }
+.ato-btn-pdf:hover    { background:#dc2626 !important; color:#fff !important; }
+.ato-btn-back   { color:#4b5563 !important; border-color:#6b7280 !important; }
+.ato-btn-back:hover   { background:#6b7280 !important; color:#fff !important; }
+
+/* â”€â”€ Table Styles with Blue Headers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .ato-table { 
     width:100%;
     border-collapse:collapse;
@@ -1404,7 +1462,7 @@ include __DIR__ . '/../partials/header.php';
 .ato-table th:nth-child(10),
 .ato-table td:nth-child(10) { text-align:center; }
 
-/* ── Plain Text Badges ──────────────────────────────────────────────────────── */
+/* â”€â”€ Plain Text Badges â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .ato-badge { 
     display:inline-block;
     padding:3px 10px;
@@ -1442,7 +1500,7 @@ include __DIR__ . '/../partials/header.php';
     border-color:#bbf7d0;
 }
 
-/* ── Summary Bar ────────────────────────────────────────────────────────────── */
+/* â”€â”€ Summary Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .ato-summary-bar { 
     display:flex;
     gap:10px;
@@ -1465,7 +1523,7 @@ include __DIR__ . '/../partials/header.php';
     font-weight:600;
 }
 
-/* ── Modal Overlay (hidden by default) ─────────────────────────────────────── */
+/* â”€â”€ Modal Overlay (hidden by default) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .ato-modal-overlay {
     display: none;
     position: fixed;
@@ -1539,13 +1597,13 @@ include __DIR__ . '/../partials/header.php';
     cursor: pointer;
 }
 
-/* ── Responsive ─────────────────────────────────────────────────────────────── */
+/* â”€â”€ Responsive â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 @media (max-width: 768px) {
     .ato-table { font-size:11px; }
     .ato-table thead th, .ato-table tbody td { padding:8px 6px; }
 }
 
-/* ── Print Styles ───────────────────────────────────────────────────────────── */
+/* â”€â”€ Print Styles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 @media print {
     .sidebar,.top-header,.page-head .actions,.ato-filter-card,.ato-tab-bar { display:none !important; }
     .main { margin:0 !important;padding:0 !important; }
@@ -1660,7 +1718,7 @@ include __DIR__ . '/../partials/header.php';
 </script>
 <div style="height: 80px;"></div>
 
-<!-- ── Reject Modal ─────────────────────────────────────────────────────────── -->
+<!-- â”€â”€ Reject Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
 <div class="ato-modal-overlay" id="atoRejectModal">
     <div class="ato-modal">
         <h3><i class="fas fa-times-circle" style="color:#dc3545;margin-right:8px;"></i>Return Transaction</h3>
@@ -1674,7 +1732,7 @@ include __DIR__ . '/../partials/header.php';
             <input type="hidden" name="_status" id="ato_reject_status" value="">
             <input type="hidden" name="_search" id="ato_reject_search" value="">
             <label>Reason for returning <span style="color:#dc3545;">*</span></label>
-            <textarea name="reason" id="ato_reject_reason" placeholder="Explain why this transaction is being returned…" required></textarea>
+            <textarea name="reason" id="ato_reject_reason" placeholder="Explain why this transaction is being returnedâ€¦" required></textarea>
             <div class="ato-modal-btns">
                 <button type="button" class="ato-modal-cancel" onclick="atoCloseModal('atoRejectModal')">Cancel</button>
                 <button type="submit" class="ato-modal-submit" style="background:#dc3545;">Return Transaction</button>
@@ -1683,7 +1741,7 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
-<!-- ── Adjust Modal ─────────────────────────────────────────────────────────── -->
+<!-- â”€â”€ Adjust Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
 <div class="ato-modal-overlay" id="atoAdjustModal">
     <div class="ato-modal">
         <h3><i class="fas fa-sliders" style="color:#6f42c1;margin-right:8px;"></i>Adjust Transaction Amount</h3>
@@ -1694,10 +1752,10 @@ include __DIR__ . '/../partials/header.php';
             <input type="hidden" name="_end" id="ato_adj_end" value="">
             <input type="hidden" name="_status" id="ato_adj_status" value="">
             <input type="hidden" name="_search" id="ato_adj_search" value="">
-            <label>New Total Amount (₱) <span style="color:#dc3545;">*</span></label>
+            <label>New Total Amount (â‚±) <span style="color:#dc3545;">*</span></label>
             <input type="number" name="adj_total" id="ato_adj_total" step="0.01" min="0" required>
             <label>Adjustment Note <span style="color:#dc3545;">*</span></label>
-            <textarea name="adj_note" id="ato_adj_note" placeholder="Reason for adjustment…" required></textarea>
+            <textarea name="adj_note" id="ato_adj_note" placeholder="Reason for adjustmentâ€¦" required></textarea>
             <div class="ato-modal-btns">
                 <button type="button" class="ato-modal-cancel" onclick="atoCloseModal('atoAdjustModal')">Cancel</button>
                 <button type="submit" class="ato-modal-submit" style="background:#6f42c1;">Save Adjustment</button>
@@ -1748,11 +1806,11 @@ document.querySelectorAll('.ato-modal-overlay').forEach(function(overlay) {
     });
 });
 
-// ══════════════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // AUTO-REFRESH: Admin Transactions Oversight (60-second polling for compliance)
 // No manual refresh button needed - system automatically reflects manager-validated
 // transactions and compliance alerts for admin oversight monitoring.
-// ══════════════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 let refreshAdminOversightTimer = null;
 let isAdminModalOpen = false;
 
@@ -1793,7 +1851,7 @@ window.atoOpenAdjustModal = function(id, amount, start, end, status, search) {
 // Start auto-refresh timer (60 seconds - appropriate for admin oversight)
 window.refreshAdminOversightTimer = setInterval(autoRefreshAdminOversight, 60000);
 
-console.log('✅ Auto-refresh enabled for Admin Transactions Oversight (60s interval)');
+console.log('âœ… Auto-refresh enabled for Admin Transactions Oversight (60s interval)');
 
 function atoExport(format) {
     const table = document.querySelector('.ato-table');
@@ -1911,3 +1969,4 @@ function atoExport(format) {
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>
+

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * MANAGER PENDING TRANSACTIONS - NEW DESIGN
  * 
@@ -50,6 +50,65 @@ function pt_pay_status(array $row): string {
     return 'Paid';
 }
 
+function pt_shift_condition(string $alias, array $cols, string $date_expr, array $shift): array {
+    $parts = [];
+    $params = [];
+
+    if (pt_has($cols, 'shift_period') && !empty($shift['shift_key'])) {
+        $parts[] = "LOWER(TRIM({$alias}.shift_period)) = LOWER(?)";
+        $params[] = $shift['shift_key'];
+    }
+    if (pt_has($cols, 'shift_name') && !empty($shift['shift_name'])) {
+        $parts[] = "LOWER(TRIM({$alias}.shift_name)) = LOWER(?)";
+        $params[] = $shift['shift_name'];
+    }
+
+    $start = $shift['start_time'] ?? '';
+    $end   = $shift['end_time'] ?? '';
+    if ($start !== '' && $end !== '') {
+        if ($start <= $end) {
+            $parts[] = "TIME({$date_expr}) BETWEEN ? AND ?";
+            $params[] = $start;
+            $params[] = $end;
+        } else {
+            $parts[] = "(TIME({$date_expr}) >= ? OR TIME({$date_expr}) <= ?)";
+            $params[] = $start;
+            $params[] = $end;
+        }
+    }
+
+    if (!$parts) {
+        return ['1=0', []];
+    }
+
+    return ['(' . implode(' OR ', $parts) . ')', $params];
+}
+
+function pt_apply_payment_breakdown(array &$summary, float $amount, float $paid, float $balance, string $method, string $payment_status): void {
+    $method_l = strtolower($method);
+    $status_l = strtolower($payment_status);
+    $is_credit = strpos($method_l, 'credit') !== false || strpos($method_l, 'utang') !== false
+              || strpos($status_l, 'credit') !== false || strpos($status_l, 'receivable') !== false;
+
+    if ($is_credit) {
+        $summary['utang'] += $balance > 0 ? $balance : $amount;
+        return;
+    }
+
+    if ($paid >= $amount - 0.01 || $status_l === 'paid') {
+        $summary['paid'] += $amount;
+        return;
+    }
+
+    if ($paid > 0.01) {
+        $summary['paid'] += $paid;
+        $summary['pending_payment'] += max(0, $balance);
+        return;
+    }
+
+    $summary['pending_payment'] += $balance > 0 ? $balance : $amount;
+}
+
 // ── POST: Manager actions (Approve, Reject, Adjust) ──────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $post_action = $_POST['action'] ?? '';
@@ -74,13 +133,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         } catch (Exception $ex) {}
 
+        // ── Write to audit_trail (supports optional staff_id + source_table) ─
         try {
-            $pdo->prepare("INSERT INTO audit_trail (transaction_id, manager_id, action_type, old_value, new_value, station_id) VALUES (?, ?, ?, ?, ?, ?)")
-                ->execute([$txn_id, $me['id'], $action_type, $old_val, $new_val, $station_id]);
+            $at_cols = [];
+            try {
+                foreach ($pdo->query("SHOW COLUMNS FROM audit_trail")->fetchAll(PDO::FETCH_COLUMN) as $c)
+                    $at_cols[$c] = true;
+            } catch (Exception $_ce) {}
+
+            if (isset($at_cols['staff_id']) && isset($at_cols['source_table'])) {
+                $pdo->prepare("INSERT INTO audit_trail (transaction_id, manager_id, staff_id, action_type, old_value, new_value, station_id, source_table) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+                    ->execute([$txn_id, $me['id'], $me['id'], $action_type, $old_val, $new_val, $station_id, $src ?? 'merchandise_transactions']);
+            } else {
+                $pdo->prepare("INSERT INTO audit_trail (transaction_id, manager_id, action_type, old_value, new_value, station_id) VALUES (?, ?, ?, ?, ?, ?)")
+                    ->execute([$txn_id, $me['id'], $action_type, $old_val, $new_val, $station_id]);
+            }
         } catch (Exception $ae) {
             error_log("Failed to insert into audit_trail: " . $ae->getMessage());
         }
 
+        // ── Write to audit_logs (full detail for Audit Trail report) ─────────
         try {
             $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
             $ua = $_SERVER['HTTP_USER_AGENT'] ?? 'System';
@@ -96,7 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $me['id'],
                 $action_type,
                 $details,
-                $src ?: 'transaction',
+                $src ?: 'merchandise_transactions',
                 $txn_id,
                 $old_val,
                 $new_val,
@@ -202,6 +274,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (pt_has($mt_cols, 'validated_by')) { $sp[] = "validated_by = ?"; $sv[] = $me['id']; }
                     if (pt_has($mt_cols, 'validated_at')) { $sp[] = "validated_at = NOW()"; }
                     if ($notes !== '' && pt_has($mt_cols, 'remarks')) { $sp[] = "remarks = ?"; $sv[] = "APPROVED: {$notes}"; }
+                    // Write manager validation note to dedicated column
+                    if (pt_has($mt_cols, 'manager_notes')) {
+                        $mgr_note = $notes !== '' ? "Approved: {$notes}" : "Approved";
+                        $sp[] = "manager_notes = ?"; $sv[] = $mgr_note;
+                    }
                     if (pt_has($mt_cols, 'updated_at'))   { $sp[] = "updated_at = NOW()"; }
                     $pdo->prepare("UPDATE merchandise_transactions SET " . implode(', ', $sp) . " WHERE id = ? AND station_id = ?")
                         ->execute(array_merge($sv, [$rid, $station_id]));
@@ -244,6 +321,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (pt_has($mt_cols, 'validated_at')) { $sp[] = "validated_at = NOW()"; }
                     if (pt_has($mt_cols, 'rejection_reason')) { $sp[] = "rejection_reason = ?"; $sv[] = $reason; }
                     elseif (pt_has($mt_cols, 'remarks')) { $sp[] = "remarks = ?"; $sv[] = 'REJECTED: ' . $reason; }
+                    // Write manager rejection note to dedicated column
+                    if (pt_has($mt_cols, 'manager_notes')) { $sp[] = "manager_notes = ?"; $sv[] = "Rejected: {$reason}"; }
                     if (pt_has($mt_cols, 'updated_at')) { $sp[] = "updated_at = NOW()"; }
                     $pdo->prepare("UPDATE merchandise_transactions SET " . implode(', ', $sp) . " WHERE id = ? AND station_id = ?")
                         ->execute(array_merge($sv, [$rid, $station_id]));
@@ -311,6 +390,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if (pt_has($mt_cols, 'validated_by')) { $sp[] = "validated_by=?"; $sv[] = $me['id']; }
                         if (pt_has($mt_cols, 'validated_at')) { $sp[] = "validated_at=NOW()"; }
                         if (pt_has($mt_cols, 'remarks'))      { $sp[] = "remarks=?"; $sv[] = "ADJUSTED: {$reason}"; }
+                        if (pt_has($mt_cols, 'manager_notes')){ $sp[] = "manager_notes=?"; $sv[] = "Adjusted: {$reason}"; }
                         if (pt_has($mt_cols, 'updated_at'))   { $sp[] = "updated_at=NOW()"; }
                         $pdo->prepare("UPDATE merchandise_transactions SET " . implode(', ', $sp) . " WHERE id=? AND station_id=?")
                             ->execute(array_merge($sv, [$txn_id, $station_id]));
@@ -339,6 +419,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if (pt_has($mt_cols, 'validated_by')) { $sp[] = "validated_by=?"; $sv[] = $me['id']; }
                         if (pt_has($mt_cols, 'validated_at')) { $sp[] = "validated_at=NOW()"; }
                         if (pt_has($mt_cols, 'remarks'))      { $sp[] = "remarks=?"; $sv[] = "ADJUSTED: {$reason}"; }
+                        if (pt_has($mt_cols, 'manager_notes')){ $sp[] = "manager_notes=?"; $sv[] = "Adjusted: {$reason}"; }
                         if (pt_has($mt_cols, 'updated_at'))   { $sp[] = "updated_at=NOW()"; }
                         if ($new_val !== '' && is_numeric($new_val) && pt_has($mt_cols, 'total_amount')) { $sp[] = "total_amount=?"; $sv[] = (float)$new_val; }
                         $pdo->prepare("UPDATE merchandise_transactions SET " . implode(', ', $sp) . " WHERE id=? AND station_id=?")
@@ -453,7 +534,8 @@ try {
             COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Unknown') AS staff_name,
             'merchandise_transactions' AS _source,
             COALESCE({$mt_txntype_col},'merchandise') AS txn_type,
-            COALESCE(mt.remarks, '') AS encoder_remarks
+            COALESCE(mt.remarks, '') AS encoder_remarks,
+            COALESCE(mt.payment_status,'') AS payment_status
         FROM merchandise_transactions mt
         LEFT JOIN users u ON u.id = mt.staff_id
         {$mt_where}
@@ -519,7 +601,8 @@ try {
             COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Unknown') AS staff_name,
             'job_orders' AS _source,
             'job_order' AS txn_type,
-            COALESCE(NULLIF(TRIM(COALESCE(jo.notes,'')), ''), COALESCE(jo.additional_notes, ''), '') AS encoder_remarks
+            COALESCE(NULLIF(TRIM(COALESCE(jo.notes,'')), ''), COALESCE(jo.additional_notes, ''), '') AS encoder_remarks,
+            COALESCE(jo.payment_status,'') AS payment_status
         FROM job_orders jo
         LEFT JOIN users u ON u.id = {$jo_created_by_col}
         {$jo_where}
@@ -562,6 +645,8 @@ foreach ($rows as $r) {
             'txn_ids'        => [],
             'has_merch_items'=> false,
             'encoder_remarks'=> [],
+            'amount_paid'    => 0.0,
+            'pay_statuses'   => [],   // collect all payment statuses in group
         ];
     }
     // Keep first non-empty vehicle_info
@@ -585,6 +670,12 @@ foreach ($rows as $r) {
     }
     $groups[$gkey]['txn_ids'][] = $r['txn_id'];
     $groups[$gkey]['ids'][] = ['id' => (int)$r['row_id'], 'source' => $r['_source']];
+    $groups[$gkey]['amount_paid'] += (float)($r['amount_paid'] ?? 0);
+    // Collect payment status
+    $ps = pt_pay_status($r);
+    if (!in_array($ps, $groups[$gkey]['pay_statuses'])) {
+        $groups[$gkey]['pay_statuses'][] = $ps;
+    }
     $rem = trim($r['encoder_remarks'] ?? '');
     if ($rem !== '' && !in_array($rem, $groups[$gkey]['encoder_remarks'])) {
         $groups[$gkey]['encoder_remarks'][] = $rem;
@@ -751,14 +842,48 @@ include __DIR__ . '/../partials/header.php';
                         <div style="font-weight:700;color:#002F70;white-space:nowrap;">&#8369;<?= number_format($total, 2) ?></div>
                     </td>
                     <td style="overflow:hidden;text-overflow:ellipsis;"><?php echo htmlspecialchars($pay_str); ?></td>
-                    <!-- Val Status + Inv Status merged, Notes as tooltip -->
+                    <!-- Val Status + Payment Status + Inv Status -->
                     <td title="<?= htmlspecialchars($remarks_display ?: 'No notes') ?>">
-                        <span class="pt-badge" style="font-size:10px;padding:1px 4px;background:#fef3c7;color:#92400e;border-color:#fde047;display:block;margin-bottom:2px;">
-                            Pending
+                        <?php
+                        // Validation badge — always Pending here
+                        ?>
+                        <span class="pt-badge" style="font-size:10px;padding:2px 6px;background:#fef3c7;color:#92400e;border-color:#fde047;display:block;margin-bottom:3px;text-align:center;">
+                            ⏳ Pending Validation
                         </span>
+
+                        <?php
+                        // Payment status badge
+                        $g_paid    = (float)($g['amount_paid'] ?? 0);
+                        $g_total   = (float)($g['total'] ?? 0);
+                        $g_balance = max(0, $g_total - $g_paid);
+                        $g_pay_methods = implode('/', array_unique($g['pay_methods'] ?? []));
+                        $is_credit = in_array('Credit', $g['pay_methods'] ?? []);
+
+                        if ($is_credit) {
+                            $ps_bg='#f3e8ff'; $ps_c='#6b21a8'; $ps_b='#d8b4fe'; $ps_icon='💳'; $ps_label='Account Receivable';
+                        } elseif ($g_paid >= $g_total - 0.009 && $g_total > 0) {
+                            $ps_bg='#dcfce7'; $ps_c='#166534'; $ps_b='#86efac'; $ps_icon='✓'; $ps_label='Paid';
+                        } elseif ($g_paid > 0.009) {
+                            $ps_bg='#dbeafe'; $ps_c='#1d4ed8'; $ps_b='#93c5fd'; $ps_icon='↓'; $ps_label='Down Payment';
+                        } else {
+                            $ps_bg='#fff1f2'; $ps_c='#9f1239'; $ps_b='#fda4af'; $ps_icon='○'; $ps_label='Pending Payment';
+                        }
+                        ?>
+                        <span style="display:block;text-align:center;background:<?= $ps_bg ?>;color:<?= $ps_c ?>;
+                                     border:1px solid <?= $ps_b ?>;font-size:10px;font-weight:700;
+                                     padding:2px 6px;border-radius:4px;margin-bottom:3px;">
+                            <?= $ps_icon ?> <?= $ps_label ?>
+                        </span>
+
+                        <?php if ($g_paid > 0.009 && $g_balance > 0.009): ?>
+                        <div style="font-size:10px;color:#9a3412;text-align:center;margin-bottom:2px;">
+                            Bal: ₱<?= number_format($g_balance, 2) ?>
+                        </div>
+                        <?php endif; ?>
+
                         <?= $inv_tag ?>
                         <?php if ($remarks_display): ?>
-                        <div style="font-size:10px;color:#7c3aed;margin-top:2px;"><i class="fas fa-comment-alt"></i></div>
+                        <div style="font-size:10px;color:#7c3aed;margin-top:2px;text-align:center;"><i class="fas fa-comment-alt"></i></div>
                         <?php endif; ?>
                     </td>
                     <td style="color:#64748b;overflow:hidden;text-overflow:ellipsis;">

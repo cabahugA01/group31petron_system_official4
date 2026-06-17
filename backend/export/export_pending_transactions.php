@@ -1,7 +1,7 @@
 <?php
 /**
  * Export Pending Transactions (Manager)
- * Supports Excel, CSV, PDF formats
+ * Supports Excel, CSV formats only
  */
 if (session_status() === PHP_SESSION_NONE) session_start();
 
@@ -18,6 +18,11 @@ if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
 }
 
 $format = $_GET['format'] ?? 'excel';
+
+// Validate format - Excel and CSV only
+if (!in_array($format, ['excel', 'csv'])) {
+    die('Invalid format');
+}
 
 try {
     // Fetch pending transactions (Job Orders + Merchandise)
@@ -106,35 +111,6 @@ try {
         }
         
         echo "</table>";
-        exit;
-    }
-    
-    if ($format === 'pdf') {
-        // PDF format - simple HTML to PDF conversion
-        header('Content-Type: application/pdf');
-        header('Content-Disposition: attachment; filename="pending_transactions_' . date('Y-m-d') . '.pdf"');
-        
-        // For now, use HTML output (can be enhanced with PDF library later)
-        echo "<!DOCTYPE html><html><head><title>Pending Transactions</title>";
-        echo "<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #000;padding:8px;text-align:left;}th{background:#f0f0f0;}</style>";
-        echo "</head><body>";
-        echo "<h2>Pending Transactions - " . date('Y-m-d') . "</h2>";
-        echo "<table><tr><th>Type</th><th>Reference</th><th>Customer</th><th>Staff</th><th>Amount</th><th>Status</th><th>Validation Status</th><th>Date</th></tr>";
-        
-        foreach ($transactions as $row) {
-            echo "<tr>";
-            echo "<td>" . htmlspecialchars($row['type']) . "</td>";
-            echo "<td>" . htmlspecialchars($row['reference']) . "</td>";
-            echo "<td>" . htmlspecialchars($row['customer']) . "</td>";
-            echo "<td>" . htmlspecialchars($row['staff']) . "</td>";
-            echo "<td>₱" . number_format($row['amount'], 2) . "</td>";
-            echo "<td>" . htmlspecialchars($row['status']) . "</td>";
-            echo "<td>" . htmlspecialchars($row['validation_status']) . "</td>";
-            echo "<td>" . date('Y-m-d H:i', strtotime($row['created_at'])) . "</td>";
-            echo "</tr>";
-        }
-        
-        echo "</table></body></html>";
         exit;
     }
 

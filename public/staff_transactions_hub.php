@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Staff Transactions Hub
  * Sidebar navigation for Fuel (internal) and Merchandise (customer-facing) transactions.
@@ -26,21 +26,6 @@ $station_id = user_station_id();
 $role       = role_key($me['role'] ?? '');
 
 // ── Generate a per-request API token so AJAX calls don't depend on session cookies ──
-// Token = HMAC(user_id|date, sha256(password_hash + app_salt))
-// The key is derived from the DB password hash — never exposed to the client.
-$_api_token = '';
-try {
-    $tok_stmt = $pdo->prepare("SELECT password FROM users WHERE id = ? LIMIT 1");
-    $tok_stmt->execute([$me['id']]);
-    $pw_hash    = $tok_stmt->fetchColumn() ?: '';
-    $app_salt   = 'petron_fuel_api_2026';
-    $token_key  = hash('sha256', $pw_hash . $app_salt);
-    $_api_token = hash_hmac('sha256', $me['id'] . '|' . date('Y-m-d'), $token_key);
-} catch (Exception $e) { $_api_token = ''; }
-
-$me         = current_user();
-$station_id = user_station_id();
-$role       = role_key($me['role'] ?? '');
 
 // ── Module gate ───────────────────────────────────────────────
 if (!in_array($role, ['superadmin','developer']) && !is_module_enabled('transactions')) {
@@ -300,6 +285,9 @@ $mh_kpi_txn_count        = 0;
 $mh_kpi_items_released   = 0;
 $mh_kpi_total_encoded    = 0.00;
 
+// DEBUG
+error_log("Merchandise History Debug - Section: $section, Station ID: $station_id, User ID: " . $me['id']);
+
 if ($section === 'merchandise') {
     try {
         $mh_cols = [];
@@ -341,23 +329,18 @@ if ($section === 'merchandise') {
             }
         }
 
-        // ── Inventory Deduction Rule: Merchandise History shows ONLY standalone merchandise.
-        // Job Order (service-linked) transactions are excluded here — they appear in the
-        // Job Order Tracker instead. Double guard:
-        //   1. transaction_type must equal 'merchandise' (or be NULL with no service marker)
-        //   2. job_order_service must be empty/NULL (catches legacy rows missing transaction_type)
-        $mh_has_jo_svc_col = isset($mh_cols['job_order_service']);
-        $mh_jo_svc_guard = $mh_has_jo_svc_col
-            ? "AND (COALESCE(mt.transaction_type, 'merchandise') = 'merchandise' AND (mt.job_order_service IS NULL OR TRIM(mt.job_order_service) = ''))"
-            : "AND COALESCE(mt.transaction_type, 'merchandise') = 'merchandise'";
-        $mh_where  = "WHERE mt.station_id = ? AND mt.staff_id = ? $mh_jo_svc_guard";
-        $mh_params = [$station_id, $me['id']];
+        // DEBUG: Show ALL transactions for this station (no filters)
+        $mh_where  = "WHERE mt.station_id = ?";
+        $mh_params = [$station_id];
         if ($mh_filter_shift !== '') { $mh_where .= " AND mt.shift_period = ?"; $mh_params[] = $mh_filter_shift; }
         if ($mh_filter_date  !== '') { $mh_where .= " AND DATE($mh_date_col) = ?"; $mh_params[] = $mh_filter_date; }
 
         $cnt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions mt $mh_where");
         $cnt->execute($mh_params);
         $mh_total = (int)$cnt->fetchColumn();
+        
+        // DEBUG: Log what we found
+        error_log("Merchandise History Debug - Station ID: $station_id, Total found: $mh_total, WHERE: $mh_where, Params: " . json_encode($mh_params));
 
         // ── Detect new columns for merchandise history query ──────────────────
         $mh_col_staff_remarks      = isset($mh_cols['staff_remarks'])      ? 'mt.staff_remarks'      : 'NULL';
@@ -735,9 +718,12 @@ if ($section === 'merchandise') {
 
         $jo_action   = $_POST['jo_action'];
         $jo_id       = (int)($_POST['jo_id'] ?? 0);
-        $jo_src      = $_POST['jo_source'] ?? 'job_orders';
-        $tracker_tab = $_POST['tracker_tab'] ?? 'pending';
-        $redirect_tab = $_POST['redirect_tab'] ?? 'tracker';   // tracker | merchandise (for MH settle)
+        // Whitelist jo_source to prevent spoofed table names
+        $jo_src_raw  = $_POST['jo_source'] ?? 'job_orders';
+        $jo_src      = in_array($jo_src_raw, ['job_orders','merchandise_transactions'])
+                        ? $jo_src_raw : 'job_orders';
+        $tracker_tab  = $_POST['tracker_tab'] ?? 'pending';
+        $redirect_tab = $_POST['redirect_tab'] ?? 'tracker';
 
         if ($jo_id > 0) {
             try {
@@ -823,6 +809,52 @@ if ($section === 'merchandise') {
                                 ->execute([$remark_text, $jo_id, $station_id]);
                             $_SESSION['success'] = 'Staff remark saved.';
                         }
+                    } elseif ($jo_action === 'update_status') {
+                        $allowed = ['In Progress', 'Completed', 'Rejected'];
+                        $new_status = trim($_POST['new_status'] ?? '');
+                        $rej_remarks = trim($_POST['rejection_remarks'] ?? '');
+                        if (in_array($new_status, $allowed)) {
+                            if ($new_status === 'Rejected' && $rej_remarks === '') {
+                                $_SESSION['error'] = 'Rejection reason is required.';
+                            } else {
+                                $sets = "workflow_status=?, updated_at=NOW()";
+                                $params = [$new_status];
+                                if ($new_status === 'Rejected' && $rej_remarks !== '') {
+                                    $sets .= ", staff_remarks=?";
+                                    $params[] = 'Rejected: ' . $rej_remarks;
+                                }
+                                $pdo->prepare("UPDATE merchandise_transactions SET $sets WHERE id=? AND station_id=?")
+                                    ->execute(array_merge($params, [$jo_id, $station_id]));
+                                $_SESSION['success'] = 'Status updated to ' . htmlspecialchars($new_status) . '.';
+                            }
+                        } else {
+                            $_SESSION['error'] = 'Invalid status selected.';
+                        }
+                    } elseif ($jo_action === 'adjust_job_order') {
+                        $cust_name = trim($_POST['customer_name'] ?? '');
+                        $veh_plate = strtoupper(trim($_POST['vehicle_plate'] ?? ''));
+                        $veh_type  = trim($_POST['vehicle_type'] ?? '');
+                        $svc_type  = trim($_POST['service_type'] ?? '');
+                        $svc_desc  = trim($_POST['service_description'] ?? '');
+                        $mech_name = trim($_POST['mechanic_name'] ?? '');
+                        $est_cost  = round(max(0, (float)($_POST['estimated_cost'] ?? 0)), 2);
+                        if ($cust_name !== '' && $svc_type !== '') {
+                            $pdo->prepare("
+                                UPDATE merchandise_transactions
+                                SET customer_name = ?,
+                                    job_order_vehicle_plate = ?,
+                                    job_order_vehicle_type = ?,
+                                    job_order_service = ?,
+                                    remarks = ?,
+                                    job_order_mechanic_name = ?,
+                                    total_amount = ?,
+                                    updated_at = NOW()
+                                WHERE id = ? AND station_id = ?
+                            ")->execute([$cust_name, $veh_plate, $veh_type, $svc_type, $svc_desc, $mech_name, $est_cost, $jo_id, $station_id]);
+                            $_SESSION['success'] = 'Job order details adjusted successfully.';
+                        } else {
+                            $_SESSION['error'] = 'Customer name and service type are required.';
+                        }
                     }
                 } else {
                     if ($jo_action === 'set_in_progress') {
@@ -853,6 +885,52 @@ if ($section === 'merchandise') {
                                 ->execute([$remark_text, $jo_id, $station_id]);
                             $_SESSION['success'] = 'Staff remark saved.';
                         }
+                    } elseif ($jo_action === 'update_status') {
+                        $allowed = ['In Progress', 'Completed', 'Rejected'];
+                        $new_status = trim($_POST['new_status'] ?? '');
+                        $rej_remarks = trim($_POST['rejection_remarks'] ?? '');
+                        if (in_array($new_status, $allowed)) {
+                            if ($new_status === 'Rejected' && $rej_remarks === '') {
+                                $_SESSION['error'] = 'Rejection reason is required.';
+                            } else {
+                                $sets = "status=?, updated_at=NOW()";
+                                $params = [$new_status];
+                                if ($new_status === 'Rejected' && $rej_remarks !== '') {
+                                    $sets .= ", notes=?";
+                                    $params[] = 'Rejected: ' . $rej_remarks;
+                                }
+                                $pdo->prepare("UPDATE job_orders SET $sets WHERE id=? AND station_id=?")
+                                    ->execute(array_merge($params, [$jo_id, $station_id]));
+                                $_SESSION['success'] = 'Status updated to ' . htmlspecialchars($new_status) . '.';
+                            }
+                        } else {
+                            $_SESSION['error'] = 'Invalid status selected.';
+                        }
+                    } elseif ($jo_action === 'adjust_job_order') {
+                        $cust_name = trim($_POST['customer_name'] ?? '');
+                        $veh_plate = strtoupper(trim($_POST['vehicle_plate'] ?? ''));
+                        $veh_type  = trim($_POST['vehicle_type'] ?? '');
+                        $svc_type  = trim($_POST['service_type'] ?? '');
+                        $svc_desc  = trim($_POST['service_description'] ?? '');
+                        $mech_name = trim($_POST['mechanic_name'] ?? '');
+                        $est_cost  = round(max(0, (float)($_POST['estimated_cost'] ?? 0)), 2);
+                        if ($cust_name !== '' && $svc_type !== '') {
+                            $pdo->prepare("
+                                UPDATE job_orders
+                                SET customer_name = ?,
+                                    vehicle_plate = ?,
+                                    vehicle_type = ?,
+                                    service_type = ?,
+                                    description = ?,
+                                    mechanic_name = ?,
+                                    estimated_cost = ?,
+                                    updated_at = NOW()
+                                WHERE id = ? AND station_id = ?
+                            ")->execute([$cust_name, $veh_plate, $veh_type, $svc_type, $svc_desc, $mech_name, $est_cost, $jo_id, $station_id]);
+                            $_SESSION['success'] = 'Job order details adjusted successfully.';
+                        } else {
+                            $_SESSION['error'] = 'Customer name and service type are required.';
+                        }
                     }
                 }
             } catch (Exception $e) {
@@ -878,8 +956,10 @@ if ($section === 'merchandise') {
 
             $stmt = $pdo->prepare("
                 SELECT jo.*,
-                       u.name AS mechanic_name,
-                       cb.name AS created_by_name,
+                       COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),
+                                u.username, 'Unassigned')                AS mechanic_name,
+                       COALESCE(NULLIF(TRIM(CONCAT(COALESCE(cb.first_name,''),' ',COALESCE(cb.last_name,''))),''),
+                                cb.username, 'Staff')                    AS created_by_name,
                        'job_orders' AS _source,
                        $jo_col_due_date    AS due_date,
                        $jo_col_balance_due AS balance_due_col
@@ -933,7 +1013,8 @@ if ($section === 'merchandise') {
                     COALESCE(mt.job_order_vehicle_type, '') AS vehicle_type,
                     mt.created_at,
                     COALESCE(mt.job_order_mechanic_name, '') AS mechanic_name,
-                    u.name AS created_by_name,
+                    COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),
+                             u.username, CONCAT('User #', mt.staff_id)) AS created_by_name,
                     mt.payment_method,
                     COALESCE(mt.payment_status, 'Pending Payment') AS payment_status,
                     COALESCE(mt.amount_paid, 0)                    AS amount_paid,
@@ -1768,21 +1849,21 @@ input[list] {
 
 .txn-btn.primary {
     background: white !important;
-    color: #00264D !important;
-    border: 1px solid #00264D !important;
+    color: #003d7a !important;
+    border: 1px solid #003d7a !important;
 }
 .txn-btn.primary:hover {
-    background: #00264D !important;
+    background: #003d7a !important;
     color: white !important;
 }
 
 .txn-btn.success {
     background: white !important;
-    color: #16a34a !important;
-    border: 1px solid #16a34a !important;
+    color: #1d6f42 !important;
+    border: 1px solid #1d6f42 !important;
 }
 .txn-btn.success:hover {
-    background: #16a34a !important;
+    background: #1d6f42 !important;
     color: white !important;
 }
 
@@ -2636,9 +2717,6 @@ input[list] {
                         <button onclick="exportTodayReadings('csv');" class="txn-btn primary">
                             <i class="fas fa-file-csv"></i> CSV
                         </button>
-                        <button onclick="exportTodayReadings('pdf');" class="txn-btn danger">
-                            <i class="fas fa-file-pdf"></i> PDF
-                        </button>
                     </div>
                 </div>
             </div>
@@ -3429,10 +3507,13 @@ input[list] {
         <!-- ── Inner Tabs ─────────────────────────────────────────────── -->
         <div style="display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap;">
             <?php
+            // Variance alert badge: show warning count if any
+            $tracker_badge_val  = $jo_pending_count > 0 ? $jo_pending_count : null;
+            $tracker_badge_warn = $variance_alert_count > 0 ? $variance_alert_count : null;
             $inner_tabs = [
                 'merchandise'   => ['label'=>'Merchandise/Service Transaction', 'icon'=>'fa-shopping-cart', 'color'=>'#28a745'],
                 'tracker'       => ['label'=>'Job Order Tracker',               'icon'=>'fa-tasks',         'color'=>'#003d7a',
-                                    'badge'=> $jo_pending_count > 0 ? $jo_pending_count : null],
+                                    'badge'=> $tracker_badge_val, 'badge_warn' => $tracker_badge_warn],
             ];
             foreach ($inner_tabs as $tk => $tc):
                 $ia = ($active_tab === $tk);
@@ -3445,7 +3526,13 @@ input[list] {
                 <?= $tc['label'] ?>
                 <?php if (!empty($tc['badge'])): ?>
                 <span style="background:<?= $ia ? '#ffffff' : $tc['color'] ?>;color:<?= $ia ? $tc['color'] : '#fff' ?>;font-size:10px;font-weight:800;
-                             padding:1px 7px;border-radius:20px;"><?= $tc['badge'] ?></span>
+                             padding:1px 7px;border-radius:20px;"><?= $tc['badge'] ?> Pending</span>
+                <?php endif; ?>
+                <?php if (!empty($tc['badge_warn'])): ?>
+                <span style="background:#dc2626;color:#fff;font-size:10px;font-weight:800;
+                             padding:1px 7px;border-radius:20px;" title="Variance alerts detected">
+                    ⚠ <?= $tc['badge_warn'] ?>
+                </span>
                 <?php endif; ?>
             </button>
             <?php endforeach; ?>
@@ -3906,15 +3993,15 @@ input[list] {
                                 <input type="hidden" name="mh_open" value="1">
                                 <div style="display:flex;flex-direction:column;gap:4px;">
                                     <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Date</label>
-                                    <input type="date" name="date" value="<?= htmlspecialchars($filter_date) ?>"
+                                    <input type="date" name="mh_date" value="<?= htmlspecialchars($mh_filter_date) ?>"
                                            style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;">
                                 </div>
                                 <div style="display:flex;flex-direction:column;gap:4px;">
                                     <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Shift</label>
-                                    <select name="shift" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;">
+                                    <select name="mh_shift" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;">
                                         <option value="">All Shifts</option>
-                                        <?php foreach ($available_shifts as $sh): ?>
-                                        <option value="<?= htmlspecialchars($sh['shift_key']) ?>" <?= $filter_shift === $sh['shift_key'] ? 'selected' : '' ?>>
+                                        <?php foreach ($mh_available_shifts as $sh): ?>
+                                        <option value="<?= htmlspecialchars($sh['shift_key']) ?>" <?= $mh_filter_shift === $sh['shift_key'] ? 'selected' : '' ?>>
                                             <?= htmlspecialchars($sh['shift_name']) ?>
                                         </option>
                                         <?php endforeach; ?>
@@ -3937,12 +4024,6 @@ input[list] {
                                        title="Export to CSV"
                                        class="txn-btn primary">
                                         <i class="fas fa-file-csv"></i> CSV
-                                    </a>
-                                    <a href="../backend/export_staff_transactions.php?type=merchandise&format=pdf"
-                                       target="_blank"
-                                       title="Export to PDF"
-                                       class="txn-btn danger">
-                                        <i class="fas fa-file-pdf"></i> PDF
                                     </a>
                                     <a href="staff_transactions_hub.php?section=merchandise&active_tab=merchandise"
                                        title="Back to Merchandise Form"
@@ -3967,64 +4048,109 @@ input[list] {
                             </style>
 
                             <!-- ── Merchandise KPI Snapshot ─────────────────── -->
-                            <div style="margin:12px 16px 4px;">
+                            <div style="margin:12px 16px 4px;display:flex;align-items:center;gap:8px;">
                                 <button type="button"
-                                        onclick="var p=document.getElementById('mhKpiPanel');p.style.display=(p.style.display==='none'?'block':'none');"
-                                        style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;
-                                               border:1px solid #003d7a;border-radius:4px;background:#fff;
-                                               color:#003d7a;font-size:11px;font-weight:600;cursor:pointer;">
-                                    <i class="fas fa-chart-bar"></i> My KPI Today (Merchandise)
+                                        id="mhKpiToggleBtn"
+                                        onclick="var p=document.getElementById('mhKpiPanel');
+                                                 var isOpen=p.style.display!=='none';
+                                                 p.style.display=isOpen?'none':'block';"
+                                        class="txn-btn success">
+                                    <i class="fas fa-chart-bar"></i> My KPI Today
+                                    <?php if ($mh_kpi_txn_count > 0): ?>
+                                    <span style="background:#dcfce7;padding:1px 7px;border-radius:10px;
+                                                 font-size:10px;font-weight:800;color:#1d6f42;"><?= (int)$mh_kpi_txn_count ?> txn<?= $mh_kpi_txn_count > 1 ? 's' : '' ?></span>
+                                    <?php endif; ?>
                                 </button>
+                                <?php if (!empty($mh_variance_alerts)): ?>
+                                <span style="display:inline-flex;align-items:center;gap:5px;background:#fee2e2;
+                                             color:#dc2626;border:1px solid #fca5a5;border-radius:4px;
+                                             padding:5px 10px;font-size:11px;font-weight:700;">
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                    <?= count($mh_variance_alerts) ?> Variance Alert<?= count($mh_variance_alerts)>1?'s':'' ?>
+                                </span>
+                                <?php endif; ?>
                             </div>
+
+                            <!-- KPI Panel -->
                             <div id="mhKpiPanel"
-                                 style="display:none;margin:8px 16px 12px;background:#f0f7ff;
-                                        border:1px solid #bfdbfe;border-radius:8px;padding:12px 16px;">
-                                <div style="font-size:12px;font-weight:700;color:#003d7a;margin-bottom:8px;">
-                                    <i class="fas fa-chart-bar"></i> My Merchandise KPI — <?= date('F j, Y') ?>
+                                 style="display:<?= $mh_kpi_txn_count > 0 ? 'block' : 'none' ?>;
+                                        margin:8px 16px 0;background:linear-gradient(135deg,#f0f7ff,#eff6ff);
+                                        border:1px solid #bfdbfe;border-radius:10px;padding:14px 16px;">
+                                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                                    <div style="font-size:12px;font-weight:700;color:#003d7a;">
+                                        <i class="fas fa-chart-bar" style="margin-right:5px;"></i>
+                                        Merchandise KPI — <?= date('F j, Y') ?>
+                                    </div>
+                                    <div style="font-size:10px;color:#64748b;">Shift: <?= htmlspecialchars($merch_shift_name ?: 'Current') ?></div>
                                 </div>
-                                <div style="display:flex;gap:14px;flex-wrap:wrap;">
-                                    <div style="flex:1;background:#fff;border-radius:6px;
-                                                padding:10px 12px;border:1px solid #dbeafe;text-align:center;">
-                                        <div style="font-size:20px;font-weight:700;color:#002F6C;">
+                                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+                                    <div style="background:#fff;border-radius:8px;padding:12px;
+                                                border:1px solid #dbeafe;text-align:center;
+                                                box-shadow:0 1px 4px rgba(0,47,110,.06);">
+                                        <div style="font-size:26px;font-weight:800;color:#002F6C;line-height:1.1;">
                                             <?= (int)$mh_kpi_txn_count ?>
                                         </div>
-                                        <div style="font-size:10px;color:#64748b;margin-top:2px;">Transactions Today</div>
+                                        <div style="font-size:10px;font-weight:600;color:#64748b;
+                                                    text-transform:uppercase;letter-spacing:.5px;margin-top:4px;">
+                                            <i class="fas fa-receipt" style="color:#003d7a;margin-right:3px;"></i>
+                                            Transactions Today
+                                        </div>
                                     </div>
-                                    <div style="flex:1;background:#fff;border-radius:6px;
-                                                padding:10px 12px;border:1px solid #dbeafe;text-align:center;">
-                                        <div style="font-size:20px;font-weight:700;color:#002F6C;">
+                                    <div style="background:#fff;border-radius:8px;padding:12px;
+                                                border:1px solid #dbeafe;text-align:center;
+                                                box-shadow:0 1px 4px rgba(0,47,110,.06);">
+                                        <div style="font-size:26px;font-weight:800;color:#002F6C;line-height:1.1;">
                                             <?= (int)$mh_kpi_items_released ?>
                                         </div>
-                                        <div style="font-size:10px;color:#64748b;margin-top:2px;">Items Released (pcs)</div>
+                                        <div style="font-size:10px;font-weight:600;color:#64748b;
+                                                    text-transform:uppercase;letter-spacing:.5px;margin-top:4px;">
+                                            <i class="fas fa-boxes" style="color:#003d7a;margin-right:3px;"></i>
+                                            Items Released
+                                        </div>
                                     </div>
-                                    <div style="flex:1;background:#fff;border-radius:6px;
-                                                padding:10px 12px;border:1px solid #dbeafe;text-align:center;">
-                                        <div style="font-size:20px;font-weight:700;color:#002F6C;">
+                                    <div style="background:#fff;border-radius:8px;padding:12px;
+                                                border:1px solid #dbeafe;text-align:center;
+                                                box-shadow:0 1px 4px rgba(0,47,110,.06);">
+                                        <div style="font-size:18px;font-weight:800;color:#002F6C;line-height:1.2;">
                                             ₱<?= number_format($mh_kpi_total_encoded, 2) ?>
                                         </div>
-                                        <div style="font-size:10px;color:#64748b;margin-top:2px;">Total Amount Encoded</div>
+                                        <div style="font-size:10px;font-weight:600;color:#64748b;
+                                                    text-transform:uppercase;letter-spacing:.5px;margin-top:4px;">
+                                            <i class="fas fa-peso-sign" style="color:#003d7a;margin-right:3px;"></i>
+                                            Total Encoded
+                                        </div>
                                     </div>
                                 </div>
                             </div>
 
+                            <!-- ── Variance Alerts Banner ─────────────────────── -->
                             <?php if (!empty($mh_variance_alerts)): ?>
-                            <div style="margin:0 16px 10px;background:#fff3f3;border:1px solid #fecaca;
-                                        border-radius:6px;padding:10px 14px;font-size:11px;">
-                                <div style="font-weight:700;color:#dc2626;margin-bottom:6px;">
-                                    <i class="fas fa-exclamation-triangle"></i>
-                                    Variance Alerts (<?= count($mh_variance_alerts) ?>)
+                            <div style="margin:10px 16px 0;background:#fff3f3;border:1.5px solid #fca5a5;
+                                        border-radius:8px;padding:12px 14px;">
+                                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                                    <div style="width:28px;height:28px;background:#fee2e2;border-radius:6px;flex-shrink:0;
+                                                display:flex;align-items:center;justify-content:center;">
+                                        <i class="fas fa-exclamation-triangle" style="color:#dc2626;font-size:12px;"></i>
+                                    </div>
+                                    <div style="font-size:12px;font-weight:700;color:#dc2626;">
+                                        <?= count($mh_variance_alerts) ?> Variance Alert<?= count($mh_variance_alerts)>1?'s':'' ?> — Please review before manager validation
+                                    </div>
                                 </div>
+                                <div style="display:flex;flex-direction:column;gap:4px;">
                                 <?php foreach ($mh_variance_alerts as $_mva): ?>
-                                <div style="padding:3px 0;border-bottom:1px solid #fee2e2;color:#64748b;">
-                                    <strong style="color:#dc2626;"><?= htmlspecialchars($_mva['txn_ref']) ?></strong>
-                                    <span style="margin-left:5px;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600;
+                                <div style="display:flex;align-items:center;gap:8px;padding:5px 8px;
+                                            background:#fff;border:1px solid #fecaca;border-radius:5px;font-size:11px;">
+                                    <strong style="color:#b91c1c;min-width:80px;"><?= htmlspecialchars($_mva['txn_ref']) ?></strong>
+                                    <span style="padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap;
                                                  background:<?= $_mva['type']==='qty'?'#fef3c7':'#fee2e2' ?>;
-                                                 color:<?= $_mva['type']==='qty'?'#92400e':'#991b1b' ?>;">
-                                        <?= $_mva['type']==='qty'?'Qty Mismatch':'Amount Mismatch' ?>
+                                                 color:<?= $_mva['type']==='qty'?'#92400e':'#991b1b' ?>;
+                                                 border:1px solid <?= $_mva['type']==='qty'?'#fde68a':'#fca5a5' ?>;">
+                                        <?= $_mva['type']==='qty' ? '⚠ Qty Mismatch' : '⚠ Amount Mismatch' ?>
                                     </span>
-                                    — <?= htmlspecialchars($_mva['message']) ?>
+                                    <span style="color:#7f1d1d;"><?= htmlspecialchars($_mva['message']) ?></span>
                                 </div>
                                 <?php endforeach; ?>
+                                </div>
                             </div>
                             <?php endif; ?>
 
@@ -4037,11 +4163,11 @@ input[list] {
                                     <col style="width:6%;"><!-- Method -->
                                     <col style="width:8%;"><!-- Balance Due + Due Date -->
                                     <col style="width:9%;"><!-- Inv. Impact -->
-                                    <col style="width:9%;"><!-- Shift -->
-                                    <col style="width:8%;"><!-- Date -->
-                                    <col style="width:9%;"><!-- Payment Status -->
-                                    <col style="width:11%;"><!-- Remarks -->
-                                    <col style="width:16%;"><!-- Actions -->
+                                    <col style="width:8%;"><!-- Shift -->
+                                    <col style="width:7%;"><!-- Date -->
+                                    <col style="width:10%;"><!-- Pay / Validation -->
+                                    <col style="width:12%;"><!-- Remarks -->
+                                    <col style="width:6%;"><!-- Actions -->
                                 </colgroup>
                                 <thead>
                                     <tr>
@@ -4054,7 +4180,7 @@ input[list] {
                                         <th style="font-size:12px;">Inv. Impact</th>
                                         <th style="font-size:12px;">Shift</th>
                                         <th style="font-size:12px;">Date</th>
-                                        <th style="font-size:12px;">Payment Status</th>
+                                        <th style="font-size:12px;">Pay / Validation</th>
                                         <th style="font-size:12px;">Remarks</th>
                                         <th style="font-size:12px;">Actions</th>
                                     </tr>
@@ -4065,6 +4191,10 @@ input[list] {
                                     $mh_balance    = (float)($txn['balance_due'] ?? 0);
                                     $mh_paid       = (float)($txn['amount_paid'] ?? 0);
                                     $mh_total_amt  = (float)($txn['total_amount'] ?? 0);
+                                    // Fallback: if balance_due is 0 but payment not done, use total - paid
+                                    if ($mh_balance <= 0.009 && !in_array(strtolower($mh_pay_status), ['paid']) && $mh_total_amt > 0) {
+                                        $mh_balance = max(0, $mh_total_amt - $mh_paid);
+                                    }
                                     $mh_can_settle = !in_array(strtolower($mh_pay_status), ['paid']) && $mh_balance > 0.009;
                                     $mh_products   = $txn['products'] ?? '—';
 
@@ -4082,7 +4212,7 @@ input[list] {
                                     $mh_staff_rem  = trim($txn['staff_remarks'] ?? '');
                                     $mh_mgr_rem    = trim($txn['manager_notes'] ?? '');
                                 ?>
-                                <tr class="mh-row">
+                                <tr class="mh-row" <?= $mh_is_overdue ? 'style="background:#fff5f5;border-left:3px solid #dc2626;"' : '' ?>>
                                     <td style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
                                         <strong style="color:var(--petron-blue);">
                                             <?= htmlspecialchars($txn['transaction_id'] ?? ('#'.$txn['id'])) ?>
@@ -4143,24 +4273,31 @@ input[list] {
                                     </td>
 
                                     <!-- Inventory Impact -->
-                                    <td style="font-size:11px;line-height:1.5;">
+                                    <td style="font-size:11px;line-height:1.7;">
                                         <?php if (empty($mh_imp_items)): ?>
-                                            <span style="color:#cbd5e1;">—</span>
+                                            <span style="color:#cbd5e1;font-size:10px;">No parts</span>
                                         <?php else: foreach ($mh_imp_items as $_mhii):
                                             if ($_mhii['status'] === 'yes') {
-                                                $mhii_c = '#16a34a'; $mhii_l = '✓ Yes';
+                                                $mhii_bg='#dcfce7'; $mhii_c='#166534'; $mhii_b='#86efac'; $mhii_icon='✓'; $mhii_l='Deducted';
                                             } elseif ($_mhii['status'] === 'no') {
-                                                $mhii_c = '#d97706'; $mhii_l = '✗ No';
+                                                $mhii_bg='#fef9c3'; $mhii_c='#92400e'; $mhii_b='#fde68a'; $mhii_icon='✗'; $mhii_l='Not Yet';
                                             } elseif ($_mhii['status'] === 'na') {
-                                                $mhii_c = '#94a3b8'; $mhii_l = 'N/A';
+                                                $mhii_bg='#f1f5f9'; $mhii_c='#94a3b8'; $mhii_b='#e2e8f0'; $mhii_icon='—'; $mhii_l='N/A';
                                             } else {
-                                                $mhii_c = '#64748b'; $mhii_l = 'Pending';
+                                                $mhii_bg='#eff6ff'; $mhii_c='#1d4ed8'; $mhii_b='#bfdbfe'; $mhii_icon='⏳'; $mhii_l='Pending';
                                             }
                                         ?>
-                                        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
-                                             title="<?= htmlspecialchars($_mhii['part']) ?>">
-                                            <span style="color:#374151;"><?= htmlspecialchars(mb_strimwidth($_mhii['part'],0,18,'…')) ?> (<?= (int)$_mhii['qty'] ?>pc)</span>
-                                            <span style="color:<?= $mhii_c ?>;font-weight:700;"> → <?= $mhii_l ?></span>
+                                        <div style="margin-bottom:4px;"
+                                             title="<?= htmlspecialchars($_mhii['part']) ?> × <?= (int)$_mhii['qty'] ?> pc">
+                                            <div style="font-size:10px;color:#475569;max-width:110px;
+                                                        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                                                <?= htmlspecialchars(mb_strimwidth($_mhii['part'],0,15,'…')) ?> ×<?= (int)$_mhii['qty'] ?>
+                                            </div>
+                                            <span style="display:inline-block;background:<?= $mhii_bg ?>;color:<?= $mhii_c ?>;
+                                                         border:1px solid <?= $mhii_b ?>;font-size:10px;font-weight:700;
+                                                         padding:1px 6px;border-radius:10px;margin-top:1px;">
+                                                <?= $mhii_icon ?> <?= $mhii_l ?>
+                                            </span>
                                         </div>
                                         <?php endforeach; endif; ?>
                                     </td>
@@ -4173,24 +4310,56 @@ input[list] {
                                         <?= date('M j, Y', strtotime($txn['transaction_date'] ?? 'now')) ?><br>
                                         <span style="font-size:10px;"><?= date('h:i A', strtotime($txn['transaction_date'] ?? 'now')) ?></span>
                                     </td>
-                                    <td><?= status_badge($mh_pay_status) ?></td>
+                                    <td style="font-size:11px;line-height:1.6;">
+                                        <?= status_badge($mh_pay_status) ?>
+                                        <?php
+                                        $mh_val_st = strtolower($txn['validation_status'] ?? 'pending');
+                                        $val_cfg = [
+                                            'approved'  => ['#dcfce7','#166534','#86efac','✓ Approved'],
+                                            'validated' => ['#dcfce7','#166534','#86efac','✓ Validated'],
+                                            'adjusted'  => ['#dbeafe','#1d4ed8','#93c5fd','✎ Adjusted'],
+                                            'rejected'  => ['#fee2e2','#991b1b','#fca5a5','✗ Rejected'],
+                                        ];
+                                        $vcfg = $val_cfg[$mh_val_st] ?? ['#fef9c3','#92400e','#fde68a','⏳ Pending'];
+                                        ?>
+                                        <div style="margin-top:4px;">
+                                            <span style="display:inline-block;background:<?= $vcfg[0] ?>;
+                                                         color:<?= $vcfg[1] ?>;border:1px solid <?= $vcfg[2] ?>;
+                                                         font-size:10px;font-weight:700;padding:1px 6px;
+                                                         border-radius:10px;white-space:nowrap;">
+                                                <?= $vcfg[3] ?>
+                                            </span>
+                                        </div>
+                                    </td>
 
                                     <!-- Remarks: Staff + Manager separated -->
                                     <td style="font-size:11px;color:#64748b;word-break:break-word;max-width:120px;">
                                         <?php if (!empty($mh_staff_rem)): ?>
-                                        <div>
-                                            <span style="font-weight:700;color:#475569;">Staff:</span>
-                                            <?= htmlspecialchars($mh_staff_rem) ?>
+                                        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;
+                                                    padding:3px 6px;margin-bottom:3px;">
+                                            <span style="font-size:9px;font-weight:700;color:#64748b;
+                                                         text-transform:uppercase;letter-spacing:.3px;display:block;">
+                                                📝 Staff
+                                            </span>
+                                            <div style="color:#374151;margin-top:1px;font-size:10px;">
+                                                <?= htmlspecialchars($mh_staff_rem) ?>
+                                            </div>
                                         </div>
                                         <?php endif; ?>
                                         <?php if (!empty($mh_mgr_rem)): ?>
-                                        <div style="margin-top:2px;">
-                                            <span style="font-weight:700;color:#002F6C;">Mgr:</span>
-                                            <?= htmlspecialchars($mh_mgr_rem) ?>
+                                        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;
+                                                    padding:3px 6px;margin-bottom:3px;">
+                                            <span style="font-size:9px;font-weight:700;color:#1d4ed8;
+                                                         text-transform:uppercase;letter-spacing:.3px;display:block;">
+                                                ✅ Manager
+                                            </span>
+                                            <div style="color:#1e3a5f;margin-top:1px;font-size:10px;">
+                                                <?= htmlspecialchars($mh_mgr_rem) ?>
+                                            </div>
                                         </div>
                                         <?php endif; ?>
                                         <?php if (empty($mh_staff_rem) && empty($mh_mgr_rem)): ?>
-                                            <span style="color:#cbd5e1;">—</span>
+                                            <span style="color:#cbd5e1;font-size:10px;">No remarks yet</span>
                                         <?php endif; ?>
                                         <form method="POST" action="staff_transactions_hub.php?section=merchandise&mh_open=1"
                                               style="margin-top:4px;">
@@ -4201,40 +4370,56 @@ input[list] {
                                             <div style="display:flex;gap:3px;align-items:center;">
                                                 <input type="text" name="remark_text"
                                                        value="<?= htmlspecialchars($mh_staff_rem) ?>"
-                                                       placeholder="Add remark…"
+                                                       placeholder="Add staff remark…"
                                                        style="font-size:10px;border:1px solid #e2e8f0;border-radius:3px;
                                                               padding:2px 4px;flex:1;min-width:0;">
                                                 <button type="submit"
-                                                        style="font-size:10px;padding:2px 5px;background:#002F6C;
+                                                        title="Save remark"
+                                                        style="font-size:10px;padding:2px 6px;background:#002F6C;
                                                                color:#fff;border:none;border-radius:3px;cursor:pointer;
                                                                flex-shrink:0;">✓</button>
                                             </div>
                                         </form>
                                     </td>
 
-                                    <td>
-                                        <div style="display:flex;flex-direction:column;gap:4px;">
+                                    <td style="padding:6px 4px;">
+                                        <div style="display:flex;flex-direction:column;gap:3px;">
                                             <button type="button"
                                                     onclick="viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? '') ?>')"
-                                                    class="txn-btn primary">
+                                                    style="display:inline-flex;align-items:center;justify-content:center;
+                                                           gap:4px;padding:4px 8px;border-radius:4px;font-size:10px;
+                                                           font-weight:600;cursor:pointer;border:1px solid #003d7a;
+                                                           background:#fff;color:#003d7a;white-space:nowrap;width:100%;"
+                                                    onmouseover="this.style.background='#003d7a';this.style.color='#fff'"
+                                                    onmouseout="this.style.background='#fff';this.style.color='#003d7a'">
                                                 <i class="fas fa-eye"></i> View
                                             </button>
                                             <?php if ($mh_can_settle): ?>
                                             <button type="button"
                                                     onclick="openPaymentModal(<?= (int)$txn['id'] ?>,'merchandise_transactions',<?= $mh_total_amt ?>,<?= $mh_paid ?>,<?= $mh_balance ?>,'<?= addslashes($txn['customer_name'] ?? '') ?>',false,'merchandise')"
-                                                    class="txn-btn success">
+                                                    style="display:inline-flex;align-items:center;justify-content:center;
+                                                           gap:4px;padding:4px 8px;border-radius:4px;font-size:10px;
+                                                           font-weight:600;cursor:pointer;border:1px solid #16a34a;
+                                                           background:#fff;color:#16a34a;white-space:nowrap;width:100%;"
+                                                    onmouseover="this.style.background='#16a34a';this.style.color='#fff'"
+                                                    onmouseout="this.style.background='#fff';this.style.color='#16a34a'">
                                                 <i class="fas fa-coins"></i>
-                                                <?= strtolower($mh_pay_status) === 'partial payment' ? 'Settle Balance' : 'Settle Payment' ?>
+                                                <?= strtolower($mh_pay_status) === 'partial payment' ? 'Settle Bal' : 'Settle' ?>
                                             </button>
                                             <?php elseif (strtolower($mh_pay_status) === 'paid'): ?>
                                             <button type="button"
                                                     onclick="printMerchandiseReceipt('<?= addslashes($txn['transaction_id'] ?? '') ?>')"
-                                                    class="txn-btn secondary">
-                                                <i class="fas fa-print"></i> Print Receipt
+                                                    style="display:inline-flex;align-items:center;justify-content:center;
+                                                           gap:4px;padding:4px 8px;border-radius:4px;font-size:10px;
+                                                           font-weight:600;cursor:pointer;border:1px solid #64748b;
+                                                           background:#fff;color:#64748b;white-space:nowrap;width:100%;"
+                                                    onmouseover="this.style.background='#64748b';this.style.color='#fff'"
+                                                    onmouseout="this.style.background='#fff';this.style.color='#64748b'">
+                                                <i class="fas fa-print"></i> Receipt
                                             </button>
-                                            <span style="font-size:10px;color:#16a34a;font-weight:600;text-align:center;display:block;margin-top:2px;">
-                                                <i class="fas fa-check-circle"></i> Paid &amp; Complete
-                                            </span>
+                                            <div style="font-size:9px;color:#16a34a;font-weight:700;text-align:center;margin-top:1px;">
+                                                ✓ Paid
+                                            </div>
                                             <?php endif; ?>
                                         </div>
                                     </td>
@@ -6161,8 +6346,8 @@ input[list] {
                 const data = await res.json();
 
                 if (data.success) {
-                    // Open receipt in new tab
-                    window.open(`receipt.php?id=${encodeURIComponent(data.transaction_id)}&type=merchandise`, '_blank');
+                    // Print receipt using popup-immune iframe
+                    printMerchandiseReceipt(data.transaction_id);
                     // Reset everything
                     cart = [];
                     renderCart();
@@ -6266,90 +6451,22 @@ input[list] {
         ══════════════════════════════════════════════════════════ -->
         <div id="innerTab_tracker" style="display:<?= $active_tab === 'tracker' ? 'block' : 'none' ?>;">
         <?php
-        // Count by status for KPI strip — handles both job_orders and merchandise_transactions rows
-        $jo_count_pending    = count(array_filter($job_orders, function($j) {
-            $vs = $j['validation_status'] ?? '';
-            $st = $j['status'] ?? '';
-            return in_array($vs, ['Pending Validation', 'Pending', ''])
-                && !in_array($st, ['In Progress', 'Completed', 'Rejected', 'Cancelled', 'Approved']);
-        }));
-        $jo_count_approved   = count(array_filter($job_orders, function($j) {
-            $vs = $j['validation_status'] ?? '';
-            $st = $j['status'] ?? '';
-            return in_array($vs, ['Approved', 'Validated'])
-                && !in_array($st, ['In Progress', 'Completed', 'Rejected', 'Cancelled']);
-        }));
-        $jo_count_inprogress = count(array_filter($job_orders, fn($j) =>
-            ($j['status'] ?? '') === 'In Progress' || ($j['validation_status'] ?? '') === 'In Progress'
-        ));
-        $jo_count_completed  = count(array_filter($job_orders, fn($j) =>
-            ($j['status'] ?? '') === 'Completed' || ($j['validation_status'] ?? '') === 'Completed'
-        ));
-        $jo_count_rejected   = count(array_filter($job_orders, fn($j) =>
-            in_array($j['status'] ?? '', ['Rejected', 'Cancelled'])
-            || ($j['validation_status'] ?? '') === 'Rejected'
-        ));
+        // Staff view: simple tracker without manager-level KPIs
         ?>
 
-        <!-- KPI strip (5 status cards) -->
-        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px;">
-            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px;">
-                <div style="width:36px;height:36px;border-radius:50%;background:#fef9c3;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                    <i class="fas fa-clock" style="color:#b45309 !important;font-size:14px;"></i>
-                </div>
-                <div>
-                    <div style="font-size:20px;font-weight:800;color:#b45309 !important;"><?= $jo_count_pending ?></div>
-                    <div style="font-size:10px;color:#64748b !important;font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Pending</div>
-                </div>
-            </div>
-            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px;">
-                <div style="width:36px;height:36px;border-radius:50%;background:#d1fae5;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                    <i class="fas fa-check" style="color:#065f46 !important;font-size:14px;"></i>
-                </div>
-                <div>
-                    <div style="font-size:20px;font-weight:800;color:#065f46 !important;"><?= $jo_count_approved ?></div>
-                    <div style="font-size:10px;color:#64748b !important;font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Approved</div>
-                </div>
-            </div>
-            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px;">
-                <div style="width:36px;height:36px;border-radius:50%;background:#dbeafe;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                    <i class="fas fa-play" style="color:#1d4ed8 !important;font-size:14px;"></i>
-                </div>
-                <div>
-                    <div style="font-size:20px;font-weight:800;color:#1d4ed8 !important;"><?= $jo_count_inprogress ?></div>
-                    <div style="font-size:10px;color:#64748b !important;font-weight:600;text-transform:uppercase;letter-spacing:.4px;">In Progress</div>
-                </div>
-            </div>
-            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px;">
-                <div style="width:36px;height:36px;border-radius:50%;background:#dcfce7;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                    <i class="fas fa-check-double" style="color:#16a34a !important;font-size:14px;"></i>
-                </div>
-                <div>
-                    <div style="font-size:20px;font-weight:800;color:#16a34a !important;"><?= $jo_count_completed ?></div>
-                    <div style="font-size:10px;color:#64748b !important;font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Completed</div>
-                </div>
-            </div>
-            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px;">
-                <div style="width:36px;height:36px;border-radius:50%;background:#fee2e2;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                    <i class="fas fa-times-circle" style="color:#dc2626 !important;font-size:14px;"></i>
-                </div>
-                <div>
-                    <div style="font-size:20px;font-weight:800;color:#dc2626 !important;"><?= $jo_count_rejected ?></div>
-                    <div style="font-size:10px;color:#64748b !important;font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Rejected</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Filter bar -->
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
-            <span style="font-size:15px;color:#64748b;font-weight:600;">Filter:</span>
-            <button onclick="joFilterTable('all')"    id="joFilter_all"       class="jo-filter-btn jo-filter-active" style="color:#1e293b !important;">All</button>
-            <button onclick="joFilterTable('pending')"  id="joFilter_pending"   class="jo-filter-btn" style="color:#1e293b !important;">Pending</button>
-            <button onclick="joFilterTable('approved')" id="joFilter_approved"  class="jo-filter-btn" style="color:#1e293b !important;">Approved</button>
+        <!-- Filter bar —— Staff: Status + Shift filters -->
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+            <span style="font-size:13px;color:#64748b;font-weight:600;">Status:</span>
+            <button onclick="joFilterTable('all')"        id="joFilter_all"        class="jo-filter-btn jo-filter-active" style="color:#1e293b !important;">All</button>
             <button onclick="joFilterTable('inprogress')" id="joFilter_inprogress" class="jo-filter-btn" style="color:#1e293b !important;">In Progress</button>
-            <button onclick="joFilterTable('completed')" id="joFilter_completed" class="jo-filter-btn" style="color:#1e293b !important;">Completed</button>
-            <button onclick="joFilterTable('rejected')" id="joFilter_rejected"  class="jo-filter-btn" style="color:#1e293b !important;">Rejected</button>
-            <!-- Export buttons -->
+            <button onclick="joFilterTable('completed')"  id="joFilter_completed"  class="jo-filter-btn" style="color:#1e293b !important;">Completed</button>
+            <button onclick="joFilterTable('rejected')"   id="joFilter_rejected"   class="jo-filter-btn" style="color:#1e293b !important;">Rejected</button>
+            <!-- Shift filter -->
+            <span style="font-size:13px;color:#64748b;font-weight:600;margin-left:8px;">Shift:</span>
+            <button onclick="joShiftFilter('all')"    id="joShift_all"    class="jo-filter-btn jo-shift-active" style="color:#1e293b !important;">All</button>
+            <button onclick="joShiftFilter('shift1')" id="joShift_shift1" class="jo-filter-btn" style="color:#1e293b !important;"><i class="fas fa-sun" style="font-size:9px;"></i> Shift 1</button>
+            <button onclick="joShiftFilter('shift2')" id="joShift_shift2" class="jo-filter-btn" style="color:#1e293b !important;"><i class="fas fa-moon" style="font-size:9px;"></i> Shift 2</button>
+            <!-- Right-side: Export + Audit Trail -->
             <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                 <a href="../backend/export_staff_transactions.php?type=job_orders&format=excel"
                    title="Export to Excel"
@@ -6361,30 +6478,32 @@ input[list] {
                    class="txn-btn primary">
                     <i class="fas fa-file-csv"></i> CSV
                 </a>
-                <a href="../backend/export_staff_transactions.php?type=job_orders&format=pdf"
-                   target="_blank"
-                   title="Export to PDF"
-                   class="txn-btn danger">
-                    <i class="fas fa-file-pdf"></i> PDF
-                </a>
-                <a href="javascript:void(0)" 
-                   onclick="goBackFromTracker()"
-                   title="Back"
-                   class="txn-btn secondary">
-                    <i class="fas fa-arrow-left"></i> Back
+                <a href="staff_activity_report.php"
+                   title="View Staff Activity Report (Audit Trail)"
+                   class="txn-btn secondary"
+                   style="border-color:#6366f1;color:#6366f1 !important;">
+                    <i class="fas fa-clipboard-list"></i> Activity Log
                 </a>
             </div>
         </div>
         <style>
         .jo-filter-btn {
-            display:inline-flex;align-items:center;gap:6px;
-            padding:7px 14px;border:1px solid #003d7a;border-radius:4px;
+            display:inline-flex;align-items:center;gap:5px;
+            padding:6px 12px;border:1px solid #003d7a;border-radius:4px;
             background:white !important;color:#003d7a !important;font-size:11px;font-weight:600;
             cursor:pointer;transition:all .2s;text-decoration:none;
         }
         .jo-filter-btn:hover { background:#003d7a !important; color:white !important; }
-        .jo-filter-btn.jo-filter-active {
-            background:#003d7a !important;color:white !important;border-color:#003d7a;
+        /* Status filter active = Petron blue */
+        [id^="joFilter_"].jo-filter-active {
+            background:#003d7a !important;color:white !important;border-color:#003d7a !important;
+        }
+        /* Shift filter active = indigo */
+        [id^="joShift_"] { border-color:#4f46e5 !important; color:#4f46e5 !important; }
+        [id^="joShift_"]:hover { background:#4f46e5 !important; color:white !important; }
+        [id^="joShift_"].jo-filter-active,
+        [id^="joShift_"].jo-shift-active {
+            background:#4f46e5 !important;color:white !important;border-color:#4f46e5 !important;
         }
         </style>
 
@@ -6392,16 +6511,14 @@ input[list] {
         <div style="margin-bottom:12px;">
             <button type="button"
                     onclick="document.getElementById('kpiSnapshotPanel').classList.toggle('d-none')"
-                    style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;
-                           border:1px solid #003d7a;border-radius:4px;background:#fff;
-                           color:#003d7a;font-size:11px;font-weight:600;cursor:pointer;">
+                    class="txn-btn success">
                 <i class="fas fa-chart-bar"></i> My KPI Today
             </button>
         </div>
         <div id="kpiSnapshotPanel" class="d-none"
              style="display:none;margin-bottom:16px;background:#f0f7ff;border:1px solid #bfdbfe;
                     border-radius:8px;padding:14px 18px;">
-            <div style="font-size:12px;font-weight:700;color:#003d7a;margin-bottom:10px;">
+            <div style="font-size:12px;font-weight:700;color:#1d6f42;margin-bottom:10px;">
                 <i class="fas fa-chart-bar"></i> My KPI — <?= date('F j, Y') ?>
             </div>
             <div style="display:flex;gap:16px;flex-wrap:wrap;">
@@ -6432,7 +6549,11 @@ input[list] {
         // KPI toggle — use inline display since d-none may be overridden by Bootstrap
         (function(){
             var kpiPanel = document.getElementById('kpiSnapshotPanel');
-            if (kpiPanel) kpiPanel.style.display = 'none';
+            if (kpiPanel) {
+                // Auto-show if there's real data today
+                var hasData = (<?= (int)$kpi_jo_count ?> > 0 || <?= (int)$kpi_merch_released ?> > 0 || <?= round($kpi_total_encoded, 2) ?> > 0);
+                kpiPanel.style.display = hasData ? 'block' : 'none';
+            }
             var kpiBtn = kpiPanel ? kpiPanel.previousElementSibling.querySelector('button') : null;
             if (kpiBtn && kpiPanel) {
                 kpiBtn.onclick = function() {
@@ -6461,20 +6582,22 @@ input[list] {
                 <table class="txn-table" id="joUnifiedTable" style="table-layout:fixed; word-wrap:break-word;width:100%;">
                     <colgroup>
                         <col style="width:5%;"  ><!-- JO ID -->
-                        <col style="width:8%;"  ><!-- Customer -->
-                        <col style="width:12%;"><!-- Vehicle / Service -->
-                        <col style="width:8%;"><!-- Items / Parts -->
-                        <col style="width:8%;" ><!-- Inv. Impact -->
+                        <col style="width:6%;"  ><!-- Shift -->
+                        <col style="width:7%;"  ><!-- Customer -->
+                        <col style="width:11%;"><!-- Vehicle / Service -->
+                        <col style="width:7%;"><!-- Items / Parts -->
+                        <col style="width:7%;" ><!-- Inv. Impact -->
                         <col style="width:6%;" ><!-- Mechanic -->
-                        <col style="width:11%;" ><!-- Workflow Status -->
-                        <col style="width:11%;"><!-- Payment Status -->
-                        <col style="width:10%;" ><!-- Remarks -->
+                        <col style="width:10%;" ><!-- Workflow Status -->
+                        <col style="width:10%;"><!-- Payment Status -->
+                        <col style="width:9%;" ><!-- Remarks/Validation -->
                         <col style="width:7%;" ><!-- Date/Time -->
-                        <col style="width:14%;"><!-- Actions -->
+                        <col style="width:15%;"><!-- Actions -->
                     </colgroup>
                     <thead>
                         <tr>
                             <th style="font-size:11px;">JO ID</th>
+                            <th style="font-size:11px;">Shift</th>
                             <th style="font-size:11px;">Customer</th>
                             <th style="font-size:11px;">Vehicle / Service</th>
                             <th style="font-size:11px;">Items / Parts</th>
@@ -6482,7 +6605,6 @@ input[list] {
                             <th style="font-size:11px;">Mechanic</th>
                             <th style="font-size:11px;">Status</th>
                             <th style="font-size:11px;">Payment</th>
-                            <th style="font-size:11px;">Remarks</th>
                             <th style="font-size:11px;">Date</th>
                             <th style="font-size:11px;">Actions</th>
                         </tr>
@@ -6556,12 +6678,41 @@ input[list] {
                         // ── Separated remarks ────────────────────────────────────────────────
                         $staff_remark   = trim($job['staff_remarks'] ?? $job['notes'] ?? '');
                         $manager_remark = trim($job['manager_notes'] ?? $job['admin_remarks'] ?? '');
+
+                        // ── Shift Indicator ──────────────────────────────────────────────────
+                        // Use explicit shift_name/shift_period if available (MT rows),
+                        // otherwise derive from created_at time.
+                        $shift_name_raw = trim($job['shift_name'] ?? $job['shift_period'] ?? '');
+                        if (!empty($shift_name_raw)) {
+                            $shift_label    = $shift_name_raw;
+                            $shift_key_data = (stripos($shift_name_raw,'2') !== false || stripos($shift_name_raw,'pm') !== false || stripos($shift_name_raw,'night') !== false) ? 'shift2' : 'shift1';
+                        } else {
+                            // Derive from created_at hour: 06:00-17:59 = Shift 1, else Shift 2
+                            $created_hour = (int)date('H', strtotime($job['created_at']));
+                            if ($created_hour >= 6 && $created_hour < 18) {
+                                $shift_label = 'Shift 1'; $shift_key_data = 'shift1';
+                            } else {
+                                $shift_label = 'Shift 2'; $shift_key_data = 'shift2';
+                            }
+                        }
+                        $shift_icon  = ($shift_key_data === 'shift1') ? '🌤' : '🌙';
+                        $shift_color = ($shift_key_data === 'shift1') ? '#d97706' : '#4f46e5';
+                        $shift_bg    = ($shift_key_data === 'shift1') ? '#fef9c3' : '#ede9fe';
                     ?>
-                    <tr data-jo-filter="<?= $row_filter ?>" style="<?= $wf_status === 'Rejected' ? 'background:#fff8f8;' : '' ?>">
+                    <tr data-jo-filter="<?= $row_filter ?>" data-jo-shift="<?= $shift_key_data ?>" style="<?= $wf_status === 'Rejected' ? 'background:#fff8f8;' : ($jo_is_overdue ? 'background:#fff5f5;border-left:3px solid #dc2626;' : '') ?>"><?php // overdue rows get red left border ?>
                         <td>
                             <strong style="color:<?= $wf_status==='Rejected' ? '#dc2626' : 'var(--petron-blue)' ?>;">
                                 <?= htmlspecialchars($job['job_order_id'] ?? ('#'.$job['id'])) ?>
                             </strong>
+                        </td>
+                        <!-- Shift Indicator cell -->
+                        <td style="text-align:center;">
+                            <span style="display:inline-block;background:<?= $shift_bg ?>;color:<?= $shift_color ?>;
+                                         border:1px solid <?= $shift_color ?>33;font-size:10px;font-weight:700;
+                                         padding:2px 7px;border-radius:10px;white-space:nowrap;"
+                                  title="<?= htmlspecialchars($shift_label) ?>">
+                                <?= $shift_icon ?> <?= htmlspecialchars($shift_label) ?>
+                            </span>
                         </td>
                         <td><?= htmlspecialchars($job['customer_name'] ?? '—') ?></td>
                         <td style="font-size:14px;">
@@ -6582,23 +6733,30 @@ input[list] {
                         </td>
 
                         <!-- ── Inventory Impact Column ───────────────────────── -->
-                        <td style="font-size:11px;line-height:1.5;">
+                        <td style="font-size:11px;line-height:1.7;">
                             <?php if (empty($inv_items)): ?>
-                                <span style="color:#cbd5e1;">—</span>
+                                <span style="color:#cbd5e1;font-size:10px;">No parts</span>
                             <?php else: foreach ($inv_items as $_ii):
                                 if ($_ii['status'] === 'yes') {
-                                    $ii_color = '#16a34a'; $ii_label = '✓ Deducted: Yes';
+                                    $ii_bg='#dcfce7'; $ii_color='#166534'; $ii_border='#86efac'; $ii_icon='✓'; $ii_label='Deducted';
                                 } elseif ($_ii['status'] === 'no') {
-                                    $ii_color = '#d97706'; $ii_label = '✗ Deducted: No';
+                                    $ii_bg='#fef9c3'; $ii_color='#92400e'; $ii_border='#fde68a'; $ii_icon='✗'; $ii_label='Not Yet';
                                 } elseif ($_ii['status'] === 'na') {
-                                    $ii_color = '#94a3b8'; $ii_label = 'N/A';
+                                    $ii_bg='#f1f5f9'; $ii_color='#94a3b8'; $ii_border='#e2e8f0'; $ii_icon='—'; $ii_label='N/A';
                                 } else {
-                                    $ii_color = '#64748b'; $ii_label = 'Pending';
+                                    $ii_bg='#eff6ff'; $ii_color='#1d4ed8'; $ii_border='#bfdbfe'; $ii_icon='⏳'; $ii_label='Pending';
                                 }
                             ?>
-                            <div style="white-space:nowrap;">
-                                <span style="color:#374151;"><?= htmlspecialchars($_ii['part']) ?> (<?= (int)$_ii['qty'] ?> pc)</span>
-                                <span style="color:<?= $ii_color ?>;font-weight:600;"> → <?= $ii_label ?></span>
+                            <div style="margin-bottom:4px;" title="<?= htmlspecialchars($_ii['part']) ?> × <?= (int)$_ii['qty'] ?> pc">
+                                <div style="font-size:10px;color:#475569;max-width:110px;white-space:nowrap;
+                                            overflow:hidden;text-overflow:ellipsis;">
+                                    <?= htmlspecialchars(mb_strimwidth($_ii['part'],0,15,'…')) ?> ×<?= (int)$_ii['qty'] ?>
+                                </div>
+                                <span style="display:inline-block;background:<?= $ii_bg ?>;color:<?= $ii_color ?>;
+                                             border:1px solid <?= $ii_border ?>;font-size:10px;font-weight:700;
+                                             padding:1px 6px;border-radius:10px;">
+                                    <?= $ii_icon ?> <?= $ii_label ?>
+                                </span>
                             </div>
                             <?php endforeach; endif; ?>
                         </td>
@@ -6610,83 +6768,11 @@ input[list] {
                             </span>
                         </td>
 
-                        <!-- ── Payment + Receivables Column ──────────────────── -->
+                        <!-- ── Payment Column (Simplified for Staff) ──────────────────── -->
                         <td style="word-break:break-word;overflow-wrap:break-word;font-size:11px;">
                             <span style="color:<?= $pay_color ?>;font-weight:600;line-height:1.3;">
                                 <?= $pay_label ?>
                             </span>
-                            <?php if (!in_array($pay_status, ['Paid','Completed']) && $jo_balance_display > 0): ?>
-                            <div style="color:#64748b;margin-top:2px;">
-                                Bal: <strong>₱<?= number_format($jo_balance_display, 2) ?></strong>
-                            </div>
-                            <?php endif; ?>
-                            <?php if (!in_array($pay_status, ['Paid','Completed'])): ?>
-                            <div style="margin-top:3px;">
-                                <?php if ($jo_due_date): ?>
-                                    <span style="color:<?= $jo_is_overdue ? '#dc2626' : '#64748b' ?>;">
-                                        Due: <?= htmlspecialchars($jo_due_date) ?>
-                                    </span>
-                                    <?php if ($jo_is_overdue): ?>
-                                    <span style="display:inline-block;background:#fee2e2;color:#dc2626;
-                                                 font-size:10px;font-weight:700;padding:1px 5px;
-                                                 border-radius:3px;margin-left:3px;">⚠ OVERDUE</span>
-                                    <?php endif; ?>
-                                <?php else: ?>
-                                    <span style="color:#cbd5e1;font-size:10px;">No due date</span>
-                                <?php endif; ?>
-                                <!-- Inline due date set form -->
-                                <form method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker"
-                                      style="display:inline;margin-left:4px;"
-                                      title="Set due date">
-                                    <input type="hidden" name="jo_action" value="set_due_date">
-                                    <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
-                                    <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
-                                    <input type="date" name="due_date"
-                                           value="<?= htmlspecialchars($jo_due_date ?? '') ?>"
-                                           style="font-size:10px;border:1px solid #cbd5e1;border-radius:3px;
-                                                  padding:1px 3px;width:105px;cursor:pointer;"
-                                           onchange="this.form.submit()"
-                                           title="Click to set due date">
-                                </form>
-                            </div>
-                            <?php endif; ?>
-                        </td>
-
-                        <!-- ── Remarks: Staff + Manager separated ─────────────── -->
-                        <td style="font-size:11px;color:#64748b;max-width:160px;word-break:break-word;">
-                            <?php if (!empty($staff_remark)): ?>
-                            <div>
-                                <span style="font-weight:700;color:#475569;">Staff:</span>
-                                <?= htmlspecialchars($staff_remark) ?>
-                            </div>
-                            <?php endif; ?>
-                            <?php if (!empty($manager_remark)): ?>
-                            <div style="margin-top:3px;">
-                                <span style="font-weight:700;color:#002F6C;">Manager:</span>
-                                <?= htmlspecialchars($manager_remark) ?>
-                            </div>
-                            <?php endif; ?>
-                            <?php if (empty($staff_remark) && empty($manager_remark)): ?>
-                                <span style="color:#cbd5e1;">—</span>
-                            <?php endif; ?>
-                            <!-- Staff remark inline edit -->
-                            <form method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker"
-                                  style="margin-top:4px;">
-                                <input type="hidden" name="jo_action" value="save_staff_remark">
-                                <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
-                                <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
-                                <div style="display:flex;gap:3px;align-items:center;">
-                                    <input type="text" name="remark_text"
-                                           value="<?= htmlspecialchars($staff_remark) ?>"
-                                           placeholder="Add remark…"
-                                           style="font-size:10px;border:1px solid #e2e8f0;border-radius:3px;
-                                                  padding:2px 5px;flex:1;min-width:0;">
-                                    <button type="submit"
-                                            style="font-size:10px;padding:2px 6px;background:#002F6C;
-                                                   color:#fff;border:none;border-radius:3px;cursor:pointer;
-                                                   flex-shrink:0;">✓</button>
-                                </div>
-                            </form>
                         </td>
 
                         <td style="font-size:13px;color:#64748b;white-space:nowrap;">
@@ -6859,6 +6945,7 @@ input[list] {
         <script>
         var joState = {
             filter: 'all',
+            shift:  'all',
             page: 1,
             per_page: 10
         };
@@ -6867,10 +6954,13 @@ input[list] {
             var rows = document.querySelectorAll('#joUnifiedTable tbody tr');
             var visibleRows = [];
             
-            // 1. Apply filter first
+            // 1. Apply compound filter: status AND shift
             rows.forEach(function(row) {
                 var rowFilter = row.getAttribute('data-jo-filter');
-                if (joState.filter === 'all' || rowFilter === joState.filter) {
+                var rowShift  = row.getAttribute('data-jo-shift');
+                var statusOk  = (joState.filter === 'all' || rowFilter === joState.filter);
+                var shiftOk   = (joState.shift  === 'all' || rowShift  === joState.shift);
+                if (statusOk && shiftOk) {
                     visibleRows.push(row);
                 } else {
                     row.style.display = 'none';
@@ -6914,15 +7004,32 @@ input[list] {
         }
 
         function joFilterTable(filter) {
-            // Update active button
-            document.querySelectorAll('.jo-filter-btn').forEach(function(btn) {
+            // Toggle active only among STATUS filter buttons
+            document.querySelectorAll('[id^="joFilter_"]').forEach(function(btn) {
                 btn.classList.remove('jo-filter-active');
             });
             var activeBtn = document.getElementById('joFilter_' + filter);
             if (activeBtn) activeBtn.classList.add('jo-filter-active');
 
             joState.filter = filter;
-            joState.page = 1; // reset to page 1 on filter
+            joState.page = 1;
+            joRenderTable();
+        }
+
+        function joShiftFilter(shift) {
+            // Toggle active only among SHIFT filter buttons
+            document.querySelectorAll('[id^="joShift_"]').forEach(function(btn) {
+                btn.classList.remove('jo-filter-active');
+                btn.classList.remove('jo-shift-active');
+            });
+            var activeBtn = document.getElementById('joShift_' + shift);
+            if (activeBtn) {
+                activeBtn.classList.add('jo-filter-active');
+                activeBtn.classList.add('jo-shift-active');
+            }
+
+            joState.shift = shift;
+            joState.page  = 1;
             joRenderTable();
         }
 
@@ -6940,8 +7047,14 @@ input[list] {
             }
         }
 
-        // Initialize pagination on load
+        // Initialize pagination + shift button state on load
         document.addEventListener('DOMContentLoaded', function() {
+            // Ensure Shift: All button starts active
+            var shiftAllBtn = document.getElementById('joShift_all');
+            if (shiftAllBtn) {
+                shiftAllBtn.classList.add('jo-filter-active');
+                shiftAllBtn.classList.add('jo-shift-active');
+            }
             joRenderTable();
         });
         </script>
@@ -7524,7 +7637,6 @@ input[list] {
                           style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
                                  color:#1e293b;background:#fff;outline:none;cursor:pointer;">
                     <option value="">Select new status...</option>
-                    <option value="Approved">✓ Approved</option>
                     <option value="In Progress">▶ In Progress</option>
                     <option value="Completed">✓✓ Completed</option>
                     <option value="Rejected">✗ Rejected</option>
@@ -7732,12 +7844,52 @@ input[list] {
             // joRef may be '#688' (fragment) if job_order_id is null in DB.
             // Browsers strip '#...' from URLs, so use numeric joId in that case.
             var rid = (joRef && joRef.charAt(0) !== '#') ? encodeURIComponent(joRef) : joId;
-            window.open('receipt.php?id=' + rid + '&type=job_order', '_blank', 'width=520,height=800,scrollbars=yes');
+            var url = 'receipt.php?id=' + rid + '&type=job_order';
+            
+            let iframe = document.getElementById('print-receipt-iframe');
+            if (!iframe) {
+                iframe = document.createElement('iframe');
+                iframe.id = 'print-receipt-iframe';
+                iframe.style.position = 'fixed';
+                iframe.style.right = '0';
+                iframe.style.bottom = '0';
+                iframe.style.width = '0';
+                iframe.style.height = '0';
+                iframe.style.border = '0';
+                document.body.appendChild(iframe);
+            }
+            iframe.src = url;
+            iframe.onload = function() {
+                setTimeout(function() {
+                    iframe.contentWindow.focus();
+                    iframe.contentWindow.print();
+                }, 250);
+            };
         }
         
         // Print Merchandise Receipt
         function printMerchandiseReceipt(txnId) {
-            window.open('receipt.php?id=' + txnId + '&type=merchandise', '_blank', 'width=520,height=800,scrollbars=yes');
+            var url = 'receipt.php?id=' + encodeURIComponent(txnId) + '&type=merchandise';
+            
+            let iframe = document.getElementById('print-receipt-iframe');
+            if (!iframe) {
+                iframe = document.createElement('iframe');
+                iframe.id = 'print-receipt-iframe';
+                iframe.style.position = 'fixed';
+                iframe.style.right = '0';
+                iframe.style.bottom = '0';
+                iframe.style.width = '0';
+                iframe.style.height = '0';
+                iframe.style.border = '0';
+                document.body.appendChild(iframe);
+            }
+            iframe.src = url;
+            iframe.onload = function() {
+                setTimeout(function() {
+                    iframe.contentWindow.focus();
+                    iframe.contentWindow.print();
+                }, 250);
+            };
         }
         
         // View Merchandise Transaction Details

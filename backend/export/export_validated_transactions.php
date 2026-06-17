@@ -1,7 +1,7 @@
 <?php
 /**
  * Export Validated Transactions (Manager)
- * Supports Excel, CSV, PDF formats
+ * Supports Excel, CSV formats only
  */
 if (session_status() === PHP_SESSION_NONE) session_start();
 
@@ -18,6 +18,11 @@ if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
 }
 
 $format = $_GET['format'] ?? 'excel';
+
+// Validate format - Excel and CSV only
+if (!in_array($format, ['excel', 'csv'])) {
+    die('Invalid format');
+}
 
 try {
     // Fetch validated transactions (Job Orders + Merchandise)
@@ -121,35 +126,6 @@ try {
         }
         
         echo "</table>";
-        exit;
-    }
-    
-    if ($format === 'pdf') {
-        header('Content-Type: application/pdf');
-        header('Content-Disposition: attachment; filename="validated_transactions_' . date('Y-m-d') . '.pdf"');
-        
-        echo "<!DOCTYPE html><html><head><title>Validated Transactions</title>";
-        echo "<style>table{width:100%;border-collapse:collapse;font-size:10px;}th,td{border:1px solid #000;padding:6px;text-align:left;}th{background:#f0f0f0;}</style>";
-        echo "</head><body>";
-        echo "<h2>Validated Transactions - " . date('Y-m-d') . "</h2>";
-        echo "<table><tr><th>Type</th><th>Reference</th><th>Customer</th><th>Staff</th><th>Validated By</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Payment Status</th><th>Validated Date</th></tr>";
-        
-        foreach ($transactions as $row) {
-            echo "<tr>";
-            echo "<td>" . htmlspecialchars($row['type']) . "</td>";
-            echo "<td>" . htmlspecialchars($row['reference']) . "</td>";
-            echo "<td>" . htmlspecialchars($row['customer']) . "</td>";
-            echo "<td>" . htmlspecialchars($row['staff']) . "</td>";
-            echo "<td>" . htmlspecialchars($row['validated_by']) . "</td>";
-            echo "<td>₱" . number_format($row['amount'], 2) . "</td>";
-            echo "<td>₱" . number_format($row['amount_paid'], 2) . "</td>";
-            echo "<td>₱" . number_format($row['balance'], 2) . "</td>";
-            echo "<td>" . htmlspecialchars($row['payment_status']) . "</td>";
-            echo "<td>" . date('Y-m-d H:i', strtotime($row['validated_at'])) . "</td>";
-            echo "</tr>";
-        }
-        
-        echo "</table></body></html>";
         exit;
     }
 

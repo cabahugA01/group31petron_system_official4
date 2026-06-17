@@ -1,0 +1,83 @@
+<!-- REPLACE LINES 1001-1070 in admin_transactions_oversight.php WITH THIS: -->
+
+<!-- Performance Metrics KPI Panel -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px;">
+    <!-- Total Sales Card -->
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;display:flex;align-items:center;gap:14px;">
+        <div style="width:44px;height:44px;border-radius:50%;background:#dbeafe;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="fas fa-peso-sign" style="color:#1d4ed8;font-size:18px;"></i>
+        </div>
+        <div style="flex:1;min-width:0;">
+            <div style="font-size:20px;font-weight:700;color:#002F70;line-height:1.2;">₱<?= number_format($kpi_total_sales, 2) ?></div>
+            <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.3px;font-weight:600;margin-top:4px;">TOTAL SALES</div>
+            <div style="font-size:10px;color:#94a3b8;margin-top:2px;"><?= htmlspecialchars($start) ?> to <?= htmlspecialchars($end) ?></div>
+        </div>
+    </div>
+    
+    <!-- Total Services Card -->
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;display:flex;align-items:center;gap:14px;">
+        <div style="width:44px;height:44px;border-radius:50%;background:#dcfce7;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="fas fa-wrench" style="color:#16a34a;font-size:18px;"></i>
+        </div>
+        <div style="flex:1;min-width:0;">
+            <div style="font-size:20px;font-weight:700;color:#002F70;line-height:1.2;"><?= (int)$kpi_total_services ?></div>
+            <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.3px;font-weight:600;margin-top:4px;">TOTAL SERVICES</div>
+            <div style="font-size:10px;color:#94a3b8;margin-top:2px;">Approved / Completed</div>
+        </div>
+    </div>
+    
+    <!-- Top Items Sold Card -->
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+            <div style="width:32px;height:32px;border-radius:50%;background:#fef3c7;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <i class="fas fa-star" style="color:#d97706;font-size:14px;"></i>
+            </div>
+            <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.3px;font-weight:700;">TOP ITEMS SOLD</div>
+        </div>
+        <?php if (empty($kpi_top_items)): ?>
+            <div style="font-size:12px;color:#94a3b8;text-align:center;padding:8px 0;">No data</div>
+        <?php else: foreach ($kpi_top_items as $_idx => $_ti): ?>
+            <div style="font-size:11px;display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #f1f5f9;">
+                <span style="color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">
+                    <?= htmlspecialchars($_ti['product_name']) ?>
+                </span>
+                <strong style="color:#002F70;margin-left:8px;white-space:nowrap;"><?= (int)$_ti['total_qty'] ?> pc</strong>
+            </div>
+        <?php endforeach; endif; ?>
+    </div>
+    
+    <!-- Top Encoder Card -->
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;display:flex;align-items:center;gap:14px;">
+        <div style="width:44px;height:44px;border-radius:50%;background:#fef3c7;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="fas fa-user-check" style="color:#d97706;font-size:18px;"></i>
+        </div>
+        <div style="flex:1;min-width:0;">
+            <div style="font-size:16px;font-weight:700;color:#002F70;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                <?= $kpi_top_encoder ? htmlspecialchars($kpi_top_encoder['staff_name']) : '—' ?>
+            </div>
+            <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.3px;font-weight:600;margin-top:4px;">TOP ENCODER</div>
+            <div style="font-size:10px;color:#94a3b8;margin-top:2px;">
+                <?= $kpi_top_encoder ? (int)$kpi_top_encoder['enc_count'] . ' txn(s) validated' : 'No data' ?>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Variance Alerts Card -->
+    <div style="background:<?= $variance_alert_count > 0 ? '#fff3f3' : '#f0fdf4' ?>;
+                border:1px solid <?= $variance_alert_count > 0 ? '#fecaca' : '#bbf7d0' ?>;
+                border-radius:10px;padding:16px;display:flex;align-items:center;gap:14px;cursor:pointer;"
+         onclick="document.getElementById('varianceAlertsPanel').style.display=(document.getElementById('varianceAlertsPanel').style.display==='none'?'block':'none');">
+        <div style="width:44px;height:44px;border-radius:50%;background:<?= $variance_alert_count > 0 ? '#fee2e2' : '#dcfce7' ?>;
+                    display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="fas fa-<?= $variance_alert_count > 0 ? 'exclamation-triangle' : 'check-circle' ?>"
+               style="color:<?= $variance_alert_count > 0 ? '#dc2626' : '#16a34a' ?>;font-size:18px;"></i>
+        </div>
+        <div style="flex:1;min-width:0;">
+            <div style="font-size:20px;font-weight:700;color:<?= $variance_alert_count > 0 ? '#dc2626' : '#16a34a' ?>;line-height:1.2;">
+                <?= (int)$variance_alert_count ?>
+            </div>
+            <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.3px;font-weight:600;margin-top:4px;">VARIANCE ALERTS</div>
+            <div style="font-size:10px;color:#94a3b8;margin-top:2px;"><?= $variance_alert_count > 0 ? 'Click to view' : 'All clear' ?></div>
+        </div>
+    </div>
+</div>

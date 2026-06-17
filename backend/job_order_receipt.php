@@ -215,9 +215,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action'])) {
 /* ── Screen ── */
 @media screen{
   body{background:#d1d5db;font-family:'Courier New',Courier,monospace;padding:20px 12px 60px}
-  .jo-page{max-width:440px;margin:0 auto;background:#fff;border-radius:8px;
-           box-shadow:0 4px 24px rgba(0,0,0,.22);padding:24px 22px 20px}
-  .jo-toolbar{max-width:440px;margin:0 auto 14px;display:flex;gap:8px;justify-content:flex-end}
+  .jo-page{max-width:320px;margin:0 auto;background:#fff;border-radius:8px;
+           box-shadow:0 4px 24px rgba(0,0,0,.22);padding:16px 14px 16px}
+  .jo-toolbar{max-width:320px;margin:0 auto 14px;display:flex;gap:8px;justify-content:flex-end}
   .jo-toolbar button{padding:9px 18px;border:none;border-radius:5px;font-size:13px;
                      font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px}
   .btn-print{background:#003d7a;color:#fff}
@@ -227,9 +227,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action'])) {
 }
 
 /* ── Print ── */
+@page {
+  size: 80mm auto;          /* thermal receipt width, height auto-fits content */
+  margin: 4mm 3mm;          /* small margins — real receipt printers use ~3–4mm */
+}
 @media print{
   body{margin:0;padding:0;background:#fff}
-  .jo-page{box-shadow:none;border-radius:0;padding:6px;max-width:100%}
+  .jo-page{box-shadow:none;border-radius:0;padding:0;max-width:80mm;width:80mm}
   .jo-toolbar{display:none!important}
 }
 
@@ -315,12 +319,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action'])) {
 </div>
 
 <script>
-// Auto-print when opened as popup
-if (window.opener) {
-    window.addEventListener('load', function() {
-        setTimeout(function(){ window.print(); }, 500);
-    });
-}
+window.addEventListener('load', function() {
+    setTimeout(function(){ window.print(); }, 500);
+});
+window.onafterprint = function() {
+    if (window.opener) {
+        window.close();
+    }
+};
 </script>
 </body>
 </html>
