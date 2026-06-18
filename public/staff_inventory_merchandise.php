@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Staff Merchandise Inventory
  * One "Stock Request" button → modal with checkboxes to pick items → submit (no qty, manager sets it).
@@ -295,6 +295,19 @@ body, html { overflow-x: hidden; max-width: 100%; }
 /* ── Success popup ── */
 .sr-success-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:10998; }
 .sr-success-popup { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:10999; background:#fff; padding:28px; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.25); text-align:center; }
+
+/* Protect txn-btn from global header button color override */
+.txn-btn { display:inline-flex !important; align-items:center !important; justify-content:center !important; gap:6px !important; padding:7px 14px !important; border-radius:4px !important; font-size:11px !important; font-weight:600 !important; cursor:pointer !important; border:1px solid transparent !important; transition:all .2s ease-in-out !important; text-decoration:none !important; white-space:nowrap !important; box-sizing:border-box !important; background-color:#ffffff !important; background:#ffffff !important; }
+.txn-btn.primary   { color:#00264D !important; background-color:#ffffff !important; background:#ffffff !important; border:1px solid #00264D !important; }
+.txn-btn.primary:hover   { background-color:#00264D !important; background:#00264D !important; color:#ffffff !important; }
+.txn-btn.secondary { color:#475569 !important; background-color:#ffffff !important; background:#ffffff !important; border:1px solid #475569 !important; }
+.txn-btn.secondary:hover { background-color:#475569 !important; background:#475569 !important; color:#ffffff !important; }
+.txn-btn.success   { color:#16a34a !important; background-color:#ffffff !important; background:#ffffff !important; border:1px solid #16a34a !important; }
+.txn-btn.success:hover   { background-color:#16a34a !important; background:#16a34a !important; color:#ffffff !important; }
+.txn-btn.warning   { color:#b45309 !important; background-color:#ffffff !important; background:#ffffff !important; border:1px solid #b45309 !important; }
+.txn-btn.warning:hover   { background-color:#b45309 !important; background:#b45309 !important; color:#ffffff !important; }
+.txn-btn.danger    { color:#dc2626 !important; background-color:#ffffff !important; background:#ffffff !important; border:1px solid #dc2626 !important; }
+.txn-btn.danger:hover    { background-color:#dc2626 !important; background:#dc2626 !important; color:#ffffff !important; }
 </style>
 
 <div class="page-head">
@@ -324,8 +337,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
             $export_default_rows  = 25;
             require __DIR__ . '/../partials/export_buttons.php';
             ?>
-            <button onclick="openSrModal()"
-                    style="background:#002F70;color:#fff;border:none;display:inline-flex;align-items:center;gap:7px;height:36px;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">
+            <button onclick="openSrModal()" class="txn-btn primary" style="height:36px;">
                 <i class="fas fa-box"></i> Stock Request
             </button>
         </div>
@@ -513,12 +525,10 @@ body, html { overflow-x: hidden; max-width: 100%; }
         <div id="srError" style="display:none;background:#fee2e2;color:#dc3545;padding:10px 14px;border-radius:6px;margin-top:10px;font-size:13px;"></div>
 
         <div class="sr-modal-footer">
-            <button type="button" id="srCancelBtn"
-                    style="padding:9px 22px;background:#6c757d;color:#fff;border:none;border-radius:6px;cursor:pointer;">
+            <button type="button" id="srCancelBtn" class="txn-btn secondary">
                 Cancel
             </button>
-            <button type="button" id="srSubmitBtn"
-                    style="padding:9px 22px;background:#002F70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">
+            <button type="button" id="srSubmitBtn" class="txn-btn primary">
                 <i class="fas fa-paper-plane"></i> Submit Request
             </button>
         </div>
@@ -535,7 +545,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
     <p style="margin:0 0 18px;color:#333;font-size:14px;line-height:1.5;" id="srSuccessMsg">
         Your stock request is now <strong>Pending</strong> Manager review.
     </p>
-    <button onclick="closeSrSuccess()" style="background:#002F70;color:#fff;border:none;padding:9px 26px;border-radius:6px;cursor:pointer;font-weight:600;">OK</button>
+    <button onclick="closeSrSuccess()" class="txn-btn primary">OK</button>
 </div>
 
 

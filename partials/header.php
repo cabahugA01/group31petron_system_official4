@@ -1106,6 +1106,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     .nav-item span { font-size: 13px !important; font-weight: 500 !important; }
     .nav-item.active span { font-size: 13px !important; font-weight: 500 !important; }
     .sidebar-sub-item { font-size: 12px !important; font-weight: 500 !important; }
+    .sidebar-sub-item span:not(.ico) { white-space: normal !important; word-break: break-word !important; }
     
     .nav-item .ico {
         display: flex;

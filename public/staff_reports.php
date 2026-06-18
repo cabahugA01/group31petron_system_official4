@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * STAFF REPORTS & ADD-ONS MODULE
  * Professional implementation matching Manager Reports theme and styling.
@@ -2091,60 +2091,109 @@ require_once __DIR__ . '/../partials/header.php';
 /* Sub-tab navigation */
 .rpt-sub-tabs {
     display: flex;
-    gap: 8px;
-    border-bottom: 2px solid #EAEAEA;
-    padding-bottom: 0px;
+    gap: 10px;
     margin-bottom: 20px;
+    padding: 0 4px;
     flex-wrap: wrap;
+    border-bottom: none;
 }
 .sub-tab-btn {
-    padding: 10px 18px;
-    font-size: 13px;
-    font-weight: 700;
-    color: #64748b;
-    text-decoration: none;
-    border-bottom: 3px solid transparent;
-    transition: all 0.15s ease;
-    margin-bottom: -2px;
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    padding: 7px 14px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease-in-out;
+    text-decoration: none;
+    background: #ffffff !important;
+    border: 1px solid #002F6C !important;
+    color: #002F6C !important;
 }
 .sub-tab-btn:hover {
-    color: var(--petron-blue);
-    background: #f8fafc;
+    background: #002F6C !important;
+    color: #ffffff !important;
 }
 .sub-tab-btn.active {
-    color: var(--petron-blue);
-    border-bottom-color: var(--petron-red);
+    background: #002F6C !important;
+    border: 1px solid #002F6C !important;
+    color: #ffffff !important;
 }
 
 /* Date range filter bar */
 .rpt-filter-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: #fff; border: 1px solid #EAEAEA; border-radius: 10px; padding: 12px 16px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.04); }
 .rpt-filter-bar label { font-size: 12px; font-weight: 600; color: #667085; text-transform: uppercase; letter-spacing: .4px; }
-.range-btn { padding: 6px 14px; border-radius: 6px; border: 1px solid #EAEAEA; background: #f8fafc; font-size: 12px; font-weight: 600; color: #374151; cursor: pointer; text-decoration: none; transition: .15s; }
-.range-btn:hover { background: #e8f0f8; border-color: var(--petron-blue); color: var(--petron-blue); }
-.range-btn.active { background: var(--petron-blue); color: #fff; border-color: var(--petron-blue); }
+.range-btn { padding: 7px 14px; border-radius: 4px; border: 1px solid #EAEAEA; background: #ffffff; font-size: 11px; font-weight: 600; color: #475569; cursor: pointer; text-decoration: none; transition: all .2s; }
+.range-btn:hover { background: #e8f0f8; border-color: #00264D; color: #00264D; }
+.range-btn.active { background: #00264D; color: #fff; border-color: #00264D; }
 .rpt-filter-bar input[type="date"] { padding: 6px 10px; border: 1px solid #EAEAEA; border-radius: 6px; font-size: 12px; color: #374151; background: #f8fafc; }
-.rpt-filter-bar .btn-apply { padding: 6px 16px; background: var(--petron-red); color: #fff; border: none; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer; transition: .15s; }
-.rpt-filter-bar .btn-apply:hover { background: #a80000; }
-.rpt-filter-bar .btn-export { display:inline-flex; align-items:center; gap:6px; padding:7px 14px; border-radius:7px; font-size:12px; font-weight:700; text-decoration:none; cursor:pointer; transition:.15s; background:#fff; border:1.5px solid #00264D; color:#00264D; }
-.rpt-filter-bar .btn-export:hover { background:#00264D; color:#fff; }
+.rpt-filter-bar .btn-apply {
+    padding: 7px 14px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .2s;
+    background: #ffffff !important;
+    border: 1px solid #00264D !important;
+    color: #00264D !important;
+}
+.rpt-filter-bar .btn-apply:hover {
+    background: #00264D !important;
+    color: #ffffff !important;
+}
+.rpt-filter-bar .btn-export {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all .2s;
+    background: #ffffff !important;
+    border: 1px solid #00264D !important;
+    color: #00264D !important;
+}
+.rpt-filter-bar .btn-export:hover {
+    background: #00264D !important;
+    color: #ffffff !important;
+}
 .rpt-filter-bar .export-buttons { display: flex; gap: 8px; margin-left: auto; }
 #custom-range-inputs { display: flex; align-items: center; gap: 8px; }
 
 /* Card-level export action bar — matches txn-btn outline style */
 .card-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-.btn-act { display:inline-flex; align-items:center; gap:6px; padding:7px 16px; border-radius:7px; font-size:12px; font-weight:700; text-decoration:none; cursor:pointer; transition:all .2s; white-space:nowrap; }
+.btn-act {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 4px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all .2s ease-in-out;
+    text-decoration: none;
+    white-space: nowrap;
+    box-sizing: border-box;
+    background: #ffffff !important;
+}
 .btn-act:hover { transform:none; opacity:1; }
-.btn-act-excel  { background:#fff; color:#16a34a; border:1.5px solid #16a34a; }
-.btn-act-excel:hover  { background:#16a34a; color:#fff; }
-.btn-act-csv    { background:#fff; color:#00264D; border:1.5px solid #00264D; }
-.btn-act-csv:hover    { background:#00264D; color:#fff; }
-.btn-act-pdf    { background:#fff; color:#dc2626; border:1.5px solid #dc2626; }
-.btn-act-pdf:hover    { background:#dc2626; color:#fff; }
-.btn-act-back   { background:#fff; color:#6b7280; border:1.5px solid #6b7280; }
-.btn-act-back:hover   { background:#6b7280; color:#fff; }
+.btn-act-excel  { color: #16a34a !important; border: 1px solid #16a34a !important; }
+.btn-act-excel:hover  { background: #16a34a !important; color: #ffffff !important; }
+.btn-act-csv    { color: #00264D !important; border: 1px solid #00264D !important; }
+.btn-act-csv:hover    { background: #00264D !important; color: #ffffff !important; }
+.btn-act-pdf    { color: #dc2626 !important; border: 1px solid #dc2626 !important; }
+.btn-act-pdf:hover    { background: #dc2626 !important; color: #ffffff !important; }
+.btn-act-back   { color: #475569 !important; border: 1px solid #475569 !important; }
+.btn-act-back:hover   { background: #475569 !important; color: #ffffff !important; }
 
 /* Stat cards */
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px; }

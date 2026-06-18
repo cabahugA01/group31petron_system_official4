@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * STAFF FUEL REPORTS
  *
@@ -268,31 +268,39 @@ require_once __DIR__ . '/../partials/header.php';
 /* Tab nav */
 .sfr-tabs {
     display: flex;
-    gap: 0;
-    border-bottom: 2px solid #e2e8f0;
+    gap: 10px;
     margin-bottom: 20px;
+    flex-wrap: wrap;
+    padding: 0 4px;
+    border-bottom: none;
 }
 
 .sfr-tab {
-    padding: 10px 20px;
-    font-size: 13px;
-    font-weight: 600;
-    color: #64748b;
-    text-decoration: none;
-    border-bottom: 3px solid transparent;
-    margin-bottom: -2px;
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 7px;
-    transition: color .15s, border-color .15s;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease-in-out;
+    text-decoration: none;
+    background: #ffffff !important;
+    border: 1px solid #002F6C !important;
+    color: #002F6C !important;
     white-space: nowrap;
 }
 
-.sfr-tab:hover { color: var(--petron-blue); }
+.sfr-tab:hover {
+    background: #002F6C !important;
+    color: #ffffff !important;
+}
 
 .sfr-tab.active {
-    color: var(--petron-blue);
-    border-bottom-color: var(--petron-blue);
+    background: #002F6C !important;
+    border: 1px solid #002F6C !important;
+    color: #ffffff !important;
     font-weight: 700;
 }
 
@@ -341,23 +349,38 @@ require_once __DIR__ . '/../partials/header.php';
 }
 
 .sfr-btn {
-    padding: 9px 18px;
-    border: none;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 700;
-    cursor: pointer;
     display: inline-flex;
     align-items: center;
-    gap: 7px;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 4px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all .2s ease-in-out;
     text-decoration: none;
-    transition: all .15s;
+    white-space: nowrap;
+    box-sizing: border-box;
+    background: #ffffff !important;
 }
 
-.sfr-btn.primary { background: var(--petron-blue); color: #fff; }
-.sfr-btn.primary:hover { background: #002a5c; }
-.sfr-btn.secondary { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
-.sfr-btn.secondary:hover { background: #e2e8f0; }
+.sfr-btn.primary {
+    color: #002F6C !important;
+    border: 1px solid #002F6C !important;
+}
+.sfr-btn.primary:hover {
+    background: #002F6C !important;
+    color: #ffffff !important;
+}
+.sfr-btn.secondary {
+    color: #475569 !important;
+    border: 1px solid #475569 !important;
+}
+.sfr-btn.secondary:hover {
+    background: #475569 !important;
+    color: #ffffff !important;
+}
 
 /* Card */
 .sfr-card {
@@ -608,14 +631,10 @@ require_once __DIR__ . '/../partials/header.php';
 
                 <!-- Buttons -->
                 <div style="display:flex;gap:8px;">
-                    <button type="submit"
-                            style="padding:9px 20px;background:#002f6c;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:7px;transition:background .15s;"
-                            onmouseover="this.style.background='#001f4d'" onmouseout="this.style.background='#002f6c'">
+                    <button type="submit" class="txn-btn primary">
                         <i class="fas fa-search"></i> Apply Filters
                     </button>
-                    <a href="staff_fuel_reports.php?view=<?= htmlspecialchars($view) ?>"
-                       style="padding:9px 16px;background:#f1f5f9;color:#475569;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;display:flex;align-items:center;gap:7px;transition:background .15s;"
-                       onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'">
+                    <a href="staff_fuel_reports.php?view=<?= htmlspecialchars($view) ?>" class="txn-btn secondary">
                         <i class="fas fa-undo"></i> Reset
                     </a>
                 </div>

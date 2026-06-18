@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'staff_fuel_deliveries';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -230,11 +230,82 @@ body{overflow-x:hidden;max-width:100vw}
 .liters-inp::placeholder{color:rgba(255,255,255,0.6)}
 
 /* ── Buttons ── */
-.btn-row{display:flex;gap:10px;padding:14px 18px 18px}
-.btn-save{flex:1;background:#002F70;color:#fff;border:none;padding:12px 20px;border-radius:9px;font-size:14px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:background .2s,transform .1s;text-transform:uppercase;letter-spacing:.5px}
-.btn-save:hover{background:#001a42;transform:translateY(-1px)}
-.btn-reset{background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;padding:12px 18px;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:6px;white-space:nowrap}
-.btn-reset:hover{background:#e2e8f0;color:#334155}
+.btn-row{display:flex;justify-content:flex-end;align-items:center;gap:12px;padding:14px 18px 18px}
+
+/* Protect txn-btn from global header button overrides */
+.txn-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    padding: 7px 14px !important;
+    border-radius: 4px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    border: 1px solid transparent !important;
+    transition: all .2s ease-in-out !important;
+    text-decoration: none !important;
+    white-space: nowrap !important;
+    box-sizing: border-box !important;
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+}
+.txn-btn.primary {
+    color: #00264D !important;
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    border: 1px solid #00264D !important;
+}
+.txn-btn.primary:hover {
+    background-color: #00264D !important;
+    background: #00264D !important;
+    color: #ffffff !important;
+}
+.txn-btn.secondary {
+    color: #475569 !important;
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    border: 1px solid #475569 !important;
+}
+.txn-btn.secondary:hover {
+    background-color: #475569 !important;
+    background: #475569 !important;
+    color: #ffffff !important;
+}
+.txn-btn.success {
+    color: #16a34a !important;
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    border: 1px solid #16a34a !important;
+}
+.txn-btn.success:hover {
+    background-color: #16a34a !important;
+    background: #16a34a !important;
+    color: #ffffff !important;
+}
+.txn-btn.warning {
+    color: #b45309 !important;
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    border: 1px solid #b45309 !important;
+}
+.txn-btn.warning:hover {
+    background-color: #b45309 !important;
+    background: #b45309 !important;
+    color: #ffffff !important;
+}
+.txn-btn.danger {
+    color: #dc2626 !important;
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    border: 1px solid #dc2626 !important;
+}
+.txn-btn.danger:hover {
+    background-color: #dc2626 !important;
+    background: #dc2626 !important;
+    color: #ffffff !important;
+}
 
 /* ── Expected PO Card & List ── */
 .rec-scroll{max-height:600px;overflow-y:auto;overflow-x:hidden;padding:18px}
@@ -258,8 +329,7 @@ body{overflow-x:hidden;max-width:100vw}
         <h1><i class="fas fa-truck-loading"></i> Record Fuel Delivery</h1>
         <div class="sub">Staff Input Form — Encode actual fuel delivery per tank</div>
     </div>
-    <a href="staff_fuel_delivery_status.php"
-       style="background:#e2e8f0;color:#334155;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:6px;">
+    <a href="staff_fuel_deliveries_history.php" class="txn-btn secondary">
         <i class="fas fa-history"></i> Delivery Status & History
     </a>
 </div>
@@ -292,7 +362,7 @@ body{overflow-x:hidden;max-width:100vw}
                     Using Purchase Order: <strong><?= htmlspecialchars($selected_po['source_ref']) ?></strong><br>
                     Expected: <strong><?= number_format($selected_po['quantity'], 2) ?> L</strong> of <strong><?= htmlspecialchars($selected_po['product']) ?></strong> fuel from <strong><?= htmlspecialchars($selected_po['supplier']) ?></strong>.
                 </div>
-                <button type="button" class="btn-deselect-po" onclick="deselectPO()">Deselect</button>
+                <button type="button" class="txn-btn secondary" onclick="deselectPO()">Deselect</button>
             </div>
             <?php endif; ?>
 
@@ -381,11 +451,11 @@ body{overflow-x:hidden;max-width:100vw}
 
             <!-- Buttons -->
             <div class="btn-row">
-                <button type="submit" class="btn-save">
-                    <i class="fas fa-save"></i> Save Fuel Delivery
-                </button>
-                <button type="button" class="btn-reset" onclick="resetForm()">
+                <button type="button" class="txn-btn secondary" onclick="resetForm()">
                     <i class="fas fa-undo"></i> Reset
+                </button>
+                <button type="submit" class="txn-btn primary">
+                    <i class="fas fa-save"></i> Save Fuel Delivery
                 </button>
             </div>
         </form>
@@ -434,7 +504,7 @@ body{overflow-x:hidden;max-width:100vw}
                     <?php if ($is_cur_selected): ?>
                         <span class="selected-tag"><i class="fas fa-check-circle"></i> Currently Selected</span>
                     <?php else: ?>
-                        <button type="button" class="btn-select-po" onclick="selectPO(<?= $ed['id'] ?>, '<?= htmlspecialchars(addslashes($ed['product'])) ?>', '<?= htmlspecialchars(addslashes($ed['supplier'])) ?>', '<?= htmlspecialchars(addslashes($ed['source_ref'])) ?>', <?= (float)$ed['quantity'] ?>)">
+                        <button type="button" class="txn-btn primary" onclick="selectPO(<?= $ed['id'] ?>, '<?= htmlspecialchars(addslashes($ed['product'])) ?>', '<?= htmlspecialchars(addslashes($ed['supplier'])) ?>', '<?= htmlspecialchars(addslashes($ed['source_ref'])) ?>', <?= (float)$ed['quantity'] ?>)">
                             <i class="fas fa-check"></i> Select Purchase Order
                         </button>
                     <?php endif; ?>

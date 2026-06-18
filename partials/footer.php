@@ -278,6 +278,16 @@
             padding-bottom: 0 !important;
         }
     }
+
+    /* Clean Rows per page select dropdown */
+    .rows-select {
+        background-color: #ffffff !important;
+        background: #ffffff !important;
+        color: #333333 !important;
+        border: 1px solid #cbd5e1 !important;
+        outline: none !important;
+        box-shadow: none !important;
+    }
 </style>
 
   <!-- TOGGLE SCROLL BUTTON — injected into body by JS to avoid fixed-in-overflow-container bug -->
@@ -654,7 +664,7 @@
             
             html += '<button class="cust-btn" style="padding:4px 8px;margin:2px;font-size:11px;background:#f1f5f9;color:#333;border:1px solid #ccc;border-radius:4px;cursor:pointer;" ' + (currentPage === totalPages ? 'disabled' : '') + ' onclick="setTablePage(\''+tableId+'\',' + (currentPage + 1) + ')">Next</button>';
             
-            var selectHtml = '<select class="rows-select" style="padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:11px;color:#333;background:#fff;cursor:pointer;margin-right:12px;">';
+            var selectHtml = '<select class="rows-select" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:4px;font-size:11px;color:#333333;background:#ffffff;cursor:pointer;margin-right:12px;outline:none;">';
             var options = [10, 20, 25, 50, 100];
             options.forEach(function(opt) {
                 var selectedAttr = (opt === rowsPerPage) ? 'selected' : '';

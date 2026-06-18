@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'staff_fuel_delivery_status';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -132,18 +132,81 @@ include __DIR__ . '/../partials/header.php';
 .del-table tr.row-rejected td { background: #fff8f8; }
 .del-table tr.row-rejected:hover td { background: #ffeaea; }
 
-/* ── Buttons ── */
-.btn-view { background: #002F70; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; font-size: 12px; 
-  font-weight: 600; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; transition: background .2s; }
-.btn-view:hover { background: #001f50; }
-.btn-resubmit { background: #fd7e14; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; font-size: 12px; 
-  font-weight: 600; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; transition: background .2s; }
-.btn-resubmit:hover { background: #e8690a; }
-
-/* ── Back Button ── */
-.btn-back { background: #6c757d; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; font-size: 14px; 
-  font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; text-decoration: none; transition: background .2s; }
-.btn-back:hover { background: #5a6268; }
+/* Protect txn-btn from global header button overrides */
+.txn-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    padding: 7px 14px !important;
+    border-radius: 4px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    border: 1px solid transparent !important;
+    transition: all .2s ease-in-out !important;
+    text-decoration: none !important;
+    white-space: nowrap !important;
+    box-sizing: border-box !important;
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+}
+.txn-btn.primary {
+    color: #00264D !important;
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    border: 1px solid #00264D !important;
+}
+.txn-btn.primary:hover {
+    background-color: #00264D !important;
+    background: #00264D !important;
+    color: #ffffff !important;
+}
+.txn-btn.secondary {
+    color: #475569 !important;
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    border: 1px solid #475569 !important;
+}
+.txn-btn.secondary:hover {
+    background-color: #475569 !important;
+    background: #475569 !important;
+    color: #ffffff !important;
+    color: #ffffff !important;
+}
+.txn-btn.success {
+    color: #16a34a !important;
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    border: 1px solid #16a34a !important;
+}
+.txn-btn.success:hover {
+    background-color: #16a34a !important;
+    background: #16a34a !important;
+    color: #ffffff !important;
+}
+.txn-btn.warning {
+    color: #b45309 !important;
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    border: 1px solid #b45309 !important;
+}
+.txn-btn.warning:hover {
+    background-color: #b45309 !important;
+    background: #b45309 !important;
+    color: #ffffff !important;
+}
+.txn-btn.danger {
+    color: #dc2626 !important;
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    border: 1px solid #dc2626 !important;
+}
+.txn-btn.danger:hover {
+    background-color: #dc2626 !important;
+    background: #dc2626 !important;
+    color: #ffffff !important;
+}
 
 /* ── Empty State ── */
 .empty-state { text-align: center; padding: 60px 20px; color: #adb5bd; }
@@ -175,7 +238,7 @@ include __DIR__ . '/../partials/header.php';
         <div class="sub">View all fuel delivery records with manager approval status (Pending, Approved, Rejected).</div>
     </div>
     <div class="header-actions">
-        <a href="staff_dashboard.php" class="btn-back">
+        <a href="staff_dashboard.php" class="txn-btn secondary">
             <i class="fas fa-arrow-left"></i> Back to Dashboard
         </a>
     </div>
@@ -326,11 +389,11 @@ include __DIR__ . '/../partials/header.php';
                             <!-- Actions -->
                             <td>
                                 <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-                                    <button class="btn-view" onclick="viewDelivery(<?php echo (int)$d['id']; ?>)" title="View full details">
+                                    <button class="txn-btn primary" onclick="viewDelivery(<?php echo (int)$d['id']; ?>)" title="View full details">
                                         <i class="fas fa-eye"></i> View
                                     </button>
                                     <?php if ($is_rejected): ?>
-                                    <a href="staff_fuel_deliveries.php?edit=<?php echo (int)$d['id']; ?>" class="btn-resubmit" title="Edit and resubmit">
+                                    <a href="staff_fuel_deliveries.php?edit=<?php echo (int)$d['id']; ?>" class="txn-btn warning" title="Edit and resubmit">
                                         <i class="fas fa-redo"></i> Resubmit
                                     </a>
                                     <?php endif; ?>
@@ -351,7 +414,7 @@ include __DIR__ . '/../partials/header.php';
         <div class="modal-title"><i class="fas fa-file-invoice"></i> Fuel Delivery Details</div>
         <div id="viewModalContent"></div>
         <div class="modal-actions" id="viewModalActions">
-            <button class="btn-cancel-modal" onclick="closeModal('viewModal')">Close</button>
+            <button class="txn-btn secondary" onclick="closeModal('viewModal')">Close</button>
         </div>
     </div>
 </div>
@@ -454,10 +517,10 @@ function viewDelivery(id) {
     const actions = document.getElementById('viewModalActions');
     actions.innerHTML = '';
     if (isRejected) {
-        actions.innerHTML += '<a href="staff_fuel_deliveries.php?edit=' + id + '" class="btn-resubmit" style="padding: 10px 20px;">'
-                           + '<i class="fas fa-redo"></i> Edit &amp; Resubmit</a>';
+        actions.innerHTML += '<a href="staff_fuel_deliveries.php?edit=' + id + '" class="txn-btn warning">'
+                           + '<i class="fas fa-redo"></i> Edit &amp; Resubmit</a> ';
     }
-    actions.innerHTML += '<button class="btn-cancel-modal" onclick="closeModal(\'viewModal\')">Close</button>';
+    actions.innerHTML += '<button class="txn-btn secondary" onclick="closeModal(\'viewModal\')">Close</button>';
 
     document.getElementById('viewModal').classList.add('show');
 }

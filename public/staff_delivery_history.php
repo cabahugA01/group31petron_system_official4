@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'staff_delivery_history';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -176,8 +176,13 @@ include __DIR__ . '/../partials/header.php';
 .del-table tr.row-rejected:hover td { background:#ffeaea; }
 
 /* Buttons */
-.btn-sm-view     { background:#002F70; color:#fff; border:none; padding:5px 12px; border-radius:5px; font-size:12px; font-weight:600; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:5px; }
-.btn-sm-resubmit { background:#fd7e14; color:#fff; border:none; padding:5px 12px; border-radius:5px; font-size:12px; font-weight:600; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:5px; }
+.btn-sm-view     { display:inline-flex; align-items:center; gap:5px; padding:5px 12px; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer; text-decoration:none;
+                   background:#ffffff !important; border:1px solid #002F6C !important; color:#002F6C !important; transition:all .2s; }
+.btn-sm-view:hover { background:#002F6C !important; color:#ffffff !important; }
+
+.btn-sm-resubmit { display:inline-flex; align-items:center; gap:5px; padding:5px 12px; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer; text-decoration:none;
+                   background:#ffffff !important; border:1px solid #fd7e14 !important; color:#fd7e14 !important; transition:all .2s; }
+.btn-sm-resubmit:hover { background:#fd7e14 !important; color:#ffffff !important; }
 
 /* Alerts */
 .alert-success-del { background:#d4edda; color:#155724; border:1px solid #c3e6cb; border-radius:8px; padding:12px 16px; margin-bottom:20px; display:flex; align-items:flex-start; gap:10px; }
@@ -192,8 +197,12 @@ include __DIR__ . '/../partials/header.php';
 .modal-box { background:#fff; border-radius:12px; padding:28px; max-width:540px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,.2); max-height:90vh; overflow-y:auto; }
 .modal-title { font-size:1.1rem; font-weight:700; color:#002F70; margin-bottom:16px; display:flex; align-items:center; gap:8px; }
 .modal-actions { display:flex; gap:10px; margin-top:20px; justify-content:flex-end; flex-wrap:wrap; }
-.btn-cancel-del { background:#6c757d; color:#fff; border:none; padding:10px 18px; border-radius:6px; font-size:14px; font-weight:600; cursor:pointer; }
-.btn-resubmit-modal { background:#fd7e14; color:#fff; border:none; padding:10px 20px; border-radius:6px; font-size:14px; font-weight:600; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:7px; }
+.btn-cancel-del     { display:inline-flex; align-items:center; gap:5px; padding:8px 16px; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer; background:#ffffff !important; border:1px solid #475569 !important; color:#475569 !important; transition:all .2s; }
+.btn-cancel-del:hover { background:#475569 !important; color:#ffffff !important; }
+
+.btn-resubmit-modal { display:inline-flex; align-items:center; gap:7px; padding:8px 18px; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer; text-decoration:none;
+                      background:#ffffff !important; border:1px solid #fd7e14 !important; color:#fd7e14 !important; transition:all .2s; }
+.btn-resubmit-modal:hover { background:#fd7e14 !important; color:#ffffff !important; }
 
 /* Detail table in modal */
 .detail-table { width:100%; border-collapse:collapse; font-size:13px; }
@@ -208,6 +217,36 @@ include __DIR__ . '/../partials/header.php';
     .summary-grid { grid-template-columns:1fr 1fr; }
     .del-table { font-size:12px; }
 }
+
+/* Protect txn-btn from global header button color override */
+.txn-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    padding: 7px 14px !important;
+    border-radius: 4px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    border: 1px solid transparent !important;
+    transition: all .2s ease-in-out !important;
+    text-decoration: none !important;
+    white-space: nowrap !important;
+    box-sizing: border-box !important;
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+}
+.txn-btn.primary   { color:#00264D !important; background-color:#ffffff !important; background:#ffffff !important; border:1px solid #00264D !important; }
+.txn-btn.primary:hover   { background-color:#00264D !important; background:#00264D !important; color:#ffffff !important; }
+.txn-btn.secondary { color:#475569 !important; background-color:#ffffff !important; background:#ffffff !important; border:1px solid #475569 !important; }
+.txn-btn.secondary:hover { background-color:#475569 !important; background:#475569 !important; color:#ffffff !important; }
+.txn-btn.success   { color:#16a34a !important; background-color:#ffffff !important; background:#ffffff !important; border:1px solid #16a34a !important; }
+.txn-btn.success:hover   { background-color:#16a34a !important; background:#16a34a !important; color:#ffffff !important; }
+.txn-btn.warning   { color:#b45309 !important; background-color:#ffffff !important; background:#ffffff !important; border:1px solid #b45309 !important; }
+.txn-btn.warning:hover   { background-color:#b45309 !important; background:#b45309 !important; color:#ffffff !important; }
+.txn-btn.danger    { color:#dc2626 !important; background-color:#ffffff !important; background:#ffffff !important; border:1px solid #dc2626 !important; }
+.txn-btn.danger:hover    { background-color:#dc2626 !important; background:#dc2626 !important; color:#ffffff !important; }
 </style>
 
 <div class="page-head">
@@ -258,12 +297,12 @@ include __DIR__ . '/../partials/header.php';
                     <input type="date" name="end" value="<?php echo htmlspecialchars($filter_end); ?>">
                 </div>
                 <div class="form-group" style="justify-content:flex-end;">
-                    <button type="submit" style="background:#002F70;color:#fff;border:none;padding:7px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">
+                    <button type="submit" class="txn-btn primary">
                         <i class="fas fa-filter"></i> Filter
                     </button>
                 </div>
                 <div class="form-group" style="justify-content:flex-end;">
-                    <a href="staff_delivery_history.php" style="background:#6c757d;color:#fff;padding:7px 16px;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none;display:inline-block;">
+                    <a href="staff_delivery_history.php" class="txn-btn secondary">
                         <i class="fas fa-times"></i> Clear
                     </a>
                 </div>

@@ -21,38 +21,49 @@ $export_rows_select_id   = $export_rows_select_id   ?? '';
 $export_pagination_id    = $export_pagination_id    ?? '';
 $export_default_rows     = $export_default_rows     ?? 25;
 ?>
+<style>
+/* Export button protection — immune to global theme button-color override */
+.exp-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    height: 36px !important;
+    padding: 8px 14px !important;
+    border-radius: 8px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    text-decoration: none !important;
+    border: none !important;
+    transition: filter .2s !important;
+    white-space: nowrap !important;
+}
+.exp-btn:hover { filter: brightness(0.88) !important; }
+.exp-btn-excel { background-color: #1d6f42 !important; background: #1d6f42 !important; color: #fff !important; }
+.exp-btn-csv   { background-color: #003d7a !important; background: #003d7a !important; color: #fff !important; }
+.exp-btn-pdf   { background-color: #dc2626 !important; background: #dc2626 !important; color: #fff !important; }
+.exp-btn-back  { background-color: #6c7280 !important; background: #6c7280 !important; color: #fff !important; }
+</style>
 <div style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;">
 
   <!-- Excel -->
   <button onclick="exportTableToExcel('<?= htmlspecialchars($export_table_id) ?>','<?= htmlspecialchars($export_filename) ?>.xls')"
           title="Export to Excel"
-          style="background:#1d6f42;color:#fff;border:none;display:inline-flex;align-items:center;
-                 gap:6px;height:36px;padding:8px 14px;border-radius:8px;font-size:13px;
-                 font-weight:600;cursor:pointer;text-decoration:none;transition:background .2s;"
-          onmouseover="this.style.background='#155231'"
-          onmouseout="this.style.background='#1d6f42'">
+          class="exp-btn exp-btn-excel">
     <i class="fas fa-file-excel"></i> Excel
   </button>
 
   <!-- CSV -->
   <button onclick="exportTableToCSV('<?= htmlspecialchars($export_table_id) ?>','<?= htmlspecialchars($export_filename) ?>.csv')"
           title="Export to CSV"
-          style="background:#003d7a;color:#fff;border:none;display:inline-flex;align-items:center;
-                 gap:6px;height:36px;padding:8px 14px;border-radius:8px;font-size:13px;
-                 font-weight:600;cursor:pointer;text-decoration:none;transition:background .2s;"
-          onmouseover="this.style.background='#002855'"
-          onmouseout="this.style.background='#003d7a'">
+          class="exp-btn exp-btn-csv">
     <i class="fas fa-file-csv"></i> CSV
   </button>
 
   <!-- PDF -->
   <button onclick="exportTableToPDF('<?= htmlspecialchars($export_table_id) ?>','<?= htmlspecialchars($export_title) ?>')"
           title="Export to PDF / Print"
-          style="background:#dc2626;color:#fff;border:none;display:inline-flex;align-items:center;
-                 gap:6px;height:36px;padding:8px 14px;border-radius:8px;font-size:13px;
-                 font-weight:600;cursor:pointer;text-decoration:none;transition:background .2s;"
-          onmouseover="this.style.background='#b91c1c'"
-          onmouseout="this.style.background='#dc2626'">
+          class="exp-btn exp-btn-pdf">
     <i class="fas fa-file-pdf"></i> PDF
   </button>
 
@@ -60,11 +71,7 @@ $export_default_rows     = $export_default_rows     ?? 25;
   <!-- Back -->
   <a href="<?= htmlspecialchars($export_back_url) ?>"
      title="Go Back"
-     style="background:#6c7280;color:#fff;text-decoration:none;display:inline-flex;align-items:center;
-            gap:6px;height:36px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;
-            transition:background .2s;"
-     onmouseover="this.style.background='#4b5563'"
-     onmouseout="this.style.background='#6c7280'">
+     class="exp-btn exp-btn-back">
     <i class="fas fa-arrow-left"></i> Back
   </a>
   <?php endif; ?>
@@ -75,3 +82,4 @@ $export_default_rows     = $export_default_rows     ?? 25;
 unset($export_table_id, $export_filename, $export_title, $export_back_url,
       $export_rows_select_id, $export_pagination_id, $export_default_rows);
 ?>
+

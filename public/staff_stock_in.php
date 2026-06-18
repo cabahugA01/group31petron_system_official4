@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Staff Stock-In
  * Inventory is updated ONLY here, after Admin finalizes a PO.
@@ -264,10 +264,11 @@ include __DIR__ . '/../partials/header.php';
 .flash-err{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
 .empty-state{text-align:center;padding:48px;color:var(--gray);}
 .empty-state i{font-size:3rem;display:block;margin-bottom:12px;opacity:.3;}
-.tab-nav{display:flex;gap:0;border-bottom:2px solid #e9ecef;margin-bottom:22px;}
-.tab-btn{padding:10px 24px;background:none;border:none;border-bottom:3px solid transparent;font-size:14px;font-weight:600;color:var(--gray);cursor:pointer;margin-bottom:-2px;transition:all .15s;text-decoration:none;display:inline-flex;align-items:center;gap:6px;}
-.tab-btn.active{color:var(--blue);border-bottom-color:var(--blue);}
-.tab-btn:hover{color:var(--blue);}
+.tab-nav{display:flex;gap:10px;padding:0 4px;margin-bottom:22px;flex-wrap:wrap;border-bottom:none;}
+.tab-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.15s;text-decoration:none;
+          background:#ffffff !important;border:1px solid #002F6C !important;color:#002F6C !important;}
+.tab-btn.active{background:#002F6C !important;color:#ffffff !important;}
+.tab-btn:hover{background:#002F6C !important;color:#ffffff !important;}
 .po-item{background:#fff;border:1px solid #dee2e6;border-radius:10px;padding:18px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.04);}
 .po-item-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;flex-wrap:wrap;gap:8px;}
 .po-meta{font-size:12px;color:var(--gray);margin-bottom:12px;display:flex;flex-wrap:wrap;gap:12px;}
@@ -289,6 +290,19 @@ include __DIR__ . '/../partials/header.php';
 .hist-table th{background:#002F70;padding:10px 12px;text-align:center;font-size:11px;font-weight:700;color:#fff;border-bottom:none;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;}
 .hist-table td{padding:7px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle;text-align:center;}
 .hist-table tbody tr:hover td{background:#eff6ff;}
+
+/* Protect txn-btn from global header button color override */
+.txn-btn { display:inline-flex !important; align-items:center !important; justify-content:center !important; gap:6px !important; padding:7px 14px !important; border-radius:4px !important; font-size:11px !important; font-weight:600 !important; cursor:pointer !important; border:1px solid transparent !important; transition:all .2s ease-in-out !important; text-decoration:none !important; white-space:nowrap !important; box-sizing:border-box !important; background-color:#ffffff !important; background:#ffffff !important; }
+.txn-btn.primary   { color:#00264D !important; background-color:#ffffff !important; background:#ffffff !important; border:1px solid #00264D !important; }
+.txn-btn.primary:hover   { background-color:#00264D !important; background:#00264D !important; color:#ffffff !important; }
+.txn-btn.secondary { color:#475569 !important; background-color:#ffffff !important; background:#ffffff !important; border:1px solid #475569 !important; }
+.txn-btn.secondary:hover { background-color:#475569 !important; background:#475569 !important; color:#ffffff !important; }
+.txn-btn.success   { color:#16a34a !important; background-color:#ffffff !important; background:#ffffff !important; border:1px solid #16a34a !important; }
+.txn-btn.success:hover   { background-color:#16a34a !important; background:#16a34a !important; color:#ffffff !important; }
+.txn-btn.warning   { color:#b45309 !important; background-color:#ffffff !important; background:#ffffff !important; border:1px solid #b45309 !important; }
+.txn-btn.warning:hover   { background-color:#b45309 !important; background:#b45309 !important; color:#ffffff !important; }
+.txn-btn.danger    { color:#dc2626 !important; background-color:#ffffff !important; background:#ffffff !important; border:1px solid #dc2626 !important; }
+.txn-btn.danger:hover    { background-color:#dc2626 !important; background:#dc2626 !important; color:#ffffff !important; }
 </style>
 
 <div class="page-head">
@@ -326,13 +340,13 @@ include __DIR__ . '/../partials/header.php';
 
 <!-- Category Switcher Buttons -->
 <div style="margin-bottom: 22px; display: flex; gap: 8px;">
-  <a href="staff_stock_in.php?tab=<?= $active_tab ?>&type=merch" class="btn <?= $type_filter === 'merch' ? 'btn-primary' : 'btn-outline' ?> btn-sm" style="border-radius: 20px; font-weight:700; border: 1px solid #dee2e6; <?= $type_filter !== 'merch' ? 'background:#f8f9fa;color:#333;' : '' ?>">
+  <a href="staff_stock_in.php?tab=<?= $active_tab ?>&type=merch" class="txn-btn <?= $type_filter === 'merch' ? 'primary' : 'secondary' ?>">
     <i class="fas fa-boxes"></i> Merchandise
     <?php if (count($pending_pos) > 0): ?>
       <span style="background:#dc3545;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px;"><?= count($pending_pos) ?></span>
     <?php endif; ?>
   </a>
-  <a href="staff_stock_in.php?tab=<?= $active_tab ?>&type=fuel" class="btn <?= $type_filter === 'fuel' ? 'btn-primary' : 'btn-outline' ?> btn-sm" style="border-radius: 20px; font-weight:700; border: 1px solid #dee2e6; <?= $type_filter !== 'fuel' ? 'background:#f8f9fa;color:#333;' : '' ?>">
+  <a href="staff_stock_in.php?tab=<?= $active_tab ?>&type=fuel" class="txn-btn <?= $type_filter === 'fuel' ? 'primary' : 'secondary' ?>">
     <i class="fas fa-gas-pump"></i> Fuel
     <?php if (count($pending_fuel) > 0): ?>
       <span style="background:#dc3545;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px;"><?= count($pending_fuel) ?></span>
@@ -441,7 +455,7 @@ include __DIR__ . '/../partials/header.php';
         </table>
       </div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <button class="btn btn-success" id="fuel-btn-<?= $delivery_id ?>"
+        <button class="txn-btn success" id="fuel-btn-<?= $delivery_id ?>"
                 onclick="submitFuelStockIn(<?= $delivery_id ?>, <?= $qty_expected ?>)">
           <i class="fas fa-check-circle"></i> Submit Fuel Stock-In
         </button>
@@ -562,7 +576,7 @@ include __DIR__ . '/../partials/header.php';
         </table>
       </div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <button class="btn btn-success" id="btn-<?= $delivery_id ?>"
+        <button class="txn-btn success" id="btn-<?= $delivery_id ?>"
                 onclick="submitStockIn(<?= $delivery_id ?>, <?= $product_id ?>, <?= $qty_ordered ?>, <?= $unit_cost ?>)">
           <i class="fas fa-check-circle"></i> Submit Stock-In
         </button>
@@ -589,7 +603,7 @@ include __DIR__ . '/../partials/header.php';
         <span style="font-size:12px;color:var(--gray);">to</span>
         <input type="date" name="date_to" value="<?= htmlspecialchars($hist_date_to) ?>"
                style="padding:6px 10px;border:1px solid #dee2e6;border-radius:5px;font-size:12px;height:36px;">
-        <button type="submit" class="btn btn-primary" style="height:36px;padding:8px 14px;"><i class="fas fa-filter"></i> Filter</button>
+        <button type="submit" class="txn-btn primary" style="height:36px;"><i class="fas fa-filter"></i> Filter</button>
       </form>
       <?php
       $export_table_id       = 'stockInHistoryTable';

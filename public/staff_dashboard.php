@@ -1,23 +1,186 @@
-﻿<?php
+<?php
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'dashboard';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
+require_once __DIR__ . '/../backend/classes/ShiftPeriodConfig.php';
 require_login();
 
 $me         = current_user();
-$station_id = user_station_id();
+$station_id = (int) user_station_id();
 $role       = role_key($me['role'] ?? '');
 
-if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin'])) {
-    header('Location: dashboard.php'); exit;
+$role_redirects = [
+    'superadmin' => 'super_admin_dashboard.php',
+    'admin'      => 'admin_dashboard.php',
+    'manager'    => 'manager_dashboard.php',
+    'developer'  => 'developer_panel.php',
+];
+
+if (isset($role_redirects[$role])) {
+    header('Location: ' . $role_redirects[$role]);
+    exit;
+}
+
+if ($role !== 'staff') {
+    header('Location: index.php');
+    exit;
 }
 if (!$station_id) {
-    die('Error: You are not assigned to a station.');
+    render_no_station_page('staff_dashboard.php');
 }
 
 $display_name  = htmlspecialchars($me['full_name'] ?? trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? '')) ?: ($me['name'] ?? 'Staff'));
 $station_label = htmlspecialchars($me['station_name'] ?? 'Station #' . $station_id);
+
+$shift_config = getShiftPeriodConfig($pdo, $station_id);
+$shift_periods = $shift_config->getShiftPeriods();
+foreach ($shift_periods as $idx => $period) {
+    $shift_periods[$idx]['dashboard_number'] = $idx + 1;
+}
+
+if (empty($shift_periods)) {
+    die('Error: No active shift periods configured.');
+}
+
+function dashboard_valid_date(?string $value): ?string {
+    if (!$value || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+        return null;
+    }
+
+    $dt = DateTime::createFromFormat('!Y-m-d', $value);
+    return ($dt && $dt->format('Y-m-d') === $value) ? $value : null;
+}
+
+function dashboard_shift_aliases(array $shift, int $shift_number): array {
+    $aliases = [
+        $shift['shift_key'] ?? null,
+        $shift['shift_name'] ?? null,
+        'shift ' . $shift_number,
+        'shift' . $shift_number,
+        (string) $shift_number,
+    ];
+
+    if ($shift_number === 1) {
+        $aliases = array_merge($aliases, ['first', 'first shift']);
+    } elseif ($shift_number === 2) {
+        $aliases = array_merge($aliases, ['second', 'second shift']);
+    }
+
+    $normalized = [];
+    foreach ($aliases as $alias) {
+        $alias = strtolower(trim((string) $alias));
+        if ($alias !== '') {
+            $normalized[$alias] = true;
+        }
+    }
+
+    return array_keys($normalized);
+}
+
+function dashboard_shift_number_from_value(?string $value, array $shift_periods): ?int {
+    $value = strtolower(trim((string) $value));
+    if ($value === '') {
+        return null;
+    }
+
+    foreach ($shift_periods as $shift) {
+        $number = (int) ($shift['dashboard_number'] ?? 0);
+        if ($number && in_array($value, dashboard_shift_aliases($shift, $number), true)) {
+            return $number;
+        }
+    }
+
+    if (preg_match('/\b(first|1)\b/', $value)) {
+        return 1;
+    }
+    if (preg_match('/\b(second|2)\b/', $value)) {
+        return 2;
+    }
+
+    return null;
+}
+
+function dashboard_shift_by_number(array $shift_periods, int $shift_number): ?array {
+    foreach ($shift_periods as $shift) {
+        if ((int) ($shift['dashboard_number'] ?? 0) === $shift_number) {
+            return $shift;
+        }
+    }
+    return null;
+}
+
+function dashboard_time_in_shift_condition(string $datetime_expr, string $start_time, string $end_time, array &$params): string {
+    $params[] = $start_time;
+    $params[] = $end_time;
+    $params[] = $start_time;
+    $params[] = $end_time;
+    $params[] = $start_time;
+    $params[] = $end_time;
+    $params[] = $start_time;
+    $params[] = $end_time;
+
+    return "(
+        (? <= ? AND TIME($datetime_expr) >= ? AND TIME($datetime_expr) <= ?)
+        OR
+        (? > ? AND (TIME($datetime_expr) >= ? OR TIME($datetime_expr) <= ?))
+    )";
+}
+
+function dashboard_shift_condition(string $datetime_expr, array $shift_columns, array $shift, int $shift_number, array &$params): string {
+    $start_time = $shift['start_time'] ?? '00:00:00';
+    $end_time = $shift['end_time'] ?? '23:59:59';
+    $aliases = dashboard_shift_aliases($shift, $shift_number);
+    $clauses = [];
+
+    foreach ($shift_columns as $column) {
+        if (!empty($aliases)) {
+            $placeholders = implode(',', array_fill(0, count($aliases), '?'));
+            $clauses[] = "LOWER(TRIM(COALESCE($column, ''))) IN ($placeholders)";
+            foreach ($aliases as $alias) {
+                $params[] = $alias;
+            }
+        }
+    }
+
+    $clauses[] = dashboard_time_in_shift_condition($datetime_expr, $start_time, $end_time, $params);
+
+    return '(' . implode(' OR ', $clauses) . ')';
+}
+
+function dashboard_current_shift(array $shift_periods): ?array {
+    $now = date('H:i:s');
+    foreach ($shift_periods as $shift) {
+        $start = $shift['start_time'] ?? '00:00:00';
+        $end = $shift['end_time'] ?? '23:59:59';
+        $in_range = ($start <= $end)
+            ? ($now >= $start && $now <= $end)
+            : ($now >= $start || $now <= $end);
+
+        if ($in_range) {
+            return $shift;
+        }
+    }
+
+    return $shift_periods[0] ?? null;
+}
+
+function dashboard_shift_label(array $shift): string {
+    $name = trim((string) ($shift['shift_name'] ?? 'Shift'));
+    $start = isset($shift['start_time']) ? date('g:i A', strtotime($shift['start_time'])) : '';
+    $end = isset($shift['end_time']) ? date('g:i A', strtotime($shift['end_time'])) : '';
+    $time_label = ($start && $end) ? " ($start - $end)" : '';
+
+    return $name . $time_label;
+}
+
+function dashboard_range_label(string $date_from, string $date_to): string {
+    if ($date_from === $date_to) {
+        return date('F j, Y', strtotime($date_from));
+    }
+
+    return date('F j, Y', strtotime($date_from)) . ' - ' . date('F j, Y', strtotime($date_to));
+}
 
 // ═══════════════════════════════════════════════════════════════
 // SHIFT ASSIGNMENT LOGIC - Account Segregation
@@ -31,12 +194,8 @@ try {
     $shift_check = $pdo->prepare("SELECT shift_assignment FROM users WHERE id = ? LIMIT 1");
     $shift_check->execute([$me['id']]);
     $shift_assignment = $shift_check->fetchColumn();
-    
-    if ($shift_assignment && in_array(strtolower($shift_assignment), ['shift 1', 'first shift', 'shift1', '1'])) {
-        $user_assigned_shift = 1;
-    } elseif ($shift_assignment && in_array(strtolower($shift_assignment), ['shift 2', 'second shift', 'shift2', '2'])) {
-        $user_assigned_shift = 2;
-    }
+
+    $user_assigned_shift = dashboard_shift_number_from_value($shift_assignment, $shift_periods);
 } catch (Exception $e) {}
 
 // Fallback: Determine shift from most recent labor_session
@@ -51,18 +210,14 @@ if (!$user_assigned_shift) {
         ");
         $recent_shift->execute([$me['id']]);
         $last_shift_name = $recent_shift->fetchColumn();
-        
-        if ($last_shift_name && stripos($last_shift_name, 'first') !== false) {
-            $user_assigned_shift = 1;
-        } elseif ($last_shift_name && stripos($last_shift_name, 'second') !== false) {
-            $user_assigned_shift = 2;
-        }
+
+        $user_assigned_shift = dashboard_shift_number_from_value($last_shift_name, $shift_periods);
     } catch (Exception $e) {}
 }
 
-// Default to Shift 1 if no assignment found
+// Default to the first active configured shift if no assignment found
 if (!$user_assigned_shift) {
-    $user_assigned_shift = 1;
+    $user_assigned_shift = (int)($shift_periods[0]['dashboard_number'] ?? 1);
 }
 
 // Only Admin and Manager can view Daily Consolidation
@@ -71,19 +226,7 @@ if (in_array($role, ['admin', 'manager', 'superadmin'])) {
 }
 
 // Get current shift info
-$current_shift = null;
-try {
-    $sp = $pdo->prepare("
-        SELECT shift_key, shift_name, start_time, end_time
-        FROM shift_periods
-        WHERE is_active = 1 
-        AND start_time <= TIME(NOW()) 
-        AND end_time >= TIME(NOW())
-        ORDER BY sort_order ASC LIMIT 1
-    ");
-    $sp->execute();
-    $current_shift = $sp->fetch(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}
+$current_shift = dashboard_current_shift($shift_periods);
 
 // Check if user is clocked in
 $clocked_in = false;
@@ -106,7 +249,7 @@ try {
 // Auto clock in if not already clocked in
 if (!$clocked_in) {
     try {
-        $shift = $current_shift ?: ['shift_key' => 'first', 'shift_name' => 'First Shift'];
+        $shift = $current_shift ?: $shift_periods[0];
         $pdo->prepare(
             "INSERT INTO labor_sessions (user_id, station_id, start_time, shift_period, shift_name)
              VALUES (?, ?, NOW(), ?, ?)"
@@ -123,64 +266,30 @@ if (!$clocked_in) {
 $flash_success = $_SESSION['success'] ?? null; unset($_SESSION['success']);
 $flash_error   = $_SESSION['error']   ?? null; unset($_SESSION['error']);
 
-// Determine the selected date for dashboard data (with fallback to latest transaction date)
-$selected_date = $_GET['date'] ?? null;
-if ($selected_date) {
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $selected_date)) {
-        $selected_date = null;
-    }
+// Date range for dashboard data. Keep legacy ?date=YYYY-MM-DD links working.
+$legacy_date = dashboard_valid_date($_GET['date'] ?? null);
+$date_from = dashboard_valid_date($_GET['date_from'] ?? null) ?? $legacy_date ?? date('Y-m-d');
+$date_to = dashboard_valid_date($_GET['date_to'] ?? null) ?? $legacy_date ?? $date_from;
+
+if ($date_from > $date_to) {
+    [$date_from, $date_to] = [$date_to, $date_from];
 }
 
-if (!$selected_date) {
-    try {
-        $latest_dates = [];
-        
-        $q1 = $pdo->prepare("SELECT MAX(DATE(transaction_date)) FROM fuel_transactions WHERE station_id = ?");
-        $q1->execute([$station_id]);
-        $d1 = $q1->fetchColumn();
-        
-        $q2 = $pdo->prepare("SELECT MAX(DATE(created_at)) FROM merchandise_transactions WHERE station_id = ?");
-        $q2->execute([$station_id]);
-        $d2 = $q2->fetchColumn();
-        
-        $q3 = $pdo->prepare("SELECT MAX(DATE(created_at)) FROM job_orders WHERE station_id = ?");
-        $q3->execute([$station_id]);
-        $d3 = $q3->fetchColumn();
-        
-        // Prioritize fuel/merch sales dates so cards are populated by default on first load
-        if ($d1) {
-            $selected_date = $d1;
-        } elseif ($d2) {
-            $selected_date = $d2;
-        } elseif ($d3) {
-            $selected_date = $d3;
-        }
-    } catch (Exception $e) {}
-}
-
-if (!$selected_date) {
-    $selected_date = date('Y-m-d');
-}
+$selected_date = $date_from;
+$date_range_label = dashboard_range_label($date_from, $date_to);
+$is_default_range = ($date_from === date('Y-m-d') && $date_to === date('Y-m-d'));
 
 // Helper function to get shift data
-function getShiftData($pdo, $station_id, $shift_number, $date = null) {
-    if (!$date) {
-        $date = date('Y-m-d');
-    }
-    
-    // Define shift time ranges
-    $shift_times = [
-        1 => ['start' => '06:00:00', 'end' => '14:00:00'],
-        2 => ['start' => '14:00:00', 'end' => '22:00:00']
-    ];
-    
-    $times = $shift_times[$shift_number];
-    $start = "$date {$times['start']}";
-    $end = "$date {$times['end']}";
-    $shift_keys = ($shift_number == 1) ? ['first', 'First Shift'] : ['second', 'Second Shift'];
-    $today_date = $date;
+function getShiftData(PDO $pdo, int $station_id, array $shift, int $shift_number, string $date_from, string $date_to): array {
+    $start_time = $shift['start_time'] ?? '00:00:00';
+    $end_time = $shift['end_time'] ?? '23:59:59';
+    $range_start_dt = "$date_from 00:00:00";
+    $range_end_dt = "$date_to 23:59:59";
+    $shift_label = dashboard_shift_label($shift);
     
     // Fuel Sales
+    $fuel_params = [$station_id, $date_from, $date_to];
+    $fuel_shift_condition = dashboard_shift_condition('transaction_date', ['shift_period', 'shift_name'], $shift, $shift_number, $fuel_params);
     $fuel_query = $pdo->prepare("
         SELECT fuel_type,
                COALESCE(SUM(liters_sold), 0) AS liters,
@@ -188,44 +297,43 @@ function getShiftData($pdo, $station_id, $shift_number, $date = null) {
                COALESCE(AVG(price_per_liter), 0) AS avg_price
         FROM fuel_transactions
         WHERE station_id = ? 
-        AND (
-            (transaction_date BETWEEN ? AND ?)
-            OR (DATE(transaction_date) = ? AND (shift_period IN (?, ?) OR shift_id = ?))
-        )
+        AND DATE(transaction_date) BETWEEN ? AND ?
+        AND $fuel_shift_condition
         AND liters_sold > 0
         GROUP BY fuel_type
         ORDER BY revenue DESC
     ");
-    $fuel_query->execute([$station_id, $start, $end, $today_date, $shift_keys[0], $shift_keys[1], $shift_number]);
+    $fuel_query->execute($fuel_params);
     $fuel_data = $fuel_query->fetchAll(PDO::FETCH_ASSOC);
     
     // Merchandise Sales (basic totals)
+    $merch_datetime = "COALESCE(NULLIF(transaction_date, '0000-00-00 00:00:00'), created_at)";
+    $merch_params = [$station_id, $date_from, $date_to];
+    $merch_shift_condition = dashboard_shift_condition($merch_datetime, ['shift_period', 'shift_name'], $shift, $shift_number, $merch_params);
     $merch_query = $pdo->prepare("
         SELECT COALESCE(SUM(total_amount), 0) AS total,
                COUNT(*) AS count
         FROM merchandise_transactions
         WHERE station_id = ?
-        AND (
-            (created_at BETWEEN ? AND ?)
-            OR (DATE(created_at) = ? AND (shift_period IN (?, ?) OR shift_id = ?))
-        )
+        AND DATE($merch_datetime) BETWEEN ? AND ?
+        AND $merch_shift_condition
     ");
-    $merch_query->execute([$station_id, $start, $end, $today_date, $shift_keys[0], $shift_keys[1], $shift_number]);
+    $merch_query->execute($merch_params);
     $merch_data = $merch_query->fetch(PDO::FETCH_ASSOC);
     
     // Service Income from completed job orders
+    $service_params = [$station_id, $date_from, $date_to];
+    $service_shift_condition = dashboard_shift_condition('created_at', [], $shift, $shift_number, $service_params);
     $service_query = $pdo->prepare("
         SELECT COALESCE(SUM(total_cost), 0) AS total_service_income,
                COUNT(*) AS completed_jobs
         FROM job_orders
         WHERE station_id = ?
-        AND (
-            (created_at BETWEEN ? AND ?)
-            OR (DATE(created_at) = ? AND (shift_id = ?))
-        )
+        AND DATE(created_at) BETWEEN ? AND ?
+        AND $service_shift_condition
         AND status = 'Completed'
     ");
-    $service_query->execute([$station_id, $start, $end, $today_date, $shift_number]);
+    $service_query->execute($service_params);
     $service_data = $service_query->fetch(PDO::FETCH_ASSOC);
     
     // Payments Summary Aggregator across all streams: Fuel, Merch, Job Orders
@@ -239,46 +347,46 @@ function getShiftData($pdo, $station_id, $shift_number, $date = null) {
     ];
     
     // 1. Fuel transaction payments
+    $fuel_pay_params = [$station_id, $date_from, $date_to];
+    $fuel_pay_shift_condition = dashboard_shift_condition('transaction_date', ['shift_period', 'shift_name'], $shift, $shift_number, $fuel_pay_params);
     $fuel_pay_q = $pdo->prepare("
         SELECT COALESCE(payment_method, 'Cash') AS method, COALESCE(SUM(total_amount), 0) AS total
         FROM fuel_transactions
         WHERE station_id = ?
-          AND (
-              (transaction_date BETWEEN ? AND ?)
-              OR (DATE(transaction_date) = ? AND (shift_period IN (?, ?) OR shift_id = ?))
-          )
+          AND DATE(transaction_date) BETWEEN ? AND ?
+          AND $fuel_pay_shift_condition
         GROUP BY payment_method
     ");
-    $fuel_pay_q->execute([$station_id, $start, $end, $today_date, $shift_keys[0], $shift_keys[1], $shift_number]);
+    $fuel_pay_q->execute($fuel_pay_params);
     $fuel_pays = $fuel_pay_q->fetchAll(PDO::FETCH_ASSOC);
 
     // 2. Merchandise transaction payments
+    $merch_pay_params = [$station_id, $date_from, $date_to];
+    $merch_pay_shift_condition = dashboard_shift_condition($merch_datetime, ['shift_period', 'shift_name'], $shift, $shift_number, $merch_pay_params);
     $merch_pay_q = $pdo->prepare("
         SELECT COALESCE(payment_method, 'Cash') AS method, COALESCE(SUM(total_amount), 0) AS total
         FROM merchandise_transactions
         WHERE station_id = ?
-          AND (
-              (created_at BETWEEN ? AND ?)
-              OR (DATE(created_at) = ? AND (shift_period IN (?, ?) OR shift_id = ?))
-          )
+          AND DATE($merch_datetime) BETWEEN ? AND ?
+          AND $merch_pay_shift_condition
         GROUP BY payment_method
     ");
-    $merch_pay_q->execute([$station_id, $start, $end, $today_date, $shift_keys[0], $shift_keys[1], $shift_number]);
+    $merch_pay_q->execute($merch_pay_params);
     $merch_pays = $merch_pay_q->fetchAll(PDO::FETCH_ASSOC);
 
     // 3. Job order payments
+    $jo_pay_params = [$station_id, $date_from, $date_to];
+    $jo_pay_shift_condition = dashboard_shift_condition('created_at', [], $shift, $shift_number, $jo_pay_params);
     $jo_pay_q = $pdo->prepare("
         SELECT COALESCE(payment_method, 'Cash') AS method, COALESCE(SUM(total_cost), 0) AS total
         FROM job_orders
         WHERE station_id = ?
           AND status = 'Completed'
-          AND (
-              (created_at BETWEEN ? AND ?)
-              OR (DATE(created_at) = ? AND (shift_id = ?))
-          )
+          AND DATE(created_at) BETWEEN ? AND ?
+          AND $jo_pay_shift_condition
         GROUP BY payment_method
     ");
-    $jo_pay_q->execute([$station_id, $start, $end, $today_date, $shift_number]);
+    $jo_pay_q->execute($jo_pay_params);
     $jo_pays = $jo_pay_q->fetchAll(PDO::FETCH_ASSOC);
 
     // Helper to map method name to canonical keys
@@ -329,10 +437,11 @@ function getShiftData($pdo, $station_id, $shift_number, $date = null) {
         SELECT COALESCE(ip.product_name, CONCAT('Product #', si.product_id)) AS product_name,
                si.stock_level AS current_stock,
                COALESCE(si.reorder_level, 10) AS threshold,
+               COALESCE(si.reorder_level, 10) AS reorder_level,
                COALESCE(ip.category, 'Merchandise') AS category
         FROM station_inventory si
         LEFT JOIN inventory_products ip ON ip.id = si.product_id
-        WHERE si.station_id = ? AND si.status = 'Active'
+        WHERE si.station_id = ? AND LOWER(si.status) = 'active'
           AND si.stock_level <= COALESCE(si.reorder_level, 10)
         ORDER BY si.stock_level ASC
         LIMIT 10
@@ -347,6 +456,7 @@ function getShiftData($pdo, $station_id, $shift_number, $date = null) {
                 SELECT COALESCE(ip.product_name, CONCAT('Product #', i.product_id)) AS product_name,
                        i.stock_level AS current_stock,
                        COALESCE(i.reorder_level, 10) AS threshold,
+                       COALESCE(i.reorder_level, 10) AS reorder_level,
                        COALESCE(ip.category, 'Merchandise') AS category
                 FROM inventory i
                 LEFT JOIN inventory_products ip ON ip.id = i.product_id
@@ -363,20 +473,25 @@ function getShiftData($pdo, $station_id, $shift_number, $date = null) {
     }
     
     // Activity Log for this shift - STAFF ONLY (exclude admin/manager)
+    $activity_params = [$station_id, $date_from, $date_to];
+    $activity_shift_condition = dashboard_shift_condition('al.created_at', [], $shift, $shift_number, $activity_params);
     $activity_query = $pdo->prepare("
         SELECT al.action_type, al.action_details, al.created_at, u.username, u.role
         FROM audit_logs al 
         LEFT JOIN users u ON al.user_id = u.id
         WHERE u.station_id = ?
-        AND al.created_at BETWEEN ? AND ?
+        AND DATE(al.created_at) BETWEEN ? AND ?
+        AND $activity_shift_condition
         AND u.role IN ('staff', 'cashier', 'pump_attendant')
         ORDER BY al.created_at DESC 
         LIMIT 15
     ");
-    $activity_query->execute([$station_id, $start, $end]);
+    $activity_query->execute($activity_params);
     $activity_log = $activity_query->fetchAll(PDO::FETCH_ASSOC);
     
     // Shift Tracker - Staff clocked in during this shift
+    $shift_tracker_params = [$station_id, $range_end_dt, $range_start_dt];
+    $shift_tracker_condition = dashboard_shift_condition('ls.start_time', ['ls.shift_period', 'ls.shift_name'], $shift, $shift_number, $shift_tracker_params);
     $shift_tracker_query = $pdo->prepare("
         SELECT COALESCE(CONCAT(u.first_name, ' ', u.last_name), u.username, 'Unknown') AS full_name, 
                ls.start_time, 
@@ -386,14 +501,20 @@ function getShiftData($pdo, $station_id, $shift_number, $date = null) {
         FROM labor_sessions ls 
         LEFT JOIN users u ON ls.user_id = u.id
         WHERE ls.station_id = ?
-        AND ls.start_time BETWEEN ? AND ?
+        AND ls.start_time <= ?
+        AND COALESCE(ls.end_time, NOW()) >= ?
+        AND $shift_tracker_condition
+        AND LOWER(COALESCE(u.role, '')) = 'staff'
         ORDER BY ls.start_time DESC
         LIMIT 10
     ");
-    $shift_tracker_query->execute([$station_id, $start, $end]);
+    $shift_tracker_query->execute($shift_tracker_params);
     $shift_tracker = $shift_tracker_query->fetchAll(PDO::FETCH_ASSOC);
 
     // Merchandise Sales by Category (real data from merchandise_transaction_items)
+    $merch_cat_datetime = "COALESCE(NULLIF(mt.transaction_date, '0000-00-00 00:00:00'), mt.created_at)";
+    $merch_cat_params = [$station_id, $date_from, $date_to];
+    $merch_cat_shift_condition = dashboard_shift_condition($merch_cat_datetime, ['mt.shift_period', 'mt.shift_name'], $shift, $shift_number, $merch_cat_params);
     $merch_cat_query = $pdo->prepare("
         SELECT
             COALESCE(NULLIF(mti.category, ''), 'Others') AS category,
@@ -401,39 +522,42 @@ function getShiftData($pdo, $station_id, $shift_number, $date = null) {
         FROM merchandise_transaction_items mti
         INNER JOIN merchandise_transactions mt ON mti.transaction_id = mt.id
         WHERE mt.station_id = ?
-          AND (
-              (mt.created_at BETWEEN ? AND ?)
-              OR (DATE(mt.created_at) = ? AND (mt.shift_period IN (?, ?) OR mt.shift_id = ?))
-          )
+          AND DATE($merch_cat_datetime) BETWEEN ? AND ?
+          AND $merch_cat_shift_condition
         GROUP BY category
         ORDER BY total DESC
         LIMIT 10
     ");
-    $merch_cat_query->execute([$station_id, $start, $end, $today_date, $shift_keys[0], $shift_keys[1], $shift_number]);
+    $merch_cat_query->execute($merch_cat_params);
     $merch_categories = $merch_cat_query->fetchAll(PDO::FETCH_ASSOC);
 
     // Job Orders Hourly Trend (real data - count per hour in this shift window)
+    $jo_hourly_params = [$station_id, $date_from, $date_to];
+    $jo_hourly_shift_condition = dashboard_shift_condition('created_at', [], $shift, $shift_number, $jo_hourly_params);
     $jo_hourly_query = $pdo->prepare("
         SELECT
             HOUR(created_at) AS hr,
             COUNT(*) AS count
         FROM job_orders
         WHERE station_id = ?
-          AND (
-              (created_at BETWEEN ? AND ?)
-              OR (DATE(created_at) = ? AND (shift_id = ?))
-          )
+          AND DATE(created_at) BETWEEN ? AND ?
+          AND $jo_hourly_shift_condition
         GROUP BY HOUR(created_at)
         ORDER BY hr ASC
     ");
-    $jo_hourly_query->execute([$station_id, $start, $end, $today_date, $shift_number]);
+    $jo_hourly_query->execute($jo_hourly_params);
     $jo_hourly_rows = $jo_hourly_query->fetchAll(PDO::FETCH_ASSOC);
     // Build a full slot map for each hour in the shift window
-    $start_hr = (int)substr($times['start'], 0, 2);
-    $end_hr   = (int)substr($times['end'],   0, 2);
+    $start_hr = (int)substr($start_time, 0, 2);
+    $end_hr   = (int)substr($end_time,   0, 2);
     $jo_hourly_map = [];
-    for ($h = $start_hr; $h < $end_hr; $h++) {
-        $jo_hourly_map[$h] = 0;
+    $slot = $start_hr;
+    do {
+        $jo_hourly_map[$slot] = 0;
+        $slot = ($slot + 1) % 24;
+    } while ($slot !== (($end_hr + 1) % 24) && count($jo_hourly_map) < 24);
+    if (empty($jo_hourly_map)) {
+        $jo_hourly_map[$start_hr] = 0;
     }
     foreach ($jo_hourly_rows as $r) {
         $h = (int)$r['hr'];
@@ -449,6 +573,8 @@ function getShiftData($pdo, $station_id, $shift_number, $date = null) {
     $jo_hourly_data = array_values($jo_hourly_map);
 
     // Fuel Variance Alerts (real data per fuel type for this shift)
+    $variance_params = [$station_id, $date_from, $date_to];
+    $variance_shift_condition = dashboard_shift_condition('va.created_at', [], $shift, $shift_number, $variance_params);
     $variance_query = $pdo->prepare("
         SELECT
             va.item_identifier AS fuel_type,
@@ -456,12 +582,13 @@ function getShiftData($pdo, $station_id, $shift_number, $date = null) {
         FROM variance_alerts va
         WHERE va.station_id = ?
           AND va.transaction_type = 'Fuel'
-          AND va.created_at BETWEEN ? AND ?
+          AND DATE(va.created_at) BETWEEN ? AND ?
+          AND $variance_shift_condition
         GROUP BY va.item_identifier
         ORDER BY variance DESC
         LIMIT 8
     ");
-    $variance_query->execute([$station_id, $start, $end]);
+    $variance_query->execute($variance_params);
     $variance_data = $variance_query->fetchAll(PDO::FETCH_ASSOC);
 
     // Job orders count by status for this shift
@@ -471,32 +598,17 @@ function getShiftData($pdo, $station_id, $shift_number, $date = null) {
         'Completed' => 0,
         'Cancelled' => 0
     ];
-    if ($shift_number == 1) {
-        $jo_q = $pdo->prepare("
-            SELECT status, COUNT(*) as count
-            FROM job_orders
-            WHERE station_id = ?
-            AND (
-                (created_at BETWEEN ? AND ?)
-                OR (DATE(created_at) = ? AND shift_id = 1)
-            )
-            GROUP BY status
-        ");
-        $jo_q->execute([$station_id, $start, $end, $today_date]);
-    } else {
-        $jo_q = $pdo->prepare("
-            SELECT status, COUNT(*) as count
-            FROM job_orders
-            WHERE station_id = ?
-            AND (
-                (created_at BETWEEN ? AND ?)
-                OR (DATE(created_at) = ? AND shift_id = 2)
-                OR (status IN ('Pending', 'In Progress', 'Awaiting Parts') AND created_at < ? AND DATE(created_at) = ?)
-            )
-            GROUP BY status
-        ");
-        $jo_q->execute([$station_id, $start, $end, $today_date, $start, $today_date]);
-    }
+    $jo_stats_params = [$station_id, $date_from, $date_to];
+    $jo_stats_shift_condition = dashboard_shift_condition('created_at', [], $shift, $shift_number, $jo_stats_params);
+    $jo_q = $pdo->prepare("
+        SELECT status, COUNT(*) as count
+        FROM job_orders
+        WHERE station_id = ?
+          AND DATE(created_at) BETWEEN ? AND ?
+          AND $jo_stats_shift_condition
+        GROUP BY status
+    ");
+    $jo_q->execute($jo_stats_params);
     foreach ($jo_q->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $status_mapped = $row['status'];
         if ($status_mapped == 'Reviewed') $status_mapped = 'Pending';
@@ -509,9 +621,11 @@ function getShiftData($pdo, $station_id, $shift_number, $date = null) {
         }
     }
 
-    // Shift-specific Calendar Tasks: Job Orders + Fuel Deliveries (today + next 3 days)
+    // Shift-specific Calendar Tasks: Job Orders + Fuel Deliveries within the selected range
     $calendar_tasks = [];
     try {
+        $jo_task_params = [$station_id, $date_from, $date_to];
+        $jo_task_shift_condition = dashboard_shift_condition('created_at', [], $shift, $shift_number, $jo_task_params);
         $jo_task_q = $pdo->prepare("
             SELECT 'Job Order' AS task_type,
                    COALESCE(job_order_number, CONCAT('JO-', id)) AS reference,
@@ -521,14 +635,12 @@ function getShiftData($pdo, $station_id, $shift_number, $date = null) {
                    id AS task_id
             FROM job_orders
             WHERE station_id = ?
-              AND (
-                  (created_at BETWEEN ? AND ?)
-                  OR (DATE(created_at) BETWEEN DATE_ADD(?, INTERVAL 1 DAY) AND DATE_ADD(?, INTERVAL 3 DAY) AND (shift_id = ?))
-              )
+              AND DATE(created_at) BETWEEN ? AND ?
+              AND $jo_task_shift_condition
             ORDER BY created_at DESC
             LIMIT 15
         ");
-        $jo_task_q->execute([$station_id, $start, $end, $today_date, $today_date, $shift_number]);
+        $jo_task_q->execute($jo_task_params);
         $calendar_tasks = $jo_task_q->fetchAll(PDO::FETCH_ASSOC);
 
         $fd_task_q = $pdo->prepare("
@@ -540,11 +652,11 @@ function getShiftData($pdo, $station_id, $shift_number, $date = null) {
                    id AS task_id
             FROM fuel_deliveries
             WHERE station_id = ?
-              AND delivery_date BETWEEN ? AND DATE_ADD(?, INTERVAL 3 DAY)
+              AND delivery_date BETWEEN ? AND ?
             ORDER BY delivery_date ASC
             LIMIT 10
         ");
-        $fd_task_q->execute([$station_id, $today_date, $today_date]);
+        $fd_task_q->execute([$station_id, $date_from, $date_to]);
         $fd_tasks = $fd_task_q->fetchAll(PDO::FETCH_ASSOC);
         $calendar_tasks = array_merge($calendar_tasks, $fd_tasks);
 
@@ -555,15 +667,15 @@ function getShiftData($pdo, $station_id, $shift_number, $date = null) {
     $new_customers_count = 0;
     $credit_customers_list = [];
     try {
+        $nc_params = [$station_id, $date_from, $date_to];
+        $nc_shift_condition = dashboard_shift_condition('created_at', [], $shift, $shift_number, $nc_params);
         $nc_q = $pdo->prepare("
             SELECT COUNT(*) FROM customers
             WHERE station_id = ?
-              AND (
-                  (created_at BETWEEN ? AND ?)
-                  OR (DATE(created_at) = ? AND shift_id = ?)
-              )
+              AND DATE(created_at) BETWEEN ? AND ?
+              AND $nc_shift_condition
         ");
-        $nc_q->execute([$station_id, $start, $end, $today_date, $shift_number]);
+        $nc_q->execute($nc_params);
         $new_customers_count = (int)$nc_q->fetchColumn();
 
         $cc_q = $pdo->prepare("
@@ -606,16 +718,20 @@ function getShiftData($pdo, $station_id, $shift_number, $date = null) {
 // Admin/Manager can see all shifts
 if (in_array($role, ['admin', 'manager', 'superadmin'])) {
     // Admin/Manager: Load both shifts
-    $shift1_data = getShiftData($pdo, $station_id, 1, $selected_date);
-    $shift2_data = getShiftData($pdo, $station_id, 2, $selected_date);
+    $shift1_arr  = dashboard_shift_by_number($shift_periods, 1) ?? [];
+    $shift2_arr  = dashboard_shift_by_number($shift_periods, 2) ?? [];
+    $shift1_data = getShiftData($pdo, $station_id, $shift1_arr, 1, $date_from, $date_to);
+    $shift2_data = getShiftData($pdo, $station_id, $shift2_arr, 2, $date_from, $date_to);
 } else {
     // Staff: Load only their assigned shift
     if ($user_assigned_shift == 1) {
-        $shift1_data = getShiftData($pdo, $station_id, 1, $selected_date);
+        $shift1_arr  = dashboard_shift_by_number($shift_periods, 1) ?? [];
+        $shift1_data = getShiftData($pdo, $station_id, $shift1_arr, 1, $date_from, $date_to);
         $shift2_data = null; // No access to Shift 2
     } else {
+        $shift2_arr  = dashboard_shift_by_number($shift_periods, 2) ?? [];
         $shift1_data = null; // No access to Shift 1
-        $shift2_data = getShiftData($pdo, $station_id, 2, $selected_date);
+        $shift2_data = getShiftData($pdo, $station_id, $shift2_arr, 2, $date_from, $date_to);
     }
 }
 
@@ -754,29 +870,34 @@ include __DIR__ . '/../partials/header.php';
         
         .tabs {
             display: flex;
-            border-bottom: 2px solid #e2e8f0;
+            gap: 10px;
+            padding: 0 4px;
+            border-bottom: none;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
         }
         
         .tab {
-            flex: 1;
-            padding: 15px 20px;
-            background: #f7f7f7;
-            border: none;
-            font-size: 16px;
+            padding: 7px 16px;
+            background: #ffffff;
+            border: 1px solid #002F6C !important;
+            border-radius: 4px !important;
+            font-size: 11px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s;
-            color: #666666;
+            transition: all 0.15s ease-in-out;
+            color: #002F6C;
+            flex: unset;
         }
         
         .tab.active {
-            background: white;
-            color: #003366;
-            border-bottom: 3px solid #003366;
+            background: #002F6C !important;
+            color: #ffffff;
         }
         
         .tab:hover:not(.active) {
-            background: #e8e8e8;
+            background: #002F6C !important;
+            color: #ffffff;
         }
         
         .tab-content {
@@ -1962,15 +2083,15 @@ include __DIR__ . '/../partials/header.php';
                     <h3 style="color: #003366; margin-bottom: 15px;">
                         Export Options
                     </h3>
-                    <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
-                        <a href="export_daily_report.php?date=<?= date('Y-m-d') ?>" class="btn btn-primary">
-                            Export Daily Report
+                    <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                        <a href="export_daily_report.php?date=<?= date('Y-m-d') ?>" class="txn-btn primary">
+                            <i class="fa-solid fa-file-lines"></i> Export Daily Report
                         </a>
-                        <a href="export_audit_trail.php?date=<?= date('Y-m-d') ?>" class="btn btn-primary">
-                            Export Audit Trail
+                        <a href="export_audit_trail.php?date=<?= date('Y-m-d') ?>" class="txn-btn secondary">
+                            <i class="fa-solid fa-list-check"></i> Export Audit Trail
                         </a>
-                        <a href="export_consolidation.php?date=<?= date('Y-m-d') ?>" class="btn btn-primary">
-                            Export to Excel
+                        <a href="export_consolidation.php?date=<?= date('Y-m-d') ?>" class="txn-btn success">
+                            <i class="fa-solid fa-file-excel"></i> Export to Excel
                         </a>
                     </div>
                 </div>

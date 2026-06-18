@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'inv_fuel';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -287,6 +287,19 @@ body, html { overflow-x: hidden !important; }
 .fsr-item-name { font-weight:700; font-size:14px; color:#1e293b; }
 .fsr-item-meta { font-size:12px; color:#64748b; margin-top:3px; display:flex; align-items:center; flex-wrap:wrap; gap:4px; }
 .sr-modal-footer { display:flex; align-items:center; justify-content:flex-end; gap:10px; padding:16px 20px; border-top:1px solid #e2e8f0; background:#f8fafc; }
+
+/* Protect txn-btn from global header button color override */
+.txn-btn { display:inline-flex !important; align-items:center !important; justify-content:center !important; gap:6px !important; padding:7px 14px !important; border-radius:4px !important; font-size:11px !important; font-weight:600 !important; cursor:pointer !important; border:1px solid transparent !important; transition:all .2s ease-in-out !important; text-decoration:none !important; white-space:nowrap !important; box-sizing:border-box !important; background-color:#ffffff !important; background:#ffffff !important; }
+.txn-btn.primary   { color:#00264D !important; background-color:#ffffff !important; background:#ffffff !important; border:1px solid #00264D !important; }
+.txn-btn.primary:hover   { background-color:#00264D !important; background:#00264D !important; color:#ffffff !important; }
+.txn-btn.secondary { color:#475569 !important; background-color:#ffffff !important; background:#ffffff !important; border:1px solid #475569 !important; }
+.txn-btn.secondary:hover { background-color:#475569 !important; background:#475569 !important; color:#ffffff !important; }
+.txn-btn.success   { color:#16a34a !important; background-color:#ffffff !important; background:#ffffff !important; border:1px solid #16a34a !important; }
+.txn-btn.success:hover   { background-color:#16a34a !important; background:#16a34a !important; color:#ffffff !important; }
+.txn-btn.warning   { color:#b45309 !important; background-color:#ffffff !important; background:#ffffff !important; border:1px solid #b45309 !important; }
+.txn-btn.warning:hover   { background-color:#b45309 !important; background:#b45309 !important; color:#ffffff !important; }
+.txn-btn.danger    { color:#dc2626 !important; background-color:#ffffff !important; background:#ffffff !important; border:1px solid #dc2626 !important; }
+.txn-btn.danger:hover    { background-color:#dc2626 !important; background:#dc2626 !important; color:#ffffff !important; }
 </style>
 
 <div class="mif-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
@@ -317,9 +330,8 @@ body, html { overflow-x: hidden !important; }
             $export_default_rows   = 20;
             require __DIR__ . '/../partials/export_buttons.php';
             ?>
-            <button onclick="openFuelSrModal()"
-                    style="background:#002F70;color:#fff;border:none;display:inline-flex;align-items:center;gap:7px;height:36px;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">
-                Stock Request
+            <button onclick="openFuelSrModal()" class="txn-btn primary">
+                <i class="fas fa-boxes"></i> Stock Request
             </button>
         </div>
     </div>
@@ -416,13 +428,11 @@ body, html { overflow-x: hidden !important; }
         <div id="fsrError" style="display:none;background:#fee2e2;color:#dc3545;padding:10px 14px;border-radius:6px;margin-bottom:12px;font-size:13px;"></div>
 
         <div class="sr-modal-footer">
-            <button type="button" id="fsrCancelBtn"
-                    style="padding:9px 22px;background:#6c757d;color:#fff;border:none;border-radius:6px;cursor:pointer;">
-                Cancel
+            <button type="button" id="fsrCancelBtn" class="txn-btn secondary">
+                <i class="fas fa-times"></i> Cancel
             </button>
-            <button type="button" id="fsrSubmitBtn"
-                    style="padding:9px 22px;background:#002F70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">
-                Submit Request
+            <button type="button" id="fsrSubmitBtn" class="txn-btn primary">
+                <i class="fas fa-paper-plane"></i> Submit Request
             </button>
         </div>
     </div>
@@ -438,7 +448,7 @@ body, html { overflow-x: hidden !important; }
     <p style="margin:0 0 18px;color:#333;font-size:14px;line-height:1.5;" id="fsrSuccessMsg">
         Your fuel stock request is now <strong>Pending</strong> Manager review.
     </p>
-    <button onclick="closeFsrSuccess()" style="background:#002F70;color:#fff;border:none;padding:9px 26px;border-radius:6px;cursor:pointer;font-weight:600;">OK</button>
+    <button onclick="closeFsrSuccess()" class="txn-btn primary">OK</button>
 </div>
 
 <script>

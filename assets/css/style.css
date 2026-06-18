@@ -1688,3 +1688,142 @@ table thead th {
     font-size: 22px;
     font-weight: 700;
 }
+
+/* ── Standardized Petron-Clean Action Buttons (txn-btn style) ── */
+.txn-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 4px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all .2s ease-in-out;
+    text-decoration: none;
+    white-space: nowrap;
+    box-sizing: border-box;
+    background: #ffffff !important;
+}
+
+.txn-btn.primary {
+    color: #00264D !important;
+    border: 1px solid #00264D !important;
+}
+.txn-btn.primary:hover {
+    background: #00264D !important;
+    color: #ffffff !important;
+}
+
+.txn-btn.success {
+    color: #16a34a !important;
+    border: 1px solid #16a34a !important;
+}
+.txn-btn.success:hover {
+    background: #16a34a !important;
+    color: #ffffff !important;
+}
+
+.txn-btn.secondary {
+    color: #475569 !important;
+    border: 1px solid #475569 !important;
+}
+.txn-btn.secondary:hover {
+    background: #475569 !important;
+    color: #ffffff !important;
+}
+
+.txn-btn.danger {
+    color: #dc2626 !important;
+    border: 1px solid #dc2626 !important;
+}
+.txn-btn.danger:hover {
+    background: #dc2626 !important;
+    color: #ffffff !important;
+}
+
+.txn-btn.warning {
+    color: #b45309 !important;
+    border: 1px solid #b45309 !important;
+}
+.txn-btn.warning:hover {
+    background: #b45309 !important;
+    color: #ffffff !important;
+}
+
+.txn-btn:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+}
+
+.txn-btn.full { width: 100%; }
+
+/* ── Standardized Sub-tab Buttons (txn-subtab-btn style) ── */
+.txn-subtab-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 4px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    cursor: pointer;
+    transition: all 0.15s ease-in-out;
+    text-decoration: none;
+    box-sizing: border-box;
+    white-space: nowrap;
+}
+.txn-subtab-btn.active {
+    background: #002F6C !important;
+    border: 1px solid #002F6C !important;
+    color: #ffffff !important;
+}
+.txn-subtab-btn.active i {
+    color: #ffffff !important;
+}
+.txn-subtab-btn.inactive {
+    background: #ffffff !important;
+    border: 1px solid #002F6C !important;
+    color: #002F6C !important;
+}
+.txn-subtab-btn.inactive i {
+    color: #002F6C !important;
+}
+
+/* Green sub-tabs (Merchandise) */
+.txn-subtab-btn.green.active {
+    background: #28a745 !important;
+    border: 1px solid #28a745 !important;
+    color: #ffffff !important;
+}
+.txn-subtab-btn.green.active i {
+    color: #ffffff !important;
+}
+.txn-subtab-btn.green.inactive {
+    background: #ffffff !important;
+    border: 1px solid #28a745 !important;
+    color: #28a745 !important;
+}
+.txn-subtab-btn.green.inactive i {
+    color: #28a745 !important;
+}
+
+/* Dark blue sub-tabs (Job Orders) */
+.txn-subtab-btn.darkblue.active {
+    background: #003d7a !important;
+    border: 1px solid #003d7a !important;
+    color: #ffffff !important;
+}
+.txn-subtab-btn.darkblue.active i {
+    color: #ffffff !important;
+}
+.txn-subtab-btn.darkblue.inactive {
+    background: #ffffff !important;
+    border: 1px solid #003d7a !important;
+    color: #003d7a !important;
+}
+.txn-subtab-btn.darkblue.inactive i {
+    color: #003d7a !important;
+}

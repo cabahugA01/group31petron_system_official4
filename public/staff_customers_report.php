@@ -358,30 +358,55 @@ require_once __DIR__ . '/../partials/header.php';
     }
     
     .btn {
-        padding: 6px 12px;
-        border: 1px solid #000;
-        background: #fff;
+        padding: 7px 14px;
+        border-radius: 4px;
+        background: #ffffff;
+        border: 1px solid #00264D;
+        color: #00264D;
         cursor: pointer;
-        font-size: 12px;
-        font-weight: 500;
+        font-size: 11px;
+        font-weight: 600;
         text-decoration: none;
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        color: #000;
+        transition: all .2s;
+        white-space: nowrap;
     }
     
     .btn:hover {
-        background: #f5f5f5;
+        background: #00264D;
+        color: #ffffff;
     }
     
     .btn-primary {
-        background: #000;
-        color: #fff;
+        border-color: #00264D;
+        color: #00264D;
     }
     
     .btn-primary:hover {
-        background: #333;
+        background: #00264D;
+        color: #ffffff;
+    }
+    
+    .btn-success {
+        border-color: #16a34a;
+        color: #16a34a;
+    }
+    
+    .btn-success:hover {
+        background: #16a34a;
+        color: #ffffff;
+    }
+    
+    .btn-secondary {
+        border-color: #475569;
+        color: #475569;
+    }
+    
+    .btn-secondary:hover {
+        background: #475569;
+        color: #ffffff;
     }
     
     .print-area {
@@ -474,16 +499,16 @@ require_once __DIR__ . '/../partials/header.php';
         <label><strong>To:</strong></label>
         <input type="date" id="date_end" value="<?= htmlspecialchars($date_end) ?>" max="<?= $today ?>">
         <button class="btn btn-primary" onclick="applyFilters()">
-            Apply
+            <i class="fa-solid fa-filter"></i> Apply
         </button>
     </div>
     
     <div>
-        <a href="?export=excel&date_start=<?= urlencode($date_start) ?>&date_end=<?= urlencode($date_end) ?>" class="btn">
-            Export Excel
+        <a href="?export=excel&date_start=<?= urlencode($date_start) ?>&date_end=<?= urlencode($date_end) ?>" class="btn btn-success">
+            <i class="fa-solid fa-file-excel"></i> Export Excel
         </a>
-        <button class="btn" onclick="window.print()">
-            Print Report
+        <button class="btn btn-secondary" onclick="window.print()">
+            <i class="fa-solid fa-print"></i> Print Report
         </button>
     </div>
 </div>
