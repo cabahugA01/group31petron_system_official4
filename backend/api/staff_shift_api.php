@@ -100,10 +100,14 @@ function clockIn($pdo) {
     
     // Get shift details
     $stmt = $pdo->prepare("
-        SELECT sp.*, s.station_name, u.username, u.full_name 
+        SELECT sp.*,
+               sp.shift_name AS name,
+               s.station_name,
+               u.username,
+               COALESCE(u.name, NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))), ''), u.username) AS full_name
         FROM shift_periods sp
         JOIN stations s ON s.id = ?
-        JOIN users u ON u.user_id = ?
+        JOIN users u ON u.id = ?
         WHERE sp.id = ?
     ");
     $stmt->execute([$station_id, $staff_id, $shift_period_id]);

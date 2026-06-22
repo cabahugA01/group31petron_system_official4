@@ -8,6 +8,7 @@ require_login();
 $me         = current_user();
 $role       = role_key($me['role'] ?? '');
 $station_id = (int) user_station_id();
+$actor_name = $me['name'] ?? $me['username'] ?? 'Admin';
 
 if (!in_array($role, ['admin', 'superadmin'])) {
     $_SESSION['error'] = 'Access denied.';
@@ -90,7 +91,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && !isset($_GET['export']))
             $stmt->execute(array_merge($set_vals, [$row_id, $station_id]));
             if ($stmt->rowCount() > 0) {
                 $insert_audit($row_id, 'Admin_Approve', $notes ?: null);
-                log_activity($pdo, $me['id'], 'Approve Transaction', "Merchandise transaction #{$row_id} approved by admin {$me['name']}");
+                log_activity($pdo, $me['id'], 'Approve Transaction', "Merchandise transaction #{$row_id} approved by admin {$actor_name}");
                 $_SESSION['success'] = 'Transaction approved successfully.';
             } else {
                 $_SESSION['error'] = 'Transaction not found or already processed.';
@@ -119,7 +120,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && !isset($_GET['export']))
             $stmt->execute(array_merge($set_vals, [$row_id, $station_id]));
             if ($stmt->rowCount() > 0) {
                 $insert_audit($row_id, 'Admin_Return', $reason);
-                log_activity($pdo, $me['id'], 'Return Transaction', "Merchandise transaction #{$row_id} returned by admin {$me['name']}. Reason: {$reason}");
+                log_activity($pdo, $me['id'], 'Return Transaction', "Merchandise transaction #{$row_id} returned by admin {$actor_name}. Reason: {$reason}");
                 $_SESSION['success'] = 'Transaction returned to staff for correction.';
             } else {
                 $_SESSION['error'] = 'Transaction not found or already processed.';
@@ -148,7 +149,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && !isset($_GET['export']))
             $stmt->execute(array_merge($set_vals, [$row_id, $station_id]));
             if ($stmt->rowCount() > 0) {
                 $insert_audit($row_id, 'Admin_Adjust', "New total: â‚±{$new_total}. Note: {$adj_note}");
-                log_activity($pdo, $me['id'], 'Adjust Transaction', "Merchandise #{$row_id} adjusted to â‚±{$new_total} by admin {$me['name']}.");
+                log_activity($pdo, $me['id'], 'Adjust Transaction', "Merchandise #{$row_id} adjusted to â‚±{$new_total} by admin {$actor_name}.");
                 $_SESSION['success'] = "Transaction #{$row_id} adjusted successfully.";
             } else {
                 $_SESSION['error'] = 'Transaction not found or already processed.';
@@ -176,7 +177,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && !isset($_GET['export']))
                     ->execute([$jo_id,'APPROVE','Pending Validation','Approved',$me['id'],'Approved by admin',$_SERVER['REMOTE_ADDR']??'',$_SERVER['HTTP_USER_AGENT']??'']); } catch(Exception $ae){}
             }
             $insert_audit($jo_id, 'Approve', "JO Approved by admin.");
-            log_activity($pdo, $me['id'], 'JO_APPROVED', "Job Order #{$jo_id} approved by admin {$me['name']}.");
+            log_activity($pdo, $me['id'], 'JO_APPROVED', "Job Order #{$jo_id} approved by admin {$actor_name}.");
             $pdo->commit();
             $_SESSION['success'] = "Job Order #{$jo_id} approved successfully.";
         } catch (Exception $e) {
@@ -204,7 +205,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && !isset($_GET['export']))
                     ->execute([$jo_id,'REJECT','Pending Validation','Rejected',$me['id'],$reason,$_SERVER['REMOTE_ADDR']??'',$_SERVER['HTTP_USER_AGENT']??'']); } catch(Exception $ae){}
             }
             $insert_audit($jo_id, 'Reject', "JO Rejected. Reason: {$reason}");
-            log_activity($pdo, $me['id'], 'JO_REJECTED', "Job Order #{$jo_id} rejected by admin {$me['name']}. Reason: {$reason}");
+            log_activity($pdo, $me['id'], 'JO_REJECTED', "Job Order #{$jo_id} rejected by admin {$actor_name}. Reason: {$reason}");
             $pdo->commit();
             $_SESSION['success'] = "Job Order #{$jo_id} rejected.";
         } catch (Exception $e) {

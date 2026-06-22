@@ -78,7 +78,7 @@ function handlePostRequest($pdo, $station_id, $role, $me) {
 
     // Also support JSON body action (from fetch() calls)
     // Read the raw body ONCE and cache it so downstream functions can reuse it
-    $rawBody = file_get_contents('php://input');
+    $rawBody = $GLOBALS['_cached_request_body'] ?? file_get_contents('php://input');
     $GLOBALS['_cached_request_body'] = $rawBody;
 
     if (empty($action)) {
@@ -149,10 +149,10 @@ function getMerchandiseProducts($pdo, $station_id) {
 function getCreditCustomers($pdo, $station_id) {
     try {
         $stmt = $pdo->prepare("
-            SELECT `user_id`, name, credit_limit, balance, 
+            SELECT id AS user_id, id, name, credit_limit, balance,
                    (credit_limit - balance) AS available_credit
             FROM customers 
-            WHERE station_id = ? AND status = 'Active' 
+            WHERE station_id = ? AND LOWER(COALESCE(status, 'active')) = 'active'
             ORDER BY name
         ");
         $stmt->execute([$station_id]);
@@ -320,7 +320,7 @@ function getPaymentMethods($pdo) {
         $stmt = $pdo->prepare("
             SELECT method_key, method_name, icon_class, color_class
             FROM payment_method_config
-            WHERE active = 1
+            WHERE is_active = 1
             ORDER BY sort_order
         ");
         $stmt->execute();
@@ -560,14 +560,10 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             $cstmt->execute([$credit_customer_id, $station_id]);
             $cust = $cstmt->fetch(PDO::FETCH_ASSOC);
             if ($cust) {
-                if (($cust['status'] ?? '') === 'locked') {
+                $cust_status = strtolower($cust['status'] ?? '');
+                if (in_array($cust_status, ['inactive', 'suspended', 'locked'], true)) {
                     http_response_code(400);
-                    echo json_encode(['error' => 'Transaction blocked: Customer account is locked.']);
-                    return;
-                }
-                if (($cust['status'] ?? '') === 'inactive') {
-                    http_response_code(400);
-                    echo json_encode(['error' => 'Transaction blocked: Customer account is inactive.']);
+                    echo json_encode(['error' => 'Transaction blocked: Customer account is not active.']);
                     return;
                 }
                 $available = floatval($cust['credit_limit']) - floatval($cust['balance']);
@@ -658,8 +654,55 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
         // Non-fatal if station_inventory table is missing — proceed
     }
 
+    $legacy_sku_parts = [];
+    $legacy_total_qty = 0;
+    $legacy_first_price = null;
+    $has_service_item = false;
+    $has_merchandise_item = false;
+    foreach ($data['items'] as $item) {
+        $is_service_item = ($item['item_type'] ?? 'merchandise') === 'service';
+        $has_service_item = $has_service_item || $is_service_item;
+        $has_merchandise_item = $has_merchandise_item || !$is_service_item;
+        $qty = max(0, (float)($item['quantity'] ?? 1));
+        $price = (float)($item['unit_price'] ?? 0);
+        $legacy_total_qty += $qty;
+        if ($legacy_first_price === null) {
+            $legacy_first_price = $price;
+        }
+        $name = trim((string)($item['product_name'] ?? ''));
+        if ($name !== '') {
+            $legacy_sku_parts[] = $name;
+        }
+    }
+    $legacy_item_sku = substr(implode(', ', array_unique($legacy_sku_parts)), 0, 200);
+    if ($legacy_item_sku === '') {
+        $legacy_item_sku = $has_service_item ? 'Service Fee' : 'Transaction Item';
+    }
+    if ($legacy_total_qty <= 0) {
+        $legacy_total_qty = 1;
+    }
+    if ($legacy_first_price === null || $legacy_first_price <= 0) {
+        $legacy_first_price = $total_amount;
+    }
+    $resolved_transaction_type = ($has_service_item && $has_merchandise_item) ? 'combined'
+        : ($has_service_item ? 'job_order' : 'merchandise');
+
     // Generate unique transaction ID
-    $transaction_id = 'MERCH' . date('Y') . str_pad($station_id, 3, '0', STR_PAD_LEFT) . str_pad(mt_rand(1, 99999), 5, '0', STR_PAD_LEFT);
+    $transaction_id = '';
+    for ($try = 0; $try < 8; $try++) {
+        $candidate = 'MERCH' . date('YmdHis') . str_pad((string)$station_id, 4, '0', STR_PAD_LEFT) . str_pad((string)mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
+        $idCheck = $pdo->prepare("SELECT 1 FROM merchandise_transactions WHERE transaction_id = ? LIMIT 1");
+        $idCheck->execute([$candidate]);
+        if (!$idCheck->fetchColumn()) {
+            $transaction_id = $candidate;
+            break;
+        }
+    }
+    if ($transaction_id === '') {
+        http_response_code(500);
+        echo json_encode(['error' => 'Unable to generate a unique transaction ID. Please try again.']);
+        return;
+    }
 
     // ── Auto-register new customer if name is provided and not "Walk-in Customer" ──
     if (!empty($data['customer_name']) && $data['customer_name'] !== 'Walk-in Customer') {
@@ -700,6 +743,23 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
         $cols   = ['transaction_id', 'station_id', 'staff_id', 'total_amount'];
         $vals   = [$transaction_id, $station_id, $me['id'], $total_amount];
 
+        if ($has('item_sku')) {
+            $cols[] = 'item_sku';
+            $vals[] = $legacy_item_sku;
+        }
+        if ($has('quantity')) {
+            $cols[] = 'quantity';
+            $vals[] = (int)ceil($legacy_total_qty);
+        }
+        if ($has('unit_price')) {
+            $cols[] = 'unit_price';
+            $vals[] = $legacy_first_price;
+        }
+        if ($has('transaction_date')) {
+            $cols[] = 'transaction_date';
+            $vals[] = date('Y-m-d H:i:s');
+        }
+
         // Optional columns — add only if they exist
         $optional = [
             'shift_id'              => $shift_id ?: null,
@@ -729,7 +789,7 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             // ── Workflow status: tracks In Progress / Completed after manager approval ──
             'workflow_status'       => 'Pending',
             // ── Job Order integration ──────────────────────────────────────
-            'job_order_id'               => !empty($data['job_order_id'])            ? $data['job_order_id']               : null,
+            'job_order_id'               => (!empty($data['job_order_id']) && ctype_digit((string)$data['job_order_id'])) ? (int)$data['job_order_id'] : null,
             'job_order_db_id'            => !empty($data['job_order_db_id'])         ? (int)$data['job_order_db_id']       : null,
             'job_order_service'          => !empty($data['job_order_service'])       ? $data['job_order_service']          : null,
             'job_order_description'      => !empty($data['job_order_description'])   ? $data['job_order_description']      : null,
@@ -740,20 +800,7 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             'job_order_contact'          => !empty($data['job_order_contact'])       ? $data['job_order_contact']          : null,
             // ── Transaction type: classify based on cart contents ──────────────
             // Determined by whether items contain service-type and/or merchandise-type entries
-            'transaction_type'           => (function() use ($data) {
-                $has_service = false;
-                $has_merch   = false;
-                foreach ($data['items'] as $item) {
-                    if (($item['item_type'] ?? 'merchandise') === 'service') {
-                        $has_service = true;
-                    } else {
-                        $has_merch = true;
-                    }
-                }
-                if ($has_service && $has_merch) return 'combined';
-                if ($has_service)               return 'job_order';
-                return 'merchandise';
-            })(),
+            'transaction_type'           => $resolved_transaction_type,
         ];
 
         foreach ($optional as $col => $val) {
@@ -922,15 +969,15 @@ function validateTransaction($pdo, $station_id, $role, $me) {
         }
         
         // Get transaction details for audit
-        $stmt = $pdo->prepare("SELECT * FROM merchandise_transactions WHERE id = ?");
-        $stmt->execute([$transaction_id]);
+        $stmt = $pdo->prepare("SELECT * FROM merchandise_transactions WHERE id = ? AND station_id = ? FOR UPDATE");
+        $stmt->execute([$transaction_id, $station_id]);
         $transaction = $stmt->fetch(PDO::FETCH_ASSOC);
         
         // ── Determine transaction_type for receipt labeling ──────────────────
         $has_service = false;
         $has_merch   = false;
         $itemsForDeduction = [];
-        $itemRows = $pdo->prepare("SELECT product_id, quantity, item_type FROM merchandise_transaction_items WHERE transaction_id = ?");
+        $itemRows = $pdo->prepare("SELECT product_id, product_name, quantity, item_type FROM merchandise_transaction_items WHERE transaction_id = ?");
         $itemRows->execute([$transaction_id]);
         foreach ($itemRows->fetchAll(PDO::FETCH_ASSOC) as $row) {
             if (($row['item_type'] ?? 'merchandise') === 'service') {
@@ -949,11 +996,28 @@ function validateTransaction($pdo, $station_id, $role, $me) {
         // Scenario 2 (Merch only): all items deducted here.
         // Scenario 3 (JO + Merch / combined): only merchandise items deducted; service items skipped.
         $did_deduct = false;
-        foreach ($itemsForDeduction as $row) {
-            try {
+        if (empty($transaction['inventory_deducted'])) {
+            foreach ($itemsForDeduction as $row) {
+                $stockStmt = $pdo->prepare("
+                    SELECT stock_level
+                    FROM station_inventory
+                    WHERE station_id = ? AND product_id = ?
+                    FOR UPDATE
+                ");
+                $stockStmt->execute([$station_id, $row['product_id']]);
+                $stockLevel = $stockStmt->fetchColumn();
+                if ($stockLevel === false) {
+                    throw new Exception('Inventory record is missing for ' . ($row['product_name'] ?: 'product #' . $row['product_id']) . '.');
+                }
+                if ((float)$stockLevel < (float)$row['quantity']) {
+                    throw new Exception('Insufficient stock for ' . ($row['product_name'] ?: 'product #' . $row['product_id']) . '. Available: ' . number_format((float)$stockLevel, 2) . ', required: ' . number_format((float)$row['quantity'], 2) . '.');
+                }
+            }
+
+            foreach ($itemsForDeduction as $row) {
                 $deductStmt = $pdo->prepare("
                     UPDATE station_inventory
-                    SET stock_level = GREATEST(stock_level - ?, 0),
+                    SET stock_level = stock_level - ?,
                         last_updated = NOW()
                     WHERE station_id = ? AND product_id = ?
                 ");
@@ -961,8 +1025,6 @@ function validateTransaction($pdo, $station_id, $role, $me) {
                 if ($deductStmt->rowCount() > 0) {
                     $did_deduct = true;
                 }
-            } catch (Exception $e) {
-                error_log("Stock deduction on approve warning: " . $e->getMessage());
             }
         }
         // Mark inventory_deducted = 1 so UI and reports correctly show deduction status
@@ -999,16 +1061,11 @@ function validateTransaction($pdo, $station_id, $role, $me) {
             $cust_chk = $pdo->prepare("SELECT status FROM customers WHERE id = ?");
             $cust_chk->execute([$transaction['credit_customer_id']]);
             $cust_status = $cust_chk->fetchColumn();
-            if ($cust_status === 'locked') {
+            $cust_status = strtolower((string)$cust_status);
+            if (in_array($cust_status, ['inactive', 'suspended', 'locked'], true)) {
                 $pdo->rollBack();
                 http_response_code(400);
-                echo json_encode(['error' => 'Approval blocked: Customer account is locked.']);
-                return;
-            }
-            if ($cust_status === 'inactive') {
-                $pdo->rollBack();
-                http_response_code(400);
-                echo json_encode(['error' => 'Approval blocked: Customer account is inactive.']);
+                echo json_encode(['error' => 'Approval blocked: Customer account is not active.']);
                 return;
             }
             
@@ -1172,7 +1229,7 @@ function adjustTransaction($pdo, $station_id, $role, $me) {
         $pdo->beginTransaction();
         
         // Get original transaction
-        $stmt = $pdo->prepare("SELECT * FROM merchandise_transactions WHERE id = ? AND station_id = ?");
+        $stmt = $pdo->prepare("SELECT * FROM merchandise_transactions WHERE id = ? AND station_id = ? FOR UPDATE");
         $stmt->execute([$transaction_id, $station_id]);
         $transaction = $stmt->fetch(PDO::FETCH_ASSOC);
         
@@ -1216,25 +1273,47 @@ function adjustTransaction($pdo, $station_id, $role, $me) {
         // ── Recalculate stock deduction based on adjusted quantities ─────────
         // Since stock is only deducted on Approve, and Adjust is a form of approval,
         // we deduct based on the new adjusted quantities for merchandise items only.
-        $pdo->commit();
-
-        // Post-commit: apply stock deduction for adjusted merchandise items
-        foreach ($adjustments as $adjustment) {
-            $pid = intval($adjustment['product_id'] ?? 0);
-            $qty = floatval($adjustment['quantity'] ?? 0);
-            if ($pid > 0 && $qty > 0) {
-                try {
+        if (empty($transaction['inventory_deducted'])) {
+            foreach ($adjustments as $adjustment) {
+                $pid = intval($adjustment['product_id'] ?? 0);
+                $qty = floatval($adjustment['quantity'] ?? 0);
+                if ($pid <= 0 || $qty <= 0) {
+                    continue;
+                }
+                $stockStmt = $pdo->prepare("
+                    SELECT stock_level
+                    FROM station_inventory
+                    WHERE station_id = ? AND product_id = ?
+                    FOR UPDATE
+                ");
+                $stockStmt->execute([$station_id, $pid]);
+                $stockLevel = $stockStmt->fetchColumn();
+                if ($stockLevel === false) {
+                    throw new Exception('Inventory record is missing for product #' . $pid . '.');
+                }
+                if ((float)$stockLevel < $qty) {
+                    throw new Exception('Insufficient stock for product #' . $pid . '. Available: ' . number_format((float)$stockLevel, 2) . ', required: ' . number_format($qty, 2) . '.');
+                }
+            }
+            foreach ($adjustments as $adjustment) {
+                $pid = intval($adjustment['product_id'] ?? 0);
+                $qty = floatval($adjustment['quantity'] ?? 0);
+                if ($pid > 0 && $qty > 0) {
                     $pdo->prepare("
                         UPDATE station_inventory
-                        SET stock_level = GREATEST(stock_level - ?, 0),
+                        SET stock_level = stock_level - ?,
                             last_updated = NOW()
                         WHERE station_id = ? AND product_id = ?
                     ")->execute([$qty, $station_id, $pid]);
-                } catch (Exception $e) {
-                    error_log("Stock deduction on adjust warning: " . $e->getMessage());
                 }
             }
+            try {
+                $pdo->prepare("UPDATE merchandise_transactions SET inventory_deducted = 1, updated_at = NOW() WHERE id = ? AND station_id = ?")
+                    ->execute([$transaction_id, $station_id]);
+            } catch (Exception $e) {}
         }
+
+        $pdo->commit();
 
         // Post-commit: audit logging
         try {
@@ -1318,7 +1397,7 @@ function logFailedTransactionAttempt($pdo, $station_id, $me) {
         // Notify managers via notifications table if it exists
         try {
             $mgr_stmt = $pdo->prepare("
-                SELECT user_id FROM users
+                SELECT id FROM users
                 WHERE station_id = ? AND role IN ('manager','admin','superadmin') AND status = 'Active'
             ");
             $mgr_stmt->execute([$station_id]);
@@ -1331,11 +1410,11 @@ function logFailedTransactionAttempt($pdo, $station_id, $me) {
                               number_format($amount_tendered, 2) . " but Grand Total is ₱" .
                               number_format($grand_total, 2) . ". Reason: {$reason}.";
                 $notif_stmt = $pdo->prepare("
-                    INSERT INTO notifications (user_id, type, message, is_read, created_at)
-                    VALUES (?, 'warning', ?, 0, NOW())
+                    INSERT INTO notifications (user_id, type, title, message, event_type, severity, source_key, status, created_at)
+                    VALUES (?, 'warning', 'Transaction Blocked', ?, 'transaction_blocked', 'medium', ?, 'unread', NOW())
                 ");
                 foreach ($managers as $mgr) {
-                    $notif_stmt->execute([$mgr['id'], $notif_msg]);
+                    $notif_stmt->execute([$mgr['id'], $notif_msg, 'failed_txn_' . md5($notif_msg)]);
                 }
             }
         } catch (Exception $e) {
@@ -1374,8 +1453,54 @@ function logMerchandiseTransactionAudit($pdo, $user_id, $transaction_id, $action
         $details_json = json_encode($data);
         $ip  = $_SERVER['REMOTE_ADDR'] ?? '';
         $ua  = $_SERVER['HTTP_USER_AGENT'] ?? '';
-        $pdo->prepare("INSERT INTO merchandise_transaction_audit (transaction_id, user_id, action, details, ip_address, user_agent) VALUES (?, ?, ?, ?, ?, ?)")
-            ->execute([$transaction_id, $user_id, $action, $details_json, $ip, $ua]);
+        $audit_station_id = (int)($data['station_id'] ?? 0);
+        if ($audit_station_id <= 0) {
+            try {
+                $st = $pdo->prepare("SELECT station_id FROM merchandise_transactions WHERE id = ? LIMIT 1");
+                $st->execute([$transaction_id]);
+                $audit_station_id = (int)($st->fetchColumn() ?: 0);
+            } catch (Exception $e) {}
+        }
+        $audit_cols = [];
+        try {
+            foreach ($pdo->query("SHOW COLUMNS FROM merchandise_transaction_audit")->fetchAll(PDO::FETCH_ASSOC) as $col) {
+                $audit_cols[strtolower($col['Field'])] = true;
+            }
+        } catch (Exception $e) {}
+        $audit_values = [
+            'transaction_id' => $data['transaction_id'] ?? (string)$transaction_id,
+            'user_id' => $user_id,
+            'staff_id' => $user_id,
+            'staff_name' => $data['staff_name'] ?? ('User #' . $user_id),
+            'action' => $action,
+            'details' => $details_json,
+            'audit_data' => $details_json,
+            'ip_address' => $ip,
+            'user_agent' => $ua,
+            'item_sku' => $data['item_sku'] ?? '',
+            'quantity' => (int)($data['item_count'] ?? 0),
+            'unit_price' => (float)($data['unit_price'] ?? 0),
+            'total_amount' => (float)($data['total_amount'] ?? 0),
+            'payment_method' => $data['payment_method'] ?? '',
+            'customer_name' => $data['customer_name'] ?? '',
+            'station_id' => $audit_station_id,
+            'timestamp' => date('Y-m-d H:i:s'),
+            'created_at' => date('Y-m-d H:i:s'),
+        ];
+        $ins_cols = [];
+        $ins_vals = [];
+        foreach ($audit_values as $col => $value) {
+            if (isset($audit_cols[$col])) {
+                $ins_cols[] = $col;
+                $ins_vals[] = $value;
+            }
+        }
+        if ($ins_cols) {
+            $col_sql = implode(', ', array_map(fn($col) => "`{$col}`", $ins_cols));
+            $ph_sql = implode(', ', array_fill(0, count($ins_cols), '?'));
+            $pdo->prepare("INSERT INTO merchandise_transaction_audit ({$col_sql}) VALUES ({$ph_sql})")
+                ->execute($ins_vals);
+        }
 
         // ── Write to audit_trail with staff_id for full chronological log ────
         try {

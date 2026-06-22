@@ -7,6 +7,7 @@ require_once __DIR__ . '/../backend/classes/ShiftPeriodConfig.php';
 require_login();
 
 $me         = current_user();
+$user_id    = (int)($me['id'] ?? $me['user_id'] ?? ($_SESSION['user_id'] ?? 0));
 $station_id = (int) user_station_id();
 $role       = role_key($me['role'] ?? '');
 
@@ -167,6 +168,14 @@ function dashboard_current_shift(array $shift_periods): ?array {
 
 function dashboard_shift_label(array $shift): string {
     $name = trim((string) ($shift['shift_name'] ?? 'Shift'));
+    $name = preg_replace('/[\x{2013}\x{2014}]/u', '-', $name) ?? $name;
+    if (preg_match('/^\s*(.+?)\s*:/', $name, $matches)) {
+        $name = trim($matches[1]);
+    }
+    if ($name === '') {
+        $name = 'Shift';
+    }
+
     $start = isset($shift['start_time']) ? date('g:i A', strtotime($shift['start_time'])) : '';
     $end = isset($shift['end_time']) ? date('g:i A', strtotime($shift['end_time'])) : '';
     $time_label = ($start && $end) ? " ($start - $end)" : '';
@@ -182,9 +191,33 @@ function dashboard_range_label(string $date_from, string $date_to): string {
     return date('F j, Y', strtotime($date_from)) . ' - ' . date('F j, Y', strtotime($date_to));
 }
 
-// ═══════════════════════════════════════════════════════════════
+function dashboard_unique_labels(array ...$label_sets): array {
+    $labels = [];
+    foreach ($label_sets as $label_set) {
+        foreach ($label_set as $label) {
+            $label = trim((string)$label);
+            if ($label !== '' && !array_key_exists($label, $labels)) {
+                $labels[$label] = true;
+            }
+        }
+    }
+
+    return array_keys($labels);
+}
+
+function dashboard_values_for_labels(array $rows, string $label_key, string $value_key, array $labels): array {
+    $totals = [];
+    foreach ($rows as $row) {
+        $label = trim((string)($row[$label_key] ?? ''));
+        if ($label !== '') {
+            $totals[$label] = ($totals[$label] ?? 0.0) + (float)($row[$value_key] ?? 0);
+        }
+    }
+
+    return array_map(fn($label) => $totals[$label] ?? 0.0, $labels);
+}
+
 // SHIFT ASSIGNMENT LOGIC - Account Segregation
-// ═══════════════════════════════════════════════════════════════
 // Determine user's assigned shift from their shift_assignment or last clock-in
 $user_assigned_shift = null;
 $can_view_consolidation = false;
@@ -192,7 +225,7 @@ $can_view_consolidation = false;
 // Check if user has shift_assignment in users table
 try {
     $shift_check = $pdo->prepare("SELECT shift_assignment FROM users WHERE id = ? LIMIT 1");
-    $shift_check->execute([$me['id']]);
+    $shift_check->execute([$user_id]);
     $shift_assignment = $shift_check->fetchColumn();
 
     $user_assigned_shift = dashboard_shift_number_from_value($shift_assignment, $shift_periods);
@@ -208,7 +241,7 @@ if (!$user_assigned_shift) {
             ORDER BY start_time DESC 
             LIMIT 1
         ");
-        $recent_shift->execute([$me['id']]);
+        $recent_shift->execute([$user_id]);
         $last_shift_name = $recent_shift->fetchColumn();
 
         $user_assigned_shift = dashboard_shift_number_from_value($last_shift_name, $shift_periods);
@@ -234,7 +267,7 @@ $clock_in_time = null;
 $clock_in_shift = null;
 try {
     $ci = $pdo->prepare("SELECT start_time, shift_name FROM labor_sessions WHERE user_id = ? AND end_time IS NULL");
-    $ci->execute([$me['id']]);
+    $ci->execute([$user_id]);
     $clock = $ci->fetch(PDO::FETCH_ASSOC);
     if ($clock) {
         $clocked_in = true;
@@ -242,26 +275,6 @@ try {
         $clock_in_shift = $clock['shift_name'];
     }
 } catch (Exception $e) {}
-
-// ═══════════════════════════════════════════════════════════════
-// AUTOMATIC CLOCK IN ON LOGIN
-// ═══════════════════════════════════════════════════════════════
-// Auto clock in if not already clocked in
-if (!$clocked_in) {
-    try {
-        $shift = $current_shift ?: $shift_periods[0];
-        $pdo->prepare(
-            "INSERT INTO labor_sessions (user_id, station_id, start_time, shift_period, shift_name)
-             VALUES (?, ?, NOW(), ?, ?)"
-        )->execute([$me['id'], $station_id, $shift['shift_key'], $shift['shift_name']]);
-        log_activity($pdo, $me['id'], 'Auto Clock In', "Station {$station_id} - {$shift['shift_name']}");
-        
-        // Refresh clock in status
-        $clocked_in = true;
-        $clock_in_time = date('Y-m-d H:i:s');
-        $clock_in_shift = $shift['shift_name'];
-    } catch (Exception $e) {}
-}
 
 $flash_success = $_SESSION['success'] ?? null; unset($_SESSION['success']);
 $flash_error   = $_SESSION['error']   ?? null; unset($_SESSION['error']);
@@ -275,7 +288,6 @@ if ($date_from > $date_to) {
     [$date_from, $date_to] = [$date_to, $date_from];
 }
 
-$selected_date = $date_from;
 $date_range_label = dashboard_range_label($date_from, $date_to);
 $is_default_range = ($date_from === date('Y-m-d') && $date_to === date('Y-m-d'));
 
@@ -645,7 +657,7 @@ function getShiftData(PDO $pdo, int $station_id, array $shift, int $shift_number
 
         $fd_task_q = $pdo->prepare("
             SELECT 'Fuel Delivery' AS task_type,
-                   COALESCE(batch_id, CONCAT('FD-', id)) AS reference,
+                   COALESCE(NULLIF(invoice_no, ''), CONCAT('FD-', id)) AS reference,
                    status,
                    COALESCE(delivery_date, CURDATE()) AS task_date,
                    COALESCE(supplier, 'Supplier TBD') AS customer,
@@ -709,7 +721,7 @@ function getShiftData(PDO $pdo, int $station_id, array $shift, int $shift_number
         'new_customers'    => $new_customers_count,
         'credit_customers' => $credit_customers_list,
         'shift_number'     => $shift_number,
-        'shift_label'      => $shift_number == 1 ? '6AM - 2PM' : '2PM - 10PM'
+        'shift_label'      => $shift_label
     ];
 }
 
@@ -737,6 +749,61 @@ if (in_array($role, ['admin', 'manager', 'superadmin'])) {
 
 // NOTE: jo_stats, new_customers, credit_customers, calendar_tasks are all
 // fetched per-shift inside getShiftData() and returned as part of $shift1_data / $shift2_data.
+$date_filter_active = (!$is_default_range || isset($_GET['date']) || isset($_GET['date_from']) || isset($_GET['date_to']));
+
+$shift1_label = $shift1_data['shift_label'] ?? dashboard_shift_label(dashboard_shift_by_number($shift_periods, 1) ?? ['shift_name' => 'Shift 1']);
+$shift2_label = $shift2_data['shift_label'] ?? dashboard_shift_label(dashboard_shift_by_number($shift_periods, 2) ?? ['shift_name' => 'Shift 2']);
+
+$report_sales_url = 'staff_reports.php?' . http_build_query([
+    'section' => 'sales',
+    'sub_tab' => 'fuel_sales',
+    'range' => 'custom',
+    'date_from' => $date_from,
+    'date_to' => $date_to,
+    'export' => 'excel',
+]);
+$report_activity_url = 'staff_reports.php?' . http_build_query([
+    'section' => 'activity',
+    'sub_tab' => 'staff_activity',
+    'range' => 'custom',
+    'date_from' => $date_from,
+    'date_to' => $date_to,
+    'export' => 'csv',
+]);
+$report_job_orders_url = 'staff_reports.php?' . http_build_query([
+    'section' => 'job_orders',
+    'sub_tab' => 'jo_list',
+    'range' => 'custom',
+    'date_from' => $date_from,
+    'date_to' => $date_to,
+    'export' => 'excel',
+]);
+
+$consolidation_fuel_labels = [];
+$consolidation_shift1_fuel_liters = [];
+$consolidation_shift2_fuel_liters = [];
+$consolidation_jo_labels = [];
+$consolidation_jo_data = [];
+
+if ($shift1_data && $shift2_data) {
+    $consolidation_fuel_labels = dashboard_unique_labels(
+        array_column($shift1_data['fuel'], 'fuel_type'),
+        array_column($shift2_data['fuel'], 'fuel_type')
+    );
+    $consolidation_shift1_fuel_liters = dashboard_values_for_labels($shift1_data['fuel'], 'fuel_type', 'liters', $consolidation_fuel_labels);
+    $consolidation_shift2_fuel_liters = dashboard_values_for_labels($shift2_data['fuel'], 'fuel_type', 'liters', $consolidation_fuel_labels);
+
+    $consolidation_jo_labels = dashboard_unique_labels(
+        $shift1_data['jo_hourly_labels'],
+        $shift2_data['jo_hourly_labels']
+    );
+    $shift1_jo_data = array_combine($shift1_data['jo_hourly_labels'], $shift1_data['jo_hourly_data']) ?: [];
+    $shift2_jo_data = array_combine($shift2_data['jo_hourly_labels'], $shift2_data['jo_hourly_data']) ?: [];
+    $consolidation_jo_data = array_map(
+        fn($label) => (int)($shift1_jo_data[$label] ?? 0) + (int)($shift2_jo_data[$label] ?? 0),
+        $consolidation_jo_labels
+    );
+}
 
 // Include system header with sidebar
 include __DIR__ . '/../partials/header.php';
@@ -1187,7 +1254,7 @@ include __DIR__ . '/../partials/header.php';
             <?php if ($clocked_in): ?>
                 <div style="font-size: 8px; color: #155724; display: flex; align-items: center; gap: 8px;">
                     <span style="padding: 2px 6px; background: #d4edda; border-radius: 4px; border-left: 2px solid #28a745; font-weight: 600;">
-                        Clocked In - <?= $clock_in_shift ?> • Since <?= date('h:i A', strtotime($clock_in_time)) ?>
+                        Clocked In - <?= htmlspecialchars(dashboard_shift_label(['shift_name' => $clock_in_shift ?? 'Shift'])) ?> - Since <?= date('h:i A', strtotime($clock_in_time)) ?>
                     </span>
                 </div>
             <?php else: ?>
@@ -1204,17 +1271,18 @@ include __DIR__ . '/../partials/header.php';
             <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                 <span style="font-weight: 700; color: #003366; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Viewing Data For:</span>
                 <span style="background: #003366; color: white; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 700; box-shadow: 0 2px 4px rgba(0,51,102,0.2);">
-                    <?= date('F j, Y', strtotime($selected_date)) ?>
+                    <?= htmlspecialchars($date_range_label) ?>
                 </span>
-                <?php if ($selected_date !== date('Y-m-d')): ?>
-                <?php endif; ?>
             </div>
             <form method="GET" style="display: flex; align-items: center; gap: 8px; margin: 0; flex-wrap: wrap;">
-                <input type="date" name="date" value="<?= htmlspecialchars($selected_date) ?>" style="padding: 7px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; color: #334155; outline: none; background: white; font-weight: 500;">
+                <label style="font-size: 12px; font-weight: 700; color: #334155;">From</label>
+                <input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>" style="padding: 7px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; color: #334155; outline: none; background: white; font-weight: 500;">
+                <label style="font-size: 12px; font-weight: 700; color: #334155;">To</label>
+                <input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>" style="padding: 7px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; color: #334155; outline: none; background: white; font-weight: 500;">
                 <button type="submit" style="background: #003366; color: white; border: none; padding: 7px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                    Filter Date
+                    Filter Range
                 </button>
-                <?php if (isset($_GET['date'])): ?>
+                <?php if ($date_filter_active): ?>
                     <a href="staff_dashboard.php" style="background: #64748b; color: white; text-decoration: none; padding: 7px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                         Reset
                     </a>
@@ -1241,19 +1309,19 @@ include __DIR__ . '/../partials/header.php';
             <div class="tabs">
                 <?php if ($user_assigned_shift == 1 || $can_view_consolidation): ?>
                     <button class="tab <?= ($user_assigned_shift == 1 && !$can_view_consolidation) ? 'active' : '' ?>" data-tab="shift1">
-                        Shift 1 (6AM - 2PM)
+                        <?= htmlspecialchars($shift1_label) ?>
                     </button>
                 <?php endif; ?>
                 
                 <?php if ($user_assigned_shift == 2 || $can_view_consolidation): ?>
                     <button class="tab <?= ($user_assigned_shift == 2 && !$can_view_consolidation) ? 'active' : '' ?>" data-tab="shift2">
-                        Shift 2 (2PM - 10PM)
+                        <?= htmlspecialchars($shift2_label) ?>
                     </button>
                 <?php endif; ?>
                 
                 <?php if ($can_view_consolidation): ?>
                     <button class="tab active" data-tab="consolidation">
-                        Daily Consolidation
+                        Consolidation
                     </button>
                 <?php endif; ?>
             </div>
@@ -1305,7 +1373,7 @@ include __DIR__ . '/../partials/header.php';
                     <div class="stat-card">
                         <div class="details">
                             <div class="label">Fuel Sales</div>
-                            <div class="value">₱<?= number_format(array_sum(array_column($shift1_data['fuel'], 'revenue')), 2) ?></div>
+                            <div class="value">&#8369;<?= number_format(array_sum(array_column($shift1_data['fuel'], 'revenue')), 2) ?></div>
                             <small><?= number_format(array_sum(array_column($shift1_data['fuel'], 'liters')), 2) ?> L sold</small>
                         </div>
                         <div class="icon"><i class="fas fa-gas-pump"></i></div>
@@ -1313,7 +1381,7 @@ include __DIR__ . '/../partials/header.php';
                     <div class="stat-card">
                         <div class="details">
                             <div class="label">Merchandise Sales</div>
-                            <div class="value">₱<?= number_format($shift1_data['merch']['total'], 2) ?></div>
+                            <div class="value">&#8369;<?= number_format($shift1_data['merch']['total'], 2) ?></div>
                             <small><?= $shift1_data['merch']['count'] ?> transactions</small>
                         </div>
                         <div class="icon"><i class="fas fa-shopping-cart"></i></div>
@@ -1321,7 +1389,7 @@ include __DIR__ . '/../partials/header.php';
                     <div class="stat-card">
                         <div class="details">
                             <div class="label">Service Income</div>
-                            <div class="value">₱<?= number_format($shift1_data['service']['total_service_income'], 2) ?></div>
+                            <div class="value">&#8369;<?= number_format($shift1_data['service']['total_service_income'], 2) ?></div>
                             <small><?= $shift1_data['service']['completed_jobs'] ?> completed jobs</small>
                         </div>
                         <div class="icon"><i class="fas fa-wrench"></i></div>
@@ -1329,7 +1397,7 @@ include __DIR__ . '/../partials/header.php';
                     <div class="stat-card">
                         <div class="details">
                             <div class="label">Total Payments Collected</div>
-                            <div class="value">₱<?= number_format($shift1_data['payments_summary']['total'], 2) ?></div>
+                            <div class="value">&#8369;<?= number_format($shift1_data['payments_summary']['total'], 2) ?></div>
                             <small>Fuel + Merch + Service</small>
                         </div>
                         <div class="icon"><i class="fas fa-money-bill-wave"></i></div>
@@ -1338,7 +1406,7 @@ include __DIR__ . '/../partials/header.php';
                         <div class="details">
                             <div class="label">Job Orders</div>
                             <div class="value"><?= array_sum($shift1_data['jo_stats']) ?></div>
-                            <small><?= $shift1_data['jo_stats']['Pending'] ?? 0 ?> pending &bull; <?= $shift1_data['jo_stats']['In Progress'] ?? 0 ?> in progress &bull; <?= $shift1_data['jo_stats']['Completed'] ?? 0 ?> done</small>
+                            <small><?= $shift1_data['jo_stats']['Pending'] ?? 0 ?> pending, <?= $shift1_data['jo_stats']['In Progress'] ?? 0 ?> in progress, <?= $shift1_data['jo_stats']['Completed'] ?? 0 ?> done</small>
                         </div>
                         <div class="icon"><i class="fas fa-clipboard-list"></i></div>
                     </div>
@@ -1388,9 +1456,9 @@ include __DIR__ . '/../partials/header.php';
                 </div>
                 <?php endif; ?>
 
-                <!-- Merchandise Inventory — Low Stock Alerts -->
+                <!-- Merchandise Inventory - Low Stock Alerts -->
                 <div class="widget-card" style="margin:20px 0;">
-                    <h3 style="color:#003366;">Merchandise Inventory — Low Stock Alerts</h3>
+                    <h3 style="color:#003366;">Merchandise Inventory - Low Stock Alerts</h3>
                     <?php if (!empty($shift1_data['merch_low_stock'])): ?>
                     <div style="overflow:hidden;margin-top:15px;">
                         <table style="width:100%;border-collapse:collapse;">
@@ -1447,8 +1515,8 @@ include __DIR__ . '/../partials/header.php';
                 <!-- Job Orders Status Breakdown -->
                 <div class="widget-card" style="margin:20px 0;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
-                        <h3 style="color:#003366;margin:0;">Job Orders — Shift 1</h3>
-                        <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="font-size:13px;color:#003366;text-decoration:none;font-weight:600;">View All &rarr;</a>
+                        <h3 style="color:#003366;margin:0;">Job Orders - <?= htmlspecialchars($shift1_label) ?></h3>
+                        <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="font-size:13px;color:#003366;text-decoration:none;font-weight:600;">View All</a>
                     </div>
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;">
                         <?php
@@ -1471,7 +1539,7 @@ include __DIR__ . '/../partials/header.php';
 
                 <!-- Payments Summary -->
                 <div class="widget-card" style="margin:20px 0;">
-                    <h3 style="color:#003366;margin-bottom:15px;">Payments Summary — Shift 1</h3>
+                    <h3 style="color:#003366;margin-bottom:15px;">Payments Summary - <?= htmlspecialchars($shift1_label) ?></h3>
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px;">
                         <?php
                         $pay_modes = [
@@ -1485,7 +1553,7 @@ include __DIR__ . '/../partials/header.php';
                         ?>
                         <div style="background:#f7f7f7;border-radius:10px;padding:14px;border-left:4px solid <?= $col ?>;">
                             <div style="font-size:11px;color:#666;font-weight:600;"><?= $mode ?></div>
-                            <div style="font-size:20px;font-weight:700;color:<?= $col ?>;margin-top:4px;">₱<?= number_format($amt,2) ?></div>
+                            <div style="font-size:20px;font-weight:700;color:<?= $col ?>;margin-top:4px;">&#8369;<?= number_format($amt,2) ?></div>
                         </div>
                         <?php endforeach; ?>
                     </div>
@@ -1495,7 +1563,7 @@ include __DIR__ . '/../partials/header.php';
                 <div class="widget-card" style="margin:20px 0;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
                         <h3 style="color:#003366;margin:0;">Customers</h3>
-                        <a href="staff_customers_report.php" style="font-size:13px;color:#003366;text-decoration:none;font-weight:600;">View All &rarr;</a>
+                        <a href="staff_customers_report.php" style="font-size:13px;color:#003366;text-decoration:none;font-weight:600;">View All</a>
                     </div>
                     <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:15px;">
                         <div style="background:#d4edda;border-radius:10px;padding:15px 25px;text-align:center;flex:1;">
@@ -1521,8 +1589,8 @@ include __DIR__ . '/../partials/header.php';
                             <?php foreach ($shift1_data['credit_customers'] as $cc): ?>
                             <tr>
                                 <td style="padding:8px 10px;border-bottom:1px solid #eee;"><?= htmlspecialchars($cc['name']) ?></td>
-                                <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right;color:#dc3545;font-weight:600;">₱<?= number_format($cc['balance'],2) ?></td>
-                                <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right;">₱<?= number_format($cc['credit_limit'],2) ?></td>
+                                <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right;color:#dc3545;font-weight:600;">&#8369;<?= number_format($cc['balance'],2) ?></td>
+                                <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right;">&#8369;<?= number_format($cc['credit_limit'],2) ?></td>
                                 <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center;">
                                     <span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:<?= $cc['status']==='active'?'#d4edda':'#f8d7da' ?>;color:<?= $cc['status']==='active'?'#155724':'#721c24' ?>;"><?= ucfirst($cc['status']) ?></span>
                                 </td>
@@ -1537,7 +1605,7 @@ include __DIR__ . '/../partials/header.php';
 
                 <!-- Activity Log -->
                 <div class="widget-card" style="margin:20px 0;">
-                    <h3 style="color:#003366;margin-bottom:15px;">Activity Log — Shift 1</h3>
+                    <h3 style="color:#003366;margin-bottom:15px;">Activity Log - <?= htmlspecialchars($shift1_label) ?></h3>
                     <div style="max-height:350px;overflow-y:auto;">
                         <?php if (!empty($shift1_data['activity_log'])): ?>
                             <?php foreach ($shift1_data['activity_log'] as $log): ?>
@@ -1556,15 +1624,15 @@ include __DIR__ . '/../partials/header.php';
                     </div>
                 </div>
 
-                <!-- Calendar Widget — Today's Tasks + Upcoming 3 Days -->
+                <!-- Calendar Widget - Tasks for Selected Date Range -->
                 <div class="calendar-widget">
                     <div class="calendar-header">
                         <h3>Tasks &amp; Upcoming Schedule</h3>
-                        <span style="color:#666;font-size:14px;"><?= date('F j, Y', strtotime($selected_date)) ?></span>
+                        <span style="color:#666;font-size:14px;"><?= htmlspecialchars($date_range_label) ?></span>
                     </div>
                     <div class="task-list">
                         <?php if (empty($shift1_data['calendar_tasks'])): ?>
-                            <p style="text-align:center;color:#666;padding:20px;">No tasks or deliveries in the next 3 days.</p>
+                            <p style="text-align:center;color:#666;padding:20px;">No tasks or deliveries in this date range.</p>
                         <?php else: ?>
                             <?php foreach ($shift1_data['calendar_tasks'] as $task):
                                 $isToday = date('Y-m-d', strtotime($task['task_date'])) === date('Y-m-d');
@@ -1648,7 +1716,7 @@ include __DIR__ . '/../partials/header.php';
                     <div class="stat-card">
                         <div class="details">
                             <div class="label">Fuel Sales</div>
-                            <div class="value">₱<?= number_format(array_sum(array_column($shift2_data['fuel'], 'revenue')), 2) ?></div>
+                            <div class="value">&#8369;<?= number_format(array_sum(array_column($shift2_data['fuel'], 'revenue')), 2) ?></div>
                             <small><?= number_format(array_sum(array_column($shift2_data['fuel'], 'liters')), 2) ?> L sold</small>
                         </div>
                         <div class="icon"><i class="fas fa-gas-pump"></i></div>
@@ -1656,7 +1724,7 @@ include __DIR__ . '/../partials/header.php';
                     <div class="stat-card">
                         <div class="details">
                             <div class="label">Merchandise Sales</div>
-                            <div class="value">₱<?= number_format($shift2_data['merch']['total'], 2) ?></div>
+                            <div class="value">&#8369;<?= number_format($shift2_data['merch']['total'], 2) ?></div>
                             <small><?= $shift2_data['merch']['count'] ?> transactions</small>
                         </div>
                         <div class="icon"><i class="fas fa-shopping-cart"></i></div>
@@ -1664,7 +1732,7 @@ include __DIR__ . '/../partials/header.php';
                     <div class="stat-card">
                         <div class="details">
                             <div class="label">Service Income</div>
-                            <div class="value">₱<?= number_format($shift2_data['service']['total_service_income'], 2) ?></div>
+                            <div class="value">&#8369;<?= number_format($shift2_data['service']['total_service_income'], 2) ?></div>
                             <small><?= $shift2_data['service']['completed_jobs'] ?> completed jobs</small>
                         </div>
                         <div class="icon"><i class="fas fa-wrench"></i></div>
@@ -1672,7 +1740,7 @@ include __DIR__ . '/../partials/header.php';
                     <div class="stat-card">
                         <div class="details">
                             <div class="label">Total Payments Collected</div>
-                            <div class="value">₱<?= number_format($shift2_data['payments_summary']['total'], 2) ?></div>
+                            <div class="value">&#8369;<?= number_format($shift2_data['payments_summary']['total'], 2) ?></div>
                             <small>Fuel + Merch + Service</small>
                         </div>
                         <div class="icon"><i class="fas fa-money-bill-wave"></i></div>
@@ -1681,7 +1749,7 @@ include __DIR__ . '/../partials/header.php';
                         <div class="details">
                             <div class="label">Job Orders</div>
                             <div class="value"><?= array_sum($shift2_data['jo_stats']) ?></div>
-                            <small><?= $shift2_data['jo_stats']['Pending'] ?? 0 ?> pending &bull; <?= $shift2_data['jo_stats']['In Progress'] ?? 0 ?> in progress &bull; <?= $shift2_data['jo_stats']['Completed'] ?? 0 ?> done</small>
+                            <small><?= $shift2_data['jo_stats']['Pending'] ?? 0 ?> pending, <?= $shift2_data['jo_stats']['In Progress'] ?? 0 ?> in progress, <?= $shift2_data['jo_stats']['Completed'] ?? 0 ?> done</small>
                         </div>
                         <div class="icon"><i class="fas fa-clipboard-list"></i></div>
                     </div>
@@ -1731,9 +1799,9 @@ include __DIR__ . '/../partials/header.php';
                 </div>
                 <?php endif; ?>
 
-                <!-- Merchandise Inventory — Low Stock Alerts -->
+                <!-- Merchandise Inventory - Low Stock Alerts -->
                 <div class="widget-card" style="margin:20px 0;">
-                    <h3 style="color:#003366;">Merchandise Inventory — Low Stock Alerts</h3>
+                    <h3 style="color:#003366;">Merchandise Inventory - Low Stock Alerts</h3>
                     <?php if (!empty($shift2_data['merch_low_stock'])): ?>
                     <div style="overflow:hidden;margin-top:15px;">
                         <table style="width:100%;border-collapse:collapse;">
@@ -1791,8 +1859,8 @@ include __DIR__ . '/../partials/header.php';
                 <!-- Job Orders Status Breakdown -->
                 <div class="widget-card" style="margin:20px 0;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
-                        <h3 style="color:#003366;margin:0;">Job Orders — Shift 2</h3>
-                        <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="font-size:13px;color:#003366;text-decoration:none;font-weight:600;">View All &rarr;</a>
+                        <h3 style="color:#003366;margin:0;">Job Orders - <?= htmlspecialchars($shift2_label) ?></h3>
+                        <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="font-size:13px;color:#003366;text-decoration:none;font-weight:600;">View All</a>
                     </div>
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;">
                         <?php
@@ -1815,7 +1883,7 @@ include __DIR__ . '/../partials/header.php';
 
                 <!-- Payments Summary -->
                 <div class="widget-card" style="margin:20px 0;">
-                    <h3 style="color:#003366;margin-bottom:15px;">Payments Summary — Shift 2</h3>
+                    <h3 style="color:#003366;margin-bottom:15px;">Payments Summary - <?= htmlspecialchars($shift2_label) ?></h3>
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px;">
                         <?php
                         $pay_modes2 = [
@@ -1829,7 +1897,7 @@ include __DIR__ . '/../partials/header.php';
                         ?>
                         <div style="background:#f7f7f7;border-radius:10px;padding:14px;border-left:4px solid <?= $col ?>;">
                             <div style="font-size:11px;color:#666;font-weight:600;"><?= $mode ?></div>
-                            <div style="font-size:20px;font-weight:700;color:<?= $col ?>;margin-top:4px;">₱<?= number_format($amt,2) ?></div>
+                            <div style="font-size:20px;font-weight:700;color:<?= $col ?>;margin-top:4px;">&#8369;<?= number_format($amt,2) ?></div>
                         </div>
                         <?php endforeach; ?>
                     </div>
@@ -1839,7 +1907,7 @@ include __DIR__ . '/../partials/header.php';
                 <div class="widget-card" style="margin:20px 0;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
                         <h3 style="color:#003366;margin:0;">Customers</h3>
-                        <a href="staff_customers_report.php" style="font-size:13px;color:#003366;text-decoration:none;font-weight:600;">View All &rarr;</a>
+                        <a href="staff_customers_report.php" style="font-size:13px;color:#003366;text-decoration:none;font-weight:600;">View All</a>
                     </div>
                     <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:15px;">
                         <div style="background:#d4edda;border-radius:10px;padding:15px 25px;text-align:center;flex:1;">
@@ -1865,8 +1933,8 @@ include __DIR__ . '/../partials/header.php';
                             <?php foreach ($shift2_data['credit_customers'] as $cc): ?>
                             <tr>
                                 <td style="padding:8px 10px;border-bottom:1px solid #eee;"><?= htmlspecialchars($cc['name']) ?></td>
-                                <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right;color:#dc3545;font-weight:600;">₱<?= number_format($cc['balance'],2) ?></td>
-                                <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right;">₱<?= number_format($cc['credit_limit'],2) ?></td>
+                                <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right;color:#dc3545;font-weight:600;">&#8369;<?= number_format($cc['balance'],2) ?></td>
+                                <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right;">&#8369;<?= number_format($cc['credit_limit'],2) ?></td>
                                 <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center;">
                                     <span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:<?= $cc['status']==='active'?'#d4edda':'#f8d7da' ?>;color:<?= $cc['status']==='active'?'#155724':'#721c24' ?>;"><?= ucfirst($cc['status']) ?></span>
                                 </td>
@@ -1881,7 +1949,7 @@ include __DIR__ . '/../partials/header.php';
 
                 <!-- Activity Log -->
                 <div class="widget-card" style="margin:20px 0;">
-                    <h3 style="color:#003366;margin-bottom:15px;">Activity Log — Shift 2</h3>
+                    <h3 style="color:#003366;margin-bottom:15px;">Activity Log - <?= htmlspecialchars($shift2_label) ?></h3>
                     <div style="max-height:350px;overflow-y:auto;">
                         <?php if (!empty($shift2_data['activity_log'])): ?>
                             <?php foreach ($shift2_data['activity_log'] as $log): ?>
@@ -1900,15 +1968,15 @@ include __DIR__ . '/../partials/header.php';
                     </div>
                 </div>
 
-                <!-- Calendar Widget — Today's Tasks + Upcoming 3 Days -->
+                <!-- Calendar Widget - Tasks for Selected Date Range -->
                 <div class="calendar-widget">
                     <div class="calendar-header">
                         <h3>Tasks &amp; Upcoming Schedule</h3>
-                        <span style="color:#666;font-size:14px;"><?= date('F j, Y', strtotime($selected_date)) ?></span>
+                        <span style="color:#666;font-size:14px;"><?= htmlspecialchars($date_range_label) ?></span>
                     </div>
                     <div class="task-list">
                         <?php if (empty($shift2_data['calendar_tasks'])): ?>
-                            <p style="text-align:center;color:#666;padding:20px;">No tasks or deliveries in the next 3 days.</p>
+                            <p style="text-align:center;color:#666;padding:20px;">No tasks or deliveries in this date range.</p>
                         <?php else: ?>
                             <?php foreach ($shift2_data['calendar_tasks'] as $task):
                                 $isToday = date('Y-m-d', strtotime($task['task_date'])) === date('Y-m-d');
@@ -1937,7 +2005,7 @@ include __DIR__ . '/../partials/header.php';
                     <div class="quick-actions">
                         <a href="staff_transactions_hub.php?section=merchandise" class="quick-action-btn"><div>POS / Merchandise</div></a>
                         <a href="staff_transactions_hub.php?section=merchandise" class="quick-action-btn"><div>Credit Sale</div></a>
-                        <a href="joborder.php" class="quick-action-btn"><div>Job Orders</div></a>
+                        <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker" class="quick-action-btn"><div>Job Orders</div></a>
                         <a href="staff_transactions_hub.php?section=fuel" class="quick-action-btn"><div>Fuel Transactions</div></a>
                         <a href="staff_record_delivery.php" class="quick-action-btn"><div>Receive Items</div></a>
                         <a href="my_shift.php" class="quick-action-btn"><div>My Shift</div></a>
@@ -1950,8 +2018,8 @@ include __DIR__ . '/../partials/header.php';
             <?php if ($can_view_consolidation && $shift1_data && $shift2_data): ?>
             <div class="tab-content <?= $can_view_consolidation ? 'active' : '' ?>" id="consolidation">
                 <div class="consolidation-header">
-                    <h2>Daily Consolidation Report</h2>
-                    <p><?= date('F j, Y', strtotime($selected_date)) ?> - Combined Shift 1 + Shift 2</p>
+                    <h2>Consolidated Report</h2>
+                    <p><?= htmlspecialchars($date_range_label) ?> - Combined <?= htmlspecialchars($shift1_label) ?> + <?= htmlspecialchars($shift2_label) ?></p>
                 </div>
                 
                 <!-- Overall Summary Cards -->
@@ -1959,7 +2027,7 @@ include __DIR__ . '/../partials/header.php';
                     <div class="stat-card">
                         <div class="details">
                             <div class="label">Total Revenue</div>
-                            <div class="value">₱<?php 
+                            <div class="value">&#8369;<?php
                                 $total_fuel = array_sum(array_column($shift1_data['fuel'], 'revenue')) + array_sum(array_column($shift2_data['fuel'], 'revenue'));
                                 $total_merch = $shift1_data['merch']['total'] + $shift2_data['merch']['total'];
                                 $total_service = $shift1_data['service']['total_service_income'] + $shift2_data['service']['total_service_income'];
@@ -1973,7 +2041,7 @@ include __DIR__ . '/../partials/header.php';
                     <div class="stat-card">
                         <div class="details">
                             <div class="label">Fuel Sales (Both Shifts)</div>
-                            <div class="value">₱<?= number_format($total_fuel, 2) ?></div>
+                            <div class="value">&#8369;<?= number_format($total_fuel, 2) ?></div>
                             <small><?= number_format(array_sum(array_column($shift1_data['fuel'], 'liters')) + array_sum(array_column($shift2_data['fuel'], 'liters')), 2) ?> L</small>
                         </div>
                         <div class="icon"><i class="fas fa-gas-pump"></i></div>
@@ -1982,7 +2050,7 @@ include __DIR__ . '/../partials/header.php';
                     <div class="stat-card">
                         <div class="details">
                             <div class="label">Merchandise Sales (Both Shifts)</div>
-                            <div class="value">₱<?= number_format($total_merch, 2) ?></div>
+                            <div class="value">&#8369;<?= number_format($total_merch, 2) ?></div>
                             <small><?= $shift1_data['merch']['count'] + $shift2_data['merch']['count'] ?> transactions</small>
                         </div>
                         <div class="icon"><i class="fas fa-shopping-cart"></i></div>
@@ -1991,7 +2059,7 @@ include __DIR__ . '/../partials/header.php';
                     <div class="stat-card">
                         <div class="details">
                             <div class="label">Service Income (Both Shifts)</div>
-                            <div class="value">₱<?= number_format($total_service, 2) ?></div>
+                            <div class="value">&#8369;<?= number_format($total_service, 2) ?></div>
                             <small><?= $shift1_data['service']['completed_jobs'] + $shift2_data['service']['completed_jobs'] ?> completed jobs</small>
                         </div>
                         <div class="icon"><i class="fas fa-wrench"></i></div>
@@ -2010,7 +2078,7 @@ include __DIR__ . '/../partials/header.php';
                         <div class="details">
                             <div class="label">New Customers</div>
                             <div class="value"><?= $shift1_data['new_customers'] + $shift2_data['new_customers'] ?></div>
-                            <small>Both Shifts Today</small>
+                            <small>Selected Range</small>
                         </div>
                         <div class="icon"><i class="fas fa-users"></i></div>
                     </div>
@@ -2019,7 +2087,7 @@ include __DIR__ . '/../partials/header.php';
                 <!-- Combined Charts -->
                 <div class="charts-grid">
                     <div class="chart-card">
-                        <h3>Fuel Sales - Daily Comparison</h3>
+                        <h3>Fuel Sales - Selected Range Comparison</h3>
                         <canvas id="consolidationFuelChart"></canvas>
                     </div>
                     
@@ -2029,12 +2097,12 @@ include __DIR__ . '/../partials/header.php';
                     </div>
                     
                     <div class="chart-card">
-                        <h3>Job Orders - Daily Summary</h3>
+                        <h3>Job Orders - Selected Range Summary</h3>
                         <canvas id="consolidationJobOrderChart"></canvas>
                     </div>
                     
                     <div class="chart-card">
-                        <h3>Payment Methods - Daily Total</h3>
+                        <h3>Payment Methods - Selected Range Total</h3>
                         <canvas id="consolidationPaymentChart"></canvas>
                     </div>
                 </div>
@@ -2042,7 +2110,7 @@ include __DIR__ . '/../partials/header.php';
                 <!-- Consolidated Calendar -->
                 <div class="calendar-widget">
                     <div class="calendar-header">
-                        <h3>Complete Daily Schedule</h3>
+                        <h3>Complete Schedule</h3>
                         <span style="color: #666666; font-size: 14px;">All Tasks & Deliveries</span>
                     </div>
                     <div class="task-list">
@@ -2084,13 +2152,13 @@ include __DIR__ . '/../partials/header.php';
                         Export Options
                     </h3>
                     <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-                        <a href="export_daily_report.php?date=<?= date('Y-m-d') ?>" class="txn-btn primary">
-                            <i class="fa-solid fa-file-lines"></i> Export Daily Report
+                        <a href="<?= htmlspecialchars($report_sales_url) ?>" class="txn-btn primary">
+                            <i class="fa-solid fa-file-lines"></i> Export Sales Report
                         </a>
-                        <a href="export_audit_trail.php?date=<?= date('Y-m-d') ?>" class="txn-btn secondary">
+                        <a href="<?= htmlspecialchars($report_activity_url) ?>" class="txn-btn secondary">
                             <i class="fa-solid fa-list-check"></i> Export Audit Trail
                         </a>
-                        <a href="export_consolidation.php?date=<?= date('Y-m-d') ?>" class="txn-btn success">
+                        <a href="<?= htmlspecialchars($report_job_orders_url) ?>" class="txn-btn success">
                             <i class="fa-solid fa-file-excel"></i> Export to Excel
                         </a>
                     </div>
@@ -2456,38 +2524,39 @@ include __DIR__ . '/../partials/header.php';
         // Consolidation - Fuel Sales Comparison Chart
         const consolidationFuelCtx = document.getElementById('consolidationFuelChart')?.getContext('2d');
         if (consolidationFuelCtx) {
-        new Chart(consolidationFuelCtx, {
-            type: 'bar',
-            data: {
-                labels: <?= json_encode(array_unique(array_merge(array_column($shift1_data['fuel'], 'fuel_type'), array_column($shift2_data['fuel'], 'fuel_type')))) ?>,
-                datasets: [
-                    {
-                        label: 'Shift 1 (6AM-2PM)',
-                        data: <?= json_encode(array_column($shift1_data['fuel'], 'liters')) ?>,
-                        backgroundColor: 'rgba(0, 51, 102, 0.8)'
-                    },
-                    {
-                        label: 'Shift 2 (2PM-10PM)',
-                        data: <?= json_encode(array_column($shift2_data['fuel'], 'liters')) ?>,
-                        backgroundColor: 'rgba(220, 53, 69, 0.8)'
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            callback: function(value) {
-                                return value.toLocaleString() + ' L';
+            new Chart(consolidationFuelCtx, {
+                type: 'bar',
+                data: {
+                    labels: <?= json_encode($consolidation_fuel_labels) ?>,
+                    datasets: [
+                        {
+                            label: <?= json_encode($shift1_label) ?>,
+                            data: <?= json_encode($consolidation_shift1_fuel_liters) ?>,
+                            backgroundColor: 'rgba(0, 51, 102, 0.8)'
+                        },
+                        {
+                            label: <?= json_encode($shift2_label) ?>,
+                            data: <?= json_encode($consolidation_shift2_fuel_liters) ?>,
+                            backgroundColor: 'rgba(220, 53, 69, 0.8)'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString() + ' L';
+                                }
                             }
                         }
                     }
                 }
-            }
-        });
+            });
+        }
         
         // Consolidation - Merchandise Category Chart (LIVE DB DATA - both shifts combined)
         const consolidationMerchCtx = document.getElementById('consolidationMerchChart')?.getContext('2d');
@@ -2527,10 +2596,10 @@ include __DIR__ . '/../partials/header.php';
             new Chart(consolidationJobOrderCtx, {
                 type: 'line',
                 data: {
-                    labels: ['6 AM', '8 AM', '10 AM', '12 PM', '2 PM', '4 PM', '6 PM', '8 PM', '10 PM'],
+                    labels: <?= json_encode($consolidation_jo_labels) ?>,
                     datasets: [{
-                        label: 'Cumulative Job Orders',
-                        data: [0, 2, 6, 9, 14, 20, 24, 26, 26],
+                        label: 'Job Orders Created',
+                        data: <?= json_encode($consolidation_jo_data) ?>,
                         borderColor: '#003366',
                         backgroundColor: 'rgba(0, 51, 102, 0.1)',
                         tension: 0.4,
@@ -2559,7 +2628,7 @@ include __DIR__ . '/../partials/header.php';
                 labels: ['Cash', 'Card', 'E-Wallet', 'E-Fuel Card', 'Fleet Card'],
                 datasets: [
                     {
-                        label: 'Shift 1',
+                        label: <?= json_encode($shift1_label) ?>,
                         data: [
                             <?= floatval($shift1_data['payments_summary']['cash']) ?>,
                             <?= floatval($shift1_data['payments_summary']['card']) ?>,
@@ -2570,7 +2639,7 @@ include __DIR__ . '/../partials/header.php';
                         backgroundColor: 'rgba(0, 51, 102, 0.8)'
                     },
                     {
-                        label: 'Shift 2',
+                        label: <?= json_encode($shift2_label) ?>,
                         data: [
                             <?= floatval($shift2_data['payments_summary']['cash']) ?>,
                             <?= floatval($shift2_data['payments_summary']['card']) ?>,
@@ -2590,7 +2659,7 @@ include __DIR__ . '/../partials/header.php';
                         beginAtZero: true,
                         ticks: {
                             callback: function(value) {
-                                return '₱' + value.toLocaleString();
+                                return '\u20B1' + value.toLocaleString();
                             }
                         }
                     }

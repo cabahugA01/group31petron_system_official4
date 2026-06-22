@@ -99,7 +99,7 @@ try {
         "SELECT mt.id, mt.transaction_id, mt.status, mt.created_at,
                 u.name AS staff_name, mt.total_amount
          FROM merchandise_transactions mt
-         LEFT JOIN users u ON u.user_id = mt.staff_id
+         LEFT JOIN users u ON u.id = mt.staff_id
          WHERE mt.status IN ('Pending Approval','pending_approval','Pending','pending')
            AND mt.created_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
            {$s}
@@ -126,7 +126,7 @@ try {
         "SELECT ft.id, ft.status, ft.fuel_type, ft.transaction_date,
                 u.name AS staff_name, ft.liters_sold
          FROM fuel_transactions ft
-         LEFT JOIN users u ON u.user_id = ft.staff_id
+         LEFT JOIN users u ON u.id = ft.staff_id
          WHERE ft.status IN ('Pending Approval','pending_approval','Pending','pending')
            AND ft.transaction_date >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
            {$s}
@@ -155,7 +155,7 @@ try {
                 jo.customer_name, jo.service_type, jo.updated_at,
                 u.name AS staff_name
          FROM job_orders jo
-         LEFT JOIN users u ON u.user_id = jo.created_by
+         LEFT JOIN users u ON u.id = jo.created_by
          WHERE jo.updated_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
            {$s}
          ORDER BY jo.updated_at DESC LIMIT 20"
@@ -208,7 +208,9 @@ try {
         "SELECT fi.id, fi.fuel_type, fi.current_level, fi.capacity,
                 fi.station_id
          FROM fuel_inventory fi
-         WHERE fi.current_level <= (fi.capacity * 0.20)
+         WHERE fi.current_level > 0
+           AND fi.capacity > 0
+           AND fi.current_level <= (fi.capacity * 0.20)
            {$s}
          ORDER BY (fi.current_level / fi.capacity) ASC LIMIT 10"
     )->fetchAll(PDO::FETCH_ASSOC);
@@ -283,6 +285,7 @@ try {
              FROM station_inventory si
              INNER JOIN inventory_products ip ON ip.id = si.product_id
              WHERE si.station_id = ?
+               AND si.stock_level > 0
                AND si.stock_level <= COALESCE(ip.reorder_level, 10)
                AND ip.category NOT IN ('Fuel')
              ORDER BY si.stock_level ASC LIMIT 15"
@@ -294,7 +297,8 @@ try {
             "SELECT id, product_name, sku, stock AS stock_level,
                     COALESCE(reorder_level, 10) AS reorder_level
              FROM inventory_products
-             WHERE stock <= COALESCE(reorder_level, 10)
+             WHERE stock > 0
+               AND stock <= COALESCE(reorder_level, 10)
                AND category NOT IN ('Fuel')
              ORDER BY stock ASC LIMIT 15"
         )->fetchAll(PDO::FETCH_ASSOC);
@@ -322,7 +326,7 @@ try {
         "SELECT sr.id, sr.product_name, sr.status, sr.created_at,
                 u.name AS staff_name
          FROM stock_requests sr
-         LEFT JOIN users u ON u.user_id = sr.staff_id
+         LEFT JOIN users u ON u.id = sr.staff_id
          WHERE sr.status IN ('flagged','error','Error','Flagged','rejected','Rejected')
            AND sr.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
            {$s}
@@ -398,7 +402,7 @@ try {
                 do2.delivery_type, do2.updated_at,
                 u.name AS staff_name
          FROM deliveries_oversight do2
-         LEFT JOIN users u ON u.user_id = do2.encoded_by
+         LEFT JOIN users u ON u.id = do2.encoded_by
          WHERE do2.updated_at >= DATE_SUB(NOW(), INTERVAL 72 HOUR)
            {$s}
          ORDER BY do2.updated_at DESC LIMIT 20"
@@ -448,7 +452,7 @@ try {
         "SELECT ce.id, ce.title, ce.start_time, ce.end_time,
                 ce.event_type, u.name AS assigned_name
          FROM calendar_events ce
-         LEFT JOIN users u ON u.user_id = ce.user_id
+         LEFT JOIN users u ON u.id = ce.user_id
          WHERE DATE(ce.start_time) = CURDATE()
            {$s}
          ORDER BY ce.start_time ASC LIMIT 10"
@@ -482,7 +486,7 @@ try {
                 AND ce1.id < ce2.id
                 AND ce1.start_time < ce2.end_time
                 AND ce2.start_time < ce1.end_time
-         LEFT JOIN users u ON u.user_id = ce1.user_id
+         LEFT JOIN users u ON u.id = ce1.user_id
          WHERE DATE(ce1.start_time) >= CURDATE()
            AND DATE(ce1.start_time) <= DATE_ADD(CURDATE(), INTERVAL 7 DAY)
            {$s}

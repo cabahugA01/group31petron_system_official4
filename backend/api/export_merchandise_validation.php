@@ -5,16 +5,30 @@ require_once __DIR__ . '/../../backend/lib.php';
 header('Content-Type: application/json');
 
 // Start session for user authentication
-session_start();
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
 
 try {
     // Validate user is logged in and has proper role
-    if (!isset($_SESSION['user_id']) || !isset($_SESSION['role'])) {
+    $session_user = $_SESSION['user'] ?? [];
+    $user_id = (int)($_SESSION['user_id'] ?? ($session_user['id'] ?? 0));
+    $user_role = role_key($_SESSION['role'] ?? ($session_user['role'] ?? ''));
+
+    if ($user_id <= 0 || $user_role === '') {
         throw new Exception('User not authenticated');
     }
 
-    $user_id = $_SESSION['user_id'];
-    $user_role = $_SESSION['role'];
+    if (empty($_SESSION['user'])) {
+        $user_stmt = $pdo->prepare("SELECT id, username, role, station_id, status FROM users WHERE id = ? LIMIT 1");
+        $user_stmt->execute([$user_id]);
+        $db_user = $user_stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$db_user) {
+            throw new Exception('User not found');
+        }
+        $_SESSION['user'] = $db_user;
+        $session_user = $db_user;
+    }
     
     // Check if user has manager role
     if (!in_array($user_role, ['manager', 'admin', 'superadmin'])) {
@@ -22,7 +36,7 @@ try {
     }
     
     // Get station ID
-    $station_id = user_station_id();
+    $station_id = user_station_id() ?: (int)($session_user['station_id'] ?? 0);
     if (!$station_id) {
         throw new Exception('Station not found');
     }
@@ -117,8 +131,18 @@ function exportValidationLog($pdo, $station_id, $format, $date_from, $date_to) {
             SELECT 
                 val.transaction_id,
                 val.action,
-                val.manager_name,
-                val.staff_name,
+                COALESCE(
+                    NULLIF(TRIM(mgr.name), ''),
+                    NULLIF(CONCAT(TRIM(mgr.first_name), ' ', TRIM(mgr.last_name)), ' '),
+                    mgr.username,
+                    'Unassigned'
+                ) AS manager_name,
+                COALESCE(
+                    NULLIF(TRIM(staff.name), ''),
+                    NULLIF(CONCAT(TRIM(staff.first_name), ' ', TRIM(staff.last_name)), ' '),
+                    staff.username,
+                    'Unassigned'
+                ) AS staff_name,
                 val.original_total,
                 val.adjusted_total,
                 val.remarks,
@@ -126,6 +150,8 @@ function exportValidationLog($pdo, $station_id, $format, $date_from, $date_to) {
                 val.original_items,
                 val.adjusted_items
             FROM validation_actions_log val
+            LEFT JOIN users mgr ON val.manager_id = mgr.id
+            LEFT JOIN users staff ON val.staff_id = staff.id
             WHERE val.station_id = ? 
             AND DATE(val.created_at) BETWEEN ? AND ?
             ORDER BY val.created_at DESC

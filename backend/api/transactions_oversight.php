@@ -21,7 +21,8 @@ require_once __DIR__ . '/../../public/db_connect.php';
 session_start();
 
 // Check if user is logged in and has manager privileges
-if (!isset($_SESSION['user_id'])) {
+$session_user_id = $_SESSION['user_id'] ?? ($_SESSION['user']['id'] ?? null);
+if (!$session_user_id) {
     http_response_code(401);
     echo json_encode(['success' => false, 'error' => 'Unauthorized access']);
     exit;
@@ -29,8 +30,8 @@ if (!isset($_SESSION['user_id'])) {
 
 // Get current user and station
 try {
-    $stmt = $pdo->prepare("SELECT station_id, role FROM users WHERE user_id = ?");
-    $stmt->execute([$_SESSION['user_id']]);
+    $stmt = $pdo->prepare("SELECT station_id, role FROM users WHERE id = ?");
+    $stmt->execute([$session_user_id]);
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$user || !in_array($user['role'], ['manager', 'admin', 'superadmin'])) {
@@ -145,7 +146,7 @@ function getValidatedTransactions($station_id, $date_filter, $type_filter, $paym
             s.status,
             NULL as pump_number
         FROM sales s
-        LEFT JOIN users u ON u.user_id = s.staff_id
+        LEFT JOIN users u ON u.id = s.staff_id
         LEFT JOIN sale_items si ON si.sale_id = s.id
         WHERE s.station_id = ? $date_condition $type_condition $payment_condition $search_condition
         
@@ -232,7 +233,7 @@ function getPendingTransactions($station_id) {
             s.status,
             s.created_at as submitted_at
         FROM sales s
-        LEFT JOIN users u ON u.user_id = s.staff_id
+        LEFT JOIN users u ON u.id = s.staff_id
         LEFT JOIN sale_items si ON si.sale_id = s.id
         WHERE s.station_id = ? AND s.status = 'pending_validation'
         
@@ -249,7 +250,7 @@ function getPendingTransactions($station_id) {
             ft.status,
             ft.created_at as submitted_at
         FROM fuel_transactions ft
-        LEFT JOIN users u ON u.user_id = ft.staff_id
+        LEFT JOIN users u ON u.id = ft.staff_id
         WHERE ft.station_id = ? AND ft.status = 'pending_validation'
         
         ORDER BY submitted_at DESC
@@ -386,7 +387,7 @@ function getShiftTransactions($station_id, $date_filter, $staff_filter, $status_
             COALESCE(SUM(ft.total_amount), 0) + COALESCE(SUM(sales.total_amount), 0) as total_amount,
             COUNT(ft.id) + COUNT(sales.id) as transaction_count
         FROM shifts s
-        LEFT JOIN users u ON u.user_id = s.staff_id
+        LEFT JOIN users u ON u.id = s.staff_id
         LEFT JOIN fuel_transactions ft ON ft.station_id = s.station_id 
             AND ft.staff_id = s.staff_id 
             AND ft.transaction_date BETWEEN s.start_time AND COALESCE(s.end_time, NOW())

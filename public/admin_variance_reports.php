@@ -21,7 +21,41 @@ $msg_success = $_SESSION['success'] ?? '';
 $msg_error   = $_SESSION['error'] ?? '';
 unset($_SESSION['success'], $_SESSION['error']);
 
-// ── Handle Form Submissions ───────────────────────────────────────────────────
+function mvr_user_name_expr(string $alias): string
+{
+    return "COALESCE(NULLIF(TRIM({$alias}.name), ''), NULLIF(CONCAT(TRIM({$alias}.first_name), ' ', TRIM({$alias}.last_name)), ' '), {$alias}.username, 'Unassigned')";
+}
+
+function mvr_nullable_id(string $key): ?int
+{
+    if (!isset($_POST[$key]) || $_POST[$key] === '') {
+        return null;
+    }
+
+    $id = (int)$_POST[$key];
+    return $id > 0 ? $id : null;
+}
+
+function mvr_user_allowed(PDO $pdo, ?int $user_id, int $target_station, string $role): bool
+{
+    if ($user_id === null) {
+        return true;
+    }
+
+    $sql = "SELECT COUNT(*) FROM users WHERE id = ? AND status = 'Active'";
+    $params = [$user_id];
+
+    if ($role !== 'superadmin') {
+        $sql .= " AND (station_id = ? OR station_id IS NULL)";
+        $params[] = $target_station;
+    }
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    return (int)$stmt->fetchColumn() > 0;
+}
+
+// Handle Form Submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = trim($_POST['action'] ?? '');
 
@@ -33,8 +67,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $expected  = (float)($_POST['expected_quantity'] ?? 0);
         $actual    = (float)($_POST['actual_quantity'] ?? 0);
         $reason    = trim($_POST['reason'] ?? '');
-        $encoder   = trim($_POST['encoder_name'] ?? '');
-        $manager   = trim($_POST['manager_name'] ?? '');
+        $encoder_id = mvr_nullable_id('encoder_id');
+        $manager_id = mvr_nullable_id('manager_id') ?: (int)($me['id'] ?? 0);
         $status    = trim($_POST['status'] ?? 'flagged');
         $target_station = ($role === 'superadmin') ? (int)($_POST['station_id'] ?? $station_id) : $station_id;
 
@@ -42,8 +76,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $status = 'flagged';
         }
 
-        if (empty($txn_id) || empty($item_name) || empty($reason)) {
+        if ($target_station <= 0) {
+            $_SESSION['error'] = 'Station is required.';
+        } elseif (empty($txn_id) || empty($item_name) || empty($reason)) {
             $_SESSION['error'] = 'Transaction ID, Item Name, and Reason are required.';
+        } elseif (!mvr_user_allowed($pdo, $encoder_id, $target_station, $role) || !mvr_user_allowed($pdo, $manager_id, $target_station, $role)) {
+            $_SESSION['error'] = 'Selected encoder or manager is not valid for this station.';
         } else {
             // Calculate variance
             $variance = $actual - $expected;
@@ -51,11 +89,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $stmt = $pdo->prepare("
                     INSERT INTO variance_reports 
-                    (transaction_id, item_code, item_name, expected_quantity, actual_quantity, variance, reason, encoder_name, manager_name, status, station_id, flagged_at, created_at, updated_at)
+                    (transaction_id, item_code, item_name, expected_quantity, actual_quantity, variance, reason, encoder_id, manager_id, status, station_id, flagged_at, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())
                 ");
                 $stmt->execute([
-                    $txn_id, $item_code, $item_name, $expected, $actual, $variance, $reason, $encoder, $manager, $status, $target_station
+                    $txn_id, $item_code, $item_name, $expected, $actual, $variance, $reason, $encoder_id, $manager_id, $status, $target_station
                 ]);
 
                 log_activity($pdo, $me['id'], 'Create Merchandise Variance', "Created merchandise variance report for txn #{$txn_id} (Item: {$item_name}, Status: {$status})");
@@ -73,25 +111,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $id      = (int)($_POST['id'] ?? 0);
         $status  = trim($_POST['status'] ?? '');
         $reason  = trim($_POST['reason'] ?? '');
-        $manager = trim($_POST['manager_name'] ?? '');
+        $manager_id = mvr_nullable_id('manager_id') ?: (int)($me['id'] ?? 0);
         $actual  = isset($_POST['actual_quantity']) ? (float)$_POST['actual_quantity'] : null;
 
         if ($id <= 0) {
             $_SESSION['error'] = 'Invalid report ID.';
         } elseif (!in_array($status, ['flagged', 'cleared', 'pending_review'])) {
             $_SESSION['error'] = 'Invalid status selected.';
+        } elseif ($manager_id <= 0) {
+            $_SESSION['error'] = 'Manager is required.';
         } else {
             try {
                 // Fetch existing record first to verify access & compute variance if quantity changed
-                $stmt = $pdo->prepare("SELECT * FROM variance_reports WHERE id = ? " . ($role !== 'superadmin' ? "AND station_id = {$station_id}" : ""));
-                $stmt->execute([$id]);
+                $fetch_sql = "SELECT * FROM variance_reports WHERE id = ?";
+                $fetch_params = [$id];
+                if ($role !== 'superadmin') {
+                    $fetch_sql .= " AND station_id = ?";
+                    $fetch_params[] = $station_id;
+                }
+
+                $stmt = $pdo->prepare($fetch_sql);
+                $stmt->execute($fetch_params);
                 $existing = $stmt->fetch(PDO::FETCH_ASSOC);
 
                 if (!$existing) {
                     $_SESSION['error'] = 'Report not found or access denied.';
+                } elseif (!mvr_user_allowed($pdo, $manager_id, (int)$existing['station_id'], $role)) {
+                    $_SESSION['error'] = 'Selected manager is not valid for this station.';
                 } else {
-                    $update_fields = ["status = ?", "reason = ?", "manager_name = ?", "updated_at = NOW()"];
-                    $params = [$status, $reason, $manager];
+                    $update_fields = ["status = ?", "reason = ?", "manager_id = ?", "updated_at = NOW()"];
+                    $params = [$status, $reason, $manager_id];
 
                     if ($actual !== null) {
                         $expected = (float)$existing['expected_quantity'];
@@ -155,7 +204,7 @@ $export        = trim($_GET['export']    ?? '');
 
 $filter_station = ($role === 'superadmin') ? (int)($_GET['station'] ?? 0) : $station_id;
 
-// ── Station Name ──────────────────────────────────────────────────────────────
+// Station Name
 $station_name = 'All Stations';
 if ($filter_station > 0) {
     try {
@@ -165,37 +214,42 @@ if ($filter_station > 0) {
     } catch (Exception $e) {}
 }
 
-// ── Build Query WHERE ─────────────────────────────────────────────────────────
-$where  = ["DATE(flagged_at) BETWEEN ? AND ?"];
+$encoder_name_expr = mvr_user_name_expr('enc');
+$manager_name_expr = mvr_user_name_expr('mgr');
+
+// Build Query WHERE
+$where  = ["DATE(vr.flagged_at) BETWEEN ? AND ?"];
 $params = [$date_from, $date_to];
 
 if ($filter_station > 0) {
-    $where[] = "station_id = ?";
+    $where[] = "vr.station_id = ?";
     $params[] = $filter_station;
 }
 if ($filter_status !== '') {
-    $where[] = "status = ?";
+    $where[] = "vr.status = ?";
     $params[] = $filter_status;
 }
 if ($search_q !== '') {
-    $where[] = "(transaction_id LIKE ? OR item_code LIKE ? OR item_name LIKE ? OR reason LIKE ? OR encoder_name LIKE ? OR manager_name LIKE ?)";
+    $where[] = "(vr.transaction_id LIKE ? OR vr.item_code LIKE ? OR vr.item_name LIKE ? OR vr.reason LIKE ? OR {$encoder_name_expr} LIKE ? OR {$manager_name_expr} LIKE ?)";
     $s_wild = '%' . $search_q . '%';
     array_push($params, $s_wild, $s_wild, $s_wild, $s_wild, $s_wild, $s_wild);
 }
 $where_sql = implode(' AND ', $where);
 
-// ── Fetch Summary Counts ──────────────────────────────────────────────────────
+// Fetch Summary Counts
 $cnt_total = $cnt_flagged = $cnt_cleared = $cnt_pending = 0;
 $sum_variance = 0;
 try {
     $s = $pdo->prepare("
         SELECT 
             COUNT(*) as total,
-            SUM(CASE WHEN status='flagged' THEN 1 ELSE 0 END) as flagged_c,
-            SUM(CASE WHEN status='cleared' THEN 1 ELSE 0 END) as cleared_c,
-            SUM(CASE WHEN status='pending_review' THEN 1 ELSE 0 END) as pending_c,
-            SUM(ABS(variance)) as total_var
-        FROM variance_reports 
+            SUM(CASE WHEN vr.status='flagged' THEN 1 ELSE 0 END) as flagged_c,
+            SUM(CASE WHEN vr.status='cleared' THEN 1 ELSE 0 END) as cleared_c,
+            SUM(CASE WHEN vr.status='pending_review' THEN 1 ELSE 0 END) as pending_c,
+            SUM(ABS(vr.variance)) as total_var
+        FROM variance_reports vr
+        LEFT JOIN users enc ON vr.encoder_id = enc.id
+        LEFT JOIN users mgr ON vr.manager_id = mgr.id
         WHERE {$where_sql}
     ");
     $s->execute($params);
@@ -207,13 +261,34 @@ try {
     $sum_variance = (float)($row['total_var'] ?? 0);
 } catch (Exception $e) {}
 
-// ── Fetch Variance Records ────────────────────────────────────────────────────
+// Fetch Variance Records
 $records = [];
 try {
     $stmt = $pdo->prepare("
-        SELECT vr.*, s.name as station_name
+        SELECT
+            vr.id,
+            vr.transaction_id,
+            vr.item_code,
+            vr.item_name,
+            vr.expected_quantity,
+            vr.actual_quantity,
+            vr.variance,
+            vr.reason,
+            vr.encoder_id,
+            {$encoder_name_expr} AS encoder_name,
+            vr.manager_id,
+            {$manager_name_expr} AS manager_name,
+            vr.status,
+            vr.station_id,
+            vr.flagged_at,
+            vr.resolved_at,
+            vr.created_at,
+            vr.updated_at,
+            s.name as station_name
         FROM variance_reports vr
         LEFT JOIN stations s ON vr.station_id = s.id
+        LEFT JOIN users enc ON vr.encoder_id = enc.id
+        LEFT JOIN users mgr ON vr.manager_id = mgr.id
         WHERE {$where_sql}
         ORDER BY FIELD(vr.status, 'flagged', 'pending_review', 'cleared'), vr.flagged_at DESC
         LIMIT 1000
@@ -222,16 +297,39 @@ try {
     $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// ── Stations list for superadmin ──────────────────────────────────────────────
+// Stations list for superadmin
 $stations = [];
 if ($role === 'superadmin') {
     try {
-        $stmt = $pdo->query("SELECT id, name FROM stations WHERE status = 'Active' ORDER BY name");
+        $stmt = $pdo->query("SELECT id, name FROM stations WHERE LOWER(COALESCE(status, 'active')) = 'active' ORDER BY name");
         $stations = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {}
 }
 
-// ── EXPORT ────────────────────────────────────────────────────────────────────
+// User list for normalized encoder/manager selection
+$user_options = [];
+try {
+    $user_label_expr = mvr_user_name_expr('u');
+    $user_sql = "
+        SELECT u.id, {$user_label_expr} AS display_name, u.role, u.station_id, s.name AS station_name
+        FROM users u
+        LEFT JOIN stations s ON u.station_id = s.id
+        WHERE u.status = 'Active'
+    ";
+    $user_params = [];
+
+    if ($role !== 'superadmin') {
+        $user_sql .= " AND (u.station_id = ? OR u.station_id IS NULL)";
+        $user_params[] = $station_id;
+    }
+
+    $user_sql .= " ORDER BY display_name";
+    $user_stmt = $pdo->prepare($user_sql);
+    $user_stmt->execute($user_params);
+    $user_options = $user_stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+// EXPORT
 if ($export === 'excel') {
     header('Content-Type: application/vnd.ms-excel; charset=utf-8');
     header('Content-Disposition: attachment; filename="merchandise_variance_reports_'.date('Ymd').'.xls"');
@@ -575,11 +673,26 @@ html,body{max-width:100vw;overflow-x:hidden}
                 <div class="form-row">
                     <div class="form-group">
                         <label>Encoder (Staff)</label>
-                        <input type="text" name="encoder_name" class="form-control" placeholder="e.g. Judy Lastimosa">
+                        <select name="encoder_id" class="form-control">
+                            <option value="">Unassigned</option>
+                            <?php foreach ($user_options as $u): ?>
+                            <option value="<?= (int)$u['id'] ?>">
+                                <?= htmlspecialchars($u['display_name'] . ' - ' . ucfirst($u['role']) . (($role === 'superadmin' && !empty($u['station_name'])) ? ' - ' . $u['station_name'] : '')) ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
                     </div>
                     <div class="form-group">
                         <label>Manager</label>
-                        <input type="text" name="manager_name" class="form-control" placeholder="e.g. Edgar Manager">
+                        <select name="manager_id" class="form-control">
+                            <option value="<?= (int)($me['id'] ?? 0) ?>">Current User</option>
+                            <?php foreach ($user_options as $u): ?>
+                                <?php if ((int)$u['id'] === (int)($me['id'] ?? 0)) { continue; } ?>
+                            <option value="<?= (int)$u['id'] ?>">
+                                <?= htmlspecialchars($u['display_name'] . ' - ' . ucfirst($u['role']) . (($role === 'superadmin' && !empty($u['station_name'])) ? ' - ' . $u['station_name'] : '')) ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
                     </div>
                 </div>
                 <div class="form-group">
@@ -635,7 +748,14 @@ html,body{max-width:100vw;overflow-x:hidden}
                     </div>
                     <div class="form-group">
                         <label>Manager / Verifier <span style="color:#ef4444;">*</span></label>
-                        <input type="text" id="e_manager_name" name="manager_name" class="form-control" required placeholder="Name of Manager">
+                        <select id="e_manager_id" name="manager_id" class="form-control" required>
+                            <option value="">Select manager</option>
+                            <?php foreach ($user_options as $u): ?>
+                            <option value="<?= (int)$u['id'] ?>">
+                                <?= htmlspecialchars($u['display_name'] . ' - ' . ucfirst($u['role']) . (($role === 'superadmin' && !empty($u['station_name'])) ? ' - ' . $u['station_name'] : '')) ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
                     </div>
                 </div>
                 <div class="form-group">
@@ -711,7 +831,7 @@ function openEditModal(data) {
     document.getElementById('e_expected_quantity').value = parseFloat(data.expected_quantity).toFixed(2);
     document.getElementById('e_actual_quantity').value = parseFloat(data.actual_quantity).toFixed(2);
     document.getElementById('e_encoder_name').value = data.encoder_name || '—';
-    document.getElementById('e_manager_name').value = data.manager_name || '';
+    document.getElementById('e_manager_id').value = data.manager_id || '';
     document.getElementById('e_status').value = data.status;
     document.getElementById('e_reason').value = data.reason || '';
 

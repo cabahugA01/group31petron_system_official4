@@ -239,7 +239,7 @@ try {
                        END AS variance_note,
                        ft.transaction_date
                 FROM fuel_transactions ft
-                LEFT JOIN users validator ON validator.user_id = ft.validated_by
+                LEFT JOIN users validator ON validator.id = ft.validated_by
                 WHERE ft.staff_id = ?
                   AND ft.station_id = ?
                   AND ' . shift_time_sql('ft.transaction_date', $shiftEnd) . '

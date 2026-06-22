@@ -258,6 +258,41 @@ try {
 $fuel_shift_key  = $merch_shift_key;
 $fuel_shift_name = $merch_shift_name;
 
+// ── STAFF DASHBOARD KPI CARDS DATA ────────────────────────────────────────────
+$staff_kpi = [
+    'orders_today' => 0,
+    'merchandise_released' => 0,
+    'total_amount' => 0.00,
+    'completed_jobs' => 0
+];
+
+try {
+    $today_start = date('Y-m-d 00:00:00');
+    $today_end = date('Y-m-d 23:59:59');
+    
+    // Orders Today (merchandise transactions)
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions WHERE staff_id = ? AND transaction_date BETWEEN ? AND ?");
+    $stmt->execute([$me['id'], $today_start, $today_end]);
+    $staff_kpi['orders_today'] = (int)$stmt->fetchColumn();
+    
+    // Merchandise Released (total quantity)
+    $stmt = $pdo->prepare("SELECT COALESCE(SUM(quantity), 0) FROM merchandise_transactions WHERE staff_id = ? AND transaction_date BETWEEN ? AND ?");
+    $stmt->execute([$me['id'], $today_start, $today_end]);
+    $staff_kpi['merchandise_released'] = (int)$stmt->fetchColumn();
+    
+    // Total Amount Encoded
+    $stmt = $pdo->prepare("SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE staff_id = ? AND transaction_date BETWEEN ? AND ?");
+    $stmt->execute([$me['id'], $today_start, $today_end]);
+    $staff_kpi['total_amount'] = (float)$stmt->fetchColumn();
+    
+    // Completed Job Orders
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE staff_id = ? AND status = 'Completed' AND DATE(completed_at) = CURDATE()");
+    $stmt->execute([$me['id']]);
+    $staff_kpi['completed_jobs'] = (int)$stmt->fetchColumn();
+} catch (Exception $e) {
+    error_log("Staff KPI error: " . $e->getMessage());
+}
+
 // ── Recent shift transactions (history tab) ───────────────────────────────────
 $recent_fuel      = [];
 $recent_merch       = [];
@@ -286,7 +321,6 @@ $mh_kpi_items_released   = 0;
 $mh_kpi_total_encoded    = 0.00;
 
 // DEBUG
-error_log("Merchandise History Debug - Section: $section, Station ID: $station_id, User ID: " . $me['id']);
 
 if ($section === 'merchandise') {
     try {
@@ -340,7 +374,6 @@ if ($section === 'merchandise') {
         $mh_total = (int)$cnt->fetchColumn();
         
         // DEBUG: Log what we found
-        error_log("Merchandise History Debug - Station ID: $station_id, Total found: $mh_total, WHERE: $mh_where, Params: " . json_encode($mh_params));
 
         // ── Detect new columns for merchandise history query ──────────────────
         $mh_col_staff_remarks      = isset($mh_cols['staff_remarks'])      ? 'mt.staff_remarks'      : 'NULL';

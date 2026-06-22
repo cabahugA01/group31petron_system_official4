@@ -108,7 +108,7 @@ try {
         "SELECT mt.id, mt.transaction_id, mt.status, mt.created_at,
                 u.name AS staff_name
          FROM merchandise_transactions mt
-         LEFT JOIN users u ON u.user_id = mt.staff_id
+         LEFT JOIN users u ON u.id = mt.staff_id
          WHERE mt.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
            AND mt.status IN ('failed','pending','Pending','Failed')
            $where_station
@@ -283,6 +283,7 @@ try {
              FROM station_inventory si
              INNER JOIN inventory_products ip ON ip.id = si.product_id
              WHERE si.station_id = ?
+               AND si.stock_level > 0
                AND si.stock_level <= COALESCE(ip.reorder_level, 10)
                AND ip.category NOT IN ('Fuel')
              ORDER BY si.stock_level ASC LIMIT 15"
@@ -294,7 +295,8 @@ try {
             "SELECT id, product_name, sku, stock AS stock_level,
                     COALESCE(reorder_level, 10) AS reorder_level
              FROM inventory_products
-             WHERE stock <= COALESCE(reorder_level, 10)
+             WHERE stock > 0
+               AND stock <= COALESCE(reorder_level, 10)
                AND category NOT IN ('Fuel')
              ORDER BY stock ASC LIMIT 15"
         )->fetchAll(PDO::FETCH_ASSOC);

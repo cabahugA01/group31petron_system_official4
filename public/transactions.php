@@ -8,6 +8,7 @@ require_login();
 $me = current_user();
 $station_id = user_station_id();
 $role = role_key($me['role'] ?? '');
+$actor_name = $me['name'] ?? $me['username'] ?? 'Manager';
 
 // ── Module gate ───────────────────────────────────────────────
 if (!in_array($role, ['superadmin','developer']) && !is_module_enabled('transactions')) {
@@ -16,7 +17,7 @@ if (!in_array($role, ['superadmin','developer']) && !is_module_enabled('transact
 
 $allowed_roles = [];
 try {
-    $stmt = $pdo->query("SELECT role_key FROM staff_role_config WHERE can_access_transactions = 1 AND active = 1");
+    $stmt = $pdo->query("SELECT role_key FROM staff_role_config WHERE can_access_transactions = 1 AND is_active = 1");
     $allowed_roles = $stmt->fetchAll(PDO::FETCH_COLUMN);
 } catch(Exception $e) {
     /* staff_role_config table doesn't exist — use standard roles */
@@ -77,9 +78,132 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (Exception $ae) { /* silent — audit must not break main flow */ }
     };
 
+    $deduct_inventory_once = function(int $txn_id) use ($pdo, $station_id, $has_mt) {
+        $deducted_expr = $has_mt('inventory_deducted') ? 'COALESCE(inventory_deducted, 0)' : '0';
+        $lock = $pdo->prepare("SELECT {$deducted_expr} FROM merchandise_transactions WHERE id = ? AND station_id = ? FOR UPDATE");
+        $lock->execute([$txn_id, $station_id]);
+        if ((int)($lock->fetchColumn() ?: 0) === 1) {
+            return;
+        }
+
+        $items_stmt = $pdo->prepare("
+            SELECT product_id, product_name, quantity
+            FROM merchandise_transaction_items
+            WHERE transaction_id = ?
+              AND COALESCE(item_type, 'merchandise') <> 'service'
+              AND product_id IS NOT NULL
+              AND quantity > 0
+        ");
+        $items_stmt->execute([$txn_id]);
+        $items = $items_stmt->fetchAll(PDO::FETCH_ASSOC);
+        if (!$items) {
+            return;
+        }
+
+        foreach ($items as $item) {
+            $stock_stmt = $pdo->prepare("
+                SELECT stock_level
+                FROM station_inventory
+                WHERE station_id = ? AND product_id = ?
+                FOR UPDATE
+            ");
+            $stock_stmt->execute([$station_id, $item['product_id']]);
+            $stock_level = $stock_stmt->fetchColumn();
+            if ($stock_level === false) {
+                throw new Exception('Inventory record is missing for ' . ($item['product_name'] ?: 'product #' . $item['product_id']) . '.');
+            }
+            if ((float)$stock_level < (float)$item['quantity']) {
+                throw new Exception('Insufficient stock for ' . ($item['product_name'] ?: 'product #' . $item['product_id']) . '. Available: ' . number_format((float)$stock_level, 2) . ', required: ' . number_format((float)$item['quantity'], 2) . '.');
+            }
+        }
+
+        foreach ($items as $item) {
+            $pdo->prepare("
+                UPDATE station_inventory
+                SET stock_level = stock_level - ?,
+                    last_updated = NOW()
+                WHERE station_id = ? AND product_id = ?
+            ")->execute([(float)$item['quantity'], $station_id, (int)$item['product_id']]);
+        }
+
+        if ($has_mt('inventory_deducted')) {
+            $pdo->prepare("UPDATE merchandise_transactions SET inventory_deducted = 1, updated_at = NOW() WHERE id = ? AND station_id = ?")
+                ->execute([$txn_id, $station_id]);
+        }
+    };
+
+    $apply_credit_balance_once = function(array $transaction, float $amount) use ($pdo, $station_id, $me) {
+        $customer_id = (int)($transaction['credit_customer_id'] ?? 0);
+        if ($customer_id <= 0) {
+            return;
+        }
+
+        $method = strtolower(trim((string)($transaction['payment_method'] ?? '')));
+        $payment_status = strtolower(trim((string)($transaction['payment_status'] ?? '')));
+        if (strpos($method, 'credit') === false && strpos($payment_status, 'credit') === false) {
+            return;
+        }
+
+        $cust = $pdo->prepare("SELECT status FROM customers WHERE id = ? AND station_id = ? FOR UPDATE");
+        $cust->execute([$customer_id, $station_id]);
+        $status = strtolower((string)$cust->fetchColumn());
+        if ($status !== '' && $status !== 'active') {
+            throw new Exception('Approval blocked: credit customer account is not active.');
+        }
+
+        $already_logged = false;
+        try {
+            $chk = $pdo->prepare("SELECT 1 FROM customer_credit_transactions WHERE customer_id = ? AND transaction_id = ? AND station_id = ? LIMIT 1");
+            $chk->execute([$customer_id, $transaction['transaction_id'] ?? '', $station_id]);
+            $already_logged = (bool)$chk->fetchColumn();
+        } catch (Exception $e) {}
+        if ($already_logged) {
+            return;
+        }
+
+        $pdo->prepare("UPDATE customers SET balance = COALESCE(balance, 0) + ?, current_balance = COALESCE(current_balance, 0) + ? WHERE id = ? AND station_id = ?")
+            ->execute([$amount, $amount, $customer_id, $station_id]);
+
+        try {
+            $bal_stmt = $pdo->prepare("SELECT COALESCE(balance, current_balance, 0) FROM customers WHERE id = ?");
+            $bal_stmt->execute([$customer_id]);
+            $new_balance = (float)$bal_stmt->fetchColumn();
+            $ref = $transaction['transaction_id'] ?? ('TXN-' . ($transaction['id'] ?? ''));
+            $pdo->prepare("
+                INSERT INTO customer_credit_transactions (
+                    customer_id, transaction_id, transaction_type, amount,
+                    running_balance, description, station_id, created_by, created_at
+                ) VALUES (?, ?, 'Sale', ?, ?, ?, ?, ?, NOW())
+            ")->execute([
+                $customer_id,
+                $ref,
+                $amount,
+                $new_balance,
+                'Credit transaction - Ref: ' . $ref,
+                $station_id,
+                $me['id'],
+            ]);
+        } catch (Exception $e) {}
+    };
+
     if ($action === 'approve_transaction') {
         $row_id = (int)($_POST['transaction_id'] ?? 0);
         try {
+            $pdo->beginTransaction();
+            $tx = $pdo->prepare("SELECT * FROM merchandise_transactions WHERE id = ? AND station_id = ? FOR UPDATE");
+            $tx->execute([$row_id, $station_id]);
+            $transaction = $tx->fetch(PDO::FETCH_ASSOC);
+            if (!$transaction) {
+                throw new Exception('Transaction not found.');
+            }
+            $current_status = strtolower(trim((string)($transaction['validation_status'] ?? '')));
+            if (!in_array($current_status, ['', 'pending', 'pending validation'], true)) {
+                throw new Exception('Transaction is already processed.');
+            }
+
+            $deduct_inventory_once($row_id);
+            $apply_credit_balance_once($transaction, (float)($transaction['total_amount'] ?? 0));
+
             /* Build UPDATE dynamically based on existing columns */
             $set_parts = ["validation_status = 'Approved'"];
             $set_vals  = [];
@@ -92,12 +216,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($stmt->rowCount() > 0) {
                 $insert_audit($row_id, 'Approve');
-                log_activity($pdo, $me['id'], 'Approve Transaction', "Merchandise transaction #{$row_id} approved by {$me['name']}");
+                log_activity($pdo, $me['id'], 'Approve Transaction', "Merchandise transaction #{$row_id} approved by " . ($me['name'] ?? $me['username'] ?? 'Manager'));
+                $pdo->commit();
                 $_SESSION['success'] = 'Transaction approved and verified successfully.';
             } else {
+                if ($pdo->inTransaction()) $pdo->rollBack();
                 $_SESSION['error'] = 'Transaction not found or already processed.';
             }
         } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
             $_SESSION['error'] = 'Error approving: ' . $e->getMessage();
         }
         header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','status'=>$_POST['_status']??'','tab'=>'validated'])));
@@ -124,7 +251,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($stmt->rowCount() > 0) {
                 $insert_audit($row_id, 'Return', $reason);
-                log_activity($pdo, $me['id'], 'Return Transaction', "Merchandise transaction #{$row_id} returned by {$me['name']}. Reason: {$reason}");
+                log_activity($pdo, $me['id'], 'Return Transaction', "Merchandise transaction #{$row_id} returned by {$actor_name}. Reason: {$reason}");
                 $_SESSION['success'] = 'Transaction returned to staff for correction.';
             } else {
                 $_SESSION['error'] = 'Transaction not found or already processed.';
@@ -142,6 +269,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $new_total = (float)($_POST['adj_total'] ?? 0);
         $adj_note  = trim($_POST['adj_note'] ?? '');
         try {
+            $pdo->beginTransaction();
+            $tx = $pdo->prepare("SELECT * FROM merchandise_transactions WHERE id = ? AND station_id = ? FOR UPDATE");
+            $tx->execute([$row_id, $station_id]);
+            $transaction = $tx->fetch(PDO::FETCH_ASSOC);
+            if (!$transaction) {
+                throw new Exception('Transaction not found.');
+            }
+
             $set_parts = ["total_amount = ?", "validation_status = 'Adjusted'"];
             $set_vals  = [$new_total];
             if ($has_mt('validated_by')) { $set_parts[] = "validated_by = ?"; $set_vals[] = $me['id']; }
@@ -152,12 +287,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute(array_merge($set_vals, [$row_id, $station_id]));
             if ($stmt->rowCount() > 0) {
                 $insert_audit($row_id, 'Adjust', "New total: ₱{$new_total}. Note: {$adj_note}");
-                log_activity($pdo, $me['id'], 'Adjust Transaction', "Merchandise #{$row_id} adjusted to ₱{$new_total} by {$me['name']}.");
+                log_activity($pdo, $me['id'], 'Adjust Transaction', "Merchandise #{$row_id} adjusted to ₱{$new_total} by {$actor_name}.");
+                $transaction['total_amount'] = $new_total;
+                $deduct_inventory_once($row_id);
+                $apply_credit_balance_once($transaction, $new_total);
+                $pdo->commit();
                 $_SESSION['success'] = "Transaction #{$row_id} adjusted successfully.";
             } else {
+                if ($pdo->inTransaction()) $pdo->rollBack();
                 $_SESSION['error'] = 'Transaction not found or already processed.';
             }
         } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
             $_SESSION['error'] = 'Error adjusting: ' . $e->getMessage();
         }
         header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'validated'])));
@@ -173,6 +314,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->beginTransaction();
             if ($jo_src === 'merchandise_transactions') {
                 // Record came from staff_transactions_hub.php — lives in merchandise_transactions
+                $tx = $pdo->prepare("SELECT * FROM merchandise_transactions WHERE id = ? AND station_id = ? FOR UPDATE");
+                $tx->execute([$jo_id, $station_id]);
+                $transaction = $tx->fetch(PDO::FETCH_ASSOC);
+                if (!$transaction) {
+                    throw new Exception('Job order transaction not found.');
+                }
+                $deduct_inventory_once($jo_id);
+                $apply_credit_balance_once($transaction, (float)($transaction['total_amount'] ?? 0));
                 $pdo->prepare("UPDATE merchandise_transactions SET validation_status='Approved', validated_by=?, validated_at=NOW(), updated_at=NOW() WHERE id=? AND station_id=?")
                     ->execute([$me['id'], $jo_id, $station_id]);
             } else {
@@ -183,7 +332,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             try { $pdo->prepare("INSERT INTO audit_trail (transaction_id,manager_id,action_type,new_value,station_id) VALUES (?,?,'Approve',?,?)")
                 ->execute([$jo_id,$me['id'],"JO Approved. {$remarks}",$station_id]); } catch(Exception $ae){}
-            log_activity($pdo,$me['id'],'JO_APPROVED',"Job Order #{$jo_id} approved by {$me['name']}.");
+            log_activity($pdo,$me['id'],'JO_APPROVED',"Job Order #{$jo_id} approved by {$actor_name}.");
             $pdo->commit();
             $_SESSION['success'] = "Job Order #{$jo_id} approved successfully.";
         } catch (Exception $e) {
@@ -212,7 +361,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             try { $pdo->prepare("INSERT INTO audit_trail (transaction_id,manager_id,action_type,new_value,station_id) VALUES (?,?,'Reject',?,?)")
                 ->execute([$jo_id,$me['id'],"JO Rejected. Reason: {$reason}",$station_id]); } catch(Exception $ae){}
-            log_activity($pdo,$me['id'],'JO_REJECTED',"Job Order #{$jo_id} rejected by {$me['name']}. Reason: {$reason}");
+            log_activity($pdo,$me['id'],'JO_REJECTED',"Job Order #{$jo_id} rejected by {$actor_name}. Reason: {$reason}");
             $pdo->commit();
             $_SESSION['success'] = "Job Order #{$jo_id} rejected.";
         } catch (Exception $e) {
@@ -233,15 +382,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->beginTransaction();
             if ($jo_src === 'merchandise_transactions') {
                 // JO that lives in merchandise_transactions (created via staff hub)
+                $tx = $pdo->prepare("SELECT * FROM merchandise_transactions WHERE id = ? AND station_id = ? FOR UPDATE");
+                $tx->execute([$jo_id, $station_id]);
+                $transaction = $tx->fetch(PDO::FETCH_ASSOC);
+                if (!$transaction) {
+                    throw new Exception('Job order transaction not found.');
+                }
                 $pdo->prepare("UPDATE merchandise_transactions SET total_amount=?, validation_status='Adjusted', validated_by=?, validated_at=NOW(), updated_at=NOW() WHERE id=? AND station_id=?")
                     ->execute([$new_cost, $me['id'], $jo_id, $station_id]);
+                $transaction['total_amount'] = $new_cost;
+                $deduct_inventory_once($jo_id);
+                $apply_credit_balance_once($transaction, $new_cost);
             } else {
                 $pdo->prepare("UPDATE job_orders SET total_cost=?, validation_status='Adjusted', validated_by=?, validated_at=NOW() WHERE id=? AND station_id=?")
                     ->execute([$new_cost, $me['id'], $jo_id, $station_id]);
             }
             try { $pdo->prepare("INSERT INTO audit_trail (transaction_id,manager_id,action_type,new_value,station_id) VALUES (?,?,'Adjust',?,?)")
                 ->execute([$jo_id,$me['id'],"JO Adjusted. New cost: ₱{$new_cost}. {$adj_note}",$station_id]); } catch(Exception $ae){}
-            log_activity($pdo,$me['id'],'JO_ADJUSTED',"Job Order #{$jo_id} adjusted to ₱{$new_cost} by {$me['name']}.");
+            log_activity($pdo,$me['id'],'JO_ADJUSTED',"Job Order #{$jo_id} adjusted to ₱{$new_cost} by {$actor_name}.");
             $pdo->commit();
             $_SESSION['success'] = "Job Order #{$jo_id} adjusted successfully.";
         } catch (Exception $e) {
@@ -264,7 +422,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->prepare("UPDATE job_orders SET payment_status='Paid', updated_at=NOW() WHERE id=? AND station_id=?")
                     ->execute([$jo_id, $station_id]);
             }
-            log_activity($pdo, $me['id'], 'JO_MARKED_PAID', "Job Order #{$jo_id} marked as Paid by {$me['name']}.");
+            log_activity($pdo, $me['id'], 'JO_MARKED_PAID', "Job Order #{$jo_id} marked as Paid by {$actor_name}.");
             $_SESSION['success'] = "Job Order #{$jo_id} marked as Paid.";
         } catch (Exception $e) {
             $_SESSION['error'] = 'Error marking paid: ' . $e->getMessage();
@@ -315,7 +473,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->prepare("INSERT INTO audit_trail (transaction_id,manager_id,action_type,new_value,station_id) VALUES (?,?,'Payment',?,?)")
                     ->execute([$row_id, $me['id'], "Payment set to {$pay_status}." . ($pay_note ? " Note: {$pay_note}" : ''), $station_id]);
             } catch(Exception $ae){}
-            log_activity($pdo, $me['id'], 'PAYMENT_SET', "Transaction #{$row_id} payment set to {$pay_status} by {$me['name']}.");
+            log_activity($pdo, $me['id'], 'PAYMENT_SET', "Transaction #{$row_id} payment set to {$pay_status} by {$actor_name}.");
             $pdo->commit();
             $_SESSION['success'] = "Payment status set to <strong>{$pay_status}</strong>.";
         } catch (Exception $e) {
@@ -338,7 +496,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->prepare("UPDATE job_orders SET status='In Progress', started_at=NOW(), updated_at=NOW() WHERE id=? AND station_id=?")
                     ->execute([$jo_id, $station_id]);
             }
-            log_activity($pdo, $me['id'], 'JO_INPROGRESS', "Job Order #{$jo_id} marked In Progress by {$me['name']}.");
+            log_activity($pdo, $me['id'], 'JO_INPROGRESS', "Job Order #{$jo_id} marked In Progress by {$actor_name}.");
             $_SESSION['success'] = "Job Order #{$jo_id} marked as In Progress.";
         } catch (Exception $e) {
             $_SESSION['error'] = 'Error: ' . $e->getMessage();
@@ -359,7 +517,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->prepare("UPDATE job_orders SET status='Completed', completed_at=NOW(), updated_at=NOW() WHERE id=? AND station_id=?")
                     ->execute([$jo_id, $station_id]);
             }
-            log_activity($pdo, $me['id'], 'JO_COMPLETED', "Job Order #{$jo_id} marked Completed by {$me['name']}.");
+            log_activity($pdo, $me['id'], 'JO_COMPLETED', "Job Order #{$jo_id} marked Completed by {$actor_name}.");
             $_SESSION['success'] = "Job Order #{$jo_id} marked as Completed.";
         } catch (Exception $e) {
             $_SESSION['error'] = 'Error: ' . $e->getMessage();
@@ -384,7 +542,7 @@ $do_export = (isset($_GET['export']) && in_array($_GET['export'], ['excel','pdf'
 // ── Config lookups ────────────────────────────────────────────────────────────
 $transaction_type_names = [];
 try {
-    $rows = $pdo->query("SELECT type_key, type_name, badge_color FROM transaction_type_config WHERE active = 1 ORDER BY sort_order")->fetchAll(PDO::FETCH_ASSOC);
+    $rows = $pdo->query("SELECT type_key, type_name, color_class AS badge_color FROM transaction_type_config WHERE is_active = 1 ORDER BY sort_order")->fetchAll(PDO::FETCH_ASSOC);
     foreach ($rows as $r) $transaction_type_names[$r['type_key']] = ['name'=>$r['type_name'],'color'=>$r['badge_color']];
 } catch(Exception $e) {
     $transaction_type_names = ['fuel'=>['name'=>'Fuel','color'=>'#dc3545'],'merchandise'=>['name'=>'Merchandise','color'=>'#007bff']];
@@ -393,7 +551,7 @@ try {
 // ── Config lookups — DB-driven with safe fallbacks ───────────────────────────
 $payment_methods = [];
 try {
-    $payment_methods = $pdo->query("SELECT method_key, method_name FROM payment_method_config WHERE active = 1 ORDER BY sort_order")->fetchAll(PDO::FETCH_ASSOC);
+    $payment_methods = $pdo->query("SELECT method_key, method_name FROM payment_method_config WHERE is_active = 1 ORDER BY sort_order")->fetchAll(PDO::FETCH_ASSOC);
 } catch(Exception $e) {}
 if (empty($payment_methods)) {
     /* Fetch distinct payment methods actually used in this station's transactions */
@@ -546,6 +704,12 @@ if ($status_f === 'pending')  { $jow .= " AND (LOWER(TRIM(COALESCE(jo.validation
 elseif ($status_f === 'verified') { $jow .= " AND LOWER(TRIM(COALESCE(jo.validation_status,''))) IN ('approved','verified')"; }
 elseif ($status_f === 'rejected') { $jow .= " AND LOWER(TRIM(COALESCE(jo.validation_status,''))) IN ('rejected','cancelled')"; }
 
+$jo_staff_id_expr = $jo_has('created_by') ? 'COALESCE(jo.created_by, jo.user_id, 0)' : ($jo_has('user_id') ? 'COALESCE(jo.user_id, 0)' : '0');
+$jo_mechanic_expr = $jo_has('assigned_mechanic_id')
+    ? "COALESCE(NULLIF(CONCAT(m.first_name,' ',m.last_name),' '), m.username, '')"
+    : ($jo_has('mechanic_name') ? "COALESCE(jo.mechanic_name,'')" : "''");
+$jo_mechanic_join = $jo_has('assigned_mechanic_id') ? "LEFT JOIN users m ON m.id = jo.assigned_mechanic_id" : "";
+
 $jo_sql = "
     SELECT
         jo.id AS row_id,
@@ -555,10 +719,10 @@ $jo_sql = "
         jo.created_at,
         COALESCE(NULLIF(TRIM(jo.validation_status),''),'Pending Validation') AS status,
         COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS staff_name,
-        COALESCE(jo.user_id, 0) AS staff_id,
+        {$jo_staff_id_expr} AS staff_id,
         COALESCE(NULLIF(TRIM(jo.service_type),''),'Job Order') AS product_name,
         COALESCE(jo.vehicle_plate,'') AS vehicle,
-        COALESCE(jo.mechanic_name,'') AS mechanic,
+        {$jo_mechanic_expr} AS mechanic,
         COALESCE(NULLIF(jo.total_cost, 0), jo.estimated_cost, 0) AS total,
         COALESCE(NULLIF(jo.total_cost, 0), jo.estimated_cost, 0) AS subtotal,
         0 AS vat_amount,
@@ -570,6 +734,7 @@ $jo_sql = "
         'job_orders' AS _source
     FROM job_orders jo
     LEFT JOIN users u ON u.id = COALESCE(jo.created_by, jo.user_id)
+    {$jo_mechanic_join}
     $jow
     ORDER BY jo.created_at DESC
 ";
