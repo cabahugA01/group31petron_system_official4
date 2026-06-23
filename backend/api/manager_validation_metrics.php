@@ -26,35 +26,35 @@ if (!$station_id) {
 }
 
 try {
-    // ── Pending Transactions (awaiting validation) ──
+    // Transactions are official on staff save; no manager approval queue remains.
     $pending_txn_query = $pdo->prepare("
         SELECT COUNT(*) AS pending_transactions
         FROM (
             SELECT id FROM merchandise_transactions 
             WHERE station_id = ? 
-              AND LOWER(validation_status) IN ('pending', 'pending validation')
+              AND 1 = 0
             UNION ALL
             SELECT id FROM job_orders 
             WHERE station_id = ? 
-              AND LOWER(validation_status) IN ('pending', 'pending validation')
+              AND 1 = 0
         ) AS combined
     ");
     $pending_txn_query->execute([$station_id, $station_id]);
     $pending_transactions = (int)$pending_txn_query->fetchColumn();
 
-    // ── Validated Today (approved records) ──
+    // ── Processed Today (official/corrected records) ──
     $validated_today_query = $pdo->prepare("
         SELECT COUNT(*) AS validated_today
         FROM (
             SELECT id FROM merchandise_transactions 
             WHERE station_id = ? 
-              AND LOWER(validation_status) IN ('approved', 'validated')
-              AND DATE(validated_at) = CURDATE()
+              AND LOWER(validation_status) IN ('official', 'completed', 'approved', 'validated', 'adjusted')
+              AND DATE(COALESCE(transaction_date, created_at)) = CURDATE()
             UNION ALL
             SELECT id FROM job_orders 
             WHERE station_id = ? 
-              AND LOWER(validation_status) IN ('approved', 'validated')
-              AND DATE(validated_at) = CURDATE()
+              AND LOWER(validation_status) IN ('official', 'completed', 'approved', 'validated', 'adjusted')
+              AND DATE(created_at) = CURDATE()
         ) AS combined
     ");
     $validated_today_query->execute([$station_id, $station_id]);
@@ -97,8 +97,8 @@ try {
     $validation_flow_query = $pdo->prepare("
         SELECT 
             DATE(COALESCE(validated_at, created_at)) AS date,
-            SUM(CASE WHEN LOWER(validation_status) IN ('pending', 'pending validation') THEN 1 ELSE 0 END) AS pending,
-            SUM(CASE WHEN LOWER(validation_status) IN ('approved', 'validated') THEN 1 ELSE 0 END) AS validated
+            SUM(0) AS pending,
+            SUM(CASE WHEN LOWER(validation_status) IN ('official', 'completed', 'approved', 'validated', 'adjusted') THEN 1 ELSE 0 END) AS validated
         FROM (
             SELECT validation_status, validated_at, created_at 
             FROM merchandise_transactions 

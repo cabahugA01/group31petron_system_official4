@@ -158,13 +158,13 @@ if ($action === 'seed') {
     // Admin only sees manager-validated transactions (Approved/Adjusted/Rejected).
     // Raw 'Pending' staff encodings belong to Manager — do NOT notify Admin about those.
     $admin_tx = adm_count($pdo,
-        "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND validation_status IN ('Approved','Adjusted') AND DATE(COALESCE(validated_at,created_at))=CURDATE()",
+        "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND validation_status IN ('Official','Completed','Approved','Adjusted') AND DATE(COALESCE(transaction_date,created_at))=CURDATE()",
         [$station_id]);
     if ($admin_tx > 0) {
         upsert_notif($pdo, $user_id, [
             'type'        => 'info',
-            'title'       => 'Manager-Validated Transactions Today',
-            'message'     => "{$admin_tx} transaction(s) validated by Manager today. Available for your oversight review.",
+            'title'       => 'Official Transactions Today',
+            'message'     => "{$admin_tx} official transaction(s) are available for oversight review.",
             'event_type'  => 'transaction',
             'severity'    => 'low',
             'source_key'  => "admin_tx_today_{$station_id}_".date('Y-m-d'),
@@ -191,13 +191,13 @@ if ($action === 'seed') {
     // ── 4. Job Orders Awaiting Admin Oversight ────────────────
     // Admin sees manager-validated JOs (Approved/In Progress/Completed), not raw Pending Validation.
     $admin_jo = adm_count($pdo,
-        "SELECT COUNT(*) FROM job_orders WHERE station_id=? AND validation_status='Approved' AND DATE(validated_at)=CURDATE()",
+        "SELECT COUNT(*) FROM job_orders WHERE station_id=? AND validation_status IN ('Official','Completed','Approved','Adjusted') AND DATE(created_at)=CURDATE()",
         [$station_id]);
     if ($admin_jo > 0) {
         upsert_notif($pdo, $user_id, [
             'type'        => 'info',
-            'title'       => 'Manager-Approved Job Orders Today',
-            'message'     => "{$admin_jo} job order(s) approved by Manager today. Available for your oversight review.",
+            'title'       => 'Official Job Orders Today',
+            'message'     => "{$admin_jo} job order(s) are available for oversight review.",
             'event_type'  => 'joborder',
             'severity'    => 'low',
             'source_key'  => "admin_jo_today_{$station_id}_".date('Y-m-d'),

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ============================================================
 // Admin Fuel Transactions Oversight
 // Fetch Source: fuel_transactions (staff-encoded → manager-verified)
@@ -39,22 +39,33 @@ if ($filter_station > 0) {
     } catch (Exception $e) {}
 }
 
-// ── Summary Counts (All-time or Station-scoped) ──────────────
+// ── Summary Counts — scoped to the SAME filters as the table ─────────────────
+// Uses the same date range, station, and fuel_type as the main query so
+// summary cards always match the filtered table view and exports exactly.
 $total_validated = 0; $pending_count = 0; $total_liters = 0.0; $total_amount = 0.0;
 try {
-    $sc_sql = "SELECT
-        SUM(CASE WHEN LOWER(status) IN ('verified','adjusted') THEN 1 ELSE 0 END) as validated,
-        SUM(CASE WHEN LOWER(status) LIKE '%pending%' OR status IS NULL OR status='' THEN 1 ELSE 0 END) as pending,
-        COALESCE(SUM(CASE WHEN LOWER(status) IN ('verified','adjusted') THEN liters_sold ELSE 0 END),0) as liters,
-        COALESCE(SUM(CASE WHEN LOWER(status) IN ('verified','adjusted') THEN total_amount ELSE 0 END),0) as amount
-        FROM fuel_transactions";
-    
+    $sc_where  = ["DATE(ft.transaction_date) BETWEEN ? AND ?"];
+    $sc_params = [$date_from, $date_to];
+
     if ($filter_station > 0) {
-        $sc = $pdo->prepare($sc_sql . " WHERE station_id=?");
-        $sc->execute([$filter_station]);
-    } else {
-        $sc = $pdo->query($sc_sql);
+        $sc_where[] = "ft.station_id = ?";
+        $sc_params[] = $filter_station;
     }
+    if ($fuel_type !== '') {
+        $sc_where[] = "ft.fuel_type = ?";
+        $sc_params[] = $fuel_type;
+    }
+
+    $sc_sql = "SELECT
+        SUM(CASE WHEN LOWER(ft.status) IN ('verified','adjusted') THEN 1 ELSE 0 END) as validated,
+        SUM(CASE WHEN LOWER(ft.status) LIKE '%pending%' OR ft.status IS NULL OR ft.status='' THEN 1 ELSE 0 END) as pending,
+        COALESCE(SUM(CASE WHEN LOWER(ft.status) IN ('verified','adjusted') THEN ft.liters_sold ELSE 0 END),0) as liters,
+        COALESCE(SUM(CASE WHEN LOWER(ft.status) IN ('verified','adjusted') THEN ft.total_amount ELSE 0 END),0) as amount
+        FROM fuel_transactions ft
+        WHERE " . implode(' AND ', $sc_where);
+
+    $sc = $pdo->prepare($sc_sql);
+    $sc->execute($sc_params);
     $sc_row = $sc->fetch(PDO::FETCH_ASSOC);
     $total_validated = (int)($sc_row['validated'] ?? 0);
     $pending_count   = (int)($sc_row['pending']   ?? 0);
@@ -213,38 +224,33 @@ if (in_array($export, ['csv','excel','pdf'])) {
 require_once __DIR__ . '/../partials/header.php';
 ?>
 <style>
-/* ── Admin Fuel Transactions Oversight ── */
-.afto-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:20px; flex-wrap:wrap; }
-.afto-head h1 { margin:0 0 4px; font-size:22px; font-weight:700; color:#00264D; display:flex; align-items:center; gap:9px; }
-.afto-subtitle { font-size:13px; color:#6b7280; text-transform:uppercase; letter-spacing:.3px; }
-.afto-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+/* == PAGE HEADER - matches SuperAdmin int-head standard == */
+.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:-12px !important; }
+.int-head h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
+.int-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
 
 /* Export/action buttons — unified outline style matching staff Transaction module */
-.afto-btn {
+.ato-btn {
     display:inline-flex; align-items:center; gap:6px;
-    padding:8px 16px; border-radius:8px; font-size:13px; font-weight:600;
-    cursor:pointer; border:1px solid transparent; text-decoration:none; transition:all .13s;
+    padding:0 16px; border-radius:7px; font-size:13px; font-weight:600;
+    cursor:pointer; border:1px solid transparent; text-decoration:none; transition:all .15s;
     height:36px; white-space:nowrap; background:white !important;
 }
-.afto-btn-excel  { color:#1d6f42 !important; border-color:#1d6f42 !important; }
-.afto-btn-excel:hover  { background:#1d6f42 !important; color:#fff !important; }
-.afto-btn-csv    { color:#003d7a !important; border-color:#003d7a !important; }
-.afto-btn-csv:hover    { background:#003d7a !important; color:#fff !important; }
-.afto-btn-pdf    { color:#dc2626 !important; border-color:#dc2626 !important; }
-.afto-btn-pdf:hover    { background:#dc2626 !important; color:#fff !important; }
-.afto-btn-back   { color:#4b5563 !important; border-color:#6b7280 !important; }
-.afto-btn-back:hover   { background:#6b7280 !important; color:#fff !important; }
-.afto-btn-filter { color:#002F6C !important; border-color:#002F6C !important; }
-.afto-btn-filter:hover { background:#002F6C !important; color:#fff !important; }
+.ato-btn-excel  { color:#1d6f42 !important; border-color:#1d6f42 !important; }
+.ato-btn-excel:hover  { background:#1d6f42 !important; color:#fff !important; }
+.ato-btn-csv    { color:#003d7a !important; border-color:#003d7a !important; }
+.ato-btn-csv:hover    { background:#003d7a !important; color:#fff !important; }
+.ato-btn-pdf    { color:#dc2626 !important; border-color:#dc2626 !important; }
+.ato-btn-pdf:hover    { background:#dc2626 !important; color:#fff !important; }
+.ato-btn-back   { color:#4b5563 !important; border-color:#6b7280 !important; }
+.ato-btn-back:hover   { background:#6b7280 !important; color:#fff !important; }
+.ato-btn-filter { color:#002F70 !important; border-color:#002F70 !important; }
+.ato-btn-filter:hover { background:#002F70 !important; color:#fff !important; }
 
 /* Summary cards */
 .afto-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-bottom:18px; }
 .afto-card { background:#fff; border:1px solid #e2e8f0; border-radius:11px; padding:16px; display:flex; align-items:center; gap:14px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
-.afto-card.c-blue  { border-left:4px solid #1e40af; }
-.afto-card.c-amber { border-left:4px solid #d97706; }
-.afto-card.c-green { border-left:4px solid #16a34a; }
-.afto-card.c-navy  { border-left:4px solid #002F6C; }
-.afto-card-ico { width:40px; height:40px; display:flex; align-items:center; justify-content:center; font-size:19px; flex-shrink:0; color:#002F6C; }
+.afto-card-ico { width:40px; height:40px; display:flex; align-items:center; justify-content:center; font-size:19px; flex-shrink:0; color:#002F70; }
 .afto-card-meta h3 { margin:0; font-size:11px; color:#64748b; text-transform:uppercase; letter-spacing:.5px; font-weight:700; }
 .afto-card-meta h2 { margin:2px 0 0; font-size:22px; font-weight:700; color:#00264D; line-height:1; } /* KPI standard: 18px-22px semi-bold */
 .afto-card-meta span { font-size:11px; color:#94a3b8; }
@@ -252,8 +258,9 @@ require_once __DIR__ . '/../partials/header.php';
 /* Filter bar */
 .afto-filter { display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:12px 16px; margin-bottom:16px; }
 .afto-fg { display:flex; flex-direction:column; gap:3px; }
-.afto-fg label { font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.4px; }
-.afto-fg input, .afto-fg select { padding:6px 10px; border:1px solid #e2e8f0; border-radius:6px; font-size:12px; }
+.afto-fg label { font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.4px; }
+.afto-fg input, .afto-fg select { height:36px; padding:0 10px; border:1px solid #cbd5e1; border-radius:7px; font-size:13px; color:#1e293b; background:#fff; outline:none; box-sizing:border-box; }
+.afto-fg input:focus, .afto-fg select:focus { border-color:#002F70; box-shadow:0 0 0 3px rgba(0,47,112,.1); }
 
 /* Force no horizontal scroll on body but allow on table */
 html, body { max-width:100vw; overflow-x:hidden; }
@@ -263,32 +270,32 @@ html, body { max-width:100vw; overflow-x:hidden; }
 .afto-table-hd { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid #f1f5f9; flex-wrap:wrap; gap:8px; }
 .afto-table-title { font-size:13px; font-weight:700; color:#00264D; text-transform:uppercase; letter-spacing:.3px; margin:0; }
 .afto-tbl-wrap { width:100%; overflow:hidden; } /* Allow horizontal scroll if needed */
-.afto-tbl { width:100%; table-layout:fixed; border-collapse:collapse; font-size:13px; } /* Table Content Standard: 12px-14px */
-.afto-tbl thead tr { background:#002F6C; }
-.afto-tbl thead th { padding:12px 8px; text-align:left; font-size:14px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.3px; overflow:hidden; text-overflow:ellipsis; line-height:1.4; } /* Header standard: 14px-16px bold */
+.afto-tbl { width:100%; table-layout:fixed; border-collapse:collapse; font-size:11px; } /* Table Content Standard */
+.afto-tbl thead tr { background:#002F70; }
+.afto-tbl thead th { padding:9px 10px; text-align:left; font-size:11px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.4px; overflow:hidden; text-overflow:ellipsis; border-bottom:2px solid #001a3d; vertical-align:middle; }
 .afto-tbl tbody tr { border-bottom:1px solid #f1f5f9; transition:background .1s; }
-.afto-tbl tbody tr:hover { background:#eff6ff; }
-.afto-tbl tbody td { padding:10px 8px; color:#334155; vertical-align:middle; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.5; font-size:13px; } /* Content standard: 12px-14px */
-.afto-badge { display:inline-block; padding:4px 9px; border-radius:4px; font-size:11px; font-weight:700; white-space:nowrap; }
-.bg-green  { background:#dcfce7; color:#15803d; }
+.afto-tbl tbody tr:hover td { background:#eff6ff; }
+.afto-tbl tbody td { padding:9px 10px; color:#334155; vertical-align:middle; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; background:#fff; font-size:11px; }
+.afto-badge { display:inline-block; padding:3px 10px; border-radius:4px; font-size:11px; font-weight:700; white-space:nowrap; }
+.bg-green  { background:#f0fdf4; color:#166534; }
 .bg-amber  { background:#fef9c3; color:#a16207; }
 .bg-gray   { background:#f1f5f9; color:#475569; }
 .bg-red    { background:#fee2e2; color:#b91c1c; }
-.bg-blue   { background:#dbeafe; color:#1d4ed8; }
+.bg-blue   { background:#eff6ff; color:#1e40af; }
 .afto-empty { text-align:center; padding:60px 20px; color:#94a3b8; }
 .afto-empty i { font-size:44px; display:block; margin-bottom:14px; opacity:.4; }
 </style>
 
-<div class="afto-head">
+<div class="int-head">
     <div>
         <h1><i class="fas fa-gas-pump"></i> Fuel Transactions Oversight</h1>
-        <div class="afto-subtitle">MONITOR AND AUDIT ALL FUEL TRANSACTIONS VALIDATED BY MANAGERS, ENSURING COMPLIANCE AND ACCURACY.</div>
+        <div class="sub">Monitor and audit all fuel transactions validated by managers, ensuring compliance and accuracy.</div>
     </div>
-    <div class="afto-actions">
-        <button type="button" onclick="aftoExport('excel')" class="afto-btn afto-btn-excel"><i class="fas fa-file-excel"></i> Excel</button>
-        <button type="button" onclick="aftoExport('csv')"   class="afto-btn afto-btn-csv"><i class="fas fa-file-csv"></i> CSV</button>
-        <button type="button" onclick="aftoExport('pdf')"   class="afto-btn afto-btn-pdf"><i class="fas fa-file-pdf"></i> PDF</button>
-        <a href="admin_dashboard.php" class="afto-btn afto-btn-back"><i class="fas fa-arrow-left"></i> Back</a>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <button type="button" onclick="aftoExport('excel')" class="ato-btn ato-btn-excel"><i class="fas fa-file-excel"></i> Excel</button>
+        <button type="button" onclick="aftoExport('csv')"   class="ato-btn ato-btn-csv"><i class="fas fa-file-csv"></i> CSV</button>
+        <button type="button" onclick="aftoExport('pdf')"   class="ato-btn ato-btn-pdf"><i class="fas fa-file-pdf"></i> PDF</button>
+        <a href="admin_dashboard.php" class="ato-btn ato-btn-back"><i class="fas fa-arrow-left"></i> Back</a>
     </div>
 </div>
 
@@ -360,8 +367,8 @@ html, body { max-width:100vw; overflow-x:hidden; }
             <?php endforeach; ?>
         </select>
     </div>
-    <button type="submit" class="afto-btn afto-btn-filter"><i class="fas fa-filter"></i> Apply</button>
-    <a href="admin_fuel_transactions_oversight.php" class="afto-btn afto-btn-back"><i class="fas fa-times"></i> Reset</a>
+    <button type="submit" class="ato-btn ato-btn-filter"><i class="fas fa-filter"></i> Apply</button>
+    <a href="admin_fuel_transactions_oversight.php" class="ato-btn ato-btn-back"><i class="fas fa-times"></i> Reset</a>
 </form>
 
 <!-- Table -->
@@ -558,123 +565,9 @@ html, body { max-width:100vw; overflow-x:hidden; }
 })();
 
 function aftoExport(format) {
-    const table = document.querySelector('.afto-tbl');
-    if (!table) { alert('No transaction data found.'); return; }
-
-    const dateFrom = document.querySelector('input[name="date_from"]')?.value || '';
-    const dateTo   = document.querySelector('input[name="date_to"]')?.value || '';
-    const filename = `Fuel_Transactions_Oversight_${dateFrom || 'All'}_to_${dateTo || 'All'}`;
-
-    // Temporarily show all rows for complete export
-    const rows = Array.from(table.querySelectorAll('tbody tr'));
-    const originalDisplays = rows.map(r => r.style.display);
-    rows.forEach(r => r.style.display = '');
-
-    if (format === 'excel') {
-        if (typeof XLSX === 'undefined') {
-            alert('Export library not loaded. Please try again.');
-            rows.forEach((r, idx) => r.style.display = originalDisplays[idx]);
-            return;
-        }
-        const aoa = [];
-        // Headers
-        table.querySelectorAll('thead tr').forEach(tr => {
-            aoa.push([...tr.querySelectorAll('th')].map(th => th.innerText.trim()));
-        });
-        // Body
-        table.querySelectorAll('tbody tr').forEach(tr => {
-            aoa.push([...tr.querySelectorAll('td')].map(td => td.innerText.trim()));
-        });
-        const wb = XLSX.utils.book_new();
-        const ws = XLSX.utils.aoa_to_sheet(aoa);
-        if (aoa.length && aoa[0]) {
-            ws['!cols'] = aoa[0].map((_, ci) => ({
-                wch: Math.min(45, Math.max(10, ...aoa.map(row => String(row[ci] ?? '').length)))
-            }));
-        }
-        XLSX.utils.book_append_sheet(wb, ws, 'Fuel Transactions');
-        XLSX.writeFile(wb, filename + '.xlsx');
-    } else if (format === 'csv') {
-        let csv = '';
-        // Headers
-        table.querySelectorAll('thead tr').forEach(tr => {
-            csv += [...tr.querySelectorAll('th')].map(th => '"' + th.innerText.trim().replace(/"/g, '""') + '"').join(',') + '\n';
-        });
-        // Body
-        table.querySelectorAll('tbody tr').forEach(tr => {
-            csv += [...tr.querySelectorAll('td')].map(td => '"' + td.innerText.trim().replace(/"/g, '""') + '"').join(',') + '\n';
-        });
-        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement('a');
-        a.href     = url;
-        a.download = filename + '.csv';
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
-    } else if (format === 'pdf') {
-        const logo_url  = '../assets/img/Petron%20Logo.png';
-        const generated = new Date().toLocaleString();
-        
-        let tableHtml = table.outerHTML;
-        
-        let iframe = document.getElementById('print-iframe');
-        if (!iframe) {
-            iframe = document.createElement('iframe');
-            iframe.id = 'print-iframe';
-            iframe.style.position = 'fixed';
-            iframe.style.right = '0';
-            iframe.style.bottom = '0';
-            iframe.style.width = '0';
-            iframe.style.height = '0';
-            iframe.style.border = '0';
-            document.body.appendChild(iframe);
-        }
-
-        const doc = iframe.contentDocument || iframe.contentWindow.document;
-        doc.open();
-        doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Fuel Transactions Oversight Report</title>
-        <style>
-            @page{size:legal landscape;margin:.3in .4in;}
-            *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;box-sizing:border-box;}
-            body{font-family:Arial,sans-serif;font-size:11px;color:#000;background:white;margin:0;padding:20px;}
-            .header-container{display:flex;align-items:center;gap:15px;border-bottom:2px solid #002F6C;padding-bottom:12px;margin-bottom:15px;}
-            .header-container img{height:45px;}
-            .header-title h1{font-size:16px;margin:0;color:#002F6C;text-transform:uppercase;}
-            .header-title p{font-size:10px;margin:3px 0 0;color:#666;}
-            .meta-info{margin-left:auto;text-align:right;font-size:10px;color:#444;}
-            table{width:100%;border-collapse:collapse;font-size:9.5px;}
-            thead tr{background:#f2f2f2 !important;border-top:2px solid #002F6C;border-bottom:1px solid #999;}
-            thead th{padding:6px 5px;text-align:left;font-weight:700;font-size:9px;text-transform:uppercase;color:#000;}
-            tbody tr{border-bottom:1px solid #ddd;}
-            tbody td{padding:5px;color:#333;}
-            .afto-badge, .badge, .status-badge{border:none;background:none;padding:0;font-weight:normal;}
-            tfoot tr{border-top:2px solid #002F6C;background:#f2f2f2 !important;}
-            tfoot td{padding:6px 5px;font-weight:700;}
-        </style></head><body>
-            <div class="header-container">
-                <img src="${logo_url}" alt="Petron">
-                <div class="header-title">
-                    <h1>Petron Station Management System</h1>
-                    <p>Fuel Transactions Oversight Report</p>
-                </div>
-                <div class="meta-info">
-                    Date Range: ${dateFrom || 'All'} to ${dateTo || 'All'}<br>
-                    Generated: ${generated}
-                </div>
-            </div>
-            ${tableHtml}
-        </body></html>`);
-        doc.close();
-
-        setTimeout(() => {
-            iframe.contentWindow.focus();
-            iframe.contentWindow.print();
-        }, 250);
-    }
-
-    // Restore original row displays
-    rows.forEach((r, idx) => r.style.display = originalDisplays[idx]);
+    const params = new URLSearchParams(window.location.search);
+    params.set('export', format);
+    window.location.href = '?' + params.toString();
 }
 </script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>

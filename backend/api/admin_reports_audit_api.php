@@ -1198,7 +1198,7 @@ tr:nth-child(even) td{background:#f8fafc}
             LEFT JOIN (
                 SELECT ($mt_date) sd, COALESCE(SUM(mt.total_amount),0) merch_rev
                 FROM merchandise_transactions mt WHERE mt.station_id=? AND ($mt_date) BETWEEN ? AND ?
-                AND LOWER(COALESCE(mt.validation_status,'')) NOT IN ('rejected','cancelled')
+                AND LOWER(COALESCE(mt.validation_status,'')) NOT IN ('rejected','cancelled','voided')
                 GROUP BY ($mt_date)
             ) m ON m.sd=d.sale_date
             LEFT JOIN (
@@ -1638,7 +1638,7 @@ tr:nth-child(even) td{background:#f8fafc}
             LEFT JOIN (
                 SELECT ($mt_date) sd, COALESCE(SUM(mt.total_amount),0) merch_rev
                 FROM merchandise_transactions mt WHERE mt.station_id=? AND ($mt_date) BETWEEN ? AND ?
-                AND LOWER(COALESCE(mt.validation_status,'')) NOT IN ('rejected','cancelled')
+                AND LOWER(COALESCE(mt.validation_status,'')) NOT IN ('rejected','cancelled','voided')
                 GROUP BY ($mt_date)
             ) m ON m.sd=d.sale_date
             LEFT JOIN (

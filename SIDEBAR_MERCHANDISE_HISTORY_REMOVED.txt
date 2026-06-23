@@ -1,0 +1,166 @@
+═══════════════════════════════════════════════════════════════════════════
+          MERCHANDISE HISTORY REMOVED FROM SIDEBAR - COMPLETE ✅
+═══════════════════════════════════════════════════════════════════════════
+
+DATE: June 23, 2026
+ACTION: Removed redundant sidebar navigation item
+
+═══════════════════════════════════════════════════════════════════════════
+WHAT WAS CHANGED
+═══════════════════════════════════════════════════════════════════════════
+
+✅ REMOVED: "Merchandise History" from Transactions sub-menu in sidebar
+
+REASON:
+- Merchandise History is now accessible via TABS in the main transactions page
+- Having it in both places was redundant
+- Cleaner sidebar navigation
+
+═══════════════════════════════════════════════════════════════════════════
+FILE MODIFIED
+═══════════════════════════════════════════════════════════════════════════
+
+File: partials/rbac_menu.php
+Section: Staff Transactions sub-menu (lines 410-419)
+
+BEFORE (4 items):
+✓ New Transaction
+✓ Transaction History
+✓ Merchandise History  ← REMOVED
+✓ Receipts
+
+AFTER (3 items):
+✓ New Transaction
+✓ Transaction History
+✓ Receipts
+
+═══════════════════════════════════════════════════════════════════════════
+ACCESS MERCHANDISE HISTORY
+═══════════════════════════════════════════════════════════════════════════
+
+Merchandise History is still fully accessible via:
+
+1. Go to: Transactions > New Transaction
+2. In the transactions hub page, click the tabs at the top
+3. You'll see: Merchandise | Job Orders | Fuel
+4. Click "Merchandise" tab
+5. The merchandise history modal/section opens
+
+OR
+
+Direct URL:
+staff_transactions_hub.php?section=merchandise&mh_open=1
+
+═══════════════════════════════════════════════════════════════════════════
+SIDEBAR STRUCTURE (STAFF)
+═══════════════════════════════════════════════════════════════════════════
+
+📊 Dashboard
+
+📋 Transactions
+   ├─ 🆕 New Transaction
+   ├─ 🕒 Transaction History
+   └─ 🧾 Receipts
+
+⛽ Fuel Management
+   ├─ 📝 Record Fuel Delivery
+   ├─ 📜 Fuel Deliveries History
+   └─ ⛽ Fuel Transactions (pump readings)
+
+📦 Merchandise Deliveries
+   ├─ 📝 Record Delivery Receipt
+   └─ 📜 Merchandise Deliveries History
+
+🏪 Inventory
+   ├─ 🛒 Merchandise Inventory
+   ├─ ⛽ Fuel Inventory
+   ├─ 📋 Stock Request
+   ├─ 📦 Stock-In
+   └─ 🕒 Inventory History
+
+👥 Customers
+   ├─ ➕ Add New Customer
+   ├─ 📋 Customer List
+   └─ 🕒 Customer History
+
+📅 Calendar
+
+📊 Reports
+   ├─ 💰 Sales Reports
+   ├─ 🔧 Job Orders Reports
+   ├─ 🚚 Deliveries Reports
+   ├─ 💳 Payments Reports
+   ├─ 👥 Customer Reports
+   └─ 📝 Activity Reports
+
+═══════════════════════════════════════════════════════════════════════════
+BENEFITS
+═══════════════════════════════════════════════════════════════════════════
+
+✅ Cleaner sidebar navigation (less clutter)
+✅ No redundant menu items
+✅ Consistent with tab-based navigation pattern
+✅ Easier to find - grouped with related transaction types
+✅ Better UX - all transaction types in one place
+
+═══════════════════════════════════════════════════════════════════════════
+TESTING
+═══════════════════════════════════════════════════════════════════════════
+
+TEST 1: Verify Sidebar
+1. Login as Staff user
+2. Check sidebar under "Transactions"
+3. Should see only 3 items:
+   - New Transaction
+   - Transaction History
+   - Receipts
+4. "Merchandise History" should NOT appear
+
+TEST 2: Verify Tab Access
+1. Click: Transactions > New Transaction
+2. Look for tabs at the top of the page
+3. Click "Merchandise" tab
+4. Merchandise history should open/display
+5. Verify all merchandise transactions are visible
+
+TEST 3: Verify Direct URL
+1. Navigate to: staff_transactions_hub.php?section=merchandise&mh_open=1
+2. Merchandise history should open directly
+3. All functionality should work normally
+
+═══════════════════════════════════════════════════════════════════════════
+ROLLBACK (IF NEEDED)
+═══════════════════════════════════════════════════════════════════════════
+
+If you need to restore "Merchandise History" to the sidebar:
+
+1. Open: partials/rbac_menu.php
+
+2. Find the Staff Transactions section (around line 410)
+
+3. Add this line back after "Transaction History":
+   ['id' => 'staff_merchandise_history', 'label' => 'Merchandise History', 'href' => 'staff_transactions_hub.php?section=merchandise&mh_open=1', 'ico' => 'fas fa-shopping-bag', 'permissions' => ['create_transactions'], 'desc' => 'View merchandise transaction history.'],
+
+4. Save the file
+
+═══════════════════════════════════════════════════════════════════════════
+RELATED CHANGES
+═══════════════════════════════════════════════════════════════════════════
+
+Previous improvements to Transactions navigation:
+- Tab-based interface (Merchandise | Job Orders | Fuel)
+- Unified transactions hub page
+- Consistent navigation pattern across all transaction types
+
+This change completes the navigation consolidation strategy.
+
+═══════════════════════════════════════════════════════════════════════════
+STATUS
+═══════════════════════════════════════════════════════════════════════════
+
+✅ COMPLETE
+📅 Date: June 23, 2026
+👤 Modified by: AI Assistant
+📝 Change Type: Navigation Cleanup
+
+═══════════════════════════════════════════════════════════════════════════

@@ -1,0 +1,145 @@
+<?php
+/**
+ * Get Transaction Receipt Data
+ * Generates HTML receipt for any transaction type
+ */
+require_once __DIR__ . '/../public/db_connect.php';
+require_once __DIR__ . '/lib.php';
+require_login();
+
+header('Content-Type: application/json');
+
+$transaction_id = (int)($_GET['id'] ?? 0);
+
+if ($transaction_id === 0) {
+    echo json_encode(['success' => false, 'error' => 'Invalid transaction ID']);
+    exit;
+}
+
+try {
+    // Get transaction details
+    $stmt = $pdo->prepare("
+        SELECT 
+            mt.*,
+            s.station_name,
+            s.address AS station_address,
+            s.contact_number AS station_contact,
+            u.username AS staff_name
+        FROM merchandise_transactions mt
+        LEFT JOIN stations s ON s.id = mt.station_id
+        LEFT JOIN users u ON u.id = mt.staff_id
+        WHERE mt.id = ?
+        LIMIT 1
+    ");
+    $stmt->execute([$transaction_id]);
+    $transaction = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$transaction) {
+        echo json_encode(['success' => false, 'error' => 'Transaction not found']);
+        exit;
+    }
+    
+    // Get transaction items
+    $items_stmt = $pdo->prepare("
+        SELECT * FROM merchandise_transaction_items
+        WHERE transaction_id = ?
+        ORDER BY id
+    ");
+    $items_stmt->execute([$transaction_id]);
+    $items = $items_stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Generate receipt HTML
+    $html = generateReceiptHTML($transaction, $items);
+    
+    echo json_encode([
+        'success' => true,
+        'html' => $html
+    ]);
+    
+} catch (Exception $e) {
+    error_log('Get receipt error: ' . $e->getMessage());
+    echo json_encode([
+        'success' => false,
+        'error' => 'Failed to load receipt'
+    ]);
+}
+
+function generateReceiptHTML($txn, $items) {
+    $html = '<div style="font-family: monospace; max-width: 400px; margin: 0 auto;">';
+    
+    // Header
+    $html .= '<div style="text-align: center; border-bottom: 2px dashed #000; padding-bottom: 1rem; margin-bottom: 1rem;">';
+    $html .= '<h2 style="margin: 0;">' . htmlspecialchars($txn['station_name'] ?? 'Petron Station') . '</h2>';
+    $html .= '<p style="margin: 0.25rem 0;">' . htmlspecialchars($txn['station_address'] ?? '') . '</p>';
+    $html .= '<p style="margin: 0.25rem 0;">Tel: ' . htmlspecialchars($txn['station_contact'] ?? '') . '</p>';
+    $html .= '</div>';
+    
+    // Transaction info
+    $html .= '<div style="margin-bottom: 1rem;">';
+    $html .= '<p style="margin: 0.25rem 0;"><strong>Transaction ID:</strong> ' . htmlspecialchars($txn['transaction_id']) . '</p>';
+    $html .= '<p style="margin: 0.25rem 0;"><strong>Date:</strong> ' . date('M d, Y g:i A', strtotime($txn['created_at'])) . '</p>';
+    $html .= '<p style="margin: 0.25rem 0;"><strong>Customer:</strong> ' . htmlspecialchars($txn['customer_name']) . '</p>';
+    $html .= '<p style="margin: 0.25rem 0;"><strong>Served by:</strong> ' . htmlspecialchars($txn['staff_name'] ?? 'Staff') . '</p>';
+    
+    // Transaction type badge
+    $type_labels = [
+        'job_order' => 'JOB ORDER',
+        'merchandise' => 'MERCHANDISE',
+        'combined' => 'COMBINED TRANSACTION'
+    ];
+    $html .= '<p style="margin: 0.25rem 0;"><strong>Type:</strong> ' . ($type_labels[$txn['transaction_type']] ?? strtoupper($txn['transaction_type'])) . '</p>';
+    $html .= '</div>';
+    
+    // Items
+    $html .= '<div style="border-top: 2px dashed #000; padding-top: 1rem; margin-bottom: 1rem;">';
+    $html .= '<table style="width: 100%; border-collapse: collapse;">';
+    $html .= '<thead>';
+    $html .= '<tr>';
+    $html .= '<th style="text-align: left; padding: 0.25rem 0;">Item</th>';
+    $html .= '<th style="text-align: right; padding: 0.25rem 0;">Qty</th>';
+    $html .= '<th style="text-align: right; padding: 0.25rem 0;">Price</th>';
+    $html .= '<th style="text-align: right; padding: 0.25rem 0;">Total</th>';
+    $html .= '</tr>';
+    $html .= '</thead>';
+    $html .= '<tbody>';
+    
+    $subtotal = 0;
+    foreach ($items as $item) {
+        $item_total = (float)$item['quantity'] * (float)$item['unit_price'];
+        $subtotal += $item_total;
+        
+        $html .= '<tr>';
+        $html .= '<td style="padding: 0.25rem 0;">' . htmlspecialchars($item['product_name']) . '</td>';
+        $html .= '<td style="text-align: right; padding: 0.25rem 0;">' . (int)$item['quantity'] . '</td>';
+        $html .= '<td style="text-align: right; padding: 0.25rem 0;">₱' . number_format($item['unit_price'], 2) . '</td>';
+        $html .= '<td style="text-align: right; padding: 0.25rem 0;">₱' . number_format($item_total, 2) . '</td>';
+        $html .= '</tr>';
+    }
+    
+    $html .= '</tbody>';
+    $html .= '</table>';
+    $html .= '</div>';
+    
+    // Totals
+    $html .= '<div style="border-top: 2px dashed #000; padding-top: 1rem;">';
+    $html .= '<p style="display: flex; justify-content: space-between; margin: 0.25rem 0;">';
+    $html .= '<strong>SUBTOTAL:</strong> <strong>₱' . number_format($subtotal, 2) . '</strong>';
+    $html .= '</p>';
+    $html .= '<p style="display: flex; justify-content: space-between; margin: 0.25rem 0; font-size: 1.25rem;">';
+    $html .= '<strong>TOTAL:</strong> <strong>₱' . number_format($txn['total_amount'], 2) . '</strong>';
+    $html .= '</p>';
+    $html .= '<p style="display: flex; justify-content: space-between; margin: 0.25rem 0;">';
+    $html .= '<span>Payment Method:</span> <span>' . htmlspecialchars($txn['payment_method']) . '</span>';
+    $html .= '</p>';
+    $html .= '</div>';
+    
+    // Footer
+    $html .= '<div style="text-align: center; margin-top: 2rem; padding-top: 1rem; border-top: 2px dashed #000;">';
+    $html .= '<p style="margin: 0;">Thank you for your business!</p>';
+    $html .= '<p style="margin: 0; font-size: 0.875rem;">Please come again</p>';
+    $html .= '</div>';
+    
+    $html .= '</div>';
+    
+    return $html;
+}

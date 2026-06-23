@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ============================================================
 // Admin Fuel Deliveries Oversight
 // Fetch Source: fuel_deliveries (staff-encoded → manager-verified)
@@ -195,28 +195,44 @@ if (in_array($export, ['csv','excel','pdf'])) {
 require_once __DIR__ . '/../partials/header.php';
 ?>
 <style>
-/* ── Admin Fuel Deliveries Oversight ── */
-.afdo-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:20px; flex-wrap:wrap; }
-.afdo-head h1 { margin:0 0 4px; font-size:22px; font-weight:700; color:#00264D; display:flex; align-items:center; gap:9px; }
-.afdo-subtitle { font-size:13px; color:#6b7280; text-transform:uppercase; letter-spacing:.3px; }
-.afdo-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-.afdo-btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; border:none; text-decoration:none; transition:all .13s; height:36px; white-space:nowrap; }
-.afdo-btn-excel  { background:#1d6f42; color:#fff; }  .afdo-btn-excel:hover  { background:#155a34; color:#fff; }
-.afdo-btn-csv    { background:#003d7a; color:#fff; }  .afdo-btn-csv:hover    { background:#002a58; color:#fff; }
-.afdo-btn-pdf    { background:#dc2626; color:#fff; }  .afdo-btn-pdf:hover    { background:#b91c1c; color:#fff; }
-.afdo-btn-back   { background:#6c757d; color:#fff; }  .afdo-btn-back:hover   { background:#545b62; color:#fff; }
-.afdo-btn-filter { background:#002F6C; color:#fff; }  .afdo-btn-filter:hover { background:#001f4d; color:#fff; }
+/* == PAGE HEADER - matches SuperAdmin int-head standard == */
+.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:-12px !important; }
+.int-head h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
+.int-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
+
+/* Export/action buttons — unified outline style matching staff Transaction module */
+.ato-btn {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:0 16px; border-radius:7px; font-size:13px; font-weight:600;
+    cursor:pointer; border:1px solid transparent; text-decoration:none; transition:all .15s;
+    height:36px; white-space:nowrap; background:white !important;
+}
+.ato-btn-excel  { color:#1d6f42 !important; border-color:#1d6f42 !important; }
+.ato-btn-excel:hover  { background:#1d6f42 !important; color:#fff !important; }
+.ato-btn-csv    { color:#003d7a !important; border-color:#003d7a !important; }
+.ato-btn-csv:hover    { background:#003d7a !important; color:#fff !important; }
+.ato-btn-pdf    { color:#dc2626 !important; border-color:#dc2626 !important; }
+.ato-btn-pdf:hover    { background:#dc2626 !important; color:#fff !important; }
+.ato-btn-back   { color:#4b5563 !important; border-color:#6b7280 !important; }
+.ato-btn-back:hover   { background:#6b7280 !important; color:#fff !important; }
+.ato-btn-filter { color:#002F70 !important; border-color:#002F70 !important; }
+.ato-btn-filter:hover { background:#002F70 !important; color:#fff !important; }
+
+/* Summary cards */
 .afdo-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-bottom:18px; }
 .afdo-card { background:#fff; border:1px solid #e2e8f0; border-radius:11px; padding:16px; display:flex; align-items:center; gap:14px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
-.afdo-card.c-blue  { border-left:4px solid #1e40af; } .afdo-card.c-amber { border-left:4px solid #d97706; } .afdo-card.c-green { border-left:4px solid #16a34a; }
-.afdo-card-ico { width:40px; height:40px; display:flex; align-items:center; justify-content:center; font-size:19px; flex-shrink:0; color:#002F6C; }
-.afdo-card-meta h3 { margin:0; font-size:10px; color:#64748b; text-transform:uppercase; letter-spacing:.5px; font-weight:700; }
-.afdo-card-meta h2 { margin:2px 0 0; font-size:24px; font-weight:900; color:#00264D; line-height:1; }
+.afdo-card-ico { width:40px; height:40px; display:flex; align-items:center; justify-content:center; font-size:19px; flex-shrink:0; color:#002F70; }
+.afdo-card-meta h3 { margin:0; font-size:11px; color:#64748b; text-transform:uppercase; letter-spacing:.5px; font-weight:700; }
+.afdo-card-meta h2 { margin:2px 0 0; font-size:22px; font-weight:700; color:#00264D; line-height:1; } /* KPI standard: 18px-22px semi-bold */
 .afdo-card-meta span { font-size:11px; color:#94a3b8; }
+
+/* Filter bar */
 .afdo-filter { display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:12px 16px; margin-bottom:16px; }
 .afdo-fg { display:flex; flex-direction:column; gap:3px; }
-.afdo-fg label { font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.4px; }
-.afdo-fg input, .afdo-fg select { padding:6px 10px; border:1px solid #e2e8f0; border-radius:6px; font-size:12px; }
+.afdo-fg label { font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.4px; }
+.afdo-fg input, .afdo-fg select { height:36px; padding:0 10px; border:1px solid #cbd5e1; border-radius:7px; font-size:13px; color:#1e293b; background:#fff; outline:none; box-sizing:border-box; }
+.afdo-fg input:focus, .afdo-fg select:focus { border-color:#002F70; box-shadow:0 0 0 3px rgba(0,47,112,.1); }
+
 /* Force no horizontal scroll */
 html, body { max-width:100vw; overflow-x:hidden; }
 .container { max-width:100%; overflow-x:hidden; }
@@ -224,28 +240,29 @@ html, body { max-width:100vw; overflow-x:hidden; }
 .afdo-table-hd { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid #f1f5f9; flex-wrap:wrap; gap:8px; }
 .afdo-table-title { font-size:13px; font-weight:700; color:#00264D; text-transform:uppercase; letter-spacing:.3px; margin:0; }
 .afdo-tbl-wrap { width:100%; overflow-x:hidden; }
-.afdo-tbl { width:100%; table-layout:fixed; border-collapse:collapse; font-size:13px; }
-.afdo-tbl thead tr { background:#002F6C; }
-.afdo-tbl thead th { padding:10px 8px; text-align:left; font-size:11px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.3px; overflow:hidden; text-overflow:ellipsis; line-height:1.4; }
+.afdo-tbl { width:100%; table-layout:fixed; border-collapse:collapse; font-size:11px; }
+.afdo-tbl thead tr { background:#002F70; }
+.afdo-tbl thead th { padding:9px 10px; text-align:left; font-size:11px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.4px; overflow:hidden; text-overflow:ellipsis; border-bottom:2px solid #001a3d; vertical-align:middle; }
 .afdo-tbl tbody tr { border-bottom:1px solid #f1f5f9; transition:background .1s; }
-.afdo-tbl tbody tr:hover { background:#eff6ff; }
-.afdo-tbl tbody td { padding:10px 8px; color:#334155; vertical-align:middle; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.5; }
-.afdo-badge { display:inline-block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; }
-.bg-green { color:#15803d; } .bg-amber { color:#a16207; }
+.afdo-tbl tbody tr:hover td { background:#eff6ff; }
+.afdo-tbl tbody td { padding:9px 10px; color:#334155; vertical-align:middle; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; background:#fff; font-size:11px; }
+.afdo-badge { display:inline-block; padding:3px 10px; border-radius:4px; font-size:11px; font-weight:700; white-space:nowrap; }
+.bg-green { background:#f0fdf4; color:#166534; }
+.bg-amber { background:#fef9c3; color:#a16207; }
 .afdo-empty { text-align:center; padding:60px 20px; color:#94a3b8; }
 .afdo-empty i { font-size:44px; display:block; margin-bottom:14px; opacity:.4; }
 </style>
 
-<div class="afdo-head">
+<div class="int-head">
     <div>
         <h1><i class="fas fa-truck"></i> Fuel Deliveries Oversight</h1>
-        <div class="afdo-subtitle">OVERSEE SUPPLIER FUEL DELIVERIES, CROSS-CHECK AGAINST PURCHASE ORDERS, AND FLAG DISCREPANCIES.</div>
+        <div class="sub">Oversee supplier fuel deliveries, cross-check against purchase orders, and flag discrepancies.</div>
     </div>
-    <div class="afdo-actions">
-        <a href="?<?= http_build_query(array_merge($_GET,['export'=>'excel'])) ?>" class="afdo-btn afdo-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
-        <a href="?<?= http_build_query(array_merge($_GET,['export'=>'csv'])) ?>"   class="afdo-btn afdo-btn-csv"><i class="fas fa-file-csv"></i> CSV</a>
-        <a href="?<?= http_build_query(array_merge($_GET,['export'=>'pdf'])) ?>"   class="afdo-btn afdo-btn-pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
-        <a href="admin_dashboard.php" class="afdo-btn afdo-btn-back"><i class="fas fa-arrow-left"></i> Back</a>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <a href="?<?= http_build_query(array_merge($_GET,['export'=>'excel'])) ?>" class="ato-btn ato-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
+        <a href="?<?= http_build_query(array_merge($_GET,['export'=>'csv'])) ?>"   class="ato-btn ato-btn-csv"><i class="fas fa-file-csv"></i> CSV</a>
+        <a href="?<?= http_build_query(array_merge($_GET,['export'=>'pdf'])) ?>"   class="ato-btn ato-btn-pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
+        <a href="admin_dashboard.php" class="ato-btn ato-btn-back"><i class="fas fa-arrow-left"></i> Back</a>
     </div>
 </div>
 
@@ -309,8 +326,8 @@ html, body { max-width:100vw; overflow-x:hidden; }
             <?php endforeach; ?>
         </select>
     </div>
-    <button type="submit" class="afdo-btn afdo-btn-filter"><i class="fas fa-filter"></i> Apply</button>
-    <a href="admin_fuel_deliveries_oversight.php" class="afdo-btn afdo-btn-back"><i class="fas fa-times"></i> Reset</a>
+    <button type="submit" class="ato-btn ato-btn-filter"><i class="fas fa-filter"></i> Apply</button>
+    <a href="admin_fuel_deliveries_oversight.php" class="ato-btn ato-btn-back"><i class="fas fa-times"></i> Reset</a>
 </form>
 
 <!-- Table -->

@@ -143,28 +143,42 @@ $date_filter = $_GET['date'] ?? date('Y-m-d');
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{overflow-x:hidden;max-width:100vw}
+/* ── Page Head ── */
+.page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap;margin-top:-12px !important;}
+.page-head h1{margin:0 !important;font-size:22px !important;font-weight:700 !important;color:#00264D !important;text-transform:uppercase !important;letter-spacing:.5px;display:flex;align-items:center;gap:8px}
+.page-head .sub{font-size:13px;color:#666;margin-top:4px;text-transform:none !important;}
+
 :root{--blue:#002F70;--green:#28a745;--red:#dc3545;--orange:#fd7e14;--gray:#6c757d;}
-.page-head{margin-bottom:22px;}
+
 .stats-row{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:22px;}
-.stat-card{background:#fff;border:1px solid #e9ecef;border-radius:10px;padding:14px 18px;flex:1;box-shadow:0 1px 4px rgba(0,0,0,.05);}
-.stat-card .stat-num{font-size:1.6rem;font-weight:800;color:var(--blue);}
+.stat-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;flex:1;box-shadow:0 1px 4px rgba(0,0,0,.05);}
+.stat-card .stat-num{font-size:1.6rem;font-weight:800;color:#002F70;}
 .stat-card .stat-lbl{font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.4px;margin-top:2px;}
-.stat-card.green .stat-num{color:#28a745;}
-.stat-card.orange .stat-num{color:#fd7e14;}
-.stat-card.red .stat-num{color:#dc3545;}
 .card{background:#fff;border:1px solid #e9ecef;border-radius:10px;margin-bottom:20px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,.06);}
 .card-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #f0f0f0;flex-wrap:wrap;gap:8px;}
 .card-title{font-size:.95rem;font-weight:700;color:var(--blue);display:flex;align-items:center;gap:8px;}
 .card-body{padding:16px 18px;}
-.table-wrap{overflow:hidden;}
-table{width:100%;border-collapse:collapse;font-size:12px;}
-thead th{background:var(--blue);color:#fff;padding:10px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;}
-tbody td{padding:8px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle;}
+.table-wrap{width:100%;}
+table{width:100%;border-collapse:collapse;font-size:11px;table-layout:auto;}
+thead th{background:var(--blue);color:#fff;padding:8px 6px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;line-height:1.3;}
+tbody td{padding:6px 6px;border-bottom:1px solid #f0f0f0;vertical-align:middle;line-height:1.4;}
+tbody td:nth-child(1){width:30px;white-space:nowrap;}
+tbody td:nth-child(2){font-weight:600;white-space:nowrap;}
+tbody td:nth-child(3){white-space:nowrap;}
+tbody td:nth-child(4){font-size:10px;max-width:120px;}
+tbody td:nth-child(5){white-space:nowrap;text-align:right;}
+tbody td:nth-child(6){white-space:nowrap;text-align:right;font-size:10px;}
+tbody td:nth-child(7){min-width:90px;}
+tbody td:nth-child(8){white-space:nowrap;}
+tbody td:nth-child(9){font-size:10px;max-width:100px;}
+tbody td:nth-child(10){white-space:nowrap;font-size:10px;}
 tbody tr:hover td{background:#e8f4fd;}
-.badge{font-size:11px;font-weight:700;text-transform:uppercase;background:none !important;border:none !important;padding:0 !important;}
+.badge{font-size:10px;font-weight:700;text-transform:uppercase;background:none !important;border:none !important;padding:0 !important;display:inline-flex;align-items:center;gap:3px;}
 .badge-encoded{color:#28a745 !important;}
 .badge-no-reading{color:#dc3545 !important;}
-.fill-bar{height:8px;border-radius:4px;background:#e9ecef;min-width:80px;position:relative;}
+.fill-bar{height:8px;border-radius:4px;background:#e9ecef;min-width:70px;width:100%;max-width:100px;position:relative;}
 .fill-bar-inner{height:100%;border-radius:4px;background:var(--green);transition:width .3s;}
 .fill-bar-inner.low{background:#dc3545;}
 .fill-bar-inner.mid{background:#fd7e14;}
@@ -179,7 +193,7 @@ tbody tr:hover td{background:#e8f4fd;}
 
 <div class="page-head">
   <div>
-    <h1 class="h1"><i class="fas fa-gas-pump"></i> Pump Master Oversight</h1>
+    <h1><i class="fas fa-gas-pump"></i> Pump Master Oversight</h1>
     <div class="sub">Admin view of all 17 tanker calibration records and audit trail.</div>
   </div>
 </div>
@@ -190,15 +204,15 @@ tbody tr:hover td{background:#e8f4fd;}
     <div class="stat-num"><?= $total_tankers ?></div>
     <div class="stat-lbl">Total Tankers</div>
   </div>
-  <div class="stat-card green">
+  <div class="stat-card">
     <div class="stat-num"><?= $encoded_cnt ?></div>
     <div class="stat-lbl">With Calibration</div>
   </div>
-  <div class="stat-card red">
+  <div class="stat-card">
     <div class="stat-num"><?= $no_reading_cnt ?></div>
     <div class="stat-lbl">No Reading</div>
   </div>
-  <div class="stat-card orange">
+  <div class="stat-card">
     <div class="stat-num"><?= $cal_history_cnt ?></div>
     <div class="stat-lbl">Calibration Events</div>
   </div>
@@ -224,14 +238,14 @@ tbody tr:hover td{background:#e8f4fd;}
           <thead>
             <tr>
               <th>#</th>
-              <th>Tanker Label</th>
-              <th>Fuel Type</th>
-              <th>Underground Tank</th>
-              <th>Calibration Value</th>
-              <th>Tank Level / Capacity</th>
+              <th>Tanker</th>
+              <th>Fuel</th>
+              <th>Tank</th>
+              <th>Cal. Value</th>
+              <th>Level/Cap</th>
               <th>Fill %</th>
               <th>Status</th>
-              <th>Last Encoded By</th>
+              <th>Encoder</th>
               <th>Date</th>
             </tr>
           </thead>
@@ -241,14 +255,14 @@ tbody tr:hover td{background:#e8f4fd;}
               $bar_class = $fill < 20 ? 'low' : ($fill < 50 ? 'mid' : '');
             ?>
             <tr>
-              <td style="color:var(--gray);font-size:11px;"><?= $i + 1 ?></td>
-              <td><strong><?= htmlspecialchars($row['label']) ?></strong></td>
-              <td><?= htmlspecialchars($row['fuel_type']) ?></td>
-              <td style="font-size:11px;color:var(--gray);"><?= htmlspecialchars($row['tank']) ?></td>
-              <td style="text-align:right;font-weight:700;font-family:monospace;">
+              <td style="color:var(--gray);font-size:10px;"><?= $i + 1 ?></td>
+              <td><strong style="font-size:11px;"><?= htmlspecialchars($row['label']) ?></strong></td>
+              <td style="font-size:11px;"><?= htmlspecialchars($row['fuel_type']) ?></td>
+              <td style="font-size:10px;color:var(--gray);"><?= htmlspecialchars($row['tank']) ?></td>
+              <td style="text-align:right;font-weight:700;font-family:monospace;font-size:11px;">
                 <?= $row['cal_value'] > 0 ? number_format($row['cal_value'], 3) . ' L' : '<span style="color:#ccc;">—</span>' ?>
               </td>
-              <td style="text-align:right;">
+              <td style="text-align:right;font-size:10px;">
                 <?php if ($row['capacity'] > 0): ?>
                   <?= number_format($row['tank_level'], 0) ?> / <?= number_format($row['capacity'], 0) ?> L
                 <?php elseif ($row['tank_level'] > 0): ?>
@@ -262,9 +276,9 @@ tbody tr:hover td{background:#e8f4fd;}
                 <div class="fill-bar">
                   <div class="fill-bar-inner <?= $bar_class ?>" style="width:<?= $fill ?>%;"></div>
                 </div>
-                <span style="font-size:10px;color:var(--gray);"><?= $fill ?>%</span>
+                <span style="font-size:9px;color:var(--gray);display:block;text-align:center;margin-top:2px;"><?= $fill ?>%</span>
                 <?php else: ?>
-                <span style="color:#ccc;font-size:11px;">—</span>
+                <span style="color:#ccc;font-size:10px;">—</span>
                 <?php endif; ?>
               </td>
               <td>
@@ -273,8 +287,8 @@ tbody tr:hover td{background:#e8f4fd;}
                   <?= $row['status'] ?>
                 </span>
               </td>
-              <td style="font-size:11px;"><?= htmlspecialchars($row['encoded_by']) ?></td>
-              <td style="font-size:11px;white-space:nowrap;color:var(--gray);">
+              <td style="font-size:10px;"><?= htmlspecialchars($row['encoded_by']) ?></td>
+              <td style="font-size:10px;color:var(--gray);">
                 <?= $row['cal_date'] ? date('M d, Y', strtotime($row['cal_date'])) : '—' ?>
               </td>
             </tr>

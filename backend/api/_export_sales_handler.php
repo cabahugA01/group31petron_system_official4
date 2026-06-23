@@ -67,7 +67,7 @@ $mstmt = $pdo->prepare("
     LEFT JOIN sale_items si ON si.sale_id = mt.id
     WHERE mt.station_id = ?
       AND ($merch_date_expr) BETWEEN ? AND ?
-      AND LOWER(COALESCE(mt.validation_status,'')) NOT IN ('rejected','cancelled')
+      AND LOWER(COALESCE(mt.validation_status,'')) NOT IN ('rejected','cancelled','voided')
     GROUP BY ($merch_date_expr)
     ORDER BY sale_date DESC
 ");
@@ -98,7 +98,7 @@ if ($has_vt) {
             SELECT DISTINCT ($merch_date_expr)
             FROM merchandise_transactions mt
             WHERE mt.station_id = ? AND ($merch_date_expr) BETWEEN ? AND ?
-                AND LOWER(TRIM(COALESCE(mt.validation_status,''))) NOT IN ('rejected','cancelled')
+                AND LOWER(TRIM(COALESCE(mt.validation_status,''))) NOT IN ('rejected','cancelled','voided')
         ) d
         LEFT JOIN (
             SELECT 
@@ -123,7 +123,7 @@ if ($has_vt) {
             FROM merchandise_transactions
             WHERE station_id = ?
                 AND ($merch_date_expr) BETWEEN ? AND ?
-                AND LOWER(COALESCE(validation_status,'')) NOT IN ('rejected','cancelled')
+                AND LOWER(COALESCE(validation_status,'')) NOT IN ('rejected','cancelled','voided')
             GROUP BY ($merch_date_expr)
         ) m ON m.sd = d.sale_date
         ORDER BY d.sale_date DESC
@@ -152,7 +152,7 @@ if ($has_vt) {
             SELECT DISTINCT ($merch_date_expr)
             FROM merchandise_transactions mt
             WHERE mt.station_id = ? AND ($merch_date_expr) BETWEEN ? AND ?
-                AND LOWER(COALESCE(mt.validation_status,'')) NOT IN ('rejected','cancelled')
+                AND LOWER(COALESCE(mt.validation_status,'')) NOT IN ('rejected','cancelled','voided')
         ) d
         LEFT JOIN (
             SELECT 
@@ -172,7 +172,7 @@ if ($has_vt) {
             FROM merchandise_transactions
             WHERE station_id = ?
                 AND ($merch_date_expr) BETWEEN ? AND ?
-                AND LOWER(COALESCE(validation_status,'')) NOT IN ('rejected','cancelled')
+                AND LOWER(COALESCE(validation_status,'')) NOT IN ('rejected','cancelled','voided')
             GROUP BY ($merch_date_expr)
         ) m ON m.sd = d.sale_date
         ORDER BY d.sale_date DESC

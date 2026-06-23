@@ -1,0 +1,159 @@
+<?php
+/**
+ * Process Combined Transaction (Job Order + Merchandise)
+ */
+session_start();
+require_once __DIR__ . '/../backend/lib.php';
+require_once __DIR__ . '/../public/db_connect.php';
+require_login();
+
+header('Content-Type: application/json');
+
+try {
+    $me = current_user();
+    $station_id = user_station_id();
+    
+    // Validate required fields
+    if (empty($_POST['customer_name'])) {
+        throw new Exception('Customer name is required');
+    }
+    if (empty($_POST['service_type'])) {
+        throw new Exception('Service type is required');
+    }
+    if (empty($_POST['items']) || !is_array($_POST['items'])) {
+        throw new Exception('At least one merchandise item is required for combined transaction');
+    }
+    
+    $customer_name = trim($_POST['customer_name']);
+    $contact_number = trim($_POST['contact_number'] ?? '');
+    $vehicle_plate = trim($_POST['vehicle_plate'] ?? '');
+    $vehicle_type = trim($_POST['vehicle_type'] ?? '');
+    $service_type = trim($_POST['service_type']);
+    $assigned_mechanic = trim($_POST['assigned_mechanic'] ?? '');
+    $service_fee = floatval($_POST['service_fee'] ?? 0);
+    $payment_method = trim($_POST['payment_method'] ?? 'Cash');
+    $items = $_POST['items'];
+    
+    // Calculate merchandise totals
+    $merch_subtotal = 0;
+    foreach ($items as $item) {
+        $merch_subtotal += floatval($item['quantity']) * floatval($item['unit_price']);
+    }
+    
+    $vat_amount = $merch_subtotal * 0.12;
+    $merch_total = $merch_subtotal + $vat_amount;
+    
+    // Combined total
+    $grand_total = $service_fee + $merch_total;
+    $amount_paid = floatval($_POST['amount_paid'] ?? 0);
+    $balance_due = max(0, $grand_total - $amount_paid);
+    $payment_status = ($balance_due <= 0.01) ? 'Paid' : (($amount_paid > 0) ? 'Partial' : 'Pending Payment');
+    
+    // Get shift
+    $shift_period = '';
+    $shift_name = '';
+    $shift_stmt = $pdo->prepare("
+        SELECT shift_period, shift_name 
+        FROM labor_sessions 
+        WHERE user_id = ? AND end_time IS NULL 
+        ORDER BY start_time DESC LIMIT 1
+    ");
+    $shift_stmt->execute([$me['id']]);
+    $shift_row = $shift_stmt->fetch(PDO::FETCH_ASSOC);
+    if ($shift_row) {
+        $shift_period = $shift_row['shift_period'] ?? '';
+        $shift_name = $shift_row['shift_name'] ?? '';
+    }
+    
+    // Generate IDs
+    $job_order_number = 'JO-' . $station_id . '-' . date('Ymd-His') . '-' . mt_rand(100, 999);
+    $transaction_id = 'COMB-' . $station_id . '-' . date('Ymd-His');
+    
+    // Begin transaction
+    $pdo->beginTransaction();
+    
+    // 1. Insert job order
+    $jo_stmt = $pdo->prepare("
+        INSERT INTO job_orders (
+            job_order_number, customer_name, contact_number, vehicle_plate,
+            vehicle_type, service_type, assigned_mechanic, service_fee,
+            amount_paid, balance_due, payment_status, payment_method,
+            transaction_type, status, staff_id, station_id,
+            shift_period, shift_name, created_at
+        ) VALUES (
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 
+            'combined', 'Pending', ?, ?, ?, ?, NOW()
+        )
+    ");
+    
+    $jo_stmt->execute([
+        $job_order_number, $customer_name, $contact_number, $vehicle_plate,
+        $vehicle_type, $service_type, $assigned_mechanic, $service_fee,
+        $amount_paid, $balance_due, $payment_status, $payment_method,
+        $me['id'], $station_id, $shift_period, $shift_name
+    ]);
+    
+    $job_order_id = $pdo->lastInsertId();
+    
+    // 2. Insert merchandise transaction
+    $mt_stmt = $pdo->prepare("
+        INSERT INTO merchandise_transactions (
+            transaction_id, customer_name, subtotal_amount, vat_amount, total_amount,
+            amount_paid, balance_due, payment_status, payment_method,
+            transaction_type, job_order_id, staff_id, station_id,
+            shift_period, shift_name, transaction_date, created_at
+        ) VALUES (
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, 
+            'combined', ?, ?, ?, ?, ?, NOW(), NOW()
+        )
+    ");
+    
+    $mt_stmt->execute([
+        $transaction_id, $customer_name, $merch_subtotal, $vat_amount, $merch_total,
+        $amount_paid, $balance_due, $payment_status, $payment_method,
+        $job_order_id, $me['id'], $station_id, $shift_period, $shift_name
+    ]);
+    
+    $merch_txn_id = $pdo->lastInsertId();
+    
+    // 3. Update job order with merchandise_transaction_id
+    $pdo->prepare("UPDATE job_orders SET merchandise_transaction_id = ? WHERE id = ?")
+        ->execute([$merch_txn_id, $job_order_id]);
+    
+    // 4. Insert merchandise items
+    $item_stmt = $pdo->prepare("
+        INSERT INTO merchandise_transaction_items (
+            transaction_id, product_id, product_name, quantity, unit_price, item_type
+        ) VALUES (?, ?, ?, ?, ?, 'merchandise')
+    ");
+    
+    foreach ($items as $item) {
+        $item_stmt->execute([
+            $merch_txn_id,
+            $item['product_id'],
+            $item['product_name'],
+            $item['quantity'],
+            $item['unit_price']
+        ]);
+    }
+    
+    $pdo->commit();
+    
+    echo json_encode([
+        'success' => true,
+        'message' => 'Combined transaction created successfully',
+        'job_order_id' => $job_order_id,
+        'job_order_number' => $job_order_number,
+        'transaction_id' => $transaction_id,
+        'grand_total' => $grand_total
+    ]);
+    
+} catch (Exception $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    echo json_encode([
+        'success' => false,
+        'message' => $e->getMessage()
+    ]);
+}

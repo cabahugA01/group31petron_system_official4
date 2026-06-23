@@ -23,15 +23,6 @@ $me = current_user();
 $my_role = role_key($me['role'] ?? 'staff');
 $my_station_id = user_station_id();
 
-// DEBUG: Log session and station_id info
-error_log("=== USERS.PHP DEBUG START ===");
-error_log("Current User ID: " . ($me['id'] ?? 'NULL'));
-error_log("Current User Role: " . ($me['role'] ?? 'NULL'));
-error_log("Normalized Role: " . $my_role);
-error_log("Station ID from user_station_id(): " . var_export($my_station_id, true));
-error_log("Session user data: " . var_export($me, true));
-error_log("=== USERS.PHP DEBUG END ===");
-
 // Access Control: Station-scoped user management for Staff/Manager/Admin, global for Super Admin
 if (!in_array($my_role, ['staff', 'manager', 'admin', 'superadmin'], true)) {
     header("Location: dashboard.php");
@@ -45,6 +36,26 @@ function can_manage_role(string $actor_role, string $target_role): bool {
     if ($actor === 'superadmin') return true;
     if ($actor === 'admin') return in_array($target, ['staff', 'manager'], true);
     return $target === 'staff'; // manager and staff can only manage staff
+}
+
+function normalize_user_status_for_db(string $status): string {
+    $normalized = strtolower(trim($status));
+    if (in_array($normalized, ['active', 'activate', 'enabled'], true)) {
+        return 'Active';
+    }
+    if (in_array($normalized, ['locked', 'lock'], true)) {
+        return 'Locked';
+    }
+    return 'Disabled';
+}
+
+function is_user_active_status(?string $status): bool {
+    return strtolower(trim((string)$status)) === 'active';
+}
+
+function user_status_label(?string $status): string {
+    $normalized = normalize_user_status_for_db((string)$status);
+    return $normalized === 'Disabled' ? 'Disabled' : $normalized;
 }
 
 $msg = '';
@@ -104,7 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // Check login_id uniqueness (phone support removed)
-            $dup_sql = 'SELECT user_id FROM users WHERE username = ?';
+            $dup_sql = 'SELECT id FROM users WHERE username = ?';
             $dup_params = [$username];
             if (!empty($email)) { $dup_sql .= ' OR email = ?'; $dup_params[] = $email; }
             $stmt = $pdo->prepare($dup_sql);
@@ -348,7 +359,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             // Security check: Ensure user belongs to my station and role is manageable (unless superadmin)
             if ($my_role !== 'superadmin') {
-                $chk = $pdo->prepare("SELECT `user_id`, station_id, role FROM users WHERE user_id = ? AND station_id = ?");
+                $chk = $pdo->prepare("SELECT id, station_id, role FROM users WHERE id = ? AND station_id = ?");
                 $chk->execute([$id, $my_station_id]);
                 $target_user = $chk->fetch(PDO::FETCH_ASSOC);
                 if (!$target_user) throw new Exception("Unauthorized access to user.");
@@ -378,7 +389,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             } else {
                 // Superadmin editing
-                $chk = $pdo->prepare("SELECT `user_id`, station_id, role FROM users WHERE user_id = ?");
+                $chk = $pdo->prepare("SELECT id, station_id, role FROM users WHERE id = ?");
                 $chk->execute([$id]);
                 $target_user = $chk->fetch(PDO::FETCH_ASSOC);
                 if (!$target_user) throw new Exception("User not found.");
@@ -404,7 +415,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             
             // Check login_id uniqueness against other accounts (phone support removed)
-            $dup_sql = 'SELECT user_id FROM users WHERE username = ? AND id != ?';
+            $dup_sql = 'SELECT id FROM users WHERE username = ? AND id != ?';
             $dup_params = [$username, $id];
             if (!empty($email)) { $dup_sql .= ' OR (email = ? AND id != ?)'; $dup_params[] = $email; $dup_params[] = $id; }
             $stmt = $pdo->prepare($dup_sql);
@@ -422,8 +433,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // Update user details (phone support removed)
-            $stmt = $pdo->prepare("UPDATE users SET first_name = ?, last_name = ?, role = ?, username = ?, email = ? WHERE user_id = ?");
-            $stmt->execute([$name, $first_name_edit, $last_name_edit, $role, $username, $email, $id]);
+            $stmt = $pdo->prepare("UPDATE users SET first_name = ?, last_name = ?, role = ?, username = ?, email = ? WHERE id = ?");
+            $stmt->execute([$first_name_edit, $last_name_edit, $role, $username, $email, $id]);
             
              // Update password if checkbox is checked
              if ($changePassword) {
@@ -435,7 +446,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  }
                  
                  $hashed = password_hash($new_password, PASSWORD_DEFAULT);
-                 $stmt = $pdo->prepare("UPDATE users SET password_hash = ? WHERE user_id = ?");
+                 $stmt = $pdo->prepare("UPDATE users SET password_hash = ? WHERE id = ?");
                  $stmt->execute([$hashed, $id]);
                  
                  $msg = "✅ User details and password updated successfully. New password: $new_password";
@@ -452,7 +463,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $new_pass = $_POST['new_password'] ?? generateSecurePassword();
 
             if ($my_role !== 'superadmin') {
-                $chk = $pdo->prepare("SELECT `user_id`, role FROM users WHERE user_id = ? AND station_id = ?");
+                $chk = $pdo->prepare("SELECT id, role FROM users WHERE id = ? AND station_id = ?");
                 $chk->execute([$id, $my_station_id]);
                 $target_user = $chk->fetch(PDO::FETCH_ASSOC);
                 if (!$target_user) throw new Exception("Unauthorized access to user.");
@@ -462,7 +473,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             
             $hashed = password_hash($new_pass, PASSWORD_DEFAULT);
-            $stmt = $pdo->prepare("UPDATE users SET password_hash = ? WHERE user_id = ?");
+            $stmt = $pdo->prepare("UPDATE users SET password_hash = ? WHERE id = ?");
             $stmt->execute([$hashed, $id]);
             
             log_activity($pdo, $me['id'], 'Reset Password', "Reset password for user #$id");
@@ -472,12 +483,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // 4. Deactivate/Activate User
         elseif ($action === 'toggle_status') {
             $id = $_POST['user_id'];
-            $new_status = $_POST['new_status']; // 'active' or 'inactive'
+            $new_status = normalize_user_status_for_db($_POST['new_status'] ?? 'Disabled');
             
             // Get target user info first
             $target_user = null;
             if ($my_role !== 'superadmin') {
-                $chk = $pdo->prepare("SELECT `user_id`, role, station_id, status FROM users WHERE user_id = ? AND station_id = ?");
+                $chk = $pdo->prepare("SELECT id, role, station_id, status FROM users WHERE id = ? AND station_id = ?");
                 $chk->execute([$id, $my_station_id]);
                 $target_user = $chk->fetch(PDO::FETCH_ASSOC);
                 if (!$target_user) throw new Exception("Unauthorized access to user.");
@@ -485,7 +496,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new Exception("You cannot change status for this user.");
                 }
             } else {
-                $chk = $pdo->prepare("SELECT `user_id`, role, station_id, status FROM users WHERE user_id = ?");
+                $chk = $pdo->prepare("SELECT id, role, station_id, status FROM users WHERE id = ?");
                 $chk->execute([$id]);
                 $target_user = $chk->fetch(PDO::FETCH_ASSOC);
                 if (!$target_user) throw new Exception("User not found.");
@@ -497,7 +508,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // ═══════════════════════════════════════════════════════════
             // PREVENT REACTIVATING MANAGER if another Manager is active
             // ═══════════════════════════════════════════════════════════
-            if ($new_status === 'active' && strtolower($target_user['role']) === 'manager') {
+            if ($new_status === 'Active' && strtolower($target_user['role']) === 'manager') {
                 $station_to_check = $target_user['station_id'];
                 
                 // Check if station already has an active manager
@@ -519,11 +530,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
             
-            $stmt = $pdo->prepare("UPDATE users SET status = ? WHERE user_id = ?");
+            $stmt = $pdo->prepare("UPDATE users SET status = ? WHERE id = ?");
             $stmt->execute([$new_status, $id]);
             
             log_activity($pdo, $me['id'], 'Change Status', "Changed user #$id status to $new_status");
-            $msg = "✅ User status updated to $new_status.";
+            $msg = "User status updated to $new_status.";
         }
         
     } catch (Exception $e) {
@@ -534,54 +545,83 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // --- FETCH USERS ---
 $users = [];
 $station_name = '';
-error_log("=== FETCH USERS DEBUG START ===");
-error_log("My Role: " . $my_role);
-error_log("My Station ID: " . var_export($my_station_id, true));
-error_log("Is Superadmin check: " . ($my_role === 'superadmin' ? 'YES' : 'NO'));
+$user_list_columns = "
+    u.id,
+    u.first_name,
+    u.last_name,
+    u.username,
+    u.role,
+    u.email,
+    u.station_id,
+    u.status,
+    u.created_at,
+    u.updated_at,
+    u.profile_picture,
+    u.name,
+    s.name AS station_name
+";
 
 if ($my_role === 'superadmin') {
-    error_log("Executing SUPERADMIN query - fetch ALL users");
-    $stmt = $pdo->query("SELECT u.*, u.password_hash AS password, s.name as station_name FROM users u LEFT JOIN stations s ON u.station_id = s.id ORDER BY u.created_at DESC");
+    $stmt = $pdo->query("
+        SELECT {$user_list_columns}
+        FROM users u
+        LEFT JOIN stations s ON u.station_id = s.id
+        ORDER BY u.created_at DESC
+    ");
     $users = $stmt->fetchAll();
-    error_log("Superadmin query returned " . count($users) . " users");
-    // Fetch stations for dropdown
-    $stations = $pdo->query("SELECT `user_id`, name FROM stations WHERE status = 'Active' ORDER BY name ASC")->fetchAll();
-    error_log("Stations fetched: " . count($stations));
 } else {
-    error_log("Executing ADMIN/MANAGER query - filter by station_id");
-    error_log("SQL: SELECT *, password_hash AS password FROM users WHERE station_id = ? ORDER BY role, name");
-    error_log("Param: " . var_export($my_station_id, true));
-
     if ($my_role === 'staff' || $my_role === 'manager') {
-        $stmt = $pdo->prepare("SELECT *, password_hash AS password FROM users WHERE station_id = ? AND LOWER(role) IN ('staff', 'operations_staff', 'operations staff') ORDER BY role, username");
+        $stmt = $pdo->prepare("
+            SELECT {$user_list_columns}
+            FROM users u
+            LEFT JOIN stations s ON u.station_id = s.id
+            WHERE u.station_id = ?
+              AND LOWER(u.role) IN ('staff', 'operations_staff', 'operations staff')
+            ORDER BY u.role, u.username
+        ");
         $stmt->execute([$my_station_id]);
     } elseif ($my_role === 'admin') {
         // Admin users can only see Manager and Staff accounts, not other Admin accounts
-        $stmt = $pdo->prepare("SELECT *, password_hash AS password FROM users WHERE station_id = ? AND LOWER(role) IN ('manager', 'staff', 'operations_staff', 'operations staff') ORDER BY role, username");
+        $stmt = $pdo->prepare("
+            SELECT {$user_list_columns}
+            FROM users u
+            LEFT JOIN stations s ON u.station_id = s.id
+            WHERE u.station_id = ?
+              AND LOWER(u.role) IN ('manager', 'staff', 'operations_staff', 'operations staff')
+            ORDER BY u.role, u.username
+        ");
         $stmt->execute([$my_station_id]);
     } else {
-        $stmt = $pdo->prepare("SELECT *, password_hash AS password FROM users WHERE station_id = ? ORDER BY role, username");
+        $stmt = $pdo->prepare("
+            SELECT {$user_list_columns}
+            FROM users u
+            LEFT JOIN stations s ON u.station_id = s.id
+            WHERE u.station_id = ?
+            ORDER BY u.role, u.username
+        ");
         $stmt->execute([$my_station_id]);
     }
     $users = $stmt->fetchAll();
-    
-    error_log("Query returned " . count($users) . " users");
-    error_log("Users array: " . var_export($users, true));
-    
+
     // Fetch station name for admin/manager modal display
     $station_stmt = $pdo->prepare("SELECT name FROM stations WHERE id = ?");
     $station_stmt->execute([$my_station_id]);
     $station_row = $station_stmt->fetch();
     $station_name = $station_row['name'] ?? get_station_name($my_station_id);
 }
-error_log("=== FETCH USERS DEBUG END ===");
 
 // Get UI configuration for station selection
 try {
     $station_ui_config = StationManager::getStationUIConfig($my_role, $my_station_id, $station_name);
 } catch (Exception $e) {
     error_log("StationManager UI config error: " . $e->getMessage());
-    $station_ui_config = ['type' => 'readonly_field', 'value' => 'Unknown Station', 'readonly' => true];
+    $station_ui_config = [
+        'type' => 'readonly_field',
+        'value' => $station_name ?: 'Unknown Station',
+        'hidden_input_value' => $my_station_id,
+        'readonly' => true,
+        'help_text' => 'Station assignment information'
+    ];
 }
 
 include __DIR__ . '/../partials/header.php';
@@ -592,6 +632,7 @@ include __DIR__ . '/../partials/header.php';
         <h1 class="h1" style="font-weight: 800;">USER MANAGEMENT</h1>
         <div class="sub" style="font-weight: 500;">PROFESSIONAL USER ACCOUNT MANAGEMENT AND ACCESS CONTROL - SUPERADMIN/DEVELOPER/ADMIN/MANAGER</div>
     </div>
+    <?php if($my_role !== 'staff'): ?>
     <div class="actions">
         <button onclick="openAddModal()"
                 style="display:inline-flex !important;align-items:center;gap:6px;padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid #00264D !important;background:white !important;color:#00264D !important;transition:all .2s;"
@@ -600,6 +641,7 @@ include __DIR__ . '/../partials/header.php';
             <i class="fas fa-user-plus"></i> Add User
         </button>
     </div>
+    <?php endif; ?>
 </div>
 
 <?php if($msg): ?>
@@ -624,7 +666,9 @@ include __DIR__ . '/../partials/header.php';
             </thead>
             <tbody>
                 <?php foreach($users as $u): 
-                    $statusClass = $u['status'] === 'active' ? 'success' : 'danger';
+                    $isActive = is_user_active_status($u['status'] ?? '');
+                    $statusClass = $isActive ? 'success' : 'danger';
+                    $statusLabel = user_status_label($u['status'] ?? '');
                     $roleKey = role_key($u['role'] ?? 'staff');
                     $roleLabel = normalize_role($u['role'] ?? $roleKey);
                     if ($roleLabel === '') { $roleLabel = ucfirst($roleKey); }
@@ -642,7 +686,7 @@ include __DIR__ . '/../partials/header.php';
                     <?php if($my_role === 'superadmin'): ?>
                         <td><?php echo htmlspecialchars($u['station_name'] ?? 'Unassigned'); ?></td>
                     <?php endif; ?>
-                    <td><span class="badge bg-<?php echo $statusClass; ?>"><?php echo ucfirst($u['status']); ?></span></td>
+                    <td><span class="badge bg-<?php echo $statusClass; ?>"><?php echo htmlspecialchars($statusLabel); ?></span></td>
                     <td>
                         <div style="display:flex; flex-direction:column; gap:5px; align-items:flex-end;">
 
@@ -652,12 +696,12 @@ include __DIR__ . '/../partials/header.php';
                                     <i class="fas fa-eye"></i> View
                                 </button>
                                 <?php if($u['id'] != $me['id']): ?>
-                                    <?php if($u['status'] === 'active'): ?>
-                                        <button class="action-btn btn-danger" onclick="toggleStatus(<?php echo $u['id']; ?>, 'inactive')" title="Deactivate Manager">
+                                    <?php if($isActive): ?>
+                                        <button class="action-btn btn-danger" onclick="toggleStatus(<?php echo (int)$u['id']; ?>, 'Disabled')" title="Deactivate Manager">
                                             <i class="fas fa-times"></i> Deactivate
                                         </button>
                                     <?php else: ?>
-                                        <button class="action-btn btn-success" onclick="toggleStatus(<?php echo $u['id']; ?>, 'active')" title="Activate Manager">
+                                        <button class="action-btn btn-success" onclick="toggleStatus(<?php echo (int)$u['id']; ?>, 'Active')" title="Activate Manager">
                                             <i class="fas fa-check"></i> Activate
                                         </button>
                                     <?php endif; ?>
@@ -671,16 +715,16 @@ include __DIR__ . '/../partials/header.php';
                                 <button class="action-btn btn-edit" onclick="openEditModal(<?php echo htmlspecialchars(json_encode($u)); ?>)" title="Edit Staff">
                                     <i class="fas fa-edit"></i> Edit
                                 </button>
-                                <button class="action-btn btn-reset" onclick="openResetModal(<?php echo $u['id']; ?>, '<?php echo htmlspecialchars(addslashes($u['username'])); ?>')" title="Reset Password">
+                                <button class="action-btn btn-reset" onclick="openResetModal(<?php echo (int)$u['id']; ?>, '<?php echo htmlspecialchars(addslashes($u['username'])); ?>')" title="Reset Password">
                                     <i class="fas fa-key"></i> Reset
                                 </button>
                                 <?php if($u['id'] != $me['id']): ?>
-                                    <?php if($u['status'] === 'active'): ?>
-                                        <button class="action-btn btn-danger" onclick="toggleStatus(<?php echo $u['id']; ?>, 'inactive')" title="Deactivate Staff">
+                                    <?php if($isActive): ?>
+                                        <button class="action-btn btn-danger" onclick="toggleStatus(<?php echo (int)$u['id']; ?>, 'Disabled')" title="Deactivate Staff">
                                             <i class="fas fa-times"></i> Deactivate
                                         </button>
                                     <?php else: ?>
-                                        <button class="action-btn btn-success" onclick="toggleStatus(<?php echo $u['id']; ?>, 'active')" title="Activate Staff">
+                                        <button class="action-btn btn-success" onclick="toggleStatus(<?php echo (int)$u['id']; ?>, 'Active')" title="Activate Staff">
                                             <i class="fas fa-check"></i> Activate
                                         </button>
                                     <?php endif; ?>
@@ -692,7 +736,7 @@ include __DIR__ . '/../partials/header.php';
                 </tr>
                 <?php endforeach; ?>
                 <?php if(empty($users)): ?>
-                    <tr><td colspan="6" style="text-align:center; padding:20px;">No users found.</td></tr>
+                    <tr><td colspan="<?php echo $my_role === 'superadmin' ? 6 : 5; ?>" style="text-align:center; padding:20px;">No users found.</td></tr>
                 <?php endif; ?>
             </tbody>
         </table>
@@ -955,11 +999,9 @@ function toggleStationField() {
     const selectedRole = roleSelect.value;
     const currentUserRole = '<?php echo $my_role; ?>';
     
-    // Show station field only for:
-    // - SuperAdmin creating Admin role
-    // - Admin creating Admin role
-    // Hide for Staff and Manager roles (auto-assign)
-    if ((currentUserRole === 'superadmin' && selectedRole === 'admin') || 
+    // Superadmin must pick a station for every new user.
+    // Admin/manager accounts use their own station automatically.
+    if ((currentUserRole === 'superadmin' && selectedRole !== '') ||
         (currentUserRole === 'admin' && selectedRole === 'admin')) {
         stationFieldGroup.style.display = 'block';
     } else {
@@ -1112,7 +1154,8 @@ function openResetModal(id, username) {
 }
 
 function toggleStatus(id, newStatus) {
-    if(confirm('Are you sure you want to ' + (newStatus === 'active' ? 'activate' : 'deactivate') + ' this user?')) {
+    const action = String(newStatus).toLowerCase() === 'active' ? 'activate' : 'deactivate';
+    if(confirm('Are you sure you want to ' + action + ' this user?')) {
         document.getElementById('status_user_id').value = id;
         document.getElementById('status_new_val').value = newStatus;
         document.getElementById('statusForm').submit();

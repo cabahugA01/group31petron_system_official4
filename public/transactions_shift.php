@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'shift_transactions_view';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -13,308 +13,147 @@ if (!in_array($role, ['manager','admin','superadmin'])) {
     header('Location: dashboard.php'); exit;
 }
 
-
-
-// ── POST: save manager note ───────────────────────────────────────────────────
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = $_POST['action'] ?? '';
-    if ($action === 'save_manager_note') {
-        $shift_id = (int)($_POST['shift_id'] ?? 0);
-        $note     = trim($_POST['manager_note'] ?? '');
-        try {
-            // Store note in audit_trail as a manager remark
-            $pdo->prepare("INSERT INTO audit_trail (transaction_id, manager_id, action_type, new_value, station_id) VALUES (?,?,'ManagerNote',?,?)")
-                ->execute([$shift_id, $me['id'], $note, $station_id]);
-            $_SESSION['success'] = 'Manager note saved.';
-        } catch (Exception $e) {
-            $_SESSION['error'] = 'Error saving note: ' . $e->getMessage();
-        }
-        header('Location: transactions_shift.php?' . http_build_query(array_filter([
-            'start'    => $_POST['_start']    ?? '',
-            'end'      => $_POST['_end']      ?? '',
-            'staff_id' => $_POST['_staff_id'] ?? '',
-        ])));
-        exit;
-    }
-}
-
 // ── Filters ───────────────────────────────────────────────────────────────────
-$start    = $_GET['start']    ?? date('Y-m-d', strtotime('-30 days'));
-$end      = $_GET['end']      ?? date('Y-m-d');
-$staff_id = (int)($_GET['staff_id'] ?? 0);
+$start      = $_GET['start']      ?? date('Y-m-d', strtotime('-30 days'));
+$end        = $_GET['end']        ?? date('Y-m-d');
+$shift_filter = $_GET['shift']    ?? 'all'; // all | shift1 | shift2
 
-// ── Staff list for filter dropdown ───────────────────────────────────────────
-$staff_list = [];
+// ── Load individual transactions (merch + job orders) with shift info ─────────
+$transactions = [];
+
+// Merchandise transactions
 try {
-    $sl = $pdo->prepare("SELECT DISTINCT u.id, u.name FROM labor_sessions ls JOIN users u ON ls.user_id=u.id WHERE ls.station_id=? ORDER BY u.name");
-    $sl->execute([$station_id]);
-    $staff_list = $sl->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) { $staff_list = []; }
-
-// ── Load labor sessions (shifts) ─────────────────────────────────────────────
-$shift_where  = "WHERE ls.station_id = ? AND DATE(ls.start_time) BETWEEN ? AND ?";
-$shift_params = [$station_id, $start, $end];
-if ($staff_id > 0) {
-    $shift_where   .= " AND ls.user_id = ?";
-    $shift_params[] = $staff_id;
-}
-
-$sessions = [];
-try {
-    $stmt = $pdo->prepare("
-        SELECT ls.id, ls.user_id, u.name AS staff_name,
-               ls.start_time, ls.end_time, ls.hours_worked,
-               ls.shift_period, ls.shift_name, ls.station_id,
-               CASE WHEN ls.end_time IS NULL THEN 'Active' ELSE 'Completed' END AS shift_status
-        FROM labor_sessions ls
-        LEFT JOIN users u ON ls.user_id = u.id
-        $shift_where
-        ORDER BY ls.start_time DESC
+    $q = $pdo->prepare("
+        SELECT
+            mt.transaction_id AS txn_id,
+            COALESCE(mt.customer_name, 'Walk-in') AS customer_name,
+            'Merchandise' AS txn_type,
+            mt.total_amount AS amount,
+            COALESCE(mt.payment_method, 'Cash') AS payment_method,
+            COALESCE(u.name, 'Unknown') AS staff_encoder,
+            COALESCE(
+                CASE WHEN mt.transaction_date > '2000-01-01' THEN mt.transaction_date ELSE NULL END,
+                mt.created_at
+            ) AS txn_datetime,
+            COALESCE(ls.shift_name, ls.shift_period, 'Unknown') AS shift_label,
+            COALESCE(ls.shift_period, '') AS shift_period,
+            mt.id AS raw_id,
+            mt.shift_id
+        FROM merchandise_transactions mt
+        LEFT JOIN users u ON mt.staff_id = u.id
+        LEFT JOIN labor_sessions ls ON mt.shift_id = ls.id
+        WHERE mt.station_id = ?
+          AND DATE(COALESCE(
+              CASE WHEN mt.transaction_date > '2000-01-01' THEN mt.transaction_date ELSE NULL END,
+              mt.created_at
+          )) BETWEEN ? AND ?
+        ORDER BY txn_datetime DESC
     ");
-    $stmt->execute($shift_params);
-    $sessions = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) { $sessions = []; }
-
-// ── For each session: pull fuel + merch totals + variance + audit ─────────────
-foreach ($sessions as &$s) {
-    $sid        = (int)$s['id'];
-    $uid        = (int)$s['user_id'];
-    $st         = $s['start_time'];
-    $et         = $s['end_time'] ?? date('Y-m-d H:i:s');
-    $sp         = $s['shift_period'] ?? '';
-    $shift_date = date('Y-m-d', strtotime($st));
-
-    // Merchandise transactions — 3-tier match:
-    // 1. exact shift_id link
-    // 2. staff + same date (when shift_id is null/0)
-    // 3. staff + within shift time window (broadest fallback)
-    try {
-        $m = $pdo->prepare("
-            SELECT COUNT(*) AS cnt,
-                   COALESCE(SUM(total_amount),0) AS total,
-                   COALESCE(SUM(CASE WHEN LOWER(payment_method)='cash'   THEN total_amount ELSE 0 END),0) AS cash,
-                   COALESCE(SUM(CASE WHEN LOWER(payment_method)='card'   THEN total_amount ELSE 0 END),0) AS card,
-                   COALESCE(SUM(CASE WHEN LOWER(payment_method)='credit' THEN total_amount ELSE 0 END),0) AS credit
-            FROM merchandise_transactions
-            WHERE station_id=?
-              AND (
-                  shift_id = ?
-                  OR (
-                      staff_id = ?
-                      AND (shift_id IS NULL OR shift_id = 0 OR shift_id != ?)
-                      AND DATE(COALESCE(
-                          CASE WHEN transaction_date IS NOT NULL AND transaction_date > '2000-01-01' THEN transaction_date ELSE NULL END,
-                          created_at
-                      )) = ?
-                  )
-              )
-        ");
-        $m->execute([$station_id, $sid, $uid, $sid, $shift_date]);
-        $s['merch'] = $m->fetch(PDO::FETCH_ASSOC);
-    } catch (Exception $e) { $s['merch'] = ['cnt'=>0,'total'=>0,'cash'=>0,'card'=>0,'credit'=>0]; }
-
-    // Fuel transactions — removed (fuel is managed in Fuel Management module)
-    $s['fuel'] = ['cnt'=>0,'total'=>0,'liters'=>0,'cash'=>0,'card'=>0,'credit'=>0];
-    $s['fuel_detail'] = [];
-
-    // Job Orders per shift — match by shift_id or staff date fallback
-    try {
-        $jo = $pdo->prepare("
-            SELECT COUNT(*) AS cnt,
-                   COALESCE(SUM(total_cost),0) AS total,
-                   SUM(CASE WHEN LOWER(COALESCE(payment_status,'')) IN ('paid','verified','approved','completed') THEN 1 ELSE 0 END) AS paid_cnt,
-                   SUM(CASE WHEN LOWER(COALESCE(payment_status,'')) IN ('partial payment','partial') THEN 1 ELSE 0 END) AS partial_cnt,
-                   SUM(CASE WHEN LOWER(COALESCE(payment_status,'')) IN ('pending payment','unpaid','')  THEN 1 ELSE 0 END) AS unpaid_cnt,
-                   SUM(CASE WHEN LOWER(COALESCE(payment_status,'')) = 'credit transaction' THEN 1 ELSE 0 END) AS credit_cnt
-            FROM job_orders
-            WHERE station_id=?
-              AND (
-                  shift_id = ?
-                  OR (
-                      COALESCE(created_by, user_id) = ?
-                      AND (shift_id IS NULL OR shift_id = 0 OR shift_id != ?)
-                      AND DATE(created_at) = ?
-                  )
-              )
-        ");
-        $jo->execute([$station_id, $sid, $uid, $sid, $shift_date]);
-        $s['jo'] = $jo->fetch(PDO::FETCH_ASSOC) ?: ['cnt'=>0,'total'=>0,'paid_cnt'=>0,'partial_cnt'=>0,'unpaid_cnt'=>0];
-    } catch (Exception $e) { $s['jo'] = ['cnt'=>0,'total'=>0,'paid_cnt'=>0,'partial_cnt'=>0,'unpaid_cnt'=>0]; }
-    try {
-        $v = $pdo->prepare("
-            SELECT COUNT(*) AS cnt,
-                   SUM(CASE WHEN status='open' THEN 1 ELSE 0 END) AS open_cnt,
-                   SUM(CASE WHEN status='escalated' THEN 1 ELSE 0 END) AS esc_cnt
-            FROM variance_alerts
-            WHERE station_id=? AND user_id=? AND created_at BETWEEN ? AND ?
-        ");
-        $v->execute([$station_id, $uid, $st, $et]);
-        $s['variance'] = $v->fetch(PDO::FETCH_ASSOC);
-    } catch (Exception $e) { $s['variance'] = ['cnt'=>0,'open_cnt'=>0,'esc_cnt'=>0]; }
-
-    // Audit trail for this shift window
-    try {
-        $a = $pdo->prepare("
-            SELECT at.action_type, at.new_value AS remarks, at.timestamp,
-                   u2.name AS manager_name
-            FROM audit_trail at
-            LEFT JOIN users u2 ON at.manager_id = u2.id
-            WHERE at.station_id=? AND at.timestamp BETWEEN ? AND ?
-            ORDER BY at.timestamp DESC LIMIT 20
-        ");
-        $a->execute([$station_id, $st, $et]);
-        $s['audit'] = $a->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) { $s['audit'] = []; }
-
-    // Detailed merch transactions for modal
-    try {
-        $md = $pdo->prepare("
-            SELECT mt.id, mt.transaction_id, mt.customer_name, mt.payment_method,
-                   mt.total_amount, mt.validation_status,
-                   COALESCE(
-                       CASE WHEN mt.transaction_date IS NOT NULL AND mt.transaction_date > '2000-01-01' THEN mt.transaction_date ELSE NULL END,
-                       mt.created_at
-                   ) AS txn_date,
-                   COALESCE(
-                       (SELECT GROUP_CONCAT(i.product_name ORDER BY i.id SEPARATOR ', ')
-                        FROM merchandise_transaction_items i WHERE i.transaction_id=mt.id),
-                       mt.item_sku, 'No items'
-                   ) AS items
-            FROM merchandise_transactions mt
-            WHERE mt.station_id=?
-              AND (
-                  mt.shift_id = ?
-                  OR (
-                      mt.staff_id = ?
-                      AND (mt.shift_id IS NULL OR mt.shift_id = 0 OR mt.shift_id != ?)
-                      AND DATE(COALESCE(
-                          CASE WHEN mt.transaction_date IS NOT NULL AND mt.transaction_date > '2000-01-01' THEN mt.transaction_date ELSE NULL END,
-                          mt.created_at
-                      )) = ?
-                  )
-              )
-            ORDER BY mt.created_at DESC
-        ");
-        $md->execute([$station_id, $sid, $uid, $sid, $shift_date]);
-        $s['merch_detail'] = $md->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) { $s['merch_detail'] = []; }
-
-    // Job Order detail rows for modal
-    try {
-        $jd = $pdo->prepare("
-            SELECT id,
-                   COALESCE(order_number, CONCAT('JO-', id)) AS order_number,
-                   COALESCE(customer_name,'Walk-in') AS customer_name,
-                   COALESCE(vehicle_plate,'—') AS vehicle_plate,
-                   COALESCE(total_cost,0) AS total_cost,
-                   COALESCE(payment_status,'unpaid') AS payment_status,
-                   COALESCE(status,'pending') AS status,
-                   created_at
-            FROM job_orders
-            WHERE station_id=?
-              AND (
-                  shift_id = ?
-                  OR (
-                      COALESCE(created_by, user_id) = ?
-                      AND (shift_id IS NULL OR shift_id = 0 OR shift_id != ?)
-                      AND DATE(created_at) = ?
-                  )
-              )
-            ORDER BY created_at DESC
-        ");
-        $jd->execute([$station_id, $sid, $uid, $sid, $shift_date]);
-        $s['jo_detail'] = $jd->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) { $s['jo_detail'] = []; }
-
-    // Totals — merchandise + job orders
-    $s['combined_total'] = (float)$s['merch']['total'] + (float)($s['jo']['total'] ?? 0);
-    $s['total_txn_count'] = (int)$s['merch']['cnt'] + (int)($s['jo']['cnt'] ?? 0);
-
-    // Duration display
-    if ($s['end_time']) {
-        $diff = (strtotime($s['end_time']) - strtotime($s['start_time']));
-        $h = floor($diff / 3600);
-        $m2 = floor(($diff % 3600) / 60);
-        $s['duration_display'] = $h . 'h ' . $m2 . 'm';
-    } else {
-        $s['duration_display'] = '<span style="color:#28a745;font-weight:600;">Active</span>';
+    $q->execute([$station_id, $start, $end]);
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $r['shift_num'] = str_contains(strtolower($r['shift_label']), 'first') || str_contains(strtolower($r['shift_period']), 'first') ? '1' : (str_contains(strtolower($r['shift_label']), 'second') || str_contains(strtolower($r['shift_period']), 'second') ? '2' : '?');
+        $transactions[] = $r;
     }
-}
-unset($s);
+} catch (Exception $e) {}
 
-// ── Summary counts ────────────────────────────────────────────────────────────
-$total_shifts     = count($sessions);
-$active_shifts    = count(array_filter($sessions, fn($s) => $s['shift_status'] === 'Active'));
-$completed_shifts = $total_shifts - $active_shifts;
-$grand_merch    = array_sum(array_column(array_column($sessions, 'merch'), 'total'));
-$grand_jo       = array_sum(array_column(array_column($sessions, 'jo'),    'total'));
-$grand_combined = $grand_merch + $grand_jo;
+// Job Orders
+try {
+    $q = $pdo->prepare("
+        SELECT
+            COALESCE(jo.order_number, CONCAT('JO-', jo.id)) AS txn_id,
+            COALESCE(jo.customer_name, 'Walk-in') AS customer_name,
+            'Job Order' AS txn_type,
+            COALESCE(jo.total_cost, 0) AS amount,
+            COALESCE(jo.payment_status, 'Pending') AS payment_method,
+            COALESCE(u.name, 'Unknown') AS staff_encoder,
+            jo.created_at AS txn_datetime,
+            COALESCE(ls.shift_name, ls.shift_period, 'Unknown') AS shift_label,
+            COALESCE(ls.shift_period, '') AS shift_period,
+            jo.id AS raw_id,
+            jo.shift_id
+        FROM job_orders jo
+        LEFT JOIN users u ON COALESCE(jo.created_by, jo.user_id) = u.id
+        LEFT JOIN labor_sessions ls ON jo.shift_id = ls.id
+        WHERE jo.station_id = ?
+          AND DATE(jo.created_at) BETWEEN ? AND ?
+        ORDER BY jo.created_at DESC
+    ");
+    $q->execute([$station_id, $start, $end]);
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $r['shift_num'] = str_contains(strtolower($r['shift_label']), 'first') || str_contains(strtolower($r['shift_period']), 'first') ? '1' : (str_contains(strtolower($r['shift_label']), 'second') || str_contains(strtolower($r['shift_period']), 'second') ? '2' : '?');
+        $transactions[] = $r;
+    }
+} catch (Exception $e) {}
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function ns_color(string $s): string {
-    $s = strtolower(trim($s));
-    if (in_array($s,['verified','approved','complete','completed'])) return '#28a745';
-    if (in_array($s,['pending','pending validation','pendingvalidation',''])) return '#002F70';
-    if (in_array($s,['rejected','returned'])) return '#dc3545';
-    return '#6c757d';
-}
-function ns_label(string $s): string {
-    $s2 = strtolower(trim($s));
-    if (in_array($s2,['verified','approved','complete','completed'])) return 'Verified';
-    if (in_array($s2,['pending','pending validation','pendingvalidation',''])) return 'Pending';
-    if (in_array($s2,['rejected','returned'])) return 'Returned';
-    return ucfirst($s);
-}
+// Sort combined by datetime desc
+usort($transactions, fn($a,$b) => strcmp($b['txn_datetime'], $a['txn_datetime']));
+
+// Apply shift filter
+$filtered = $transactions;
+if ($shift_filter === 'shift1') $filtered = array_filter($transactions, fn($t) => $t['shift_num'] === '1');
+elseif ($shift_filter === 'shift2') $filtered = array_filter($transactions, fn($t) => $t['shift_num'] === '2');
+
+// ── KPIs ─────────────────────────────────────────────────────────────────────
+$s1 = array_filter($transactions, fn($t) => $t['shift_num'] === '1');
+$s2 = array_filter($transactions, fn($t) => $t['shift_num'] === '2');
+$kpi_s1_sales = array_sum(array_column($s1, 'amount'));
+$kpi_s2_sales = array_sum(array_column($s2, 'amount'));
+$kpi_s1_txns  = count($s1);
+$kpi_s2_txns  = count($s2);
 
 include __DIR__ . '/../partials/header.php';
 ?>
 
-<div class="page-head">
+<div class="page-head txn-page-head">
     <div>
-        <h1 class="h1">Shift Transactions View</h1>
-        <div class="sub">Shift-based transaction summaries, consolidated sales, and audit oversight</div>
+        <h1 class="h1"><i class="fas fa-exchange-alt"></i> Shift Transactions</h1>
+        <div class="sub">Monitor transactions per shift.</div>
     </div>
-    <div class="actions">
-
-        <a href="transactions.php" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:#002F70;color:#fff;border-radius:7px;text-decoration:none;font-size:13px;font-weight:600;transition:filter .15s;" onmouseover="this.style.filter='brightness(.88)'" onmouseout="this.style.filter='none'">
-            <i class="fas fa-arrow-left"></i> Back
-        </a>
+    <div class="actions txn-head-actions">
+        <a href="transactions.php" class="flt-btn flt-btn-reset"><i class="fas fa-arrow-left"></i> Back</a>
+        <button onclick="exportShiftTransactions('excel')" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</button>
+        <button onclick="exportShiftTransactions('csv')" class="flt-btn flt-btn-search"><i class="fas fa-file-csv"></i> CSV</button>
+        <button onclick="exportShiftTransactions('pdf')" class="flt-btn flt-btn-pdf"><i class="fas fa-file-pdf"></i> PDF</button>
     </div>
 </div>
 
-<?php if (isset($_SESSION['success'])): ?>
-<div style="background:#d4edda;color:#155724;padding:12px 16px;border-radius:8px;margin-bottom:16px;">
-    <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($_SESSION['success']); unset($_SESSION['success']); ?>
+<!-- KPI Cards -->
+<div class="txn-kpi-grid">
+    <div class="txn-kpi-card">
+        <div class="txn-kpi-lbl"><i class="fas fa-dollar-sign"></i> Shift 1 Sales</div>
+        <div class="txn-kpi-val">₱<?= number_format($kpi_s1_sales, 2) ?></div>
+    </div>
+    <div class="txn-kpi-card">
+        <div class="txn-kpi-lbl"><i class="fas fa-dollar-sign"></i> Shift 2 Sales</div>
+        <div class="txn-kpi-val">₱<?= number_format($kpi_s2_sales, 2) ?></div>
+    </div>
+    <div class="txn-kpi-card">
+        <div class="txn-kpi-lbl"><i class="fas fa-receipt"></i> Shift 1 Transactions</div>
+        <div class="txn-kpi-val"><?= number_format($kpi_s1_txns) ?></div>
+    </div>
+    <div class="txn-kpi-card">
+        <div class="txn-kpi-lbl"><i class="fas fa-receipt"></i> Shift 2 Transactions</div>
+        <div class="txn-kpi-val"><?= number_format($kpi_s2_txns) ?></div>
+    </div>
 </div>
-<?php endif; ?>
-<?php if (isset($_SESSION['error'])): ?>
-<div style="background:#f8d7da;color:#721c24;padding:12px 16px;border-radius:8px;margin-bottom:16px;">
-    <i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($_SESSION['error']); unset($_SESSION['error']); ?>
-</div>
-<?php endif; ?>
 
-
-
-<!-- ── Filter Form ───────────────────────────────────────────────────────── -->
-<div class="card" style="padding:14px 18px;margin-bottom:18px;">
+<!-- Filters -->
+<div class="card" style="padding:14px 18px;margin-bottom:18px;border-radius:10px;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.07);">
     <form method="get" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
         <div>
-            <label class="flt-lbl"><i class="fas fa-calendar-alt"></i> Date Range</label>
+            <label class="sht-flbl"><i class="fas fa-calendar-alt"></i> Date Range</label>
             <div style="display:flex;gap:6px;align-items:center;">
-                <input type="date" name="start" value="<?php echo htmlspecialchars($start); ?>" class="flt-inp">
+                <input type="date" name="start" value="<?= htmlspecialchars($start) ?>" class="sht-finp">
                 <span style="color:#999;font-size:12px;">to</span>
-                <input type="date" name="end" value="<?php echo htmlspecialchars($end); ?>" class="flt-inp">
+                <input type="date" name="end" value="<?= htmlspecialchars($end) ?>" class="sht-finp">
             </div>
         </div>
         <div>
-            <label class="flt-lbl"><i class="fas fa-user"></i> Staff</label>
-            <select name="staff_id" class="flt-inp flt-select">
-                <option value="">All Staff</option>
-                <?php foreach($staff_list as $sl): ?>
-                <option value="<?php echo $sl['id']; ?>" <?php echo ($staff_id == $sl['id']) ? 'selected' : ''; ?>>
-                    <?php echo htmlspecialchars($sl['name']); ?>
-                </option>
-                <?php endforeach; ?>
+            <label class="sht-flbl"><i class="fas fa-clock"></i> Shift</label>
+            <select name="shift" class="sht-finp" style="cursor:pointer;">
+                <option value="all"   <?= $shift_filter==='all'    ? 'selected':'' ?>>All Shifts</option>
+                <option value="shift1"<?= $shift_filter==='shift1' ? 'selected':'' ?>>Shift 1 (Morning)</option>
+                <option value="shift2"<?= $shift_filter==='shift2' ? 'selected':'' ?>>Shift 2 (Evening)</option>
             </select>
         </div>
         <div style="display:flex;gap:8px;">
@@ -324,82 +163,66 @@ include __DIR__ . '/../partials/header.php';
     </form>
 </div>
 
-<!-- ── Shifts Table ──────────────────────────────────────────────────────── -->
-<div class="card" style="padding:0;margin-bottom:18px;">
-    <div class="stv-table-wrap">
-        <table class="stv-table">
+<!-- Transactions Table -->
+<div style="background:#fff;border-radius:10px;box-shadow:0 1px 6px rgba(0,0,0,.07);overflow:hidden;margin-bottom:30px;">
+    <div style="overflow-x:auto;">
+        <table class="sht-table">
             <thead>
                 <tr>
-                    <th>Shift ID</th>
-                    <th>Staff</th>
-                    <th>Shift Period</th>
-                    <th>Start Time</th>
-                    <th>End Time</th>
-                    <th>Duration</th>
-                    <th>Status</th>
-                    <th>Merch Sales</th>
-                    <th>JO Sales</th>
-                    <th>Total Sales</th>
-                    <th>Txns</th>
-                    <th>Variances</th>
-
+                    <th>Transaction ID</th>
+                    <th>Customer Name</th>
+                    <th>Transaction Type</th>
+                    <th>Amount</th>
+                    <th>Payment Method</th>
+                    <th>Staff Encoder</th>
+                    <th>Date & Time</th>
+                    <th style="text-align:center;">Actions</th>
                 </tr>
             </thead>
             <tbody>
-            <?php if (empty($sessions)): ?>
+            <?php if (empty($filtered)): ?>
                 <tr>
-                    <td colspan="13" style="text-align:center;padding:48px;color:#888;">
-                        <i class="fas fa-clock" style="font-size:36px;display:block;margin-bottom:12px;opacity:0.3;"></i>
-                        No shifts found for the selected date range.
+                    <td colspan="8" style="text-align:center;padding:60px 20px;color:#94a3b8;">
+                        <i class="fas fa-exchange-alt" style="font-size:32px;display:block;margin-bottom:10px;opacity:0.3;"></i>
+                        No transactions found for the selected filters.
                     </td>
                 </tr>
             <?php else: ?>
-                <?php foreach($sessions as $idx => $s): ?>
-                <?php
-                    $isActive = ($s['shift_status'] === 'Active');
-                    $statusBg = $isActive ? '#28a745' : '#002F70';
-                    $varCnt   = (int)($s['variance']['cnt'] ?? 0);
-                    $varOpen  = (int)($s['variance']['open_cnt'] ?? 0);
-                    $varEsc   = (int)($s['variance']['esc_cnt'] ?? 0);
+                <?php foreach ($filtered as $idx => $t):
+                    $isJO    = $t['txn_type'] === 'Job Order';
+                    $typeBg  = $isJO ? '#fff0e8' : '#e0f0ff';
+                    $typeFg  = $isJO ? '#c2410c' : '#0056b3';
+                    $shiftLbl = $t['shift_num'] === '1' ? 'Shift 1' : ($t['shift_num'] === '2' ? 'Shift 2' : '—');
+                    $shiftClr = $t['shift_num'] === '1' ? '#002F70' : '#7c3aed';
+                    try {
+                        $dtObj = new DateTime($t['txn_datetime']);
+                        $dtFmt = $dtObj->format('M j, Y g:i A');
+                    } catch (Exception $e) { $dtFmt = $t['txn_datetime']; }
                 ?>
                 <tr>
-                    <td style="font-weight:700;">#<?php echo $s['id']; ?></td>
-                    <td><?php echo htmlspecialchars($s['staff_name']); ?></td>
                     <td>
-                        <span style="font-size:11px;background:#f0f4ff;color:#002F70;padding:2px 8px;border-radius:10px;font-weight:600;">
-                            <?php echo htmlspecialchars($s['shift_name'] ?? ucfirst($s['shift_period'] ?? 'N/A')); ?>
+                        <div style="font-weight:700;color:#002F70;"><?= htmlspecialchars($t['txn_id']) ?></div>
+                        <div style="font-size:10px;margin-top:2px;">
+                            <span style="color:<?= $shiftClr ?>;font-weight:700;font-size:10px;"><?= $shiftLbl ?></span>
+                        </div>
+                    </td>
+                    <td style="font-weight:500;"><?= htmlspecialchars($t['customer_name']) ?></td>
+                    <td>
+                        <span style="background:<?= $typeBg ?>;color:<?= $typeFg ?>;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:700;">
+                            <?= htmlspecialchars($t['txn_type']) ?>
                         </span>
                     </td>
-                    <td style="white-space:nowrap;"><?php echo date('M d, H:i', strtotime($s['start_time'])); ?></td>
-                    <td style="white-space:nowrap;">
-                        <?php echo $s['end_time'] ? date('M d, H:i', strtotime($s['end_time'])) : '<span style="color:#28a745;font-weight:600;">Active</span>'; ?>
-                    </td>
-                    <td><?php echo $s['duration_display']; ?></td>
-                    <td>
-                        <span style="background:<?php echo $statusBg; ?>;color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">
-                            <?php echo $s['shift_status']; ?>
-                        </span>
-                    </td>
-                    <td>
-                        <div style="font-weight:700;color:#007bff;">&#8369;<?php echo number_format($s['merch']['total'], 2); ?></div>
-                        <div style="font-size:10px;color:#888;"><?php echo $s['merch']['cnt']; ?> txn</div>
-                    </td>
-                    <td>
-                        <div style="font-weight:700;color:#c2410c;">&#8369;<?php echo number_format($s['jo']['total'] ?? 0, 2); ?></div>
-                        <div style="font-size:10px;color:#888;"><?php echo (int)($s['jo']['cnt'] ?? 0); ?> JO</div>
-                    </td>
-                    <td style="font-weight:800;color:#002F70;">&#8369;<?php echo number_format($s['combined_total'], 2); ?></td>
-                    <td style="text-align:center;"><?php echo $s['total_txn_count']; ?></td>
+                    <td style="font-weight:700;color:#002F70;">₱<?= number_format((float)$t['amount'], 2) ?></td>
+                    <td><?= htmlspecialchars($t['payment_method']) ?></td>
+                    <td style="color:#475569;"><?= htmlspecialchars($t['staff_encoder']) ?></td>
+                    <td style="white-space:nowrap;font-size:12px;color:#64748b;"><?= htmlspecialchars($dtFmt) ?></td>
                     <td style="text-align:center;">
-                        <?php if ($varCnt > 0): ?>
-                        <span style="background:<?php echo $varEsc > 0 ? '#E3001F' : ($varOpen > 0 ? '#e6a817' : '#28a745'); ?>;color:<?php echo $varOpen > 0 ? '#212529' : '#fff'; ?>;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">
-                            <?php echo $varCnt; ?> alert<?php echo $varCnt > 1 ? 's' : ''; ?>
-                        </span>
-                        <?php else: ?>
-                        <span style="color:#aaa;font-size:11px;">—</span>
-                        <?php endif; ?>
+                        <button type="button"
+                                onclick="viewTxnDetail(<?= $idx ?>)"
+                                class="txn-btn txn-btn-info" style="font-size:11px;padding:5px 12px;width:auto;display:inline-flex;">
+                            <i class="fas fa-eye"></i> View Details
+                        </button>
                     </td>
-
                 </tr>
                 <?php endforeach; ?>
             <?php endif; ?>
@@ -408,313 +231,304 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
-<!-- ── Shift Detail Modal ──────────────────────────────────────────────────── -->
-<div id="shiftModal" class="stv-modal">
-    <div class="stv-modal-content">
-        <div class="stv-modal-header">
-            <h3><i class="fas fa-clock"></i> Shift Details</h3>
-            <button class="stv-close" onclick="closeShiftModal()">&times;</button>
+<!-- View Details Modal -->
+<div id="shtModal" style="display:none;position:fixed;inset:0;z-index:1050;background:rgba(0,0,0,.5);align-items:center;justify-content:center;padding:8px 8px 8px 205px;">
+    <div style="background:#fff;border-radius:12px;width:100%;max-width:560px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.2);overflow:hidden;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:18px 24px;border-bottom:1px solid #e9ecef;">
+            <h3 style="margin:0;font-size:15px;font-weight:700;color:#002F70;display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-receipt"></i> Transaction Details
+            </h3>
+            <button onclick="closeShtModal()" style="background:none;border:none;color:#94a3b8;font-size:20px;cursor:pointer;line-height:1;">×</button>
         </div>
-        <div class="stv-modal-body" id="shiftModalBody">Loading&hellip;</div>
-        <div class="stv-modal-footer">
-            <button type="button" class="jo-act-btn" style="background:#28a745;padding:9px 18px;width:auto;" onclick="printShiftModal()"><i class="fas fa-print"></i> Print / Export</button>
-            <button type="button" class="jo-act-btn" style="background:#6c757d;padding:9px 18px;width:auto;" onclick="closeShiftModal()"><i class="fas fa-times"></i> Close</button>
+        <div id="shtModalBody" style="padding:20px 24px;overflow-y:auto;flex:1;"></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 24px;border-top:1px solid #e9ecef;">
+            <button onclick="closeShtModal()" class="txn-btn txn-btn-secondary" style="width:auto;display:inline-flex;">Close</button>
         </div>
     </div>
 </div>
-
-<!-- ── Manager Note Modal ────────────────────────────────────────────────── -->
-<div id="noteModal" class="stv-modal" onclick="if(event.target===this)closeNoteModal()">
-    <div class="stv-modal-content" style="max-width:480px;">
-        <div class="stv-modal-header">
-            <h3><i class="fas fa-sticky-note"></i> Add Manager Note</h3>
-            <button class="stv-close" onclick="closeNoteModal()">&times;</button>
-        </div>
-        <form method="POST">
-            <div class="stv-modal-body">
-                <input type="hidden" name="action" value="save_manager_note">
-                <input type="hidden" id="note_shift_id" name="shift_id">
-                <input type="hidden" name="_start" value="<?php echo htmlspecialchars($start); ?>">
-                <input type="hidden" name="_end" value="<?php echo htmlspecialchars($end); ?>">
-                <input type="hidden" name="_staff_id" value="<?php echo $staff_id; ?>">
-                <div style="margin-bottom:12px;">
-                    <label style="display:block;font-weight:600;color:#495057;margin-bottom:6px;font-size:13px;">Manager Note <span style="color:red;">*</span></label>
-                    <textarea id="note_text" name="manager_note" rows="5"
-                        style="width:100%;padding:9px 12px;border:1px solid #ced4da;border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical;"
-                        placeholder="Enter your remarks about this shift…" required></textarea>
-                </div>
-            </div>
-            <div class="stv-modal-footer">
-                <button type="submit" class="jo-act-btn" style="background:#28a745;padding:9px 18px;width:auto;"><i class="fas fa-save"></i> Save Note</button>
-                <button type="button" class="jo-act-btn" style="background:#6c757d;padding:9px 18px;width:auto;" onclick="closeNoteModal()">Cancel</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- PLACEHOLDER: old modals removed -->
 
 <script>
-// Shift data — array_values() ensures sequential 0-based JS array
-var SHIFTS = <?php echo json_encode(array_values(array_map(function($s) {
+var SHT_DATA = <?php
+$jsData = array_values(array_map(function($t) {
+    try { $dt = new DateTime($t['txn_datetime']); $dtf = $dt->format('M j, Y g:i A'); } catch(Exception $e) { $dtf = $t['txn_datetime'] ?? ''; }
     return [
-        'id'           => (int)$s['id'],
-        'staff_name'   => (string)($s['staff_name'] ?? ''),
-        'shift_name'   => (string)($s['shift_name'] ?? ucfirst($s['shift_period'] ?? '')),
-        'start_time'   => (string)($s['start_time'] ?? ''),
-        'end_time'     => $s['end_time'] ? (string)$s['end_time'] : null,
-        'duration'     => (string)strip_tags($s['duration_display'] ?? ''),
-        'shift_status' => (string)($s['shift_status'] ?? 'Completed'),
-        'merch'        => [
-            'total'  => (float)($s['merch']['total']  ?? 0),
-            'cnt'    => (int)($s['merch']['cnt']    ?? 0),
-            'cash'   => (float)($s['merch']['cash']   ?? 0),
-            'card'   => (float)($s['merch']['card']   ?? 0),
-            'credit' => (float)($s['merch']['credit'] ?? 0),
-        ],
-        'combined'     => (float)($s['combined_total'] ?? 0),
-        'variance'     => [
-            'cnt'       => (int)($s['variance']['cnt']       ?? 0),
-            'open_cnt'  => (int)($s['variance']['open_cnt']  ?? 0),
-            'esc_cnt'   => (int)($s['variance']['esc_cnt']   ?? 0),
-        ],
-        'merch_detail' => array_values(array_map(function($md) {
-            return [
-                'id'               => $md['id'],
-                'transaction_id'   => $md['transaction_id'] ?? $md['id'],
-                'customer_name'    => $md['customer_name']    ?? '',
-                'payment_method'   => $md['payment_method']   ?? '',
-                'total_amount'     => (float)($md['total_amount'] ?? 0),
-                'validation_status'=> $md['validation_status'] ?? '',
-                'txn_date'         => $md['txn_date'] ?? '',
-                'items'            => $md['items'] ?? '',
-            ];
-        }, $s['merch_detail'] ?? [])),
-        'jo'           => [
-            'total'       => (float)($s['jo']['total']       ?? 0),
-            'cnt'         => (int)($s['jo']['cnt']         ?? 0),
-            'paid_cnt'    => (int)($s['jo']['paid_cnt']    ?? 0),
-            'partial_cnt' => (int)($s['jo']['partial_cnt'] ?? 0),
-            'unpaid_cnt'  => (int)($s['jo']['unpaid_cnt']  ?? 0),
-        ],
-        'jo_detail'    => array_values(array_map(function($jd) {
-            return [
-                'order_number'   => $jd['order_number']  ?? '',
-                'customer_name'  => $jd['customer_name'] ?? 'Walk-in',
-                'vehicle_plate'  => $jd['vehicle_plate'] ?? '',
-                'total_cost'     => (float)($jd['total_cost'] ?? 0),
-                'payment_status' => $jd['payment_status'] ?? 'unpaid',
-                'status'         => $jd['status']         ?? 'pending',
-                'created_at'     => $jd['created_at']     ?? '',
-            ];
-        }, $s['jo_detail'] ?? [])),
-        'audit'        => array_values($s['audit'] ?? []),
+        'txn_id'        => $t['txn_id'],
+        'customer_name' => $t['customer_name'],
+        'txn_type'      => $t['txn_type'],
+        'amount'        => (float)$t['amount'],
+        'payment_method'=> $t['payment_method'],
+        'staff_encoder' => $t['staff_encoder'],
+        'txn_datetime'  => $dtf,
+        'shift_label'   => $t['shift_label'],
+        'shift_num'     => $t['shift_num'],
     ];
-}, $sessions)), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS); ?>;
+}, $filtered));
+echo json_encode($jsData, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
+?>;
 
-function openShiftModal(idx) {
-    var s = SHIFTS[idx];
-    if (!s) { alert('Shift data not found.'); return; }
-    var statusBg = s.shift_status === 'Active' ? '#28a745' : '#002F70';
-    var html = '';
-
-    // 1. Shift info grid
-    html += '<div class="sm-info-grid">';
-    html += '<div class="sm-info-item"><span class="sm-lbl">Shift ID</span><span class="sm-val">#' + s.id + '</span></div>';
-    html += '<div class="sm-info-item"><span class="sm-lbl">Staff</span><span class="sm-val">' + esc(s.staff_name) + '</span></div>';
-    html += '<div class="sm-info-item"><span class="sm-lbl">Shift Period</span><span class="sm-val">' + esc(s.shift_name) + '</span></div>';
-    html += '<div class="sm-info-item"><span class="sm-lbl">Start Time</span><span class="sm-val">' + fmtDt(s.start_time) + '</span></div>';
-    html += '<div class="sm-info-item"><span class="sm-lbl">End Time</span><span class="sm-val">' + (s.end_time ? fmtDt(s.end_time) : '<span style="color:#28a745;font-weight:700;">Active</span>') + '</span></div>';
-    html += '<div class="sm-info-item"><span class="sm-lbl">Duration</span><span class="sm-val">' + esc(s.duration) + '</span></div>';
-    html += '<div class="sm-info-item"><span class="sm-lbl">Status</span><span class="sm-val"><span style="background:' + statusBg + ';color:#fff;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;">' + esc(s.shift_status) + '</span></span></div>';
+function viewTxnDetail(idx) {
+    var t = SHT_DATA[idx];
+    if (!t) return;
+    var isJO = t.txn_type === 'Job Order';
+    var typeBg = isJO ? '#fff0e8' : '#e0f0ff';
+    var typeFg = isJO ? '#c2410c' : '#0056b3';
+    var shiftClr = t.shift_num === '1' ? '#002F70' : '#7c3aed';
+    function row(label, val) {
+        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid #f1f5f9;">'
+             + '<span style="font-size:12px;color:#64748b;font-weight:600;">' + esc(label) + '</span>'
+             + '<span style="font-size:13px;color:#1e293b;font-weight:700;text-align:right;max-width:60%;">' + val + '</span>'
+             + '</div>';
+    }
+    var html = '<div style="background:#f8fafc;border-radius:8px;padding:14px 16px;margin-bottom:14px;">';
+    html += row('Transaction ID', '<span style="color:#002F70;font-weight:800;">' + esc(t.txn_id) + '</span>');
+    html += row('Customer Name', esc(t.customer_name));
+    html += row('Transaction Type', '<span style="background:'+typeBg+';color:'+typeFg+';padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;">' + esc(t.txn_type) + '</span>');
+    html += row('Amount', '<span style="color:#002F70;font-size:15px;">₱' + parseFloat(t.amount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',') + '</span>');
+    html += row('Payment Method', esc(t.payment_method));
+    html += row('Staff Encoder', esc(t.staff_encoder));
+    html += row('Date & Time', esc(t.txn_datetime));
+    html += row('Shift', '<span style="color:'+shiftClr+';font-weight:700;">' + esc(t.shift_label || (t.shift_num !== '?' ? 'Shift ' + t.shift_num : '—')) + '</span>');
     html += '</div>';
+    document.getElementById('shtModalBody').innerHTML = html;
+    document.getElementById('shtModal').style.display = 'flex';
+}
+function closeShtModal() { document.getElementById('shtModal').style.display = 'none'; }
+function esc(s) { if (!s && s !== 0) return '—'; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+document.getElementById('shtModal').addEventListener('click', function(e) { if (e.target === this) closeShtModal(); });
 
-    // 2. Sales summary — 3 columns
-    html += '<div class="sm-totals" style="grid-template-columns:repeat(3,1fr);">';
-    html += '<div class="sm-tot-box sm-tot-merch"><div class="sm-tot-num">&#8369;' + fmt(s.merch.total) + '</div><div class="sm-tot-lbl">Merch Sales</div><div class="sm-tot-sub">' + s.merch.cnt + ' txn</div></div>';
-    html += '<div class="sm-tot-box" style="background:#fff5f0;border-color:#fcd9c0;"><div class="sm-tot-num" style="color:#c2410c;">&#8369;' + fmt(s.jo.total) + '</div><div class="sm-tot-lbl">Job Order Sales</div><div class="sm-tot-sub">' + s.jo.cnt + ' JO</div></div>';
-    html += '<div class="sm-tot-box sm-tot-combined"><div class="sm-tot-num">&#8369;' + fmt(s.combined) + '</div><div class="sm-tot-lbl">Total Sales</div></div>';
-    html += '</div>';
+function exportShiftTransactions(format) {
+    const table = document.querySelector('.sht-table');
+    if (!table) { alert('No transaction data found.'); return; }
 
-    // 3. Payment breakdown
-    html += '<div class="sm-section-title"><i class="fas fa-credit-card"></i> Payment Breakdown</div>';
-    html += '<div class="sm-pay-row">';
-    html += '<div class="sm-pay-box"><i class="fas fa-money-bill-wave" style="color:#28a745;"></i><div>&#8369;' + fmt(s.merch.cash) + '</div><div class="sm-pay-lbl">Cash</div></div>';
-    html += '<div class="sm-pay-box"><i class="fas fa-credit-card" style="color:#007bff;"></i><div>&#8369;' + fmt(s.merch.card) + '</div><div class="sm-pay-lbl">Card</div></div>';
-    html += '<div class="sm-pay-box"><i class="fas fa-handshake" style="color:#002F70;"></i><div>&#8369;' + fmt(s.merch.credit) + '</div><div class="sm-pay-lbl">Credit</div></div>';
-    html += '</div>';
+    const dateStart = "<?= htmlspecialchars($start) ?>";
+    const dateEnd = "<?= htmlspecialchars($end) ?>";
+    const shift = "<?= htmlspecialchars($shift_filter) ?>";
+    
+    let shiftLbl = "All Shifts";
+    if (shift === 'shift1') shiftLbl = "Shift 1";
+    else if (shift === 'shift2') shiftLbl = "Shift 2";
+    
+    const filename = `Shift_Transactions_${shiftLbl}_${dateStart}_to_${dateEnd}`;
 
-    // 4. Combined Transaction List
-    var allTxns = [];
-    (s.merch_detail || []).forEach(function(m) {
-        allTxns.push({ type:'Merch', ref: m.transaction_id || m.id, customer: m.customer_name || 'Walk-in',
-            desc: m.items || '—', total: m.total_amount, payment: m.payment_method || '—',
-            status: m.validation_status, date: m.txn_date });
-    });
-    (s.jo_detail || []).forEach(function(j) {
-        allTxns.push({ type:'Job Order', ref: j.order_number, customer: j.customer_name + (j.vehicle_plate ? ' (' + j.vehicle_plate + ')' : ''),
-            desc: 'Job Order', total: j.total_cost, payment: j.payment_status,
-            status: j.payment_status, date: j.created_at });
-    });
-
-    html += '<div class="sm-section-title"><i class="fas fa-list"></i> Transaction List (' + allTxns.length + ')</div>';
-    html += '<div style="overflow:hidden;margin-bottom:12px;"><table class="sm-table"><thead><tr>';
-    html += '<th>Type</th><th>TXN / Ref</th><th>Customer</th><th>Items / Service</th><th>Total</th><th>Payment</th><th>Status</th><th>Date/Time</th>';
-    html += '</tr></thead><tbody>';
-    if (allTxns.length > 0) {
-        allTxns.forEach(function(t) {
-            var sc = txnStatusColor(t.status, t.type);
-            var typeBg = t.type === 'Merch' ? '#e0f0ff' : '#fff0e8';
-            var typeFg = t.type === 'Merch' ? '#0056b3' : '#c2410c';
-            html += '<tr>';
-            html += '<td><span style="background:' + typeBg + ';color:' + typeFg + ';padding:1px 6px;border-radius:6px;font-size:9px;font-weight:700;">' + esc(t.type) + '</span></td>';
-            html += '<td style="font-weight:700;">#' + esc(String(t.ref)) + '</td>';
-            html += '<td>' + esc(t.customer) + '</td>';
-            html += '<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + esc(t.desc) + '">' + esc(t.desc) + '</td>';
-            html += '<td style="text-align:right;font-weight:700;color:#002F70;">&#8369;' + fmt(t.total) + '</td>';
-            html += '<td>' + esc(t.payment) + '</td>';
-            html += '<td><span style="background:' + sc.bg + ';color:' + sc.fg + ';padding:1px 7px;border-radius:8px;font-size:10px;font-weight:700;">' + sc.label + '</span></td>';
-            html += '<td style="white-space:nowrap;">' + fmtDt(t.date) + '</td>';
-            html += '</tr>';
+    if (format === 'excel') {
+        if (typeof XLSX === 'undefined') {
+            alert('Export library not loaded. Please wait a moment and try again.');
+            return;
+        }
+        const aoa = [];
+        // Headers
+        table.querySelectorAll('thead tr').forEach(tr => {
+            const cells = [...tr.querySelectorAll('th')];
+            cells.pop(); // Remove "Actions"
+            aoa.push(cells.map(th => th.innerText.trim()));
         });
-    } else {
-        html += '<tr><td colspan="8" style="text-align:center;color:#aaa;padding:14px;">No transactions for this shift.</td></tr>';
+        // Body
+        table.querySelectorAll('tbody tr').forEach(tr => {
+            const cells = [...tr.querySelectorAll('td')];
+            if (cells.length > 1) { // Skip empty state row
+                cells.pop(); // Remove "Actions"
+                aoa.push(cells.map(td => td.innerText.trim()));
+            } else {
+                aoa.push(cells.map(td => td.innerText.trim()));
+            }
+        });
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        if (aoa.length && aoa[0]) {
+            ws['!cols'] = aoa[0].map((_, ci) => ({
+                wch: Math.min(45, Math.max(10, ...aoa.map(row => String(row[ci] ?? '').length)))
+            }));
+        }
+        XLSX.utils.book_append_sheet(wb, ws, 'Shift Transactions');
+        XLSX.writeFile(wb, filename + '.xlsx');
+    } else if (format === 'csv') {
+        let csv = '';
+        // Headers
+        table.querySelectorAll('thead tr').forEach(tr => {
+            const cells = [...tr.querySelectorAll('th')];
+            cells.pop();
+            csv += cells.map(th => '"' + th.innerText.trim().replace(/"/g, '""') + '"').join(',') + '\n';
+        });
+        // Body
+        table.querySelectorAll('tbody tr').forEach(tr => {
+            const cells = [...tr.querySelectorAll('td')];
+            if (cells.length > 1) {
+                cells.pop();
+                csv += cells.map(td => '"' + td.innerText.trim().replace(/"/g, '""') + '"').join(',') + '\n';
+            } else {
+                csv += cells.map(td => '"' + td.innerText.trim().replace(/"/g, '""') + '"').join(',') + '\n';
+            }
+        });
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = filename + '.csv';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+    } else if (format === 'pdf') {
+        const logo_url  = '../assets/img/Petron%20Logo.png';
+        const generated = new Date().toLocaleString();
+        
+        const tableClone = table.cloneNode(true);
+        tableClone.querySelectorAll('tr').forEach(tr => {
+            const lastCell = tr.lastElementChild;
+            if (lastCell) lastCell.remove();
+        });
+        
+        let tableHtml = tableClone.outerHTML;
+        
+        let iframe = document.getElementById('print-iframe');
+        if (!iframe) {
+            iframe = document.createElement('iframe');
+            iframe.id = 'print-iframe';
+            iframe.style.position = 'fixed';
+            iframe.style.right = '0';
+            iframe.style.bottom = '0';
+            iframe.style.width = '0';
+            iframe.style.height = '0';
+            iframe.style.border = '0';
+            document.body.appendChild(iframe);
+        }
+
+        const doc = iframe.contentDocument || iframe.contentWindow.document;
+        doc.open();
+        doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Shift Transactions Report</title>
+        <style>
+            @page{size:legal landscape;margin:.3in .4in;}
+            *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;box-sizing:border-box;}
+            body{font-family:Arial,sans-serif;font-size:11px;color:#000;background:white;margin:0;padding:20px;}
+            .header-container{display:flex;align-items:center;gap:15px;border-bottom:2px solid #002F70;padding-bottom:12px;margin-bottom:15px;}
+            .header-container img{height:45px;}
+            .header-title h1{font-size:16px;margin:0;color:#002F70;text-transform:uppercase;}
+            .header-title p{font-size:10px;margin:3px 0 0;color:#666;}
+            .meta-info{margin-left:auto;text-align:right;font-size:10px;color:#444;}
+            table{width:100%;border-collapse:collapse;font-size:9.5px;}
+            thead tr{background:#f2f2f2 !important;border-top:2px solid #002F70;border-bottom:1px solid #999;}
+            thead th{padding:6px 5px;text-align:left;font-weight:700;font-size:9px;text-transform:uppercase;color:#000;}
+            tbody tr{border-bottom:1px solid #ddd;}
+            tbody td{padding:5px;color:#333;}
+            tfoot tr{border-top:2px solid #002F70;background:#f2f2f2 !important;}
+            tfoot td{padding:6px 5px;font-weight:700;}
+        </style></head><body>
+            <div class="header-container">
+                <img src="${logo_url}" alt="Petron">
+                <div class="header-title">
+                    <h1>Petron Station Management System</h1>
+                    <p>Shift Transactions Report (${shiftLbl})</p>
+                </div>
+                <div class="meta-info">
+                    <strong>Date Range:</strong> ${dateStart} to ${dateEnd}<br>
+                    <strong>Generated:</strong> ${generated}
+                </div>
+            </div>
+            ${tableHtml}
+        </body></html>`);
+        doc.close();
+
+        setTimeout(() => {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+        }, 250);
     }
-    html += '</tbody></table></div>';
-
-    // 5. Variance Alerts (read-only)
-    var varCnt = parseInt(s.variance.cnt || 0);
-    html += '<div class="sm-section-title"><i class="fas fa-exclamation-triangle"></i> Variance Alerts (' + varCnt + ')</div>';
-    if (varCnt > 0) {
-        html += '<div style="background:#fff8f0;border:1px solid #fde8c8;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;">';
-        html += '<span style="color:#b45309;font-weight:700;">' + s.variance.open_cnt + ' open</span> &bull; ';
-        html += '<span style="color:#E3001F;font-weight:700;">' + s.variance.esc_cnt + ' escalated</span>';
-        html += ' &nbsp;&mdash;&nbsp; <a href="transactions_variance.php" style="color:#002F70;font-weight:600;">View full details &rarr;</a></div>';
-    } else {
-        html += '<div style="color:#aaa;font-size:12px;padding:8px;margin-bottom:12px;">No variance alerts for this shift.</div>';
-    }
-
-    document.getElementById('shiftModalBody').innerHTML = html;
-    document.getElementById('shiftModal').style.display = 'flex';
 }
-function closeShiftModal() { document.getElementById('shiftModal').style.display = 'none'; }
-function printShiftModal() { var b = document.getElementById('shiftModalBody').innerHTML; var w = window.open('','_blank'); w.document.write('<html><head><title>Shift Report</title><style>body{font-family:sans-serif;font-size:12px;} table{width:100%;border-collapse:collapse;} th,td{border:1px solid #ddd;padding:5px;font-size:11px;} th{background:#002F70;color:#fff;}</style></head><body>' + b + '</body></html>'); w.document.close(); w.print(); }
-
-function openNoteModal(shiftId) {
-    document.getElementById('note_shift_id').value = shiftId;
-    document.getElementById('note_text').value = '';
-    document.getElementById('noteModal').style.display = 'flex';
-    setTimeout(function() { document.getElementById('note_text').focus(); }, 120);
-}
-function closeNoteModal() { document.getElementById('noteModal').style.display = 'none'; }
-
-function esc(str) { if (!str && str !== 0) return ''; return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function fmt(n) { return parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,','); }
-function fmtDt(d) { if (!d) return '—'; var dt = new Date(d); if (isNaN(dt)) return d; return dt.toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
-function txnStatusColor(s, type) {
-    var sl = (s||'').toLowerCase().trim();
-    if (['verified','approved','complete','completed','paid'].includes(sl))
-        return {bg:'#d1fae5',fg:'#065f46',label:'Paid'};
-    if (['partial payment','partial'].includes(sl))
-        return {bg:'#fef9c3',fg:'#92400e',label:'Partial Payment'};
-    if (['pending payment','unpaid'].includes(sl))
-        return {bg:'#ffedd5',fg:'#9a3412',label:'Pending Payment'};
-    if (['credit transaction','credit'].includes(sl))
-        return {bg:'#f3e8ff',fg:'#6b21a8',label:'Credit Transaction'};
-    if (['pending','pending validation','pendingvalidation',''].includes(sl))
-        return {bg:'#fef3c7',fg:'#92400e',label:'Pending'};
-    if (['rejected','returned'].includes(sl))
-        return {bg:'#fee2e2',fg:'#991b1b',label:'Returned'};
-    return {bg:'#f3f4f6',fg:'#6b7280',label:s||'—'};
-}
-
 </script>
 
 <style>
-/* ── Design System ── */
-.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow:hidden; }
-.po-table { width:100%; border-collapse:collapse; font-size:0.88rem; }
-.po-table thead th { background:#002F70; color:#fff; padding:12px 14px; text-align:left; font-weight:600; }
-.po-table tbody tr { border-bottom:1px solid #f0f0f0; transition:background 0.15s; }
-.po-table tbody tr:hover { background:#f5f8ff; }
-.po-table tbody td { padding:11px 14px; vertical-align:middle; color:#333; }
-.status-badge { display:inline-block; font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; color:#333; }
-.badge-pending   { color:#002F70; }
-.badge-approved  { color:#28a745; }
-.badge-rejected  { color:#dc3545; }
-.badge-validated { color:#28a745; }
-.badge-adjusted  { color:#6c757d; }
-.badge-other     { color:#6c757d; }
-.btn-action { display:inline-flex; align-items:center; gap:5px; padding:6px 14px; border:none; border-radius:6px; cursor:pointer; font-size:0.82rem; font-weight:600; text-decoration:none; transition:opacity 0.2s; white-space:nowrap; margin-bottom:3px; }
-.btn-action:hover { opacity:0.85; }
-.btn-approve { background:#28a745; color:#fff; }
-.btn-reject  { background:#dc3545; color:#fff; }
-.btn-adjust  { background:#002F70; color:#fff; }
-.btn-view    { background:#6c757d; color:#fff; }
-.page-head { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; flex-wrap:wrap; gap:6px; }
-.page-head h1 { margin:0 0 2px; font-size:1.4rem; font-weight:700; color:#002F70; }
-.page-head .sub { font-size:0.8rem; color:#6c757d; }
-.alert { padding:12px 18px; border-radius:8px; margin-bottom:20px; font-size:0.9rem; font-weight:500; }
-.alert-success { background:#d4edda; color:#155724; border:1px solid #c3e6cb; }
-.alert-error   { background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; }
-.actions-cell { display:flex; flex-direction:column; gap:4px; }
-.actions-cell .btn-action { width:100%; justify-content:center; margin-bottom:0; }
-.empty-state { text-align:center; padding:60px 20px; color:#666; }
-.empty-state i { font-size:3rem; color:#002F70; margin-bottom:16px; display:block; opacity:0.4; }
-.empty-state h3 { font-size:1.1rem; font-weight:700; color:#333; margin:0 0 6px; }
-/* Shift-specific summary cards */
-.scard { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px 18px; text-align:center; box-shadow:0 1px 4px rgba(0,0,0,.05); }
-.scard-num { font-size:20px; font-weight:800; color:#002F70; display:block; }
-.scard-lbl { font-size:10px; font-weight:700; color:#6c757d; text-transform:uppercase; letter-spacing:.5px; display:block; margin-top:3px; }
-.scard-active .scard-num { color:#28a745; } .scard-merch .scard-num { color:#007bff; } .scard-total .scard-num { color:#002F70; font-size:16px; }
-.flt-lbl { font-size:11px; font-weight:700; color:#6c757d; text-transform:uppercase; letter-spacing:.5px; display:block; margin-bottom:4px; }
-.flt-inp { height:36px; padding:0 10px; border:1px solid #ced4da; border-radius:7px; font-size:13px; color:#333; background:#fff; outline:none; box-sizing:border-box; }
-.flt-inp:focus { border-color:#002F70; box-shadow:0 0 0 3px rgba(0,47,112,.1); }
-.flt-select { cursor:pointer; }
-.flt-btn { display:inline-flex; align-items:center; gap:6px; padding:0 16px; height:36px; border:none; border-radius:7px; font-size:13px; font-weight:600; cursor:pointer; text-decoration:none; white-space:nowrap; transition:filter .15s; }
-.flt-btn:hover { filter:brightness(.88); }
-.flt-btn-search { background:#002F70; color:#fff; } .flt-btn-reset { background:#6c757d; color:#fff; }
-/* Shift table — uses po-table design */
-.stv-table-wrap { width:100%; overflow:hidden; }
-.stv-table { width:100%; border-collapse:collapse; font-size:0.88rem; }
-.stv-table thead th { background:#002F70; color:#fff; padding:12px 14px; text-align:left; font-weight:600; }
-.stv-table tbody tr { border-bottom:1px solid #f0f0f0; transition:background 0.15s; }
-.stv-table tbody td { padding:11px 14px; vertical-align:middle; color:#333; }
-.stv-table tbody tr:hover td { background:#f5f8ff; }
-.stv-sticky { position:sticky; right:0; background:#fff; box-shadow:-3px 0 8px rgba(0,0,0,.07); z-index:2; }
-.stv-table tbody tr:hover .stv-sticky { background:#f5f8ff; }
-.stv-action-btns { display:flex; flex-direction:column; gap:4px; align-items:stretch; min-width:90px; }
-.jo-act-btn { padding:6px 14px; border-radius:6px; font-size:0.82rem; font-weight:600; border:none; cursor:pointer; display:inline-flex; align-items:center; gap:5px; color:#fff; width:100%; justify-content:center; transition:opacity .2s; }
-.jo-act-btn:hover { opacity:.85; }
-/* Modal */
-.stv-modal { display:none; position:fixed; z-index:1050; inset:0; background:rgba(0,0,0,.55); align-items:center; justify-content:center; padding:8px 8px 8px 205px; }
-.stv-modal-content { background:#fff; border-radius:12px; width:100%; max-width:860px; max-height:82vh; display:flex; flex-direction:column; box-shadow:0 8px 32px rgba(0,0,0,.25); overflow:hidden; }
-.stv-modal-header { display:flex; justify-content:space-between; align-items:center; padding:18px 24px; background:#fff; border-bottom:1px solid #e9ecef; color:#212529; flex-shrink:0; }
-.stv-modal-header h3 { margin:0; font-size:1.05rem; font-weight:700; color:#002F70; display:flex; align-items:center; gap:8px; }
-.stv-close { background:none; border:none; color:#888; font-size:1.4rem; cursor:pointer; line-height:1; padding:0 4px; border-radius:4px; transition:color .15s; }
-.stv-close:hover { color:#333; }
-.stv-modal-body { padding:16px 20px; overflow-y:auto; flex:1; }
-.stv-modal-footer { display:flex; justify-content:flex-end; gap:8px; padding:16px 20px; background:#fff; border-top:1px solid #e9ecef; flex-shrink:0; }
-.sm-info-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:8px; background:#f4f7ff; padding:12px; border-radius:8px; margin-bottom:12px; border:1px solid #dde4f5; }
-.sm-info-item { background:#fff; border-radius:6px; padding:8px 10px; border:1px solid #e8ecf5; }
-.sm-lbl { font-size:9px; font-weight:700; color:#8898aa; text-transform:uppercase; letter-spacing:.6px; display:block; margin-bottom:3px; }
-.sm-val { font-size:12px; color:#1a2640; font-weight:700; }
-.sm-totals { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:12px; }
-.sm-tot-box { border-radius:8px; padding:12px 10px; text-align:center; border:1px solid #e2e8f0; }
-.sm-tot-num { font-size:17px; font-weight:800; }
-.sm-tot-lbl { font-size:10px; color:#6c757d; font-weight:600; text-transform:uppercase; letter-spacing:.4px; margin-top:3px; }
-.sm-tot-sub { font-size:10px; color:#aaa; margin-top:2px; }
-.sm-tot-merch { background:#f0f8ff; border-color:#bfdbfe; } .sm-tot-merch .sm-tot-num { color:#007bff; }
-.sm-tot-combined { background:#f0f4ff; border-color:#c7d7ff; } .sm-tot-combined .sm-tot-num { color:#002F70; }
-.sm-pay-row { display:flex; gap:8px; margin-bottom:12px; }
-.sm-pay-box { flex:1; text-align:center; background:#f8f9fa; border:1px solid #e2e8f0; border-radius:8px; padding:10px 6px; font-size:13px; font-weight:700; color:#333; }
-.sm-pay-box i { font-size:15px; display:block; margin-bottom:4px; }
-.sm-pay-lbl { font-size:9px; color:#6c757d; font-weight:700; text-transform:uppercase; letter-spacing:.4px; margin-top:3px; }
-.sm-section-title { font-size:11px; font-weight:800; color:#002F70; text-transform:uppercase; letter-spacing:.5px; border-bottom:1px solid #dee2e6; padding-bottom:5px; margin:12px 0 8px; display:flex; align-items:center; gap:6px; }
-.sm-table { width:100%; border-collapse:collapse; font-size:11px; }
-.sm-table thead th { background:#002F70; color:#fff; padding:6px 8px; text-align:left; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; }
-.sm-table tbody td { padding:6px 8px; border-bottom:1px solid #f0f0f0; vertical-align:middle; }
-.sm-table tbody tr:hover td { background:#f0f7ff; }
+/* == Petron Clean KPI Summary Cards == */
+.txn-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 18px;
+}
+.txn-kpi-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 14px 16px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .05);
+    transition: transform .15s, box-shadow .15s;
+}
+.txn-kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, .08);
+}
+.txn-kpi-lbl {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    color: #64748b;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.txn-kpi-val {
+    font-size: 24px;
+    font-weight: 800;
+    color: #002F70;
+}
+
+.sht-flbl { font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px; }
+.sht-finp { height:36px;padding:0 10px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;color:#1e293b;background:#fff;outline:none;box-sizing:border-box; }
+.sht-finp:focus { border-color:#002F70;box-shadow:0 0 0 3px rgba(0,47,112,.1); }
+
+.flt-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 16px;
+    height: 36px;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: all .18s;
+    background: white !important;
+    border: 1px solid transparent;
+}
+.flt-btn-search { color: #00264D !important; border-color: #00264D !important; }
+.flt-btn-search:hover { background: #00264D !important; color: #fff !important; }
+.flt-btn-reset  { color: #6b7280 !important; border-color: #6b7280 !important; }
+.flt-btn-reset:hover  { background: #6b7280 !important; color: #fff !important; }
+.flt-btn-excel  { color: #1d6f42 !important; border-color: #1d6f42 !important; }
+.flt-btn-excel:hover  { background: #1d6f42 !important; color: #fff !important; }
+.flt-btn-pdf    { color: #dc2626 !important; border-color: #dc2626 !important; }
+.flt-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
+
+.txn-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    line-height: 1;
+    transition: all .18s;
+    background: white !important;
+    border: 1px solid transparent;
+    text-decoration: none;
+}
+.txn-btn-info { color:#00264D !important; border-color:#00264D !important; }
+.txn-btn-info:hover { background:#00264D !important; color:#fff !important; }
+.txn-btn-secondary { color:#6b7280 !important; border-color:#6b7280 !important; }
+.txn-btn-secondary:hover { background:#6b7280 !important; color:#fff !important; }
+
+.sht-table { width:100%;border-collapse:collapse;font-size:13px; }
+.sht-table thead th { background:#002F70;color:#fff;padding:12px 14px;text-align:left;font-weight:600;font-size:12px;white-space:nowrap; }
+.sht-table tbody tr { border-bottom:1px solid #f1f5f9;transition:background .15s; }
+.sht-table tbody tr:hover td { background:#f8faff; }
+.sht-table tbody td { padding:11px 14px;vertical-align:middle;color:#334155; }
 </style>
 
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

@@ -1673,6 +1673,11 @@ html, body {
 * { 
     box-sizing: border-box !important; 
 }
+
+/* Page Header - matches transaction module standard */
+.page-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:-12px !important; }
+.page-head h1, .page-head .h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
+.page-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
 /* Prevent any element from exceeding viewport */
 *:not(.modal):not(.modal *) {
     max-width: 100% !important;
@@ -1721,15 +1726,9 @@ html, body {
 
 /* Stats Grid */
 .stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:20px; max-width:100%; width:100%; overflow-x:hidden; }
-.stat-card { background:linear-gradient(135deg,#f8f9fa,#e9ecef); border-radius:10px; padding:16px; text-align:center; border-left:4px solid <?php echo $colors['primary']; ?>; transition:transform .2s; }
-.stat-card:hover { transform:translateY(-2px); }
-.stat-card.danger { border-left-color:<?php echo $colors['danger']; ?>; }
-.stat-card.warning { border-left-color:<?php echo $colors['warning']; ?>; }
-.stat-card.success { border-left-color:<?php echo $colors['success']; ?>; }
-.stat-value { font-size:1.8rem; font-weight:700; color:<?php echo $colors['primary']; ?>; }
-.stat-card.danger .stat-value { color:<?php echo $colors['danger']; ?>; }
-.stat-card.warning .stat-value { color:#CC8800; }
-.stat-card.success .stat-value { color:<?php echo $colors['success']; ?>; }
+.stat-card { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:16px; text-align:center; transition:transform .2s; }
+.stat-card:hover { transform:translateY(-2px); box-shadow:0 2px 8px rgba(0,0,0,.08); }
+.stat-value { font-size:1.8rem; font-weight:700; color:#002F70; }
 .stat-label { font-size:.75rem; color:#666; text-transform:uppercase; letter-spacing:.5px; margin-top:4px; }
 
 /* Tank Cards */

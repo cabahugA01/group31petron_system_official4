@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // Admin Fuel Reconciliation Oversight
 $page_id = 'admin_fuel_reconciliation_oversight';
 require_once __DIR__ . '/../backend/lib.php';
@@ -110,13 +110,16 @@ require_once __DIR__ . '/../partials/header.php';
 ?>
 <style>
 html,body{max-width:100vw;overflow-x:hidden}
-.afao-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap}
-.afao-head h1{margin:0 0 4px;font-size:22px;font-weight:700;color:#00264D;display:flex;align-items:center;gap:9px}
-.afao-subtitle{font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:.3px}
-.afao-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;text-decoration:none;transition:all .13s;height:36px;white-space:nowrap}
-.afao-btn-excel{background:#1d6f42;color:#fff}.afao-btn-excel:hover{background:#155a34;color:#fff}
-.afao-btn-back{background:#6c757d;color:#fff}.afao-btn-back:hover{background:#545b62;color:#fff}
-.afao-btn-filter{background:#002F6C;color:#fff}.afao-btn-filter:hover{background:#001f4d;color:#fff}
+/* == PAGE HEADER - matches SuperAdmin int-head standard == */
+.int-head{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;margin-top:-12px!important}
+.int-head h1{font-size:22px!important;font-weight:700!important;color:var(--petron-blue,#00264D)!important;margin:0!important;text-transform:uppercase!important;display:flex;align-items:center;gap:8px}
+.int-head .sub{font-size:13px;color:#666;margin-top:4px;text-transform:none!important}
+/* == Outline Buttons - SuperAdmin standard == */
+.ato-btn{display:inline-flex;align-items:center;gap:6px;padding:0 16px;height:36px;border:1px solid transparent;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap;background:white!important;transition:all .15s}
+.ato-btn-excel{color:#1d6f42!important;border-color:#1d6f42!important}.ato-btn-excel:hover{background:#1d6f42!important;color:#fff!important}
+.ato-btn-back{color:#4b5563!important;border-color:#6b7280!important}.ato-btn-back:hover{background:#6b7280!important;color:#fff!important}
+.ato-btn-filter{color:#002F70!important;border-color:#002F70!important}.ato-btn-filter:hover{background:#002F70!important;color:#fff!important}
+/* == KPI Cards == */
 .afao-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:18px}
 .afao-card{background:#fff;border:1px solid #e2e8f0;border-radius:11px;padding:16px;display:flex;align-items:center;gap:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
 .afao-card.c-blue{border-left:4px solid #1e40af}.afao-card.c-red{border-left:4px solid #dc2626}
@@ -125,33 +128,36 @@ html,body{max-width:100vw;overflow-x:hidden}
 .afao-card-meta h3{margin:0;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;font-weight:700}
 .afao-card-meta h2{margin:2px 0 0;font-size:24px;font-weight:900;color:#00264D;line-height:1}
 .afao-card-meta span{font-size:11px;color:#94a3b8}
+/* == Filter Bar == */
 .afao-filter{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;margin-bottom:16px}
 .afao-fg{display:flex;flex-direction:column;gap:3px}
-.afao-fg label{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px}
-.afao-fg input,.afao-fg select{padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px}
+.afao-fg label{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px}
+.afao-fg input,.afao-fg select{height:36px;padding:0 10px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;color:#1e293b;background:#fff;outline:none;box-sizing:border-box}
+.afao-fg input:focus,.afao-fg select:focus{border-color:#002F70;box-shadow:0 0 0 3px rgba(0,47,112,.1)}
+/* == Table Card - matches SuperAdmin ato-table == */
 .afao-table-card{background:#fff;border:1px solid #e2e8f0;border-radius:11px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04)}
 .afao-table-hd{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #f1f5f9;flex-wrap:wrap;gap:8px}
 .afao-table-title{font-size:13px;font-weight:700;color:#00264D;text-transform:uppercase;letter-spacing:.3px;margin:0}
-.afao-tbl{width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px}
-.afao-tbl thead tr{background:#002F6C}
-.afao-tbl thead th{padding:9px 10px;text-align:left;font-size:10px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;overflow:hidden;text-overflow:ellipsis;}
+.afao-tbl{width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px}
+.afao-tbl thead tr{background:#002F70}
+.afao-tbl thead th{padding:9px 10px;text-align:left;font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;overflow:hidden;text-overflow:ellipsis;border-bottom:2px solid #001a3d;vertical-align:middle}
 .afao-tbl tbody tr{border-bottom:1px solid #f1f5f9;transition:background .1s}
-.afao-tbl tbody tr:hover{background:#eff6ff}
-.afao-tbl tbody td{padding:9px 10px;color:#334155;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.afao-tbl tbody tr:hover td{background:#eff6ff}
+.afao-tbl tbody td{padding:9px 10px;color:#334155;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:#fff;font-size:11px}
 .afao-empty{text-align:center;padding:60px 20px;color:#94a3b8}
 .afao-empty i{font-size:44px;display:block;margin-bottom:14px;opacity:.4}
 .var-high{color:#dc2626;font-weight:700}
 .var-ok{color:#16a34a;font-weight:700}
 </style>
 
-<div class="afao-head">
+<div class="int-head">
     <div>
         <h1><i class="fas fa-balance-scale"></i> Fuel Reconciliation Oversight</h1>
-        <div class="afao-subtitle">AUDIT RECONCILIATIONS OF PUMP READINGS, DELIVERIES, AND STOCK BALANCES TO DETECT AND RESOLVE INCONSISTENCIES.</div>
+        <div class="sub">Audit reconciliations of pump readings, deliveries, and stock balances to detect and resolve inconsistencies.</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <a href="?<?= http_build_query(['date_from'=>$date_from,'date_to'=>$date_to,'station'=>$filter_station,'status'=>$filter_status,'export'=>'excel']) ?>" class="afao-btn afao-btn-excel"><i class="fas fa-file-excel"></i> Export Excel</a>
-        <a href="admin_dashboard.php" class="afao-btn afao-btn-back"><i class="fas fa-arrow-left"></i> Back</a>
+        <a href="?<?= http_build_query(['date_from'=>$date_from,'date_to'=>$date_to,'station'=>$filter_station,'status'=>$filter_status,'export'=>'excel']) ?>" class="ato-btn ato-btn-excel"><i class="fas fa-file-excel"></i> Export Excel</a>
+        <a href="admin_dashboard.php" class="ato-btn ato-btn-back"><i class="fas fa-arrow-left"></i> Back</a>
     </div>
 </div>
 
@@ -228,8 +234,8 @@ html,body{max-width:100vw;overflow-x:hidden}
             <option value="resolved" <?= $filter_status==='resolved'?'selected':'' ?>>Resolved</option>
         </select>
     </div>
-    <button type="submit" class="afao-btn afao-btn-filter"><i class="fas fa-filter"></i> Apply</button>
-    <a href="admin_fuel_reconciliation_oversight.php" class="afao-btn afao-btn-back"><i class="fas fa-times"></i> Reset</a>
+    <button type="submit" class="ato-btn ato-btn-filter"><i class="fas fa-filter"></i> Apply</button>
+    <a href="admin_fuel_reconciliation_oversight.php" class="ato-btn ato-btn-back"><i class="fas fa-times"></i> Reset</a>
 </form>
 
 <!-- Table -->

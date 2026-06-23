@@ -910,7 +910,7 @@ document.addEventListener('DOMContentLoaded', function() {
 .va-stat-lbl  { font-size:11px; font-weight:700; color:#6c757d; text-transform:uppercase; letter-spacing:.4px; margin-top:2px; }
 
 /* ── Anomaly banner ── */
-.va-anomaly-banner { background:#fff5f5; border:1px solid #f5c6cb; border-left:4px solid #dc3545; border-radius:10px; padding:16px 18px; margin-bottom:18px; }
+.va-anomaly-banner { background:#fff5f5; border:1px solid #f5c6cb; border-radius:10px; padding:16px 18px; margin-bottom:18px; }
 
 /* ── Filter bar ── */
 .va-filter-bar { background:#fff; border:1px solid #e9ecef; border-radius:10px; padding:16px 18px; margin-bottom:16px; }

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Manager Dashboard - Rebuilt with Correct Data Fetching Flow
  * 
@@ -706,10 +706,10 @@ try {
     $q->execute([$station_id]); $pending_fuel=$q->fetchAll(PDO::FETCH_ASSOC)?:[];
 } catch(Exception $e){}
 
-// Pending merchandise transactions
+// Recent merchandise transactions for correction monitoring
 $pending_merch = [];
 try {
-    $q = $pdo->prepare("SELECT mt.id, COALESCE(mt.transaction_id,CONCAT('MT-',mt.id)) AS ref, COALESCE(mt.total_amount,0) AS amount, mt.created_at, COALESCE(mt.validation_status,'Pending') AS status, TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))) AS encoder FROM merchandise_transactions mt LEFT JOIN users u ON mt.staff_id=u.id WHERE mt.station_id=? AND LOWER(COALESCE(mt.validation_status,'pending')) LIKE '%pending%' ORDER BY mt.created_at DESC LIMIT 10");
+    $q = $pdo->prepare("SELECT mt.id, COALESCE(mt.transaction_id,CONCAT('MT-',mt.id)) AS ref, COALESCE(mt.total_amount,0) AS amount, mt.created_at, COALESCE(mt.validation_status,'Official') AS status, TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))) AS encoder FROM merchandise_transactions mt LEFT JOIN users u ON mt.staff_id=u.id WHERE mt.station_id=? AND LOWER(COALESCE(mt.validation_status,'official')) <> 'voided' ORDER BY mt.created_at DESC LIMIT 10");
     $q->execute([$station_id]); $pending_merch=$q->fetchAll(PDO::FETCH_ASSOC)?:[];
 } catch(Exception $e){}
 ?>
@@ -748,29 +748,26 @@ try {
         <?php endif; ?>
     </div>
 
-    <!-- Pending Merchandise Transactions — Validation -->
+    <!-- Merchandise Transaction Monitoring -->
     <div class="mgr-panel">
         <div class="mgr-panel-title">
-            <div><i class="fas fa-shopping-cart"></i> Merchandise — Pending Validation (<?=count($pending_merch)?>)</div>
-            <span><a href="pending_transactions.php" style="color:#00264D;text-decoration:none;font-size:11px;font-weight:600;">View All</a></span>
+            <div><i class="fas fa-shopping-cart"></i> Merchandise — Transaction Monitoring (<?=count($pending_merch)?>)</div>
+            <span><a href="manager_transaction_monitoring.php" style="color:#00264D;text-decoration:none;font-size:11px;font-weight:600;">View All</a></span>
         </div>
         <?php if(empty($pending_merch)): ?>
-            <div class="mgr-empty"><i class="fas fa-check-circle" style="color:#22c55e;"></i> All merchandise transactions validated.</div>
+            <div class="mgr-empty"><i class="fas fa-check-circle" style="color:#22c55e;"></i> No merchandise transactions to monitor.</div>
         <?php else: ?>
             <table class="mgr-table">
-                <thead><tr><th>Reference</th><th>Amount</th><th>Encoder</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Reference</th><th>Amount</th><th>Encoder</th><th>Status</th><th>Actions</th></tr></thead>
                 <tbody>
                 <?php foreach($pending_merch as $r): ?>
                 <tr>
                     <td><?=htmlspecialchars($r['ref'])?></td>
                     <td>₱<?=number_format($r['amount'],2)?></td>
                     <td><?=htmlspecialchars(trim($r['encoder']))?:'-'?></td>
+                    <td><?=htmlspecialchars($r['status'])?></td>
                     <td style="white-space:nowrap;">
-                        <form method="POST" action="pending_transactions.php" style="display:inline;">
-                            <input type="hidden" name="action" value="approve_group">
-                            <input type="hidden" name="group_ids" value='[{"id":<?=$r['id']?>,"source":"merchandise_transactions"}]'>
-                            <button type="submit" class="val-btn val-btn-approve" onclick="return confirm('Approve?')"><i class="fas fa-check"></i></button>
-                        </form>
+                        <a class="val-btn val-btn-approve" href="manager_transaction_monitoring.php?search=<?=urlencode($r['ref'])?>" title="Adjust, void, or correct"><i class="fas fa-edit"></i></a>
                     </td>
                 </tr>
                 <?php endforeach; ?>
@@ -905,15 +902,7 @@ $jo_total_amt=array_sum(array_column($jo_rows,'amount'));
                 <td>₱<?=number_format($r['amount'],2)?></td>
                 <td><?=htmlspecialchars(trim($r['encoder']))?:'-'?></td>
                 <td style="white-space:nowrap;">
-                <?php if($is_pending): ?>
-                    <form method="POST" action="pending_transactions.php" style="display:inline;">
-                        <input type="hidden" name="action" value="approve_group">
-                        <input type="hidden" name="group_ids" value='[{"id":<?=$r['id']?>,"source":"job_orders"}]'>
-                        <button type="submit" class="val-btn val-btn-approve" onclick="return confirm('Approve job order?')"><i class="fas fa-check"></i> Approve</button>
-                    </form>
-                <?php else: ?>
-                    <span style="font-size:10px;color:#64748b;">Validated</span>
-                <?php endif; ?>
+                    <a class="val-btn val-btn-approve" href="manager_transaction_monitoring.php?search=<?=urlencode($r['ref'])?>" title="Review transaction corrections"><i class="fas fa-edit"></i> Review</a>
                 </td>
             </tr>
             <?php endforeach; ?>
@@ -1246,6 +1235,10 @@ new Chart(document.getElementById('finVarianceChart'), {
         scales: { y: { beginAtZero: true } }
     }
 });
+// Auto-refresh every 30 seconds
+setInterval(() => {
+    location.reload();
+}, 30000);
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

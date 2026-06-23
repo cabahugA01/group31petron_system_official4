@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Admin Variance Reports - Merchandise (Admin Functional Form)
  * Access: admin and superadmin roles only.
@@ -353,35 +353,41 @@ require_once __DIR__ . '/../partials/header.php';
 ?>
 <style>
 html,body{max-width:100vw;overflow-x:hidden}
-.mvr-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap}
-.mvr-head h1{margin:0 0 4px;font-size:22px;font-weight:700;color:#00264D;display:flex;align-items:center;gap:9px}
-.mvr-subtitle{font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:.3px}
-.mvr-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid transparent;text-decoration:none;transition:all .2s;white-space:nowrap;background:white !important}
+/* == PAGE HEADER - matches SuperAdmin int-head standard == */
+.int-head{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;margin-top:-12px!important}
+.int-head h1{font-size:22px!important;font-weight:700!important;color:var(--petron-blue,#00264D)!important;margin:0!important;text-transform:uppercase!important;display:flex;align-items:center;gap:8px}
+.int-head .sub{font-size:13px;color:#666;margin-top:4px;text-transform:none!important}
+/* == Outline Buttons - SuperAdmin standard == */
+.mvr-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 16px;height:36px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent;text-decoration:none;transition:all .15s;white-space:nowrap;background:white !important}
 .mvr-btn-primary{color:#00264D !important;border-color:#00264D !important}.mvr-btn-primary:hover{background:#00264D !important;color:#fff !important}
-.mvr-btn-excel{color:#16a34a !important;border-color:#16a34a !important}.mvr-btn-excel:hover{background:#16a34a !important;color:#fff !important}
+.mvr-btn-excel{color:#1d6f42 !important;border-color:#1d6f42 !important}.mvr-btn-excel:hover{background:#1d6f42 !important;color:#fff !important}
 .mvr-btn-back{color:#4b5563 !important;border-color:#6b7280 !important}.mvr-btn-back:hover{background:#6b7280 !important;color:#fff !important}
 .mvr-btn-filter{color:#00264D !important;border-color:#00264D !important}.mvr-btn-filter:hover{background:#00264D !important;color:#fff !important}
 .mvr-btn-danger{color:#dc2626 !important;border-color:#dc2626 !important}.mvr-btn-danger:hover{background:#dc2626 !important;color:#fff !important}
+/* == KPI Cards == */
 .mvr-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:18px}
 .mvr-card{background:#fff;border:1px solid #e2e8f0;border-radius:11px;padding:16px;display:flex;align-items:center;gap:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
 .mvr-card-ico{width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0;color:#002F6C}
 .mvr-card-meta h3{margin:0;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;font-weight:700}
 .mvr-card-meta h2{margin:2px 0 0;font-size:24px;font-weight:900;color:#00264D;line-height:1}
 .mvr-card-meta span{font-size:11px;color:#94a3b8}
+/* == Filter Bar == */
 .mvr-filter{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;margin-bottom:16px}
 .mvr-fg{display:flex;flex-direction:column;gap:3px}
-.mvr-fg label{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px}
-.mvr-fg input,.mvr-fg select{padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;height:34px;box-sizing:border-box}
+.mvr-fg label{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px}
+.mvr-fg input,.mvr-fg select{height:36px;padding:0 10px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;color:#1e293b;background:#fff;outline:none;box-sizing:border-box}
+.mvr-fg input:focus,.mvr-fg select:focus{border-color:#002F70;box-shadow:0 0 0 3px rgba(0,47,112,.1)}
+/* == Table Card - matches SuperAdmin ato-table == */
 .mvr-table-card{background:#fff;border:1px solid #e2e8f0;border-radius:11px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04)}
 .mvr-table-hd{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #f1f5f9;flex-wrap:wrap;gap:8px}
 .mvr-table-title{font-size:13px;font-weight:700;color:#00264D;text-transform:uppercase;letter-spacing:.3px;margin:0}
-.mvr-tbl{width:100%;border-collapse:collapse;font-size:12px}
-.mvr-tbl thead tr{background:#002F6C}
-.mvr-tbl thead th{padding:10px 12px;text-align:left;font-size:10px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;}
+.mvr-tbl{width:100%;border-collapse:collapse;font-size:11px}
+.mvr-tbl thead tr{background:#002F70}
+.mvr-tbl thead th{padding:9px 10px;text-align:left;font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #001a3d;vertical-align:middle}
 .mvr-tbl tbody tr{border-bottom:1px solid #f1f5f9;transition:background .1s}
-.mvr-tbl tbody tr:hover{background:#eff6ff}
-.mvr-tbl tbody td{padding:10px 12px;color:#334155;vertical-align:middle;word-break:break-all}
-.mvr-badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:700;text-transform:uppercase}
+.mvr-tbl tbody tr:hover td{background:#eff6ff}
+.mvr-tbl tbody td{padding:9px 10px;color:#334155;vertical-align:middle;word-break:break-all;background:#fff;font-size:11px}
+.mvr-badge{display:inline-block;padding:3px 10px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase}
 .badge-flagged{background:#fee2e2;color:#991b1b}
 .badge-pending_review{background:#fef3c7;color:#92400e}
 .badge-cleared{background:#dcfce7;color:#166534}
@@ -394,7 +400,7 @@ html,body{max-width:100vw;overflow-x:hidden}
 .mvr-modal{display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(15,23,42,0.5);align-items:center;justify-content:center;z-index:9999;padding:20px;box-sizing:border-box}
 .mvr-modal-box{background:#fff;border-radius:12px;width:100%;max-width:550px;box-shadow:0 20px 25px -5px rgba(0,0,0,0.1),0 10px 10px -5px rgba(0,0,0,0.04);overflow:hidden;animation:mvrFadeIn 0.15s ease-out}
 @keyframes mvrFadeIn { from{opacity:0;transform:scale(0.95)} to{opacity:1;transform:scale(1)} }
-.mvr-modal-head{padding:14px 18px;background:#002F6C;color:#fff;display:flex;align-items:center;justify-content:space-between}
+.mvr-modal-head{padding:14px 18px;background:#002F70;color:#fff;display:flex;align-items:center;justify-content:space-between}
 .mvr-modal-head h3{margin:0;font-size:15px;font-weight:700}
 .mvr-modal-close{background:none;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1}
 .mvr-modal-body{padding:20px;max-height:80vh;overflow-y:auto}
@@ -404,15 +410,15 @@ html,body{max-width:100vw;overflow-x:hidden}
 .form-group.full{grid-column:1 / -1}
 .form-group label{font-size:11px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:0.3px}
 .form-control{width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;box-sizing:border-box}
-.form-control:focus{outline:none;border-color:#002F6C}
+.form-control:focus{outline:none;border-color:#002F70;box-shadow:0 0 0 3px rgba(0,47,112,.1)}
 .mvr-btn-action{padding:4px 8px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:none;background:#f1f5f9;color:#334155;transition:background 0.1s}
 .mvr-btn-action:hover{background:#e2e8f0}
 </style>
 
-<div class="mvr-head">
+<div class="int-head">
     <div>
         <h1><i class="fas fa-chart-line"></i> Merchandise Variance Reports</h1>
-        <div class="mvr-subtitle">Track, audit, and log merchandise quantity discrepancies, price errors, and delivery issues.</div>
+        <div class="sub">Track, audit, and log merchandise quantity discrepancies, price errors, and delivery issues.</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <button onclick="openCreateModal()" class="mvr-btn mvr-btn-primary"><i class="fas fa-plus"></i> New Report</button>

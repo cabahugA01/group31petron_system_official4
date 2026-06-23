@@ -1,5 +1,5 @@
 <?php
-$page_id = ($_GET['tab'] ?? 'pending') === 'validated' ? 'mgr_txn_validated' : 'mgr_txn_pending';
+$page_id = 'transactions';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
 require_once __DIR__ . '/../backend/transaction_schema_fix.php';
@@ -227,7 +227,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($pdo->inTransaction()) $pdo->rollBack();
             $_SESSION['error'] = 'Error approving: ' . $e->getMessage();
         }
-        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','status'=>$_POST['_status']??'','tab'=>'validated'])));
+        header('Location: transactions.php?' . http_build_query(array_filter(['view'=>$_POST['_view']??'all','start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','status'=>$_POST['_status']??''])));
         exit;
     }
 
@@ -259,7 +259,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (Exception $e) {
             $_SESSION['error'] = 'Error returning transaction: ' . $e->getMessage();
         }
-        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'validated'])));
+        header('Location: transactions.php?' . http_build_query(array_filter(['view'=>$_POST['_view']??'all','start'=>$_POST['_start']??'','end'=>$_POST['_end']??''])));
         exit;
     }
 
@@ -301,7 +301,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($pdo->inTransaction()) $pdo->rollBack();
             $_SESSION['error'] = 'Error adjusting: ' . $e->getMessage();
         }
-        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'validated'])));
+        header('Location: transactions.php?' . http_build_query(array_filter(['view'=>$_POST['_view']??'all','start'=>$_POST['_start']??'','end'=>$_POST['_end']??''])));
         exit;
     }
 
@@ -339,7 +339,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($pdo->inTransaction()) $pdo->rollBack();
             $_SESSION['error'] = 'Error approving JO: ' . $e->getMessage();
         }
-        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'validated'])));
+        header('Location: transactions.php?' . http_build_query(array_filter(['view'=>$_POST['_view']??'all','start'=>$_POST['_start']??'','end'=>$_POST['_end']??''])));
         exit;
     }
 
@@ -368,7 +368,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($pdo->inTransaction()) $pdo->rollBack();
             $_SESSION['error'] = 'Error rejecting JO: ' . $e->getMessage();
         }
-        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'validated'])));
+        header('Location: transactions.php?' . http_build_query(array_filter(['view'=>$_POST['_view']??'all','start'=>$_POST['_start']??'','end'=>$_POST['_end']??''])));
         exit;
     }
 
@@ -406,7 +406,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($pdo->inTransaction()) $pdo->rollBack();
             $_SESSION['error'] = 'Error adjusting JO: ' . $e->getMessage();
         }
-        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'validated'])));
+        header('Location: transactions.php?' . http_build_query(array_filter(['view'=>$_POST['_view']??'all','start'=>$_POST['_start']??'','end'=>$_POST['_end']??''])));
         exit;
     }
 
@@ -427,7 +427,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (Exception $e) {
             $_SESSION['error'] = 'Error marking paid: ' . $e->getMessage();
         }
-        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'validated'])));
+        header('Location: transactions.php?' . http_build_query(array_filter(['view'=>$_POST['_view']??'all','start'=>$_POST['_start']??'','end'=>$_POST['_end']??''])));
         exit;
     }
 
@@ -480,7 +480,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($pdo->inTransaction()) $pdo->rollBack();
             $_SESSION['error'] = 'Error setting payment: ' . $e->getMessage();
         }
-        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'validated'])));
+        header('Location: transactions.php?' . http_build_query(array_filter(['view'=>$_POST['_view']??'all','start'=>$_POST['_start']??'','end'=>$_POST['_end']??''])));
         exit;
     }
 
@@ -501,7 +501,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (Exception $e) {
             $_SESSION['error'] = 'Error: ' . $e->getMessage();
         }
-        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'validated'])));
+        header('Location: transactions.php?' . http_build_query(array_filter(['view'=>$_POST['_view']??'all','start'=>$_POST['_start']??'','end'=>$_POST['_end']??''])));
         exit;
     }
 
@@ -522,7 +522,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (Exception $e) {
             $_SESSION['error'] = 'Error: ' . $e->getMessage();
         }
-        header('Location: transactions.php?' . http_build_query(array_filter(['start'=>$_POST['_start']??'','end'=>$_POST['_end']??'','tab'=>'validated'])));
+        header('Location: transactions.php?' . http_build_query(array_filter(['view'=>$_POST['_view']??'all','start'=>$_POST['_start']??'','end'=>$_POST['_end']??''])));
         exit;
     }
 }
@@ -535,7 +535,6 @@ $customer = trim($_GET['customer'] ?? '');
 $payment  = $_GET['payment'] ?? '';
 $status_f = $_GET['status'] ?? '';
 $type_f   = $_GET['type']   ?? '';   // '' = all, 'merchandise', 'jo'
-$active_tab = $_GET['tab']  ?? 'merch';  // 'merch' | 'jo'
 
 $do_export = (isset($_GET['export']) && in_array($_GET['export'], ['excel','pdf'])) ? $_GET['export'] : '';
 
@@ -753,6 +752,72 @@ try {
 $all_transactions = array_merge($transactions, $job_orders);
 usort($all_transactions, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['created_at']));
 
+$default_view = in_array($role, ['admin', 'superadmin', 'developer'], true) ? 'overview' : 'all';
+$view = $_GET['view'] ?? $default_view;
+if (!in_array($view, ['overview', 'all', 'adjustments', 'voided'], true)) {
+    $view = $default_view;
+}
+
+$payment_status_f = trim($_GET['payment_status'] ?? '');
+$shift_f = trim($_GET['shift'] ?? '');
+$staff_f = trim($_GET['staff'] ?? '');
+$search_f = trim($_GET['search'] ?? '');
+
+$audit_meta = [];
+try {
+    $audit_stmt = $pdo->prepare("
+        SELECT
+            at.id,
+            at.transaction_id,
+            at.action_type,
+            at.old_value,
+            at.new_value,
+            at.timestamp,
+            COALESCE(NULLIF(CONCAT(mu.first_name,' ',mu.last_name),' '), mu.name, mu.username, 'System') AS manager_name
+        FROM audit_trail at
+        LEFT JOIN users mu ON mu.id = at.manager_id
+        WHERE at.station_id = ?
+          AND DATE(at.timestamp) BETWEEN ? AND ?
+          AND LOWER(TRIM(at.action_type)) IN ('adjust','reject','void','cancel')
+        ORDER BY at.timestamp DESC, at.id DESC
+    ");
+    $audit_stmt->execute([$station_id, $start, $end]);
+    foreach ($audit_stmt->fetchAll(PDO::FETCH_ASSOC) as $ar) {
+        $key = (string)($ar['transaction_id'] ?? '');
+        if ($key !== '') {
+            $audit_meta[$key][] = $ar;
+        }
+    }
+} catch (Exception $e) {
+    $audit_meta = [];
+}
+
+$all_transactions = array_values(array_map(function($t) use ($audit_meta) {
+    $type = $t['txn_type'] ?? 'merchandise';
+    $type_label = 'Merchandise';
+    if ($type === 'job_order') {
+        $type_label = 'Job Order';
+    } elseif ($type === 'combined') {
+        $type_label = 'JO + Merchandise';
+    }
+
+    $shift_label = trim((string)($t['shift_name'] ?? $t['shift_period'] ?? ''));
+    if ($shift_label === '') {
+        $shift_label = 'General';
+    }
+
+    $t['type_label'] = $type_label;
+    $t['status_key'] = normalise_status((string)($t['status'] ?? ''));
+    $t['payment_status_raw'] = trim((string)($t['payment_status'] ?? 'Unpaid')) ?: 'Unpaid';
+    $t['shift_label'] = $shift_label;
+    $t['vehicle_display'] = trim((string)($t['vehicle'] ?? '')) ?: '—';
+    $t['service_display'] = trim((string)($t['product_name'] ?? '')) ?: '—';
+    $t['customer_display'] = trim((string)($t['customer'] ?? '')) ?: 'Walk-in';
+    $t['staff_display'] = trim((string)($t['staff_name'] ?? '')) ?: 'Unknown';
+    $t['audit_entries'] = $audit_meta[(string)($t['row_id'] ?? '')] ?? [];
+    return $t;
+}, $all_transactions));
+
 if ($type_f !== '') {
     $all_transactions = array_filter($all_transactions, function($t) use ($type_f) {
         $type = $t['txn_type'] ?? '';
@@ -778,11 +843,6 @@ foreach ($all_transactions as $t) {
     }
 }
 
-// Active tab: default to 'pending', switch to 'validated' when ?tab=validated
-$active_tab = ($_GET['tab'] ?? 'pending') === 'validated' ? 'validated' : 'pending';
-
-// The table rendered depends on active tab
-$display_transactions = ($active_tab === 'validated') ? $validated_transactions : $pending_transactions;
 
 // ── Summary counts ────────────────────────────────────────────────────────────
 $pendingCount   = count($pending_transactions);
@@ -800,25 +860,332 @@ foreach ($validated_transactions as $t) {
 
 // ── Job Order Tracker data (Removed to enforce unified view) ────────────────
 
+$staff_options = [];
+$shift_options = [];
+foreach ($all_transactions as $t) {
+    $staff_options[$t['staff_display'] ?? ($t['staff_name'] ?? 'Unknown')] = $t['staff_display'] ?? ($t['staff_name'] ?? 'Unknown');
+    $shift_options[$t['shift_label'] ?? 'General'] = $t['shift_label'] ?? 'General';
+}
+ksort($staff_options);
+ksort($shift_options);
+
+$display_transactions = array_values(array_filter($all_transactions, function($t) use ($type_f, $status_f, $payment, $payment_status_f, $shift_f, $staff_f, $search_f, $customer) {
+    $type = $t['txn_type'] ?? '';
+    if ($type_f === 'merchandise' && $type !== 'merchandise') return false;
+    if ($type_f === 'jo' && $type !== 'job_order') return false;
+    if ($type_f === 'combined' && $type !== 'combined') return false;
+
+    $status_map = ['pending' => 'pending', 'verified' => 'verified', 'rejected' => 'returned', 'adjusted' => 'adjusted'];
+    if ($status_f !== '' && ($status_map[$status_f] ?? '') !== ($t['status_key'] ?? normalise_status((string)($t['status'] ?? '')))) return false;
+    if ($payment !== '' && strtolower((string)($t['payment_method'] ?? '')) !== strtolower($payment)) return false;
+    if ($payment_status_f !== '' && strtolower((string)($t['payment_status_raw'] ?? $t['payment_status'] ?? '')) !== strtolower($payment_status_f)) return false;
+    if ($shift_f !== '' && strcasecmp((string)($t['shift_label'] ?? ''), $shift_f) !== 0) return false;
+    if ($staff_f !== '' && strcasecmp((string)($t['staff_display'] ?? $t['staff_name'] ?? ''), $staff_f) !== 0) return false;
+
+    $needle = strtolower(trim($search_f !== '' ? $search_f : $customer));
+    if ($needle !== '') {
+        $haystack = strtolower(implode(' ', [
+            $t['txn_ref'] ?? '',
+            $t['customer_display'] ?? $t['customer'] ?? '',
+            $t['type_label'] ?? '',
+            $t['vehicle_display'] ?? $t['vehicle'] ?? '',
+            $t['service_display'] ?? $t['product_name'] ?? '',
+            $t['staff_display'] ?? $t['staff_name'] ?? '',
+        ]));
+        if (strpos($haystack, $needle) === false) return false;
+    }
+
+    return true;
+}));
+
+$pending_transactions = array_values(array_filter($display_transactions, fn($t) => (($t['status_key'] ?? normalise_status((string)($t['status'] ?? ''))) === 'pending')));
+$verified_transactions = array_values(array_filter($display_transactions, fn($t) => (($t['status_key'] ?? normalise_status((string)($t['status'] ?? ''))) === 'verified')));
+$adjusted_transactions = array_values(array_filter($display_transactions, fn($t) => (($t['status_key'] ?? normalise_status((string)($t['status'] ?? ''))) === 'adjusted')));
+$voided_transactions = array_values(array_filter($display_transactions, fn($t) => (($t['status_key'] ?? normalise_status((string)($t['status'] ?? ''))) === 'returned')));
+
+$pendingCount = count($pending_transactions);
+$verifiedCount = count($verified_transactions);
+$rejectedCount = count($voided_transactions);
+$adjustedCount = count($adjusted_transactions);
+$grandTotal = array_reduce($display_transactions, fn($carry, $t) => $carry + (float)($t['total'] ?? 0), 0.0);
+
+$overview_total_transactions = count($display_transactions);
+$overview_total_sales = $grandTotal;
+$overview_total_job_orders = count(array_filter($display_transactions, fn($t) => in_array(($t['txn_type'] ?? ''), ['job_order', 'combined'], true)));
+$overview_total_merchandise = count(array_filter($display_transactions, fn($t) => in_array(($t['txn_type'] ?? ''), ['merchandise', 'combined'], true)));
+$recent_transactions = array_slice($display_transactions, 0, 6);
+$recent_adjustments = array_slice($adjusted_transactions, 0, 5);
+$recent_voided = array_slice($voided_transactions, 0, 5);
+
+$type_summary = ['Merchandise' => 0, 'Job Order' => 0, 'JO + Merchandise' => 0];
+$payment_summary = [];
+$shift_summary = [];
+foreach ($display_transactions as $t) {
+    $type_summary[$t['type_label'] ?? 'Merchandise'] = ($type_summary[$t['type_label'] ?? 'Merchandise'] ?? 0) + 1;
+    $payment_summary[$t['payment_method'] ?: 'N/A'] = ($payment_summary[$t['payment_method'] ?: 'N/A'] ?? 0) + 1;
+    $shift_summary[$t['shift_label'] ?? 'General'] = ($shift_summary[$t['shift_label'] ?? 'General'] ?? 0) + 1;
+}
+
+$today_str = date('Y-m-d');
+$month_str = date('Y-m');
+$adjustments_today = count(array_filter($adjusted_transactions, fn($t) => date('Y-m-d', strtotime($t['created_at'])) === $today_str));
+$adjustments_month = count(array_filter($adjusted_transactions, fn($t) => date('Y-m', strtotime($t['created_at'])) === $month_str));
+$adjusted_amount_total = array_reduce($adjusted_transactions, fn($carry, $t) => $carry + (float)($t['total'] ?? 0), 0.0);
+$voids_today = count(array_filter($voided_transactions, fn($t) => date('Y-m-d', strtotime($t['created_at'])) === $today_str));
+$voids_month = count(array_filter($voided_transactions, fn($t) => date('Y-m', strtotime($t['created_at'])) === $month_str));
+$voided_amount_total = array_reduce($voided_transactions, fn($carry, $t) => $carry + (float)($t['total'] ?? 0), 0.0);
+$today_transactions = count(array_filter($display_transactions, fn($t) => date('Y-m-d', strtotime($t['created_at'])) === $today_str));
+$active_shifts_count = count($shift_summary);
+
+$page_heading_map = [
+    'history' => 'TRANSACTION HISTORY',
+    'overview' => 'TRANSACTION OVERVIEW',
+    'all' => 'ALL TRANSACTIONS',
+    'adjustments' => 'TRANSACTION ADJUSTMENTS',
+    'voided' => 'VOIDED TRANSACTIONS',
+];
+$page_sub_map = [
+    'history' => 'All transaction monitoring with filters, status controls, and receipt access.',
+    'overview' => in_array($role, ['admin', 'superadmin', 'developer'], true)
+        ? 'Executive-level transaction summary with trend panels and recent records.'
+        : 'Summary of transaction performance, sales activity, and recent operational records.',
+    'all' => 'Complete transaction monitoring with real-time filtering, payment visibility, and action controls.',
+    'adjustments' => 'Manager-made corrections and amount updates with traceable accountability records.',
+    'voided' => 'Compliance view for returned, rejected, and cancelled transaction records.',
+];
+$page_heading = $page_heading_map[$view] ?? 'TRANSACTIONS';
+$page_sub = $page_sub_map[$view] ?? 'Professional transaction monitoring module.';
+
+$section = $_GET['section'] ?? 'history';
+if (!in_array($section, ['new', 'history', 'tracker', 'merchandise', 'receipts'], true)) {
+    $section = 'history';
+}
+$section_heading_map = [
+    'new' => 'NEW TRANSACTION',
+    'history' => 'TRANSACTION HISTORY',
+    'tracker' => 'JOB ORDER TRACKER',
+    'merchandise' => 'MERCHANDISE HISTORY',
+    'receipts' => 'RECEIPTS',
+];
+$section_sub_map = [
+    'new' => 'Customer, vehicle, job order, merchandise, and payment capture outline.',
+    'history' => 'All transaction monitoring with filters, status controls, and receipt access.',
+    'tracker' => 'Status segmented job order tracking for operational oversight.',
+    'merchandise' => 'Released items and adjusted item review for merchandise activity.',
+    'receipts' => 'Receipt generation, reprint access, and export-ready transaction records.',
+];
+if ($section === 'history') {
+    $page_heading = $section_heading_map['history'];
+    $page_sub = $section_sub_map['history'];
+} else {
+    $page_heading = $section_heading_map[$section];
+    $page_sub = $section_sub_map[$section];
+}
+
+$base_query = [
+    'view' => $view,
+    'section' => $section,
+    'start' => $start,
+    'end' => $end,
+    'payment' => $payment,
+    'status' => $status_f,
+    'type' => $type_f,
+    'payment_status' => $payment_status_f,
+    'shift' => $shift_f,
+    'staff' => $staff_f,
+    'search' => $search_f,
+    'customer' => $customer,
+];
+
+$job_order_rows = array_values(array_filter($display_transactions, fn($t) => in_array(($t['txn_type'] ?? ''), ['job_order', 'combined'], true)));
+$job_order_status_counts = [
+    'Pending' => 0,
+    'Ongoing' => 0,
+    'Completed' => 0,
+    'Cancelled' => 0,
+];
+foreach ($job_order_rows as $row) {
+    $st = strtolower(trim((string)($row['jo_status'] ?? 'pending')));
+    if (in_array($st, ['pending', 'pending validation', 'pendingvalidation'], true)) {
+        $job_order_status_counts['Pending']++;
+    } elseif (in_array($st, ['in progress', 'inprogress', 'ongoing'], true)) {
+        $job_order_status_counts['Ongoing']++;
+    } elseif (in_array($st, ['completed', 'complete', 'verified', 'approved', 'validated'], true)) {
+        $job_order_status_counts['Completed']++;
+    } elseif (in_array($st, ['cancelled', 'canceled', 'rejected', 'returned'], true)) {
+        $job_order_status_counts['Cancelled']++;
+    } else {
+        $job_order_status_counts['Pending']++;
+    }
+}
+
+$released_merch_rows = array_values(array_filter($display_transactions, fn($t) => in_array(($t['txn_type'] ?? ''), ['merchandise', 'combined'], true) && ($t['status_key'] ?? '') === 'verified'));
+$receipt_rows = array_slice($recent_transactions, 0, 6);
+$receipts_export_count = count($receipt_rows);
+
+if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel', 'pdf'], true)) {
+    $export_rows = [];
+    $export_scope = $section === 'history' ? $view : $section;
+    if ($section === 'history') {
+        if ($view === 'adjustments') {
+            foreach ($adjusted_transactions as $row) {
+                $audit = $row['audit_entries'][0] ?? [];
+                $export_rows[] = [
+                    'Adjustment ID' => 'ADJ-' . ($row['txn_ref'] ?? $row['row_id']),
+                    'Transaction ID' => $row['txn_ref'] ?? '',
+                    'Customer' => $row['customer_display'] ?? '',
+                    'Original Amount' => $audit['old_value'] ?? 'N/A',
+                    'Updated Amount' => number_format((float)($row['total'] ?? 0), 2),
+                    'Reason' => $audit['new_value'] ?? 'Manager adjustment',
+                    'Adjusted By' => $audit['manager_name'] ?? 'Manager',
+                    'Date' => date('Y-m-d H:i:s', strtotime($audit['timestamp'] ?? $row['created_at'])),
+                ];
+            }
+        } elseif ($view === 'voided') {
+            foreach ($voided_transactions as $row) {
+                $audit = $row['audit_entries'][0] ?? [];
+                $export_rows[] = [
+                    'Void ID' => 'VOID-' . ($row['txn_ref'] ?? $row['row_id']),
+                    'Transaction ID' => $row['txn_ref'] ?? '',
+                    'Customer' => $row['customer_display'] ?? '',
+                    'Amount' => number_format((float)($row['total'] ?? 0), 2),
+                    'Void Reason' => $audit['new_value'] ?? 'Returned / Cancelled',
+                    'Voided By' => $audit['manager_name'] ?? 'Manager',
+                    'Date' => date('Y-m-d H:i:s', strtotime($audit['timestamp'] ?? $row['created_at'])),
+                ];
+            }
+        } else {
+            foreach ($display_transactions as $row) {
+                $export_rows[] = [
+                    'Transaction ID' => $row['txn_ref'] ?? '',
+                    'Customer Name' => $row['customer_display'] ?? '',
+                    'Vehicle' => $row['vehicle_display'] ?? '',
+                    'Transaction Type' => $row['type_label'] ?? '',
+                    'Amount' => number_format((float)($row['total'] ?? 0), 2),
+                    'Payment Method' => $row['payment_method'] ?? '',
+                    'Payment Status' => $row['payment_status_raw'] ?? '',
+                    'Shift' => $row['shift_label'] ?? '',
+                    'Staff Encoder' => $row['staff_display'] ?? '',
+                    'Date & Time' => date('Y-m-d H:i:s', strtotime($row['created_at'])),
+                ];
+            }
+        }
+    } elseif ($section === 'tracker') {
+        foreach ($job_order_rows as $row) {
+            $export_rows[] = [
+                'Job Order ID' => $row['txn_ref'] ?? $row['row_id'],
+                'Customer' => $row['customer_display'] ?? '',
+                'Status' => $row['jo_status'] ?? ($row['status'] ?? 'Pending'),
+                'Amount' => number_format((float)($row['total'] ?? 0), 2),
+                'Shift' => $row['shift_label'] ?? 'General',
+                'Staff Encoder' => $row['staff_display'] ?? '',
+                'Date & Time' => date('Y-m-d H:i:s', strtotime($row['created_at'])),
+            ];
+        }
+    } elseif ($section === 'merchandise') {
+        $merch_history_rows = array_values(array_filter($display_transactions, fn($t) => in_array(($t['txn_type'] ?? ''), ['merchandise', 'combined'], true)));
+        foreach ($merch_history_rows as $row) {
+            $export_rows[] = [
+                'Transaction ID' => $row['txn_ref'] ?? '',
+                'Customer' => $row['customer_display'] ?? '',
+                'Type' => $row['type_label'] ?? 'Merchandise',
+                'Amount' => number_format((float)($row['total'] ?? 0), 2),
+                'Status' => $row['status'] ?? 'Verified',
+                'Date & Time' => date('Y-m-d H:i:s', strtotime($row['created_at'])),
+            ];
+        }
+    } elseif ($section === 'receipts') {
+        foreach ($receipt_rows as $row) {
+            $receipt_type = in_array(($row['txn_type'] ?? ''), ['job_order', 'combined'], true) ? 'job_order' : 'merchandise';
+            $export_rows[] = [
+                'Receipt ID' => $row['txn_ref'] ?? '',
+                'Customer' => $row['customer_display'] ?? '',
+                'Type' => $row['type_label'] ?? '',
+                'Amount' => number_format((float)($row['total'] ?? 0), 2),
+                'Receipt Type' => $receipt_type,
+                'Date & Time' => date('Y-m-d H:i:s', strtotime($row['created_at'])),
+            ];
+        }
+    } else {
+        $export_rows[] = [
+            'Step' => 'New Transaction',
+            'Description' => 'Use the transaction workflow to encode customer, vehicle, job order, merchandise, and payment details.',
+        ];
+    }
+
+    $export_label = str_replace(['_', '-'], ' ', $export_scope);
+    $export_label = ucwords($export_label);
+    if ($section === 'history') {
+        $export_label = 'Transaction ' . ucwords($view);
+    }
+
+    if ($_GET['export'] === 'csv') {
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="transactions_' . $export_scope . '_' . date('Ymd_His') . '.csv"');
+        $out = fopen('php://output', 'w');
+        if (!empty($export_rows)) {
+            fputcsv($out, array_keys($export_rows[0]));
+            foreach ($export_rows as $r) fputcsv($out, $r);
+        }
+        fclose($out);
+        exit;
+    }
+
+    if ($_GET['export'] === 'excel') {
+        header('Content-Type: application/vnd.ms-excel; charset=utf-8');
+        header('Content-Disposition: attachment; filename="transactions_' . $export_scope . '_' . date('Ymd_His') . '.xls"');
+        echo "<table border='1'><tr>";
+        if (!empty($export_rows)) {
+            foreach (array_keys($export_rows[0]) as $h) echo '<th>' . htmlspecialchars($h) . '</th>';
+            echo '</tr>';
+            foreach ($export_rows as $r) {
+                echo '<tr>';
+                foreach ($r as $cell) echo '<td>' . htmlspecialchars((string)$cell) . '</td>';
+                echo '</tr>';
+            }
+        }
+        echo '</table>';
+        exit;
+    }
+
+    if ($_GET['export'] === 'pdf') {
+        echo '<!doctype html><html><head><meta charset="utf-8"><title>Transactions Export</title><style>body{font-family:Arial,sans-serif;padding:24px;}h1{color:#002f6c;}table{width:100%;border-collapse:collapse;}th,td{border:1px solid #cbd5e1;padding:8px;font-size:12px;text-align:left;}th{background:#eaf1fb;}@media print{button{display:none;}}</style></head><body>';
+        echo '<button onclick="window.print()">Print / Save as PDF</button>';
+        echo '<h1>' . htmlspecialchars($export_label) . '</h1>';
+        echo '<table><tr>';
+        if (!empty($export_rows)) {
+            foreach (array_keys($export_rows[0]) as $h) echo '<th>' . htmlspecialchars($h) . '</th>';
+            echo '</tr>';
+            foreach ($export_rows as $r) {
+                echo '<tr>';
+                foreach ($r as $cell) echo '<td>' . htmlspecialchars((string)$cell) . '</td>';
+                echo '</tr>';
+            }
+        }
+        echo '</table></body></html>';
+        exit;
+    }
+}
+
 include __DIR__ . '/../partials/header.php';
 ?>
 
-<div class="page-head">
+<div class="page-head txn-page-head">
     <div>
-        <h1 class="h1">
-            <?php if ($active_tab === 'validated'): ?>
-                <i class="fas fa-check-circle" style="color:#22c55e;"></i> Validated Transactions
-            <?php else: ?>
-                <i class="fas fa-hourglass-half" style="color:#002F70;"></i> Pending Transactions
-            <?php endif; ?>
-        </h1>
-        <div class="sub">
-            <?php if ($active_tab === 'validated'): ?>
-                Read-only history — all approved, adjusted &amp; rejected transactions
-            <?php else: ?>
-                Validation queue — Approve, Reject, or Adjust all Merchandise &amp; Job Order entries
-            <?php endif; ?>
-        </div>
+        <h1 class="h1"><?php echo htmlspecialchars($page_heading); ?></h1>
+        <div class="sub"><?php echo htmlspecialchars($page_sub); ?></div>
+    </div>
+    <div class="actions txn-head-actions">
+        <button type="button" class="flt-btn flt-btn-reset" onclick="window.history.length > 1 ? window.history.back() : window.location.href='dashboard.php'">
+            <i class="fas fa-arrow-left"></i> Back
+        </button>
+        <?php if ($section === 'new'): ?>
+        <a href="transactions.php?<?php echo http_build_query(array_filter($base_query + ['section' => 'history'])); ?>" class="flt-btn flt-btn-search"><i class="fas fa-table"></i> Open History</a>
+        <?php else: ?>
+        <a href="transactions.php?<?php echo http_build_query(array_filter($base_query + ['export' => 'excel'])); ?>" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Export Excel</a>
+        <a href="transactions.php?<?php echo http_build_query(array_filter($base_query + ['export' => 'csv'])); ?>" class="flt-btn flt-btn-search"><i class="fas fa-file-csv"></i> Export CSV</a>
+        <a href="transactions.php?<?php echo http_build_query(array_filter($base_query + ['export' => 'pdf'])); ?>" class="flt-btn flt-btn-pdf"><i class="fas fa-file-pdf"></i> Export PDF</a>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -833,8 +1200,117 @@ include __DIR__ . '/../partials/header.php';
 </div>
 <?php endif; ?>
 
+<div class="txn-view-tabs txn-main-tabs">
+    <a href="transactions.php?<?php echo http_build_query(array_filter($base_query + ['section' => 'new'])); ?>" class="txn-view-tab <?php echo $section === 'new' ? 'active' : ''; ?>">New Transaction</a>
+    <a href="transactions.php?<?php echo http_build_query(array_filter($base_query + ['section' => 'history'])); ?>" class="txn-view-tab <?php echo $section === 'history' ? 'active' : ''; ?>">Transaction History</a>
+    <a href="transactions.php?<?php echo http_build_query(array_filter($base_query + ['section' => 'tracker'])); ?>" class="txn-view-tab <?php echo $section === 'tracker' ? 'active' : ''; ?>">Job Order Tracker</a>
+    <a href="transactions.php?<?php echo http_build_query(array_filter($base_query + ['section' => 'merchandise'])); ?>" class="txn-view-tab <?php echo $section === 'merchandise' ? 'active' : ''; ?>">Merchandise History</a>
+    <a href="transactions.php?<?php echo http_build_query(array_filter($base_query + ['section' => 'receipts'])); ?>" class="txn-view-tab <?php echo $section === 'receipts' ? 'active' : ''; ?>">Receipts</a>
+</div>
 
+<?php if ($section === 'new'): ?>
+<div id="new-transaction" class="card txn-section-card">
+    <div class="txn-section-head">
+        <h3>New Transaction</h3>
+        <span>Customer, vehicle, job order, merchandise, payment</span>
+    </div>
+    <div class="txn-section-grid">
+        <div class="txn-step-card"><strong>Customer Information</strong><span>Name, contact, and account lookup</span></div>
+        <div class="txn-step-card"><strong>Vehicle Information</strong><span>Plate number, type, and service context</span></div>
+        <div class="txn-step-card"><strong>Job Order Information</strong><span>Service type, tracker, and work notes</span></div>
+        <div class="txn-step-card"><strong>Merchandise Information</strong><span>Item selection, quantity, and release details</span></div>
+        <div class="txn-step-card"><strong>Payment Information</strong><span>Method, status, and receipt-ready totals</span></div>
+    </div>
+    <div class="txn-section-note">
+        Transaction encoding is handled from the transaction entry workflow; this module keeps the supervision layout clean for manager and admin review.
+    </div>
+</div>
 
+<?php elseif ($section === 'tracker'): ?>
+<div id="job-order-tracker" class="card txn-section-card">
+    <div class="txn-section-head">
+        <h3>Job Order Tracker</h3>
+        <span>Status segmented monitoring</span>
+    </div>
+    <div class="txn-kpi-grid" style="margin-bottom:14px;">
+        <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($job_order_status_counts['Pending']); ?></span><span class="txn-kpi-label">Pending</span></div>
+        <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($job_order_status_counts['Ongoing']); ?></span><span class="txn-kpi-label">Ongoing</span></div>
+        <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($job_order_status_counts['Completed']); ?></span><span class="txn-kpi-label">Completed</span></div>
+        <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($job_order_status_counts['Cancelled']); ?></span><span class="txn-kpi-label">Cancelled</span></div>
+    </div>
+    <div class="txn-section-note" style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;">
+        <span>Open the dedicated shift tracker for detailed staff workflow review.</span>
+        <a class="flt-btn flt-btn-search" href="transactions_shift.php?<?php echo http_build_query(array_filter(['start' => $start, 'end' => $end])); ?>">
+            <i class="fas fa-chart-gantt"></i> Open Shift Transactions
+        </a>
+    </div>
+</div>
+
+<?php elseif ($section === 'merchandise'): ?>
+<div id="merchandise-history" class="card txn-section-card">
+    <div class="txn-section-head">
+        <h3>Merchandise History</h3>
+        <span>Released items and adjusted items</span>
+    </div>
+    <div class="txn-kpi-grid" style="margin-bottom:14px;">
+        <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format(count($released_merch_rows)); ?></span><span class="txn-kpi-label">Released Items</span></div>
+        <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format(count($adjusted_transactions)); ?></span><span class="txn-kpi-label">Adjusted Items</span></div>
+        <div class="txn-kpi-card"><span class="txn-kpi-value">&#8369;<?php echo number_format($adjusted_amount_total, 2); ?></span><span class="txn-kpi-label">Adjusted Amount</span></div>
+        <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format(count($released_merch_rows) + count($adjusted_transactions)); ?></span><span class="txn-kpi-label">Merchandise Records</span></div>
+    </div>
+    <div class="txn-section-note">This view keeps merchandise-related records separate from job order tracking, matching the module split you requested.</div>
+</div>
+
+<?php elseif ($section === 'receipts'): ?>
+<div id="receipts" class="card txn-section-card">
+    <div class="txn-section-head">
+        <h3>Receipts</h3>
+        <span>Generate, reprint, export</span>
+    </div>
+    <div class="txn-section-grid" style="grid-template-columns:1.2fr .8fr .8fr;">
+        <div class="txn-step-card">
+            <strong>Generate Receipt</strong>
+            <span>Open a transaction receipt by ID and type</span>
+            <form method="get" action="receipt.php" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+                <input type="text" name="id" class="flt-inp" placeholder="Transaction ID" style="max-width:180px;">
+                <select name="type" class="flt-inp flt-select" style="max-width:150px;">
+                    <option value="merchandise">Merchandise</option>
+                    <option value="job_order">Job Order</option>
+                </select>
+                <button type="submit" class="flt-btn flt-btn-search"><i class="fas fa-receipt"></i> Open Receipt</button>
+            </form>
+        </div>
+        <div class="txn-step-card">
+            <strong>Reprint Receipt</strong>
+            <span>Use the same receipt view for quick reprints</span>
+        </div>
+        <div class="txn-step-card">
+            <strong>Export Receipts</strong>
+            <span>Download receipt-ready transaction rows</span>
+            <a href="transactions.php?<?php echo http_build_query(array_filter($base_query + ['view' => 'all', 'export' => 'csv'])); ?>" class="flt-btn flt-btn-excel" style="margin-top:10px;"><i class="fas fa-file-export"></i> Export Receipts</a>
+        </div>
+    </div>
+    <div class="txn-mini-card" style="margin-top:14px;">
+        <h3 style="margin-bottom:10px;">Recent Receipts</h3>
+        <table class="txn-mini-table">
+            <thead><tr><th>Receipt</th><th>Customer</th><th>Type</th><th>Amount</th><th>Action</th></tr></thead>
+            <tbody>
+                <?php foreach ($receipt_rows as $row): ?>
+                <?php $receipt_type = in_array(($row['txn_type'] ?? ''), ['job_order', 'combined'], true) ? 'job_order' : 'merchandise'; ?>
+                <tr>
+                    <td><?php echo htmlspecialchars($row['txn_ref'] ?? ''); ?></td>
+                    <td><?php echo htmlspecialchars($row['customer_display'] ?? ''); ?></td>
+                    <td><?php echo htmlspecialchars($row['type_label'] ?? ''); ?></td>
+                    <td>&#8369;<?php echo number_format((float)($row['total'] ?? 0), 2); ?></td>
+                    <td><a href="receipt.php?id=<?php echo urlencode((string)($row['txn_ref'] ?? '')); ?>&type=<?php echo urlencode($receipt_type); ?>" target="_blank">Reprint</a></td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div id="transaction-history"></div>
 
 <?php
 // ── Customer list for auto-suggest ───────────────────────────────────────────
@@ -855,6 +1331,16 @@ try {
 ?>
 
 <!-- ══ FILTER CARD ══════════════════════════════════════════════════════════ -->
+<div class="txn-view-tabs">
+    <a href="transactions.php?<?php echo http_build_query(array_filter(['view' => 'overview', 'start' => $start, 'end' => $end])); ?>" class="txn-view-tab <?php echo $view === 'overview' ? 'active' : ''; ?>">Transaction Overview</a>
+    <a href="transactions.php?<?php echo http_build_query(array_filter(['view' => 'all', 'start' => $start, 'end' => $end])); ?>" class="txn-view-tab <?php echo $view === 'all' ? 'active' : ''; ?>">All Transactions</a>
+    <a href="transactions.php?<?php echo http_build_query(array_filter(['view' => 'adjustments', 'start' => $start, 'end' => $end])); ?>" class="txn-view-tab <?php echo $view === 'adjustments' ? 'active' : ''; ?>">Transaction Adjustments</a>
+    <a href="transactions.php?<?php echo http_build_query(array_filter(['view' => 'voided', 'start' => $start, 'end' => $end])); ?>" class="txn-view-tab <?php echo $view === 'voided' ? 'active' : ''; ?>">Voided Transactions</a>
+    <?php if ($role === 'manager'): ?>
+    <a href="transactions_shift.php?<?php echo http_build_query(array_filter(['start' => $start, 'end' => $end])); ?>" class="txn-view-tab">Shift Transactions</a>
+    <?php endif; ?>
+</div>
+
 <div class="flt-card">
 
     <div class="flt-header">
@@ -862,8 +1348,8 @@ try {
     </div>
 
     <form method="get" id="filterForm">
-        <input type="hidden" name="tab" value="<?= htmlspecialchars($active_tab) ?>">
-        <!-- Row 1: Date Range + Customer + Payment + Type + Status -->
+        <input type="hidden" name="view" value="<?= htmlspecialchars($view) ?>">
+        <!-- Row 1: Date Range + Search + Payment + Type + Status -->
         <div class="flt-row">
 
             <!-- Date Range -->
@@ -919,9 +1405,9 @@ try {
                 <label class="flt-lbl"><i class="fas fa-circle-dot"></i> Status</label>
                 <select name="status" class="flt-inp flt-select">
                     <option value="">All Statuses</option>
-                    <option value="pending"  <?php echo ($status_f==='pending')  ? 'selected':''; ?>>🕐 Pending</option>
-                    <option value="verified" <?php echo ($status_f==='verified') ? 'selected':''; ?>>✅ Verified</option>
-                    <option value="rejected" <?php echo ($status_f==='rejected') ? 'selected':''; ?>>↩ Returned</option>
+                    <option value="pending"  <?php echo ($status_f==='pending')  ? 'selected':''; ?>>Pending</option>
+                    <option value="verified" <?php echo ($status_f==='verified') ? 'selected':''; ?>>Verified</option>
+                    <option value="rejected" <?php echo ($status_f==='rejected') ? 'selected':''; ?>>Returned</option>
                 </select>
             </div>
 
@@ -930,9 +1416,9 @@ try {
                 <label class="flt-lbl"><i class="fas fa-layer-group"></i> Type</label>
                 <select name="type" class="flt-inp flt-select">
                     <option value="">All Types</option>
-                    <option value="merchandise" <?php echo ($type_f==='merchandise') ? 'selected':''; ?>>🛒 Merchandise</option>
-                    <option value="jo"          <?php echo ($type_f==='jo')          ? 'selected':''; ?>>🔧 Job Order Only</option>
-                    <option value="combined"    <?php echo ($type_f==='combined')    ? 'selected':''; ?>>📦 JO with Merch</option>
+                    <option value="merchandise" <?php echo ($type_f==='merchandise') ? 'selected':''; ?>>Merchandise</option>
+                    <option value="jo"          <?php echo ($type_f==='jo')          ? 'selected':''; ?>>Job Order Only</option>
+                    <option value="combined"    <?php echo ($type_f==='combined')    ? 'selected':''; ?>>JO with Merchandise</option>
                 </select>
             </div>
 
@@ -943,19 +1429,190 @@ try {
                     <button type="submit" class="flt-btn flt-btn-search">
                         <i class="fas fa-search"></i> Search
                     </button>
-                    <a href="transactions.php?tab=<?= $active_tab ?>" class="flt-btn flt-btn-reset">
+                    <a href="transactions.php?view=<?= htmlspecialchars($view) ?>" class="flt-btn flt-btn-reset">
                         <i class="fas fa-rotate-left"></i> Reset
                     </a>
                 </div>
             </div>
 
         </div><!-- /.flt-row -->
+
+        <div class="flt-row" style="margin-top:12px;">
+            <div class="flt-group">
+                <label class="flt-lbl"><i class="fas fa-wallet"></i> Payment Status</label>
+                <select name="payment_status" class="flt-inp flt-select">
+                    <option value="">All Payment Status</option>
+                    <option value="Paid" <?php echo $payment_status_f === 'Paid' ? 'selected' : ''; ?>>Paid</option>
+                    <option value="Unpaid" <?php echo $payment_status_f === 'Unpaid' ? 'selected' : ''; ?>>Unpaid</option>
+                    <option value="Partial Payment" <?php echo $payment_status_f === 'Partial Payment' ? 'selected' : ''; ?>>Partial Payment</option>
+                    <option value="Pending Payment" <?php echo $payment_status_f === 'Pending Payment' ? 'selected' : ''; ?>>Pending Payment</option>
+                    <option value="Credit" <?php echo $payment_status_f === 'Credit' ? 'selected' : ''; ?>>Credit</option>
+                </select>
+            </div>
+
+            <div class="flt-group">
+                <label class="flt-lbl"><i class="fas fa-user-tie"></i> Staff Encoder</label>
+                <select name="staff" class="flt-inp flt-select">
+                    <option value="">All Staff</option>
+                    <?php foreach($staff_options as $staff_name): ?>
+                    <option value="<?php echo htmlspecialchars($staff_name); ?>" <?php echo $staff_f === $staff_name ? 'selected' : ''; ?>><?php echo htmlspecialchars($staff_name); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div class="flt-group">
+                <label class="flt-lbl"><i class="fas fa-clock"></i> Shift</label>
+                <select name="shift" class="flt-inp flt-select">
+                    <option value="">All Shifts</option>
+                    <?php foreach($shift_options as $shift_name): ?>
+                    <option value="<?php echo htmlspecialchars($shift_name); ?>" <?php echo $shift_f === $shift_name ? 'selected' : ''; ?>><?php echo htmlspecialchars($shift_name); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+        </div>
     </form>
 
 
 
 </div><!-- /.flt-card -->
 
+<?php if ($view === 'overview'): ?>
+<div class="txn-kpi-grid">
+    <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($overview_total_transactions); ?></span><span class="txn-kpi-label">Total Transactions</span></div>
+    <div class="txn-kpi-card"><span class="txn-kpi-value">₱<?php echo number_format($overview_total_sales, 2); ?></span><span class="txn-kpi-label">Total Sales</span></div>
+    <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($overview_total_job_orders); ?></span><span class="txn-kpi-label">Total Job Orders</span></div>
+    <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($overview_total_merchandise); ?></span><span class="txn-kpi-label">Merchandise Transactions</span></div>
+</div>
+
+<div class="txn-overview-grid">
+    <div class="card txn-summary-card">
+        <h3>Transactions by Type</h3>
+        <?php foreach ($type_summary as $label => $count): ?>
+        <div class="txn-summary-row"><span><?php echo htmlspecialchars($label); ?></span><strong><?php echo number_format($count); ?></strong></div>
+        <?php endforeach; ?>
+    </div>
+    <div class="card txn-summary-card">
+        <h3>Transactions by Payment Method</h3>
+        <?php foreach ($payment_summary as $label => $count): ?>
+        <div class="txn-summary-row"><span><?php echo htmlspecialchars($label); ?></span><strong><?php echo number_format($count); ?></strong></div>
+        <?php endforeach; ?>
+    </div>
+    <div class="card txn-summary-card">
+        <h3>Transactions by Shift</h3>
+        <?php foreach ($shift_summary as $label => $count): ?>
+        <div class="txn-summary-row"><span><?php echo htmlspecialchars($label); ?></span><strong><?php echo number_format($count); ?></strong></div>
+        <?php endforeach; ?>
+    </div>
+</div>
+
+<div class="txn-mini-grid">
+    <div class="card txn-mini-card">
+        <h3>Recent Transactions</h3>
+        <table class="txn-mini-table">
+            <thead><tr><th>Transaction ID</th><th>Customer</th><th>Type</th><th>Amount</th><th>Date</th></tr></thead>
+            <tbody>
+            <?php foreach ($recent_transactions as $row): ?>
+                <tr><td><?php echo htmlspecialchars($row['txn_ref'] ?? ''); ?></td><td><?php echo htmlspecialchars($row['customer_display'] ?? ''); ?></td><td><?php echo htmlspecialchars($row['type_label'] ?? ''); ?></td><td>₱<?php echo number_format((float)($row['total'] ?? 0), 2); ?></td><td><?php echo date('M d, Y', strtotime($row['created_at'])); ?></td></tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <div class="card txn-mini-card">
+        <h3>Recent Adjustments</h3>
+        <table class="txn-mini-table">
+            <thead><tr><th>Adjustment ID</th><th>Transaction ID</th><th>Adjusted By</th><th>Date</th></tr></thead>
+            <tbody>
+            <?php foreach ($recent_adjustments as $row): $audit = $row['audit_entries'][0] ?? []; ?>
+                <tr><td><?php echo htmlspecialchars('ADJ-' . ($row['txn_ref'] ?? $row['row_id'])); ?></td><td><?php echo htmlspecialchars($row['txn_ref'] ?? ''); ?></td><td><?php echo htmlspecialchars($audit['manager_name'] ?? 'Manager'); ?></td><td><?php echo date('M d, Y', strtotime($audit['timestamp'] ?? $row['created_at'])); ?></td></tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <div class="card txn-mini-card">
+        <h3>Recent Voided Transactions</h3>
+        <table class="txn-mini-table">
+            <thead><tr><th>Void ID</th><th>Transaction ID</th><th>Voided By</th><th>Date</th></tr></thead>
+            <tbody>
+            <?php foreach ($recent_voided as $row): $audit = $row['audit_entries'][0] ?? []; ?>
+                <tr><td><?php echo htmlspecialchars('VOID-' . ($row['txn_ref'] ?? $row['row_id'])); ?></td><td><?php echo htmlspecialchars($row['txn_ref'] ?? ''); ?></td><td><?php echo htmlspecialchars($audit['manager_name'] ?? 'Manager'); ?></td><td><?php echo date('M d, Y', strtotime($audit['timestamp'] ?? $row['created_at'])); ?></td></tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php if ($view === 'adjustments'): ?>
+<div class="txn-kpi-grid">
+    <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format(count($adjusted_transactions)); ?></span><span class="txn-kpi-label">Total Adjustments</span></div>
+    <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format(in_array($role, ['admin', 'superadmin', 'developer'], true) ? $adjustments_month : $adjustments_today); ?></span><span class="txn-kpi-label"><?php echo in_array($role, ['admin', 'superadmin', 'developer'], true) ? 'Adjustments This Month' : 'Adjustments Today'; ?></span></div>
+    <div class="txn-kpi-card"><span class="txn-kpi-value">₱<?php echo number_format($adjusted_amount_total, 2); ?></span><span class="txn-kpi-label">Amount Adjusted</span></div>
+    <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format(count(array_unique(array_filter(array_map(fn($r) => ($r['audit_entries'][0]['manager_name'] ?? ''), $adjusted_transactions))))); ?></span><span class="txn-kpi-label">Managers Involved</span></div>
+</div>
+<div class="card" style="padding:0;">
+    <div class="po-table-wrap">
+        <table class="po-table txn-simple-table">
+            <thead><tr><th>Adjustment ID</th><th>Transaction ID</th><th>Customer</th><th>Original Amount</th><th>Adjusted Amount</th><th>Reason</th><th>Adjusted By</th><th>Date</th></tr></thead>
+            <tbody>
+            <?php foreach ($adjusted_transactions as $row): $audit = $row['audit_entries'][0] ?? []; ?>
+                <tr>
+                    <td><?php echo htmlspecialchars('ADJ-' . ($row['txn_ref'] ?? $row['row_id'])); ?></td>
+                    <td><?php echo htmlspecialchars($row['txn_ref'] ?? ''); ?></td>
+                    <td><?php echo htmlspecialchars($row['customer_display'] ?? ''); ?></td>
+                    <td><?php echo htmlspecialchars($audit['old_value'] ?? 'N/A'); ?></td>
+                    <td>₱<?php echo number_format((float)($row['total'] ?? 0), 2); ?></td>
+                    <td><?php echo htmlspecialchars($audit['new_value'] ?? ($row['adjustment_reason'] ?? 'Manager adjustment')); ?></td>
+                    <td><?php echo htmlspecialchars($audit['manager_name'] ?? 'Manager'); ?></td>
+                    <td><?php echo date('M d, Y H:i', strtotime($audit['timestamp'] ?? $row['created_at'])); ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php if ($view === 'voided'): ?>
+<div class="txn-kpi-grid">
+    <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format(count($voided_transactions)); ?></span><span class="txn-kpi-label">Total Voided Transactions</span></div>
+    <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format(in_array($role, ['admin', 'superadmin', 'developer'], true) ? $voids_month : $voids_today); ?></span><span class="txn-kpi-label"><?php echo in_array($role, ['admin', 'superadmin', 'developer'], true) ? 'Voids This Month' : 'Voids Today'; ?></span></div>
+    <div class="txn-kpi-card"><span class="txn-kpi-value">₱<?php echo number_format($voided_amount_total, 2); ?></span><span class="txn-kpi-label">Total Voided Amount</span></div>
+    <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format(count(array_unique(array_filter(array_map(fn($r) => ($r['audit_entries'][0]['manager_name'] ?? ''), $voided_transactions))))); ?></span><span class="txn-kpi-label">Managers Involved</span></div>
+</div>
+<div class="card" style="padding:0;">
+    <div class="po-table-wrap">
+        <table class="po-table txn-simple-table">
+            <thead><tr><th>Void ID</th><th>Transaction ID</th><th>Customer</th><th>Amount</th><th>Void Reason</th><th>Voided By</th><th>Date</th></tr></thead>
+            <tbody>
+            <?php foreach ($voided_transactions as $row): $audit = $row['audit_entries'][0] ?? []; ?>
+                <tr>
+                    <td><?php echo htmlspecialchars('VOID-' . ($row['txn_ref'] ?? $row['row_id'])); ?></td>
+                    <td><?php echo htmlspecialchars($row['txn_ref'] ?? ''); ?></td>
+                    <td><?php echo htmlspecialchars($row['customer_display'] ?? ''); ?></td>
+                    <td>₱<?php echo number_format((float)($row['total'] ?? 0), 2); ?></td>
+                    <td><?php echo htmlspecialchars($audit['new_value'] ?? ($row['rejection_reason'] ?? 'Returned / Cancelled')); ?></td>
+                    <td><?php echo htmlspecialchars($audit['manager_name'] ?? 'Manager'); ?></td>
+                    <td><?php echo date('M d, Y H:i', strtotime($audit['timestamp'] ?? $row['created_at'])); ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php if ($view === 'all'): ?>
+<div class="txn-kpi-grid">
+    <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($overview_total_transactions); ?></span><span class="txn-kpi-label">Total Transactions</span></div>
+    <div class="txn-kpi-card"><span class="txn-kpi-value">₱<?php echo number_format($overview_total_sales, 2); ?></span><span class="txn-kpi-label">Total Sales</span></div>
+    <?php if (in_array($role, ['admin', 'superadmin', 'developer'], true)): ?>
+    <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($today_transactions); ?></span><span class="txn-kpi-label">Today's Transactions</span></div>
+    <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($active_shifts_count); ?></span><span class="txn-kpi-label">Active Shifts</span></div>
+    <?php else: ?>
+    <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($overview_total_job_orders); ?></span><span class="txn-kpi-label">Total Job Orders</span></div>
+    <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($overview_total_merchandise); ?></span><span class="txn-kpi-label">Total Merchandise Transactions</span></div>
+    <?php endif; ?>
+</div>
 <!-- Transactions Table -->
 <div class="card" style="padding:0;" id="printableTable">
     <!-- Summary bar removed -->
@@ -963,16 +1620,16 @@ try {
         <table class="po-table" id="txnTable" style="table-layout:fixed;font-size:12px;">
             <thead>
                 <tr>
-                    <th class="col-txnid">Transaction / JO ID</th>
+                    <th class="col-txnid">TXN ID</th>
                     <th class="col-type">Type</th>
                     <th class="col-customer">Customer</th>
-                    <th class="col-product">Service / Merchandise</th>
+                    <th class="col-product">Service</th>
                     <th class="col-vehicle">Vehicle</th>
-                    <th class="col-staff">Mechanic / Staff</th>
+                    <th class="col-staff">Staff Encoder / Shift</th>
                     <th class="col-subtotal">Subtotal</th>
                     <th class="col-vat">VAT</th>
-                    <th class="col-total">Total</th>
-                    <th class="col-pay">Payment</th>
+                    <th class="col-total">Amount</th>
+                    <th class="col-pay">Payment Method / Status</th>
                     <th class="col-date">Date/Time</th>
                     <th class="col-status">Validation</th>
                     <th class="col-txnstatus">Txn Status</th>
@@ -1049,10 +1706,10 @@ try {
                         <?php endif; ?>
                     </td>
                     <td class="col-customer">
-                        <span style="font-size:12px;font-weight:600;color:#1e293b;"><?php echo htmlspecialchars($t['customer'] ?? 'Walk-in'); ?></span>
+                        <span style="font-size:12px;font-weight:600;color:#1e293b;"><?php echo htmlspecialchars($t['customer_display'] ?? $t['customer'] ?? 'Walk-in'); ?></span>
                     </td>
                     <td class="col-product" title="<?php echo htmlspecialchars($t['product_name']); ?>">
-                        <?php echo htmlspecialchars($t['product_name']); ?>
+                        <?php echo htmlspecialchars($t['service_display'] ?? $t['product_name']); ?>
                     </td>
                     <td class="col-vehicle" style="font-size:11px;color:#555;">
                         <?php echo $vehicle ? htmlspecialchars($vehicle) : '<span style="color:#ccc;">—</span>'; ?>
@@ -1060,9 +1717,11 @@ try {
                     <td class="col-staff">
                         <?php if ($mechanic): ?>
                         <div style="font-size:11px;font-weight:600;"><?php echo htmlspecialchars($mechanic); ?></div>
-                        <div style="font-size:10px;color:#888;"><?php echo htmlspecialchars($t['staff_name']); ?></div>
+                        <div style="font-size:10px;color:#888;"><?php echo htmlspecialchars($t['staff_display'] ?? $t['staff_name']); ?></div>
+                        <div style="font-size:10px;color:#64748b;"><?php echo htmlspecialchars($t['shift_label'] ?? 'General'); ?></div>
                         <?php else: ?>
-                        <?php echo htmlspecialchars($t['staff_name']); ?>
+                        <div style="font-size:11px;font-weight:600;"><?php echo htmlspecialchars($t['staff_display'] ?? $t['staff_name']); ?></div>
+                        <div style="font-size:10px;color:#64748b;"><?php echo htmlspecialchars($t['shift_label'] ?? 'General'); ?></div>
                         <?php endif; ?>
                     </td>
                     <td class="col-subtotal" style="text-align:right;font-size:12px;">
@@ -1134,14 +1793,14 @@ try {
                                 <input type="hidden" name="_end" value="<?php echo htmlspecialchars($end); ?>">
                                 <input type="hidden" name="_status" value="<?php echo htmlspecialchars($status_f); ?>">
                                 <input type="hidden" name="_type" value="<?php echo htmlspecialchars($type_f); ?>">
-                                <button type="submit" class="jo-act-btn" style="background:#28a745;"><i class="fas fa-check"></i> Approve</button>
+                                <button type="submit" class="txn-btn txn-btn-approve"><i class="fas fa-check"></i> Approve</button>
                             </form>
                             <!-- JO: Reject -->
-                            <button type="button" class="jo-act-btn" style="background:#dc3545;" onclick="openJORejectModal(<?php echo $rowId; ?>, '<?php echo htmlspecialchars($t['_source'] ?? 'job_orders'); ?>')">
+                            <button type="button" class="txn-btn txn-btn-reject" onclick="openJORejectModal(<?php echo $rowId; ?>, '<?php echo htmlspecialchars($t['_source'] ?? 'job_orders'); ?>')">
                                 <i class="fas fa-times"></i> Reject
                             </button>
                             <!-- JO: Adjust -->
-                            <button type="button" class="jo-act-btn" style="background:#002F6C;" onclick="openJOAdjustModal(<?php echo $rowId; ?>, '<?php echo number_format($t['total'],2); ?>', '<?php echo htmlspecialchars($t['_source'] ?? 'job_orders'); ?>')">
+                            <button type="button" class="txn-btn txn-btn-adjust" onclick="openJOAdjustModal(<?php echo $rowId; ?>, '<?php echo number_format($t['total'],2); ?>', '<?php echo htmlspecialchars($t['_source'] ?? 'job_orders'); ?>')">
                                 <i class="fas fa-sliders"></i> Adjust
                             </button>
                             <?php else: ?>
@@ -1154,14 +1813,14 @@ try {
                                 <input type="hidden" name="_end" value="<?php echo htmlspecialchars($end); ?>">
                                 <input type="hidden" name="_status" value="<?php echo htmlspecialchars($status_f); ?>">
                                 <input type="hidden" name="_type" value="<?php echo htmlspecialchars($type_f); ?>">
-                                <button type="submit" class="jo-act-btn" style="background:#28a745;"><i class="fas fa-check"></i> Approve</button>
+                                <button type="submit" class="txn-btn txn-btn-approve"><i class="fas fa-check"></i> Approve</button>
                             </form>
                             <!-- Merch: Reject -->
-                            <button type="button" class="jo-act-btn" style="background:#dc3545;" onclick="openRejectModal('<?php echo $rowId; ?>','merchandise')">
+                            <button type="button" class="txn-btn txn-btn-reject" onclick="openRejectModal('<?php echo $rowId; ?>','merchandise')">
                                 <i class="fas fa-times"></i> Reject
                             </button>
                             <!-- Merch: Adjust -->
-                            <button type="button" class="jo-act-btn" style="background:#002F6C;" onclick="openAdjustModal(<?php echo $rowId; ?>, '<?php echo number_format($t['total'],2); ?>')">
+                            <button type="button" class="txn-btn txn-btn-adjust" onclick="openAdjustModal(<?php echo $rowId; ?>, '<?php echo number_format($t['total'],2); ?>')">
                                 <i class="fas fa-sliders"></i> Adjust
                             </button>
                             <?php endif; ?>
@@ -1188,7 +1847,7 @@ try {
                                 <input type="hidden" name="_end" value="<?php echo htmlspecialchars($end); ?>">
                                 <input type="hidden" name="_status" value="<?php echo htmlspecialchars($status_f); ?>">
                                 <input type="hidden" name="_type" value="<?php echo htmlspecialchars($type_f); ?>">
-                                <button type="submit" class="jo-act-btn" style="background:#17a2b8;" onclick="return confirm('Mark as In Progress?')">
+                                <button type="submit" class="txn-btn txn-btn-info" onclick="return confirm('Mark as In Progress?')">
                                     <i class="fas fa-play"></i> Start
                                 </button>
                             </form>
@@ -1202,7 +1861,7 @@ try {
                                 <input type="hidden" name="_end" value="<?php echo htmlspecialchars($end); ?>">
                                 <input type="hidden" name="_status" value="<?php echo htmlspecialchars($status_f); ?>">
                                 <input type="hidden" name="_type" value="<?php echo htmlspecialchars($type_f); ?>">
-                                <button type="submit" class="jo-act-btn" style="background:#28a745;" onclick="return confirm('Mark service as Completed?')">
+                                <button type="submit" class="txn-btn txn-btn-approve" onclick="return confirm('Mark service as Completed?')">
                                     <i class="fas fa-check-double"></i> Complete
                                 </button>
                             </form>
@@ -1214,21 +1873,21 @@ try {
                             $pbg = $cur_pay === 'paid' ? '#28a745' : ($cur_pay === 'partial' ? '#e6a817' : ($cur_pay === 'credit' ? '#6f42c1' : '#dc3545'));
                             $pfc = ($cur_pay === 'partial') ? '#212529' : '#fff';
                             ?>
-                            <button type="button" class="jo-act-btn" style="background:<?php echo $pbg; ?>;color:<?php echo $pfc; ?>;" title="Set Payment Status"
+                            <button type="button" class="txn-btn txn-btn-payment" title="Set Payment Status"
                                 onclick="openPaymentModal(<?php echo $rowId; ?>, '<?php echo htmlspecialchars($src); ?>', '<?php echo htmlspecialchars($t['payment_status'] ?? 'Unpaid'); ?>', <?php echo (float)$t['total']; ?>)">
-                                <i class="fas fa-credit-card"></i> <?php echo ($cur_pay === 'paid') ? 'Paid ✓' : 'Set Payment'; ?>
+                                <i class="fas fa-credit-card"></i> <?php echo ($cur_pay === 'paid') ? 'Paid' : 'Set Payment'; ?>
                             </button>
 
                             <?php endif; // verified ?>
 
                             <!-- Receipt: only after approval + payment finalised -->
                             <?php if ($ns === 'verified' && $is_paid_ps && !$isJO): ?>
-                            <button type="button" class="jo-act-btn" style="background:#6c757d;" title="Print Receipt"
+                            <button type="button" class="txn-btn txn-btn-secondary" title="Print Receipt"
                                 onclick="printReceiptPopupImmune('<?php echo htmlspecialchars($receiptId, ENT_QUOTES); ?>', 'merchandise')">
                                 <i class="fas fa-receipt"></i> Receipt
                             </button>
                             <?php elseif ($ns === 'verified' && $is_paid_ps && ($isJO || $isCombined)): ?>
-                            <button type="button" class="jo-act-btn" style="background:#6c757d;" title="Print Receipt"
+                            <button type="button" class="txn-btn txn-btn-secondary" title="Print Receipt"
                                 onclick="printReceiptPopupImmune('<?php echo htmlspecialchars($receiptId, ENT_QUOTES); ?>', 'job_order')">
                                 <i class="fas fa-receipt"></i> Receipt
                             </button>
@@ -1237,15 +1896,11 @@ try {
                     </td>
                 </tr>
                 <?php endforeach; ?>
-                <?php if(empty($all_transactions)): ?>
+                <?php if(empty($display_transactions)): ?>
                 <tr>
                     <td colspan="14" style="text-align:center;padding:48px;color:#888;">
-                        <i class="fas fa-<?php echo $active_tab==='validated'?'check-circle':'inbox'; ?>" style="font-size:36px;display:block;margin-bottom:12px;opacity:0.3;"></i>
-                        <?php if ($active_tab === 'validated'): ?>
-                            No validated transactions found for the selected date range.
-                        <?php else: ?>
-                            No pending transactions — all caught up! <a href="transactions.php?tab=validated" style="color:#22c55e;font-weight:700;">View validated history →</a>
-                        <?php endif; ?>
+                        <i class="fas fa-inbox" style="font-size:36px;display:block;margin-bottom:12px;opacity:0.3;"></i>
+                        No transactions found for the selected filters.
                     </td>
                 </tr>
                 <?php endif; ?>
@@ -1255,6 +1910,8 @@ try {
 </div>
 
 
+
+<?php endif; ?>
 
 <div id="viewDetailsModal" class="txn-modal" onclick="if(event.target===this)closeViewModal()">
     <div class="txn-modal-content" style="max-width:700px;">
@@ -1746,7 +2403,27 @@ function validatePaymentModal() {
 
 <style>
 
-/* ── Uniform table design ── */
+/* == PAGE HEADER - matches SuperAdmin int-head standard == */
+.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:-12px !important; }
+.int-head h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
+.int-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
+
+/* == UNIFIED TRANSACTION ACTION BUTTONS - outline design == */
+.txn-btn { display:flex; align-items:center; justify-content:center; gap:5px; padding:5px 10px; border-radius:5px; font-size:11px; font-weight:600; cursor:pointer; white-space:nowrap; line-height:1; width:100%; transition:all .18s; background:white !important; border:1px solid transparent; text-decoration:none; }
+.txn-btn-approve { color:#16a34a !important; border-color:#16a34a !important; }
+.txn-btn-approve:hover { background:#16a34a !important; color:#fff !important; }
+.txn-btn-reject { color:#dc2626 !important; border-color:#dc2626 !important; }
+.txn-btn-reject:hover { background:#dc2626 !important; color:#fff !important; }
+.txn-btn-adjust { color:#00264D !important; border-color:#00264D !important; }
+.txn-btn-adjust:hover { background:#00264D !important; color:#fff !important; }
+.txn-btn-info { color:#0284c7 !important; border-color:#0284c7 !important; }
+.txn-btn-info:hover { background:#0284c7 !important; color:#fff !important; }
+.txn-btn-secondary { color:#6b7280 !important; border-color:#6b7280 !important; }
+.txn-btn-secondary:hover { background:#6b7280 !important; color:#fff !important; }
+.txn-btn-payment { color:#7c3aed !important; border-color:#7c3aed !important; }
+.txn-btn-payment:hover { background:#7c3aed !important; color:#fff !important; }
+
+/* -- Uniform table design -- */
 .po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow:hidden; }
 .po-table { width:100%; border-collapse:collapse; font-size:0.78rem; }
 .po-table thead th { background:#002F70; color:#fff; padding:10px; text-align:left; font-weight:600; font-size:0.82rem; border-bottom:2px solid #002F70; }
@@ -1918,34 +2595,25 @@ function validatePaymentModal() {
     gap: 6px;
     padding: 0 16px;
     height: 36px;
-    border: none;
     border-radius: 7px;
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;
     text-decoration: none;
     white-space: nowrap;
-    transition: all .2s ease;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    position: relative;
-    overflow: hidden;
+    transition: all .18s;
+    background: white !important;
+    border: 1px solid transparent;
 }
 
-.flt-btn:hover { 
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-}
-
-.flt-btn:active {
-    transform: translateY(0);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-}
-
-.flt-btn-search { background: #002F6C; color: #fff; border-color: #001a4d; }
-.flt-btn-reset  { background: #002F6C; color: #fff; border-color: #001a4d; }
-.flt-btn-excel  { background: #1d6f42; color: #fff; border-color: #164a32; }
-.flt-btn-pdf    { background: #c0392b; color: #fff; border-color: #a02e1f; }
+.flt-btn-search { color: #00264D !important; border-color: #00264D !important; }
+.flt-btn-search:hover { background: #00264D !important; color: #fff !important; }
+.flt-btn-reset  { color: #6b7280 !important; border-color: #6b7280 !important; }
+.flt-btn-reset:hover  { background: #6b7280 !important; color: #fff !important; }
+.flt-btn-excel  { color: #1d6f42 !important; border-color: #1d6f42 !important; }
+.flt-btn-excel:hover  { background: #1d6f42 !important; color: #fff !important; }
+.flt-btn-pdf    { color: #dc2626 !important; border-color: #dc2626 !important; }
+.flt-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
 
 /* ── Summary bar ── */
 .flt-summary {
@@ -2111,6 +2779,140 @@ function validatePaymentModal() {
 .btn-adjust:hover { background:#001f50; }
 .btn-approve-lg { padding:9px 20px; background:#28a745; color:#fff; border:none; border-radius:6px; font-size:0.9rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
 .btn-approve-lg:hover { background:#1e7e34; }
+
+.txn-view-tabs {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+}
+
+.txn-view-tab {
+    display: inline-flex;
+    align-items: center;
+    padding: 10px 16px;
+    border: 1px solid #d7e2f1;
+    border-radius: 999px;
+    background: #fff;
+    color: #33527a;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.txn-view-tab.active {
+    background: #002f6c;
+    border-color: #002f6c;
+    color: #fff;
+}
+
+.txn-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 18px;
+}
+
+.txn-kpi-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 18px;
+    padding: 18px 20px;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.txn-kpi-value {
+    display: block;
+    color: #002f6c;
+    font-size: 1.5rem;
+    font-weight: 800;
+}
+
+.txn-kpi-label {
+    display: block;
+    margin-top: 6px;
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.txn-overview-grid,
+.txn-mini-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 18px;
+}
+
+.txn-summary-card,
+.txn-mini-card {
+    padding: 18px 20px;
+}
+
+.txn-summary-card h3,
+.txn-mini-card h3 {
+    margin: 0 0 14px;
+    color: #002f6c;
+    font-size: 1rem;
+    font-weight: 800;
+}
+
+.txn-summary-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid #eef2f7;
+    font-size: 13px;
+}
+
+.txn-summary-row:last-child {
+    border-bottom: 0;
+}
+
+.txn-mini-table,
+.txn-simple-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.txn-mini-table th,
+.txn-mini-table td,
+.txn-simple-table th,
+.txn-simple-table td {
+    padding: 12px 10px;
+    border-bottom: 1px solid #edf2f7;
+    text-align: left;
+    font-size: 12px;
+    vertical-align: top;
+}
+
+.txn-mini-table th,
+.txn-simple-table th {
+    color: #52637a;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+<?php if ($view === 'all'): ?>
+#printableTable .col-subtotal,
+#printableTable .col-vat,
+#printableTable .col-status,
+#printableTable .col-txnstatus {
+    display: none;
+}
+<?php endif; ?>
+
+@media (max-width: 1100px) {
+    .txn-kpi-grid,
+    .txn-overview-grid,
+    .txn-mini-grid {
+        grid-template-columns: 1fr;
+    }
+}
 </style>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

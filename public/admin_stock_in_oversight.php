@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'admin_stock_in';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -85,26 +85,39 @@ $fuel_disc = count(array_filter($fuel_in, fn($r) => $r['qty_variance'] != 0 || $
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
-:root{--blue:#002F6C;--red:#dc3545;--orange:#fd7e14;--green:#28a745;--gray:#6c757d;}
+:root{--blue:#002F70;--red:#dc3545;--orange:#fd7e14;--green:#28a745;--gray:#6c757d;}
+/* == PAGE HEADER - matches SuperAdmin int-head standard == */
+.int-head{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;margin-top:-12px!important}
+.int-head h1{font-size:22px!important;font-weight:700!important;color:var(--petron-blue,#002F70)!important;margin:0!important;text-transform:uppercase!important;display:flex;align-items:center;gap:8px}
+.int-head .sub{font-size:13px;color:#666;margin-top:4px;text-transform:none!important}
+/* == Outline Buttons - SuperAdmin standard == */
+.ato-btn{display:inline-flex;align-items:center;gap:6px;padding:0 16px;height:36px;border:1px solid transparent;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap;background:white!important;transition:all .15s}
+.ato-btn-refresh{color:#002F70!important;border-color:#002F70!important}.ato-btn-refresh:hover{background:#002F70!important;color:#fff!important}
+/* == KPI Cards == */
 .kpi-grid{display:flex;gap:14px;margin-bottom:20px;flex-wrap:wrap;}
 .kpi-card{flex:1;background:#fff;border-radius:10px;padding:16px 18px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(0,0,0,.06);}
 .kpi-card .kv{font-size:24px;font-weight:800;line-height:1;} .kpi-card .kl{font-size:12px;color:var(--gray);margin-top:4px;}
+/* == Tabs == */
 .main-tab-nav{display:flex;border-bottom:2px solid #e2e8f0;margin-bottom:20px;}
 .tab-btn{padding:10px 22px;background:none;border:none;border-bottom:3px solid transparent;font-size:14px;font-weight:600;color:var(--gray);cursor:pointer;margin-bottom:-2px;transition:all .15s;display:inline-flex;align-items:center;gap:6px;}
 .tab-btn.active{color:var(--blue);border-bottom-color:var(--blue);}
 .tab-btn:hover{color:var(--blue);}
+/* == Card == */
 .card{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.07);margin-bottom:20px;overflow:hidden;}
 .card-hd{padding:13px 18px;border-bottom:1px solid #e9ecef;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;}
 .card-hd-title{font-size:14px;font-weight:700;color:var(--blue);display:flex;align-items:center;gap:8px;}
-.filter-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:16px;background:#f8fafc;padding:12px 14px;border-radius:8px;border:1px solid #e2e8f0;}
+.filter-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:16px;background:#fff;padding:12px 14px;border-radius:10px;border:1px solid #e2e8f0;}
 .filter-bar .fg{display:flex;flex-direction:column;gap:4px;}
-.filter-bar label{font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.4px;}
-.filter-bar input,.filter-bar select{padding:7px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;}
+.filter-bar label{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;}
+.filter-bar input,.filter-bar select{height:36px;padding:0 10px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;color:#1e293b;background:#fff;outline:none;box-sizing:border-box;}
+.filter-bar input:focus,.filter-bar select:focus{border-color:#002F70;box-shadow:0 0 0 3px rgba(0,47,112,.1)}
 .table-wrap{overflow:hidden;}
-table.stockin{width:100%;border-collapse:collapse;font-size:12.5px;}
-table.stockin th{background:#002F70;color:#fff;padding:10px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;}
-table.stockin td{padding:9px 12px;border-bottom:1px solid #f1f5f9;vertical-align:middle;white-space:nowrap;}
+/* == Table - SuperAdmin ato-table standard == */
+table.stockin{width:100%;border-collapse:collapse;font-size:11px;}
+table.stockin th{background:#002F70;color:#fff;padding:9px 10px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;border-bottom:2px solid #001a3d;}
+table.stockin td{padding:9px 10px;border-bottom:1px solid #f1f5f9;vertical-align:middle;white-space:nowrap;background:#fff;font-size:11px;}
 table.stockin tbody tr:hover td{background:#eff6ff;}
+/* == Badges == */
 .badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;}
 .badge-good{background:#dcfce7;color:#166534;}
 .badge-damaged{background:#fee2e2;color:#991b1b;}
@@ -123,13 +136,13 @@ table.stockin tbody tr:hover td{background:#eff6ff;}
 .cap-warn{color:var(--red);font-weight:700;}
 </style>
 
-<div class="page-head">
+<div class="int-head">
   <div>
-    <h1 class="h1"><i class="fas fa-dolly-flatbed"></i> Stock-In Oversight &amp; History</h1>
+    <h1><i class="fas fa-dolly-flatbed"></i> Stock-In Oversight &amp; History</h1>
     <div class="sub">Cross-check actual deliveries committed to inventory, track capacity, and review validation status.</div>
   </div>
-  <div class="header-actions">
-    <button onclick="location.reload()" class="btn ghost"><i class="fas fa-sync-alt"></i> Refresh</button>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <button onclick="location.reload()" class="ato-btn ato-btn-refresh"><i class="fas fa-sync-alt"></i> Refresh</button>
   </div>
 </div>
 
@@ -156,7 +169,7 @@ table.stockin tbody tr:hover td{background:#eff6ff;}
       <input type="hidden" name="tab" value="merch">
       <div class="fg"><label>Start Date</label><input type="date" name="start" value="<?= htmlspecialchars($start_date) ?>"></div>
       <div class="fg"><label>End Date</label><input type="date" name="end" value="<?= htmlspecialchars($end_date) ?>"></div>
-      <div style="margin-top:auto;"><button type="submit" class="btn primary" style="padding:7px 15px;font-size:13px;"><i class="fas fa-filter"></i> Apply Dates</button></div>
+      <div style="margin-top:auto;"><button type="submit" class="ato-btn ato-btn-refresh"><i class="fas fa-filter"></i> Apply Dates</button></div>
     </form>
 
     <div class="table-wrap">
@@ -249,7 +262,7 @@ table.stockin tbody tr:hover td{background:#eff6ff;}
       <input type="hidden" name="tab" value="fuel">
       <div class="fg"><label>Start Date</label><input type="date" name="start" value="<?= htmlspecialchars($start_date) ?>"></div>
       <div class="fg"><label>End Date</label><input type="date" name="end" value="<?= htmlspecialchars($end_date) ?>"></div>
-      <div style="margin-top:auto;"><button type="submit" class="btn primary" style="padding:7px 15px;font-size:13px;"><i class="fas fa-filter"></i> Apply Dates</button></div>
+      <div style="margin-top:auto;"><button type="submit" class="ato-btn ato-btn-refresh"><i class="fas fa-filter"></i> Apply Dates</button></div>
     </form>
 
     <div class="table-wrap">

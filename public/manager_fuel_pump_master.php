@@ -1144,6 +1144,11 @@ function adjustColor($hex,$pct) {
 /* -- MANAGER FUEL MANAGEMENT ENHANCED STYLES -- */
 .mfm-wrap { max-width:1400px; margin:0 auto; padding:10px; padding-bottom:120px; }
 
+/* Page Header - matches transaction module standard */
+.page-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:-12px !important; }
+.page-head h1, .page-head .h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
+.page-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
+
 /* Notification Banner */
 .mfm-alert { display:flex; align-items:center; gap:12px; padding:14px 20px; border-radius:10px; margin-bottom:16px; font-weight:600; font-size:.9rem; animation:slideDown .3s ease; }
 .mfm-alert.success { background:#d4edda; color:#155724; border:1px solid #c3e6cb; }
@@ -1163,15 +1168,9 @@ function adjustColor($hex,$pct) {
 
 /* Stats Grid */
 .stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:20px; }
-.stat-card { background:linear-gradient(135deg,#f8f9fa,#e9ecef); border-radius:10px; padding:16px; text-align:center; border-left:4px solid <?php echo $colors['primary']; ?>; transition:transform .2s; }
-.stat-card:hover { transform:translateY(-2px); }
-.stat-card.danger { border-left-color:<?php echo $colors['danger']; ?>; }
-.stat-card.warning { border-left-color:<?php echo $colors['warning']; ?>; }
-.stat-card.success { border-left-color:<?php echo $colors['success']; ?>; }
-.stat-value { font-size:1.8rem; font-weight:700; color:<?php echo $colors['primary']; ?>; }
-.stat-card.danger .stat-value { color:<?php echo $colors['danger']; ?>; }
-.stat-card.warning .stat-value { color:#CC8800; }
-.stat-card.success .stat-value { color:<?php echo $colors['success']; ?>; }
+.stat-card { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:16px; text-align:center; transition:transform .2s; }
+.stat-card:hover { transform:translateY(-2px); box-shadow:0 2px 8px rgba(0,0,0,.08); }
+.stat-value { font-size:1.8rem; font-weight:700; color:#002F70; }
 .stat-label { font-size:.75rem; color:#666; text-transform:uppercase; letter-spacing:.5px; margin-top:4px; }
 
 /* Tank Cards */

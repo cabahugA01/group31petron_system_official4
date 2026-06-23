@@ -1057,6 +1057,11 @@ function adjustColor($hex,$pct) {
 /* -- MANAGER FUEL MANAGEMENT ENHANCED STYLES -- */
 .mfm-wrap { max-width:1400px; margin:0 auto; padding:10px; padding-bottom:120px; }
 
+/* Page Header - matches transaction module standard */
+.page-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:-12px !important; }
+.page-head h1, .page-head .h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
+.page-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
+
 /* Notification Banner */
 .mfm-alert { display:flex; align-items:center; gap:12px; padding:14px 20px; border-radius:10px; margin-bottom:16px; font-weight:600; font-size:.9rem; animation:slideDown .3s ease; }
 .mfm-alert.success { background:#d4edda; color:#155724; border:1px solid #c3e6cb; }
@@ -1076,15 +1081,9 @@ function adjustColor($hex,$pct) {
 
 /* Stats Grid */
 .stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:20px; }
-.stat-card { background:linear-gradient(135deg,#f8f9fa,#e9ecef); border-radius:10px; padding:16px; text-align:center; border-left:4px solid <?php echo $colors['primary']; ?>; transition:transform .2s; }
-.stat-card:hover { transform:translateY(-2px); }
-.stat-card.danger { border-left-color:<?php echo $colors['danger']; ?>; }
-.stat-card.warning { border-left-color:<?php echo $colors['warning']; ?>; }
-.stat-card.success { border-left-color:<?php echo $colors['success']; ?>; }
-.stat-value { font-size:1.8rem; font-weight:700; color:<?php echo $colors['primary']; ?>; }
-.stat-card.danger .stat-value { color:<?php echo $colors['danger']; ?>; }
-.stat-card.warning .stat-value { color:#CC8800; }
-.stat-card.success .stat-value { color:<?php echo $colors['success']; ?>; }
+.stat-card { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:16px; text-align:center; transition:transform .2s; }
+.stat-card:hover { transform:translateY(-2px); box-shadow:0 2px 8px rgba(0,0,0,.08); }
+.stat-value { font-size:1.8rem; font-weight:700; color:#002F70; }
 .stat-label { font-size:.75rem; color:#666; text-transform:uppercase; letter-spacing:.5px; margin-top:4px; }
 
 /* Tank Cards */
@@ -1164,10 +1163,7 @@ function adjustColor($hex,$pct) {
 .section-title i { font-size:.9rem; }
 
 /* Info Box */
-.info-box { background:linear-gradient(135deg,#f8f9fa,#e9ecef); border-radius:10px; padding:18px; border-left:4px solid <?php echo $colors['primary']; ?>; margin-bottom:18px; }
-.info-box.warning { border-left-color:<?php echo $colors['warning']; ?>; background:linear-gradient(135deg,#fffbf0,#fff3cd); }
-.info-box.danger  { border-left-color:<?php echo $colors['danger']; ?>;  background:linear-gradient(135deg,#fff5f5,#f8d7da); }
-.info-box.success { border-left-color:<?php echo $colors['success']; ?>; background:linear-gradient(135deg,#f0fff4,#d4edda); }
+.info-box { background:#f8f9fa; border:1px solid #e2e8f0; border-radius:10px; padding:18px; margin-bottom:18px; }
 
 /* Modal */
 .modal { display:none; position:fixed; z-index:2000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,.55); }
@@ -1719,13 +1715,13 @@ foreach ($reconciliation_data as $rec) {
     </div>
 
     <?php if (!empty($critical_fuels)): ?>
-    <div style="border-left:4px solid <?php echo $colors['danger']; ?>;background:#fff8f8;border-radius:0 8px 8px 0;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-        <i class="fas fa-bell" style="color:<?php echo $colors['danger']; ?>;font-size:1rem;"></i>
+    <div style="background:#fff8f8;border:1px solid #f5c6cb;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <i class="fas fa-bell" style="color:#002F70;font-size:1rem;"></i>
         <div style="flex:1;">
-            <strong style="color:<?php echo $colors['danger']; ?>;font-size:.88rem;">Critical Low Stock:</strong>
+            <strong style="color:#002F70;font-size:.88rem;">Critical Low Stock:</strong>
             <span style="color:#555;font-size:.85rem;"> <?php echo implode(', ', $critical_fuels); ?> - below 15%. Coordinate with Admin to trigger Purchase Order.</span>
         </div>
-        <span class="audit-badge" style="background:<?php echo $colors['danger']; ?>;color:#fff;white-space:nowrap;">
+        <span class="audit-badge" style="background:#002F70;color:#fff;white-space:nowrap;">
             <i class="fas fa-user-tie"></i> Manager + Admin
         </span>
     </div>
@@ -2161,7 +2157,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
             </div>
         </div>
 
-        <div style="padding:10px 14px;background:#e8f0f7;border-radius:6px;border-left:3px solid #00264D;margin-bottom:14px;font-size:.82rem;color:#00264D;">
+        <div style="padding:10px 14px;background:#e8f0f7;border:1px solid #d1e0f0;border-radius:6px;margin-bottom:14px;font-size:.82rem;color:#00264D;">
             <i class="fas fa-info-circle"></i>
             Use this when the pump reading has a calibration issue or the Staff-encoded value needs correction.
             The adjusted value will be used for inventory deduction and the audit trail.

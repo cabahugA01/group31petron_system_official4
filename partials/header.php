@@ -2359,8 +2359,7 @@ require_once __DIR__ . '/rbac_menu.php';
                     $sub_active = 'active';
                 }
             }
-            $sub_badge    = $fuel_sub_badges[$sub['id'] ?? ''] ?? 0;
-            $sub_desc     = $fuel_sub_desc[$sub['id'] ?? ''] ?? '';
+            $sub_badge = $fuel_sub_badges[$sub['id'] ?? ''] ?? 0;
 
             echo '<a class="nav-item sidebar-sub-item '.$sub_active.'" href="'.htmlspecialchars($sub['href']).'" style="padding:8px 15px 8px 47px;min-height:auto;" data-tooltip="'.htmlspecialchars($sub['label'] ?? '').'" data-tab="'.htmlspecialchars($sub_fragment).'">';
             echo '<span class="ico" style="margin-right:8px;width:14px;text-align:center;flex-shrink:0;"><i class="fas fa-circle" style="font-size:4px;opacity:.5;"></i></span>';

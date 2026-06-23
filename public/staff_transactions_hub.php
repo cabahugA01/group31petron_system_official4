@@ -72,6 +72,10 @@ if (!in_array($section, ['merchandise', 'history', 'fuel', 'fuel_history'])) {
     $section = 'merchandise';
 }
 
+// Global variance tracking variables
+$variance_alerts      = [];
+$variance_alert_count = 0;
+
 // ── Fuel types for this station — DB-driven, no hardcoded exclusions ─────────
 $fuel_types = [];
 try {
@@ -308,8 +312,11 @@ $hist_offset        = ($hist_page - 1) * $hist_per_page;
 // ── Merchandise section: Transaction History panel (right side) ───────────────
 $mh_recent        = [];
 $mh_total         = 0;
-$mh_filter_shift  = $_GET['mh_shift'] ?? '';
-$mh_filter_date   = $_GET['mh_date']  ?? '';
+$mh_filter_type   = $_GET['mh_type'] ?? 'all';
+$mh_filter_start_date = $_GET['mh_start_date'] ?? '';
+$mh_filter_end_date   = $_GET['mh_end_date'] ?? '';
+$mh_filter_category   = $_GET['mh_category'] ?? '';
+$mh_filter_product    = $_GET['mh_product'] ?? '';
 $mh_page          = max(1, (int)($_GET['mh_page'] ?? 1));
 $mh_per_page      = isset($_GET['mh_per_page']) && in_array((int)$_GET['mh_per_page'], [10,20,30,50]) ? (int)$_GET['mh_per_page'] : 10;
 $mh_offset        = ($mh_page - 1) * $mh_per_page;
@@ -319,6 +326,7 @@ $mh_variance_alerts      = [];
 $mh_kpi_txn_count        = 0;
 $mh_kpi_items_released   = 0;
 $mh_kpi_total_encoded    = 0.00;
+
 
 // DEBUG
 
@@ -363,67 +371,110 @@ if ($section === 'merchandise') {
             }
         }
 
-        // DEBUG: Show ALL transactions for this station (no filters)
-        $mh_where  = "WHERE mt.station_id = ?";
+        // Fetch categories for filters
+        $mh_categories = [];
+        try {
+            $stmt_cat = $pdo->query("
+                SELECT DISTINCT COALESCE(NULLIF(TRIM(category), ''), 'General') AS category 
+                FROM inventory_products 
+                WHERE category != 'Fuel' AND category IS NOT NULL AND TRIM(category) <> ''
+                ORDER BY category
+            ");
+            if ($stmt_cat) {
+                $mh_categories = $stmt_cat->fetchAll(PDO::FETCH_COLUMN);
+            }
+        } catch (Exception $e) {}
+
+        // Build itemized filters
+        $mh_where_clauses = ["mt.station_id = ?"];
         $mh_params = [$station_id];
-        if ($mh_filter_shift !== '') { $mh_where .= " AND mt.shift_period = ?"; $mh_params[] = $mh_filter_shift; }
-        if ($mh_filter_date  !== '') { $mh_where .= " AND DATE($mh_date_col) = ?"; $mh_params[] = $mh_filter_date; }
 
-        $cnt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions mt $mh_where");
-        $cnt->execute($mh_params);
-        $mh_total = (int)$cnt->fetchColumn();
-        
-        // DEBUG: Log what we found
+        // Transaction Type Filter
+        if ($mh_filter_type === 'merchandise') {
+            $mh_where_clauses[] = "COALESCE(mt.transaction_type, 'merchandise') = 'merchandise'";
+        } elseif ($mh_filter_type === 'combined') {
+            $mh_where_clauses[] = "COALESCE(mt.transaction_type, 'merchandise') = 'combined'";
+        } else {
+            // Show both merchandise and combined transactions (excl. pure job_orders in this tab)
+            $mh_where_clauses[] = "COALESCE(mt.transaction_type, 'merchandise') IN ('merchandise', 'combined')";
+        }
 
-        // ── Detect new columns for merchandise history query ──────────────────
-        $mh_col_staff_remarks      = isset($mh_cols['staff_remarks'])      ? 'mt.staff_remarks'      : 'NULL';
-        $mh_col_manager_notes      = isset($mh_cols['manager_notes'])      ? 'mt.manager_notes'      : 'NULL';
-        $mh_col_due_date           = isset($mh_cols['due_date'])           ? 'mt.due_date'           : 'NULL';
-        $mh_col_inventory_deducted = isset($mh_cols['inventory_deducted']) ? 'mt.inventory_deducted' : '0';
+        // Ensure we only show merchandise/product items (not service items)
+        $mh_where_clauses[] = "COALESCE(mti.item_type, 'merchandise') = 'merchandise'";
 
+        // Date Range Filters
+        if ($mh_filter_start_date !== '') {
+            $mh_where_clauses[] = "DATE($mh_date_col) >= ?";
+            $mh_params[] = $mh_filter_start_date;
+        }
+        if ($mh_filter_end_date !== '') {
+            $mh_where_clauses[] = "DATE($mh_date_col) <= ?";
+            $mh_params[] = $mh_filter_end_date;
+        }
+
+        // Category Filter
+        if ($mh_filter_category !== '') {
+            $mh_where_clauses[] = "COALESCE(NULLIF(TRIM(mti.category), ''), 'General') = ?";
+            $mh_params[] = $mh_filter_category;
+        }
+
+        // Product Filter
+        if ($mh_filter_product !== '') {
+            $mh_where_clauses[] = "mti.product_id = ?";
+            $mh_params[] = (int)$mh_filter_product;
+        }
+
+        $mh_where = "WHERE " . implode(" AND ", $mh_where_clauses);
+
+        // Get total count of matching items
+        $cnt_stmt = $pdo->prepare("
+            SELECT COUNT(*) 
+            FROM merchandise_transactions mt
+            INNER JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id
+            $mh_where
+        ");
+        $cnt_stmt->execute($mh_params);
+        $mh_total = (int)$cnt_stmt->fetchColumn();
+
+        // Fetch matching items (no LIMIT here because we do client-side pagination)
         $stmt_mh = $pdo->prepare("
-            SELECT mt.id,
+            SELECT mt.id AS mt_id,
                    $mh_txnid_col AS transaction_id,
                    mt.customer_name,
-                   mt.total_amount,
                    mt.payment_method,
-                   COALESCE(mt.amount_paid, 0)                                    AS amount_paid,
-                   COALESCE(mt.balance_due, mt.total_amount)                      AS balance_due,
-                   COALESCE(mt.payment_status, 'Pending Payment')                 AS payment_status,
-                   $mh_date_col  AS transaction_date,
-                   $mh_status_col AS status,
-                   mt.shift_name,
-                   mt.shift_period,
-                   COALESCE(
-                       NULLIF(
-                           (SELECT GROUP_CONCAT(
-                                       CONCAT(i.product_name, ' (', CAST(i.quantity AS UNSIGNED),
-                                              IF(CAST(i.quantity AS UNSIGNED)=1,' pc',' pcs'), ')')
-                                       ORDER BY i.id SEPARATOR ', ')
-                            FROM merchandise_transaction_items i
-                            WHERE i.transaction_id = mt.id), ''
-                       ),
-                       '—'
-                   ) AS products,
-                   COALESCE($mh_col_staff_remarks, mt.remarks, '')  AS staff_remarks,
-                   COALESCE($mh_col_manager_notes, '')               AS manager_notes,
-                   $mh_col_due_date                                  AS due_date,
-                   $mh_col_inventory_deducted                        AS inventory_deducted,
-                   COALESCE(mt.validation_status, mt.status, 'Pending') AS validation_status
+                   $mh_date_col AS transaction_date,
+                   mti.id AS item_id,
+                   mti.product_id,
+                   mti.product_name,
+                   mti.category AS item_category,
+                   mti.quantity,
+                   mti.unit_price,
+                   mti.subtotal AS item_total
             FROM merchandise_transactions mt
+            INNER JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id
             $mh_where
             ORDER BY $mh_date_col DESC
-            LIMIT $mh_per_page OFFSET $mh_offset
         ");
         $stmt_mh->execute($mh_params);
         $mh_recent = $stmt_mh->fetchAll(PDO::FETCH_ASSOC);
 
-        // ── Build inventory impact for merchandise history rows ───────────────
-        $mh_inv_impact = [];
-        if (!empty($mh_recent)) {
-            // Batch load product stock levels for this station
-            $mh_product_stock = [];
-            try {
+        // Fetch all unpaid transactions for variance checking
+        $mh_variance_alerts = [];
+        try {
+            $stmt_var = $pdo->prepare("
+                SELECT mt.id, $mh_txnid_col AS transaction_id, mt.total_amount, mt.payment_status
+                FROM merchandise_transactions mt
+                WHERE mt.station_id = ?
+                  AND COALESCE(mt.payment_status, 'Pending Payment') != 'Paid'
+            ");
+            $stmt_var->execute([$station_id]);
+            $unpaid_txns = $stmt_var->fetchAll(PDO::FETCH_ASSOC);
+            if (!empty($unpaid_txns)) {
+                $unpaid_ids = array_column($unpaid_txns, 'id');
+                $unpaid_iph = implode(',', array_fill(0, count($unpaid_ids), '?'));
+                
+                // Fetch product stocks for validation
+                $mh_product_stock = [];
                 $mh_ps_stmt = $pdo->prepare("
                     SELECT ip.id AS product_id, LOWER(TRIM(ip.product_name)) AS pname,
                            COALESCE(si.stock_level, 0) AS stock_level
@@ -432,85 +483,59 @@ if ($section === 'merchandise') {
                     WHERE ip.category != 'Fuel' OR ip.category IS NULL
                 ");
                 $mh_ps_stmt->execute([$station_id]);
-                foreach ($mh_ps_stmt->fetchAll(PDO::FETCH_ASSOC) as $_mhps)
+                foreach ($mh_ps_stmt->fetchAll(PDO::FETCH_ASSOC) as $_mhps) {
                     $mh_product_stock[$_mhps['pname']] = $_mhps;
-            } catch (Exception $_mhpse) {}
-
-            // Fetch items for all visible transactions
-            $mh_ids = array_column($mh_recent, 'id');
-            $mh_items_map = [];
-            if (!empty($mh_ids)) {
-                try {
-                    $mh_iph = implode(',', array_fill(0, count($mh_ids), '?'));
-                    $mh_is = $pdo->prepare("
-                        SELECT mti.transaction_id, mti.product_name, mti.product_id,
-                               mti.quantity, mti.unit_price,
-                               COALESCE(mti.item_type,'merchandise') AS item_type
-                        FROM merchandise_transaction_items mti
-                        WHERE mti.transaction_id IN ($mh_iph)
-                        ORDER BY mti.id
-                    ");
-                    $mh_is->execute($mh_ids);
-                    foreach ($mh_is->fetchAll(PDO::FETCH_ASSOC) as $_mhi)
-                        $mh_items_map[$_mhi['transaction_id']][] = $_mhi;
-                } catch (Exception $_mhie) {}
-            }
-
-            foreach ($mh_recent as $_mhtxn) {
-                $mh_is_approved = in_array(strtolower($_mhtxn['validation_status'] ?? ''), ['approved','validated','adjusted','']);
-                $mh_items = $mh_items_map[$_mhtxn['id']] ?? [];
-                $mh_parts = [];
-                foreach ($mh_items as $_mhitem) {
-                    $pn = strtolower(trim($_mhitem['product_name'] ?? ''));
-                    $sr = $mh_product_stock[$pn] ?? null;
-                    $st = $sr ? (float)$sr['stock_level'] : null;
-                    $ded = (int)($_mhtxn['inventory_deducted'] ?? 0);
-                    if ($mh_is_approved && $ded) { $ist = 'yes'; }
-                    elseif ($mh_is_approved && !$ded) { $ist = 'no'; }
-                    elseif ($st === null) { $ist = 'na'; }
-                    else { $ist = 'pending'; }
-                    $mh_parts[] = [
-                        'part'   => $_mhitem['product_name'],
-                        'qty'    => (int)$_mhitem['quantity'],
-                        'stock'  => $st,
-                        'unit_price' => (float)$_mhitem['unit_price'],
-                        'status' => $ist,
-                    ];
                 }
-                $mh_inv_impact[$_mhtxn['id']] = $mh_parts;
+
+                // Fetch items for these unpaid transactions
+                $stmt_var_items = $pdo->prepare("
+                    SELECT transaction_id, product_name, product_id, quantity, unit_price
+                    FROM merchandise_transaction_items
+                    WHERE transaction_id IN ($unpaid_iph)
+                ");
+                $stmt_var_items->execute($unpaid_ids);
+                $var_items_map = [];
+                foreach ($stmt_var_items->fetchAll(PDO::FETCH_ASSOC) as $_mhi) {
+                    $var_items_map[$_mhi['transaction_id']][] = $_mhi;
+                }
+                
+                foreach ($unpaid_txns as $_mvt) {
+                    $mv_ref = $_mvt['transaction_id'] ?: ('#' . $_mvt['id']);
+                    $mh_vitems = $var_items_map[$_mvt['id']] ?? [];
+                    
+                    // Quantity mismatch check
+                    foreach ($mh_vitems as $_mvit) {
+                        $pn = strtolower(trim($_mvit['product_name'] ?? ''));
+                        $st = isset($mh_product_stock[$pn]) ? (float)$mh_product_stock[$pn]['stock_level'] : null;
+                        if ($st !== null && $_mvit['quantity'] > $st) {
+                            $mh_variance_alerts[] = [
+                                'txn_ref' => $mv_ref,
+                                'type'    => 'qty',
+                                'message' => 'Quantity mismatch: ' . htmlspecialchars($_mvit['product_name'])
+                                           . ' — encoded ' . (int)$_mvit['quantity'] . ' pc(s), stock ' . (int)$st,
+                            ];
+                        }
+                    }
+                    
+                    // Amount mismatch check
+                    if (!empty($mh_vitems)) {
+                        $mv_sum   = array_sum(array_map(fn($i) => $i['quantity'] * $i['unit_price'], $mh_vitems));
+                        $mv_total = (float)$_mvt['total_amount'];
+                        if ($mv_total > 0 && abs($mv_sum - $mv_total) > 0.01) {
+                            $mh_variance_alerts[] = [
+                                'txn_ref' => $mv_ref,
+                                'type'    => 'amount',
+                                'message' => 'Amount mismatch: computed ₱' . number_format($mv_sum, 2)
+                                           . ' vs encoded ₱' . number_format($mv_total, 2),
+                            ];
+                        }
+                    }
+                }
             }
+        } catch (Exception $e) {
+            error_log('Variance checks error: ' . $e->getMessage());
         }
 
-        // ── Variance alerts for merchandise history ───────────────────────────
-        $mh_variance_alerts = [];
-        foreach ($mh_recent as $_mvt) {
-            $mvst = strtolower($_mvt['payment_status'] ?? '');
-            if ($mvst === 'paid') continue;
-            $mh_vitems = $mh_inv_impact[$_mvt['id']] ?? [];
-            $mv_ref = $_mvt['transaction_id'] ?? ('#'.$_mvt['id']);
-            foreach ($mh_vitems as $_mvit) {
-                if ($_mvit['stock'] !== null && $_mvit['qty'] > $_mvit['stock']) {
-                    $mh_variance_alerts[] = [
-                        'txn_ref' => $mv_ref,
-                        'type'    => 'qty',
-                        'message' => 'Quantity mismatch: ' . htmlspecialchars($_mvit['part'])
-                                   . ' — encoded ' . $_mvit['qty'] . ' pc(s), stock ' . (int)$_mvit['stock'],
-                    ];
-                }
-            }
-            if (!empty($mh_vitems)) {
-                $mv_sum   = array_sum(array_map(fn($i) => $i['qty'] * $i['unit_price'], $mh_vitems));
-                $mv_total = (float)$_mvt['total_amount'];
-                if ($mv_total > 0 && abs($mv_sum - $mv_total) > 0.01) {
-                    $mh_variance_alerts[] = [
-                        'txn_ref' => $mv_ref,
-                        'type'    => 'amount',
-                        'message' => 'Amount mismatch: computed ₱' . number_format($mv_sum, 2)
-                                   . ' vs encoded ₱' . number_format($mv_total, 2),
-                    ];
-                }
-            }
-        }
         // Merge merch variance alerts into global variance_alerts (for header badge)
         foreach ($mh_variance_alerts as $_mva) {
             $variance_alerts[] = [
@@ -641,36 +666,11 @@ if ($section === 'history' || $section === 'fuel_history') {
         $recent_merch = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) { $recent_merch = []; }
 
-    // ── Shift log from labor_sessions ─────────────────────────────────────
-    try {
-        $ls_where  = "WHERE ls.user_id = ? AND ls.station_id = ?";
-        $ls_params = [$me['id'], $station_id];
-        if ($filter_date !== '') {
-            $ls_where  .= " AND DATE(ls.start_time) = ?";
-            $ls_params[] = $filter_date;
-        }
-        $stmt = $pdo->prepare("
-            SELECT ls.id,
-                   ls.start_time,
-                   ls.end_time,
-                   ls.shift_period,
-                   COALESCE(sp.shift_name, ls.shift_period) AS shift_label,
-                   TIMESTAMPDIFF(MINUTE, ls.start_time,
-                       COALESCE(ls.end_time, NOW())) AS duration_minutes
-            FROM labor_sessions ls
-            LEFT JOIN shift_periods sp ON sp.shift_key = ls.shift_period
-            $ls_where
-            ORDER BY ls.start_time DESC
-        ");
-        $stmt->execute($ls_params);
-        $shift_log = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) { $shift_log = []; }
+    // ── Shift log from labor_sessions REMOVED (staff should not see shift logs) ────
+    // Shift management is handled by managers/admins only
+    $shift_log = []; // Empty - no shift log for staff
+    $available_shifts = []; // Empty - no shift filter needed
 
-    // Available shift periods for filter dropdown
-    try {
-        $stmt = $pdo->query("SELECT shift_key, shift_name FROM shift_periods WHERE is_active = 1 ORDER BY sort_order ASC");
-        $available_shifts = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) { $available_shifts = []; }
 }
 
 // ── Pagination helper ─────────────────────────────────────────────────────────
@@ -721,8 +721,7 @@ $jo_approved_count = 0;
 $jo_rejected_count = 0;
 // Enhancement data — safe defaults (populated inside merchandise section block below)
 $inv_impact           = [];
-$variance_alerts      = [];
-$variance_alert_count = 0;
+
 $kpi_jo_count         = 0;
 $kpi_merch_released   = 0;
 $kpi_total_encoded    = 0.00;
@@ -1199,7 +1198,7 @@ if ($section === 'merchandise') {
 
         // ── Variance alerts detection ─────────────────────────────────────────────
         // Scans active (non-rejected/completed) job orders for qty or amount mismatches.
-        $variance_alerts = [];
+
         $today_str = date('Y-m-d');
         foreach ($job_orders as $_vjo) {
             $vst = strtolower($_vjo['status'] ?? '');
@@ -1562,19 +1561,19 @@ main.main {
 .txn-section-icon.jo    { background: rgba(180,83,9,.12);   color: #b45309; }
 
 .txn-section-title h1 {
-    font-size: 20px !important;
+    font-size: 22px !important;
     font-weight: 700 !important;
     color: var(--petron-blue) !important;
     margin: 0 !important;
 }
 
 .txn-section-title p {
-    font-size: 14px;
-    color: #666666;
-    margin: 3px 0 0;
-    text-transform: uppercase;
-    font-weight: 500;
-    letter-spacing: 0.3px;
+    font-size: 13px;
+    color: #666;
+    margin: 4px 0 0;
+    text-transform: none;
+    font-weight: 400;
+    letter-spacing: 0;
 }
 
 /* ── Status badge ────────────────────────────────────────────── */
@@ -1870,14 +1869,18 @@ input[list] {
     align-items: center;
     justify-content: center;
     gap: 6px;
-    padding: 7px 14px;
-    border-radius: 4px;
-    font-size: 11px;
+    padding: 0 16px;
+    height: 36px;
+    min-width: 140px;
+    border-radius: 7px;
+    font-size: 13px;
     font-weight: 600;
     cursor: pointer;
     border: 1px solid transparent;
-    transition: all .2s;
+    transition: all .18s;
     text-decoration: none;
+    white-space: nowrap;
+    background: white !important;
 }
 
 .txn-btn.primary {
@@ -1902,11 +1905,11 @@ input[list] {
 
 .txn-btn.secondary {
     background: white !important;
-    color: #00264D !important;
-    border: 1px solid #00264D !important;
+    color: #6b7280 !important;
+    border: 1px solid #6b7280 !important;
 }
 .txn-btn.secondary:hover {
-    background: #00264D !important;
+    background: #6b7280 !important;
     color: white !important;
 }
 
@@ -3674,11 +3677,47 @@ input[list] {
                                        autocomplete="off">
                             </div>
                         </div>
+                        
+                        <!-- Vehicle Brand + Model -->
+                        <div class="txn-form-grid" style="margin-bottom:14px;">
+                            <div class="txn-field">
+                                <label>Vehicle Brand</label>
+                                <input type="text" id="joVehicleBrand" class="txn-input"
+                                       placeholder="e.g. Toyota, Honda..."
+                                       autocomplete="off">
+                            </div>
+                            <div class="txn-field">
+                                <label>Vehicle Model</label>
+                                <input type="text" id="joVehicleModel" class="txn-input"
+                                       placeholder="e.g. Vios, City, Civic..."
+                                       autocomplete="off">
+                            </div>
+                        </div>
 
                         <!-- Service Details -->
                         <div style="font-size:11px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">
                             <i class="fas fa-wrench" style="margin-right:5px;"></i>Service Details
                         </div>
+
+                        <!-- Service Category -->
+                        <div class="txn-form-grid" style="margin-bottom:14px;">
+                            <div class="txn-field">
+                                <label>Service Category</label>
+                                <select id="joServiceCategory" class="txn-select" onchange="onServiceCategoryChange()">
+                                    <option value="">-- Select Category --</option>
+                                    <option value="Oil Change">Oil Change</option>
+                                    <option value="Wheel Alignment">Wheel Alignment</option>
+                                    <option value="Battery Services">Battery Services</option>
+                                    <option value="Brake Services">Brake Services</option>
+                                    <option value="Tire Services">Tire Services</option>
+                                    <option value="Engine Services">Engine Services</option>
+                                    <option value="AC Services">AC Services</option>
+                                    <option value="General Inspection">General Inspection</option>
+                                    <option value="Others">Others</option>
+                                </select>
+                            </div>
+                        </div>
+
                         <div class="txn-form-grid" style="margin-bottom:14px;">
                             <div class="txn-field">
                                 <label>Service Type <span style="color:#dc2626;">*</span></label>
@@ -3773,6 +3812,13 @@ input[list] {
                                        placeholder="Any additional remarks…"
                                        autocomplete="off">
                             </div>
+                        </div>
+
+                        <!-- Add Service to Cart button -->
+                        <div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end;">
+                            <button type="button" class="txn-btn success" onclick="addServiceFromFormToCart()" id="joAddServiceBtn">
+                                <i class="fas fa-plus"></i> Add Service
+                            </button>
                         </div>
 
                         <!-- Mechanic busy warning banner -->
@@ -3871,6 +3917,21 @@ input[list] {
                                        placeholder="Auto-filled from registered customer"
                                        autocomplete="off">
                             </div>
+                        </div>
+
+                        <!-- Contact Number for walk-in merch customers -->
+                        <div class="txn-form-grid" style="margin-bottom:14px;">
+                            <div class="txn-field">
+                                <label>Contact Number</label>
+                                <input type="text" id="merchContactNumber" class="txn-input"
+                                       placeholder="e.g. 09XX-XXX-XXXX"
+                                       autocomplete="off">
+                            </div>
+                        </div>
+
+                        <!-- Merchandise Section label -->
+                        <div style="font-size:11px;font-weight:700;color:#28a745;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">
+                            <i class="fas fa-box" style="margin-right:5px;"></i>Merchandise Section
                         </div>
 
                         <div class="txn-form-grid">
@@ -4007,10 +4068,10 @@ input[list] {
 
                         <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end;">
                             <button type="button" class="txn-btn secondary" onclick="resetAll()" title="Reset all fields and clear cart">
-                                <i class="fas fa-undo"></i> Reset All
+                                <i class="fas fa-undo"></i> Reset Form
                             </button>
-                            <button type="button" class="txn-btn success" onclick="addToCartWithService()">
-                                <i class="fas fa-cart-plus"></i> Add to Cart
+                            <button type="button" class="txn-btn success" onclick="addProductFromFormToCart()" id="addItemBtn">
+                                <i class="fas fa-plus"></i> Add Item
                             </button>
                         </div>
 
@@ -4025,17 +4086,41 @@ input[list] {
                                 <input type="hidden" name="section" value="merchandise">
                                 <input type="hidden" name="mh_open" value="1">
                                 <div style="display:flex;flex-direction:column;gap:4px;">
-                                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Date</label>
-                                    <input type="date" name="mh_date" value="<?= htmlspecialchars($mh_filter_date) ?>"
-                                           style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;">
+                                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Type</label>
+                                    <select name="mh_type" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;">
+                                        <option value="all" <?= $mh_filter_type === 'all' ? 'selected' : '' ?>>All Transactions</option>
+                                        <option value="merchandise" <?= $mh_filter_type === 'merchandise' ? 'selected' : '' ?>>Merchandise Only</option>
+                                        <option value="combined" <?= $mh_filter_type === 'combined' ? 'selected' : '' ?>>Combined Transaction</option>
+                                    </select>
                                 </div>
                                 <div style="display:flex;flex-direction:column;gap:4px;">
-                                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Shift</label>
-                                    <select name="mh_shift" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;">
-                                        <option value="">All Shifts</option>
-                                        <?php foreach ($mh_available_shifts as $sh): ?>
-                                        <option value="<?= htmlspecialchars($sh['shift_key']) ?>" <?= $mh_filter_shift === $sh['shift_key'] ? 'selected' : '' ?>>
-                                            <?= htmlspecialchars($sh['shift_name']) ?>
+                                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Start Date</label>
+                                    <input type="date" name="mh_start_date" value="<?= htmlspecialchars($mh_filter_start_date) ?>"
+                                           style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;">
+                                </div>
+                                <div style="display:flex;flex-direction:column;gap:4px;">
+                                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">End Date</label>
+                                    <input type="date" name="mh_end_date" value="<?= htmlspecialchars($mh_filter_end_date) ?>"
+                                           style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;">
+                                </div>
+                                <div style="display:flex;flex-direction:column;gap:4px;">
+                                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Category</label>
+                                    <select name="mh_category" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;">
+                                        <option value="">All Categories</option>
+                                        <?php foreach ($mh_categories as $cat): ?>
+                                        <option value="<?= htmlspecialchars($cat) ?>" <?= $mh_filter_category === $cat ? 'selected' : '' ?>>
+                                            <?= htmlspecialchars($cat) ?>
+                                        </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                                <div style="display:flex;flex-direction:column;gap:4px;">
+                                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Product</label>
+                                    <select name="mh_product" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;max-width:180px;">
+                                        <option value="">All Products</option>
+                                        <?php foreach ($merch_products as $prod): ?>
+                                        <option value="<?= (int)$prod['product_id'] ?>" <?= $mh_filter_product == $prod['product_id'] ? 'selected' : '' ?>>
+                                            <?= htmlspecialchars($prod['product_name']) ?>
                                         </option>
                                         <?php endforeach; ?>
                                     </select>
@@ -4074,10 +4159,10 @@ input[list] {
                                 No merchandise transactions found.
                             </div>
                             <?php else: ?>
-                            <div style="width:100%;overflow-x:hidden;">
+                            <div style="width:100%;overflow-x:auto;">
                             <style>
-                            #mhHistoryTable th { padding: 8px 6px; }
-                            #mhHistoryTable td { padding: 8px 6px; }
+                            #mhHistoryTable th { padding: 8px 10px; }
+                            #mhHistoryTable td { padding: 8px 10px; }
                             </style>
 
                             <!-- ── Merchandise KPI Snapshot ─────────────────── -->
@@ -4112,9 +4197,8 @@ input[list] {
                                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
                                     <div style="font-size:12px;font-weight:700;color:#003d7a;">
                                         <i class="fas fa-chart-bar" style="margin-right:5px;"></i>
-                                        Merchandise KPI — <?= date('F j, Y') ?>
+                                        Merchandise KPI — Today
                                     </div>
-                                    <div style="font-size:10px;color:#64748b;">Shift: <?= htmlspecialchars($merch_shift_name ?: 'Current') ?></div>
                                 </div>
                                 <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
                                     <div style="background:#fff;border-radius:8px;padding:12px;
@@ -4156,305 +4240,63 @@ input[list] {
                                 </div>
                             </div>
 
-                            <!-- ── Variance Alerts Banner ─────────────────────── -->
-                            <?php if (!empty($mh_variance_alerts)): ?>
-                            <div style="margin:10px 16px 0;background:#fff3f3;border:1.5px solid #fca5a5;
-                                        border-radius:8px;padding:12px 14px;">
-                                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                                    <div style="width:28px;height:28px;background:#fee2e2;border-radius:6px;flex-shrink:0;
-                                                display:flex;align-items:center;justify-content:center;">
-                                        <i class="fas fa-exclamation-triangle" style="color:#dc2626;font-size:12px;"></i>
-                                    </div>
-                                    <div style="font-size:12px;font-weight:700;color:#dc2626;">
-                                        <?= count($mh_variance_alerts) ?> Variance Alert<?= count($mh_variance_alerts)>1?'s':'' ?> — Please review before manager validation
-                                    </div>
-                                </div>
-                                <div style="display:flex;flex-direction:column;gap:4px;">
-                                <?php foreach ($mh_variance_alerts as $_mva): ?>
-                                <div style="display:flex;align-items:center;gap:8px;padding:5px 8px;
-                                            background:#fff;border:1px solid #fecaca;border-radius:5px;font-size:11px;">
-                                    <strong style="color:#b91c1c;min-width:80px;"><?= htmlspecialchars($_mva['txn_ref']) ?></strong>
-                                    <span style="padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap;
-                                                 background:<?= $_mva['type']==='qty'?'#fef3c7':'#fee2e2' ?>;
-                                                 color:<?= $_mva['type']==='qty'?'#92400e':'#991b1b' ?>;
-                                                 border:1px solid <?= $_mva['type']==='qty'?'#fde68a':'#fca5a5' ?>;">
-                                        <?= $_mva['type']==='qty' ? '⚠ Qty Mismatch' : '⚠ Amount Mismatch' ?>
-                                    </span>
-                                    <span style="color:#7f1d1d;"><?= htmlspecialchars($_mva['message']) ?></span>
-                                </div>
-                                <?php endforeach; ?>
-                                </div>
-                            </div>
-                            <?php endif; ?>
-
-                            <table class="txn-table" id="mhHistoryTable" style="width:100%;table-layout:fixed;">
+                            <table class="txn-table" id="mhHistoryTable" style="width:100%;min-width:1000px;">
                                 <colgroup>
-                                    <col style="width:7%;"><!-- Txn ID -->
-                                    <col style="width:9%;"><!-- Customer -->
-                                    <col style="width:12%;"><!-- Product -->
-                                    <col style="width:6%;"><!-- Total -->
-                                    <col style="width:6%;"><!-- Method -->
-                                    <col style="width:8%;"><!-- Balance Due + Due Date -->
-                                    <col style="width:9%;"><!-- Inv. Impact -->
-                                    <col style="width:8%;"><!-- Shift -->
-                                    <col style="width:7%;"><!-- Date -->
-                                    <col style="width:10%;"><!-- Pay / Validation -->
-                                    <col style="width:12%;"><!-- Remarks -->
-                                    <col style="width:6%;"><!-- Actions -->
+                                    <col style="min-width:180px;">
+                                    <col style="min-width:180px;">
+                                    <col style="min-width:200px;">
+                                    <col style="min-width:100px;">
+                                    <col style="min-width:120px;">
+                                    <col style="min-width:120px;">
+                                    <col style="min-width:160px;">
                                 </colgroup>
                                 <thead>
                                     <tr>
-                                        <th style="font-size:12px;">Txn ID</th>
-                                        <th style="font-size:12px;">Customer</th>
-                                        <th style="font-size:12px;">Product</th>
-                                        <th style="font-size:12px;">Total</th>
-                                        <th style="font-size:12px;">Method</th>
-                                        <th style="font-size:12px;">Balance / Due</th>
-                                        <th style="font-size:12px;">Inv. Impact</th>
-                                        <th style="font-size:12px;">Shift</th>
-                                        <th style="font-size:12px;">Date</th>
-                                        <th style="font-size:12px;">Pay / Validation</th>
-                                        <th style="font-size:12px;">Remarks</th>
-                                        <th style="font-size:12px;">Actions</th>
+                                        <th style="font-size:12px;text-align:left;padding:10px;">Transaction ID</th>
+                                        <th style="font-size:12px;text-align:left;padding:10px;">Customer</th>
+                                        <th style="font-size:12px;text-align:left;padding:10px;">Product</th>
+                                        <th style="font-size:12px;text-align:center;padding:10px;">Quantity</th>
+                                        <th style="font-size:12px;text-align:right;padding:10px;">Unit Price</th>
+                                        <th style="font-size:12px;text-align:right;padding:10px;">Total Amount</th>
+                                        <th style="font-size:12px;text-align:left;padding:10px;">Date Released</th>
                                     </tr>
                                 </thead>
                                 <tbody id="mhTableBody">
                                 <?php foreach ($mh_recent as $txn):
-                                    $mh_pay_status = $txn['payment_status'] ?? $txn['status'] ?? 'Pending Payment';
-                                    $mh_balance    = (float)($txn['balance_due'] ?? 0);
-                                    $mh_paid       = (float)($txn['amount_paid'] ?? 0);
-                                    $mh_total_amt  = (float)($txn['total_amount'] ?? 0);
-                                    // Fallback: if balance_due is 0 but payment not done, use total - paid
-                                    if ($mh_balance <= 0.009 && !in_array(strtolower($mh_pay_status), ['paid']) && $mh_total_amt > 0) {
-                                        $mh_balance = max(0, $mh_total_amt - $mh_paid);
+                                    $qty = (float)$txn['quantity'];
+                                    $qty_display = ($qty == (int)$qty) ? (int)$qty : $qty;
+                                    $unit_price = (float)$txn['unit_price'];
+                                    $item_total = (float)$txn['item_total'];
+                                    $date_released = '—';
+                                    if (!empty($txn['transaction_date'])) {
+                                        try {
+                                            $date_released = (new DateTime($txn['transaction_date']))->format('M j, Y g:i A');
+                                        } catch (Exception $e) {}
                                     }
-                                    $mh_can_settle = !in_array(strtolower($mh_pay_status), ['paid']) && $mh_balance > 0.009;
-                                    $mh_products   = $txn['products'] ?? '—';
-
-                                    // Receivables
-                                    $mh_due_date   = $txn['due_date'] ?? null;
-                                    $mh_is_overdue = false;
-                                    if ($mh_due_date && strtolower($mh_pay_status) !== 'paid') {
-                                        $mh_is_overdue = (strtotime(date('Y-m-d')) >= strtotime($mh_due_date));
-                                    }
-
-                                    // Inventory Impact
-                                    $mh_imp_items  = $mh_inv_impact[$txn['id']] ?? [];
-
-                                    // Separated Remarks
-                                    $mh_staff_rem  = trim($txn['staff_remarks'] ?? '');
-                                    $mh_mgr_rem    = trim($txn['manager_notes'] ?? '');
                                 ?>
-                                <tr class="mh-row" <?= $mh_is_overdue ? 'style="background:#fff5f5;border-left:3px solid #dc2626;"' : '' ?>>
-                                    <td style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                                        <strong style="color:var(--petron-blue);">
-                                            <?= htmlspecialchars($txn['transaction_id'] ?? ('#'.$txn['id'])) ?>
-                                        </strong>
+                                <tr class="mh-row" style="cursor:pointer;" onclick="viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? '') ?>')" title="Click to view full transaction details">
+                                    <td style="font-size:12px;font-weight:700;color:var(--petron-blue);padding:10px;white-space:nowrap;">
+                                        <?= htmlspecialchars($txn['transaction_id'] ?? ('#'.$txn['mt_id'])) ?>
                                     </td>
-                                    <td style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                                    <td style="font-size:12px;padding:10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
                                         title="<?= htmlspecialchars($txn['customer_name'] ?? '') ?>">
-                                        <?= htmlspecialchars($txn['customer_name'] ?? '—') ?>
+                                        <?= htmlspecialchars($txn['customer_name'] ?? 'Walk-in Customer') ?>
                                     </td>
-                                    <td style="font-size:11px;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-                                        title="<?= htmlspecialchars($mh_products) ?>">
-                                        <?= htmlspecialchars($mh_products) ?>
+                                    <td style="font-size:12px;padding:10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                                        title="<?= htmlspecialchars($txn['product_name'] ?? '') ?>">
+                                        <?= htmlspecialchars($txn['product_name'] ?? '—') ?>
                                     </td>
-                                    <td style="font-size:13px;font-weight:700;color:var(--petron-blue);white-space:nowrap;">
-                                        ₱<?= number_format($mh_total_amt, 2) ?>
+                                    <td style="font-size:12px;text-align:center;font-weight:600;color:#475569;padding:10px;">
+                                        <?= $qty_display ?>
                                     </td>
-                                    <td style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                                        <?= htmlspecialchars($txn['payment_method'] ?? '—') ?>
+                                    <td style="font-size:12px;text-align:right;font-weight:600;color:#475569;padding:10px;white-space:nowrap;">
+                                        ₱<?= number_format($unit_price, 2) ?>
                                     </td>
-
-                                    <!-- Balance Due + Due Date + Overdue -->
-                                    <td style="font-size:11px;">
-                                        <?php if ($mh_balance > 0.009): ?>
-                                        <div style="color:#9a3412;font-weight:700;">₱<?= number_format($mh_balance, 2) ?></div>
-                                        <?php else: ?>
-                                        <div style="color:#166534;">—</div>
-                                        <?php endif; ?>
-
-                                        <?php if (strtolower($mh_pay_status) !== 'paid'): ?>
-                                        <div style="margin-top:3px;">
-                                            <?php if ($mh_due_date): ?>
-                                                <span style="color:<?= $mh_is_overdue?'#dc2626':'#64748b' ?>;font-size:10px;">
-                                                    Due: <?= htmlspecialchars($mh_due_date) ?>
-                                                </span>
-                                                <?php if ($mh_is_overdue): ?>
-                                                <span style="display:inline-block;background:#fee2e2;color:#dc2626;
-                                                             font-size:10px;font-weight:700;padding:1px 4px;
-                                                             border-radius:3px;margin-left:2px;">⚠ OVERDUE</span>
-                                                <?php endif; ?>
-                                            <?php else: ?>
-                                                <span style="color:#cbd5e1;font-size:10px;">No due date</span>
-                                            <?php endif; ?>
-                                            <form method="POST" action="staff_transactions_hub.php?section=merchandise&mh_open=1"
-                                                  style="margin-top:3px;">
-                                                <input type="hidden" name="jo_action" value="set_due_date">
-                                                <input type="hidden" name="jo_id" value="<?= (int)$txn['id'] ?>">
-                                                <input type="hidden" name="jo_source" value="merchandise_transactions">
-                                                <input type="hidden" name="redirect_tab" value="merchandise">
-                                                <input type="date" name="due_date"
-                                                       value="<?= htmlspecialchars($mh_due_date ?? '') ?>"
-                                                       style="font-size:10px;border:1px solid #cbd5e1;border-radius:3px;
-                                                              padding:1px 3px;width:100%;cursor:pointer;"
-                                                       onchange="this.form.submit()"
-                                                       title="Set due date">
-                                            </form>
-                                        </div>
-                                        <?php endif; ?>
+                                    <td style="font-size:12px;text-align:right;font-weight:700;color:var(--petron-blue);padding:10px;white-space:nowrap;">
+                                        ₱<?= number_format($item_total, 2) ?>
                                     </td>
-
-                                    <!-- Inventory Impact -->
-                                    <td style="font-size:11px;line-height:1.7;">
-                                        <?php if (empty($mh_imp_items)): ?>
-                                            <span style="color:#cbd5e1;font-size:10px;">No parts</span>
-                                        <?php else: foreach ($mh_imp_items as $_mhii):
-                                            if ($_mhii['status'] === 'yes') {
-                                                $mhii_bg='#dcfce7'; $mhii_c='#166534'; $mhii_b='#86efac'; $mhii_icon='✓'; $mhii_l='Deducted';
-                                            } elseif ($_mhii['status'] === 'no') {
-                                                $mhii_bg='#fef9c3'; $mhii_c='#92400e'; $mhii_b='#fde68a'; $mhii_icon='✗'; $mhii_l='Not Yet';
-                                            } elseif ($_mhii['status'] === 'na') {
-                                                $mhii_bg='#f1f5f9'; $mhii_c='#94a3b8'; $mhii_b='#e2e8f0'; $mhii_icon='—'; $mhii_l='N/A';
-                                            } else {
-                                                $mhii_bg='#eff6ff'; $mhii_c='#1d4ed8'; $mhii_b='#bfdbfe'; $mhii_icon='⏳'; $mhii_l='Pending';
-                                            }
-                                        ?>
-                                        <div style="margin-bottom:4px;"
-                                             title="<?= htmlspecialchars($_mhii['part']) ?> × <?= (int)$_mhii['qty'] ?> pc">
-                                            <div style="font-size:10px;color:#475569;max-width:110px;
-                                                        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                                                <?= htmlspecialchars(mb_strimwidth($_mhii['part'],0,15,'…')) ?> ×<?= (int)$_mhii['qty'] ?>
-                                            </div>
-                                            <span style="display:inline-block;background:<?= $mhii_bg ?>;color:<?= $mhii_c ?>;
-                                                         border:1px solid <?= $mhii_b ?>;font-size:10px;font-weight:700;
-                                                         padding:1px 6px;border-radius:10px;margin-top:1px;">
-                                                <?= $mhii_icon ?> <?= $mhii_l ?>
-                                            </span>
-                                        </div>
-                                        <?php endforeach; endif; ?>
-                                    </td>
-
-                                    <td style="font-size:12px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-                                        title="<?= htmlspecialchars($txn['shift_name'] ?? $txn['shift_period'] ?? '') ?>">
-                                        <?= htmlspecialchars($txn['shift_name'] ?? $txn['shift_period'] ?? '—') ?>
-                                    </td>
-                                    <td style="font-size:12px;color:#64748b;white-space:nowrap;">
-                                        <?= date('M j, Y', strtotime($txn['transaction_date'] ?? 'now')) ?><br>
-                                        <span style="font-size:10px;"><?= date('h:i A', strtotime($txn['transaction_date'] ?? 'now')) ?></span>
-                                    </td>
-                                    <td style="font-size:11px;line-height:1.6;">
-                                        <?= status_badge($mh_pay_status) ?>
-                                        <?php
-                                        $mh_val_st = strtolower($txn['validation_status'] ?? 'pending');
-                                        $val_cfg = [
-                                            'approved'  => ['#dcfce7','#166534','#86efac','✓ Approved'],
-                                            'validated' => ['#dcfce7','#166534','#86efac','✓ Validated'],
-                                            'adjusted'  => ['#dbeafe','#1d4ed8','#93c5fd','✎ Adjusted'],
-                                            'rejected'  => ['#fee2e2','#991b1b','#fca5a5','✗ Rejected'],
-                                        ];
-                                        $vcfg = $val_cfg[$mh_val_st] ?? ['#fef9c3','#92400e','#fde68a','⏳ Pending'];
-                                        ?>
-                                        <div style="margin-top:4px;">
-                                            <span style="display:inline-block;background:<?= $vcfg[0] ?>;
-                                                         color:<?= $vcfg[1] ?>;border:1px solid <?= $vcfg[2] ?>;
-                                                         font-size:10px;font-weight:700;padding:1px 6px;
-                                                         border-radius:10px;white-space:nowrap;">
-                                                <?= $vcfg[3] ?>
-                                            </span>
-                                        </div>
-                                    </td>
-
-                                    <!-- Remarks: Staff + Manager separated -->
-                                    <td style="font-size:11px;color:#64748b;word-break:break-word;max-width:120px;">
-                                        <?php if (!empty($mh_staff_rem)): ?>
-                                        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;
-                                                    padding:3px 6px;margin-bottom:3px;">
-                                            <span style="font-size:9px;font-weight:700;color:#64748b;
-                                                         text-transform:uppercase;letter-spacing:.3px;display:block;">
-                                                📝 Staff
-                                            </span>
-                                            <div style="color:#374151;margin-top:1px;font-size:10px;">
-                                                <?= htmlspecialchars($mh_staff_rem) ?>
-                                            </div>
-                                        </div>
-                                        <?php endif; ?>
-                                        <?php if (!empty($mh_mgr_rem)): ?>
-                                        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;
-                                                    padding:3px 6px;margin-bottom:3px;">
-                                            <span style="font-size:9px;font-weight:700;color:#1d4ed8;
-                                                         text-transform:uppercase;letter-spacing:.3px;display:block;">
-                                                ✅ Manager
-                                            </span>
-                                            <div style="color:#1e3a5f;margin-top:1px;font-size:10px;">
-                                                <?= htmlspecialchars($mh_mgr_rem) ?>
-                                            </div>
-                                        </div>
-                                        <?php endif; ?>
-                                        <?php if (empty($mh_staff_rem) && empty($mh_mgr_rem)): ?>
-                                            <span style="color:#cbd5e1;font-size:10px;">No remarks yet</span>
-                                        <?php endif; ?>
-                                        <form method="POST" action="staff_transactions_hub.php?section=merchandise&mh_open=1"
-                                              style="margin-top:4px;">
-                                            <input type="hidden" name="jo_action" value="save_staff_remark">
-                                            <input type="hidden" name="jo_id" value="<?= (int)$txn['id'] ?>">
-                                            <input type="hidden" name="jo_source" value="merchandise_transactions">
-                                            <input type="hidden" name="redirect_tab" value="merchandise">
-                                            <div style="display:flex;gap:3px;align-items:center;">
-                                                <input type="text" name="remark_text"
-                                                       value="<?= htmlspecialchars($mh_staff_rem) ?>"
-                                                       placeholder="Add staff remark…"
-                                                       style="font-size:10px;border:1px solid #e2e8f0;border-radius:3px;
-                                                              padding:2px 4px;flex:1;min-width:0;">
-                                                <button type="submit"
-                                                        title="Save remark"
-                                                        style="font-size:10px;padding:2px 6px;background:#002F6C;
-                                                               color:#fff;border:none;border-radius:3px;cursor:pointer;
-                                                               flex-shrink:0;">✓</button>
-                                            </div>
-                                        </form>
-                                    </td>
-
-                                    <td style="padding:6px 4px;">
-                                        <div style="display:flex;flex-direction:column;gap:3px;">
-                                            <button type="button"
-                                                    onclick="viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? '') ?>')"
-                                                    style="display:inline-flex;align-items:center;justify-content:center;
-                                                           gap:4px;padding:4px 8px;border-radius:4px;font-size:10px;
-                                                           font-weight:600;cursor:pointer;border:1px solid #003d7a;
-                                                           background:#fff;color:#003d7a;white-space:nowrap;width:100%;"
-                                                    onmouseover="this.style.background='#003d7a';this.style.color='#fff'"
-                                                    onmouseout="this.style.background='#fff';this.style.color='#003d7a'">
-                                                <i class="fas fa-eye"></i> View
-                                            </button>
-                                            <?php if ($mh_can_settle): ?>
-                                            <button type="button"
-                                                    onclick="openPaymentModal(<?= (int)$txn['id'] ?>,'merchandise_transactions',<?= $mh_total_amt ?>,<?= $mh_paid ?>,<?= $mh_balance ?>,'<?= addslashes($txn['customer_name'] ?? '') ?>',false,'merchandise')"
-                                                    style="display:inline-flex;align-items:center;justify-content:center;
-                                                           gap:4px;padding:4px 8px;border-radius:4px;font-size:10px;
-                                                           font-weight:600;cursor:pointer;border:1px solid #16a34a;
-                                                           background:#fff;color:#16a34a;white-space:nowrap;width:100%;"
-                                                    onmouseover="this.style.background='#16a34a';this.style.color='#fff'"
-                                                    onmouseout="this.style.background='#fff';this.style.color='#16a34a'">
-                                                <i class="fas fa-coins"></i>
-                                                <?= strtolower($mh_pay_status) === 'partial payment' ? 'Settle Bal' : 'Settle' ?>
-                                            </button>
-                                            <?php elseif (strtolower($mh_pay_status) === 'paid'): ?>
-                                            <button type="button"
-                                                    onclick="printMerchandiseReceipt('<?= addslashes($txn['transaction_id'] ?? '') ?>')"
-                                                    style="display:inline-flex;align-items:center;justify-content:center;
-                                                           gap:4px;padding:4px 8px;border-radius:4px;font-size:10px;
-                                                           font-weight:600;cursor:pointer;border:1px solid #64748b;
-                                                           background:#fff;color:#64748b;white-space:nowrap;width:100%;"
-                                                    onmouseover="this.style.background='#64748b';this.style.color='#fff'"
-                                                    onmouseout="this.style.background='#fff';this.style.color='#64748b'">
-                                                <i class="fas fa-print"></i> Receipt
-                                            </button>
-                                            <div style="font-size:9px;color:#16a34a;font-weight:700;text-align:center;margin-top:1px;">
-                                                ✓ Paid
-                                            </div>
-                                            <?php endif; ?>
-                                        </div>
+                                    <td style="font-size:11px;color:#64748b;padding:10px;white-space:nowrap;">
+                                        <?= $date_released ?>
                                     </td>
                                 </tr>
                                 <?php endforeach; ?>
@@ -4629,11 +4471,9 @@ input[list] {
                             <option value="Cash">Cash</option>
                             <option value="Card">Card</option>
                             <option value="E-Wallet">E-Wallet</option>
-                            <option value="E-Fuel Card">E-Fuel Card</option>
+                            <option value="Petron E-Fuel">Petron E-Fuel</option>
                             <option value="Fleet Card">Fleet Card</option>
-                            <?php if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])): ?>
-                            <option value="Credit">Credit (Utang)</option>
-                            <?php endif; ?>
+                            <option value="Credit">Credit</option>
                         </select>
                     </div>
 
@@ -4794,6 +4634,24 @@ input[list] {
                     <div style="font-size:10px;color:#94a3b8;margin-top:4px;">
                         Be specific — use the standard service name (e.g. "Timing Belt Replacement")
                     </div>
+                </div>
+
+                <!-- Service Category -->
+                <div style="margin-bottom:14px;">
+                    <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:5px;">
+                        Category <span style="color:#dc2626;">*</span>
+                    </label>
+                    <select id="newServiceCategory" class="txn-select" style="font-size:13px;width:100%;">
+                        <option value="Oil Change">Oil Change</option>
+                        <option value="Wheel Alignment">Wheel Alignment</option>
+                        <option value="Battery Services">Battery Services</option>
+                        <option value="Brake Services">Brake Services</option>
+                        <option value="Tire Services">Tire Services</option>
+                        <option value="Engine Services">Engine Services</option>
+                        <option value="AC Services">AC Services</option>
+                        <option value="General Inspection">General Inspection</option>
+                        <option value="Others" selected>Others</option>
+                    </select>
                 </div>
 
                 <!-- Service Price -->
@@ -5177,24 +5035,56 @@ input[list] {
             }
         }
 
+        // Helper: get category for a service type object.
+        // Prefers the DB-sourced `category` field (now always present in API response).
+        // Falls back to name/key inference for typed custom values not yet in DB.
+        function getServiceCategory(svc) {
+            if (!svc) return 'Others';
+            // Primary: use DB-stored category if present
+            if (svc.category) return svc.category;
+            // Fallback inference for un-saved / custom names
+            const key  = svc.key  || '';
+            const name = (svc.name || '').toLowerCase();
+            if (key === 'oil_change'        || name.includes('oil change'))                               return 'Oil Change';
+            if (key === 'wheel_alignment'   || name.includes('wheel alignment'))                          return 'Wheel Alignment';
+            if (key === 'battery_replacement'|| name.includes('battery'))                                 return 'Battery Services';
+            if (key === 'brake_service'     || name.includes('brake'))                                    return 'Brake Services';
+            if (key === 'tire_repair'       || name.includes('tire'))                                     return 'Tire Services';
+            if (key === 'engine_repair'     || key === 'transmission'
+                || name.includes('engine') || name.includes('transmission'))                              return 'Engine Services';
+            if (key === 'air_conditioning'  || name.includes('air conditioning') || name.includes('a/c')) return 'AC Services';
+            if (key === 'general_maintenance'||key === 'diagnostic_check'
+                || name.includes('maintenance') || name.includes('diagnostic')
+                || name.includes('inspection') || name.includes('calibration'))                           return 'General Inspection';
+            return 'Others';
+        }
+
         // ── JO Service type change ────────────────────────────────────────────
         // When a service type is selected:
         //   1. Auto-fill the service fee from cached data
         //   2. Show pricing notes
         //   3. Fetch suggested parts from DB and preview them
+        //   4. Auto-fill the Category dropdown to match the selected service type
         function onJoServiceTypeChange() {
             const input      = document.getElementById('joServiceType');
             const hidden     = document.getElementById('joServiceTypeValue');
             const notesWrap  = document.getElementById('joServicePriceNotes');
             const notesText  = document.getElementById('joServicePriceNotesText');
             const priceInput = document.getElementById('joServicePrice');
+            const categorySelect = document.getElementById('joServiceCategory');
             if (!hidden) return;
-            const val = hidden.value;
+            
+            // Allow matching typed name if hidden value is empty
+            const val = hidden.value || (input ? input.value : '');
 
             // Auto-fill price from cached service data
-            const svc = (window.JO_SERVICE_TYPES || []).find(s => s.name === val);
+            const svc = (window.JO_SERVICE_TYPES || []).find(s => s.name.toLowerCase() === val.toLowerCase());
             if (svc) {
-                if (priceInput && !priceInput.value) {
+                // Sync values
+                if (hidden && hidden.value !== svc.name) hidden.value = svc.name;
+                if (input && input.value !== svc.name) input.value = svc.name;
+                
+                if (priceInput) {
                     priceInput.value = svc.price > 0 ? svc.price.toFixed(2) : '';
                 }
                 if (notesWrap && notesText && svc.notes) {
@@ -5203,10 +5093,21 @@ input[list] {
                 } else if (notesWrap) {
                     notesWrap.style.display = 'none';
                 }
+                
+                // Auto-fill category dropdown
+                if (categorySelect) {
+                    const computedCat = getServiceCategory(svc);
+                    categorySelect.value = computedCat;
+                }
+
                 // Fetch suggested parts for this service
                 if (svc.key) fetchServiceParts(svc.key);
             } else {
                 if (notesWrap) notesWrap.style.display = 'none';
+                if (val && categorySelect) {
+                    // Fallback for typed custom names
+                    categorySelect.value = getServiceCategory({ name: val });
+                }
                 clearSuggestedParts();
             }
         }
@@ -5216,31 +5117,55 @@ input[list] {
             const input = document.getElementById('joServiceType');
             const list = document.getElementById('joServiceTypeList');
             const dropdown = document.getElementById('joServiceTypeDropdown');
+            const selectedCat = (document.getElementById('joServiceCategory')?.value || '').trim().toLowerCase();
             
             if (!input || !list) return;
             
             const filter = input.value.toLowerCase().trim();
             const types = window.JO_SERVICE_TYPES || [];
+
+            // If the user types an exact match, sync hidden value and trigger change
+            const hidden = document.getElementById('joServiceTypeValue');
+            const exactMatch = types.find(t => t.name.toLowerCase() === filter);
+            if (exactMatch) {
+                if (hidden && hidden.value !== exactMatch.name) {
+                    hidden.value = exactMatch.name;
+                    onJoServiceTypeChange();
+                }
+            } else {
+                // If it doesn't match a standard service type but they typed a custom value,
+                // trigger change to run fallback category inference
+                onJoServiceTypeChange();
+            }
             
-            // Filter matching types
-            const filtered = types.filter(t => 
-                t.name.toLowerCase().includes(filter)
-            );
+            // Filter matching types (by text search AND by selected category, if a category is selected)
+            const filtered = types.filter(t => {
+                const nameMatches = t.name.toLowerCase().includes(filter);
+                const tCategory = getServiceCategory(t).toLowerCase();
+                const catMatches = !selectedCat || tCategory === selectedCat;
+                return nameMatches && catMatches;
+            });
             
             // Render dropdown list
             if (filtered.length === 0) {
                 list.innerHTML = '<div style="padding:10px;color:#94a3b8;font-size:13px;text-align:center;">No services found</div>';
             } else {
-                list.innerHTML = filtered.map(t => `
-                    <div class="service-type-option" 
-                         data-value="${escapeHtml(t.name)}"
-                         onclick="selectServiceType('${escapeHtml(t.name)}')"
-                         style="padding:10px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f1f5f9;
-                                transition:background 0.15s;"
-                         >
-                        ${escapeHtml(t.name)}
-                    </div>
-                `).join('');
+                list.innerHTML = filtered.map(t => {
+                    const cat = getServiceCategory(t);
+                    return `
+                        <div class="service-type-option svc-option" 
+                             data-value="${escapeHtml(t.name)}"
+                             data-name="${escapeHtml(t.name)}"
+                             data-category="${escapeHtml(cat)}"
+                             onclick="selectServiceType('${escapeHtml(t.name)}')"
+                             style="padding:10px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f1f5f9;
+                                    transition:background 0.15s;"
+                             >
+                            ${escapeHtml(t.name)}
+                            <span style="float:right;font-size:11px;color:#94a3b8;">${escapeHtml(cat)}</span>
+                        </div>
+                    `;
+                }).join('');
             }
             
             dropdown.style.display = 'block';
@@ -5468,9 +5393,22 @@ input[list] {
         function openAddServiceModal() {
             const nameEl  = document.getElementById('newServiceName');
             const priceEl = document.getElementById('newServicePrice');
+            const catEl   = document.getElementById('newServiceCategory');
             if (nameEl)  nameEl.value  = '';
             if (priceEl) priceEl.value = '';
+            if (catEl)   catEl.value   = 'Others';
             setAddServiceError('');
+            
+            // Auto-detect category as they type in the modal
+            if (nameEl && !nameEl.dataset.catListenerAdded) {
+                nameEl.dataset.catListenerAdded = 'true';
+                nameEl.addEventListener('input', function() {
+                    if (catEl) {
+                        catEl.value = getServiceCategory({ name: this.value });
+                    }
+                });
+            }
+
             const modal = document.getElementById('addServiceModal');
             if (modal) modal.style.display = 'flex';
             setTimeout(() => nameEl && nameEl.focus(), 80);
@@ -5490,23 +5428,24 @@ input[list] {
         }
 
         async function submitNewServiceType() {
-            const name  = (document.getElementById('newServiceName')?.value  || '').trim();
-            const price = (document.getElementById('newServicePrice')?.value || '').trim();
-            const btn   = document.getElementById('addServiceSubmitBtn');
+            const name     = (document.getElementById('newServiceName')?.value     || '').trim();
+            const price    = (document.getElementById('newServicePrice')?.value    || '').trim();
+            const category = (document.getElementById('newServiceCategory')?.value || 'Others').trim();
+            const btn      = document.getElementById('addServiceSubmitBtn');
 
             setAddServiceError('');
-            if (!name) { setAddServiceError('Please enter the service name.'); return; }
+            if (!name)  { setAddServiceError('Please enter the service name.'); return; }
             if (name.length > 100) { setAddServiceError('Name is too long (max 100 characters).'); return; }
             if (!price || isNaN(price) || parseFloat(price) < 0) { setAddServiceError('Please enter a valid positive price.'); return; }
 
-            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting\u2026'; }
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting…'; }
 
             try {
                 const res  = await fetch('../backend/api/get_service_types.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'same-origin',
-                    body: JSON.stringify({ service_name: name, service_price: parseFloat(price) }),
+                    body: JSON.stringify({ service_name: name, service_price: parseFloat(price), category }),
                 });
                 const data = await res.json();
 
@@ -5948,6 +5887,13 @@ input[list] {
 
             // Run standard Job Order cart addition logic (includes auto-adding mapped parts)
             await applyJobOrderToCart();
+        }
+
+        // ── Service Category filter — narrows service type list to selected category ──
+        function onServiceCategoryChange() {
+            filterServiceTypes();
+            const dropdown = document.getElementById('joServiceTypeDropdown');
+            if (dropdown) dropdown.style.display = 'block';
         }
 
         // ── Combined: add service (from Job Order) + merchandise to cart ─────
@@ -6487,58 +6433,105 @@ input[list] {
         // Staff view: simple tracker without manager-level KPIs
         ?>
 
-        <!-- Filter bar —— Staff: Status + Shift filters -->
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
-            <span style="font-size:13px;color:#64748b;font-weight:600;">Status:</span>
-            <button onclick="joFilterTable('all')"        id="joFilter_all"        class="jo-filter-btn jo-filter-active" style="color:#1e293b !important;">All</button>
-            <button onclick="joFilterTable('inprogress')" id="joFilter_inprogress" class="jo-filter-btn" style="color:#1e293b !important;">In Progress</button>
-            <button onclick="joFilterTable('completed')"  id="joFilter_completed"  class="jo-filter-btn" style="color:#1e293b !important;">Completed</button>
-            <button onclick="joFilterTable('rejected')"   id="joFilter_rejected"   class="jo-filter-btn" style="color:#1e293b !important;">Rejected</button>
-            <!-- Shift filter -->
-            <span style="font-size:13px;color:#64748b;font-weight:600;margin-left:8px;">Shift:</span>
-            <button onclick="joShiftFilter('all')"    id="joShift_all"    class="jo-filter-btn jo-shift-active" style="color:#1e293b !important;">All</button>
-            <button onclick="joShiftFilter('shift1')" id="joShift_shift1" class="jo-filter-btn" style="color:#1e293b !important;"><i class="fas fa-sun" style="font-size:9px;"></i> Shift 1</button>
-            <button onclick="joShiftFilter('shift2')" id="joShift_shift2" class="jo-filter-btn" style="color:#1e293b !important;"><i class="fas fa-moon" style="font-size:9px;"></i> Shift 2</button>
-            <!-- Right-side: Export + Audit Trail -->
-            <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                <a href="../backend/export_staff_transactions.php?type=job_orders&format=excel"
-                   title="Export to Excel"
-                   class="txn-btn success">
-                    <i class="fas fa-file-excel"></i> Excel
-                </a>
-                <a href="../backend/export_staff_transactions.php?type=job_orders&format=csv"
-                   title="Export to CSV"
-                   class="txn-btn primary">
-                    <i class="fas fa-file-csv"></i> CSV
-                </a>
-                <a href="staff_activity_report.php"
-                   title="View Staff Activity Report (Audit Trail)"
-                   class="txn-btn secondary"
-                   style="border-color:#6366f1;color:#6366f1 !important;">
-                    <i class="fas fa-clipboard-list"></i> Activity Log
-                </a>
+        <!-- Filter bar — Type, Date Range, Status, Mechanic, Service Type -->
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:14px;">
+            <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;">
+
+                <!-- Type -->
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Type</label>
+                    <select id="joFilterType" onchange="joApplyFilters()" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;">
+                        <option value="all">All Transactions</option>
+                        <option value="job_order">Job Order Only</option>
+                        <option value="combined">Combined Transaction</option>
+                    </select>
+                </div>
+
+                <!-- Start Date -->
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Start Date</label>
+                    <input type="date" id="joFilterStartDate" onchange="joApplyFilters()" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;">
+                </div>
+
+                <!-- End Date -->
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">End Date</label>
+                    <input type="date" id="joFilterEndDate" onchange="joApplyFilters()" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;">
+                </div>
+
+                <!-- Status -->
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Status</label>
+                    <select id="joFilterStatus" onchange="joApplyFilters()" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;">
+                        <option value="all">All Statuses</option>
+                        <option value="pending">Pending Validation</option>
+                        <option value="inprogress">In Progress</option>
+                        <option value="completed">Completed</option>
+                        <option value="rejected">Rejected</option>
+                    </select>
+                </div>
+
+                <!-- Assigned Mechanic -->
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Assigned Mechanic</label>
+                    <select id="joFilterMechanic" onchange="joApplyFilters()" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;max-width:180px;">
+                        <option value="">All Mechanics</option>
+                        <?php
+                        // Collect unique mechanics from loaded job orders
+                        $jo_mechanics_list = [];
+                        foreach ($job_orders as $_jom) {
+                            $mn = trim($_jom['mechanic_name'] ?? '');
+                            if ($mn && $mn !== 'Unassigned' && !in_array($mn, $jo_mechanics_list)) {
+                                $jo_mechanics_list[] = $mn;
+                            }
+                        }
+                        sort($jo_mechanics_list);
+                        foreach ($jo_mechanics_list as $mn): ?>
+                        <option value="<?= htmlspecialchars($mn) ?>"><?= htmlspecialchars($mn) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <!-- Service Type -->
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Service Type</label>
+                    <select id="joFilterServiceType" onchange="joApplyFilters()" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;max-width:180px;">
+                        <option value="">All Service Types</option>
+                        <?php
+                        $jo_service_list = [];
+                        foreach ($job_orders as $_jos) {
+                            $st = trim($_jos['service_type'] ?? '');
+                            if ($st && !in_array($st, $jo_service_list)) {
+                                $jo_service_list[] = $st;
+                            }
+                        }
+                        sort($jo_service_list);
+                        foreach ($jo_service_list as $st): ?>
+                        <option value="<?= htmlspecialchars($st) ?>"><?= htmlspecialchars($st) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <button type="button" onclick="joApplyFilters()" class="txn-btn primary">
+                    <i class="fas fa-filter"></i> Filter
+                </button>
+                <button type="button" onclick="joResetFilters()" class="txn-btn secondary">
+                    <i class="fas fa-times"></i> Clear
+                </button>
+                <!-- Export buttons -->
+                <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <a href="../backend/export_staff_transactions.php?type=job_orders&format=excel" class="txn-btn success">
+                        <i class="fas fa-file-excel"></i> Excel
+                    </a>
+                    <a href="../backend/export_staff_transactions.php?type=job_orders&format=csv" class="txn-btn primary">
+                        <i class="fas fa-file-csv"></i> CSV
+                    </a>
+                    <a href="staff_activity_report.php" class="txn-btn secondary" style="border-color:#6366f1;color:#6366f1 !important;">
+                        <i class="fas fa-clipboard-list"></i> Activity Log
+                    </a>
+                </div>
             </div>
         </div>
-        <style>
-        .jo-filter-btn {
-            display:inline-flex;align-items:center;gap:5px;
-            padding:6px 12px;border:1px solid #003d7a;border-radius:4px;
-            background:white !important;color:#003d7a !important;font-size:11px;font-weight:600;
-            cursor:pointer;transition:all .2s;text-decoration:none;
-        }
-        .jo-filter-btn:hover { background:#003d7a !important; color:white !important; }
-        /* Status filter active = Petron blue */
-        [id^="joFilter_"].jo-filter-active {
-            background:#003d7a !important;color:white !important;border-color:#003d7a !important;
-        }
-        /* Shift filter active = indigo */
-        [id^="joShift_"] { border-color:#4f46e5 !important; color:#4f46e5 !important; }
-        [id^="joShift_"]:hover { background:#4f46e5 !important; color:white !important; }
-        [id^="joShift_"].jo-filter-active,
-        [id^="joShift_"].jo-shift-active {
-            background:#4f46e5 !important;color:white !important;border-color:#4f46e5 !important;
-        }
-        </style>
 
         <!-- KPI Snapshot Panel — collapsible, today's stats for logged-in staff -->
         <div style="margin-bottom:12px;">
@@ -6611,35 +6604,30 @@ input[list] {
                     No job orders found.
                 </div>
                 <?php else: ?>
-                <div style="overflow-x:hidden;">
-                <table class="txn-table" id="joUnifiedTable" style="table-layout:fixed; word-wrap:break-word;width:100%;">
+                <div style="overflow-x:auto;">
+                <table class="txn-table" id="joUnifiedTable" style="table-layout:auto;word-wrap:break-word;width:100%;">
                     <colgroup>
-                        <col style="width:5%;"  ><!-- JO ID -->
-                        <col style="width:6%;"  ><!-- Shift -->
-                        <col style="width:7%;"  ><!-- Customer -->
-                        <col style="width:11%;"><!-- Vehicle / Service -->
-                        <col style="width:7%;"><!-- Items / Parts -->
-                        <col style="width:7%;" ><!-- Inv. Impact -->
-                        <col style="width:6%;" ><!-- Mechanic -->
-                        <col style="width:10%;" ><!-- Workflow Status -->
-                        <col style="width:10%;"><!-- Payment Status -->
-                        <col style="width:9%;" ><!-- Remarks/Validation -->
-                        <col style="width:7%;" ><!-- Date/Time -->
-                        <col style="width:15%;"><!-- Actions -->
+                        <col style="width:8%;"><!-- JO Number -->
+                        <col style="width:12%;"><!-- Customer -->
+                        <col style="width:10%;"><!-- Vehicle -->
+                        <col style="width:12%;"><!-- Service Type -->
+                        <col style="width:10%;"><!-- Mechanic -->
+                        <col style="width:8%;" ><!-- Service Fee -->
+                        <col style="width:12%;"><!-- Status -->
+                        <col style="width:10%;"><!-- Date Created -->
+                        <col style="width:18%;" ><!-- Actions (increased from 6% to 18%) -->
                     </colgroup>
                     <thead>
                         <tr>
-                            <th style="font-size:11px;">JO ID</th>
-                            <th style="font-size:11px;">Shift</th>
-                            <th style="font-size:11px;">Customer</th>
-                            <th style="font-size:11px;">Vehicle / Service</th>
-                            <th style="font-size:11px;">Items / Parts</th>
-                            <th style="font-size:11px;">Inv. Impact</th>
-                            <th style="font-size:11px;">Mechanic</th>
-                            <th style="font-size:11px;">Status</th>
-                            <th style="font-size:11px;">Payment</th>
-                            <th style="font-size:11px;">Date</th>
-                            <th style="font-size:11px;">Actions</th>
+                            <th style="font-size:11px;text-align:left;padding:8px 10px;">JO Number</th>
+                            <th style="font-size:11px;text-align:left;padding:8px 10px;">Customer</th>
+                            <th style="font-size:11px;text-align:left;padding:8px 10px;">Vehicle</th>
+                            <th style="font-size:11px;text-align:left;padding:8px 10px;">Service Type</th>
+                            <th style="font-size:11px;text-align:left;padding:8px 10px;">Assigned Mechanic</th>
+                            <th style="font-size:11px;text-align:right;padding:8px 10px;">Service Fee</th>
+                            <th style="font-size:11px;text-align:left;padding:8px 10px;">Status</th>
+                            <th style="font-size:11px;text-align:left;padding:8px 10px;">Date Created</th>
+                            <th style="font-size:11px;text-align:center;padding:8px 10px;">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -6732,86 +6720,78 @@ input[list] {
                         $shift_color = ($shift_key_data === 'shift1') ? '#d97706' : '#4f46e5';
                         $shift_bg    = ($shift_key_data === 'shift1') ? '#fef9c3' : '#ede9fe';
                     ?>
-                    <tr data-jo-filter="<?= $row_filter ?>" data-jo-shift="<?= $shift_key_data ?>" style="<?= $wf_status === 'Rejected' ? 'background:#fff8f8;' : ($jo_is_overdue ? 'background:#fff5f5;border-left:3px solid #dc2626;' : '') ?>"><?php // overdue rows get red left border ?>
-                        <td>
-                            <strong style="color:<?= $wf_status==='Rejected' ? '#dc2626' : 'var(--petron-blue)' ?>;">
-                                <?= htmlspecialchars($job['job_order_id'] ?? ('#'.$job['id'])) ?>
-                            </strong>
+                    <tr
+                        data-jo-filter="<?= $row_filter ?>"
+                        data-jo-shift="<?= $shift_key_data ?>"
+                        data-jo-source="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>"
+                        data-jo-mechanic="<?= htmlspecialchars($job['mechanic_name'] ?? '') ?>"
+                        data-jo-service="<?= htmlspecialchars($job['service_type'] ?? '') ?>"
+                        data-jo-date="<?= date('Y-m-d', strtotime($job['created_at'])) ?>"
+                        style="<?= $wf_status === 'Rejected' ? 'background:#fff8f8;' : ($jo_is_overdue ? 'background:#fff5f5;border-left:3px solid #dc2626;' : '') ?>">
+
+                        <!-- JO Number -->
+                        <td style="padding:10px;font-weight:700;color:<?= $wf_status==='Rejected' ? '#dc2626' : 'var(--petron-blue)' ?>;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                            <?= htmlspecialchars($job['job_order_id'] ?? ('#'.$job['id'])) ?>
                         </td>
-                        <!-- Shift Indicator cell -->
-                        <td style="text-align:center;">
-                            <span style="display:inline-block;background:<?= $shift_bg ?>;color:<?= $shift_color ?>;
-                                         border:1px solid <?= $shift_color ?>33;font-size:10px;font-weight:700;
-                                         padding:2px 7px;border-radius:10px;white-space:nowrap;"
-                                  title="<?= htmlspecialchars($shift_label) ?>">
-                                <?= $shift_icon ?> <?= htmlspecialchars($shift_label) ?>
-                            </span>
+
+                        <!-- Customer -->
+                        <td style="padding:10px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                            title="<?= htmlspecialchars($job['customer_name'] ?? '') ?>">
+                            <?= htmlspecialchars($job['customer_name'] ?? '—') ?>
                         </td>
-                        <td><?= htmlspecialchars($job['customer_name'] ?? '—') ?></td>
-                        <td style="font-size:14px;">
+
+                        <!-- Vehicle -->
+                        <td style="padding:10px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
                             <?php if (!empty($job['vehicle_plate'])): ?>
-                            <strong><?= htmlspecialchars($job['vehicle_plate']) ?></strong>
+                            <strong style="color:#1e293b;"><?= htmlspecialchars($job['vehicle_plate']) ?></strong>
                             <?php if (!empty($job['vehicle_type'])): ?>
-                            <span style="color:#64748b;"> · <?= htmlspecialchars($job['vehicle_type']) ?></span>
+                            <span style="color:#94a3b8;"> · <?= htmlspecialchars($job['vehicle_type']) ?></span>
                             <?php endif; ?>
-                            <br>
+                            <?php else: ?>
+                            <span style="color:#cbd5e1;">—</span>
                             <?php endif; ?>
-                            <span style="color:#475569;"
-                                  title="<?= htmlspecialchars($job['service_type'] ?? '') ?>">
-                                <?= htmlspecialchars($job['service_type'] ?? '—') ?>
+                        </td>
+
+                        <!-- Service Type -->
+                        <td style="padding:10px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                            title="<?= htmlspecialchars($job['service_type'] ?? '') ?>">
+                            <?= htmlspecialchars($job['service_type'] ?? '—') ?>
+                        </td>
+
+                        <!-- Assigned Mechanic -->
+                        <td style="padding:10px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                            <?php
+                            $mech = trim($job['mechanic_name'] ?? '');
+                            if ($mech && $mech !== 'Unassigned'): ?>
+                            <span style="display:inline-flex;align-items:center;gap:5px;">
+                                <i class="fas fa-user-cog" style="color:#64748b;font-size:10px;"></i>
+                                <?= htmlspecialchars($mech) ?>
                             </span>
-                        </td>
-                        <td style="font-size:13px;color:#475569;">
-                            <?= htmlspecialchars($parts_display) ?>
-                        </td>
-
-                        <!-- ── Inventory Impact Column ───────────────────────── -->
-                        <td style="font-size:11px;line-height:1.7;">
-                            <?php if (empty($inv_items)): ?>
-                                <span style="color:#cbd5e1;font-size:10px;">No parts</span>
-                            <?php else: foreach ($inv_items as $_ii):
-                                if ($_ii['status'] === 'yes') {
-                                    $ii_bg='#dcfce7'; $ii_color='#166534'; $ii_border='#86efac'; $ii_icon='✓'; $ii_label='Deducted';
-                                } elseif ($_ii['status'] === 'no') {
-                                    $ii_bg='#fef9c3'; $ii_color='#92400e'; $ii_border='#fde68a'; $ii_icon='✗'; $ii_label='Not Yet';
-                                } elseif ($_ii['status'] === 'na') {
-                                    $ii_bg='#f1f5f9'; $ii_color='#94a3b8'; $ii_border='#e2e8f0'; $ii_icon='—'; $ii_label='N/A';
-                                } else {
-                                    $ii_bg='#eff6ff'; $ii_color='#1d4ed8'; $ii_border='#bfdbfe'; $ii_icon='⏳'; $ii_label='Pending';
-                                }
-                            ?>
-                            <div style="margin-bottom:4px;" title="<?= htmlspecialchars($_ii['part']) ?> × <?= (int)$_ii['qty'] ?> pc">
-                                <div style="font-size:10px;color:#475569;max-width:110px;white-space:nowrap;
-                                            overflow:hidden;text-overflow:ellipsis;">
-                                    <?= htmlspecialchars(mb_strimwidth($_ii['part'],0,15,'…')) ?> ×<?= (int)$_ii['qty'] ?>
-                                </div>
-                                <span style="display:inline-block;background:<?= $ii_bg ?>;color:<?= $ii_color ?>;
-                                             border:1px solid <?= $ii_border ?>;font-size:10px;font-weight:700;
-                                             padding:1px 6px;border-radius:10px;">
-                                    <?= $ii_icon ?> <?= $ii_label ?>
-                                </span>
-                            </div>
-                            <?php endforeach; endif; ?>
+                            <?php else: ?>
+                            <span style="color:#cbd5e1;font-style:italic;font-size:11px;">Unassigned</span>
+                            <?php endif; ?>
                         </td>
 
-                        <td style="font-size:14px;"><?= htmlspecialchars($job['mechanic_name'] ?? 'Unassigned') ?></td>
-                        <td style="word-break:break-word;overflow-wrap:break-word;">
-                            <span style="color:<?= $wf_color ?>;font-size:11px;font-weight:600;line-height:1.3;">
+                        <!-- Service Fee -->
+                        <td style="padding:10px;font-size:12px;text-align:right;font-weight:700;color:var(--petron-blue);white-space:nowrap;">
+                            ₱<?= number_format((float)($job['total_cost'] ?? $job['estimated_cost'] ?? 0), 2) ?>
+                        </td>
+
+                        <!-- Status -->
+                        <td style="padding:10px;">
+                            <span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.4px;white-space:nowrap;
+                                         background:<?= $wf_color ?>18;color:<?= $wf_color ?>;border:1px solid <?= $wf_color ?>40;">
                                 <?= $wf_label ?>
                             </span>
                         </td>
 
-                        <!-- ── Payment Column (Simplified for Staff) ──────────────────── -->
-                        <td style="word-break:break-word;overflow-wrap:break-word;font-size:11px;">
-                            <span style="color:<?= $pay_color ?>;font-weight:600;line-height:1.3;">
-                                <?= $pay_label ?>
-                            </span>
+                        <!-- Date Created -->
+                        <td style="padding:10px;font-size:11px;color:#64748b;white-space:nowrap;">
+                            <?= date('M j, Y', strtotime($job['created_at'])) ?><br>
+                            <span style="font-size:10px;"><?= date('h:i A', strtotime($job['created_at'])) ?></span>
                         </td>
 
-                        <td style="font-size:13px;color:#64748b;white-space:nowrap;">
-                            <?= date('M j, Y', strtotime($job['created_at'])) ?><br>
-                            <?= date('h:i A', strtotime($job['created_at'])) ?>
-                        </td>
+
                         <td style="padding:8px 10px;">
                             <?php
                                 $jo_total   = (float)($job['total_cost'] ?? $job['estimated_cost'] ?? 0);
@@ -6977,119 +6957,118 @@ input[list] {
 
         <script>
         var joState = {
-            filter: 'all',
-            shift:  'all',
-            page: 1,
+            status:      'all',
+            type:        'all',
+            startDate:   '',
+            endDate:     '',
+            mechanic:    '',
+            serviceType: '',
+            page:    1,
             per_page: 10
         };
+
+        function joApplyFilters() {
+            var typeEl    = document.getElementById('joFilterType');
+            var startEl   = document.getElementById('joFilterStartDate');
+            var endEl     = document.getElementById('joFilterEndDate');
+            var statusEl  = document.getElementById('joFilterStatus');
+            var mechEl    = document.getElementById('joFilterMechanic');
+            var svcEl     = document.getElementById('joFilterServiceType');
+
+            joState.type        = typeEl    ? typeEl.value    : 'all';
+            joState.startDate   = startEl   ? startEl.value   : '';
+            joState.endDate     = endEl     ? endEl.value     : '';
+            joState.status      = statusEl  ? statusEl.value  : 'all';
+            joState.mechanic    = mechEl    ? mechEl.value    : '';
+            joState.serviceType = svcEl     ? svcEl.value     : '';
+            joState.page = 1;
+            joRenderTable();
+        }
+
+        function joResetFilters() {
+            var ids = ['joFilterType','joFilterStatus','joFilterMechanic','joFilterServiceType'];
+            ids.forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) el.value = el.options[0].value;
+            });
+            ['joFilterStartDate','joFilterEndDate'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            joState.type = 'all'; joState.status = 'all';
+            joState.startDate = ''; joState.endDate = '';
+            joState.mechanic = ''; joState.serviceType = '';
+            joState.page = 1;
+            joRenderTable();
+        }
 
         function joRenderTable() {
             var rows = document.querySelectorAll('#joUnifiedTable tbody tr');
             var visibleRows = [];
-            
-            // 1. Apply compound filter: status AND shift
+
             rows.forEach(function(row) {
-                var rowFilter = row.getAttribute('data-jo-filter');
-                var rowShift  = row.getAttribute('data-jo-shift');
-                var statusOk  = (joState.filter === 'all' || rowFilter === joState.filter);
-                var shiftOk   = (joState.shift  === 'all' || rowShift  === joState.shift);
-                if (statusOk && shiftOk) {
+                var rowFilter   = row.getAttribute('data-jo-filter')   || '';
+                var rowSource   = row.getAttribute('data-jo-source')   || '';
+                var rowMechanic = row.getAttribute('data-jo-mechanic') || '';
+                var rowService  = row.getAttribute('data-jo-service')  || '';
+                var rowDate     = row.getAttribute('data-jo-date')     || '';
+
+                // Status filter
+                var statusOk = (joState.status === 'all' || rowFilter === joState.status);
+
+                // Type filter: job_order = native job_orders, combined = merchandise_transactions
+                var typeOk = true;
+                if (joState.type === 'job_order')  typeOk = (rowSource === 'job_orders');
+                if (joState.type === 'combined')    typeOk = (rowSource === 'merchandise_transactions');
+
+                // Date range filter
+                var dateOk = true;
+                if (joState.startDate && rowDate) dateOk = dateOk && (rowDate >= joState.startDate);
+                if (joState.endDate   && rowDate) dateOk = dateOk && (rowDate <= joState.endDate);
+
+                // Mechanic filter (exact match)
+                var mechOk = (!joState.mechanic || rowMechanic === joState.mechanic);
+
+                // Service type filter (exact match)
+                var svcOk = (!joState.serviceType || rowService === joState.serviceType);
+
+                if (statusOk && typeOk && dateOk && mechOk && svcOk) {
                     visibleRows.push(row);
                 } else {
                     row.style.display = 'none';
                 }
             });
 
-            // 2. Pagination calculations
-            var total = visibleRows.length;
-            var perPage = joState.per_page;
+            // Pagination
+            var total      = visibleRows.length;
+            var perPage    = joState.per_page;
             var totalPages = Math.max(1, Math.ceil(total / perPage));
             if (joState.page > totalPages) { joState.page = totalPages; }
 
             var start = (joState.page - 1) * perPage;
-            var end = start + perPage;
+            var end   = start + perPage;
 
-            // 3. Display rows within page window
             visibleRows.forEach(function(row, index) {
-                if (index >= start && index < end) {
-                    row.style.display = '';
-                } else {
-                    row.style.display = 'none';
-                }
+                row.style.display = (index >= start && index < end) ? '' : 'none';
             });
 
-            // 4. Update UI labels and buttons
             var lbl = document.getElementById('joPageLabel');
             if (lbl) lbl.textContent = 'Page ' + joState.page + ' of ' + totalPages;
 
             var prev = document.getElementById('joPrevBtn');
             var next = document.getElementById('joNextBtn');
-            if (prev) {
-                prev.disabled = (joState.page <= 1);
-                prev.style.opacity = prev.disabled ? '0.5' : '1';
-                prev.style.cursor = prev.disabled ? 'not-allowed' : 'pointer';
-            }
-            if (next) {
-                next.disabled = (joState.page >= totalPages);
-                next.style.opacity = next.disabled ? '0.5' : '1';
-                next.style.cursor = next.disabled ? 'not-allowed' : 'pointer';
-            }
+            if (prev) { prev.disabled = (joState.page <= 1); prev.style.opacity = prev.disabled ? '0.5' : '1'; }
+            if (next) { next.disabled = (joState.page >= totalPages); next.style.opacity = next.disabled ? '0.5' : '1'; }
         }
 
-        function joFilterTable(filter) {
-            // Toggle active only among STATUS filter buttons
-            document.querySelectorAll('[id^="joFilter_"]').forEach(function(btn) {
-                btn.classList.remove('jo-filter-active');
-            });
-            var activeBtn = document.getElementById('joFilter_' + filter);
-            if (activeBtn) activeBtn.classList.add('jo-filter-active');
-
-            joState.filter = filter;
-            joState.page = 1;
-            joRenderTable();
-        }
-
-        function joShiftFilter(shift) {
-            // Toggle active only among SHIFT filter buttons
-            document.querySelectorAll('[id^="joShift_"]').forEach(function(btn) {
-                btn.classList.remove('jo-filter-active');
-                btn.classList.remove('jo-shift-active');
-            });
-            var activeBtn = document.getElementById('joShift_' + shift);
-            if (activeBtn) {
-                activeBtn.classList.add('jo-filter-active');
-                activeBtn.classList.add('jo-shift-active');
-            }
-
-            joState.shift = shift;
-            joState.page  = 1;
-            joRenderTable();
-        }
-
-        function joGoPage(p) {
-            joState.page = p;
-            joRenderTable();
-        }
+        function joGoPage(p) { joState.page = p; joRenderTable(); }
 
         function joChangePerPage() {
             var sel = document.getElementById('joPerPage');
-            if (sel) {
-                joState.per_page = parseInt(sel.value, 10);
-                joState.page = 1; // reset to page 1
-                joRenderTable();
-            }
+            if (sel) { joState.per_page = parseInt(sel.value, 10); joState.page = 1; joRenderTable(); }
         }
 
-        // Initialize pagination + shift button state on load
-        document.addEventListener('DOMContentLoaded', function() {
-            // Ensure Shift: All button starts active
-            var shiftAllBtn = document.getElementById('joShift_all');
-            if (shiftAllBtn) {
-                shiftAllBtn.classList.add('jo-filter-active');
-                shiftAllBtn.classList.add('jo-shift-active');
-            }
-            joRenderTable();
-        });
+        document.addEventListener('DOMContentLoaded', function() { joRenderTable(); });
         </script>
 
         </div><!-- /innerTab_tracker -->
@@ -7207,7 +7186,7 @@ input[list] {
                   <button type="button" class="pm-method-btn"        data-method="E-Wallet"    onclick="pmSelectMethod('E-Wallet')">
                     <i class="fas fa-mobile-alt"      style="display:block;font-size:13px;margin-bottom:2px;color:#7c3aed;"></i>E-Wallet
                   </button>
-                  <button type="button" class="pm-method-btn"        data-method="E-Fuel Card" onclick="pmSelectMethod('E-Fuel Card')">
+                  <button type="button" class="pm-method-btn"        data-method="Petron E-Fuel" onclick="pmSelectMethod('Petron E-Fuel')">
                     <i class="fas fa-gas-pump"        style="display:block;font-size:13px;margin-bottom:2px;color:#dc2626;"></i>E-Fuel
                   </button>
                   <button type="button" class="pm-method-btn"        data-method="Fleet Card"  onclick="pmSelectMethod('Fleet Card')">
@@ -8047,15 +8026,15 @@ input[list] {
 
 
         <?php /* ══════════════════════════════════════════════════════
-               SECTION: SHIFT HISTORY
+               SECTION: TRANSACTION HISTORY (formerly Shift History)
         ══════════════════════════════════════════════════════ */ ?>
         <?php elseif ($section === 'history'): ?>
 
         <div class="txn-section-header">
             <div class="txn-section-title">
                 <div>
-                    <h1>Shift History</h1>
-                    <p>Your shift log history</p>
+                    <h1>Transaction History</h1>
+                    <p>Your transaction records</p>
                 </div>
             </div>
             <div>
@@ -8066,116 +8045,223 @@ input[list] {
             </div>
         </div>
 
-        <!-- Shift Log -->
-        <?php if (!empty($shift_log)): ?>
-        <div class="txn-card">
+        <!-- ══ TRANSACTION HISTORY TABLE ══════════════════════════════════ -->
+        <?php
+        // Merge job orders + merchandise transactions for this staff member's history
+        $txn_history = [];
+
+        // Add merchandise transactions
+        if (!empty($recent_merch)) {
+            foreach ($recent_merch as $mt) {
+                $txn_type = 'Merchandise Only';
+                $jo_svc = $mt['job_order_service'] ?? '';
+                if (!empty($jo_svc) && trim($jo_svc) !== '') {
+                    $has_items = !empty($mt['products']) && $mt['products'] !== '—';
+                    $txn_type = $has_items ? 'Combined' : 'Job Order Only';
+                }
+                $txn_history[] = [
+                    'id'             => $mt['id'],
+                    'transaction_id' => $mt['transaction_id'] ?? ('#MT-'.$mt['id']),
+                    'type'           => $txn_type,
+                    'customer'       => $mt['customer_name'] ?? 'Walk-in Customer',
+                    'amount'         => (float)($mt['total_amount'] ?? 0),
+                    'payment_method' => $mt['payment_method'] ?? '—',
+                    'date'           => $mt['transaction_date'] ?? '',
+                    'status'         => $mt['status'] ?? '—',
+                    'source'         => 'merchandise',
+                ];
+            }
+        }
+
+        // Sort by date descending
+        usort($txn_history, function($a, $b) {
+            return strtotime($b['date']) - strtotime($a['date']);
+        });
+        ?>
+
+        <div class="txn-card" style="margin-top:20px;">
             <div class="txn-card-header">
-                <i class="fas fa-clock" style="color:#6f42c1;"></i>
-                <h3>Shift Log</h3>
+                <i class="fas fa-history" style="color:#003d7a;"></i>
+                <h3>Transaction History</h3>
             </div>
             <div class="txn-card-body" style="padding:0;">
-                <div style="overflow-x:hidden;">
-                <table class="txn-table" style="width:100%; table-layout:fixed; word-wrap:break-word;">
+
+                <!-- Filter Tabs -->
+                <div style="display:flex;gap:0;border-bottom:2px solid #e2e8f0;padding:0 16px;flex-wrap:wrap;">
+                    <button onclick="filterTxnHistory('all')" id="thTab_all"
+                            style="padding:10px 18px;font-size:12px;font-weight:700;border:none;background:none;
+                                   color:#003d7a;border-bottom:2px solid #003d7a;cursor:pointer;margin-bottom:-2px;">
+                        All
+                    </button>
+                    <button onclick="filterTxnHistory('job')" id="thTab_job"
+                            style="padding:10px 18px;font-size:12px;font-weight:600;border:none;background:none;
+                                   color:#64748b;border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-2px;">
+                        Job Order Only
+                    </button>
+                    <button onclick="filterTxnHistory('merch')" id="thTab_merch"
+                            style="padding:10px 18px;font-size:12px;font-weight:600;border:none;background:none;
+                                   color:#64748b;border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-2px;">
+                        Merchandise Only
+                    </button>
+                    <button onclick="filterTxnHistory('combined')" id="thTab_combined"
+                            style="padding:10px 18px;font-size:12px;font-weight:600;border:none;background:none;
+                                   color:#64748b;border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-2px;">
+                        Combined
+                    </button>
+                </div>
+
+                <?php if (empty($txn_history)): ?>
+                <div style="text-align:center;padding:48px;color:#94a3b8;">
+                    <i class="fas fa-receipt" style="font-size:32px;display:block;margin-bottom:10px;"></i>
+                    No transactions found for this period.
+                </div>
+                <?php else: ?>
+                <div style="overflow-x:auto;">
+                <table class="txn-table" style="width:100%;table-layout:fixed;word-wrap:break-word;">
                     <thead>
                         <tr>
-                            <th>Shift</th>
-                            <th>Clock In</th>
-                            <th>Clock Out</th>
-                            <th>Duration</th>
+                            <th style="width:160px;">Transaction ID</th>
+                            <th style="width:160px;">Transaction Type</th>
+                            <th>Customer</th>
+                            <th style="width:120px;">Amount</th>
+                            <th style="width:130px;">Payment Method</th>
+                            <th style="width:150px;">Date</th>
                         </tr>
                     </thead>
-                    <tbody id="shiftLogBody">
-                    <?php foreach ($shift_log as $ls): ?>
-                    <tr class="sl-row">
-                        <td><?= htmlspecialchars($ls['shift_label'] ?? $ls['shift_period'] ?? '—') ?></td>
-                        <td style="font-size:11px;color:#64748b;"><?= date('M j, Y h:i A', strtotime($ls['start_time'])) ?></td>
-                        <td style="font-size:11px;color:#64748b;">
-                            <?= !empty($ls['end_time']) ? date('M j, Y h:i A', strtotime($ls['end_time'])) : '<span style="color:#f59e0b;font-weight:600;">Active</span>' ?>
+                    <tbody id="thTableBody">
+                    <?php foreach ($txn_history as $txn):
+                        $type_lower = strtolower($txn['type']);
+                        if (strpos($type_lower, 'combined') !== false) {
+                            $type_color = '#6f42c1'; $type_bg = '#f3e8ff'; $type_key = 'combined';
+                        } elseif (strpos($type_lower, 'job') !== false) {
+                            $type_color = '#b45309'; $type_bg = '#fffbeb'; $type_key = 'job';
+                        } else {
+                            $type_color = '#15803d'; $type_bg = '#f0fdf4'; $type_key = 'merch';
+                        }
+                        $date_fmt = '—';
+                        if (!empty($txn['date'])) {
+                            try { $date_fmt = (new DateTime($txn['date']))->format('M j, Y g:i A'); } catch (Exception $e) {}
+                        }
+                    ?>
+                    <tr class="th-row" data-type="<?php echo $type_key; ?>">
+                        <td style="font-size:11px;font-weight:700;color:#003d7a;font-family:monospace;">
+                            <?php echo htmlspecialchars($txn['transaction_id']); ?>
                         </td>
-                        <td style="font-size:11px;">
-                            <?php
-                            $mins = (int)($ls['duration_minutes'] ?? 0);
-                            echo $mins >= 60 ? floor($mins/60).'h '.($mins%60).'m' : $mins.'m';
-                            ?>
+                        <td>
+                            <span style="display:inline-block;padding:3px 8px;border-radius:4px;
+                                         font-size:11px;font-weight:700;
+                                         background:<?php echo $type_bg; ?>;color:<?php echo $type_color; ?>;">
+                                <?php echo htmlspecialchars($txn['type']); ?>
+                            </span>
                         </td>
+                        <td style="font-weight:600;"><?php echo htmlspecialchars($txn['customer']); ?></td>
+                        <td style="font-weight:700;color:#003d7a;">&#8369;<?php echo number_format($txn['amount'], 2); ?></td>
+                        <td><?php echo htmlspecialchars($txn['payment_method']); ?></td>
+                        <td style="font-size:11px;color:#64748b;"><?php echo $date_fmt; ?></td>
                     </tr>
                     <?php endforeach; ?>
                     </tbody>
                 </table>
                 </div>
-                <!-- Rows per page + Pagination controls -->
+                <!-- Pagination -->
                 <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-top:1px solid #e2e8f0;">
                     <div style="display:flex;align-items:center;gap:7px;">
                         <label style="font-size:12px;white-space:nowrap;">Rows per page:</label>
-                        <select id="slPerPage" onchange="slChangePerPage()" class="pag-select">
+                        <select id="thPerPage" onchange="thChangePerPage()" class="pag-select">
                             <option value="10" selected>10</option>
                             <option value="20">20</option>
                             <option value="30">30</option>
-                            <option value="40">40</option>
                             <option value="50">50</option>
                         </select>
                     </div>
                     <div style="display:flex;align-items:center;gap:8px;">
-                        <button id="slPrevBtn" onclick="slGoPage(slState.page - 1)" class="pag-btn">
+                        <button id="thPrevBtn" onclick="thGoPage(thState.page-1)" class="pag-btn">
                             <i class="fas fa-chevron-left"></i>
                         </button>
-                        <span id="slPageLabel" style="font-size:13px;color:#495057;white-space:nowrap;">Page 1 of 1</span>
-                        <button id="slNextBtn" onclick="slGoPage(slState.page + 1)" class="pag-btn">
+                        <span id="thPageLabel" style="font-size:13px;color:#495057;white-space:nowrap;">Page 1 of 1</span>
+                        <button id="thNextBtn" onclick="thGoPage(thState.page+1)" class="pag-btn">
                             <i class="fas fa-chevron-right"></i>
                         </button>
                     </div>
                 </div>
+                <?php endif; ?>
             </div>
         </div>
+
         <script>
         (function(){
-            var slState = { page: 1, per_page: 10 };
-            function slRender() {
-                var rows = document.querySelectorAll('#shiftLogBody .sl-row');
-                var total = rows.length;
-                var perPage = slState.per_page;
-                var page = slState.page;
+            var thState = { page: 1, per_page: 10, filter: 'all' };
+            var allTabs = ['all','job','merch','combined'];
+
+            function thRender() {
+                var rows = Array.from(document.querySelectorAll('#thTableBody .th-row'));
+                // Apply filter
+                var filtered = rows.filter(function(r) {
+                    if (thState.filter === 'all') return true;
+                    return (r.dataset.type || '') === thState.filter;
+                });
+                // Hide all first
+                rows.forEach(function(r) { r.style.display = 'none'; });
+                // Paginate filtered
+                var perPage = thState.per_page;
+                var page    = thState.page;
+                var total   = filtered.length;
                 var totalPages = Math.max(1, Math.ceil(total / perPage));
-                if (page > totalPages) { slState.page = page = totalPages; }
+                if (page > totalPages) { thState.page = page = totalPages; }
                 var start = (page - 1) * perPage;
                 var end   = start + perPage;
-                rows.forEach(function(row, i) {
-                    row.style.display = (i >= start && i < end) ? '' : 'none';
+                filtered.forEach(function(r, i) {
+                    r.style.display = (i >= start && i < end) ? '' : 'none';
                 });
-                var lbl = document.getElementById('slPageLabel');
-                if (lbl) lbl.textContent = 'Page ' + page + ' of ' + totalPages;
-                var prev = document.getElementById('slPrevBtn');
-                var next = document.getElementById('slNextBtn');
+                var lbl  = document.getElementById('thPageLabel');
+                var prev = document.getElementById('thPrevBtn');
+                var next = document.getElementById('thNextBtn');
+                if (lbl)  lbl.textContent = 'Page ' + page + ' of ' + totalPages;
                 if (prev) { prev.disabled = (page <= 1); prev.style.opacity = (page <= 1) ? '0.4' : '1'; }
                 if (next) { next.disabled = (page >= totalPages); next.style.opacity = (page >= totalPages) ? '0.4' : '1'; }
             }
-            window.slState = slState;
-            window.slGoPage = function(p) {
-                var rows = document.querySelectorAll('#shiftLogBody .sl-row');
-                var totalPages = Math.max(1, Math.ceil(rows.length / slState.per_page));
+
+            window.thState = thState;
+            window.thGoPage = function(p) {
+                var rows = Array.from(document.querySelectorAll('#thTableBody .th-row')).filter(function(r){
+                    return thState.filter === 'all' || r.dataset.type === thState.filter;
+                });
+                var totalPages = Math.max(1, Math.ceil(rows.length / thState.per_page));
                 if (p < 1 || p > totalPages) return;
-                slState.page = p;
-                slRender();
+                thState.page = p;
+                thRender();
             };
-            window.slChangePerPage = function() {
-                var sel = document.getElementById('slPerPage');
-                if (sel) slState.per_page = parseInt(sel.value);
-                slState.page = 1;
-                slRender();
+            window.thChangePerPage = function() {
+                var sel = document.getElementById('thPerPage');
+                if (sel) thState.per_page = parseInt(sel.value);
+                thState.page = 1;
+                thRender();
             };
-            slRender();
+            window.filterTxnHistory = function(filter) {
+                thState.filter = filter;
+                thState.page   = 1;
+                // Update tab styling
+                allTabs.forEach(function(t) {
+                    var btn = document.getElementById('thTab_' + t);
+                    if (!btn) return;
+                    if (t === filter) {
+                        btn.style.color       = '#003d7a';
+                        btn.style.fontWeight  = '700';
+                        btn.style.borderBottom = '2px solid #003d7a';
+                    } else {
+                        btn.style.color       = '#64748b';
+                        btn.style.fontWeight  = '600';
+                        btn.style.borderBottom = '2px solid transparent';
+                    }
+                });
+                thRender();
+            };
+            thRender();
         })();
         </script>
-        <?php else: ?>
-        <div style="text-align:center;padding:48px;color:#94a3b8;">
-            <i class="fas fa-clock" style="font-size:32px;display:block;margin-bottom:10px;"></i>
-            No shift log found.
-        </div>
-        <?php endif; ?>
 
-        <?php /* ══════════════════════════════════════════════════════
-               SECTION: FUEL HISTORY
-        ══════════════════════════════════════════════════════ */ ?>
+
+        <?php /* ══════════════════════════════════════════════════════ */ ?>
         <?php elseif ($section === 'fuel_history'): ?>
 
         <div class="txn-section-header">

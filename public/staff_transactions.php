@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'transactions';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -579,8 +579,9 @@ Merchandise Inventory
                                     <option value="Cash">Cash</option>
                                     <option value="Card">Card</option>
                                     <option value="E-Wallet">E-Wallet</option>
-                                    <option value="E-Fuel Card">E-Fuel Card</option>
-                                    <option value="Credit (Utang)">Credit (Utang)</option>
+                                    <option value="Petron E-Fuel">Petron E-Fuel</option>
+                                    <option value="Fleet Card">Fleet Card</option>
+                                    <option value="Credit">Credit</option>
                                 </select>
                             </div>
                         </div>
@@ -1002,12 +1003,13 @@ function toggleCashFields() {
             cashFields.style.display = 'flex';
             break;
         case 'Card':
+        case 'Fleet Card':
             cardFields.style.display = 'flex';
             break;
         case 'E-Wallet':
             ewalletFields.style.display = 'flex';
             break;
-        case 'E-Fuel Card':
+        case 'Petron E-Fuel':
             efuelFields.style.display = 'flex';
             break;
     }

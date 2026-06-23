@@ -165,14 +165,21 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 'permissions' => ['manage_staff_oversight', 'view_all_reports', 'view_dashboard'],
                 'station_specific' => true,
             ],
-            // 4. Transactions — Oversight Dashboard (direct link, no sub-items)
+            // 4. Transactions — Admin Oversight with sub-menu
             [
-                'id' => 'admin_transactions',
-                'label' => 'Transactions',
-                'ico' => 'fas fa-receipt',
-                'href' => 'admin_transactions_oversight.php',
-                'permissions' => ['view_all_reports', 'view_dashboard'],
+                'id'               => 'admin_transactions',
+                'label'            => 'Transactions',
+                'ico'              => 'fas fa-receipt',
+                'href'             => '#',
+                'permissions'      => ['view_all_reports', 'view_dashboard'],
                 'station_specific' => true,
+                'desc'             => 'Provide centralized oversight of transaction operations, ensuring transaction accuracy, compliance, and accountability throughout the system.',
+                'sub_items'        => [
+                    ['id' => 'admin_transaction_overview',     'label' => 'Transaction Overview',     'href' => 'admin_transaction_overview.php',         'ico' => 'fas fa-chart-line', 'permissions' => ['view_all_reports'], 'desc' => 'View transaction summaries, operational statistics, and overall transaction performance across the system.'],
+                    ['id' => 'admin_all_transactions',         'label' => 'All Transactions',         'href' => 'admin_all_transactions.php',             'ico' => 'fas fa-list-alt',   'permissions' => ['view_all_reports'], 'desc' => 'Monitor and review all transaction records from all operational shifts and staff accounts.'],
+                    ['id' => 'admin_transaction_adjustments',  'label' => 'Transaction Adjustments',  'href' => 'admin_transaction_adjustments.php',      'ico' => 'fas fa-sliders-h',  'permissions' => ['view_all_reports'], 'desc' => 'Review transaction modifications performed by managers and verify adjustment records.'],
+                    ['id' => 'admin_voided_transactions',      'label' => 'Voided Transactions',      'href' => 'admin_voided_transactions.php',          'ico' => 'fas fa-ban',        'permissions' => ['view_all_reports'], 'desc' => 'Review cancelled transactions and monitor void activities for compliance and operational control.'],
+                ],
             ],
             // 5. Fuel Management — Admin Oversight Module
             [
@@ -399,10 +406,16 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 $filtered_item['href'] = 'staff_dashboard.php';
             }
 
-            // Staff Transactions: Link directly to the hub page with no sub-items in the sidebar
+            // Staff Transactions: sub-menu with History and Receipts only
+            // (New Transaction, Job Order Tracker, Merchandise History handled by tabs inside the hub page)
             if ($user_role === 'staff' && ($item['id'] ?? '') === 'transactions') {
-                $filtered_item['href']      = 'staff_transactions_hub.php?section=merchandise';
+                $filtered_item['href']      = 'staff_transactions_hub.php?section=merchandise&active_tab=merchandise';
                 $filtered_item['label']     = 'Transactions';
+                $filtered_item['sub_items'] = [
+                    ['id' => 'staff_new_transaction',     'label' => 'New Transaction',     'href' => 'staff_transactions_hub.php?section=merchandise&active_tab=merchandise', 'ico' => 'fas fa-plus-circle',   'permissions' => ['create_transactions'], 'desc' => 'Create and process new job order, merchandise, or combined transactions.'],
+                    ['id' => 'staff_transaction_history', 'label' => 'Transaction History', 'href' => 'staff_transactions_hub.php?section=history',                           'ico' => 'fas fa-history',        'permissions' => ['create_transactions'], 'desc' => 'View and track previously encoded transactions and payment records.'],
+                    ['id' => 'staff_receipts',            'label' => 'Receipts',            'href' => 'receipts.php',                                                         'ico' => 'fas fa-file-invoice',   'permissions' => ['create_transactions'], 'desc' => 'View, reprint, and manage generated transaction receipts.'],
+                ];
             }
 
             // Job Orders sidebar item removed for staff — encode & tracker live inside Transactions
@@ -419,11 +432,13 @@ function filter_menu_by_permissions($menu_items, $user_role) {
 
 
             if ($user_role === 'manager' && ($item['id'] ?? '') === 'transactions') {
-                $filtered_item['href']  = 'pending_transactions.php';
+                $filtered_item['href']  = '#';
                 $filtered_item['label'] = 'Transactions';
                 $filtered_item['sub_items'] = [
-                    ['id'=>'pending_transactions_manager',  'label'=>'Pending Transactions',   'href'=>'pending_transactions.php',           'permissions'=>['view_transactions','approve_transactions'], 'desc'=>'Review staff-encoded records awaiting validation.'],
-                    ['id'=>'validated_transactions_manager','label'=>'Validated Transactions', 'href'=>'manager_validated_transactions.php', 'permissions'=>['view_transactions','approve_transactions'], 'desc'=>'Approved transactions stored with updated balances.'],
+                    ['id' => 'validated_transactions_manager', 'label' => 'All Transactions',        'href' => 'manager_validated_transactions.php',             'ico' => 'fas fa-check-double',    'permissions' => ['view_transactions','approve_transactions'], 'desc' => 'View and monitor all transactions encoded by staff across operational shifts.'],
+                    ['id' => 'manager_shift_transactions',     'label' => 'Shift Transactions',      'href' => 'transactions_shift.php',                        'ico' => 'fas fa-clock',           'permissions' => ['view_transactions','approve_transactions'], 'desc' => 'Track and compare transaction activities, sales performance, and collections per shift.'],
+                    ['id' => 'manager_transaction_adjustments','label' => 'Transaction Adjustments', 'href' => 'manager_transaction_monitoring.php',             'ico' => 'fas fa-sliders-h',       'permissions' => ['view_transactions','approve_transactions'], 'desc' => 'Review and manage transaction corrections, modifications, and adjustment records.'],
+                    ['id' => 'manager_voided_transactions',    'label' => 'Voided Transactions',     'href' => 'voided_transactions.php',                        'ico' => 'fas fa-ban',             'permissions' => ['view_transactions','approve_transactions'], 'desc' => 'Manage cancelled or invalid transactions with complete audit trail and inventory restoration.'],
                 ];
             }
 

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ============================================================
 // Manager Fuel Deliveries Validation – manager_fuel_deliveries_validation.php
 // Purpose: Validate staff-encoded fuel delivery receipts
@@ -269,58 +269,53 @@ html, body {
     box-sizing: border-box;
 }
 
-.page-head {
-    display: flex; align-items: flex-start; justify-content: space-between;
-    gap: 12px; margin-bottom: 18px; flex-wrap: wrap;
-    max-width: 100%;
-}
-.page-head h1 {
-    margin: 0 0 8px; font-size: 24px !important; font-weight: 700;
-    color: #00264D; text-transform: uppercase; letter-spacing: 0.5px;
-}
-.page-head .sub {
-    font-size: 14px; color: #666666; font-weight: 500;
-    text-transform: uppercase; letter-spacing: 0.3px;
-}
+/* == PAGE HEADER - matches transaction module standard == */
+.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:-12px !important; }
+.int-head h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
+.int-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
+/* == Outline Buttons == */
+.ato-btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:0 16px; border-radius:7px; font-size:13px; font-weight:600; cursor:pointer; border:1px solid transparent; text-decoration:none; transition:all .15s; height:36px; white-space:nowrap; background:white !important; }
+.ato-btn-excel { color:#1d6f42 !important; border-color:#1d6f42 !important; } .ato-btn-excel:hover { background:#1d6f42 !important; color:#fff !important; }
+.ato-btn-csv   { color:#003d7a !important; border-color:#003d7a !important; } .ato-btn-csv:hover { background:#003d7a !important; color:#fff !important; }
+.ato-btn-pdf   { color:#dc2626 !important; border-color:#dc2626 !important; } .ato-btn-pdf:hover { background:#dc2626 !important; color:#fff !important; }
+.ato-btn-back  { color:#4b5563 !important; border-color:#6b7280 !important; } .ato-btn-back:hover { background:#6b7280 !important; color:#fff !important; }
+.ato-btn-filter{ color:#002F70 !important; border-color:#002F70 !important; } .ato-btn-filter:hover { background:#002F70 !important; color:#fff !important; }
 
 /* Summary Cards */
 .summary-row {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 14px; margin-bottom: 18px;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px; margin-bottom: 18px;
     max-width: 100%;
 }
 .summary-card {
-    background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
-    padding: 18px; display: flex; align-items: center; gap: 14px;
-    box-shadow: 0 1px 3px rgba(0,0,0,.05);
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 11px;
+    padding: 16px; display: flex; align-items: center; gap: 14px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
     min-width: 0;
 }
-.summary-card.sc-green  { border-left: 4px solid #16a34a; }
-.summary-card.sc-amber  { border-left: 4px solid #d97706; }
 .sum-ico {
-    width: 52px; height: 52px; border-radius: 10px;
+    width: 40px; height: 40px; border-radius: 8px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 24px; flex-shrink: 0;
+    font-size: 19px; flex-shrink: 0;
+    background: #e8f0f7; color: #002F70;
 }
-.summary-card.sc-green .sum-ico  { background: #dcfce7; color: #16a34a; }
-.summary-card.sc-amber .sum-ico  { background: #fef3c7; color: #d97706; }
 .sum-meta { 
     min-width: 0;
     overflow: hidden;
 }
 .sum-meta h3 { 
-    margin: 0; font-size: 11px; color: #64748b; 
-    text-transform: uppercase; font-weight: 700; 
+    margin: 0; font-size: 10px; color: #64748b; 
+    text-transform: uppercase; font-weight: 700; letter-spacing: .5px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 .sum-meta h2 { 
-    margin: 4px 0 2px; font-size: 28px; font-weight: 900; 
+    margin: 2px 0 0; font-size: 24px; font-weight: 900; 
     color: #00264D; line-height: 1; 
 }
 .sum-meta span { 
-    font-size: 12px; color: #94a3b8; 
+    font-size: 11px; color: #94a3b8; 
     display: block;
     white-space: nowrap;
     overflow: hidden;
@@ -333,9 +328,10 @@ html, body {
     padding: 12px 16px; margin-bottom: 18px; display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap;
     max-width: 100%;
 }
-.filter-group { display: flex; flex-direction: column; gap: 4px; }
-.filter-group label { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; }
-.filter-group input[type=date] { padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; width: 100%; }
+.filter-group { display: flex; flex-direction: column; gap: 3px; }
+.filter-group label { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .4px; }
+.filter-group input[type=date] { height:36px; padding:0 10px; border:1px solid #cbd5e1; border-radius:7px; font-size:13px; color:#1e293b; background:#fff; outline:none; box-sizing:border-box; width:100%; min-width:140px; }
+.filter-group input[type=date]:focus { border-color:#002F70; box-shadow:0 0 0 3px rgba(0,47,112,.1); }
 
 /* Table */
 .table-card {
@@ -344,6 +340,7 @@ html, body {
     max-width: 100%;
     overflow: hidden;
     box-sizing: border-box;
+    margin-top: 20px;
 }
 .table-wrap { 
     width: 100%;
@@ -361,9 +358,9 @@ html, body {
     display: table;
 }
 .data-table thead th {
-    background: #002F70; padding: 10px 6px; text-align: left;
+    background: #002F70; padding: 9px 10px; text-align: left;
     font-size: 11px; font-weight: 700; color: #fff;
-    text-transform: uppercase; border-bottom: 2px solid #002F70;
+    text-transform: uppercase; border-bottom: 2px solid #001a3d;
     white-space: normal;
     word-wrap: break-word;
     overflow: hidden;
@@ -381,15 +378,16 @@ html, body {
 .data-table th:nth-child(9), .data-table td:nth-child(9) { width: 8%; } /* Status */
 .data-table th:nth-child(10), .data-table td:nth-child(10) { width: 29%; } /* Actions - increased */
 .data-table tbody tr { border-bottom: 1px solid #f1f5f9; }
-.data-table tbody tr:hover { background: #e3f2fd; }
+.data-table tbody tr:hover td { background: #eff6ff; }
 .data-table tbody td { 
-    padding: 10px 6px; 
+    padding: 9px 10px; 
     color: #334155; 
     vertical-align: middle;
     word-wrap: break-word;
     overflow: hidden;
-    font-size: 13px;
+    font-size: 11px;
     line-height: 1.4;
+    background: #fff;
 }
 
 /* Badges - Plain text, no background */
@@ -403,22 +401,23 @@ html, body {
 
 /* Action Buttons */
 .action-btn {
-    padding: 7px 10px; border-radius: 5px; font-size: 12px; font-weight: 600;
-    border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
+    padding:0 10px; border-radius:5px; font-size:11px; font-weight:700;
+    border:1px solid transparent; cursor:pointer; display:inline-flex; align-items:center; gap:4px;
     transition: all .15s;
-    margin: 3px 0;
+    margin: 2px 0;
     white-space: nowrap;
-    line-height: 1.3;
+    height: 28px;
     width: 100%;
     justify-content: center;
+    background: white !important;
 }
 .action-btn i { font-size: 11px; }
-.btn-approve { background: #28a745; color: #fff; }
-.btn-approve:hover { background: #218838; }
-.btn-reject { background: #dc2626; color: #fff; }
-.btn-reject:hover { background: #b91c1c; }
-.btn-adjust { background: #002F70; color: #fff; }
-.btn-adjust:hover { background: #001a42; }
+.btn-approve { color:#16a34a !important; border-color:#16a34a !important; }
+.btn-approve:hover { background:#16a34a !important; color:#fff !important; }
+.btn-reject { color:#dc2626 !important; border-color:#dc2626 !important; }
+.btn-reject:hover { background:#dc2626 !important; color:#fff !important; }
+.btn-adjust { color:#002F70 !important; border-color:#002F70 !important; }
+.btn-adjust:hover { background:#002F70 !important; color:#fff !important; }
 
 /* Actions cell layout */
 .data-table tbody td:last-child {
@@ -442,29 +441,31 @@ html, body {
 /* Modal */
 .modal {
     display: none; position: fixed; z-index: 9999; left: 0; top: 0;
-    width: 100%; height: 100%; background: rgba(0,0,0,.5);
+    width: 100%; height: 100%; background: rgba(15,23,42,0.5);
     overflow-y: auto;
 }
 .modal-content {
     background: #fff; margin: 10% auto; padding: 24px;
     border-radius: 12px; width: 90%; max-width: 500px;
+    box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
 }
 .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.modal-header h3 { margin: 0; font-size: 18px; color: #00264D; }
+.modal-header h3 { margin: 0; font-size: 15px; color: #00264D; font-weight: 700; }
 .modal-close { cursor: pointer; font-size: 24px; color: #94a3b8; }
 .modal-close:hover { color: #dc2626; }
 .form-group { margin-bottom: 14px; }
-.form-group label { display: block; font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 4px; }
+.form-group label { display: block; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.3px; }
 .form-group input, .form-group textarea {
-    width: 100%; padding: 8px 12px; border: 1px solid #e2e8f0;
+    width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1;
     border-radius: 6px; font-size: 13px;
-    box-sizing: border-box;
+    box-sizing: border-box; outline: none;
 }
+.form-group input:focus, .form-group textarea:focus { border-color:#002F70; box-shadow:0 0 0 3px rgba(0,47,112,.1); }
 .form-group textarea { min-height: 80px; resize: vertical; }
 
 /* Responsive fixes */
 @media (max-width: 768px) {
-    .page-head { flex-direction: column; }
+    .int-head { flex-direction: column; }
     .actions { width: 100%; justify-content: flex-start !important; }
     .summary-row { grid-template-columns: 1fr; }
     .filter-bar { flex-direction: column; align-items: stretch; }
@@ -474,38 +475,22 @@ html, body {
 
 <div class="mfdv-wrap">
     <!-- Page Header -->
-    <div class="page-head">
+    <div class="int-head">
         <div>
-            <h1>Fuel Deliveries Validation</h1>
-            <div class="sub">CHECK AND CONFIRM FUEL DELIVERIES AGAINST PURCHASE ORDERS, ENSURING BATCH IDs AND QUANTITIES MATCH.</div>
+            <h1><i class="fas fa-truck-loading"></i> Fuel Deliveries Validation</h1>
+            <div class="sub">Check and confirm fuel deliveries against purchase orders, ensuring batch IDs and quantities match.</div>
         </div>
         <div class="actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <!-- Excel -->
-            <button type="button" onclick="window.location.href='?date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>&export=excel'"
-                    style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid #16a34a;background:white;color:#16a34a;transition:all .2s;"
-                    onmouseover="this.style.background='#16a34a';this.style.color='#fff'"
-                    onmouseout="this.style.background='white';this.style.color='#16a34a'">
+            <button type="button" onclick="window.location.href='?date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>&export=excel'" class="ato-btn ato-btn-excel">
                 <i class="fas fa-file-excel"></i> Excel
             </button>
-            <!-- CSV -->
-            <button type="button" onclick="window.location.href='?date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>&export=csv'"
-                    style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid #00264D;background:white;color:#00264D;transition:all .2s;"
-                    onmouseover="this.style.background='#00264D';this.style.color='#fff'"
-                    onmouseout="this.style.background='white';this.style.color='#00264D'">
+            <button type="button" onclick="window.location.href='?date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>&export=csv'" class="ato-btn ato-btn-csv">
                 <i class="fas fa-file-csv"></i> CSV
             </button>
-            <!-- PDF -->
-            <button type="button" onclick="window.open('?date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>&export=pdf','_blank')"
-                    style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid #dc2626;background:white;color:#dc2626;transition:all .2s;"
-                    onmouseover="this.style.background='#dc2626';this.style.color='#fff'"
-                    onmouseout="this.style.background='white';this.style.color='#dc2626'">
+            <button type="button" onclick="window.open('?date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>&export=pdf','_blank')" class="ato-btn ato-btn-pdf">
                 <i class="fas fa-file-pdf"></i> PDF
             </button>
-            <!-- Back -->
-            <a href="manager_dashboard.php"
-               style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid #6b7280;background:white;color:#4b5563;text-decoration:none;transition:all .2s;"
-               onmouseover="this.style.background='#6b7280';this.style.color='#fff'"
-               onmouseout="this.style.background='white';this.style.color='#4b5563'">
+            <a href="manager_dashboard.php" class="ato-btn ato-btn-back">
                 <i class="fas fa-arrow-left"></i> Back
             </a>
         </div>
@@ -521,17 +506,14 @@ html, body {
             <label>Date To</label>
             <input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>">
         </div>
-        <button type="submit"
-                style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid #16a34a;background:white;color:#16a34a;transition:all .2s;"
-                onmouseover="this.style.background='#16a34a';this.style.color='#fff'"
-                onmouseout="this.style.background='white';this.style.color='#16a34a'">
+        <button type="submit" class="ato-btn ato-btn-filter">
             <i class="fas fa-filter"></i> Apply Filter
         </button>
     </form>
 
     <!-- Summary Cards -->
     <div class="summary-row">
-        <div class="summary-card sc-green">
+        <div class="summary-card">
             <div class="sum-ico"><i class="fas fa-check-circle"></i></div>
             <div class="sum-meta">
                 <h3>Validated Deliveries</h3>
@@ -539,7 +521,7 @@ html, body {
                 <span>Gi-approve nga deliveries</span>
             </div>
         </div>
-        <div class="summary-card sc-amber">
+        <div class="summary-card">
             <div class="sum-ico"><i class="fas fa-clock"></i></div>
             <div class="sum-meta">
                 <h3>Pending Deliveries</h3>

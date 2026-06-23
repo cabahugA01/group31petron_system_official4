@@ -1,0 +1,92 @@
+<?php
+/**
+ * Get Merchandise History Data
+ * Shows Merchandise Only + Combined transactions
+ */
+session_start();
+require_once __DIR__ . '/../backend/lib.php';
+require_once __DIR__ . '/../public/db_connect.php';
+require_login();
+
+header('Content-Type: application/json');
+
+try {
+    $me = current_user();
+    $station_id = user_station_id();
+    
+    // Build WHERE clause
+    $where = "WHERE mt.station_id = ? AND mt.transaction_type IN ('merchandise', 'combined')";
+    $params = [$station_id];
+    
+    // Filters
+    if (!empty($_GET['date_from'])) {
+        $where .= " AND DATE(mt.transaction_date) >= ?";
+        $params[] = $_GET['date_from'];
+    }
+    if (!empty($_GET['date_to'])) {
+        $where .= " AND DATE(mt.transaction_date) <= ?";
+        $params[] = $_GET['date_to'];
+    }
+    if (!empty($_GET['category'])) {
+        $where .= " AND EXISTS (
+            SELECT 1 FROM merchandise_transaction_items mti
+            INNER JOIN inventory_products ip ON ip.id = mti.product_id
+            WHERE mti.transaction_id = mt.id AND ip.category = ?
+        )";
+        $params[] = $_GET['category'];
+    }
+    if (!empty($_GET['product'])) {
+        $where .= " AND EXISTS (
+            SELECT 1 FROM merchandise_transaction_items mti
+            WHERE mti.transaction_id = mt.id AND mti.product_name LIKE ?
+        )";
+        $params[] = '%' . $_GET['product'] . '%';
+    }
+    
+    // Count total
+    $count_stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions mt $where");
+    $count_stmt->execute($params);
+    $total = $count_stmt->fetchColumn();
+    
+    // Pagination
+    $page = max(1, intval($_GET['page'] ?? 1));
+    $per_page = 20;
+    $offset = ($page - 1) * $per_page;
+    
+    // Fetch data
+    $stmt = $pdo->prepare("
+        SELECT 
+            mt.id,
+            mt.transaction_id,
+            mt.customer_name,
+            mt.total_amount,
+            mt.payment_status,
+            mt.transaction_date,
+            mt.transaction_type,
+            (SELECT GROUP_CONCAT(CONCAT(mti.product_name, ' (', mti.quantity, ')') SEPARATOR ', ')
+             FROM merchandise_transaction_items mti
+             WHERE mti.transaction_id = mt.id
+            ) AS products
+        FROM merchandise_transactions mt
+        $where
+        ORDER BY mt.transaction_date DESC
+        LIMIT $per_page OFFSET $offset
+    ");
+    $stmt->execute($params);
+    $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    echo json_encode([
+        'success' => true,
+        'data' => $records,
+        'total' => $total,
+        'page' => $page,
+        'per_page' => $per_page,
+        'total_pages' => ceil($total / $per_page)
+    ]);
+    
+} catch (Exception $e) {
+    echo json_encode([
+        'success' => false,
+        'message' => $e->getMessage()
+    ]);
+}

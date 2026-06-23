@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'admin_fuel_adjustments_oversight';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -163,54 +163,74 @@ function statusBadge(?string $adj_status, ?string $rec_status = null): string {
 }
 ?>
 <style>
-html,body{max-width:100vw;overflow-x:hidden}
-.afao-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap}
-.afao-head h1{margin:0 0 4px;font-size:22px;font-weight:700;color:#00264D;display:flex;align-items:center;gap:9px}
-.afao-sub{font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:.3px}
-.tab-btn{padding:10px 20px;font-size:13px;font-weight:700;color:#64748b;background:transparent;border:none;border-bottom:3px solid transparent;cursor:pointer;transition:all .15s;outline:none;white-space:nowrap;display:inline-flex;align-items:center;gap:7px}
-.tab-btn:hover{color:#002F6C}.tab-btn.active{color:#002F6C;border-bottom-color:#002F6C}
-.tab-content{display:none}.tab-content.active{display:block}
-.tbl-card{background:#fff;border:1px solid #e2e8f0;border-radius:11px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.05);margin-bottom:24px}
-.tbl-hd{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid #e9ecef;flex-wrap:wrap;gap:8px;background:#f8fafc}
-.tbl-title{font-size:13px;font-weight:700;color:#00264D;display:flex;align-items:center;gap:7px}
-.afao-tbl{width:100%;table-layout:fixed;border-collapse:collapse;font-size:11.5px}
-.afao-tbl thead tr{background:#002F6C}
-.afao-tbl thead th{padding:9px 7px;text-align:left;font-size:10px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;overflow:hidden;text-overflow:ellipsis;}
-.afao-tbl tbody tr{border-bottom:1px solid #f1f5f9;transition:background .1s}
-.afao-tbl tbody tr:hover{background:#f0f9ff}
-.afao-tbl tbody td{padding:8px 7px;color:#334155;vertical-align:middle;overflow:hidden;text-overflow:ellipsis}
-.enc-block{display:flex;flex-direction:column;gap:1px;font-size:10.5px}
-.enc-row{display:flex;justify-content:space-between;gap:4px}
-.enc-lbl{color:#94a3b8;font-weight:600;font-size:10px;white-space:nowrap}
-.enc-val{font-weight:700;color:#334155;font-family:monospace}
-.var-pos{color:#dc2626;font-weight:700;font-family:monospace}
-.var-neg{color:#16a34a;font-weight:700;font-family:monospace}
-.var-zero{color:#64748b;font-weight:600;font-family:monospace}
-.ref-badge{font-family:monospace;font-size:11px;font-weight:700;background:#e0f2fe;color:#0369a1;padding:2px 7px;border-radius:5px;border:1px solid #bae6fd;white-space:nowrap}
-.afao-filter{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;margin-bottom:16px}
-.afao-fg{display:flex;flex-direction:column;gap:3px}
-.afao-fg label{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px}
-.afao-fg input,.afao-fg select{padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px}
-.afao-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;border:none;text-decoration:none;transition:all .13s;white-space:nowrap}
-.btn-blue{background:#002F6C;color:#fff}.btn-blue:hover{background:#001f4d;color:#fff}
-.btn-gray{background:#6c757d;color:#fff}.btn-gray:hover{background:#545b62;color:#fff}
-.empty-s{text-align:center;padding:50px 20px;color:#94a3b8}
-.empty-s i{font-size:38px;display:block;margin-bottom:12px;opacity:.35}
-.alert-ok{padding:12px 16px;background:#dcfce7;border:1px solid #bbf7d0;color:#15803d;border-radius:8px;margin-bottom:14px;font-weight:600}
-.alert-err{padding:12px 16px;background:#fee2e2;border:1px solid #fecaca;color:#b91c1c;border-radius:8px;margin-bottom:14px;font-weight:600}
-.sb{display:inline-block;padding:3px 9px;border-radius:12px;font-size:10.5px;font-weight:700;white-space:nowrap}
-.sb-clear{background:#d1fae5;color:#065f46}
-.sb-pend{background:#fef3c7;color:#92400e}
-.sb-flag{background:#fee2e2;color:#991b1b}
-.badge-cnt{background:#dc2626;color:#fff;font-size:11px;padding:2px 7px;border-radius:10px;margin-left:4px}
+/* == PAGE HEADER - matches SuperAdmin int-head standard == */
+.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:-12px !important; }
+.int-head h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
+.int-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
+
+/* Tabs */
+.tab-btn { padding:10px 20px; font-size:13px; font-weight:700; color:#64748b; background:transparent; border:none; border-bottom:3px solid transparent; cursor:pointer; transition:all .15s; outline:none; white-space:nowrap; display:inline-flex; align-items:center; gap:7px; }
+.tab-btn:hover { color:#002F70; }
+.tab-btn.active { color:#002F70; border-bottom-color:#002F70; }
+.tab-content { display:none; }
+.tab-content.active { display:block; }
+
+/* Table Card & standard Petron tables */
+.tbl-card { background:#fff; border:1px solid #e2e8f0; border-radius:11px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.05); margin-bottom:24px; }
+.tbl-hd { display:flex; align-items:center; justify-content:space-between; padding:13px 16px; border-bottom:1px solid #e9ecef; flex-wrap:wrap; gap:8px; background:#f8fafc; }
+.tbl-title { font-size:13px; font-weight:700; color:#00264D; display:flex; align-items:center; gap:7px; }
+.afao-tbl { width:100%; table-layout:fixed; border-collapse:collapse; font-size:11px; }
+.afao-tbl thead tr { background:#002F70; }
+.afao-tbl thead th { padding:9px 10px; text-align:left; font-size:11px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.4px; overflow:hidden; text-overflow:ellipsis; border-bottom:2px solid #001a3d; vertical-align:middle; }
+.afao-tbl tbody tr { border-bottom:1px solid #f1f5f9; transition:background .1s; }
+.afao-tbl tbody tr:hover td { background:#eff6ff; }
+.afao-tbl tbody td { padding:9px 10px; color:#334155; vertical-align:middle; overflow:hidden; text-overflow:ellipsis; background:#fff; font-size:11px; }
+
+.enc-block { display:flex; flex-direction:column; gap:1px; font-size:10.5px; }
+.enc-row { display:flex; justify-content:space-between; gap:4px; }
+.enc-lbl { color:#94a3b8; font-weight:600; font-size:10px; white-space:nowrap; }
+.enc-val { font-weight:700; color:#334155; font-family:monospace; }
+.var-pos { color:#dc2626; font-weight:700; font-family:monospace; }
+.var-neg { color:#16a34a; font-weight:700; font-family:monospace; }
+.var-zero { color:#64748b; font-weight:600; font-family:monospace; }
+.ref-badge { font-family:monospace; font-size:11px; font-weight:700; background:#eff6ff; color:#1e40af; padding:2px 7px; border-radius:5px; border:1px solid #dbeafe; white-space:nowrap; }
+
+/* Filter bar & Inputs styling */
+.afao-filter { display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:12px 16px; margin-bottom:16px; }
+.afao-fg { display:flex; flex-direction:column; gap:3px; }
+.afao-fg label { font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.4px; }
+.afao-fg input, .afao-fg select { height:36px; padding:0 10px; border:1px solid #cbd5e1; border-radius:7px; font-size:13px; color:#1e293b; background:#fff; outline:none; box-sizing:border-box; }
+.afao-fg input:focus, .afao-fg select:focus { border-color:#002F70; box-shadow:0 0 0 3px rgba(0,47,112,.1); }
+
+/* Buttons styling */
+.ato-btn {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:0 16px; border-radius:7px; font-size:13px; font-weight:600;
+    cursor:pointer; border:1px solid transparent; text-decoration:none; transition:all .15s;
+    height:36px; white-space:nowrap; background:white !important;
+}
+.ato-btn-filter { color:#002F70 !important; border-color:#002F70 !important; }
+.ato-btn-filter:hover { background:#002F70 !important; color:#fff !important; }
+.ato-btn-back { color:#4b5563 !important; border-color:#6b7280 !important; }
+.ato-btn-back:hover { background:#6b7280 !important; color:#fff !important; }
+
+.empty-s { text-align:center; padding:50px 20px; color:#94a3b8; }
+.empty-s i { font-size:38px; display:block; margin-bottom:12px; opacity:.35; }
+.alert-ok { padding:12px 16px; background:#dcfce7; border:1px solid #bbf7d0; color:#15803d; border-radius:8px; margin-bottom:14px; font-weight:600; }
+.alert-err { padding:12px 16px; background:#fee2e2; border:1px solid #fecaca; color:#b91c1c; border-radius:8px; margin-bottom:14px; font-weight:600; }
+.sb { display:inline-block; padding:3px 9px; border-radius:12px; font-size:10.5px; font-weight:700; white-space:nowrap; }
+.sb-clear { background:#e8f5e9; color:#2e7d32; }
+.sb-pend { background:#fff3e0; color:#ef6c00; }
+.sb-flag { background:#ffebee; color:#c62828; }
+.badge-cnt { background:#dc2626; color:#fff; font-size:11px; padding:2px 7px; border-radius:10px; margin-left:4px; }
 </style>
 
-<div class="afao-head">
+<div class="int-head">
     <div>
         <h1><i class="fas fa-sliders-h"></i> Fuel Adjustments Oversight</h1>
-        <div class="afao-sub">Admin review of manager-validated fuel transactions &amp; deliveries</div>
+        <div class="sub">Admin review of manager-validated fuel transactions & deliveries</div>
     </div>
-    <a href="admin_dashboard.php" class="afao-btn btn-gray"><i class="fas fa-arrow-left"></i> Back</a>
+    <a href="admin_dashboard.php" class="ato-btn ato-btn-back"><i class="fas fa-arrow-left"></i> Back</a>
 </div>
 
 <?php if ($msg_success): ?><div class="alert-ok"><i class="fas fa-check-circle"></i> <?= htmlspecialchars($msg_success) ?></div><?php endif; ?>
@@ -219,8 +239,8 @@ html,body{max-width:100vw;overflow-x:hidden}
 <form method="get" class="afao-filter">
     <div class="afao-fg"><label>Date From</label><input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>"></div>
     <div class="afao-fg"><label>Date To</label><input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>"></div>
-    <button type="submit" class="afao-btn btn-blue"><i class="fas fa-filter"></i> Apply</button>
-    <a href="admin_fuel_adjustments_oversight.php" class="afao-btn btn-gray"><i class="fas fa-times"></i> Reset</a>
+    <button type="submit" class="ato-btn ato-btn-filter"><i class="fas fa-filter"></i> Apply</button>
+    <a href="admin_fuel_adjustments_oversight.php" class="ato-btn ato-btn-back"><i class="fas fa-times"></i> Reset</a>
 </form>
 
 <div style="display:flex;gap:0;border-bottom:2px solid #e2e8f0;margin-bottom:20px;">

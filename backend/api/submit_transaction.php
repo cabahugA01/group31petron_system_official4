@@ -34,7 +34,7 @@ try {
     $pdo->beginTransaction();
     
     // Insert into sales table
-    $stmt = $pdo->prepare("INSERT INTO sales (station_id, user_id, customer_id, payment_method, status, created_at) VALUES (?, ?, ?, ?, 'Pending Validation', NOW())");
+    $stmt = $pdo->prepare("INSERT INTO sales (station_id, user_id, customer_id, payment_method, status, created_at) VALUES (?, ?, ?, ?, 'Completed', NOW())");
     $stmt->execute([
         $station_id,
         $me['id'],
@@ -53,16 +53,37 @@ try {
         $transaction_data['unit_price'],
         $transaction_data['total_amount']
     ]);
+
+    if (!empty($transaction_data['product_id']) && !empty($transaction_data['quantity'])) {
+        $stock_stmt = $pdo->prepare("
+            SELECT stock_level
+            FROM station_inventory
+            WHERE station_id = ? AND product_id = ?
+            FOR UPDATE
+        ");
+        $stock_stmt->execute([$station_id, $transaction_data['product_id']]);
+        $stock_level = $stock_stmt->fetchColumn();
+        if ($stock_level === false || (float)$stock_level < (float)$transaction_data['quantity']) {
+            throw new Exception('Insufficient stock for this transaction.');
+        }
+
+        $pdo->prepare("
+            UPDATE station_inventory
+            SET stock_level = stock_level - ?,
+                last_updated = NOW()
+            WHERE station_id = ? AND product_id = ?
+        ")->execute([$transaction_data['quantity'], $station_id, $transaction_data['product_id']]);
+    }
     
     // Log submission
-    $stmt = $pdo->prepare("INSERT INTO audit_log (station_id, user_id, action, details, created_at) VALUES (?, ?, 'Transaction Submitted', ?, NOW())");
-    $stmt->execute([$station_id, $me['id'], "Transaction #$sale_id submitted by staff for manager validation"]);
+    $stmt = $pdo->prepare("INSERT INTO audit_log (station_id, user_id, action, details, created_at) VALUES (?, ?, 'Transaction Saved', ?, NOW())");
+    $stmt->execute([$station_id, $me['id'], "Transaction #$sale_id saved by staff as official"]);
     
     $pdo->commit();
     
     echo json_encode([
         'success' => true, 
-        'message' => 'Transaction submitted successfully. Awaiting Manager validation.',
+        'message' => 'Transaction saved successfully.',
         'sale_id' => $sale_id
     ]);
     

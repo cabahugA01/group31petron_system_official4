@@ -285,12 +285,13 @@ html, body {
 
 .page-head {
     display: flex; align-items: flex-start; justify-content: space-between;
-    gap: 12px; margin-bottom: 18px; flex-wrap: wrap;
+    gap: 12px; margin-bottom: 20px; margin-top: -12px !important; flex-wrap: wrap;
     max-width: 100%;
 }
 .page-head h1 {
-    margin: 0 0 8px; font-size: 24px !important; font-weight: 700;
-    color: #00264D; text-transform: uppercase; letter-spacing: 0.5px;
+    margin: 0 !important; font-size: 22px !important; font-weight: 700 !important;
+    color: var(--petron-blue,#00264D) !important; text-transform: uppercase !important;
+    display: flex; align-items: center; gap: 8px;
 }
 .page-head .sub {
     font-size: 14px; color: #666666; font-weight: 500;
@@ -309,17 +310,12 @@ html, body {
     box-shadow: 0 1px 3px rgba(0,0,0,.05);
     min-width: 0;
 }
-.summary-card.sc-green  { border-left: 4px solid #16a34a; }
-.summary-card.sc-amber  { border-left: 4px solid #d97706; }
-.summary-card.sc-red    { border-left: 4px solid #dc2626; }
 .sum-ico {
     width: 52px; height: 52px; border-radius: 10px;
     display: flex; align-items: center; justify-content: center;
     font-size: 24px; flex-shrink: 0;
+    background: #e8f0f7; color: #002F70;
 }
-.summary-card.sc-green .sum-ico  { background: #dcfce7; color: #16a34a; }
-.summary-card.sc-amber .sum-ico  { background: #fef3c7; color: #d97706; }
-.summary-card.sc-red .sum-ico    { background: #fee2e2; color: #dc2626; }
 .sum-meta { 
     min-width: 0;
     overflow: hidden;

@@ -58,7 +58,11 @@ function handleGetRequest($pdo, $station_id, $role, $me) {
             lookupJobOrder($pdo, $station_id);
             break;
         case 'get_pending_transactions':
-            getPendingTransactions($pdo, $station_id, $role);
+            echo json_encode([
+                'success' => true,
+                'transactions' => [],
+                'message' => 'Transactions are official when saved; there is no manager approval queue.'
+            ]);
             break;
         case 'get_transaction_details':
             getTransactionDetails($pdo, $station_id, $role);
@@ -92,10 +96,11 @@ function handlePostRequest($pdo, $station_id, $role, $me) {
             createMerchandiseTransaction($pdo, $station_id, $role, $me);
             break;
         case 'validate_transaction':
-            validateTransaction($pdo, $station_id, $role, $me);
-            break;
         case 'reject_transaction':
-            rejectTransaction($pdo, $station_id, $role, $me);
+            http_response_code(410);
+            echo json_encode([
+                'error' => 'Transactions are official when saved by staff. Use Adjust, Void, or Correct for manager corrections.'
+            ]);
             break;
         case 'adjust_transaction':
             adjustTransaction($pdo, $station_id, $role, $me);
@@ -409,7 +414,7 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
         'ewallet_provider'      => 'VARCHAR(50) NULL',
         'efuel_card_number'     => 'VARCHAR(50) NULL',
         'remarks'               => 'TEXT NULL',
-        'validation_status'     => "VARCHAR(20) NOT NULL DEFAULT 'Pending'",
+        'validation_status'     => "VARCHAR(20) NOT NULL DEFAULT 'Official'",
         'validated_by'          => 'INT NULL',
         'validated_at'          => 'DATETIME NULL',
         'rejection_reason'      => 'TEXT NULL',
@@ -420,6 +425,7 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
         'workflow_status'       => "VARCHAR(20) NOT NULL DEFAULT 'Pending'",
         'amount_paid'           => 'DECIMAL(10,2) NULL',
         'balance_due'           => 'DECIMAL(10,2) NULL',
+        'inventory_deducted'    => "TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1=stock deducted from station_inventory on staff save'",
         // ── Job Order integration ──────────────────────────────────────────
         'job_order_id'               => 'VARCHAR(50) NULL',
         'job_order_db_id'            => 'INT NULL',
@@ -773,7 +779,7 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             'subtotal_amount'       => $subtotal_amount,
             'vat_amount'            => $vat_amount,
             'remarks'               => $data['remarks'] ?? '',
-            'validation_status'     => 'Pending',
+            'validation_status'     => 'Official',
             'amount_tendered'       => $data['amount_tendered'] ?? null,
             'change_amount'         => $data['change_amount'] ?? null,
             'card_reference'        => $data['card_reference'] ?? null,
@@ -786,8 +792,8 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             'balance_due'           => $balance_due > 0 ? $balance_due : null,
             // payment_status: Paid / Partial Payment / Pending Payment / Credit Transaction
             'payment_status'        => $resolved_payment_status,
-            // ── Workflow status: tracks In Progress / Completed after manager approval ──
-            'workflow_status'       => 'Pending',
+            // Workflow status tracks service progress only; transaction validity is official on save.
+            'workflow_status'       => $has_service_item ? 'Pending' : 'Completed',
             // ── Job Order integration ──────────────────────────────────────
             'job_order_id'               => (!empty($data['job_order_id']) && ctype_digit((string)$data['job_order_id'])) ? (int)$data['job_order_id'] : null,
             'job_order_db_id'            => !empty($data['job_order_db_id'])         ? (int)$data['job_order_db_id']       : null,
@@ -895,17 +901,87 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             $itemStmt->execute($iVals);
         }
 
-        $pdo->commit();
+        // Deduct inventory immediately for staff-saved merchandise items.
+        $deducted_inventory = false;
+        foreach ($data['items'] as $item) {
+            if (($item['item_type'] ?? 'merchandise') === 'service') {
+                continue;
+            }
 
-        // ── Post-commit: stock deduction is intentionally deferred to manager Approve.
-        // No deduction here — inventory is only committed after validation.
-        // This ensures Reject = no deduction, Adjust = recalculated deduction.
+            $product_id = intval($item['product_id'] ?? 0);
+            $qty = floatval($item['quantity'] ?? 0);
+            if ($product_id <= 0 || $qty <= 0) {
+                continue;
+            }
+
+            $stockStmt = $pdo->prepare("
+                SELECT stock_level
+                FROM station_inventory
+                WHERE station_id = ? AND product_id = ?
+                FOR UPDATE
+            ");
+            $stockStmt->execute([$station_id, $product_id]);
+            $stockLevel = $stockStmt->fetchColumn();
+            if ($stockLevel === false) {
+                throw new Exception('Inventory record is missing for product #' . $product_id . '.');
+            }
+            if ((float)$stockLevel < $qty) {
+                throw new Exception('Insufficient stock for product #' . $product_id . '. Available: ' . number_format((float)$stockLevel, 2) . ', required: ' . number_format($qty, 2) . '.');
+            }
+
+            $deductStmt = $pdo->prepare("
+                UPDATE station_inventory
+                SET stock_level = stock_level - ?,
+                    last_updated = NOW()
+                WHERE station_id = ? AND product_id = ?
+            ");
+            $deductStmt->execute([$qty, $station_id, $product_id]);
+            if ($deductStmt->rowCount() > 0) {
+                $deducted_inventory = true;
+            }
+        }
+
+        if ($deducted_inventory && $has('inventory_deducted')) {
+            $pdo->prepare("UPDATE merchandise_transactions SET inventory_deducted = 1, updated_at = NOW() WHERE id = ? AND station_id = ?")
+                ->execute([$merch_transaction_id, $station_id]);
+        }
+
+        if (!empty($data['credit_customer_id'])) {
+            $pdo->prepare("UPDATE customers SET balance = balance + ? WHERE id = ? AND station_id = ?")
+                ->execute([$total_amount, $data['credit_customer_id'], $station_id]);
+
+            try {
+                $bal_stmt = $pdo->prepare("SELECT balance FROM customers WHERE id = ? AND station_id = ?");
+                $bal_stmt->execute([$data['credit_customer_id'], $station_id]);
+                $new_bal = (float)$bal_stmt->fetchColumn();
+
+                $cct_stmt = $pdo->prepare("
+                    INSERT INTO customer_credit_transactions (
+                        customer_id, transaction_id, transaction_type, amount,
+                        running_balance, description, station_id, created_by, created_at
+                    ) VALUES (?, ?, 'Sale', ?, ?, ?, ?, ?, NOW())
+                ");
+                $cct_stmt->execute([
+                    $data['credit_customer_id'],
+                    $transaction_id,
+                    $total_amount,
+                    $new_bal,
+                    "Official Merchandise Sale - Ref: " . $transaction_id,
+                    $station_id,
+                    $me['id']
+                ]);
+            } catch (Exception $ccError) {
+                error_log("Credit transaction log warning: " . $ccError->getMessage());
+            }
+        }
+
+        $pdo->commit();
 
         // ── Post-commit: audit logging (outside transaction so DDL won't corrupt it) ──
         try {
             if (function_exists('log_activity')) {
-                log_activity($pdo, $me['id'], 'Merchandise Transaction Created',
-                    "Transaction ID: $transaction_id, Amount: $total_amount, Items: " . count($data['items']));
+                log_activity($pdo, $me['id'], 'Merchandise Transaction Saved',
+                    "Official transaction ID: $transaction_id, Amount: $total_amount, Items: " . count($data['items']));
             }
             logMerchandiseTransactionAudit($pdo, $me['id'], $merch_transaction_id, 'CREATED', [
                 'transaction_id' => $transaction_id,
@@ -913,6 +989,7 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
                 'item_count'     => count($data['items']),
                 'customer_name'  => $data['customer_name'] ?? 'Walk-in',
                 'payment_method' => $data['payment_method'] ?? '',
+                'validation_status' => 'Official',
             ]);
         } catch (Exception $e) { /* audit failure must not block the response */ }
 
@@ -920,7 +997,8 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             'success'              => true,
             'transaction_id'       => $transaction_id,
             'merch_transaction_id' => $merch_transaction_id,
-            'message'              => 'Transaction created successfully and pending validation',
+            'status'               => 'Official',
+            'message'              => 'Transaction saved successfully',
         ]);
 
     } catch (Exception $e) {
@@ -990,11 +1068,8 @@ function validateTransaction($pdo, $station_id, $role, $me) {
             }
         }
 
-        // ── Deduct stock for merchandise items on Approve ─────────────────────
-        // Stock is ONLY deducted here (on manager Approve), never at creation time.
-        // Scenario 1 (JO only): no merchandise items → no deduction.
-        // Scenario 2 (Merch only): all items deducted here.
-        // Scenario 3 (JO + Merch / combined): only merchandise items deducted; service items skipped.
+        // Legacy validation path is disabled at the router. Stock is deducted on staff save.
+        // This block remains only for backward compatibility if called internally.
         $did_deduct = false;
         if (empty($transaction['inventory_deducted'])) {
             foreach ($itemsForDeduction as $row) {
@@ -1239,6 +1314,14 @@ function adjustTransaction($pdo, $station_id, $role, $me) {
             echo json_encode(['error' => 'Transaction not found']);
             return;
         }
+
+        $original_items_stmt = $pdo->prepare("
+            SELECT product_id, quantity, item_type
+            FROM merchandise_transaction_items
+            WHERE transaction_id = ?
+        ");
+        $original_items_stmt->execute([$transaction_id]);
+        $original_items = $original_items_stmt->fetchAll(PDO::FETCH_ASSOC);
         
         // Calculate new total
         $new_total = 0;
@@ -1270,47 +1353,79 @@ function adjustTransaction($pdo, $station_id, $role, $me) {
             $stmt->execute([$adjustment['quantity'], $adjustment['unit_price'], $subtotal, $transaction_id, $adjustment['product_id']]);
         }
         
-        // ── Recalculate stock deduction based on adjusted quantities ─────────
-        // Since stock is only deducted on Approve, and Adjust is a form of approval,
-        // we deduct based on the new adjusted quantities for merchandise items only.
-        if (empty($transaction['inventory_deducted'])) {
-            foreach ($adjustments as $adjustment) {
-                $pid = intval($adjustment['product_id'] ?? 0);
-                $qty = floatval($adjustment['quantity'] ?? 0);
-                if ($pid <= 0 || $qty <= 0) {
+        // Reconcile stock from the already-official transaction to the adjusted quantities.
+        $was_deducted = !empty($transaction['inventory_deducted']);
+        if ($was_deducted) {
+            foreach ($original_items as $original_item) {
+                if (($original_item['item_type'] ?? 'merchandise') === 'service') {
                     continue;
                 }
-                $stockStmt = $pdo->prepare("
-                    SELECT stock_level
-                    FROM station_inventory
-                    WHERE station_id = ? AND product_id = ?
-                    FOR UPDATE
-                ");
-                $stockStmt->execute([$station_id, $pid]);
-                $stockLevel = $stockStmt->fetchColumn();
-                if ($stockLevel === false) {
-                    throw new Exception('Inventory record is missing for product #' . $pid . '.');
-                }
-                if ((float)$stockLevel < $qty) {
-                    throw new Exception('Insufficient stock for product #' . $pid . '. Available: ' . number_format((float)$stockLevel, 2) . ', required: ' . number_format($qty, 2) . '.');
-                }
-            }
-            foreach ($adjustments as $adjustment) {
-                $pid = intval($adjustment['product_id'] ?? 0);
-                $qty = floatval($adjustment['quantity'] ?? 0);
+                $pid = intval($original_item['product_id'] ?? 0);
+                $qty = floatval($original_item['quantity'] ?? 0);
                 if ($pid > 0 && $qty > 0) {
                     $pdo->prepare("
                         UPDATE station_inventory
-                        SET stock_level = stock_level - ?,
+                        SET stock_level = stock_level + ?,
                             last_updated = NOW()
                         WHERE station_id = ? AND product_id = ?
                     ")->execute([$qty, $station_id, $pid]);
                 }
             }
+        }
+
+        $deducted_adjusted_inventory = false;
+        foreach ($adjustments as $adjustment) {
+            $pid = intval($adjustment['product_id'] ?? 0);
+            $qty = floatval($adjustment['quantity'] ?? 0);
+            if ($pid <= 0 || $qty <= 0) {
+                continue;
+            }
+            $stockStmt = $pdo->prepare("
+                SELECT stock_level
+                FROM station_inventory
+                WHERE station_id = ? AND product_id = ?
+                FOR UPDATE
+            ");
+            $stockStmt->execute([$station_id, $pid]);
+            $stockLevel = $stockStmt->fetchColumn();
+            if ($stockLevel === false) {
+                throw new Exception('Inventory record is missing for product #' . $pid . '.');
+            }
+            if ((float)$stockLevel < $qty) {
+                throw new Exception('Insufficient stock for product #' . $pid . '. Available: ' . number_format((float)$stockLevel, 2) . ', required: ' . number_format($qty, 2) . '.');
+            }
+        }
+
+        foreach ($adjustments as $adjustment) {
+            $pid = intval($adjustment['product_id'] ?? 0);
+            $qty = floatval($adjustment['quantity'] ?? 0);
+            if ($pid > 0 && $qty > 0) {
+                $pdo->prepare("
+                    UPDATE station_inventory
+                    SET stock_level = stock_level - ?,
+                        last_updated = NOW()
+                    WHERE station_id = ? AND product_id = ?
+                ")->execute([$qty, $station_id, $pid]);
+                $deducted_adjusted_inventory = true;
+            }
+        }
+
+        if ($was_deducted || $deducted_adjusted_inventory) {
             try {
                 $pdo->prepare("UPDATE merchandise_transactions SET inventory_deducted = 1, updated_at = NOW() WHERE id = ? AND station_id = ?")
                     ->execute([$transaction_id, $station_id]);
             } catch (Exception $e) {}
+        }
+
+        if (!empty($transaction['credit_customer_id'])) {
+            $credit_delta = $new_total - (float)($transaction['total_amount'] ?? 0);
+            if (abs($credit_delta) > 0.009) {
+                $pdo->prepare("
+                    UPDATE customers
+                    SET balance = GREATEST(balance + ?, 0)
+                    WHERE id = ? AND station_id = ?
+                ")->execute([$credit_delta, $transaction['credit_customer_id'], $station_id]);
+            }
         }
 
         $pdo->commit();

@@ -182,7 +182,7 @@ try {
                 ?, ?,
                 ?, ?,
                 ?, ?,
-                'Pending', ?, ?, ?,
+                'Official', ?, ?, ?,
                 ?, ?, ?,
                 ?, ?,
                 NOW(), NOW(), ?
@@ -203,6 +203,31 @@ try {
         ]);
         
         $transaction_id = $pdo->lastInsertId();
+
+        foreach ($merchandise_items as $item) {
+            $product_id = (int)($item['product_id'] ?? 0);
+            $qty = (int)($item['quantity'] ?? 0);
+
+            if ($product_id <= 0 || $qty <= 0) {
+                continue;
+            }
+
+            $stock_stmt = $pdo->prepare("
+                SELECT stock_level
+                FROM station_inventory
+                WHERE station_id = ? AND product_id = ?
+                FOR UPDATE
+            ");
+            $stock_stmt->execute([$station_id, $product_id]);
+            $stock_level = $stock_stmt->fetchColumn();
+
+            if ($stock_level === false) {
+                throw new Exception("Inventory record is missing for product ID {$product_id}");
+            }
+            if ((float)$stock_level < $qty) {
+                throw new Exception("Insufficient stock for product ID {$product_id}. Available: {$stock_level}, requested: {$qty}");
+            }
+        }
         
         // Insert merchandise items
         foreach ($merchandise_items as $item) {
@@ -224,6 +249,22 @@ try {
                 $transaction_id, $product_id, $sku, $product_name,
                 $qty, $unit_price, $line_total
             ]);
+
+            if ($product_id > 0 && $qty > 0) {
+                $pdo->prepare("
+                    UPDATE station_inventory
+                    SET stock_level = stock_level - ?,
+                        last_updated = NOW()
+                    WHERE station_id = ? AND product_id = ?
+                ")->execute([$qty, $station_id, $product_id]);
+            }
+        }
+
+        try {
+            $pdo->prepare("UPDATE merchandise_transactions SET inventory_deducted = 1 WHERE id = ? AND station_id = ?")
+                ->execute([$transaction_id, $station_id]);
+        } catch (Exception $inventoryFlagError) {
+            error_log("Inventory deducted flag warning: " . $inventoryFlagError->getMessage());
         }
         
         // Log to audit trail

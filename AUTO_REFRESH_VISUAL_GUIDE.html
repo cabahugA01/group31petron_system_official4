@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto-Refresh Feature - Visual Guide</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px 20px;
+            line-height: 1.6;
+            color: #333;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #002F70 0%, #004ba0 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+        .header h1 {
+            font-size: 36px;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+        .header p {
+            font-size: 18px;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 40px;
+        }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin: 40px 0;
+        }
+        .feature-card {
+            background: #f8fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 30px;
+            transition: all 0.3s;
+        }
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,47,112,0.1);
+            border-color: #002F70;
+        }
+        .feature-card h3 {
+            color: #002F70;
+            font-size: 20px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 20px;
+            font-weight: bold;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            margin-top: 10px;
+        }
+        .status-implemented {
+            background: #dcfce7;
+            color: #166534;
+        }
+        .flowchart {
+            background: #f8fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 30px;
+            margin: 30px 0;
+        }
+        .flowchart h3 {
+            color: #002F70;
+            margin-bottom: 20px;
+            font-size: 22px;
+        }
+        .flow-step {
+            background: white;
+            border-left: 4px solid #667eea;
+            padding: 15px 20px;
+            margin: 15px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        .flow-step strong {
+            color: #002F70;
+            display: block;
+            margin-bottom: 5px;
+        }
+        .code-block {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            overflow-x: auto;
+            margin: 20px 0;
+        }
+        .code-block .comment {
+            color: #94a3b8;
+        }
+        .code-block .keyword {
+            color: #c084fc;
+        }
+        .code-block .function {
+            color: #60a5fa;
+        }
+        .code-block .number {
+            color: #fbbf24;
+        }
+        .comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin: 30px 0;
+        }
+        .comparison-card {
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 25px;
+        }
+        .comparison-card.before {
+            border-top: 4px solid #ef4444;
+        }
+        .comparison-card.after {
+            border-top: 4px solid #10b981;
+        }
+        .comparison-card h4 {
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        .comparison-card.before h4 {
+            color: #ef4444;
+        }
+        .comparison-card.after h4 {
+            color: #10b981;
+        }
+        .benefit-list {
+            list-style: none;
+            padding: 0;
+        }
+        .benefit-list li {
+            padding: 12px 0;
+            padding-left: 30px;
+            position: relative;
+        }
+        .benefit-list li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #10b981;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        thead {
+            background: #002F70;
+            color: white;
+        }
+        th, td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        th {
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 0.5px;
+        }
+        tr:hover td {
+            background: #f8fafc;
+        }
+        .timeline {
+            position: relative;
+            padding-left: 40px;
+            margin: 30px 0;
+        }
+        .timeline:before {
+            content: '';
+            position: absolute;
+            left: 15px;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+        }
+        .timeline-item {
+            position: relative;
+            margin-bottom: 30px;
+        }
+        .timeline-item:before {
+            content: '';
+            position: absolute;
+            left: -33px;
+            top: 0;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            border: 3px solid white;
+            box-shadow: 0 0 0 3px #667eea;
+        }
+        .timeline-item h4 {
+            color: #002F70;
+            margin-bottom: 8px;
+        }
+        @media (max-width: 768px) {
+            .comparison {
+                grid-template-columns: 1fr;
+            }
+            .header h1 {
+                font-size: 28px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔄 Auto-Refresh Feature</h1>
+            <p>Real-Time Transaction Monitoring for Petron Station Management System</p>
+        </div>
+
+        <div class="content">
+            <h2 style="color: #002F70; margin-bottom: 20px;">📋 Implementation Overview</h2>
+            <p style="font-size: 16px; margin-bottom: 30px;">
+                The auto-refresh feature provides real-time updates to oversight and monitoring pages, 
+                ensuring managers and admins always see the latest transaction data without manual intervention.
+            </p>
+
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3><div class="icon">👤</div> Admin Oversight</h3>
+                    <p><strong>File:</strong> admin_transactions_oversight.php</p>
+                    <p><strong>Interval:</strong> 60 seconds</p>
+                    <p><strong>Modals Tracked:</strong> Reject, Adjust, Close</p>
+                    <span class="status-badge status-implemented">✓ Implemented</span>
+                </div>
+
+                <div class="feature-card">
+                    <h3><div class="icon">📊</div> Manager Monitoring</h3>
+                    <p><strong>File:</strong> manager_transaction_monitoring.php</p>
+                    <p><strong>Interval:</strong> 60 seconds</p>
+                    <p><strong>Modals Tracked:</strong> Adjust, Correct, Void, Close</p>
+                    <span class="status-badge status-implemented">✓ Newly Added</span>
+                </div>
+
+                <div class="feature-card">
+                    <h3><div class="icon">⚙️</div> Smart Refresh</h3>
+                    <p><strong>Modal Awareness:</strong> Pauses during active work</p>
+                    <p><strong>Filter Persistence:</strong> Maintains all applied filters</p>
+                    <p><strong>Cache Bypass:</strong> Always fetches fresh data</p>
+                    <span class="status-badge status-implemented">✓ Optimized</span>
+                </div>
+            </div>
+
+            <div class="flowchart">
+                <h3>🔄 Auto-Refresh Workflow</h3>
+                <div class="flow-step">
+                    <strong>Step 1: Timer Starts</strong>
+                    60-second countdown begins when page loads
+                </div>
+                <div class="flow-step">
+                    <strong>Step 2: Timer Triggers</strong>
+                    After 60 seconds, refresh function is called
+                </div>
+                <div class="flow-step">
+                    <strong>Step 3: Modal Check</strong>
+                    System checks if user is working in a modal
+                </div>
+                <div class="flow-step">
+                    <strong>Step 4a: Modal Open → Skip</strong>
+                    If modal is open, refresh is postponed
+                </div>
+                <div class="flow-step">
+                    <strong>Step 4b: Modal Closed → Refresh</strong>
+                    If no modal open, page reloads with all filters intact
+                </div>
+                <div class="flow-step">
+                    <strong>Step 5: Timer Restarts</strong>
+                    New 60-second countdown begins
+                </div>
+            </div>
+
+            <h2 style="color: #002F70; margin: 40px 0 20px;">💻 Technical Implementation</h2>
+
+            <div class="code-block">
+<span class="comment">// State tracking</span>
+<span class="keyword">let</span> refreshTimer = <span class="keyword">null</span>;
+<span class="keyword">let</span> isModalOpen = <span class="keyword">false</span>;
+
+<span class="comment">// Auto-refresh function</span>
+<span class="keyword">function</span> <span class="function">autoRefresh</span>() {
+    <span class="comment">// Check if modal is open</span>
+    <span class="keyword">if</span> (isModalOpen) <span class="keyword">return</span>;
+    
+    <span class="comment">// Preserve URL parameters</span>
+    <span class="keyword">const</span> urlParams = <span class="keyword">new</span> URLSearchParams(window.location.search);
+    <span class="keyword">const</span> currentSearch = urlParams.toString();
+    <span class="keyword">const</span> reloadUrl = currentSearch ? <span class="string">'?'</span> + currentSearch : window.location.pathname;
+    
+    <span class="comment">// Silent reload with cache bypass</span>
+    window.location.replace(reloadUrl + (currentSearch ? <span class="string">'&t='</span> : <span class="string">'?t='</span>) + Date.now());
+}
+
+<span class="comment">// Wrap modal functions</span>
+<span class="keyword">const</span> originalCloseModal = window.closeModal;
+window.closeModal = <span class="keyword">function</span>(id) {
+    originalCloseModal(id);
+    isModalOpen = <span class="keyword">false</span>; <span class="comment">// Resume auto-refresh</span>
+};
+
+<span class="comment">// Start timer</span>
+window.refreshTimer = setInterval(autoRefresh, <span class="number">60000</span>);
+console.log(<span class="string">'✅ Auto-refresh enabled (60s interval)'</span>);
+            </div>
+
+            <h2 style="color: #002F70; margin: 40px 0 20px;">📊 Before vs After Comparison</h2>
+
+            <div class="comparison">
+                <div class="comparison-card before">
+                    <h4>❌ Before Auto-Refresh</h4>
+                    <ul style="list-style: none; padding: 0;">
+                        <li style="padding: 8px 0; color: #64748b;">⏱️ Manual refresh required every few minutes</li>
+                        <li style="padding: 8px 0; color: #64748b;">📉 Delayed awareness of new transactions</li>
+                        <li style="padding: 8px 0; color: #64748b;">🔄 Filters lost on manual refresh</li>
+                        <li style="padding: 8px 0; color: #64748b;">😩 Repetitive clicking frustration</li>
+                        <li style="padding: 8px 0; color: #64748b;">⚠️ Risk of missing urgent issues</li>
+                    </ul>
+                </div>
+
+                <div class="comparison-card after">
+                    <h4>✅ After Auto-Refresh</h4>
+                    <ul class="benefit-list">
+                        <li>Automatic updates every 60 seconds</li>
+                        <li>Real-time transaction awareness</li>
+                        <li>All filters preserved automatically</li>
+                        <li>Zero manual intervention needed</li>
+                        <li>Timely oversight and compliance</li>
+                    </ul>
+                </div>
+            </div>
+
+            <h2 style="color: #002F70; margin: 40px 0 20px;">🎯 Key Benefits</h2>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Benefit</th>
+                        <th>Description</th>
+                        <th>Impact</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Real-Time Updates</strong></td>
+                        <td>See new transactions within 60 seconds</td>
+                        <td>🟢 High</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Filter Persistence</strong></td>
+                        <td>All search and filter settings maintained</td>
+                        <td>🟢 High</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Modal Awareness</strong></td>
+                        <td>Pauses when you're working with transactions</td>
+                        <td>🟢 High</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Zero Clicks</strong></td>
+                        <td>No manual refresh button needed</td>
+                        <td>🟡 Medium</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Cache Bypass</strong></td>
+                        <td>Always shows latest data from server</td>
+                        <td>🟡 Medium</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Silent Operation</strong></td>
+                        <td>Non-disruptive background refresh</td>
+                        <td>🟡 Medium</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2 style="color: #002F70; margin: 40px 0 20px;">📅 Implementation Timeline</h2>
+
+            <div class="timeline">
+                <div class="timeline-item">
+                    <h4>Phase 1: Admin Oversight (Initial)</h4>
+                    <p>Implemented auto-refresh for admin_transactions_oversight.php with modal tracking for reject, adjust, and close actions.</p>
+                </div>
+
+                <div class="timeline-item">
+                    <h4>Phase 2: Manager Monitoring (Current)</h4>
+                    <p>Added auto-refresh to manager_transaction_monitoring.php with support for adjust, correct, void, and close modals.</p>
+                </div>
+
+                <div class="timeline-item">
+                    <h4>Phase 3: Documentation (Current)</h4>
+                    <p>Created comprehensive documentation including technical guide, visual guide, and implementation checklist.</p>
+                </div>
+
+                <div class="timeline-item">
+                    <h4>Phase 4: Future Enhancements (Planned)</h4>
+                    <p>Potential additions: AJAX partial updates, configurable intervals, visual countdown indicator, pause/resume controls.</p>
+                </div>
+            </div>
+
+            <h2 style="color: #002F70; margin: 40px 0 20px;">⚙️ Configuration Options</h2>
+
+            <div class="flowchart">
+                <h3>Adjust Refresh Interval</h3>
+                <p style="margin-bottom: 15px;">Change the refresh frequency by modifying the millisecond value:</p>
+                
+                <div class="code-block">
+<span class="comment">// 30 seconds (more frequent)</span>
+setInterval(autoRefresh, <span class="number">30000</span>);
+
+<span class="comment">// 60 seconds (current default)</span>
+setInterval(autoRefresh, <span class="number">60000</span>);
+
+<span class="comment">// 2 minutes (less frequent)</span>
+setInterval(autoRefresh, <span class="number">120000</span>);
+
+<span class="comment">// 5 minutes (minimal polling)</span>
+setInterval(autoRefresh, <span class="number">300000</span>);
+                </div>
+
+                <h3 style="margin-top: 30px;">Disable Auto-Refresh</h3>
+                <p style="margin-bottom: 15px;">To disable the feature, comment out the timer or clear it:</p>
+                
+                <div class="code-block">
+<span class="comment">// Option 1: Comment out the timer</span>
+<span class="comment">// window.refreshTimer = setInterval(autoRefresh, 60000);</span>
+
+<span class="comment">// Option 2: Clear the timer programmatically</span>
+clearInterval(window.refreshTimer);
+                </div>
+            </div>
+
+            <h2 style="color: #002F70; margin: 40px 0 20px;">✅ Testing Checklist</h2>
+
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>Functional Tests</h3>
+                    <ul class="benefit-list" style="margin-top: 15px;">
+                        <li>Page refreshes after 60 seconds</li>
+                        <li>Filters persist after refresh</li>
+                        <li>Search params maintained</li>
+                        <li>Modals pause auto-refresh</li>
+                        <li>Console shows confirmation</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <h3>User Experience Tests</h3>
+                    <ul class="benefit-list" style="margin-top: 15px;">
+                        <li>Refresh is non-disruptive</li>
+                        <li>No scroll position jump</li>
+                        <li>Modal work uninterrupted</li>
+                        <li>Date ranges preserved</li>
+                        <li>No JavaScript errors</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <h3>Performance Tests</h3>
+                    <ul class="benefit-list" style="margin-top: 15px;">
+                        <li>Server load is acceptable</li>
+                        <li>Page loads quickly</li>
+                        <li>No memory leaks</li>
+                        <li>Timer cleans up properly</li>
+                        <li>Cache bypass works</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 12px; margin-top: 40px; text-align: center;">
+                <h2 style="margin-bottom: 15px;">🎉 Feature Status: Complete!</h2>
+                <p style="font-size: 18px; opacity: 0.9;">Auto-refresh is now active on Admin Oversight and Manager Monitoring pages.</p>
+                <p style="font-size: 14px; opacity: 0.8; margin-top: 10px;">Last Updated: June 23, 2026</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

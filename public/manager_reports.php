@@ -236,9 +236,9 @@ require_once __DIR__ . '/../partials/header.php';
 .rpt-info-box {
     background: #f0f4ff !important;
     padding: 14px 16px !important;
-    border-left: 4px solid #00264D !important;
     border-radius: 4px !important;
     margin-bottom: 20px !important;
+    border: 1px solid #dbeafe !important;
 }
 
 .rpt-info-box p {

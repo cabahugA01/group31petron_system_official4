@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * COMPLETE ADMIN DASHBOARD - HYBRID LAYOUT
  * Full implementation with Summary Cards, Charts, Graphs, and Operational Tables
@@ -63,7 +63,7 @@ function adm_rows(PDO $pdo, string $sql, array $p = []): array {
 // ══════════════════════════════════════════════════════════
 // Total Sales
 $fuel_sales = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ?", [$station_id,$date_from,$date_to]);
-$merch_sales = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM merchandise_transactions WHERE station_id=? AND DATE(COALESCE(transaction_date,created_at)) BETWEEN ? AND ? AND LOWER(TRIM(COALESCE(validation_status,''))) IN ('approved','completed','adjusted')", [$station_id,$date_from,$date_to]);
+$merch_sales = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM merchandise_transactions WHERE station_id=? AND DATE(COALESCE(transaction_date,created_at)) BETWEEN ? AND ? AND LOWER(TRIM(COALESCE(validation_status,''))) IN ('official','approved','completed','adjusted')", [$station_id,$date_from,$date_to]);
 $total_sales_val = $fuel_sales + $merch_sales;
 
 // Fuel Stock (Liters)
@@ -75,13 +75,8 @@ $merch_stock_val = (float) adm_val($pdo, "SELECT COALESCE(SUM(stock_level),0) FR
 // Pending Deliveries
 $pending_deliveries_val = (int) adm_val($pdo, "SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status LIKE 'Pending%'", [$station_id]);
 
-// Pending Transactions (merch + JO awaiting manager validation)
-$pending_txn_val = (int) adm_val($pdo,
-    "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND LOWER(TRIM(COALESCE(validation_status,'')))='pending'",
-    [$station_id]);
-$pending_txn_val += (int) adm_val($pdo,
-    "SELECT COUNT(*) FROM job_orders WHERE station_id=? AND LOWER(TRIM(COALESCE(validation_status,''))) IN ('pending validation','pending')",
-    [$station_id]);
+// Transactions are official on staff save; manager approval queue is no longer used.
+$pending_txn_val = 0;
 
 // Active Users
 $active_staff     = (int) adm_val($pdo, "SELECT COUNT(*) FROM users WHERE station_id=? AND status='Active' AND LOWER(TRIM(role))='staff'", [$station_id]);
@@ -528,13 +523,6 @@ if ($pending_deliveries_val > 0) {
         'level' => 'warning',
         'title' => 'Pending Deliveries awaiting Validation',
         'message' => "{$pending_deliveries_val} delivery records need manager/admin validation and final stock-in approval."
-    ];
-}
-if ($pending_txn_val > 0) {
-    $active_notifications[] = [
-        'level' => 'warning',
-        'title' => 'Transactions Pending Manager Validation',
-        'message' => "{$pending_txn_val} transaction(s) are awaiting manager approval. <a href='pending_transactions.php' style='color:#002F70;font-weight:700;'>Review now →</a>"
     ];
 }
 foreach ($low_stock_alerts_data as $alert) {
@@ -2446,6 +2434,11 @@ include __DIR__ . '/../partials/header.php';
   if (document.getElementById('auditTrailBody')) {
     setTimeout(() => initAuditPagination(), 100);
   }
+
+  // Auto-refresh every 30 seconds
+  setInterval(() => {
+    location.reload();
+  }, 30000);
 
 })();
 </script>

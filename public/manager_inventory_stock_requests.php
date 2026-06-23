@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'mgr_inv_stock_request';
 require_once __DIR__ . "/../backend/lib.php";
 require_once __DIR__ . "/db_connect.php";
@@ -132,64 +132,67 @@ $flash_error   = $_SESSION['error']   ?? null; unset($_SESSION['error']);
 include __DIR__ . "/../partials/header.php";
 ?>
 <style>
-/* ── Table wrapper ── */
+/* == PAGE HEADER - matches SuperAdmin int-head standard == */
+.int-head{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;margin-top:-12px!important}
+.int-head h1{font-size:22px!important;font-weight:700!important;color:#002F70!important;margin:0!important;text-transform:uppercase!important;display:flex;align-items:center;gap:8px}
+.int-head .sub{font-size:13px;color:#666;margin-top:4px;text-transform:none!important}
+/* == Table wrapper == */
 .po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow-x:hidden; }
-/* ── Table ── */
-.po-table { width:100%; border-collapse:collapse; font-size:0.88rem; }
-.po-table thead th { background:#002F70; color:#fff; padding:12px 14px; text-align:center; font-weight:600; }
-.po-table tbody tr { border-bottom:1px solid #f0f0f0; transition:background 0.15s; }
-.po-table tbody tr:hover { background:#eff6ff; }
-.po-table tbody td { padding:11px 14px; vertical-align:middle; color:#333; text-align:center; }
-/* ── Status badges — plain text, no background color ── */
+/* == Table - SuperAdmin ato-table standard == */
+.po-table { width:100%; border-collapse:collapse; font-size:11px; }
+.po-table thead th { background:#002F70; color:#fff; padding:9px 10px; text-align:left; font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:.4px; border-bottom:2px solid #001a3d; vertical-align:middle; }
+.po-table tbody tr { border-bottom:1px solid #f1f5f9; transition:background 0.15s; }
+.po-table tbody tr:hover td { background:#eff6ff; }
+.po-table tbody td { padding:9px 10px; vertical-align:middle; color:#334155; background:#fff; font-size:11px; }
+/* == Status badges == */
 .status-badge { display:inline-block; font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; color:#333; }
 .badge-pending          { color:#002F70; }
 .badge-pending-delivery { color:#002F70; }
-.badge-approved         { color:#28a745; }
-.badge-rejected         { color:#dc3545; }
+.badge-approved         { color:#16a34a; }
+.badge-rejected         { color:#dc2626; }
 .badge-other            { color:#6c757d; }
-/* Legacy sbadge aliases (used in JS-rendered rows) */
 .sbadge { display:inline-block; font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; }
 .sbadge-pending              { color:#002F70; }
-.sbadge-approved             { color:#28a745; }
-.sbadge-rejected             { color:#dc3545; }
+.sbadge-approved             { color:#16a34a; }
+.sbadge-rejected             { color:#dc2626; }
 .sbadge-forwarded-to-admin   { color:#6c757d; }
-/* ── Action buttons ── */
-.btn-action { display:inline-flex; align-items:center; gap:5px; padding:6px 14px; border:none; border-radius:6px; cursor:pointer; font-size:0.82rem; font-weight:600; text-decoration:none; transition:opacity 0.2s; white-space:nowrap; margin-bottom:3px; }
-.btn-action:hover { opacity:0.85; }
-.btn-approve { background:#28a745; color:#fff; }
-.btn-reject  { background:#dc3545; color:#fff; }
-.btn-view    { background:#6c757d; color:#fff; }
-.btn-primary { background:#002F70; color:#fff; }
-/* ── Page header ── */
-.page-head { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; flex-wrap:wrap; gap:6px; }
-.page-head h1 { margin:0 0 2px; font-size:1.4rem; font-weight:700; color:#002F70; }
-.page-head .sub { font-size:0.8rem; color:#6c757d; }
-/* ── Alerts ── */
+/* == Action buttons - outline style == */
+.btn-action { display:inline-flex; align-items:center; gap:5px; padding:0 12px; height:32px; border:1px solid transparent; border-radius:6px; cursor:pointer; font-size:11px; font-weight:600; text-decoration:none; transition:all .15s; white-space:nowrap; margin-bottom:3px; background:white!important; }
+.btn-action:hover { box-shadow:0 2px 8px rgba(0,0,0,.12); }
+.btn-approve { color:#16a34a!important; border-color:#16a34a!important; }
+.btn-approve:hover { background:#16a34a!important; color:#fff!important; }
+.btn-reject  { color:#dc2626!important; border-color:#dc2626!important; }
+.btn-reject:hover  { background:#dc2626!important; color:#fff!important; }
+.btn-view    { color:#6c757d!important; border-color:#6c757d!important; }
+.btn-view:hover    { background:#6c757d!important; color:#fff!important; }
+.btn-primary { color:#002F70!important; border-color:#002F70!important; }
+.btn-primary:hover { background:#002F70!important; color:#fff!important; }
+/* == Alerts == */
 .inv-alert { display:flex; align-items:center; gap:10px; padding:12px 18px; border-radius:8px; margin-bottom:20px; font-size:0.9rem; font-weight:500; }
 .inv-alert-success { background:#d4edda; color:#155724; border:1px solid #c3e6cb; }
 .inv-alert-error   { background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; }
-/* ── Empty state ── */
+/* == Empty state == */
 .empty-state { text-align:center; padding:70px 20px; color:#666; }
 .empty-state i { font-size:3.5rem; color:#002F70; margin-bottom:18px; display:block; opacity:0.5; }
 .empty-state h3 { font-size:1.2rem; font-weight:700; color:#333; margin:0 0 8px; }
 .empty-state p { font-size:0.9rem; max-width:420px; margin:0 auto; line-height:1.6; }
-/* ── Main type tabs ── */
+/* == Main type tabs == */
 .main-tab-nav { display:flex; gap:0; border-bottom:2px solid #e9ecef; margin-bottom:22px; }
 .main-tab-btn { padding:11px 26px; background:none; border:none; border-bottom:3px solid transparent; font-size:14px; font-weight:600; color:#6c757d; cursor:pointer; margin-bottom:-2px; transition:all .15s; display:flex; align-items:center; gap:7px; }
 .main-tab-btn.active { color:#002F70; border-bottom-color:#002F70; }
 .main-tab-btn:hover  { color:#002F70; }
-.main-tab-badge { background:#dc3545; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; }
-/* ── Sub tabs ── */
+.main-tab-badge { background:#dc2626; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; }
+/* == Sub tabs == */
 .tab-nav { display:flex; gap:0; border-bottom:2px solid #e9ecef; margin-bottom:20px; }
 .tab-btn { padding:10px 22px; background:none; border:none; border-bottom:3px solid transparent; font-size:14px; font-weight:600; color:#6c757d; cursor:pointer; margin-bottom:-2px; transition:all .15s; }
 .tab-btn.active { color:#002F70; border-bottom-color:#002F70; }
 .tab-btn:hover { color:#002F70; }
-/* ── Card wrapper (kept for layout) ── */
+/* == Card wrapper == */
 .inv-card { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); margin-bottom:24px; overflow:hidden; }
 .inv-card-head { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #e9ecef; flex-wrap:wrap; gap:8px; }
 .inv-card-title { font-size:1rem; font-weight:700; color:#002F70; display:flex; align-items:center; gap:8px; }
 .inv-card-body { padding:0; }
-/* ── Modals ── */
+/* == Modals == */
 .modal-overlay { display:none; position:fixed; z-index:1050; inset:0; background:rgba(0,0,0,0.5); align-items:center; justify-content:center; margin:0; padding:0; }
 .modal-overlay.open { display:flex; }
 .modal-box { background:#fff; border-radius:12px; width:90%; max-width:600px; max-height:90vh; overflow-y:auto; box-shadow:0 8px 32px rgba(0,0,0,0.18); animation:modalIn .2s ease; position:relative; z-index:10000; padding:28px; }
@@ -210,24 +213,24 @@ include __DIR__ . "/../partials/header.php";
 .qty-old { color:#6c757d; text-decoration:line-through; }
 .qty-new { color:#002F70; font-weight:700; font-size:15px; }
 .info-box { background:#e8f4fd; border-left:4px solid #002F70; border-radius:6px; padding:10px 14px; margin-bottom:16px; font-size:12px; color:#002F70; line-height:1.6; }
-/* ── Summary cards ── */
+/* == Summary cards == */
 .summary-row { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
 .sum-card { flex:1; background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px 18px; text-align:center; box-shadow:0 1px 4px rgba(0,0,0,.05); }
 .sum-card-num { font-size:26px; font-weight:800; color:#002F70; }
 .sum-card-lbl { font-size:11px; color:#888; text-transform:uppercase; letter-spacing:.5px; margin-top:2px; }
-.sum-approved .sum-card-num { color:#28a745; }
-.sum-rejected .sum-card-num { color:#dc3545; }
-/* ── Actions cell: stacked buttons ── */
+.sum-approved .sum-card-num { color:#16a34a; }
+.sum-rejected .sum-card-num { color:#dc2626; }
+/* == Actions cell == */
 .actions-cell { display:flex; flex-direction:column; gap:4px; }
 .actions-cell .btn-action { width:100%; justify-content:center; margin-bottom:0; }
 </style>
 
-<div class="page-head">
+<div class="int-head">
     <div>
         <h1><i class="fas fa-shopping-cart"></i> Stock Requests Validation</h1>
-        <div class="sub">VALIDATE STAFF-SUBMITTED STOCK REQUESTS AND ADJUST QUANTITIES IF NEEDED.</div>
+        <div class="sub">Validate staff-submitted stock requests and adjust quantities if needed.</div>
     </div>
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto;">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <?php
         $export_table_id       = 'pendingTable'; // Default, will change dynamically in JS
         $export_filename       = 'stock_requests_' . date('Ymd');

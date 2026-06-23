@@ -483,10 +483,11 @@ include __DIR__ . '/../partials/header.php';
                     <select id="payment_method" class="form-select" required>
                         <option value="">Select payment method</option>
                         <option value="Cash">Cash</option>
-                        <option value="Credit Card">Credit Card</option>
-                        <option value="Account Receivable">Account Receivable</option>
+                        <option value="Card">Card</option>
                         <option value="E-Wallet">E-Wallet</option>
-                        <option value="E-Fuel Card">E-Fuel Card</option>
+                        <option value="Petron E-Fuel">Petron E-Fuel</option>
+                        <option value="Fleet Card">Fleet Card</option>
+                        <option value="Credit">Credit</option>
                     </select>
                 </div>
             </div>
@@ -925,19 +926,20 @@ function handlePaymentMethodChange() {
     
     // Show relevant section
     switch (method) {
-        case 'Account Receivable':
+        case 'Credit':
             document.getElementById('credit_customer_section').style.display = 'block';
             break;
         case 'Cash':
             document.getElementById('cash_payment_section').style.display = 'block';
             break;
-        case 'Credit Card':
+        case 'Card':
+        case 'Fleet Card':
             document.getElementById('card_payment_section').style.display = 'block';
             break;
         case 'E-Wallet':
             document.getElementById('ewallet_payment_section').style.display = 'block';
             break;
-        case 'E-Fuel Card':
+        case 'Petron E-Fuel':
             document.getElementById('efuel_payment_section').style.display = 'block';
             break;
     }

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Merchandise Products — Product Management
  * Manager/Admin view: list, add, edit, activate/deactivate merchandise products.
@@ -49,6 +49,19 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 } catch (Exception $e) {}
 
+// ── Backfill station_inventory for existing products ──────────────────────
+// Any product with ip.stock > 0 but no station_inventory row gets a row inserted
+try {
+    $pdo->prepare("
+        INSERT INTO station_inventory (product_id, station_id, stock_level, status, last_updated)
+        SELECT ip.id, ?, COALESCE(ip.stock, 0), 'active', NOW()
+        FROM inventory_products ip
+        LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
+        WHERE si.id IS NULL
+          AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel')
+    ")->execute([$station_id, $station_id]);
+} catch (Exception $e) {}
+
 // ── POST handlers ──────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -80,12 +93,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($chk->fetchColumn()) {
                     $_SESSION['error'] = "Product '$name' already exists.";
                 } else {
-                    $pdo->prepare("INSERT INTO inventory_products (station_id, product_name, category, sku, unit_cost, unit_price, stock, status, min_stock, max_stock, created_at) VALUES (?,?,?,?,?,?,0,'active',?,?,NOW())")
-                        ->execute([$station_id, $name, $category, $sku, $unit_cost, $unit_price, $min_stock, $max_stock]);
-                    log_activity($pdo, $me['id'], 'Product Added', "Merchandise product '$name' (category: $category) added by {$me['name']}");
-                    $_SESSION['success'] = "Product '$name' added. Stock updates automatically when deliveries are approved.";
+                    $initial_stock = (int)($_POST['initial_stock'] ?? 0);
+                    $initial_batch = trim($_POST['initial_batch'] ?? '');
+
+                    $pdo->beginTransaction();
+
+                    // Insert product
+                    $pdo->prepare("INSERT INTO inventory_products (station_id, product_name, category, sku, unit_cost, unit_price, stock, status, min_stock, max_stock, created_at) VALUES (?,?,?,?,?,?,?, 'active',?,?,NOW())")
+                        ->execute([$station_id, $name, $category, $sku, $unit_cost, $unit_price, $initial_stock, $min_stock, $max_stock]);
+                    $product_id = (int)$pdo->lastInsertId();
+
+                    // Insert into station_inventory
+                    $pdo->prepare("INSERT INTO station_inventory (product_id, station_id, stock_level, status, last_updated) VALUES (?, ?, ?, 'active', NOW())")
+                        ->execute([$product_id, $station_id, $initial_stock]);
+
+                    if ($initial_stock > 0) {
+                        $batch_num = $initial_batch !== '' ? $initial_batch : 'B-INIT-' . str_pad($product_id, 4, '0', STR_PAD_LEFT);
+                        
+                        // Insert batch
+                        $pdo->prepare("INSERT INTO merchandise_batches (product_id, station_id, batch_number, quantity_received, remaining_qty, unit_cost, supplier, date_received, encoded_by, status, notes) VALUES (?, ?, ?, ?, ?, ?, 'Initial Stock', CURDATE(), ?, 'active', 'Initial Stock Added')")
+                            ->execute([$product_id, $station_id, $batch_num, $initial_stock, $initial_stock, $unit_cost, $me['id']]);
+                        
+                        // Insert stock_in history
+                        $pdo->prepare("INSERT INTO merchandise_stock_in (po_number, station_id, product_id, product_name, sku, category, qty_ordered, qty_received, qty_variance, unit_cost, total_cost, condition_flag, remarks, stock_before, stock_after, encoded_by, encoded_at, batch_ref) VALUES ('INITIAL', ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'Good', 'Initial Stock Added', 0, ?, ?, NOW(), ?)")
+                            ->execute([$station_id, $product_id, $name, $sku, $category, $initial_stock, $initial_stock, $unit_cost, round($unit_cost * $initial_stock, 2), $initial_stock, $me['id'], $batch_num]);
+                    }
+
+                    log_activity($pdo, $me['id'], 'Product Added', "Merchandise product '$name' (category: $category, initial stock: $initial_stock) added by {$me['name']}");
+                    
+                    $pdo->commit();
+                    $_SESSION['success'] = "Product '$name' added with stock of $initial_stock.";
                 }
             } catch (Exception $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
                 $_SESSION['error'] = 'Error adding product: ' . $e->getMessage();
             }
         }
@@ -144,6 +186,89 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: manager_product_merchandise.php'); exit;
     }
 
+    // ── Manual Stock In ──────────────────────────────────────────────────
+    if ($action === 'manual_stock_in') {
+        $product_id = (int)($_POST['product_id'] ?? 0);
+        $qty_to_add = (int)($_POST['qty_to_add'] ?? 0);
+        $unit_cost  = (float)($_POST['unit_cost'] ?? 0);
+        $batch_num  = trim($_POST['batch_number'] ?? '');
+        $remarks    = trim($_POST['remarks'] ?? '');
+
+        if (!$product_id || $qty_to_add <= 0) {
+            $_SESSION['error'] = 'Product ID and a valid quantity greater than 0 are required.';
+        } else {
+            try {
+                // Fetch product details
+                $stmt = $pdo->prepare("SELECT product_name, sku, category FROM inventory_products WHERE id = ?");
+                $stmt->execute([$product_id]);
+                $product = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                if (!$product) {
+                    $_SESSION['error'] = 'Product not found.';
+                } else {
+                    $pdo->beginTransaction();
+
+                    // Get current stock before
+                    $stock_before = 0;
+                    $si_stmt = $pdo->prepare("SELECT stock_level FROM station_inventory WHERE product_id = ? AND station_id = ?");
+                    $si_stmt->execute([$product_id, $station_id]);
+                    $si_row = $si_stmt->fetch(PDO::FETCH_ASSOC);
+                    if ($si_row) {
+                        $stock_before = (int)$si_row['stock_level'];
+                    }
+
+                    $stock_after = $stock_before + $qty_to_add;
+
+                    // Update station_inventory
+                    if ($si_row) {
+                        $pdo->prepare("UPDATE station_inventory SET stock_level = stock_level + ?, last_updated = NOW() WHERE product_id = ? AND station_id = ?")
+                            ->execute([$qty_to_add, $product_id, $station_id]);
+                    } else {
+                        $pdo->prepare("INSERT INTO station_inventory (product_id, station_id, stock_level, status, last_updated) VALUES (?, ?, ?, 'active', NOW())")
+                            ->execute([$product_id, $station_id, $qty_to_add]);
+                    }
+
+                    // Update inventory_products stock
+                    $pdo->prepare("UPDATE inventory_products SET stock = stock + ? WHERE id = ?")
+                        ->execute([$qty_to_add, $product_id]);
+
+                    // Generate batch_number if empty
+                    if ($batch_num === '') {
+                        $batch_num = 'B-MAN-' . date('YmdHis') . '-' . str_pad($product_id, 4, '0', STR_PAD_LEFT);
+                    }
+
+                    // Check if batch number already exists for product/station
+                    $batch_check = $pdo->prepare("SELECT id FROM merchandise_batches WHERE product_id = ? AND station_id = ? AND batch_number = ? LIMIT 1");
+                    $batch_check->execute([$product_id, $station_id, $batch_num]);
+                    if ($batch_check->fetchColumn()) {
+                        // Update existing batch
+                        $pdo->prepare("UPDATE merchandise_batches SET remaining_qty = remaining_qty + ?, quantity_received = quantity_received + ?, updated_at = NOW() WHERE product_id = ? AND station_id = ? AND batch_number = ?")
+                            ->execute([$qty_to_add, $qty_to_add, $product_id, $station_id, $batch_num]);
+                    } else {
+                        // Insert new batch
+                        $pdo->prepare("INSERT INTO merchandise_batches (product_id, station_id, batch_number, quantity_received, remaining_qty, unit_cost, supplier, date_received, encoded_by, status, notes) VALUES (?, ?, ?, ?, ?, ?, 'Manual Stock-In', CURDATE(), ?, 'active', ?)")
+                            ->execute([$product_id, $station_id, $batch_num, $qty_to_add, $qty_to_add, $unit_cost, $me['id'], $remarks ?: 'Manual Stock-In']);
+                    }
+
+                    // Insert stock_in history
+                    $pdo->prepare("INSERT INTO merchandise_stock_in (po_number, station_id, product_id, product_name, sku, category, qty_ordered, qty_received, qty_variance, unit_cost, total_cost, condition_flag, remarks, stock_before, stock_after, encoded_by, encoded_at, batch_ref) VALUES ('MANUAL', ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'Good', ?, ?, ?, ?, NOW(), ?)")
+                        ->execute([$station_id, $product_id, $product['product_name'], $product['sku'], $product['category'], $qty_to_add, $qty_to_add, $unit_cost, round($unit_cost * $qty_to_add, 2), $remarks ?: 'Manual Stock-In', $stock_before, $stock_after, $me['id'], $batch_num]);
+
+                    log_activity($pdo, $me['id'], 'Manual Stock-In', "Stocked in $qty_to_add pcs of '{$product['product_name']}' (cost: $unit_cost, batch: $batch_num)");
+
+                    $pdo->commit();
+                    $_SESSION['success'] = "Successfully stocked in $qty_to_add pcs of '{$product['product_name']}'.";
+                }
+            } catch (Exception $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                $_SESSION['error'] = 'Error stocking in product: ' . $e->getMessage();
+            }
+        }
+        header('Location: manager_product_merchandise.php'); exit;
+    }
+
     // ── Toggle status (uses proper status column) ────────────────────────
     if ($action === 'toggle_status') {
         $id        = (int)($_POST['product_id'] ?? 0);
@@ -193,7 +318,7 @@ try {
             ip.sku,
             ip.unit_cost,
             ip.unit_price,
-            ip.stock,
+            COALESCE(si.stock_level, ip.stock, 0) AS stock,
             ip.status,
             COALESCE(ip.min_stock, 0) AS min_stock,
             COALESCE(ip.max_stock, 0) AS max_stock,
@@ -201,12 +326,14 @@ try {
             COALESCE(ba.total_batches,  0) AS total_batches,
             COALESCE(ba.batch_stock,    0) AS batch_stock
         FROM inventory_products ip
+        LEFT JOIN station_inventory si
+               ON si.product_id = ip.id AND si.station_id = ?
         LEFT JOIN (
             SELECT
                 product_id,
                 COUNT(*) AS total_batches,
-                SUM(CASE WHEN status = 'Active' THEN 1    ELSE 0 END) AS active_batches,
-                SUM(CASE WHEN status = 'Active' THEN remaining_qty ELSE 0 END) AS batch_stock
+                SUM(CASE WHEN LOWER(status) = 'active' THEN 1    ELSE 0 END) AS active_batches,
+                SUM(CASE WHEN LOWER(status) = 'active' THEN remaining_qty ELSE 0 END) AS batch_stock
             FROM merchandise_batches
             WHERE station_id = ?
             GROUP BY product_id
@@ -214,7 +341,7 @@ try {
         WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel')
         ORDER BY ip.category, ip.product_name
     ");
-    $stmt->execute([$station_id]);
+    $stmt->execute([$station_id, $station_id]);
     $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     $msg = 'Error loading products: ' . $e->getMessage();
@@ -224,9 +351,9 @@ try {
 $product_batches = [];
 try {
     $bStmt = $pdo->prepare("
-        SELECT product_id, id, batch_number, remaining_qty, unit_cost, date_received, status
+        SELECT product_id, id, batch_number, quantity_received, remaining_qty, unit_cost, date_received, status
         FROM merchandise_batches
-        WHERE station_id = ?
+        WHERE station_id = ? AND LOWER(status) IN ('active','depleted')
         ORDER BY product_id, date_received ASC, id ASC
     ");
     $bStmt->execute([$station_id]);
@@ -458,6 +585,9 @@ include __DIR__ . '/../partials/header.php';
                             <button class="btn btn-edit" onclick="editProduct(<?php echo (int)$p['id']; ?>)">
                                 <i class="fas fa-edit"></i> Edit
                             </button>
+                            <button class="btn btn-success" onclick="openStockInModal(<?php echo (int)$p['id']; ?>)" style="background:#28a745;color:#fff;">
+                                <i class="fas fa-dolly"></i> Stock In
+                            </button>
                             <?php if ($isPending): ?>
                             <button class="btn btn-success" onclick="validateProduct(<?php echo (int)$p['id']; ?>, '<?php echo htmlspecialchars(addslashes($p['product_name'])); ?>')" style="background:#28a745;color:#fff;">
                                 <i class="fas fa-check-double"></i> Validate
@@ -478,7 +608,42 @@ include __DIR__ . '/../partials/header.php';
                 <tr class="batch-expand-row" id="batch-row-<?php echo (int)$p['id']; ?>">
                     <td colspan="10" style="padding:0 12px 12px 12px;background:#faf9ff;">
                         <div class="batch-panel" id="batch-panel-<?php echo (int)$p['id']; ?>">
-                            <div class="batch-loading"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+                            <div class="batch-panel-head">
+                                <div class="batch-panel-title">
+                                    <i class="fas fa-cubes"></i> Active Batches (FIFO Tracking)
+                                </div>
+                            </div>
+                            <?php if (!empty($pid_batches)): ?>
+                            <table class="batch-table">
+                                <thead>
+                                    <tr>
+                                        <th>Batch ID</th>
+                                        <th>Date Received</th>
+                                        <th>Cost Price</th>
+                                        <th>Qty Received</th>
+                                        <th>Remaining Qty</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($pid_batches as $pb):
+                                        $bStatus = strtolower($pb['status'] ?? 'active');
+                                        $statusClass = 'batch-status-' . $bStatus;
+                                    ?>
+                                    <tr>
+                                        <td><strong style="font-family:monospace;"><?php echo htmlspecialchars($pb['batch_number']); ?></strong></td>
+                                        <td><?php echo htmlspecialchars($pb['date_received']); ?></td>
+                                        <td>₱<?php echo number_format((float)$pb['unit_cost'], 2); ?></td>
+                                        <td><?php echo number_format((int)$pb['remaining_qty']); ?> pcs</td>
+                                        <td><strong><?php echo number_format((int)$pb['remaining_qty']); ?> pcs</strong></td>
+                                        <td><span class="<?php echo $statusClass; ?>"><?php echo ucfirst($bStatus); ?></span></td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                            <?php else: ?>
+                            <div style="font-size:12px;color:#6c757d;">No batch records for this product.</div>
+                            <?php endif; ?>
                         </div>
                     </td>
                 </tr>
@@ -545,6 +710,16 @@ include __DIR__ . '/../partials/header.php';
                     <div class="form-group">
                         <label>Max Stock</label>
                         <input type="number" name="max_stock" class="form-control" min="0" value="0" placeholder="Max capacity">
+                    </div>
+                </div>
+                <div class="fg2">
+                    <div class="form-group">
+                        <label>Initial Stock</label>
+                        <input type="number" name="initial_stock" class="form-control" min="0" value="0" placeholder="e.g. 50">
+                    </div>
+                    <div class="form-group">
+                        <label>Initial Batch ID</label>
+                        <input type="text" name="initial_batch" class="form-control" placeholder="e.g. B-INIT-001 (Optional)">
                     </div>
                 </div>
                 <div class="info-note">
@@ -667,9 +842,72 @@ include __DIR__ . '/../partials/header.php';
     <input type="hidden" name="new_status" id="tNewStatus">
 </form>
 
+<!-- ══ MANUAL STOCK IN MODAL ══════════════════════════════════════════════════ -->
+<div id="stockInModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3><i class="fas fa-dolly" style="color:#28a745;"></i> Manual Stock In</h3>
+            <button class="close" onclick="closeModal('stockInModal')">&times;</button>
+        </div>
+        <form method="POST">
+            <input type="hidden" name="action" value="manual_stock_in">
+            <input type="hidden" name="product_id" id="siProductId">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Product Name</label>
+                    <input type="text" id="siProductName" class="form-control" readonly style="background:#f8f9fa;">
+                </div>
+                <div class="fg2">
+                    <div class="form-group">
+                        <label>Qty to Add <span style="color:#dc3545;">*</span></label>
+                        <input type="number" name="qty_to_add" id="siQty" class="form-control" min="1" required placeholder="e.g. 10">
+                    </div>
+                    <div class="form-group">
+                        <label>Unit Cost (₱) <span style="color:#dc3545;">*</span></label>
+                        <input type="number" name="unit_cost" id="siProductCost" class="form-control" step="0.01" min="0" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Batch Number</label>
+                    <input type="text" name="batch_number" id="siBatch" class="form-control" placeholder="e.g. B-MAN-123 (Optional)">
+                </div>
+                <div class="form-group">
+                    <label>Remarks</label>
+                    <textarea name="remarks" id="siRemarks" class="form-control" placeholder="Optional notes..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn ghost" onclick="closeModal('stockInModal')">Cancel</button>
+                <button type="submit" class="btn primary"><i class="fas fa-check"></i> Submit Stock In</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
+// --- Toggle Batch Row ---
+function toggleBatchRow(pid) {
+    const row = document.getElementById('batch-row-' + pid);
+    if (row) {
+        row.classList.toggle('open');
+    }
+}
+
+// --- Open Stock In Modal ---
+function openStockInModal(id) {
+    const p = productData.find(item => item.id == id);
+    if (!p) return;
+    document.getElementById('siProductId').value = p.id;
+    document.getElementById('siProductName').value = p.product_name;
+    document.getElementById('siProductCost').value = parseFloat(p.unit_cost).toFixed(2);
+    document.getElementById('siQty').value = '';
+    document.getElementById('siBatch').value = 'B-MAN-' + Math.floor(Date.now() / 1000) + '-' + p.id;
+    document.getElementById('siRemarks').value = '';
+    openModal('stockInModal');
+}
+
 // --- Modals ---
 function openModal(id) {
     document.getElementById(id).classList.add('open');

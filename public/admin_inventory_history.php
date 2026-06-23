@@ -148,7 +148,7 @@ try {
         FROM merchandise_transaction_items mti
         JOIN merchandise_transactions mt ON mti.transaction_id = mt.id
         WHERE mt.station_id = ? AND DATE(mt.transaction_date) BETWEEN ? AND ?
-          AND mt.validation_status IN ('Approved','Adjusted')
+          AND mt.validation_status IN ('Official','Completed','Approved','Adjusted')
           AND mti.item_type = 'merchandise'
 
         ORDER BY txn_date DESC

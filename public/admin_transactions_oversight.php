@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'ato_oversight_dashboard';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -966,10 +966,18 @@ if ($export_type === 'pdf') {
 include __DIR__ . '/../partials/header.php';
 ?>
 
-<div class="page-head">
+<div class="int-head">
     <div>
-        <h1 class="h1">Oversight Dashboard</h1>
-        <div class="sub">Systemâ€‘wide monitoring of validated transactions and receivables.</div>
+        <?php if ($status_f === 'Adjusted'): ?>
+            <h1><i class="fas fa-sliders-h"></i> Transaction Adjustments</h1>
+            <div class="sub">Review transaction modifications performed by managers and verify adjustment records.</div>
+        <?php elseif ($status_f === 'Voided'): ?>
+            <h1><i class="fas fa-ban"></i> Voided Transactions</h1>
+            <div class="sub">Review cancelled transactions and monitor void activities for compliance and operational control.</div>
+        <?php else: ?>
+            <h1><i class="fas fa-chart-line"></i> Transaction Overview</h1>
+            <div class="sub">View transaction summaries, operational statistics, and overall transaction performance across the system.</div>
+        <?php endif; ?>
     </div>
     <div class="actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <!-- Excel -->
@@ -1001,7 +1009,7 @@ include __DIR__ . '/../partials/header.php';
     <i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($_SESSION['error']); unset($_SESSION['error']); ?>
 </div>
 <?php endif; ?>
-
+<?php if (false): // Disabled summary cards ?>
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px;">
     <!-- Total Sales Card -->
     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;display:flex;align-items:center;gap:14px;">
@@ -1107,6 +1115,7 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 <?php endif; ?>
+<?php endif; // End of disabled summary cards ?>
 
 <!-- â”€â”€ Filter Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
 <div class="ato-filter-card">
@@ -1138,7 +1147,7 @@ include __DIR__ . '/../partials/header.php';
             <select name="status" class="ato-inp ato-select">
                 <option value="">All Statuses</option>
                 <?php
-                $status_opts = ['Approved','Adjusted','Completed','Rejected'];
+                $status_opts = ['Approved','Adjusted','Completed','Rejected','Voided'];
                 foreach ($status_opts as $opt):
                 ?>
                 <option value="<?php echo strtolower($opt); ?>" <?php echo strtolower($status_f) === strtolower($opt) ? 'selected' : ''; ?>>
@@ -1164,19 +1173,20 @@ include __DIR__ . '/../partials/header.php';
     <table class="ato-table">
         <colgroup>
             <col style="width:7%;">   <!-- Txn ID -->
-            <col style="width:8%;">   <!-- Customer -->
+            <col style="width:7%;">   <!-- Customer -->
             <col style="width:5%;">   <!-- Type -->
-            <col style="width:6%;">   <!-- Vehicle -->
-            <col style="width:11%;">  <!-- Items / Parts -->
-            <col style="width:8%;">   <!-- Service -->
+            <col style="width:5%;">   <!-- Vehicle -->
+            <col style="width:10%;">  <!-- Items / Parts -->
+            <col style="width:7%;">   <!-- Service -->
             <col style="width:6%;">   <!-- Amount -->
             <col style="width:5%;">   <!-- Payment -->
-            <col style="width:7%;">   <!-- Pay Status + Aging -->
+            <col style="width:6%;">   <!-- Pay Status + Aging -->
             <col style="width:5%;">   <!-- Validation -->
-            <col style="width:8%;">   <!-- Inv. Impact -->
-            <col style="width:9%;">   <!-- Validation Notes -->
-            <col style="width:7%;">   <!-- Date / Time -->
-            <col style="width:8%;">   <!-- Staff -->
+            <col style="width:7%;">   <!-- Inv. Impact -->
+            <col style="width:8%;">   <!-- Validation Notes -->
+            <col style="width:6%;">   <!-- Date / Time -->
+            <col style="width:7%;">   <!-- Staff -->
+            <col style="width:9%;">   <!-- Actions -->
         </colgroup>
         <thead>
             <tr>
@@ -1194,6 +1204,7 @@ include __DIR__ . '/../partials/header.php';
                 <th>Validation Notes</th>
                 <th>Date / Time</th>
                 <th>Staff</th>
+                <th style="text-align:center;">Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -1341,11 +1352,44 @@ include __DIR__ . '/../partials/header.php';
                         title="<?= htmlspecialchars($r['staff_name']) ?>">
                         <?= htmlspecialchars(mb_strimwidth($r['staff_name'], 0, 14, 'â€¦')) ?>
                     </td>
+
+                    <!-- Actions -->
+                    <td style="text-align:center;white-space:nowrap;padding:6px 4px;">
+                    <?php if ($r['_source'] === 'merchandise_transactions' && in_array($vs, ['approved','adjusted','completed','official','validated'])): ?>
+                        <button type="button"
+                            onclick="atoOpenRejectModal('merch',<?= (int)$r['row_id'] ?>,'<?= htmlspecialchars($start,ENT_QUOTES) ?>','<?= htmlspecialchars($end,ENT_QUOTES) ?>','<?= htmlspecialchars($status_f,ENT_QUOTES) ?>','<?= htmlspecialchars($search,ENT_QUOTES) ?>')"
+                            style="display:inline-flex;align-items:center;gap:3px;padding:4px 8px;font-size:10px;font-weight:600;background:#fff;color:#dc2626;border:1px solid #dc2626;border-radius:5px;cursor:pointer;transition:all .15s;margin-bottom:3px;"
+                            onmouseover="this.style.background='#dc2626';this.style.color='#fff'"
+                            onmouseout="this.style.background='#fff';this.style.color='#dc2626'"
+                            title="Return transaction to staff">
+                            <i class="fas fa-undo-alt"></i> Return
+                        </button><br>
+                        <button type="button"
+                            onclick="atoOpenAdjustModal(<?= (int)$r['row_id'] ?>,<?= (float)$r['amount'] ?>,'<?= htmlspecialchars($start,ENT_QUOTES) ?>','<?= htmlspecialchars($end,ENT_QUOTES) ?>','<?= htmlspecialchars($status_f,ENT_QUOTES) ?>','<?= htmlspecialchars($search,ENT_QUOTES) ?>')"
+                            style="display:inline-flex;align-items:center;gap:3px;padding:4px 8px;font-size:10px;font-weight:600;background:#fff;color:#6f42c1;border:1px solid #6f42c1;border-radius:5px;cursor:pointer;transition:all .15s;"
+                            onmouseover="this.style.background='#6f42c1';this.style.color='#fff'"
+                            onmouseout="this.style.background='#fff';this.style.color='#6f42c1'"
+                            title="Adjust transaction amount">
+                            <i class="fas fa-sliders-h"></i> Adjust
+                        </button>
+                    <?php elseif ($r['_source'] === 'job_orders' && in_array($vs, ['approved','in progress','pending'])): ?>
+                        <button type="button"
+                            onclick="atoOpenRejectModal('jo',<?= (int)$r['row_id'] ?>,'<?= htmlspecialchars($start,ENT_QUOTES) ?>','<?= htmlspecialchars($end,ENT_QUOTES) ?>','<?= htmlspecialchars($status_f,ENT_QUOTES) ?>','<?= htmlspecialchars($search,ENT_QUOTES) ?>','job_orders')"
+                            style="display:inline-flex;align-items:center;gap:3px;padding:4px 8px;font-size:10px;font-weight:600;background:#fff;color:#dc2626;border:1px solid #dc2626;border-radius:5px;cursor:pointer;transition:all .15s;"
+                            onmouseover="this.style.background='#dc2626';this.style.color='#fff'"
+                            onmouseout="this.style.background='#fff';this.style.color='#dc2626'"
+                            title="Reject job order">
+                            <i class="fas fa-times-circle"></i> Reject
+                        </button>
+                    <?php else: ?>
+                        <span style="color:#cbd5e1;font-size:10px;">&mdash;</span>
+                    <?php endif; ?>
+                    </td>
                 </tr>
                 <?php endforeach; ?>
             <?php else: ?>
                 <tr>
-                    <td colspan="14" style="text-align:center;padding:40px 20px;color:#94a3b8;">
+                    <td colspan="15" style="text-align:center;padding:40px 20px;color:#94a3b8;">
                         <i class="fas fa-inbox" style="font-size:36px;display:block;margin-bottom:10px;opacity:0.3;"></i>
                         <div style="font-size:14px;font-weight:600;color:#64748b;margin-bottom:4px;">No Transactions Found</div>
                         <div style="font-size:12px;">Try adjusting your filters or date range.</div>
@@ -1358,6 +1402,11 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 <style>
+/* == PAGE HEADER - matches SuperAdmin int-head standard == */
+.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:-12px !important; }
+.int-head h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
+.int-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
+
 .ato-flt-grp { display:flex;flex-direction:column;gap:4px; }
 .ato-lbl { 
     font-size:11px;
@@ -1606,7 +1655,7 @@ include __DIR__ . '/../partials/header.php';
 
 /* â”€â”€ Print Styles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 @media print {
-    .sidebar,.top-header,.page-head .actions,.ato-filter-card,.ato-tab-bar { display:none !important; }
+    .sidebar,.top-header,.int-head .actions,.ato-filter-card,.ato-tab-bar { display:none !important; }
     .main { margin:0 !important;padding:0 !important; }
     .ato-table { font-size:10px; }
 }
@@ -1776,7 +1825,6 @@ function atoOpenRejectModal(type, id, start, end, status, search, joSrc) {
     // Reset all id fields
     document.getElementById('ato_reject_txn_id').value = '';
     document.getElementById('ato_reject_jo_id').value  = '';
-    document.getElementById('ato_reject_jo_id').value   = '';
     if (type === 'merch') {
         document.getElementById('ato_reject_action').value = 'reject_transaction';
         document.getElementById('ato_reject_txn_id').value = id;
@@ -1831,28 +1879,28 @@ function autoRefreshAdminOversight() {
 }
 
 // Track modal state to pause auto-refresh during admin actions
-const originalAtoCloseModal = window.atoCloseModal;
-window.atoCloseModal = function(id) {
-    originalAtoCloseModal(id);
-    isAdminModalOpen = false;
-};
+// Wrap modal functions using IIFE to safely capture their references
+(function() {
+    var _origClose  = atoCloseModal;
+    var _origReject = atoOpenRejectModal;
+    var _origAdjust = atoOpenAdjustModal;
 
-const originalAtoOpenRejectModal = window.atoOpenRejectModal;
-window.atoOpenRejectModal = function(type, id, start, end, status, search, joSrc) {
-    isAdminModalOpen = true;
-    return originalAtoOpenRejectModal(type, id, start, end, status, search, joSrc);
-};
-
-const originalAtoOpenAdjustModal = window.atoOpenAdjustModal;
-window.atoOpenAdjustModal = function(id, amount, start, end, status, search) {
-    isAdminModalOpen = true;
-    return originalAtoOpenAdjustModal(id, amount, start, end, status, search);
-};
+    atoCloseModal = function(id) {
+        _origClose(id);
+        isAdminModalOpen = false;
+    };
+    atoOpenRejectModal = function(type, id, start, end, status, search, joSrc) {
+        isAdminModalOpen = true;
+        _origReject(type, id, start, end, status, search, joSrc);
+    };
+    atoOpenAdjustModal = function(id, amount, start, end, status, search) {
+        isAdminModalOpen = true;
+        _origAdjust(id, amount, start, end, status, search);
+    };
+})();
 
 // Start auto-refresh timer (60 seconds - appropriate for admin oversight)
-window.refreshAdminOversightTimer = setInterval(autoRefreshAdminOversight, 60000);
-
-console.log('âœ… Auto-refresh enabled for Admin Transactions Oversight (60s interval)');
+setInterval(autoRefreshAdminOversight, 60000);
 
 function atoExport(format) {
     const table = document.querySelector('.ato-table');

@@ -50,7 +50,12 @@ try {
                 throw new Exception('Unauthorized access');
             }
             
-            getPendingTransactions($pdo, $station_id);
+            echo json_encode([
+                'success' => true,
+                'transactions' => [],
+                'count' => 0,
+                'message' => 'Transactions are official when saved; there is no manager approval queue.'
+            ]);
             break;
             
         case 'validate_transaction':
@@ -63,7 +68,11 @@ try {
                 throw new Exception('Unauthorized access');
             }
             
-            validateTransaction($pdo, $station_id, $user_id);
+            http_response_code(410);
+            echo json_encode([
+                'success' => false,
+                'error' => 'Transactions are official when saved. Use Adjust, Void, or Correct for manager corrections.'
+            ]);
             break;
             
         case 'get_active_shift':
@@ -132,7 +141,7 @@ function submitMerchandiseTransaction($pdo, $station_id, $staff_id) {
                 validation_status,
                 shift_status,
                 created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending Validation', ?, NOW())
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Official', ?, NOW())
         ");
         
         $stmt->execute([
@@ -161,7 +170,7 @@ function submitMerchandiseTransaction($pdo, $station_id, $staff_id) {
                 transaction_date,
                 status,
                 created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_validation', NOW())
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'Completed', NOW())
         ");
         
         $salesStmt->execute([
@@ -226,7 +235,7 @@ function submitMerchandiseTransaction($pdo, $station_id, $staff_id) {
         $auditStmt->execute([
             $staff_id,
             $station_id,
-            'Merchandise transaction submitted for validation',
+            'Merchandise transaction saved as official',
             $auditDetails,
             $transaction_id,
             $_SERVER['REMOTE_ADDR'] ?? '',
@@ -237,7 +246,7 @@ function submitMerchandiseTransaction($pdo, $station_id, $staff_id) {
         
         echo json_encode([
             'success' => true,
-            'message' => 'Transaction submitted successfully',
+            'message' => 'Transaction saved successfully',
             'transaction_id' => $transaction_id,
             'pending_id' => $pending_id,
             'shift_status' => $shift_status,
