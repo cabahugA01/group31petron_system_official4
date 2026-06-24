@@ -95,12 +95,13 @@ try {
                -- Price: strictly fuel_inventory.price_per_liter
                COALESCE(fi.price_per_liter, 0) AS price_per_liter,
 
-               -- Calibration: fuel_calibration table (technician record, active) → fuel_inventory fallback
+               -- Calibration: fuel_calibration_records table (technician record, active) -> fuel_inventory fallback
                COALESCE(
-                   (SELECT fc.calibration_constant FROM fuel_calibration fc
+                   (SELECT fc.calibration_liters FROM fuel_calibration_records fc
                     WHERE LOWER(TRIM(fc.fuel_type)) = LOWER(TRIM(fi.fuel_type))
+                      AND fc.station_id = fi.station_id
                       AND fc.status = 'active'
-                    ORDER BY fc.effective_date DESC, fc.id DESC LIMIT 1),
+                    ORDER BY fc.calibration_date DESC, fc.id DESC LIMIT 1),
                    fi.latest_calibration, 0
                ) AS calibration,
 
@@ -2331,14 +2332,10 @@ input[list] {
             <?php $is_enc = ($fuel_tab_default === 'encode'); ?>
             <button onclick="switchFuelSubTab('encode')" id="fuelSubTabBtn_encode"
                     class="txn-subtab-btn blue <?= $is_enc ? 'active' : 'inactive' ?>">
-
-
                 <i class="fas fa-edit"></i> Encode Meter Readings
             </button>
             <button onclick="switchFuelSubTab('readings')" id="fuelSubTabBtn_readings"
                     class="txn-subtab-btn blue <?= !$is_enc ? 'active' : 'inactive' ?>">
-
-
                 <i class="fas fa-history"></i> Meter Reading History
             </button>
         </div>
@@ -2352,16 +2349,13 @@ input[list] {
             <?php 
             // Tanker configuration per fuel type - SAME AS TABLE CONFIG
             // ORDER MATTERS: Check longer/more specific names first to avoid partial matches
+            // 5 fuel types, 17 total pumps/tankers
             $tanker_config_forms = [
                 'xcs plus' => [
                     ['name' => 'XCS Plus', 'tankers' => [1, 2, 3, 4], 'price_key' => 'xcs plus']
                 ],
                 'turbo diesel' => [
                     ['name' => 'Turbo Diesel', 'tankers' => [1, 2], 'price_key' => 'turbo diesel']
-                ],
-                'xtra advance' => [
-                    ['name' => 'XTRA Advance 1', 'tankers' => [1, 2], 'price_key' => 'xtra advance'],
-                    ['name' => 'XTRA Advance 2', 'tankers' => [3, 4], 'price_key' => 'xtra advance']
                 ],
                 'xtra unl' => [
                     ['name' => 'XTRA UNL 1', 'tankers' => [1, 2], 'price_key' => 'xtra unl'],
@@ -2370,10 +2364,6 @@ input[list] {
                 'diesel' => [
                     ['name' => 'Diesel 1', 'tankers' => [1, 2, 3, 4], 'price_key' => 'diesel'],
                     ['name' => 'Diesel 2', 'tankers' => [5, 6], 'price_key' => 'diesel']
-                ],
-                'xcs' => [
-                    ['name' => 'XCS 1', 'tankers' => [1, 2], 'price_key' => 'xcs'],
-                    ['name' => 'XCS 2', 'tankers' => [3, 4], 'price_key' => 'xcs']
                 ],
                 'kerosene' => [
                     ['name' => 'Kerosene', 'tankers' => [1], 'price_key' => 'kerosene']
@@ -2452,16 +2442,13 @@ input[list] {
                     <?php 
                     // Tanker configuration per fuel type - THIS CONTROLS THE DISPLAY
                     // ORDER MATTERS: Check longer/more specific names first to avoid partial matches
+                    // 5 fuel types, 17 total pumps/tankers
                     $tanker_config = [
                         'xcs plus' => [
                             ['name' => 'XCS Plus', 'tankers' => [1, 2, 3, 4], 'price_key' => 'xcs plus']
                         ],
                         'turbo diesel' => [
                             ['name' => 'Turbo Diesel', 'tankers' => [1, 2], 'price_key' => 'turbo diesel']
-                        ],
-                        'xtra advance' => [
-                            ['name' => 'XTRA Advance 1', 'tankers' => [1, 2], 'price_key' => 'xtra advance'],
-                            ['name' => 'XTRA Advance 2', 'tankers' => [3, 4], 'price_key' => 'xtra advance']
                         ],
                         'xtra unl' => [
                             ['name' => 'XTRA UNL 1', 'tankers' => [1, 2], 'price_key' => 'xtra unl'],
@@ -2470,10 +2457,6 @@ input[list] {
                         'diesel' => [
                             ['name' => 'Diesel 1', 'tankers' => [1, 2, 3, 4], 'price_key' => 'diesel'],
                             ['name' => 'Diesel 2', 'tankers' => [5, 6], 'price_key' => 'diesel']
-                        ],
-                        'xcs' => [
-                            ['name' => 'XCS 1', 'tankers' => [1, 2], 'price_key' => 'xcs'],
-                            ['name' => 'XCS 2', 'tankers' => [3, 4], 'price_key' => 'xcs']
                         ],
                         'kerosene' => [
                             ['name' => 'Kerosene', 'tankers' => [1], 'price_key' => 'kerosene']
@@ -2524,15 +2507,29 @@ input[list] {
                                 // This becomes the pre-filled Beginning for the current shift.
                                 $pump_prev_reading = 0.00;
                                 try {
+                                    // Bulletproof: match pump_id whether it stores tanker_num OR the resolved fuel_pumps PK
                                     $pump_prev_stmt = $pdo->prepare("
                                         SELECT present_reading FROM fuel_transactions
                                         WHERE station_id = ?
                                           AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
-                                          AND pump_id = ?
+                                          AND (
+                                            pump_id = ?
+                                            OR pump_id = (
+                                                SELECT fp.id FROM fuel_pumps fp
+                                                JOIN fuel_types ftp ON ftp.id = fp.fuel_type_id
+                                                WHERE fp.station_id = ?
+                                                  AND fp.pump_number = ?
+                                                  AND LOWER(TRIM(ftp.name)) = LOWER(TRIM(?))
+                                                LIMIT 1
+                                            )
+                                          )
                                           AND COALESCE(status, '') != 'Rejected'
                                         ORDER BY transaction_date DESC, id DESC LIMIT 1
                                     ");
-                                    $pump_prev_stmt->execute([$station_id, $ft['fuel_type'], $tanker_num]);
+                                    $pump_prev_stmt->execute([
+                                        $station_id, $ft['fuel_type'], $tanker_num,
+                                        $station_id, (string)$tanker_num, $ft['fuel_type']
+                                    ]);
                                     $pump_prev_val = $pump_prev_stmt->fetchColumn();
                                     if ($pump_prev_val !== false && $pump_prev_val !== null) {
                                         $pump_prev_reading = (float)$pump_prev_val;
@@ -2540,14 +2537,9 @@ input[list] {
                                 } catch (Exception $e) { /* fallback to 0 */ }
                     ?>
                     <tr id="fuelRow_<?= $ft_id ?>" style="border-bottom:1px solid #e2e8f0;">
-                        <!-- NAME Column (with tanker number) -->
+                        <!-- NAME Column (plain text, no icon) -->
                         <td style="border:1px solid #e2e8f0;padding:10px;">
-                            <div style="display:flex;align-items:center;gap:8px;">
-                                <div style="width:24px;height:24px;border-radius:50%;background:<?= $ft_color ?>;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                                    <i class="fas <?= $ft_icon ?>" style="color:#fff;font-size:10px;"></i>
-                                </div>
-                                <div style="font-weight:700;font-size:12px;color:<?= $ft_color ?>;"><?= $display_name ?></div>
-                            </div>
+                            <span style="font-weight:700;font-size:12px;color:#1e293b;"><?= $display_name ?></span>
                         </td>
 
                         <!-- BEGINNING Column — pre-filled from previous shift's Ending reading -->
@@ -2669,11 +2661,11 @@ input[list] {
                 </button>
             </div>
 
-        </div><!-- /txn-card -->
+        </div><!-- /txn-card encodeCard -->
 
         <?php endif; ?>
 
-        <!-- ── TODAY'S ENTRIES — Meter Reading Table (Table A) ──────────── -->
+        <!-- ── TODAY'S ENTRIES — Meter Reading History ──────────── -->
         <div class="txn-card" id="todayEntriesCard" style="margin-top:8px; margin-bottom:80px; background:#fff; border:1.5px solid #e2e8f0; border-radius:12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);">
             <div class="txn-card-header" style="background:#fff; border-bottom:1.5px solid #e2e8f0; border-top-left-radius:12px; border-top-right-radius:12px; padding: 16px 20px;">
                 <i class="fas fa-history" style="color:var(--petron-blue); font-size:18px;"></i>
@@ -2764,41 +2756,31 @@ input[list] {
                     Loading today's entries…
                 </div>
             </div>
-        </div>
+        </div><!-- /txn-card todayEntriesCard -->
 
         <script>
-        // ── Fuel Sub-tab Switcher ───────────────────────────────────────────────
+        // ── Fuel Sub-tab Switcher ─────────────────────────────────────────────
+        // Shows only the active card; hides the other.
         function switchFuelSubTab(tab) {
             var isReadings = (tab === 'readings');
-            var encodeCard = document.getElementById('encodeCard');
-            var todayCard  = document.getElementById('todayEntriesCard');
-            var encodeBtn  = document.getElementById('fuelSubTabBtn_encode');
+            var encodeCard  = document.getElementById('encodeCard');
+            var todayCard   = document.getElementById('todayEntriesCard');
+            var encodeBtn   = document.getElementById('fuelSubTabBtn_encode');
             var readingsBtn = document.getElementById('fuelSubTabBtn_readings');
-            if (!encodeCard || !todayCard || !encodeBtn || !readingsBtn) return;
+            if (!encodeBtn || !readingsBtn) return;
 
-            encodeCard.style.display = isReadings ? 'none' : 'block';
-            todayCard.style.display  = isReadings ? 'block' : 'none';
+            // Show/hide the cards
+            if (encodeCard)  encodeCard.style.display  = isReadings ? 'none'  : 'block';
+            if (todayCard)   todayCard.style.display   = isReadings ? 'block' : 'none';
 
+            // Update tab button styles
             encodeBtn.className  = 'txn-subtab-btn blue ' + (isReadings ? 'inactive' : 'active');
-            readingsBtn.className = 'txn-subtab-btn blue ' + (isReadings ? 'active' : 'inactive');
+            readingsBtn.className = 'txn-subtab-btn blue ' + (isReadings ? 'active'   : 'inactive');
 
+            // Load history when switching to readings tab
+            if (isReadings) refreshTodayEntries();
 
-
-
-
-
-
-
-
-
-
-
-
-
-            if (isReadings) {
-                refreshTodayEntries();
-            }
-
+            // Persist active tab in URL without reload
             if (window.history && window.history.replaceState) {
                 var url = new URL(window.location.href);
                 if (isReadings) {
@@ -2811,7 +2793,7 @@ input[list] {
         }
         window.switchFuelSubTab = switchFuelSubTab;
 
-        // Auto initialize on DOMContentLoaded if fuel_tab parameter or filters are present
+        // Initialize correct tab on page load
         document.addEventListener('DOMContentLoaded', function() {
             var defaultTab = '<?= $fuel_tab_default ?>';
             switchFuelSubTab(defaultTab);
@@ -2893,14 +2875,11 @@ input[list] {
             const cal = parseFloat(calEl.value.replace(/,/g, '')) || 0;
             const price = parseFloat(priceEl.value) || 0;
             
-            // Step 1: Compute Volume Liters = (Ending Meter - Beginning Meter) - Calibration
-            let volume = 0;
-            if (ending > 0) {
-                volume = (ending - beginning) - cal;
-            }
-            
-            // Step 2: Compute Amount = Volume Liters * Price
-            const amount = volume * price;
+            // ── Formula: Volume Liters = (Ending - Beginning) - Calibration ──
+            const volume = (ending - beginning) - cal;
+
+            // ── Formula: Amount = Volume Liters × Price Per Liter ──
+            const amount = volume > 0 ? volume * price : 0;
             
             // Update displays
             volumeEl.value = volume.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
@@ -2934,6 +2913,13 @@ input[list] {
             formData.set('ending_reading', endingRaw);
             const beginningRaw = (formData.get('beginning_reading') || '').replace(/,/g, '');
             formData.set('beginning_reading', beginningRaw);
+            const beginningVal = parseFloat(beginningRaw) || 0;
+
+            if (endingVal <= beginningVal) {
+                showRowMsg(msgEl, 'error', 'Invalid Reading: Ending meter reading must be greater than Beginning reading.');
+                return false;
+            }
+
             const calibrationRaw = (formData.get('calibration') || '0').replace(/,/g, '');
             formData.set('calibration', calibrationRaw);
 
@@ -3005,18 +2991,9 @@ input[list] {
                     if (amountEl)    amountEl.value    = '₱0.00';
                     if (amountValEl) amountValEl.value = '0.00';
 
-                    // Switch to Meter Reading History tab and refresh
+                    // Switch to Meter Reading History tab so the new record is immediately visible
                     if (typeof switchFuelSubTab === 'function') switchFuelSubTab('readings');
-                    if (typeof loadTodayEntries === 'function') loadTodayEntries();
-
-                    // Fade out toast then redirect to manager validation page
-                    setTimeout(() => {
-                        toast.style.opacity = '0';
-                        setTimeout(() => {
-                            toast.remove();
-                            window.location.href = 'manager_fuel_transaction_validation.php';
-                        }, 400);
-                    }, 2500);
+                    if (typeof loadTodayEntries  === 'function') loadTodayEntries();
                 } else {
                     // Show the actual server error message
                     const errMsg = json.message || 'Submission failed. Please try again.';
@@ -3091,15 +3068,26 @@ input[list] {
             const allForms = document.querySelectorAll('form[id^="fuelForm_"]');
             const formsToSubmit = [];
 
+            let validationFailed = false;
             // Collect forms that have ending reading (required field)
             allForms.forEach(form => {
                 const ftId = form.id.replace('fuelForm_', '');
                 const endingEl = document.getElementById(`ending_${ftId}`);
                 const endingValue = parseFloat((endingEl?.value || '0').replace(/,/g, ''));
                 if (endingValue > 0) {
+                    const beginningEl = document.getElementById(`beginning_${ftId}`);
+                    const beginningValue = parseFloat((beginningEl?.value || '0').replace(/,/g, ''));
+                    if (endingValue <= beginningValue) {
+                        showToast(`Invalid Reading for ${ftId.replace(/_/g, ' ').toUpperCase()}: Ending must be greater than Beginning.`, 'error');
+                        const msgEl = document.getElementById('cardMsg_' + ftId);
+                        if (msgEl) showRowMsg(msgEl, 'error', 'Invalid Reading: Ending must be greater than Beginning.');
+                        validationFailed = true;
+                    }
                     formsToSubmit.push({ ftId, form });
                 }
             });
+
+            if (validationFailed) return;
 
             if (formsToSubmit.length === 0) {
                 showToast('No fuel readings to submit. Please enter at least one ending reading.', 'warning');

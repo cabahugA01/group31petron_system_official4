@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ============================================================
 // Manager Fuel Reconciliation – manager_fuel_reconciliation.php
 // Purpose: Compare pump sales with tank levels and resolve variances
@@ -283,20 +283,30 @@ html, body {
     box-sizing: border-box;
 }
 
-.page-head {
-    display: flex; align-items: flex-start; justify-content: space-between;
-    gap: 12px; margin-bottom: 20px; margin-top: -12px !important; flex-wrap: wrap;
-    max-width: 100%;
+/* == PAGE HEADER - matches transaction module standard == */
+.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:0px !important; }
+.int-head h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
+.int-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
+
+/* == Outline Buttons - SuperAdmin standard == */
+.ato-btn {
+    display:inline-flex; align-items:center; justify-content:center; gap:6px;
+    padding:0 16px; border-radius:7px; font-size:13px; font-weight:600;
+    cursor:pointer; border:1px solid transparent; text-decoration:none; transition:all .15s;
+    height:36px; white-space:nowrap; background:white !important;
 }
-.page-head h1 {
-    margin: 0 !important; font-size: 22px !important; font-weight: 700 !important;
-    color: var(--petron-blue,#00264D) !important; text-transform: uppercase !important;
-    display: flex; align-items: center; gap: 8px;
-}
-.page-head .sub {
-    font-size: 14px; color: #666666; font-weight: 500;
-    text-transform: uppercase; letter-spacing: 0.3px;
-}
+.ato-btn-primary { color:#00264D !important; border-color:#00264D !important; }
+.ato-btn-primary:hover { background:#00264D !important; color:#fff !important; }
+.ato-btn-excel { color:#1d6f42 !important; border-color:#1d6f42 !important; }
+.ato-btn-excel:hover { background:#1d6f42 !important; color:#fff !important; }
+.ato-btn-csv { color:#003d7a !important; border-color:#003d7a !important; }
+.ato-btn-csv:hover { background:#003d7a !important; color:#fff !important; }
+.ato-btn-pdf { color:#dc2626 !important; border-color:#dc2626 !important; }
+.ato-btn-pdf:hover { background:#dc2626 !important; color:#fff !important; }
+.ato-btn-back { color:#4b5563 !important; border-color:#6b7280 !important; }
+.ato-btn-back:hover { background:#6b7280 !important; color:#fff !important; }
+.ato-btn-filter { color:#002F70 !important; border-color:#002F70 !important; }
+.ato-btn-filter:hover { background:#002F70 !important; color:#fff !important; }
 
 /* Summary Cards */
 .summary-row {
@@ -402,19 +412,36 @@ html, body {
 .var-high { color: #dc2626; font-weight: 700; }
 .var-ok { color: #16a34a; font-weight: 700; }
 
-/* Action Buttons */
+/* Action Buttons - unified outline style matching staff Transaction module */
 .action-btn {
-    padding: 5px 10px; border-radius: 5px; font-size: 12px; font-weight: 600;
-    border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
-    transition: all .15s;
-    white-space: nowrap;
-    margin: 2px 0;
+    padding: 0 10px; border-radius: 5px; font-size: 11px; font-weight: 700;
+    border: 1px solid transparent; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+    transition: all .15s; text-transform: uppercase; letter-spacing: 0.3px; box-sizing: border-box;
+    background: white !important; height: 28px; white-space: nowrap; margin: 2px 0;
 }
 .action-btn i { font-size: 11px; }
-.btn-resolve { background: #28a745; color: #fff; }
-.btn-resolve:hover { background: #218838; }
-.btn-investigate { background: #002F70; color: #fff; }
-.btn-investigate:hover { background: #001a42; }
+.btn-resolve { color: #16a34a !important; border-color: #16a34a !important; }
+.btn-resolve:hover { background: #16a34a !important; color: #fff !important; }
+.btn-investigate { color: #002F70 !important; border-color: #002F70 !important; }
+.btn-investigate:hover { background: #002F70 !important; color: #fff !important; }
+
+/* == Modal & Form Action Buttons == */
+.txn-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 0 16px; border-radius: 7px; font-size: 13px; font-weight: 600;
+    cursor: pointer; border: 1px solid transparent; text-decoration: none; transition: all .15s;
+    height: 36px; white-space: nowrap; background: white !important;
+}
+.txn-btn-success { color: #16a34a !important; border-color: #16a34a !important; }
+.txn-btn-success:hover { background: #16a34a !important; color: #fff !important; }
+.txn-btn-danger { color: #dc2626 !important; border-color: #dc2626 !important; }
+.txn-btn-danger:hover { background: #dc2626 !important; color: #fff !important; }
+.txn-btn-adjust { color: #002F70 !important; border-color: #002F70 !important; }
+.txn-btn-adjust:hover { background: #002F70 !important; color: #fff !important; }
+.txn-btn-info { color: #0284c7 !important; border-color: #0284c7 !important; }
+.txn-btn-info:hover { background: #0284c7 !important; color: #fff !important; }
+.txn-btn-secondary { color: #475569 !important; border-color: #6b7280 !important; }
+.txn-btn-secondary:hover { background: #6b7280 !important; color: #fff !important; }
 
 /* Actions cell: stack buttons vertically */
 .actions-cell {
@@ -464,33 +491,33 @@ html, body {
 
 <div class="mfr-wrap">
     <!-- Page Header -->
-    <div class="page-head">
+    <div class="int-head">
         <div>
-            <h1>Fuel Reconciliation</h1>
-            <div class="sub">RECONCILE PUMP READINGS, DELIVERIES, AND STOCK RECORDS TO DETECT VARIANCES AND ENSURE ACCURACY.</div>
+            <h1><i class="fas fa-gas-pump"></i> Fuel Reconciliation</h1>
+            <div class="sub">Reconcile pump readings, deliveries, and stock records to detect variances and ensure accuracy.</div>
         </div>
         <div class="actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
             <!-- Excel -->
             <button type="button"
                     onclick="window.location.href='?date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>&export=excel'"
-                    style="background:#1d6f42;color:#fff;height:36px;padding:8px 14px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                    class="ato-btn ato-btn-excel">
                 <i class="fas fa-file-excel"></i> Excel
             </button>
             <!-- CSV -->
             <button type="button"
                     onclick="window.location.href='?date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>&export=csv'"
-                    style="background:#003d7a;color:#fff;height:36px;padding:8px 14px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                    class="ato-btn ato-btn-csv">
                 <i class="fas fa-file-csv"></i> CSV
             </button>
             <!-- PDF -->
             <button type="button"
                     onclick="window.open('?date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>&export=pdf','_blank')"
-                    style="background:#dc2626;color:#fff;height:36px;padding:8px 14px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                    class="ato-btn ato-btn-pdf">
                 <i class="fas fa-file-pdf"></i> PDF
             </button>
             <!-- Back -->
             <a href="manager_dashboard.php"
-               style="background:#6c757d;color:#fff;text-decoration:none;height:36px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">
+               class="ato-btn ato-btn-back">
                 <i class="fas fa-arrow-left"></i> Back
             </a>
         </div>
@@ -506,8 +533,7 @@ html, body {
             <label>Date To</label>
             <input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>">
         </div>
-        <button type="submit"
-                style="background:#00264D;color:#fff;height:36px;padding:8px 14px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;">
+        <button type="submit" class="ato-btn ato-btn-filter">
             <i class="fas fa-filter"></i> Apply Filter
         </button>
     </form>
@@ -519,7 +545,7 @@ html, body {
             <div class="sum-meta">
                 <h3>Reconciliations Completed</h3>
                 <h2><?= number_format($reconciliations_completed) ?></h2>
-                <span>Gi-resolve nga variances</span>
+                <span>Resolved variances</span>
             </div>
         </div>
         <div class="summary-card sc-amber">
@@ -527,7 +553,7 @@ html, body {
             <div class="sum-meta">
                 <h3>Variances Detected</h3>
                 <h2><?= number_format($variances_detected) ?></h2>
-                <span>Total nga naka-detect</span>
+                <span>Total detected</span>
             </div>
         </div>
         <div class="summary-card sc-red">
@@ -535,7 +561,7 @@ html, body {
             <div class="sum-meta">
                 <h3>Open Variances</h3>
                 <h2><?= number_format($open_variances) ?></h2>
-                <span>Naghulat sa resolution</span>
+                <span>Awaiting resolution</span>
             </div>
         </div>
     </div>
@@ -546,12 +572,6 @@ html, body {
             <i class="fas fa-exclamation-triangle"></i> Variance Reports
         </h3>
 
-        <?php if (empty($variances)): ?>
-        <div style="text-align:center;padding:40px;color:#94a3b8;">
-            <i class="fas fa-check-circle" style="font-size:48px;margin-bottom:12px;opacity:.5;color:#16a34a;"></i>
-            <p style="margin:0;">Walay variances nga nakit-an. All fuel reconciliation balanced!</p>
-        </div>
-        <?php else: ?>
         <div class="table-wrap">
             <table class="data-table">
                 <thead>
@@ -569,6 +589,14 @@ html, body {
                     </tr>
                 </thead>
                 <tbody>
+                    <?php if (empty($variances)): ?>
+                        <tr>
+                            <td colspan="10" style="text-align:center;padding:40px;color:#94a3b8;">
+                                <i class="fas fa-check-circle" style="font-size:48px;margin-bottom:12px;opacity:.5;color:#16a34a;display:block;margin-left:auto;margin-right:auto;"></i>
+                                No variances found. All fuel reconciliation balanced!
+                            </td>
+                        </tr>
+                    <?php else: ?>
                     <?php foreach ($variances as $v): 
                         $var_pct = abs($v['variance_percent']);
                         $var_class = $var_pct > 5 ? 'var-high' : 'var-ok';
@@ -614,6 +642,7 @@ html, body {
                         </td>
                     </tr>
                     <?php endforeach; ?>
+                    <?php endif; ?>
                 </tbody>
             </table>
         </div>
@@ -666,7 +695,6 @@ html, body {
             <?php endif; ?>
         </div>
         <?php endif; ?>
-        <?php endif; ?>
     </div>
 </div>
 
@@ -685,14 +713,8 @@ html, body {
                 <textarea name="resolution" required placeholder="Explain how this variance was resolved and what corrective actions were taken..."></textarea>
             </div>
             <div style="display:flex;gap:8px;justify-content:flex-end;">
-                <button type="button" onclick="closeModal('resolveModal')"
-                        style="background:#6c757d;color:#fff;padding:8px 16px;border-radius:6px;border:none;cursor:pointer;">
-                    Cancel
-                </button>
-                <button type="submit"
-                        style="background:#16a34a;color:#fff;padding:8px 16px;border-radius:6px;border:none;cursor:pointer;">
-                    <i class="fas fa-check"></i> Resolve
-                </button>
+                <button type="button" onclick="closeModal('resolveModal')" class="txn-btn txn-btn-secondary">Cancel</button>
+                <button type="submit" class="txn-btn txn-btn-success"><i class="fas fa-check"></i> Resolve</button>
             </div>
         </form>
     </div>
@@ -713,14 +735,8 @@ html, body {
                 <textarea name="notes" required placeholder="Describe what investigation steps are being taken..."></textarea>
             </div>
             <div style="display:flex;gap:8px;justify-content:flex-end;">
-                <button type="button" onclick="closeModal('investigateModal')"
-                        style="background:#6c757d;color:#fff;padding:8px 16px;border-radius:6px;border:none;cursor:pointer;">
-                    Cancel
-                </button>
-                <button type="submit"
-                        style="background:#0891b2;color:#fff;padding:8px 16px;border-radius:6px;border:none;cursor:pointer;">
-                    <i class="fas fa-search"></i> Mark Investigating
-                </button>
+                <button type="button" onclick="closeModal('investigateModal')" class="txn-btn txn-btn-secondary">Cancel</button>
+                <button type="submit" class="txn-btn txn-btn-info"><i class="fas fa-search"></i> Mark Investigating</button>
             </div>
         </form>
     </div>

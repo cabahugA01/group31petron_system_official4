@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'admin_inventory_fuel';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -160,6 +160,12 @@ $cnt_crit  = count(array_filter($rows, fn($r) => in_array($r['status'], ['Critic
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
+/* == PAGE HEADER - matches Transaction Module int-head standard == */
+.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:0px !important; }
+.int-head h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
+.int-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
+.int-head .actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+
 :root{--blue:#002F6C;--red:#dc3545;--gray:#6c757d;}
 body,html{overflow-x:hidden!important;}
 .flash-ok{background:#d4edda;color:#155724;border:1px solid #c3e6cb;border-radius:7px;padding:11px 15px;margin-bottom:14px;font-size:13px;}
@@ -183,8 +189,29 @@ body,html{overflow-x:hidden!important;}
 .aif-tbl tbody td.bold{font-weight:700;color:#002F70;}
 .status-pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;}
 .var-zero{color:#6c757d;} .var-pos{color:#28a745;font-weight:700;} .var-neg{color:#dc3545;font-weight:700;}
-.btn-edit{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;background:var(--blue);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;}
-.btn-edit:hover{background:#001F4F;}
+.btn-edit {
+    display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+    padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 700;
+    cursor: pointer; background: white !important; border: 1px solid #00264D !important;
+    color: #00264D !important; transition: all .15s; height: 28px; box-sizing: border-box;
+}
+.btn-edit:hover { background: #00264D !important; color: #fff !important; }
+
+.btn-cancel {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 0 16px; border-radius: 6px; font-size: 13px; font-weight: 600;
+    cursor: pointer; border: 1px solid #6b7280; background: white !important;
+    color: #475569 !important; transition: all .15s; height: 36px;
+}
+.btn-cancel:hover { background: #6b7280 !important; color: #fff !important; }
+
+.btn-save {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 0 16px; border-radius: 6px; font-size: 13px; font-weight: 600;
+    cursor: pointer; border: 1px solid #16a34a; background: white !important;
+    color: #16a34a !important; transition: all .15s; height: 36px;
+}
+.btn-save:hover { background: #16a34a !important; color: #fff !important; }
 /* Edit Modal */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;align-items:center;justify-content:center;}
 .modal-overlay.show{display:flex;}
@@ -198,9 +225,9 @@ body,html{overflow-x:hidden!important;}
 .info-note{background:#e8f4fd;border-left:3px solid var(--blue);padding:9px 13px;border-radius:5px;font-size:12px;color:#1e4080;margin-bottom:13px;}
 </style>
 
-<div class="page-head">
+<div class="int-head">
   <div>
-    <h1 class="h1">Fuel Inventory Oversight</h1>
+    <h1><i class="fas fa-gas-pump"></i> Fuel Inventory Oversight</h1>
     <div class="sub">17-Tanker Overview &middot; Today: <?= date('F d, Y') ?></div>
   </div>
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto;">
@@ -318,8 +345,8 @@ body,html{overflow-x:hidden!important;}
         <textarea name="note" rows="2" placeholder="e.g. Corrected due to encoding error..." required></textarea>
       </div>
       <div class="modal-actions">
-        <button type="button" onclick="document.getElementById('editModal').classList.remove('show')" style="padding:8px 18px;background:#6c757d;color:#fff;border:none;border-radius:5px;cursor:pointer;">Cancel</button>
-        <button type="submit" class="btn-edit">Save Correction</button>
+        <button type="button" onclick="document.getElementById('editModal').classList.remove('show')" class="btn-cancel">Cancel</button>
+        <button type="submit" class="btn-save">Save Correction</button>
       </div>
     </form>
   </div>

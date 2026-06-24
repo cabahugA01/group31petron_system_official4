@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'fuel_staff';
 
@@ -1020,6 +1020,12 @@ require_once __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
+/* == PAGE HEADER - matches Transaction Module int-head standard == */
+.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:0px !important; }
+.int-head h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
+.int-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
+.int-head .actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+
 .fuel-badge { display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:600; }
 .fuel-badge.pending, .fuel-badge.pending_review { background:#fff3cd;color:#856404; }
 .fuel-badge.verified, .fuel-badge.approved { background:rgba(0,51,102,.08);color:var(--blue); }
@@ -1071,9 +1077,9 @@ input[name="calibration"]:hover {
 }
 </style>
 
-  <div class="page-head" data-rendering="php">
+  <div class="int-head" data-rendering="php">
     <div>
-      <h1 class="h1">Fuel Management</h1>
+      <h1><i class="fas fa-gas-pump"></i> Fuel Management</h1>
       <div class="sub">
         <?php 
         if ($isStaff && !$isManager) {

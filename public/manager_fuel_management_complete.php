@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = match($_GET['tab'] ?? '') {
     'deliveries'    => 'fuel_deliveries_validation',
     'transactions'  => 'fuel_transactions_oversight',
@@ -1674,10 +1674,10 @@ html, body {
     box-sizing: border-box !important; 
 }
 
-/* Page Header - matches transaction module standard */
-.page-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:-12px !important; }
-.page-head h1, .page-head .h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
-.page-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
+/* == PAGE HEADER - matches Transaction Module int-head standard == */
+.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:0px !important; }
+.int-head h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
+.int-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
 /* Prevent any element from exceeding viewport */
 *:not(.modal):not(.modal *) {
     max-width: 100% !important;
@@ -1700,7 +1700,7 @@ html, body {
     width: 100% !important; 
 }
 /* Ensure all containers respect viewport */
-.page-head, .section-head, .stats-grid, .tank-grid, 
+.int-head, .section-head, .stats-grid, .tank-grid, 
 .fuel-section, 
 .fuel-section-inner, .tab-content, .tab-inner {
     max-width: 100% !important;
@@ -1986,9 +1986,9 @@ html, body {
 </style>
 
 <div class="mfm-wrap">
-    <div class="page-head">
+    <div class="int-head">
         <div>
-            <h1 class="h1" id="mfm-page-title">Fuel Transactions Oversight</h1>
+            <h1 id="mfm-page-title"><i class="fas fa-gas-pump"></i> Fuel Transactions Oversight</h1>
             <div class="sub" id="mfm-page-subtitle">Review pump readings encoded by Staff — Validate / Approve / Adjust</div>
         </div>
         <div style="display:none;"></div>

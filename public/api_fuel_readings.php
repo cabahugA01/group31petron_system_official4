@@ -134,33 +134,47 @@ try {
                 $previous = (float)str_replace(',', '', $_POST['previous_reading']);
             } else {
                 try {
+                    // Bulletproof: match pump_id whether stored as tanker_num OR resolved fuel_pumps PK
                     $prev_stmt = $pdo->prepare("
                         SELECT present_reading FROM fuel_transactions
                         WHERE station_id = ?
                           AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
-                          AND pump_id = ?
+                          AND (
+                            pump_id = ?
+                            OR pump_id = (
+                                SELECT fp.id FROM fuel_pumps fp
+                                JOIN fuel_types ftp ON ftp.id = fp.fuel_type_id
+                                WHERE fp.station_id = ?
+                                  AND fp.pump_number = ?
+                                  AND LOWER(TRIM(ftp.name)) = LOWER(TRIM(?))
+                                LIMIT 1
+                            )
+                          )
                           AND COALESCE(status, '') != 'Rejected'
                         ORDER BY transaction_date DESC, id DESC LIMIT 1
                     ");
-                    $prev_stmt->execute([$station_id, $fuel_type, $tanker_num]);
+                    $prev_stmt->execute([
+                        $station_id, $fuel_type, $tanker_num,
+                        $station_id, (string)$tanker_num, $fuel_type
+                    ]);
                     $row_prev = $prev_stmt->fetchColumn();
                     if ($row_prev !== false) $previous = (float)$row_prev;
                 } catch (Exception $e) {}
             }
 
             // ── Re-pull calibration from DB ──
-            // Priority: fuel_calibration table (technician record) → fuel_inventory.latest_calibration
+            // Priority: fuel_calibration_records table (technician record) → fuel_inventory.latest_calibration
             // Staff may override by editing the calibration input
             $calibration = 0.0;
             try {
-                // Use a safe string comparison — avoid ENUM mismatch by casting to CHAR
                 $cal_stmt = $pdo->prepare("
-                    SELECT calibration_constant FROM fuel_calibration
-                    WHERE LOWER(TRIM(CAST(fuel_type AS CHAR))) = LOWER(TRIM(?))
+                    SELECT calibration_liters FROM fuel_calibration_records
+                    WHERE LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                      AND station_id = ?
                       AND LOWER(TRIM(status)) = 'active'
-                    ORDER BY effective_date DESC, id DESC LIMIT 1
+                    ORDER BY calibration_date DESC, id DESC LIMIT 1
                 ");
-                $cal_stmt->execute([$fuel_type]);
+                $cal_stmt->execute([$fuel_type, $station_id]);
                 $cal_row = $cal_stmt->fetchColumn();
                 if ($cal_row !== false && $cal_row !== null) {
                     $calibration = (float)$cal_row;
@@ -231,9 +245,9 @@ try {
             // Final fallback — shift_period is NOT NULL in DB
             if (empty($shift_period)) $shift_period = 'general';
 
-            // ── Validate: ending must be >= beginning ──
-            if ($present < $previous) {
-                respond(false, "Ending meter reading ({$present}) cannot be less than Beginning reading ({$previous}). Please check your values.");
+            // ── Validate: ending must be > beginning ──
+            if ($present <= $previous) {
+                respond(false, "Invalid Reading: Ending meter reading ({$present}) must be greater than Beginning reading ({$previous}).");
             }
 
             // ── Formula: Volume Liters = (Ending − Beginning) − Calibration ──
