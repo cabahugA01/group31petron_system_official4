@@ -452,6 +452,12 @@ require_once __DIR__ . '/../partials/header.php';
         margin: 3px 0;
     }
     
+    /* == PAGE HEADER - matches Transaction module int-head standard == */
+    .int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:0; padding:14px 20px 12px; border-bottom:1px solid #e0e0e0; background:#fff; }
+    .int-head h1 { font-size:20px; font-weight:700; color:#00264D; margin:0; text-transform:uppercase; display:flex; align-items:center; gap:8px; }
+    .int-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none; }
+    .int-head .actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    
     .controls {
         padding: 12px 20px;
         background: #fff;
@@ -736,6 +742,17 @@ require_once __DIR__ . '/../partials/header.php';
         }
     }
 </style>
+
+<!-- Module Page Header - matches Transaction module int-head standard -->
+<div class="int-head">
+    <div>
+        <h1><i class="fas fa-truck"></i> Merchandise Deliveries</h1>
+        <div class="sub">View and track merchandise and fuel delivery records for this station.</div>
+    </div>
+    <div class="actions">
+        <a href="staff_dashboard.php" class="btn" style="border-color:#00264D;color:#00264D;"><i class="fas fa-arrow-left"></i> Back</a>
+    </div>
+</div>
 
 <!-- Main Content Wrapper -->
 <div class="main-content">

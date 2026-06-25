@@ -675,6 +675,23 @@ function user_station_id(){
   return $u['station_id'] ?? null;
 }
 
+/**
+ * Get the name of the current user's assigned station.
+ * Returns the station name string, or an empty string if not found.
+ */
+function user_station_name(): string {
+  global $pdo;
+  $station_id = user_station_id();
+  if (!$station_id || !isset($pdo)) return '';
+  try {
+    $stmt = $pdo->prepare("SELECT name FROM stations WHERE id = ? LIMIT 1");
+    $stmt->execute([$station_id]);
+    return (string)($stmt->fetchColumn() ?: '');
+  } catch (Exception $e) {
+    return '';
+  }
+}
+
 function today_key(){
   return date('Y-m-d');
 }

@@ -33,10 +33,10 @@ $filter_end      = trim($_GET['end']      ?? date('Y-m-d'));
 /* ── Fetch deliveries ── */
 $deliveries = [];
 $counts = [
-    'Pending Manager Approval' => 0,
-    'Confirmed'                => 0,
-    'Discrepancy'              => 0,
-    'Closed'                   => 0,
+    'Pending'  => 0,
+    'Verified' => 0,
+    'Rejected' => 0,
+    'Total'    => 0,
 ];
 
 try {
@@ -124,10 +124,13 @@ try {
 
     foreach ($deliveries as $r) {
         $s = $r['status'];
+        $counts['Total']++;
         if (in_array($s, ['Pending Manager Approval', 'Pending Manager Confirmation'])) {
-            $counts['Pending Manager Approval']++;
-        } elseif (isset($counts[$s])) {
-            $counts[$s]++;
+            $counts['Pending']++;
+        } elseif (in_array($s, ['Confirmed', 'Approved', 'Adjusted', 'Closed'])) {
+            $counts['Verified']++;
+        } elseif (in_array($s, ['Discrepancy', 'Pending Resolution', 'Awaiting Replacement', 'Returned to Supplier'])) {
+            $counts['Rejected']++;
         }
     }
 
@@ -151,14 +154,30 @@ include __DIR__ . '/../partials/header.php';
 .badge-closed   { background:#e2e3e5; color:#383d41; border:1px solid #6c757d; border-radius:20px; padding:3px 10px; font-size:11px; font-weight:600; white-space:nowrap; }
 
 /* Summary cards */
-.summary-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:16px; margin-bottom:24px; }
-.summary-card { background:#fff; border-radius:10px; padding:16px 20px; box-shadow:0 2px 6px rgba(0,0,0,.05); border:1px solid #e9ecef; display:flex; flex-direction:column; gap:4px; }
-.summary-card .sc-num   { font-size:2rem; font-weight:700; line-height:1; }
-.summary-card .sc-label { font-size:12px; color:#6c757d; font-weight:500; }
-.sc-pending  .sc-num { color:#856404; }
-.sc-approved .sc-num { color:#155724; }
-.sc-rejected .sc-num { color:#721c24; }
-.sc-closed   .sc-num { color:#383d41; }
+.summary-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:24px; }
+@media(max-width:700px){ .summary-grid { grid-template-columns:1fr 1fr; } }
+.summary-card {
+    background:#fff; border-radius:12px; padding:18px 20px;
+    box-shadow:0 2px 8px rgba(0,0,0,.06); border:1px solid #e9ecef;
+    display:flex; align-items:center; gap:16px;
+    transition:transform .15s,box-shadow .15s;
+}
+.summary-card:hover { transform:translateY(-2px); box-shadow:0 4px 14px rgba(0,0,0,.09); }
+.sc-icon { width:44px; height:44px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
+.sc-text .sc-num   { font-size:1.9rem; font-weight:800; line-height:1; }
+.sc-text .sc-label { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.4px; margin-top:3px; }
+.sc-pending  .sc-icon { background:#fff3cd; color:#856404; }
+.sc-pending  .sc-num  { color:#856404; }
+.sc-pending  .sc-label { color:#856404; }
+.sc-verified .sc-icon { background:#d4edda; color:#155724; }
+.sc-verified .sc-num  { color:#155724; }
+.sc-verified .sc-label { color:#155724; }
+.sc-rejected .sc-icon { background:#f8d7da; color:#721c24; }
+.sc-rejected .sc-num  { color:#721c24; }
+.sc-rejected .sc-label { color:#721c24; }
+.sc-total    .sc-icon { background:#e8f0fe; color:#002F70; }
+.sc-total    .sc-num  { color:#002F70; }
+.sc-total    .sc-label { color:#002F70; }
 
 /* Filter bar */
 .filter-bar { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:16px; }
@@ -174,13 +193,18 @@ include __DIR__ . '/../partials/header.php';
 .del-table tr:hover td { background:#f8f9fa; }
 .del-table tr.row-rejected td { background:#fff8f8; }
 .del-table tr.row-rejected:hover td { background:#ffeaea; }
+.del-table tr:last-child td { border-bottom:none; }
 
 /* Buttons */
-.btn-sm-view     { display:inline-flex; align-items:center; gap:5px; padding:5px 12px; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer; text-decoration:none;
+.btn-sm-view     { display:inline-flex; align-items:center; justify-content:center; gap:5px; padding:5px 10px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; text-decoration:none;
                    background:#ffffff !important; border:1px solid #002F6C !important; color:#002F6C !important; transition:all .2s; }
 .btn-sm-view:hover { background:#002F6C !important; color:#ffffff !important; }
 
-.btn-sm-resubmit { display:inline-flex; align-items:center; gap:5px; padding:5px 12px; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer; text-decoration:none;
+.btn-sm-print    { display:inline-flex; align-items:center; justify-content:center; gap:5px; padding:5px 10px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; text-decoration:none;
+                   background:#ffffff !important; border:1px solid #16a34a !important; color:#16a34a !important; transition:all .2s; }
+.btn-sm-print:hover { background:#16a34a !important; color:#ffffff !important; }
+
+.btn-sm-resubmit { display:inline-flex; align-items:center; justify-content:center; gap:5px; padding:5px 10px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; text-decoration:none;
                    background:#ffffff !important; border:1px solid #fd7e14 !important; color:#fd7e14 !important; transition:all .2s; }
 .btn-sm-resubmit:hover { background:#fd7e14 !important; color:#ffffff !important; }
 
@@ -264,6 +288,38 @@ include __DIR__ . '/../partials/header.php';
 </div>
 <?php endif; ?>
 
+<!-- ══ Summary Cards ══ -->
+<div class="summary-grid">
+    <div class="summary-card sc-pending">
+        <div class="sc-icon"><i class="fas fa-clock"></i></div>
+        <div class="sc-text">
+            <div class="sc-num"><?php echo $counts['Pending']; ?></div>
+            <div class="sc-label">Pending</div>
+        </div>
+    </div>
+    <div class="summary-card sc-verified">
+        <div class="sc-icon"><i class="fas fa-check-circle"></i></div>
+        <div class="sc-text">
+            <div class="sc-num"><?php echo $counts['Verified']; ?></div>
+            <div class="sc-label">Verified</div>
+        </div>
+    </div>
+    <div class="summary-card sc-rejected">
+        <div class="sc-icon"><i class="fas fa-times-circle"></i></div>
+        <div class="sc-text">
+            <div class="sc-num"><?php echo $counts['Rejected']; ?></div>
+            <div class="sc-label">Rejected</div>
+        </div>
+    </div>
+    <div class="summary-card sc-total">
+        <div class="sc-icon"><i class="fas fa-layer-group"></i></div>
+        <div class="sc-text">
+            <div class="sc-num"><?php echo $counts['Total']; ?></div>
+            <div class="sc-label">Total</div>
+        </div>
+    </div>
+</div>
+
 <!-- Filters + Table -->
 <div class="del-card">
     <div class="del-card-head">
@@ -315,20 +371,18 @@ include __DIR__ . '/../partials/header.php';
             <p style="font-size:15px;margin:0;">No delivery records found.</p>
         </div>
         <?php else: ?>
-        <div style="overflow:hidden;">
+        <div style="overflow-x:auto;">
             <table class="del-table">
                 <thead>
                     <tr>
                         <th>Delivery ID</th>
-                        <th>Batch ID</th>
+                        <th>Date</th>
+                        <th>DR No.</th>
                         <th>Supplier</th>
-                        <th>Item / Product</th>
+                        <th>Item</th>
                         <th>Qty</th>
-                        <th>Date Received</th>
-                        <th>DR #</th>
                         <th>Status</th>
-                        <th>Remarks</th>
-                        <th>Actions</th>
+                        <th style="text-align:center;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -370,30 +424,34 @@ include __DIR__ . '/../partials/header.php';
                     $row_class = $is_discrepancy ? 'row-rejected' : '';
                 ?>
                     <tr class="<?php echo $row_class; ?>">
-                        <td><strong style="font-family:monospace;font-size:12px;"><?php echo htmlspecialchars($d['delivery_ref']); ?></strong></td>
-                        <td><strong style="font-family:monospace;font-size:11px;color:#002F70;"><?php echo htmlspecialchars($d['batch_id'] ?? '—'); ?></strong></td>
+                        <td>
+                            <strong style="font-family:monospace;font-size:12px;color:#002F70;"><?php echo htmlspecialchars($d['delivery_ref']); ?></strong>
+                            <div style="font-size:10px;color:#adb5bd;margin-top:2px;font-family:monospace;"><?php echo htmlspecialchars($d['batch_id'] ?? ''); ?></div>
+                        </td>
+                        <td style="white-space:nowrap;"><?php echo date('M j, Y', strtotime($d['delivery_date'])); ?></td>
+                        <td style="font-size:12px;color:#6c757d;"><?php echo $d['dr_number'] ? htmlspecialchars($d['dr_number']) : '<span style="color:#dee2e6;">—</span>'; ?></td>
                         <td><?php echo htmlspecialchars($d['supplier']); ?></td>
-                        <td><?php echo htmlspecialchars($d['product']); ?></td>
-                        <td><?php echo number_format((float)$d['quantity'], 2); ?> <span style="color:#6c757d;font-size:11px;"><?php echo htmlspecialchars($d['unit']); ?></span></td>
-                        <td><?php echo date('M j, Y', strtotime($d['delivery_date'])); ?></td>
-                        <td style="font-size:12px;color:#6c757d;"><?php echo $d['dr_number'] ? htmlspecialchars($d['dr_number']) : '—'; ?></td>
+                        <td>
+                            <div style="font-weight:600;font-size:13px;"><?php echo htmlspecialchars($d['product']); ?></div>
+                            <div style="font-size:11px;color:#6c757d;"><?php echo htmlspecialchars($d['category'] ?? ''); ?></div>
+                        </td>
+                        <td style="white-space:nowrap;"><?php echo number_format((float)$d['quantity'], 2); ?> <span style="color:#6c757d;font-size:11px;"><?php echo htmlspecialchars($d['unit']); ?></span></td>
                         <td>
                             <span class="<?php echo $badge_class; ?>"><?php echo $badge_label; ?></span>
                             <?php if ($is_discrepancy && !empty($d['admin_notes'])): ?>
                             <div class="rejection-note">
                                 <i class="fas fa-exclamation-circle" style="margin-top:1px;flex-shrink:0;"></i>
-                                <span><?php echo htmlspecialchars(mb_strimwidth($d['admin_notes'], 0, 60, '…')); ?></span>
+                                <span><?php echo htmlspecialchars(mb_strimwidth($d['admin_notes'], 0, 55, '…')); ?></span>
                             </div>
                             <?php endif; ?>
                         </td>
-                        <td style="font-size:12px;color:#6c757d;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-                            title="<?php echo htmlspecialchars($d['remarks'] ?? ''); ?>">
-                            <?php echo $d['remarks'] ? htmlspecialchars($d['remarks']) : '—'; ?>
-                        </td>
-                        <td>
-                            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+                        <td style="text-align:center;">
+                            <div style="display:flex;flex-direction:column;gap:5px;align-items:stretch;max-width:110px;margin:0 auto;">
                                 <button class="btn-sm-view" onclick="viewDelivery(<?php echo (int)$d['id']; ?>)" title="View details">
                                     <i class="fas fa-eye"></i> View
+                                </button>
+                                <button class="btn-sm-print" onclick="printDelivery(<?php echo (int)$d['id']; ?>)" title="Print record">
+                                    <i class="fas fa-print"></i> Print
                                 </button>
                                 <?php if ($is_rejected): ?>
                                 <a href="staff_record_delivery.php?edit=<?php echo (int)$d['id']; ?>"
@@ -481,14 +539,17 @@ function viewDelivery(id) {
     html += '<table class="detail-table">'
           + '<tr><td>Delivery ID</td><td><strong style="font-family:monospace;">' + escHtml(d.delivery_ref) + '</strong></td></tr>'
           + '<tr><td>Batch ID</td><td><strong style="font-family:monospace;color:#002F70;">' + escHtml(d.batch_id || '—') + '</strong></td></tr>'
+          + '<tr><td>Date Received</td><td>' + escHtml(d.delivery_date) + '</td></tr>'
+          + '<tr><td>DR / Invoice No.</td><td>' + (d.dr_number ? escHtml(d.dr_number) : '—') + '</td></tr>'
           + '<tr><td>Supplier</td><td>' + escHtml(d.supplier) + '</td></tr>'
           + '<tr><td>Item / Product</td><td>' + escHtml(d.product) + '</td></tr>'
+          + '<tr><td>Category</td><td>' + (d.category ? escHtml(d.category) : '—') + '</td></tr>'
           + '<tr><td>Quantity</td><td>' + parseFloat(d.quantity).toFixed(2) + ' ' + escHtml(d.unit) + '</td></tr>'
-          + '<tr><td>Date Received</td><td>' + escHtml(d.delivery_date) + '</td></tr>'
-          + '<tr><td>DR Number</td><td>' + (d.dr_number ? escHtml(d.dr_number) : '—') + '</td></tr>'
+          + '<tr><td>Unit Cost</td><td>' + (d.unit_cost ? '₱' + parseFloat(d.unit_cost).toFixed(2) : '—') + '</td></tr>'
+          + '<tr><td>Expiry Date</td><td>' + (d.expiry_date ? escHtml(d.expiry_date) : '—') + '</td></tr>'
           + '<tr><td>Status</td><td><strong style="color:' + color + ';">' + escHtml(label) + '</strong></td></tr>'
+          + '<tr><td>Received By</td><td>' + (d.received_by_name ? escHtml(d.received_by_name) : (d.encoded_by_name ? escHtml(d.encoded_by_name) : '—')) + '</td></tr>'
           + '<tr><td>Remarks</td><td>' + (d.remarks ? escHtml(d.remarks) : '—') + '</td></tr>'
-          + '<tr><td>Encoded By</td><td>' + (d.encoded_by_name ? escHtml(d.encoded_by_name) : '—') + '</td></tr>'
           + '<tr><td>Recorded At</td><td>' + escHtml(d.created_at) + '</td></tr>'
           + '</table>';
 
@@ -500,6 +561,7 @@ function viewDelivery(id) {
         actions.innerHTML += '<a href="staff_record_delivery.php?edit=' + id + '" class="btn-resubmit-modal">'
                            + '<i class="fas fa-redo"></i> Edit &amp; Resubmit</a>';
     }
+    actions.innerHTML += '<button class="btn-sm-print" onclick="printDelivery(' + id + ')" style="padding:8px 16px;"><i class="fas fa-print"></i> Print</button>';
     actions.innerHTML += '<button class="btn-cancel-del" onclick="closeModal(\'viewModal\')">Close</button>';
 
     document.getElementById('viewModal').classList.add('show');
@@ -510,6 +572,57 @@ function escHtml(str) {
     return String(str)
         .replace(/&/g, '&amp;').replace(/</g, '&lt;')
         .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+function printDelivery(id) {
+    const d = deliveryData[id];
+    if (!d) return;
+    const label = STATUS_LABELS[d.status] || d.status;
+    const win = window.open('', '_blank', 'width=750,height=900');
+    win.document.write(`
+<!DOCTYPE html><html><head><title>Delivery Record — ${escHtml(d.delivery_ref)}</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 13px; color: #212529; padding: 32px; }
+  h2 { color: #002F70; margin: 0 0 4px; font-size: 18px; }
+  .sub { color: #6c757d; font-size: 12px; margin-bottom: 20px; }
+  .logo-bar { display:flex; align-items:center; gap:12px; margin-bottom:20px; border-bottom:2px solid #002F70; padding-bottom:14px; }
+  .logo-bar h1 { margin:0; font-size:16px; color:#002F70; }
+  .logo-bar small { display:block; font-size:11px; color:#6c757d; }
+  table { width:100%; border-collapse:collapse; margin-top:12px; }
+  td { padding:8px 10px; border-bottom:1px solid #e9ecef; }
+  td:first-child { color:#6c757d; width:160px; font-weight:500; }
+  .badge { display:inline-block; padding:3px 10px; border-radius:12px; font-size:12px; font-weight:700; background:#fff3cd; color:#856404; }
+  .footer { margin-top:28px; padding-top:12px; border-top:1px solid #dee2e6; font-size:11px; color:#adb5bd; text-align:center; }
+  @media print { body { padding:16px; } }
+</style>
+</head><body>
+<div class="logo-bar">
+  <div>
+    <h1>Petron Station Management System</h1>
+    <small>Merchandise Delivery Record</small>
+  </div>
+</div>
+<h2>${escHtml(d.delivery_ref)}</h2>
+<div class="sub">Batch: ${escHtml(d.batch_id || '—')} &nbsp;&bull;&nbsp; Printed: ${new Date().toLocaleString()}</div>
+<table>
+  <tr><td>Date Received</td><td>${escHtml(d.delivery_date)}</td></tr>
+  <tr><td>DR / Invoice No.</td><td>${d.dr_number ? escHtml(d.dr_number) : '—'}</td></tr>
+  <tr><td>Supplier</td><td>${escHtml(d.supplier)}</td></tr>
+  <tr><td>Item / Product</td><td>${escHtml(d.product)}</td></tr>
+  <tr><td>Category</td><td>${d.category ? escHtml(d.category) : '—'}</td></tr>
+  <tr><td>Quantity Delivered</td><td>${parseFloat(d.quantity).toFixed(2)} ${escHtml(d.unit)}</td></tr>
+  <tr><td>Unit Cost</td><td>${d.unit_cost ? '₱' + parseFloat(d.unit_cost).toFixed(2) : '—'}</td></tr>
+  <tr><td>Expiry Date</td><td>${d.expiry_date ? escHtml(d.expiry_date) : 'N/A'}</td></tr>
+  <tr><td>Status</td><td><span class="badge">${escHtml(label)}</span></td></tr>
+  <tr><td>Received By</td><td>${d.received_by_name ? escHtml(d.received_by_name) : (d.encoded_by_name ? escHtml(d.encoded_by_name) : '—')}</td></tr>
+  <tr><td>Remarks</td><td>${d.remarks ? escHtml(d.remarks) : '—'}</td></tr>
+  <tr><td>Recorded At</td><td>${escHtml(d.created_at)}</td></tr>
+</table>
+<div class="footer">Generated by Petron Station Management System &mdash; Staff Record</div>
+</body></html>`);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 600);
 }
 
 function closeModal(id) {

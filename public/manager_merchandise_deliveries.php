@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'manager_deliveries';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -145,23 +145,68 @@ include __DIR__ . '/../partials/header.php';
 .del-ref{font-family:monospace;font-size:11px;background:#e8f4fd;color:#002F70;padding:3px 7px;border-radius:5px;font-weight:700;display:inline-block;border:1px solid #b8d4f1;}
 .cat-tag{font-size:10px;color:#6c757d;display:block;margin-top:2px;}
 
-/* ── Action buttons ── */
-.act-wrap{display:flex;gap:6px;flex-wrap:wrap;align-items:center;flex-direction:column;}
-.btn-act{padding:6px 12px;border:none;border-radius:6px;cursor:pointer;font-size:0.75rem;font-weight:600;display:inline-flex;align-items:center;gap:4px;transition:all .2s;white-space:nowrap;width:90px;justify-content:center;}
-.btn-act:hover{opacity:0.85;transform:translateY(-1px);}
-.btn-approve{background:#28a745;color:#fff;} .btn-approve:hover{background:#218838;}
-.btn-flag{background:#002F70;color:#fff;} .btn-flag:hover{background:#001a4d;}
-.btn-reject{background:#dc3545;color:#fff;} .btn-reject:hover{background:#c82333;}
-.btn-adjust{background:#002F70;color:#fff;} .btn-adjust:hover{background:#001a4d;}
-.btn-resolve{background:#002F70;color:#fff;} .btn-resolve:hover{background:#001a4d;}
-.btn-replacement{background:#002F70;color:#fff;} .btn-replacement:hover{background:#001a4d;}
-.btn-view{background:#f0f4ff;color:#002F70;border:1px solid #c5d3f0;} .btn-view:hover{background:#e0e8ff;}
+/* ── Action buttons (white outline style matching transaction module) ── */
+.act-wrap{display:flex;gap:4px;flex-direction:column;}
+.btn-act{
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px;
+    height: 26px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .15s;
+    background: #fff !important;
+    justify-content: center;
+    width: 100%;
+    box-sizing: border-box;
+    white-space: nowrap;
+    text-decoration: none;
+}
+.btn-act:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+}
+.btn-approve{border: 1px solid #28a745 !important; color: #28a745 !important;} 
+.btn-approve:hover{background:#28a745 !important;color:#fff !important;}
+.btn-reject{border: 1px solid #dc3545 !important; color: #dc3545 !important;} 
+.btn-reject:hover{background:#dc3545 !important;color:#fff !important;}
+.btn-view{border: 1px solid #002F70 !important; color: #002F70 !important;} 
+.btn-view:hover{background:#002F70 !important;color:#fff !important;}
 
-/* ── Table ── */
-.table-wrap{overflow:hidden;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.08);border:1px solid #e9ecef;overflow:hidden;}
-body #del-table{width:100%;border-collapse:collapse;font-size:0.875rem;}
-body #del-table thead th{background:#002F70 !important;color:#fff !important;padding:14px 16px !important;font-weight:600 !important;font-size:0.813rem !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;white-space:nowrap;}
-body #del-table tbody td{padding:12px 16px;border-bottom:1px solid #e9ecef;vertical-align:middle;color:#212529;}
+/* == Shared flt-btn styles matching transaction module == */
+.flt-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 16px;
+    height: 36px;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: all .15s;
+    background: white !important;
+    border: 1px solid transparent;
+}
+.flt-btn-search { color: #00264D !important; border-color: #00264D !important; }
+.flt-btn-search:hover { background: #00264D !important; color: #fff !important; }
+.flt-btn-reset  { color: #6b7280 !important; border-color: #6b7280 !important; }
+.flt-btn-reset:hover  { background: #6b7280 !important; color: #fff !important; }
+.flt-btn-excel  { color: #1d6f42 !important; border-color: #1d6f42 !important; }
+.flt-btn-excel:hover  { background: #1d6f42 !important; color: #fff !important; }
+.flt-btn-pdf    { color: #dc2626 !important; border-color: #dc2626 !important; }
+.flt-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
+
+/* ── Table (100% width, table-layout: fixed, no horizontal scroll) ── */
+.table-wrap{background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.08);border:1px solid #e9ecef;}
+body #del-table{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;}
+body #del-table thead th{background:#002F70 !important;color:#fff !important;padding:8px 6px !important;font-weight:600 !important;font-size:10px !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;word-wrap:break-word;word-break:break-all;overflow:hidden;text-overflow:ellipsis;}
+body #del-table tbody td{padding:8px 6px;border-bottom:1px solid #e9ecef;vertical-align:middle;color:#212529;word-wrap:break-word;word-break:break-all;}
 body #del-table tbody tr:hover td{background:#e3f2fd;}
 body #del-table tbody tr:last-child td{border-bottom:none;}
 
@@ -232,53 +277,85 @@ body{overflow-x:hidden !important;max-width:100vw !important;}
 </style>
 
 <?php
-// Summary counts for cards
-$cnt_pending = 0; $cnt_validated = 0; $cnt_rejected = 0;
+// Summary counts for the 5 dashboard cards — live from DB
+$cnt_pending = 0; $cnt_verified = 0; $cnt_rejected = 0; $total_qty_verified = 0; $total_records = 0;
 try {
-    $sc = $pdo->prepare("SELECT status FROM deliveries_oversight WHERE station_id=? AND delivery_type='merchandise'");
+    $sc = $pdo->prepare("SELECT status, quantity FROM deliveries_oversight WHERE station_id=? AND delivery_type='merchandise'");
     $sc->execute([$station_id]);
-    foreach ($sc->fetchAll(PDO::FETCH_COLUMN) as $s) {
-        $sl = strtolower($s);
-        if (in_array($sl, ['pending manager approval','pending manager confirmation','pending validation','pending resolution','awaiting replacement'])) $cnt_pending++;
-        elseif (in_array($sl, ['confirmed','approved','validated','ready for stock-in','adjusted'])) $cnt_validated++;
-        elseif (in_array($sl, ['discrepancy','rejected','flagged','returned','returned to supplier','closed'])) $cnt_rejected++;
+    foreach ($sc->fetchAll(PDO::FETCH_ASSOC) as $sc_row) {
+        $total_records++;
+        $sl = strtolower($sc_row['status']);
+        if (in_array($sl, ['pending manager approval','pending manager confirmation','pending validation','pending verification','pending resolution','awaiting replacement'])) {
+            $cnt_pending++;
+        } elseif (in_array($sl, ['confirmed','approved','validated','verified','ready for stock-in','adjusted','stock-in complete'])) {
+            $cnt_verified++;
+            $total_qty_verified += (float)$sc_row['quantity'];
+        } elseif (in_array($sl, ['discrepancy','rejected','flagged','returned','returned to supplier'])) {
+            $cnt_rejected++;
+        }
     }
 } catch (Exception $e) {}
-
-
 ?>
 
-<div class="page-head">
+<div class="int-head">
     <div>
-        <a href="manager_dashboard.php" class="btn ghost" style="margin-bottom:6px;display:inline-flex;align-items:center;gap:5px;font-size:12px;"><i class="fas fa-arrow-left"></i> Back to Dashboard</a>
-        <h1 class="h1"><i class="fas fa-truck"></i> Merchandise Deliveries</h1>
-        <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; Validate staff-encoded deliveries &mdash; Approve, Reject, Return, or Adjust</div>
+        <h1><i class="fas fa-truck"></i> Merchandise Deliveries Validation</h1>
+        <div class="sub">Validate staff-encoded merchandise deliveries &mdash; Verify, Reject, Return, or Adjust.</div>
     </div>
-    <div class="header-actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <button onclick="exportCSV()" class="btn ghost" style="font-size:12px;"><i class="fas fa-file-csv"></i> Export CSV</button>
-        <button onclick="exportPDF()" class="btn ghost" style="font-size:12px;"><i class="fas fa-file-pdf"></i> Export PDF</button>
-        <button onclick="loadDeliveries()" class="btn ghost"><i class="fas fa-sync-alt"></i> Refresh</button>
+    <div class="actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <a href="manager_dashboard.php" class="flt-btn flt-btn-reset" style="font-size:12px;"><i class="fas fa-arrow-left"></i> Back</a>
+        <button onclick="exportCSV()" class="flt-btn flt-btn-excel" style="font-size:12px;"><i class="fas fa-file-csv"></i> Export CSV</button>
+        <button onclick="exportPDF()" class="flt-btn flt-btn-pdf" style="font-size:12px;"><i class="fas fa-file-pdf"></i> Export PDF</button>
+        <button onclick="loadDeliveries()" class="flt-btn flt-btn-search" style="font-size:12px;"><i class="fas fa-sync-alt"></i> Refresh</button>
     </div>
 </div>
 
-<!-- Summary Cards -->
-<div class="sum-grid" style="margin-bottom:18px;">
+<!-- 5 Summary Cards -->
+<div class="sum-grid" style="margin-bottom:18px;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));">
     <div class="sum-card sc-pending">
         <div class="sc-num" id="card-pending"><?php echo $cnt_pending; ?></div>
         <div class="sc-lbl"><i class="fas fa-hourglass-half"></i> Pending Deliveries</div>
     </div>
     <div class="sum-card sc-approved">
-        <div class="sc-num" id="card-validated"><?php echo $cnt_validated; ?></div>
-        <div class="sc-lbl"><i class="fas fa-check-circle"></i> Validated Deliveries</div>
+        <div class="sc-num" id="card-verified"><?php echo $cnt_verified; ?></div>
+        <div class="sc-lbl"><i class="fas fa-check-double"></i> Verified Deliveries</div>
     </div>
     <div class="sum-card sc-discrepancy">
         <div class="sc-num" id="card-rejected"><?php echo $cnt_rejected; ?></div>
-        <div class="sc-lbl"><i class="fas fa-exclamation-triangle"></i> Rejected / Returned</div>
+        <div class="sc-lbl"><i class="fas fa-times-circle"></i> Rejected Deliveries</div>
+    </div>
+    <div class="sum-card" style="background:linear-gradient(135deg,#fffbeb,#fef3c7);border-color:#f59e0b;">
+        <div class="sc-num" id="card-total-qty" style="color:#b45309;"><?php echo number_format($total_qty_verified, 0); ?></div>
+        <div class="sc-lbl" style="color:#92400e;"><i class="fas fa-boxes"></i> Total Items Received</div>
+    </div>
+    <div class="sum-card" style="background:linear-gradient(135deg,#f5f3ff,#ede9fe);border-color:#8b5cf6;">
+        <div class="sc-num" id="card-total-records" style="color:#6d28d9;"><?php echo $total_records; ?></div>
+        <div class="sc-lbl" style="color:#5b21b6;"><i class="fas fa-layer-group"></i> Total Delivery Records</div>
     </div>
 </div>
 
 <!-- Filters -->
-<div class="filter-row" style="margin-bottom:16px;">
+<div class="filter-row" style="margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+    <div class="fg">
+        <label>Date From</label>
+        <input type="date" id="f-start" value="<?php echo date('Y-m-d', strtotime('-30 days')); ?>" onchange="loadDeliveries()">
+    </div>
+    <div class="fg">
+        <label>Date To</label>
+        <input type="date" id="f-end" value="<?php echo date('Y-m-d'); ?>" onchange="loadDeliveries()">
+    </div>
+    <div class="fg">
+        <label>Supplier</label>
+        <input type="text" id="f-supplier" placeholder="Search supplier...">
+    </div>
+    <div class="fg">
+        <label>Category</label>
+        <input type="text" id="f-category" placeholder="e.g. Lubricants...">
+    </div>
+    <div class="fg">
+        <label>DR Number</label>
+        <input type="text" id="f-dr-number" placeholder="DR / Invoice No.">
+    </div>
     <div class="fg">
         <label>Status</label>
         <select id="f-status" onchange="loadDeliveries()">
@@ -288,17 +365,8 @@ try {
             <option value="Awaiting Replacement">Awaiting Replacement</option>
         </select>
     </div>
-    <div class="fg">
-        <label>Supplier</label>
-        <input type="text" id="f-supplier" placeholder="Search supplier...">
-    </div>
-    <div class="fg">
-        <label>From</label>
-        <input type="date" id="f-start" value="<?php echo date('Y-m-d', strtotime('-30 days')); ?>" onchange="loadDeliveries()">
-    </div>
-    <div class="fg">
-        <label>To</label>
-        <input type="date" id="f-end" value="<?php echo date('Y-m-d'); ?>" onchange="loadDeliveries()">
+    <div class="fg" style="display:flex;align-items:flex-end;">
+        <button onclick="loadDeliveries()" class="flt-btn flt-btn-search" style="font-size:12px;"><i class="fas fa-search"></i> Search</button>
     </div>
 </div>
 
@@ -320,23 +388,43 @@ try {
     </div>
     <div class="inv-card-body">
         <div class="table-wrap">
-            <table id="del-table">
+            <table id="del-table" style="width:100%; table-layout:fixed;">
+                <colgroup>
+                    <col style="width: 6%;">
+                    <col style="width: 7%;">
+                    <col style="width: 7%;">
+                    <col style="width: 7%;">
+                    <col style="width: 10%;">
+                    <col style="width: 11%;">
+                    <col style="width: 7%;">
+                    <col style="width: 5%;">
+                    <col style="width: 4%;">
+                    <col style="width: 8%;">
+                    <col style="width: 9%;">
+                    <col style="width: 8%;">
+                    <col style="width: 8%;">
+                    <col style="width: 7%;">
+                </colgroup>
                 <thead style="background:#002F70 !important;">
                     <tr style="background:#002F70 !important;">
-                        <th style="background:#002F70 !important;color:#fff !important;padding:14px 16px !important;font-weight:600 !important;font-size:0.813rem !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;white-space:nowrap;">Delivery ID</th>
-                        <th style="background:#002F70 !important;color:#fff !important;padding:14px 16px !important;font-weight:600 !important;font-size:0.813rem !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;white-space:nowrap;">Type</th>
-                        <th style="background:#002F70 !important;color:#fff !important;padding:14px 16px !important;font-weight:600 !important;font-size:0.813rem !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;white-space:nowrap;">Supplier Name</th>
-                        <th style="background:#002F70 !important;color:#fff !important;padding:14px 16px !important;font-weight:600 !important;font-size:0.813rem !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;white-space:nowrap;">Product / Fuel</th>
-                        <th style="background:#002F70 !important;color:#fff !important;padding:14px 16px !important;font-weight:600 !important;font-size:0.813rem !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;white-space:nowrap;">Qty Delivered</th>
-                        <th style="background:#002F70 !important;color:#fff !important;padding:14px 16px !important;font-weight:600 !important;font-size:0.813rem !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;white-space:nowrap;">Date</th>
-                        <th style="background:#002F70 !important;color:#fff !important;padding:14px 16px !important;font-weight:600 !important;font-size:0.813rem !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;white-space:nowrap;">Encoded By</th>
-                        <th style="background:#002F70 !important;color:#fff !important;padding:14px 16px !important;font-weight:600 !important;font-size:0.813rem !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;white-space:nowrap;">Status</th>
-                        <th style="background:#002F70 !important;color:#fff !important;padding:14px 16px !important;font-weight:600 !important;font-size:0.813rem !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;white-space:nowrap;">Remarks / Notes</th>
-                        <th style="background:#002F70 !important;color:#fff !important;padding:14px 16px !important;font-weight:600 !important;font-size:0.813rem !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;white-space:nowrap;">Actions</th>
+                        <th>Delivery ID</th>
+                        <th>Delivery Date</th>
+                        <th>Batch ID</th>
+                        <th>DR Number</th>
+                        <th>Supplier</th>
+                        <th>Item Name</th>
+                        <th>Category</th>
+                        <th>Qty Delivered</th>
+                        <th>Unit</th>
+                        <th>Staff Receiver</th>
+                        <th>Status</th>
+                        <th>Verification Date</th>
+                        <th>Remarks</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="del-tbody">
-                    <tr><td colspan="10" style="text-align:center;padding:40px;color:#6c757d;"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;display:block;margin-bottom:10px;"></i>Loading...</td></tr>
+                    <tr><td colspan="14" style="text-align:center;padding:40px;color:#6c757d;"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;display:block;margin-bottom:10px;"></i>Loading...</td>
                 </tbody>
             </table>
         </div>
@@ -345,14 +433,14 @@ try {
 
 
 
-<!-- ══ APPROVE MODAL ══════════════════════════════════════════════════════════ -->
+<!-- ══ VERIFY MODAL ════════════════════════════════════════════════════════════════════════════ -->
 <div class="modal-overlay" id="aprModal">
     <div class="modal-box">
         <div class="modal-head">
-            <div class="modal-title"><i class="fas fa-check-circle" style="color:#28a745;"></i> Approve Delivery</div>
+            <div class="modal-title"><i class="fas fa-check-double" style="color:#28a745;"></i> Verify Delivery</div>
             <button class="modal-close" onclick="closeM('aprModal')">&times;</button>
         </div>
-        <div class="ibox"><i class="fas fa-info-circle"></i> Approving marks this delivery as <strong>Ready for Stock-In</strong>. Inventory will be updated by Staff during the stock-in step.</div>
+        <div class="ibox"><i class="fas fa-info-circle"></i> Verifying marks this delivery as <strong>Verified</strong>. Staff will update the inventory stock levels during the stock-in step.</div>
         <div class="fg2">
             <div class="fld"><label>Delivery ID</label><input type="text" id="apr-ref" readonly></div>
             <div class="fld"><label>Supplier</label><input type="text" id="apr-sup" readonly></div>
@@ -361,39 +449,47 @@ try {
             <div class="fld"><label>Product</label><input type="text" id="apr-prod" readonly></div>
             <div class="fld"><label>Qty Delivered</label><input type="text" id="apr-qty" readonly></div>
         </div>
-        <div class="fld"><label>Optional Remarks</label><textarea id="apr-rmk" rows="2" placeholder="Optional notes..."></textarea></div>
+        <div class="fld"><label>Verification Remarks (optional)</label><textarea id="apr-rmk" rows="2" placeholder="e.g. Verified against DR. Quantity matched actual count."></textarea></div>
         <div class="modal-footer">
             <button type="button" onclick="closeM('aprModal')" class="btn ghost">Cancel</button>
-            <button type="button" onclick="doApprove()" class="btn" style="background:#28a745;color:#fff;font-weight:700;"><i class="fas fa-check"></i> Approve &amp; Update Inventory</button>
+            <button type="button" onclick="doApprove()" class="btn" style="background:#28a745;color:#fff;font-weight:700;"><i class="fas fa-check-double"></i> Verify Delivery</button>
         </div>
     </div>
 </div>
 
-<!-- ══ FLAG DISCREPANCY MODAL ════════════════════════════════════════════════ -->
+<!-- ══ REJECT DELIVERY MODAL (checklist reasons) ══════════════════════════════════════ -->
 <div class="modal-overlay" id="flagModal">
     <div class="modal-box">
         <div class="modal-head">
             <div class="modal-title"><i class="fas fa-times-circle" style="color:#dc3545;"></i> Reject Delivery</div>
             <button class="modal-close" onclick="closeM('flagModal')">&times;</button>
         </div>
-        <div class="obox"><i class="fas fa-info-circle"></i> Use this when delivery is <strong>invalid, has wrong Batch ID, or cannot be accepted</strong>. Delivery will be flagged and inventory will NOT be updated.</div>
+        <div class="wbox"><i class="fas fa-exclamation-triangle"></i> Rejecting will return this delivery to the staff for correction. Inventory will <strong>NOT</strong> be updated.</div>
         <div class="fg2">
             <div class="fld"><label>Delivery ID</label><input type="text" id="flag-ref" readonly></div>
             <div class="fld"><label>Product</label><input type="text" id="flag-prod" readonly></div>
         </div>
-        <div class="fg2">
-            <div class="fld"><label>Encoded Qty</label><input type="text" id="flag-qty" readonly></div>
-            <div class="fld">
-                <label>Discrepancy Type <span style="color:#dc3545;">*</span></label>
-                <select id="flag-type">
-                    <option value="shortage">Shortage (kulang)</option>
-                    <option value="damaged">Damaged items (guba)</option>
-                    <option value="both">Both shortage &amp; damaged</option>
-                    <option value="wrong_item">Wrong item delivered</option>
-                </select>
+        <div class="fld">
+            <label>Reason for Rejection <span style="color:#dc3545;">*</span></label>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px;">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:normal;font-size:13px;">
+                    <input type="checkbox" id="rej-reason-qty" value="Wrong Quantity" style="width:16px;height:16px;"> Wrong Quantity
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:normal;font-size:13px;">
+                    <input type="checkbox" id="rej-reason-dmg" value="Damaged Items" style="width:16px;height:16px;"> Damaged Items
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:normal;font-size:13px;">
+                    <input type="checkbox" id="rej-reason-wrong" value="Wrong Item Delivered" style="width:16px;height:16px;"> Wrong Item Delivered
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:normal;font-size:13px;">
+                    <input type="checkbox" id="rej-reason-dup" value="Duplicate Entry" style="width:16px;height:16px;"> Duplicate Entry
+                </label>
             </div>
         </div>
-        <div class="fld"><label>Discrepancy Details <span style="color:#dc3545;">*</span></label><textarea id="flag-reason" rows="3" placeholder="e.g. Encoded 50 pcs but actual delivery is 45 pcs — 5 pcs kulang. OR 2 pcs guba/damaged."></textarea></div>
+        <div class="fld" style="margin-top:10px;">
+            <label>Verification Remarks <span style="color:#dc3545;">*</span></label>
+            <textarea id="flag-reason" rows="3" placeholder="e.g. Verified against DR. Quantity did not match actual count."></textarea>
+        </div>
         <div class="modal-footer">
             <button type="button" onclick="closeM('flagModal')" class="btn ghost">Cancel</button>
             <button type="button" onclick="doFlag()" class="btn" style="background:#dc3545;color:#fff;font-weight:700;"><i class="fas fa-times-circle"></i> Reject Delivery</button>
@@ -744,8 +840,8 @@ function switchTab(tab) {
                      + '<option value="Awaiting Replacement">Awaiting Replacement</option>';
     } else {
         sf.innerHTML = '<option value="history">All Processed</option>'
-                     + '<option value="Ready for Stock-In">Approved (Ready for Stock-In)</option>'
-                     + '<option value="Adjusted">Adjusted (Ready for Stock-In)</option>'
+                     + '<option value="Verified">Verified</option>'
+                     + '<option value="Adjusted — Verified">Adjusted (Verified)</option>'
                      + '<option value="Returned to Staff">Returned to Staff</option>'
                      + '<option value="Returned to Supplier">Returned to Supplier</option>'
                      + '<option value="Rejected">Rejected</option>';
@@ -754,176 +850,174 @@ function switchTab(tab) {
 }
 
 function loadDeliveries() {
-    console.log('loadDeliveries() called, currentTab:', currentTab);
-    var status   = document.getElementById('f-status').value;
-    var supplier = document.getElementById('f-supplier').value;
-    var start    = document.getElementById('f-start').value;
-    var end      = document.getElementById('f-end').value;
+    var status    = document.getElementById('f-status').value;
+    var supplier  = document.getElementById('f-supplier').value;
+    var start     = document.getElementById('f-start').value;
+    var end       = document.getElementById('f-end').value;
+    var category  = (document.getElementById('f-category')  || {value:''}).value;
+    var drNumber  = (document.getElementById('f-dr-number') || {value:''}).value;
 
     var url = API + '?action=list&start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end);
-    if (supplier) url += '&supplier=' + encodeURIComponent(supplier);
-
-    console.log('Fetching from:', url);
+    if (status)   url += '&status='    + encodeURIComponent(status);
+    if (supplier) url += '&supplier='  + encodeURIComponent(supplier);
+    if (category) url += '&category='  + encodeURIComponent(category);
+    if (drNumber) url += '&dr_number=' + encodeURIComponent(drNumber);
 
     var tb = document.getElementById('del-tbody');
-    tb.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:40px;color:#6c757d;"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;display:block;margin-bottom:10px;"></i>Loading...</td></tr>';
+    tb.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:40px;color:#6c757d;"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;display:block;margin-bottom:10px;"></i>Loading...</td></tr>';
 
     fetch(url).then(function(r){
-        if (!r.ok) {
-            console.error('API response not OK:', r.status, r.statusText);
-            throw new Error('HTTP ' + r.status + ': ' + r.statusText);
-        }
+        if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
     }).then(function(res) {
-        console.log('API Response:', res);
         if (!res.success) {
-            console.error('API returned error:', res.message);
-            tb.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#dc3545;padding:32px;">' + h(res.message) + '</td></tr>';
+            tb.innerHTML = '<tr><td colspan="14" style="text-align:center;color:#dc3545;padding:32px;">' + h(res.message || 'Error') + '</td></tr>';
             return;
         }
 
         var allRows = res.data || [];
-        
-        // Count active pending items for tab badge
+
+        // Update badge
         var pendingCount = 0;
         allRows.forEach(function(d) {
             var ds = getDisplayStatus(d.status);
-            if (ds === 'Pending' || ds === 'Pending Resolution' || ds === 'Awaiting Replacement') {
-                pendingCount++;
-            }
+            if (ds === 'Pending' || ds === 'Pending Resolution' || ds === 'Awaiting Replacement') pendingCount++;
         });
-        document.getElementById('badge-pending').textContent = pendingCount;
+        var badgeEl = document.getElementById('badge-pending');
+        if (badgeEl) badgeEl.textContent = pendingCount;
 
-        // Filter rows based on active tab and selected status dropdown value
+        // Filter for active vs history tab
         var rows = allRows.filter(function(d) {
             var ds = getDisplayStatus(d.status);
-            
             if (currentTab === 'manage') {
-                if (ds !== 'Pending' && ds !== 'Pending Resolution' && ds !== 'Awaiting Replacement') {
-                    return false;
-                }
+                if (ds !== 'Pending' && ds !== 'Pending Resolution' && ds !== 'Awaiting Replacement') return false;
                 if (status === 'active') return true;
-                return ds === status;
+                return ds === status || d.status === status;
             } else {
-                var historyBuckets = ['Ready for Stock-In','Adjusted','Returned to Staff','Returned to Supplier','Rejected','Closed'];
-                if (historyBuckets.indexOf(ds) === -1) return false;
+                var histBuckets = ['Verified','Adjusted — Verified','Returned to Staff','Returned to Supplier','Rejected','Closed'];
+                if (histBuckets.indexOf(ds) === -1) return false;
                 if (status === 'history') return true;
-                return ds === status;
+                return ds === status || d.status === status;
             }
         });
 
         document.getElementById('rec-count').textContent = rows.length + ' record(s)';
 
         if (!rows.length) {
-            tb.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:48px;color:#6c757d;"><i class="fas fa-truck" style="font-size:2.5rem;display:block;margin-bottom:12px;opacity:.3;"></i><strong>No deliveries found</strong><br><span style="font-size:12px;">Try adjusting the filters above.</span></td></tr>';
+            tb.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:48px;color:#6c757d;"><i class="fas fa-truck" style="font-size:2.5rem;display:block;margin-bottom:12px;opacity:.3;"></i><strong>No deliveries found</strong><br><span style="font-size:12px;">Try adjusting the filters or date range above.</span></td></tr>';
             return;
         }
 
-        // Group rows by batch_id
-        var batches = {};
-        var batchOrder = [];
-        rows.forEach(function(d) {
-            var bId = d.batch_id || ('NOBATCH-' + d.id);
-            if (!batches[bId]) {
-                batches[bId] = [];
-                batchOrder.push(bId);
-            }
-            batches[bId].push(d);
-        });
-        window.currentBatches = batches;
-
+        // Flat per-item rendering — one row per delivery record
         var out = '';
-        batchOrder.forEach(function(bId) {
-            var items = batches[bId];
-            var firstItem = items[0];
-            var ds = getDisplayStatus(firstItem.status);
+        rows.forEach(function(d) {
+            var ds = getDisplayStatus(d.status);
 
-            // Compute total batch quantity and group suppliers/encoders
-            var suppliers = [];
-            var encoders = [];
-            items.forEach(function(item) {
-                if (item.supplier_name && !suppliers.includes(item.supplier_name)) {
-                    suppliers.push(item.supplier_name);
-                }
-                if (item.encoded_by_name && !encoders.includes(item.encoded_by_name)) {
-                    encoders.push(item.encoded_by_name);
-                }
-            });
-
-            var supplierDisplay = suppliers.join(', ');
-            if (supplierDisplay.length > 30) {
-                supplierDisplay = supplierDisplay.substring(0, 28) + '...';
-            }
-            var encoderDisplay = encoders.join(', ');
-
-            // Type badge
-            var isFuel = (firstItem.delivery_type === 'fuel');
-            var typeBadge = isFuel
-                ? '<span style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap;">⛽ Fuel</span>'
-                : '<span style="background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap;">📦 Merch</span>';
-
-            // Status badge
             var badgeCls = {
                 'Pending':              'sbadge-pending',
                 'Pending Resolution':   'sbadge-pending-resolution',
                 'Awaiting Replacement': 'sbadge-awaiting-replacement',
-                'Ready for Stock-In':   'sbadge-approved',
-                'Adjusted':             'sbadge-adjusted',
+                'Verified':             'sbadge-approved',
+                'Adjusted — Verified':  'sbadge-adjusted',
                 'Returned to Staff':    'sbadge-pending-resolution',
                 'Returned to Supplier': 'sbadge-returned-to-supplier',
                 'Rejected':             'sbadge-rejected',
                 'Closed':               'sbadge-closed',
             }[ds] || 'sbadge-pending';
-            var dsLabel = ds === 'Ready for Stock-In' ? '✅ Ready for Stock-In' : ds;
-            var badge = '<span class="sbadge ' + badgeCls + '">' + h(dsLabel) + '</span>';
+            var badge = '<span class="sbadge ' + badgeCls + '">' + h(ds) + '</span>';
 
-            // Products and Quantities line-by-line list
-            var productsHtml = items.map(function(item) {
-                return '<div style="padding:4px 0; border-bottom:1px solid #f1f5f9; min-height:36px; display:flex; flex-direction:column; justify-content:center;">'
-                     + '<strong style="color:#334155;">' + h(item.product_name || '—') + '</strong>'
-                     + '<span style="font-size:10px;color:#94a3b8;font-family:monospace;">' + h(item.delivery_ref) + '</span>'
-                     + '</div>';
-            }).join('');
+            var verDate = d.verification_date ? dtFull(d.verification_date) : '<span style="color:#aaa;">—</span>';
 
-            var qtyHtml = items.map(function(item) {
-                return '<div style="padding:4px 0; border-bottom:1px solid #f1f5f9; min-height:36px; display:flex; align-items:center; justify-content:flex-end; font-weight:700; color:#1e293b;">'
-                     + parseFloat(item.quantity_delivered||0).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:2})
-                     + '&nbsp;<span style="font-size:11px;color:#64748b;">' + h(item.unit||'pcs') + '</span>'
-                     + '</div>';
-            }).join('');
-
-            // Batch Action Buttons (only for Pending batch)
-            var batchActs = '';
-            var isVirtualBatch = bId.startsWith('NOBATCH-');
-            var batchIdLabel = isVirtualBatch ? firstItem.delivery_ref : bId;
-
+            // Action buttons — vertically stacked
+            var acts = '';
             if (ds === 'Pending') {
-                batchActs = '<button class="btn-act btn-approve" onclick="openAprBatch(\'' + j(batchIdLabel) + '\')"><i class="fas fa-check"></i> Approve</button>'
-                          + '<button class="btn-act btn-reject"  onclick="openFlagBatch(\'' + j(batchIdLabel) + '\')"><i class="fas fa-times-circle"></i> Reject</button>'
-                          + '<button class="btn-act btn-adjust"  onclick="openAdjBatch(\'' + j(batchIdLabel) + '\')"><i class="fas fa-sliders-h"></i> Adjust</button>';
+                acts += '<button class="btn-act btn-approve" onclick=\'openSingleApr(' + d.id + ',' + JSON.stringify(d) + ')\'><i class="fas fa-check-double"></i> Verify</button>';
+                acts += '<button class="btn-act btn-reject" onclick=\'openSingleFlag(' + d.id + ',' + JSON.stringify(d) + ')\'><i class="fas fa-times-circle"></i> Reject</button>';
             }
-            batchActs += '<button class="btn-act btn-view" onclick="openBatchDtl(\'' + j(batchIdLabel) + '\')"><i class="fas fa-eye"></i> View</button>';
+            acts += '<button class="btn-act btn-view" onclick=\'openSingleDtl(' + d.id + ')\'><i class="fas fa-eye"></i> View</button>';
 
-            // Render Batch Row
-            out += '<tr style="background:#ffffff;">'
-                + '<td><strong style="color: #0f172a;"><i class="fas fa-folder-open" style="color: #fd7e14; margin-right: 4px;"></i> ' + h(batchIdLabel) + '</strong></td>'
-                + '<td>' + typeBadge + '</td>'
-                + '<td><strong style="color: #334155;">' + h(supplierDisplay || '—') + '</strong></td>'
-                + '<td style="padding:0 16px;">' + productsHtml + '</td>'
-                + '<td style="padding:0 16px;">' + qtyHtml + '</td>'
-                + '<td style="font-size:12px;color:#64748b;">' + dt(firstItem.delivery_date) + '</td>'
-                + '<td style="font-size:12px;color:#475569;">' + h(encoderDisplay || '—') + '</td>'
+            out += '<tr>'
+                + '<td><code style="font-size:11px;font-weight:700;">' + h(d.delivery_ref || ('#' + d.id)) + '</code></td>'
+                + '<td style="white-space:nowrap;font-size:12px;">' + dt(d.delivery_date) + '</td>'
+                + '<td><code style="font-size:11px;">' + h(d.batch_id || '—') + '</code></td>'
+                + '<td style="font-size:12px;">' + h(d.dr_number || '—') + '</td>'
+                + '<td style="font-size:12px;"><strong>' + h(d.supplier_name || '—') + '</strong></td>'
+                + '<td style="font-size:12px;"><strong>' + h(d.product_name || '—') + '</strong></td>'
+                + '<td style="font-size:12px;">' + h(d.category || '—') + '</td>'
+                + '<td style="text-align:center;font-weight:700;">' + parseFloat(d.quantity_delivered||0).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:2}) + '</td>'
+                + '<td style="font-size:12px;">' + h(d.unit || 'pcs') + '</td>'
+                + '<td style="font-size:12px;">' + h(d.encoded_by_name || '—') + '</td>'
                 + '<td>' + badge + '</td>'
-                + '<td style="font-size:12px;color:#64748b;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + h(firstItem.remarks || '') + '</td>'
-                + '<td><div class="act-wrap" style="flex-direction:row;gap:4px;">' + batchActs + '</div></td>'
+                + '<td style="font-size:11px;color:#64748b;">' + verDate + '</td>'
+                + '<td style="font-size:11px;color:#64748b;max-width:120px;">' + h(d.remarks || '') + '</td>'
+                + '<td><div class="act-wrap" style="flex-direction:column;gap:4px;align-items:stretch;">' + acts + '</div></td>'
                 + '</tr>';
         });
         tb.innerHTML = out;
     }).catch(function(err) {
-        console.error('Fetch error:', err);
-        tb.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#dc3545;padding:32px;"><i class="fas fa-exclamation-triangle" style="font-size:2rem;display:block;margin-bottom:12px;"></i><strong>Error loading deliveries</strong><br><span style="font-size:12px;color:#6c757d;">' + h(err.message) + '</span><br><button onclick="loadDeliveries()" class="btn" style="margin-top:12px;"><i class="fas fa-sync-alt"></i> Retry</button></td></tr>';
+        tb.innerHTML = '<tr><td colspan="14" style="text-align:center;color:#dc3545;padding:32px;"><i class="fas fa-exclamation-triangle" style="font-size:2rem;display:block;margin-bottom:12px;"></i><strong>Error loading deliveries</strong><br><span style="font-size:12px;color:#6c757d;">' + h(err.message) + '</span><br><button onclick="loadDeliveries()" class="btn" style="margin-top:12px;"><i class="fas fa-sync-alt"></i> Retry</button></td></tr>';
     });
 }
+
+// Open single-item verify modal
+function openSingleApr(id, d) {
+    document.getElementById('apr-ref').value  = d.delivery_ref || ('#' + id);
+    document.getElementById('apr-sup').value  = d.supplier_name || '';
+    document.getElementById('apr-prod').value = d.product_name || '';
+    document.getElementById('apr-qty').value  = (d.quantity_delivered || 0) + ' ' + (d.unit || 'pcs');
+    document.getElementById('apr-rmk').value  = '';
+    window._aprId = id;
+    openM('aprModal');
+}
+
+// Open single-item reject modal
+function openSingleFlag(id, d) {
+    document.getElementById('flag-ref').value  = d.delivery_ref || ('#' + id);
+    document.getElementById('flag-prod').value = d.product_name || '';
+    document.getElementById('flag-reason').value = '';
+    // Clear checkboxes
+    ['rej-reason-qty','rej-reason-dmg','rej-reason-wrong','rej-reason-dup'].forEach(function(cid) {
+        var el = document.getElementById(cid); if (el) el.checked = false;
+    });
+    window._flagId = id;
+    openM('flagModal');
+}
+
+// Open single-item detail
+function openSingleDtl(id) {
+    fetch(API + '?action=get_detail&id=' + id)
+    .then(function(r){ return r.json(); })
+    .then(function(res) {
+        if (!res.success || !res.data) { toast('Could not load detail.', 'error'); return; }
+        var d = res.data;
+        var dtlHtml = '<div class="drow"><div class="dlbl">Delivery ID / Ref</div><div class="dval"><code>' + h(d.delivery_ref || '') + '</code></div></div>'
+            + '<div class="drow"><div class="dlbl">Batch ID</div><div class="dval"><code>' + h(d.batch_id || '—') + '</code></div></div>'
+            + '<div class="drow"><div class="dlbl">DR / Invoice No.</div><div class="dval">' + h(d.dr_number || '—') + '</div></div>'
+            + '<div class="drow"><div class="dlbl">Supplier</div><div class="dval">' + h(d.supplier_name || d.supplier || '') + '</div></div>'
+            + '<div class="drow"><div class="dlbl">Item Name</div><div class="dval"><strong>' + h(d.product_name || d.product || '') + '</strong></div></div>'
+            + '<div class="drow"><div class="dlbl">Category</div><div class="dval">' + h(d.category || '—') + '</div></div>'
+            + '<div class="drow"><div class="dlbl">Delivery Date</div><div class="dval">' + dt(d.delivery_date) + '</div></div>'
+            + '<div class="drow"><div class="dlbl">Qty Delivered</div><div class="dval"><strong>' + parseFloat(d.quantity_delivered||0).toLocaleString() + ' ' + h(d.unit||'pcs') + '</strong></div></div>'
+            + '<div class="drow"><div class="dlbl">Staff Receiver</div><div class="dval">' + h(d.encoded_by_name || '—') + '</div></div>'
+            + '<div class="drow"><div class="dlbl">Status</div><div class="dval">' + h(d.display_status || d.status) + '</div></div>'
+            + '<div class="drow"><div class="dlbl">Verification Date</div><div class="dval">' + (d.verification_date ? dtFull(d.verification_date) : '—') + '</div></div>'
+            + '<div class="drow"><div class="dlbl">Manager Notes</div><div class="dval">' + h(d.manager_notes || d.manager_reason || '—') + '</div></div>'
+            + '<div class="drow"><div class="dlbl">Remarks</div><div class="dval">' + h(d.remarks || '—') + '</div></div>';
+        document.getElementById('dtl-body').innerHTML = dtlHtml;
+        openM('dtlModal');
+    });
+}
+
+// dtFull helper for datetime display
+function dtFull(s) {
+    if (!s) return '—';
+    var d = new Date(s.replace(' ','T'));
+    if (isNaN(d.getTime())) return s;
+    return d.toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'})
+         + ' ' + d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+}
+
+
 
 // ── BATCH OPERATION HANDLERS ───────────────────────────────────────────────────
 function openAprBatch(batchId) {
@@ -1059,26 +1153,53 @@ function openApr(id, ref, prod, qty, sup, dtype) {
     openM('aprModal');
 }
 function doApprove() {
-    fetch(API + '?action=approve', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:CID,reason:document.getElementById('apr-rmk').value})})
-    .then(function(r){return r.json();}).then(function(res){closeM('aprModal');toast(res.message,res.success?'success':'error');if(res.success)loadDeliveries();});
+    var id = window._aprId;
+    if (!id) { toast('No delivery selected.', 'error'); return; }
+    var reason = document.getElementById('apr-rmk').value;
+    fetch(API + '?action=approve', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,reason:reason})})
+    .then(function(r){return r.json();})
+    .then(function(res){
+        closeM('aprModal');
+        toast(res.message, res.success ? 'success' : 'error');
+        if (res.success) loadDeliveries();
+    });
 }
 
-// ── FLAG DISCREPANCY ──────────────────────────────────────────────────────────
-function openFlag(id, ref, prod, qty) {
-    CID = id;
-    document.getElementById('flag-ref').value    = ref;
-    document.getElementById('flag-prod').value   = prod;
-    document.getElementById('flag-qty').value    = qty;
-    document.getElementById('flag-reason').value = '';
-    document.getElementById('flag-type').value   = 'shortage';
-    openM('flagModal');
-}
+// ── FLAG / REJECT (single-item) ──────────────────────────────────────────────
 function doFlag() {
-    var reason = document.getElementById('flag-reason').value.trim();
-    var dtype  = document.getElementById('flag-type').value;
-    if (!reason) { toast('Discrepancy details are required.','error'); return; }
-    fetch(API + '?action=flag_discrepancy', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:CID,reason:reason,discrepancy_type:dtype})})
-    .then(function(r){return r.json();}).then(function(res){closeM('flagModal');toast(res.message,res.success?'success':'error');if(res.success)loadDeliveries();});
+    var id = window._flagId;
+    if (!id) { toast('No delivery selected.', 'error'); return; }
+
+    // Collect checked reasons
+    var reasons = [];
+    ['rej-reason-qty','rej-reason-dmg','rej-reason-wrong','rej-reason-dup'].forEach(function(cid) {
+        var el = document.getElementById(cid);
+        if (el && el.checked) reasons.push(el.value);
+    });
+    var remarks = document.getElementById('flag-reason').value.trim();
+
+    if (!reasons.length && !remarks) {
+        toast('Please select at least one reason or enter verification remarks.', 'error');
+        return;
+    }
+    if (!remarks) {
+        toast('Verification remarks are required.', 'error');
+        return;
+    }
+
+    var fullReason = (reasons.length ? '[' + reasons.join(', ') + '] ' : '') + remarks;
+
+    fetch(API + '?action=reject', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: id, reason: fullReason })
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(res){
+        closeM('flagModal');
+        toast(res.message, res.success ? 'success' : 'error');
+        if (res.success) loadDeliveries();
+    });
 }
 
 // ── REJECT ────────────────────────────────────────────────────────────────────

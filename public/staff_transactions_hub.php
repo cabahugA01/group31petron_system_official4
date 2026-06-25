@@ -3296,11 +3296,11 @@ input[list] {
             const pageRows = rows.slice(startIdx, endIdx);
 
             const statusMap = {
-                'pending validation': {color:'#d97706',label:'Pending Manager Validation'},
-                'pending':            {color:'#d97706',label:'Pending Manager Validation'},
-                'approved':           {color:'#16a34a',label:'Validated'},
-                'verified':           {color:'#16a34a',label:'Validated'},
-                'validated':          {color:'#16a34a',label:'Validated'},
+                'pending validation': {color:'#d97706',label:'Pending Validation'},
+                'pending':            {color:'#d97706',label:'Pending Validation'},
+                'approved':           {color:'#16a34a',label:'Verified'},
+                'verified':           {color:'#16a34a',label:'Verified'},
+                'validated':          {color:'#16a34a',label:'Verified'},
                 'adjusted':           {color:'#2563eb',label:'Adjusted'},
                 'rejected':           {color:'#dc2626',label:'Rejected'},
             };
@@ -3349,25 +3349,25 @@ input[list] {
                 return shiftPeriod;
             }
 
-            const TH  = 'padding:8px 6px; font-size:14px; font-weight:700; color:#ffffff; text-transform:uppercase; letter-spacing:.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;';
+            const TH  = 'padding:8px 10px; font-size:13px; font-weight:700; color:#ffffff; text-transform:uppercase; letter-spacing:.5px; white-space:nowrap;';
             const THR = TH + ' text-align:right;';
 
-            let html = `<div style="overflow-x:hidden; border-bottom:1px solid #e2e8f0; background:#ffffff;">
-                <table id="todayReadingsTable" style="width:100%; border-collapse:collapse; font-size:13px; text-align:left; table-layout:fixed;">
+            let html = `<div style="overflow-x:auto; border-bottom:1px solid #e2e8f0; background:#ffffff;">
+                <table id="todayReadingsTable" style="width:100%; border-collapse:collapse; font-size:13px; text-align:left; table-layout:auto;">
                     <thead>
                         <tr style="background:#002F70; border-bottom:2px solid #001f4d;">
-                            <th style="${TH}; width:8%;">Date</th>
-                            <th style="${TH}; width:7%;">Shift</th>
-                            <th style="${TH}; width:10%;">Pump / Fuel Type</th>
-                            <th style="${THR}; width:7%;">Beginning</th>
-                            <th style="${THR}; width:7%;">Ending</th>
-                            <th style="${THR}; width:6%;">Calibration</th>
-                            <th style="${THR}; width:7%;">Volume (L)</th>
-                            <th style="${THR}; width:6%;">Price/L</th>
-                            <th style="${THR}; width:8%;">Amount</th>
-                            <th style="${TH}; width:10%;">Encoded By</th>
-                            <th style="${TH}; width:12%;">Status</th>
-                            <th style="${TH}; width:12%;">Notes</th>
+                            <th style="${TH}">Date</th>
+                            <th style="${TH}">Shift</th>
+                            <th style="${TH}">Pump / Fuel Type</th>
+                            <th style="${THR}">Beginning</th>
+                            <th style="${THR}">Ending</th>
+                            <th style="${THR}">Calibration</th>
+                            <th style="${THR}">Volume (L)</th>
+                            <th style="${THR}">Price/L</th>
+                            <th style="${THR}">Amount</th>
+                            <th style="${TH}">Encoded By</th>
+                            <th style="${TH}">Status</th>
+                            <th style="${TH}">Notes</th>
                         </tr>
                     </thead>
                     <tbody>`;
@@ -3396,18 +3396,18 @@ input[list] {
                 const staffStr = r.staff_name || '—';
 
                 html += `<tr style="border-bottom:1px solid #f1f5f9; background:#ffffff; transition: background-color 0.15s ease;" onmouseover="this.style.backgroundColor='#f0f5ff';" onmouseout="this.style.backgroundColor='#ffffff';">
-                    <td style="padding:8px 6px; color:#1e293b; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${dateStr}">${dateStr}</td>
-                    <td style="padding:8px 6px; color:#334155; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${shiftStr}">${shiftStr}</td>
-                    <td style="padding:8px 6px; font-weight:700; color:#0f172a; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fuelStr}">${fuelStr}</td>
-                    <td style="padding:8px 6px; text-align:right; font-variant-numeric:tabular-nums; color:#1e293b; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.beginning)}">${fmt(r.beginning)}</td>
-                    <td style="padding:8px 6px; text-align:right; font-variant-numeric:tabular-nums; color:#1e293b; font-weight:600; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.ending)}">${fmt(r.ending)}</td>
-                    <td style="padding:8px 6px; text-align:right; font-variant-numeric:tabular-nums; color:#334155; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.cal,3)}">${fmt(r.cal,3)}</td>
-                    <td style="padding:8px 6px; text-align:right; font-weight:700; font-variant-numeric:tabular-nums; color:#1e293b; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.volume_liters)} L">${fmt(r.volume_liters)} L</td>
-                    <td style="padding:8px 6px; text-align:right; font-variant-numeric:tabular-nums; color:#334155; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="₱${fmt(r.price_per_liter)}">₱${fmt(r.price_per_liter)}</td>
-                    <td style="padding:8px 6px; text-align:right; font-weight:800; font-variant-numeric:tabular-nums; color:#0f172a; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="₱${fmt(r.amount)}">₱${fmt(r.amount)}</td>
-                    <td style="padding:8px 6px; color:#334155; font-weight:500; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${staffStr}">${staffStr}</td>
-                    <td style="padding:8px 6px; font-size:13px; overflow:visible; vertical-align:middle;">${badge(r.status)}</td>
-                    <td style="padding:8px 6px; color:#475569; font-size:13px; max-width:160px; overflow:hidden; vertical-align:middle;">${notesCellContent}</td>
+                    <td style="padding:10px; color:#1e293b; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${dateStr}">${dateStr}</td>
+                    <td style="padding:10px; color:#334155; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${shiftStr}">${shiftStr}</td>
+                    <td style="padding:10px; font-weight:700; color:#0f172a; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fuelStr}">${fuelStr}</td>
+                    <td style="padding:10px; text-align:right; font-variant-numeric:tabular-nums; color:#1e293b; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.beginning)}">${fmt(r.beginning)}</td>
+                    <td style="padding:10px; text-align:right; font-variant-numeric:tabular-nums; color:#1e293b; font-weight:600; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.ending)}">${fmt(r.ending)}</td>
+                    <td style="padding:10px; text-align:right; font-variant-numeric:tabular-nums; color:#334155; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.cal,3)}">${fmt(r.cal,3)}</td>
+                    <td style="padding:10px; text-align:right; font-weight:700; font-variant-numeric:tabular-nums; color:#1e293b; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.volume_liters)} L">${fmt(r.volume_liters)} L</td>
+                    <td style="padding:10px; text-align:right; font-variant-numeric:tabular-nums; color:#334155; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="₱${fmt(r.price_per_liter)}">₱${fmt(r.price_per_liter)}</td>
+                    <td style="padding:10px; text-align:right; font-weight:800; font-variant-numeric:tabular-nums; color:#0f172a; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="₱${fmt(r.amount)}">₱${fmt(r.amount)}</td>
+                    <td style="padding:10px; color:#334155; font-weight:500; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${staffStr}">${staffStr}</td>
+                    <td style="padding:10px; font-size:13px; vertical-align:middle;">${badge(r.status)}</td>
+                    <td style="padding:10px; color:#475569; font-size:13px; max-width:160px; overflow:hidden; vertical-align:middle;">${notesCellContent}</td>
                 </tr>`;
             });
 

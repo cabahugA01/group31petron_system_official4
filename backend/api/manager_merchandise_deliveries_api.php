@@ -94,14 +94,16 @@ function map_status_display(string $status): array {
         case 'Pending Manager Approval':
         case 'Pending Manager Confirmation':
         case 'Pending Validation':
+        case 'Pending Verification':
             return ['bucket' => 'Pending',  'label' => 'Pending'];
         case 'Confirmed':
         case 'Approved':
         case 'Validated':
+        case 'Verified':
         case 'Ready for Stock-In':
-            return ['bucket' => 'Approved', 'label' => 'Ready for Stock-In'];
+            return ['bucket' => 'Approved', 'label' => 'Verified'];
         case 'Adjusted':
-            return ['bucket' => 'Approved', 'label' => 'Adjusted — Ready for Stock-In'];
+            return ['bucket' => 'Approved', 'label' => 'Adjusted — Verified'];
         case 'Pending Resolution':
             return ['bucket' => 'Rejected', 'label' => 'Pending Resolution'];
         case 'Awaiting Replacement':
@@ -129,6 +131,8 @@ try {
         case 'list':
             $status_f   = trim($_GET['status']   ?? '');
             $supplier_f = trim($_GET['supplier'] ?? '');
+            $category_f = trim($_GET['category'] ?? '');
+            $dr_number_f= trim($_GET['dr_number'] ?? '');
             $type_f     = trim($_GET['type']     ?? ''); // 'fuel' | 'merchandise' | ''
             $start      = $_GET['start'] ?? date('Y-m-d', strtotime('-30 days'));
             $end        = $_GET['end']   ?? date('Y-m-d');
@@ -145,9 +149,9 @@ try {
             // Map UI filter bucket → actual DB status values
             if ($status_f !== '' && $status_f !== 'active' && $status_f !== 'history') {
                 if ($status_f === 'Pending') {
-                    $where .= " AND do2.status IN ('Pending Manager Approval','Pending Manager Confirmation','Pending Validation')";
-                } elseif ($status_f === 'Ready for Stock-In') {
-                    $where .= " AND do2.status IN ('Ready for Stock-In','Confirmed','Approved','Validated')";
+                    $where .= " AND do2.status IN ('Pending Manager Approval','Pending Manager Confirmation','Pending Validation','Pending Verification')";
+                } elseif ($status_f === 'Verified' || $status_f === 'Ready for Stock-In') {
+                    $where .= " AND do2.status IN ('Ready for Stock-In','Confirmed','Approved','Validated','Verified')";
                 } elseif ($status_f === 'Adjusted') {
                     $where .= " AND do2.status = 'Adjusted'";
                 } elseif ($status_f === 'Pending Resolution') {
@@ -165,14 +169,22 @@ try {
                 }
             } elseif ($status_f === 'active') {
                 // All Active = pending validation + pending resolution + awaiting replacement
-                $where .= " AND do2.status IN ('Pending Manager Approval','Pending Manager Confirmation','Pending Validation','Pending Resolution','Awaiting Replacement')";
+                $where .= " AND do2.status IN ('Pending Manager Approval','Pending Manager Confirmation','Pending Validation','Pending Verification','Pending Resolution','Awaiting Replacement')";
             } elseif ($status_f === 'history') {
-                // History = all processed (ready for stock-in, adjusted, returned, rejected, closed)
-                $where .= " AND do2.status IN ('Ready for Stock-In','Confirmed','Approved','Validated','Adjusted','Returned','Returned to Supplier','Rejected','Discrepancy','Flagged','Closed')";
+                // History = all processed
+                $where .= " AND do2.status IN ('Ready for Stock-In','Confirmed','Approved','Validated','Verified','Adjusted','Returned','Returned to Supplier','Rejected','Discrepancy','Flagged','Closed','Stock-In Complete')";
             }
             if ($supplier_f !== '') {
                 $where   .= " AND do2.supplier LIKE ?";
                 $params[] = '%' . $supplier_f . '%';
+            }
+            if ($category_f !== '') {
+                $where   .= " AND COALESCE(do2.category,'') LIKE ?";
+                $params[] = '%' . $category_f . '%';
+            }
+            if ($dr_number_f !== '') {
+                $where   .= " AND do2.dr_number LIKE ?";
+                $params[] = '%' . $dr_number_f . '%';
             }
 
             $stmt = $pdo->prepare("
@@ -193,7 +205,10 @@ try {
                     do2.encoded_by,
                     do2.manager_id,
                     do2.manager_action_at,
+                    do2.manager_action_at AS verification_date,
+                    do2.batch_id,
                     do2.created_at,
+                    COALESCE(do2.category, '') AS category,
                     COALESCE(
                         NULLIF(CONCAT(TRIM(COALESCE(u_enc.first_name, '')), ' ', TRIM(COALESCE(u_enc.last_name, ''))), ' '),
                         u_enc.username,
@@ -203,8 +218,7 @@ try {
                         NULLIF(CONCAT(TRIM(COALESCE(u_mgr.first_name, '')), ' ', TRIM(COALESCE(u_mgr.last_name, ''))), ' '),
                         u_mgr.username,
                         'Unknown'
-                    ) AS manager_name,
-                    '' AS category
+                    ) AS manager_name
                 FROM deliveries_oversight do2
                 LEFT JOIN users u_enc ON do2.encoded_by  = u_enc.id
                 LEFT JOIN users u_mgr ON do2.manager_id  = u_mgr.id
@@ -216,8 +230,9 @@ try {
                         'Pending Manager Approval',
                         'Pending Manager Confirmation',
                         'Pending Validation',
+                        'Pending Verification',
                         'Awaiting Replacement',
-                        'Confirmed','Approved','Validated',
+                        'Confirmed','Approved','Validated','Verified',
                         'Ready for Stock-In',
                         'Adjusted',
                         'Returned',
@@ -230,13 +245,16 @@ try {
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             // Normalise status to UI buckets and count
-            $counts = ['Pending' => 0, 'Approved' => 0, 'Discrepancy' => 0, 'Closed' => 0, 'total' => count($rows)];
+            $counts = ['Pending' => 0, 'Verified' => 0, 'Rejected' => 0, 'Closed' => 0, 'total' => count($rows), 'total_qty_verified' => 0];
             foreach ($rows as &$r) {
                 $mapped   = map_status_display($r['status']);
                 $r['display_status'] = $mapped['label'];
                 if ($mapped['bucket'] === 'Pending')  $counts['Pending']++;
-                elseif ($mapped['bucket'] === 'Approved') $counts['Approved']++;
-                elseif ($mapped['bucket'] === 'Rejected') $counts['Discrepancy']++;
+                elseif ($mapped['bucket'] === 'Approved') {
+                    $counts['Verified']++;
+                    $counts['total_qty_verified'] += (float)($r['quantity_delivered'] ?? 0);
+                }
+                elseif ($mapped['bucket'] === 'Rejected') $counts['Rejected']++;
                 else $counts['Closed']++;
             }
             unset($r);
@@ -250,10 +268,44 @@ try {
                 SELECT COUNT(*) FROM deliveries_oversight
                 WHERE station_id = ?
                   AND delivery_type = 'merchandise'
-                  AND status IN ('Pending Manager Approval','Pending Manager Confirmation','Pending Validation')
+                  AND status IN ('Pending Manager Approval','Pending Manager Confirmation','Pending Validation','Pending Verification')
             ");
             $stmt->execute([$station_id]);
             echo json_encode(['success' => true, 'count' => (int)$stmt->fetchColumn()]);
+            break;
+
+        // ── GET: summary cards for the 5-card manager dashboard ─────────────
+        case 'summary_cards':
+            $start_sc = $_GET['start'] ?? date('Y-m-01');
+            $end_sc   = $_GET['end']   ?? date('Y-m-d');
+            $rows_sc  = $pdo->prepare("
+                SELECT status, quantity
+                FROM deliveries_oversight
+                WHERE station_id = ? AND delivery_type = 'merchandise'
+            ");
+            $rows_sc->execute([$station_id]);
+            $all_sc = $rows_sc->fetchAll(PDO::FETCH_ASSOC);
+
+            $cnt_p = 0; $cnt_v = 0; $cnt_r = 0; $total_qty_v = 0; $total_rec = count($all_sc);
+            foreach ($all_sc as $sc_row) {
+                $sl = strtolower($sc_row['status']);
+                if (in_array($sl, ['pending manager approval','pending manager confirmation','pending validation','pending verification','pending resolution','awaiting replacement'])) {
+                    $cnt_p++;
+                } elseif (in_array($sl, ['confirmed','approved','validated','verified','ready for stock-in','adjusted','stock-in complete'])) {
+                    $cnt_v++;
+                    $total_qty_v += (float)$sc_row['quantity'];
+                } elseif (in_array($sl, ['discrepancy','rejected','flagged','returned','returned to supplier'])) {
+                    $cnt_r++;
+                }
+            }
+            echo json_encode([
+                'success'           => true,
+                'pending'           => $cnt_p,
+                'verified'          => $cnt_v,
+                'rejected'          => $cnt_r,
+                'total_qty_verified'=> $total_qty_v,
+                'total_records'     => $total_rec,
+            ]);
             break;
 
         // ── GET: single delivery detail ───────────────────────────────────────
@@ -271,6 +323,8 @@ try {
                     do2.manager_notes   AS manager_reason,
                     do2.manager_id,
                     do2.manager_action_at,
+                    do2.manager_action_at AS verification_date,
+                    COALESCE(do2.category, '') AS category,
                     COALESCE(
                         NULLIF(CONCAT(TRIM(COALESCE(u_enc.first_name, '')), ' ', TRIM(COALESCE(u_enc.last_name, ''))), ' '),
                         u_enc.username,
@@ -280,8 +334,7 @@ try {
                         NULLIF(CONCAT(TRIM(COALESCE(u_mgr.first_name, '')), ' ', TRIM(COALESCE(u_mgr.last_name, ''))), ' '),
                         u_mgr.username,
                         'Unknown'
-                    ) AS manager_name,
-                    '' AS category
+                    ) AS manager_name
                 FROM deliveries_oversight do2
                 LEFT JOIN users u_enc ON do2.encoded_by  = u_enc.id
                 LEFT JOIN users u_mgr ON do2.manager_id  = u_mgr.id
@@ -342,16 +395,16 @@ try {
                     echo json_encode(['success' => false, 'message' => 'Delivery not found']);
                     break;
                 }
-                if (!in_array($del['status'], ['Pending Manager Approval', 'Pending Manager Confirmation', 'Pending Validation'])) {
+                if (!in_array($del['status'], ['Pending Manager Approval', 'Pending Manager Confirmation', 'Pending Validation', 'Pending Verification'])) {
                     if ($pdo->inTransaction()) $pdo->rollBack();
-                    echo json_encode(['success' => false, 'message' => 'Only Pending deliveries can be approved']);
+                    echo json_encode(['success' => false, 'message' => 'Only Pending deliveries can be verified']);
                     break;
                 }
 
-                // Mark as Ready for Stock-In — Staff will update inventory during stock-in
+                // Mark as Verified — Staff will update inventory during stock-in
                 $pdo->prepare("
                     UPDATE deliveries_oversight
-                    SET status = 'Ready for Stock-In',
+                    SET status = 'Verified',
                         manager_id = ?,
                         manager_action_at = NOW(),
                         manager_notes = ?,
@@ -361,17 +414,17 @@ try {
 
                 if ($pdo->inTransaction()) $pdo->commit();
 
-                try_log_merch($pdo, $me['id'], 'Approve Delivery',
-                    "Manager approved delivery #{$id} ref:{$del['delivery_ref']} ({$del['product']}, qty:{$del['quantity']}) — marked Ready for Stock-In" . ($reason ? " | Notes: {$reason}" : ''));
+                try_log_merch($pdo, $me['id'], 'Verify Delivery',
+                    "Manager verified delivery #{$id} ref:{$del['delivery_ref']} ({$del['product']}, qty:{$del['quantity']}) — marked Verified" . ($reason ? " | Notes: {$reason}" : ''));
 
                 try {
                     $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
                     $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
-                    $detail = "Delivery approved | Ref: {$del['delivery_ref']} | Product: {$del['product']} | Qty: {$del['quantity']} | Status → Ready for Stock-In" . ($reason ? " | Notes: {$reason}" : '');
-                    $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'transaction', 'Approve', ?, 'deliveries', ?, 'Success', ?, ?, NOW())")->execute([$me['id'], $detail, $id, $ip, $ua]);
+                    $detail = "Delivery verified | Ref: {$del['delivery_ref']} | Product: {$del['product']} | Qty: {$del['quantity']} | Status → Verified" . ($reason ? " | Notes: {$reason}" : '');
+                    $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'transaction', 'Verify', ?, 'deliveries', ?, 'Success', ?, ?, NOW())")->execute([$me['id'], $detail, $id, $ip, $ua]);
                 } catch (Exception $e) {}
 
-                echo json_encode(['success' => true, 'message' => 'Delivery approved. Marked as Ready for Stock-In. Staff can now update the inventory.']);
+                echo json_encode(['success' => true, 'message' => 'Delivery verified. Status set to Verified. Staff can now update inventory.']);
 
             } catch (Exception $e) {
                 if ($pdo->inTransaction()) $pdo->rollBack();
@@ -394,15 +447,15 @@ try {
                 $del = $stmt->fetch(PDO::FETCH_ASSOC);
 
                 if (!$del) { echo json_encode(['success' => false, 'message' => 'Delivery not found']); break; }
-                if (!in_array($del['status'], ['Pending Manager Approval', 'Pending Manager Confirmation', 'Pending Validation'])) {
+                if (!in_array($del['status'], ['Pending Manager Approval', 'Pending Manager Confirmation', 'Pending Validation', 'Pending Verification'])) {
                     echo json_encode(['success' => false, 'message' => 'Only Pending deliveries can be rejected']);
                     break;
                 }
 
-                // Set to 'Discrepancy' — staff sees this as "Rejected" and can resubmit
+                // Set to 'Rejected' — maps to rejected bucket; staff can view the reason
                 $pdo->prepare("
                     UPDATE deliveries_oversight
-                    SET status = 'Discrepancy',
+                    SET status = 'Rejected',
                         manager_id = ?,
                         manager_action_at = NOW(),
                         manager_notes = ?,

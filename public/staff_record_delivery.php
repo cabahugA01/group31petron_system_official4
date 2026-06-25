@@ -96,7 +96,16 @@ try {
     ");
 } catch (Exception $e) {}
 
-foreach (['remarks TEXT DEFAULT NULL', 'dr_number VARCHAR(100) DEFAULT NULL', 'batch_id VARCHAR(100) DEFAULT NULL', 'source_ref VARCHAR(100) DEFAULT NULL'] as $col_def) {
+foreach ([
+    'remarks TEXT DEFAULT NULL',
+    'dr_number VARCHAR(100) DEFAULT NULL',
+    'batch_id VARCHAR(100) DEFAULT NULL',
+    'source_ref VARCHAR(100) DEFAULT NULL',
+    'unit_cost DECIMAL(12,2) DEFAULT NULL',
+    'expiry_date DATE DEFAULT NULL',
+    'received_by_name VARCHAR(200) DEFAULT NULL',
+    'category VARCHAR(100) DEFAULT NULL'
+] as $col_def) {
     try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN {$col_def}"); } catch (Exception $e) {}
 }
 
@@ -164,15 +173,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recei
    POST — Record Delivery (Manual / Old Flow)
 ══════════════════════════════════════════════════════════ */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'record_delivery') {
-    $supplier_name = trim($_POST['supplier_name'] ?? '');
-    $delivery_date = trim($_POST['delivery_date'] ?? date('Y-m-d'));
-    $dr_number     = trim($_POST['dr_number']     ?? '') ?: null;
-    $remarks       = trim($_POST['remarks']       ?? '') ?: null;
+    $supplier_name   = trim($_POST['supplier_name']   ?? '');
+    $delivery_date   = trim($_POST['delivery_date']   ?? date('Y-m-d'));
+    $dr_number       = trim($_POST['dr_number']       ?? '') ?: null;
+    $remarks         = trim($_POST['remarks']         ?? '') ?: null;
+    $received_by_name = $me['full_name'] ?? $me['name'] ?? $me['username'] ?? 'Staff';
 
-    $categories = $_POST['category'] ?? [];
-    $item_names = $_POST['item_name'] ?? [];
-    $quantities = $_POST['quantity'] ?? [];
-    $units      = $_POST['unit'] ?? [];
+    $categories   = $_POST['category']     ?? [];
+    $item_names   = $_POST['item_name']    ?? [];
+    $quantities   = $_POST['quantity']     ?? [];
+    $units        = $_POST['unit']         ?? [];
+    $unit_costs   = $_POST['unit_cost']    ?? [];
+    $expiry_dates = $_POST['expiry_date']  ?? [];
 
     if ($supplier_name === '') {
         $msg = 'Supplier Name is required.'; $msg_type = 'error';
@@ -182,36 +194,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
         $msg = 'At least one item must be added.'; $msg_type = 'error';
     } else {
         try {
-            // Generate batch ID based on delivery date - ONE merchandise batch per date
-            // Prefix: MBATCH- (Merchandise) — fuel uses FBATCH- — never overlap
             $batch_prefix = 'MBATCH-' . date('Ymd', strtotime($delivery_date)) . '-';
-            
-            // Check if a merchandise batch already exists for this date at this station
             $stmt = $pdo->prepare("
-                SELECT batch_id 
-                FROM deliveries_oversight 
-                WHERE batch_id LIKE ? 
-                  AND station_id = ? 
-                  AND DATE(delivery_date) = ?
-                  AND delivery_type = 'merchandise'
+                SELECT batch_id FROM deliveries_oversight
+                WHERE batch_id LIKE ? AND station_id = ? AND DATE(delivery_date) = ? AND delivery_type = 'merchandise'
                 LIMIT 1
             ");
             $stmt->execute([$batch_prefix . '%', $station_id, $delivery_date]);
             $existing_batch = $stmt->fetchColumn();
-            
+
             if ($existing_batch) {
-                // Reuse existing merchandise batch for this date
                 $batch_id = $existing_batch;
             } else {
-                // Create new merchandise batch ID for this date
-                $stmt = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(batch_id, '-', -1) AS UNSIGNED)) FROM deliveries_oversight WHERE batch_id LIKE ?");
+                $stmt = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(batch_id,'-',-1) AS UNSIGNED)) FROM deliveries_oversight WHERE batch_id LIKE ?");
                 $stmt->execute([$batch_prefix . '%']);
-                $max_batch_num = (int)$stmt->fetchColumn();
-                $batch_id = $batch_prefix . str_pad($max_batch_num + 1, 3, '0', STR_PAD_LEFT);
+                $batch_id = $batch_prefix . str_pad((int)$stmt->fetchColumn() + 1, 3, '0', STR_PAD_LEFT);
             }
-            
+
             $date_prefix = 'MDR-' . date('Ymd', strtotime($delivery_date)) . '-';
-            $stmt = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(delivery_ref, '-', -1) AS UNSIGNED)) FROM deliveries_oversight WHERE delivery_ref LIKE ?");
+            $stmt = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(delivery_ref,'-',-1) AS UNSIGNED)) FROM deliveries_oversight WHERE delivery_ref LIKE ?");
             $stmt->execute([$date_prefix . '%']);
             $max_num = (int)$stmt->fetchColumn();
 
@@ -219,26 +220,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
             $success_count = 0;
 
             for ($i = 0; $i < count($item_names); $i++) {
-                $category = trim($categories[$i] ?? '');
-                $item_name = trim($item_names[$i] ?? '');
-                $quantity = (float)($quantities[$i] ?? 0);
-                $unit = trim($units[$i] ?? 'pcs');
+                $category    = trim($categories[$i]   ?? '');
+                $item_name   = trim($item_names[$i]   ?? '');
+                $quantity    = (float)($quantities[$i]  ?? 0);
+                $unit        = trim($units[$i]         ?? 'pcs');
+                $unit_cost   = ($unit_costs[$i] ?? '') !== '' ? (float)$unit_costs[$i] : null;
+                $expiry_date = trim($expiry_dates[$i] ?? '') ?: null;
 
                 if ($category === 'Fuel' || $item_name === '' || $category === '' || $quantity <= 0) continue;
 
                 $max_num++;
                 $delivery_ref = $date_prefix . str_pad($max_num, 4, '0', STR_PAD_LEFT);
-                
+
                 $pdo->prepare("
                     INSERT INTO deliveries_oversight
                         (delivery_type, delivery_ref, batch_id, supplier, product, quantity, unit,
                          delivery_date, dr_number, encoded_by, station_id, status, remarks,
-                         created_at, updated_at)
-                    VALUES ('merchandise', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Manager Approval', ?, NOW(), NOW())
+                         unit_cost, expiry_date, received_by_name, category, created_at, updated_at)
+                    VALUES ('merchandise', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Verification', ?, ?, ?, ?, ?, NOW(), NOW())
                 ")->execute([
                     $delivery_ref, $batch_id, $supplier_name, $item_name,
                     $quantity, $unit, $delivery_date, $dr_number,
-                    $me['id'], $station_id, $remarks
+                    $me['id'], $station_id, $remarks,
+                    $unit_cost, $expiry_date, $received_by_name, $category
                 ]);
                 $success_count++;
             }
@@ -613,78 +617,146 @@ textarea.form-control { resize: vertical; font-family: inherit; }
         <div class="del-card-body">
             <form method="POST" id="manualForm">
                 <input type="hidden" name="action" value="record_delivery">
-                
+
+                <!-- ── Supplier ── -->
                 <div class="form-group">
                     <label class="form-label">Supplier Name <span style="color:red;">*</span></label>
-                    <input type="text" name="supplier_name" class="form-control" 
-                           value="<?php echo $selected_po ? htmlspecialchars($selected_po['supplier']) : 'Petron Corporation'; ?>" 
+                    <input type="text" name="supplier_name" class="form-control"
+                           value="<?php echo $selected_po ? htmlspecialchars($selected_po['supplier']) : 'Petron Corporation'; ?>"
                            readonly style="background:#e9ecef;cursor:not-allowed;font-weight:600;">
                 </div>
 
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
-                    <div class="form-group">
-                        <label class="form-label">Item Name <span style="color:red;">*</span></label>
-                        <input type="text" name="item_name[]" class="form-control item-name-input" list="productList" 
-                               value="<?php echo $selected_po ? htmlspecialchars($selected_po['product']) : ''; ?>" required>
-                        <datalist id="productList">
-                            <?php foreach ($merch_products as $p): ?><option value="<?php echo htmlspecialchars($p); ?>"><?php endforeach; ?>
-                        </datalist>
+                <!-- ══ SECTION: Delivery Information ══ -->
+                <div style="background:#f0f4ff;border:1px solid #d0d9f7;border-radius:8px;padding:16px 18px;margin-bottom:16px;">
+                    <div style="font-size:11px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.6px;margin-bottom:14px;display:flex;align-items:center;gap:7px;">
+                        <i class="fas fa-truck"></i> Delivery Information
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">Category <span style="color:red;">*</span></label>
-                        <input type="text" class="form-control category-display" readonly placeholder="Auto-filled from product" style="background:#f8f9fa;cursor:not-allowed;">
-                        <input type="hidden" name="category[]" class="category-hidden" required>
-                        <small style="font-size:11px;color:#6c757d;display:block;margin-top:4px;">
-                            <i class="fas fa-info-circle"></i> Category will auto-fill when you select a product
-                        </small>
-                    </div>
-                </div>
 
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
-                    <div class="form-group">
-                        <label class="form-label">Actual Quantity Received <span style="color:red;">*</span></label>
-                        <input type="number" step="0.01" name="quantity[]" class="form-control" 
-                               value="<?php echo $selected_po ? $selected_po['quantity'] : ''; ?>" 
-                               placeholder="Enter actual quantity" required>
-                        <?php if ($selected_po): ?>
-                        <small style="color:#6c757d;font-size:11px;display:block;margin-top:4px;">
-                            Expected: <?php echo number_format($selected_po['quantity'], 2) . ' ' . $selected_po['unit']; ?>
-                        </small>
-                        <?php endif; ?>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Unit <span style="color:red;">*</span></label>
-                        <select name="unit[]" class="form-select">
-                            <option value="pcs" <?php echo ($selected_po && $selected_po['unit'] === 'pcs') ? 'selected' : ''; ?>>pcs</option>
-                            <option value="kg" <?php echo ($selected_po && $selected_po['unit'] === 'kg') ? 'selected' : ''; ?>>kg</option>
-                            <option value="box" <?php echo ($selected_po && $selected_po['unit'] === 'box') ? 'selected' : ''; ?>>box</option>
-                            <option value="L" <?php echo ($selected_po && $selected_po['unit'] === 'L') ? 'selected' : ''; ?>>L</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
-                    <div class="form-group">
-                        <label class="form-label">Batch ID</label>
-                        <div style="background:#002F70;color:#fff;padding:12px;border-radius:6px;font-weight:600;text-align:center;font-size:14px;">
-                            Auto-Generated
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label">Delivery Date <span style="color:red;">*</span></label>
+                            <input type="date" name="delivery_date" class="form-control"
+                                   value="<?php echo date('Y-m-d'); ?>" required id="deliveryDateInput">
                         </div>
-                        <small style="font-size:11px;color:#6c757d;display:block;margin-top:4px;">
-                            <i class="fas fa-info-circle"></i> System will assign Batch ID upon saving
-                        </small>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label">DR Number / Invoice Number</label>
+                            <input type="text" name="dr_number" class="form-control"
+                                   placeholder="e.g. DR-0610-001">
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">DR Number (Delivery Receipt)</label>
-                        <input type="text" name="dr_number" class="form-control" placeholder="Optional - Enter DR number if available">
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;">
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label">Batch ID</label>
+                            <div style="background:#002F70;color:#fff;padding:10px 12px;border-radius:6px;font-weight:700;font-size:13px;display:flex;align-items:center;gap:6px;">
+                                <i class="fas fa-barcode"></i> Auto-Generated
+                            </div>
+                            <small style="font-size:11px;color:#6c757d;display:block;margin-top:4px;">
+                                <i class="fas fa-info-circle"></i> Assigned by system upon saving
+                            </small>
+                        </div>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label">Received By</label>
+                            <input type="text" class="form-control" readonly
+                                   value="<?php echo htmlspecialchars($me['full_name'] ?? $me['name'] ?? $me['username'] ?? 'Staff'); ?>"
+                                   style="background:#e9ecef;cursor:not-allowed;font-weight:600;">
+                            <small style="font-size:11px;color:#6c757d;display:block;margin-top:4px;">
+                                <i class="fas fa-user-check"></i> Auto-filled from logged-in staff
+                            </small>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-top:14px;margin-bottom:0;">
+                        <label class="form-label">Remarks / Notes</label>
+                        <textarea name="remarks" class="form-control" rows="2"
+                                  placeholder="Optional — Any notes about this delivery"><?php echo $selected_po ? 'Based on PO: ' . htmlspecialchars($selected_po['source_ref'] ?? '') : ''; ?></textarea>
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label class="form-label">Remarks / Notes</label>
-                    <textarea name="remarks" class="form-control" rows="3" placeholder="Optional - Add any notes about this delivery"><?php echo $selected_po ? 'Based on PO: ' . htmlspecialchars($selected_po['source_ref'] ?? '') : ''; ?></textarea>
+                <!-- ══ SECTION: Item Information ══ -->
+                <div style="background:#f6fff8;border:1px solid #c3e6cb;border-radius:8px;padding:16px 18px;margin-bottom:16px;">
+                    <div style="font-size:11px;font-weight:800;color:#155724;text-transform:uppercase;letter-spacing:.6px;margin-bottom:14px;display:flex;align-items:center;gap:7px;">
+                        <i class="fas fa-box-open"></i> Item Information
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label">Item Name <span style="color:red;">*</span></label>
+                            <input type="text" name="item_name[]" class="form-control item-name-input"
+                                   list="productList"
+                                   value="<?php echo $selected_po ? htmlspecialchars($selected_po['product']) : ''; ?>"
+                                   placeholder="Type or select item" required>
+                            <datalist id="productList">
+                                <?php foreach ($merch_products as $p): ?><option value="<?php echo htmlspecialchars($p); ?>"><?php endforeach; ?>
+                            </datalist>
+                        </div>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label">Category <span style="color:red;">*</span></label>
+                            <input type="text" class="form-control category-display" readonly
+                                   placeholder="Auto-filled from product"
+                                   style="background:#f8f9fa;cursor:not-allowed;">
+                            <input type="hidden" name="category[]" class="category-hidden" required>
+                            <small style="font-size:11px;color:#6c757d;display:block;margin-top:4px;">
+                                <i class="fas fa-info-circle"></i> Auto-fills when product is selected
+                            </small>
+                        </div>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;">
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label">Unit <span style="color:red;">*</span></label>
+                            <select name="unit[]" class="form-select">
+                                <option value="pcs"    <?php echo ($selected_po && $selected_po['unit']==='pcs')    ? 'selected':''; ?>>pcs</option>
+                                <option value="kg"     <?php echo ($selected_po && $selected_po['unit']==='kg')     ? 'selected':''; ?>>kg</option>
+                                <option value="box"    <?php echo ($selected_po && $selected_po['unit']==='box')    ? 'selected':''; ?>>box</option>
+                                <option value="L"      <?php echo ($selected_po && $selected_po['unit']==='L')      ? 'selected':''; ?>>L</option>
+                                <option value="bottle">bottle</option>
+                                <option value="can">can</option>
+                                <option value="set">set</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label">Quantity Delivered <span style="color:red;">*</span></label>
+                            <input type="number" step="0.01" min="0.01" name="quantity[]" class="form-control"
+                                   value="<?php echo $selected_po ? $selected_po['quantity'] : ''; ?>"
+                                   placeholder="Enter quantity" required>
+                            <?php if ($selected_po): ?>
+                            <small style="color:#6c757d;font-size:11px;display:block;margin-top:4px;">
+                                Expected: <?php echo number_format($selected_po['quantity'], 2) . ' ' . $selected_po['unit']; ?>
+                            </small>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;">
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label">Unit Cost <span style="color:#6c757d;font-weight:400;font-size:10px;">(Optional)</span></label>
+                            <div style="position:relative;">
+                                <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#6c757d;font-size:13px;font-weight:600;">₱</span>
+                                <input type="number" step="0.01" min="0" name="unit_cost[]" class="form-control"
+                                       placeholder="0.00" style="padding-left:26px;">
+                            </div>
+                            <small style="font-size:11px;color:#6c757d;display:block;margin-top:4px;">
+                                <i class="fas fa-info-circle"></i> Optional — from PO if applicable
+                            </small>
+                        </div>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label">Expiry Date <span style="color:#6c757d;font-weight:400;font-size:10px;">(If Applicable)</span></label>
+                            <input type="date" name="expiry_date[]" class="form-control">
+                            <small style="font-size:11px;color:#6c757d;display:block;margin-top:4px;">
+                                <i class="fas fa-calendar-times"></i> Leave blank if not applicable
+                            </small>
+                        </div>
+                    </div>
                 </div>
 
-                <div style="margin-top:20px;display:flex;justify-content:flex-end;gap:10px;">
+                <!-- Save Flow Note -->
+                <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:11px 14px;margin-bottom:16px;font-size:12px;color:#856404;display:flex;align-items:flex-start;gap:8px;">
+                    <i class="fas fa-info-circle" style="margin-top:1px;flex-shrink:0;"></i>
+                    <div><strong>Save Flow:</strong> Staff saves → Status = <strong>Pending Verification</strong> → Manager Verifies → Inventory Stock-In</div>
+                </div>
+
+                <div style="display:flex;justify-content:flex-end;gap:10px;">
                     <button type="button" onclick="resetDeliveryForm()" class="txn-btn secondary">
                         <i class="fas fa-redo"></i> Reset
                     </button>
@@ -693,9 +765,6 @@ textarea.form-control { resize: vertical; font-family: inherit; }
                     </button>
                 </div>
             </form>
-            <datalist id="productList">
-                <?php foreach ($merch_products as $p): ?><option value="<?php echo htmlspecialchars($p); ?>"><?php endforeach; ?>
-            </datalist>
         </div>
     </div>
 </div>

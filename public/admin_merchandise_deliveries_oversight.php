@@ -55,6 +55,11 @@ include __DIR__ . '/../partials/header.php';
 .page-head h1{margin:0;font-size:1.6rem;color:var(--blue);display:flex;align-items:center;gap:10px;}
 .page-subtitle{font-size:13px;color:var(--gray);margin:4px 0 0;}
 .header-actions{display:flex;gap:8px;flex-wrap:wrap;}
+/* == PAGE HEADER - matches Transaction module int-head standard == */
+.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:-12px !important; }
+.int-head h1 { font-size:22px !important; font-weight:700 !important; color:var(--blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
+.int-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
+.int-head .actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
 /* ── Cards ── */
 .card{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-bottom:20px;overflow:hidden;}
 .card-header{padding:14px 20px;border-bottom:1px solid #e9ecef;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
@@ -109,14 +114,14 @@ table.dt th:nth-child(10), table.dt td:nth-child(10){text-align:right;}
 }
 </style>
 
-<div class="page-head">
+<div class="int-head">
   <div>
     <h1><i class="fas fa-truck"></i> Merchandise Deliveries Oversight</h1>
-    <div class="page-subtitle">
+    <div class="sub">
       Review manager-validated merchandise delivery records with quantities, variances, and adjustments. View-only monitoring.
     </div>
   </div>
-  <div class="header-actions">
+  <div class="actions">
     <button class="btn btn-outline" onclick="loadDeliveries()"><i class="fas fa-sync-alt"></i> Refresh</button>
   </div>
 </div>

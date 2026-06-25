@@ -106,7 +106,7 @@ try {
         LEFT JOIN users u_adm ON do2.admin_id = u_adm.id
         WHERE do2.station_id = ?
           AND do2.delivery_type = 'merchandise'
-          AND do2.status IN ('Ready for Stock-In', 'Validated', 'Partial Delivery', 'Damaged Items')
+          AND do2.status IN ('Ready for Stock-In', 'Verified', 'Validated', 'Partial Delivery', 'Damaged Items')
           AND NOT EXISTS (
               SELECT 1 FROM merchandise_stock_in msi 
               WHERE msi.po_number = do2.delivery_ref 
