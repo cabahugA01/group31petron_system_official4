@@ -1130,6 +1130,272 @@ function closeViewModal() {
     document.getElementById('viewTransactionModal').classList.remove('active');
 }
 
+/* ─────────────────────────────────────────────── ADJUST MODAL ──────────── */
+let _adjRowId = null;
+let _adjItems  = []; // fetched items
+
+function openAdjustModal(rowId, txnId, customer, entryType, txnDate, staffName, payMethod, payStat) {
+    _adjRowId = rowId;
+    _adjItems = [];
+
+    // Show loading state
+    document.getElementById('adjustModal').classList.add('active');
+    document.getElementById('adjustModalBody').innerHTML =
+        '<div style="text-align:center;padding:40px"><i class="fas fa-spinner fa-spin" style="font-size:28px;color:#d97706"></i><div style="margin-top:10px;color:#64748b">Loading items...</div></div>';
+
+    // Fetch items via existing API
+    fetch('../backend/api/get_transaction_items.php?id=' + rowId)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) {
+                document.getElementById('adjustModalBody').innerHTML =
+                    '<div style="color:#dc2626;padding:20px"><i class="fas fa-exclamation-circle"></i> ' + (data.error || 'Failed to load items') + '</div>';
+                return;
+            }
+            _adjItems = data.items || [];
+            const fmtDate = txnDate ? new Date(txnDate).toLocaleString('en-PH') : '—';
+            let html = `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 20px;margin-bottom:16px;padding:14px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:13px;">
+              <div><span style="color:#64748b;font-size:11px;font-weight:700;display:block">Transaction ID</span><strong style="font-family:monospace">${txnId}</strong></div>
+              <div><span style="color:#64748b;font-size:11px;font-weight:700;display:block">Customer</span>${customer}</div>
+              <div><span style="color:#64748b;font-size:11px;font-weight:700;display:block">Type</span>${entryType}</div>
+              <div><span style="color:#64748b;font-size:11px;font-weight:700;display:block">Date</span>${fmtDate}</div>
+              <div><span style="color:#64748b;font-size:11px;font-weight:700;display:block">Staff Encoder</span>${staffName}</div>
+            </div>
+            <div style="margin-bottom:14px;">
+              <div style="font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">
+                <i class="fas fa-edit"></i> Edit Items
+              </div>
+              <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                <thead><tr style="background:#f8fafc;">
+                  <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e2e8f0;color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase">Product / Service</th>
+                  <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e2e8f0;color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase">Type</th>
+                  <th style="padding:8px 10px;text-align:center;border-bottom:2px solid #e2e8f0;color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase">Qty</th>
+                  <th style="padding:8px 10px;text-align:right;border-bottom:2px solid #e2e8f0;color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase">Unit Price</th>
+                  <th style="padding:8px 10px;text-align:right;border-bottom:2px solid #e2e8f0;color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase">Subtotal</th>
+                </tr></thead>
+                <tbody id="adjItemsBody">`;
+
+            if (_adjItems.length === 0) {
+                html += `<tr><td colspan="5" style="padding:20px;text-align:center;color:#94a3b8;">No items found</td></tr>`;
+            } else {
+                _adjItems.forEach((item, idx) => {
+                    const isSvc = item.item_type === 'service';
+                    html += `
+                    <tr style="border-bottom:1px solid #f1f5f9;">
+                      <td style="padding:8px 10px;font-weight:600">${item.product_name}</td>
+                      <td style="padding:8px 10px;">
+                        <span style="background:${isSvc?'#fffbeb':'#f0fdf4'};color:${isSvc?'#b45309':'#15803d'};padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700">
+                          ${isSvc ? '🔧 Service' : '📦 Merchandise'}
+                        </span>
+                      </td>
+                      <td style="padding:8px 10px;text-align:center;">
+                        <input type="number" min="0" step="0.01"
+                          id="adj_qty_${idx}" value="${parseFloat(item.quantity)}"
+                          onchange="recalcAdjRow(${idx})"
+                          style="width:70px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:5px;text-align:center;font-size:12px;">
+                      </td>
+                      <td style="padding:8px 10px;text-align:right;">
+                        <input type="number" min="0" step="0.01"
+                          id="adj_price_${idx}" value="${parseFloat(item.unit_price)}"
+                          onchange="recalcAdjRow(${idx})"
+                          style="width:90px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:5px;text-align:right;font-size:12px;">
+                      </td>
+                      <td style="padding:8px 10px;text-align:right;font-weight:700;color:#002F70" id="adj_sub_${idx}">
+                        ₱${parseFloat(item.subtotal).toFixed(2)}
+                      </td>
+                    </tr>`;
+                });
+            }
+            html += `</tbody>
+                <tfoot>
+                  <tr style="border-top:2px solid #e2e8f0;background:#f8fafc;">
+                    <td colspan="4" style="padding:8px 10px;text-align:right;font-weight:700;font-size:13px;">New Total:</td>
+                    <td style="padding:8px 10px;text-align:right;font-weight:800;font-size:14px;color:#002F70" id="adjNewTotal">₱0.00</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+              <div>
+                <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px">Payment Method</label>
+                <select id="adjPayMethod" style="width:100%;height:36px;padding:0 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;background:#fff">
+                  ${['Cash','GCash','Maya','Bank Transfer','Credit','Card','E-Wallet','Petron E-Fuel','Fleet Card'].map(m =>
+                    `<option value="${m}" ${m===payMethod?'selected':''}>${m}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px">Payment Status</label>
+                <select id="adjPayStatus" style="width:100%;height:36px;padding:0 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;background:#fff">
+                  ${['Paid','Unpaid','Partial Payment','Credit Account'].map(s =>
+                    `<option value="${s}" ${s===payStat?'selected':''}>${s}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+            <div style="margin-bottom:12px;">
+              <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px">Adjustment Reason <span style="color:#dc2626">*</span></label>
+              <textarea id="adjReason" rows="2" placeholder="Why is this adjustment being made?" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px">Manager Remarks <span style="color:#dc2626">*</span></label>
+              <textarea id="adjManagerRemarks" rows="2" placeholder="Manager's notes on this adjustment..." style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>
+            </div>`;
+
+            document.getElementById('adjustModalBody').innerHTML = html;
+            recalcAdjTotal();
+        })
+        .catch(() => {
+            document.getElementById('adjustModalBody').innerHTML =
+                '<div style="color:#dc2626;padding:20px"><i class="fas fa-exclamation-circle"></i> Connection error. Please try again.</div>';
+        });
+}
+
+function recalcAdjRow(idx) {
+    const qty   = parseFloat(document.getElementById('adj_qty_'   + idx)?.value || 0);
+    const price = parseFloat(document.getElementById('adj_price_' + idx)?.value || 0);
+    const sub   = qty * price;
+    const subEl = document.getElementById('adj_sub_' + idx);
+    if (subEl) subEl.textContent = '₱' + sub.toFixed(2);
+    recalcAdjTotal();
+}
+
+function recalcAdjTotal() {
+    let total = 0;
+    (_adjItems || []).forEach((_, idx) => {
+        const qty   = parseFloat(document.getElementById('adj_qty_'   + idx)?.value || 0);
+        const price = parseFloat(document.getElementById('adj_price_' + idx)?.value || 0);
+        total += qty * price;
+    });
+    const el = document.getElementById('adjNewTotal');
+    if (el) el.textContent = '₱' + total.toFixed(2);
+}
+
+function closeAdjustModal() {
+    document.getElementById('adjustModal').classList.remove('active');
+    _adjRowId = null;
+    _adjItems = [];
+}
+
+function submitAdjustment() {
+    const reason  = document.getElementById('adjReason')?.value.trim();
+    const remarks = document.getElementById('adjManagerRemarks')?.value.trim();
+    if (!reason)  { alert('Please enter the Adjustment Reason.'); return; }
+    if (!remarks) { alert('Please enter Manager Remarks.'); return; }
+
+    const btn = document.getElementById('saveAdjustBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+    const itemsPayload = (_adjItems || []).map((item, idx) => ({
+        item_id   : item.id,
+        quantity  : parseFloat(document.getElementById('adj_qty_'   + idx)?.value || item.quantity),
+        unit_price: parseFloat(document.getElementById('adj_price_' + idx)?.value || item.unit_price),
+    }));
+
+    fetch('../backend/api/save_adjustment.php', {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify({
+            row_id            : _adjRowId,
+            payment_method    : document.getElementById('adjPayMethod')?.value  || '',
+            payment_status    : document.getElementById('adjPayStatus')?.value  || '',
+            adjustment_reason : reason,
+            manager_remarks   : remarks,
+            items             : itemsPayload,
+        }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-save"></i> Save Adjustment';
+        if (data.success) {
+            closeAdjustModal();
+            showToast('success', '✅ Transaction adjusted successfully. Old total: ₱' + parseFloat(data.old_total||0).toFixed(2) + ' → New total: ₱' + parseFloat(data.new_total||0).toFixed(2));
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            alert('Error: ' + (data.error || 'Adjustment failed. Please try again.'));
+        }
+    })
+    .catch(() => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-save"></i> Save Adjustment';
+        alert('Connection error. Please try again.');
+    });
+}
+
+/* ─────────────────────────────────────────────── VOID MODAL ────────────── */
+let _voidRowId = null;
+
+function openVoidModal(rowId, txnId, customer) {
+    _voidRowId = rowId;
+    document.getElementById('voidReason').value          = '';
+    document.getElementById('voidManagerRemarks').value  = '';
+    document.getElementById('voidModalInfo').innerHTML   =
+        `<i class="fas fa-ban"></i> You are about to void <strong>${txnId}</strong> — Customer: <strong>${customer}</strong>.<br>Inventory will be restored automatically.`;
+    document.getElementById('voidModal').classList.add('active');
+}
+
+function closeVoidModal() {
+    document.getElementById('voidModal').classList.remove('active');
+    _voidRowId = null;
+}
+
+function submitVoid() {
+    const reason  = document.getElementById('voidReason')?.value.trim();
+    const remarks = document.getElementById('voidManagerRemarks')?.value.trim();
+    if (!reason)  { alert('Please enter the Void Reason.'); return; }
+    if (!remarks) { alert('Please enter Manager Remarks.'); return; }
+
+    const btn = document.getElementById('confirmVoidBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+
+    fetch('../backend/api/void_transaction_manager.php', {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify({
+            row_id          : _voidRowId,
+            void_reason     : reason,
+            manager_remarks : remarks,
+        }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-ban"></i> Confirm Void';
+        if (data.success) {
+            closeVoidModal();
+            showToast('success', '✅ ' + (data.message || 'Transaction voided successfully.'));
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            alert('Error: ' + (data.error || 'Void failed. Please try again.'));
+        }
+    })
+    .catch(() => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-ban"></i> Confirm Void';
+        alert('Connection error. Please try again.');
+    });
+}
+
+/* ─────────────────────────────────────────────── TOAST ─────────────────── */
+function showToast(type, message) {
+    let toast = document.getElementById('mgr_toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'mgr_toast';
+        toast.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:99999;padding:14px 20px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,.2);max-width:420px;transition:opacity .3s;';
+        document.body.appendChild(toast);
+    }
+    toast.style.background = type === 'success' ? '#f0fdf4' : '#fef2f2';
+    toast.style.color      = type === 'success' ? '#166534' : '#991b1b';
+    toast.style.border     = type === 'success' ? '1px solid #bbf7d0' : '1px solid #fecaca';
+    toast.style.opacity    = '1';
+    toast.innerHTML        = message;
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => { toast.style.opacity = '0'; }, 4000);
+}
+
 function exportTable(format) {
     const params = new URLSearchParams(window.location.search);
     params.set('export', format);
