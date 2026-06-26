@@ -160,12 +160,26 @@ try {
     $merch_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) { $merch_products = []; }
 
-// ── Customers for credit transactions ────────────────────────────────────────
+// ── Customers for credit transactions & search ────────────────────────────────
 $customers = [];
 $customer_names = []; // For autocomplete - full names
-$customer_first_names = []; // For first name autocomplete
 try {
-    $stmt = $pdo->prepare("SELECT id, name, contact_number, credit_limit, balance FROM customers WHERE station_id = ? AND status = 'active' ORDER BY name");
+    // Fetch customers with vehicle information for the search feature
+    $stmt = $pdo->prepare("
+        SELECT 
+            c.id, 
+            c.name, 
+            c.contact_number, 
+            c.credit_limit, 
+            c.balance,
+            c.vehicle_type,
+            c.vehicle_brand,
+            c.vehicle_model,
+            c.plate_number
+        FROM customers c
+        WHERE c.station_id = ? AND c.status = 'active' 
+        ORDER BY c.name
+    ");
     $stmt->execute([$station_id]);
     $customers = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
@@ -174,18 +188,11 @@ try {
         $full_name = trim($c['name'] ?? '');
         if ($full_name) {
             $customer_names[] = $full_name;
-            // Extract first name for filtering
-            $parts = explode(' ', $full_name, 2);
-            $first_name = $parts[0] ?? '';
-            if ($first_name && !in_array($first_name, $customer_first_names)) {
-                $customer_first_names[] = $first_name;
-            }
         }
     }
 } catch (Exception $e) { 
     $customers = []; 
     $customer_names = [];
-    $customer_first_names = [];
 }
 
 // ── Current shift ─────────────────────────────────────────────────────────────
@@ -309,6 +316,16 @@ $filter_date        = $_GET['date']  ?? '';
 $hist_page          = max(1, (int)($_GET['page'] ?? 1));
 $hist_per_page      = 50;
 $hist_offset        = ($hist_page - 1) * $hist_per_page;
+// ── History tab filters ───────────────────────────────────────────────────────
+$hist_filter_date_from = $_GET['date_from']  ?? date('Y-m-01');
+$hist_filter_date_to   = $_GET['date_to']    ?? date('Y-m-d');
+$hist_filter_type      = $_GET['txn_type']   ?? '';   // job_order|merchandise|combined
+$hist_filter_ctype     = $_GET['cust_type']  ?? '';   // walkin|registered
+$hist_filter_pay       = $_GET['payment']    ?? '';
+$hist_filter_pstatus   = $_GET['pstatus']    ?? '';
+$hist_search           = trim($_GET['hsearch'] ?? '');
+// KPI accumulators
+$hist_kpi_total = 0; $hist_kpi_jo = 0; $hist_kpi_merch = 0; $hist_kpi_sales = 0.0;
 
 // ── Merchandise section: Transaction History panel (right side) ───────────────
 $mh_recent        = [];
@@ -615,64 +632,120 @@ if ($section === 'history' || $section === 'fuel_history') {
     } catch (Exception $e) { $recent_fuel = []; }
 
     try {
-        // Detect which date column and status column exist in merchandise_transactions
+        // Detect columns
         $mt_cols = [];
         try {
-            $col_rows = $pdo->query("SHOW COLUMNS FROM merchandise_transactions")->fetchAll(PDO::FETCH_ASSOC);
-            foreach ($col_rows as $cr) { $mt_cols[strtolower($cr['Field'])] = true; }
+            foreach ($pdo->query("SHOW COLUMNS FROM merchandise_transactions")->fetchAll(PDO::FETCH_ASSOC) as $cr)
+                $mt_cols[strtolower($cr['Field'])] = true;
         } catch (Exception $e) {}
-        $mt_date_col   = isset($mt_cols['transaction_date']) ? 'mt.transaction_date' : 'mt.created_at';
-        $mt_status_col = isset($mt_cols['validation_status']) ? 'mt.validation_status' : (isset($mt_cols['status']) ? 'mt.status' : "'Pending'");
-        $mt_txnid_col  = isset($mt_cols['transaction_id'])   ? 'mt.transaction_id'   : 'mt.id';
-        $mt_jo_col     = isset($mt_cols['job_order_service']) ? 'mt.job_order_service' : "NULL";
-        $mt_sub_col    = isset($mt_cols['subtotal_amount'])   ? 'mt.subtotal_amount'   : 'NULL';
-        $mt_vat_col    = isset($mt_cols['vat_amount'])        ? 'mt.vat_amount'        : 'NULL';
+        $mt_date_col  = isset($mt_cols['transaction_date']) ? 'mt.transaction_date' : 'mt.created_at';
+        $mt_txnid_col = isset($mt_cols['transaction_id'])   ? 'mt.transaction_id'   : 'mt.id';
+        $mt_pstat_col = isset($mt_cols['payment_status'])   ? 'mt.payment_status'   : "'Pending'";
+        $mt_type_col  = isset($mt_cols['transaction_type']) ? 'mt.transaction_type' : "'merchandise'";
+        $mt_plate_col = isset($mt_cols['job_order_vehicle_plate']) ? 'mt.job_order_vehicle_plate' : 'NULL';
+        $mt_vtype_col = isset($mt_cols['job_order_vehicle_type'])  ? 'mt.job_order_vehicle_type'  : 'NULL';
+        $mt_mech_col  = isset($mt_cols['job_order_mechanic_name']) ? 'mt.job_order_mechanic_name' : 'NULL';
+        $mt_cont_col  = isset($mt_cols['job_order_contact'])       ? 'mt.job_order_contact'       : 'NULL';
+        $mt_cid_col   = isset($mt_cols['credit_customer_id'])      ? 'mt.credit_customer_id'      : 'NULL';
+        $mt_sub_col   = isset($mt_cols['subtotal_amount'])         ? 'mt.subtotal_amount'         : 'NULL';
+        $mt_vat_col   = isset($mt_cols['vat_amount'])              ? 'mt.vat_amount'              : 'NULL';
+        $mt_amtp_col  = isset($mt_cols['amount_paid'])             ? 'mt.amount_paid'             : 'NULL';
+        $mt_bal_col   = isset($mt_cols['balance_due'])             ? 'mt.balance_due'             : 'NULL';
+        $mt_valstat_col = isset($mt_cols['validation_status'])     ? 'mt.validation_status'       : "'Official'";
 
-        // Rebuild merch WHERE using correct date column
+        // Build WHERE
         $merch_where2  = "WHERE mt.station_id = ? AND mt.staff_id = ?";
         $merch_params2 = [$station_id, $me['id']];
-        if ($filter_shift !== '') {
-            $merch_where2  .= " AND mt.shift_period = ?";
-            $merch_params2[] = $filter_shift;
+
+        if ($hist_filter_date_from !== '') {
+            $merch_where2  .= " AND DATE($mt_date_col) >= ?";
+            $merch_params2[] = $hist_filter_date_from;
         }
-        if ($filter_date !== '') {
-            $merch_where2  .= " AND DATE($mt_date_col) = ?";
-            $merch_params2[] = $filter_date;
+        if ($hist_filter_date_to !== '') {
+            $merch_where2  .= " AND DATE($mt_date_col) <= ?";
+            $merch_params2[] = $hist_filter_date_to;
+        }
+        if ($hist_filter_type !== '') {
+            $merch_where2  .= " AND COALESCE($mt_type_col,'merchandise') = ?";
+            $merch_params2[] = $hist_filter_type;
+        }
+        if ($mt_cid_col !== 'NULL') {
+            if ($hist_filter_ctype === 'registered') {
+                $merch_where2 .= " AND $mt_cid_col IS NOT NULL AND $mt_cid_col > 0";
+            } elseif ($hist_filter_ctype === 'walkin') {
+                $merch_where2 .= " AND ($mt_cid_col IS NULL OR $mt_cid_col = 0)";
+            }
+        }
+        if ($hist_filter_pay !== '') {
+            $merch_where2  .= " AND mt.payment_method = ?";
+            $merch_params2[] = $hist_filter_pay;
+        }
+        if ($hist_filter_pstatus !== '') {
+            $merch_where2  .= " AND LOWER($mt_pstat_col) = ?";
+            $merch_params2[] = strtolower($hist_filter_pstatus);
+        }
+        if ($hist_search !== '') {
+            $slike  = '%' . $hist_search . '%';
+            $sllike = '%' . strtolower($hist_search) . '%';
+            $merch_where2 .= " AND ($mt_txnid_col LIKE ? OR LOWER(COALESCE(mt.customer_name,'')) LIKE ? OR LOWER(COALESCE($mt_plate_col,'')) LIKE ?)";
+            $merch_params2[] = $slike; $merch_params2[] = $sllike; $merch_params2[] = $sllike;
         }
 
-        // Get total count first (no limit)
-        $count_stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions mt $merch_where2");
-        $count_stmt->execute($merch_params2);
-        $merch_total_count = (int)$count_stmt->fetchColumn();
+        // KPI aggregation
+        $kpi_q = $pdo->prepare("
+            SELECT COUNT(*) AS total,
+                   SUM(CASE WHEN COALESCE($mt_type_col,'merchandise') IN ('job_order','combined') THEN 1 ELSE 0 END) AS jo_cnt,
+                   SUM(CASE WHEN COALESCE($mt_type_col,'merchandise') = 'merchandise' THEN 1 ELSE 0 END) AS merch_cnt,
+                   COALESCE(SUM(mt.total_amount),0) AS total_sales
+            FROM merchandise_transactions mt $merch_where2
+        ");
+        $kpi_q->execute($merch_params2);
+        $kpi_row = $kpi_q->fetch(PDO::FETCH_ASSOC);
+        if ($kpi_row) {
+            $hist_kpi_total = (int)$kpi_row['total'];
+            $hist_kpi_jo    = (int)$kpi_row['jo_cnt'];
+            $hist_kpi_merch = (int)$kpi_row['merch_cnt'];
+            $hist_kpi_sales = (float)$kpi_row['total_sales'];
+        }
+        $merch_total_count = $hist_kpi_total;
 
+        // Main query
         $stmt = $pdo->prepare("
             SELECT mt.id,
                    $mt_txnid_col  AS transaction_id,
                    mt.customer_name,
+                   COALESCE($mt_cid_col, 0) AS credit_customer_id,
+                   COALESCE($mt_type_col,'merchandise') AS transaction_type,
+                   $mt_plate_col  AS vehicle_plate,
+                   $mt_vtype_col  AS vehicle_type,
+                   $mt_mech_col   AS mechanic_name,
+                   $mt_cont_col   AS contact_number,
                    mt.total_amount,
                    $mt_sub_col    AS subtotal_amount,
                    $mt_vat_col    AS vat_amount,
                    mt.payment_method,
+                   $mt_pstat_col  AS payment_status,
+                   $mt_amtp_col   AS amount_paid,
+                   $mt_bal_col    AS balance_due,
+                   COALESCE(u.name, u.username, 'Staff') AS encoder_name,
                    $mt_date_col   AS transaction_date,
-                   $mt_status_col AS status,
-                   mt.shift_period,
-                   mt.shift_name,
-                   $mt_jo_col     AS job_order_service
+                   mt.item_sku,
+                   mt.quantity,
+                   mt.unit_price,
+                    $mt_valstat_col AS validation_status
             FROM merchandise_transactions mt
+            LEFT JOIN users u ON u.id = mt.staff_id
             $merch_where2
             ORDER BY $mt_date_col DESC
-            " . ($section === 'merchandise' ? '' : "LIMIT $hist_per_page OFFSET $hist_offset") . "
         ");
         $stmt->execute($merch_params2);
         $recent_merch = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) { $recent_merch = []; }
+    } catch (Exception $e) { $recent_merch = []; $merch_total_count = 0; }
 
-    // ── Shift log from labor_sessions REMOVED (staff should not see shift logs) ────
-    // Shift management is handled by managers/admins only
-    $shift_log = []; // Empty - no shift log for staff
-    $available_shifts = []; // Empty - no shift filter needed
+    $shift_log = []; $available_shifts = [];
 
 }
+
 
 // ── Pagination helper ─────────────────────────────────────────────────────────
 function hist_page_url(int $page, string $shift, string $date): string {
@@ -694,9 +767,12 @@ function status_badge(string $status): string {
         // Payment statuses
         'paid'                => ['color' => '#16a34a', 'label' => 'Paid'],
         'partial payment'     => ['color' => '#d97706', 'label' => 'Partial Payment'],
+        'partially paid'      => ['color' => '#d97706', 'label' => 'Partially Paid'],
         'pending payment'     => ['color' => '#ea580c', 'label' => 'Pending Payment'],
+        'pending'             => ['color' => '#ea580c', 'label' => 'Pending'],
         'credit transaction'  => ['color' => '#9333ea', 'label' => 'Credit Transaction'],
         'credit'              => ['color' => '#9333ea', 'label' => 'Credit Transaction'],
+        'credit account'      => ['color' => '#9333ea', 'label' => 'Credit Account'],
         'unpaid'              => ['color' => '#dc2626', 'label' => 'Unpaid'],
         // Workflow statuses
         'in progress'         => ['color' => '#2563eb', 'label' => 'In Progress'],
@@ -777,7 +853,7 @@ if ($section === 'merchandise') {
                             $prev_paid   = (float)$cur['amount_paid'];
                             $new_paid    = $prev_paid + $amount_now;
                             $new_balance = max(0, round($total - $new_paid, 2));
-                            $new_status  = $new_balance <= 0.009 ? 'Paid' : 'Partial Payment';
+                            $new_status  = $new_balance <= 0.009 ? 'Paid' : 'Partially Paid';
                             $sets = "payment_status=?, amount_paid=?, balance_due=?, payment_method=?, updated_at=NOW()";
                             $params = [$new_status, $new_paid, $new_balance, $pay_method];
                             if ($mark_complete) { $sets .= ", workflow_status='Completed'"; }
@@ -796,7 +872,7 @@ if ($section === 'merchandise') {
                             $prev_paid   = (float)$cur['amount_paid'];
                             $new_paid    = $prev_paid + $amount_now;
                             $new_balance = max(0, round($total - $new_paid, 2));
-                            $new_status  = $new_balance <= 0.009 ? 'Paid' : 'Partial Payment';
+                            $new_status  = $new_balance <= 0.009 ? 'Paid' : 'Partially Paid';
                             $sets = "payment_status=?, amount_paid=?, balance_due=?, payment_method=?, updated_at=NOW()";
                             $params = [$new_status, $new_paid, $new_balance, $pay_method];
                             if ($mark_complete) { $sets .= ", status='Completed'"; }
@@ -871,6 +947,7 @@ if ($section === 'merchandise') {
                         $svc_desc  = trim($_POST['service_description'] ?? '');
                         $mech_name = trim($_POST['mechanic_name'] ?? '');
                         $est_cost  = round(max(0, (float)($_POST['estimated_cost'] ?? 0)), 2);
+                        $est_duration = isset($_POST['estimated_duration']) && $_POST['estimated_duration'] !== '' ? (int)$_POST['estimated_duration'] : null;
                         if ($cust_name !== '' && $svc_type !== '') {
                             $pdo->prepare("
                                 UPDATE merchandise_transactions
@@ -881,9 +958,10 @@ if ($section === 'merchandise') {
                                     remarks = ?,
                                     job_order_mechanic_name = ?,
                                     total_amount = ?,
+                                    job_order_estimated_duration = ?,
                                     updated_at = NOW()
                                 WHERE id = ? AND station_id = ?
-                            ")->execute([$cust_name, $veh_plate, $veh_type, $svc_type, $svc_desc, $mech_name, $est_cost, $jo_id, $station_id]);
+                            ")->execute([$cust_name, $veh_plate, $veh_type, $svc_type, $svc_desc, $mech_name, $est_cost, $est_duration, $jo_id, $station_id]);
                             $_SESSION['success'] = 'Job order details adjusted successfully.';
                         } else {
                             $_SESSION['error'] = 'Customer name and service type are required.';
@@ -947,6 +1025,7 @@ if ($section === 'merchandise') {
                         $svc_desc  = trim($_POST['service_description'] ?? '');
                         $mech_name = trim($_POST['mechanic_name'] ?? '');
                         $est_cost  = round(max(0, (float)($_POST['estimated_cost'] ?? 0)), 2);
+                        $est_duration = isset($_POST['estimated_duration']) && $_POST['estimated_duration'] !== '' ? (int)$_POST['estimated_duration'] : null;
                         if ($cust_name !== '' && $svc_type !== '') {
                             $pdo->prepare("
                                 UPDATE job_orders
@@ -957,9 +1036,10 @@ if ($section === 'merchandise') {
                                     description = ?,
                                     mechanic_name = ?,
                                     estimated_cost = ?,
+                                    estimated_duration = ?,
                                     updated_at = NOW()
                                 WHERE id = ? AND station_id = ?
-                            ")->execute([$cust_name, $veh_plate, $veh_type, $svc_type, $svc_desc, $mech_name, $est_cost, $jo_id, $station_id]);
+                            ")->execute([$cust_name, $veh_plate, $veh_type, $svc_type, $svc_desc, $mech_name, $est_cost, $est_duration, $jo_id, $station_id]);
                             $_SESSION['success'] = 'Job order details adjusted successfully.';
                         } else {
                             $_SESSION['error'] = 'Customer name and service type are required.';
@@ -1030,11 +1110,13 @@ if ($section === 'merchandise') {
             $mt_col_manager_notes      = isset($mt_tracker_cols['manager_notes'])      ? 'mt.manager_notes'      : 'NULL';
             $mt_col_due_date           = isset($mt_tracker_cols['due_date'])           ? 'mt.due_date'           : 'NULL';
             $mt_col_inventory_deducted = isset($mt_tracker_cols['inventory_deducted']) ? 'mt.inventory_deducted' : '0';
+            $mt_col_est_duration       = isset($mt_tracker_cols['job_order_estimated_duration']) ? 'mt.job_order_estimated_duration' : 'NULL';
 
             $stmt2 = $pdo->prepare("
                 SELECT
                     mt.id,
                     mt.customer_name,
+                    COALESCE($mt_col_est_duration, 0) AS estimated_duration,
                     COALESCE(mt.job_order_service, 'Service') AS service_type,
                     '' AS service_description,
                     COALESCE(mt.workflow_status, mt.validation_status, 'Pending') AS status,
@@ -1328,6 +1410,31 @@ include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
+/* ── Cart Wrapper — Flexbox Row Layout ──────────────────────────────── */
+.cart-wrapper {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 16px !important;
+    align-items: flex-start !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+/* When viewing history, hide cart and expand left column */
+.cart-wrapper.history-view {
+    flex-direction: column !important;
+}
+.cart-wrapper.history-view .cart-panel {
+    display: none !important;
+}
+
+/* Collapse to single column on mobile */
+@media (max-width: 768px) {
+    .cart-wrapper {
+        flex-direction: column !important;
+    }
+}
+
 /* ── Sub-tab & Icon Button Styles (immune to global button / text overrides) ── */
 .txn-subtab-btn {
     display: inline-flex;
@@ -1443,6 +1550,15 @@ include __DIR__ . '/../partials/header.php';
     color: #ffffff !important;
 }
 
+/* ── Mechanic Typeahead Dropdown Items ─────────────────────────── */
+.jo-mechanic-item:hover {
+    background: #f0f7ff !important;
+    color: #003d7a !important;
+}
+.jo-mechanic-item:last-child {
+    border-bottom: none;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    TRANSACTIONS HUB — Page-level styles
    Uses existing Petron CSS variables from style.css
@@ -1471,30 +1587,29 @@ include __DIR__ . '/../partials/header.php';
 /* Match inventory page — no padding override needed */
 main.main {
     padding: 20px 20px 120px 20px !important;
+    overflow-x: visible !important;
 }
 
-/* ── Cart wrapper — single full-width column (matches inventory layout) ── */
-.cart-wrapper {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    width: 100%;
-}
+/* ── Cart wrapper — using grid layout defined above to show cart on right ── */
 
-/* ── Right panel — sticky so it stays visible while scrolling history ── */
+/* ── Right panel — cart fixed on right side ── */
 .cart-panel {
-    display: flex;
-    flex-direction: column;
-    width: 100%;
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 0 0 340px !important;
+    width: 340px !important;
+    min-width: 340px !important;
+    max-width: 340px !important;
+    position: sticky !important;
+    top: 16px !important;
+    align-self: flex-start !important;
     background: #fff;
     border: 1px solid #e2e8f0;
     border-radius: 12px;
     box-shadow: 0 2px 10px rgba(0,0,0,.07);
-    overflow: hidden;
-    position: sticky;
-    top: 80px;   /* below the fixed top nav */
-    max-height: calc(100vh - 100px);
-    overflow-y: auto;
+    max-height: calc(100vh - 110px) !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
 }
 
 /* Customer & Payment — no max-height restriction */
@@ -1930,6 +2045,63 @@ input[list] {
 }
 
 .txn-btn.full { width: 100%; }
+
+/* ── Cart qty +/- buttons: override global button background tint ─── */
+.cart-item-row button {
+    background: #f8fafc !important;
+    color: #374151 !important;
+    border-color: #e2e8f0 !important;
+}
+.cart-item-row button:hover {
+    background: #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+/* ── Icon Buttons (+ buttons sa dropdowns) ─────────────────────── */
+.txn-icon-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 36px !important;
+    height: 36px !important;
+    padding: 0 !important;
+    border-radius: 8px !important;
+    font-size: 16px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    transition: all 0.2s !important;
+    flex-shrink: 0 !important;
+    border: 1.5px solid !important;
+    background: white !important;
+}
+
+.txn-icon-btn.blue {
+    color: #003d7a !important;
+    border-color: #003d7a !important;
+}
+
+.txn-icon-btn.blue:hover {
+    background: #003d7a !important;
+    color: white !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,61,122,0.2);
+}
+
+.txn-icon-btn.green {
+    color: #1d6f42 !important;
+    border-color: #1d6f42 !important;
+}
+
+.txn-icon-btn.green:hover {
+    background: #1d6f42 !important;
+    color: white !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(29,111,66,0.2);
+}
+
+.txn-icon-btn:active {
+    transform: translateY(0);
+}
 
 /* ── Pagination buttons ───────────────────────────────────────── */
 .pag-btn {
@@ -3307,7 +3479,7 @@ input[list] {
             function badge(s) {
                 const k = (s||'').toLowerCase().trim();
                 const c = statusMap[k] || {color:'#64748b',label:s||'—'};
-                return `<span style="background:${c.color}15; color:${c.color}; border:1px solid ${c.color}30; font-weight:700; font-size:11px; padding:4px 8px; border-radius:6px; text-transform:uppercase; letter-spacing:.5px; white-space:nowrap;">${c.label}</span>`;
+                return `<span style="background:${c.color}15; color:${c.color}; border:1px solid ${c.color}30; font-weight:700; font-size:10px; padding:2px 6px; border-radius:4px; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; display:inline-block; max-width:100%; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${c.label}">${c.label}</span>`;
             }
             function fmt(n,d=2){ return Number(n||0).toLocaleString('en-PH',{minimumFractionDigits:d,maximumFractionDigits:d}); }
 
@@ -3349,25 +3521,39 @@ input[list] {
                 return shiftPeriod;
             }
 
-            const TH  = 'padding:8px 10px; font-size:13px; font-weight:700; color:#ffffff; text-transform:uppercase; letter-spacing:.5px; white-space:nowrap;';
+            const TH  = 'padding:6px 4px; font-size:11px; font-weight:700; color:#ffffff; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;';
             const THR = TH + ' text-align:right;';
 
-            let html = `<div style="overflow-x:auto; border-bottom:1px solid #e2e8f0; background:#ffffff;">
-                <table id="todayReadingsTable" style="width:100%; border-collapse:collapse; font-size:13px; text-align:left; table-layout:auto;">
+            let html = `<div style="overflow-x:hidden; border-bottom:1px solid #e2e8f0; background:#ffffff;">
+                <table id="todayReadingsTable" style="width:100%; border-collapse:collapse; font-size:11px; text-align:left; table-layout:fixed;">
+                    <colgroup>
+                        <col style="width: 7%;">  <!-- Date -->
+                        <col style="width: 8%;">  <!-- Shift -->
+                        <col style="width: 9%;">  <!-- Pump / Fuel Type -->
+                        <col style="width: 6%;">  <!-- Beginning -->
+                        <col style="width: 6%;">  <!-- Ending -->
+                        <col style="width: 6%;">  <!-- Calibration -->
+                        <col style="width: 7%;">  <!-- Volume (L) -->
+                        <col style="width: 6%;">  <!-- Price/L -->
+                        <col style="width: 8%;">  <!-- Amount -->
+                        <col style="width: 8%;">  <!-- Encoded By -->
+                        <col style="width: 13%;"> <!-- Status -->
+                        <col style="width: 16%;"> <!-- Notes -->
+                    </colgroup>
                     <thead>
                         <tr style="background:#002F70; border-bottom:2px solid #001f4d;">
-                            <th style="${TH}">Date</th>
-                            <th style="${TH}">Shift</th>
-                            <th style="${TH}">Pump / Fuel Type</th>
-                            <th style="${THR}">Beginning</th>
-                            <th style="${THR}">Ending</th>
-                            <th style="${THR}">Calibration</th>
-                            <th style="${THR}">Volume (L)</th>
-                            <th style="${THR}">Price/L</th>
-                            <th style="${THR}">Amount</th>
-                            <th style="${TH}">Encoded By</th>
-                            <th style="${TH}">Status</th>
-                            <th style="${TH}">Notes</th>
+                            <th style="${TH}" title="Date">Date</th>
+                            <th style="${TH}" title="Shift">Shift</th>
+                            <th style="${TH}" title="Pump / Fuel Type">Pump / Fuel Type</th>
+                            <th style="${THR}" title="Beginning">Beginning</th>
+                            <th style="${THR}" title="Ending">Ending</th>
+                            <th style="${THR}" title="Calibration">Calibration</th>
+                            <th style="${THR}" title="Volume (L)">Volume (L)</th>
+                            <th style="${THR}" title="Price/L">Price/L</th>
+                            <th style="${THR}" title="Amount">Amount</th>
+                            <th style="${TH}" title="Encoded By">Encoded By</th>
+                            <th style="${TH}" title="Status">Status</th>
+                            <th style="${TH}" title="Notes">Notes</th>
                         </tr>
                     </thead>
                     <tbody>`;
@@ -3383,11 +3569,11 @@ input[list] {
 
                 let notesCellContent = '—';
                 if (staffNotes && mgrNotes) {
-                    notesCellContent = `<div style="line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(tooltipText)}"><strong>S:</strong> ${escapeHtml(staffNotes)}<br><strong>M:</strong> ${escapeHtml(mgrNotes)}</div>`;
+                    notesCellContent = `<div style="line-height:1.2; width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(tooltipText)}"><strong>S:</strong> ${escapeHtml(staffNotes)}<br><strong>M:</strong> ${escapeHtml(mgrNotes)}</div>`;
                 } else if (staffNotes) {
-                    notesCellContent = `<div style="line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(tooltipText)}">${escapeHtml(staffNotes)}</div>`;
+                    notesCellContent = `<div style="line-height:1.2; width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(tooltipText)}">${escapeHtml(staffNotes)}</div>`;
                 } else if (mgrNotes) {
-                    notesCellContent = `<div style="line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#002F70;" title="${escapeHtml(tooltipText)}"><strong>M:</strong> ${escapeHtml(mgrNotes)}</div>`;
+                    notesCellContent = `<div style="line-height:1.2; width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#002F70;" title="${escapeHtml(tooltipText)}"><strong>M:</strong> ${escapeHtml(mgrNotes)}</div>`;
                 }
 
                 const dateStr = fmtDate(r.reading_date || r.transaction_date);
@@ -3396,18 +3582,18 @@ input[list] {
                 const staffStr = r.staff_name || '—';
 
                 html += `<tr style="border-bottom:1px solid #f1f5f9; background:#ffffff; transition: background-color 0.15s ease;" onmouseover="this.style.backgroundColor='#f0f5ff';" onmouseout="this.style.backgroundColor='#ffffff';">
-                    <td style="padding:10px; color:#1e293b; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${dateStr}">${dateStr}</td>
-                    <td style="padding:10px; color:#334155; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${shiftStr}">${shiftStr}</td>
-                    <td style="padding:10px; font-weight:700; color:#0f172a; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fuelStr}">${fuelStr}</td>
-                    <td style="padding:10px; text-align:right; font-variant-numeric:tabular-nums; color:#1e293b; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.beginning)}">${fmt(r.beginning)}</td>
-                    <td style="padding:10px; text-align:right; font-variant-numeric:tabular-nums; color:#1e293b; font-weight:600; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.ending)}">${fmt(r.ending)}</td>
-                    <td style="padding:10px; text-align:right; font-variant-numeric:tabular-nums; color:#334155; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.cal,3)}">${fmt(r.cal,3)}</td>
-                    <td style="padding:10px; text-align:right; font-weight:700; font-variant-numeric:tabular-nums; color:#1e293b; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.volume_liters)} L">${fmt(r.volume_liters)} L</td>
-                    <td style="padding:10px; text-align:right; font-variant-numeric:tabular-nums; color:#334155; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="₱${fmt(r.price_per_liter)}">₱${fmt(r.price_per_liter)}</td>
-                    <td style="padding:10px; text-align:right; font-weight:800; font-variant-numeric:tabular-nums; color:#0f172a; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="₱${fmt(r.amount)}">₱${fmt(r.amount)}</td>
-                    <td style="padding:10px; color:#334155; font-weight:500; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${staffStr}">${staffStr}</td>
-                    <td style="padding:10px; font-size:13px; vertical-align:middle;">${badge(r.status)}</td>
-                    <td style="padding:10px; color:#475569; font-size:13px; max-width:160px; overflow:hidden; vertical-align:middle;">${notesCellContent}</td>
+                    <td style="padding:6px 4px; color:#1e293b; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${dateStr}">${dateStr}</td>
+                    <td style="padding:6px 4px; color:#334155; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${shiftStr}">${shiftStr}</td>
+                    <td style="padding:6px 4px; font-weight:700; color:#0f172a; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fuelStr}">${fuelStr}</td>
+                    <td style="padding:6px 4px; text-align:right; font-variant-numeric:tabular-nums; color:#1e293b; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.beginning)}">${fmt(r.beginning)}</td>
+                    <td style="padding:6px 4px; text-align:right; font-variant-numeric:tabular-nums; color:#1e293b; font-weight:600; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.ending)}">${fmt(r.ending)}</td>
+                    <td style="padding:6px 4px; text-align:right; font-variant-numeric:tabular-nums; color:#334155; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.cal,3)}">${fmt(r.cal,3)}</td>
+                    <td style="padding:6px 4px; text-align:right; font-weight:700; font-variant-numeric:tabular-nums; color:#1e293b; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.volume_liters)} L">${fmt(r.volume_liters)} L</td>
+                    <td style="padding:6px 4px; text-align:right; font-variant-numeric:tabular-nums; color:#334155; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="₱${fmt(r.price_per_liter)}">₱${fmt(r.price_per_liter)}</td>
+                    <td style="padding:6px 4px; text-align:right; font-weight:800; font-variant-numeric:tabular-nums; color:#0f172a; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="₱${fmt(r.amount)}">₱${fmt(r.amount)}</td>
+                    <td style="padding:6px 4px; color:#334155; font-weight:500; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${staffStr}">${staffStr}</td>
+                    <td style="padding:6px 4px; font-size:11px; vertical-align:middle;">${badge(r.status)}</td>
+                    <td style="padding:6px 4px; color:#475569; font-size:11px; overflow:hidden; vertical-align:middle;">${notesCellContent}</td>
                 </tr>`;
             });
 
@@ -3521,7 +3707,8 @@ input[list] {
             </div>
             <div style="display:flex;gap:8px;align-items:center;">
                 <span class="status-badge customer" style="display:none;"></span>
-                <button type="button" onclick="window.location.href='staff_transactions_hub.php?section=merchandise&amp;active_tab=merchandise'" 
+                <button type="button" id="headerBackButton" onclick="goBackFromTracker()" 
+                        style="display: <?= $active_tab === 'tracker' ? 'inline-flex' : 'none' ?>;"
                         class="txn-btn secondary" title="Back to Merchandise/Service Transaction">
                     <i class="fas fa-arrow-left"></i> <span>Back</span>
                 </button>
@@ -3529,7 +3716,7 @@ input[list] {
         </div>
 
         <!-- ── Inner Tabs ─────────────────────────────────────────────── -->
-        <div style="display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap;">
+        <div style="display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap;align-items:center;width:100%;">
             <?php
             // Variance alert badge: show warning count if any
             $tracker_badge_val  = $jo_pending_count > 0 ? $jo_pending_count : null;
@@ -3561,7 +3748,19 @@ input[list] {
             </button>
             <?php endforeach; ?>
 
-
+            <!-- Export buttons — right side of tab row -->
+            <div id="trackerExportButtons" style="display:<?= $active_tab === 'tracker' ? 'flex' : 'none' ?>;gap:8px;align-items:center;margin-left:auto;">
+                <a href="../backend/export_staff_transactions.php?type=job_orders&format=excel"
+                   class="txn-btn success"
+                   style="font-size:12px;padding:7px 14px;">
+                    <i class="fas fa-file-excel"></i> Excel
+                </a>
+                <a href="../backend/export_staff_transactions.php?type=job_orders&format=csv"
+                   class="txn-btn primary"
+                   style="font-size:12px;padding:7px 14px;">
+                    <i class="fas fa-file-csv"></i> CSV
+                </a>
+            </div>
 
         </div>
 
@@ -3572,10 +3771,10 @@ input[list] {
         <div id="innerTab_merchandise" style="display:<?= $active_tab === 'merchandise' ? 'block' : 'none' ?>;">
 
         <!-- Cart layout -->
-        <div class="cart-wrapper" style="display:grid; grid-template-columns:<?= !empty($_GET['mh_open']) ? '1fr' : '1fr 340px' ?>; gap:16px; align-items:start;">
+        <div class="cart-wrapper <?= !empty($_GET['mh_open']) ? 'history-view' : '' ?>">
 
             <!-- Left: Job Order section (top) + Merchandise section (bottom) + Customer/Payment -->
-            <div style="min-width:0;overflow:visible;">
+            <div style="flex:1; min-width:0; overflow:visible;">
 
                 <!-- ══ JOB ORDER SECTION (TOP) ══════════════════════════════ -->
                 <div class="txn-card" id="joCard" style="overflow:visible;position:relative;z-index:10;">
@@ -3585,32 +3784,77 @@ input[list] {
                     </div>
                     <div class="txn-card-body" style="overflow:visible;">
 
-                        <!-- Customer Details — captured here at the Job Order level -->
-                        <div style="font-size:11px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">
+                        <!-- Customer Details — New Radio Button Selection -->
+                        <div style="font-size:11px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;">
                             <i class="fas fa-user" style="margin-right:5px;"></i>Customer Details
                         </div>
+                        
+                        <!-- Customer Type Selection -->
+                        <div style="margin-bottom:16px;">
+                            <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:8px;">
+                                Customer Type <span style="color:#dc2626;">*</span>
+                            </label>
+                            <div style="display:flex;gap:24px;align-items:center;">
+                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:500;color:#475569;">
+                                    <input type="radio" name="joCustomerType" value="walk-in" 
+                                           id="joCustomerTypeWalkin" 
+                                           checked
+                                           onchange="toggleCustomerType('jo')"
+                                           style="width:16px;height:16px;cursor:pointer;">
+                                    <span>Walk-in Customer</span>
+                                </label>
+                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:500;color:#475569;">
+                                    <input type="radio" name="joCustomerType" value="registered" 
+                                           id="joCustomerTypeRegistered"
+                                           onchange="toggleCustomerType('jo')"
+                                           style="width:16px;height:16px;cursor:pointer;">
+                                    <span>Registered Customer</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Search Customer (for Registered Customer) -->
+                        <div id="joSearchCustomerSection" style="display:none;margin-bottom:16px;">
+                            <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px;">
+                                Search Customer <span style="color:#dc2626;">*</span>
+                            </label>
+                            <div style="position:relative;">
+                                <input type="text" 
+                                       id="joSearchCustomer" 
+                                       class="txn-input"
+                                       placeholder="Search by name, contact number, or plate number..."
+                                       autocomplete="off"
+                                       oninput="searchCustomer('jo')"
+                                       onfocus="showCustomerResults('jo')"
+                                       style="padding-right:40px;">
+                                <i class="fas fa-search" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);color:#94a3b8;pointer-events:none;"></i>
+                                
+                                <!-- Search Results Dropdown -->
+                                <div id="joCustomerResults" 
+                                     style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;
+                                            background:#fff;border:1px solid #cbd5e1;border-radius:8px;
+                                            max-height:280px;overflow-y:auto;z-index:100;
+                                            box-shadow:0 8px 24px rgba(0,0,0,.12);">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Customer Input Fields -->
                         <div class="txn-form-grid" style="margin-bottom:14px;">
                             <div class="txn-field">
                                 <label>First Name <span style="color:#dc2626;">*</span></label>
                                 <input type="text" 
                                        id="joFirstName" 
                                        class="txn-input"
-                                       list="joFirstNameList"
                                        placeholder="Customer first name"
-                                       autocomplete="off"
-                                       oninput="onCustomerNameInput('jo')">
-                                <datalist id="joFirstNameList">
-                                    <?php foreach ($customer_first_names as $firstName): ?>
-                                        <option value="<?= htmlspecialchars($firstName) ?>">
-                                    <?php endforeach; ?>
-                                </datalist>
+                                       autocomplete="off">
                             </div>
                             <div class="txn-field">
                                 <label>Last Name</label>
                                 <input type="text" 
                                        id="joLastName" 
                                        class="txn-input"
-                                       placeholder="Auto-filled from registered customer"
+                                       placeholder="Customer last name"
                                        autocomplete="off">
                             </div>
                         </div>
@@ -3631,7 +3875,7 @@ input[list] {
                             <div class="txn-field">
                                 <label>Vehicle Type</label>
                                 <div style="display:flex;gap:6px;align-items:flex-start;">
-                                    <div style="flex:1;position:relative;z-index:100;">
+                                    <div style="flex:1;position:relative;z-index:50;">
                                         <input type="text" 
                                                id="joVehicleType" 
                                                class="txn-input" 
@@ -3646,13 +3890,14 @@ input[list] {
                                              style="display:none;position:absolute;top:100%;left:0;right:0;
                                                     background:#fff;border:1.5px solid #cbd5e1;border-top:none;
                                                     border-radius:0 0 8px 8px;max-height:220px;overflow-y:auto;
-                                                    z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.12);">
+                                                    z-index:999;box-shadow:0 8px 24px rgba(0,0,0,.12);">
                                         </div>
                                     </div>
                                     <button type="button"
                                             onclick="openAddVehicleModal()"
                                             title="Add a new vehicle type"
-                                            class="txn-icon-btn blue">
+                                            class="txn-icon-btn blue"
+                                            style="position:relative;z-index:10;">
                                         +
                                     </button>
                                 </div>
@@ -3669,10 +3914,11 @@ input[list] {
                         <!-- Vehicle Brand + Model -->
                         <div class="txn-form-grid" style="margin-bottom:14px;">
                             <div class="txn-field">
-                                <label>Vehicle Brand</label>
-                                <input type="text" id="joVehicleBrand" class="txn-input"
+                                <label>Vehicle Brand <span style="font-size:10px;color:#94a3b8;">(Auto-filled)</span></label>
+                                <input type="text" id="joVehicleBrand" class="txn-input auto-pull"
                                        placeholder="e.g. Toyota, Honda..."
-                                       autocomplete="off">
+                                       autocomplete="off"
+                                       style="background:#f8f9fa;">
                             </div>
                             <div class="txn-field">
                                 <label>Vehicle Model</label>
@@ -3690,8 +3936,8 @@ input[list] {
                         <!-- Service Category -->
                         <div class="txn-form-grid" style="margin-bottom:14px;">
                             <div class="txn-field">
-                                <label>Service Category</label>
-                                <select id="joServiceCategory" class="txn-select" onchange="onServiceCategoryChange()">
+                                <label>Service Category <span style="font-size:10px;color:#94a3b8;">(Auto-filled)</span></label>
+                                <select id="joServiceCategory" class="txn-select auto-pull" onchange="onServiceCategoryChange()" style="background:#f8f9fa;">
                                     <option value="">-- Select Category --</option>
                                     <option value="Oil Change">Oil Change</option>
                                     <option value="Wheel Alignment">Wheel Alignment</option>
@@ -3775,24 +4021,55 @@ input[list] {
                         </div>
 
                         <!-- Assigned Mechanic + Notes -->
-                        <div class="txn-form-grid" style="margin-bottom:6px;">
+                        <div class="txn-form-grid cols-3" style="margin-bottom:6px;">
                             <div class="txn-field">
                                 <label>Assigned Mechanic</label>
-                                <select id="joMechanic" class="txn-select" onchange="onMechanicChange()">
-                                    <option value="">Select mechanic…</option>
-                                    <?php foreach ($mechanics as $mech): ?>
-                                    <option value="<?= (int)$mech['id'] ?>"
-                                            data-name="<?= htmlspecialchars($mech['full_name']) ?>">
-                                        <?= htmlspecialchars($mech['full_name']) ?>
-                                        <?php if (!empty($mech['specialization'])): ?>
-                                        (<?= htmlspecialchars($mech['specialization']) ?>)
+                                <div style="position:relative;">
+                                    <input type="text"
+                                           id="joMechanic"
+                                           class="txn-input"
+                                           placeholder="Type to search mechanic…"
+                                           autocomplete="off"
+                                           oninput="filterMechanicDropdown(this.value)"
+                                           onfocus="showMechanicDropdown()"
+                                           onblur="setTimeout(hideMechanicDropdown, 200)"
+                                           style="padding-right:30px;">
+                                    <input type="hidden" id="joMechanicId"   value="">
+                                    <input type="hidden" id="joMechanicName" value="">
+                                    <i class="fas fa-chevron-down"
+                                       style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
+                                              color:#94a3b8;font-size:12px;pointer-events:none;"></i>
+                                    <div id="joMechanicDropdown"
+                                         style="display:none;position:absolute;top:100%;left:0;right:0;
+                                                background:#fff;border:1.5px solid #cbd5e1;border-top:none;
+                                                border-radius:0 0 8px 8px;max-height:220px;overflow-y:auto;
+                                                z-index:999;box-shadow:0 8px 24px rgba(0,0,0,.12);">
+                                        <?php foreach ($mechanics as $mech): ?>
+                                        <div class="jo-mechanic-item"
+                                             data-id="<?= (int)$mech['id'] ?>"
+                                             data-name="<?= htmlspecialchars($mech['full_name']) ?>"
+                                             data-spec="<?= htmlspecialchars($mech['specialization'] ?? '') ?>"
+                                             onclick="selectMechanic(this)"
+                                             style="padding:9px 14px;cursor:pointer;font-size:13px;
+                                                    color:#1e293b;border-bottom:1px solid #f1f5f9;
+                                                    transition:background .12s;">
+                                            <?= htmlspecialchars($mech['full_name']) ?>
+                                            <?php if (!empty($mech['specialization'])): ?>
+                                            <span style="color:#64748b;font-size:11px;"> — <?= htmlspecialchars($mech['specialization']) ?></span>
+                                            <?php endif; ?>
+                                        </div>
+                                        <?php endforeach; ?>
+                                        <?php if (empty($mechanics)): ?>
+                                        <div style="padding:10px 14px;color:#94a3b8;font-size:12px;">No mechanics on record</div>
                                         <?php endif; ?>
-                                    </option>
-                                    <?php endforeach; ?>
-                                    <?php if (empty($mechanics)): ?>
-                                    <option disabled>No mechanics on record</option>
-                                    <?php endif; ?>
-                                </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="txn-field">
+                                <label>Estimated Duration (mins)</label>
+                                <input type="number" id="joEstimatedDuration" class="txn-input"
+                                       placeholder="e.g. 60" min="1" step="1"
+                                       autocomplete="off">
                             </div>
                             <div class="txn-field">
                                 <label>Notes</label>
@@ -3802,8 +4079,11 @@ input[list] {
                             </div>
                         </div>
 
-                        <!-- Add Service to Cart button -->
+                        <!-- Add Service to Cart button with Reset -->
                         <div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end;">
+                            <button type="button" class="txn-btn secondary" onclick="resetJobOrderForm()" title="Reset job order fields">
+                                <i class="fas fa-undo"></i> Reset Form
+                            </button>
                             <button type="button" class="txn-btn success" onclick="addServiceFromFormToCart()" id="joAddServiceBtn">
                                 <i class="fas fa-plus"></i> Add Service
                             </button>
@@ -3857,57 +4137,119 @@ input[list] {
                     </div>
 
                     <!-- ── Merchandise sub-tabs ─────────────────────────────── -->
-                    <div style="display:flex;gap:10px;padding:0 16px;margin-bottom:12px;margin-top:12px;">
+                    <div style="display:flex;gap:10px;padding:0 16px;margin-bottom:12px;margin-top:12px;align-items:center;flex-wrap:wrap;width:100%;">
                         <?php $mh_open = isset($_GET['mh_open']) && $_GET['mh_open'] == '1'; ?>
-                        <button onclick="switchMerchTab('form')" id="merchTabBtn_form"
-                                class="txn-subtab-btn green <?= !$mh_open ? 'active' : 'inactive' ?>">
-
-
-                            <i class="fas fa-shopping-cart"></i> Merchandise
-                        </button>
-                        <button onclick="switchMerchTab('history')" id="merchTabBtn_history"
-                                class="txn-subtab-btn green <?= $mh_open ? 'active' : 'inactive' ?>">
-
-
-                            <i class="fas fa-history"></i> Merchandise History
-                        </button>
+                        <div style="display:flex;gap:10px;">
+                            <button onclick="switchMerchTab('form')" id="merchTabBtn_form"
+                                    class="txn-subtab-btn green <?= !$mh_open ? 'active' : 'inactive' ?>">
+                                <i class="fas fa-shopping-cart"></i> Merchandise
+                            </button>
+                            <button onclick="switchMerchTab('history')" id="merchTabBtn_history"
+                                    class="txn-subtab-btn green <?= $mh_open ? 'active' : 'inactive' ?>">
+                                <i class="fas fa-history"></i> Merchandise History
+                            </button>
+                        </div>
+                        <div id="merchHistoryHeaderButtons" style="display: <?= $mh_open ? 'flex' : 'none' ?>; gap:8px; align-items:center; margin-left:auto;">
+                            <a href="../backend/export_staff_transactions.php?type=merchandise&format=excel"
+                               title="Export to Excel"
+                               class="txn-btn success"
+                               style="font-size:12px;padding:7px 14px;">
+                                <i class="fas fa-file-excel"></i> Excel
+                            </a>
+                            <a href="../backend/export_staff_transactions.php?type=merchandise&format=csv"
+                               title="Export to CSV"
+                               class="txn-btn primary"
+                               style="font-size:12px;padding:7px 14px;">
+                                <i class="fas fa-file-csv"></i> CSV
+                            </a>
+                            <a href="staff_transactions_hub.php?section=merchandise&active_tab=merchandise"
+                               title="Back to Merchandise Form"
+                               class="txn-btn secondary"
+                               style="font-size:12px;padding:7px 14px;">
+                                <i class="fas fa-arrow-left"></i> Back
+                            </a>
+                        </div>
                     </div>
 
                     <!-- ── Sub-tab: Form ─────────────────────────────────────── -->
                     <div id="merchTab_form">
                     <div class="txn-card-body">
 
-                        <!-- Customer Details — captured here at the Merchandise level -->
-                        <div style="font-size:11px;font-weight:700;color:#28a745;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">
+                        <!-- Customer Details — New Radio Button Selection -->
+                        <div style="font-size:11px;font-weight:700;color:#28a745;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;">
                             <i class="fas fa-user" style="margin-right:5px;"></i>Customer Details
                         </div>
-                        <div class="txn-form-grid" style="margin-bottom:14px;">
-                            <div class="txn-field">
-                                <label>First Name</label>
-                                <input type="text" 
-                                       id="merchFirstName" 
-                                       class="txn-input"
-                                       list="merchFirstNameList"
-                                       placeholder="Walk-in Customer"
-                                       autocomplete="off"
-                                       oninput="onCustomerNameInput('merch')">
-                                <datalist id="merchFirstNameList">
-                                    <?php foreach ($customer_first_names as $firstName): ?>
-                                        <option value="<?= htmlspecialchars($firstName) ?>">
-                                    <?php endforeach; ?>
-                                </datalist>
-                            </div>
-                            <div class="txn-field">
-                                <label>Last Name</label>
-                                <input type="text" 
-                                       id="merchLastName" 
-                                       class="txn-input"
-                                       placeholder="Auto-filled from registered customer"
-                                       autocomplete="off">
+                        
+                        <!-- Customer Type Selection -->
+                        <div style="margin-bottom:16px;">
+                            <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:8px;">
+                                Customer Type <span style="color:#dc2626;">*</span>
+                            </label>
+                            <div style="display:flex;gap:24px;align-items:center;">
+                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:500;color:#475569;">
+                                    <input type="radio" name="merchCustomerType" value="walk-in" 
+                                           id="merchCustomerTypeWalkin" 
+                                           checked
+                                           onchange="toggleCustomerType('merch')"
+                                           style="width:16px;height:16px;cursor:pointer;">
+                                    <span>Walk-in Customer</span>
+                                </label>
+                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:500;color:#475569;">
+                                    <input type="radio" name="merchCustomerType" value="registered" 
+                                           id="merchCustomerTypeRegistered"
+                                           onchange="toggleCustomerType('merch')"
+                                           style="width:16px;height:16px;cursor:pointer;">
+                                    <span>Registered Customer</span>
+                                </label>
                             </div>
                         </div>
 
-                        <!-- Contact Number for walk-in merch customers -->
+                        <!-- Search Customer (for Registered Customer) -->
+                        <div id="merchSearchCustomerSection" style="display:none;margin-bottom:16px;">
+                            <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px;">
+                                Search Customer <span style="color:#dc2626;">*</span>
+                            </label>
+                            <div style="position:relative;">
+                                <input type="text" 
+                                       id="merchSearchCustomer" 
+                                       class="txn-input"
+                                       placeholder="Search by name, contact number, or plate number..."
+                                       autocomplete="off"
+                                       oninput="searchCustomer('merch')"
+                                       onfocus="showCustomerResults('merch')"
+                                       style="padding-right:40px;">
+                                <i class="fas fa-search" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);color:#94a3b8;pointer-events:none;"></i>
+                                
+                                <!-- Search Results Dropdown -->
+                                <div id="merchCustomerResults" 
+                                     style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;
+                                            background:#fff;border:1px solid #cbd5e1;border-radius:8px;
+                                            max-height:280px;overflow-y:auto;z-index:100;
+                                            box-shadow:0 8px 24px rgba(0,0,0,.12);">
+                                </div>
+                            </div>
+                        </div>
+
+
+                        <!-- Customer Input Fields (Merchandise) -->
+                        <div class="txn-form-grid" style="margin-bottom:14px;">
+                            <div class="txn-field">
+                                <label>First Name <span style="color:#dc2626;">*</span></label>
+                                <input type="text"
+                                       id="merchFirstName"
+                                       class="txn-input"
+                                       placeholder="Customer first name"
+                                       autocomplete="off">
+                            </div>
+                            <div class="txn-field">
+                                <label>Last Name</label>
+                                <input type="text"
+                                       id="merchLastName"
+                                       class="txn-input"
+                                       placeholder="Customer last name"
+                                       autocomplete="off">
+                            </div>
+                        </div>
                         <div class="txn-form-grid" style="margin-bottom:14px;">
                             <div class="txn-field">
                                 <label>Contact Number</label>
@@ -4055,7 +4397,7 @@ input[list] {
                         </div>
 
                         <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end;">
-                            <button type="button" class="txn-btn secondary" onclick="resetAll()" title="Reset all fields and clear cart">
+                            <button type="button" class="txn-btn secondary" onclick="resetMerchandiseForm()" title="Reset merchandise fields">
                                 <i class="fas fa-undo"></i> Reset Form
                             </button>
                             <button type="button" class="txn-btn success" onclick="addProductFromFormToCart()" id="addItemBtn">
@@ -4119,24 +4461,7 @@ input[list] {
                                 <a href="staff_transactions_hub.php?section=merchandise&mh_open=1" class="txn-btn secondary">
                                     <i class="fas fa-times"></i> Clear
                                 </a>
-                                <!-- Export buttons -->
-                                <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                                    <a href="../backend/export_staff_transactions.php?type=merchandise&format=excel"
-                                       title="Export to Excel"
-                                       class="txn-btn success">
-                                        <i class="fas fa-file-excel"></i> Excel
-                                    </a>
-                                    <a href="../backend/export_staff_transactions.php?type=merchandise&format=csv"
-                                       title="Export to CSV"
-                                       class="txn-btn primary">
-                                        <i class="fas fa-file-csv"></i> CSV
-                                    </a>
-                                    <a href="staff_transactions_hub.php?section=merchandise&active_tab=merchandise"
-                                       title="Back to Merchandise Form"
-                                       class="txn-btn secondary">
-                                        <i class="fas fa-arrow-left"></i> Back
-                                    </a>
-                                </div>
+                                <!-- Export buttons managed in header -->
                             </form>
                         </div>
                         <!-- Table -->
@@ -4228,15 +4553,15 @@ input[list] {
                                 </div>
                             </div>
 
-                            <table class="txn-table" id="mhHistoryTable" style="width:100%;min-width:1000px;">
+                            <table class="txn-table" id="mhHistoryTable" style="width:100%; table-layout:fixed;">
                                 <colgroup>
-                                    <col style="min-width:180px;">
-                                    <col style="min-width:180px;">
-                                    <col style="min-width:200px;">
-                                    <col style="min-width:100px;">
-                                    <col style="min-width:120px;">
-                                    <col style="min-width:120px;">
-                                    <col style="min-width:160px;">
+                                    <col style="width:18%;">
+                                    <col style="width:18%;">
+                                    <col style="width:22%;">
+                                    <col style="width:10%;">
+                                    <col style="width:10%;">
+                                    <col style="width:10%;">
+                                    <col style="width:12%;">
                                 </colgroup>
                                 <thead>
                                     <tr>
@@ -4379,17 +4704,20 @@ input[list] {
                             formPanel.style.display = isHistory ? 'none' : 'block';
                             histPanel.style.display = isHistory ? 'block' : 'none';
 
-                            // When history is active: expand left column to full width, hide cart panel
-                            // When form is active: restore the 2-column grid with cart panel
+                            // When history is active: hide cart panel and use single column
+                            // When form is active: show cart panel with 2-column grid
                             var cartWrapper = document.querySelector('.cart-wrapper');
                             var cartPanel   = document.querySelector('.cart-panel');
+                            
                             if (cartWrapper && cartPanel) {
                                 if (isHistory) {
-                                    cartWrapper.style.gridTemplateColumns = '1fr';
+                                    // History mode: single column, hide cart
+                                    cartWrapper.classList.add('history-view');
                                     cartPanel.style.display = 'none';
                                 } else {
-                                    cartWrapper.style.gridTemplateColumns = '1fr 340px';
-                                    cartPanel.style.display = 'flex';
+                                    // Form mode: two column grid, show cart
+                                    cartWrapper.classList.remove('history-view');
+                                    cartPanel.style.display = 'block';
                                 }
                             }
 
@@ -4397,7 +4725,10 @@ input[list] {
                             formBtn.className = 'txn-subtab-btn green ' + (isHistory ? 'inactive' : 'active');
                             histBtn.className = 'txn-subtab-btn green ' + (isHistory ? 'active' : 'inactive');
 
-
+                            var headerBtns = document.getElementById('merchHistoryHeaderButtons');
+                            if (headerBtns) {
+                                headerBtns.style.display = isHistory ? 'flex' : 'none';
+                            }
 
 
 
@@ -4417,7 +4748,7 @@ input[list] {
                                 } else {
                                     url.searchParams.delete('mh_open');
                                 }
-                                window.history.replaceState(null, '', url);
+                                window.history.replaceState(null, '', url.toString());
                             }
                         }
                         window.switchMerchTab = switchMerchTab;
@@ -4432,7 +4763,7 @@ input[list] {
 
             </div><!-- /left column -->
 
-            <!-- Payment + Cart panel — full width below the form -->
+            <!-- Payment + Cart panel — right side -->
             <div class="cart-panel" <?= !empty($_GET['mh_open']) ? 'style="display:none;"' : '' ?>>
 
                 <!-- ── Single-column inner layout: Payment top, Cart bottom ── -->
@@ -4453,46 +4784,177 @@ input[list] {
 
                     <!-- Payment Method -->
                     <div class="txn-field" style="margin-bottom:8px;">
-                        <label style="font-size:10px;">Payment Method <span style="color:#dc2626;">*</span></label>
+                        <label style="font-size:10px;font-weight:600;color:#475569;">Payment Method <span style="color:#dc2626;">*</span></label>
                         <select id="paymentMethod" class="txn-select" style="font-size:12px;padding:7px 10px;" onchange="onPaymentChange()" required>
-                            <option value="">Select payment…</option>
+                            <option value="">-- Select Payment Method --</option>
                             <option value="Cash">Cash</option>
-                            <option value="Card">Card</option>
-                            <option value="E-Wallet">E-Wallet</option>
-                            <option value="Petron E-Fuel">Petron E-Fuel</option>
-                            <option value="Fleet Card">Fleet Card</option>
-                            <option value="Credit">Credit</option>
+                            <option value="Credit Card">Credit Card</option>
+                            <option value="Debit Card">Debit Card</option>
+                            <option value="GCash">GCash</option>
+                            <option value="Maya">Maya</option>
+                            <option value="Petron Fleet Card">Petron Fleet Card</option>
+                            <option value="Credit Account">Credit Account</option>
                         </select>
                     </div>
 
                     <!-- Cash fields -->
-                    <div id="cashFields" style="display:none;margin-bottom:4px;">
+                    <div id="cashFields" style="display:none;margin-bottom:8px;">
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
                             <div class="txn-field">
-                                <label style="font-size:10px;">Amount Tendered</label>
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Amount Tendered</label>
                                 <input type="number" id="amountTendered" class="txn-input" style="font-size:12px;padding:7px 10px;"
                                        step="0.01" min="0" placeholder="₱0.00"
                                        oninput="computeChange()">
                             </div>
                             <div class="txn-field" id="changeWrap" style="display:none;">
-                                <label style="font-size:10px;">Change</label>
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Change</label>
                                 <input type="number" id="changeAmount" class="txn-input" style="font-size:12px;padding:7px 10px;background:#f0fdf4;" readonly placeholder="—">
                             </div>
                             <div class="txn-field" id="cashBalanceWrap" style="display:none;">
-                                <label style="font-size:10px;">Balance Due</label>
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Balance Due</label>
                                 <input type="number" id="cashBalanceDue" class="txn-input" style="font-size:12px;padding:7px 10px;background:#fff7ed;" readonly placeholder="—">
                             </div>
                         </div>
                     </div>
 
-                    <!-- Credit fields -->
-                    <div id="creditFields" style="display:none;margin-bottom:4px;">
+                    <!-- Credit Card fields -->
+                    <div id="creditCardFields" style="display:none;margin-bottom:8px;">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+                            <div class="txn-field">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Amount Paid</label>
+                                <input type="number" id="ccAmount" class="txn-input" style="font-size:12px;padding:7px 10px;"
+                                       step="0.01" min="0" placeholder="₱0.00"
+                                       oninput="onPaymentAmountInput('ccAmount')">
+                            </div>
+                            <div class="txn-field">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Card Type</label>
+                                <select id="ccType" class="txn-select" style="font-size:12px;padding:7px 10px;">
+                                    <option value="Visa">Visa</option>
+                                    <option value="Mastercard">Mastercard</option>
+                                    <option value="AMEX">American Express</option>
+                                    <option value="JCB">JCB</option>
+                                    <option value="UnionPay">UnionPay</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                            <div class="txn-field">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Last 4 Digits (Opt)</label>
+                                <input type="text" id="ccLastFour" class="txn-input" style="font-size:12px;padding:7px 10px;" maxlength="4" placeholder="e.g. 1234">
+                            </div>
+                            <div class="txn-field">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Reference No.</label>
+                                <input type="text" id="ccRefNumber" class="txn-input" style="font-size:12px;padding:7px 10px;" placeholder="Ref #">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Debit Card fields -->
+                    <div id="debitCardFields" style="display:none;margin-bottom:8px;">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+                            <div class="txn-field">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Amount Paid</label>
+                                <input type="number" id="dcAmount" class="txn-input" style="font-size:12px;padding:7px 10px;"
+                                       step="0.01" min="0" placeholder="₱0.00"
+                                       oninput="onPaymentAmountInput('dcAmount')">
+                            </div>
+                            <div class="txn-field">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Card Type</label>
+                                <select id="dcType" class="txn-select" style="font-size:12px;padding:7px 10px;">
+                                    <option value="Visa">Visa</option>
+                                    <option value="Mastercard">Mastercard</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                        </div>
                         <div class="txn-field">
-                            <label style="font-size:10px;">Credit Account</label>
-                            <select id="creditCustomer" class="txn-select" style="font-size:12px;padding:7px 10px;">
+                            <label style="font-size:10px;font-weight:600;color:#475569;">Reference No.</label>
+                            <input type="text" id="dcRefNumber" class="txn-input" style="font-size:12px;padding:7px 10px;" placeholder="Ref #">
+                        </div>
+                    </div>
+
+                    <!-- E-Wallet fields -->
+                    <div id="ewalletFields" style="display:none;margin-bottom:8px;">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+                            <div class="txn-field">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Amount Paid</label>
+                                <input type="number" id="ewAmount" class="txn-input" style="font-size:12px;padding:7px 10px;"
+                                       step="0.01" min="0" placeholder="₱0.00"
+                                       oninput="onPaymentAmountInput('ewAmount')">
+                            </div>
+                            <div class="txn-field">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Provider</label>
+                                <select id="ewProvider" class="txn-select" style="font-size:12px;padding:7px 10px;">
+                                    <option value="GCash">GCash</option>
+                                    <option value="Maya">Maya</option>
+                                    <option value="GrabPay">GrabPay</option>
+                                    <option value="ShopeePay">ShopeePay</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="txn-field">
+                            <label style="font-size:10px;font-weight:600;color:#475569;">Reference No.</label>
+                            <input type="text" id="ewRefNumber" class="txn-input" style="font-size:12px;padding:7px 10px;" placeholder="Ref #">
+                        </div>
+                    </div>
+
+                    <!-- Petron Fleet Card fields -->
+                    <div id="fleetCardFields" style="display:none;margin-bottom:8px;">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+                            <div class="txn-field">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Amount Paid</label>
+                                <input type="number" id="fcAmount" class="txn-input" style="font-size:12px;padding:7px 10px;"
+                                       step="0.01" min="0" placeholder="₱0.00"
+                                       oninput="onPaymentAmountInput('fcAmount')">
+                            </div>
+                            <div class="txn-field">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Fleet Card Number</label>
+                                <input type="text" id="fcNumber" class="txn-input" style="font-size:12px;padding:7px 10px;" placeholder="Card #">
+                            </div>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                            <div class="txn-field">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Company Name</label>
+                                <input type="text" id="fcCompanyName" class="txn-input" style="font-size:12px;padding:7px 10px;" placeholder="Company Name">
+                            </div>
+                            <div class="txn-field">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Auth No. (Opt)</label>
+                                <input type="text" id="fcAuthNumber" class="txn-input" style="font-size:12px;padding:7px 10px;" placeholder="Auth #">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Petron E-Fuel Card fields -->
+                    <div id="efuelCardFields" style="display:none;margin-bottom:8px;">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+                            <div class="txn-field">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Amount Paid</label>
+                                <input type="number" id="efAmount" class="txn-input" style="font-size:12px;padding:7px 10px;"
+                                       step="0.01" min="0" placeholder="₱0.00"
+                                       oninput="onPaymentAmountInput('efAmount')">
+                            </div>
+                            <div class="txn-field">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">E-Fuel Card Number</label>
+                                <input type="text" id="efCardNumber" class="txn-input" style="font-size:12px;padding:7px 10px;" placeholder="Card #">
+                            </div>
+                        </div>
+                        <div class="txn-field">
+                            <label style="font-size:10px;font-weight:600;color:#475569;">Reference No.</label>
+                            <input type="text" id="efRefNumber" class="txn-input" style="font-size:12px;padding:7px 10px;" placeholder="Ref #">
+                        </div>
+                    </div>
+
+                    <!-- Credit Account fields -->
+                    <div id="creditAccountFields" style="display:none;margin-bottom:8px;">
+                        <div class="txn-field" style="margin-bottom:8px;">
+                            <label style="font-size:10px;font-weight:600;color:#475569;">Credit Account <span style="color:#dc2626;">*</span></label>
+                            <select id="creditCustomer" class="txn-select" style="font-size:12px;padding:7px 10px;" onchange="onCreditCustomerChange()">
                                 <option value="">Select account…</option>
                                 <?php foreach ($customers as $c): ?>
                                 <option value="<?= (int)$c['id'] ?>"
+                                        data-name="<?= htmlspecialchars($c['name']) ?>"
                                         data-limit="<?= (float)$c['credit_limit'] ?>"
                                         data-balance="<?= (float)$c['balance'] ?>">
                                     <?= htmlspecialchars($c['name']) ?>
@@ -4501,25 +4963,33 @@ input[list] {
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                    </div>
-
-                    <!-- Card / E-Wallet / E-Fuel fields -->
-                    <div id="refFields" style="display:none;margin-bottom:4px;">
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
                             <div class="txn-field">
-                                <label style="font-size:10px;">Amount Paid</label>
-                                <input type="number" id="cardAmount" class="txn-input" style="font-size:12px;padding:7px 10px;"
-                                       step="0.01" min="0" placeholder="₱0.00"
-                                       oninput="checkCardSufficiency()">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Company Name</label>
+                                <input type="text" id="creditCompanyName" class="txn-input" style="font-size:12px;padding:7px 10px;" placeholder="Company Name">
                             </div>
                             <div class="txn-field">
-                                <label style="font-size:10px;">Reference No.</label>
-                                <input type="text" id="refNumber" class="txn-input" style="font-size:12px;padding:7px 10px;" placeholder="Optional">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Account Number</label>
+                                <input type="text" id="creditAccountNumber" class="txn-input" style="font-size:12px;padding:7px 10px;" placeholder="Account #">
                             </div>
                         </div>
-                        <div class="txn-field" id="cardBalanceWrap" style="display:none;margin-top:6px;">
-                            <label style="font-size:10px;">Balance Due</label>
-                            <input type="number" id="cardBalanceDue" class="txn-input" style="font-size:12px;padding:7px 10px;background:#fff7ed;" readonly placeholder="—">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                            <div class="txn-field">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">PO Number (Opt)</label>
+                                <input type="text" id="creditPoNumber" class="txn-input" style="font-size:12px;padding:7px 10px;" placeholder="PO #">
+                            </div>
+                            <div class="txn-field">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Due Date</label>
+                                <input type="date" id="creditDueDate" class="txn-input" style="font-size:12px;padding:7px 10px;">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Shared Balance Due display for non-cash/non-credit-account payments -->
+                    <div id="generalBalanceWrap" style="display:none;margin-top:6px;margin-bottom:4px;">
+                        <div class="txn-field">
+                            <label style="font-size:10px;font-weight:600;color:#475569;">Balance Due</label>
+                            <input type="number" id="generalBalanceDue" class="txn-input" style="font-size:12px;padding:7px 10px;background:#fff7ed;" readonly placeholder="—">
                         </div>
                     </div>
 
@@ -4643,9 +5113,9 @@ input[list] {
                 </div>
 
                 <!-- Service Price -->
-                <div style="margin-bottom:18px;">
+                <div style="margin-bottom:14px;">
                     <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:5px;">
-                        Price (₱) <span style="color:#dc2626;">*</span>
+                        Default Service Fee (₱) <span style="color:#dc2626;">*</span>
                     </label>
                     <input type="number" id="newServicePrice" class="txn-input"
                            placeholder="0.00"
@@ -4655,12 +5125,50 @@ input[list] {
                            required>
                 </div>
 
+                <!-- Estimated Duration -->
+                <div style="margin-bottom:14px;">
+                    <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:5px;">
+                        Estimated Duration
+                    </label>
+                    <input type="text" id="newServiceDuration" class="txn-input"
+                           placeholder="e.g., 30 minutes, 1-2 hours..."
+                           maxlength="50"
+                           style="font-size:13px;"
+                           autocomplete="off">
+                </div>
+
+                <!-- Description -->
+                <div style="margin-bottom:14px;">
+                    <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:5px;">
+                        Description
+                    </label>
+                    <textarea id="newServiceDescription" class="txn-input"
+                              placeholder="Additional details about this service (optional)..."
+                              rows="2"
+                              maxlength="255"
+                              style="font-size:13px;resize:vertical;"
+                              autocomplete="off"></textarea>
+                </div>
+
+                <!-- Reason for Request -->
+                <div style="margin-bottom:18px;">
+                    <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:5px;">
+                        Reason for Request <span style="color:#dc2626;">*</span>
+                    </label>
+                    <textarea id="newServiceReason" class="txn-input"
+                              placeholder="Why do you need this service added? (e.g., 'Customer requested this service')"
+                              rows="2"
+                              maxlength="500"
+                              style="font-size:13px;resize:vertical;"
+                              autocomplete="off"></textarea>
+                </div>
+
                 <!-- Info banner -->
                 <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;
                             padding:10px 12px;margin-bottom:18px;font-size:11px;color:#92400e;
                             display:flex;align-items:flex-start;gap:8px;">
                     <i class="fas fa-info-circle" style="margin-top:1px;flex-shrink:0;"></i>
-                    <span>Your submission will be reviewed by a manager. You can select it immediately after submitting.</span>
+                    <span>Your request will be reviewed by a manager. Status: <strong>Pending Manager Approval</strong></span>
                 </div>
 
                 <!-- Error -->
@@ -4735,7 +5243,7 @@ input[list] {
                 </div>
 
                 <!-- Vehicle Name -->
-                <div style="margin-bottom:18px;">
+                <div style="margin-bottom:14px;">
                     <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:5px;">
                         Vehicle Name <span style="color:#dc2626;">*</span>
                     </label>
@@ -4749,12 +5257,38 @@ input[list] {
                     </div>
                 </div>
 
+                <!-- Description (Optional) -->
+                <div style="margin-bottom:14px;">
+                    <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:5px;">
+                        Description
+                    </label>
+                    <textarea id="newVehicleDescription" class="txn-input"
+                              placeholder="Additional details about this vehicle type (optional)..."
+                              rows="2"
+                              maxlength="255"
+                              style="font-size:13px;resize:vertical;"
+                              autocomplete="off"></textarea>
+                </div>
+
+                <!-- Reason for Request -->
+                <div style="margin-bottom:18px;">
+                    <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:5px;">
+                        Reason for Request <span style="color:#dc2626;">*</span>
+                    </label>
+                    <textarea id="newVehicleReason" class="txn-input"
+                              placeholder="Why do you need this vehicle type added? (e.g., 'Customer owns this model')"
+                              rows="2"
+                              maxlength="500"
+                              style="font-size:13px;resize:vertical;"
+                              autocomplete="off"></textarea>
+                </div>
+
                 <!-- Info banner -->
                 <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;
                             padding:10px 12px;margin-bottom:18px;font-size:11px;color:#92400e;
                             display:flex;align-items:flex-start;gap:8px;">
                     <i class="fas fa-info-circle" style="margin-top:1px;flex-shrink:0;"></i>
-                    <span>Your submission will be reviewed by a manager before it appears in the dropdown. You can still use it immediately after submitting.</span>
+                    <span>Your request will be reviewed by a manager. Status: <strong>Pending Manager Approval</strong></span>
                 </div>
 
                 <!-- Error message -->
@@ -4859,7 +5393,7 @@ input[list] {
                 </div>
 
                 <!-- Unit Price -->
-                <div style="margin-bottom:18px;">
+                <div style="margin-bottom:14px;">
                     <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:5px;">
                         Unit Price (₱) <span style="color:#dc2626;">*</span>
                     </label>
@@ -4869,6 +5403,19 @@ input[list] {
                            step="0.01"
                            style="font-size:13px;"
                            autocomplete="off">
+                </div>
+
+                <!-- Reason for Request -->
+                <div style="margin-bottom:18px;">
+                    <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:5px;">
+                        Reason for Request <span style="color:#dc2626;">*</span>
+                    </label>
+                    <textarea id="newProductReason" class="txn-input"
+                              placeholder="Why do you need this product added? (e.g., 'Customer is looking for this item')"
+                              rows="2"
+                              maxlength="500"
+                              style="font-size:13px;resize:vertical;"
+                              autocomplete="off"></textarea>
                 </div>
 
                 <!-- Info banner -->
@@ -4973,13 +5520,60 @@ input[list] {
         // ── Mechanic busy-status check ────────────────────────────────────────
         // Fires when the Assigned Mechanic dropdown changes.
         // Calls the API and shows a warning banner if the mechanic has ongoing jobs.
+        // ── Mechanic Typeahead Dropdown ──────────────────────────────────────
+        function filterMechanicDropdown(query) {
+            const dd    = document.getElementById('joMechanicDropdown');
+            const items = dd ? dd.querySelectorAll('.jo-mechanic-item') : [];
+            const q     = query.toLowerCase().trim();
+            let anyVisible = false;
+            items.forEach(item => {
+                const name = (item.dataset.name || '').toLowerCase();
+                const spec = (item.dataset.spec || '').toLowerCase();
+                const show = !q || name.includes(q) || spec.includes(q);
+                item.style.display = show ? '' : 'none';
+                if (show) anyVisible = true;
+            });
+            if (dd) dd.style.display = 'block';
+            // Clear hidden fields if text was manually changed (no selection yet)
+            const hiddenId = document.getElementById('joMechanicId');
+            if (hiddenId && hiddenId.value) {
+                // User is typing again — deselect previous choice
+                hiddenId.value = '';
+                document.getElementById('joMechanicName').value = '';
+            }
+        }
+
+        function showMechanicDropdown() {
+            const dd    = document.getElementById('joMechanicDropdown');
+            const items = dd ? dd.querySelectorAll('.jo-mechanic-item') : [];
+            items.forEach(i => i.style.display = '');   // show all
+            if (dd) dd.style.display = 'block';
+        }
+
+        function hideMechanicDropdown() {
+            const dd = document.getElementById('joMechanicDropdown');
+            if (dd) dd.style.display = 'none';
+        }
+
+        function selectMechanic(el) {
+            const id   = el.dataset.id   || '';
+            const name = el.dataset.name || '';
+            document.getElementById('joMechanic').value     = name;
+            document.getElementById('joMechanicId').value   = id;
+            document.getElementById('joMechanicName').value = name;
+            hideMechanicDropdown();
+            // Trigger busy-check
+            onMechanicChange();
+        }
+
+        // ── Mechanic Busy-Check ──────────────────────────────────────────────
         async function onMechanicChange() {
-            const sel     = document.getElementById('joMechanic');
             const warnBox = document.getElementById('joMechanicBusyWarn');
             const listEl  = document.getElementById('joMechanicBusyList');
-            if (!sel || !warnBox || !listEl) return;
+            if (!warnBox || !listEl) return;
 
-            const mechId = sel.value;
+            // Now reads from the hidden ID field (joMechanic is a text input)
+            const mechId = (document.getElementById('joMechanicId')?.value || '').trim();
             if (!mechId) {
                 warnBox.style.display = 'none';
                 listEl.innerHTML = '';
@@ -5382,9 +5976,16 @@ input[list] {
             const nameEl  = document.getElementById('newServiceName');
             const priceEl = document.getElementById('newServicePrice');
             const catEl   = document.getElementById('newServiceCategory');
+            const durationEl = document.getElementById('newServiceDuration');
+            const descEl  = document.getElementById('newServiceDescription');
+            const reasonEl = document.getElementById('newServiceReason');
+            
             if (nameEl)  nameEl.value  = '';
             if (priceEl) priceEl.value = '';
             if (catEl)   catEl.value   = 'Others';
+            if (durationEl) durationEl.value = '';
+            if (descEl)  descEl.value  = '';
+            if (reasonEl) reasonEl.value = '';
             setAddServiceError('');
             
             // Auto-detect category as they type in the modal
@@ -5416,32 +6017,54 @@ input[list] {
         }
 
         async function submitNewServiceType() {
-            const name     = (document.getElementById('newServiceName')?.value     || '').trim();
-            const price    = (document.getElementById('newServicePrice')?.value    || '').trim();
-            const category = (document.getElementById('newServiceCategory')?.value || 'Others').trim();
+            const name     = (document.getElementById('newServiceName')?.value        || '').trim();
+            const price    = (document.getElementById('newServicePrice')?.value       || '').trim();
+            const category = (document.getElementById('newServiceCategory')?.value    || 'Others').trim();
+            const duration = (document.getElementById('newServiceDuration')?.value    || '').trim();
+            const description = (document.getElementById('newServiceDescription')?.value || '').trim();
+            const reason   = (document.getElementById('newServiceReason')?.value      || '').trim();
             const btn      = document.getElementById('addServiceSubmitBtn');
 
             setAddServiceError('');
             if (!name)  { setAddServiceError('Please enter the service name.'); return; }
             if (name.length > 100) { setAddServiceError('Name is too long (max 100 characters).'); return; }
             if (!price || isNaN(price) || parseFloat(price) < 0) { setAddServiceError('Please enter a valid positive price.'); return; }
+            if (!reason) { setAddServiceError('Please explain why you need this service added.'); return; }
+            if (reason.length < 10) { setAddServiceError('Please provide a more detailed reason (minimum 10 characters).'); return; }
 
             if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting…'; }
 
             try {
-                const res  = await fetch('../backend/api/get_service_types.php', {
+                const res  = await fetch('../backend/api/submit_master_data_request.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'same-origin',
-                    body: JSON.stringify({ service_name: name, service_price: parseFloat(price), category }),
+                    body: JSON.stringify({
+                        request_type: 'service_type',
+                        request_data: {
+                            service_name: name,
+                            service_category: category,
+                            default_price: parseFloat(price),
+                            estimated_duration: duration,
+                            description: description
+                        },
+                        reason: reason
+                    })
                 });
                 const data = await res.json();
 
                 if (data.success) {
                     closeAddServiceModal();
-                    await loadServiceTypes(name);
+                    // Set the value in the inputs for current use
+                    const serviceInput = document.getElementById('joServiceType');
+                    const serviceHidden = document.getElementById('joServiceTypeValue');
+                    const servicePriceInput = document.getElementById('joServicePrice');
+                    if (serviceInput) serviceInput.value = name;
+                    if (serviceHidden) serviceHidden.value = name;
+                    if (servicePriceInput) servicePriceInput.value = price;
+                    
                     showTxnAlert(
-                        '"' + name + '" submitted for manager approval and selected. It will appear for all staff once approved.',
+                        'Request submitted successfully! Request ID: #' + data.request_id + '. Status: Pending Manager Approval. You can use "' + name + '" now.',
                         'success'
                     );
                 } else {
@@ -5453,6 +6076,7 @@ input[list] {
                 if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit for Approval'; }
             }
         }
+        
 
         // Close service modal on backdrop click
         document.addEventListener('click', function(e) {
@@ -5464,66 +6088,239 @@ input[list] {
             // Price manually entered — nothing extra needed
         }
 
-        // ── Customer name autocomplete handler ────────────────────────────────
-        // Store customer data for quick lookup
-        const customerData = <?= json_encode(array_map(function($name) {
-            $parts = explode(' ', trim($name), 2);
+        // ── Customer data for search and autocomplete ─────────────────────────────
+        // Store complete customer data including vehicle info
+        const customerData = <?= json_encode(array_map(function($customer) {
+            $parts = explode(' ', trim($customer['name'] ?? ''), 2);
             return [
-                'full_name' => $name,
+                'id' => $customer['id'],
+                'full_name' => trim($customer['name'] ?? ''),
                 'first_name' => $parts[0] ?? '',
-                'last_name' => $parts[1] ?? ''
+                'last_name' => $parts[1] ?? '',
+                'contact_number' => $customer['contact_number'] ?? '',
+                'vehicle_type' => $customer['vehicle_type'] ?? '',
+                'vehicle_brand' => $customer['vehicle_brand'] ?? '',
+                'vehicle_model' => $customer['vehicle_model'] ?? '',
+                'plate_number' => $customer['plate_number'] ?? ''
             ];
-        }, $customer_names)) ?>;
+        }, $customers)) ?>;
 
-        function onCustomerNameInput(prefix) {
-            // prefix = 'jo' or 'merch'
-            const firstNameEl = document.getElementById(prefix + 'FirstName');
-            const lastNameEl = document.getElementById(prefix + 'LastName');
+        // ═══════════════════════════════════════════════════════════════════════
+        // Customer Type Toggle & Search Functions
+        // ═══════════════════════════════════════════════════════════════════════
+        
+        function toggleCustomerType(prefix) {
+            const walkinRadio = document.getElementById(prefix + 'CustomerTypeWalkin');
+            const searchSection = document.getElementById(prefix + 'SearchCustomerSection');
+            const firstNameInput = document.getElementById(prefix + 'FirstName');
+            const lastNameInput = document.getElementById(prefix + 'LastName');
+            const contactInput = document.getElementById(prefix + 'ContactNumber');
+            const vehicleType = document.getElementById(prefix + 'VehicleType');
+            const vehicleBrand = document.getElementById(prefix + 'VehicleBrand');
+            const vehicleModel = document.getElementById(prefix + 'VehicleModel');
+            const vehiclePlate = document.getElementById(prefix + 'VehiclePlate');
             
-            if (!firstNameEl || !lastNameEl) return;
-            
-            const inputValue = firstNameEl.value.trim();
-            
-            // Check if the input matches a registered customer's first name
-            const matchedCustomer = customerData.find(customer => 
-                customer.first_name.toLowerCase() === inputValue.toLowerCase()
-            );
-            
-            // If exact match found on first name, auto-fill last name
-            if (matchedCustomer && matchedCustomer.last_name) {
-                lastNameEl.value = matchedCustomer.last_name;
+            if (walkinRadio && walkinRadio.checked) {
+                // Walk-in Customer: Show search section, enable manual input
+                if (searchSection) searchSection.style.display = 'none';
+                
+                // Clear and enable all fields for manual input
+                if (firstNameInput) {
+                    firstNameInput.value = '';
+                    firstNameInput.readOnly = false;
+                    firstNameInput.style.background = '#fff';
+                }
+                if (lastNameInput) {
+                    lastNameInput.value = '';
+                    lastNameInput.readOnly = false;
+                    lastNameInput.style.background = '#fff';
+                }
+                if (contactInput) {
+                    contactInput.value = '';
+                    contactInput.readOnly = false;
+                    contactInput.style.background = '#fff';
+                }
+                if (vehicleType) {
+                    vehicleType.value = '';
+                    vehicleType.readOnly = false;
+                    vehicleType.style.background = '#fff';
+                }
+                if (vehicleBrand) {
+                    vehicleBrand.value = '';
+                    vehicleBrand.readOnly = false;
+                    vehicleBrand.style.background = '#fff';
+                }
+                if (vehicleModel) {
+                    vehicleModel.value = '';
+                    vehicleModel.readOnly = false;
+                    vehicleModel.style.background = '#fff';
+                }
+                if (vehiclePlate) {
+                    vehiclePlate.value = '';
+                    vehiclePlate.readOnly = false;
+                    vehiclePlate.style.background = '#fff';
+                }
+            } else {
+                // Registered Customer: Show search section, make fields readonly
+                if (searchSection) searchSection.style.display = 'block';
+                
+                // Clear fields and make readonly (will be filled by search)
+                if (firstNameInput) {
+                    firstNameInput.value = '';
+                    firstNameInput.readOnly = true;
+                    firstNameInput.style.background = '#f8f9fa';
+                }
+                if (lastNameInput) {
+                    lastNameInput.value = '';
+                    lastNameInput.readOnly = true;
+                    lastNameInput.style.background = '#f8f9fa';
+                }
+                if (contactInput) {
+                    contactInput.value = '';
+                    contactInput.readOnly = true;
+                    contactInput.style.background = '#f8f9fa';
+                }
+                if (vehicleType) {
+                    vehicleType.value = '';
+                    vehicleType.readOnly = true;
+                    vehicleType.style.background = '#f8f9fa';
+                }
+                if (vehicleBrand) {
+                    vehicleBrand.value = '';
+                    vehicleBrand.readOnly = true;
+                    vehicleBrand.style.background = '#f8f9fa';
+                }
+                if (vehicleModel) {
+                    vehicleModel.value = '';
+                    vehicleModel.readOnly = true;
+                    vehicleModel.style.background = '#f8f9fa';
+                }
+                if (vehiclePlate) {
+                    vehiclePlate.value = '';
+                    vehiclePlate.readOnly = true;
+                    vehiclePlate.style.background = '#f8f9fa';
+                }
             }
         }
 
-        // Also handle when user selects from datalist (change event)
-        function setupCustomerAutocomplete() {
-            ['jo', 'merch'].forEach(prefix => {
-                const firstNameEl = document.getElementById(prefix + 'FirstName');
-                const lastNameEl = document.getElementById(prefix + 'LastName');
+        function searchCustomer(prefix) {
+            const searchInput = document.getElementById(prefix + 'SearchCustomer');
+            const resultsDiv = document.getElementById(prefix + 'CustomerResults');
+            
+            if (!searchInput || !resultsDiv) return;
+            
+            const query = searchInput.value.trim().toLowerCase();
+            
+            if (query.length < 2) {
+                resultsDiv.style.display = 'none';
+                return;
+            }
+            
+            // Filter customers by name, contact, or plate
+            const filtered = customerData.filter(c => {
+                const fullName = (c.first_name + ' ' + c.last_name).toLowerCase();
+                const contact = (c.contact_number || '').toLowerCase();
+                const plate = (c.plate_number || '').toLowerCase();
                 
-                if (firstNameEl && lastNameEl) {
-                    // Handle both input and change events
-                    firstNameEl.addEventListener('change', function() {
-                        const inputValue = this.value.trim();
-                        
-                        // Try to find exact match
-                        const matchedCustomer = customerData.find(customer => 
-                            customer.first_name.toLowerCase() === inputValue.toLowerCase() ||
-                            customer.full_name.toLowerCase() === inputValue.toLowerCase()
-                        );
-                        
-                        if (matchedCustomer) {
-                            // Auto-fill with split name parts
-                            this.value = matchedCustomer.first_name;
-                            lastNameEl.value = matchedCustomer.last_name || '';
-                        }
-                    });
-                }
+                return fullName.includes(query) || 
+                       contact.includes(query) || 
+                       plate.includes(query);
             });
+            
+            if (filtered.length === 0) {
+                resultsDiv.innerHTML = '<div style="padding:16px;text-align:center;color:#94a3b8;font-size:13px;">No customers found</div>';
+                resultsDiv.style.display = 'block';
+                return;
+            }
+            
+            // Build results HTML
+            let html = '';
+            filtered.forEach(customer => {
+                const displayName = (customer.first_name + ' ' + customer.last_name).trim();
+                const displayContact = customer.contact_number || 'No contact';
+                const displayVehicle = [customer.vehicle_brand, customer.vehicle_model].filter(Boolean).join(' ') || 'No vehicle';
+                const displayPlate = customer.plate_number || 'No plate';
+                
+                html += `
+                    <div onclick="selectCustomer('${prefix}', ${customer.id})" 
+                         style="padding:12px 16px;cursor:pointer;border-bottom:1px solid #f1f5f9;transition:background .15s;"
+                         onmouseover="this.style.background='#f8fbff'"
+                         onmouseout="this.style.background='#fff'">
+                        <div style="font-weight:600;font-size:13px;color:#1e293b;margin-bottom:4px;">
+                            ${escapeHtml(displayName)}
+                        </div>
+                        <div style="font-size:12px;color:#64748b;display:flex;gap:12px;flex-wrap:wrap;">
+                            <span><i class="fas fa-phone" style="width:14px;"></i> ${escapeHtml(displayContact)}</span>
+                            <span><i class="fas fa-car" style="width:14px;"></i> ${escapeHtml(displayVehicle)}</span>
+                            <span><i class="fas fa-id-card" style="width:14px;"></i> ${escapeHtml(displayPlate)}</span>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            resultsDiv.innerHTML = html;
+            resultsDiv.style.display = 'block';
         }
 
+        function selectCustomer(prefix, customerId) {
+            const customer = customerData.find(c => c.id == customerId);
+            if (!customer) return;
+            
+            // Fill in all customer fields
+            const firstNameInput = document.getElementById(prefix + 'FirstName');
+            const lastNameInput = document.getElementById(prefix + 'LastName');
+            const contactInput = document.getElementById(prefix + 'ContactNumber');
+            const vehicleType = document.getElementById(prefix + 'VehicleType');
+            const vehicleBrand = document.getElementById(prefix + 'VehicleBrand');
+            const vehicleModel = document.getElementById(prefix + 'VehicleModel');
+            const vehiclePlate = document.getElementById(prefix + 'VehiclePlate');
+            
+            if (firstNameInput) firstNameInput.value = customer.first_name || '';
+            if (lastNameInput) lastNameInput.value = customer.last_name || '';
+            if (contactInput) contactInput.value = customer.contact_number || '';
+            if (vehicleType) vehicleType.value = customer.vehicle_type || '';
+            if (vehicleBrand) vehicleBrand.value = customer.vehicle_brand || '';
+            if (vehicleModel) vehicleModel.value = customer.vehicle_model || '';
+            if (vehiclePlate) vehiclePlate.value = customer.plate_number || '';
+            
+            // Hide search results and clear search input
+            const resultsDiv = document.getElementById(prefix + 'CustomerResults');
+            const searchInput = document.getElementById(prefix + 'SearchCustomer');
+            if (resultsDiv) resultsDiv.style.display = 'none';
+            if (searchInput) searchInput.value = (customer.first_name + ' ' + customer.last_name).trim();
+        }
+
+        function showCustomerResults(prefix) {
+            const searchInput = document.getElementById(prefix + 'SearchCustomer');
+            if (searchInput && searchInput.value.trim().length >= 2) {
+                searchCustomer(prefix);
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Close customer results when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('#joSearchCustomer') && !e.target.closest('#joCustomerResults')) {
+                const resultsDiv = document.getElementById('joCustomerResults');
+                if (resultsDiv) resultsDiv.style.display = 'none';
+            }
+            if (!e.target.closest('#merchSearchCustomer') && !e.target.closest('#merchCustomerResults')) {
+                const resultsDiv = document.getElementById('merchCustomerResults');
+                if (resultsDiv) resultsDiv.style.display = 'none';
+            }
+        });
+
         // Initialize on page load
-        document.addEventListener('DOMContentLoaded', setupCustomerAutocomplete);
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set initial state for walk-in customer
+            toggleCustomerType('jo');
+            toggleCustomerType('merch'); // Initialize merchandise section too
+        });
 
         // ── Vehicle type change ───────────────────────────────────────────────
         function onVehicleTypeChange() { /* reserved */ }
@@ -5580,6 +6377,15 @@ input[list] {
         function selectVehicleType(name) {
             const inp = document.getElementById('joVehicleType');
             if (inp) inp.value = name;
+            
+            // Auto-fill Vehicle Brand from the vehicle name
+            const brandInput = document.getElementById('joVehicleBrand');
+            if (brandInput && name) {
+                // Extract brand from vehicle name (first word is usually the brand)
+                const brand = name.split(' ')[0];
+                brandInput.value = brand;
+            }
+            
             hideVehicleDropdown();
             onVehicleTypeChange();
         }
@@ -5615,12 +6421,16 @@ input[list] {
         function openAddVehicleModal() {
             const nameEl = document.getElementById('newVehicleName');
             const catEl  = document.getElementById('newVehicleCategory');
+            const descEl = document.getElementById('newVehicleDescription');
+            const reasonEl = document.getElementById('newVehicleReason');
             if (nameEl) nameEl.value = '';
             if (catEl)  catEl.value  = '';
+            if (descEl) descEl.value = '';
+            if (reasonEl) reasonEl.value = '';
             setAddVehicleError('');
             const modal = document.getElementById('addVehicleModal');
             if (modal) { modal.style.display = 'flex'; }
-            setTimeout(() => nameEl && nameEl.focus(), 80);
+            setTimeout(() => catEl && catEl.focus(), 80);
         }
 
         function closeAddVehicleModal() {
@@ -5637,31 +6447,46 @@ input[list] {
         }
 
         async function submitNewVehicleType() {
-            const name     = (document.getElementById('newVehicleName')?.value     || '').trim();
-            const category = (document.getElementById('newVehicleCategory')?.value || '').trim();
-            const btn      = document.getElementById('addVehicleSubmitBtn');
+            const name        = (document.getElementById('newVehicleName')?.value        || '').trim();
+            const category    = (document.getElementById('newVehicleCategory')?.value    || '').trim();
+            const description = (document.getElementById('newVehicleDescription')?.value || '').trim();
+            const reason      = (document.getElementById('newVehicleReason')?.value      || '').trim();
+            const btn         = document.getElementById('addVehicleSubmitBtn');
 
             setAddVehicleError('');
-            if (!category) { setAddVehicleError('Please select a category.'); return; }
+            if (!category) { setAddVehicleError('Please select or enter a category.'); return; }
             if (!name)     { setAddVehicleError('Please enter the vehicle name.'); return; }
             if (name.length > 150) { setAddVehicleError('Name is too long (max 150 characters).'); return; }
+            if (!reason)   { setAddVehicleError('Please explain why you need this vehicle type added.'); return; }
+            if (reason.length < 10) { setAddVehicleError('Please provide a more detailed reason (minimum 10 characters).'); return; }
 
-            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting\u2026'; }
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting…'; }
 
             try {
-                const res  = await fetch('../backend/api/get_vehicle_types.php', {
+                const res  = await fetch('../backend/api/submit_master_data_request.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'same-origin',
-                    body: JSON.stringify({ vehicle_name: name, category }),
+                    body: JSON.stringify({
+                        request_type: 'vehicle_type',
+                        request_data: {
+                            vehicle_name: name,
+                            category: category,
+                            description: description
+                        },
+                        reason: reason
+                    })
                 });
                 const data = await res.json();
 
                 if (data.success) {
                     closeAddVehicleModal();
-                    await loadVehicleTypes(name);
+                    // Set the value in the input for current use
+                    const vehicleInput = document.getElementById('joVehicleType');
+                    if (vehicleInput) vehicleInput.value = name;
+                    
                     showTxnAlert(
-                        '"' + name + '" submitted for manager approval and selected. It will appear for all staff once approved.',
+                        'Request submitted successfully! Request ID: #' + data.request_id + '. Status: Pending Manager Approval. You can use "' + name + '" now.',
                         'success'
                     );
                 } else {
@@ -5682,14 +6507,16 @@ input[list] {
 
         // ── Add Product modal ────────────────────────────────────────────────
         function openAddProductModal() {
-            const nameEl = document.getElementById('newProductName');
-            const catEl  = document.getElementById('newProductCategory');
-            const skuEl  = document.getElementById('newProductSKU');
-            const priceEl = document.getElementById('newProductPrice');
-            if (nameEl) nameEl.value = '';
-            if (catEl)  catEl.value  = '';
-            if (skuEl)  skuEl.value  = '';
-            if (priceEl) priceEl.value = '';
+            const nameEl   = document.getElementById('newProductName');
+            const catEl    = document.getElementById('newProductCategory');
+            const skuEl    = document.getElementById('newProductSKU');
+            const priceEl  = document.getElementById('newProductPrice');
+            const reasonEl = document.getElementById('newProductReason');
+            if (nameEl)   nameEl.value   = '';
+            if (catEl)    catEl.value    = '';
+            if (skuEl)    skuEl.value    = '';
+            if (priceEl)  priceEl.value  = '';
+            if (reasonEl) reasonEl.value = '';
             setAddProductError('');
             const modal = document.getElementById('addProductModal');
             if (modal) { modal.style.display = 'flex'; }
@@ -5714,6 +6541,7 @@ input[list] {
             const category = (document.getElementById('newProductCategory')?.value || '').trim();
             const sku      = (document.getElementById('newProductSKU')?.value      || '').trim().toUpperCase();
             const price    = parseFloat(document.getElementById('newProductPrice')?.value || 0);
+            const reason   = (document.getElementById('newProductReason')?.value   || '').trim();
             const btn      = document.getElementById('addProductSubmitBtn');
 
             setAddProductError('');
@@ -5721,30 +6549,35 @@ input[list] {
             if (!name)     { setAddProductError('Please enter the product name.'); return; }
             if (name.length > 150) { setAddProductError('Name is too long (max 150 characters).'); return; }
             if (price <= 0) { setAddProductError('Please enter a valid price greater than zero.'); return; }
+            if (!reason)   { setAddProductError('Please explain why you need this product added.'); return; }
+            if (reason.length < 10) { setAddProductError('Please provide a more detailed reason (minimum 10 characters).'); return; }
 
-            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting\u2026'; }
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting…'; }
 
             try {
-                const res  = await fetch('../backend/api/add_product.php', {
+                const res  = await fetch('../backend/api/submit_master_data_request.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'same-origin',
-                    body: JSON.stringify({ 
-                        product_name: name, 
-                        category: category,
-                        sku: sku || null,
-                        unit_price: price
-                    }),
+                    body: JSON.stringify({
+                        request_type: 'product',
+                        request_data: {
+                            product_name: name,
+                            category: category,
+                            sku: sku || null,
+                            unit_price: price
+                        },
+                        reason: reason
+                    })
                 });
                 const data = await res.json();
 
                 if (data.success) {
                     closeAddProductModal();
                     showTxnAlert(
-                        '"' + name + '" submitted for manager approval. It will appear in the product list once approved.',
+                        'Request submitted! Request ID: #' + data.request_id + '. Status: Pending Manager Approval.',
                         'success'
                     );
-                    // Optionally reload products list here
                 } else {
                     setAddProductError(data.error || 'Submission failed.');
                 }
@@ -5931,6 +6764,171 @@ input[list] {
             if (price)  price.value  = '';
             if (stock)  stock.value  = '';
             closeProductDropdown();
+            
+            // Reset customer type to walk-in
+            const merchWalkinRadio = document.getElementById('merchCustomerTypeWalkin');
+            if (merchWalkinRadio) {
+                merchWalkinRadio.checked = true;
+                toggleCustomerType('merch');
+            }
+            
+            // Clear search customer field
+            const searchCustomer = document.getElementById('merchSearchCustomer');
+            if (searchCustomer) searchCustomer.value = '';
+            
+            // Clear customer details
+            const merchFirstName = document.getElementById('merchFirstName');
+            const merchLastName = document.getElementById('merchLastName');
+            const merchContactNumber = document.getElementById('merchContactNumber');
+            if (merchFirstName) merchFirstName.value = '';
+            if (merchLastName) merchLastName.value = '';
+            if (merchContactNumber) merchContactNumber.value = '';
+            
+            // Hide customer results if open
+            const customerResults = document.getElementById('merchCustomerResults');
+            if (customerResults) customerResults.style.display = 'none';
+        }
+
+        // ── Reset Job Order form fields only ─────────────────────────────────
+        function resetJobOrderForm() {
+            // Customer Type - reset to walk-in
+            const walkinRadio = document.getElementById('joCustomerTypeWalkin');
+            if (walkinRadio) {
+                walkinRadio.checked = true;
+                toggleCustomerType('jo');
+            }
+            
+            // Clear search customer field
+            const searchCustomer = document.getElementById('joSearchCustomer');
+            if (searchCustomer) searchCustomer.value = '';
+            
+            // Clear customer details
+            const joFirstName = document.getElementById('joFirstName');
+            const joLastName = document.getElementById('joLastName');
+            const joContactNumber = document.getElementById('joContactNumber');
+            if (joFirstName) joFirstName.value = '';
+            if (joLastName) joLastName.value = '';
+            if (joContactNumber) joContactNumber.value = '';
+            
+            // Clear vehicle details
+            const joVehicleType = document.getElementById('joVehicleType');
+            const joVehicleBrand = document.getElementById('joVehicleBrand');
+            const joVehicleModel = document.getElementById('joVehicleModel');
+            const joVehiclePlate = document.getElementById('joVehiclePlate');
+            if (joVehicleType) joVehicleType.value = '';
+            if (joVehicleBrand) joVehicleBrand.value = '';
+            if (joVehicleModel) joVehicleModel.value = '';
+            if (joVehiclePlate) joVehiclePlate.value = '';
+            
+            // Clear service details
+            const joServiceCategory = document.getElementById('joServiceCategory');
+            const joServiceType = document.getElementById('joServiceType');
+            const joServiceTypeValue = document.getElementById('joServiceTypeValue');
+            const joServicePrice = document.getElementById('joServicePrice');
+            const joNotes = document.getElementById('joNotes');
+            const joEstimatedDuration = document.getElementById('joEstimatedDuration');
+            
+            if (joServiceCategory) joServiceCategory.selectedIndex = 0;
+            if (joServiceType) joServiceType.value = '';
+            if (joServiceTypeValue) joServiceTypeValue.value = '';
+            if (joServicePrice) joServicePrice.value = '';
+            // Reset mechanic typeahead
+            const joMechanic = document.getElementById('joMechanic');
+            if (joMechanic) joMechanic.value = '';
+            const joMechanicId = document.getElementById('joMechanicId');
+            if (joMechanicId) joMechanicId.value = '';
+            const joMechanicName = document.getElementById('joMechanicName');
+            if (joMechanicName) joMechanicName.value = '';
+            hideMechanicDropdown();
+            if (joNotes) joNotes.value = '';
+            if (joEstimatedDuration) joEstimatedDuration.value = '';
+            
+            // Hide pricing notes and suggested parts
+            const notesWrap = document.getElementById('joServicePriceNotes');
+            const partsWrap = document.getElementById('joSuggestedParts');
+            if (notesWrap) notesWrap.style.display = 'none';
+            if (partsWrap) partsWrap.style.display = 'none';
+            
+            // Hide mechanic busy warning
+            const mechanicBusyWarn = document.getElementById('joMechanicBusyWarn');
+            if (mechanicBusyWarn) mechanicBusyWarn.style.display = 'none';
+            
+            // Clear suggested parts
+            window._joSuggestedParts = [];
+            
+            // Hide service dropdown if open
+            hideServiceDropdown();
+            
+            // Hide vehicle dropdown if open
+            hideVehicleDropdown();
+            
+            // Hide customer results if open
+            const customerResults = document.getElementById('joCustomerResults');
+            if (customerResults) customerResults.style.display = 'none';
+        }
+
+        // ── Clear all payment inputs ─────────────────────────────────────────
+        function clearPaymentInputs() {
+            // Cash
+            const amountTendered = document.getElementById('amountTendered');
+            if (amountTendered) amountTendered.value = '';
+            const changeAmount = document.getElementById('changeAmount');
+            if (changeAmount) changeAmount.value = '';
+            const cashBalanceDue = document.getElementById('cashBalanceDue');
+            if (cashBalanceDue) cashBalanceDue.value = '';
+
+            // Credit Card
+            const ccAmount = document.getElementById('ccAmount');
+            if (ccAmount) ccAmount.value = '';
+            const ccLastFour = document.getElementById('ccLastFour');
+            if (ccLastFour) ccLastFour.value = '';
+            const ccRefNumber = document.getElementById('ccRefNumber');
+            if (ccRefNumber) ccRefNumber.value = '';
+
+            // Debit Card
+            const dcAmount = document.getElementById('dcAmount');
+            if (dcAmount) dcAmount.value = '';
+            const dcRefNumber = document.getElementById('dcRefNumber');
+            if (dcRefNumber) dcRefNumber.value = '';
+
+            // E-Wallet
+            const ewAmount = document.getElementById('ewAmount');
+            if (ewAmount) ewAmount.value = '';
+            const ewRefNumber = document.getElementById('ewRefNumber');
+            if (ewRefNumber) ewRefNumber.value = '';
+
+            // Fleet Card
+            const fcAmount = document.getElementById('fcAmount');
+            if (fcAmount) fcAmount.value = '';
+            const fcNumber = document.getElementById('fcNumber');
+            if (fcNumber) fcNumber.value = '';
+            const fcCompanyName = document.getElementById('fcCompanyName');
+            if (fcCompanyName) fcCompanyName.value = '';
+            const fcAuthNumber = document.getElementById('fcAuthNumber');
+            if (fcAuthNumber) fcAuthNumber.value = '';
+
+            // E-Fuel Card
+            const efAmount = document.getElementById('efAmount');
+            if (efAmount) efAmount.value = '';
+            const efCardNumber = document.getElementById('efCardNumber');
+            if (efCardNumber) efCardNumber.value = '';
+            const efRefNumber = document.getElementById('efRefNumber');
+            if (efRefNumber) efRefNumber.value = '';
+
+            // Credit Account
+            const creditCustomer = document.getElementById('creditCustomer');
+            if (creditCustomer) creditCustomer.selectedIndex = 0;
+            const creditCompanyName = document.getElementById('creditCompanyName');
+            if (creditCompanyName) creditCompanyName.value = '';
+            const creditAccountNumber = document.getElementById('creditAccountNumber');
+            if (creditAccountNumber) creditAccountNumber.value = '';
+            const creditPoNumber = document.getElementById('creditPoNumber');
+            if (creditPoNumber) creditPoNumber.value = '';
+            const creditDueDate = document.getElementById('creditDueDate');
+            if (creditDueDate) creditDueDate.value = '';
+
+            const generalBalanceDue = document.getElementById('generalBalanceDue');
+            if (generalBalanceDue) generalBalanceDue.value = '';
         }
 
         // ── Reset ALL — clears Job Order + Merchandise forms + cart ──────────
@@ -5949,11 +6947,16 @@ input[list] {
             const joServiceHidden = document.getElementById('joServiceTypeValue');
             if (joServiceInput) joServiceInput.value = '';
             if (joServiceHidden) joServiceHidden.value = '';
-            // Reset vehicle type and mechanic selects to first option
+            // Reset vehicle type and mechanic typeahead
             const vehicleInput = document.getElementById('joVehicleType');
-            if (vehicleInput) vehicleInput.value = ''; // Now an input field
-            const mechanicSelect = document.getElementById('joMechanic');
-            if (mechanicSelect && mechanicSelect.options) mechanicSelect.selectedIndex = 0;
+            if (vehicleInput) vehicleInput.value = '';
+            const mechInput = document.getElementById('joMechanic');
+            if (mechInput) mechInput.value = '';
+            const mechIdHid = document.getElementById('joMechanicId');
+            if (mechIdHid) mechIdHid.value = '';
+            const mechNameHid = document.getElementById('joMechanicName');
+            if (mechNameHid) mechNameHid.value = '';
+            hideMechanicDropdown();
             // Hide pricing notes and suggested parts
             const notesWrap = document.getElementById('joServicePriceNotes');
             const partsWrap = document.getElementById('joSuggestedParts');
@@ -5976,11 +6979,9 @@ input[list] {
 
             // ── Payment panel ─────────────────────────────────────────────────
             const payMethod = document.getElementById('paymentMethod');
-            if (payMethod) { payMethod.selectedIndex = 0; onPaymentChange(); }
-            const tendered = document.getElementById('amountTendered');
-            if (tendered) tendered.value = '';
-            const changeEl = document.getElementById('changeAmount');
-            if (changeEl) changeEl.value = '';
+            if (payMethod) payMethod.selectedIndex = 0;
+            clearPaymentInputs();
+            onPaymentChange();
         }
 
         // ── Clear cart ────────────────────────────────────────────────────────
@@ -6078,56 +7079,107 @@ input[list] {
         // ── Payment panel ─────────────────────────────────────────────────────
         function onPaymentChange() {
             const method = document.getElementById('paymentMethod')?.value || '';
-            const cashFields   = document.getElementById('cashFields');
-            const creditFields = document.getElementById('creditFields');
-            const refFields    = document.getElementById('refFields');
-            if (cashFields)   cashFields.style.display   = method === 'Cash'   ? 'block' : 'none';
-            if (creditFields) creditFields.style.display = method === 'Credit' ? 'block' : 'none';
-            if (refFields)    refFields.style.display    = ['Card','E-Wallet','E-Fuel Card','Fleet Card'].includes(method) ? 'block' : 'none';
+            const isEwallet = (method === 'GCash' || method === 'Maya');
+
+            const containers = {
+                'cashFields':          method === 'Cash',
+                'creditCardFields':    method === 'Credit Card',
+                'debitCardFields':     method === 'Debit Card',
+                'ewalletFields':       isEwallet,
+                'fleetCardFields':     method === 'Petron Fleet Card',
+                'efuelCardFields':     false, // removed from dropdown
+                'creditAccountFields': method === 'Credit Account'
+            };
+            for (const [id, show] of Object.entries(containers)) {
+                const el = document.getElementById(id);
+                if (el) el.style.display = show ? 'block' : 'none';
+            }
+
+            // Auto-set provider for GCash / Maya
+            if (isEwallet) {
+                const prov = document.getElementById('ewProvider');
+                if (prov) prov.value = method; // 'GCash' or 'Maya'
+            }
+
+            // Show balance due bar for card / ewallet / fleet
+            const generalBalanceWrap = document.getElementById('generalBalanceWrap');
+            const needsBalance = ['Credit Card','Debit Card','GCash','Maya','Petron Fleet Card'].includes(method);
+            if (generalBalanceWrap) generalBalanceWrap.style.display = needsBalance ? 'block' : 'none';
+
+            // Pre-fill amount paid with grand total
+            const grand = getGrandTotal();
+            const prefillMap = {
+                'Credit Card': 'ccAmount', 'Debit Card': 'dcAmount',
+                'GCash': 'ewAmount', 'Maya': 'ewAmount', 'Petron Fleet Card': 'fcAmount'
+            };
+            const fillId = prefillMap[method];
+            if (fillId) {
+                const inp = document.getElementById(fillId);
+                if (inp && (!inp.value || parseFloat(inp.value) === 0)) inp.value = grand > 0 ? grand.toFixed(2) : '';
+            }
+
             computeChange();
-            checkCardSufficiency();
+            onPaymentAmountInput();
             updatePaymentStatusBadge();
             updateCheckoutBtn();
+        }
+
+        function onCreditCustomerChange() {
+            const select = document.getElementById('creditCustomer');
+            const compInput = document.getElementById('creditCompanyName');
+            const accInput  = document.getElementById('creditAccountNumber');
+            if (select && select.value) {
+                const opt  = select.options[select.selectedIndex];
+                const name = opt.getAttribute('data-name') || '';
+                if (compInput) compInput.value = name;
+                if (accInput && !accInput.value) accInput.value = 'ACC-' + String(select.value).padStart(5, '0');
+            } else {
+                if (compInput) compInput.value = '';
+                if (accInput)  accInput.value  = '';
+            }
+            updatePaymentStatusBadge();
+            updateCheckoutBtn();
+        }
+
+        function _getAmountPaid(method) {
+            const idMap = {
+                'Cash': 'amountTendered', 'Credit Card': 'ccAmount', 'Debit Card': 'dcAmount',
+                'GCash': 'ewAmount', 'Maya': 'ewAmount', 'Petron Fleet Card': 'fcAmount'
+            };
+            const id = idMap[method];
+            return id ? parseFloat(document.getElementById(id)?.value || 0) : 0;
+        }
+
+        function onPaymentAmountInput() {
+            const method = document.getElementById('paymentMethod')?.value || '';
+            if (method === 'Cash' || method === 'Credit Account' || !method) return;
+            const amount = _getAmountPaid(method);
+            const grand  = getGrandTotal();
+            const balEl  = document.getElementById('generalBalanceDue');
+            if (balEl) {
+                const bal = Math.max(0, grand - amount);
+                balEl.value = (grand > 0 && bal > 0) ? bal.toFixed(2) : '';
+            }
+            updatePaymentStatusBadge();
         }
 
         function computeChange() {
             const grand    = getGrandTotal();
             const tendered = parseFloat(document.getElementById('amountTendered')?.value || 0);
-
-            // Change: only show when tendered >= grand (exact / overpayment)
             const changeWrap = document.getElementById('changeWrap');
             const changeEl   = document.getElementById('changeAmount');
-            // Balance Due: show when tendered is 0 or partial
-            const balWrap = document.getElementById('cashBalanceWrap');
-            const balEl   = document.getElementById('cashBalanceDue');
-
+            const balWrap    = document.getElementById('cashBalanceWrap');
+            const balEl      = document.getElementById('cashBalanceDue');
             if (tendered >= grand && grand > 0) {
-                const change = tendered - grand;
                 if (changeWrap) changeWrap.style.display = 'block';
-                if (changeEl)   changeEl.value = change.toFixed(2);
-                if (balWrap)    balWrap.style.display  = 'none';
+                if (changeEl)   changeEl.value = (tendered - grand).toFixed(2);
+                if (balWrap)    balWrap.style.display = 'none';
                 if (balEl)      balEl.value = '';
             } else {
                 if (changeWrap) changeWrap.style.display = 'none';
                 if (changeEl)   changeEl.value = '';
                 const bal = Math.max(0, grand - tendered);
-                if (balWrap) balWrap.style.display = (grand > 0) ? 'block' : 'none';
-                if (balEl)   balEl.value = bal > 0 ? bal.toFixed(2) : '';
-            }
-            updatePaymentStatusBadge();
-        }
-
-        function checkCardSufficiency() {
-            const grand  = getGrandTotal();
-            const amount = parseFloat(document.getElementById('cardAmount')?.value || 0);
-            const balWrap = document.getElementById('cardBalanceWrap');
-            const balEl   = document.getElementById('cardBalanceDue');
-            if (amount >= grand && grand > 0) {
-                if (balWrap) balWrap.style.display = 'none';
-                if (balEl)   balEl.value = '';
-            } else {
-                const bal = Math.max(0, grand - amount);
-                if (balWrap) balWrap.style.display = (grand > 0) ? 'block' : 'none';
+                if (balWrap) balWrap.style.display = grand > 0 ? 'block' : 'none';
                 if (balEl)   balEl.value = bal > 0 ? bal.toFixed(2) : '';
             }
             updatePaymentStatusBadge();
@@ -6145,44 +7197,34 @@ input[list] {
             const grand = getGrandTotal();
             let status, color, border, bg, iconClass, subText = '';
 
-            if (method === 'Credit') {
-                status    = 'Credit Transaction';
-                color     = '#6b21a8'; border = '#d8b4fe'; bg = '#f3e8ff';
+            if (method === 'Credit Account') {
+                status = 'Pending'; color = '#6b21a8'; border = '#d8b4fe'; bg = '#f3e8ff';
                 iconClass = 'fas fa-handshake';
-                subText   = 'Utang — Manager/Admin tagged. Full amount on credit.';
+                const sel = document.getElementById('creditCustomer');
+                const acct = (sel && sel.selectedIndex > 0)
+                    ? (sel.options[sel.selectedIndex].getAttribute('data-name') || 'Selected Account')
+                    : 'Credit Account';
+                subText = 'Charged to ' + acct + '. Full amount on credit.';
             } else {
-                let amountPaid = 0;
-                if (method === 'Cash') {
-                    amountPaid = parseFloat(document.getElementById('amountTendered')?.value || 0);
-                } else {
-                    amountPaid = parseFloat(document.getElementById('cardAmount')?.value || 0);
-                }
-
+                const amountPaid = _getAmountPaid(method);
                 if (amountPaid <= 0 || grand === 0) {
-                    status    = 'Pending Payment';
-                    color     = '#9a3412'; border = '#fed7aa'; bg = '#ffedd5';
+                    status = 'Pending'; color = '#9a3412'; border = '#fed7aa'; bg = '#ffedd5';
                     iconClass = 'fas fa-clock';
-                    subText   = grand > 0 ? 'No amount encoded. Balance due: \u20b1' + fmtNum(grand) : 'Enter cart items first.';
+                    subText = grand > 0 ? 'No amount encoded. Balance due: \u20b1' + fmtNum(grand) : 'Add items first.';
                 } else if (amountPaid < grand - 0.009) {
-                    const bal = grand - amountPaid;
-                    status    = 'Partial Payment';
-                    color     = '#92400e'; border = '#fde68a'; bg = '#fef9c3';
+                    status = 'Partially Paid'; color = '#92400e'; border = '#fde68a'; bg = '#fef9c3';
                     iconClass = 'fas fa-exclamation-circle';
-                    subText   = 'Downpayment \u20b1' + fmtNum(amountPaid) + ' \u2014 Balance due: \u20b1' + fmtNum(bal);
+                    subText = 'Paid \u20b1' + fmtNum(amountPaid) + ' \u2014 Balance: \u20b1' + fmtNum(grand - amountPaid);
                 } else {
-                    status    = 'Paid';
-                    color     = '#166534'; border = '#86efac'; bg = '#dcfce7';
+                    status = 'Paid'; color = '#166534'; border = '#86efac'; bg = '#dcfce7';
                     iconClass = 'fas fa-check-circle';
-                    if (method === 'Cash') {
-                        const change = amountPaid - grand;
-                        subText = change > 0.009 ? 'Change: \u20b1' + fmtNum(change) : 'Exact amount paid.';
-                    } else {
-                        subText = 'Full amount received via ' + method + '.';
-                    }
+                    subText = method === 'Cash'
+                        ? (amountPaid - grand > 0.009 ? 'Change: \u20b1' + fmtNum(amountPaid - grand) : 'Exact amount paid.')
+                        : 'Full amount received via ' + method + '.';
                 }
             }
 
-            wrap.style.display  = 'flex';
+            wrap.style.display = 'flex';
             wrap.style.background = bg;
             wrap.style.borderColor = border;
             if (icon) { icon.className = iconClass; icon.style.color = color; }
@@ -6199,9 +7241,12 @@ input[list] {
             const btn    = document.getElementById('checkoutBtn');
             const method = document.getElementById('paymentMethod')?.value || '';
             if (!btn) return;
-            btn.disabled = cart.length === 0 || !method;
+            let disabled = cart.length === 0 || !method;
+            if (method === 'Credit Account') {
+                if (!document.getElementById('creditCustomer')?.value) disabled = true;
+            }
+            btn.disabled = disabled;
         }
-
         // ── Submit transaction ────────────────────────────────────────────────
         async function submitMerchTxn() {
             if (cart.length === 0) { showTxnAlert('Cart is empty.', 'warning'); return; }
@@ -6211,11 +7256,7 @@ input[list] {
 
             const grand = getGrandTotal();
 
-            // Determine customer name source:
-            // Always read from the form where the staff encoded the customer.
-            // Job Order section → joFirstName / joLastName
-            // Merchandise-only → merchFirstName / merchLastName
-            // If both forms have names, Job Order takes priority (it has the required * field).
+            // ── Customer name ─────────────────────────────────────────────────
             const hasService = cart.some(i => i.item_type === 'service');
             let firstName, lastName;
             if (hasService) {
@@ -6225,51 +7266,51 @@ input[list] {
             } else {
                 firstName = (document.getElementById('merchFirstName')?.value || '').trim();
                 lastName  = (document.getElementById('merchLastName')?.value  || '').trim();
-                // Merchandise-only: name is optional (defaults to Walk-in Customer)
+                if (!firstName) { showTxnAlert('Please enter the customer\'s first name.', 'warning'); return; }
             }
 
-            // Payment validation — only hard-block Credit without an account
-            // Cash/Card/E-Wallet/E-Fuel Card allow partial (downpayment) or zero (pending)
-            if (method === 'Credit') {
-                const creditSel = document.getElementById('creditCustomer');
-                if (!creditSel?.value) { showTxnAlert('Please select a credit account.', 'warning'); return; }
+            // ── Payment validation ────────────────────────────────────────────
+            if (method === 'Credit Account') {
+                if (!document.getElementById('creditCustomer')?.value) {
+                    showTxnAlert('Please select a credit account.', 'warning'); return;
+                }
             }
 
-            // Build JO data if service in cart
+            // ── JO data ───────────────────────────────────────────────────────
             let joData = {};
             if (hasService) {
-                const mechSel = document.getElementById('joMechanic');
-                const mechOpt = mechSel?.options[mechSel.selectedIndex];
                 joData = {
-                    job_order_service:       (document.getElementById('joServiceTypeValue')?.value || '').trim(),
-                    job_order_description:   (document.getElementById('joNotes')?.value || '').trim(),
-                    job_order_vehicle_plate: (document.getElementById('joVehiclePlate')?.value || '').trim().toUpperCase(),
-                    job_order_vehicle_type:  (document.getElementById('joVehicleType')?.value || '').trim(),
-                    job_order_mechanic_id:   mechSel?.value ? parseInt(mechSel.value) : null,
-                    job_order_mechanic_name: mechOpt?.dataset?.name || '',
-                    job_order_contact:       (document.getElementById('joContactNumber')?.value || '').trim(),
+                    job_order_service:            (document.getElementById('joServiceTypeValue')?.value || '').trim(),
+                    job_order_description:        (document.getElementById('joNotes')?.value || '').trim(),
+                    job_order_vehicle_plate:      (document.getElementById('joVehiclePlate')?.value || '').trim().toUpperCase(),
+                    job_order_vehicle_type:       (document.getElementById('joVehicleType')?.value || '').trim(),
+                    job_order_mechanic_id:        parseInt(document.getElementById('joMechanicId')?.value || 0) || null,
+                    job_order_mechanic_name:      (document.getElementById('joMechanicName')?.value || '').trim(),
+                    job_order_contact:            (document.getElementById('joContactNumber')?.value || '').trim(),
+                    job_order_estimated_duration: parseInt(document.getElementById('joEstimatedDuration')?.value || 0) || null,
                 };
             }
 
-            // Compute amount_paid + derived payment_status for payload
-            let amountPaid = 0;
-            if (method === 'Cash') {
-                amountPaid = parseFloat(document.getElementById('amountTendered')?.value || 0);
-            } else if (['Card','E-Wallet','E-Fuel Card','Fleet Card'].includes(method)) {
-                amountPaid = parseFloat(document.getElementById('cardAmount')?.value || 0);
-            }
+            // ── Amount paid & payment status ──────────────────────────────────
+            const amountPaid = _getAmountPaid(method);
             let paymentStatus;
-            if (method === 'Credit') {
-                paymentStatus = 'Credit Transaction';
+            if (method === 'Credit Account') {
+                paymentStatus = 'Pending';
             } else if (amountPaid <= 0) {
-                paymentStatus = 'Pending Payment';
+                paymentStatus = 'Pending';
             } else if (amountPaid < grand - 0.009) {
-                paymentStatus = 'Partial Payment';
+                paymentStatus = 'Partially Paid';
             } else {
                 paymentStatus = 'Paid';
             }
-            const balanceDue = (paymentStatus === 'Credit Transaction') ? grand
-                             : (paymentStatus === 'Paid' ? 0 : Math.max(0, grand - amountPaid));
+            const balanceDue = method === 'Credit Account' ? grand
+                : (paymentStatus === 'Paid' ? 0 : Math.max(0, grand - amountPaid));
+
+            // ── Build payload ─────────────────────────────────────────────────
+            const isCard    = method === 'Credit Card' || method === 'Debit Card';
+            const isEwallet = method === 'GCash' || method === 'Maya';
+            const isFleet   = method === 'Petron Fleet Card';
+            const isCredit  = method === 'Credit Account';
 
             const payload = {
                 action:              'create_transaction',
@@ -6279,15 +7320,32 @@ input[list] {
                 payment_method:      method,
                 amount_paid:         amountPaid > 0 ? amountPaid : null,
                 amount_tendered:     method === 'Cash' ? (amountPaid > 0 ? amountPaid : null) : null,
-                change_amount:       (method === 'Cash' && amountPaid >= grand) ? parseFloat((amountPaid - grand).toFixed(2)) : null,
+                change_amount:       method === 'Cash' && amountPaid >= grand ? parseFloat((amountPaid - grand).toFixed(2)) : null,
                 balance_due:         balanceDue > 0 ? parseFloat(balanceDue.toFixed(2)) : null,
                 payment_status:      paymentStatus,
-                card_reference:      document.getElementById('refNumber')?.value || null,
-                card_type:           method === 'Card' ? 'Card' : null,
-                ewallet_reference:   method === 'E-Wallet' ? (document.getElementById('refNumber')?.value || null) : null,
-                ewallet_provider:    method === 'E-Wallet' ? 'E-Wallet' : null,
-                efuel_card_number:   method === 'E-Fuel Card' ? (document.getElementById('refNumber')?.value || null) : null,
-                credit_customer_id:  method === 'Credit' ? (parseInt(document.getElementById('creditCustomer')?.value) || null) : null,
+
+                // Card fields
+                card_type:           isCard ? (document.getElementById(method === 'Credit Card' ? 'ccType' : 'dcType')?.value || null) : null,
+                card_last_four:      method === 'Credit Card' ? (document.getElementById('ccLastFour')?.value || null) : null,
+                card_reference:      method === 'Credit Card' ? (document.getElementById('ccRefNumber')?.value || null)
+                                   : method === 'Debit Card'  ? (document.getElementById('dcRefNumber')?.value || null) : null,
+
+                // E-Wallet fields (GCash / Maya)
+                ewallet_provider:    isEwallet ? method : null,
+                ewallet_reference:   isEwallet ? (document.getElementById('ewRefNumber')?.value || null) : null,
+
+                // Fleet Card fields
+                fleet_card_number:   isFleet ? (document.getElementById('fcNumber')?.value || null) : null,
+                fleet_company_name:  isFleet ? (document.getElementById('fcCompanyName')?.value || null) : null,
+                fleet_auth_number:   isFleet ? (document.getElementById('fcAuthNumber')?.value || null) : null,
+
+                // Credit Account fields
+                credit_customer_id:    isCredit ? (parseInt(document.getElementById('creditCustomer')?.value) || null) : null,
+                credit_company_name:   isCredit ? (document.getElementById('creditCompanyName')?.value || null) : null,
+                credit_account_number: isCredit ? (document.getElementById('creditAccountNumber')?.value || null) : null,
+                credit_po_number:      isCredit ? (document.getElementById('creditPoNumber')?.value || null) : null,
+                credit_due_date:       isCredit ? (document.getElementById('creditDueDate')?.value || null) : null,
+
                 items: cart.map(i => ({
                     item_type:    i.item_type,
                     product_id:   i.product_id,
@@ -6322,7 +7380,7 @@ input[list] {
                     resetMerchandiseForm();
                     // Reset JO fields
                     ['joFirstName','joLastName','joContactNumber','joVehiclePlate',
-                     'joServicePrice','joNotes'].forEach(id => {
+                     'joServicePrice','joNotes','joEstimatedDuration'].forEach(id => {
                         const el = document.getElementById(id);
                         if (el) el.value = '';
                     });
@@ -6331,9 +7389,15 @@ input[list] {
                     if (joSvcInput) joSvcInput.value = '';
                     if (joSvcHidden) joSvcHidden.value = '';
                     const joVehicleSel = document.getElementById('joVehicleType');
-                    if (joVehicleSel) joVehicleSel.selectedIndex = 0;
+                    if (joVehicleSel) joVehicleSel.value = '';
+                    // Reset mechanic typeahead
                     const joMech = document.getElementById('joMechanic');
-                    if (joMech) joMech.selectedIndex = 0;
+                    if (joMech) joMech.value = '';
+                    const joMechId = document.getElementById('joMechanicId');
+                    if (joMechId) joMechId.value = '';
+                    const joMechNm = document.getElementById('joMechanicName');
+                    if (joMechNm) joMechNm.value = '';
+                    hideMechanicDropdown();
                     const notesWrap = document.getElementById('joServicePriceNotes');
                     if (notesWrap) notesWrap.style.display = 'none';
                     // Hide mechanic busy warning on reset
@@ -6506,18 +7570,7 @@ input[list] {
                 <button type="button" onclick="joResetFilters()" class="txn-btn secondary">
                     <i class="fas fa-times"></i> Clear
                 </button>
-                <!-- Export buttons -->
-                <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                    <a href="../backend/export_staff_transactions.php?type=job_orders&format=excel" class="txn-btn success">
-                        <i class="fas fa-file-excel"></i> Excel
-                    </a>
-                    <a href="../backend/export_staff_transactions.php?type=job_orders&format=csv" class="txn-btn primary">
-                        <i class="fas fa-file-csv"></i> CSV
-                    </a>
-                    <a href="staff_activity_report.php" class="txn-btn secondary" style="border-color:#6366f1;color:#6366f1 !important;">
-                        <i class="fas fa-clipboard-list"></i> Activity Log
-                    </a>
-                </div>
+
             </div>
         </div>
 
@@ -6593,7 +7646,7 @@ input[list] {
                 </div>
                 <?php else: ?>
                 <div style="overflow-x:auto;">
-                <table class="txn-table" id="joUnifiedTable" style="table-layout:auto;word-wrap:break-word;width:100%;">
+                <table class="txn-table" id="joUnifiedTable" style="table-layout:fixed;word-wrap:break-word;width:100%;">
                     <colgroup>
                         <col style="width:8%;"><!-- JO Number -->
                         <col style="width:12%;"><!-- Customer -->
@@ -6642,17 +7695,17 @@ input[list] {
                             $wf_color='#d97706'; $wf_label='PENDING VALIDATION'; $row_filter='pending';
                         }
 
-                        // Payment badge and label mapping (plain text style)
+                        // Payment badge — supports both new and legacy status values
                         if ($pay_status === 'Paid') {
                             $pay_color='#16a34a'; $pay_label='PAID';
-                        } elseif ($pay_status === 'Partial') {
-                            $pay_color='#d97706'; $pay_label='DOWNPAYMENT';
-                        } elseif ($pay_status === 'Unpaid') {
-                            $pay_color='#dc2626'; $pay_label='UNPAID';
-                        } elseif ($pay_status === 'Credit' || $pay_status === 'Receivables/Credit') {
-                            $pay_color='#7c3aed'; $pay_label='RECEIVABLES/CREDIT';
+                        } elseif ($pay_status === 'Partially Paid' || $pay_status === 'Partial Payment' || $pay_status === 'Partial') {
+                            $pay_color='#d97706'; $pay_label='PARTIALLY PAID';
+                        } elseif ($pay_status === 'Pending' || $pay_status === 'Pending Payment' || $pay_status === 'Unpaid') {
+                            $pay_color='#ea580c'; $pay_label='PENDING';
+                        } elseif ($pay_status === 'Credit Account' || $pay_status === 'Credit Transaction' || $pay_status === 'Credit' || $pay_status === 'Receivables/Credit') {
+                            $pay_color='#7c3aed'; $pay_label='CREDIT';
                         } else {
-                            $pay_color='#ea580c'; $pay_label='PENDING PAYMENT';
+                            $pay_color='#ea580c'; $pay_label='PENDING';
                         }
 
                         // Parts/items
@@ -6805,7 +7858,8 @@ input[list] {
                                     'balance' => $jo_balance,
                                     'remarks' => $remarks,
                                     'created_at' => $job['created_at'],
-                                    'source' => $job['_source'] ?? 'job_orders'
+                                    'source' => $job['_source'] ?? 'job_orders',
+                                    'estimated_duration' => (int)($job['estimated_duration'] ?? 0)
                                 ]);
                             ?>
                             <div style="display:flex;flex-direction:column;gap:4px;">
@@ -6862,7 +7916,7 @@ input[list] {
                                                 onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',false,'tracker')"
                                                 class="txn-btn success">
                                             <i class="fas fa-money-bill-wave"></i>
-                                            <?= $pay_status === 'Partial Payment' ? 'Settle Balance' : 'Mark Paid' ?>
+                                            <?= in_array($pay_status, ['Partially Paid','Partial Payment','Partial']) ? 'Settle Balance' : 'Mark Paid' ?>
                                         </button>
                                     <?php endif; ?>
                                     
@@ -6901,7 +7955,7 @@ input[list] {
                                     </button>
                                     <?php endif; ?>
                                     
-                                    <?php if (in_array($pay_status, ['Partial Payment','Partial','Unpaid','Pending Payment','Pending']) && $wf_status === 'In Progress'): ?>
+                                    <?php if (in_array($pay_status, ['Partially Paid','Partial Payment','Partial','Unpaid','Pending Payment','Pending']) && $wf_status === 'In Progress'): ?>
                                     <!-- Downpayment option - GREEN -->
                                     <button type="button"
                                             onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',false,'tracker')"
@@ -7326,9 +8380,15 @@ input[list] {
                 b.classList.toggle('active', b.dataset.method === method);
             });
             document.getElementById('pmCashFields').style.display   = method === 'Cash'     ? 'block' : 'none';
-            document.getElementById('pmRefFields').style.display    = ['Card','E-Wallet','E-Fuel Card','Fleet Card'].includes(method) ? 'block' : 'none';
+            document.getElementById('pmRefFields').style.display    = ['Card','E-Wallet','E-Fuel Card','Petron E-Fuel','Fleet Card'].includes(method) ? 'block' : 'none';
             document.getElementById('pmCreditFields').style.display = method === 'Credit'   ? 'block' : 'none';
-            var labels = {'Card':'Card Reference No.','E-Wallet':'E-Wallet Ref No. (GCash/Maya)','E-Fuel Card':'E-Fuel Card ID','Fleet Card':'Fleet Card No.'};
+            var labels = {
+                'Card': 'Card Reference No.',
+                'E-Wallet': 'E-Wallet Ref No. (GCash/Maya)',
+                'E-Fuel Card': 'E-Fuel Card ID',
+                'Petron E-Fuel': 'E-Fuel Card ID',
+                'Fleet Card': 'Fleet Card No.'
+            };
             if (labels[method]) document.getElementById('pmRefLabel').textContent = labels[method];
             pmRecalc();
         }
@@ -7362,7 +8422,7 @@ input[list] {
             if (amount <= 0) { preview.style.display = 'none'; return; }
             var newBal  = Math.max(0, _pmBalance - amount);
             var isPaid  = newBal <= 0.009;
-            var status  = isPaid ? 'Paid' : 'Partial Payment';
+            var status  = isPaid ? 'Paid' : 'Partially Paid';
             var fmt = function(n){ return '₱'+parseFloat(n).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2}); };
             document.getElementById('pmPreviewBalance').textContent = fmt(newBal);
             document.getElementById('pmPreviewBalance').style.color = isPaid ? '#166534' : '#9a3412';
@@ -7439,6 +8499,10 @@ input[list] {
                 <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
                   <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Mechanic:</span>
                   <span id="viewJOMechanic" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Est. Duration:</span>
+                  <span id="viewJODuration" style="font-size:13px;color:#475569;">—</span>
                 </div>
                 <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
                   <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Workflow Status:</span>
@@ -7744,6 +8808,12 @@ input[list] {
                            style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
                                   color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
                   </div>
+                  <div>
+                    <label style="font-size:11px;color:#374151;font-weight:700;display:block;margin-bottom:4px;">Estimated Duration (mins)</label>
+                    <input type="number" name="estimated_duration" id="adjustJODuration" min="1" step="1"
+                           style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
+                                  color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
+                  </div>
                 </div>
               </div>
               <div style="padding:15px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end;">
@@ -7772,6 +8842,7 @@ input[list] {
             document.getElementById('viewJOService').textContent = joData.service_type || '—';
             document.getElementById('viewJOParts').textContent = joData.parts || '—';
             document.getElementById('viewJOMechanic').textContent = joData.mechanic || 'Unassigned';
+            document.getElementById('viewJODuration').textContent = joData.estimated_duration ? joData.estimated_duration + ' mins' : '—';
             document.getElementById('viewJOWorkflow').textContent = joData.workflow_status || '—';
             document.getElementById('viewJOPayment').textContent = joData.payment_status || '—';
             document.getElementById('viewJOTotal').textContent = fmt(joData.total || 0);
@@ -7831,6 +8902,7 @@ input[list] {
             document.getElementById('adjustJODescription').value = joData.service_description || '';
             document.getElementById('adjustJOMechanic').value = joData.mechanic || '';
             document.getElementById('adjustJOCost').value = joData.total || '';
+            document.getElementById('adjustJODuration').value = joData.estimated_duration || '';
             
             document.getElementById('adjustJobOrderModal').style.display = 'flex';
         }
@@ -7973,7 +9045,6 @@ input[list] {
                 var btn   = document.getElementById('innerTabBtn_' + t);
                 if (!panel || !btn) return;
                 var themeMap = {merchandise:'green', tracker:'darkblue'};
-                var themeMap = {merchandise:'green', tracker:'darkblue'};
                 var active = (t === tab);
                 panel.style.display = active ? 'block' : 'none';
                 btn.className = 'txn-subtab-btn ' + themeMap[t] + ' ' + (active ? 'active' : 'inactive');
@@ -7983,6 +9054,14 @@ input[list] {
             if (descElem) {
                 descElem.textContent = (tab === 'tracker') ? 'Monitor service progress and pending balances in real time.' : 'Merchandise sales, job order encoding, and status tracking.';
             }
+            
+            // Toggle header back button and tracker export buttons dynamically
+            var backBtn = document.getElementById('headerBackButton');
+            if (backBtn) backBtn.style.display = (tab === 'tracker') ? 'inline-flex' : 'none';
+            
+            var trackerExports = document.getElementById('trackerExportButtons');
+            if (trackerExports) trackerExports.style.display = (tab === 'tracker') ? 'flex' : 'none';
+
             var url = new URL(window.location.href);
             url.searchParams.set('active_tab', tab);
             history.replaceState(null, '', url.toString());
@@ -8013,242 +9092,11 @@ input[list] {
 
 
 
-        <?php /* ══════════════════════════════════════════════════════
-               SECTION: TRANSACTION HISTORY (formerly Shift History)
-        ══════════════════════════════════════════════════════ */ ?>
+        <?php /* SECTION: TRANSACTION HISTORY */ ?>
         <?php elseif ($section === 'history'): ?>
+        <?php require __DIR__ . '/staff_txn_history.php'; ?>
 
-        <div class="txn-section-header">
-            <div class="txn-section-title">
-                <div>
-                    <h1>Transaction History</h1>
-                    <p>Your transaction records</p>
-                </div>
-            </div>
-            <div>
-                <button type="button" onclick="window.location.href='staff_transactions_hub.php?section=merchandise&amp;active_tab=merchandise'" 
-                        class="txn-btn secondary" title="Back to Merchandise/Service Transaction">
-                    <i class="fas fa-arrow-left"></i> <span>Back</span>
-                </button>
-            </div>
-        </div>
-
-        <!-- ══ TRANSACTION HISTORY TABLE ══════════════════════════════════ -->
-        <?php
-        // Merge job orders + merchandise transactions for this staff member's history
-        $txn_history = [];
-
-        // Add merchandise transactions
-        if (!empty($recent_merch)) {
-            foreach ($recent_merch as $mt) {
-                $txn_type = 'Merchandise Only';
-                $jo_svc = $mt['job_order_service'] ?? '';
-                if (!empty($jo_svc) && trim($jo_svc) !== '') {
-                    $has_items = !empty($mt['products']) && $mt['products'] !== '—';
-                    $txn_type = $has_items ? 'Combined' : 'Job Order Only';
-                }
-                $txn_history[] = [
-                    'id'             => $mt['id'],
-                    'transaction_id' => $mt['transaction_id'] ?? ('#MT-'.$mt['id']),
-                    'type'           => $txn_type,
-                    'customer'       => $mt['customer_name'] ?? 'Walk-in Customer',
-                    'amount'         => (float)($mt['total_amount'] ?? 0),
-                    'payment_method' => $mt['payment_method'] ?? '—',
-                    'date'           => $mt['transaction_date'] ?? '',
-                    'status'         => $mt['status'] ?? '—',
-                    'source'         => 'merchandise',
-                ];
-            }
-        }
-
-        // Sort by date descending
-        usort($txn_history, function($a, $b) {
-            return strtotime($b['date']) - strtotime($a['date']);
-        });
-        ?>
-
-        <div class="txn-card" style="margin-top:20px;">
-            <div class="txn-card-header">
-                <i class="fas fa-history" style="color:#003d7a;"></i>
-                <h3>Transaction History</h3>
-            </div>
-            <div class="txn-card-body" style="padding:0;">
-
-                <!-- Filter Tabs -->
-                <div style="display:flex;gap:0;border-bottom:2px solid #e2e8f0;padding:0 16px;flex-wrap:wrap;">
-                    <button onclick="filterTxnHistory('all')" id="thTab_all"
-                            style="padding:10px 18px;font-size:12px;font-weight:700;border:none;background:none;
-                                   color:#003d7a;border-bottom:2px solid #003d7a;cursor:pointer;margin-bottom:-2px;">
-                        All
-                    </button>
-                    <button onclick="filterTxnHistory('job')" id="thTab_job"
-                            style="padding:10px 18px;font-size:12px;font-weight:600;border:none;background:none;
-                                   color:#64748b;border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-2px;">
-                        Job Order Only
-                    </button>
-                    <button onclick="filterTxnHistory('merch')" id="thTab_merch"
-                            style="padding:10px 18px;font-size:12px;font-weight:600;border:none;background:none;
-                                   color:#64748b;border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-2px;">
-                        Merchandise Only
-                    </button>
-                    <button onclick="filterTxnHistory('combined')" id="thTab_combined"
-                            style="padding:10px 18px;font-size:12px;font-weight:600;border:none;background:none;
-                                   color:#64748b;border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-2px;">
-                        Combined
-                    </button>
-                </div>
-
-                <?php if (empty($txn_history)): ?>
-                <div style="text-align:center;padding:48px;color:#94a3b8;">
-                    <i class="fas fa-receipt" style="font-size:32px;display:block;margin-bottom:10px;"></i>
-                    No transactions found for this period.
-                </div>
-                <?php else: ?>
-                <div style="overflow-x:auto;">
-                <table class="txn-table" style="width:100%;table-layout:fixed;word-wrap:break-word;">
-                    <thead>
-                        <tr>
-                            <th style="width:160px;">Transaction ID</th>
-                            <th style="width:160px;">Transaction Type</th>
-                            <th>Customer</th>
-                            <th style="width:120px;">Amount</th>
-                            <th style="width:130px;">Payment Method</th>
-                            <th style="width:150px;">Date</th>
-                        </tr>
-                    </thead>
-                    <tbody id="thTableBody">
-                    <?php foreach ($txn_history as $txn):
-                        $type_lower = strtolower($txn['type']);
-                        if (strpos($type_lower, 'combined') !== false) {
-                            $type_color = '#6f42c1'; $type_bg = '#f3e8ff'; $type_key = 'combined';
-                        } elseif (strpos($type_lower, 'job') !== false) {
-                            $type_color = '#b45309'; $type_bg = '#fffbeb'; $type_key = 'job';
-                        } else {
-                            $type_color = '#15803d'; $type_bg = '#f0fdf4'; $type_key = 'merch';
-                        }
-                        $date_fmt = '—';
-                        if (!empty($txn['date'])) {
-                            try { $date_fmt = (new DateTime($txn['date']))->format('M j, Y g:i A'); } catch (Exception $e) {}
-                        }
-                    ?>
-                    <tr class="th-row" data-type="<?php echo $type_key; ?>">
-                        <td style="font-size:11px;font-weight:700;color:#003d7a;font-family:monospace;">
-                            <?php echo htmlspecialchars($txn['transaction_id']); ?>
-                        </td>
-                        <td>
-                            <span style="display:inline-block;padding:3px 8px;border-radius:4px;
-                                         font-size:11px;font-weight:700;
-                                         background:<?php echo $type_bg; ?>;color:<?php echo $type_color; ?>;">
-                                <?php echo htmlspecialchars($txn['type']); ?>
-                            </span>
-                        </td>
-                        <td style="font-weight:600;"><?php echo htmlspecialchars($txn['customer']); ?></td>
-                        <td style="font-weight:700;color:#003d7a;">&#8369;<?php echo number_format($txn['amount'], 2); ?></td>
-                        <td><?php echo htmlspecialchars($txn['payment_method']); ?></td>
-                        <td style="font-size:11px;color:#64748b;"><?php echo $date_fmt; ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
-                </div>
-                <!-- Pagination -->
-                <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-top:1px solid #e2e8f0;">
-                    <div style="display:flex;align-items:center;gap:7px;">
-                        <label style="font-size:12px;white-space:nowrap;">Rows per page:</label>
-                        <select id="thPerPage" onchange="thChangePerPage()" class="pag-select">
-                            <option value="10" selected>10</option>
-                            <option value="20">20</option>
-                            <option value="30">30</option>
-                            <option value="50">50</option>
-                        </select>
-                    </div>
-                    <div style="display:flex;align-items:center;gap:8px;">
-                        <button id="thPrevBtn" onclick="thGoPage(thState.page-1)" class="pag-btn">
-                            <i class="fas fa-chevron-left"></i>
-                        </button>
-                        <span id="thPageLabel" style="font-size:13px;color:#495057;white-space:nowrap;">Page 1 of 1</span>
-                        <button id="thNextBtn" onclick="thGoPage(thState.page+1)" class="pag-btn">
-                            <i class="fas fa-chevron-right"></i>
-                        </button>
-                    </div>
-                </div>
-                <?php endif; ?>
-            </div>
-        </div>
-
-        <script>
-        (function(){
-            var thState = { page: 1, per_page: 10, filter: 'all' };
-            var allTabs = ['all','job','merch','combined'];
-
-            function thRender() {
-                var rows = Array.from(document.querySelectorAll('#thTableBody .th-row'));
-                // Apply filter
-                var filtered = rows.filter(function(r) {
-                    if (thState.filter === 'all') return true;
-                    return (r.dataset.type || '') === thState.filter;
-                });
-                // Hide all first
-                rows.forEach(function(r) { r.style.display = 'none'; });
-                // Paginate filtered
-                var perPage = thState.per_page;
-                var page    = thState.page;
-                var total   = filtered.length;
-                var totalPages = Math.max(1, Math.ceil(total / perPage));
-                if (page > totalPages) { thState.page = page = totalPages; }
-                var start = (page - 1) * perPage;
-                var end   = start + perPage;
-                filtered.forEach(function(r, i) {
-                    r.style.display = (i >= start && i < end) ? '' : 'none';
-                });
-                var lbl  = document.getElementById('thPageLabel');
-                var prev = document.getElementById('thPrevBtn');
-                var next = document.getElementById('thNextBtn');
-                if (lbl)  lbl.textContent = 'Page ' + page + ' of ' + totalPages;
-                if (prev) { prev.disabled = (page <= 1); prev.style.opacity = (page <= 1) ? '0.4' : '1'; }
-                if (next) { next.disabled = (page >= totalPages); next.style.opacity = (page >= totalPages) ? '0.4' : '1'; }
-            }
-
-            window.thState = thState;
-            window.thGoPage = function(p) {
-                var rows = Array.from(document.querySelectorAll('#thTableBody .th-row')).filter(function(r){
-                    return thState.filter === 'all' || r.dataset.type === thState.filter;
-                });
-                var totalPages = Math.max(1, Math.ceil(rows.length / thState.per_page));
-                if (p < 1 || p > totalPages) return;
-                thState.page = p;
-                thRender();
-            };
-            window.thChangePerPage = function() {
-                var sel = document.getElementById('thPerPage');
-                if (sel) thState.per_page = parseInt(sel.value);
-                thState.page = 1;
-                thRender();
-            };
-            window.filterTxnHistory = function(filter) {
-                thState.filter = filter;
-                thState.page   = 1;
-                // Update tab styling
-                allTabs.forEach(function(t) {
-                    var btn = document.getElementById('thTab_' + t);
-                    if (!btn) return;
-                    if (t === filter) {
-                        btn.style.color       = '#003d7a';
-                        btn.style.fontWeight  = '700';
-                        btn.style.borderBottom = '2px solid #003d7a';
-                    } else {
-                        btn.style.color       = '#64748b';
-                        btn.style.fontWeight  = '600';
-                        btn.style.borderBottom = '2px solid transparent';
-                    }
-                });
-                thRender();
-            };
-            thRender();
-        })();
-        </script>
-
-
+        <?php /* ══════════════════════════════════════════════════════ */ ?>
         <?php /* ══════════════════════════════════════════════════════ */ ?>
         <?php elseif ($section === 'fuel_history'): ?>
 

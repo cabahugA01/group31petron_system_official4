@@ -115,9 +115,49 @@ function handlePostRequest($pdo, $station_id, $role, $me) {
     }
 }
 
+function getTransactionDetails($pdo, $station_id, $role) {
+    $mt_id = (int)($_GET['mt_id'] ?? 0);
+    if (!$mt_id) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Missing transaction ID']);
+        return;
+    }
+    try {
+        $stmt = $pdo->prepare("
+            SELECT mt.*,
+                   COALESCE(u.name, u.username, 'Staff') AS encoder_name,
+                   COALESCE(s.name, 'Petron Station') AS station_name
+            FROM merchandise_transactions mt
+            LEFT JOIN users u ON u.id = mt.staff_id
+            LEFT JOIN stations s ON s.id = mt.station_id
+            WHERE mt.id = ? AND mt.station_id = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$mt_id, $station_id]);
+        $txn = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$txn) {
+            http_response_code(404);
+            echo json_encode(['error' => 'Transaction not found']);
+            return;
+        }
+        $items_stmt = $pdo->prepare("
+            SELECT *, COALESCE(item_type,'merchandise') AS item_type
+            FROM merchandise_transaction_items
+            WHERE transaction_id = ?
+            ORDER BY id ASC
+        ");
+        $items_stmt->execute([$txn['id']]);
+        $items = $items_stmt->fetchAll(PDO::FETCH_ASSOC);
+        echo json_encode(['success' => true, 'transaction' => $txn, 'items' => $items]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['error' => $e->getMessage()]);
+    }
+}
+
+
 function getMerchandiseProducts($pdo, $station_id) {
     try {
-        // Get ALL merchandise products from inventory_products, excluding fuel
         $stmt = $pdo->prepare("
             SELECT
                 ip.id AS product_id,
@@ -268,57 +308,8 @@ function getPendingTransactions($pdo, $station_id, $role) {
     }
 }
 
-function getTransactionDetails($pdo, $station_id, $role) {
-    $transaction_id = $_GET['transaction_id'] ?? '';
-    
-    if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
-        http_response_code(403);
-        echo json_encode(['error' => 'Access denied']);
-        return;
-    }
-    
-    try {
-        $stmt = $pdo->prepare("
-            SELECT 
-                mt.*,
-                u.name AS staff_name,
-                c.name AS customer_name
-            FROM merchandise_transactions mt
-            LEFT JOIN users u ON mt.staff_id = u.id
-            LEFT JOIN customers c ON mt.credit_customer_id = c.id
-            WHERE mt.id = ? AND mt.station_id = ?
-        ");
-        $stmt->execute([$transaction_id, $station_id]);
-        $transaction = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$transaction) {
-            http_response_code(404);
-            echo json_encode(['error' => 'Transaction not found']);
-            return;
-        }
-        
-        // Get transaction items
-        $stmt = $pdo->prepare("
-            SELECT 
-                mti.*,
-                ip.product_name,
-                ip.category,
-                ip.size
-            FROM merchandise_transaction_items mti
-            LEFT JOIN inventory_products ip ON mti.product_id = ip.id
-            WHERE mti.transaction_id = ?
-        ");
-        $stmt->execute([$transaction_id]);
-        $transaction['items'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        echo json_encode([
-            'success' => true,
-            'transaction' => $transaction
-        ]);
-    } catch (Exception $e) {
-        throw new Exception('Error fetching transaction details: ' . $e->getMessage());
-    }
-}
+
+
 
 function getPaymentMethods($pdo) {
     try {
@@ -410,9 +401,18 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
         'change_amount'         => 'DECIMAL(10,2) NULL',
         'card_reference'        => 'VARCHAR(100) NULL',
         'card_type'             => 'VARCHAR(50) NULL',
+        'card_last_four'        => 'VARCHAR(4) NULL',
         'ewallet_reference'     => 'VARCHAR(100) NULL',
         'ewallet_provider'      => 'VARCHAR(50) NULL',
         'efuel_card_number'     => 'VARCHAR(50) NULL',
+        'efuel_reference'       => 'VARCHAR(100) NULL',
+        'fleet_card_number'     => 'VARCHAR(50) NULL',
+        'fleet_company_name'    => 'VARCHAR(255) NULL',
+        'fleet_auth_number'     => 'VARCHAR(50) NULL',
+        'credit_company_name'   => 'VARCHAR(255) NULL',
+        'credit_account_number' => 'VARCHAR(100) NULL',
+        'credit_po_number'      => 'VARCHAR(50) NULL',
+        'credit_due_date'       => 'DATE NULL',
         'remarks'               => 'TEXT NULL',
         'validation_status'     => "VARCHAR(20) NOT NULL DEFAULT 'Official'",
         'validated_by'          => 'INT NULL',
@@ -421,7 +421,7 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
         'adjustment_reason'     => 'TEXT NULL',
         'updated_at'            => 'DATETIME NULL',
         // ── Payment and workflow tracking ─────────────────────────────────────
-        'payment_status'        => "VARCHAR(30) NOT NULL DEFAULT 'Pending Payment'",
+        'payment_status'        => "VARCHAR(30) NOT NULL DEFAULT 'Pending'",
         'workflow_status'       => "VARCHAR(20) NOT NULL DEFAULT 'Pending'",
         'amount_paid'           => 'DECIMAL(10,2) NULL',
         'balance_due'           => 'DECIMAL(10,2) NULL',
@@ -546,18 +546,16 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
     $amount_paid = floatval($data['amount_paid'] ?? $data['amount_tendered'] ?? 0);
 
     // ── Determine payment_status based on amount vs total ─────────────────────
-    // Credit (Utang) is a special case — always Credit Transaction
-    // For Cash/Card/E-Wallet/E-Fuel Card:
-    //   amount_paid = 0          → Pending Payment
-    //   0 < amount_paid < total  → Partial Payment
-    //   amount_paid >= total     → Paid
-    if ($payment_method === 'Credit') {
-        $resolved_payment_status = 'Credit Transaction';
+    // Accept both 'Credit Account' (new) and 'Credit' (legacy) as credit method
+    $is_credit_account = in_array($payment_method, ['Credit Account', 'Credit'], true);
+
+    if ($is_credit_account) {
+        $resolved_payment_status = 'Pending';
         // Credit requires a customer account
         $credit_customer_id = intval($data['credit_customer_id'] ?? 0);
         if (!$credit_customer_id) {
             http_response_code(400);
-            echo json_encode(['error' => 'A credit account must be selected for Credit (Utang) transactions.']);
+            echo json_encode(['error' => 'A credit account must be selected for Credit Account transactions.']);
             return;
         }
         // Check credit limit and customer status
@@ -587,13 +585,12 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
         }
         $balance_due = $total_amount; // full amount is on credit
     } else {
-        // Cash / Card / E-Wallet / E-Fuel Card
+        // Cash / Credit Card / Debit Card / GCash / Maya / Petron Fleet Card
         if ($amount_paid <= 0) {
-            $resolved_payment_status = 'Pending Payment';
+            $resolved_payment_status = 'Pending';
             $balance_due = $total_amount;
         } elseif ($amount_paid < $total_amount - 0.009) {
-            // Partial — round tolerance of 1 cent
-            $resolved_payment_status = 'Partial Payment';
+            $resolved_payment_status = 'Partially Paid';
             $balance_due = round($total_amount - $amount_paid, 2);
         } else {
             $resolved_payment_status = 'Paid';
@@ -784,13 +781,22 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             'change_amount'         => $data['change_amount'] ?? null,
             'card_reference'        => $data['card_reference'] ?? null,
             'card_type'             => $data['card_type'] ?? null,
+            'card_last_four'        => $data['card_last_four'] ?? null,
             'ewallet_reference'     => $data['ewallet_reference'] ?? null,
             'ewallet_provider'      => $data['ewallet_provider'] ?? null,
-            'efuel_card_number'          => $data['efuel_card_number'] ?? null,
+            'efuel_card_number'     => $data['efuel_card_number'] ?? null,
+            'efuel_reference'       => $data['efuel_reference'] ?? null,
+            'fleet_card_number'     => $data['fleet_card_number'] ?? null,
+            'fleet_company_name'    => $data['fleet_company_name'] ?? null,
+            'fleet_auth_number'     => $data['fleet_auth_number'] ?? null,
+            'credit_company_name'   => $data['credit_company_name'] ?? null,
+            'credit_account_number' => $data['credit_account_number'] ?? null,
+            'credit_po_number'      => $data['credit_po_number'] ?? null,
+            'credit_due_date'       => !empty($data['credit_due_date']) ? $data['credit_due_date'] : null,
             // ── Payment tracking fields ──────────────────────────────────────────
             'amount_paid'           => $amount_paid > 0 ? $amount_paid : null,
             'balance_due'           => $balance_due > 0 ? $balance_due : null,
-            // payment_status: Paid / Partial Payment / Pending Payment / Credit Transaction
+            // payment_status: Paid / Partially Paid / Pending
             'payment_status'        => $resolved_payment_status,
             // Workflow status tracks service progress only; transaction validity is official on save.
             'workflow_status'       => $has_service_item ? 'Pending' : 'Completed',

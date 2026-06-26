@@ -1,0 +1,85 @@
+<?php
+/**
+ * Get Pending Master Data Requests Count
+ * 
+ * Returns the count of pending master data requests for badge display
+ * Can be used in sidebar menu or dashboard widgets
+ */
+
+function get_pending_master_data_requests_count($pdo) {
+    try {
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) 
+            FROM master_data_requests 
+            WHERE status = 'pending'
+        ");
+        $stmt->execute();
+        return (int)$stmt->fetchColumn();
+    } catch (PDOException $e) {
+        error_log("Error fetching pending requests count: " . $e->getMessage());
+        return 0;
+    }
+}
+
+/**
+ * Get Pending Requests Count by Type
+ * 
+ * @param PDO $pdo
+ * @param string $type - 'vehicle_type', 'service_type', or 'product'
+ * @return int
+ */
+function get_pending_requests_by_type($pdo, $type) {
+    try {
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) 
+            FROM master_data_requests 
+            WHERE status = 'pending' 
+            AND request_type = :type
+        ");
+        $stmt->execute([':type' => $type]);
+        return (int)$stmt->fetchColumn();
+    } catch (PDOException $e) {
+        error_log("Error fetching pending requests by type: " . $e->getMessage());
+        return 0;
+    }
+}
+
+/**
+ * Get Recent Requests for Dashboard Widget
+ * 
+ * @param PDO $pdo
+ * @param int $limit
+ * @return array
+ */
+function get_recent_master_data_requests($pdo, $limit = 5) {
+    try {
+        $stmt = $pdo->prepare("
+            SELECT 
+                r.id,
+                r.request_type,
+                r.request_data,
+                r.status,
+                r.created_at,
+                CONCAT(u.first_name, ' ', u.last_name) as requester_name
+            FROM master_data_requests r
+            LEFT JOIN users u ON r.requested_by = u.id
+            WHERE r.status = 'pending'
+            ORDER BY r.created_at DESC
+            LIMIT :limit
+        ");
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        $requests = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Decode JSON data
+        foreach ($requests as &$req) {
+            $req['request_data'] = json_decode($req['request_data'], true);
+        }
+        
+        return $requests;
+    } catch (PDOException $e) {
+        error_log("Error fetching recent requests: " . $e->getMessage());
+        return [];
+    }
+}

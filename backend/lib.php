@@ -79,6 +79,48 @@ function role_key($role){
   return 'staff';
 }
 
+/**
+ * Get shift time range label based on a timestamp or time string
+ * Returns: "6:00 AM - 2:00 PM", "2:00 PM - 12:00 AM", or "12:00 AM - 6:00 AM"
+ * 
+ * @param string|int $datetime DateTime string or Unix timestamp
+ * @return string Shift time range label
+ */
+function get_shift_label($datetime) {
+    $time = is_numeric($datetime) ? date('H:i:s', $datetime) : date('H:i:s', strtotime($datetime));
+    $hour = (int)substr($time, 0, 2);
+    
+    // Shift 1: 6:00 AM - 2:00 PM (06:00 - 13:59)
+    if ($hour >= 6 && $hour < 14) {
+        return '6:00 AM - 2:00 PM';
+    }
+    // Shift 2: 2:00 PM - 12:00 AM (14:00 - 23:59)
+    elseif ($hour >= 14 && $hour <= 23) {
+        return '2:00 PM - 12:00 AM';
+    }
+    // Night Shift: 12:00 AM - 6:00 AM (00:00 - 05:59)
+    else {
+        return '12:00 AM - 6:00 AM';
+    }
+}
+
+/**
+ * SQL CASE statement for determining shift based on time column
+ * Use this in SQL queries to auto-assign shift labels
+ * 
+ * @param string $time_column The datetime/time column name
+ * @return string SQL CASE statement
+ */
+function get_shift_sql_case($time_column) {
+    return "CASE
+        WHEN TIME($time_column) >= '06:00:00' AND TIME($time_column) < '14:00:00' 
+            THEN '6:00 AM - 2:00 PM'
+        WHEN TIME($time_column) >= '14:00:00' AND TIME($time_column) <= '23:59:59'
+            THEN '2:00 PM - 12:00 AM'
+        ELSE '12:00 AM - 6:00 AM'
+    END";
+}
+
 // ── Module Configuration Helpers ─────────────────────────────
 // Maps module_key → page_id values that belong to that module.
 // Used by sidebar filtering and page-level gate checks.

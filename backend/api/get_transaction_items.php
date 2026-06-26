@@ -56,10 +56,12 @@ try {
         exit;
     }
 
-    // Fetch items
+    // Fetch items (include id, item_type, product_id for adjustment modal)
     $stmt2 = $pdo->prepare("
-        SELECT mti.product_name, mti.category, mti.size_variant,
-               mti.quantity, mti.unit_price, mti.subtotal
+        SELECT mti.id, mti.product_name, mti.category, mti.size_variant,
+               mti.quantity, mti.unit_price, mti.subtotal,
+               COALESCE(mti.item_type,'merchandise') AS item_type,
+               COALESCE(mti.product_id,0) AS product_id
         FROM merchandise_transaction_items mti
         WHERE mti.transaction_id = ?
         ORDER BY mti.id ASC

@@ -35,11 +35,12 @@ $master_menu = [
     ]],
     
     // Inventory - Staff access / Manager has own sub-items via override below
+    // NOTE: Stock-In is NOT listed for staff. Inventory is updated automatically by the system
+    // after Manager approval — staff cannot manually perform stock-in encoding.
     ['id'=>'inventory','label'=>'Inventory','ico'=>'fas fa-warehouse','href'=>'staff_inventory_merchandise.php','permissions'=>['view_inventory','manage_inventory'],'station_specific'=>true,'sub_items'=>[
         ['id'=>'inv_merch',        'label'=>'Merchandise Inventory',  'href'=>'staff_inventory_merchandise.php',  'permissions'=>['view_inventory'], 'desc'=>'Manage merchandise items and monitor stock levels.'],
         ['id'=>'inv_fuel',         'label'=>'Fuel Inventory',         'href'=>'staff_inventory_fuel.php',         'permissions'=>['view_inventory'], 'desc'=>'Record fuel pump readings and deliveries with Batch ID.'],
         ['id'=>'inv_stock_request','label'=>'Stock Request',          'href'=>'staff_stock_requests.php',         'permissions'=>['view_inventory','manage_inventory'], 'desc'=>'View system-generated requests for low or out-of-stock items.'],
-        ['id'=>'staff_stock_in',   'label'=>'Stock-In',               'href'=>'staff_stock_in.php',               'permissions'=>['view_inventory','manage_inventory'], 'desc'=>'Encode actual deliveries received with Batch ID to update inventory.'],
         ['id'=>'inv_history',      'label'=>'Inventory History',      'href'=>'staff_inventory_history.php',      'permissions'=>['view_inventory'], 'desc'=>'Track the lifecycle of requests, deliveries, and stock updates.'],
     ]],
 
@@ -128,7 +129,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
     $staff_hidden_parent_items = ['staff', 'users', 'inventory_manager', 'admin_oversight', 'mgr_customers', 'manager_deliveries', 'product_management'];
     $staff_hidden_sub_items    = ['job_create', 'customer_linkage'];
     $admin_hidden_parent_items = ['stations', 'transactions', 'job_orders', 'fuel', 'customers', 'mgr_customers', 'inventory', 'inventory_manager', 'purchase_orders'];
-    $admin_hidden_sub_items = ['stock_requests', 'staff_stock_in']; // Hide staff stock requests and Stock-In encoding from admin
+    $admin_hidden_sub_items = ['stock_requests']; // Hide staff stock requests from admin (staff_stock_in removed from all staff menus)
     $manager_hidden_sub_items = ['stock_requests', 'fuel_variance_report', 'fuel_reading_tracker', 'fuel_calibration_logs', 'fuel_stock_levels', 'fuel_variance_reports']; // Hide old fuel items from manager (replaced by new sub-menu)
     $manager_hidden_parent_items = ['purchase_orders', 'customers']; // Hide staff customers from manager - Manager now has Reports
     // Hide manager-only items from staff/admin
@@ -175,7 +176,6 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 'station_specific' => true,
                 'desc'             => 'Provide centralized oversight of transaction operations, ensuring transaction accuracy, compliance, and accountability throughout the system.',
                 'sub_items'        => [
-                    ['id' => 'admin_transaction_overview',     'label' => 'Transaction Overview',     'href' => 'admin_transaction_overview.php',         'ico' => 'fas fa-chart-line', 'permissions' => ['view_all_reports'], 'desc' => 'View transaction summaries, operational statistics, and overall transaction performance across the system.'],
                     ['id' => 'admin_all_transactions',         'label' => 'All Transactions',         'href' => 'admin_all_transactions.php',             'ico' => 'fas fa-list-alt',   'permissions' => ['view_all_reports'], 'desc' => 'Monitor and review all transaction records from all operational shifts and staff accounts.'],
                     ['id' => 'admin_transaction_adjustments',  'label' => 'Transaction Adjustments',  'href' => 'admin_transaction_adjustments.php',      'ico' => 'fas fa-sliders-h',  'permissions' => ['view_all_reports'], 'desc' => 'Review transaction modifications performed by managers and verify adjustment records.'],
                     ['id' => 'admin_voided_transactions',      'label' => 'Voided Transactions',      'href' => 'admin_voided_transactions.php',          'ico' => 'fas fa-ban',        'permissions' => ['view_all_reports'], 'desc' => 'Review cancelled transactions and monitor void activities for compliance and operational control.'],
@@ -217,13 +217,20 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                     ['id' => 'admin_inventory_merchandise', 'label' => 'Merchandise Inventory', 'href' => 'admin_inventory_merchandise.php', 'ico' => 'fas fa-box', 'permissions' => ['view_all_reports'], 'desc' => 'Monitor merchandise stock, pricing, and stock alerts.'],
                     ['id' => 'admin_inventory_fuel', 'label' => 'Fuel Inventory', 'href' => 'admin_inventory_fuel.php', 'ico' => 'fas fa-gas-pump', 'permissions' => ['view_all_reports'], 'desc' => 'Monitor fuel levels and submit discrepancy corrections.'],
                     ['id' => 'admin_purchase_orders', 'label' => 'Purchase Orders Oversight', 'href' => 'admin_purchase_orders.php', 'ico' => 'fas fa-file-invoice-dollar', 'permissions' => ['view_all_reports', 'view_operational_reports'], 'desc' => 'Review, validate, approve/reject POs.'],
-                    ['id' => 'admin_stock_requests_monitor', 'label' => 'Stock Request Monitoring', 'href' => 'admin_stock_requests_monitor.php', 'ico' => 'fas fa-eye', 'permissions' => ['view_all_reports'], 'desc' => 'Monitor staff stock replenishment requests.'],
-                    ['id' => 'admin_stock_in_oversight', 'label' => 'Stock-In Oversight', 'href' => 'admin_stock_in_oversight.php', 'ico' => 'fas fa-clipboard-check', 'permissions' => ['view_all_reports'], 'desc' => 'Cross-check actual stock-in deliveries against POs.'],
-                    ['id' => 'admin_inventory_history', 'label' => 'Inventory History', 'href' => 'admin_inventory_history.php', 'ico' => 'fas fa-history', 'permissions' => ['view_all_reports'], 'desc' => 'Audit logs of pipeline changes and inventory movements.'],
-                    ['id' => 'admin_product_pricing', 'label' => 'Product & Pricing Overview', 'href' => 'admin_set_prices.php', 'ico' => 'fas fa-tags', 'permissions' => ['manage_system_settings', 'view_all_reports'], 'desc' => 'Consolidated product list, current prices, price change validation, inventory snapshot.'],
+                    ['id' => 'admin_inventory_history', 'label' => 'Inventory History', 'href' => 'admin_inventory_history.php', 'ico' => 'fas fa-history', 'permissions' => ['view_all_reports'], 'desc' => 'Full audit log of all fuel and merchandise inventory movements.'],
                 ],
             ],
-            // 8. Customers — Admin Oversight Module
+            // 8. Product & Pricing Overview — Standalone Admin Module
+            [
+                'id'          => 'admin_product_pricing',
+                'label'       => 'Product & Pricing Overview',
+                'ico'         => 'fas fa-tags',
+                'href'        => 'admin_set_prices.php',
+                'permissions' => ['manage_system_settings', 'view_all_reports'],
+                'station_specific' => true,
+                'desc'        => 'Consolidated product list, current prices, price change validation, inventory snapshot.',
+            ],
+            // 9. Customers — Admin Oversight Module
             [
                 'id'               => 'admin_customers',
                 'label'            => 'Customers',
@@ -436,7 +443,6 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 $filtered_item['label'] = 'Transactions';
                 $filtered_item['sub_items'] = [
                     ['id' => 'validated_transactions_manager', 'label' => 'All Transactions',        'href' => 'manager_validated_transactions.php',             'ico' => 'fas fa-check-double',    'permissions' => ['view_transactions','approve_transactions'], 'desc' => 'View and monitor all transactions encoded by staff across operational shifts.'],
-                    ['id' => 'manager_shift_transactions',     'label' => 'Shift Transactions',      'href' => 'transactions_shift.php',                        'ico' => 'fas fa-clock',           'permissions' => ['view_transactions','approve_transactions'], 'desc' => 'Track and compare transaction activities, sales performance, and collections per shift.'],
                     ['id' => 'manager_transaction_adjustments','label' => 'Transaction Adjustments', 'href' => 'manager_transaction_monitoring.php',             'ico' => 'fas fa-sliders-h',       'permissions' => ['view_transactions','approve_transactions'], 'desc' => 'Review and manage transaction corrections, modifications, and adjustment records.'],
                     ['id' => 'manager_voided_transactions',    'label' => 'Voided Transactions',     'href' => 'voided_transactions.php',                        'ico' => 'fas fa-ban',             'permissions' => ['view_transactions','approve_transactions'], 'desc' => 'Manage cancelled or invalid transactions with complete audit trail and inventory restoration.'],
                 ];
@@ -448,16 +454,38 @@ function filter_menu_by_permissions($menu_items, $user_role) {
             }
 
             if ($user_role === 'manager' && ($item['id'] ?? '') === 'inventory') {
-                $filtered_item['href'] = 'manager_inventory_merchandise.php';
-                $filtered_item['ico']  = 'fas fa-warehouse';
+                $filtered_item['label']    = 'Inventory';
+                $filtered_item['href']     = '#';
+                $filtered_item['ico']      = 'fas fa-boxes';
                 $filtered_item['sub_items'] = [
-                    ['id'=>'mgr_inv_merch',         'label'=>'Merchandise Inventory',    'href'=>'manager_inventory_merchandise.php',       'permissions'=>['manage_inventory','view_inventory'], 'desc'=>'Review and update merchandise pricing and product details.'],
-                    ['id'=>'mgr_inv_fuel',           'label'=>'Fuel Inventory',           'href'=>'manager_inventory_fuel.php',              'permissions'=>['manage_inventory','view_inventory','manage_fuel'], 'desc'=>'Set and adjust fuel pricing, monitor fuel stock levels.'],
-                    ['id'=>'mgr_inv_stock_request', 'label'=>'Stock Request Validation', 'href'=>'manager_inventory_stock_requests.php',    'permissions'=>['manage_inventory','view_inventory'], 'desc'=>'Validate staff-submitted stock requests and adjust quantities if needed.'],
-                    ['id'=>'mgr_inv_po_gen',        'label'=>'Purchase Orders','href'=>'manager_purchase_orders.php',             'permissions'=>['manage_inventory','view_inventory'], 'desc'=>'View the history of purchase orders approved by the Admin, including proposed prices.'],
-                    ['id'=>'mgr_del_validate',      'label'=>'Deliveries Validation',    'href'=>'manager_delivery_validation.php',         'permissions'=>['manage_inventory','view_inventory'], 'desc'=>'Check and validate deliveries against purchase orders, confirm Batch IDs and costs.'],
+                    ['id' => 'mgr_inv_merch',    'label' => 'Merchandise Inventory',  'href' => 'manager_inventory_merchandise.php',      'ico' => 'fas fa-box',              'permissions' => ['manage_inventory', 'view_inventory']],
+                    ['id' => 'mgr_inv_fuel',     'label' => 'Fuel Inventory',         'href' => 'manager_inventory_fuel.php',             'ico' => 'fas fa-gas-pump',         'permissions' => ['manage_inventory', 'view_inventory']],
+                    ['id' => 'mgr_stock_review', 'label' => 'Stock Request Review',   'href' => 'manager_stock_request_review.php',       'ico' => 'fas fa-clipboard-check',  'permissions' => ['manage_inventory', 'view_inventory']],
+                    ['id' => 'mgr_inv_movement', 'label' => 'Inventory Movement History', 'href' => 'manager_inventory_movement_history.php', 'ico' => 'fas fa-history',         'permissions' => ['manage_inventory', 'view_inventory']],
                 ];
                 $filtered_menu[] = $filtered_item;
+                
+                // Add standalone Product & Pricing Overview after Inventory
+                $filtered_menu[] = [
+                    'id' => 'mgr_product_pricing',
+                    'label' => 'Product & Pricing Overview',
+                    'ico' => 'fas fa-tags',
+                    'href' => 'manager_set_prices.php',
+                    'permissions' => ['manage_inventory', 'view_inventory'],
+                    'station_specific' => true,
+                    'desc' => 'View consolidated product list, current prices, and inventory snapshot.'
+                ];
+                
+                // Add standalone Master Data Requests after Product & Pricing
+                $filtered_menu[] = [
+                    'id' => 'mgr_master_data_requests',
+                    'label' => 'Master Data Requests',
+                    'ico' => 'fas fa-clipboard-check',
+                    'href' => 'master_data_requests.php',
+                    'permissions' => ['approve_transactions', 'manage_job_orders'],
+                    'station_specific' => true,
+                    'desc' => 'Review and approve staff requests for new vehicle types, service types, and products.'
+                ];
                 continue;
             }
 
@@ -491,7 +519,11 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 $filtered_item['label'] = 'Merchandise Deliveries Validation';
                 $filtered_item['ico']   = 'fas fa-truck-loading';
                 $filtered_item['href']  = 'manager_merchandise_deliveries.php';
-                $filtered_item['sub_items'] = [];
+                $filtered_item['sub_items'] = [
+                    ['id'=>'mgr_del_verify',  'label'=>'Verify Deliveries',  'href'=>'manager_merchandise_deliveries.php?tab=manage&action=verify',   'permissions'=>['manage_inventory','view_inventory'], 'desc'=>'Review and verify staff-encoded merchandise delivery receipts.'],
+                    ['id'=>'mgr_del_reject',  'label'=>'Reject Deliveries',  'href'=>'manager_merchandise_deliveries.php?tab=manage&action=reject',   'permissions'=>['manage_inventory','view_inventory'], 'desc'=>'Reject or return delivery records to staff for correction.'],
+                    ['id'=>'mgr_del_history', 'label'=>'Delivery History',   'href'=>'manager_merchandise_deliveries.php?tab=history',                'permissions'=>['manage_inventory','view_inventory'], 'desc'=>'View history of all verified, rejected, and resolved deliveries.'],
+                ];
                 $filtered_menu[] = $filtered_item;
                 continue;
             }
@@ -520,6 +552,11 @@ function filter_menu_by_permissions($menu_items, $user_role) {
 
             // Product Management is for Manager only — hide from Staff
             if ($user_role === 'staff' && ($item['id'] ?? '') === 'product_management') {
+                continue;
+            }
+
+            // Hide Product Management for Manager — replaced by standalone Product & Pricing Overview
+            if ($user_role === 'manager' && ($item['id'] ?? '') === 'product_management') {
                 continue;
             }
 

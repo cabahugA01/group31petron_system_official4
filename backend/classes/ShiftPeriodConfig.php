@@ -83,16 +83,24 @@ class ShiftPeriodConfig {
      * Get current shift based on current time
      */
     public function getCurrentShift(): ?array {
+        // Fixed schedule rules:
+        //   Shift 1 (first)  → 06:00:00 – 13:59:59  (6:00 AM – 2:00 PM)
+        //   Shift 2 (second) → 14:00:00 – 23:59:59  (2:00 PM – 12:00 MN)
+        //   Early morning (00:00 – 05:59) → Shift 2 (previous night still active)
         $current_time = date('H:i:s');
-        
+        $shift_key = ($current_time >= '06:00:00' && $current_time < '14:00:00') ? 'first' : 'second';
+
         foreach ($this->getShiftPeriods() as $period) {
-            if ($current_time >= $period['start_time'] && $current_time <= $period['end_time']) {
+            if ($period['shift_key'] === $shift_key) {
                 return $period;
             }
         }
-        
-        // If no current shift found, return first shift (for early morning hours)
+
+        // Fallback: return any active period (prefer second for night)
         $periods = $this->getShiftPeriods();
+        foreach (array_reverse($periods) as $p) {
+            if ($p['shift_key'] === $shift_key) return $p;
+        }
         return $periods[0] ?? null;
     }
     

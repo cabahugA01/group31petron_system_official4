@@ -347,12 +347,12 @@ try {
     while ($d <= $dend) {
         $date = $d->format('Y-m-d');
         
-        // Shift 1 boundaries
+        // Shift 1: 6:00 AM – 2:00 PM
         $s1_start = "$date 06:00:00";
-        $s1_end   = "$date 14:00:00";
-        // Shift 2 boundaries
+        $s1_end   = "$date 13:59:59";
+        // Shift 2: 2:00 PM – 12:00 Midnight
         $s2_start = "$date 14:00:00";
-        $s2_end   = "$date 22:00:00";
+        $s2_end   = "$date 23:59:59";
         
         // Shift 1 Sales
         $s1_fuel = (float) adm_val($pdo, "SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE station_id=? AND transaction_date BETWEEN ? AND ?", [$station_id, $s1_start, $s1_end]);

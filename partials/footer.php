@@ -281,8 +281,8 @@
 
     /* Clean Rows per page select dropdown */
     .rows-select {
-        background-color: #ffffff !important;
-        background: #ffffff !important;
+        background-color: transparent !important;
+        background: transparent !important;
         color: #333333 !important;
         border: 1px solid #cbd5e1 !important;
         outline: none !important;
@@ -633,6 +633,18 @@
             });
             
             var totalRows = visibleRows.length;
+            if (totalRows <= 10) {
+                container.innerHTML = '';
+                container.style.display = 'none';
+                allRows.forEach(function(row) {
+                    if (!row.classList.contains('no-paginate') && !row.classList.contains('search-hidden')) {
+                        row.style.display = '';
+                    }
+                });
+                return;
+            }
+            container.style.display = '';
+
             var totalPages = Math.ceil(totalRows / rowsPerPage) || 1;
             
             if (currentPage > totalPages) currentPage = totalPages;
@@ -664,7 +676,7 @@
             
             html += '<button class="cust-btn" style="padding:4px 8px;margin:2px;font-size:11px;background:#f1f5f9;color:#333;border:1px solid #ccc;border-radius:4px;cursor:pointer;" ' + (currentPage === totalPages ? 'disabled' : '') + ' onclick="setTablePage(\''+tableId+'\',' + (currentPage + 1) + ')">Next</button>';
             
-            var selectHtml = '<select class="rows-select" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:4px;font-size:11px;color:#333333;background:#ffffff;cursor:pointer;margin-right:12px;outline:none;">';
+            var selectHtml = '<select class="rows-select" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:4px;font-size:11px;color:#333333;background:transparent;cursor:pointer;margin-right:12px;outline:none;">';
             var options = [10, 20, 25, 50, 100];
             options.forEach(function(opt) {
                 var selectedAttr = (opt === rowsPerPage) ? 'selected' : '';

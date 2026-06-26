@@ -4,15 +4,9 @@ require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
 
-$me = current_user();
-$role = role_key($me['role'] ?? '');
-$station_id = user_station_id();
-
-// Admin/Owner only
-if (!in_array($role, ['admin', 'superadmin'])) {
-    header("Location: dashboard.php");
-    exit;
-}
+// Admin approval is deprecated; redirect to monitoring
+header("Location: admin_stock_requests_monitor.php");
+exit;
 
 $msg = '';
 

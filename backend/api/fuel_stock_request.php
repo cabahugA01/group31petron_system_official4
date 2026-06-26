@@ -36,7 +36,7 @@ try {
 
         // ── Staff: submit a fuel stock request ───────────────────────────────
         case 'create':
-            if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+            if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin'])) {
                 echo json_encode(['success' => false, 'message' => 'Access denied']); exit;
             }
             if ($method !== 'POST') {

@@ -521,196 +521,202 @@ Merchandise Inventory
                 </div>
                 <div style="padding: 20px;">
                     <form id="merchandise-form">
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Search Item</label>
-                                <div style="position: relative;">
-                                    <input type="text" id="item_name_search" 
-                                           class="form-input" 
-                                           placeholder="Type to search merchandise..." 
-                                           autocomplete="off">
-                                    <input type="hidden" id="item_sku" name="item_sku">
-                                    <div id="item_suggestions" style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #e9ecef; border-top: none; max-height: 200px; overflow-y: auto; z-index: 1000; display: none;"></div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Category <small style="color: #28a745;">(Auto-display)</small></label>
-                                <input type="text" name="category" id="category" 
-                                       class="form-input auto-pulled" readonly>
-                            </div>
-                        </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Size Variant <small style="color: #28a745;">(Auto-display)</small></label>
-                                <input type="text" name="size_variant" id="size_variant" 
-                                       class="form-input auto-pulled" readonly>
-                            </div>
-                            
-
-                            <div class="form-group">
-                                <label class="form-label">Quantity</label>
-                                <input type="number" name="quantity" id="quantity" 
-                                       class="form-input" min="1" value="1" onchange="computeMerchTransaction()" required>
-                            </div>
-                        </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Unit Price <small style="color: #28a745;">(Auto-pulled)</small></label>
-                                <input type="number" name="unit_price" id="unit_price" 
-                                       class="form-input auto-pulled" step="0.01" readonly>
-                            </div>
-                            
-
-                            <div class="form-group">
-                                <!-- Empty for balance -->
-                            </div>
-                        </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Payment Method</label>
-                                <select name="payment_method" id="payment_method_merch" class="form-input" required onchange="toggleCashFields()">
-                                    <option value="">Select payment method</option>
-                                    <option value="Cash">Cash</option>
-                                    <option value="Card">Card</option>
-                                    <option value="E-Wallet">E-Wallet</option>
-                                    <option value="Petron E-Fuel">Petron E-Fuel</option>
-                                    <option value="Fleet Card">Fleet Card</option>
-                                    <option value="Credit">Credit</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div class="form-row" id="cash_payment_fields" style="display: none;">
-                            <div class="form-group">
-                                <label class="form-label">Amount Tendered</label>
-                                <input type="number" name="amount_tendered" id="amount_tendered_merch" 
-                                       class="form-input" placeholder="Enter amount received" 
-                                       step="0.01" min="0" onchange="computeChange()">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Change</label>
-                                <input type="number" name="change_amount" id="change_amount_merch" 
-                                       class="form-input" placeholder="Auto-computed" readonly>
-                            </div>
-                        </div>
-
-                        <div class="form-row" id="card_payment_fields" style="display: none;">
-                            <div class="form-group">
-                                <label class="form-label">Card Reference Number</label>
-                                <input type="text" name="card_reference" id="card_reference_merch" 
-                                       class="form-input" placeholder="Enter card reference number">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Card Type</label>
-                                <select name="card_type" id="card_type_merch" class="form-input">
-                                    <option value="">Select card type</option>
-                                    <option value="Credit Card">Credit Card</option>
-                                    <option value="Debit Card">Debit Card</option>
-                                    <option value="Gift Card">Gift Card</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div class="form-row" id="ewallet_payment_fields" style="display: none;">
-                            <div class="form-group">
-                                <label class="form-label">E-Wallet Reference</label>
-                                <input type="text" name="ewallet_reference" id="ewallet_reference_merch" 
-                                       class="form-input" placeholder="Enter e-wallet reference">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">E-Wallet Provider</label>
-                                <select name="ewallet_provider" id="ewallet_provider_merch" class="form-input">
-                                    <option value="">Select provider</option>
-                                    <option value="GCash">GCash</option>
-                                    <option value="PayMaya">PayMaya</option>
-                                    <option value="Coins">Coins</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div class="form-row" id="efuel_payment_fields" style="display: none;">
-                            <div class="form-group">
-                                <label class="form-label">E-Fuel Card Number</label>
-                                <input type="text" name="efuel_card_number" id="efuel_card_number_merch" 
-                                       class="form-input" placeholder="Enter e-fuel card number">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Card Balance</label>
-                                <input type="number" name="efuel_card_balance" id="efuel_card_balance_merch" 
-                                       class="form-input" placeholder="Card balance" readonly>
-                            </div>
-                        </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Customer Name</label>
-                                <input type="text" name="customer_name" id="customer_name_merch" 
-                                       class="form-input" placeholder="Enter customer name" required>
-                            </div>
-
-                            <div class="form-group">
-                                <label class="form-label">Credit Customer ID (if applicable)</label>
-                                <input type="text" name="credit_customer_id" id="credit_customer_id_merch" 
-                                       class="form-input" placeholder="Enter credit customer ID">
-                            </div>
-                        </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Remarks</label>
-                                <input type="text" name="remarks" id="remarks" 
-                                       class="form-input" placeholder="Optional remarks">
-                            </div>
-
-                            <div class="form-group">
-                                <label class="form-label">&nbsp;</label>
-                                <button type="button" class="btn-primary" onclick="addToCart()" style="width: 100%;">
-                                    <i class="fas fa-plus"></i> Add to Cart
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- Cart Section -->
-                        <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">
-                            <h3 style="margin: 0 0 20px 0; color: #003d7a; display: flex; align-items: center; gap: 10px;">
-                                <i class="fas fa-shopping-cart"></i>
-                                Shopping Cart
-                                <span id="cart-count" style="background: #003d7a; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem;">0</span>
-                            </h3>
-
-                            <div id="cart-items" style="min-height: 100px; margin-bottom: 20px;">
-                                <div style="text-align: center; color: #666; padding: 30px;">
-                                    <i class="fas fa-shopping-cart" style="font-size: 48px; margin-bottom: 15px; display: block; opacity: 0.3;"></i>
-                                    <p>Your cart is empty</p>
-                                </div>
-                            </div>
-
-                            <div id="cart-summary" style="display: none;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 15px; background: white; border-radius: 6px; border-left: 4px solid #003d7a;">
-                                    <div>
-                                        <strong style="color: #003d7a;">Grand Total:</strong>
-                                        <span id="grand_total" style="font-size: 1.2rem; color: #003d7a;">PHP 0.00</span>
+                        <div class="merchandise-container">
+                            <div class="merchandise-form-section">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label">Search Item</label>
+                                        <div style="position: relative;">
+                                            <input type="text" id="item_name_search" 
+                                                   class="form-input" 
+                                                   placeholder="Type to search merchandise..." 
+                                                   autocomplete="off">
+                                            <input type="hidden" id="item_sku" name="item_sku">
+                                            <div id="item_suggestions" style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #e9ecef; border-top: none; max-height: 200px; overflow-y: auto; z-index: 1000; display: none;"></div>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            <div id="cart-actions" style="display: none;">
-                                <div style="display: flex; gap: 10px;">
-                                    <button type="button" class="btn-secondary" onclick="clearCart()" style="flex: 1;">
-                                        <i class="fas fa-trash"></i> Clear Cart
-                                    </button>
-                                    <button type="button" class="btn-primary" onclick="printReceipt()" style="flex: 2;">
-                                        <i class="fas fa-cash-register"></i> Process Transaction
-                                    </button>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label">Category <small style="color: #28a745;">(Auto-display)</small></label>
+                                        <input type="text" name="category" id="category" 
+                                               class="form-input auto-pulled" readonly>
+                                    </div>
                                 </div>
-                            </div>
-                        </div>
+
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label">Size Variant <small style="color: #28a745;">(Auto-display)</small></label>
+                                        <input type="text" name="size_variant" id="size_variant" 
+                                               class="form-input auto-pulled" readonly>
+                                    </div>
+                                    
+
+                                    <div class="form-group">
+                                        <label class="form-label">Quantity</label>
+                                        <input type="number" name="quantity" id="quantity" 
+                                               class="form-input" min="1" value="1" onchange="computeMerchTransaction()" required>
+                                    </div>
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label">Unit Price <small style="color: #28a745;">(Auto-pulled)</small></label>
+                                        <input type="number" name="unit_price" id="unit_price" 
+                                               class="form-input auto-pulled" step="0.01" readonly>
+                                    </div>
+                                    
+
+                                    <div class="form-group">
+                                        <!-- Empty for balance -->
+                                    </div>
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label">Payment Method</label>
+                                        <select name="payment_method" id="payment_method_merch" class="form-input" required onchange="toggleCashFields()">
+                                            <option value="">Select payment method</option>
+                                            <option value="Cash">Cash</option>
+                                            <option value="Card">Card</option>
+                                            <option value="E-Wallet">E-Wallet</option>
+                                            <option value="Petron E-Fuel">Petron E-Fuel</option>
+                                            <option value="Fleet Card">Fleet Card</option>
+                                            <option value="Credit">Credit</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="form-row" id="cash_payment_fields" style="display: none;">
+                                    <div class="form-group">
+                                        <label class="form-label">Amount Tendered</label>
+                                        <input type="number" name="amount_tendered" id="amount_tendered_merch" 
+                                               class="form-input" placeholder="Enter amount received" 
+                                               step="0.01" min="0" onchange="computeChange()">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">Change</label>
+                                        <input type="number" name="change_amount" id="change_amount_merch" 
+                                               class="form-input" placeholder="Auto-computed" readonly>
+                                    </div>
+                                </div>
+
+                                <div class="form-row" id="card_payment_fields" style="display: none;">
+                                    <div class="form-group">
+                                        <label class="form-label">Card Reference Number</label>
+                                        <input type="text" name="card_reference" id="card_reference_merch" 
+                                               class="form-input" placeholder="Enter card reference number">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">Card Type</label>
+                                        <select name="card_type" id="card_type_merch" class="form-input">
+                                            <option value="">Select card type</option>
+                                            <option value="Credit Card">Credit Card</option>
+                                            <option value="Debit Card">Debit Card</option>
+                                            <option value="Gift Card">Gift Card</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="form-row" id="ewallet_payment_fields" style="display: none;">
+                                    <div class="form-group">
+                                        <label class="form-label">E-Wallet Reference</label>
+                                        <input type="text" name="ewallet_reference" id="ewallet_reference_merch" 
+                                               class="form-input" placeholder="Enter e-wallet reference">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">E-Wallet Provider</label>
+                                        <select name="ewallet_provider" id="ewallet_provider_merch" class="form-input">
+                                            <option value="">Select provider</option>
+                                            <option value="GCash">GCash</option>
+                                            <option value="PayMaya">PayMaya</option>
+                                            <option value="Coins">Coins</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="form-row" id="efuel_payment_fields" style="display: none;">
+                                    <div class="form-group">
+                                        <label class="form-label">E-Fuel Card Number</label>
+                                        <input type="text" name="efuel_card_number" id="efuel_card_number_merch" 
+                                               class="form-input" placeholder="Enter e-fuel card number">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">Card Balance</label>
+                                        <input type="number" name="efuel_card_balance" id="efuel_card_balance_merch" 
+                                               class="form-input" placeholder="Card balance" readonly>
+                                    </div>
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label">Customer Name</label>
+                                        <input type="text" name="customer_name" id="customer_name_merch" 
+                                               class="form-input" placeholder="Enter customer name" required>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label class="form-label">Credit Customer ID (if applicable)</label>
+                                        <input type="text" name="credit_customer_id" id="credit_customer_id_merch" 
+                                               class="form-input" placeholder="Enter credit customer ID">
+                                    </div>
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label">Remarks</label>
+                                        <input type="text" name="remarks" id="remarks" 
+                                               class="form-input" placeholder="Optional remarks">
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label class="form-label">&nbsp;</label>
+                                        <button type="button" class="btn-primary" onclick="addToCart()" style="width: 100%;">
+                                            <i class="fas fa-plus"></i> Add to Cart
+                                        </button>
+                                    </div>
+                                </div>
+                            </div><!-- /merchandise-form-section -->
+
+                            <div class="cart-panel">
+                                <!-- Cart Section -->
+                                <div style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">
+                                    <h3 style="margin: 0 0 20px 0; color: #003d7a; display: flex; align-items: center; gap: 10px;">
+                                        <i class="fas fa-shopping-cart"></i>
+                                        Shopping Cart
+                                        <span id="cart-count" style="background: #003d7a; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem;">0</span>
+                                    </h3>
+
+                                    <div id="cart-items" style="min-height: 100px; margin-bottom: 20px;">
+                                        <div style="text-align: center; color: #666; padding: 30px;">
+                                            <i class="fas fa-shopping-cart" style="font-size: 48px; margin-bottom: 15px; display: block; opacity: 0.3;"></i>
+                                            <p>Your cart is empty</p>
+                                        </div>
+                                    </div>
+
+                                    <div id="cart-summary" style="display: none;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 15px; background: white; border-radius: 6px; border-left: 4px solid #003d7a;">
+                                            <div>
+                                                <strong style="color: #003d7a;">Grand Total:</strong>
+                                                <span id="grand_total" style="font-size: 1.2rem; color: #003d7a;">PHP 0.00</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div id="cart-actions" style="display: none;">
+                                        <div style="display: flex; gap: 10px;">
+                                            <button type="button" class="btn-secondary" onclick="clearCart()" style="flex: 1;">
+                                                <i class="fas fa-trash"></i> Clear Cart
+                                            </button>
+                                            <button type="button" class="btn-primary" onclick="printReceipt()" style="flex: 2;">
+                                                <i class="fas fa-cash-register"></i> Process Transaction
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div><!-- /cart-panel -->
+                        </div><!-- /merchandise-container -->
 
                         <!-- Hidden fields for transaction -->
                         <input type="hidden" name="staff_id" value="<?php echo $me['id']; ?>">

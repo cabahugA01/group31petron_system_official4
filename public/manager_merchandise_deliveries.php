@@ -755,6 +755,16 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('f-supplier').addEventListener('input', function() {
             clearTimeout(_t); _t = setTimeout(loadDeliveries, 400);
         });
+
+        // ── Auto-switch tab from URL parameter ──
+        var urlParams = new URLSearchParams(window.location.search);
+        var urlTab = urlParams.get('tab');
+        if (urlTab === 'history') {
+            switchTab('history');
+        } else {
+            switchTab('manage');
+        }
+
         console.log('Manager Merchandise Deliveries: Loading deliveries...');
         loadDeliveries();
     } catch (error) {

@@ -90,10 +90,12 @@ try {
         $veh_col as vehicle,
         mt.total_amount as amount, $mt_pay as payment_method,
         $mt_shift as shift, $staff_col as staff_name,
-        $mt_pstat as payment_status, $mt_date as txn_date
+        $mt_pstat as payment_status, $mt_date as txn_date,
+        GROUP_CONCAT(CONCAT(mti.product_name, ' (x', mti.quantity, ')') ORDER BY mti.id SEPARATOR ', ') as items
         FROM merchandise_transactions mt
         LEFT JOIN users u ON u.id=mt.staff_id
-        $where ORDER BY $mt_date DESC LIMIT 500");
+        LEFT JOIN merchandise_transaction_items mti ON mti.transaction_id=mt.id
+        $where GROUP BY mt.id ORDER BY $mt_date DESC LIMIT 500");
     $s->execute($params);
     $rows=$s->fetchAll(PDO::FETCH_ASSOC);
 } catch(Exception $e){}
@@ -105,8 +107,8 @@ if(in_array($export,['excel','csv'])) {
     if($export==='excel'){ header('Content-Type: application/vnd.ms-excel'); header("Content-Disposition: attachment; filename=\"{$fn}.xls\""); }
     else { header('Content-Type: text/csv; charset=utf-8'); header("Content-Disposition: attachment; filename=\"{$fn}.csv\""); }
     $out=fopen('php://output','w');
-    fputcsv($out,['Transaction ID','Customer','Type','Vehicle','Amount','Payment Method','Shift','Staff Encoder','Status','Date']);
-    foreach($rows as $r) fputcsv($out,[$r['transaction_id'],$r['customer'],ucwords(str_replace('_',' ',$r['txn_type'])),$r['vehicle'],'₱'.number_format($r['amount'],2),$r['payment_method'],$r['shift'],$r['staff_name'],$r['payment_status']?:'N/A',date('M d, Y H:i',strtotime($r['txn_date']))]);
+    fputcsv($out,['Transaction ID','Customer','Type','Items/Service','Vehicle','Amount','Payment Method','Shift','Staff Encoder','Status','Date']);
+    foreach($rows as $r) fputcsv($out,[$r['transaction_id'],$r['customer'],ucwords(str_replace('_',' ',$r['txn_type'])),$r['items']?:'—',$r['vehicle'],'₱'.number_format($r['amount'],2),$r['payment_method'],$r['shift'],$r['staff_name'],$r['payment_status']?:'N/A',date('M d, Y H:i',strtotime($r['txn_date']))]);
     fclose($out); exit;
 }
 
@@ -233,14 +235,14 @@ require_once __DIR__ . '/../partials/header.php';
         <thead>
             <tr>
                 <th>Transaction ID</th><th>Customer Name</th><th>Transaction Type</th>
-                <th>Vehicle</th><th>Amount</th><th>Payment Method</th>
+                <th>Items / Service</th><th>Vehicle</th><th>Amount</th><th>Payment Method</th>
                 <th>Shift</th><th>Staff Encoder</th><th>Status</th><th>Date & Time</th>
                 <th>Actions</th>
             </tr>
         </thead>
         <tbody>
         <?php if(empty($rows)): ?>
-        <tr><td colspan="11" style="text-align:center;padding:40px;color:#94a3b8;"><i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>No transactions found</td></tr>
+        <tr><td colspan="12" style="text-align:center;padding:40px;color:#94a3b8;"><i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>No transactions found</td></tr>
         <?php else: ?>
         <?php foreach($rows as $r): ?>
         <?php
@@ -254,6 +256,7 @@ require_once __DIR__ . '/../partials/header.php';
             <td><strong><?=htmlspecialchars($r['transaction_id'])?></strong></td>
             <td><?=htmlspecialchars($r['customer'])?></td>
             <td><span class="badge <?=$tBadge?>"><?=htmlspecialchars($tLabel)?></span></td>
+            <td><?=htmlspecialchars($r['items']?:'—')?></td>
             <td><?=htmlspecialchars($r['vehicle'])?></td>
             <td style="font-weight:700;">₱<?=number_format($r['amount'],2)?></td>
             <td><?=htmlspecialchars($r['payment_method'])?></td>
@@ -267,6 +270,7 @@ require_once __DIR__ . '/../partials/header.php';
                         id:    '<?=addslashes(htmlspecialchars($r['transaction_id']))?>' ,
                         customer: '<?=addslashes(htmlspecialchars($r['customer']))?>' ,
                         type:  '<?=addslashes(htmlspecialchars($tLabel))?>' ,
+                        items: '<?=addslashes(htmlspecialchars($r['items']?:'—'))?>' ,
                         vehicle: '<?=addslashes(htmlspecialchars($r['vehicle']))?>' ,
                         amount: '₱<?=number_format($r['amount'],2)?>' ,
                         payment: '<?=addslashes(htmlspecialchars($r['payment_method']))?>' ,
@@ -314,6 +318,7 @@ function openTxnModal(d){
     ['Transaction ID', '<strong>'+d.id+'</strong>'],
     ['Customer Name',  d.customer],
     ['Transaction Type',d.type],
+    ['Items / Service', d.items||'—'],
     ['Vehicle',        d.vehicle||'—'],
     ['Amount',         '<strong style="color:#002F70;font-size:15px;">'+d.amount+'</strong>'],
     ['Payment Method', d.payment],

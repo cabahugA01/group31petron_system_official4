@@ -1,0 +1,612 @@
+<?php
+/**
+ * MASTER DATA REQUESTS - MANAGER APPROVAL
+ * 
+ * Manager reviews and approves/rejects staff requests for:
+ * - New Vehicle Types
+ * - New Service Types
+ * - New Products
+ * 
+ * Staff can request these when they don't find what they need in dropdowns.
+ * Manager approval ensures data quality and consistency.
+ */
+$page_id = 'master_data_requests';
+require_once __DIR__ . '/../backend/lib.php';
+require_once __DIR__ . '/../public/db_connect.php';
+require_login();
+
+$me = current_user();
+$role = role_key($me['role'] ?? 'staff');
+
+// Only managers and above can access
+if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
+    header('Location: dashboard.php');
+    exit;
+}
+
+$active_tab = $_GET['tab'] ?? 'pending';
+$station_id = user_station_id();
+
+// Handle approval/rejection actions
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    $action = $_POST['action']; // 'approve' or 'reject'
+    $request_id = (int)($_POST['request_id'] ?? 0);
+    $review_note = trim($_POST['review_note'] ?? '');
+    
+    if (in_array($action, ['approve', 'reject']) && $request_id > 0) {
+        try {
+            $pdo->beginTransaction();
+            
+            // Get the request
+            $stmt = $pdo->prepare("SELECT * FROM master_data_requests WHERE id = ? AND status = 'pending'");
+            $stmt->execute([$request_id]);
+            $request = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$request) {
+                throw new Exception('Request not found or already processed.');
+            }
+            
+            $requestData = json_decode($request['request_data'], true);
+            
+            // If approving, actually create the item in the appropriate table
+            if ($action === 'approve') {
+                if ($request['request_type'] === 'vehicle_type') {
+                    // Add to vehicle_types table
+                    $stmt = $pdo->prepare("
+                        INSERT INTO vehicle_types (category, vehicle_name, status, submitted_by, reviewed_by, is_active)
+                        VALUES (:category, :vehicle_name, 'approved', :submitted_by, :reviewed_by, 1)
+                    ");
+                    $stmt->execute([
+                        ':category' => $requestData['category'],
+                        ':vehicle_name' => $requestData['vehicle_name'],
+                        ':submitted_by' => $request['requested_by'],
+                        ':reviewed_by' => $me['id']
+                    ]);
+
+                } elseif ($request['request_type'] === 'service_type') {
+                    // Add to job_order_service_types table (the live service types table)
+                    $service_key = strtolower(preg_replace('/[^a-z0-9]+/i', '_', $requestData['service_name']));
+                    $service_key = trim($service_key, '_') . '_' . time();
+                    $stmt = $pdo->prepare("
+                        INSERT INTO job_order_service_types
+                            (service_key, service_name, category, service_price, pricing_notes,
+                             sort_order, status, submitted_by, reviewed_by, active)
+                        VALUES
+                            (:service_key, :service_name, :category, :service_price, :notes,
+                             (SELECT COALESCE(MAX(sort_order),0)+1 FROM job_order_service_types j2),
+                             'approved', :submitted_by, :reviewed_by, 1)
+                    ");
+                    $stmt->execute([
+                        ':service_key'   => $service_key,
+                        ':service_name'  => $requestData['service_name'],
+                        ':category'      => $requestData['service_category'] ?? 'Others',
+                        ':service_price' => $requestData['default_price'] ?? 0,
+                        ':notes'         => $requestData['estimated_duration'] ?? null,
+                        ':submitted_by'  => $request['requested_by'],
+                        ':reviewed_by'   => $me['id']
+                    ]);
+
+                } elseif ($request['request_type'] === 'product') {
+                    // Add to inventory_products table with pending→approved status
+                    $sku = !empty($requestData['sku']) ? $requestData['sku']
+                         : 'SKU-' . strtoupper(substr(md5($requestData['product_name'] . time()), 0, 8));
+                    $station_id = !empty($request['station_id']) ? (int)$request['station_id'] : null;
+
+                    $stmt = $pdo->prepare("
+                        INSERT INTO inventory_products
+                            (product_name, sku, category, unit_price, unit_cost, stock_quantity, status, created_at, updated_at)
+                        VALUES
+                            (:product_name, :sku, :category, :unit_price, :unit_cost, 0, 'Active', NOW(), NOW())
+                    ");
+                    $stmt->execute([
+                        ':product_name' => $requestData['product_name'],
+                        ':sku'          => $sku,
+                        ':category'     => $requestData['category'] ?? 'General',
+                        ':unit_price'   => $requestData['unit_price'] ?? 0,
+                        ':unit_cost'    => ($requestData['unit_price'] ?? 0) * 0.7
+                    ]);
+                    $new_product_id = (int)$pdo->lastInsertId();
+
+                    // Also register zero-stock station_inventory entry if station_id known
+                    if ($station_id && $new_product_id) {
+                        try {
+                            $siStmt = $pdo->prepare("
+                                INSERT INTO station_inventory (station_id, product_id, stock_level, status, last_updated)
+                                VALUES (?, ?, 0, 'active', NOW())
+                            ");
+                            $siStmt->execute([$station_id, $new_product_id]);
+                        } catch (PDOException $e) { /* ignore duplicate */ }
+                    }
+                }
+            }
+            
+            // Update request status
+            $stmt = $pdo->prepare("
+                UPDATE master_data_requests
+                SET status = :status,
+                    reviewed_by = :reviewed_by,
+                    review_note = :review_note,
+                    reviewed_at = NOW()
+                WHERE id = :id
+            ");
+            $stmt->execute([
+                ':status' => $action === 'approve' ? 'approved' : 'rejected',
+                ':reviewed_by' => $me['id'],
+                ':review_note' => $review_note,
+                ':id' => $request_id
+            ]);
+            
+            $pdo->commit();
+            
+            $msg = ucfirst($request['request_type']) . ' request ' . ($action === 'approve' ? 'approved' : 'rejected') . ' successfully.';
+            
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            $error = 'Error: ' . $e->getMessage();
+        }
+    }
+}
+
+// Fetch requests based on active tab
+$requests = [];
+try {
+    $query = "
+        SELECT 
+            r.*,
+            CONCAT(u.first_name, ' ', u.last_name) as requester_name,
+            u.role as requester_role,
+            s.name as station_name,
+            CONCAT(rev.first_name, ' ', rev.last_name) as reviewer_name
+        FROM master_data_requests r
+        LEFT JOIN users u ON r.requested_by = u.id
+        LEFT JOIN stations s ON r.station_id = s.id
+        LEFT JOIN users rev ON r.reviewed_by = rev.id
+        WHERE r.status = :status
+        ORDER BY r.created_at DESC
+    ";
+    
+    $stmt = $pdo->prepare($query);
+    $stmt->execute([':status' => $active_tab]);
+    $requests = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Decode JSON data
+    foreach ($requests as &$req) {
+        $req['request_data'] = json_decode($req['request_data'], true);
+    }
+    
+} catch (PDOException $e) {
+    $error = 'Database error: ' . $e->getMessage();
+}
+
+// Count pending requests
+$pending_count = 0;
+try {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM master_data_requests WHERE status = 'pending'");
+    $stmt->execute();
+    $pending_count = $stmt->fetchColumn();
+} catch (PDOException $e) {
+    // Ignore
+}
+
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Master Data Requests - <?= SITE_NAME ?></title>
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        .request-card {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+            transition: all 0.2s;
+        }
+        .request-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            transform: translateY(-2px);
+        }
+        .request-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+        .request-type-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .type-vehicle { background: #eff6ff; color: #1e40af; }
+        .type-service { background: #fffbeb; color: #92400e; }
+        .type-product { background: #f0fdf4; color: #166534; }
+        
+        .status-badge {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .status-pending { background: #fef3c7; color: #92400e; }
+        .status-approved { background: #d1fae5; color: #065f46; }
+        .status-rejected { background: #fee2e2; color: #991b1b; }
+        
+        .request-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .detail-item {
+            padding: 10px;
+            background: #f8fafc;
+            border-radius: 8px;
+        }
+        .detail-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        .detail-value {
+            font-size: 13px;
+            font-weight: 600;
+            color: #1e293b;
+        }
+        
+        .reason-box {
+            background: #fffbeb;
+            border: 1px solid #fde68a;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 16px;
+        }
+        .reason-box strong {
+            display: block;
+            font-size: 11px;
+            color: #92400e;
+            margin-bottom: 6px;
+        }
+        .reason-box p {
+            font-size: 13px;
+            color: #78350f;
+            margin: 0;
+            line-height: 1.5;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+        .btn-approve {
+            background: #10b981;
+            color: #fff;
+        }
+        .btn-approve:hover {
+            background: #059669;
+            transform: translateY(-1px);
+        }
+        .btn-reject {
+            background: #ef4444;
+            color: #fff;
+        }
+        .btn-reject:hover {
+            background: #dc2626;
+            transform: translateY(-1px);
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        .tab-btn {
+            padding: 12px 20px;
+            background: none;
+            border: none;
+            border-bottom: 3px solid transparent;
+            font-size: 13px;
+            font-weight: 600;
+            color: #64748b;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            margin-bottom: -2px;
+        }
+        .tab-btn.active {
+            color: #003d7a;
+            border-bottom-color: #003d7a;
+        }
+        .tab-btn .badge {
+            background: #dc2626;
+            color: #fff;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 10px;
+            margin-left: 6px;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #94a3b8;
+        }
+        .empty-state i {
+            font-size: 48px;
+            margin-bottom: 16px;
+            display: block;
+        }
+        
+        .alert {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .alert-success {
+            background: #d1fae5;
+            border: 1px solid #a7f3d0;
+            color: #065f46;
+        }
+        .alert-error {
+            background: #fee2e2;
+            border: 1px solid #fecaca;
+            color: #991b1b;
+        }
+    </style>
+</head>
+<body>
+    <?php include __DIR__ . '/../partials/header.php'; ?>
+    
+    <div class="layout-container">
+        <?php include __DIR__ . '/../partials/sidebar.php'; ?>
+        
+        <div class="main-content">
+            <div class="page-header">
+                <div>
+                    <h1><i class="fas fa-clipboard-check"></i> Master Data Requests</h1>
+                    <p style="color:#64748b;margin-top:4px;">Review and approve staff requests for new vehicle types, service types, and products</p>
+                </div>
+            </div>
+            
+            <?php if (isset($msg) && $msg): ?>
+            <div class="alert alert-success">
+                <i class="fas fa-check-circle"></i>
+                <span><?= htmlspecialchars($msg) ?></span>
+            </div>
+            <?php endif; ?>
+            
+            <?php if (isset($error) && $error): ?>
+            <div class="alert alert-error">
+                <i class="fas fa-exclamation-circle"></i>
+                <span><?= htmlspecialchars($error) ?></span>
+            </div>
+            <?php endif; ?>
+            
+            <!-- Tabs -->
+            <div class="tabs">
+                <button class="tab-btn <?= $active_tab === 'pending' ? 'active' : '' ?>" 
+                        onclick="window.location.href='?tab=pending'">
+                    <i class="fas fa-clock"></i> Pending
+                    <?php if ($pending_count > 0): ?>
+                    <span class="badge"><?= $pending_count ?></span>
+                    <?php endif; ?>
+                </button>
+                <button class="tab-btn <?= $active_tab === 'approved' ? 'active' : '' ?>" 
+                        onclick="window.location.href='?tab=approved'">
+                    <i class="fas fa-check-circle"></i> Approved
+                </button>
+                <button class="tab-btn <?= $active_tab === 'rejected' ? 'active' : '' ?>" 
+                        onclick="window.location.href='?tab=rejected'">
+                    <i class="fas fa-times-circle"></i> Rejected
+                </button>
+            </div>
+            
+            <!-- Requests List -->
+            <?php if (empty($requests)): ?>
+            <div class="empty-state">
+                <i class="fas fa-inbox"></i>
+                <h3>No <?= $active_tab ?> requests</h3>
+                <p>Staff requests will appear here when submitted.</p>
+            </div>
+            <?php else: ?>
+            <?php foreach ($requests as $request): ?>
+            <?php
+                $typeLabel = str_replace('_', ' ', $request['request_type']);
+                $typeClass = 'type-' . explode('_', $request['request_type'])[0];
+                $typeIcon = $request['request_type'] === 'vehicle_type' ? 'fa-car' : 
+                           ($request['request_type'] === 'service_type' ? 'fa-wrench' : 'fa-box');
+                $data = $request['request_data'];
+            ?>
+            <div class="request-card">
+                <div class="request-header">
+                    <div>
+                        <span class="request-type-badge <?= $typeClass ?>">
+                            <i class="fas <?= $typeIcon ?>"></i>
+                            <?= ucwords($typeLabel) ?>
+                        </span>
+                        <h3 style="margin:8px 0 4px;font-size:16px;color:#1e293b;">
+                            <?php if ($request['request_type'] === 'vehicle_type'): ?>
+                                <?= htmlspecialchars($data['vehicle_name']) ?>
+                            <?php elseif ($request['request_type'] === 'service_type'): ?>
+                                <?= htmlspecialchars($data['service_name']) ?>
+                            <?php else: ?>
+                                <?= htmlspecialchars($data['product_name']) ?>
+                            <?php endif; ?>
+                        </h3>
+                        <p style="font-size:11px;color:#64748b;margin:0;">
+                            Request #<?= $request['id'] ?> · 
+                            Submitted by <strong><?= htmlspecialchars($request['requester_name']) ?></strong> · 
+                            <?= date('M d, Y g:i A', strtotime($request['created_at'])) ?>
+                        </p>
+                    </div>
+                    <span class="status-badge status-<?= $request['status'] ?>">
+                        <?= ucfirst($request['status']) ?>
+                    </span>
+                </div>
+                
+                <div class="request-details">
+                    <?php if ($request['request_type'] === 'vehicle_type'): ?>
+                        <div class="detail-item">
+                            <div class="detail-label">Category</div>
+                            <div class="detail-value"><?= htmlspecialchars($data['category']) ?></div>
+                        </div>
+                        <?php if (!empty($data['description'])): ?>
+                        <div class="detail-item">
+                            <div class="detail-label">Description</div>
+                            <div class="detail-value"><?= htmlspecialchars($data['description']) ?></div>
+                        </div>
+                        <?php endif; ?>
+                    <?php elseif ($request['request_type'] === 'service_type'): ?>
+                        <div class="detail-item">
+                            <div class="detail-label">Category</div>
+                            <div class="detail-value"><?= htmlspecialchars($data['service_category']) ?></div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Default Price</div>
+                            <div class="detail-value">₱<?= number_format($data['default_price'], 2) ?></div>
+                        </div>
+                        <?php if (!empty($data['estimated_duration'])): ?>
+                        <div class="detail-item">
+                            <div class="detail-label">Est. Duration</div>
+                            <div class="detail-value"><?= htmlspecialchars($data['estimated_duration']) ?></div>
+                        </div>
+                        <?php endif; ?>
+                        <?php if (!empty($data['description'])): ?>
+                        <div class="detail-item">
+                            <div class="detail-label">Description</div>
+                            <div class="detail-value"><?= htmlspecialchars($data['description']) ?></div>
+                        </div>
+                        <?php endif; ?>
+                    <?php elseif ($request['request_type'] === 'product'): ?>
+                        <div class="detail-item">
+                            <div class="detail-label">Category</div>
+                            <div class="detail-value"><?= htmlspecialchars($data['category']) ?></div>
+                        </div>
+                        <?php if (!empty($data['sku'])): ?>
+                        <div class="detail-item">
+                            <div class="detail-label">SKU</div>
+                            <div class="detail-value"><?= htmlspecialchars($data['sku']) ?></div>
+                        </div>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                    
+                    <?php if (!empty($request['station_name'])): ?>
+                    <div class="detail-item">
+                        <div class="detail-label">Station</div>
+                        <div class="detail-value"><?= htmlspecialchars($request['station_name']) ?></div>
+                    </div>
+                    <?php endif; ?>
+                </div>
+                
+                <div class="reason-box">
+                    <strong><i class="fas fa-comment-dots"></i> Reason for Request:</strong>
+                    <p><?= htmlspecialchars($request['request_reason']) ?></p>
+                </div>
+                
+                <?php if ($active_tab === 'pending'): ?>
+                <div class="action-buttons">
+                    <form method="POST" style="display:inline;" onsubmit="return confirm('Approve this request? This will add it to the system.');">
+                        <input type="hidden" name="action" value="approve">
+                        <input type="hidden" name="request_id" value="<?= $request['id'] ?>">
+                        <input type="hidden" name="review_note" value="Approved by <?= htmlspecialchars($me['first_name'] . ' ' . $me['last_name']) ?>">
+                        <button type="submit" class="btn btn-approve">
+                            <i class="fas fa-check"></i> Approve
+                        </button>
+                    </form>
+                    <button type="button" class="btn btn-reject" onclick="showRejectModal(<?= $request['id'] ?>)">
+                        <i class="fas fa-times"></i> Reject
+                    </button>
+                </div>
+                <?php elseif ($request['status'] !== 'pending'): ?>
+                <div style="font-size:12px;color:#64748b;padding-top:8px;border-top:1px solid #e2e8f0;">
+                    <i class="fas fa-user"></i> Reviewed by <strong><?= htmlspecialchars($request['reviewer_name'] ?? 'Unknown') ?></strong> 
+                    on <?= date('M d, Y g:i A', strtotime($request['reviewed_at'])) ?>
+                    <?php if ($request['review_note']): ?>
+                    <br><i class="fas fa-comment"></i> Note: <?= htmlspecialchars($request['review_note']) ?>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
+            </div>
+            <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+    </div>
+    
+    <!-- Reject Modal -->
+    <div id="rejectModal" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.5);align-items:center;justify-content:center;">
+        <div style="background:#fff;border-radius:12px;padding:24px;max-width:450px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.3);">
+            <h3 style="margin:0 0 16px;font-size:16px;color:#1e293b;">
+                <i class="fas fa-times-circle" style="color:#ef4444;"></i>
+                Reject Request
+            </h3>
+            <form method="POST" id="rejectForm">
+                <input type="hidden" name="action" value="reject">
+                <input type="hidden" name="request_id" id="reject_request_id">
+                <div style="margin-bottom:16px;">
+                    <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:6px;">
+                        Reason for Rejection <span style="color:#dc2626;">*</span>
+                    </label>
+                    <textarea name="review_note" rows="3" required
+                              style="width:100%;padding:10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;"
+                              placeholder="Explain why this request is being rejected..."></textarea>
+                </div>
+                <div style="display:flex;gap:10px;justify-content:flex-end;">
+                    <button type="button" class="btn" style="background:#e2e8f0;color:#475569;" onclick="closeRejectModal()">
+                        Cancel
+                    </button>
+                    <button type="submit" class="btn btn-reject">
+                        <i class="fas fa-times"></i> Reject Request
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+        function showRejectModal(requestId) {
+            document.getElementById('reject_request_id').value = requestId;
+            document.getElementById('rejectModal').style.display = 'flex';
+        }
+        
+        function closeRejectModal() {
+            document.getElementById('rejectModal').style.display = 'none';
+            document.getElementById('rejectForm').reset();
+        }
+        
+        // Close modal on backdrop click
+        document.getElementById('rejectModal').addEventListener('click', function(e) {
+            if (e.target === this) closeRejectModal();
+        });
+    </script>
+</body>
+</html>

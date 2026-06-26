@@ -462,6 +462,34 @@ require_once __DIR__ . '/../partials/header.php';
     color: #fff;
 }
 
+/* == TAB BUTTONS == */
+.flt-btn {
+    transition: all 0.2s ease-in-out;
+    border: 1px solid transparent;
+}
+.flt-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+.flt-btn-solid-primary {
+    background: #002F70 !important;
+    color: #fff !important;
+    border-color: #002F70 !important;
+}
+.flt-btn-reset {
+    background: #f1f5f9 !important;
+    color: #64748b !important;
+    border-color: #e2e8f0 !important;
+}
+.flt-btn-reset:hover {
+    background: #e2e8f0 !important;
+    color: #334155 !important;
+}
+
+.txn-kpi-card.total-amount-card .txn-kpi-val {
+    color: #fff;
+}
+
 /* == FILTERS == */
 .filters { display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:12px 16px; margin-bottom:16px; }
 .filters > div { display:flex; flex-direction:column; gap:3px; }
@@ -504,11 +532,8 @@ require_once __DIR__ . '/../partials/header.php';
         <h1 class="h1"><i class="fas fa-sliders-h"></i> Transaction Adjustments</h1>
         <div class="sub">Review and manage transaction corrections, modifications, and adjustment records.</div>
     </div>
-    <div class="actions txn-head-actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <a href="<?= in_array($role, ['admin', 'superadmin']) ? 'admin_dashboard.php' : 'manager_dashboard.php'; ?>" class="flt-btn flt-btn-reset"><i class="fas fa-arrow-left"></i> Back</a>
-        <a href="?export=excel&table=adjustments&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&staff=<?php echo urlencode($filter_staff); ?>&type=<?php echo urlencode($filter_type); ?>" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
-        <a href="?export=csv&table=adjustments&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&staff=<?php echo urlencode($filter_staff); ?>&type=<?php echo urlencode($filter_type); ?>" class="flt-btn flt-btn-search"><i class="fas fa-file-csv"></i> CSV</a>
-        <button class="flt-btn flt-btn-pdf" onclick="window.print()"><i class="fas fa-file-pdf"></i> PDF</button>
+    <div id="pageHeadButtons" class="actions txn-head-actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <!-- Buttons will be dynamically inserted here by JavaScript -->
     </div>
 </div>
 
@@ -575,8 +600,18 @@ require_once __DIR__ . '/../partials/header.php';
     </form>
 </div>
 
-<!-- TRANSACTIONS TABLE -->
-<div class="card" style="margin-top:20px;">
+<!-- TAB NAVIGATION -->
+<div style="display:flex;gap:10px;margin-top:20px;margin-bottom:12px;">
+    <button onclick="switchTab('transactions')" id="tabBtn_transactions" class="flt-btn flt-btn-solid-primary" style="font-size:12px;padding:8px 16px;">
+        <i class="fas fa-list"></i> Transactions (<?php echo count($transactions); ?>)
+    </button>
+    <button onclick="switchTab('history')" id="tabBtn_history" class="flt-btn flt-btn-reset" style="font-size:12px;padding:8px 16px;">
+        <i class="fas fa-history"></i> Adjustment History (<?php echo count($adjustments); ?>)
+    </button>
+</div>
+
+<!-- TAB CONTENT: TRANSACTIONS -->
+<div id="tab_transactions" class="card" style="margin-top:0;">
     <div class="card-head">
         <div class="card-title">Transactions (<?php echo count($transactions); ?>)</div>
     </div>
@@ -621,13 +656,9 @@ require_once __DIR__ . '/../partials/header.php';
 </div>
 
 <!-- ADJUSTMENT HISTORY -->
-<div class="card" style="margin-top:20px;">
+<div id="tab_history" class="card" style="margin-top:0;display:none;">
     <div class="card-head">
         <div class="card-title">Adjustment History (<?php echo count($adjustments); ?>)</div>
-        <div>
-            <a href="?export=excel&table=adjustments&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&staff=<?php echo urlencode($filter_staff); ?>&type=<?php echo urlencode($filter_type); ?>" class="flt-btn flt-btn-excel" style="height:26px;padding:0 8px;font-size:11px;"><i class="fas fa-file-excel"></i> Excel</a>
-            <a href="?export=csv&table=adjustments&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&staff=<?php echo urlencode($filter_staff); ?>&type=<?php echo urlencode($filter_type); ?>" class="flt-btn flt-btn-search" style="height:26px;padding:0 8px;font-size:11px;"><i class="fas fa-file-csv"></i> CSV</a>
-        </div>
     </div>
     <table class="adj-table">
         <thead>
@@ -857,6 +888,42 @@ function closeAdjModal(){
 }
 document.getElementById('adjDetailModal').addEventListener('click',function(e){
   if(e.target===this) closeAdjModal();
+});
+
+// ── Tab Switching Function ──────────────────────────────────────────────
+function switchTab(tabName) {
+    // Hide all tabs
+    document.getElementById('tab_transactions').style.display = 'none';
+    document.getElementById('tab_history').style.display = 'none';
+    
+    // Show selected tab
+    document.getElementById('tab_' + tabName).style.display = 'block';
+    
+    // Update button styles
+    var transBtn = document.getElementById('tabBtn_transactions');
+    var histBtn = document.getElementById('tabBtn_history');
+    var pageHeadButtons = document.getElementById('pageHeadButtons');
+    
+    if (tabName === 'transactions') {
+        transBtn.className = 'flt-btn flt-btn-solid-primary';
+        histBtn.className = 'flt-btn flt-btn-reset';
+        // Clear page-head buttons for Transactions tab
+        pageHeadButtons.innerHTML = '';
+    } else {
+        transBtn.className = 'flt-btn flt-btn-reset';
+        histBtn.className = 'flt-btn flt-btn-solid-primary';
+        // Show export and back buttons for Adjustment History tab
+        pageHeadButtons.innerHTML = `
+            <a href="?export=excel&table=adjustments&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&staff=<?php echo urlencode($filter_staff); ?>&type=<?php echo urlencode($filter_type); ?>" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
+            <a href="?export=csv&table=adjustments&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&staff=<?php echo urlencode($filter_staff); ?>&type=<?php echo urlencode($filter_type); ?>" class="flt-btn flt-btn-search"><i class="fas fa-file-csv"></i> CSV</a>
+            <button onclick="switchTab('transactions')" class="flt-btn flt-btn-reset">Back</button>
+        `;
+    }
+}
+
+// Initialize - show transactions tab by default
+window.addEventListener('DOMContentLoaded', function() {
+    switchTab('transactions');
 });
 </script>
 

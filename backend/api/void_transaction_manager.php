@@ -1,0 +1,188 @@
+<?php
+/**
+ * POST /backend/api/void_transaction_manager.php
+ * Manager voids an existing merchandise_transaction:
+ *   - Restores station_inventory stock for all items
+ *   - Sets validation_status = 'Voided', stores void_reason + manager_remarks
+ *   - Writes to audit_trail
+ *   - Inserts into voided_transactions log (if table exists)
+ *
+ * Expected JSON body:
+ * {
+ *   "row_id"          : 42,
+ *   "void_reason"     : "Wrong customer / duplicate entry",
+ *   "manager_remarks" : "Confirmed void by manager"
+ * }
+ */
+
+header('Content-Type: application/json');
+
+if (session_status() !== PHP_SESSION_ACTIVE) session_start();
+
+require_once __DIR__ . '/../lib.php';
+require_once __DIR__ . '/../../public/db_connect.php';
+require_once __DIR__ . '/../transaction_schema_fix.php';
+
+// Auth
+if (empty($_SESSION['user'])) {
+    http_response_code(401);
+    echo json_encode(['success' => false, 'error' => 'Unauthorized']); exit;
+}
+$me         = current_user();
+$station_id = (int) user_station_id();
+$role       = role_key($me['role'] ?? '');
+if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'error' => 'Manager access required']); exit;
+}
+
+// Parse input
+$raw  = file_get_contents('php://input');
+$data = json_decode($raw, true);
+if (!$data || !isset($data['row_id'])) {
+    echo json_encode(['success' => false, 'error' => 'Invalid request data']); exit;
+}
+
+$row_id          = (int)$data['row_id'];
+$void_reason     = trim($data['void_reason']     ?? '');
+$manager_remarks = trim($data['manager_remarks'] ?? '');
+
+if (!$void_reason) {
+    echo json_encode(['success' => false, 'error' => 'Void reason is required']); exit;
+}
+if (!$manager_remarks) {
+    echo json_encode(['success' => false, 'error' => 'Manager remarks are required']); exit;
+}
+
+try {
+    // Ensure needed columns exist
+    foreach ([
+        "ALTER TABLE merchandise_transactions ADD COLUMN IF NOT EXISTS void_reason      TEXT DEFAULT NULL",
+        "ALTER TABLE merchandise_transactions ADD COLUMN IF NOT EXISTS manager_remarks  TEXT DEFAULT NULL",
+        "ALTER TABLE merchandise_transactions ADD COLUMN IF NOT EXISTS inventory_deducted TINYINT(1) DEFAULT 1",
+    ] as $ddl) {
+        try { $pdo->exec($ddl); } catch (Exception $e) {}
+    }
+
+    // Load transaction
+    $stmt = $pdo->prepare("SELECT * FROM merchandise_transactions WHERE id = ? AND station_id = ? LIMIT 1");
+    $stmt->execute([$row_id, $station_id]);
+    $txn = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$txn) {
+        echo json_encode(['success' => false, 'error' => 'Transaction not found']); exit;
+    }
+
+    // Already voided?
+    if (strtolower(trim($txn['validation_status'] ?? '')) === 'voided') {
+        echo json_encode(['success' => false, 'error' => 'Transaction is already voided']); exit;
+    }
+
+    // Load items
+    $items_stmt = $pdo->prepare("SELECT * FROM merchandise_transaction_items WHERE transaction_id = ? ORDER BY id ASC");
+    $items_stmt->execute([$row_id]);
+    $items = $items_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $pdo->beginTransaction();
+
+    // ── Restore inventory ─────────────────────────────────────────────────────
+    $inv_deducted = (int)($txn['inventory_deducted'] ?? 1);
+    if ($inv_deducted) {
+        foreach ($items as $item) {
+            $product_id = (int)($item['product_id'] ?? 0);
+            $qty        = (float)$item['quantity'];
+            if ($product_id > 0 && $qty > 0 && $item['item_type'] !== 'service') {
+                $pdo->prepare("
+                    UPDATE station_inventory
+                    SET stock_level = stock_level + ?
+                    WHERE product_id = ? AND station_id = ?
+                ")->execute([$qty, $product_id, $station_id]);
+            }
+        }
+    }
+
+    // ── Update transaction ────────────────────────────────────────────────────
+    $pdo->prepare("
+        UPDATE merchandise_transactions SET
+            validation_status  = 'Voided',
+            void_reason        = ?,
+            manager_remarks    = ?,
+            inventory_deducted = 0,
+            validated_by       = ?,
+            validated_at       = NOW(),
+            updated_at         = NOW()
+        WHERE id = ? AND station_id = ?
+    ")->execute([$void_reason, $manager_remarks, $me['id'], $row_id, $station_id]);
+
+    // ── Insert into voided_transactions log (if table exists) ─────────────────
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS voided_transactions (
+                id               INT AUTO_INCREMENT PRIMARY KEY,
+                merchandise_txn_id INT  DEFAULT NULL,
+                transaction_id   VARCHAR(255) DEFAULT NULL,
+                customer_name    VARCHAR(255) DEFAULT NULL,
+                transaction_type VARCHAR(60)  DEFAULT 'merchandise',
+                amount           DECIMAL(12,2) DEFAULT 0,
+                void_reason      TEXT         DEFAULT NULL,
+                voided_by        INT          DEFAULT NULL,
+                voided_by_name   VARCHAR(255) DEFAULT NULL,
+                station_id       INT          NOT NULL DEFAULT 0,
+                void_date        DATETIME     DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_txn (transaction_id),
+                INDEX idx_station (station_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+        $pdo->prepare("
+            INSERT INTO voided_transactions
+                (merchandise_txn_id, transaction_id, customer_name, transaction_type, amount, void_reason, voided_by, voided_by_name, station_id, void_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        ")->execute([
+            $row_id,
+            $txn['transaction_id'] ?? $row_id,
+            $txn['customer_name'] ?? 'Walk-in Customer',
+            $txn['transaction_type'] ?? 'merchandise',
+            $txn['total_amount'] ?? 0,
+            $void_reason,
+            $me['id'],
+            $me['name'] ?? ($me['username'] ?? 'Manager'),
+            $station_id,
+        ]);
+    } catch (Exception $e) {
+        // Non-fatal: log exists check or insert failed
+        error_log('voided_transactions insert warning: ' . $e->getMessage());
+    }
+
+    // ── Audit trail ───────────────────────────────────────────────────────────
+    $old_snap = json_encode([
+        'validation_status' => $txn['validation_status'] ?? '',
+        'total_amount'      => $txn['total_amount']      ?? 0,
+    ]);
+    $new_snap = json_encode([
+        'validation_status' => 'Voided',
+        'void_reason'       => $void_reason,
+        'manager_remarks'   => $manager_remarks,
+    ]);
+
+    $pdo->prepare("
+        INSERT INTO audit_trail (transaction_id, manager_id, action_type, old_value, new_value, station_id, entity_type, created_at)
+        VALUES (?, ?, 'Void', ?, ?, ?, 'merchandise_transactions', NOW())
+    ")->execute([
+        $txn['transaction_id'] ?? $row_id,
+        $me['id'],
+        $old_snap,
+        $new_snap,
+        $station_id,
+    ]);
+
+    $pdo->commit();
+
+    echo json_encode([
+        'success' => true,
+        'message' => 'Transaction voided successfully. Inventory has been restored.',
+    ]);
+
+} catch (Exception $e) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    error_log('void_transaction_manager error: ' . $e->getMessage());
+    echo json_encode(['success' => false, 'error' => 'Database error: ' . $e->getMessage()]);
+}

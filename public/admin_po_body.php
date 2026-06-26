@@ -1,0 +1,219 @@
+<?php
+// ─── Body HTML: Summary cards + Separate Fuel & Merchandise PO Tables ─────────
+
+// Split $display_pos into fuel and merch
+$merch_pos = array_values(array_filter($display_pos, fn($p) => $p['po_type'] === 'merch'));
+$fuel_pos  = array_values(array_filter($display_pos, fn($p) => $p['po_type'] === 'fuel'));
+?>
+<?php if ($flash_ok): ?><div class="flash-ok"><i class="fas fa-check-circle"></i> <?= htmlspecialchars($flash_ok) ?></div><?php endif; ?>
+<?php if ($flash_err): ?><div class="flash-err"><i class="fas fa-exclamation-circle"></i> <?= htmlspecialchars($flash_err) ?></div><?php endif; ?>
+
+<!-- PAGE HEADER -->
+<div class="po-int-head">
+  <div>
+    <h1><i class="fas fa-file-invoice"></i> Purchase Orders Oversight</h1>
+    <div class="sub">Monitor, review and manage all purchase orders for this station.</div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    <a href="admin_dashboard.php" class="po-ctrl-btn po-btn-back"><i class="fas fa-arrow-left"></i> Back</a>
+  </div>
+</div>
+
+<!-- SUMMARY CARDS -->
+<div class="po-sum-grid">
+  <div class="po-sum-card blue">
+    <div><div class="po-sum-label">Total POs</div><div class="po-sum-val"><?= $cnt_total ?></div></div>
+    <div class="po-sum-icon" style="background:#e8f0fb;color:#002F70;"><i class="fas fa-file-invoice"></i></div>
+  </div>
+  <div class="po-sum-card orange">
+    <div><div class="po-sum-label">Pending</div><div class="po-sum-val" style="color:#fd7e14;"><?= $cnt_pending ?></div></div>
+    <div class="po-sum-icon" style="background:#fff3cd;color:#fd7e14;"><i class="fas fa-hourglass-half"></i></div>
+  </div>
+  <div class="po-sum-card green">
+    <div><div class="po-sum-label">Approved</div><div class="po-sum-val" style="color:#28a745;"><?= $cnt_approved ?></div></div>
+    <div class="po-sum-icon" style="background:#d4edda;color:#28a745;"><i class="fas fa-check-circle"></i></div>
+  </div>
+  <div class="po-sum-card teal">
+    <div><div class="po-sum-label">Delivered</div><div class="po-sum-val" style="color:#17a2b8;"><?= $cnt_delivered ?></div></div>
+    <div class="po-sum-icon" style="background:#d1ecf1;color:#17a2b8;"><i class="fas fa-truck"></i></div>
+  </div>
+  <div class="po-sum-card red">
+    <div><div class="po-sum-label">Cancelled</div><div class="po-sum-val" style="color:#dc3545;"><?= $cnt_cancelled ?></div></div>
+    <div class="po-sum-icon" style="background:#f8d7da;color:#dc3545;"><i class="fas fa-times-circle"></i></div>
+  </div>
+</div>
+
+<!-- FILTER BAR -->
+<form method="GET" class="po-filter-bar">
+  <input type="date" name="filter_date" value="<?= htmlspecialchars($filter_date) ?>" title="Filter by Date">
+  <select name="filter_status" onchange="this.form.submit()">
+    <option value="">All Statuses</option>
+    <option value="pending"   <?= $filter_status==='pending'   ?'selected':'' ?>>Pending</option>
+    <option value="approved"  <?= $filter_status==='approved'  ?'selected':'' ?>>Approved</option>
+    <option value="delivered" <?= $filter_status==='delivered' ?'selected':'' ?>>Delivered</option>
+    <option value="cancelled" <?= $filter_status==='cancelled' ?'selected':'' ?>>Cancelled</option>
+  </select>
+  <input type="text" name="search" value="<?= htmlspecialchars($_GET['search'] ?? '') ?>" placeholder="Search PO No. / Item..." style="width:180px;">
+  <button type="submit" class="po-ctrl-btn po-btn-exp" style="padding:7px 14px;"><i class="fas fa-search"></i> Search</button>
+  <?php if ($filter_date || $filter_status || ($filter_search !== '')): ?>
+    <a href="admin_purchase_orders.php" class="po-ctrl-btn po-btn-back"><i class="fas fa-times"></i> Clear</a>
+  <?php endif; ?>
+  <div style="flex:1;"></div>
+  <button type="button" class="po-ctrl-btn po-btn-exp" onclick="exportTableToExcel('poTableMerch','merch_po.xls')"><i class="fas fa-file-excel"></i> Excel</button>
+  <button type="button" class="po-ctrl-btn po-btn-exp" onclick="exportTableToPDF('poTableMerch','Merchandise POs')"><i class="fas fa-file-pdf"></i> PDF</button>
+</form>
+
+<?php
+// Helper: render one PO table section
+function renderPoSection($pos, $section_label, $section_icon, $section_color, $table_id, $PENDING_ST, $APPROVED_ST, $DELIVERED_ST, $CANCELLED_ST) {
+?>
+<!-- ══ <?= $section_label ?> PO SECTION ══ -->
+<div class="po-section-wrap" style="margin-bottom:32px;">
+
+  <!-- Section Header -->
+  <div class="po-section-hd" style="background:<?= $section_color ?>;color:#fff;padding:10px 18px;border-radius:10px 10px 0 0;display:flex;align-items:center;gap:10px;">
+    <i class="<?= $section_icon ?>" style="font-size:16px;"></i>
+    <span style="font-size:14px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;"><?= $section_label ?> Purchase Orders</span>
+    <span style="margin-left:auto;background:rgba(255,255,255,.25);border-radius:20px;padding:2px 12px;font-size:12px;font-weight:700;"><?= count($pos) ?> PO(s)</span>
+  </div>
+
+  <div class="po-table-wrap" style="border-radius:0 0 10px 10px;border-top:none;">
+    <table class="po-table" id="<?= $table_id ?>">
+      <thead>
+        <tr>
+          <th style="text-align:left;padding-left:18px;">PO No.</th>
+          <th>Supplier</th>
+          <th>Date Created</th>
+          <th>Total Items</th>
+          <th>Total Amount</th>
+          <th>Created By</th>
+          <th>Status</th>
+          <th style="width:160px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+      <?php if (empty($pos)): ?>
+        <tr class="no-paginate">
+          <td colspan="8" style="text-align:center;padding:36px;color:#94a3b8;">
+            <i class="fas fa-inbox" style="font-size:2rem;display:block;margin-bottom:8px;opacity:.3;"></i>
+            No <?= strtolower($section_label) ?> purchase orders found.
+          </td>
+        </tr>
+      <?php else: ?>
+        <?php foreach ($pos as $po):
+          $st  = strtolower(trim($po['status'] ?? ''));
+          $isp = in_array($st, $PENDING_ST);
+          $isa = in_array($st, $APPROVED_ST);
+          $isd = $po['stock_in_done'] || in_array($st, $DELIVERED_ST);
+          $isc = in_array($st, $CANCELLED_ST);
+
+          if ($isd)      { $badgeCls='po-badge-delivered'; $badgeLbl='<i class="fas fa-truck"></i> Delivered'; }
+          elseif ($isc)  { $badgeCls='po-badge-cancelled'; $badgeLbl='<i class="fas fa-times-circle"></i> Cancelled'; }
+          elseif ($isa)  { $badgeCls='po-badge-approved';  $badgeLbl='<i class="fas fa-check-circle"></i> Approved'; }
+          elseif ($isp)  { $badgeCls='po-badge-pending';   $badgeLbl='<i class="fas fa-hourglass-half"></i> Pending'; }
+          else           { $badgeCls='po-badge-pending';   $badgeLbl=htmlspecialchars($po['status']); }
+
+          $ptype      = $po['po_type'];
+          $batch_id   = $po['batch_id'] ?? '';
+          $group_date = $po['group_date'] ?? ($po['date_created'] ? date('Y-m-d', strtotime($po['date_created'])) : '');
+          $date_fmt   = $po['date_created'] ? date('M d, Y h:i A', strtotime($po['date_created'])) : '—';
+
+          // Print URL: prefer batch_id, fall back to date
+          if (!empty($batch_id)) {
+              $print_url = "print_po_new.php?batch_id=" . urlencode($batch_id) . "&type=" . urlencode($ptype) . "&print=1";
+          } else {
+              $print_url = "print_po_new.php?date=" . urlencode($group_date) . "&type=" . urlencode($ptype) . "&print=1";
+          }
+
+          // JSON for finalize modal
+          $json_po = htmlspecialchars(json_encode([
+              'po_no'       => $po['po_no'],
+              'batch_id'    => $batch_id,
+              'group_date'  => $group_date,
+              'supplier'    => $po['supplier'],
+              'category'    => $po['category'],
+              'date_created'=> $date_fmt,
+              'total_items' => $po['total_items'],
+              'total_amount'=> $po['total_amount'],
+              'created_by'  => trim($po['created_by'] ?? ''),
+              'status'      => $po['status'],
+              'notes'       => $po['notes'] ?? '',
+              'po_type'     => $ptype,
+              'detail'      => $po['detail'] ?? '',
+          ]), ENT_QUOTES, 'UTF-8');
+        ?>
+        <tr class="po-row">
+          <td style="text-align:left;padding-left:18px;">
+            <code style="font-weight:800;font-size:12px;color:#002F70;"><?= htmlspecialchars($po['po_no']) ?></code>
+          </td>
+          <td style="font-size:12px;"><?= htmlspecialchars($po['supplier']) ?></td>
+          <td style="font-size:12px;white-space:nowrap;"><?= $date_fmt ?></td>
+          <td style="font-weight:700;"><?= (int)$po['total_items'] ?> item(s)</td>
+          <td style="font-weight:700;">&#8369;<?= number_format((float)$po['total_amount'], 2) ?></td>
+          <td style="font-size:12px;"><?= htmlspecialchars(trim($po['created_by']) ?: '—') ?></td>
+          <td><span class="po-badge <?= $badgeCls ?>"><?= $badgeLbl ?></span></td>
+          <td>
+            <div style="display:flex;flex-direction:column;gap:5px;">
+
+              <!-- ONE PRINT PO BUTTON -->
+              <a href="<?= htmlspecialchars($print_url) ?>"
+                 target="_blank"
+                 class="po-ctrl-btn po-btn-exp"
+                 style="font-size:11px;padding:6px 10px;justify-content:center;text-decoration:none;display:flex;"
+                 title="Print all items in this PO as one document">
+                <i class="fas fa-print"></i>&nbsp;Print PO
+              </a>
+
+              <?php if ($isp): ?>
+              <!-- Finalize (pending only) -->
+              <a href="javascript:void(0)"
+                 class="po-ctrl-btn po-btn-fin"
+                 style="font-size:11px;padding:6px 10px;justify-content:center;text-decoration:none;display:flex;"
+                 onclick='openFinalizeSingle(<?= json_encode($group_date) ?>,<?= json_encode($ptype) ?>,<?= $json_po ?>)'
+                 title="Finalize this PO">
+                <i class="fas fa-check"></i>&nbsp;Finalize
+              </a>
+              <!-- Reject (pending only) -->
+              <a href="javascript:void(0)"
+                 class="po-ctrl-btn po-btn-rej"
+                 style="font-size:11px;padding:6px 10px;justify-content:center;text-decoration:none;display:flex;"
+                 onclick="openReject('<?= $ptype ?>','<?= $group_date ?>')"
+                 title="Reject this PO">
+                <i class="fas fa-times"></i>&nbsp;Reject
+              </a>
+              <?php endif; ?>
+
+            </div>
+          </td>
+        </tr>
+        <?php endforeach; ?>
+      <?php endif; ?>
+      </tbody>
+    </table>
+  </div>
+</div>
+<?php
+} // end renderPoSection()
+?>
+
+<?php
+// ── MERCHANDISE PO SECTION ────────────────────────────────────────────────────
+renderPoSection(
+    $merch_pos,
+    'Merchandise',
+    'fas fa-boxes',
+    '#002F70',
+    'poTableMerch',
+    $PENDING_ST, $APPROVED_ST, $DELIVERED_ST, $CANCELLED_ST
+);
+
+// ── FUEL PO SECTION ───────────────────────────────────────────────────────────
+renderPoSection(
+    $fuel_pos,
+    'Fuel',
+    'fas fa-gas-pump',
+    '#795548',
+    'poTableFuel',
+    $PENDING_ST, $APPROVED_ST, $DELIVERED_ST, $CANCELLED_ST
+);
+?>

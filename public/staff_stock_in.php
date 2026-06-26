@@ -12,7 +12,14 @@ $me         = current_user();
 $role       = role_key($me['role'] ?? 'staff');
 $station_id = (int)user_station_id();
 
-if (!in_array($role, ['staff','cashier','pump_attendant'])) {
+// Stock-In is NO LONGER a manual staff function.
+// Inventory is updated automatically by the system after Manager approval.
+// Staff are redirected away; this page is retained for Manager/Admin audit access only.
+if (in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+    $_SESSION['inv_notice'] = 'Stock-In is handled automatically by the system after Manager verification. You do not need to encode stock-in manually.';
+    header('Location: staff_inventory_merchandise.php'); exit;
+}
+if (!in_array($role, ['manager', 'admin', 'superadmin', 'developer'])) {
     header('Location: dashboard.php'); exit;
 }
 
@@ -312,7 +319,6 @@ include __DIR__ . '/../partials/header.php';
   </div>
 </div>
 
-<?php require_once __DIR__ . '/../partials/staff_inventory_summary.php'; ?>
 
 <?php if ($flash_ok): ?>
 <div class="flash-ok"><i class="fas fa-check-circle"></i> <?= htmlspecialchars($flash_ok) ?></div>

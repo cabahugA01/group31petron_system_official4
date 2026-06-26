@@ -221,29 +221,34 @@ try {
             $price_missing = ($price <= 0);
             if ($price_missing) $price = 0.0;
 
-            // ── Detect shift from DB if not posted ──
+            // ── Detect shift using fixed schedule rules ──
+            // Shift 1 (first)  → 6:00 AM – 2:00 PM  (06:00:00–13:59:59)
+            // Shift 2 (second) → 2:00 PM – 12:00 MN  (14:00:00–23:59:59)
+            // Early morning (00:00–05:59) → Shift 2 (previous night's shift)
             if (empty($shift_period)) {
+                $ct = date('H:i:s');
+                $auto_sk = ($ct >= '06:00:00' && $ct < '14:00:00') ? 'first' : 'second';
+
                 try {
-                    $ct = date('H:i:s');
-                    $sp_stmt = $pdo->prepare("
-                        SELECT shift_key, shift_name FROM shift_periods
-                        WHERE is_active = 1 AND start_time <= ? AND end_time >= ?
-                        ORDER BY sort_order ASC LIMIT 1
-                    ");
-                    $sp_stmt->execute([$ct, $ct]);
+                    $sp_stmt = $pdo->prepare("SELECT shift_key, shift_name FROM shift_periods WHERE shift_key = ? AND is_active = 1 LIMIT 1");
+                    $sp_stmt->execute([$auto_sk]);
                     $sp_row = $sp_stmt->fetch(PDO::FETCH_ASSOC);
-                    if (!$sp_row) {
-                        $sp_stmt2 = $pdo->query("SELECT shift_key, shift_name FROM shift_periods WHERE is_active = 1 ORDER BY sort_order ASC LIMIT 1");
-                        $sp_row = $sp_stmt2 ? $sp_stmt2->fetch(PDO::FETCH_ASSOC) : null;
+                } catch (Exception $e) { $sp_row = null; }
+
+                if ($sp_row) {
+                    $shift_period = $sp_row['shift_key'];
+                    if (empty($shift_name)) $shift_name = $sp_row['shift_name'];
+                } else {
+                    $shift_period = $auto_sk;
+                    if (empty($shift_name)) {
+                        $shift_name = ($auto_sk === 'first')
+                            ? 'Shift 1 (6:00 AM - 2:00 PM)'
+                            : 'Shift 2 (2:00 PM - 12:00 MN)';
                     }
-                    if ($sp_row) {
-                        $shift_period = $sp_row['shift_key'];
-                        if (empty($shift_name)) $shift_name = $sp_row['shift_name'];
-                    }
-                } catch (Exception $e) {}
+                }
             }
             // Final fallback — shift_period is NOT NULL in DB
-            if (empty($shift_period)) $shift_period = 'general';
+            if (empty($shift_period)) $shift_period = 'second';
 
             // ── Validate: ending must be > beginning ──
             if ($present <= $previous) {

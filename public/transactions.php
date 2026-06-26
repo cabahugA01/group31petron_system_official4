@@ -1739,11 +1739,11 @@ try {
                             $ps     = strtolower(trim($ps_raw));
                             if ($ps === 'paid') {
                                 $psc = '#166534'; $pst = '#fff';
-                            } elseif (in_array($ps, ['partial payment','partial'])) {
+                            } elseif (in_array($ps, ['partial payment','partial','partially paid'])) {
                                 $psc = '#495057'; $pst = '#fff';
                             } elseif (in_array($ps, ['pending payment','pending'])) {
                                 $psc = '#9a3412'; $pst = '#fff';
-                            } elseif (in_array($ps, ['credit transaction','credit'])) {
+                            } elseif (in_array($ps, ['credit transaction','credit','credit account'])) {
                                 $psc = '#6b21a8'; $pst = '#fff';
                             } else {
                                 $psc = '#dc3545'; $pst = '#fff'; // Unpaid

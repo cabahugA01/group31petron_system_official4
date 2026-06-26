@@ -1,0 +1,112 @@
+<?php
+// ─── CSS for Purchase Orders Oversight ───────────────────────────────────────
+?>
+<style>
+.po-int-head{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px;}
+.po-int-head h1{font-size:22px;font-weight:700;color:#00264D;margin:0;text-transform:uppercase;display:flex;align-items:center;gap:8px;}
+.po-int-head .sub{font-size:13px;color:#666;margin-top:4px;}
+.po-sum-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:22px;}
+.po-sum-card{background:#fff;border-radius:10px;padding:16px 18px;box-shadow:0 1px 4px rgba(0,0,0,.07);border:1px solid #e2e8f0;border-left:5px solid #cbd5e1;display:flex;align-items:center;justify-content:space-between;}
+.po-sum-card.blue{border-left-color:#002F70;} .po-sum-card.orange{border-left-color:#fd7e14;}
+.po-sum-card.green{border-left-color:#28a745;} .po-sum-card.teal{border-left-color:#17a2b8;}
+.po-sum-card.red{border-left-color:#dc3545;}
+.po-sum-label{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;}
+.po-sum-val{font-size:26px;font-weight:800;color:#002F70;margin-top:2px;}
+.po-sum-icon{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;}
+.po-filter-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;margin-bottom:18px;}
+.po-filter-bar input,.po-filter-bar select{padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;color:#334155;outline:none;}
+.po-filter-bar input:focus,.po-filter-bar select:focus{border-color:#002F70;}
+
+/* Main Control Button Base Style */
+.po-ctrl-btn{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:6px 12px;
+    border-radius:5px;
+    font-size:12px;
+    font-weight:600;
+    cursor:pointer;
+    border:1px solid transparent;
+    text-decoration:none;
+    white-space:nowrap;
+    transition:all .15s;
+    line-height:1.2;
+}
+
+/* Force standard Back/Outline style on ALL action buttons, including <button> tags */
+.po-btn-back{
+    background:#ffffff !important;
+    background-color:#ffffff !important;
+    color:#475569 !important;
+    border:1px solid #94a3b8 !important;
+    border-color:#94a3b8 !important;
+    box-shadow:none !important;
+}
+.po-btn-back:hover{
+    background:#f1f5f9 !important;
+    background-color:#f1f5f9 !important;
+    color:#334155 !important;
+    border-color:#64748b !important;
+}
+
+/* Export Buttons Style */
+.po-btn-exp{
+    background:#fff !important;
+    background-color:#fff !important;
+    color:#002F70 !important;
+    border:1px solid #002F70 !important;
+    border-color:#002F70 !important;
+}
+.po-btn-exp:hover{
+    background:#002F70 !important;
+    background-color:#002F70 !important;
+    color:#fff !important;
+}
+
+.po-table-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;}
+.po-table{width:100%;border-collapse:collapse;font-size:13px;}
+.po-table th{background:#002F70;color:#fff;padding:12px 14px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;text-align:center;}
+.po-table td{padding:12px 14px;border-bottom:1px solid #f1f5f9;vertical-align:middle;text-align:center;}
+.po-table tbody tr:last-child td{border-bottom:none;}
+.po-table tbody tr:hover{background:#f8fafc;}
+.po-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap;}
+.po-badge-pending{background:#fff3cd;color:#856404;}
+.po-badge-approved{background:#d1ecf1;color:#0c5460;}
+.po-badge-delivered{background:#d4edda;color:#155724;}
+.po-badge-cancelled{background:#f8d7da;color:#721c24;}
+.po-badge-merch{background:#e8f4fd;color:#004085;}
+.po-badge-fuel{background:#fff8e1;color:#795548;}
+
+.po-modal-ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9000;align-items:center;justify-content:center;}
+.po-modal-ov.show{display:flex;}
+.po-modal-box{background:#fff;border-radius:12px;padding:26px;width:620px;max-width:96vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,.2);}
+.po-modal-box h3{margin:0 0 16px;font-size:15px;font-weight:800;color:#002F70;display:flex;align-items:center;gap:8px;text-transform:uppercase;}
+.po-form-grp{margin-bottom:13px;}
+.po-form-grp label{display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;}
+.po-form-grp input,.po-form-grp textarea,.po-form-grp select{width:100%;padding:8px 11px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;box-sizing:border-box;}
+.po-form-grp input:focus,.po-form-grp textarea:focus{outline:none;border-color:#002F70;}
+.po-modal-footer{display:flex;gap:10px;justify-content:flex-end;margin-top:16px;}
+.po-info-box{background:#e8f4fd;border-left:4px solid #002F70;border-radius:6px;padding:10px 14px;font-size:12px;color:#002F70;margin-bottom:14px;}
+.flash-ok{position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:99999;background:#d4edda;color:#155724;border:1px solid #c3e6cb;box-shadow:0 4px 16px rgba(0,0,0,.15);padding:12px 20px;border-radius:8px;display:flex;align-items:center;gap:8px;animation:sda .3s ease-out;}
+.flash-err{position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:99999;background:#f8d7da;color:#721c24;border:1px solid #f5c6cb;box-shadow:0 4px 16px rgba(0,0,0,.15);padding:12px 20px;border-radius:8px;display:flex;align-items:center;gap:8px;animation:sda .3s ease-out;}
+.po-btn-fin{
+    background:#fff !important;
+    color:#16a34a !important;
+    border:1px solid #16a34a !important;
+}
+.po-btn-fin:hover{
+    background:#16a34a !important;
+    color:#fff !important;
+}
+.po-btn-rej{
+    background:#fff !important;
+    color:#dc2626 !important;
+    border:1px solid #dc2626 !important;
+}
+.po-btn-rej:hover{
+    background:#dc2626 !important;
+    color:#fff !important;
+}
+@keyframes sda{from{top:-60px;opacity:0}to{top:24px;opacity:1}}
+</style>

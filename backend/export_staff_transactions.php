@@ -136,10 +136,16 @@ if ($type === 'job_orders') {
         $mh_status_col = st_has($mt_cols, 'validation_status') ? 'mt.validation_status' : (st_has($mt_cols, 'status') ? 'mt.status' : "'Pending'");
         $mh_txnid_col  = st_has($mt_cols, 'transaction_id')   ? 'mt.transaction_id'   : 'mt.id';
 
+        $txnTypeFilter = st_has($mt_cols, 'transaction_type')
+            ? "AND (mt.transaction_type = 'merchandise' OR mt.transaction_type IS NULL OR mt.transaction_type = '')"
+            : "";
+
         $stmt = $pdo->prepare("
             SELECT mt.id,
                    $mh_txnid_col AS transaction_id,
                    mt.customer_name,
+                   mt.item_sku AS items,
+                   mt.quantity,
                    mt.total_amount,
                    mt.payment_method,
                    COALESCE(mt.amount_paid, 0) AS amount_paid,
@@ -150,6 +156,7 @@ if ($type === 'job_orders') {
                    mt.shift_name
             FROM merchandise_transactions mt
             WHERE mt.station_id = ? AND mt.staff_id = ?
+              $txnTypeFilter
             ORDER BY $mh_date_col DESC
         ");
         $stmt->execute([$station_id, $staff_id]);
@@ -158,14 +165,16 @@ if ($type === 'job_orders') {
 
     // Output file configuration
     $filename = "merchandise_history_" . date('Y-m-d_His');
-    $title = "Merchandise History Report";
-    $headers = ['Transaction ID', 'Customer', 'Total Amount', 'Amount Paid', 'Balance Due', 'Payment Status', 'Payment Method', 'Date Created', 'Shift', 'Validation Status'];
-    
+    $title = "Merchandise Sales Report";
+    $headers = ['Transaction ID', 'Customer', 'Items Sold', 'Qty', 'Total Amount', 'Amount Paid', 'Balance Due', 'Payment Status', 'Payment Method', 'Date Created', 'Shift', 'Validation Status'];
+
     $rows_formatted = [];
     foreach ($data as $row) {
         $rows_formatted[] = [
             $row['transaction_id'],
             $row['customer_name'] ?: 'Walk-in Customer',
+            $row['items'] ?: 'N/A',
+            (int)($row['quantity'] ?? 0),
             (float)$row['total_amount'],
             (float)$row['amount_paid'],
             (float)$row['balance_due'],
@@ -193,9 +202,10 @@ if ($format === 'csv') {
             $formatted_row[6] = number_format($row[6], 2);
             $formatted_row[7] = number_format($row[7], 2);
         } else {
-            $formatted_row[2] = number_format($row[2], 2);
-            $formatted_row[3] = number_format($row[3], 2);
+            // Merchandise: indices 4=Total, 5=AmountPaid, 6=BalanceDue
             $formatted_row[4] = number_format($row[4], 2);
+            $formatted_row[5] = number_format($row[5], 2);
+            $formatted_row[6] = number_format($row[6], 2);
         }
         fputcsv($output, $formatted_row);
     }
@@ -222,7 +232,7 @@ if ($format === 'csv') {
         echo '<tr>';
         foreach ($row as $idx => $val) {
             // Right align currency values
-            if (($type === 'job_orders' && in_array($idx, [5,6,7])) || ($type === 'merchandise' && in_array($idx, [2,3,4]))) {
+            if (($type === 'job_orders' && in_array($idx, [5,6,7])) || ($type === 'merchandise' && in_array($idx, [4,5,6]))) {
                 echo '<td style="text-align:right;">' . number_format((float)$val, 2) . '</td>';
             } else {
                 echo '<td>' . htmlspecialchars((string)$val) . '</td>';
@@ -336,10 +346,10 @@ if ($format === 'csv') {
         echo '<tr>';
         foreach ($row as $idx => $val) {
             $is_amount = ($type === 'job_orders' && in_array($idx, [5,6,7]))
-                      || ($type === 'merchandise' && in_array($idx, [2,3,4]));
+                      || ($type === 'merchandise' && in_array($idx, [4,5,6]));
             if ($is_amount) {
                 // Accumulate only the primary total column
-                if (($type === 'job_orders' && $idx === 5) || ($type === 'merchandise' && $idx === 2)) {
+                if (($type === 'job_orders' && $idx === 5) || ($type === 'merchandise' && $idx === 4)) {
                     $total_val += (float)$val;
                 }
                 echo '<td class="amount">&#8369;' . number_format((float)$val, 2) . '</td>';
@@ -352,7 +362,7 @@ if ($format === 'csv') {
 
     // Determine which column index holds the "primary total" value
     // and render a structurally correct total row
-    $total_col_idx  = ($type === 'job_orders') ? 5 : 2;   // 0-based index
+    $total_col_idx  = ($type === 'job_orders') ? 5 : 4;   // 0-based index of Total Amount
     $col_count      = count($headers);
     $trailing_count = $col_count - $total_col_idx - 1;     // columns after the total
 

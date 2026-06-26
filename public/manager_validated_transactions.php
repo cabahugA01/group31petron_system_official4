@@ -73,7 +73,7 @@ $mt_vby_col    = vt_has($mt_cols, 'validated_by') ? "COALESCE(NULLIF(CONCAT(v.fi
 $mt_shift_col  = vt_has($mt_cols, 'shift') ? 'mt.shift' : "'N/A'";
 $mt_staff_id   = vt_has($mt_cols, 'staff_id') ? 'mt.staff_id' : 'NULL';
 
-$mt_where  = "WHERE mt.station_id = ? AND LOWER(TRIM(COALESCE(mt.validation_status,''))) IN ('official','completed','approved','validated','adjusted')";
+$mt_where  = "WHERE mt.station_id = ?";
 $mt_params = [$station_id];
 if ($search !== '') {
     $mt_where .= " AND (mt.customer_name LIKE ? OR mt.transaction_id LIKE ?)";
@@ -107,8 +107,12 @@ try {
             mt.id AS row_id,
             mt.transaction_id AS txn_id,
             COALESCE(NULLIF(TRIM(mt.customer_name),''),'Walk-in') AS customer,
-            'Merchandise' AS entry_type,
-            COALESCE(mt.item_sku, 'N/A') AS items_service,
+            CASE 
+                WHEN mt.transaction_type = 'combined' THEN 'Combined'
+                WHEN mt.transaction_type = 'job_order' THEN 'Job Order'
+                ELSE 'Merchandise'
+            END AS entry_type,
+            GROUP_CONCAT(CONCAT(mti.product_name, ' (x', mti.quantity, ')') ORDER BY mti.id SEPARATOR ', ') AS items_service,
             '' AS vehicle_plate,
             mt.total_amount AS amount,
             {$mt_paid_col} AS amount_paid,
@@ -130,7 +134,9 @@ try {
         FROM merchandise_transactions mt
         LEFT JOIN users u ON u.id = mt.staff_id
         LEFT JOIN users v ON v.id = mt.validated_by
+        LEFT JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id
         {$mt_where}
+        GROUP BY mt.id
         ORDER BY txn_date DESC
         LIMIT 500
     ");
@@ -148,7 +154,7 @@ $jo_vby_col    = vt_has($jo_cols, 'validated_by') ? "COALESCE(NULLIF(CONCAT(v.fi
 $jo_shift_col  = vt_has($jo_cols, 'shift') ? 'jo.shift' : "'N/A'";
 $jo_staff_id   = vt_has($jo_cols, 'created_by') ? 'COALESCE(jo.created_by, jo.user_id)' : 'jo.user_id';
 
-$jo_where  = "WHERE jo.station_id = ? AND LOWER(TRIM(COALESCE({$jo_status_col},''))) IN ('official','completed','approved','validated','adjusted')";
+$jo_where  = "WHERE jo.station_id = ?";
 $jo_params = [$station_id];
 if ($search !== '') {
     $jo_where .= " AND (jo.customer_name LIKE ? OR jo.service_type LIKE ? OR jo.vehicle_plate LIKE ?)";
@@ -229,6 +235,27 @@ if ($payment_status !== '') {
 $rows = array_values($all_rows);
 usort($rows, fn($a, $b) => strtotime($b['txn_date']) - strtotime($a['txn_date']));
 
+// Pre-fetch items for merchandise_transactions
+$mgr_items_map = [];
+try {
+    $mt_ids = array_column(array_filter($rows, fn($r) => $r['_source'] === 'merchandise_transactions'), 'row_id');
+    if (!empty($mt_ids)) {
+        $in_pl = implode(',', array_map('intval', $mt_ids));
+        $itm_stmt = $pdo->query("
+            SELECT transaction_id, product_name, quantity, unit_price, subtotal,
+                   COALESCE(item_type,'merchandise') AS item_type,
+                   COALESCE(category,'') AS category,
+                   COALESCE(size_variant,'') AS size_variant
+            FROM merchandise_transaction_items
+            WHERE transaction_id IN ($in_pl)
+            ORDER BY transaction_id, id ASC
+        ");
+        foreach ($itm_stmt->fetchAll(PDO::FETCH_ASSOC) as $itm_row) {
+            $mgr_items_map[(int)$itm_row['transaction_id']][] = $itm_row;
+        }
+    }
+} catch (Exception $e) { $mgr_items_map = []; }
+
 // Summary card calculations (all from filtered $rows)
 $total_amount = 0.0;
 $merch_count  = 0;
@@ -258,11 +285,29 @@ if ($export_type === 'csv') {
     $out = fopen('php://output', 'w');
     fputcsv($out, ['Txn ID', 'Customer', 'Type', 'Items / Service', 'Vehicle Plate', 'Amount', 'Payment Method', 'Payment Status', 'Shift', 'Staff', 'Date', 'Validated By', 'Validation Remarks']);
     foreach ($rows as $r) {
+        $items_desc = '';
+        if ($r['_source'] === 'merchandise_transactions') {
+            $mt_id = (int)$r['row_id'];
+            if ($mt_id && !empty($mgr_items_map[$mt_id])) {
+                $item_strings = [];
+                foreach ($mgr_items_map[$mt_id] as $itm) {
+                    $prefix = ($itm['item_type'] === 'service') ? '🔧' : '📦';
+                    $qty_str = ($itm['item_type'] !== 'service' && $itm['quantity'] > 0) ? ' (x' . (int)$itm['quantity'] . ')' : '';
+                    $item_strings[] = $prefix . ' ' . $itm['product_name'] . $qty_str;
+                }
+                $items_desc = implode(', ', $item_strings);
+            } else {
+                $items_desc = $r['items_service'];
+            }
+        } else {
+            $items_desc = '🔧 ' . $r['items_service'];
+        }
+
         fputcsv($out, [
             $r['txn_id'],
             $r['customer'],
             $r['entry_type'],
-            $r['items_service'] ?? '—',
+            $items_desc,
             $r['vehicle_plate'] ?? '—',
             number_format((float)$r['amount'], 2),
             $r['payment_method'],
@@ -293,11 +338,29 @@ if ($export_type === 'excel') {
     echo '</tr></thead><tbody>';
     foreach ($rows as $r) {
         $pay_st = vt_pay_status($r);
+        $items_desc = '';
+        if ($r['_source'] === 'merchandise_transactions') {
+            $mt_id = (int)$r['row_id'];
+            if ($mt_id && !empty($mgr_items_map[$mt_id])) {
+                $item_strings = [];
+                foreach ($mgr_items_map[$mt_id] as $itm) {
+                    $prefix = ($itm['item_type'] === 'service') ? '🔧' : '📦';
+                    $qty_str = ($itm['item_type'] !== 'service' && $itm['quantity'] > 0) ? ' (x' . (int)$itm['quantity'] . ')' : '';
+                    $item_strings[] = $prefix . ' ' . $itm['product_name'] . $qty_str;
+                }
+                $items_desc = implode(', ', $item_strings);
+            } else {
+                $items_desc = $r['items_service'];
+            }
+        } else {
+            $items_desc = '🔧 ' . $r['items_service'];
+        }
+
         echo '<tr>';
         echo '<td>' . htmlspecialchars($r['txn_id']) . '</td>';
         echo '<td>' . htmlspecialchars($r['customer']) . '</td>';
         echo '<td>' . htmlspecialchars($r['entry_type']) . '</td>';
-        echo '<td>' . htmlspecialchars($r['items_service'] ?? '—') . '</td>';
+        echo '<td>' . htmlspecialchars($items_desc) . '</td>';
         echo '<td>' . htmlspecialchars($r['vehicle_plate'] ?? '—') . '</td>';
         echo '<td style="text-align:right">&#8369;' . number_format((float)$r['amount'], 2) . '</td>';
         echo '<td>' . htmlspecialchars($r['payment_method']) . '</td>';
@@ -371,11 +434,29 @@ if ($export_type === 'pdf') {
     echo '</tr></thead><tbody>';
     foreach ($rows as $r) {
         $pay_st = vt_pay_status($r);
+        $items_desc = '';
+        if ($r['_source'] === 'merchandise_transactions') {
+            $mt_id = (int)$r['row_id'];
+            if ($mt_id && !empty($mgr_items_map[$mt_id])) {
+                $item_strings = [];
+                foreach ($mgr_items_map[$mt_id] as $itm) {
+                    $prefix = ($itm['item_type'] === 'service') ? '🔧' : '📦';
+                    $qty_str = ($itm['item_type'] !== 'service' && $itm['quantity'] > 0) ? ' (x' . (int)$itm['quantity'] . ')' : '';
+                    $item_strings[] = $prefix . ' ' . $itm['product_name'] . $qty_str;
+                }
+                $items_desc = implode(', ', $item_strings);
+            } else {
+                $items_desc = $r['items_service'];
+            }
+        } else {
+            $items_desc = '🔧 ' . $r['items_service'];
+        }
+
         echo '<tr>';
         echo '<td>' . htmlspecialchars($r['txn_id']) . '</td>';
         echo '<td>' . htmlspecialchars($r['customer']) . '</td>';
         echo '<td>' . htmlspecialchars($r['entry_type']) . '</td>';
-        echo '<td>' . htmlspecialchars($r['items_service'] ?? '—') . '</td>';
+        echo '<td>' . htmlspecialchars($items_desc) . '</td>';
         echo '<td>' . htmlspecialchars($r['vehicle_plate'] ?? '—') . '</td>';
         echo '<td class="amount">&#8369;' . number_format((float)$r['amount'], 2) . '</td>';
         echo '<td>' . htmlspecialchars($r['payment_method']) . '</td>';
@@ -409,7 +490,6 @@ include __DIR__ . '/../partials/header.php';
 
     <!-- Export & Back Buttons (Header Right) -->
     <div class="actions txn-head-actions">
-        <a href="<?= in_array($role, ['admin', 'superadmin']) ? 'admin_dashboard.php' : 'manager_dashboard.php'; ?>" class="flt-btn flt-btn-reset"><i class="fas fa-arrow-left"></i> Back</a>
         <button type="button" onclick="exportTable('excel')" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</button>
         <button type="button" onclick="exportTable('csv')" class="flt-btn flt-btn-search"><i class="fas fa-file-csv"></i> CSV</button>
         <button type="button" onclick="exportTable('pdf')" class="flt-btn flt-btn-pdf"><i class="fas fa-file-pdf"></i> PDF</button>
@@ -502,18 +582,17 @@ include __DIR__ . '/../partials/header.php';
 <div class="card" style="padding:0;overflow:hidden;">
     <table class="vt-table" style="table-layout:auto;width:100%;">
         <colgroup>
-            <col style="width:7%;"><!-- Transaction ID -->
-            <col style="width:9%;"><!-- Customer -->
-            <col style="width:6%;"><!-- Type -->
-            <col style="width:12%;"><!-- Items / Service -->
-            <col style="width:7%;"><!-- Amount -->
-            <col style="width:7%;"><!-- Payment Method -->
+            <col style="width:12%;"><!-- Transaction ID -->
+            <col style="width:10%;"><!-- Customer -->
+            <col style="width:8%;"><!-- Type -->
+            <col style="width:20%;"><!-- Items / Service -->
+            <col style="width:8%;"><!-- Amount -->
+            <col style="width:8%;"><!-- Payment Method -->
             <col style="width:8%;"><!-- Payment Status -->
-            <col style="width:9%;"><!-- Date / Time -->
-            <col style="width:8%;"><!-- Staff -->
-            <col style="width:8%;"><!-- Validated By -->
-            <col style="width:12%;"><!-- Validation Remarks -->
-            <col style="width:7%;"><!-- Actions -->
+            <col style="width:12%;"><!-- Shift -->
+            <col style="width:12%;"><!-- Date / Time -->
+            <col style="width:10%;"><!-- Staff -->
+            <col style="width:8%;"><!-- Actions -->
         </colgroup>
         <thead>
             <tr>
@@ -523,31 +602,90 @@ include __DIR__ . '/../partials/header.php';
                 <th>Items / Service</th>
                 <th style="text-align:right;">Amount</th>
                 <th>Method</th>
-                <th>Status</th>
+                <th>Pay Status</th>
+                <th>Txn Status</th>
+                <th>Shift</th>
                 <th>Date</th>
                 <th>Staff</th>
-                <th>Validated</th>
-                <th>Validation Remarks</th>
                 <th style="text-align:center;">Actions</th>
             </tr>
         </thead>
         <tbody>
             <?php if (count($rows) > 0): ?>
                 <?php foreach ($rows as $r): ?>
-                <?php $pay_st = vt_pay_status($r); ?>
-                <tr>
+                <?php 
+                    $pay_st = vt_pay_status($r); 
+                    
+                    // Build items list for this row
+                    $rc_row_items = [];
+                    if ($r['_source'] === 'merchandise_transactions') {
+                        $mt_id = (int)$r['row_id'];
+                        if ($mt_id && !empty($mgr_items_map[$mt_id])) {
+                            $rc_row_items = $mgr_items_map[$mt_id];
+                        } elseif (!empty($r['items_service']) && $r['items_service'] !== 'N/A') {
+                            // Legacy fallback
+                            $rc_row_items = [[
+                                'item_type'    => ($r['entry_type'] === 'Job Order') ? 'service' : 'merchandise',
+                                'product_name' => $r['items_service'],
+                                'quantity'     => 1,
+                                'unit_price'   => $r['amount'] ?? 0,
+                                'subtotal'     => $r['amount'] ?? 0,
+                                'category'     => '',
+                                'size_variant' => '',
+                            ]];
+                        }
+                    } else {
+                        // Job order: use items_service
+                        if (!empty($r['items_service'])) {
+                            $rc_row_items = [[
+                                'item_type'    => 'service',
+                                'product_name' => $r['items_service'],
+                                'quantity'     => 1,
+                                'unit_price'   => $r['amount'] ?? 0,
+                                'subtotal'     => $r['amount'] ?? 0,
+                                'category'     => 'Job Order',
+                                'size_variant' => $r['vehicle_plate'] ?? '',
+                            ]];
+                        }
+                    }
+                    $expand_id = 'mgre_' . ($r['_source'] === 'job_orders' ? 'jo' : 'mt') . '_' . (int)$r['row_id'];
+                    $svc_items   = array_filter($rc_row_items, fn($i) => $i['item_type'] === 'service');
+                    $merch_items = array_filter($rc_row_items, fn($i) => $i['item_type'] !== 'service');
+                ?>
+                <tr class="rc-row-main" onclick="rcToggleExpand('<?= $expand_id ?>')">
                     <td style="font-weight:600;font-size:13px;font-family:monospace;white-space:nowrap;">
                         <?php echo htmlspecialchars($r['txn_id']); ?>
                     </td>
                     <td style="font-size:13px;" title="<?php echo htmlspecialchars($r['customer']); ?>"><?php echo htmlspecialchars($r['customer']); ?></td>
                     <td>
-                        <span class="vt-badge vt-badge-type">
-                            <?php echo htmlspecialchars($r['entry_type']); ?>
+                        <?php 
+                        $t_label = $r['entry_type']; 
+                        $t_class = match(strtolower($t_label)){
+                            'combined' => 'vt-badge-combined',
+                            'job order' => 'vt-badge-jo',
+                            default => 'vt-badge-merch'
+                        };
+                        ?>
+                        <span class="vt-badge <?= $t_class ?>">
+                            <?php echo htmlspecialchars($t_label); ?>
                         </span>
                     </td>
-                    <td style="font-size:13px;"
-                        title="<?php echo htmlspecialchars($r['items_service']); ?>">
-                        <?php echo htmlspecialchars($r['items_service']); ?>
+                    <td>
+                      <?php if (empty($rc_row_items)): ?>
+                        <span style="color:#94a3b8;font-size:11px">&mdash;</span>
+                      <?php else: ?>
+                        <?php foreach ($rc_row_items as $ri): ?>
+                          <?php $ri_svc = ($ri['item_type'] === 'service'); ?>
+                          <span class="rc-item-chip<?= $ri_svc ? ' svc' : '' ?>">
+                            <i class="fas <?= $ri_svc ? 'fa-wrench' : 'fa-box' ?>" style="font-size:9px"></i>
+                            <?= htmlspecialchars($ri['product_name']) ?>
+                            <?php if (!$ri_svc && (float)$ri['quantity'] > 0): ?>
+                              <span class="rc-chip-qty">x<?= (int)$ri['quantity'] ?></span>
+                            <?php endif; ?>
+                          </span>
+                        <?php endforeach; ?>
+                        <i class="fas fa-chevron-down" style="font-size:9px;color:#94a3b8;margin-left:4px" id="<?= $expand_id ?>_icon"></i>
+                      <?php endif; ?>
                     </td>
                     <td style="font-weight:600;color:#002F70;text-align:right;white-space:nowrap;">
                         &#8369;<?php echo number_format((float)$r['amount'], 2); ?>
@@ -558,32 +696,108 @@ include __DIR__ . '/../partials/header.php';
                             <?php echo $pay_st; ?>
                         </span>
                     </td>
+                    <?php
+                    $vst = strtolower(trim($r['validation_status'] ?? 'approved'));
+                    if (in_array($vst, ['approved','official','completed','verified'])) {
+                        $vst_bg='#f0fdf4';$vst_c='#16a34a';$vst_b='#bbf7d0';$vst_l='Completed';
+                    } elseif ($vst === 'adjusted') {
+                        $vst_bg='#fffbeb';$vst_c='#d97706';$vst_b='#fde68a';$vst_l='Adjusted';
+                    } elseif ($vst === 'voided') {
+                        $vst_bg='#fef2f2';$vst_c='#dc2626';$vst_b='#fecaca';$vst_l='Voided';
+                    } else {
+                        $vst_bg='#f0fdf4';$vst_c='#16a34a';$vst_b='#bbf7d0';$vst_l='Completed';
+                    }
+                    ?>
+                    <td>
+                        <span style="display:inline-block;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:700;color:<?= $vst_c ?>;background:<?= $vst_bg ?>;border:1px solid <?= $vst_b ?>;white-space:nowrap">
+                            <?= $vst_l ?>
+                        </span>
+                    </td>
+                    <td>
+                        <?php 
+                        $s_val = strtolower(trim($r['shift']));
+                        $shift_time_label = match($s_val) {
+                            'first', 'shift 1' => 'Shift 1 (6AM - 2PM)',
+                            'second', 'shift 2' => 'Shift 2 (2PM - 12AM)',
+                            default => htmlspecialchars($r['shift'] ?: 'N/A')
+                        };
+                        ?>
+                        <span class="vt-badge" style="background:#e0f2fe;color:#0369a1;border-color:#bae6fd;">
+                            <?= $shift_time_label ?>
+                        </span>
+                    </td>
                     <td style="white-space:nowrap;font-size:13px;color:#64748b;">
                         <?php echo date('M d, Y H:i', strtotime($r['txn_date'])); ?>
                     </td>
                     <td style="font-size:13px;color:#64748b;"><?php echo htmlspecialchars($r['staff_name']); ?></td>
-                    <td style="font-size:13px;color:#64748b;"><?php echo htmlspecialchars($r['validated_by']); ?></td>
-                    <?php $val_rem = trim($r['validation_remarks'] ?? ''); ?>
-                    <td style="font-size:11px;font-style:italic;color:#64748b;line-height:1.4;" title="<?= htmlspecialchars($val_rem ?: '—') ?>">
-                        <?php if ($val_rem !== ''): ?>
-                            <span style="display:inline-block;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($val_rem) ?>"><?= htmlspecialchars($val_rem) ?></span>
-                        <?php else: ?>
-                            <span style="color:#cbd5e1;font-style:normal;">—</span>
-                        <?php endif; ?>
-                    </td>
-                    <td style="text-align:center;padding:8px 4px;">
-                        <button class="vt-btn-action vt-btn-view" onclick="viewValidatedTransaction('<?php echo $r['_source']; ?>', <?php echo $r['row_id']; ?>)" title="View transaction details" style="padding:6px 10px;font-size:12px;">
+                    <td style="text-align:center;padding:6px 4px;" onclick="event.stopPropagation()">
+                        <div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;">
+                        <button class="vt-btn-action vt-btn-view" onclick="viewValidatedTransaction('<?php echo $r['_source']; ?>', <?php echo $r['row_id']; ?>)" title="View details" style="padding:5px 8px;font-size:11px;">
                             <i class="fas fa-eye"></i> View
                         </button>
+                        <?php if ($r['_source'] === 'merchandise_transactions' && $vst !== 'voided'): ?>
+                        <button class="vt-btn-action" style="color:#d97706;border-color:#d97706;background:white;padding:5px 8px;font-size:11px;" onclick="openAdjustModal(<?= $r['row_id'] ?>, '<?= htmlspecialchars(addslashes($r['txn_id'])) ?>', '<?= htmlspecialchars(addslashes($r['customer'])) ?>', '<?= htmlspecialchars(addslashes($r['entry_type'])) ?>', '<?= htmlspecialchars(addslashes($r['txn_date'])) ?>', '<?= htmlspecialchars(addslashes($r['staff_name'])) ?>', '<?= htmlspecialchars(addslashes($r['payment_method'])) ?>', '<?= htmlspecialchars(addslashes($r['payment_status'] ?? 'Paid')) ?>')" title="Adjust transaction">
+                            <i class="fas fa-pen"></i> Adjust
+                        </button>
+                        <button class="vt-btn-action" style="color:#dc2626;border-color:#dc2626;background:white;padding:5px 8px;font-size:11px;" onclick="openVoidModal(<?= $r['row_id'] ?>, '<?= htmlspecialchars(addslashes($r['txn_id'])) ?>', '<?= htmlspecialchars(addslashes($r['customer'])) ?>')" title="Void transaction">
+                            <i class="fas fa-ban"></i> Void
+                        </button>
+                        <?php endif; ?>
+                        </div>
                     </td>
                 </tr>
+                <?php if (!empty($rc_row_items)): ?>
+                <tr class="rc-expand-row" id="<?= $expand_id ?>" style="display:none">
+                  <td colspan="11" style="background:#f8fafc">
+                    <div class="rc-expand-inner">
+                      <?php if (!empty($svc_items)): ?>
+                      <div style="font-size:11px;font-weight:800;color:#b45309;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px">
+                        <i class="fas fa-tools"></i> Services / Job Order
+                      </div>
+                      <table class="rc-expand-tbl" style="margin-bottom:10px">
+                        <thead><tr><th>Service</th><th>Category</th><th>Plate / Note</th><th style="text-align:right">Fee</th></tr></thead>
+                        <tbody>
+                        <?php foreach ($svc_items as $si): ?>
+                        <tr>
+                          <td style="font-weight:600"><?= htmlspecialchars($si['product_name']) ?></td>
+                          <td style="color:#64748b"><?= htmlspecialchars($si['category'] ?: '&mdash;') ?></td>
+                          <td style="color:#64748b;font-size:10px"><?= htmlspecialchars($si['size_variant'] ?: '&mdash;') ?></td>
+                          <td style="text-align:right;font-weight:700;color:#002F70">&#8369;<?= number_format((float)$si['subtotal'],2) ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                      </table>
+                      <?php endif; ?>
+                      <?php if (!empty($merch_items)): ?>
+                      <div style="font-size:11px;font-weight:800;color:#15803d;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px">
+                        <i class="fas fa-box"></i> Merchandise Products
+                      </div>
+                      <table class="rc-expand-tbl">
+                        <thead><tr><th>Product</th><th>Size/Variant</th><th style="text-align:center">Qty</th><th style="text-align:right">Unit Price</th><th style="text-align:right">Subtotal</th></tr></thead>
+                        <tbody>
+                        <?php foreach ($merch_items as $mi): ?>
+                        <tr>
+                          <td style="font-weight:600"><?= htmlspecialchars($mi['product_name']) ?></td>
+                          <td style="color:#64748b;font-size:10px"><?= htmlspecialchars($mi['size_variant'] ?: '&mdash;') ?></td>
+                          <td style="text-align:center;font-weight:700"><?= (int)$mi['quantity'] ?></td>
+                          <td style="text-align:right;color:#475569">&#8369;<?= number_format((float)$mi['unit_price'],2) ?></td>
+                          <td style="text-align:right;font-weight:700;color:#002F70">&#8369;<?= number_format((float)$mi['subtotal'],2) ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                      </table>
+                      <?php endif; ?>
+                    </div>
+                  </td>
+                </tr>
+                <?php endif; ?>
                 <?php endforeach; ?>
             <?php else: ?>
                 <tr>
-                    <td colspan="12" style="text-align:center;padding:60px 20px;color:#94a3b8;">
+                    <td colspan="13" style="text-align:center;padding:60px 20px;color:#94a3b8;">
                         <i class="fas fa-inbox" style="font-size:48px;display:block;margin-bottom:12px;opacity:0.3;"></i>
-                        <div style="font-size:16px;font-weight:600;color:#64748b;margin-bottom:4px;">No Validated Transactions</div>
-                        <div style="font-size:13px;">No approved transactions found matching your filters.</div>
+                        <div style="font-size:16px;font-weight:600;color:#64748b;margin-bottom:4px;">No Transactions Found</div>
+                        <div style="font-size:13px;">No transactions found matching your filters.</div>
                     </td>
                 </tr>
             <?php endif; ?>
@@ -608,6 +822,51 @@ include __DIR__ . '/../partials/header.php';
             <button type="button" class="vt-btn vt-btn-reset" onclick="closeViewModal()">Close</button>
         </div>
     </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ ADJUST MODAL -->
+<div class="vt-modal-overlay" id="adjustModal">
+  <div class="vt-modal" style="max-width:720px;">
+    <div class="vt-modal-header" style="background:#fffbeb;border-bottom-color:#fde68a;">
+      <h3 style="color:#b45309;"><i class="fas fa-pen" style="margin-right:8px;"></i>Adjust Transaction</h3>
+      <button class="vt-modal-close" onclick="closeAdjustModal()">&times;</button>
+    </div>
+    <div class="vt-modal-body" id="adjustModalBody">
+      <!-- populated by JS -->
+    </div>
+    <div class="vt-modal-footer">
+      <button type="button" class="vt-btn vt-btn-reset" onclick="closeAdjustModal()">Cancel</button>
+      <button type="button" id="saveAdjustBtn" onclick="submitAdjustment()" style="background:#d97706;color:#fff;border:none;height:36px;padding:0 20px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-save"></i> Save Adjustment</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ VOID MODAL -->
+<div class="vt-modal-overlay" id="voidModal">
+  <div class="vt-modal" style="max-width:500px;">
+    <div class="vt-modal-header" style="background:#fef2f2;border-bottom-color:#fecaca;">
+      <h3 style="color:#dc2626;"><i class="fas fa-ban" style="margin-right:8px;"></i>Void Transaction</h3>
+      <button class="vt-modal-close" onclick="closeVoidModal()">&times;</button>
+    </div>
+    <div class="vt-modal-body">
+      <div id="voidModalInfo" style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#991b1b;"></div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px;">Void Reason <span style="color:#dc2626;">*</span></label>
+        <textarea id="voidReason" rows="3" placeholder="Reason for voiding this transaction..." style="width:100%;padding:8px 10px;border:1px solid #fca5a5;border-radius:6px;font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px;">Manager Remarks <span style="color:#dc2626;">*</span></label>
+        <textarea id="voidManagerRemarks" rows="2" placeholder="Manager notes..." style="width:100%;padding:8px 10px;border:1px solid #fca5a5;border-radius:6px;font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>
+      </div>
+      <div style="margin-top:12px;padding:10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;font-size:12px;color:#9a3412;">
+        <i class="fas fa-exclamation-triangle"></i> <strong>Warning:</strong> This will permanently void the transaction and restore inventory. This action cannot be undone.
+      </div>
+    </div>
+    <div class="vt-modal-footer">
+      <button type="button" class="vt-btn vt-btn-reset" onclick="closeVoidModal()">Cancel</button>
+      <button type="button" id="confirmVoidBtn" onclick="submitVoid()" style="background:#dc2626;color:#fff;border:none;height:36px;padding:0 20px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-ban"></i> Confirm Void</button>
+    </div>
+  </div>
 </div>
 
 <style>
@@ -734,10 +993,25 @@ include __DIR__ . '/../partials/header.php';
 .vt-badge { 
     display:inline-block;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap;background:#f8fafc;color:#64748b;border:1px solid #e2e8f0;
 }
-.vt-badge-type { background:#f1f5f9;color:#475569;border-color:#cbd5e1; }
+.vt-badge-merch { background:#f0fdf4;color:#15803d;border-color:#bbf7d0; }
+.vt-badge-jo { background:#fffbeb;color:#b45309;border-color:#fde68a; }
+.vt-badge-combined { background:#f5f3ff;color:#6d28d9;border-color:#ddd6fe; }
 .vt-badge-paid { background:#f0fdf4;color:#166534;border-color:#bbf7d0; }
 .vt-badge-partial { background:#fef3c7;color:#92400e;border-color:#fde047; }
 .vt-badge-unpaid { background:#fef2f2;color:#991b1b;border-color:#fecaca; }
+
+/* Item chips & expand rows */
+.rc-item-chip{display:inline-flex;align-items:center;gap:4px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:600;color:#374151;margin:1px 2px 1px 0;white-space:nowrap;cursor:pointer}
+.rc-item-chip.svc{background:#fffbeb;border-color:#fde68a;color:#92400e}
+.rc-item-chip .rc-chip-qty{background:#002F70;color:#fff;border-radius:3px;padding:0 4px;font-size:9px;margin-left:3px}
+.rc-expand-row td{background:#f8fafc;padding:0}
+.rc-expand-inner{padding:10px 16px;border-top:2px solid #e2e8f0}
+.rc-expand-tbl{width:100%;border-collapse:collapse;font-size:11px}
+.rc-expand-tbl th{padding:5px 10px;text-align:left;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #e2e8f0}
+.rc-expand-tbl td{padding:5px 10px;border-bottom:1px solid #f1f5f9}
+.rc-expand-tbl tr:last-child td{border-bottom:none}
+.rc-row-main{cursor:pointer}
+.rc-row-main:hover td{background:#eff6ff !important}
 
 /* Action Buttons */
 .vt-btn-action { 
@@ -997,3 +1271,13 @@ function exportTable(format) {
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>
+<script>
+function rcToggleExpand(id) {
+  var row  = document.getElementById(id);
+  var icon = document.getElementById(id + '_icon');
+  if (!row) return;
+  var open = row.style.display !== 'none';
+  row.style.display = open ? 'none' : '';
+  if (icon) icon.style.transform = open ? '' : 'rotate(180deg)';
+}
+</script>

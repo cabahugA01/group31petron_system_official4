@@ -2,19 +2,6 @@
 /**
  * Official Purchase Order — Final Admin View
  * print_po_new.php
- *
- * Features:
- *  - Auto-generated PO Number display (Grouped by Date)
- *  - Status badge (Approved / Pending / Cancelled)
- *  - Date Finalized + Finalized By (Admin)
- *  - Station Name, Address, Supplier
- *  - Approval Chain / Audit Trail: Staff → Manager → Admin → Supplier
- *  - Order Details Table: #, Product, SKU, Qty, Unit Price, Total Amount (Grouped items)
- *  - Subtotal + Total Order Amount (₱ formatted)
- *  - Date Finalized + Printed Date
- *  - "OFFICIAL" watermark stamp
- *  - Audit trail log link
- *  - Print / Save as PDF button
  */
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -28,77 +15,148 @@ if (!in_array($role, ['admin', 'superadmin'])) {
     die('<p style="font-family:Arial;padding:40px;color:#721c24;">Access denied. Admin privileges required.</p>');
 }
 
-$po_id   = (int)($_GET['id'] ?? 0);
-$po_date = $_GET['date'] ?? null;
-$po_type = $_GET['type'] ?? 'merch'; // 'fuel' or 'merch'
+$po_id    = (int)($_GET['id'] ?? 0);
+$po_date  = $_GET['date']     ?? null;
+$batch_id = trim($_GET['batch_id'] ?? '');
+$po_type  = $_GET['type']     ?? 'merch'; // 'fuel' or 'merch'
 
-if (!$po_id && !$po_date) {
-    die('<p style="font-family:Arial;padding:40px;">No Purchase Order ID or Date provided.</p>');
+if (!$po_id && !$po_date && $batch_id === '') {
+    die('<p style="font-family:Arial;padding:40px;">No Purchase Order ID, Date, or Batch ID provided.</p>');
 }
 
 $station_id = (int)user_station_id();
-$po_items = [];
+$po_items   = [];
 
 // ── Fetch PO with all related data ────────────────────────────────────────
 try {
-    if ($po_date) {
+    // Helper select columns for sup and st
+    $select_fields = "
+        st.name AS station_name,
+        st.location AS station_location,
+        st.address AS station_address,
+        st.vat_tin AS station_vat_tin,
+        st.contact_number AS station_contact,
+        sup.name AS supplier_name,
+        sup.contact_person AS supplier_contact_person,
+        sup.phone AS supplier_phone,
+        sup.email AS supplier_email,
+        sup.address AS supplier_address
+    ";
+
+    if ($batch_id !== '') {
         if ($po_type === 'fuel') {
             $stmt = $pdo->prepare("
                 SELECT fpo.*,
-                       fpo.volume        AS quantity,
-                       fpo.notes         AS sr_manager_notes,
-                       ft.name           AS product_name,
-                       st.name           AS station_name,
-                       st.location       AS station_location,
-                       st.address        AS station_address,
-                       st.vat_tin        AS station_vat_tin,
-                       sup.name          AS supplier_name,
-                       u.name            AS created_by_name,
-                       ab.name           AS approved_by_name,
-                       NULL              AS staff_id,
-                       NULL              AS item_sku,
-                       NULL              AS sr_requested_qty,
-                       NULL              AS sr_approved_qty,
-                       u.name            AS staff_name,
-                       NULL              AS manager_name,
-                       NULL              AS request_id,
-                       fpo.approved_at   AS approved_at
+                       fpo.volume AS quantity,
+                       fpo.notes AS sr_manager_notes,
+                       ft.name AS product_name,
+                       'Fuel' AS product_category,
+                       u.name AS created_by_name,
+                       ab.name AS approved_by_name,
+                       NULL AS staff_id,
+                       NULL AS item_sku,
+                       NULL AS sr_requested_qty,
+                       NULL AS sr_approved_qty,
+                       u.name AS staff_name,
+                       NULL AS manager_name,
+                       NULL AS request_id,
+                       fpo.approved_at AS approved_at,
+                       $select_fields
                 FROM fuel_purchase_orders fpo
-                LEFT JOIN fuel_types ft   ON fpo.fuel_type_id = ft.id
-                LEFT JOIN stations st     ON fpo.station_id   = st.id
-                LEFT JOIN suppliers sup   ON fpo.supplier_id  = sup.id
-                LEFT JOIN users u         ON fpo.created_by   = u.id
-                LEFT JOIN users ab        ON fpo.approved_by  = ab.id
-                WHERE fpo.station_id = ? AND DATE(fpo.created_at) = ? AND fpo.status = 'Approved PO'
+                LEFT JOIN fuel_types ft ON fpo.fuel_type_id = ft.id
+                LEFT JOIN stations st ON fpo.station_id = st.id
+                LEFT JOIN suppliers sup ON fpo.supplier_id = sup.id
+                LEFT JOIN users u ON fpo.created_by = u.id
+                LEFT JOIN users ab ON fpo.approved_by = ab.id
+                WHERE fpo.batch_id = ?
                 ORDER BY fpo.id ASC
             ");
-            $stmt->execute([$station_id, $po_date]);
+            $stmt->execute([$batch_id]);
         } else {
             $stmt = $pdo->prepare("
                 SELECT po.*,
-                       st.name       AS station_name,
-                       st.location   AS station_location,
-                       st.address    AS station_address,
-                       st.vat_tin    AS station_vat_tin,
-                       sup.name      AS supplier_name,
-                       u.name        AS created_by_name,
-                       ab.name       AS approved_by_name,
+                       u.name AS created_by_name,
+                       ab.name AS approved_by_name,
                        sr.staff_id,
                        sr.item_sku,
                        sr.requested_quantity AS sr_requested_qty,
                        sr.approved_quantity  AS sr_approved_qty,
                        sr.manager_notes      AS sr_manager_notes,
                        staff_u.name          AS staff_name,
-                       mgr_u.name            AS manager_name
+                       mgr_u.name            AS manager_name,
+                       COALESCE(ip.category, 'Lubricant') AS product_category,
+                       $select_fields
                 FROM purchase_orders po
-                LEFT JOIN stations st     ON po.station_id  = st.id
-                LEFT JOIN suppliers sup   ON po.supplier_id = sup.id
-                LEFT JOIN users u         ON po.created_by  = u.id
-                LEFT JOIN users ab        ON po.approved_by = ab.id
-                LEFT JOIN stock_requests sr   ON po.request_id = sr.id
-                LEFT JOIN users staff_u   ON sr.staff_id    = staff_u.id
-                LEFT JOIN users mgr_u     ON sr.manager_id  = mgr_u.id
-                WHERE po.station_id = ? AND DATE(po.created_at) = ? AND po.type = 'merch' AND po.admin_finalized = 1
+                LEFT JOIN stations st ON po.station_id = st.id
+                LEFT JOIN suppliers sup ON po.supplier_id = sup.id
+                LEFT JOIN users u ON po.created_by = u.id
+                LEFT JOIN users ab ON po.approved_by = ab.id
+                LEFT JOIN stock_requests sr ON po.request_id = sr.id
+                LEFT JOIN users staff_u ON sr.staff_id = staff_u.id
+                LEFT JOIN users mgr_u ON sr.manager_id = mgr_u.id
+                LEFT JOIN inventory_products ip ON (sr.item_sku = ip.sku OR po.product_name = ip.product_name)
+                WHERE po.batch_id = ?
+                ORDER BY po.id ASC
+            ");
+            $stmt->execute([$batch_id]);
+        }
+        $po_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $po = $po_items[0] ?? false;
+        if ($po) { $po['po_number'] = $batch_id; }
+    }
+    elseif ($po_date) {
+        if ($po_type === 'fuel') {
+            $stmt = $pdo->prepare("
+                SELECT fpo.*,
+                       fpo.volume AS quantity,
+                       fpo.notes AS sr_manager_notes,
+                       ft.name AS product_name,
+                       'Fuel' AS product_category,
+                       u.name AS created_by_name,
+                       ab.name AS approved_by_name,
+                       NULL AS staff_id,
+                       NULL AS item_sku,
+                       NULL AS sr_requested_qty,
+                       NULL AS sr_approved_qty,
+                       u.name AS staff_name,
+                       NULL AS manager_name,
+                       NULL AS request_id,
+                       fpo.approved_at AS approved_at,
+                       $select_fields
+                FROM fuel_purchase_orders fpo
+                LEFT JOIN fuel_types ft ON fpo.fuel_type_id = ft.id
+                LEFT JOIN stations st ON fpo.station_id = st.id
+                LEFT JOIN suppliers sup ON fpo.supplier_id = sup.id
+                LEFT JOIN users u ON fpo.created_by = u.id
+                LEFT JOIN users ab ON fpo.approved_by = ab.id
+                WHERE fpo.station_id = ? AND DATE(fpo.created_at) = ?
+                ORDER BY fpo.id ASC
+            ");
+            $stmt->execute([$station_id, $po_date]);
+        } else {
+            $stmt = $pdo->prepare("
+                SELECT po.*,
+                       u.name AS created_by_name,
+                       ab.name AS approved_by_name,
+                       sr.staff_id,
+                       sr.item_sku,
+                       sr.requested_quantity AS sr_requested_qty,
+                       sr.approved_quantity  AS sr_approved_qty,
+                       sr.manager_notes      AS sr_manager_notes,
+                       staff_u.name          AS staff_name,
+                       mgr_u.name            AS manager_name,
+                       COALESCE(ip.category, 'Lubricant') AS product_category,
+                       $select_fields
+                FROM purchase_orders po
+                LEFT JOIN stations st ON po.station_id = st.id
+                LEFT JOIN suppliers sup ON po.supplier_id = sup.id
+                LEFT JOIN users u ON po.created_by = u.id
+                LEFT JOIN users ab ON po.approved_by = ab.id
+                LEFT JOIN stock_requests sr ON po.request_id = sr.id
+                LEFT JOIN users staff_u ON sr.staff_id = staff_u.id
+                LEFT JOIN users mgr_u ON sr.manager_id = mgr_u.id
+                LEFT JOIN inventory_products ip ON (sr.item_sku = ip.sku OR po.product_name = ip.product_name)
+                WHERE po.station_id = ? AND DATE(po.created_at) = ? AND po.type = 'merch'
                 ORDER BY po.id ASC
             ");
             $stmt->execute([$station_id, $po_date]);
@@ -106,65 +164,68 @@ try {
         $po_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
         if ($po_items) {
             $po = $po_items[0];
+            $found_batch = $po_items[0]['batch_id'] ?? '';
+            if (empty($found_batch)) {
+                $date_tag = date('Ymd', strtotime($po_date));
+                $prefix   = $po_type === 'fuel' ? 'POF-' : 'POM-';
+                $found_batch = $prefix . $date_tag . '-BATCH';
+            }
+            $po['po_number'] = $found_batch;
         } else {
             $po = false;
         }
-    } else {
+    }
+    else {
         if ($po_type === 'fuel') {
             $stmt = $pdo->prepare("
                 SELECT fpo.*,
-                       fpo.volume        AS quantity,
-                       fpo.notes         AS sr_manager_notes,
-                       ft.name           AS product_name,
-                       st.name           AS station_name,
-                       st.location       AS station_location,
-                       st.address        AS station_address,
-                       st.vat_tin        AS station_vat_tin,
-                       sup.name          AS supplier_name,
-                       u.name            AS created_by_name,
-                       ab.name           AS approved_by_name,
-                       NULL              AS staff_id,
-                       NULL              AS item_sku,
-                       NULL              AS sr_requested_qty,
-                       NULL              AS sr_approved_qty,
-                       u.name            AS staff_name,
-                       NULL              AS manager_name,
-                       NULL              AS request_id,
-                       fpo.approved_at   AS approved_at
+                       fpo.volume AS quantity,
+                       fpo.notes AS sr_manager_notes,
+                       ft.name AS product_name,
+                       'Fuel' AS product_category,
+                       u.name AS created_by_name,
+                       ab.name AS approved_by_name,
+                       NULL AS staff_id,
+                       NULL AS item_sku,
+                       NULL AS sr_requested_qty,
+                       NULL AS sr_approved_qty,
+                       u.name AS staff_name,
+                       NULL AS manager_name,
+                       NULL AS request_id,
+                       fpo.approved_at AS approved_at,
+                       $select_fields
                 FROM fuel_purchase_orders fpo
-                LEFT JOIN fuel_types ft   ON fpo.fuel_type_id = ft.id
-                LEFT JOIN stations st     ON fpo.station_id   = st.id
-                LEFT JOIN suppliers sup   ON fpo.supplier_id  = sup.id
-                LEFT JOIN users u         ON fpo.created_by   = u.id
-                LEFT JOIN users ab        ON fpo.approved_by  = ab.id
+                LEFT JOIN fuel_types ft ON fpo.fuel_type_id = ft.id
+                LEFT JOIN stations st ON fpo.station_id = st.id
+                LEFT JOIN suppliers sup ON fpo.supplier_id = sup.id
+                LEFT JOIN users u ON fpo.created_by = u.id
+                LEFT JOIN users ab ON fpo.approved_by = ab.id
                 WHERE fpo.id = ?
                 LIMIT 1
             ");
         } else {
             $stmt = $pdo->prepare("
                 SELECT po.*,
-                       st.name       AS station_name,
-                       st.location   AS station_location,
-                       st.address    AS station_address,
-                       st.vat_tin    AS station_vat_tin,
-                       sup.name      AS supplier_name,
-                       u.name        AS created_by_name,
-                       ab.name       AS approved_by_name,
+                       u.name AS created_by_name,
+                       ab.name AS approved_by_name,
                        sr.staff_id,
                        sr.item_sku,
                        sr.requested_quantity AS sr_requested_qty,
                        sr.approved_quantity  AS sr_approved_qty,
                        sr.manager_notes      AS sr_manager_notes,
                        staff_u.name          AS staff_name,
-                       mgr_u.name            AS manager_name
+                       mgr_u.name            AS manager_name,
+                       COALESCE(ip.category, 'Lubricant') AS product_category,
+                       $select_fields
                 FROM purchase_orders po
-                LEFT JOIN stations st     ON po.station_id  = st.id
-                LEFT JOIN suppliers sup   ON po.supplier_id = sup.id
-                LEFT JOIN users u         ON po.created_by  = u.id
-                LEFT JOIN users ab        ON po.approved_by = ab.id
-                LEFT JOIN stock_requests sr   ON po.request_id = sr.id
-                LEFT JOIN users staff_u   ON sr.staff_id    = staff_u.id
-                LEFT JOIN users mgr_u     ON sr.manager_id  = mgr_u.id
+                LEFT JOIN stations st ON po.station_id = st.id
+                LEFT JOIN suppliers sup ON po.supplier_id = sup.id
+                LEFT JOIN users u ON po.created_by = u.id
+                LEFT JOIN users ab ON po.approved_by = ab.id
+                LEFT JOIN stock_requests sr ON po.request_id = sr.id
+                LEFT JOIN users staff_u ON sr.staff_id = staff_u.id
+                LEFT JOIN users mgr_u ON sr.manager_id = mgr_u.id
+                LEFT JOIN inventory_products ip ON (sr.item_sku = ip.sku OR po.product_name = ip.product_name)
                 WHERE po.id = ?
                 LIMIT 1
             ");
@@ -185,571 +246,336 @@ if (!$po) {
     die('<p style="font-family:Arial;padding:40px;">Purchase Order not found.</p>');
 }
 
-// Block printing only for explicitly rejected/cancelled records.
-// When fetching by date, the SQL already guarantees finalization
-// (admin_finalized=1 for merch, status='Approved PO' for fuel),
-// so we skip the status gate in that path.
+// Block printing only when record is explicitly rejected/cancelled.
 $blocked_statuses = ['Rejected', 'rejected', 'Rejected by Admin', 'Cancelled', 'cancelled', 'Draft', 'draft'];
-if (!$po_date && in_array($po['status'] ?? '', $blocked_statuses)) {
+if ($po_id && !$batch_id && !$po_date && in_array($po['status'] ?? '', $blocked_statuses)) {
     die('<p style="font-family:Arial;padding:40px;color:#856404;">This PO has been rejected or cancelled and cannot be printed.</p>');
 }
 
-// ── Log print action ──────────────────────────────────────────────────────
+// Log print action
 try {
     $po_label = $po_type === 'fuel' ? 'Fuel PO' : 'Purchase Order';
     log_activity(
         $pdo,
         $me['id'],
         'Print Purchase Order',
-        "{$po_label} {$po['po_number']} printed by {$me['name']} (Admin). Date Group: " . ($po_date ?? 'Individual') . " | Total Amount: ₱" . number_format($po['total_amount'], 2) . " | Station: {$po['station_name']}"
+        "{$po_label} {$po['po_number']} printed by {$me['name']} (Admin)."
     );
-} catch (Exception $e) { /* fail silently */ }
+} catch (Exception $e) {}
 
-// ── Build display values ──────────────────────────────────────────────────
+// Gather values
 $is_fuel        = ($po_type === 'fuel');
 $qty_unit       = $is_fuel ? 'L' : 'pcs';
-$finalized_dt   = (!empty($po['approved_at']) ? $po['approved_at'] : null)
-                  ?? (!empty($po['updated_at']) ? $po['updated_at'] : null)
-                  ?? $po['created_at'];
+$finalized_dt   = (!empty($po['approved_at']) ? $po['approved_at'] : null) ?? $po['admin_finalized_at'] ?? $po['created_at'];
 $finalized_date = date('F d, Y', strtotime($finalized_dt));
 $finalized_time = date('g:i A', strtotime($finalized_dt));
+$purchase_date  = date('F d, Y', strtotime($po['created_at']));
 $printed_date   = date('F d, Y g:i A');
 $po_number      = htmlspecialchars($po['po_number']);
-$staff_name     = htmlspecialchars($po['staff_name']       ?? $po['created_by_name'] ?? '—');
-$manager_name   = htmlspecialchars($po['manager_name']     ?? '—');
 $admin_name     = htmlspecialchars($po['approved_by_name'] ?? $me['name'] ?? '—');
-$sr_notes       = htmlspecialchars($po['sr_manager_notes'] ?? $po['notes'] ?? '');
-$vat_tin        = htmlspecialchars($po['station_vat_tin']  ?? '');
-$station_name   = htmlspecialchars($po['station_name']     ?? '—');
-$station_addr   = htmlspecialchars($po['station_address']  ?? $po['station_location'] ?? '');
-$supplier_name  = htmlspecialchars($po['supplier_name']    ?? 'Not Assigned');
 
-// Status display
-$raw_status = $po['status'] ?? 'Approved';
-$status_label = in_array(strtolower($raw_status), ['approved po', 'official', 'approved', 'admin finalized']) ? 'Approved' : ucfirst($raw_status);
-$status_color = match(strtolower($raw_status)) {
-    'approved', 'official', 'approved po', 'admin finalized' => '#16a34a',
-    'pending', 'pending admin validation'                    => '#d97706',
-    'cancelled', 'rejected'                                  => '#dc2626',
-    default                                                  => '#475569',
-};
-$status_bg = match(strtolower($raw_status)) {
-    'approved', 'official', 'approved po', 'admin finalized' => '#dcfce7',
-    'pending', 'pending admin validation'                    => '#fef3c7',
-    'cancelled', 'rejected'                                  => '#fee2e2',
-    default                                                  => '#f1f5f9',
-};
+// Expected Delivery Date parsing
+$expected_delivery_date = 'N/A';
+foreach ($po_items as $item) {
+    $d = $item['expected_delivery_date'] ?? $item['expected_delivery'] ?? '';
+    if (!empty($d) && $d !== '0000-00-00') {
+        $expected_delivery_date = date('F d, Y', strtotime($d));
+        break;
+    }
+}
 
+// Parse all structured notes fields
+$raw_notes = $po['admin_notes'] ?? $po['notes'] ?? $po['remarks'] ?? '';
+
+$expected_delivery_time = '09:00 AM';
+if (preg_match('/Expected Time:\s*(.+)/im', $raw_notes, $m))  { $expected_delivery_time = trim($m[1]); }
+elseif (preg_match('/Expected Delivery Time:\s*([0-9:]+\s*[A-Z]{2})/i', $raw_notes, $m)) { $expected_delivery_time = trim($m[1]); }
+
+$parsed_receiving = 'Any Assigned Staff';
+if (preg_match('/Receiving Personnel:\s*(.+)/im', $raw_notes, $m)) { $parsed_receiving = trim($m[1]); }
+
+$parsed_payment = '30 Days';
+if (preg_match('/Payment Terms:\s*(.+)/im', $raw_notes, $m)) { $parsed_payment = trim($m[1]); }
+
+$parsed_instructions = 'Deliver all items in one shipment.';
+if (preg_match('/Instructions:\s*(.+)/im', $raw_notes, $m)) { $parsed_instructions = trim($m[1]); }
+
+$parsed_remarks = 'None';
+if (preg_match('/Remarks:\s*(.+)/im', $raw_notes, $m) && trim($m[1]) !== '') { $parsed_remarks = trim($m[1]); }
+
+// Supplier Info
+$supplier_name   = htmlspecialchars($po['supplier_name'] ?? 'Petron Corporation');
+$sup_contact     = htmlspecialchars($po['supplier_contact_person'] ?? 'Account Manager');
+$sup_phone       = htmlspecialchars($po['supplier_phone'] ?? '(02) 8884-9200');
+$sup_email       = htmlspecialchars($po['supplier_email'] ?? 'sales@petron.com');
+$sup_addr        = htmlspecialchars($po['supplier_address'] ?? 'San Miguel Corp. Head Office Complex, 40 San Miguel Ave, Mandaluyong City');
+
+// Station Info — prefer address column, then location, then CDO default
+$station_name  = htmlspecialchars($po['station_name'] ?? 'Petron Carmen');
+$raw_addr      = trim($po['station_address'] ?? '');
+$raw_loc       = trim($po['station_location'] ?? '');
+if (empty($raw_addr) && !empty($raw_loc) && $raw_loc !== 'CDO') {
+    $raw_addr = $raw_loc;
+} elseif (empty($raw_addr)) {
+    $raw_addr = 'Vamenta Blvd., Carmen, City of Cagayan de Oro, Misamis Oriental';
+}
+$station_addr  = htmlspecialchars($raw_addr);
+$station_phone = htmlspecialchars($po['station_contact'] ?? 'N/A');
+$vat_tin       = htmlspecialchars($po['station_vat_tin'] ?? '—');
+
+// Audit trail URL
 $audit_url = 'activity_logs.php?module=' . urlencode('Purchase Order') . '&start=' . date('Y-m-01') . '&end=' . date('Y-m-d');
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Purchase Order — <?php echo $po_number; ?><?php echo $is_fuel ? ' (Fuel)' : ''; ?></title>
+<title>Purchase Order — <?php echo $po_number; ?></title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;color:#1a1a2e;background:#eef1f6}
+body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;font-size:12px;color:#333;background:#fff;padding:25px;line-height:1.4}
+.po-document{width:100%;max-width:850px;margin:0 auto;border:1px solid #ddd;padding:30px;position:relative;background:#fff;box-shadow:0 0 10px rgba(0,0,0,0.05);}
+.header-box{display:flex;justify-content:space-between;align-items:center;position:relative;padding-bottom:12px;}
+.divider-double{border-top:3px double #333;margin:15px 0;}
+.divider-single{border-top:1px dashed #ccc;margin:15px 0;}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:15px;}
+.info-block{border:1px solid #e2e8f0;border-radius:6px;padding:12px;background:#f8fafc;}
+.info-block h3{font-size:13px;font-weight:bold;color:#0f172a;border-bottom:1px solid #cbd5e1;padding-bottom:4px;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;}
+.info-row{margin-bottom:4px;display:flex;}
+.info-row strong{width:150px;color:#475569;display:inline-block;}
+.info-row span{color:#0f172a;flex:1;}
+.items-table{width:100%;border-collapse:collapse;margin:15px 0;}
+.items-table th{background:#002F6C;color:#fff;padding:8px 10px;font-weight:600;text-align:left;font-size:11px;text-transform:uppercase;}
+.items-table td{padding:8px 10px;border-bottom:1px solid #e2e8f0;color:#0f172a;}
+.items-table th.r, .items-table td.r{text-align:right;}
+.signatures-box{display:grid;grid-template-columns:1fr 1fr 1fr;gap:25px;margin-top:40px;}
+.sig-col{text-align:center;}
+.sig-line{border-top:1px solid #475569;width:80%;margin:45px auto 4px auto;}
+.btn-print-bar{max-width:850px;margin:0 auto 15px auto;display:flex;justify-content:flex-end;gap:10px;}
+.btn-print{font-family:sans-serif;font-size:12px;padding:8px 16px;background:#002F6C;color:#fff;border:none;border-radius:4px;cursor:pointer;text-decoration:none;font-weight:600;}
+.btn-print:hover{background:#0b448a;}
+.btn-back{background:#fff;color:#333;border:1px solid #ccc;}
+.btn-back:hover{background:#f5f5f5;}
 
-/* ── Screen toolbar ── */
-.screen-toolbar{position:fixed;top:0;left:0;right:0;background:#002F6C;color:#fff;padding:10px 24px;display:flex;align-items:center;justify-content:space-between;gap:12px;z-index:1000;box-shadow:0 2px 12px rgba(0,0,0,.35)}
-.toolbar-left{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600}
-.toolbar-right{display:flex;align-items:center;gap:8px}
-.status-pill{padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.3px}
-.btn-toolbar{display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none;border:none;transition:background .15s}
-.btn-print{background:#fff;color:#002F6C}.btn-print:hover{background:#dbeafe}
-.btn-ghost{background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3)}.btn-ghost:hover{background:rgba(255,255,255,.25)}
+/* Rotated official stamp */
+.official-stamp {
+    position: absolute;
+    top: 5px;
+    right: 230px;
+    border: 3px solid #2e7d32;
+    color: #2e7d32;
+    padding: 2px 10px;
+    font-size: 14px;
+    font-weight: bold;
+    text-transform: uppercase;
+    transform: rotate(-10deg);
+    border-radius: 4px;
+    background: #fff;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    letter-spacing: 1px;
+    z-index: 10;
+    pointer-events: none;
+    text-align: center;
+    line-height: 1.1;
+}
+.official-stamp small {
+    display: block;
+    font-size: 7px;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+}
 
-/* ── Page wrapper ── */
-.page-wrapper{padding:76px 20px 48px;display:flex;justify-content:center}
-
-/* ── PO Document ── */
-.po-document{background:#fff;width:210mm;min-height:297mm;padding:18mm 16mm 16mm;box-shadow:0 6px 40px rgba(0,0,0,.18);position:relative;overflow:visible;display:flex;flex-direction:column}
-
-/* ── Watermark ── */
-.watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);font-size:110px;font-weight:900;color:rgba(0,47,108,.055);letter-spacing:8px;pointer-events:none;user-select:none;white-space:nowrap;z-index:0;overflow:hidden}
-
-/* ── Official stamp ── */
-.official-stamp{position:absolute;top:14mm;right:14mm;border:3px solid #16a34a;color:#16a34a;padding:5px 13px;font-size:15px;font-weight:900;text-transform:uppercase;letter-spacing:3px;transform:rotate(-12deg);opacity:.8;border-radius:4px;pointer-events:none;z-index:2;background:rgba(255,255,255,.85);max-width:120px;text-align:center}
-.official-stamp small{display:block;font-size:8px;letter-spacing:1px;text-align:center;margin-top:2px;font-weight:600}
-
-/* ── All content above watermark ── */
-.po-content{position:relative;z-index:1;display:flex;flex-direction:column;flex:1}
-
-/* ── Push signatures + footer to bottom ── */
-.po-bottom{margin-top:auto;padding-top:16px}
-
-/* ── Document header ── */
-.doc-header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:14px;border-bottom:3px solid #002F6C;margin-bottom:18px}
-.doc-header-left{display:flex;align-items:center;gap:14px}
-.doc-logo{width:54px;height:54px;object-fit:contain}
-.doc-company h1{font-size:15px;font-weight:800;color:#002F6C;line-height:1.2}
-.doc-company p{font-size:10px;color:#555;margin-top:3px;max-width:280px;line-height:1.45}
-.doc-header-right{text-align:right}
-.doc-po-label{font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px}
-.doc-po-number{font-size:21px;font-weight:900;color:#002F6C;letter-spacing:.5px}
-.doc-dates{font-size:9.5px;color:#64748b;margin-top:5px;line-height:1.7}
-.doc-dates strong{color:#334155}
-
-/* ── Section title ── */
-.section-title{font-size:9.5px;font-weight:800;color:#002F6C;text-transform:uppercase;letter-spacing:.8px;border-bottom:1.5px solid #e2e8f0;padding-bottom:5px;margin-bottom:10px}
-
-/* ── Info grid ── */
-.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
-.info-box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:12px 14px}
-.info-row{display:flex;gap:6px;margin-bottom:5px;font-size:11px}
-.info-row:last-child{margin-bottom:0}
-.info-label{font-weight:700;color:#475569;min-width:96px;flex-shrink:0}
-.info-value{color:#1e293b}
-.status-badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700}
-
-/* ── Audit trail ── */
-.audit-box{background:#f0f4ff;border:1px solid #c5d3f0;border-radius:7px;padding:12px 14px;margin-bottom:18px}
-.audit-chain{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;margin-top:8px}
-.audit-step{background:#fff;border:1px solid #c5d3f0;border-radius:5px;padding:6px 10px;font-size:11px;min-width:0;flex:1}
-.audit-step .step-name{font-weight:700;color:#002F6C;display:flex;align-items:center;gap:5px}
-.audit-step .step-role{font-size:9.5px;color:#64748b;margin-top:2px;line-height:1.4}
-.audit-step.step-admin{background:#f0fdf4;border-color:#86efac}
-.audit-step.step-admin .step-name{color:#15803d}
-.audit-step.step-supplier{background:#eff6ff;border-color:#93c5fd}
-.audit-step.step-supplier .step-name{color:#1d4ed8}
-.audit-arrow{color:#94a3b8;font-size:16px;flex-shrink:0}
-
-/* ── Items table ── */
-.items-table{width:100%;border-collapse:collapse;margin-bottom:0;font-size:11px}
-.items-table thead th{background:#002F6C;color:#fff;padding:9px 11px;text-align:left;font-weight:700;font-size:9.5px;text-transform:uppercase;letter-spacing:.5px}
-.items-table thead th.r{text-align:right}
-.items-table tbody td{padding:10px 11px;border-bottom:1px solid #e2e8f0;color:#334155;vertical-align:middle}
-.items-table tbody td.r{text-align:right}
-.items-table tbody tr:last-child td{border-bottom:none}
-.items-table tfoot td{padding:8px 11px;font-size:11px;border-top:1px solid #e2e8f0}
-.items-table tfoot .subtotal-row td{color:#64748b;font-size:10.5px}
-.items-table tfoot .total-row td{background:#002F6C;color:#fff;font-weight:800;font-size:13px;padding:11px 11px}
-.sku-code{font-size:10px;color:#64748b;font-family:'Courier New',monospace;background:#f1f5f9;padding:1px 5px;border-radius:3px;display:inline-block;margin-top:2px}
-
-/* ── Notes ── */
-.notes-box{background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:10px 13px;margin-top:14px;font-size:11px;color:#78350f}
-
-/* ── Signatures ── */
-.signatures{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-top:28px;page-break-inside:avoid}
-.sig-box{text-align:center}
-.sig-line{border-top:1px solid #334155;margin-top:44px;padding-top:7px}
-.sig-name{font-weight:700;font-size:11.5px;color:#1e293b}
-.sig-role{font-size:10px;color:#64748b;margin-top:2px}
-.sig-date{font-size:9.5px;color:#94a3b8;margin-top:3px}
-
-/* ── Footer ── */
-.doc-footer{margin-top:28px;padding-top:12px;border-top:1px solid #e2e8f0;text-align:center;font-size:9px;color:#94a3b8;line-height:1.7}
-
-/* ── Print ── */
 @media print{
-  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
-  html,body{background:#fff!important;margin:0!important;padding:0!important;width:100%!important;height:auto!important;overflow:visible!important}
-  .screen-toolbar{display:none!important}
-  .audit-section{display:none!important}
-  .page-wrapper{padding:0!important;margin:0!important;display:block!important;width:100%!important}
-  .po-document{
-    box-shadow:none!important;
-    width:100%!important;
-    min-height:297mm!important;
-    max-height:unset!important;
-    padding:8mm 10mm!important;
-    overflow:visible!important;
-    page-break-after:avoid!important;
-    page-break-inside:avoid!important;
-    position:relative!important;
-    display:flex!important;
-    flex-direction:column!important;
-  }
-  .po-content{display:flex!important;flex-direction:column!important;flex:1!important}
-  .po-bottom{margin-top:auto!important;padding-top:10px!important}
-  /* Stamp — keep inside bounds */
-  .official-stamp{top:8mm!important;right:8mm!important;font-size:13px!important;padding:3px 9px!important;letter-spacing:2px!important}
-  /* Watermark */
-  .watermark{font-size:80px!important;opacity:1}
-  /* Tighten all spacing */
-  .doc-header{padding-bottom:6px!important;margin-bottom:8px!important}
-  .doc-logo{width:40px!important;height:40px!important}
-  .doc-company h1{font-size:13px!important}
-  .doc-company p{font-size:9px!important}
-  .doc-po-number{font-size:16px!important}
-  .doc-dates{font-size:8px!important;margin-top:3px!important;line-height:1.5!important}
-  .info-grid{gap:7px!important;margin-bottom:8px!important}
-  .info-box{padding:7px 9px!important}
-  .info-row{font-size:9.5px!important;margin-bottom:2px!important}
-  .info-label{min-width:82px!important}
-  .section-title{font-size:8px!important;padding-bottom:3px!important;margin-bottom:6px!important}
-  .items-table thead th{padding:5px 7px!important;font-size:8px!important}
-  .items-table tbody td{padding:6px 7px!important;font-size:9.5px!important}
-  .items-table tfoot td{padding:4px 7px!important;font-size:9.5px!important}
-  .items-table tfoot .total-row td{padding:7px 7px!important;font-size:11px!important}
-  .sku-code{font-size:8.5px!important}
-  .signatures{margin-top:14px!important;gap:12px!important}
-  .sig-line{margin-top:28px!important;padding-top:4px!important}
-  .sig-name{font-size:9.5px!important}
-  .sig-role{font-size:8.5px!important}
-  .sig-date{font-size:8px!important}
-  .doc-footer{margin-top:10px!important;padding-top:7px!important;font-size:7.5px!important}
-  @page{size:A4 portrait;margin:0}
+    .btn-print-bar{display:none;}
+    body{padding:0;background:#fff;}
+    .po-document{border:none;padding:0;box-shadow:none;}
 }
 </style>
 </head>
 <body>
 
-<!-- ══════════════════════════════════════════════════════════
-     SCREEN TOOLBAR (hidden on print)
-     ══════════════════════════════════════════════════════════ -->
-<?php if (!isset($_GET['print']) || $_GET['print'] != '1'): ?>
-<div class="screen-toolbar">
-    <div class="toolbar-left">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        <?php echo $is_fuel ? 'Fuel ' : ''; ?>Purchase Order &mdash; <?php echo $po_number; ?>
-        <span class="status-pill" style="background:<?php echo $status_bg; ?>;color:<?php echo $status_color; ?>;">
-            <?php echo $status_label; ?>
-        </span>
-    </div>
-    <div class="toolbar-right">
-        <a href="<?php echo $audit_url; ?>" class="btn-toolbar btn-ghost" target="_blank">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-            View in Audit Log
-        </a>
-        <a href="admin_purchase_orders.php" class="btn-toolbar btn-ghost">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
-            Back to POs
-        </a>
-        <button onclick="window.print()" class="btn-toolbar btn-print">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-            Print PO
-        </button>
-    </div>
+<div class="btn-print-bar">
+    <a href="admin_purchase_orders.php" class="btn-print btn-back">Back to Oversight</a>
+    <button onclick="window.print()" class="btn-print">Print Purchase Order</button>
 </div>
-<?php endif; ?>
 
-<!-- ══════════════════════════════════════════════════════════
-     PO DOCUMENT
-     ══════════════════════════════════════════════════════════ -->
-<div class="page-wrapper">
 <div class="po-document">
-
-    <!-- Background watermark -->
-    <div class="watermark">OFFICIAL</div>
-
-    <!-- Official stamp (top-right, rotated) -->
-    <div class="official-stamp">
-        &#10003; OFFICIAL
-        <small>PURCHASE ORDER</small>
-    </div>
-
-    <div class="po-content">
-
+    
     <!-- ── Document Header ── -->
-    <div class="doc-header">
-        <div class="doc-header-left">
-            <img src="<?php echo '../' . get_system_logo_url(isset($station_id) ? (int)$station_id : (isset($user['station_id']) ? (int)$user['station_id'] : 0)); ?>" alt="Petron" class="doc-logo"
-                 onerror="this.style.display='none'">
-            <div class="doc-company">
-                <h1>Petron Station Management System</h1>
-                <p><?php
-                    $parts = array_filter([$station_name, $station_addr]);
-                    echo implode(', ', $parts);
-                    if ($vat_tin) echo '<br>VAT TIN: ' . $vat_tin;
-                ?></p>
+    <div class="header-box">
+        <!-- Left Side: Logo & Station Address -->
+        <div style="display:flex; align-items:center; gap:15px; max-width:65%; text-align:left;">
+            <?php
+                $logo_url = '../' . get_system_logo_url($station_id);
+            ?>
+            <img src="<?php echo $logo_url; ?>" alt="Petron Logo" style="width:65px; height:65px; object-fit:contain;" onerror="this.src='../assets/img/Petron Logo.png'">
+            <div>
+                <h1 style="font-family:'Segoe UI', Arial, sans-serif; font-size:17px; font-weight:800; color:#002F6C; margin:0; line-height:1.2;">
+                    Petron Station Management System
+                </h1>
+                <p style="font-size:10px; color:#333; margin-top:4px; font-weight:600;">
+                    <?php echo htmlspecialchars($station_name); ?>
+                </p>
+                <p style="font-size:9.5px; color:#666; margin-top:2px; text-transform:uppercase; line-height:1.3;">
+                    <?php echo htmlspecialchars($station_addr); ?>
+                </p>
+                <p style="font-size:9px; color:#666; margin-top:1px;">
+                    Contact: <?php echo htmlspecialchars($station_phone); ?>
+                </p>
             </div>
         </div>
-        <div class="doc-header-right">
-            <div class="doc-po-label">Purchase Order</div>
-            <div class="doc-po-number"><?php echo $po_number; ?></div>
-            <div class="doc-dates">
+
+        <!-- Right Side: PO Number & Dates -->
+        <div style="text-align:right; position:relative; min-width:30%;">
+            <!-- Official stamp rotated -->
+            <div class="official-stamp">
+                <small>PURCHASE ORDER</small>
+                OFFICIAL
+                <small>PURCHASE ORDER</small>
+            </div>
+            
+            <div style="font-size:20px; font-weight:900; color:#002F6C; letter-spacing:-0.5px; font-family:'Courier New', Courier, monospace;">
+                <?php echo $po_number; ?>
+            </div>
+            <div style="font-size:9.5px; color:#555; margin-top:4px; line-height:1.4;">
                 <strong>Finalized:</strong> <?php echo $finalized_date; ?> <?php echo $finalized_time; ?><br>
                 <strong>Printed:</strong> <?php echo $printed_date; ?>
             </div>
         </div>
     </div>
 
-    <!-- ── Order Information + Station Information ── -->
+    <!-- Solid thick blue divider line underneath header -->
+    <div style="border-top: 4px solid #002F6C; margin-bottom: 20px; width: 100%;"></div>
+
+    <!-- Info Sections in 2 Columns Grid -->
     <div class="info-grid">
-
-        <!-- Order Information -->
-        <div class="info-box">
-            <div class="section-title">Order Information</div>
-            <div class="info-row">
-                <span class="info-label">PO Number:</span>
-                <span class="info-value"><strong><?php echo $po_number; ?></strong></span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Status:</span>
-                <span class="info-value">
-                    <span class="status-badge" style="background:<?php echo $status_bg; ?>;color:<?php echo $status_color; ?>;">
-                        <?php echo $status_label; ?>
-                    </span>
-                </span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Date Finalized:</span>
-                <span class="info-value"><?php echo $finalized_date; ?></span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Finalized By:</span>
-                <span class="info-value"><strong><?php echo $admin_name; ?></strong> (Admin)</span>
-            </div>
-            <?php if (!empty($po['expected_delivery_date'])): ?>
-            <div class="info-row">
-                <span class="info-label">Expected Delivery:</span>
-                <span class="info-value"><?php echo date('F d, Y', strtotime($po['expected_delivery_date'])); ?></span>
-            </div>
-            <?php endif; ?>
+        <!-- Purchase Order Information -->
+        <div class="info-block">
+            <h3>Purchase Order Information</h3>
+            <div class="info-row"><strong>Purchase Order No.</strong> <span><?php echo $po_number; ?></span></div>
+            <div class="info-row"><strong>Request Batch ID</strong> <span><?php echo $po_number; ?></span></div>
+            <div class="info-row"><strong>Purchase Date</strong> <span><?php echo $purchase_date; ?></span></div>
+            <div class="info-row"><strong>Finalized Date</strong> <span><?php echo $finalized_date; ?></span></div>
+            <div class="info-row"><strong>Status</strong> <span style="font-weight:600; color:#16a34a;">Approved / Pending Delivery</span></div>
         </div>
-
+        
         <!-- Station Information -->
-        <div class="info-box">
-            <div class="section-title">Station Information</div>
-            <div class="info-row">
-                <span class="info-label">Station:</span>
-                <span class="info-value"><strong><?php echo $station_name; ?></strong></span>
-            </div>
-            <?php if ($station_addr): ?>
-            <div class="info-row">
-                <span class="info-label">Address:</span>
-                <span class="info-value"><?php echo $station_addr; ?></span>
-            </div>
-            <?php endif; ?>
-            <?php if ($vat_tin): ?>
-            <div class="info-row">
-                <span class="info-label">VAT TIN:</span>
-                <span class="info-value"><?php echo $vat_tin; ?></span>
-            </div>
-            <?php endif; ?>
-            <div class="info-row">
-                <span class="info-label">Supplier:</span>
-                <span class="info-value"><strong><?php echo $supplier_name; ?></strong></span>
-            </div>
+        <div class="info-block">
+            <h3>Station Information</h3>
+            <div class="info-row"><strong>Station Name</strong> <span><?php echo $station_name; ?></span></div>
+            <div class="info-row"><strong>Branch Address</strong> <span><?php echo $station_addr; ?></span></div>
+            <div class="info-row"><strong>Prepared By</strong> <span><?php echo $admin_name; ?></span></div>
         </div>
-
-    </div><!-- /info-grid -->
-
-    <!-- ── Approval Chain / Audit Trail ── -->
-    <div class="audit-section" style="margin-bottom:18px;">
-        <div class="section-title">Approval Chain / Audit Trail</div>
-        <div class="audit-chain">
-
-            <?php if ($is_fuel): ?>
-            <!-- Fuel PO: Manager → Admin → Supplier -->
-            <div class="audit-step">
-                <div class="step-name">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/><polyline points="16 11 18 13 22 9"/></svg>
-                    <?php echo $manager_name !== '—' ? $manager_name : $staff_name; ?>
-                </div>
-                <div class="step-role">Manager &mdash; Generated Fuel Purchase Request</div>
-            </div>
-
-            <span class="audit-arrow">&#8594;</span>
-
-            <!-- Step 2: Admin -->
-            <div class="audit-step step-admin">
-                <div class="step-name">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 12h6M9 15h4"/></svg>
-                    <?php echo $admin_name; ?>
-                </div>
-                <div class="step-role">Admin &mdash; Finalized as Official Purchase Order</div>
-            </div>
-
-            <span class="audit-arrow">&#8594;</span>
-
-            <!-- Step 3: Supplier -->
-            <div class="audit-step step-supplier">
-                <div class="step-name">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-                    <?php echo $supplier_name; ?>
-                </div>
-                <div class="step-role">Supplier &mdash; Receives &amp; Arranges Fuel Delivery</div>
-            </div>
-
-            <?php else: ?>
-            <!-- Merch PO: Staff → Manager → Admin → Supplier -->
-            <!-- Step 1: Staff -->
-            <div class="audit-step">
-                <div class="step-name">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
-                    <?php echo $staff_name; ?>
-                </div>
-                <div class="step-role">Staff &mdash; Encoded Stock Request</div>
-            </div>
-
-            <span class="audit-arrow">&#8594;</span>
-
-            <!-- Step 2: Manager -->
-            <div class="audit-step">
-                <div class="step-name">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/><polyline points="16 11 18 13 22 9"/></svg>
-                    <?php echo $manager_name; ?>
-                </div>
-                <div class="step-role">Manager &mdash; Validated &amp; Generated Purchase Request</div>
-            </div>
-
-            <span class="audit-arrow">&#8594;</span>
-
-            <!-- Step 3: Admin -->
-            <div class="audit-step step-admin">
-                <div class="step-name">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 12h6M9 15h4"/></svg>
-                    <?php echo $admin_name; ?>
-                </div>
-                <div class="step-role">Admin &mdash; Finalized as Official Purchase Order</div>
-            </div>
-
-            <span class="audit-arrow">&#8594;</span>
-
-            <!-- Step 4: Supplier -->
-            <div class="audit-step step-supplier">
-                <div class="step-name">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-                    <?php echo $supplier_name; ?>
-                </div>
-                <div class="step-role">Supplier &mdash; Receives &amp; Arranges Delivery</div>
-            </div>
-            <?php endif; ?>
-
-        </div>
-    </div><!-- /audit trail -->
-
-    <!-- ── Order Details Table ── -->
-    <div class="section-title" style="margin-bottom:10px;">Order Details</div>
-    <table class="items-table">
-        <thead>
-            <tr>
-                <th style="width:5%">#</th>
-                <th style="width:36%">Product / Item Description</th>
-                <th style="width:16%">SKU / Code</th>
-                <th class="r" style="width:13%"><?php echo $is_fuel ? 'Volume (L)' : 'Quantity'; ?></th>
-                <th class="r" style="width:15%">Unit Price</th>
-                <th class="r" style="width:15%">Total Amount</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php
-            $total_amount = 0;
-            foreach ($po_items as $idx => $item):
-                $item_qty = (float)($item['quantity'] ?? 0);
-                $item_price = (float)($item['unit_price'] ?? 0);
-                $item_total = (float)($item['total_amount'] ?? round($item_qty * $item_price, 2));
-                $total_amount += $item_total;
-                $item_sku = htmlspecialchars($item['item_sku'] ?? '');
-            ?>
-            <tr>
-                <td style="color:#94a3b8;font-size:11px;"><?php echo $idx + 1; ?></td>
-                <td>
-                    <strong><?php echo htmlspecialchars($item['product_name'] ?? '—'); ?></strong>
-                </td>
-                <td style="color:#64748b;">
-                    <?php echo $item_sku ? '<span class="sku-code">' . $item_sku . '</span>' : '<span style="color:#cbd5e1;">—</span>'; ?>
-                </td>
-                <td class="r"><strong><?php echo $is_fuel ? number_format($item_qty, 2) . ' L' : number_format($item_qty, 0); ?></strong></td>
-                <td class="r">&#8369;<?php echo number_format($item_price, 2); ?></td>
-                <td class="r"><strong>&#8369;<?php echo number_format($item_total, 2); ?></strong></td>
-            </tr>
-            <?php endforeach; ?>
-        </tbody>
-        <tfoot>
-            <tr class="subtotal-row">
-                <td colspan="5" style="text-align:right;padding-top:10px;">Subtotal:</td>
-                <td class="r" style="padding-top:10px;">&#8369;<?php echo number_format($total_amount, 2); ?></td>
-            </tr>
-            <tr class="total-row">
-                <td colspan="5" style="text-align:right;letter-spacing:.3px;">TOTAL ORDER AMOUNT:</td>
-                <td class="r">&#8369;<?php echo number_format($total_amount, 2); ?></td>
-            </tr>
-        </tfoot>
-    </table>
-
-    <?php if ($sr_notes): ?>
-    <!-- Notes -->
-    <div class="notes-box">
-        <strong>&#128203; Manager Notes / Special Instructions:</strong><br>
-        <?php echo nl2br($sr_notes); ?>
     </div>
-    <?php endif; ?>
 
-    <!-- ── Signature Lines ── -->
-    <div class="po-bottom">
-    <div class="signatures">
-        <?php if ($is_fuel): ?>
-        <!-- Fuel PO: Manager + Admin + Supplier Rep -->
-        <div class="sig-box">
-            <div class="sig-line">
-                <div class="sig-name"><?php echo $manager_name !== '—' ? $manager_name : $staff_name; ?></div>
-                <div class="sig-role">Prepared By (Manager)</div>
-                <div class="sig-date">Date: _______________</div>
+    <!-- Supplier & Delivery Information -->
+    <div class="info-block" style="margin-bottom:15px;">
+        <h3>Supplier &amp; Delivery Information</h3>
+        <div class="info-grid" style="grid-template-columns:1fr 1fr; gap:10px 30px; margin-bottom:0; background:none; padding:0; border:none;">
+            <div>
+                <div class="info-row"><strong>Supplier</strong> <span><?php echo $supplier_name; ?></span></div>
+                <div class="info-row"><strong>Expected Delivery</strong> <span><?php echo $expected_delivery_date; ?></span></div>
+                <div class="info-row"><strong>Expected Time</strong> <span><?php echo htmlspecialchars($expected_delivery_time); ?></span></div>
+                <div class="info-row"><strong>Payment Terms</strong> <span><?php echo htmlspecialchars($parsed_payment); ?></span></div>
+            </div>
+            <div>
+                <div class="info-row"><strong>Delivery Location</strong> <span><?php echo $station_addr; ?></span></div>
+                <div class="info-row"><strong>Receiving Personnel</strong> <span><?php echo htmlspecialchars($parsed_receiving); ?></span></div>
+                <div class="info-row"><strong>Instructions</strong> <span><?php echo nl2br(htmlspecialchars($parsed_instructions)); ?></span></div>
+                <div class="info-row"><strong>Remarks</strong> <span><?php echo htmlspecialchars($parsed_remarks); ?></span></div>
             </div>
         </div>
-        <div class="sig-box">
-            <div class="sig-line">
-                <div class="sig-name"><?php echo $admin_name; ?></div>
-                <div class="sig-role">Approved By (Admin)</div>
-                <div class="sig-date">Date: <?php echo $finalized_date; ?></div>
-            </div>
-        </div>
-        <div class="sig-box">
-            <div class="sig-line">
-                <div class="sig-name">________________________</div>
-                <div class="sig-role">Received By (Supplier Rep)</div>
-                <div class="sig-date">Date: _______________</div>
-            </div>
-        </div>
-        <?php else: ?>
-        <!-- Merch PO: Staff + Manager + Admin -->
-        <div class="sig-box">
-            <div class="sig-line">
-                <div class="sig-name"><?php echo $staff_name; ?></div>
-                <div class="sig-role">Prepared By (Staff)</div>
-                <div class="sig-date">Date: _______________</div>
-            </div>
-        </div>
-        <div class="sig-box">
-            <div class="sig-line">
-                <div class="sig-name"><?php echo $manager_name; ?></div>
-                <div class="sig-role">Validated By (Manager)</div>
-                <div class="sig-date">Date: _______________</div>
-            </div>
-        </div>
-        <div class="sig-box">
-            <div class="sig-line">
-                <div class="sig-name"><?php echo $admin_name; ?></div>
-                <div class="sig-role">Finalized By (Admin)</div>
-                <div class="sig-date">Date: <?php echo $finalized_date; ?></div>
-            </div>
-        </div>
-        <?php endif; ?>
     </div>
+
+    <!-- Order Details -->
+    <div>
+        <h3 style="font-size:12px; font-weight:bold; color:#0f172a; text-transform:uppercase; margin-bottom:6px;">Order Details</h3>
+        <table class="items-table">
+            <thead>
+                <tr>
+                    <th style="width:5%;">#</th>
+                    <th style="width:12%;">SKU</th>
+                    <th>Product Name</th>
+                    <th style="width:15%;">Category</th>
+                    <th class="r" style="width:10%;">Quantity</th>
+                    <th style="width:8%;">Unit</th>
+                    <th class="r" style="width:14%;">Unit Price</th>
+                    <th class="r" style="width:16%;">Total Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php
+                $subtotal = 0;
+                foreach ($po_items as $idx => $item):
+                    $qty = (float)($item['quantity'] ?? 0);
+                    $price = (float)($item['unit_price'] ?? 0);
+                    $total = $qty * $price;
+                    $subtotal += $total;
+                ?>
+                <tr>
+                    <td><?php echo $idx + 1; ?></td>
+                    <td><code style="font-weight:bold; font-size:11px;"><?php echo htmlspecialchars($item['item_sku'] ?? ($is_fuel ? 'FUEL-PO' : 'N/A')); ?></code></td>
+                    <td><?php echo htmlspecialchars($item['product_name'] ?? '—'); ?></td>
+                    <td><?php echo htmlspecialchars($item['product_category'] ?? 'Lubricant'); ?></td>
+                    <td class="r"><?php echo number_format($qty, $is_fuel ? 2 : 0); ?></td>
+                    <td><?php echo $qty_unit; ?></td>
+                    <td class="r">₱<?php echo number_format($price, 2); ?></td>
+                    <td class="r">₱<?php echo number_format($total, 2); ?></td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Order Summary -->
+    <div style="display:flex; justify-content:flex-end; margin-top:10px;">
+        <div style="width:300px; line-height:1.6; border:1px solid #e2e8f0; border-radius:6px; padding:10px; background:#f8fafc;">
+            <div style="display:flex; justify-content:space-between;"><span>Subtotal</span> <span style="font-weight:600;">₱<?php echo number_format($subtotal, 2); ?></span></div>
+            <div style="display:flex; justify-content:space-between;"><span>Discount</span> <span style="font-weight:600;">₱0.00</span></div>
+            <div style="display:flex; justify-content:space-between;"><span>VAT (12% Included)</span> <span style="font-weight:600;">₱<?php echo number_format($subtotal * 0.12, 2); ?></span></div>
+            <div style="display:flex; justify-content:space-between; font-weight:bold; border-top:1px solid #cbd5e1; margin-top:6px; padding-top:6px; font-size:13px; color:#002F6C;">
+                <span>Grand Total</span> <span>₱<?php echo number_format($subtotal, 2); ?></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="divider-single" style="margin-top:20px;"></div>
+
+    <!-- Signature Section -->
+    <div class="signatures-box">
+        <div class="sig-col">
+            <div class="sig-line"></div>
+            <strong>Prepared By (Admin)</strong>
+            <div style="font-size:11px; color:#475569; margin-top:2px;"><?php echo $admin_name; ?></div>
+        </div>
+        <div class="sig-col">
+            <div class="sig-line"></div>
+            <strong>Supplier Representative</strong>
+            <div style="font-size:10px; color:#94a3b8; margin-top:2px;">Signature over Printed Name / Date</div>
+        </div>
+        <div class="sig-col">
+            <div class="sig-line"></div>
+            <strong>Received By</strong>
+            <div style="font-size:10px; color:#94a3b8; margin-top:2px;">Signature over Printed Name / Date</div>
+        </div>
+    </div>
+
+    <div class="divider-double" style="margin-bottom:8px; margin-top:30px;"></div>
+    
+    <!-- Footer -->
+    <div style="display:flex; justify-content:space-between; font-size:10px; color:#64748b;">
+        <div>Generated by Petron Station Management System</div>
+        <div>Printed by: <?php echo $admin_name; ?></div>
+        <div>Date Printed: <?php echo $printed_date; ?></div>
+        <div>Page 1 of 1</div>
+    </div>
+    
 </div>
 
-    <!-- ── Document Footer ── -->
-    <div class="doc-footer">
-        <strong>This Purchase Order is official and valid only with authorized signatures.</strong><br>
-        Document ID: <?php echo $po_number; ?> &nbsp;&bull;&nbsp;
-        Station: <?php echo $station_name; ?> &nbsp;&bull;&nbsp;
-        Supplier: <?php echo $supplier_name; ?> &nbsp;&bull;&nbsp;
-        Generated: <?php echo $printed_date; ?><br>
-        <span style="font-size:8px;">
-            Printed by: <?php echo htmlspecialchars($me['name']); ?> (<?php echo ucfirst($role); ?>)
-            &nbsp;&bull;&nbsp; This document serves as proof of finalization and approval. Keep a copy for station records and compliance.
-        </span>
-    </div>
-    </div><!-- /po-bottom -->
-
-    </div><!-- /po-content -->
-</div><!-- /po-document -->
-</div><!-- /page-wrapper -->
-
 <script>
-// Auto-print only when opened via the Print button (?print=1)
 <?php if (isset($_GET['print']) && $_GET['print'] == '1'): ?>
 window.addEventListener('load', function () {
-    setTimeout(function () { window.print(); }, 700);
-});
-// After print dialog closes (Save or Cancel) — go back to Purchase Orders
-window.addEventListener('afterprint', function () {
-    window.location.href = 'admin_purchase_orders.php';
+    setTimeout(function () { window.print(); }, 500);
 });
 <?php endif; ?>
 </script>

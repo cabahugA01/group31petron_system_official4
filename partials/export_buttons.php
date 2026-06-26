@@ -22,27 +22,60 @@ $export_pagination_id    = $export_pagination_id    ?? '';
 $export_default_rows     = $export_default_rows     ?? 25;
 ?>
 <style>
-/* Export button protection — immune to global theme button-color override */
+/* Export button styling to match Petron-clean txn-btn outline style */
 .exp-btn {
     display: inline-flex !important;
     align-items: center !important;
+    justify-content: center !important;
     gap: 6px !important;
     height: 36px !important;
-    padding: 8px 14px !important;
-    border-radius: 8px !important;
-    font-size: 13px !important;
+    padding: 7px 14px !important;
+    border-radius: 4px !important;
+    font-size: 11px !important;
     font-weight: 600 !important;
     cursor: pointer !important;
     text-decoration: none !important;
-    border: none !important;
-    transition: filter .2s !important;
+    border: 1px solid transparent !important;
+    transition: all .2s ease-in-out !important;
     white-space: nowrap !important;
+    background: #fff !important;
 }
-.exp-btn:hover { filter: brightness(0.88) !important; }
-.exp-btn-excel { background-color: #1d6f42 !important; background: #1d6f42 !important; color: #fff !important; }
-.exp-btn-csv   { background-color: #003d7a !important; background: #003d7a !important; color: #fff !important; }
-.exp-btn-pdf   { background-color: #dc2626 !important; background: #dc2626 !important; color: #fff !important; }
-.exp-btn-back  { background-color: #6c7280 !important; background: #6c7280 !important; color: #fff !important; }
+
+.exp-btn-excel {
+    color: #16a34a !important;
+    border-color: #16a34a !important;
+}
+.exp-btn-excel:hover {
+    background: #16a34a !important;
+    color: #fff !important;
+}
+
+.exp-btn-csv {
+    color: #002F70 !important;
+    border-color: #002F70 !important;
+}
+.exp-btn-csv:hover {
+    background: #002F70 !important;
+    color: #fff !important;
+}
+
+.exp-btn-pdf {
+    color: #dc2626 !important;
+    border-color: #dc2626 !important;
+}
+.exp-btn-pdf:hover {
+    background: #dc2626 !important;
+    color: #fff !important;
+}
+
+.exp-btn-back {
+    color: #475569 !important;
+    border-color: #475569 !important;
+}
+.exp-btn-back:hover {
+    background: #475569 !important;
+    color: #fff !important;
+}
 </style>
 <div style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;">
 

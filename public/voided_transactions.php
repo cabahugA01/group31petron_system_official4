@@ -287,6 +287,24 @@ require_once __DIR__ . '/../partials/header.php';
 .flt-btn-solid-danger { color: #fff !important; background: #dc2626 !important; border-color: #dc2626 !important; }
 .flt-btn-solid-danger:hover { background: #b91c1c !important; border-color: #b91c1c !important; }
 
+/* == TAB BUTTONS == */
+.flt-btn {
+    transition: all 0.2s ease-in-out;
+}
+.flt-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+.flt-btn-reset {
+    background: #f1f5f9 !important;
+    color: #64748b !important;
+    border-color: #e2e8f0 !important;
+}
+.flt-btn-reset:hover {
+    background: #e2e8f0 !important;
+    color: #334155 !important;
+}
+
 /* == Petron Clean KPI Summary Cards == */
 .txn-kpi-grid {
     display: grid;
@@ -377,11 +395,8 @@ require_once __DIR__ . '/../partials/header.php';
         <h1 class="h1"><i class="fas fa-ban"></i> Voided Transactions</h1>
         <div class="sub">Review and monitor voided, cancelled, and reversed transactions.</div>
     </div>
-    <div class="actions txn-head-actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <a href="<?= in_array($role, ['admin', 'superadmin']) ? 'admin_dashboard.php' : 'manager_dashboard.php'; ?>" class="flt-btn flt-btn-reset"><i class="fas fa-arrow-left"></i> Back</a>
-        <a href="?export=excel&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&staff=<?php echo urlencode($filter_staff); ?>" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
-        <a href="?export=csv&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&staff=<?php echo urlencode($filter_staff); ?>" class="flt-btn flt-btn-search"><i class="fas fa-file-csv"></i> CSV</a>
-        <button class="flt-btn flt-btn-pdf" onclick="window.print()"><i class="fas fa-file-pdf"></i> PDF</button>
+    <div id="pageHeadButtons" class="actions txn-head-actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <!-- Buttons will be dynamically inserted here by JavaScript -->
     </div>
 </div>
 
@@ -441,8 +456,18 @@ require_once __DIR__ . '/../partials/header.php';
     </form>
 </div>
 
-<!-- VOIDED TRANSACTIONS TABLE -->
-<div class="card" style="margin-top:20px;">
+<!-- TAB NAVIGATION -->
+<div style="display:flex;gap:10px;margin-top:20px;margin-bottom:12px;">
+    <button onclick="switchTab('voided')" id="tabBtn_voided" class="flt-btn flt-btn-solid-primary" style="font-size:12px;padding:8px 16px;">
+        <i class="fas fa-ban"></i> Voided Transactions (<?php echo count($voided); ?>)
+    </button>
+    <button onclick="switchTab('active')" id="tabBtn_active" class="flt-btn flt-btn-reset" style="font-size:12px;padding:8px 16px;">
+        <i class="fas fa-list"></i> Active Transactions (Can be voided)
+    </button>
+</div>
+
+<!-- TAB CONTENT: VOIDED TRANSACTIONS -->
+<div id="tab_voided" class="card" style="margin-top:0;">
     <div class="card-head">
         <div class="card-title">Voided Transactions (<?php echo count($voided); ?>)</div>
     </div>
@@ -495,7 +520,7 @@ require_once __DIR__ . '/../partials/header.php';
 </div>
 
 <!-- ACTIVE TRANSACTIONS (For Voiding) -->
-<div class="card" style="margin-top:20px;">
+<div id="tab_active" class="card" style="margin-top:0;display:none;">
     <div class="card-head">
         <div class="card-title">Active Transactions (Can be voided)</div>
     </div>
@@ -665,6 +690,44 @@ function closeVoidDetailModal(){
 }
 document.getElementById('voidDetailModal').addEventListener('click',function(e){
   if(e.target===this) closeVoidDetailModal();
+});
+
+// ── Tab Switching Function ──────────────────────────────────────────────
+function switchTab(tabName) {
+    // Hide all tabs
+    document.getElementById('tab_voided').style.display = 'none';
+    document.getElementById('tab_active').style.display = 'none';
+    
+    // Show selected tab
+    document.getElementById('tab_' + tabName).style.display = 'block';
+    
+    // Update button styles
+    var voidedBtn = document.getElementById('tabBtn_voided');
+    var activeBtn = document.getElementById('tabBtn_active');
+    var pageHeadButtons = document.getElementById('pageHeadButtons');
+    
+    if (tabName === 'voided') {
+        voidedBtn.className = 'flt-btn flt-btn-solid-primary';
+        activeBtn.className = 'flt-btn flt-btn-reset';
+        // Show export buttons for Voided Transactions tab
+        pageHeadButtons.innerHTML = `
+            <a href="?export=excel&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&staff=<?php echo urlencode($filter_staff); ?>" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
+            <a href="?export=csv&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&staff=<?php echo urlencode($filter_staff); ?>" class="flt-btn flt-btn-search"><i class="fas fa-file-csv"></i> CSV</a>
+            <button class="flt-btn flt-btn-pdf" onclick="window.print()"><i class="fas fa-file-pdf"></i> PDF</button>
+        `;
+    } else {
+        voidedBtn.className = 'flt-btn flt-btn-reset';
+        activeBtn.className = 'flt-btn flt-btn-solid-primary';
+        // Show back button for Active Transactions tab
+        pageHeadButtons.innerHTML = `
+            <button onclick="switchTab('voided')" class="flt-btn flt-btn-reset">Back</button>
+        `;
+    }
+}
+
+// Initialize - show voided transactions tab by default
+window.addEventListener('DOMContentLoaded', function() {
+    switchTab('voided');
 });
 </script>
 

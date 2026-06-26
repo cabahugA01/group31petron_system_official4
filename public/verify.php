@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * verify.php — QR Code Scan Target / Transaction Verification Page
  * Accessible without login for QR scan purposes (read-only, no sensitive mutations).
@@ -145,12 +145,12 @@ if ($txn) {
 
     // Determine normalised payment status
     $stored_ps    = strtolower(trim($txn['payment_status'] ?? ''));
-    if (in_array($stored_ps, ['partial payment','partial'])) {
+    if (in_array($stored_ps, ['partial payment','partial','partially paid'])) {
         $pay_norm = 'partial';
         if ($balance_due <= 0) $balance_due = max(0, $total - $amount_paid);
     } elseif (in_array($stored_ps, ['pending payment','pending'])) {
         $pay_norm = 'pending';
-    } elseif (in_array($stored_ps, ['credit transaction','credit'])) {
+    } elseif (in_array($stored_ps, ['credit transaction','credit','credit account'])) {
         $pay_norm = 'credit';
     } else {
         $pay_norm = 'paid';
@@ -158,9 +158,9 @@ if ($txn) {
 
     $pay_labels = [
         'paid'    => ['label'=>'PAID',              'bg'=>'#166534','border'=>'#86efac','txt'=>'#fff'],
-        'partial' => ['label'=>'PARTIAL PAYMENT',   'bg'=>'#92400e','border'=>'#fde68a','txt'=>'#fef9c3'],
-        'pending' => ['label'=>'PENDING PAYMENT',   'bg'=>'#9a3412','border'=>'#fed7aa','txt'=>'#ffedd5'],
-        'credit'  => ['label'=>'CREDIT TRANSACTION','bg'=>'#6b21a8','border'=>'#d8b4fe','txt'=>'#f3e8ff'],
+        'partial' => ['label'=>'PARTIALLY PAID',    'bg'=>'#92400e','border'=>'#fde68a','txt'=>'#fef9c3'],
+        'pending' => ['label'=>'PENDING',           'bg'=>'#9a3412','border'=>'#fed7aa','txt'=>'#ffedd5'],
+        'credit'  => ['label'=>'CREDIT ACCOUNT',    'bg'=>'#6b21a8','border'=>'#d8b4fe','txt'=>'#f3e8ff'],
     ];
     $ps_cfg = $pay_labels[$pay_norm] ?? $pay_labels['paid'];
 
@@ -497,7 +497,7 @@ body {
     <!-- Payment Breakdown -->
     <div class="vsec">
       <div class="vsec-title"><i class="fas fa-credit-card"></i> Payment Breakdown</div>
-      <div class="vrow"><span class="vrow-key">Method</span><span class="vrow-val"><?php echo htmlspecialchars(strtoupper($pay_method)); ?></span></div>
+      <div class="vrow"><span class="vrow-key">Method</span><span class="vrow-val"><?php echo htmlspecialchars($pay_method); ?></span></div>
 
       <?php if ($pay_norm === 'paid'): ?>
         <div class="vrow"><span class="vrow-key">Amount Tendered</span><span class="vrow-val">&#8369;<?php echo number_format($amount_paid > 0 ? $amount_paid : $total, 2); ?></span></div>
@@ -520,10 +520,73 @@ body {
       <?php endif; ?>
 
       <?php
-        $ref = $txn['card_reference'] ?? $txn['ewallet_reference'] ?? $txn['efuel_card_number'] ?? '';
-        if ($ref): ?>
-      <div class="vrow"><span class="vrow-key">Reference No.</span><span class="vrow-val" style="font-family:monospace;"><?php echo htmlspecialchars($ref); ?></span></div>
-      <?php endif; ?>
+      // Render payment-method specific metadata fields
+      $pm_lower = strtolower($pay_method);
+      if (strpos($pm_lower, 'card') !== false) {
+          $card_type = $txn['card_type'] ?? '';
+          $last_four = $txn['card_last_four'] ?? '';
+          $ref_no    = $txn['reference_number'] ?? $txn['card_reference'] ?? '';
+          if ($card_type) {
+              echo '<div class="vrow"><span class="vrow-key">Card Type</span><span class="vrow-val">' . htmlspecialchars($card_type) . '</span></div>';
+          }
+          if ($last_four) {
+              echo '<div class="vrow"><span class="vrow-key">Card Number</span><span class="vrow-val">•••• •••• •••• ' . htmlspecialchars($last_four) . '</span></div>';
+          }
+          if ($ref_no) {
+              echo '<div class="vrow"><span class="vrow-key">Reference No.</span><span class="vrow-val" style="font-family:monospace;">' . htmlspecialchars($ref_no) . '</span></div>';
+          }
+      } elseif (strpos($pm_lower, 'gcash') !== false || strpos($pm_lower, 'maya') !== false || strpos($pm_lower, 'wallet') !== false) {
+          $provider = $txn['wallet_provider'] ?? $txn['payment_method'] ?? 'E-Wallet';
+          $ref_no   = $txn['reference_number'] ?? $txn['ewallet_reference'] ?? '';
+          echo '<div class="vrow"><span class="vrow-key">E-Wallet Provider</span><span class="vrow-val">' . htmlspecialchars($provider) . '</span></div>';
+          if ($ref_no) {
+              echo '<div class="vrow"><span class="vrow-key">Reference No.</span><span class="vrow-val" style="font-family:monospace;">' . htmlspecialchars($ref_no) . '</span></div>';
+          }
+      } elseif (strpos($pm_lower, 'fleet') !== false) {
+          $fleet_no  = $txn['fleet_card_number'] ?? '';
+          $comp_name = $txn['company_name'] ?? '';
+          $auth_no   = $txn['authorization_number'] ?? '';
+          if ($fleet_no) {
+              echo '<div class="vrow"><span class="vrow-key">Fleet Card No.</span><span class="vrow-val" style="font-family:monospace;">' . htmlspecialchars($fleet_no) . '</span></div>';
+          }
+          if ($comp_name) {
+              echo '<div class="vrow"><span class="vrow-key">Company Name</span><span class="vrow-val">' . htmlspecialchars($comp_name) . '</span></div>';
+          }
+          if ($auth_no) {
+              echo '<div class="vrow"><span class="vrow-key">Auth Number</span><span class="vrow-val" style="font-family:monospace;">' . htmlspecialchars($auth_no) . '</span></div>';
+          }
+      } elseif (strpos($pm_lower, 'e-fuel') !== false || strpos($pm_lower, 'efuel') !== false) {
+          $efuel_no = $txn['efuel_card_number'] ?? '';
+          $ref_no   = $txn['reference_number'] ?? '';
+          if ($efuel_no) {
+              echo '<div class="vrow"><span class="vrow-key">E-Fuel Card No.</span><span class="vrow-val" style="font-family:monospace;">' . htmlspecialchars($efuel_no) . '</span></div>';
+          }
+          if ($ref_no) {
+              echo '<div class="vrow"><span class="vrow-key">Reference No.</span><span class="vrow-val" style="font-family:monospace;">' . htmlspecialchars($ref_no) . '</span></div>';
+          }
+      } elseif (strpos($pm_lower, 'credit') !== false || strpos($pm_lower, 'account') !== false) {
+          $comp_name = $txn['company_name'] ?? '';
+          $acc_no    = $txn['account_number'] ?? '';
+          $due_date  = $txn['due_date'] ?? $txn['credit_due_date'] ?? '';
+          if ($comp_name) {
+              echo '<div class="vrow"><span class="vrow-key">Company Name</span><span class="vrow-val">' . htmlspecialchars($comp_name) . '</span></div>';
+          }
+          if ($acc_no) {
+              echo '<div class="vrow"><span class="vrow-key">Account No.</span><span class="vrow-val" style="font-family:monospace;">' . htmlspecialchars($acc_no) . '</span></div>';
+          }
+          if ($due_date) {
+              $fmt_due = $due_date;
+              try { $fmt_due = (new DateTime($due_date))->format('M j, Y'); } catch (Exception $e) {}
+              echo '<div class="vrow"><span class="vrow-key">Due Date</span><span class="vrow-val" style="font-weight:800;color:#9a3412;">' . htmlspecialchars($fmt_due) . '</span></div>';
+          }
+      } else {
+          // Fallback reference number
+          $ref_no = $txn['reference_number'] ?? $txn['card_reference'] ?? $txn['ewallet_reference'] ?? '';
+          if ($ref_no) {
+              echo '<div class="vrow"><span class="vrow-key">Reference No.</span><span class="vrow-val" style="font-family:monospace;">' . htmlspecialchars($ref_no) . '</span></div>';
+          }
+      }
+      ?>
     </div>
 
     <!-- Action Buttons -->

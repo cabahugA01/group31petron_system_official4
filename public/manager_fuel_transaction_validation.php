@@ -68,26 +68,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $up = $pdo->prepare("UPDATE fuel_transactions SET status = 'Verified', validated_by = ?, validated_at = NOW(), reject_reason = ? WHERE id = ?");
             $up->execute([$me['id'], $remarks ?: null, $tx_id]);
 
-            // Deduct stock from fuel_inventory
+            // Deduct stock from fuel_inventory (both current_level AND current_stock must stay in sync)
+            // Formula: liters_sold = present_reading - previous_reading - calibration (stored at encoding time)
             $up_stock = $pdo->prepare("UPDATE fuel_inventory 
-                                       SET current_level = GREATEST(0, COALESCE(current_level, 0) - ?), 
-                                           last_updated = NOW() 
+                                       SET current_level = GREATEST(0, COALESCE(current_level, 0) - ?),
+                                           current_stock  = GREATEST(0, COALESCE(current_stock, 0) - ?),
+                                           last_updated   = NOW()
                                        WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))");
-            $up_stock->execute([$tx['liters_sold'], $station_id, $tx['fuel_type']]);
+            $up_stock->execute([$tx['liters_sold'], $tx['liters_sold'], $station_id, $tx['fuel_type']]);
+
+            // Safety check: ensure the fuel type was found in inventory
+            if ($up_stock->rowCount() === 0) {
+                // Log the mismatch but don't block approval — inventory may not be set up yet
+                error_log("FUEL INVENTORY WARNING: No fuel_inventory row matched fuel_type='{$tx['fuel_type']}' station_id={$station_id} for TXN {$tx['transaction_id']}");
+            }
 
             // Add adjustment log for audit
-            $pdo->prepare("INSERT INTO fuel_adjustments (station_id, fuel_type_id, adjustment_type, liters, reason, user_id, adjustment_date)
-                           SELECT ?, fuel_type_id, 'verified_sale', ?, ?, ?, CURDATE()
-                           FROM fuel_inventory
-                           WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) LIMIT 1")
-                ->execute([
-                    $station_id,
-                    -abs($tx['liters_sold']),
-                    "Approved Transaction {$tx['transaction_id']}. Remarks: " . ($remarks ?: 'None'),
-                    $me['id'],
-                    $station_id,
-                    $tx['fuel_type']
-                ]);
+            try {
+                $pdo->prepare("INSERT INTO fuel_adjustments (station_id, fuel_type_id, adjustment_type, liters, reason, user_id, adjustment_date)
+                               SELECT ?, fuel_type_id, 'verified_sale', ?, ?, ?, CURDATE()
+                               FROM fuel_inventory
+                               WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) LIMIT 1")
+                    ->execute([
+                        $station_id,
+                        -abs($tx['liters_sold']),
+                        "Approved Transaction {$tx['transaction_id']}. Remarks: " . ($remarks ?: 'None'),
+                        $me['id'],
+                        $station_id,
+                        $tx['fuel_type']
+                    ]);
+            } catch (Exception $ae) {
+                // Audit log insert is non-critical; continue even if it fails
+                error_log("Fuel adj log insert error for TXN {$tx['transaction_id']}: " . $ae->getMessage());
+            }
 
             // Log activity
             log_activity($pdo, $me['id'], 'Fuel Reading Approved', "TXN {$tx['transaction_id']} | {$tx['fuel_type']} | {$tx['liters_sold']} L");

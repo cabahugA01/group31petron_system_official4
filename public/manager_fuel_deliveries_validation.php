@@ -80,9 +80,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['export'])) {
             $up = $pdo->prepare("UPDATE fuel_deliveries SET status='Verified', verified_by=?, verified_at=NOW() WHERE id=? AND station_id=?");
             $up->execute([$me['id'], $delivery_id, $station_id]);
 
-            // Add liters to fuel_inventory
-            $up_inv = $pdo->prepare("UPDATE fuel_inventory SET current_level=COALESCE(current_level,0)+?, current_stock=COALESCE(current_stock,0)+?, last_updated=NOW() WHERE station_id=? AND LOWER(TRIM(fuel_type))=LOWER(TRIM(?))");
+            // Add liters to fuel_inventory (current_level AND current_stock must both increase)
+            // This is the ONLY place that increases inventory — on manager verification of delivery.
+            $up_inv = $pdo->prepare("UPDATE fuel_inventory 
+                                     SET current_level = COALESCE(current_level, 0) + ?,
+                                         current_stock  = COALESCE(current_stock, 0) + ?,
+                                         last_updated   = NOW()
+                                     WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))");
             $up_inv->execute([$delivery['delivery_liters'], $delivery['delivery_liters'], $station_id, $delivery['fuel_type']]);
+
+            // Safety check: ensure the fuel type was found in inventory
+            if ($up_inv->rowCount() === 0) {
+                // Fuel type name mismatch — delivery fuel type not in inventory table
+                // Log for admin to fix the fuel type name mapping
+                error_log("FUEL INVENTORY WARNING: No fuel_inventory row matched fuel_type='{$delivery['fuel_type']}' station_id={$station_id} for DEL-{$delivery_id}. Inventory NOT updated.");
+                // Throw to alert the manager
+                throw new Exception("Fuel type '{$delivery['fuel_type']}' was not found in this station's fuel inventory. Please contact the administrator to configure the tank first.");
+            }
 
             // Write to audit log
             try {

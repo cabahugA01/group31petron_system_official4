@@ -282,16 +282,29 @@ if ($type === 'job_order') {
                 'vat_amount'          => (float)($txn['vat_amount'] ?? 0),
                 'amount_tendered'     => (float)($txn['amount_tendered'] ?? 0),
                 'change_amount'       => (float)($txn['change_amount'] ?? 0),
-                'card_reference'      => $txn['card_reference'] ?? '',
-                'remarks'             => $txn['remarks'] ?? '',
-                'validation_status'   => $txn['validation_status'] ?? 'Pending',
-                'station_name'        => $txn['station_name'],
-                'station_address'     => $txn['station_address'],
-                'station_location'    => $txn['station_location'],
-                'station_vat_tin'     => $txn['station_vat_tin'],
-                'items'               => $items,
-                'job_order'           => $job_order_data,
-                'transaction_type'    => $txn_type,
+                'card_reference'        => $txn['card_reference'] ?? '',
+                'card_type'             => $txn['card_type'] ?? '',
+                'card_last_four'        => $txn['card_last_four'] ?? '',
+                'ewallet_reference'     => $txn['ewallet_reference'] ?? '',
+                'ewallet_provider'      => $txn['ewallet_provider'] ?? '',
+                'efuel_card_number'     => $txn['efuel_card_number'] ?? '',
+                'efuel_reference'       => $txn['efuel_reference'] ?? '',
+                'fleet_card_number'     => $txn['fleet_card_number'] ?? '',
+                'fleet_company_name'    => $txn['fleet_company_name'] ?? '',
+                'fleet_auth_number'     => $txn['fleet_auth_number'] ?? '',
+                'credit_company_name'   => $txn['credit_company_name'] ?? '',
+                'credit_account_number' => $txn['credit_account_number'] ?? '',
+                'credit_po_number'      => $txn['credit_po_number'] ?? '',
+                'credit_due_date'       => $txn['credit_due_date'] ?? '',
+                'remarks'               => $txn['remarks'] ?? '',
+                'validation_status'     => $txn['validation_status'] ?? 'Pending',
+                'station_name'          => $txn['station_name'],
+                'station_address'       => $txn['station_address'],
+                'station_location'      => $txn['station_location'],
+                'station_vat_tin'       => $txn['station_vat_tin'],
+                'items'                 => $items,
+                'job_order'             => $job_order_data,
+                'transaction_type'      => $txn_type,
             ];
             
             // Log build success
@@ -412,11 +425,11 @@ $stored_pay_status = strtolower(trim($sale['payment_status'] ?? ''));
 $amount_paid_db    = (float)($sale['amount_paid'] ?? $tendered ?? 0);
 $balance_due_db    = (float)($sale['balance_due'] ?? 0);
 
-if ($stored_pay_status === 'partial payment' || $stored_pay_status === 'partial') {
+if (in_array($stored_pay_status, ['partially paid', 'partial payment', 'partial'])) {
     $pay_status_norm = 'partial';
-} elseif ($stored_pay_status === 'pending payment' || ($stored_pay_status === '' && $amount_paid_db <= 0)) {
+} elseif (in_array($stored_pay_status, ['pending', 'pending payment', 'unpaid']) || ($stored_pay_status === '' && $amount_paid_db <= 0)) {
     $pay_status_norm = 'pending';
-} elseif (in_array($stored_pay_status, ['credit transaction', 'credit'])) {
+} elseif (in_array($stored_pay_status, ['credit account', 'credit transaction', 'credit'])) {
     $pay_status_norm = 'credit';
 } else {
     $pay_status_norm = 'paid'; // Paid or fully settled
@@ -569,6 +582,8 @@ $qr_url = 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&ecc=M&data='
                      font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px}
   .btn-print{background:#003d7a;color:#fff}
   .btn-print:hover{background:#002a56}
+  .btn-back{background:#28a745;color:#fff}
+  .btn-back:hover{background:#1e7e34}
   .btn-close{background:#6c757d;color:#fff}
   .btn-close:hover{background:#545b62}
 }
@@ -654,6 +669,7 @@ $qr_url = 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&ecc=M&data='
 
 <!-- Toolbar (hidden on print) -->
 <div class="jo-toolbar">
+  <button class="btn-back" onclick="window.location.href='staff_transactions_hub.php?section=merchandise&amp;active_tab=merchandise'"><i class="fas fa-arrow-left"></i> Back</button>
   <button class="btn-print" onclick="window.print()"><i class="fas fa-print"></i> Print</button>
   <button class="btn-close" onclick="window.close()"><i class="fas fa-times"></i> Close</button>
 </div>
@@ -842,7 +858,7 @@ $qr_url = 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&ecc=M&data='
         <span class="jo-r-val jo-r-bold">&#8369;<?php echo number_format($change, 2); ?></span>
       </div>
 
-    <?php elseif ($pm_lc === 'card'): ?>
+    <?php elseif (in_array($pm_lc, ['card', 'credit card', 'debit card'])): ?>
       <div class="jo-r-row"><span class="jo-r-key">Amount Charged</span><span class="jo-r-val">&#8369;<?php echo number_format($total, 2); ?></span></div>
       <?php if (!empty($sale['card_reference'])): ?>
       <div class="jo-r-row"><span class="jo-r-key">Card Ref No.</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['card_reference']); ?></span></div>
@@ -850,8 +866,11 @@ $qr_url = 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&ecc=M&data='
       <?php if (!empty($sale['card_type'])): ?>
       <div class="jo-r-row"><span class="jo-r-key">Card Type</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['card_type']); ?></span></div>
       <?php endif; ?>
+      <?php if (!empty($sale['card_last_four'])): ?>
+      <div class="jo-r-row"><span class="jo-r-key">Card Number</span><span class="jo-r-val">**** **** **** <?php echo htmlspecialchars($sale['card_last_four']); ?></span></div>
+      <?php endif; ?>
 
-    <?php elseif ($pm_lc === 'e-wallet'): ?>
+    <?php elseif (in_array($pm_lc, ['e-wallet', 'gcash', 'maya'])): ?>
       <div class="jo-r-row"><span class="jo-r-key">Amount Transferred</span><span class="jo-r-val">&#8369;<?php echo number_format($total, 2); ?></span></div>
       <?php if (!empty($sale['ewallet_reference'])): ?>
       <div class="jo-r-row"><span class="jo-r-key">E-Wallet Ref</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['ewallet_reference']); ?></span></div>
@@ -860,10 +879,40 @@ $qr_url = 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&ecc=M&data='
       <div class="jo-r-row"><span class="jo-r-key">Provider</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['ewallet_provider']); ?></span></div>
       <?php endif; ?>
 
-    <?php elseif ($pm_lc === 'e-fuel card'): ?>
+    <?php elseif (in_array($pm_lc, ['fleet card', 'petron fleet card'])): ?>
+      <div class="jo-r-row"><span class="jo-r-key">Amount Charged</span><span class="jo-r-val">&#8369;<?php echo number_format($total, 2); ?></span></div>
+      <?php if (!empty($sale['fleet_card_number'])): ?>
+      <div class="jo-r-row"><span class="jo-r-key">Fleet Card No.</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['fleet_card_number']); ?></span></div>
+      <?php endif; ?>
+      <?php if (!empty($sale['fleet_company_name'])): ?>
+      <div class="jo-r-row"><span class="jo-r-key">Company Name</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['fleet_company_name']); ?></span></div>
+      <?php endif; ?>
+      <?php if (!empty($sale['fleet_auth_number'])): ?>
+      <div class="jo-r-row"><span class="jo-r-key">Auth No.</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['fleet_auth_number']); ?></span></div>
+      <?php endif; ?>
+
+    <?php elseif (in_array($pm_lc, ['e-fuel card', 'petron e-fuel card', 'petron e-fuel', 'efuel'])): ?>
       <div class="jo-r-row"><span class="jo-r-key">Amount Deducted</span><span class="jo-r-val">&#8369;<?php echo number_format($total, 2); ?></span></div>
       <?php if (!empty($sale['efuel_card_number'])): ?>
       <div class="jo-r-row"><span class="jo-r-key">E-Fuel Card</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['efuel_card_number']); ?></span></div>
+      <?php endif; ?>
+      <?php if (!empty($sale['efuel_reference'])): ?>
+      <div class="jo-r-row"><span class="jo-r-key">Ref No.</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['efuel_reference']); ?></span></div>
+      <?php endif; ?>
+
+    <?php elseif (in_array($pm_lc, ['credit', 'credit account'])): ?>
+      <div class="jo-r-row"><span class="jo-r-key">Credit Amount</span><span class="jo-r-val">&#8369;<?php echo number_format($total, 2); ?></span></div>
+      <?php if (!empty($sale['credit_company_name'])): ?>
+      <div class="jo-r-row"><span class="jo-r-key">Company Name</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['credit_company_name']); ?></span></div>
+      <?php endif; ?>
+      <?php if (!empty($sale['credit_account_number'])): ?>
+      <div class="jo-r-row"><span class="jo-r-key">Account No.</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['credit_account_number']); ?></span></div>
+      <?php endif; ?>
+      <?php if (!empty($sale['credit_po_number'])): ?>
+      <div class="jo-r-row"><span class="jo-r-key">PO Number</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['credit_po_number']); ?></span></div>
+      <?php endif; ?>
+      <?php if (!empty($sale['credit_due_date'])): ?>
+      <div class="jo-r-row"><span class="jo-r-key">Due Date</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['credit_due_date']); ?></span></div>
       <?php endif; ?>
     <?php endif; ?>
 

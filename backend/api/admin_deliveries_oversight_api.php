@@ -30,24 +30,36 @@ if ($action === 'export_excel' || $action === 'export_pdf') {
     if (!$me || !in_array($role, ['admin','superadmin'])) { http_response_code(403); echo 'Access denied'; exit; }
     $station_id = (int)user_station_id();
     $start=$_GET['start']??date('Y-m-d',strtotime('-30 days')); $end=$_GET['end']??date('Y-m-d'); $sf=$_GET['status']??'';
+    $tf=trim($_GET['type']??''); $sup=trim($_GET['supplier']??'');
+    $cat=trim($_GET['category']??''); $dr=trim($_GET['dr_number']??'');
+    
     $w='WHERE do2.station_id=? AND do2.delivery_date BETWEEN ? AND ?'; $p=[$station_id,$start,$end];
     if($sf!==''){
         if($sf==='expected'){
             $w.=" AND do2.status='Expected Delivery'";
         }elseif($sf==='pending'){
-            // Admin 'pending' = records awaiting Admin oversight (already passed Manager)
-            $w.=" AND do2.status IN ('Pending Admin Oversight','Pending Manager Confirmation','Pending Validation')";
-        }elseif($sf==='approved'){
+            $w.=" AND do2.status IN ('Pending Admin Oversight','Pending Manager Confirmation','Pending Validation','Pending Manager Approval')";
+        }elseif($sf==='approved' || $sf==='cleared' || $sf==='validated'){
             $w.=" AND do2.status IN ('Confirmed','Validated')";
         }elseif($sf==='flagged'){
             $w.=" AND do2.status IN ('Discrepancy','Flagged')";
+        }elseif($sf==='partial'){
+            $w.=" AND do2.status='Partial Delivery'";
+        }elseif($sf==='damaged'){
+            $w.=" AND do2.status='Damaged Items'";
+        }elseif($sf==='rejected'){
+            $w.=" AND do2.status IN ('Rejected','Rejected Delivery')";
         }else{
             $w.=' AND do2.status=?';$p[]=$sf;
         }
     } else {
-        // Default export: exclude raw Manager-queue records from Admin exports
         $w.=" AND do2.status NOT IN ('Pending Manager Approval')";
     }
+    if($tf!==''){$w.=' AND do2.delivery_type=?';$p[]=$tf;}
+    if($sup!==''){$w.=' AND do2.supplier LIKE ?';$p[]='%'.$sup.'%';}
+    if($cat!==''){$w.=' AND do2.category=?';$p[]=$cat;}
+    if($dr!==''){$w.=' AND do2.dr_number LIKE ?';$p[]='%'.$dr.'%';}
+
     $st=$pdo->prepare("
         SELECT do2.*,
                COALESCE(NULLIF(TRIM(u_enc.username), ''), 'Unknown') AS encoded_by_name,
@@ -64,16 +76,61 @@ if ($action === 'export_excel' || $action === 'export_pdf') {
     if($action==='export_excel'){
         header('Content-Type: application/vnd.ms-excel; charset=utf-8');
         header('Content-Disposition: attachment; filename="deliveries_'.date('Y-m-d').'.xls"');
-        $o=fopen('php://output','w'); fputcsv($o,['#','Ref','Type','DR','Supplier','Product','Qty','Unit','Date','Encoded By','Status','Notes']);
-        foreach($rows as $r) fputcsv($o,[$r['id'],$r['delivery_ref'],ucfirst($r['delivery_type']),$r['dr_number']??'',$r['supplier'],$r['product'],$r['quantity'],$r['unit'],$r['delivery_date'],$r['encoded_by_name']??'',$r['status'],$r['admin_notes']??'']);
+        $o=fopen('php://output','w');
+        if($tf === 'merchandise') {
+            fputcsv($o,['Delivery ID','Delivery Date','Batch ID','DR Number','Supplier','Item Name','Category','Quantity Delivered','Unit','Staff Receiver','Manager Verifier','Status','Verification Date','Remarks']);
+            foreach($rows as $r) {
+                fputcsv($o,[
+                    $r['delivery_ref'],
+                    $r['delivery_date'],
+                    $r['batch_id']??'',
+                    $r['dr_number']??'',
+                    $r['supplier'],
+                    $r['product'],
+                    $r['category']??'',
+                    $r['actual_quantity'] ?: $r['quantity'],
+                    $r['unit'],
+                    $r['received_by_name'] ?: $r['encoded_by_name'] ?: 'Unknown',
+                    $r['manager_name']??'',
+                    $r['status'],
+                    $r['manager_action_at']??'',
+                    $r['remarks'] ?: $r['manager_notes'] ?: $r['admin_notes'] ?: ''
+                ]);
+            }
+        } else {
+            fputcsv($o,['#','Ref','Type','DR','Supplier','Product','Qty','Unit','Date','Encoded By','Status','Notes']);
+            foreach($rows as $r) fputcsv($o,[$r['id'],$r['delivery_ref'],ucfirst($r['delivery_type']),$r['dr_number']??'',$r['supplier'],$r['product'],$r['quantity'],$r['unit'],$r['delivery_date'],$r['encoded_by_name']??'',$r['status'],$r['admin_notes']??'']);
+        }
         fclose($o); exit;
     }
     $sn='Station'; try{$s=$pdo->prepare("SELECT name FROM stations WHERE id=? LIMIT 1");$s->execute([$station_id]);$sn=$s->fetchColumn()?:$sn;}catch(Exception $e){}
     header('Content-Type: text/html; charset=utf-8');
-    echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Deliveries</title><style>body{font-family:Arial,sans-serif;font-size:11px}table{width:100%;border-collapse:collapse}th{background:#002F6C;color:#fff;padding:5px;font-size:10px;text-align:left}td{padding:4px 5px;border-bottom:1px solid #eee;font-size:10px}</style></head><body>';
-    echo '<h2 style="color:#002F6C">Deliveries Oversight — '.htmlspecialchars($sn).'</h2><p>'.htmlspecialchars($start).' to '.htmlspecialchars($end).'</p>';
-    echo '<table><thead><tr><th>#</th><th>Ref</th><th>Type</th><th>Supplier</th><th>Product</th><th>Qty</th><th>Date</th><th>Status</th><th>Notes</th></tr></thead><tbody>';
-    foreach($rows as $r) echo '<tr><td>'.(int)$r['id'].'</td><td>'.htmlspecialchars($r['delivery_ref']).'</td><td>'.htmlspecialchars(ucfirst($r['delivery_type'])).'</td><td>'.htmlspecialchars($r['supplier']).'</td><td>'.htmlspecialchars($r['product']).'</td><td>'.number_format((float)$r['quantity'],2).'</td><td>'.htmlspecialchars($r['delivery_date']).'</td><td>'.htmlspecialchars($r['status']).'</td><td>'.htmlspecialchars($r['admin_notes']??'').'</td></tr>';
+    echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Deliveries Report</title><style>body{font-family:Arial,sans-serif;font-size:11px;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:15px;}th{background:#002F6C;color:#fff;padding:8px 6px;font-size:10px;text-align:left;text-transform:uppercase;}td{padding:6px;border-bottom:1px solid #eee;font-size:10px;vertical-align:top;}</style></head><body>';
+    echo '<h2 style="color:#002F6C;margin:0;">Deliveries Oversight — '.htmlspecialchars($sn).'</h2><p style="margin:5px 0;">Date range: '.htmlspecialchars($start).' to '.htmlspecialchars($end).'</p>';
+    if($tf === 'merchandise') {
+        echo '<table><thead><tr><th>Delivery ID</th><th>Date</th><th>Batch ID</th><th>DR No.</th><th>Supplier</th><th>Item Name</th><th>Category</th><th>Qty Delivered</th><th>Unit</th><th>Staff Receiver</th><th>Manager Verifier</th><th>Status</th><th>Verification Date</th><th>Remarks</th></tr></thead><tbody>';
+        foreach($rows as $r) {
+            echo '<tr>';
+            echo '<td>'.htmlspecialchars($r['delivery_ref']).'</td>';
+            echo '<td>'.htmlspecialchars($r['delivery_date']).'</td>';
+            echo '<td>'.htmlspecialchars($r['batch_id']??'—').'</td>';
+            echo '<td>'.htmlspecialchars($r['dr_number']??'—').'</td>';
+            echo '<td>'.htmlspecialchars($r['supplier']).'</td>';
+            echo '<td>'.htmlspecialchars($r['product']).'</td>';
+            echo '<td>'.htmlspecialchars($r['category']??'—').'</td>';
+            echo '<td>'.number_format((float)($r['actual_quantity'] ?: $r['quantity']), 2).'</td>';
+            echo '<td>'.htmlspecialchars($r['unit']).'</td>';
+            echo '<td>'.htmlspecialchars($r['received_by_name'] ?: $r['encoded_by_name'] ?: '—').'</td>';
+            echo '<td>'.htmlspecialchars($r['manager_name'] ?: '—').'</td>';
+            echo '<td>'.htmlspecialchars($r['status']).'</td>';
+            echo '<td>'.htmlspecialchars($r['manager_action_at'] ?: '—').'</td>';
+            echo '<td>'.htmlspecialchars($r['remarks'] ?: $r['manager_notes'] ?: $r['admin_notes'] ?: '—').'</td>';
+            echo '</tr>';
+        }
+    } else {
+        echo '<table><thead><tr><th>#</th><th>Ref</th><th>Type</th><th>Supplier</th><th>Product</th><th>Qty</th><th>Date</th><th>Status</th><th>Notes</th></tr></thead><tbody>';
+        foreach($rows as $r) echo '<tr><td>'.(int)$r['id'].'</td><td>'.htmlspecialchars($r['delivery_ref']).'</td><td>'.htmlspecialchars(ucfirst($r['delivery_type'])).'</td><td>'.htmlspecialchars($r['supplier']).'</td><td>'.htmlspecialchars($r['product']).'</td><td>'.number_format((float)$r['quantity'],2).'</td><td>'.htmlspecialchars($r['delivery_date']).'</td><td>'.htmlspecialchars($r['status']).'</td><td>'.htmlspecialchars($r['admin_notes']??'').'</td></tr>';
+    }
     echo '</tbody></table><script>window.onload=function(){window.print();}</script></body></html>'; exit;
 }
 header('Content-Type: application/json');
@@ -407,29 +464,37 @@ try {
             $st->execute([$station_id]); echo json_encode(['success'=>true,'count'=>(int)$st->fetchColumn()]); break;
         case 'list':
             $sf=trim($_GET['status']??''); $tf=trim($_GET['type']??''); $sup=trim($_GET['supplier']??'');
+            $cat=trim($_GET['category']??''); $dr=trim($_GET['dr_number']??'');
             $start=trim($_GET['start']??date('Y-m-d',strtotime('-30 days'))); $end=trim($_GET['end']??date('Y-m-d'));
+            
             $w='WHERE do2.station_id=? AND do2.delivery_date BETWEEN ? AND ?'; $p=[$station_id,$start,$end];
             if($sf!==''){
                 if($sf==='expected'){
                     $w.=" AND do2.status='Expected Delivery'";
                 }elseif($sf==='pending'){
-                    // Admin 'pending' = records awaiting Admin oversight (already passed Manager)
-                    $w.=" AND do2.status IN ('Pending Admin Oversight','Pending Manager Confirmation','Pending Validation')";
-                }elseif($sf==='approved'){
+                    $w.=" AND do2.status IN ('Pending Admin Oversight','Pending Manager Confirmation','Pending Validation','Pending Manager Approval')";
+                }elseif($sf==='approved' || $sf==='cleared' || $sf==='validated'){
                     $w.=" AND do2.status IN ('Confirmed','Validated')";
                 }elseif($sf==='flagged'){
                     $w.=" AND do2.status IN ('Discrepancy','Flagged')";
+                }elseif($sf==='partial'){
+                    $w.=" AND do2.status='Partial Delivery'";
+                }elseif($sf==='damaged'){
+                    $w.=" AND do2.status='Damaged Items'";
+                }elseif($sf==='rejected'){
+                    $w.=" AND do2.status IN ('Rejected','Rejected Delivery')";
                 }else{
                     $w.=' AND do2.status=?';$p[]=$sf;
                 }
-            }
-            if($tf!==''){$w.=' AND do2.delivery_type=?';$p[]=$tf;}
-            if($sup!==''){$w.=' AND do2.supplier LIKE ?';$p[]='%'.$sup.'%';}
-            // When no status filter is set, Admin sees all records EXCEPT those still in the
-            // Manager queue ('Pending Manager Approval'). Those belong to Manager, not Admin.
-            if($sf===''){
+            } else {
                 $w.=" AND do2.status NOT IN ('Pending Manager Approval')";
             }
+            
+            if($tf!==''){$w.=' AND do2.delivery_type=?';$p[]=$tf;}
+            if($sup!==''){$w.=' AND do2.supplier LIKE ?';$p[]='%'.$sup.'%';}
+            if($cat!==''){$w.=' AND do2.category=?';$p[]=$cat;}
+            if($dr!==''){$w.=' AND do2.dr_number LIKE ?';$p[]='%'.$dr.'%';}
+            
             $st=$pdo->prepare("
                 SELECT do2.*,
                        COALESCE(NULLIF(TRIM(u_enc.username), ''), 'Unknown') AS encoded_by_name,
@@ -443,14 +508,51 @@ try {
                 ORDER BY FIELD(do2.status,'Discrepancy','Flagged','Pending Admin Oversight','Pending Manager Confirmation','Pending Validation','Expected Delivery','Confirmed','Validated'),do2.delivery_date DESC
             ");
             $st->execute($p); $rows=$st->fetchAll(PDO::FETCH_ASSOC);
-            $counts=['Expected'=>0,'Pending Validation'=>0,'Validated'=>0,'Flagged'=>0];
-            foreach($rows as $r){
-                $s=$r['status'];
-                if($s==='Expected Delivery')$counts['Expected']++;
-                elseif(in_array($s,['Pending Admin Oversight','Pending Manager Confirmation','Pending Validation']))$counts['Pending Validation']++;
-                elseif(in_array($s,['Confirmed','Validated']))$counts['Validated']++;
-                elseif(in_array($s,['Discrepancy','Flagged']))$counts['Flagged']++;
+            
+            // Calculate summary cards counts based on date range, supplier, category, dr_number, type
+            // but without the status filter.
+            $w_cards = 'WHERE station_id=? AND delivery_date BETWEEN ? AND ?';
+            $p_cards = [$station_id, $start, $end];
+            if($tf!==''){$w_cards.=' AND delivery_type=?';$p_cards[]=$tf;}
+            if($sup!==''){$w_cards.=' AND supplier LIKE ?';$p_cards[]='%'.$sup.'%';}
+            if($cat!==''){$w_cards.=' AND category=?';$p_cards[]=$cat;}
+            if($dr!==''){$w_cards.=' AND dr_number LIKE ?';$p_cards[]='%'.$dr.'%';}
+            
+            $st_cards = $pdo->prepare("SELECT status, actual_quantity, quantity FROM deliveries_oversight $w_cards");
+            $st_cards->execute($p_cards);
+            $card_rows = $st_cards->fetchAll(PDO::FETCH_ASSOC);
+            
+            $total_deliveries = count($card_rows);
+            $verified_deliveries = 0;
+            $rejected_deliveries = 0;
+            $pending_deliveries = 0;
+            $total_items_received = 0.0;
+            
+            foreach($card_rows as $cr){
+                $s = $cr['status'];
+                // Verified/Received/Cleared statuses
+                if(in_array($s, ['Confirmed', 'Validated', 'Partial Delivery', 'Damaged Items'])){
+                    $verified_deliveries++;
+                    $total_items_received += (float)($cr['actual_quantity'] ?: $cr['quantity'] ?: 0);
+                }
+                // Rejected statuses
+                elseif(in_array($s, ['Rejected', 'Rejected Delivery'])){
+                    $rejected_deliveries++;
+                }
+                // Pending statuses
+                elseif(in_array($s, ['Pending Manager Approval', 'Pending Manager Confirmation', 'Pending Validation', 'Pending Admin Oversight'])){
+                    $pending_deliveries++;
+                }
             }
+            
+            $counts = [
+                'Total' => $total_deliveries,
+                'Verified' => $verified_deliveries,
+                'Rejected' => $rejected_deliveries,
+                'Pending' => $pending_deliveries,
+                'TotalItemsReceived' => $total_items_received
+            ];
+            
             echo json_encode(['success'=>true,'data'=>$rows,'counts'=>$counts]); break;
         case 'detail':
             $id=(int)($_GET['id']??0); if(!$id){echo json_encode(['success'=>false,'message'=>'ID required']);break;}
@@ -468,12 +570,19 @@ try {
             $st->execute([$id,$station_id]); $rec=$st->fetch(PDO::FETCH_ASSOC);
             if(!$rec){echo json_encode(['success'=>false,'message'=>'Not found']);break;}
             try{
+                // Try with source_table filter (entity_type column does not exist in this schema)
+                $at_cols = array_column($pdo->query("SHOW COLUMNS FROM audit_trail")->fetchAll(PDO::FETCH_ASSOC), 'Field');
+                $has_entity = in_array('entity_type', $at_cols);
+                $has_source = in_array('source_table', $at_cols);
+                $at_where = 'WHERE at.transaction_id=?';
+                if($has_entity) $at_where .= " AND at.entity_type='delivery'";
+                elseif($has_source) $at_where .= " AND at.source_table='delivery'";
                 $st2=$pdo->prepare("
                     SELECT at.*, 
                            COALESCE(NULLIF(TRIM(u.username), ''), 'Unknown') AS actor_name 
                     FROM audit_trail at 
                     LEFT JOIN users u ON at.manager_id=u.id 
-                    WHERE at.transaction_id=? AND at.entity_type='delivery' 
+                    {$at_where}
                     ORDER BY at.timestamp DESC
                 ");
                 $st2->execute([$id]);
@@ -492,7 +601,7 @@ try {
             if(in_array($rec['status'],['Validated','Confirmed'])){echo json_encode(['success'=>false,'message'=>'Already validated']);break;}
             $pdo->beginTransaction();
             $pdo->prepare("UPDATE deliveries_oversight SET status='Validated',admin_id=?,admin_action_at=NOW(),admin_notes=?,updated_at=NOW() WHERE id=?")->execute([$me['id'],$notes?:null,$id]);
-            try{$pdo->prepare("INSERT INTO audit_trail (transaction_id,manager_id,action_type,old_value,new_value,station_id,entity_type) VALUES (?,?,'Validate',?,?,?,'delivery')")->execute([$id,$me['id'],$rec['status'],'Validated',$station_id]);}catch(Exception $e){}
+            try{$pdo->prepare("INSERT INTO audit_trail (transaction_id,manager_id,action_type,old_value,new_value,station_id,source_table) VALUES (?,?,'Validate',?,?,?,'delivery')")->execute([$id,$me['id'],$rec['status'],'Validated',$station_id]);}catch(Exception $e){}
             $pdo->commit(); echo json_encode(['success'=>true,'message'=>'Delivery validated successfully.']); break;
         case 'flag':
             $inp=json_decode(file_get_contents('php://input'),true)??[]; $id=(int)($inp['id']??0); $reason=trim($inp['reason']??'');
@@ -502,7 +611,7 @@ try {
             if(!$rec){echo json_encode(['success'=>false,'message'=>'Not found']);break;}
             $pdo->beginTransaction();
             $pdo->prepare("UPDATE deliveries_oversight SET status='Flagged',admin_id=?,admin_action_at=NOW(),admin_notes=?,updated_at=NOW() WHERE id=?")->execute([$me['id'],$reason,$id]);
-            try{$pdo->prepare("INSERT INTO audit_trail (transaction_id,manager_id,action_type,old_value,new_value,station_id,entity_type) VALUES (?,?,'Flag',?,?,?,'delivery')")->execute([$id,$me['id'],$rec['status'],'Flagged: '.$reason,$station_id]);}catch(Exception $e){}
+            try{$pdo->prepare("INSERT INTO audit_trail (transaction_id,manager_id,action_type,old_value,new_value,station_id,source_table) VALUES (?,?,'Flag',?,?,?,'delivery')")->execute([$id,$me['id'],$rec['status'],'Flagged: '.$reason,$station_id]);}catch(Exception $e){}
             $pdo->commit(); echo json_encode(['success'=>true,'message'=>'Delivery flagged.']); break;
         
         case 'process_delivery':
@@ -546,9 +655,8 @@ try {
                 $disc_type,$final_status,$me['id'],$remarks,$id
             ]);
             
-            // Log audit trail
             try{
-                $pdo->prepare("INSERT INTO audit_trail (transaction_id,manager_id,action_type,old_value,new_value,station_id,entity_type) VALUES (?,?,'Process Delivery',?,?,?,'delivery')")->execute([$id,$me['id'],$rec['status'],$final_status.' | Payable: ₱'.number_format($payable_amt,2),$station_id]);
+                $pdo->prepare("INSERT INTO audit_trail (transaction_id,manager_id,action_type,old_value,new_value,station_id,source_table) VALUES (?,?,'Process Delivery',?,?,?,'delivery')")->execute([$id,$me['id'],$rec['status'],$final_status.' | Payable: ₱'.number_format($payable_amt,2),$station_id]);
             }catch(Exception $e){}
             
             $pdo->commit();
@@ -743,6 +851,33 @@ try {
             <?php
             exit;
         
+        case 'reopen':
+            $inp=json_decode(file_get_contents('php://input'),true)??[]; $id=(int)($inp['id']??0);
+            if(!$id){echo json_encode(['success'=>false,'message'=>'ID required']);break;}
+            $st=$pdo->prepare("SELECT * FROM deliveries_oversight WHERE id=? AND station_id=?"); $st->execute([$id,$station_id]); $rec=$st->fetch(PDO::FETCH_ASSOC);
+            if(!$rec){echo json_encode(['success'=>false,'message'=>'Not found']);break;}
+            $pdo->beginTransaction();
+            $pdo->prepare("UPDATE deliveries_oversight SET status='Pending Validation', admin_id=NULL, admin_action_at=NULL, admin_notes=NULL, updated_at=NOW() WHERE id=?")->execute([$id]);
+            try{
+                // Insert audit log — detect which columns exist in audit_trail
+                $at_cols2 = array_column($pdo->query("SHOW COLUMNS FROM audit_trail")->fetchAll(PDO::FETCH_ASSOC), 'Field');
+                $has_src = in_array('source_table', $at_cols2);
+                $has_ent = in_array('entity_type', $at_cols2);
+                if($has_ent){
+                    $pdo->prepare("INSERT INTO audit_trail (transaction_id,manager_id,action_type,old_value,new_value,station_id,entity_type) VALUES (?,?,'Reopen Delivery Record',?,?,?,'delivery')")
+                        ->execute([$id,$me['id'],$rec['status'],'Pending Validation',$station_id]);
+                }elseif($has_src){
+                    $pdo->prepare("INSERT INTO audit_trail (transaction_id,manager_id,action_type,old_value,new_value,station_id,source_table) VALUES (?,?,'Reopen Delivery Record',?,?,?,'delivery')")
+                        ->execute([$id,$me['id'],$rec['status'],'Pending Validation',$station_id]);
+                }else{
+                    $pdo->prepare("INSERT INTO audit_trail (transaction_id,manager_id,action_type,old_value,new_value,station_id) VALUES (?,?,'Reopen Delivery Record',?,?,?)")
+                        ->execute([$id,$me['id'],$rec['status'],'Pending Validation',$station_id]);
+                }
+            }catch(Exception $e){}
+            $pdo->commit();
+            echo json_encode(['success'=>true,'message'=>'Delivery record reopened successfully.']);
+            break;
+            
         default:
             echo json_encode(['success'=>false,'message'=>'Unknown action: '.htmlspecialchars($action)]);
     }

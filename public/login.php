@@ -258,19 +258,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $check = $pdo->prepare("SELECT id FROM labor_sessions WHERE user_id = ? AND end_time IS NULL");
                         $check->execute([$user['user_id']]);
                         if (!$check->fetch() && $station_id) {
-                            // Determine current shift
-                            $sp = $pdo->prepare(
-                                "SELECT shift_key, shift_name FROM shift_periods
-                                 WHERE is_active = 1 AND start_time <= TIME(NOW()) AND end_time >= TIME(NOW())
-                                 ORDER BY sort_order ASC LIMIT 1"
-                            );
-                            $sp->execute();
+                            // Determine current shift using fixed schedule rules:
+                            //   Shift 1 (first)  → 6:00 AM – 2:00 PM  (06:00:00–13:59:59)
+                            //   Shift 2 (second) → 2:00 PM – 12:00 MN  (14:00:00–23:59:59)
+                            //   Early morning (00:00–05:59) → counted as Shift 2 (previous night)
+                            $login_time = date('H:i:s');
+                            $auto_shift_key = ($login_time >= '06:00:00' && $login_time < '14:00:00') ? 'first' : 'second';
+
+                            // Try to load exact DB record for consistent naming
+                            $sp = $pdo->prepare("SELECT shift_key, shift_name FROM shift_periods WHERE shift_key = ? AND is_active = 1 LIMIT 1");
+                            $sp->execute([$auto_shift_key]);
                             $shift = $sp->fetch(PDO::FETCH_ASSOC);
+
+                            // Hard fallback if table is empty or record missing
                             if (!$shift) {
-                                $sp2   = $pdo->query("SELECT shift_key, shift_name FROM shift_periods WHERE is_active = 1 ORDER BY sort_order DESC LIMIT 1");
-                                $shift = $sp2 ? $sp2->fetch(PDO::FETCH_ASSOC) : null;
+                                $shift = $auto_shift_key === 'first'
+                                    ? ['shift_key' => 'first',  'shift_name' => 'Shift 1 (6:00 AM - 2:00 PM)']
+                                    : ['shift_key' => 'second', 'shift_name' => 'Shift 2 (2:00 PM - 12:00 MN)'];
                             }
-                            if (!$shift) $shift = ['shift_key' => 'first', 'shift_name' => 'First Shift'];
 
                             $pdo->prepare(
                                 "INSERT INTO labor_sessions (user_id, station_id, start_time, shift_period, shift_name)
@@ -285,6 +290,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                     } catch (Exception $e) { /* Fail silently, do not block login */ }
                 }
+
+                // Store detected shift in session so dashboards & pages can reference it
+                $_SESSION['current_shift_key']  = $auto_shift_key ?? (date('H') >= 6 && date('H') < 14 ? 'first' : 'second');
+                $_SESSION['current_shift_label'] = ($auto_shift_key ?? '') === 'first' ? 'Shift 1 (6:00 AM - 2:00 PM)' : 'Shift 2 (2:00 PM - 12:00 MN)';
 
                 // RBAC Redirect Logic
                 if ($role === 'superadmin') {
