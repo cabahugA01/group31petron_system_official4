@@ -1,0 +1,113 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                    SHIFT ASSIGNMENT QUICK REFERENCE                        ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+CONCEPT:
+  Staff members have role = "Staff" but different shift assignments
+  NO separate roles for "Shift 1 Staff" and "Shift 2 Staff"
+
+───────────────────────────────────────────────────────────────────────────────
+
+USER STRUCTURE:
+
+┌────────────┬──────────┬────────────────┬───────────────────┬────────┐
+│ User Name  │   Role   │ Assigned Shift │    Shift Time     │ Status │
+├────────────┼──────────┼────────────────┼───────────────────┼────────┤
+│ Juan Cruz  │  Staff   │   Shift 1      │ 6:00 AM – 2:00 PM │ Active │
+│ Maria      │  Staff   │   Shift 2      │ 2:00 PM –10:00 PM │ Active │
+│ Pedro      │ Manager  │  All Shifts    │       —           │ Active │
+└────────────┴──────────┴────────────────┴───────────────────┴────────┘
+
+───────────────────────────────────────────────────────────────────────────────
+
+ADDING A STAFF MEMBER:
+
+  1. Go to Admin → User Management
+  2. Click [+ Add User]
+  3. Fill in basic info:
+     - Full Name: Juan Dela Cruz
+     - Email: juan@email.com (will be username)
+     - Role: Staff ← Important!
+  
+  4. Shift fields will appear:
+     ┌──────────────────────────────────────┐
+     │ Assigned Shift *                     │
+     │ [Shift 1 ▼]                         │
+     │                                      │
+     │ Shift Start Time    Shift End Time  │
+     │ [06:00]             [14:00]         │
+     └──────────────────────────────────────┘
+  
+  5. Click [Create User]
+
+───────────────────────────────────────────────────────────────────────────────
+
+IMPORTANT RULES:
+
+  ✓ Staff = MUST have assigned shift (Shift 1, 2, or 3)
+  ✓ Manager = Automatically "All Shifts"
+  ✓ Admin = Automatically "All Shifts"
+  ✗ Cannot assign "All Shifts" to Staff
+
+───────────────────────────────────────────────────────────────────────────────
+
+TRANSACTION TRACKING:
+
+  When staff logs in and creates a transaction:
+  
+  Transaction ID: TXN-0001
+  Staff Encoder: juan.staff
+  Shift: Shift 1 ← Automatically from user record
+  Amount: ₱1,250.00
+  Date: 2026-06-27
+
+  No manual shift selection needed!
+
+───────────────────────────────────────────────────────────────────────────────
+
+MONITORING BY MANAGER/ADMIN:
+
+  ✓ View all transactions with shift column
+  ✓ Filter by shift (Shift 1 / Shift 2 / Shift 3)
+  ✓ Generate shift-based reports
+
+  No separate "Shift Transactions" page needed!
+
+───────────────────────────────────────────────────────────────────────────────
+
+RECOMMENDED SHIFT TIMES:
+
+  Shift 1: 06:00 – 14:00 (6:00 AM – 2:00 PM)
+  Shift 2: 14:00 – 22:00 (2:00 PM – 10:00 PM)
+  Shift 3: 22:00 – 06:00 (10:00 PM – 6:00 AM)
+
+───────────────────────────────────────────────────────────────────────────────
+
+ADDING SHIFT 4 IN THE FUTURE:
+
+  1. Update database:
+     ALTER TABLE users MODIFY assigned_shift 
+     enum('Shift 1','Shift 2','Shift 3','Shift 4','All Shifts');
+  
+  2. Add to dropdown in User Management
+  
+  That's it! No new roles needed.
+
+───────────────────────────────────────────────────────────────────────────────
+
+TROUBLESHOOTING:
+
+  Q: Shift fields not showing when adding user?
+  A: Make sure you selected "Staff" as the role.
+
+  Q: Staff cannot create transactions?
+  A: Check if staff has an assigned shift. Edit user and select shift.
+
+  Q: How to change staff from Shift 1 to Shift 2?
+  A: Edit the staff user and change "Assigned Shift" dropdown.
+
+───────────────────────────────────────────────────────────────────────────────
+
+For full documentation, see: SHIFT_ASSIGNMENT_GUIDE.md
+
+Implementation Date: June 27, 2026

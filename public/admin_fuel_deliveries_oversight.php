@@ -401,14 +401,16 @@ require_once __DIR__ . '/../partials/header.php';
 .ato-btn-filter:hover { background:#002F70 !important; color:#fff !important; }
 
 /* Summary cards */
-.afdo-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:18px; }
-.afdo-card { background:#fff; border:1px solid #e2e8f0; border-radius:11px; padding:14px; display:flex; align-items:center; gap:12px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
-.afdo-card-ico { width:36px; height:36px; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; border-radius:50%; background:#eff6ff; color:#002f6c; }
-.afdo-card.c-amber .afdo-card-ico { background:#fffbeb; color:#d97706; }
-.afdo-card.c-green .afdo-card-ico { background:#f0fdf4; color:#16a34a; }
-.afdo-card.c-red .afdo-card-ico { background:#fef2f2; color:#dc2626; }
-.afdo-card-meta h3 { margin:0; font-size:10px; color:#64748b; text-transform:uppercase; letter-spacing:.5px; font-weight:700; }
-.afdo-card-meta h2 { margin:2px 0 0; font-size:18px; font-weight:700; color:#00264D; line-height:1.1; }
+.afdo-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; margin-bottom:24px; }
+.afdo-card { background:#ffffff; border:1px solid #cbd5e1; border-radius:10px; padding:16px; display:flex; align-items:center; justify-content:space-between; box-shadow:0 1px 3px rgba(0,0,0,.05); position:relative; overflow:hidden; }
+.afdo-card-info { display:flex; flex-direction:column; }
+.afdo-card-lbl { font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px; }
+.afdo-card-val { font-size:20px; font-weight:700; color:#1e293b; }
+.afdo-card-icon { font-size:24px; opacity:0.8; }
+.afdo-card.blue .afdo-card-icon { color:#2563eb; }
+.afdo-card.yellow .afdo-card-icon { color:#d97706; }
+.afdo-card.green .afdo-card-icon { color:#16a34a; }
+.afdo-card.red .afdo-card-icon { color:#dc2626; }
 
 /* Actions Stack */
 .afto-btn-stack { display:flex; flex-direction:column; gap:4px; align-items:stretch; width:100%; }
@@ -478,46 +480,45 @@ html, body { max-width:100vw; overflow-x:hidden; }
         <a href="?<?= http_build_query(array_merge($_GET,['export'=>'excel'])) ?>" class="ato-btn ato-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
         <a href="?<?= http_build_query(array_merge($_GET,['export'=>'csv'])) ?>"   class="ato-btn ato-btn-csv"><i class="fas fa-file-csv"></i> CSV</a>
         <a href="?<?= http_build_query(array_merge($_GET,['export'=>'pdf'])) ?>"   class="ato-btn ato-btn-pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
-        <a href="admin_dashboard.php" class="ato-btn ato-btn-back"><i class="fas fa-arrow-left"></i> Back</a>
     </div>
 </div>
 
 <!-- Summary Cards -->
 <div class="afdo-cards">
-    <div class="afdo-card">
-        <div class="afdo-card-ico"><i class="fas fa-list"></i></div>
-        <div class="afdo-card-meta">
-            <h3>Total Deliveries</h3>
-            <h2><?= number_format($total_deliveries) ?></h2>
+    <div class="afdo-card blue">
+        <div class="afdo-card-info">
+            <span class="afdo-card-lbl">Total Deliveries</span>
+            <span class="afdo-card-val"><?= number_format($total_deliveries) ?></span>
         </div>
+        <div class="afdo-card-icon"><i class="fas fa-list"></i></div>
     </div>
-    <div class="afdo-card c-amber">
-        <div class="afdo-card-ico"><i class="fas fa-clock"></i></div>
-        <div class="afdo-card-meta">
-            <h3>Pending Deliveries</h3>
-            <h2><?= number_format($pending_deliveries) ?></h2>
+    <div class="afdo-card yellow">
+        <div class="afdo-card-info">
+            <span class="afdo-card-lbl">Pending Deliveries</span>
+            <span class="afdo-card-val"><?= number_format($pending_deliveries) ?></span>
         </div>
+        <div class="afdo-card-icon"><i class="fas fa-clock"></i></div>
     </div>
-    <div class="afdo-card c-green">
-        <div class="afdo-card-ico"><i class="fas fa-check-circle"></i></div>
-        <div class="afdo-card-meta">
-            <h3>Verified Deliveries</h3>
-            <h2><?= number_format($verified_deliveries) ?></h2>
+    <div class="afdo-card green">
+        <div class="afdo-card-info">
+            <span class="afdo-card-lbl">Verified Deliveries</span>
+            <span class="afdo-card-val"><?= number_format($verified_deliveries) ?></span>
         </div>
+        <div class="afdo-card-icon"><i class="fas fa-check-circle"></i></div>
     </div>
-    <div class="afdo-card c-red">
-        <div class="afdo-card-ico"><i class="fas fa-times-circle"></i></div>
-        <div class="afdo-card-meta">
-            <h3>Rejected Deliveries</h3>
-            <h2><?= number_format($rejected_deliveries) ?></h2>
+    <div class="afdo-card red">
+        <div class="afdo-card-info">
+            <span class="afdo-card-lbl">Rejected Deliveries</span>
+            <span class="afdo-card-val"><?= number_format($rejected_deliveries) ?></span>
         </div>
+        <div class="afdo-card-icon"><i class="fas fa-times-circle"></i></div>
     </div>
-    <div class="afdo-card c-blue">
-        <div class="afdo-card-ico"><i class="fas fa-gas-pump"></i></div>
-        <div class="afdo-card-meta">
-            <h3>Total Liters Delivered</h3>
-            <h2><?= number_format($total_liters, 2) ?> L</h2>
+    <div class="afdo-card green">
+        <div class="afdo-card-info">
+            <span class="afdo-card-lbl">Total Liters Delivered</span>
+            <span class="afdo-card-val"><?= number_format($total_liters, 2) ?> L</span>
         </div>
+        <div class="afdo-card-icon"><i class="fas fa-gas-pump"></i></div>
     </div>
 </div>
 
@@ -580,13 +581,6 @@ html, body { max-width:100vw; overflow-x:hidden; }
         <h3 class="afdo-table-title"><i class="fas fa-table"></i> Fuel Delivery Records</h3>
         <span style="font-size:11px;color:#64748b;"><?= number_format(count($deliveries)) ?> record(s) — <?= htmlspecialchars($date_from) ?> to <?= htmlspecialchars($date_to) ?></span>
     </div>
-    <?php if (empty($deliveries)): ?>
-    <div class="afdo-empty">
-        <i class="fas fa-inbox"></i>
-        <div style="font-size:15px;font-weight:700;color:#64748b;margin-bottom:4px;">No deliveries found</div>
-        <div style="font-size:13px;">No fuel deliveries for the selected period.</div>
-    </div>
-    <?php else: ?>
     <div class="afdo-tbl-wrap">
         <table class="afdo-tbl">
             <colgroup>
@@ -603,8 +597,7 @@ html, body { max-width:100vw; overflow-x:hidden; }
                 <col style="width: 7%;">  <!-- Manager Verifier -->
                 <col style="width: 6%;">  <!-- Status -->
                 <col style="width: 7%;">  <!-- Verification Date -->
-                <col style="width: 7%;">  <!-- Remarks -->
-                <col style="width: 11%;"> <!-- Actions -->
+                <col style="width: 8%;">  <!-- Remarks -->
             </colgroup>
             <thead>
                 <tr>
@@ -622,10 +615,18 @@ html, body { max-width:100vw; overflow-x:hidden; }
                     <th>Status</th>
                     <th>Verification Date</th>
                     <th>Remarks</th>
-                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
+                <?php if (empty($deliveries)): ?>
+                <tr>
+                    <td colspan="14" style="text-align:center;padding:60px 20px;">
+                        <i class="fas fa-inbox" style="font-size:48px;color:#cbd5e1;margin-bottom:16px;display:block;"></i>
+                        <div style="font-size:16px;font-weight:700;color:#64748b;margin-bottom:8px;">No deliveries found</div>
+                        <div style="font-size:14px;color:#94a3b8;">No fuel deliveries for the selected period.</div>
+                    </td>
+                </tr>
+                <?php else: ?>
                 <?php foreach($deliveries as $del):
                     $st = strtolower($del['status'] ?? '');
                     if ($st === 'verified') {
@@ -656,26 +657,9 @@ html, body { max-width:100vw; overflow-x:hidden; }
                         <?= $del['verified_at'] ? date('M d, Y H:i', strtotime($del['verified_at'])) : '—' ?>
                     </td>
                     <td title="<?= htmlspecialchars($del['notes'] ?? '') ?>"><?= htmlspecialchars($del['notes'] ?? '—') ?></td>
-                    <td>
-                        <div class="afto-btn-stack">
-                            <button type="button" class="afto-row-btn afto-row-btn-details" onclick="viewDelDetails(<?= $del['id'] ?>)">
-                                <i class="fas fa-eye"></i> Details
-                            </button>
-                            <button type="button" class="afto-row-btn afto-row-btn-audit" onclick="viewDelAudit(<?= $del['id'] ?>)">
-                                <i class="fas fa-history"></i> History
-                            </button>
-                            <button type="button" class="afto-row-btn afto-row-btn-print" onclick="printSingleDel(<?= $del['id'] ?>)">
-                                <i class="fas fa-print"></i> Print
-                            </button>
-                            <?php if (strtolower($del['status']) !== 'pending'): ?>
-                            <button type="button" class="afto-row-btn afto-row-btn-reopen" onclick="reopenDel(<?= $del['id'] ?>, '<?= htmlspecialchars($del['invoice_no'] ?? '') ?>')">
-                                <i class="fas fa-undo"></i> Reopen
-                            </button>
-                            <?php endif; ?>
-                        </div>
-                    </td>
                 </tr>
                 <?php endforeach; ?>
+                <?php endif; ?>
             </tbody>
         </table>
     </div>
@@ -704,7 +688,6 @@ html, body { max-width:100vw; overflow-x:hidden; }
             </div>
         </div>
     </div>
-    <?php endif; ?>
 </div>
 
 <script>

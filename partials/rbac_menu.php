@@ -29,9 +29,7 @@ $master_menu = [
     
     // Deliveries Management - Manager (Merchandise Validation & History)
     ['id'=>'manager_deliveries','label'=>'Merchandise Deliveries','ico'=>'fas fa-truck-loading','href'=>'manager_deliveries.php','permissions'=>['approve_transactions','manage_job_orders'],'station_specific'=>true,'sub_items'=>[
-        ['id'=>'mgr_del_record',       'label'=>'Record Deliveries',      'href'=>'manager_deliveries.php?section=record',       'permissions'=>['approve_transactions','manage_job_orders']],
-        ['id'=>'mgr_del_history',      'label'=>'Delivery History',       'href'=>'manager_deliveries.php?section=history',      'permissions'=>['approve_transactions','manage_job_orders']],
-        ['id'=>'mgr_del_discrepancies','label'=>'Discrepancies/Variance', 'href'=>'manager_deliveries.php?section=discrepancies','permissions'=>['approve_transactions','manage_job_orders']],
+        ['id'=>'mgr_del_record',       'label'=>'Verify Deliveries',      'href'=>'manager_deliveries.php?section=record',       'permissions'=>['approve_transactions','manage_job_orders']],
     ]],
     
     // Inventory - Staff access / Manager has own sub-items via override below
@@ -220,10 +218,10 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                     ['id' => 'admin_inventory_history', 'label' => 'Inventory History', 'href' => 'admin_inventory_history.php', 'ico' => 'fas fa-history', 'permissions' => ['view_all_reports'], 'desc' => 'Full audit log of all fuel and merchandise inventory movements.'],
                 ],
             ],
-            // 8. Product & Pricing Overview — Standalone Admin Module
+            // 8. Product & Pricing Management — Standalone Admin Module
             [
                 'id'          => 'admin_product_pricing',
-                'label'       => 'Product & Pricing Overview',
+                'label'       => 'Product & Pricing Management',
                 'ico'         => 'fas fa-tags',
                 'href'        => 'admin_set_prices.php',
                 'permissions' => ['manage_system_settings', 'view_all_reports'],
@@ -460,15 +458,15 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 $filtered_item['sub_items'] = [
                     ['id' => 'mgr_inv_merch',    'label' => 'Merchandise Inventory',  'href' => 'manager_inventory_merchandise.php',      'ico' => 'fas fa-box',              'permissions' => ['manage_inventory', 'view_inventory']],
                     ['id' => 'mgr_inv_fuel',     'label' => 'Fuel Inventory',         'href' => 'manager_inventory_fuel.php',             'ico' => 'fas fa-gas-pump',         'permissions' => ['manage_inventory', 'view_inventory']],
-                    ['id' => 'mgr_stock_review', 'label' => 'Stock Request Review',   'href' => 'manager_stock_request_review.php',       'ico' => 'fas fa-clipboard-check',  'permissions' => ['manage_inventory', 'view_inventory']],
+                    ['id' => 'mgr_stock_review', 'label' => 'Purchase Request Review',   'href' => 'manager_stock_request_review.php',       'ico' => 'fas fa-clipboard-check',  'permissions' => ['manage_inventory', 'view_inventory']],
                     ['id' => 'mgr_inv_movement', 'label' => 'Inventory Movement History', 'href' => 'manager_inventory_movement_history.php', 'ico' => 'fas fa-history',         'permissions' => ['manage_inventory', 'view_inventory']],
                 ];
                 $filtered_menu[] = $filtered_item;
                 
-                // Add standalone Product & Pricing Overview after Inventory
+                // Add standalone Product & Pricing Management after Inventory
                 $filtered_menu[] = [
                     'id' => 'mgr_product_pricing',
-                    'label' => 'Product & Pricing Overview',
+                    'label' => 'Product & Pricing Management',
                     'ico' => 'fas fa-tags',
                     'href' => 'manager_set_prices.php',
                     'permissions' => ['manage_inventory', 'view_inventory'],
@@ -518,12 +516,8 @@ function filter_menu_by_permissions($menu_items, $user_role) {
             if ($user_role === 'manager' && ($item['id'] ?? '') === 'manager_deliveries') {
                 $filtered_item['label'] = 'Merchandise Deliveries Validation';
                 $filtered_item['ico']   = 'fas fa-truck-loading';
-                $filtered_item['href']  = 'manager_merchandise_deliveries.php';
-                $filtered_item['sub_items'] = [
-                    ['id'=>'mgr_del_verify',  'label'=>'Verify Deliveries',  'href'=>'manager_merchandise_deliveries.php?tab=manage&action=verify',   'permissions'=>['manage_inventory','view_inventory'], 'desc'=>'Review and verify staff-encoded merchandise delivery receipts.'],
-                    ['id'=>'mgr_del_reject',  'label'=>'Reject Deliveries',  'href'=>'manager_merchandise_deliveries.php?tab=manage&action=reject',   'permissions'=>['manage_inventory','view_inventory'], 'desc'=>'Reject or return delivery records to staff for correction.'],
-                    ['id'=>'mgr_del_history', 'label'=>'Delivery History',   'href'=>'manager_merchandise_deliveries.php?tab=history',                'permissions'=>['manage_inventory','view_inventory'], 'desc'=>'View history of all verified, rejected, and resolved deliveries.'],
-                ];
+                $filtered_item['href']  = 'manager_merchandise_deliveries.php?tab=manage&action=verify';
+                $filtered_item['sub_items'] = [];
                 $filtered_menu[] = $filtered_item;
                 continue;
             }
@@ -555,7 +549,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 continue;
             }
 
-            // Hide Product Management for Manager — replaced by standalone Product & Pricing Overview
+            // Hide Product Management for Manager — replaced by standalone Product & Pricing Management
             if ($user_role === 'manager' && ($item['id'] ?? '') === 'product_management') {
                 continue;
             }

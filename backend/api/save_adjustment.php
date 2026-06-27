@@ -65,13 +65,36 @@ if (!$manager_remarks) {
 }
 
 try {
-    // ── Ensure needed columns exist ───────────────────────────────────────────
+    // ── Ensure needed columns/tables exist ─────────────────────────────────────
     foreach ([
         "ALTER TABLE merchandise_transactions ADD COLUMN IF NOT EXISTS adjustment_reason TEXT DEFAULT NULL",
         "ALTER TABLE merchandise_transactions ADD COLUMN IF NOT EXISTS manager_remarks   TEXT DEFAULT NULL",
     ] as $ddl) {
         try { $pdo->exec($ddl); } catch (Exception $e) {}
     }
+
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS transaction_adjustments (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                transaction_id VARCHAR(50) NOT NULL,
+                transaction_type ENUM('job_order','merchandise','combined') NOT NULL DEFAULT 'merchandise',
+                customer_name VARCHAR(255) DEFAULT NULL,
+                original_amount DECIMAL(10,2) NOT NULL,
+                updated_amount DECIMAL(10,2) NOT NULL,
+                amount_difference DECIMAL(10,2) NOT NULL,
+                adjustment_reason VARCHAR(255) NOT NULL,
+                manager_remarks TEXT,
+                adjusted_by INT NOT NULL,
+                adjustment_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                station_id INT NOT NULL,
+                fields_changed JSON,
+                INDEX idx_adj_txn (transaction_id),
+                INDEX idx_adj_date (adjustment_date),
+                INDEX idx_adj_station (station_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ");
+    } catch (Exception $e) {}
 
     // ── Load the transaction ──────────────────────────────────────────────────
     $stmt = $pdo->prepare("SELECT * FROM merchandise_transactions WHERE id = ? AND station_id = ? LIMIT 1");
@@ -92,6 +115,7 @@ try {
     $old_total = (float)$txn['total_amount'];
     $new_total = 0.0;
 
+    $items_detail = [];
     // ── Process each item ─────────────────────────────────────────────────────
     foreach ($items_input as $item) {
         $item_id    = (int)($item['item_id']    ?? 0);
@@ -108,7 +132,20 @@ try {
         if (!$old_item) continue;
 
         $old_qty    = (float)$old_item['quantity'];
+        $old_price  = (float)$old_item['unit_price'];
         $product_id = (int)($old_item['product_id'] ?? 0);
+
+        // Track only if there's a difference in quantity or price
+        if (abs($old_qty - $new_qty) > 0.0001 || abs($old_price - $new_price) > 0.0001) {
+            $items_detail[] = [
+                'product_name' => $old_item['product_name'],
+                'item_type'    => $old_item['item_type'] ?? 'merchandise',
+                'old_qty'      => $old_qty,
+                'new_qty'      => $new_qty,
+                'old_price'    => $old_price,
+                'new_price'    => $new_price,
+            ];
+        }
 
         // Update item row
         $pdo->prepare("UPDATE merchandise_transaction_items SET quantity=?, unit_price=?, subtotal=? WHERE id=?")
@@ -174,8 +211,8 @@ try {
     ]);
 
     $pdo->prepare("
-        INSERT INTO audit_trail (transaction_id, manager_id, action_type, old_value, new_value, station_id, entity_type, created_at)
-        VALUES (?, ?, 'Adjustment', ?, ?, ?, 'merchandise_transactions', NOW())
+        INSERT INTO audit_trail (transaction_id, manager_id, action_type, old_value, new_value, station_id, source_table)
+        VALUES (?, ?, 'Adjustment', ?, ?, ?, 'merchandise_transactions')
     ")->execute([
         $txn['transaction_id'] ?? $row_id,
         $me['id'],
@@ -183,6 +220,39 @@ try {
         $new_snap,
         $station_id,
     ]);
+
+    // ── Log into transaction_adjustments (populates Adjustment History page) ──
+    try {
+        $pdo->prepare("
+            INSERT INTO transaction_adjustments (
+                transaction_id, transaction_type, customer_name,
+                original_amount, updated_amount, amount_difference,
+                adjustment_reason, manager_remarks, adjusted_by,
+                adjustment_date, station_id, fields_changed
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?)
+        ")->execute([
+            $txn['transaction_id'] ?? ('TXN-' . $row_id),
+            $txn['transaction_type'] ?? 'merchandise',
+            $txn['customer_name']   ?? 'Walk-in Customer',
+            $old_total,
+            $new_total,
+            round($new_total - $old_total, 2),
+            $adjustment_reason,
+            $manager_remarks,
+            $me['id'],
+            $station_id,
+            json_encode([
+                'items_updated'   => count($items_input),
+                'payment_method'  => $payment_method ?: ($txn['payment_method'] ?? ''),
+                'payment_status'  => $payment_status ?: ($txn['payment_status'] ?? ''),
+                'old_payment_method' => $txn['payment_method'] ?? '',
+                'old_payment_status' => $txn['payment_status'] ?? '',
+                'adjusted_items'  => $items_detail
+            ]),
+        ]);
+    } catch (Exception $e) {
+        error_log('transaction_adjustments insert warning: ' . $e->getMessage());
+    }
 
     $pdo->commit();
 

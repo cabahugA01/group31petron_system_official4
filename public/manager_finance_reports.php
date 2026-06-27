@@ -626,7 +626,7 @@ require_once __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="../assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script>
 function frSwitchSection(sectionKey) {
     // Hide all panels

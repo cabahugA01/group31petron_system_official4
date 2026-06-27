@@ -78,16 +78,15 @@ include __DIR__ . '/../partials/header.php';
 ?>
 <style>
 /* ── Summary Cards ── */
-.summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
-.summary-card { background: #fff; border-radius: 12px; padding: 20px 24px; box-shadow: 0 2px 8px rgba(0,0,0,.06); 
-  border: 1px solid #e9ecef; display: flex; flex-direction: column; gap: 8px; position: relative; transition: transform .2s, box-shadow .2s; }
-.summary-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.1); }
-.summary-card .sc-num { font-size: 2.5rem; font-weight: 700; line-height: 1; }
-.summary-card .sc-label { font-size: 13px; color: #6c757d; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-.summary-card .sc-icon { font-size: 2rem; opacity: 0.15; position: absolute; right: 20px; top: 20px; }
-.sc-pending .sc-num { color: #856404; }
-.sc-approved .sc-num { color: #155724; }
-.sc-rejected .sc-num { color: #721c24; }
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.summary-card { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 16px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 3px rgba(0,0,0,.05); position: relative; overflow: hidden; }
+.summary-card .sc-info { display: flex; flex-direction: column; }
+.summary-card .sc-label { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.summary-card .sc-num { font-size: 20px; font-weight: 700; color: #1e293b; }
+.summary-card .sc-icon { font-size: 24px; opacity: 0.8; }
+.sc-pending .sc-icon { color: #d97706; }
+.sc-approved .sc-icon { color: #16a34a; }
+.sc-rejected .sc-icon { color: #dc2626; }
 
 /* ── Page Layout ── */
 .del-card { background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.06); border: 1px solid #e9ecef; margin-bottom: 24px; }
@@ -247,19 +246,25 @@ include __DIR__ . '/../partials/header.php';
 <!-- Summary Cards -->
 <div class="summary-grid">
     <div class="summary-card sc-pending">
-        <i class="fas fa-clock sc-icon"></i>
-        <div class="sc-num"><?php echo $counts['pending']; ?></div>
-        <div class="sc-label">Pending Validation</div>
+        <div class="sc-info">
+            <span class="sc-label">Pending Validation</span>
+            <span class="sc-num"><?php echo $counts['pending']; ?></span>
+        </div>
+        <div class="sc-icon"><i class="fas fa-clock"></i></div>
     </div>
     <div class="summary-card sc-approved">
-        <i class="fas fa-check-circle sc-icon"></i>
-        <div class="sc-num"><?php echo $counts['approved']; ?></div>
-        <div class="sc-label">Approved</div>
+        <div class="sc-info">
+            <span class="sc-label">Approved</span>
+            <span class="sc-num"><?php echo $counts['approved']; ?></span>
+        </div>
+        <div class="sc-icon"><i class="fas fa-check-circle"></i></div>
     </div>
     <div class="summary-card sc-rejected">
-        <i class="fas fa-times-circle sc-icon"></i>
-        <div class="sc-num"><?php echo $counts['rejected']; ?></div>
-        <div class="sc-label">Rejected</div>
+        <div class="sc-info">
+            <span class="sc-label">Rejected</span>
+            <span class="sc-num"><?php echo $counts['rejected']; ?></span>
+        </div>
+        <div class="sc-icon"><i class="fas fa-times-circle"></i></div>
     </div>
 </div>
 
@@ -272,35 +277,35 @@ include __DIR__ . '/../partials/header.php';
         </div>
     </div>
     <div class="del-card-body">
-        <?php if (empty($deliveries)): ?>
-            <div class="empty-state">
-                <i class="fas fa-inbox"></i>
-                <p>No fuel delivery records found yet.</p>
-                <p style="margin-top:12px;color:#6c757d;font-size:13px;">
-                    Use the <strong>"Record Fuel Delivery"</strong> menu to encode new fuel deliveries.
-                </p>
-            </div>
-        <?php else: ?>
-            <div>
-                <table class="del-table">
-                    <thead>
-                        <tr>
-                            <th>Batch ID</th>
-                            <th>Invoice/DR No.</th>
-                            <th>Delivery Date</th>
-                            <th>Supplier</th>
-                            <th>Fuel Type</th>
-                            <th>Liters</th>
-                            <th>Tanker No.</th>
-                            <th>Tank</th>
-                            <th>Encoded By</th>
-                            <th>Status</th>
-                            <th>Manager Remarks</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    <?php foreach ($deliveries as $d):
+        <div>
+            <table class="del-table">
+                <thead>
+                    <tr>
+                        <th>Batch ID</th>
+                        <th>Invoice/DR No.</th>
+                        <th>Delivery Date</th>
+                        <th>Supplier</th>
+                        <th>Fuel Type</th>
+                        <th>Liters</th>
+                        <th>Tanker No.</th>
+                        <th>Tank</th>
+                        <th>Encoded By</th>
+                        <th>Status</th>
+                        <th>Manager Remarks</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php if (empty($deliveries)): ?>
+                    <tr>
+                        <td colspan="12" style="text-align:center;padding:60px 20px;">
+                            <i class="fas fa-inbox" style="font-size:48px;color:#cbd5e1;margin-bottom:16px;display:block;"></i>
+                            <div style="font-size:16px;font-weight:700;color:#64748b;margin-bottom:8px;">No fuel delivery records found yet.</div>
+                            <div style="font-size:14px;color:#94a3b8;">Use the <strong>"Record Fuel Delivery"</strong> menu to encode new fuel deliveries.</div>
+                        </td>
+                    </tr>
+                <?php else: ?>
+                <?php foreach ($deliveries as $d):
                         $status = trim($d['status']);
                         $status_lower = strtolower($status);
                         $is_pending = in_array($status_lower, ['pending manager validation', 'pending validation', 'pending']);
@@ -360,10 +365,10 @@ include __DIR__ . '/../partials/header.php';
                             </td>
                         </tr>
                     <?php endforeach; ?>
+                    <?php endif; ?>
                     </tbody>
                 </table>
             </div>
-        <?php endif; ?>
     </div>
 </div>
 

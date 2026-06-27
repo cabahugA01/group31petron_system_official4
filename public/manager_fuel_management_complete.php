@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = match($_GET['tab'] ?? '') {
     'deliveries'    => 'fuel_deliveries_validation',
     'transactions'  => 'fuel_transactions_oversight',
@@ -4909,7 +4909,7 @@ function renderChart(daily, type) {
     if (typeof Chart === 'undefined') {
         // Try to load Chart.js dynamically
         const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js';
+        s.src = '../assets/vendor/chart.js/chart.umd.min.js';
         s.onload = () => renderChart(daily, type);
         document.head.appendChild(s);
         return;

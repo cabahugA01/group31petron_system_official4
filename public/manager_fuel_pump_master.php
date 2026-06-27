@@ -241,24 +241,32 @@ if ($search_pump !== '') {
 // â”€â”€ Fetch Pumps â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $pumps = [];
 try {
-    $sql = "SELECT fp.*, 
+    $sql = "SELECT 
+                   fi.fuel_type_id,
                    ft.name as fuel_type_name,
+                   fi.latest_calibration as calibration_value,
                    fi.current_stock as tank_stock,
                    fi.capacity as tank_capacity,
+                   fi.last_updated as calibration_updated_at,
+                   (SELECT fp.id FROM fuel_pumps fp WHERE fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fi.station_id ORDER BY fp.pump_number ASC LIMIT 1) as id,
+                   (SELECT fp.pump_number FROM fuel_pumps fp WHERE fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fi.station_id ORDER BY fp.pump_number ASC LIMIT 1) as pump_number,
+                   (SELECT fp.status FROM fuel_pumps fp WHERE fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fi.station_id ORDER BY fp.pump_number ASC LIMIT 1) as status,
+                   (SELECT fp.calibration_updated_by FROM fuel_pumps fp WHERE fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fi.station_id ORDER BY fp.calibration_updated_at DESC LIMIT 1) as calibration_updated_by,
                    COALESCE(
                        NULLIF(CONCAT(TRIM(COALESCE(u.first_name, '')), ' ', TRIM(COALESCE(u.last_name, ''))), ' '),
                        u.username,
                        '—'
                    ) as updated_by_name
-            FROM fuel_pumps fp
-            LEFT JOIN fuel_types ft ON fp.fuel_type_id = ft.id
-            LEFT JOIN fuel_inventory fi ON fp.fuel_type_id = fi.fuel_type_id AND fi.station_id = fp.station_id
-            LEFT JOIN users u ON fp.calibration_updated_by = u.id
-            WHERE " . implode(" AND ", $where) . "
-            ORDER BY fp.pump_number ASC, fp.id ASC";
+            FROM fuel_inventory fi
+            LEFT JOIN fuel_types ft ON fi.fuel_type_id = ft.id
+            LEFT JOIN users u ON (SELECT fp.calibration_updated_by FROM fuel_pumps fp WHERE fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fi.station_id ORDER BY fp.calibration_updated_at DESC LIMIT 1) = u.id
+            WHERE fi.station_id = ?
+              AND fi.latest_calibration IS NOT NULL 
+              AND fi.latest_calibration > 0.00
+            ORDER BY ft.name ASC";
             
     $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
+    $stmt->execute([$station_id]);
     $pumps = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     error_log("Fetch pumps error: " . $e->getMessage());
@@ -496,14 +504,6 @@ require_once __DIR__ . '/../partials/header.php';
     position: relative;
     overflow: hidden;
 }
-.afto-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 4px;
-    height: 100%;
-}
 .afto-card-info {
     display: flex;
     flex-direction: column;
@@ -526,16 +526,11 @@ require_once __DIR__ . '/../partials/header.php';
     opacity: 0.8;
 }
 
-/* Card variants based on colors (No Emojis) */
-.afto-card.blue::before   { background-color: #2563eb; }
+/* Card icon colors (No colored borders) */
 .afto-card.blue .afto-card-icon { color: #2563eb; }
-.afto-card.green::before  { background-color: #16a34a; }
 .afto-card.green .afto-card-icon { color: #16a34a; }
-.afto-card.red::before    { background-color: #dc2626; }
 .afto-card.red .afto-card-icon { color: #dc2626; }
-.afto-card.yellow::before { background-color: #d97706; }
 .afto-card.yellow .afto-card-icon { color: #d97706; }
-.afto-card.purple::before { background-color: #7c3aed; }
 .afto-card.purple .afto-card-icon { color: #7c3aed; }
 
 /* == FILTER BAR == */
@@ -853,6 +848,14 @@ require_once __DIR__ . '/../partials/header.php';
         <h1><i class="fas fa-gas-pump"></i> Pump Master Oversight</h1>
         <div class="sub">Monitor pump layouts, verify nozzle calibration values, and adjust operational status settings</div>
     </div>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <a href="?export=excel" class="ato-btn ato-btn-export">
+            <i class="fas fa-file-excel"></i> Export Excel
+        </a>
+        <button class="ato-btn ato-btn-pdf" onclick="window.open('?export=pdf', '_blank')">
+            <i class="fas fa-file-pdf"></i> Export PDF
+        </button>
+    </div>
 </div>
 
 <!-- == ALERTS == -->
@@ -944,11 +947,9 @@ require_once __DIR__ . '/../partials/header.php';
         <input type="text" name="search_pump" value="<?= htmlspecialchars($search_pump) ?>" placeholder="Search pump number/name..." style="width: 220px;">
     </div>
     
-    <div class="afto-actions">
+    <div class="afto-fg" style="flex-direction: row; gap: 6px;">
         <button type="submit" class="ato-btn ato-btn-filter"><i class="fas fa-filter"></i> Filter</button>
         <a href="manager_fuel_pump_master.php" class="ato-btn ato-btn-reset"><i class="fas fa-sync-alt"></i> Reset</a>
-        <button type="submit" name="export" value="excel" class="ato-btn ato-btn-export"><i class="fas fa-file-excel"></i> Export Excel</button>
-        <button type="submit" name="export" value="pdf" class="ato-btn ato-btn-pdf" target="_blank"><i class="fas fa-file-pdf"></i> Export PDF</button>
     </div>
 </form>
 
@@ -1007,8 +1008,8 @@ require_once __DIR__ . '/../partials/header.php';
                                 <?= $p['calibration_updated_at'] ? date('M d, Y H:i', strtotime($p['calibration_updated_at'])) : '—' ?>
                             </td>
                             <td><?= htmlspecialchars($p['updated_by_name'] ?? '—') ?></td>
-                            <td style="text-align: center; white-space: nowrap;">
-                                <div style="display: flex; gap: 4px; justify-content: center;">
+                            <td style="text-align: center;">
+                                <div style="display: flex; flex-direction: column; gap: 2px;">
                                     <!-- VIEW PUMP -->
                                     <button class="row-btn row-btn-details btn-view-pump"
                                         data-pump="<?= htmlspecialchars(json_encode($p), ENT_QUOTES, 'UTF-8') ?>"
@@ -1022,41 +1023,33 @@ require_once __DIR__ . '/../partials/header.php';
                                         data-pump-name="<?= htmlspecialchars($p['pump_number'], ENT_QUOTES) ?>"
                                         data-cal-val="<?= $cal ?>"
                                         data-fuel-type="<?= htmlspecialchars($p['fuel_type_name'] ?? '', ENT_QUOTES) ?>"
-                                        title="Update Calibration">
+                                        title="Update Calibration" style="width: 100%; font-size: 9px;">
                                         <i class="fas fa-balance-scale"></i> Calibration
                                     </button>
 
                                     <!-- ACTIVATE / DEACTIVATE -->
                                     <?php if (strtolower($p['status']) !== 'active'): ?>
-                                        <form method="post" style="display: inline;" class="pump-status-form">
+                                        <form method="post" style="display: block; width: 100%;" class="pump-status-form">
                                             <input type="hidden" name="action" value="activate">
                                             <input type="hidden" name="pump_id" value="<?= $p['id'] ?>">
                                             <button type="button" class="row-btn row-btn-details btn-status-submit"
                                                 data-confirm="Activate Pump <?= htmlspecialchars(addslashes($p['pump_number'])) ?>?"
-                                                style="color:#16a34a !important; border-color:#bbf7d0 !important;"
+                                                style="color:#16a34a !important; border-color:#bbf7d0 !important; width: 100%; font-size: 9px;"
                                                 title="Activate Pump">
                                                 <i class="fas fa-play"></i> Activate
                                             </button>
                                         </form>
                                     <?php else: ?>
-                                        <form method="post" style="display: inline;" class="pump-status-form">
+                                        <form method="post" style="display: block; width: 100%;" class="pump-status-form">
                                             <input type="hidden" name="action" value="deactivate">
                                             <input type="hidden" name="pump_id" value="<?= $p['id'] ?>">
                                             <button type="button" class="row-btn row-btn-reject btn-status-submit"
                                                 data-confirm="Deactivate Pump <?= htmlspecialchars(addslashes($p['pump_number'])) ?>?"
-                                                title="Deactivate Pump">
+                                                title="Deactivate Pump" style="width: 100%; font-size: 9px;">
                                                 <i class="fas fa-stop"></i> Deactivate
                                             </button>
                                         </form>
                                     <?php endif; ?>
-
-                                    <!-- HISTORY -->
-                                    <button class="row-btn row-btn-print btn-view-history"
-                                        data-fuel-type="<?= htmlspecialchars($p['fuel_type_name'] ?? '', ENT_QUOTES) ?>"
-                                        data-pump-name="<?= htmlspecialchars($p['pump_number'], ENT_QUOTES) ?>"
-                                        title="View Calibration History">
-                                        <i class="fas fa-history"></i> History
-                                    </button>
                                 </div>
                             </td>
                         </tr>

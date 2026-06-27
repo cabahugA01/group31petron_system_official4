@@ -27,7 +27,7 @@ $mt_date = aat_has($mt_cols,'transaction_date')
     ? "CASE WHEN mt.transaction_date > '2000-01-01' THEN mt.transaction_date ELSE mt.created_at END"
     : 'mt.created_at';
 $mt_stat = aat_has($mt_cols,'validation_status') ? 'mt.validation_status' : "'Approved'";
-$mt_shift = aat_has($mt_cols,'shift') ? 'mt.shift' : "'N/A'";
+$mt_shift = "CASE WHEN LOWER(TRIM(COALESCE(mt.shift_period, mt.shift_name, u.assigned_shift, u.shift_assignment, ''))) IN ('first', 'shift 1', 'shift1') THEN 'Shift 1' WHEN LOWER(TRIM(COALESCE(mt.shift_period, mt.shift_name, u.assigned_shift, u.shift_assignment, ''))) IN ('second', 'shift 2', 'shift2') THEN 'Shift 2' ELSE COALESCE(NULLIF(TRIM(mt.shift_period),''), NULLIF(TRIM(mt.shift_name),''), NULLIF(TRIM(u.assigned_shift),''), NULLIF(TRIM(u.shift_assignment),''), 'N/A') END";
 $mt_pay   = aat_has($mt_cols,'payment_method') ? "COALESCE(mt.payment_method,'Cash')" : "'Cash'";
 $mt_pstat = aat_has($mt_cols,'payment_status') ? "COALESCE(mt.payment_status,'')" : "''";
 
@@ -156,12 +156,24 @@ require_once __DIR__ . '/../partials/header.php';
         <div class="sub">View all transactions system-wide across all shifts and staff encoders.</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <a href="admin_transaction_overview.php" class="flt-btn flt-btn-reset"><i class="fas fa-arrow-left"></i> Back</a>
         <a href="?<?=http_build_query(array_merge($_GET,['export'=>'excel']))?>" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
         <a href="?<?=http_build_query(array_merge($_GET,['export'=>'csv']))?>"   class="flt-btn flt-btn-search"><i class="fas fa-file-csv"></i> CSV</a>
         <button class="flt-btn flt-btn-pdf" onclick="window.print()"><i class="fas fa-file-pdf"></i> PDF</button>
     </div>
 </div>
+
+<?php
+// Tab badge counts
+$atab_voided=0; $atab_adj=0;
+try {
+    $s=$pdo->prepare("SELECT COUNT(*) FROM voided_transactions WHERE station_id=? AND DATE(void_date) BETWEEN ? AND ?");
+    $s->execute([$station_id,$date_from,$date_to]); $atab_voided=(int)$s->fetchColumn();
+} catch(Exception $e){}
+try {
+    $s=$pdo->prepare("SELECT COUNT(*) FROM transaction_adjustments WHERE station_id=? AND DATE(adjustment_date) BETWEEN ? AND ?");
+    $s->execute([$station_id,$date_from,$date_to]); $atab_adj=(int)$s->fetchColumn();
+} catch(Exception $e){}
+?>
 
 <!-- KPI Cards -->
 <div class="txn-kpi-grid">
@@ -291,9 +303,13 @@ require_once __DIR__ . '/../partials/header.php';
 <!-- View Transaction Modal -->
 <div id="txnModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
   <div style="background:#fff;border-radius:16px;width:92%;max-width:560px;box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden;animation:modalIn .2s ease;">
-    <div style="background:linear-gradient(135deg,#002F70,#003d8a);padding:18px 22px;display:flex;align-items:center;justify-content:space-between;">
-      <span style="color:#fff;font-size:15px;font-weight:700;"><i class="fas fa-receipt" style="margin-right:8px;"></i>Transaction Details</span>
-      <button onclick="closeTxnModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;">&times;</button>
+    <div style="display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid #e2e8f0;">
+      <div style="width:36px;height:36px;background:#eff6ff;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fas fa-receipt" style="color:#0284c7;font-size:15px;"></i>
+      </div>
+      <div>
+        <div style="font-size:14px;font-weight:700;color:#1e293b;">Transaction Details</div>
+      </div>
     </div>
     <div style="padding:22px 24px;">
       <table style="width:100%;border-collapse:collapse;font-size:13px;">

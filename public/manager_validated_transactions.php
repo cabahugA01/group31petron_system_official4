@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * MANAGER VALIDATED TRANSACTIONS
  * 
@@ -70,7 +70,7 @@ $mt_staff_col  = vt_has($mt_cols, 'staff_id') ? "COALESCE(NULLIF(CONCAT(u.first_
 $mt_date_col   = "CASE WHEN mt.transaction_date > '2000-01-01' THEN mt.transaction_date ELSE mt.created_at END";
 $mt_paid_col   = vt_has($mt_cols, 'amount_paid') ? 'mt.amount_paid' : 'NULL';
 $mt_vby_col    = vt_has($mt_cols, 'validated_by') ? "COALESCE(NULLIF(CONCAT(v.first_name,' ',v.last_name),' '), v.username, 'N/A')" : "'N/A'";
-$mt_shift_col  = vt_has($mt_cols, 'shift') ? 'mt.shift' : "'N/A'";
+$mt_shift_col  = "CASE WHEN LOWER(TRIM(COALESCE(mt.shift_period, mt.shift_name, u.assigned_shift, u.shift_assignment, ''))) IN ('first', 'shift 1', 'shift1') THEN 'Shift 1' WHEN LOWER(TRIM(COALESCE(mt.shift_period, mt.shift_name, u.assigned_shift, u.shift_assignment, ''))) IN ('second', 'shift 2', 'shift2') THEN 'Shift 2' ELSE COALESCE(NULLIF(TRIM(mt.shift_period),''), NULLIF(TRIM(mt.shift_name),''), NULLIF(TRIM(u.assigned_shift),''), NULLIF(TRIM(u.shift_assignment),''), 'N/A') END";
 $mt_staff_id   = vt_has($mt_cols, 'staff_id') ? 'mt.staff_id' : 'NULL';
 
 $mt_where  = "WHERE mt.station_id = ?";
@@ -95,8 +95,10 @@ if ($staff_filter !== '') {
     $mt_where .= " AND mt.staff_id = ?";
     $mt_params[] = $staff_filter;
 }
-if (vt_has($mt_cols, 'shift') && $shift_filter !== '') {
-    $mt_where .= " AND mt.shift = ?";
+if ($shift_filter !== '') {
+    $mt_where .= " AND (mt.shift_period = ? OR u.assigned_shift = ? OR u.shift_assignment = ?)";
+    $mt_params[] = $shift_filter;
+    $mt_params[] = $shift_filter;
     $mt_params[] = $shift_filter;
 }
 
@@ -151,7 +153,7 @@ $jo_pay_col    = vt_has($jo_cols, 'payment_method') ? "COALESCE(jo.payment_metho
 $jo_cost_col   = vt_has($jo_cols, 'total_cost') ? 'COALESCE(jo.total_cost,0)' : 'COALESCE(jo.estimated_cost,0)';
 $jo_paid_col   = vt_has($jo_cols, 'amount_paid') ? 'jo.amount_paid' : 'NULL';
 $jo_vby_col    = vt_has($jo_cols, 'validated_by') ? "COALESCE(NULLIF(CONCAT(v.first_name,' ',v.last_name),' '), v.username, 'N/A')" : "'N/A'";
-$jo_shift_col  = vt_has($jo_cols, 'shift') ? 'jo.shift' : "'N/A'";
+$jo_shift_col  = "CASE WHEN LOWER(TRIM(COALESCE(jo.shift_period, jo.shift_name, u.assigned_shift, u.shift_assignment, ''))) IN ('first', 'shift 1', 'shift1') THEN 'Shift 1' WHEN LOWER(TRIM(COALESCE(jo.shift_period, jo.shift_name, u.assigned_shift, u.shift_assignment, ''))) IN ('second', 'shift 2', 'shift2') THEN 'Shift 2' ELSE COALESCE(NULLIF(TRIM(jo.shift_period),''), NULLIF(TRIM(jo.shift_name),''), NULLIF(TRIM(u.assigned_shift),''), NULLIF(TRIM(u.shift_assignment),''), 'N/A') END";
 $jo_staff_id   = vt_has($jo_cols, 'created_by') ? 'COALESCE(jo.created_by, jo.user_id)' : 'jo.user_id';
 
 $jo_where  = "WHERE jo.station_id = ?";
@@ -176,8 +178,10 @@ if ($staff_filter !== '') {
     $jo_where .= " AND COALESCE(jo.created_by, jo.user_id) = ?";
     $jo_params[] = $staff_filter;
 }
-if (vt_has($jo_cols, 'shift') && $shift_filter !== '') {
-    $jo_where .= " AND jo.shift = ?";
+if ($shift_filter !== '') {
+    $jo_where .= " AND (jo.shift_period = ? OR u.assigned_shift = ? OR u.shift_assignment = ?)";
+    $jo_params[] = $shift_filter;
+    $jo_params[] = $shift_filter;
     $jo_params[] = $shift_filter;
 }
 
@@ -487,14 +491,23 @@ include __DIR__ . '/../partials/header.php';
         <h1 class="h1"><i class="fas fa-check-double"></i> All Transactions</h1>
         <div class="sub">View and monitor all transactions encoded by staff across operational shifts.</div>
     </div>
-
-    <!-- Export & Back Buttons (Header Right) -->
-    <div class="actions txn-head-actions">
-        <button type="button" onclick="exportTable('excel')" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</button>
-        <button type="button" onclick="exportTable('csv')" class="flt-btn flt-btn-search"><i class="fas fa-file-csv"></i> CSV</button>
-        <button type="button" onclick="exportTable('pdf')" class="flt-btn flt-btn-pdf"><i class="fas fa-file-pdf"></i> PDF</button>
-    </div>
 </div>
+
+<?php
+// Tab counts
+$tab_voided_count = 0; $tab_adj_count = 0;
+try {
+    $s = $pdo->prepare("SELECT COUNT(*) FROM voided_transactions WHERE station_id=? AND DATE(void_date) BETWEEN ? AND ?");
+    $s->execute([$station_id, date('Y-m-01'), date('Y-m-d')]);
+    $tab_voided_count = (int)$s->fetchColumn();
+} catch(Exception $e){}
+try {
+    $s = $pdo->prepare("SELECT COUNT(*) FROM transaction_adjustments WHERE station_id=? AND DATE(adjustment_date) BETWEEN ? AND ?");
+    $s->execute([$station_id, date('Y-m-01'), date('Y-m-d')]);
+    $tab_adj_count = (int)$s->fetchColumn();
+} catch(Exception $e){}
+?>
+
 
 <?php if (isset($_SESSION['success'])): ?>
 <div style="background:#d4edda;color:#155724;padding:12px 16px;border-radius:8px;margin-bottom:16px;">
@@ -580,34 +593,21 @@ include __DIR__ . '/../partials/header.php';
 
 <!-- Table -->
 <div class="card" style="padding:0;overflow:hidden;">
-    <table class="vt-table" style="table-layout:auto;width:100%;">
-        <colgroup>
-            <col style="width:12%;"><!-- Transaction ID -->
-            <col style="width:10%;"><!-- Customer -->
-            <col style="width:8%;"><!-- Type -->
-            <col style="width:20%;"><!-- Items / Service -->
-            <col style="width:8%;"><!-- Amount -->
-            <col style="width:8%;"><!-- Payment Method -->
-            <col style="width:8%;"><!-- Payment Status -->
-            <col style="width:12%;"><!-- Shift -->
-            <col style="width:12%;"><!-- Date / Time -->
-            <col style="width:10%;"><!-- Staff -->
-            <col style="width:8%;"><!-- Actions -->
-        </colgroup>
+    <div style="overflow-x:auto;">
+    <table class="vt-table" style="table-layout:auto;min-width:100%;">
         <thead>
             <tr>
-                <th>Txn ID</th>
-                <th>Customer</th>
-                <th>Type</th>
-                <th>Items / Service</th>
-                <th style="text-align:right;">Amount</th>
-                <th>Method</th>
-                <th>Pay Status</th>
-                <th>Txn Status</th>
-                <th>Shift</th>
-                <th>Date</th>
-                <th>Staff</th>
-                <th style="text-align:center;">Actions</th>
+                <th style="width:10%;">Txn ID</th>
+                <th style="width:8%;">Customer</th>
+                <th style="width:7%;">Type</th>
+                <th style="width:13%;">Items / Service</th>
+                <th style="width:8%;">Amount</th>
+                <th style="width:8%;">Method</th>
+                <th style="width:8%;">Pay Status</th>
+                <th style="width:7%;">Shift</th>
+                <th style="width:9%;">Date</th>
+                <th style="width:8%;">Staff</th>
+                <th style="width:14%;text-align:center;">Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -653,10 +653,10 @@ include __DIR__ . '/../partials/header.php';
                     $merch_items = array_filter($rc_row_items, fn($i) => $i['item_type'] !== 'service');
                 ?>
                 <tr class="rc-row-main" onclick="rcToggleExpand('<?= $expand_id ?>')">
-                    <td style="font-weight:600;font-size:13px;font-family:monospace;white-space:nowrap;">
+                    <td style="font-weight:600;font-size:11px;font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
                         <?php echo htmlspecialchars($r['txn_id']); ?>
                     </td>
-                    <td style="font-size:13px;" title="<?php echo htmlspecialchars($r['customer']); ?>"><?php echo htmlspecialchars($r['customer']); ?></td>
+                    <td style="font-size:10px;overflow:hidden;text-overflow:ellipsis;" title="<?php echo htmlspecialchars($r['customer']); ?>"><?php echo htmlspecialchars(substr($r['customer'], 0, 12)); ?></td>
                     <td>
                         <?php 
                         $t_label = $r['entry_type']; 
@@ -687,59 +687,45 @@ include __DIR__ . '/../partials/header.php';
                         <i class="fas fa-chevron-down" style="font-size:9px;color:#94a3b8;margin-left:4px" id="<?= $expand_id ?>_icon"></i>
                       <?php endif; ?>
                     </td>
-                    <td style="font-weight:600;color:#002F70;text-align:right;white-space:nowrap;">
+                    <td style="font-weight:600;color:#002F70;text-align:right;white-space:nowrap;font-size:10px;">
                         &#8369;<?php echo number_format((float)$r['amount'], 2); ?>
                     </td>
-                    <td style="font-size:13px;"><?php echo htmlspecialchars($r['payment_method']); ?></td>
+                    <td style="font-size:10px;"><?php echo htmlspecialchars(substr($r['payment_method'], 0, 8)); ?></td>
                     <td>
                         <span class="vt-badge vt-badge-<?php echo strtolower(str_replace(' ', '-', $pay_st)); ?>">
                             <?php echo $pay_st; ?>
                         </span>
                     </td>
-                    <?php
-                    $vst = strtolower(trim($r['validation_status'] ?? 'approved'));
-                    if (in_array($vst, ['approved','official','completed','verified'])) {
-                        $vst_bg='#f0fdf4';$vst_c='#16a34a';$vst_b='#bbf7d0';$vst_l='Completed';
-                    } elseif ($vst === 'adjusted') {
-                        $vst_bg='#fffbeb';$vst_c='#d97706';$vst_b='#fde68a';$vst_l='Adjusted';
-                    } elseif ($vst === 'voided') {
-                        $vst_bg='#fef2f2';$vst_c='#dc2626';$vst_b='#fecaca';$vst_l='Voided';
-                    } else {
-                        $vst_bg='#f0fdf4';$vst_c='#16a34a';$vst_b='#bbf7d0';$vst_l='Completed';
-                    }
-                    ?>
-                    <td>
-                        <span style="display:inline-block;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:700;color:<?= $vst_c ?>;background:<?= $vst_bg ?>;border:1px solid <?= $vst_b ?>;white-space:nowrap">
-                            <?= $vst_l ?>
-                        </span>
-                    </td>
                     <td>
                         <?php 
+                        // Check validation status for actions
+                        $vst = strtolower(trim($r['validation_status'] ?? 'approved'));
+                        
                         $s_val = strtolower(trim($r['shift']));
                         $shift_time_label = match($s_val) {
-                            'first', 'shift 1' => 'Shift 1 (6AM - 2PM)',
-                            'second', 'shift 2' => 'Shift 2 (2PM - 12AM)',
+                            'first', 'shift 1' => 'Shift 1',
+                            'second', 'shift 2' => 'Shift 2',
                             default => htmlspecialchars($r['shift'] ?: 'N/A')
                         };
                         ?>
-                        <span class="vt-badge" style="background:#e0f2fe;color:#0369a1;border-color:#bae6fd;">
+                        <span class="vt-badge" style="background:#e0f2fe;color:#0369a1;border-color:#bae6fd;font-size:9px;padding:2px 6px;">
                             <?= $shift_time_label ?>
                         </span>
                     </td>
-                    <td style="white-space:nowrap;font-size:13px;color:#64748b;">
-                        <?php echo date('M d, Y H:i', strtotime($r['txn_date'])); ?>
+                    <td style="white-space:nowrap;font-size:10px;color:#64748b;">
+                        <?php echo date('M d, H:i', strtotime($r['txn_date'])); ?>
                     </td>
-                    <td style="font-size:13px;color:#64748b;"><?php echo htmlspecialchars($r['staff_name']); ?></td>
+                    <td style="font-size:10px;color:#64748b;"><?php echo htmlspecialchars(substr($r['staff_name'], 0, 12)); ?></td>
                     <td style="text-align:center;padding:6px 4px;" onclick="event.stopPropagation()">
-                        <div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;">
-                        <button class="vt-btn-action vt-btn-view" onclick="viewValidatedTransaction('<?php echo $r['_source']; ?>', <?php echo $r['row_id']; ?>)" title="View details" style="padding:5px 8px;font-size:11px;">
+                        <div style="display:flex;flex-direction:column;gap:3px;align-items:stretch;">
+                        <button class="vt-btn-action vt-btn-view" onclick="viewValidatedTransaction('<?php echo $r['_source']; ?>', <?php echo $r['row_id']; ?>)" title="View details" style="padding:3px 6px;font-size:9px;width:100%;">
                             <i class="fas fa-eye"></i> View
                         </button>
                         <?php if ($r['_source'] === 'merchandise_transactions' && $vst !== 'voided'): ?>
-                        <button class="vt-btn-action" style="color:#d97706;border-color:#d97706;background:white;padding:5px 8px;font-size:11px;" onclick="openAdjustModal(<?= $r['row_id'] ?>, '<?= htmlspecialchars(addslashes($r['txn_id'])) ?>', '<?= htmlspecialchars(addslashes($r['customer'])) ?>', '<?= htmlspecialchars(addslashes($r['entry_type'])) ?>', '<?= htmlspecialchars(addslashes($r['txn_date'])) ?>', '<?= htmlspecialchars(addslashes($r['staff_name'])) ?>', '<?= htmlspecialchars(addslashes($r['payment_method'])) ?>', '<?= htmlspecialchars(addslashes($r['payment_status'] ?? 'Paid')) ?>')" title="Adjust transaction">
+                        <button class="vt-btn-action" style="color:#d97706;border-color:#d97706;background:white;padding:3px 6px;font-size:9px;width:100%;" onclick="openAdjustModal(<?= $r['row_id'] ?>, '<?= htmlspecialchars(addslashes($r['txn_id'])) ?>', '<?= htmlspecialchars(addslashes($r['customer'])) ?>', '<?= htmlspecialchars(addslashes($r['entry_type'])) ?>', '<?= htmlspecialchars(addslashes($r['txn_date'])) ?>', '<?= htmlspecialchars(addslashes($r['staff_name'])) ?>', '<?= htmlspecialchars(addslashes($r['payment_method'])) ?>', '<?= htmlspecialchars(addslashes($r['payment_status'] ?? 'Paid')) ?>')" title="Adjust">
                             <i class="fas fa-pen"></i> Adjust
                         </button>
-                        <button class="vt-btn-action" style="color:#dc2626;border-color:#dc2626;background:white;padding:5px 8px;font-size:11px;" onclick="openVoidModal(<?= $r['row_id'] ?>, '<?= htmlspecialchars(addslashes($r['txn_id'])) ?>', '<?= htmlspecialchars(addslashes($r['customer'])) ?>')" title="Void transaction">
+                        <button class="vt-btn-action" style="color:#dc2626;border-color:#dc2626;background:white;padding:3px 6px;font-size:9px;width:100%;" onclick="openVoidModal(<?= $r['row_id'] ?>, '<?= htmlspecialchars(addslashes($r['txn_id'])) ?>', '<?= htmlspecialchars(addslashes($r['customer'])) ?>')" title="Void">
                             <i class="fas fa-ban"></i> Void
                         </button>
                         <?php endif; ?>
@@ -794,7 +780,7 @@ include __DIR__ . '/../partials/header.php';
                 <?php endforeach; ?>
             <?php else: ?>
                 <tr>
-                    <td colspan="13" style="text-align:center;padding:60px 20px;color:#94a3b8;">
+                    <td colspan="11" style="text-align:center;padding:60px 20px;color:#94a3b8;">
                         <i class="fas fa-inbox" style="font-size:48px;display:block;margin-bottom:12px;opacity:0.3;"></i>
                         <div style="font-size:16px;font-weight:600;color:#64748b;margin-bottom:4px;">No Transactions Found</div>
                         <div style="font-size:13px;">No transactions found matching your filters.</div>
@@ -803,14 +789,21 @@ include __DIR__ . '/../partials/header.php';
             <?php endif; ?>
         </tbody>
     </table>
+    </div>
 </div>
 
 <!-- View Transaction Modal -->
 <div class="vt-modal-overlay" id="viewTransactionModal">
     <div class="vt-modal" style="max-width:700px;">
         <div class="vt-modal-header">
-            <h3><i class="fas fa-eye" style="color:#003d82;margin-right:8px;"></i>Transaction Details</h3>
-            <button class="vt-modal-close" onclick="closeViewModal()">&times;</button>
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:36px;height:36px;background:#eff6ff;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-eye" style="color:#0284c7;font-size:15px;"></i>
+                </div>
+                <div>
+                    <div style="font-size:14px;font-weight:700;color:#1e293b;">Transaction Details</div>
+                </div>
+            </div>
         </div>
         <div id="viewTransactionContent" class="vt-modal-body">
             <div style="text-align:center;padding:40px;">
@@ -827,9 +820,15 @@ include __DIR__ . '/../partials/header.php';
 <!-- ═══════════════════════════════════════════════════════════ ADJUST MODAL -->
 <div class="vt-modal-overlay" id="adjustModal">
   <div class="vt-modal" style="max-width:720px;">
-    <div class="vt-modal-header" style="background:#fffbeb;border-bottom-color:#fde68a;">
-      <h3 style="color:#b45309;"><i class="fas fa-pen" style="margin-right:8px;"></i>Adjust Transaction</h3>
-      <button class="vt-modal-close" onclick="closeAdjustModal()">&times;</button>
+    <div class="vt-modal-header">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:36px;height:36px;background:#fffbeb;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="fas fa-pen" style="color:#f59e0b;font-size:15px;"></i>
+        </div>
+        <div>
+          <div style="font-size:14px;font-weight:700;color:#1e293b;">Adjust Transaction</div>
+        </div>
+      </div>
     </div>
     <div class="vt-modal-body" id="adjustModalBody">
       <!-- populated by JS -->
@@ -844,9 +843,15 @@ include __DIR__ . '/../partials/header.php';
 <!-- ════════════════════════════════════════════════════════════ VOID MODAL -->
 <div class="vt-modal-overlay" id="voidModal">
   <div class="vt-modal" style="max-width:500px;">
-    <div class="vt-modal-header" style="background:#fef2f2;border-bottom-color:#fecaca;">
-      <h3 style="color:#dc2626;"><i class="fas fa-ban" style="margin-right:8px;"></i>Void Transaction</h3>
-      <button class="vt-modal-close" onclick="closeVoidModal()">&times;</button>
+    <div class="vt-modal-header">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:36px;height:36px;background:#fef2f2;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="fas fa-ban" style="color:#dc2626;font-size:15px;"></i>
+        </div>
+        <div>
+          <div style="font-size:14px;font-weight:700;color:#1e293b;">Void Transaction</div>
+        </div>
+      </div>
     </div>
     <div class="vt-modal-body">
       <div id="voidModalInfo" style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#991b1b;"></div>
@@ -870,6 +875,16 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 <style>
+/* == GLOBAL OVERFLOW FIX == */
+html, body { 
+    overflow-x: hidden !important; 
+    max-width: 100vw !important;
+    box-sizing: border-box !important;
+}
+* { 
+    box-sizing: border-box !important; 
+}
+
 /* == PAGE HEADER - matches SuperAdmin page-head standard == */
 .page-head.txn-page-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:-12px !important; }
 .page-head.txn-page-head h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:none !important; display:flex; align-items:center; gap:8px; }
@@ -982,16 +997,24 @@ include __DIR__ . '/../partials/header.php';
 .vt-btn-reset:hover { background:#6b7280 !important; color:#fff !important; }
 
 /* Table - SuperAdmin ato-table standard */
-.vt-table { width:100%;border-collapse:collapse;font-size:11px; }
+.vt-table { width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed; }
 .vt-table thead th { 
-    background:#002F70;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:9px 10px;border-bottom:2px solid #001a3d;text-align:left;vertical-align:middle;
+    background:#002F70;color:#fff;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;padding:7px 6px;border-bottom:2px solid #001a3d;text-align:left;vertical-align:middle;
 }
-.vt-table tbody td { padding:9px 10px;border-bottom:1px solid #f1f5f9;vertical-align:middle;background:#fff;font-size:11px; }
+.vt-table tbody td { padding:6px 6px;border-bottom:1px solid #f1f5f9;vertical-align:middle;background:#fff;font-size:10px;word-wrap:break-word;overflow-wrap:break-word;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
 .vt-table tbody tr:hover td { background:#eff6ff; }
+
+/* Prevent horizontal scrolling on entire page */
+body { overflow-x:hidden !important; max-width:100vw !important; }
+.content-wrapper { max-width:100% !important; overflow-x:hidden !important; }
+.card { max-width:100% !important; }
+
+/* Make filter responsive */
+.vt-filter-card form { max-width:100% !important; overflow-x:hidden !important; }
 
 /* Badges */
 .vt-badge { 
-    display:inline-block;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap;background:#f8fafc;color:#64748b;border:1px solid #e2e8f0;
+    display:inline-block;padding:2px 6px;border-radius:3px;font-size:9px;font-weight:600;white-space:nowrap;background:#f8fafc;color:#64748b;border:1px solid #e2e8f0;
 }
 .vt-badge-merch { background:#f0fdf4;color:#15803d;border-color:#bbf7d0; }
 .vt-badge-jo { background:#fffbeb;color:#b45309;border-color:#fde68a; }
@@ -1001,9 +1024,9 @@ include __DIR__ . '/../partials/header.php';
 .vt-badge-unpaid { background:#fef2f2;color:#991b1b;border-color:#fecaca; }
 
 /* Item chips & expand rows */
-.rc-item-chip{display:inline-flex;align-items:center;gap:4px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:600;color:#374151;margin:1px 2px 1px 0;white-space:nowrap;cursor:pointer}
+.rc-item-chip{display:inline-flex;align-items:center;gap:3px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:3px;padding:1px 5px;font-size:9px;font-weight:600;color:#374151;margin:1px 2px 1px 0;white-space:nowrap;cursor:pointer}
 .rc-item-chip.svc{background:#fffbeb;border-color:#fde68a;color:#92400e}
-.rc-item-chip .rc-chip-qty{background:#002F70;color:#fff;border-radius:3px;padding:0 4px;font-size:9px;margin-left:3px}
+.rc-item-chip .rc-chip-qty{background:#002F70;color:#fff;border-radius:2px;padding:0 3px;font-size:8px;margin-left:2px}
 .rc-expand-row td{background:#f8fafc;padding:0}
 .rc-expand-inner{padding:10px 16px;border-top:2px solid #e2e8f0}
 .rc-expand-tbl{width:100%;border-collapse:collapse;font-size:11px}
@@ -1016,20 +1039,21 @@ include __DIR__ . '/../partials/header.php';
 /* Action Buttons */
 .vt-btn-action { 
     background: white !important;
-    width:auto;
-    min-width:80px;
-    height:34px;
-    border-radius:7px;
+    width:100%;
+    min-width:60px;
+    height:22px;
+    border-radius:4px;
     border:1px solid transparent;
     cursor:pointer;
-    font-size:11px;
+    font-size:9px;
     font-weight:600;
     display:inline-flex;
     align-items:center;
     justify-content:center;
-    gap:6px;
+    gap:4px;
     transition:all .15s;
-    padding:0 12px;
+    padding:0 6px;
+    white-space:nowrap;
 }
 .vt-btn-view   { color:#002F70 !important; border-color:#002F70 !important; }
 .vt-btn-view:hover { background:#002F70 !important; color:#fff !important; }
@@ -1534,7 +1558,7 @@ function exportTable(format) {
     }
 }
 </script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="../assets/vendor/xlsx/xlsx.full.min.js"></script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>
 <script>

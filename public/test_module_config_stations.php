@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/db_connect.php';
 
 // Fetch stations
@@ -14,7 +14,7 @@ try {
 <html>
 <head>
     <title>Test Module Config Stations</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link rel="stylesheet" href="../assets/vendor/fontawesome/css/all.min.css">
     <style>
         body { font-family: Arial; padding: 20px; }
         .am-combo { position: relative; width: 450px; }

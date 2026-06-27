@@ -517,21 +517,9 @@ include __DIR__ . '/../partials/header.php';
                                         <td><span class="<?= $s_cls ?>"><?= $st ?></span></td>
                                         <td style="font-size:11.5px;color:#64748b;"><?= $updated ?></td>
                                         <td>
-                                            <div class="action-stack">
-                                                <button class="flt-btn flt-btn-info" onclick='viewRequest("fuel", <?= json_encode($r, ENT_QUOTES) ?>)'>
-                                                    <i class="fas fa-eye"></i> View Details
-                                                </button>
-                                                <button class="flt-btn flt-btn-secondary" onclick='printRequest("fuel", <?= json_encode($r, ENT_QUOTES) ?>)'>
-                                                    <i class="fas fa-print"></i> Print Request
-                                                </button>
-                                                <?php if (strtolower($r['status']) === 'pending'): ?>
-                                                    <a href="staff_stock_requests.php?cancel_id=<?= (int)$r['id'] ?>&type=fuel"
-                                                       class="flt-btn flt-btn-danger"
-                                                       onclick="return confirm('Cancel this pending fuel request?');">
-                                                        <i class="fas fa-times"></i> Cancel
-                                                    </a>
-                                                <?php endif; ?>
-                                            </div>
+                                            <button class="flt-btn flt-btn-info" onclick='viewRequest("fuel", <?= json_encode($r, ENT_QUOTES) ?>)'>
+                                                <i class="fas fa-eye"></i> View
+                                            </button>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -654,21 +642,9 @@ include __DIR__ . '/../partials/header.php';
                                         <td><span class="<?= $s_cls ?>"><?= $st ?></span></td>
                                         <td style="font-size:11.5px;color:#64748b;"><?= $updated ?></td>
                                         <td>
-                                            <div class="action-stack">
-                                                <button class="flt-btn flt-btn-info" onclick='viewRequest("merch", <?= json_encode($r, ENT_QUOTES) ?>)'>
-                                                    <i class="fas fa-eye"></i> View Details
-                                                </button>
-                                                <button class="flt-btn flt-btn-secondary" onclick='printRequest("merch", <?= json_encode($r, ENT_QUOTES) ?>)'>
-                                                    <i class="fas fa-print"></i> Print Request
-                                                </button>
-                                                <?php if (strtolower($r['status']) === 'pending'): ?>
-                                                    <a href="staff_stock_requests.php?cancel_id=<?= (int)$r['id'] ?>&type=merch" 
-                                                       class="flt-btn flt-btn-danger" 
-                                                       onclick="return confirm('Cancel this pending stock request?');">
-                                                        <i class="fas fa-times"></i> Cancel
-                                                    </a>
-                                                <?php endif; ?>
-                                            </div>
+                                            <button class="flt-btn flt-btn-info" onclick='viewRequest("merch", <?= json_encode($r, ENT_QUOTES) ?>)'>
+                                                <i class="fas fa-eye"></i> View
+                                            </button>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>

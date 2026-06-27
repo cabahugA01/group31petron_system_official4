@@ -126,6 +126,9 @@ function handle_create($pdo, $me, $role, $station_id) {
     if (!$item) {
         echo json_encode(['success' => false, 'message' => 'Item not found in inventory']); return;
     }
+    if (empty($item_category)) {
+        $item_category = $item['category'] ?? '';
+    }
 
     // Check for duplicate pending request
     $dup = $pdo->prepare("SELECT COUNT(*) FROM stock_requests WHERE staff_id = ? AND item_id = ? AND status = 'Pending'");

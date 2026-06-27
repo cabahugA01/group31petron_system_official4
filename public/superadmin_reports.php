@@ -810,7 +810,7 @@ require_once __DIR__ . '/../partials/header.php';
 }
 </style>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="../assets/vendor/chart.js/chart.umd.min.js"></script>
 
 <div class="rpt-page">
     <div class="rpt-header">

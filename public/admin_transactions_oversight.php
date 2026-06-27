@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'ato_oversight_dashboard';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -2015,7 +2015,7 @@ function atoExport(format) {
     }
 }
 </script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="../assets/vendor/xlsx/xlsx.full.min.js"></script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>
 

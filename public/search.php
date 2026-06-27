@@ -305,7 +305,7 @@ if (!empty($query)) {
             $stmt->execute([$like, $like, $like, $like, $like]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $jo_num = $r['job_order_id'] ?? ('#' . $r['id']);
-                $jo_link = $is_manager ? 'manager_job_orders.php' : ('joborder.php?view=' . $r['id']);
+                $jo_link = $is_manager ? 'manager_job_orders.php' : ('staff_transactions_hub.php?section=history&hsearch=' . urlencode($jo_num));
                 $results[] = [
                     'type'     => 'Job Order',
                     'title'    => "Job Order {$jo_num}",

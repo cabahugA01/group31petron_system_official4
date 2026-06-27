@@ -659,14 +659,6 @@ include __DIR__ . '/../partials/header.php';
     position: relative;
     overflow: hidden;
 }
-.pmo-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 4px;
-    height: 100%;
-}
 .pmo-card-info {
     display: flex;
     flex-direction: column;
@@ -690,15 +682,10 @@ include __DIR__ . '/../partials/header.php';
 }
 
 /* Card variants based on colors */
-.pmo-card.blue::before   { background-color: #2563eb; }
 .pmo-card.blue .pmo-card-icon { color: #2563eb; }
-.pmo-card.green::before  { background-color: #16a34a; }
 .pmo-card.green .pmo-card-icon { color: #16a34a; }
-.pmo-card.red::before    { background-color: #dc2626; }
 .pmo-card.red .pmo-card-icon { color: #dc2626; }
-.pmo-card.yellow::before { background-color: #d97706; }
 .pmo-card.yellow .pmo-card-icon { color: #d97706; }
-.pmo-card.purple::before { background-color: #7c3aed; }
 .pmo-card.purple .pmo-card-icon { color: #7c3aed; }
 
 /* == FILTER BAR == */
@@ -1030,6 +1017,20 @@ include __DIR__ . '/../partials/header.php';
         <h1><i class="fas fa-gas-pump"></i> Pump Master Oversight</h1>
         <div class="sub">Central monitoring, maintenance, calibration adjustments, and status controls for all fuel pumps</div>
     </div>
+    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end;">
+        <form method="post" style="display: inline;">
+            <?php foreach ($_GET as $k => $v): if ($k !== 'export'): ?>
+                <input type="hidden" name="<?= htmlspecialchars($k) ?>" value="<?= htmlspecialchars($v) ?>">
+            <?php endif; endforeach; ?>
+            <button type="submit" name="export" value="excel" class="pmo-btn pmo-btn-export"><i class="fas fa-file-excel"></i> Excel</button>
+        </form>
+        <form method="post" style="display: inline;">
+            <?php foreach ($_GET as $k => $v): if ($k !== 'export'): ?>
+                <input type="hidden" name="<?= htmlspecialchars($k) ?>" value="<?= htmlspecialchars($v) ?>">
+            <?php endif; endforeach; ?>
+            <button type="submit" name="export" value="pdf" class="pmo-btn pmo-btn-pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</button>
+        </form>
+    </div>
 </div>
 
 <!-- == ALERTS == -->
@@ -1147,9 +1148,6 @@ include __DIR__ . '/../partials/header.php';
     <div class="pmo-actions">
         <button type="submit" class="pmo-btn pmo-btn-filter"><i class="fas fa-filter"></i> Filter</button>
         <a href="admin_pump_master_oversight.php" class="pmo-btn pmo-btn-reset"><i class="fas fa-sync-alt"></i> Reset</a>
-        <button type="submit" name="export" value="excel" class="pmo-btn pmo-btn-export"><i class="fas fa-file-excel"></i> Export Excel</button>
-        <button type="submit" name="export" value="pdf" class="pmo-btn pmo-btn-pdf" target="_blank"><i class="fas fa-file-pdf"></i> Export PDF</button>
-        <button type="button" class="pmo-btn pmo-btn-add" onclick="openAddPumpModal()"><i class="fas fa-plus"></i> Add Pump</button>
     </div>
 </form>
 
@@ -1163,15 +1161,14 @@ include __DIR__ . '/../partials/header.php';
     <div style="overflow:hidden;">
         <table class="pmo-tbl">
             <colgroup>
-                <col style="width:7%">
-                <col style="width:11%">
-                <col style="width:11%">
-                <col style="width:16%">
-                <col style="width:10%">
                 <col style="width:8%">
+                <col style="width:13%">
+                <col style="width:13%">
+                <col style="width:18%">
                 <col style="width:12%">
                 <col style="width:10%">
-                <col style="width:15%">
+                <col style="width:13%">
+                <col style="width:13%">
             </colgroup>
             <thead>
                 <tr>
@@ -1183,13 +1180,12 @@ include __DIR__ . '/../partials/header.php';
                     <th>Status</th>
                     <th>Last Updated</th>
                     <th>Updated By</th>
-                    <th style="text-align:center;">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($pumps)): ?>
                     <tr>
-                        <td colspan="9">
+                        <td colspan="8">
                             <div class="empty-state">
                                 <i class="fas fa-inbox"></i>
                                 No pump records found matching the filter criteria.
@@ -1216,37 +1212,6 @@ include __DIR__ . '/../partials/header.php';
                             </td>
                             <td><?= $p['calibration_updated_at'] ? date('M d, Y H:i', strtotime($p['calibration_updated_at'])) : '—' ?></td>
                             <td><?= htmlspecialchars($p['updated_by_name'] ?? '—') ?></td>
-                            <td style="text-align:center;">
-                                <div class="action-box">
-                                    <button class="action-btn action-btn-edit" onclick="openEditPumpModal(<?= htmlspecialchars(json_encode($p), ENT_QUOTES, 'UTF-8') ?>)">
-                                        <i class="fas fa-edit"></i> Edit Pump
-                                    </button>
-                                    <button class="action-btn action-btn-calibrate" onclick="openCalibrationModal(<?= $p['id'] ?>, '<?= htmlspecialchars($p['pump_number'], ENT_QUOTES) ?>', '<?= htmlspecialchars($p['fuel_type_name'] ?? '', ENT_QUOTES) ?>', <?= $cal_val ?>)">
-                                        <i class="fas fa-balance-scale"></i> Update Calibration
-                                    </button>
-                                    <button class="action-btn action-btn-history" onclick="viewHistory(<?= $p['id'] ?>, '<?= htmlspecialchars($p['pump_number'], ENT_QUOTES) ?>')">
-                                        <i class="fas fa-history"></i> View Calibration History
-                                    </button>
-                                    <?php if (strtolower($p['status']) !== 'active'): ?>
-                                        <form method="post" style="display:inline;" onsubmit="return confirm('Activate Pump <?= htmlspecialchars(addslashes($p['pump_number'])) ?>?')">
-                                            <input type="hidden" name="action" value="activate">
-                                            <input type="hidden" name="pump_id" value="<?= $p['id'] ?>">
-                                            <button type="submit" class="action-btn action-btn-status-act">
-                                                <i class="fas fa-play"></i> Activate Pump
-                                            </button>
-                                        </form>
-                                    <?php else: ?>
-                                        <form method="post" style="display:inline;" onsubmit="return confirm('Deactivate Pump <?= htmlspecialchars(addslashes($p['pump_number'])) ?>?')">
-                                            <input type="hidden" name="action" value="deactivate">
-                                            <input type="hidden" name="pump_id" value="<?= $p['id'] ?>">
-                                            <button type="submit" class="action-btn action-btn-status-deact">
-                                                <i class="fas fa-stop"></i> Deactivate Pump
-                                            </button>
-                                        </form>
-                                    <?php endif; ?>
-
-                                </div>
-                            </td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>

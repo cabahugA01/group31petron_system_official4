@@ -1,4 +1,4 @@
-
+﻿
   </main>
 
   <style>
@@ -352,7 +352,7 @@
   <div class="toast" id="toast"></div>
   
   <!-- Bootstrap JavaScript -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
   
   <script src="../assets/js/app.js"></script>
 </main>

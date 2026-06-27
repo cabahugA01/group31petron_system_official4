@@ -88,10 +88,10 @@ include __DIR__ . '/../partials/header.php';
 ?>
 
 <!-- Leaflet.js CSS -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="../assets/vendor/leaflet/css/leaflet.css" />
 <!-- Leaflet MarkerCluster CSS -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+<link rel="stylesheet" href="../assets/vendor/leaflet.markercluster/MarkerCluster.css" />
+<link rel="stylesheet" href="../assets/vendor/leaflet.markercluster/MarkerCluster.Default.css" />
 
 <style>
 /* ── Map Page Styles ── */
@@ -594,9 +594,9 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 <!-- Leaflet.js JavaScript -->
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="../assets/vendor/leaflet/js/leaflet.js"></script>
 <!-- Leaflet MarkerCluster JavaScript -->
-<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="../assets/vendor/leaflet.markercluster/leaflet.markercluster.js"></script>
 
 <script>
 // ══════════════════════════════════════════════════════════════

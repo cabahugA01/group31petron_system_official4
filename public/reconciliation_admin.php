@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/db_connect.php';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../backend/inventory_automation.php';
@@ -186,7 +186,7 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Fuel Reconciliation - Finalization</title>
     <link rel="stylesheet" href="../assets/style.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/vendor/fontawesome/css/all.min.css">
     <style>
         body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
         .container { max-width: 1400px; margin: 0 auto; }

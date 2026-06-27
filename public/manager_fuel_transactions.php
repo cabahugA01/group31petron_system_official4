@@ -2760,7 +2760,7 @@ function initTrendChart() {
     if (typeof Chart === 'undefined') {
         // Load Chart.js dynamically
         const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js';
+        s.src = '../assets/vendor/chart.js/chart.umd.min.js';
         s.onload = () => renderChart(canvas, labels, datasets);
         document.head.appendChild(s);
     } else {
@@ -3073,7 +3073,7 @@ function renderChart(daily, type) {
     if (typeof Chart === 'undefined') {
         // Try to load Chart.js dynamically
         const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js';
+        s.src = '../assets/vendor/chart.js/chart.umd.min.js';
         s.onload = () => renderChart(daily, type);
         document.head.appendChild(s);
         return;

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'admin_transaction_overview';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -99,14 +99,23 @@ foreach($pay_methods as $pm) { if(!isset($chart_pay[$pm])) $chart_pay[$pm]=0; }
 // ── Chart: Transactions Per Shift ─────────────────────────────────────────────
 $chart_shift = ['Shift 1'=>0,'Shift 2'=>0];
 try {
-    if(atov_has($mt_cols,'shift')) {
-        $s = $pdo->prepare("SELECT COALESCE(shift,'Shift 1') as sh, COUNT(*) as cnt
+    if(atov_has($mt_cols,'shift_period') || atov_has($mt_cols,'shift')) {
+        $sh_field = atov_has($mt_cols,'shift_period') ? 'mt.shift_period' : 'mt.shift';
+        $s = $pdo->prepare("SELECT COALESCE($sh_field,'Shift 1') as sh, COUNT(*) as cnt
             FROM merchandise_transactions mt WHERE station_id=? AND DATE($mt_date) BETWEEN ? AND ?
               AND LOWER(TRIM(COALESCE($mt_stat,''))) IN ('approved','completed','adjusted','official','validated')
             GROUP BY sh");
         $s->execute([$station_id,$date_from,$date_to]);
         foreach($s->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $chart_shift[$r['sh']] = (int)$r['cnt'];
+            $sh_val = trim($r['sh'] ?? '');
+            if (strtolower($sh_val) === 'first' || strtolower($sh_val) === 'shift 1') {
+                $sh_val = 'Shift 1';
+            } elseif (strtolower($sh_val) === 'second' || strtolower($sh_val) === 'shift 2') {
+                $sh_val = 'Shift 2';
+            } else {
+                $sh_val = 'Shift 1';
+            }
+            $chart_shift[$sh_val] = ($chart_shift[$sh_val] ?? 0) + (int)$r['cnt'];
         }
     }
 } catch(Exception $e){}
@@ -114,11 +123,12 @@ try {
 // ── Recent Transactions (last 20) ─────────────────────────────────────────────
 $recent = [];
 try {
-    $shift_col = atov_has($mt_cols,'shift') ? 'mt.shift' : "'N/A'";
+    $shift_col = "CASE WHEN LOWER(TRIM(COALESCE(mt.shift_period, mt.shift_name, u.assigned_shift, u.shift_assignment, ''))) IN ('first', 'shift 1', 'shift1') THEN 'Shift 1' WHEN LOWER(TRIM(COALESCE(mt.shift_period, mt.shift_name, u.assigned_shift, u.shift_assignment, ''))) IN ('second', 'shift 2', 'shift2') THEN 'Shift 2' ELSE COALESCE(NULLIF(TRIM(mt.shift_period),''), NULLIF(TRIM(mt.shift_name),''), NULLIF(TRIM(u.assigned_shift),''), NULLIF(TRIM(u.shift_assignment),''), 'N/A') END";
     $s = $pdo->prepare("SELECT mt.transaction_id, COALESCE(NULLIF(TRIM(mt.customer_name),''),'Walk-in') as customer,
         COALESCE(mt.transaction_type,'Merchandise') as txn_type,
         mt.total_amount as amount, $shift_col as shift, $mt_date as txn_date
         FROM merchandise_transactions mt
+        LEFT JOIN users u ON u.id = mt.staff_id
         WHERE mt.station_id=? AND DATE($mt_date) BETWEEN ? AND ?
           AND LOWER(TRIM(COALESCE($mt_stat,''))) IN ('approved','completed','adjusted','official','validated')
         ORDER BY $mt_date DESC LIMIT 20");
@@ -300,7 +310,7 @@ require_once __DIR__ . '/../partials/header.php';
     </table>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="../assets/vendor/chart.js/chart.umd.min.js"></script>
 <script>
 const typeData  = <?=json_encode(array_values($chart_types))?>;
 const typeLabels= <?=json_encode(array_keys($chart_types))?>;

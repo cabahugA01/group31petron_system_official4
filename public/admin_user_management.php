@@ -30,10 +30,38 @@ if (!in_array($my_role, ['admin', 'superadmin'])) {
 $flash_success = $_SESSION['success'] ?? null; unset($_SESSION['success']);
 $flash_error   = $_SESSION['error']   ?? null; unset($_SESSION['error']);
 
+// Helper: generate next employee ID
+function gen_emp_id($pdo, $role) {
+    $prefix = match(strtolower($role)) { 'manager'=>'MGR','staff'=>'STF','admin'=>'ADM',default=>'USR' };
+    $row = $pdo->prepare("SELECT employee_id FROM users WHERE employee_id LIKE ? ORDER BY id DESC LIMIT 1");
+    $row->execute([$prefix.'-%']);
+    $last = $row->fetchColumn();
+    $num  = $last ? ((int)preg_replace('/\D/','',$last) + 1) : 1;
+    return $prefix.'-'.str_pad($num,3,'0',STR_PAD_LEFT);
+}
+
 // Process POST actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
-    
+
+    // Toggle status
+    if ($action === 'toggle_status') {
+        $uid = (int)$_POST['user_id'];
+        $new_status = $_POST['new_status'] ?? 'Active';
+        $pdo->prepare("UPDATE users SET status=? WHERE id=?")->execute([$new_status, $uid]);
+        $_SESSION['success'] = "User status updated to $new_status.";
+        header('Location: admin_user_management.php'); exit;
+    }
+    // Reset password
+    if ($action === 'reset_password') {
+        $uid = (int)$_POST['user_id'];
+        $new_pw = trim($_POST['new_password'] ?? '');
+        if (strlen($new_pw) < 6) throw new Exception('Password must be at least 6 characters.');
+        $pdo->prepare("UPDATE users SET password_hash=? WHERE id=?")->execute([password_hash($new_pw, PASSWORD_BCRYPT), $uid]);
+        $_SESSION['success'] = 'Password reset successfully.';
+        header('Location: admin_user_management.php'); exit;
+    }
+
     try {
         // Create Manager Account (1 per station)
         if ($action === 'create_manager') {
@@ -50,30 +78,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             
             // Check if station already has a manager
-            $check_manager = $pdo->prepare("SELECT COUNT(*) FROM users WHERE station_id = ? AND role = 'Manager' AND status = 'Active'");
+            $check_manager = $pdo->prepare("SELECT COUNT(*) FROM users WHERE station_id = ? AND LOWER(role) = 'manager' AND status = 'Active'");
             $check_manager->execute([$target_station_id]);
             if ($check_manager->fetchColumn() > 0) {
                 throw new Exception('This station already has an active Manager');
             }
-            
             // Check username uniqueness
             $check_username = $pdo->prepare("SELECT COUNT(*) FROM users WHERE username = ?");
             $check_username->execute([$username]);
-            if ($check_username->fetchColumn() > 0) {
-                throw new Exception('Username already exists');
-            }
-            
-            // Create manager account
+            if ($check_username->fetchColumn() > 0) throw new Exception('Username already exists.');
+            $emp_id = gen_emp_id($pdo, 'manager');
             $stmt = $pdo->prepare("
-                INSERT INTO users (first_name, last_name, email, username, password, role, station_id, status, created_at)
-                VALUES (?, ?, ?, ?, ?, 'Manager', ?, 'Active', NOW())
+                INSERT INTO users (employee_id, first_name, last_name, email, username, password_hash, role, station_id, assigned_shift, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'manager', ?, 'All Shifts', 'Active', NOW())
             ");
-            $stmt->execute([$first_name, $last_name, $email, $username, password_hash($password, PASSWORD_BCRYPT), $target_station_id]);
-            
-            log_activity($pdo, $me['id'], 'Create Manager', "Created Manager: $first_name $last_name for Station #$target_station_id");
-            $_SESSION['success'] = 'Manager account created successfully and bound to station';
-            header('Location: admin_user_management.php');
-            exit;
+            $stmt->execute([$emp_id, $first_name, $last_name, $email, $username, password_hash($password, PASSWORD_BCRYPT), $target_station_id]);
+            log_activity($pdo, $me['id'], 'Create Manager', "Created Manager: $first_name $last_name ($emp_id)");
+            $_SESSION['success'] = "Manager $first_name $last_name ($emp_id) created.";
+            header('Location: admin_user_management.php'); exit;
         }
         
         // Create Staff Account
@@ -98,17 +120,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception('Username already exists');
             }
             
-            // Create staff account with shift assignment
-            $stmt = $pdo->prepare("
-                INSERT INTO users (first_name, last_name, email, username, password, role, station_id, shift_assignment, status, created_at)
-                VALUES (?, ?, ?, ?, ?, 'Staff', ?, ?, 'Active', NOW())
-            ");
-            $stmt->execute([$first_name, $last_name, $email, $username, password_hash($password, PASSWORD_BCRYPT), $target_station_id, $shift_assignment]);
+            // Determine shift times
+            $shift_start = ($shift_assignment === 'Shift 1') ? '06:00:00' : '14:00:00';
+            $shift_end   = ($shift_assignment === 'Shift 1') ? '14:00:00' : '00:00:00';
             
-            log_activity($pdo, $me['id'], 'Create Staff', "Created Staff: $first_name $last_name - $shift_assignment");
-            $_SESSION['success'] = "Staff account created and assigned to $shift_assignment";
-            header('Location: admin_user_management.php');
-            exit;
+            $emp_id = gen_emp_id($pdo, 'staff');
+            $stmt = $pdo->prepare("
+                INSERT INTO users (employee_id, first_name, last_name, email, username, password_hash, role, station_id, assigned_shift, shift_assignment, shift_start_time, shift_end_time, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'staff', ?, ?, ?, ?, ?, 'Active', NOW())
+            ");
+            $stmt->execute([$emp_id, $first_name, $last_name, $email, $username, password_hash($password, PASSWORD_BCRYPT), $target_station_id, $shift_assignment, $shift_assignment, $shift_start, $shift_end]);
+            log_activity($pdo, $me['id'], 'Create Staff', "Created Staff: $first_name $last_name ($emp_id) - $shift_assignment");
+            $_SESSION['success'] = "Staff $first_name $last_name ($emp_id) created — $shift_assignment.";
+            header('Location: admin_user_management.php'); exit;
         }
         
     } catch (Exception $e) {
@@ -120,28 +144,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Get all managers for this station (or all stations for superadmin)
 $managers_query = "
-    SELECT u.*, s.name AS station_name
+    SELECT u.id, u.employee_id, u.first_name, u.last_name, u.username, u.email, u.role,
+           u.assigned_shift, u.status, u.created_at, s.name AS station_name
     FROM users u
     LEFT JOIN stations s ON u.station_id = s.id
-    WHERE u.role = 'Manager'
+    WHERE LOWER(u.role) = 'manager'
 ";
 if ($my_role !== 'superadmin') {
-    $managers_query .= " AND u.station_id = " . $station_id;
+    $managers_query .= " AND u.station_id = " . (int)$station_id;
 }
 $managers_query .= " ORDER BY u.created_at DESC";
 $managers = $pdo->query($managers_query)->fetchAll(PDO::FETCH_ASSOC);
 
 // Get all staff for this station (or all stations for superadmin)
 $staff_query = "
-    SELECT u.*, s.name AS station_name
+    SELECT u.id, u.employee_id, u.first_name, u.last_name, u.username, u.email, u.role,
+           u.assigned_shift, u.shift_assignment, u.status, u.created_at, s.name AS station_name
     FROM users u
     LEFT JOIN stations s ON u.station_id = s.id
-    WHERE u.role IN ('Staff', 'Cashier', 'Pump Attendant')
+    WHERE LOWER(u.role) IN ('staff')
 ";
 if ($my_role !== 'superadmin') {
-    $staff_query .= " AND u.station_id = " . $station_id;
+    $staff_query .= " AND u.station_id = " . (int)$station_id;
 }
-$staff_query .= " ORDER BY u.shift_assignment, u.created_at DESC";
+$staff_query .= " ORDER BY u.assigned_shift, u.created_at DESC";
 $staff = $pdo->query($staff_query)->fetchAll(PDO::FETCH_ASSOC);
 
 // Get stations list (for superadmin)
@@ -221,6 +247,8 @@ include __DIR__ . '/../partials/header.php';
             transition: all 0.3s;
             text-decoration: none;
             display: inline-block;
+            white-space: nowrap;
+            text-align: center;
         }
         
         .btn-primary {
@@ -300,6 +328,33 @@ include __DIR__ . '/../partials/header.php';
         .badge-active {
             background: #d4edda;
             color: #155724;
+        }
+        
+        .badge-inactive {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .btn-sm {
+            padding: 4px 10px;
+            font-size: 11px;
+            border-radius: 4px;
+        }
+        
+        .btn-warn {
+            background: #dc3545;
+            color: white;
+        }
+        .btn-warn:hover {
+            background: #bd2130;
+        }
+        
+        .btn-info {
+            background: #17a2b8;
+            color: white;
+        }
+        .btn-info:hover {
+            background: #138496;
         }
         
         .modal {
@@ -431,34 +486,40 @@ include __DIR__ . '/../partials/header.php';
 
     <!-- Managers Table -->
     <div class="users-table">
-        <h2>Managers (1 per Station)</h2>
+        <h2><i class="fas fa-user-tie" style="font-size:18px;margin-right:8px;"></i> Managers <small style="font-size:13px;color:#64748b;font-weight:400;">(<?= count($managers) ?> records)</small></h2>
         <table>
             <thead>
                 <tr>
+                    <th>Employee ID</th>
                     <th>Name</th>
                     <th>Username</th>
-                    <th>Email</th>
-                    <?php if ($my_role === 'superadmin'): ?>
-                        <th>Station</th>
-                    <?php endif; ?>
+                    <th>Role</th>
+                    <?php if ($my_role === 'superadmin'): ?><th>Station</th><?php endif; ?>
                     <th>Status</th>
-                    <th>Created</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($managers)): ?>
-                    <tr><td colspan="<?= $my_role === 'superadmin' ? 6 : 5 ?>" style="text-align: center; color: #666;">No managers found</td></tr>
+                    <tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:30px;">No managers found</td></tr>
                 <?php else: ?>
-                    <?php foreach ($managers as $manager): ?>
+                    <?php foreach ($managers as $mgr): ?>
                         <tr>
-                            <td><?= htmlspecialchars($manager['first_name'] . ' ' . $manager['last_name']) ?></td>
-                            <td><?= htmlspecialchars($manager['username']) ?></td>
-                            <td><?= htmlspecialchars($manager['email'] ?? 'N/A') ?></td>
-                            <?php if ($my_role === 'superadmin'): ?>
-                                <td><?= htmlspecialchars($manager['station_name'] ?? 'N/A') ?></td>
-                            <?php endif; ?>
-                            <td><span class="badge badge-active"><?= htmlspecialchars($manager['status']) ?></span></td>
-                            <td><?= date('M j, Y', strtotime($manager['created_at'])) ?></td>
+                            <td><span style="font-family:monospace;font-weight:700;color:#002F70;font-size:12px;"><?= htmlspecialchars($mgr['employee_id'] ?? '—') ?></span></td>
+                            <td><strong><?= htmlspecialchars(trim($mgr['first_name'].' '.$mgr['last_name'])) ?></strong><div style="font-size:11px;color:#94a3b8;"><?= htmlspecialchars($mgr['email'] ?? '') ?></div></td>
+                            <td>@<?= htmlspecialchars($mgr['username']) ?></td>
+                            <td><span class="badge badge-manager">Manager</span></td>
+                            <?php if ($my_role === 'superadmin'): ?><td><?= htmlspecialchars($mgr['station_name'] ?? 'N/A') ?></td><?php endif; ?>
+                            <td><span class="badge <?= strtolower($mgr['status']) === 'active' ? 'badge-active' : 'badge-inactive' ?>"><?= htmlspecialchars($mgr['status']) ?></span></td>
+                            <td style="white-space:nowrap;">
+                                <form method="POST" style="display:inline;" onsubmit="return confirm('Toggle status?');">
+                                    <input type="hidden" name="action" value="toggle_status">
+                                    <input type="hidden" name="user_id" value="<?= $mgr['id'] ?>">
+                                    <input type="hidden" name="new_status" value="<?= strtolower($mgr['status']) === 'active' ? 'Locked' : 'Active' ?>">
+                                    <button type="submit" class="btn btn-sm <?= strtolower($mgr['status']) === 'active' ? 'btn-warn' : 'btn-success' ?>"><?= strtolower($mgr['status']) === 'active' ? 'Deactivate' : 'Activate' ?></button>
+                                </form>
+                                <button class="btn btn-sm btn-info" onclick="openResetPw(<?= $mgr['id'] ?>, '<?= addslashes(htmlspecialchars($mgr['first_name'].' '.$mgr['last_name'])) ?>')">Reset PW</button>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -468,42 +529,55 @@ include __DIR__ . '/../partials/header.php';
 
     <!-- Staff Table -->
     <div class="users-table">
-        <h2>Staff Accounts</h2>
+        <h2><i class="fas fa-users" style="font-size:18px;margin-right:8px;"></i> Staff Accounts <small style="font-size:13px;color:#64748b;font-weight:400;">(<?= count($staff) ?> records)</small></h2>
         <table>
             <thead>
                 <tr>
+                    <th>Employee ID</th>
                     <th>Name</th>
                     <th>Username</th>
-                    <th>Email</th>
-                    <th>Shift Assignment</th>
-                    <?php if ($my_role === 'superadmin'): ?>
-                        <th>Station</th>
-                    <?php endif; ?>
+                    <th>Role</th>
+                    <th>Assigned Shift</th>
+                    <?php if ($my_role === 'superadmin'): ?><th>Station</th><?php endif; ?>
                     <th>Status</th>
-                    <th>Created</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($staff)): ?>
-                    <tr><td colspan="<?= $my_role === 'superadmin' ? 7 : 6 ?>" style="text-align: center; color: #666;">No staff found</td></tr>
+                    <tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:30px;">No staff found</td></tr>
                 <?php else: ?>
                     <?php foreach ($staff as $s): ?>
+                        <?php
+                        $shift = $s['assigned_shift'] ?: ($s['shift_assignment'] ?: '');
+                        $isS1  = stripos($shift,'1') !== false;
+                        $isS2  = stripos($shift,'2') !== false;
+                        ?>
                         <tr>
-                            <td><?= htmlspecialchars($s['first_name'] . ' ' . $s['last_name']) ?></td>
-                            <td><?= htmlspecialchars($s['username']) ?></td>
-                            <td><?= htmlspecialchars($s['email'] ?? 'N/A') ?></td>
+                            <td><span style="font-family:monospace;font-weight:700;color:#002F70;font-size:12px;"><?= htmlspecialchars($s['employee_id'] ?? '—') ?></span></td>
+                            <td><strong><?= htmlspecialchars(trim($s['first_name'].' '.$s['last_name'])) ?></strong><div style="font-size:11px;color:#94a3b8;"><?= htmlspecialchars($s['email'] ?? '') ?></div></td>
+                            <td>@<?= htmlspecialchars($s['username']) ?></td>
+                            <td><span class="badge badge-active" style="background:#e0e7ff;color:#3730a3;">Staff</span></td>
                             <td>
-                                <?php if (stripos($s['shift_assignment'] ?? '', '2') !== false): ?>
-                                    <span class="badge badge-shift2">Shift 2 (2PM-10PM)</span>
+                                <?php if ($isS2): ?>
+                                    <span class="badge badge-shift2">Shift 2 (2PM–12AM)</span>
+                                <?php elseif ($isS1): ?>
+                                    <span class="badge badge-shift1">Shift 1 (6AM–2PM)</span>
                                 <?php else: ?>
-                                    <span class="badge badge-shift1">Shift 1 (6AM-2PM)</span>
+                                    <span class="badge" style="background:#f1f5f9;color:#64748b;">Unassigned</span>
                                 <?php endif; ?>
                             </td>
-                            <?php if ($my_role === 'superadmin'): ?>
-                                <td><?= htmlspecialchars($s['station_name'] ?? 'N/A') ?></td>
-                            <?php endif; ?>
-                            <td><span class="badge badge-active"><?= htmlspecialchars($s['status']) ?></span></td>
-                            <td><?= date('M j, Y', strtotime($s['created_at'])) ?></td>
+                            <?php if ($my_role === 'superadmin'): ?><td><?= htmlspecialchars($s['station_name'] ?? 'N/A') ?></td><?php endif; ?>
+                            <td><span class="badge <?= strtolower($s['status']) === 'active' ? 'badge-active' : 'badge-inactive' ?>"><?= htmlspecialchars($s['status']) ?></span></td>
+                            <td style="white-space:nowrap;">
+                                <form method="POST" style="display:inline;" onsubmit="return confirm('Toggle status?');">
+                                    <input type="hidden" name="action" value="toggle_status">
+                                    <input type="hidden" name="user_id" value="<?= $s['id'] ?>">
+                                    <input type="hidden" name="new_status" value="<?= strtolower($s['status']) === 'active' ? 'Locked' : 'Active' ?>">
+                                    <button type="submit" class="btn btn-sm <?= strtolower($s['status']) === 'active' ? 'btn-warn' : 'btn-success' ?>"><?= strtolower($s['status']) === 'active' ? 'Deactivate' : 'Activate' ?></button>
+                                </form>
+                                <button class="btn btn-sm btn-info" onclick="openResetPw(<?= $s['id'] ?>, '<?= addslashes(htmlspecialchars($s['first_name'].' '.$s['last_name'])) ?>')">Reset PW</button>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -594,7 +668,7 @@ include __DIR__ . '/../partials/header.php';
                     <label>Shift Assignment *</label>
                     <select name="shift_assignment" required>
                         <option value="Shift 1">Shift 1 (6AM - 2PM)</option>
-                        <option value="Shift 2">Shift 2 (2PM - 10PM)</option>
+                        <option value="Shift 2">Shift 2 (2PM - 12AM)</option>
                     </select>
                 </div>
                 
@@ -623,6 +697,28 @@ include __DIR__ . '/../partials/header.php';
         </div>
     </div>
 
+    <!-- Reset Password Modal -->
+    <div id="resetPwModal" class="modal">
+        <div class="modal-content">
+            <h2>Reset Password</h2>
+            <p>Reset password for user: <strong id="resetPwName"></strong></p>
+            <form method="POST">
+                <input type="hidden" name="action" value="reset_password">
+                <input type="hidden" name="user_id" id="resetPwUid">
+                
+                <div class="form-group">
+                    <label>New Password *</label>
+                    <input type="password" name="new_password" required minlength="6" placeholder="At least 6 characters">
+                </div>
+                
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Reset Password</button>
+                    <button type="button" class="btn btn-cancel" onclick="closeModal('resetPwModal')">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
         function openModal(modalId) {
             document.getElementById(modalId).classList.add('active');
@@ -630,6 +726,12 @@ include __DIR__ . '/../partials/header.php';
         
         function closeModal(modalId) {
             document.getElementById(modalId).classList.remove('active');
+        }
+        
+        function openResetPw(uid, name) {
+            document.getElementById('resetPwUid').value = uid;
+            document.getElementById('resetPwName').textContent = name;
+            openModal('resetPwModal');
         }
         
         // Close modal on outside click

@@ -1,4 +1,9 @@
 <?php
+// Force fresh reload - prevent CSS/HTML caching
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: Thu, 01 Jan 1970 00:00:00 GMT');
+
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
 require_login();
@@ -279,7 +284,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/style.css?v=2.0.2" />
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/manager_table_design.css?v=2.0.2" />
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/manager_customer_management.css?v=2.0.2" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/vendor/fontawesome/css/all.min.css">
   <!-- GLOBAL TEXT VISIBILITY FIX - Ensures all text is readable while keeping original colors -->
   <style>
     /* ═══════════════════════════════════════════════════════════
@@ -1105,8 +1110,10 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     .nav-item.active { background-color: var(--petron-red) !important; color: #ffffff !important; font-size: 13px !important; font-weight: 500 !important; }
     .nav-item span { font-size: 13px !important; font-weight: 500 !important; }
     .nav-item.active span { font-size: 13px !important; font-weight: 500 !important; }
-    .sidebar-sub-item { font-size: 12px !important; font-weight: 500 !important; }
-    .sidebar-sub-item span:not(.ico) { white-space: normal !important; word-break: break-word !important; }
+    .sidebar-sub-item { font-size: 12px !important; font-weight: 500 !important; color: #eeeeee !important; }
+    .sidebar-sub-item span:not(.ico) { white-space: normal !important; word-break: break-word !important; color: #eeeeee !important; }
+    .sidebar-sub-item:hover { background-color: rgba(255,255,255,0.1) !important; color: #ffffff !important; }
+    .sidebar-sub-item.active { background-color: transparent !important; color: #ffffff !important; border-left: 3px solid var(--petron-red); }
     
     .nav-item .ico {
         display: flex;
@@ -2308,7 +2315,7 @@ require_once __DIR__ . '/rbac_menu.php';
 
         // Sub-menu
         $display = $parent_active ? 'block' : 'none';
-        echo '<div id="sub-'.htmlspecialchars($it['id']).'" style="display:'.$display.';background:rgba(0,0,0,.15);border-left:3px solid rgba(255,255,255,.2);margin-left:0;padding-left:0;">';
+        echo '<div id="sub-'.htmlspecialchars($it['id']).'" style="display:'.$display.';background:transparent;border-left:3px solid rgba(255,255,255,.2);margin-left:0;padding-left:0;">';
         foreach ($it['sub_items'] as $sub) {
             // Active if hash matches this sub-item's fragment OR if current page matches the sub-item href
             $sub_fragment = ltrim(parse_url($sub['href'], PHP_URL_FRAGMENT) ?? '', '#');
@@ -2361,9 +2368,9 @@ require_once __DIR__ . '/rbac_menu.php';
             }
             $sub_badge = $fuel_sub_badges[$sub['id'] ?? ''] ?? 0;
 
-            echo '<a class="nav-item sidebar-sub-item '.$sub_active.'" href="'.htmlspecialchars($sub['href']).'" style="padding:8px 15px 8px 47px;min-height:auto;" data-tooltip="'.htmlspecialchars($sub['label'] ?? '').'" data-tab="'.htmlspecialchars($sub_fragment).'">';
+            echo '<a class="nav-item sidebar-sub-item '.$sub_active.'" href="'.htmlspecialchars($sub['href']).'" style="padding:6px 15px 6px 47px;min-height:auto;" data-tooltip="'.htmlspecialchars($sub['label'] ?? '').'" data-tab="'.htmlspecialchars($sub_fragment).'">';
             echo '<span class="ico" style="margin-right:8px;width:14px;text-align:center;flex-shrink:0;"><i class="fas fa-circle" style="font-size:4px;opacity:.5;"></i></span>';
-            echo '<span style="flex-grow:1;line-height:1.3;">';
+            echo '<span style="flex-grow:1;line-height:1.2;">';
             echo '<span style="display:block;font-size:12px;font-weight:500;">'.htmlspecialchars($sub['label'] ?? '').'</span>';
             echo '</span>';
             if ($sub_badge > 0) {

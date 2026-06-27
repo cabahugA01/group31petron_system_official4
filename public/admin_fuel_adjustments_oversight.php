@@ -513,14 +513,6 @@ require_once __DIR__ . '/../partials/header.php';
     position: relative;
     overflow: hidden;
 }
-.ato-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 4px;
-    height: 100%;
-}
 .ato-card-info {
     display: flex;
     flex-direction: column;
@@ -543,13 +535,9 @@ require_once __DIR__ . '/../partials/header.php';
     opacity: 0.8;
 }
 
-.ato-card.blue::before { background-color: #2563eb; }
 .ato-card.blue .ato-card-icon { color: #2563eb; }
-.ato-card.yellow::before { background-color: #d97706; }
 .ato-card.yellow .ato-card-icon { color: #d97706; }
-.ato-card.green::before { background-color: #16a34a; }
 .ato-card.green .ato-card-icon { color: #16a34a; }
-.ato-card.red::before { background-color: #dc2626; }
 .ato-card.red .ato-card-icon { color: #dc2626; }
 
 /* == FILTER BAR == */
@@ -820,9 +808,22 @@ require_once __DIR__ . '/../partials/header.php';
 <div class="int-head">
     <div>
         <h1><i class="fas fa-sliders-h"></i> Fuel Adjustments Oversight</h1>
-        <div class="sub">Admin review and approval override of manager-validated fuel inventory corrections for <strong><?= htmlspecialchars($station_name) ?></strong></div>
+        <div class="sub">Admin review and approval override of manager-validated fuel inventory corrections</div>
     </div>
-    <a href="admin_dashboard.php" class="ato-btn ato-btn-back"><i class="fas fa-arrow-left"></i> Back</a>
+    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end;">
+        <form method="post" style="display: inline;">
+            <?php foreach ($_GET as $k => $v): if ($k !== 'export'): ?>
+                <input type="hidden" name="<?= htmlspecialchars($k) ?>" value="<?= htmlspecialchars($v) ?>">
+            <?php endif; endforeach; ?>
+            <button type="submit" name="export" value="excel" class="ato-btn ato-btn-excel"><i class="fas fa-file-excel"></i> Excel</button>
+        </form>
+        <form method="post" style="display: inline;">
+            <?php foreach ($_GET as $k => $v): if ($k !== 'export'): ?>
+                <input type="hidden" name="<?= htmlspecialchars($k) ?>" value="<?= htmlspecialchars($v) ?>">
+            <?php endif; endforeach; ?>
+            <button type="submit" name="export" value="pdf" class="ato-btn ato-btn-pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</button>
+        </form>
+    </div>
 </div>
 
 <!-- == ALERTS == -->
@@ -929,11 +930,9 @@ require_once __DIR__ . '/../partials/header.php';
         </select>
     </div>
 
-    <div style="display:flex; gap:8px; margin-left:auto;">
+    <div style="display:flex; gap:8px;">
         <button type="submit" class="ato-btn ato-btn-filter"><i class="fas fa-filter"></i> Apply Filters</button>
         <a href="admin_fuel_adjustments_oversight.php" class="ato-btn ato-btn-back"><i class="fas fa-times"></i> Reset</a>
-        <button type="submit" name="export" value="excel" class="ato-btn ato-btn-excel"><i class="fas fa-file-excel"></i> Export Excel</button>
-        <button type="submit" name="export" value="pdf" class="ato-btn ato-btn-pdf" target="_blank"><i class="fas fa-file-pdf"></i> Export PDF</button>
     </div>
 </form>
 
@@ -948,19 +947,18 @@ require_once __DIR__ . '/../partials/header.php';
         <table class="ato-tbl">
             <colgroup>
                 <col style="width:6%">
-                <col style="width:7%">
                 <col style="width:8%">
                 <col style="width:8%">
                 <col style="width:8%">
-                <col style="width:7%">
-                <col style="width:7%">
-                <col style="width:7%">
-                <col style="width:12%">
+                <col style="width:8%">
+                <col style="width:8%">
+                <col style="width:8%">
+                <col style="width:8%">
+                <col style="width:14%">
                 <col style="width:8%">
                 <col style="width:8%">
                 <col style="width:6%">
-                <col style="width:7%">
-                <col style="width:11%">
+                <col style="width:8%">
             </colgroup>
             <thead>
                 <tr>
@@ -977,13 +975,12 @@ require_once __DIR__ . '/../partials/header.php';
                     <th>Approved By</th>
                     <th>Status</th>
                     <th>Approval Date</th>
-                    <th style="text-align:center;">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($adjustments)): ?>
                     <tr>
-                        <td colspan="14">
+                        <td colspan="13">
                             <div class="ato-empty">
                                 <i class="fas fa-inbox"></i>
                                 <div style="font-size:14px;font-weight:700;color:#64748b;">No adjustment records found.</div>
@@ -1018,29 +1015,6 @@ require_once __DIR__ . '/../partials/header.php';
                             <td><?= htmlspecialchars($adj['approved_by_name']) ?></td>
                             <td><span class="sb sb-<?= strtolower($adj['status']) ?>"><?= ucfirst(htmlspecialchars($adj['status'])) ?></span></td>
                             <td><?= ($adj['approved_at'] ? date('M d, Y', strtotime($adj['approved_at'])) : '—') ?></td>
-                            <td style="text-align:center;">
-                                <div class="action-box">
-                                    <button class="action-btn action-btn-details" onclick="viewAdjDetails(<?= $adj['id'] ?>)">
-                                        <i class="fas fa-info-circle"></i> Details
-                                    </button>
-
-                                    <?php if (strtolower($adj['status']) === 'pending'): ?>
-                                        <button class="action-btn action-btn-approve" onclick="approveOverride(<?= $adj['id'] ?>, '<?= htmlspecialchars($adj['fuel_type'], ENT_QUOTES, 'UTF-8') ?>', '<?= htmlspecialchars($diff_str, ENT_QUOTES, 'UTF-8') ?>')">
-                                            <i class="fas fa-check"></i> Approve
-                                        </button>
-                                        <button class="action-btn action-btn-reject" onclick="rejectOverride(<?= $adj['id'] ?>)">
-                                            <i class="fas fa-times"></i> Reject
-                                        </button>
-                                    <?php endif; ?>
-
-                                    <button class="action-btn action-btn-audit" onclick="viewAdjAudit(<?= $adj['id'] ?>)">
-                                        <i class="fas fa-history"></i> History
-                                    </button>
-                                    <button class="action-btn action-btn-print" onclick="printSingleAdj(<?= $adj['id'] ?>)">
-                                        <i class="fas fa-print"></i> Print
-                                    </button>
-                                </div>
-                            </td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>

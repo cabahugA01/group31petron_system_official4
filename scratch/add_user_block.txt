@@ -1,0 +1,249 @@
+if ($action === 'add_user') {
+            $name           = trim($_POST['full_name'] ?? trim(($_POST['first_name'] ?? '') . ' ' . ($_POST['last_name'] ?? '')));
+            $login_id       = trim($_POST['login_id'] ?? $_POST['email'] ?? '');
+            $role_key_input = $_POST['role'] ?? '';
+            $role           = role_key($role_key_input);
+            $raw_password   = trim($_POST['password_hash'] ?? '');
+            $confirmPassword = trim($_POST['confirm_password'] ?? '');
+
+            // Parse Login ID into email/username (phone support removed)
+            $email    = null;
+            $username = $login_id;
+
+            if (strpos($login_id, '@') !== false) {
+                $email = $login_id;
+                if (!filter_var($email, FILTER_VALIDATE_EMAIL)) throw new Exception('Invalid email address format.');
+            }
+
+            // Validate required fields
+            if (empty($name))           throw new Exception('Full Name is required.');
+            if (empty($login_id))       throw new Exception('Login ID is required.');
+            if (empty($role_key_input)) throw new Exception('Role is required.');
+
+            // Password handling
+            if (empty($raw_password)) {
+                // Auto-generate: 12 chars, allowed symbols _ . - ! @ #
+                $password = generateSecurePassword();
+            } else {
+                // Manual password validation
+                if ($raw_password !== $confirmPassword) throw new Exception("Passwords do not match.");
+                $allowed_symbol_regex = '/[!@#$%^&*(),.?":{}|<>_\-]/';
+                if (
+                    strlen($raw_password) < 8 ||
+                    !preg_match('/[A-Z]/', $raw_password) ||
+                    !preg_match('/[a-z]/', $raw_password) ||
+                    !preg_match('/[0-9]/', $raw_password) ||
+                    !preg_match($allowed_symbol_regex, $raw_password)
+                ) {
+                    throw new Exception("Password must be at least 8 characters and contain at least one uppercase letter, one lowercase letter, one number, and one symbol.");
+                }
+                $password = $raw_password;
+            }
+
+            // Check login_id uniqueness (phone support removed)
+            $dup_sql = 'SELECT id FROM users WHERE username = ?';
+            $dup_params = [$username];
+            if (!empty($email)) { $dup_sql .= ' OR email = ?'; $dup_params[] = $email; }
+            $stmt = $pdo->prepare($dup_sql);
+            $stmt->execute($dup_params);
+            if ($stmt->fetch()) throw new Exception('Login ID (Email or Username) is already in use.');
+
+            // Handle station assignment based on role and creator
+            $station_target = null;
+            
+            if ($my_role === 'superadmin') {
+                // SuperAdmin must select station for all roles
+                if (empty($_POST['station_id'])) {
+                    throw new Exception("Station selection is required for user creation.");
+                }
+                $station_target = (int)$_POST['station_id'];
+                
+                // Validate station exists and is active
+                if (!StationManager::isValidActiveStation($station_target)) {
+                    throw new Exception("Selected station is not valid or inactive.");
+                }
+            } elseif ($my_role === 'admin') {
+                // Admin creating Admin: must select station
+                // Admin creating Staff/Manager: auto-assign to admin's station
+                if ($role === 'admin') {
+                    // Admin creation requires station selection
+                    if (empty($_POST['station_id'])) {
+                        throw new Exception("Station selection is required for Admin creation.");
+                    }
+                    $station_target = (int)$_POST['station_id'];
+                    
+                    // Validate station exists and is active
+                    if (!StationManager::isValidActiveStation($station_target)) {
+                        throw new Exception("Selected station is not valid or inactive.");
+                    }
+                } else {
+                    // Staff or Manager: auto-assign to admin's station
+                    $station_target = $my_station_id;
+                }
+            } elseif ($my_role === 'manager') {
+                // Manager can only create Staff: auto-assign to manager's station
+                $station_target = $my_station_id;
+            } else {
+                // Staff cannot create users
+                throw new Exception("You do not have permission to create users.");
+            }
+
+            // Log station assignment attempt
+            StationManager::logStationAssignmentAttempt(
+                $me['id'],
+                $me['role'],
+                $my_station_id,
+                $station_target,
+                true
+            );
+
+            // Validate role permissions based on creator
+            if ($my_role === 'admin') {
+                // Admin can create Staff and Manager
+                if (!in_array($role, ['staff', 'manager'])) {
+                    throw new Exception("As an Admin, you can only create Staff or Manager users.");
+                }
+                
+                // ═══════════════════════════════════════════════════════════
+                // STRICT VALIDATION: One Manager per Station ONLY
+                // ═══════════════════════════════════════════════════════════
+                if ($role === 'manager') {
+                    // Check for ANY existing manager (active OR inactive) at this station
+                    $checkManager = $pdo->prepare("
+                        SELECT COUNT(*) 
+                        FROM users 
+                        WHERE role = 'manager' 
+                          AND station_id = ?
+                    ");
+                    $checkManager->execute([$my_station_id]);
+                    $managerCount = (int)$checkManager->fetchColumn();
+                    
+                    if ($managerCount > 0) {
+                        // Get existing manager name for better error message
+                        $existingMgr = $pdo->prepare("
+                            SELECT name, status 
+                            FROM users 
+                            WHERE role = 'manager' 
+                              AND station_id = ?
+                            LIMIT 1
+                        ");
+                        $existingMgr->execute([$my_station_id]);
+                        $mgrInfo = $existingMgr->fetch(PDO::FETCH_ASSOC);
+                        $mgrName = $mgrInfo['name'] ?? 'Unknown';
+                        $mgrStatus = $mgrInfo['status'] ?? 'active';
+                        
+                        throw new Exception("❌ Cannot create Manager. Your station already has a Manager: {$mgrName} (Status: {$mgrStatus}). Only ONE Manager is allowed per station. Please deactivate the existing Manager first if you need to replace them.");
+                    }
+                }
+                
+                // Note: Staff and Manager auto-assigned to admin's station - no station selection needed
+            } elseif ($my_role === 'superadmin') {
+                // Super Admin can create any role
+                if (!in_array($role, ['staff', 'manager', 'admin', 'superadmin'])) {
+                    throw new Exception("Invalid role selected.");
+                }
+                
+                // ═══════════════════════════════════════════════════════════
+                // STRICT VALIDATION: One Admin per Station ONLY
+                // ═══════════════════════════════════════════════════════════
+                if ($role === 'admin') {
+                    $checkAdmin = $pdo->prepare("
+                        SELECT COUNT(*) 
+                        FROM users 
+                        WHERE role = 'admin' 
+                          AND station_id = ?
+                    ");
+                    $checkAdmin->execute([$station_target]);
+                    $adminCount = (int)$checkAdmin->fetchColumn();
+                    
+                    if ($adminCount > 0) {
+                        // Get existing admin name
+                        $existingAdm = $pdo->prepare("
+                            SELECT name, status 
+                            FROM users 
+                            WHERE role = 'admin' 
+                              AND station_id = ?
+                            LIMIT 1
+                        ");
+                        $existingAdm->execute([$station_target]);
+                        $admInfo = $existingAdm->fetch(PDO::FETCH_ASSOC);
+                        $admName = $admInfo['name'] ?? 'Unknown';
+                        $admStatus = $admInfo['status'] ?? 'active';
+                        
+                        throw new Exception("❌ Cannot create Admin. This station already has an Admin: {$admName} (Status: {$admStatus}). Only ONE Admin is allowed per station.");
+                    }
+                }
+                
+                // ═══════════════════════════════════════════════════════════
+                // STRICT VALIDATION: One Manager per Station ONLY
+                // ═══════════════════════════════════════════════════════════
+                if ($role === 'manager') {
+                    $checkManager = $pdo->prepare("
+                        SELECT COUNT(*) 
+                        FROM users 
+                        WHERE role = 'manager' 
+                          AND station_id = ?
+                    ");
+                    $checkManager->execute([$station_target]);
+                    $managerCount = (int)$checkManager->fetchColumn();
+                    
+                    if ($managerCount > 0) {
+                        // Get existing manager name
+                        $existingMgr = $pdo->prepare("
+                            SELECT name, status 
+                            FROM users 
+                            WHERE role = 'manager' 
+                              AND station_id = ?
+                            LIMIT 1
+                        ");
+                        $existingMgr->execute([$station_target]);
+                        $mgrInfo = $existingMgr->fetch(PDO::FETCH_ASSOC);
+                        $mgrName = $mgrInfo['name'] ?? 'Unknown';
+                        $mgrStatus = $mgrInfo['status'] ?? 'active';
+                        
+                        throw new Exception("❌ Cannot create Manager. This station already has a Manager: {$mgrName} (Status: {$mgrStatus}). Only ONE Manager is allowed per station. Please contact system administrator if you need to replace the existing Manager.");
+                    }
+                }
+            }
+
+            $hashed = password_hash($password, PASSWORD_DEFAULT);
+
+            // Split full name into first_name and last_name for legacy database compatibility
+            $name_parts = explode(' ', trim($name));
+            if (count($name_parts) > 1) {
+                $last_name_val = array_pop($name_parts);
+                $first_name_val = implode(' ', $name_parts);
+            } else {
+                $first_name_val = $name;
+                $last_name_val = '';
+            }
+
+            $stmt = $pdo->prepare("INSERT INTO users (first_name, last_name, username, role, email, password_hash, station_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'Active', NOW())");
+            $stmt->execute([$first_name_val, $last_name_val, $username, $role, $email, $hashed, $station_target]);
+
+            // Get station name for email
+            $station_name_for_email = 'Unknown Station';
+            if ($station_target) {
+                $stn = $pdo->prepare("SELECT name FROM stations WHERE id = ?");
+                $stn->execute([$station_target]);
+                $stn_row = $stn->fetch(PDO::FETCH_ASSOC);
+                if ($stn_row) $station_name_for_email = $stn_row['name'];
+            }
+
+            // Send credentials via email only (SMS support removed)
+            $cred_sent = false;
+            if (!empty($email)) {
+                $cred_sent = sendAdminCredentialsEmail($email, $name, $station_name_for_email, $username, $password, $me['role']) ? true : false;
+            }
+
+            log_activity($pdo, $me['id'], 'Add User', "Created user $username ($role)");
+
+            if ($cred_sent) {
+                $msg = "✅ User created successfully. Credentials sent to {$email}.";
+            } else {
+                $msg = "✅ User created successfully. Temp Password: {$password} — share manually.";
+            }
+        }
+        
+        // 2. Edit User
+        

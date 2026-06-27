@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // Staff Layout Template - Includes sidebar navigation and main content area
 function renderStaffLayout($title, $content, $current_page = 'dashboard') {
     ?>
@@ -8,7 +8,7 @@ function renderStaffLayout($title, $content, $current_page = 'dashboard') {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title><?php echo htmlspecialchars($title); ?> - Staff Portal</title>
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+        <link rel="stylesheet" href="../assets/vendor/fontawesome/css/all.min.css">
         <style>
             * {
                 margin: 0;

@@ -340,13 +340,16 @@ require_once __DIR__ . '/../partials/header.php';
 <style>
 /* Reset and core alignment */
 * { box-sizing: border-box; }
-html, body { max-width: 100%; width: 100%; overflow-x: hidden !important; position: relative; }
-.mftv-wrap { max-width: 100%; width: 100%; box-sizing: border-box; }
+html, body { max-width: 100vw !important; width: 100%; overflow-x: hidden !important; position: relative; }
+.mftv-wrap { max-width: 100%; width: 100%; box-sizing: border-box; overflow-x: hidden !important; padding: 0 8px; }
+.main-content { max-width: 100% !important; overflow-x: hidden !important; padding: 0 !important; }
 
 /* Petron clean headers */
-.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; margin-top: -12px !important; }
-.int-head h1 { font-size: 22px !important; font-weight: 700 !important; color: #00264D !important; margin: 0 !important; text-transform: uppercase !important; display: flex; align-items: center; gap: 8px; }
-.int-head .sub { font-size: 13px; color: #64748b; margin-top: 4px; }
+.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; margin-top: 8px !important; padding-top: 8px; width: 100%; }
+.int-head > div:first-child { flex: 1; min-width: 280px; max-width: 65%; }
+.int-head > div:last-child { flex-shrink: 0; display: flex; gap: 8px; flex-wrap: wrap; }
+.int-head h1 { font-size: 22px !important; font-weight: 700 !important; color: #00264D !important; margin: 0 !important; text-transform: uppercase !important; display: flex; align-items: center; gap: 8px; line-height: 1.3; }
+.int-head .sub { font-size: 13px; color: #64748b; margin-top: 4px; line-height: 1.4; }
 
 /* Outline buttons */
 .ato-btn {
@@ -367,24 +370,19 @@ html, body { max-width: 100%; width: 100%; overflow-x: hidden !important; positi
 .ato-btn-reset:hover  { background: #f1f5f9 !important; }
 
 /* Summary Cards matching standard */
-.afto-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px; }
-.afto-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 11px; padding: 16px; display: flex; align-items: center; gap: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
-.afto-card.c-blue  { border-left: 4px solid #3b82f6; }
-.afto-card.c-green { border-left: 4px solid #10b981; }
-.afto-card.c-red   { border-left: 4px solid #ef4444; }
-.afto-card.c-amber { border-left: 4px solid #f59e0b; }
-.afto-card.c-purple{ border-left: 4px solid #8b5cf6; }
+.afto-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.afto-card { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 16px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 3px rgba(0,0,0,.05); position: relative; overflow: hidden; }
 
-.afto-card-ico { width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 19px; flex-shrink: 0; }
-.afto-card.c-blue .afto-card-ico   { background: #eff6ff; color: #3b82f6; }
-.afto-card.c-green .afto-card-ico  { background: #f0fdf4; color: #10b981; }
-.afto-card.c-red .afto-card-ico    { background: #fef2f2; color: #ef4444; }
-.afto-card.c-amber .afto-card-ico { background: #fffbeb; color: #f59e0b; }
-.afto-card.c-purple .afto-card-ico { background: #faf5ff; color: #8b5cf6; }
+.afto-card-info { display: flex; flex-direction: column; }
+.afto-card-lbl { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.afto-card-val { font-size: 20px; font-weight: 700; color: #1e293b; }
+.afto-card-icon { font-size: 24px; opacity: 0.8; }
 
-.afto-card-meta h3 { margin: 0; font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; letter-spacing: .5px; }
-.afto-card-meta h2 { margin: 2px 0 0; font-size: 22px; font-weight: 700; color: #00264D; line-height: 1; }
-.afto-card-meta span { font-size: 11px; color: #94a3b8; display: block; margin-top: 2px; }
+.afto-card.blue .afto-card-icon { color: #2563eb; }
+.afto-card.yellow .afto-card-icon { color: #d97706; }
+.afto-card.green .afto-card-icon { color: #16a34a; }
+.afto-card.red .afto-card-icon { color: #dc2626; }
+.afto-card.purple .afto-card-icon { color: #a855f7; }
 
 /* Filter Bar */
 .afto-filter { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; margin-bottom: 20px; }
@@ -394,16 +392,16 @@ html, body { max-width: 100%; width: 100%; overflow-x: hidden !important; positi
 .afto-fg input:focus, .afto-fg select:focus { border-color: #002F70; box-shadow: 0 0 0 3px rgba(0,47,112,.1); }
 
 /* Table Container & Layout */
-.afto-table-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 11px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.04); width: 100%; }
+.afto-table-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 11px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.04); width: 100%; max-width: 100%; }
 .afto-table-hd { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid #f1f5f9; flex-wrap: wrap; gap: 8px; }
 .afto-table-title { font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: .3px; margin: 0; }
-.afto-tbl-wrap { width: 100%; overflow-x: auto; }
-.afto-tbl { width: 100%; border-collapse: collapse; font-size: 11px; }
+.afto-tbl-wrap { width: 100%; max-width: 100%; overflow-x: hidden !important; }
+.afto-tbl { width: 100%; max-width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed; }
 .afto-tbl thead tr { background: #002F70; }
-.afto-tbl thead th { padding: 9px 10px; text-align: left; font-size: 11px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: .4px; border-bottom: 2px solid #001a3d; vertical-align: middle; white-space: nowrap; }
+.afto-tbl thead th { padding: 8px 6px; text-align: left; font-size: 10px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: .3px; border-bottom: 2px solid #001a3d; vertical-align: middle; white-space: nowrap; }
 .afto-tbl tbody tr { border-bottom: 1px solid #f1f5f9; transition: background .1s; }
 .afto-tbl tbody tr:hover td { background: #eff6ff; }
-.afto-tbl tbody td { padding: 9px 10px; color: #334155; vertical-align: middle; white-space: nowrap; background: #fff; font-size: 11px; }
+.afto-tbl tbody td { padding: 8px 6px; color: #334155; vertical-align: middle; background: #fff; font-size: 10px; word-wrap: break-word; overflow: hidden; text-overflow: ellipsis; }
 
 /* Status Badges */
 .afto-badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; white-space: nowrap; text-transform: uppercase; }
@@ -415,9 +413,9 @@ html, body { max-width: 100%; width: 100%; overflow-x: hidden !important; positi
 
 /* Action buttons */
 .row-btn {
-    padding: 0 10px; border-radius: 5px; font-size: 11px; font-weight: 700; border: 1px solid transparent; cursor: pointer;
-    display: inline-flex; align-items: center; justify-content: center; gap: 4px; transition: all .15s; text-transform: uppercase;
-    height: 28px; background: white !important; text-decoration: none;
+    padding: 0 8px; border-radius: 5px; font-size: 9px; font-weight: 700; border: 1px solid transparent; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: 3px; transition: all .15s; text-transform: uppercase;
+    height: 24px; background: white !important; text-decoration: none;
 }
 .row-btn-info    { color: #0284c7 !important; border-color: #0284c7 !important; }
 .row-btn-info:hover    { background: #0284c7 !important; color: #fff !important; }
@@ -467,54 +465,48 @@ html, body { max-width: 100%; width: 100%; overflow-x: hidden !important; positi
             <h1><i class="fas fa-truck-loading"></i> Fuel Deliveries Oversight</h1>
             <div class="sub">Monitor, audit, and validate fuel deliveries to maintain accurate station inventories.</div>
         </div>
-        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end;">
             <button type="button" onclick="mftvExport('excel')" class="ato-btn ato-btn-excel"><i class="fas fa-file-excel"></i> Excel</button>
             <button type="button" onclick="mftvExport('pdf')" class="ato-btn ato-btn-pdf"><i class="fas fa-file-pdf"></i> PDF</button>
-            <a href="manager_dashboard.php" class="ato-btn ato-btn-back"><i class="fas fa-arrow-left"></i> Back</a>
         </div>
     </div>
 
     <!-- Summary Cards -->
     <div class="afto-cards">
-        <div class="afto-card c-blue">
-            <div class="afto-card-ico"><i class="fas fa-clock"></i></div>
-            <div class="afto-card-meta">
-                <h3>Pending Deliveries</h3>
-                <h2><?= number_format($pending_count) ?></h2>
-                <span>Awaiting validation</span>
+        <div class="afto-card blue">
+            <div class="afto-card-info">
+                <span class="afto-card-lbl">Pending Deliveries</span>
+                <span class="afto-card-val"><?= number_format($pending_count) ?></span>
             </div>
+            <div class="afto-card-icon"><i class="fas fa-clock"></i></div>
         </div>
-        <div class="afto-card c-green">
-            <div class="afto-card-ico"><i class="fas fa-check-circle"></i></div>
-            <div class="afto-card-meta">
-                <h3>Verified Deliveries</h3>
-                <h2><?= number_format($verified_count) ?></h2>
-                <span>Approved and loaded</span>
+        <div class="afto-card green">
+            <div class="afto-card-info">
+                <span class="afto-card-lbl">Verified Deliveries</span>
+                <span class="afto-card-val"><?= number_format($verified_count) ?></span>
             </div>
+            <div class="afto-card-icon"><i class="fas fa-check-circle"></i></div>
         </div>
-        <div class="afto-card c-red">
-            <div class="afto-card-ico"><i class="fas fa-times-circle"></i></div>
-            <div class="afto-card-meta">
-                <h3>Rejected Deliveries</h3>
-                <h2><?= number_format($rejected_count) ?></h2>
-                <span>Returned deliveries</span>
+        <div class="afto-card red">
+            <div class="afto-card-info">
+                <span class="afto-card-lbl">Rejected Deliveries</span>
+                <span class="afto-card-val"><?= number_format($rejected_count) ?></span>
             </div>
+            <div class="afto-card-icon"><i class="fas fa-times-circle"></i></div>
         </div>
-        <div class="afto-card c-amber">
-            <div class="afto-card-ico"><i class="fas fa-tint"></i></div>
-            <div class="afto-card-meta">
-                <h3>Total Liters Delivered</h3>
-                <h2><?= number_format($total_liters_delivered, 2) ?> L</h2>
-                <span>Verified volume</span>
+        <div class="afto-card yellow">
+            <div class="afto-card-info">
+                <span class="afto-card-lbl">Total Liters Delivered</span>
+                <span class="afto-card-val"><?= number_format($total_liters_delivered, 2) ?> L</span>
             </div>
+            <div class="afto-card-icon"><i class="fas fa-tint"></i></div>
         </div>
-        <div class="afto-card c-purple">
-            <div class="afto-card-ico"><i class="fas fa-layer-group"></i></div>
-            <div class="afto-card-meta">
-                <h3>Total Delivery Records</h3>
-                <h2><?= number_format($total_records) ?></h2>
-                <span>Matching filter logs</span>
+        <div class="afto-card purple">
+            <div class="afto-card-info">
+                <span class="afto-card-lbl">Total Delivery Records</span>
+                <span class="afto-card-val"><?= number_format($total_records) ?></span>
             </div>
+            <div class="afto-card-icon"><i class="fas fa-layer-group"></i></div>
         </div>
     </div>
 
@@ -570,25 +562,24 @@ html, body { max-width: 100%; width: 100%; overflow-x: hidden !important; positi
             <table class="afto-tbl">
                 <thead>
                     <tr>
-                        <th>Delivery ID</th>
-                        <th>Delivery Date</th>
-                        <th>Batch ID</th>
-                        <th>DR Number</th>
-                        <th>Tanker Number</th>
-                        <th>Fuel Type</th>
-                        <th>Assigned Tank</th>
-                        <th style="text-align: right;">Liters Delivered</th>
-                        <th>Staff Receiver</th>
-                        <th>Status</th>
-                        <th>Verification Date</th>
-                        <th>Remarks</th>
-                        <th style="text-align: center; width: 150px;">Actions</th>
+                        <th style="width: 7%;">Del ID</th>
+                        <th style="width: 8%;">Date</th>
+                        <th style="width: 8%;">Batch ID</th>
+                        <th style="width: 8%;">DR No.</th>
+                        <th style="width: 8%;">Tanker</th>
+                        <th style="width: 7%;">Fuel</th>
+                        <th style="width: 8%;">Tank</th>
+                        <th style="text-align: right; width: 9%;">Liters</th>
+                        <th style="width: 9%;">Staff</th>
+                        <th style="width: 8%;">Status</th>
+                        <th style="width: 8%;">Verify Date</th>
+                        <th style="width: 12%;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (empty($deliveries)): ?>
                         <tr>
-                            <td colspan="13">
+                            <td colspan="12">
                                 <div class="afto-empty">
                                     <i class="fas fa-inbox"></i>
                                     <div style="font-size: 15px; font-weight: 700; color: #64748b; margin-bottom: 4px;">No records found</div>
@@ -605,35 +596,32 @@ html, body { max-width: 100%; width: 100%; overflow-x: hidden !important; positi
                             $tank_display = !empty($d['tank_assigned']) ? $d['tank_assigned'] : '—';
                         ?>
                             <tr id="del_row_<?= $d['id'] ?>">
-                                <td style="font-weight: 600; color: #00264D;"><?= $del_label ?></td>
-                                <td><?= date('M d, Y', strtotime($d['delivery_date'])) ?></td>
-                                <td><?= htmlspecialchars($batch_display) ?></td>
-                                <td><?= htmlspecialchars($dr_display) ?></td>
-                                <td><?= htmlspecialchars($tanker_display) ?></td>
-                                <td><?= htmlspecialchars($d['fuel_type']) ?></td>
-                                <td><?= htmlspecialchars($tank_display) ?></td>
-                                <td style="text-align: right; font-weight: 700; color: #1e293b;"><?= number_format($d['delivery_liters'], 2) ?> L</td>
-                                <td><?= htmlspecialchars($d['staff_name'] ?? '—') ?></td>
+                                <td style="font-weight: 600; color: #00264D; font-size: 9px;"><?= $del_label ?></td>
+                                <td style="font-size: 9px;"><?= date('M d, Y', strtotime($d['delivery_date'])) ?></td>
+                                <td style="font-size: 9px;"><?= htmlspecialchars(substr($batch_display, 0, 12)) ?></td>
+                                <td style="font-size: 9px;"><?= htmlspecialchars(substr($dr_display, 0, 10)) ?></td>
+                                <td style="font-size: 9px;"><?= htmlspecialchars(substr($tanker_display, 0, 10)) ?></td>
+                                <td style="font-size: 9px;"><?= htmlspecialchars(substr($d['fuel_type'], 0, 8)) ?></td>
+                                <td style="font-size: 9px;"><?= htmlspecialchars(substr($tank_display, 0, 10)) ?></td>
+                                <td style="text-align: right; font-weight: 700; color: #1e293b; font-size: 9px;"><?= number_format($d['delivery_liters'], 2) ?> L</td>
+                                <td style="font-size: 9px;"><?= htmlspecialchars(substr($d['staff_name'] ?? '—', 0, 10)) ?></td>
                                 <td><span class="afto-badge <?= getStatusBadgeClass($d['status'] ?? '') ?>"><?= getStatusLabel($d['status'] ?? '') ?></span></td>
-                                <td><?= $d['verified_at'] ? date('M d, Y H:i', strtotime($d['verified_at'])) : '—' ?></td>
-                                <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="<?= htmlspecialchars($d['notes'] ?? '—') ?>">
-                                    <?= htmlspecialchars($d['notes'] ?? '—') ?>
-                                </td>
+                                <td style="font-size: 9px;"><?= $d['verified_at'] ? date('M d, H:i', strtotime($d['verified_at'])) : '—' ?></td>
                                 <td style="text-align: center;">
-                                    <div style="display: inline-flex; gap: 4px;">
-                                        <button type="button" class="row-btn row-btn-info" onclick="viewDetails(<?= htmlspecialchars(json_encode($d)) ?>)" title="View Details">
-                                            <i class="fas fa-eye"></i>
+                                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                                        <button type="button" class="row-btn row-btn-info" onclick="viewDetails(<?= htmlspecialchars(json_encode($d)) ?>)" title="View Details" style="width: 100%; font-size: 9px;">
+                                            <i class="fas fa-eye"></i> View
                                         </button>
                                         <?php if (in_array(strtolower(trim($d['status'] ?? '')), ['pending', 'pending validation', 'pending manager approval', 'pending manager validation'])): ?>
-                                            <button type="button" class="row-btn row-btn-success" onclick="openValidate(<?= $d['id'] ?>, '<?= $del_label ?>')" title="Verify Delivery">
-                                                <i class="fas fa-check"></i>
+                                            <button type="button" class="row-btn row-btn-success" onclick="openValidate(<?= $d['id'] ?>, '<?= $del_label ?>')" title="Verify Delivery" style="width: 100%; font-size: 9px;">
+                                                <i class="fas fa-check"></i> Verify
                                             </button>
-                                            <button type="button" class="row-btn row-btn-danger" onclick="openReject(<?= $d['id'] ?>, '<?= $del_label ?>')" title="Reject Delivery">
-                                                <i class="fas fa-times"></i>
+                                            <button type="button" class="row-btn row-btn-danger" onclick="openReject(<?= $d['id'] ?>, '<?= $del_label ?>')" title="Reject Delivery" style="width: 100%; font-size: 9px;">
+                                                <i class="fas fa-times"></i> Reject
                                             </button>
                                         <?php endif; ?>
-                                        <button type="button" class="row-btn row-btn-print" onclick="printSingleDelivery(<?= htmlspecialchars(json_encode($d)) ?>)" title="Print Delivery Receipt">
-                                            <i class="fas fa-print"></i>
+                                        <button type="button" class="row-btn row-btn-print" onclick="printSingleDelivery(<?= htmlspecialchars(json_encode($d)) ?>)" title="Print Delivery Receipt" style="width: 100%; font-size: 9px;">
+                                            <i class="fas fa-print"></i> Print
                                         </button>
                                     </div>
                                 </td>
@@ -670,8 +658,12 @@ html, body { max-width: 100%; width: 100%; overflow-x: hidden !important; positi
 <div id="viewModal" class="modal">
     <div class="modal-content" style="max-width: 550px;">
         <div class="modal-header">
-            <h3>Delivery Details</h3>
-            <span class="modal-close" onclick="closeModal('viewModal')">&times;</span>
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:36px;height:36px;background:#eff6ff;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-eye" style="color:#0284c7;font-size:15px;"></i>
+                </div>
+                <h3 style="margin:0;">Delivery Details</h3>
+            </div>
         </div>
         <div class="modal-body">
             <div class="details-list">
@@ -743,8 +735,12 @@ html, body { max-width: 100%; width: 100%; overflow-x: hidden !important; positi
 <div id="validateModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
-            <h3>Verify Fuel Delivery</h3>
-            <span class="modal-close" onclick="closeModal('validateModal')">&times;</span>
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:36px;height:36px;background:#f0fdf4;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-check" style="color:#16a34a;font-size:15px;"></i>
+                </div>
+                <h3 style="margin:0;">Verify Fuel Delivery</h3>
+            </div>
         </div>
         <form method="post" id="validateForm">
             <div class="modal-body">
@@ -764,8 +760,12 @@ html, body { max-width: 100%; width: 100%; overflow-x: hidden !important; positi
 <div id="rejectModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
-            <h3>Reject Delivery</h3>
-            <span class="modal-close" onclick="closeModal('rejectModal')">&times;</span>
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:36px;height:36px;background:#fef2f2;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-times" style="color:#dc2626;font-size:15px;"></i>
+                </div>
+                <h3 style="margin:0;">Reject Delivery</h3>
+            </div>
         </div>
         <form method="post" id="rejectForm">
             <div class="modal-body">

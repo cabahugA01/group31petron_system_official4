@@ -130,8 +130,8 @@ try {
 
 // ========== GET SHIFT INFO ==========
 
-$shift_period = '';
-$shift_name = '';
+$shift_period = $_SESSION['current_shift_key'] ?? '';
+$shift_name = $_SESSION['current_shift_label'] ?? '';
 try {
     // Check active labor session first
     $stmt = $pdo->prepare("
@@ -147,30 +147,41 @@ try {
     if ($active_shift) {
         $shift_period = $active_shift['shift_period'];
         $shift_name = $active_shift['shift_name'];
-    } else {
-        // Fall back to time-based detection
-        $current_time = date('H:i:s');
-        $stmt = $pdo->prepare("
-            SELECT shift_key, shift_name 
-            FROM shift_periods 
-            WHERE is_active = 1 
-              AND start_time <= ? 
-              AND end_time >= ? 
-            ORDER BY sort_order ASC 
-            LIMIT 1
-        ");
-        $stmt->execute([$current_time, $current_time]);
-        $detected_shift = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if ($detected_shift) {
-            $shift_period = $detected_shift['shift_key'];
-            $shift_name = $detected_shift['shift_name'];
+    } elseif (empty($shift_period)) {
+        // Fall back to user's assigned shift in profile
+        $user_assigned_shift = strtolower(trim((string)($me['assigned_shift'] ?? '')));
+        if (strpos($user_assigned_shift, 'shift 1') !== false || strpos($user_assigned_shift, '1') !== false || $user_assigned_shift === 'first') {
+            $shift_period = 'first';
+            $shift_name = 'First Shift: 6:00 AM – 2:00 PM';
+        } elseif (strpos($user_assigned_shift, 'shift 2') !== false || strpos($user_assigned_shift, '2') !== false || $user_assigned_shift === 'second') {
+            $shift_period = 'second';
+            $shift_name = 'Second Shift: 2:00 PM – 12:00 Midnight';
+        } else {
+            // Fall back to time-based detection
+            $current_time = date('H:i:s');
+            $stmt = $pdo->prepare("
+                SELECT shift_key, shift_name 
+                FROM shift_periods 
+                WHERE is_active = 1 
+                  AND start_time <= ? 
+                  AND end_time >= ? 
+                ORDER BY sort_order ASC 
+                LIMIT 1
+            ");
+            $stmt->execute([$current_time, $current_time]);
+            $detected_shift = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($detected_shift) {
+                $shift_period = $detected_shift['shift_key'];
+                $shift_name = $detected_shift['shift_name'];
+            }
         }
     }
 } catch (Exception $e) {
-    // Default shift
-    $shift_period = 'general';
-    $shift_name = 'General';
+    if (empty($shift_period)) {
+        $shift_period = 'general';
+        $shift_name = 'General';
+    }
 }
 
 // ========== LOAD TAB-SPECIFIC DATA ==========

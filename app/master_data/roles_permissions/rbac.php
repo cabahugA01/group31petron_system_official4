@@ -38,6 +38,40 @@ define('APPROVE_DELIVERIES', 'APPROVE_DELIVERIES');
 define('VIEW_LOGS', 'VIEW_LOGS');
 define('APPROVE_REPORTS', 'APPROVE_REPORTS');
 
+// ═══════════════════════════════════════════════════════════════════════════
+// INVENTORY PERMISSIONS - Complete Permission Matrix
+// ═══════════════════════════════════════════════════════════════════════════
+
+// View & Monitor Permissions (All Roles)
+define('VIEW_FUEL_INVENTORY', 'VIEW_FUEL_INVENTORY');
+define('VIEW_MERCHANDISE_INVENTORY', 'VIEW_MERCHANDISE_INVENTORY');
+define('SEARCH_FILTER_INVENTORY', 'SEARCH_FILTER_INVENTORY');
+define('VIEW_INVENTORY_DETAILS', 'VIEW_INVENTORY_DETAILS');
+define('LOW_STOCK_MONITORING', 'LOW_STOCK_MONITORING');
+define('VIEW_INVENTORY_HISTORY', 'VIEW_INVENTORY_HISTORY');
+
+// Staff Permissions (Monitoring & Requests)
+define('SUBMIT_STOCK_REQUEST', 'SUBMIT_STOCK_REQUEST');
+
+// Manager Permissions (Operational Management)
+define('APPROVE_STOCK_REQUEST', 'APPROVE_STOCK_REQUEST');
+define('GENERATE_PURCHASE_ORDER', 'GENERATE_PURCHASE_ORDER');
+define('RECEIVE_DELIVERIES', 'RECEIVE_DELIVERIES');
+define('STOCK_IN_INVENTORY', 'STOCK_IN_INVENTORY');
+define('INVENTORY_ADJUSTMENT', 'INVENTORY_ADJUSTMENT');
+define('INVENTORY_COUNT', 'INVENTORY_COUNT');
+define('GENERATE_INVENTORY_REPORTS', 'GENERATE_INVENTORY_REPORTS');
+define('EXPORT_INVENTORY_REPORTS', 'EXPORT_INVENTORY_REPORTS');
+
+// Admin Permissions (Oversight & Audit)
+define('MONITOR_INVENTORY_ADJUSTMENTS', 'MONITOR_INVENTORY_ADJUSTMENTS');
+define('ROLLBACK_INVENTORY_ADJUSTMENTS', 'ROLLBACK_INVENTORY_ADJUSTMENTS');
+define('VIEW_INVENTORY_COUNT', 'VIEW_INVENTORY_COUNT');
+define('VIEW_INVENTORY_AUDIT_TRAIL', 'VIEW_INVENTORY_AUDIT_TRAIL');
+define('BACKUP_INVENTORY', 'BACKUP_INVENTORY');
+define('VIEW_INVENTORY_REPORTS_ADMIN', 'VIEW_INVENTORY_REPORTS_ADMIN');
+define('EXPORT_INVENTORY_REPORTS_ADMIN', 'EXPORT_INVENTORY_REPORTS_ADMIN');
+
 // Role permissions mapping
 $role_permissions = [
     'superadmin' => [
@@ -83,6 +117,21 @@ $role_permissions = [
         VIEW_TRANSACTION_LOGS, // Limited to their station
         VIEW_INVENTORY_LOGS, // Limited to their station
         UNLOCK_RECORDS, // Can unlock finalized records with password + reason
+        
+        // Inventory - Oversight, Audit Trail, Reports, Rollback, Backup
+        VIEW_FUEL_INVENTORY,
+        VIEW_MERCHANDISE_INVENTORY,
+        SEARCH_FILTER_INVENTORY,
+        VIEW_INVENTORY_DETAILS,
+        LOW_STOCK_MONITORING,
+        VIEW_INVENTORY_HISTORY,
+        MONITOR_INVENTORY_ADJUSTMENTS,
+        ROLLBACK_INVENTORY_ADJUSTMENTS,
+        VIEW_INVENTORY_COUNT,
+        VIEW_INVENTORY_AUDIT_TRAIL,
+        BACKUP_INVENTORY,
+        VIEW_INVENTORY_REPORTS_ADMIN,
+        EXPORT_INVENTORY_REPORTS_ADMIN,
     ],
     
     'manager' => [
@@ -117,11 +166,37 @@ $role_permissions = [
         GENERATE_JOB_ORDER_REPORT, // Limited to their station
         VIEW_USER_LOGS, // Limited to their station
         VIEW_TRANSACTION_LOGS, // Limited to their station
+        
+        // Inventory - Operational Management (Full Control)
+        VIEW_FUEL_INVENTORY,
+        VIEW_MERCHANDISE_INVENTORY,
+        SEARCH_FILTER_INVENTORY,
+        VIEW_INVENTORY_DETAILS,
+        LOW_STOCK_MONITORING,
+        SUBMIT_STOCK_REQUEST,
+        APPROVE_STOCK_REQUEST,
+        GENERATE_PURCHASE_ORDER,
+        RECEIVE_DELIVERIES,
+        STOCK_IN_INVENTORY,
+        INVENTORY_ADJUSTMENT,
+        INVENTORY_COUNT,
+        VIEW_INVENTORY_HISTORY,
+        GENERATE_INVENTORY_REPORTS,
+        EXPORT_INVENTORY_REPORTS,
     ],
     
     'staff' => [
         // Basic permissions
         VIEW_STATION_PROFILE,
+        
+        // Inventory - Monitoring & Stock Requests
+        VIEW_FUEL_INVENTORY,
+        VIEW_MERCHANDISE_INVENTORY,
+        SEARCH_FILTER_INVENTORY,
+        VIEW_INVENTORY_DETAILS,
+        LOW_STOCK_MONITORING,
+        SUBMIT_STOCK_REQUEST,
+        VIEW_INVENTORY_HISTORY,
     ]
 ];
 

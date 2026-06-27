@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'shift_transactions_view';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -530,5 +530,5 @@ function exportShiftTransactions(format) {
 .sht-table tbody td { padding:11px 14px;vertical-align:middle;color:#334155; }
 </style>
 
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="../assets/vendor/xlsx/xlsx.full.min.js"></script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

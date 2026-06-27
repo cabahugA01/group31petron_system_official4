@@ -1,0 +1,315 @@
+<?php
+/**
+ * Inventory Database Setup Script
+ * Creates and verifies all necessary tables for inventory management
+ */
+
+require_once __DIR__ . '/public/db_connect.php';
+
+echo "=== INVENTORY DATABASE SETUP ===\n\n";
+
+$success_count = 0;
+$error_count = 0;
+$messages = [];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 1. INVENTORY CATEGORIES TABLE
+// ═══════════════════════════════════════════════════════════════════════════
+try {
+    $sql = "CREATE TABLE IF NOT EXISTS inventory_categories (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        category_name VARCHAR(100) NOT NULL UNIQUE,
+        category_type ENUM('Fuel', 'Merchandise', 'Service', 'Other') DEFAULT 'Merchandise',
+        description TEXT,
+        parent_category_id INT NULL,
+        display_order INT DEFAULT 0,
+        icon VARCHAR(50) DEFAULT 'fa-box',
+        color VARCHAR(20) DEFAULT '#3b82f6',
+        is_active TINYINT(1) DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        created_by INT NULL,
+        FOREIGN KEY (parent_category_id) REFERENCES inventory_categories(id) ON DELETE SET NULL,
+        INDEX idx_category_type (category_type),
+        INDEX idx_active (is_active)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    
+    $pdo->exec($sql);
+    $messages[] = "✅ inventory_categories table created/verified";
+    $success_count++;
+} catch (Exception $e) {
+    $messages[] = "❌ Error creating inventory_categories: " . $e->getMessage();
+    $error_count++;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 2. INSERT DEFAULT CATEGORIES
+// ═══════════════════════════════════════════════════════════════════════════
+$default_categories = [
+    // Fuel Categories
+    ['Fuel', 'Fuel', 'All fuel products', 'fa-gas-pump', '#dc2626'],
+    ['Gasoline', 'Fuel', 'Gasoline products', 'fa-gas-pump', '#dc2626'],
+    ['Diesel', 'Fuel', 'Diesel products', 'fa-gas-pump', '#ea580c'],
+    
+    // Merchandise - Automotive
+    ['Oils / Lubes / Grease', 'Merchandise', 'Engine oils, lubricants, and grease', 'fa-oil-can', '#0891b2'],
+    ['Engine Oil', 'Merchandise', 'Engine oil products', 'fa-oil-can', '#0891b2'],
+    ['Transmission Oil', 'Merchandise', 'Transmission fluid products', 'fa-oil-can', '#06b6d4'],
+    ['Gear Oil', 'Merchandise', 'Gear oil products', 'fa-cog', '#0e7490'],
+    ['Brake Fluid', 'Merchandise', 'Brake fluid products', 'fa-brake', '#b91c1c'],
+    ['Coolant', 'Merchandise', 'Engine coolant / antifreeze', 'fa-temperature-low', '#3b82f6'],
+    
+    // Merchandise - Filters
+    ['Oil / Fuel Filters', 'Merchandise', 'Oil and fuel filters', 'fa-filter', '#7c3aed'],
+    ['Oil Filter', 'Merchandise', 'Engine oil filters', 'fa-filter', '#8b5cf6'],
+    ['Fuel Filter', 'Merchandise', 'Fuel filters', 'fa-filter', '#a855f7'],
+    ['Air Filter', 'Merchandise', 'Air filters', 'fa-wind', '#c084fc'],
+    
+    // Merchandise - Maintenance
+    ['Maintenance', 'Merchandise', 'General maintenance items', 'fa-wrench', '#059669'],
+    ['Spark Plugs', 'Merchandise', 'Spark plugs', 'fa-bolt', '#10b981'],
+    ['Belts', 'Merchandise', 'Drive belts', 'fa-link', '#34d399'],
+    ['Hoses', 'Merchandise', 'Radiator and fuel hoses', 'fa-slash', '#6ee7b7'],
+    
+    // Merchandise - Accessories
+    ['Car Accessories', 'Merchandise', 'General car accessories', 'fa-car', '#f59e0b'],
+    ['Tire', 'Merchandise', 'Tires and tire products', 'fa-circle', '#1e293b'],
+    ['Tire Sealant', 'Merchandise', 'Tire sealant products', 'fa-fill-drip', '#475569'],
+    ['Car Wax', 'Merchandise', 'Car wax and polish', 'fa-star', '#fbbf24'],
+    ['Car Wash', 'Merchandise', 'Car wash products', 'fa-soap', '#60a5fa'],
+    ['Air Freshener', 'Merchandise', 'Air fresheners', 'fa-wind', '#a78bfa'],
+    
+    // Merchandise - Brake System
+    ['Brake System', 'Merchandise', 'Brake system components', 'fa-brake', '#dc2626'],
+    ['Brake Pads', 'Merchandise', 'Brake pad sets', 'fa-brake', '#ef4444'],
+    ['Brake Shoes', 'Merchandise', 'Brake shoe sets', 'fa-shoe-prints', '#f87171'],
+    
+    // Merchandise - Convenience Store
+    ['Others (Snacks / Drinks)', 'Merchandise', 'Convenience store items', 'fa-shopping-basket', '#16a34a'],
+    ['Beverages', 'Merchandise', 'Drinks and beverages', 'fa-coffee', '#22c55e'],
+    ['Soft Drinks', 'Merchandise', 'Carbonated soft drinks', 'fa-glass', '#4ade80'],
+    ['Water', 'Merchandise', 'Bottled water', 'fa-tint', '#86efac'],
+    ['Energy Drinks', 'Merchandise', 'Energy drinks', 'fa-bolt', '#bef264'],
+    ['Snacks', 'Merchandise', 'Chips, crackers, snacks', 'fa-cookie', '#fbbf24'],
+    ['Chips', 'Merchandise', 'Potato chips', 'fa-cookie-bite', '#fcd34d'],
+    ['Biscuits', 'Merchandise', 'Biscuits and cookies', 'fa-cookie', '#fde047'],
+    ['Candy', 'Merchandise', 'Candies and sweets', 'fa-candy-cane', '#fb923c'],
+    ['Chocolate', 'Merchandise', 'Chocolate products', 'fa-square', '#78350f'],
+    ['Instant Noodles', 'Merchandise', 'Cup noodles and instant meals', 'fa-bowl-food', '#fb7185'],
+    
+    // Service Categories
+    ['Service', 'Service', 'Service offerings', 'fa-tools', '#6366f1'],
+    ['Oil Change', 'Service', 'Oil change service', 'fa-oil-can', '#4f46e5'],
+    ['Tire Service', 'Service', 'Tire repair and replacement', 'fa-circle', '#312e81'],
+    ['Car Wash Service', 'Service', 'Vehicle washing service', 'fa-car-side', '#0ea5e9'],
+    
+    // Other
+    ['Uncategorized', 'Other', 'Uncategorized items', 'fa-question', '#6b7280'],
+    ['Chemical Additives', 'Merchandise', 'Fuel and engine additives', 'fa-flask', '#ec4899'],
+];
+
+$stmt_check = $pdo->prepare("SELECT COUNT(*) FROM inventory_categories WHERE category_name = ?");
+$stmt_insert = $pdo->prepare("
+    INSERT INTO inventory_categories 
+        (category_name, category_type, description, icon, color, display_order, is_active) 
+    VALUES (?, ?, ?, ?, ?, ?, 1)
+");
+
+$category_count = 0;
+foreach ($default_categories as $index => $cat) {
+    try {
+        $stmt_check->execute([$cat[0]]);
+        if ($stmt_check->fetchColumn() == 0) {
+            $stmt_insert->execute([
+                $cat[0], // category_name
+                $cat[1], // category_type
+                $cat[2], // description
+                $cat[3], // icon
+                $cat[4], // color
+                $index   // display_order
+            ]);
+            $category_count++;
+        }
+    } catch (Exception $e) {
+        // Ignore duplicates
+    }
+}
+
+if ($category_count > 0) {
+    $messages[] = "✅ Inserted $category_count default categories";
+    $success_count++;
+} else {
+    $messages[] = "ℹ️  All default categories already exist";
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 3. UPDATE inventory_products TABLE (add category_id column)
+// ═══════════════════════════════════════════════════════════════════════════
+try {
+    // Check if category_id column exists
+    $stmt = $pdo->query("SHOW COLUMNS FROM inventory_products LIKE 'category_id'");
+    if ($stmt->rowCount() == 0) {
+        $pdo->exec("ALTER TABLE inventory_products ADD COLUMN category_id INT NULL AFTER category");
+        $pdo->exec("ALTER TABLE inventory_products ADD FOREIGN KEY (category_id) REFERENCES inventory_categories(id) ON DELETE SET NULL");
+        $pdo->exec("ALTER TABLE inventory_products ADD INDEX idx_category_id (category_id)");
+        $messages[] = "✅ Added category_id column to inventory_products";
+        $success_count++;
+    } else {
+        $messages[] = "ℹ️  category_id column already exists in inventory_products";
+    }
+} catch (Exception $e) {
+    $messages[] = "❌ Error updating inventory_products: " . $e->getMessage();
+    $error_count++;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 4. MAP EXISTING CATEGORIES TO category_id
+// ═══════════════════════════════════════════════════════════════════════════
+try {
+    $pdo->exec("
+        UPDATE inventory_products ip
+        JOIN inventory_categories ic ON LOWER(TRIM(ip.category)) = LOWER(TRIM(ic.category_name))
+        SET ip.category_id = ic.id
+        WHERE ip.category_id IS NULL AND ip.category IS NOT NULL
+    ");
+    
+    $mapped = $pdo->query("SELECT COUNT(*) FROM inventory_products WHERE category_id IS NOT NULL")->fetchColumn();
+    $messages[] = "✅ Mapped $mapped products to categories";
+    $success_count++;
+} catch (Exception $e) {
+    $messages[] = "❌ Error mapping categories: " . $e->getMessage();
+    $error_count++;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 5. VERIFY INVENTORY LOGS TABLE
+// ═══════════════════════════════════════════════════════════════════════════
+try {
+    $sql = "CREATE TABLE IF NOT EXISTS inventory_logs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        station_id INT NOT NULL,
+        product_id INT NOT NULL,
+        action VARCHAR(50) NOT NULL COMMENT 'delivery, sale, adjustment, stock_in, release',
+        quantity_change DECIMAL(10,2) NOT NULL,
+        quantity_before DECIMAL(10,2) DEFAULT 0,
+        quantity_after DECIMAL(10,2) DEFAULT 0,
+        reference_type VARCHAR(50) NULL COMMENT 'purchase_order, transaction, manual',
+        reference_id INT NULL,
+        notes TEXT,
+        user_id INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (station_id) REFERENCES stations(id) ON DELETE CASCADE,
+        FOREIGN KEY (product_id) REFERENCES inventory_products(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        INDEX idx_station_product (station_id, product_id),
+        INDEX idx_action (action),
+        INDEX idx_created (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    
+    $pdo->exec($sql);
+    $messages[] = "✅ inventory_logs table created/verified";
+    $success_count++;
+} catch (Exception $e) {
+    $messages[] = "❌ Error creating inventory_logs: " . $e->getMessage();
+    $error_count++;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 6. VERIFY STOCK REQUESTS TABLE
+// ═══════════════════════════════════════════════════════════════════════════
+try {
+    $sql = "CREATE TABLE IF NOT EXISTS stock_requests (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        staff_id INT NOT NULL,
+        station_id INT NOT NULL,
+        item_id INT NOT NULL,
+        item_sku VARCHAR(50),
+        item_name VARCHAR(255) NOT NULL,
+        item_category VARCHAR(100),
+        current_stock DECIMAL(10,2) DEFAULT 0,
+        requested_quantity DECIMAL(10,2) NOT NULL,
+        approved_quantity DECIMAL(10,2) DEFAULT 0,
+        remarks TEXT,
+        status ENUM('Pending', 'Approved', 'Rejected', 'Forwarded to Admin') DEFAULT 'Pending',
+        manager_id INT NULL,
+        manager_notes TEXT,
+        processed_at TIMESTAMP NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (staff_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (station_id) REFERENCES stations(id) ON DELETE CASCADE,
+        FOREIGN KEY (item_id) REFERENCES inventory_products(id) ON DELETE CASCADE,
+        FOREIGN KEY (manager_id) REFERENCES users(id) ON DELETE SET NULL,
+        INDEX idx_status (status),
+        INDEX idx_station (station_id),
+        INDEX idx_created (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    
+    $pdo->exec($sql);
+    $messages[] = "✅ stock_requests table created/verified";
+    $success_count++;
+} catch (Exception $e) {
+    $messages[] = "❌ Error creating stock_requests: " . $e->getMessage();
+    $error_count++;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 7. VERIFY STOCK REQUEST AUDIT TABLE
+// ═══════════════════════════════════════════════════════════════════════════
+try {
+    $sql = "CREATE TABLE IF NOT EXISTS stock_request_audit (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        stock_request_id INT NOT NULL,
+        action_type VARCHAR(50) NOT NULL COMMENT 'Submitted, Approved, Rejected, Forwarded to Admin',
+        performed_by INT NOT NULL,
+        performed_by_role VARCHAR(50) NOT NULL,
+        old_status VARCHAR(50),
+        new_status VARCHAR(50),
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (stock_request_id) REFERENCES stock_requests(id) ON DELETE CASCADE,
+        FOREIGN KEY (performed_by) REFERENCES users(id) ON DELETE CASCADE,
+        INDEX idx_request (stock_request_id),
+        INDEX idx_created (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    
+    $pdo->exec($sql);
+    $messages[] = "✅ stock_request_audit table created/verified";
+    $success_count++;
+} catch (Exception $e) {
+    $messages[] = "❌ Error creating stock_request_audit: " . $e->getMessage();
+    $error_count++;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 8. SUMMARY
+// ═══════════════════════════════════════════════════════════════════════════
+echo "\n=== SETUP RESULTS ===\n";
+foreach ($messages as $msg) {
+    echo $msg . "\n";
+}
+
+echo "\n=== SUMMARY ===\n";
+echo "✅ Successful: $success_count\n";
+echo "❌ Errors: $error_count\n";
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 9. DISPLAY CATEGORY COUNT
+// ═══════════════════════════════════════════════════════════════════════════
+try {
+    $stmt = $pdo->query("SELECT category_type, COUNT(*) as count FROM inventory_categories WHERE is_active = 1 GROUP BY category_type");
+    $counts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    echo "\n=== CATEGORY COUNTS ===\n";
+    foreach ($counts as $row) {
+        echo "{$row['category_type']}: {$row['count']} categories\n";
+    }
+    
+    $total = $pdo->query("SELECT COUNT(*) FROM inventory_categories WHERE is_active = 1")->fetchColumn();
+    echo "Total Active Categories: $total\n";
+} catch (Exception $e) {
+    echo "Error getting category counts: " . $e->getMessage() . "\n";
+}
+
+echo "\n=== SETUP COMPLETE ===\n";
+?>

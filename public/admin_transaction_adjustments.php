@@ -60,9 +60,13 @@ $rows=[];
 try {
     $s=$pdo->prepare("SELECT ta.id as adj_id, ta.transaction_id, COALESCE(ta.customer_name,'Walk-in') as customer,
         ta.transaction_type, ta.original_amount, ta.updated_amount, ta.amount_difference,
-        ta.adjustment_reason, ta.manager_remarks, ta.adjustment_date,
-        COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),' '),u.username,'Unknown') as adjusted_by_name
-        FROM transaction_adjustments ta LEFT JOIN users u ON u.id=ta.adjusted_by
+        ta.adjustment_reason, ta.manager_remarks, ta.adjustment_date, ta.fields_changed,
+        mt.job_order_id, mt.job_order_vehicle_plate, mt.payment_method, mt.workflow_status,
+        COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),' '),u.username,'Unknown') as adjusted_by_name,
+        (SELECT GROUP_CONCAT(product_name SEPARATOR ', ') FROM merchandise_transaction_items WHERE transaction_id = mt.id) AS item_names
+        FROM transaction_adjustments ta 
+        LEFT JOIN merchandise_transactions mt ON mt.transaction_id COLLATE utf8mb4_unicode_ci = ta.transaction_id COLLATE utf8mb4_unicode_ci
+        LEFT JOIN users u ON u.id=ta.adjusted_by
         $where ORDER BY ta.adjustment_date DESC LIMIT 500");
     $s->execute($params); $rows=$s->fetchAll(PDO::FETCH_ASSOC);
 } catch(Exception $e){}
@@ -111,6 +115,13 @@ require_once __DIR__ . '/../partials/header.php';
 .t tbody td{padding:9px 12px;color:#334155;background:#fff;font-size:12px;vertical-align:middle;}
 .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;}
 .badge-up{background:#dcfce7;color:#166534;} .badge-dn{background:#fee2e2;color:#991b1b;} .badge-neutral{background:#f1f5f9;color:#475569;}
+.card-table-wrap { width: 100%; overflow: hidden; }
+.t-compact { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.t-compact thead tr { background: #002F70; }
+.t-compact th { padding: 7px 4px !important; font-size: 10.5px !important; font-weight: 700 !important; color: #fff !important; text-transform: uppercase; letter-spacing: .2px; border: none; text-align: left; white-space: nowrap; line-height: 1.2; }
+.t-compact tbody tr { border: none; }
+.t-compact tbody tr:hover td { background: #eff6ff !important; }
+.t-compact td { padding: 7px 4px !important; color: #334155 !important; background: #fff; font-size: 11.5px !important; vertical-align: middle; border: none; border-bottom: 1px solid #f1f5f9; line-height: 1.3; overflow: hidden; }
 </style>
 
 <div class="page-head txn-page-head">
@@ -166,32 +177,140 @@ require_once __DIR__ . '/../partials/header.php';
     <div class="card-head">
         <div class="card-title"><i class="fas fa-table" style="margin-right:6px;"></i>Adjustment Records (<?=count($rows)?> records)</div>
     </div>
-    <div style="overflow-x:auto;">
-    <table class="t">
+    <div class="card-table-wrap">
+    <table class="t-compact">
         <thead>
             <tr>
-                <th>Adjustment ID</th><th>Transaction ID</th><th>Customer Name</th>
-                <th>Original Amount</th><th>Updated Amount</th><th>Adjustment Reason</th>
-                <th>Adjusted By</th><th>Adjustment Date</th><th>Actions</th>
+                <th style="width: 3.5%;">Adj ID</th>
+                <th style="width: 7%;">Trans ID</th>
+                <th style="width: 3.5%;">JO No.</th>
+                <th style="width: 7.5%;">Customer</th>
+                <th style="width: 4.5%;">Plate</th>
+                <th style="width: 4.5%;">Type</th>
+                <th style="width: 10%;">Items/Service</th>
+                <th style="width: 3.5%; text-align:center;">Orig Qty</th>
+                <th style="width: 3.5%; text-align:center;">Upd Qty</th>
+                <th style="width: 5.5%;">Orig Amt</th>
+                <th style="width: 5.5%;">Upd Amt</th>
+                <th style="width: 5.5%;">Diff</th>
+                <th style="width: 4.5%;">Payment</th>
+                <th style="width: 5.5%;">Adj Type</th>
+                <th style="width: 9.5%;">Reason</th>
+                <th style="width: 5.5%;">By</th>
+                <th style="width: 4.5%; text-align:center;">Status</th>
+                <th style="width: 6.5%;">Date/Time</th>
+                <th style="width: 5.5%; text-align:center;">Action</th>
             </tr>
         </thead>
         <tbody>
         <?php if(empty($rows)): ?>
-        <tr><td colspan="9" style="text-align:center;padding:40px;color:#94a3b8;"><i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>No adjustment records found</td></tr>
+        <tr><td colspan="19" style="text-align:center;padding:40px;color:#94a3b8;"><i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>No adjustment records found</td></tr>
         <?php else: ?>
         <?php foreach($rows as $r): ?>
-        <?php $diff=(float)$r['amount_difference']; ?>
+        <?php 
+        $diff = (float)$r['amount_difference'];
+        $fc = json_decode($r['fields_changed'], true) ?: [];
+        
+        // Job Order Number
+        $jo_display = !empty($r['job_order_id']) ? 'JO-' . $r['job_order_id'] : '—';
+        
+        // Customer Name
+        $customer_display = htmlspecialchars($r['customer']);
+        
+        // Vehicle Plate
+        $plate_display = !empty($r['job_order_vehicle_plate']) ? htmlspecialchars($r['job_order_vehicle_plate']) : '—';
+        
+        // Transaction Type
+        $txn_type_display = htmlspecialchars(ucwords(str_replace('_', ' ', $r['transaction_type'])));
+        
+        // Items / Service
+        $items_list = [];
+        if (isset($fc['adjusted_items']) && is_array($fc['adjusted_items'])) {
+            foreach ($fc['adjusted_items'] as $it) {
+                if (!empty($it['product_name'])) {
+                    $items_list[] = $it['product_name'];
+                }
+            }
+        }
+        if (empty($items_list) && !empty($r['item_names'])) {
+            $items_list[] = $r['item_names'];
+        }
+        $items_display = !empty($items_list) ? htmlspecialchars(implode(', ', $items_list)) : '—';
+        
+        // Quantities
+        $old_qty = '—';
+        $new_qty = '—';
+        if (isset($fc['adjusted_items']) && is_array($fc['adjusted_items']) && !empty($fc['adjusted_items'])) {
+            $old_qty = $fc['adjusted_items'][0]['old_qty'] ?? '—';
+            $new_qty = $fc['adjusted_items'][0]['new_qty'] ?? '—';
+        } else {
+            if (isset($fc['quantity'])) {
+                $new_qty = $fc['quantity'];
+            }
+            if (isset($fc['old_qty'])) {
+                $old_qty = $fc['old_qty'];
+            }
+        }
+        
+        // Payment Method
+        $payment_display = !empty($r['payment_method']) ? htmlspecialchars($r['payment_method']) : '—';
+        
+        // Adjustment Type
+        $adj_type = 'Price Adj';
+        if ($old_qty !== '—' && $new_qty !== '—' && $old_qty != $new_qty) {
+            $adj_type = 'Quantity Adj';
+        }
+        
+        // Status Badge Style
+        $status_text = !empty($r['workflow_status']) ? htmlspecialchars($r['workflow_status']) : 'Completed';
+        $badge_class = 'badge-neutral';
+        if (strtolower($status_text) === 'completed') {
+            $badge_class = 'badge-up';
+        } elseif (strtolower($status_text) === 'adjusted') {
+            $badge_class = 'badge-up';
+        } elseif (strtolower($status_text) === 'voided') {
+            $badge_class = 'badge-dn';
+        }
+        ?>
         <tr>
-            <td><strong>ADJ-<?=(int)$r['adj_id']?></strong></td>
-            <td><?=htmlspecialchars($r['transaction_id'])?></td>
-            <td><?=htmlspecialchars($r['customer'])?></td>
-            <td>₱<?=number_format($r['original_amount'],2)?></td>
-            <td style="font-weight:700;">₱<?=number_format($r['updated_amount'],2)?></td>
-            <td style="max-width:200px;"><?=htmlspecialchars($r['adjustment_reason'])?><?php if($r['manager_remarks']): ?><br><small style="color:#94a3b8;"><?=htmlspecialchars($r['manager_remarks'])?></small><?php endif; ?></td>
-            <td><?=htmlspecialchars($r['adjusted_by_name'])?></td>
-            <td><?=date('M d, Y h:i A',strtotime($r['adjustment_date']))?></td>
-            <td>
-                <button class="flt-btn flt-btn-search" style="height:26px;font-size:10px;padding:0 8px;"
+            <td style="white-space:nowrap; font-size:11px;"><strong>ADJ-<?=(int)$r['adj_id']?></strong></td>
+            <td style="white-space:nowrap; line-height:1.2;">
+                <?php if (str_starts_with($r['transaction_id'], 'MERCH')): ?>
+                    <span style="font-weight:700; color:#002F70; font-size:11px;">MERCH</span><br><span style="font-size:10px; color:#64748b; font-family:monospace;"><?=substr($r['transaction_id'], 5)?></span>
+                <?php elseif (str_starts_with($r['transaction_id'], 'JO')): ?>
+                    <span style="font-weight:700; color:#d97706; font-size:11px;">JO</span><br><span style="font-size:10px; color:#64748b; font-family:monospace;"><?=substr($r['transaction_id'], 2)?></span>
+                <?php else: ?>
+                    <span style="font-size:10.5px; font-family:monospace; color:#334155;"><?=htmlspecialchars($r['transaction_id'])?></span>
+                <?php endif; ?>
+            </td>
+            <td style="white-space:nowrap; font-size:11px;"><?=$jo_display?></td>
+            <td style="font-size:11.5px; line-height:1.2;"><?=$customer_display?></td>
+            <td style="white-space:nowrap; font-size:11px;"><?=$plate_display?></td>
+            <td style="white-space:nowrap;">
+                <?php if(str_contains(strtolower($r['transaction_type']),'job')): ?>
+                    <span class="badge" style="background:#fef3c7;color:#b45309;font-size:9.5px;padding:2px 6px;">Job Order</span>
+                <?php elseif(str_contains(strtolower($r['transaction_type']),'combined')): ?>
+                    <span class="badge" style="background:#ede9fe;color:#6d28d9;font-size:9.5px;padding:2px 6px;">Combined</span>
+                <?php else: ?>
+                    <span class="badge" style="background:#dbeafe;color:#1e40af;font-size:9.5px;padding:2px 6px;">Merch</span>
+                <?php endif; ?>
+            </td>
+            <td style="font-size:11.5px; line-height:1.2;"><?=$items_display?></td>
+            <td style="text-align:center; font-size:11px;"><?=$old_qty?></td>
+            <td style="text-align:center; font-size:11px;"><?=$new_qty?></td>
+            <td style="white-space:nowrap; font-size:11.5px;">₱<?=number_format($r['original_amount'],2)?></td>
+            <td style="white-space:nowrap; font-weight:700; font-size:11.5px;">₱<?=number_format($r['updated_amount'],2)?></td>
+            <td style="white-space:nowrap; font-weight:700; font-size:11.5px; color:<?=$diff>=0?'#16a34a':'#dc2626'?>;">
+                <?=($diff>=0?'+':'').'₱'.number_format($diff,2)?>
+            </td>
+            <td style="white-space:nowrap; font-size:11px;"><?=$payment_display?></td>
+            <td style="white-space:nowrap; font-size:11px;"><?=$adj_type?></td>
+            <td style="font-size:11.5px; line-height:1.2;"><?=htmlspecialchars($r['adjustment_reason'])?><?php if($r['manager_remarks']): ?><br><small style="color:#64748b; font-size:10px;"><?=htmlspecialchars($r['manager_remarks'])?></small><?php endif; ?></td>
+            <td style="font-size:11px; line-height:1.2;"><?=htmlspecialchars($r['adjusted_by_name'])?></td>
+            <td style="text-align:center; white-space:nowrap;"><span class="badge <?=$badge_class?>" style="font-size:9.5px;padding:2px 6px;"><?=$status_text?></span></td>
+            <td style="white-space:nowrap; font-size:10.5px; line-height:1.2;"><?=date('M d, Y',strtotime($r['adjustment_date']))?><br><span style="color:#64748b; font-size:10px;"><?=date('h:i A',strtotime($r['adjustment_date']))?></span></td>
+            <td style="text-align:center; white-space:nowrap;">
+                <button class="flt-btn flt-btn-search" style="height:22px;font-size:9px;padding:0 6px;margin:0;"
                     onclick="openAdjModal({
                         adjId:    'ADJ-<?=(int)$r['adj_id']?>',
                         txnId:    '<?=addslashes(htmlspecialchars($r['transaction_id']))?>' ,

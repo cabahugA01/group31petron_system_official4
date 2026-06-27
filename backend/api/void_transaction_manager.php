@@ -55,7 +55,7 @@ if (!$manager_remarks) {
 }
 
 try {
-    // Ensure needed columns exist
+    // Ensure needed columns/tables exist
     foreach ([
         "ALTER TABLE merchandise_transactions ADD COLUMN IF NOT EXISTS void_reason      TEXT DEFAULT NULL",
         "ALTER TABLE merchandise_transactions ADD COLUMN IF NOT EXISTS manager_remarks  TEXT DEFAULT NULL",
@@ -63,6 +63,31 @@ try {
     ] as $ddl) {
         try { $pdo->exec($ddl); } catch (Exception $e) {}
     }
+
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS voided_transactions (
+                id               INT AUTO_INCREMENT PRIMARY KEY,
+                merchandise_txn_id INT  DEFAULT NULL,
+                transaction_id   VARCHAR(255) DEFAULT NULL,
+                customer_name    VARCHAR(255) DEFAULT NULL,
+                transaction_type VARCHAR(60)  DEFAULT 'merchandise',
+                amount           DECIMAL(12,2) DEFAULT 0,
+                void_reason      TEXT         DEFAULT NULL,
+                manager_remarks  TEXT         DEFAULT NULL,
+                voided_by        INT          DEFAULT NULL,
+                voided_by_name   VARCHAR(255) DEFAULT NULL,
+                station_id       INT          NOT NULL DEFAULT 0,
+                void_date        DATETIME     DEFAULT CURRENT_TIMESTAMP,
+                fields_changed   JSON         DEFAULT NULL,
+                INDEX idx_vt_txn (transaction_id),
+                INDEX idx_vt_station (station_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+        // Ensure manager_remarks and fields_changed columns exist (for older installs)
+        try { $pdo->exec("ALTER TABLE voided_transactions ADD COLUMN IF NOT EXISTS manager_remarks TEXT DEFAULT NULL"); } catch(Exception $e2){}
+        try { $pdo->exec("ALTER TABLE voided_transactions ADD COLUMN IF NOT EXISTS fields_changed JSON DEFAULT NULL"); } catch(Exception $e2){}
+    } catch (Exception $e) {}
 
     // Load transaction
     $stmt = $pdo->prepare("SELECT * FROM merchandise_transactions WHERE id = ? AND station_id = ? LIMIT 1");
@@ -113,42 +138,61 @@ try {
         WHERE id = ? AND station_id = ?
     ")->execute([$void_reason, $manager_remarks, $me['id'], $row_id, $station_id]);
 
-    // ── Insert into voided_transactions log (if table exists) ─────────────────
+    // ── Insert into voided_transactions log ───────────────────────────────────
     try {
-        $pdo->exec("
-            CREATE TABLE IF NOT EXISTS voided_transactions (
-                id               INT AUTO_INCREMENT PRIMARY KEY,
-                merchandise_txn_id INT  DEFAULT NULL,
-                transaction_id   VARCHAR(255) DEFAULT NULL,
-                customer_name    VARCHAR(255) DEFAULT NULL,
-                transaction_type VARCHAR(60)  DEFAULT 'merchandise',
-                amount           DECIMAL(12,2) DEFAULT 0,
-                void_reason      TEXT         DEFAULT NULL,
-                voided_by        INT          DEFAULT NULL,
-                voided_by_name   VARCHAR(255) DEFAULT NULL,
-                station_id       INT          NOT NULL DEFAULT 0,
-                void_date        DATETIME     DEFAULT CURRENT_TIMESTAMP,
-                INDEX idx_txn (transaction_id),
-                INDEX idx_station (station_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-        ");
+        // Build voided_by display name from users table
+        $managerName = $me['name'] ?? null;
+        if (!$managerName) {
+            $ns = $pdo->prepare("SELECT COALESCE(NULLIF(TRIM(CONCAT(COALESCE(first_name,''),' ',COALESCE(last_name,''))),' '), username, 'Manager') AS dname FROM users WHERE id = ? LIMIT 1");
+            $ns->execute([$me['id']]);
+            $managerName = $ns->fetchColumn() ?: 'Manager';
+        }
+
+        $voided_items_data = [];
+        foreach ($items as $it) {
+            $voided_items_data[] = [
+                'product_name' => $it['product_name'],
+                'item_type'    => $it['item_type'] ?? 'merchandise',
+                'quantity'     => (float)$it['quantity'],
+                'unit_price'   => (float)$it['unit_price'],
+                'subtotal'     => (float)$it['subtotal']
+            ];
+        }
+
+        // Extract additional fields from the transaction
+        $job_order_no   = !empty($txn['job_order_id']) ? $txn['job_order_id'] : ($txn['job_order_no'] ?? $txn['job_order_number'] ?? null);
+        $vehicle_plate  = !empty($txn['job_order_vehicle_plate']) ? $txn['job_order_vehicle_plate'] : ($txn['vehicle_plate'] ?? $txn['vehicle_plate_no'] ?? $txn['plate_number'] ?? null);
+        $payment_method = !empty($txn['payment_method']) ? $txn['payment_method'] : 'Cash';
+
         $pdo->prepare("
             INSERT INTO voided_transactions
-                (merchandise_txn_id, transaction_id, customer_name, transaction_type, amount, void_reason, voided_by, voided_by_name, station_id, void_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                (merchandise_txn_id, transaction_id, customer_name, transaction_type,
+                 amount, void_reason, manager_remarks, voided_by, voided_by_name, station_id, 
+                 job_order_no, vehicle_plate, payment_method, fields_changed, void_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
         ")->execute([
             $row_id,
-            $txn['transaction_id'] ?? $row_id,
-            $txn['customer_name'] ?? 'Walk-in Customer',
+            $txn['transaction_id'] ?? ('TXN-' . $row_id),
+            $txn['customer_name']   ?? 'Walk-in Customer',
             $txn['transaction_type'] ?? 'merchandise',
-            $txn['total_amount'] ?? 0,
+            $txn['total_amount']    ?? 0,
             $void_reason,
+            $manager_remarks,
             $me['id'],
-            $me['name'] ?? ($me['username'] ?? 'Manager'),
+            $managerName,
             $station_id,
+            $job_order_no,
+            $vehicle_plate,
+            $payment_method,
+            json_encode([
+                'payment_method' => $payment_method,
+                'payment_status' => $txn['payment_status'] ?? 'Paid',
+                'job_order_no'   => $job_order_no,
+                'vehicle_plate'  => $vehicle_plate,
+                'voided_items'   => $voided_items_data
+            ])
         ]);
     } catch (Exception $e) {
-        // Non-fatal: log exists check or insert failed
         error_log('voided_transactions insert warning: ' . $e->getMessage());
     }
 
@@ -164,8 +208,8 @@ try {
     ]);
 
     $pdo->prepare("
-        INSERT INTO audit_trail (transaction_id, manager_id, action_type, old_value, new_value, station_id, entity_type, created_at)
-        VALUES (?, ?, 'Void', ?, ?, ?, 'merchandise_transactions', NOW())
+        INSERT INTO audit_trail (transaction_id, manager_id, action_type, old_value, new_value, station_id, source_table)
+        VALUES (?, ?, 'Void', ?, ?, ?, 'merchandise_transactions')
     ")->execute([
         $txn['transaction_id'] ?? $row_id,
         $me['id'],

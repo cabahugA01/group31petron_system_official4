@@ -446,20 +446,9 @@ include __DIR__ . '/../partials/header.php';
                             <?php endif; ?>
                         </td>
                         <td style="text-align:center;">
-                            <div style="display:flex;flex-direction:column;gap:5px;align-items:stretch;max-width:110px;margin:0 auto;">
-                                <button class="btn-sm-view" onclick="viewDelivery(<?php echo (int)$d['id']; ?>)" title="View details">
-                                    <i class="fas fa-eye"></i> View
-                                </button>
-                                <button class="btn-sm-print" onclick="printDelivery(<?php echo (int)$d['id']; ?>)" title="Print record">
-                                    <i class="fas fa-print"></i> Print
-                                </button>
-                                <?php if ($is_rejected): ?>
-                                <a href="staff_record_delivery.php?edit=<?php echo (int)$d['id']; ?>"
-                                   class="btn-sm-resubmit" title="Edit and resubmit">
-                                    <i class="fas fa-redo"></i> Resubmit
-                                </a>
-                                <?php endif; ?>
-                            </div>
+                            <button class="btn-sm-view" onclick="viewDelivery(<?php echo (int)$d['id']; ?>)" title="View details">
+                                <i class="fas fa-eye"></i> View
+                            </button>
                         </td>
                     </tr>
                 <?php endforeach; ?>

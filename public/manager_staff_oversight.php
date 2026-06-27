@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // ── Auth & role gate MUST run before any output ──────────────────────────────
 $page_id = 'manager_staff_oversight';
 require_once __DIR__ . '/../backend/lib.php';
@@ -175,7 +175,7 @@ require_once __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="../assets/vendor/chart.js/chart.umd.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
 

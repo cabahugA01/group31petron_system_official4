@@ -553,6 +553,11 @@ require_once __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
+/* == GLOBAL OVERFLOW CONTROL == */
+* { box-sizing: border-box; }
+html, body { max-width: 100vw !important; width: 100%; overflow-x: hidden !important; position: relative; }
+.main-content { max-width: 100% !important; overflow-x: hidden !important; }
+
 /* == PAGE HEADER - Petron standard == */
 .int-head {
     display: flex;
@@ -599,14 +604,6 @@ require_once __DIR__ . '/../partials/header.php';
     position: relative;
     overflow: hidden;
 }
-.afto-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 4px;
-    height: 100%;
-}
 .afto-card-info {
     display: flex;
     flex-direction: column;
@@ -629,14 +626,10 @@ require_once __DIR__ . '/../partials/header.php';
     opacity: 0.8;
 }
 
-/* Card variants based on colors (No Emojis) */
-.afto-card.blue::before   { background-color: #2563eb; }
+/* Card icon colors (No colored borders) */
 .afto-card.blue .afto-card-icon { color: #2563eb; }
-.afto-card.green::before  { background-color: #16a34a; }
 .afto-card.green .afto-card-icon { color: #16a34a; }
-.afto-card.red::before    { background-color: #dc2626; }
 .afto-card.red .afto-card-icon { color: #dc2626; }
-.afto-card.yellow::before { background-color: #d97706; }
 .afto-card.yellow .afto-card-icon { color: #d97706; }
 
 /* == FILTER BAR == */
@@ -743,20 +736,22 @@ require_once __DIR__ . '/../partials/header.php';
 }
 .afto-tbl {
     width: 100%;
+    max-width: 100%;
     border-collapse: collapse;
-    font-size: 12px;
+    font-size: 10px;
     text-align: left;
+    table-layout: fixed;
 }
 .afto-tbl thead tr {
     background: #002F70;
 }
 .afto-tbl thead th {
-    padding: 10px 12px;
+    padding: 8px 6px;
     font-weight: 700;
     color: #ffffff;
     text-transform: uppercase;
-    letter-spacing: 0.4px;
-    font-size: 11px;
+    letter-spacing: 0.3px;
+    font-size: 10px;
     border-bottom: 2px solid #001a3d;
 }
 .afto-tbl tbody tr {
@@ -767,9 +762,13 @@ require_once __DIR__ . '/../partials/header.php';
     background: #f8fafc;
 }
 .afto-tbl tbody td {
-    padding: 10px 12px;
+    padding: 8px 6px;
     color: #334155;
     vertical-align: middle;
+    font-size: 9px;
+    word-wrap: break-word;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Numeric alignment */
@@ -959,8 +958,13 @@ require_once __DIR__ . '/../partials/header.php';
         <h1><i class="fas fa-sliders-h"></i> Adjustments Oversight</h1>
         <div class="sub">View, audit, approve or reject fuel stock level and meter reading adjustments</div>
     </div>
-    <div>
-        <button class="ato-btn ato-btn-add" onclick="openNewAdjustmentModal()"><i class="fas fa-plus"></i> New Adjustment</button>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <a href="?export=excel&date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>" class="ato-btn ato-btn-export">
+            <i class="fas fa-file-excel"></i> Export Excel
+        </a>
+        <button class="ato-btn ato-btn-pdf" onclick="exportPDF()">
+            <i class="fas fa-file-pdf"></i> Export PDF
+        </button>
     </div>
 </div>
 
@@ -1065,11 +1069,9 @@ require_once __DIR__ . '/../partials/header.php';
         <input type="text" name="search_query" value="<?= htmlspecialchars($search_query) ?>" placeholder="Search reason, requested by..." style="width: 180px;">
     </div>
     
-    <div class="afto-actions">
+    <div class="afto-fg" style="flex-direction: row; gap: 6px;">
         <button type="submit" class="ato-btn ato-btn-filter"><i class="fas fa-filter"></i> Filter</button>
         <a href="manager_fuel_adjustments.php" class="ato-btn ato-btn-reset"><i class="fas fa-sync-alt"></i> Reset</a>
-        <button type="submit" name="export" value="excel" class="ato-btn ato-btn-export"><i class="fas fa-file-excel"></i> Export Excel</button>
-        <button type="submit" name="export" value="pdf" class="ato-btn ato-btn-pdf" target="_blank"><i class="fas fa-file-pdf"></i> Export PDF</button>
     </div>
 </form>
 
@@ -1080,29 +1082,28 @@ require_once __DIR__ . '/../partials/header.php';
         <span style="font-size: 11px; color: #64748b; font-weight: 600;">Showing <?= count($adjustments) ?> record(s)</span>
     </div>
     
-    <div style="overflow-x: auto;">
+    <div style="overflow-x: hidden !important; max-width: 100%;">
         <table class="afto-tbl">
             <thead>
                 <tr>
-                    <th>Adjustment ID</th>
-                    <th>Date</th>
-                    <th>Adjustment Type</th>
-                    <th>Fuel Type</th>
-                    <th>Tank/Pump</th>
-                    <th class="align-right">Previous Value</th>
-                    <th class="align-right">New Value</th>
-                    <th class="align-right">Difference (L)</th>
-                    <th>Reason</th>
-                    <th>Requested By</th>
-                    <th>Status</th>
-                    <th>Approval Date</th>
-                    <th style="text-align: center;">Actions</th>
+                    <th style="width: 7%;">Adj ID</th>
+                    <th style="width: 8%;">Date</th>
+                    <th style="width: 9%;">Type</th>
+                    <th style="width: 7%;">Fuel</th>
+                    <th style="width: 8%;">Tank/Pump</th>
+                    <th class="align-right" style="width: 8%;">Prev Value</th>
+                    <th class="align-right" style="width: 8%;">New Value</th>
+                    <th class="align-right" style="width: 8%;">Diff (L)</th>
+                    <th style="width: 12%;">Reason</th>
+                    <th style="width: 8%;">By</th>
+                    <th style="width: 7%;">Status</th>
+                    <th style="width: 10%;">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($adjustments)): ?>
                     <tr>
-                        <td colspan="13">
+                        <td colspan="12">
                             <div class="empty-state">
                                 <i class="fas fa-inbox"></i>
                                 No adjustment records found matching the filter criteria.
@@ -1124,47 +1125,44 @@ require_once __DIR__ . '/../partials/header.php';
                         }
                     ?>
                         <tr>
-                            <td><strong style="color:#1e40af;">ADJ-<?= htmlspecialchars($adj['id']) ?></strong></td>
-                            <td><?= date('M d, Y', strtotime($adj['adjustment_date'])) ?></td>
-                            <td><span style="font-weight:600; color:#475569;"><?= htmlspecialchars($adj['adjustment_type']) ?></span></td>
-                            <td class="bold-vol"><?= htmlspecialchars($adj['fuel_type']) ?></td>
-                            <td><span style="font-size:11px; color:#64748b;"><?= htmlspecialchars($tank_pump) ?></span></td>
-                            <td class="align-right"><?= number_format($adj['previous_value'], 2) ?></td>
-                            <td class="align-right"><?= number_format($adj['new_value'], 2) ?></td>
-                            <td class="align-right <?= $diff_class ?>"><?= $diff_str ?></td>
-                            <td title="<?= htmlspecialchars($adj['reason']) ?>">
-                                <?= htmlspecialchars(substr($adj['reason'], 0, 45)) ?><?= strlen($adj['reason']) > 45 ? '...' : '' ?>
+                            <td style="font-size: 9px;"><strong style="color:#1e40af;">ADJ-<?= htmlspecialchars($adj['id']) ?></strong></td>
+                            <td style="font-size: 9px;"><?= date('M d, Y', strtotime($adj['adjustment_date'])) ?></td>
+                            <td style="font-size: 9px;"><span style="font-weight:600; color:#475569;"><?= htmlspecialchars(substr($adj['adjustment_type'], 0, 12)) ?></span></td>
+                            <td class="bold-vol" style="font-size: 9px;"><?= htmlspecialchars(substr($adj['fuel_type'], 0, 8)) ?></td>
+                            <td style="font-size: 9px;"><span style="color:#64748b;"><?= htmlspecialchars(substr($tank_pump, 0, 10)) ?></span></td>
+                            <td class="align-right" style="font-size: 9px;"><?= number_format($adj['previous_value'], 2) ?></td>
+                            <td class="align-right" style="font-size: 9px;"><?= number_format($adj['new_value'], 2) ?></td>
+                            <td class="align-right <?= $diff_class ?>" style="font-size: 9px;"><?= $diff_str ?></td>
+                            <td title="<?= htmlspecialchars($adj['reason']) ?>" style="font-size: 9px;">
+                                <?= htmlspecialchars(substr($adj['reason'], 0, 20)) ?><?= strlen($adj['reason']) > 20 ? '...' : '' ?>
                             </td>
-                            <td><?= htmlspecialchars($adj['requested_by_name']) ?></td>
+                            <td style="font-size: 9px;"><?= htmlspecialchars(substr($adj['requested_by_name'], 0, 10)) ?></td>
                             <td>
                                 <span class="badge-lbl <?= getStatusBadgeClass($adj['status']) ?>">
                                     <?= getStatusLabel($adj['status']) ?>
                                 </span>
                             </td>
-                            <td>
-                                <?= $adj['approved_at'] ? date('M d, Y H:i', strtotime($adj['approved_at'])) : '—' ?>
-                            </td>
                             <td style="text-align: center; white-space: nowrap;">
-                                <div style="display: flex; gap: 4px; justify-content: center;">
-                                    <button class="row-btn row-btn-details" onclick='viewDetails(<?= json_encode($adj) ?>)' title="View Details">
+                                <div style="display: flex; flex-direction: column; gap: 2px;">
+                                    <button class="row-btn row-btn-details" onclick='viewDetails(<?= json_encode($adj) ?>)' title="View Details" style="width: 100%; font-size: 9px;">
                                         <i class="fas fa-eye"></i> View
                                     </button>
                                     
                                     <?php if (strtolower($adj['status']) === 'pending'): ?>
-                                        <form method="post" style="display: inline;" onsubmit="return confirm('Are you sure you want to approve this adjustment request? This will apply the difference to inventory stock.');">
+                                        <form method="post" style="display: block; width: 100%;" onsubmit="return confirm('Are you sure you want to approve this adjustment request? This will apply the difference to inventory stock.');">
                                             <input type="hidden" name="action" value="approve">
                                             <input type="hidden" name="id" value="<?= $adj['id'] ?>">
-                                            <button type="submit" class="row-btn row-btn-approve" title="Approve Adjustment">
+                                            <button type="submit" class="row-btn row-btn-approve" title="Approve Adjustment" style="width: 100%; font-size: 9px;">
                                                 <i class="fas fa-check"></i> Approve
                                             </button>
                                         </form>
                                         
-                                        <button class="row-btn row-btn-reject" onclick="rejectAdjustment(<?= $adj['id'] ?>)" title="Reject Adjustment">
+                                        <button class="row-btn row-btn-reject" onclick="rejectAdjustment(<?= $adj['id'] ?>)" title="Reject Adjustment" style="width: 100%; font-size: 9px;">
                                             <i class="fas fa-times"></i> Reject
                                         </button>
                                     <?php endif; ?>
                                     
-                                    <button class="row-btn row-btn-print" onclick="printAdjustment(<?= $adj['id'] ?>)" title="Print Slip">
+                                    <button class="row-btn row-btn-print" onclick="printAdjustment(<?= $adj['id'] ?>)" title="Print Slip" style="width: 100%; font-size: 9px;">
                                         <i class="fas fa-print"></i> Print
                                     </button>
                                 </div>

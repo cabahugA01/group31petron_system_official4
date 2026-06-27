@@ -570,8 +570,8 @@ require_once __DIR__ . '/../partials/header.php';
     </div><!-- end fr-content -->
 </div><!-- end rpt-wrapper -->
 
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="../assets/vendor/xlsx/xlsx.full.min.js"></script>
+<script src="../assets/vendor/chart.js/chart.umd.min.js"></script>
 <script>
 // Tab switching
 function frTab(key) {

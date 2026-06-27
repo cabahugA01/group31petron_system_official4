@@ -675,17 +675,9 @@ include __DIR__ . '/../partials/header.php';
                     </td>
                     <td style="font-size:11px;color:#64748b;"><?= $ts_str ?></td>
                     <td style="text-align:center;">
-                        <div style="display:flex; flex-direction:column; gap:4px; width:160px; margin:0 auto;">
-                            <button class="int-btn-outline" onclick="viewTankDetails(<?= htmlspecialchars(json_encode($r)) ?>)" title="View Tank Details" style="font-size:11px; padding:4px 8px; text-align:left; display:block; width:100%;">
-                                <i class="fas fa-eye" style="width:14px;"></i> View Tank Details
-                            </button>
-                            <button class="int-btn-outline" onclick="viewFuelMovement('<?= htmlspecialchars($r['fuel_type']) ?>', '<?= htmlspecialchars($r['tank_name']) ?>')" title="View Fuel Movement" style="font-size:11px; padding:4px 8px; text-align:left; display:block; width:100%;">
-                                <i class="fas fa-scroll" style="width:14px;"></i> View Fuel Movement
-                            </button>
-                            <button class="int-btn-outline" onclick="printTankRecord(<?= htmlspecialchars(json_encode($r)) ?>)" title="Print Record" style="font-size:11px; padding:4px 8px; text-align:left; display:block; width:100%;">
-                                <i class="fas fa-print" style="width:14px;"></i> Print Record
-                            </button>
-                        </div>
+                        <button class="int-btn-outline" onclick="viewTankDetails(<?= htmlspecialchars(json_encode($r)) ?>)" title="View Details" style="font-size:11px; padding:6px 16px;">
+                            <i class="fas fa-eye"></i> View
+                        </button>
                     </td>
                 </tr>
             <?php endforeach; ?>
@@ -779,13 +771,12 @@ include __DIR__ . '/../partials/header.php';
                     <th style="text-align:right;">Reorder Level</th>
                     <th style="text-align:center;">Alert Type</th>
                     <th>Recommended Action</th>
-                    <th style="text-align:center;width:180px;">Actions</th>
                 </tr>
             </thead>
             <tbody id="alertTableBody">
             <?php if (empty($alert_rows)): ?>
                 <tr>
-                    <td colspan="7" style="text-align:center;padding:24px;color:#64748b;">
+                    <td colspan="6" style="text-align:center;padding:24px;color:#64748b;">
                         <i class="fas fa-check-circle" style="color:#28a745;font-size:24px;margin-bottom:8px;display:block;"></i>
                         No active fuel alerts. All tanks have normal fuel levels.
                     </td>
@@ -814,19 +805,6 @@ include __DIR__ . '/../partials/header.php';
                             </span>
                         </td>
                         <td style="font-weight:600;color:<?= $abg ?>;"><?= htmlspecialchars($ar['recommended_action']) ?></td>
-                        <td style="text-align:center;">
-                            <div style="display:flex; flex-direction:column; gap:4px; width:160px; margin:0 auto;">
-                                <button class="int-btn-outline" onclick="viewTankDetails(<?= htmlspecialchars(json_encode($ar)) ?>)" title="View Tank" style="font-size:11px; padding:4px 8px; text-align:left; display:block; width:100%;">
-                                    <i class="fas fa-eye" style="width:14px;"></i> View Tank
-                                </button>
-                                <button class="int-btn-outline" onclick="openCreateFuelRequest('<?= htmlspecialchars($ar['fuel_type']) ?>', <?= $ar['current_volume'] ?>, <?= $ar['capacity'] ?>, '<?= htmlspecialchars($ar['alert_type']) ?>')" title="Create Delivery Request" style="font-size:11px; padding:4px 8px; text-align:left; display:block; width:100%;">
-                                    <i class="fas fa-clipboard-list" style="width:14px;"></i> Create Request
-                                </button>
-                                <button class="int-btn-outline" onclick="printTankAlert(<?= htmlspecialchars(json_encode($ar)) ?>)" title="Print Alert" style="font-size:11px; padding:4px 8px; text-align:left; display:block; width:100%;">
-                                    <i class="fas fa-print" style="width:14px;"></i> Print Alert
-                                </button>
-                            </div>
-                        </td>
                     </tr>
                 <?php endforeach; ?>
             <?php endif; ?>
@@ -907,12 +885,11 @@ include __DIR__ . '/../partials/header.php';
                     <th style="text-align:right;">Previous Volume</th>
                     <th style="text-align:right;">New Volume</th>
                     <th>Performed By</th>
-                    <th style="text-align:center;width:130px;">Actions</th>
                 </tr>
             </thead>
             <tbody id="movTableBody">
             <?php if (empty($mov_rows)): ?>
-                <tr><td colspan="10" style="text-align:center;padding:24px;color:#64748b;">
+                <tr><td colspan="9" style="text-align:center;padding:24px;color:#64748b;">
                     <i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>No fuel movement records found.
                 </td></tr>
             <?php else: ?>
@@ -947,16 +924,6 @@ include __DIR__ . '/../partials/header.php';
                     <td style="text-align:right;font-size:12px;color:#64748b;"><?= $mv['previous_volume'] !== null ? number_format((float)$mv['previous_volume'], 2).' L' : '—' ?></td>
                     <td style="text-align:right;font-size:12px;color:#64748b;"><?= $mv['new_volume'] !== null ? number_format((float)$mv['new_volume'], 2).' L' : '—' ?></td>
                     <td style="font-size:12px;"><?= htmlspecialchars($mv['performed_by']) ?></td>
-                    <td style="text-align:center;">
-                        <div style="display:flex;flex-direction:column;gap:4px;width:120px;margin:0 auto;">
-                            <button class="int-btn-outline" onclick="viewMovDetails(<?= htmlspecialchars(json_encode($mv)) ?>)" style="font-size:11px;padding:4px 8px;text-align:left;display:block;width:100%;">
-                                <i class="fas fa-eye" style="width:14px;"></i> View Details
-                            </button>
-                            <button class="int-btn-outline" onclick="printMovRecord(<?= htmlspecialchars(json_encode($mv)) ?>)" style="font-size:11px;padding:4px 8px;text-align:left;display:block;width:100%;">
-                                <i class="fas fa-print" style="width:14px;"></i> Print Record
-                            </button>
-                        </div>
-                    </td>
                 </tr>
             <?php endforeach; ?>
             <?php endif; ?>

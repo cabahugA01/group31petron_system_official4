@@ -462,17 +462,22 @@ function respond(bool $ok, string $msg = '', array $data = []): void {
 
 function validate_readings(float $present, float $previous, float $calibration): array {
     $errors = [];
+
+    // Rule 1: Ending Reading ≥ Beginning Reading
     if ($present < $previous)
-        $errors[] = "Present reading ({$present}) cannot be less than previous ({$previous}).";
-    $diff = $present - $previous;
-    // Allow calibration >= diff — this results in 0 L net sales (valid, matches UI behaviour).
-    // Only reject if it would produce a negative value beyond floating-point rounding.
-    $liters = $diff - $calibration;
-    if ($liters < -0.001)
-        $errors[] = "Negative liters computed (" . round($liters, 3) . "). Check your readings.";
-    if ($liters > 2000)
-        $errors[] = "Liters sold ({$liters}) exceeds the 2,000 L limit per reading.";
-    if ($calibration > 50)
-        $errors[] = "Calibration ({$calibration}) exceeds the 50 L maximum.";
-    return ['valid' => empty($errors), 'errors' => $errors, 'liters_sold' => max(0, $liters)];
+        $errors[] = "Ending reading ({$present}) cannot be less than Beginning reading ({$previous}).";
+
+    // Rule 2: Calibration ≥ 0
+    if ($calibration < 0)
+        $errors[] = "Calibration ({$calibration}) cannot be negative.";
+
+    // Rule 3: Calibration cannot exceed Gross Volume
+    $gross_volume = $present - $previous;
+    if ($calibration > 0 && $gross_volume > 0 && $calibration > $gross_volume)
+        $errors[] = "Calibration ({$calibration}L) cannot be greater than Gross Volume ({$gross_volume}L).";
+
+    // Formula: Net Volume = Gross Volume − Calibration
+    $liters = max(0, $gross_volume - $calibration);
+
+    return ['valid' => empty($errors), 'errors' => $errors, 'liters_sold' => $liters];
 }

@@ -45,89 +45,18 @@ try {
 } catch (Exception $e) {
     error_log("Table creation: " . $e->getMessage());
 }
+// Ensure fields_changed column exists (added in later version)
+try { $pdo->exec("ALTER TABLE voided_transactions ADD COLUMN IF NOT EXISTS fields_changed JSON DEFAULT NULL"); } catch(Exception $e2){}
+try { $pdo->exec("ALTER TABLE voided_transactions ADD COLUMN IF NOT EXISTS voided_by_name VARCHAR(255) DEFAULT NULL"); } catch(Exception $e2){}
+try { $pdo->exec("ALTER TABLE voided_transactions ADD COLUMN IF NOT EXISTS job_order_no VARCHAR(100) DEFAULT NULL"); } catch(Exception $e2){}
+try { $pdo->exec("ALTER TABLE voided_transactions ADD COLUMN IF NOT EXISTS vehicle_plate VARCHAR(50) DEFAULT NULL"); } catch(Exception $e2){}
+try { $pdo->exec("ALTER TABLE voided_transactions ADD COLUMN IF NOT EXISTS payment_method VARCHAR(50) DEFAULT NULL"); } catch(Exception $e2){}
 
-// ── Handle POST: Void Transaction ─────────────────────────────────────────────
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'void_transaction') {
-    try {
-        $pdo->beginTransaction();
-        
-        $txn_id = trim($_POST['transaction_id'] ?? '');
-        $txn_type = trim($_POST['transaction_type'] ?? 'merchandise');
-        $customer = trim($_POST['customer_name'] ?? '');
-        $amount = (float)($_POST['amount'] ?? 0);
-        $void_reason = trim($_POST['void_reason'] ?? '');
-        $remarks = trim($_POST['manager_remarks'] ?? '');
-        
-        if (!$txn_id || !$void_reason) {
-            throw new Exception('Transaction ID and void reason are required.');
-        }
-        
-        // Insert into voided_transactions table
-        $stmt = $pdo->prepare("
-            INSERT INTO voided_transactions (
-                transaction_id, transaction_type, customer_name,
-                amount, void_reason, manager_remarks,
-                voided_by, void_date, station_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?)
-        ");
-        $stmt->execute([
-            $txn_id, $txn_type, $customer,
-            $amount, $void_reason, $remarks,
-            $me['id'], $station_id
-        ]);
-        
-        // Update the original transaction
-        if (in_array($txn_type, ['merchandise', 'combined', 'job_order'])) {
-            $void_note = "Voided by " . $me['name'] . ": " . $void_reason;
-            if ($remarks) $void_note .= " | " . $remarks;
-            
-            $pdo->prepare("
-                UPDATE merchandise_transactions 
-                SET validation_status = 'Voided',
-                    validated_by = ?,
-                    validated_at = NOW(),
-                    manager_notes = CONCAT(COALESCE(manager_notes, ''), '\n', ?),
-                    inventory_deducted = 0
-                WHERE transaction_id = ? AND station_id = ?
-            ")->execute([$me['id'], $void_note, $txn_id, $station_id]);
-            
-            // Restore inventory if it was deducted
-            // First get the transaction internal ID
-            $txn_internal = $pdo->prepare("SELECT id FROM merchandise_transactions WHERE transaction_id = ? AND station_id = ?");
-            $txn_internal->execute([$txn_id, $station_id]);
-            $txn_internal_id = $txn_internal->fetchColumn();
-            
-            if ($txn_internal_id) {
-                $items_stmt = $pdo->prepare("
-                    SELECT product_id, quantity
-                    FROM merchandise_transaction_items
-                    WHERE transaction_id = ?
-                      AND product_id IS NOT NULL
-                ");
-                $items_stmt->execute([$txn_internal_id]);
-                while ($item = $items_stmt->fetch(PDO::FETCH_ASSOC)) {
-                    $pdo->prepare("
-                        UPDATE station_inventory
-                        SET stock_level = stock_level + ?, last_updated = NOW()
-                        WHERE station_id = ? AND product_id = ?
-                    ")->execute([$item['quantity'], $station_id, $item['product_id']]);
-                }
-            }
-        }
-        
-        $pdo->commit();
-        $_SESSION['success'] = 'Transaction voided successfully.';
-    } catch (Exception $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
-        $_SESSION['error'] = 'Error: ' . $e->getMessage();
-    }
-    header('Location: voided_transactions.php');
-    exit;
-}
+// ── POST handler removed: voiding now goes through /backend/api/void_transaction_manager.php via AJAX ─
 
 // ── Filters ────────────────────────────────────────────────────────────────────
-$date_from = $_GET['date_from'] ?? date('Y-m-01');
-$date_to = $_GET['date_to'] ?? date('Y-m-d');
+$date_from = $_GET['date_from'] ?? '';
+$date_to = $_GET['date_to'] ?? '';
 $filter_staff = $_GET['staff'] ?? '';
 
 // ── Fetch KPI Data ─────────────────────────────────────────────────────────────
@@ -170,9 +99,24 @@ $voided = [];
 try {
     $stmt = $pdo->prepare("
         SELECT 
-            vt.*,
-            u.name AS voided_by_name
+            vt.id, vt.transaction_id, vt.transaction_type, vt.customer_name,
+            vt.amount, vt.void_reason, vt.manager_remarks, vt.void_date,
+            vt.fields_changed,
+            COALESCE(NULLIF(vt.job_order_no,''), NULLIF(mt.job_order_id,'')) AS job_order_no,
+            COALESCE(NULLIF(vt.vehicle_plate,''), NULLIF(mt.job_order_vehicle_plate,'')) AS vehicle_plate,
+            COALESCE(NULLIF(vt.payment_method,''), NULLIF(mt.payment_method,''), 'Cash') AS payment_method,
+            COALESCE(
+                NULLIF(vt.voided_by_name,''),
+                NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),' '),
+                u.username, 'Manager'
+            ) AS voided_by_name,
+            (SELECT GROUP_CONCAT(mti.product_name SEPARATOR ', ')
+             FROM merchandise_transactions mt2
+             INNER JOIN merchandise_transaction_items mti ON mti.transaction_id = mt2.id
+             WHERE mt2.transaction_id COLLATE utf8mb4_unicode_ci = vt.transaction_id COLLATE utf8mb4_unicode_ci
+            ) AS item_names
         FROM voided_transactions vt
+        LEFT JOIN merchandise_transactions mt ON mt.transaction_id COLLATE utf8mb4_unicode_ci = vt.transaction_id COLLATE utf8mb4_unicode_ci
         LEFT JOIN users u ON u.id = vt.voided_by
         WHERE " . implode(' AND ', $where) . "
         ORDER BY vt.void_date DESC
@@ -182,6 +126,32 @@ try {
     $voided = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     error_log("Voided fetch error: " . $e->getMessage());
+}
+
+// ── Pre-fetch items for voided transactions ──────────────────────────────
+$void_items_map = [];
+try {
+    if (!empty($voided)) {
+        $void_txn_ids = array_unique(array_column($voided, 'transaction_id'));
+        $void_txn_ids_str = implode("','", array_map(function($id) {
+            return str_replace("'", "''", $id);
+        }, $void_txn_ids));
+        
+        // Fetch items from merchandise_transaction_items
+        $void_stmt = $pdo->query("
+            SELECT mt.transaction_id AS txn_id, mti.product_name, mti.quantity, mti.unit_price, mti.subtotal,
+                   COALESCE(mti.item_type,'merchandise') AS item_type
+            FROM merchandise_transactions mt
+            INNER JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id
+            WHERE mt.transaction_id IN ('$void_txn_ids_str')
+            ORDER BY mt.transaction_id, mti.id ASC
+        ");
+        foreach ($void_stmt->fetchAll(PDO::FETCH_ASSOC) as $item) {
+            $void_items_map[$item['txn_id']][] = $item;
+        }
+    }
+} catch (Exception $e) { 
+    $void_items_map = []; 
 }
 
 // ── Fetch active transactions for voiding ──────────────────────────────────────
@@ -227,18 +197,35 @@ if (in_array($export, ['excel', 'csv'])) {
         header("Content-Disposition: attachment; filename=\"{$fn}.csv\"");
     }
     $out = fopen('php://output', 'w');
-    fputcsv($out, ['Void ID', 'Transaction ID', 'Customer Name', 'Transaction Type', 'Amount', 'Void Reason', 'Voided By', 'Void Date']);
+    fputcsv($out, ['Void ID', 'Transaction ID', 'Job Order No.', 'Customer Name', 'Vehicle Plate No.', 'Transaction Type', 'Items/Service', 'Original Amount', 'Payment Method', 'Void Reason', 'Voided By', 'Void Date & Time', 'Status']);
     
     foreach ($voided as $v) {
+        // Get items summary
+        $items_summary = '';
+        $v_fields = !empty($v['fields_changed']) ? json_decode($v['fields_changed'], true) : null;
+        if (!empty($v_fields['voided_items'])) {
+            $items_list = array_map(function($item) {
+                return $item['product_name'] . ' (x' . $item['quantity'] . ')';
+            }, $v_fields['voided_items']);
+            $items_summary = implode(', ', $items_list);
+        } else {
+            $items_summary = 'Items not available';
+        }
+        
         fputcsv($out, [
             'VOID-' . $v['id'],
             $v['transaction_id'],
+            $v['job_order_no'] ?? '—',
             $v['customer_name'] ?? 'Walk-in Customer',
+            $v['vehicle_plate'] ?? '—',
             ucwords(str_replace('_', ' ', $v['transaction_type'])),
+            $items_summary,
             '₱' . number_format($v['amount'], 2),
+            $v['payment_method'] ?? 'N/A',
             $v['void_reason'],
             $v['voided_by_name'] ?? 'Manager',
-            date('M d, Y h:i A', strtotime($v['void_date']))
+            date('M d, Y h:i A', strtotime($v['void_date'])),
+            'VOIDED'
         ]);
     }
     
@@ -366,15 +353,20 @@ require_once __DIR__ . '/../partials/header.php';
 .card-head { display:flex; align-items:center; justify-content:space-between; padding:13px 16px; border-bottom:1px solid #e9ecef; background:#f8fafc; }
 .card-title { font-size:13px; font-weight:700; color:#00264D; }
 
-.void-table { width:100%; border-collapse:collapse; font-size:11px; }
+.void-table { width:100%; border-collapse:collapse; table-layout:fixed; }
 .void-table thead tr { background:#002F70; }
-.void-table th { padding:9px 10px; text-align:left; font-size:11px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.4px; }
+.void-table th { padding:8px 6px; text-align:left; font-size:11px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.3px; line-height:1.3; border:none; word-wrap:break-word; }
 .void-table tbody tr { border-bottom:1px solid #f1f5f9; transition:background .1s; }
 .void-table tbody tr:hover td { background:#fef2f2; }
-.void-table tbody td { padding:9px 10px; color:#334155; vertical-align:middle; background:#fff; font-size:11px; }
+.void-table tbody td { padding:8px 6px; color:#334155; vertical-align:middle; background:#fff; font-size:12px; line-height:1.4; word-wrap:break-word; overflow-wrap:break-word; border:none; border-bottom:1px solid #f1f5f9; }
 
 /* == MODAL == */
 .modal { position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:9999; background:rgba(15,23,42,0.5); }
+
+/* Item chips (same as All Transactions) */
+.rc-item-chip{display:inline-flex;align-items:center;gap:3px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:3px;padding:1px 5px;font-size:9px;font-weight:600;color:#374151;margin:1px 2px 1px 0;white-space:nowrap;}
+.rc-item-chip.svc{background:#fffbeb;border-color:#fde68a;color:#92400e;}
+.rc-item-chip .rc-chip-qty{background:#002F70;color:#fff;border-radius:2px;padding:0 3px;font-size:8px;margin-left:2px;}
 .modal-card { position:relative; background:#fff; border-radius:12px; max-width:600px; width:90%; max-height:90vh; overflow:hidden; box-shadow:0 20px 25px -5px rgba(0,0,0,.1); }
 .modal-head { display:flex; justify-content:space-between; align-items:center; padding:14px 18px; background:#dc2626; color:#fff; }
 .modal-title { font-weight:700; font-size:15px; }
@@ -395,8 +387,10 @@ require_once __DIR__ . '/../partials/header.php';
         <h1 class="h1"><i class="fas fa-ban"></i> Voided Transactions</h1>
         <div class="sub">Review and monitor voided, cancelled, and reversed transactions.</div>
     </div>
-    <div id="pageHeadButtons" class="actions txn-head-actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <!-- Buttons will be dynamically inserted here by JavaScript -->
+    <div class="actions txn-head-actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <a href="javascript:history.back()" class="flt-btn flt-btn-reset" style="text-decoration:none;">
+            <i class="fas fa-arrow-left"></i> Back
+        </a>
     </div>
 </div>
 
@@ -432,12 +426,12 @@ require_once __DIR__ . '/../partials/header.php';
 <div class="card">
     <form method="GET" class="filters">
         <div>
-            <label>Date From</label>
-            <input type="date" name="date_from" class="input" value="<?php echo htmlspecialchars($date_from); ?>">
+            <label>Date From <span style="font-weight:400;font-size:10px;color:#94a3b8;">(Optional)</span></label>
+            <input type="date" name="date_from" class="input" value="<?php echo htmlspecialchars($date_from); ?>" placeholder="All dates">
         </div>
         <div>
-            <label>Date To</label>
-            <input type="date" name="date_to" class="input" value="<?php echo htmlspecialchars($date_to); ?>">
+            <label>Date To <span style="font-weight:400;font-size:10px;color:#94a3b8;">(Optional)</span></label>
+            <input type="date" name="date_to" class="input" value="<?php echo htmlspecialchars($date_to); ?>" placeholder="All dates">
         </div>
         <div>
             <label>Staff Encoder</label>
@@ -456,278 +450,238 @@ require_once __DIR__ . '/../partials/header.php';
     </form>
 </div>
 
-<!-- TAB NAVIGATION -->
-<div style="display:flex;gap:10px;margin-top:20px;margin-bottom:12px;">
-    <button onclick="switchTab('voided')" id="tabBtn_voided" class="flt-btn flt-btn-solid-primary" style="font-size:12px;padding:8px 16px;">
-        <i class="fas fa-ban"></i> Voided Transactions (<?php echo count($voided); ?>)
-    </button>
-    <button onclick="switchTab('active')" id="tabBtn_active" class="flt-btn flt-btn-reset" style="font-size:12px;padding:8px 16px;">
-        <i class="fas fa-list"></i> Active Transactions (Can be voided)
-    </button>
-</div>
-
-<!-- TAB CONTENT: VOIDED TRANSACTIONS -->
-<div id="tab_voided" class="card" style="margin-top:0;">
+<!-- VOIDED TRANSACTIONS (Direct Display - No Tabs) -->
+<div class="card" style="margin-top:0;">
     <div class="card-head">
-        <div class="card-title">Voided Transactions (<?php echo count($voided); ?>)</div>
+        <div class="card-title">Voided Transactions History (<?php echo count($voided); ?>)</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <a href="?export=excel&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&staff=<?php echo urlencode($filter_staff); ?>" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
+            <a href="?export=csv&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&staff=<?php echo urlencode($filter_staff); ?>" class="flt-btn flt-btn-search"><i class="fas fa-file-csv"></i> CSV</a>
+        </div>
     </div>
+    <div style="width:100%;overflow:hidden;">
     <table class="void-table">
         <thead>
             <tr>
-                <th style="width:8%;">Void ID</th>
-                <th style="width:12%;">Transaction ID</th>
-                <th style="width:15%;">Customer Name</th>
-                <th style="width:10%;">Transaction Type</th>
-                <th style="width:10%;">Amount</th>
-                <th style="width:15%;">Void Reason</th>
-                <th style="width:12%;">Voided By</th>
-                <th style="width:13%;">Void Date</th>
-                <th style="width:10%;">Actions</th>
+                <th style="width:4%;">Void ID</th>
+                <th style="width:8%;">Transaction ID</th>
+                <th style="width:6%;">Job Order</th>
+                <th style="width:9%;">Customer</th>
+                <th style="width:6%;">Plate No.</th>
+                <th style="width:6%;">Type</th>
+                <th style="width:14%;">Items / Service</th>
+                <th style="width:6%;">Amount</th>
+                <th style="width:7%;">Payment</th>
+                <th style="width:12%;">Void Reason</th>
+                <th style="width:7%;">Voided By</th>
+                <th style="width:9%;">Date & Time</th>
+                <th style="width:5%;">Status</th>
+                <th style="width:5%;">Action</th>
             </tr>
         </thead>
         <tbody>
             <?php if (!$voided): ?>
-            <tr><td colspan="9" style="text-align:center;padding:40px;color:#888;">No voided transactions found</td></tr>
+            <tr><td colspan="14" style="text-align:center;padding:40px;color:#888;">No voided transactions found</td></tr>
             <?php else: ?>
-            <?php foreach ($voided as $v): ?>
+            <?php foreach ($voided as $v): 
+                $v_fields  = !empty($v['fields_changed']) ? json_decode($v['fields_changed'], true) : [];
+                $jo_raw    = !empty($v['job_order_no']) ? $v['job_order_no'] : ($v_fields['job_order_no'] ?? '');
+                $jo_disp   = !empty($jo_raw) ? (str_starts_with($jo_raw, 'JO-') ? $jo_raw : 'JO-' . $jo_raw) : '—';
+                $plate_disp = !empty($v['vehicle_plate']) ? $v['vehicle_plate'] : ($v_fields['vehicle_plate'] ?? '—');
+                $payment   = !empty($v['payment_method']) ? $v['payment_method'] : ($v_fields['payment_method'] ?? 'Cash');
+                if (empty($payment) || $payment === 'N/A') $payment = 'Cash';
+            ?>
             <tr>
                 <td><strong>#<?php echo $v['id']; ?></strong></td>
                 <td><?php echo htmlspecialchars($v['transaction_id']); ?></td>
-                <td><?php echo htmlspecialchars($v['customer_name'] ?? 'Walk-in Customer'); ?></td>
-                <td><?php echo htmlspecialchars(ucwords(str_replace('_', ' ', $v['transaction_type']))); ?></td>
-                <td style="color:#dc2626;font-weight:600;">₱<?php echo number_format($v['amount'], 2); ?></td>
+                <td><?php echo htmlspecialchars($jo_disp); ?></td>
+                <td><?php echo htmlspecialchars($v['customer_name'] ?? 'Walk-in'); ?></td>
+                <td><?php echo htmlspecialchars($plate_disp); ?></td>
+                <td>
+                    <?php 
+                    $type = ucwords(str_replace('_', ' ', $v['transaction_type']));
+                    $type_short = $type;
+                    if (stripos($type, 'job') !== false) $type_short = 'Job Order';
+                    elseif (stripos($type, 'merchandise') !== false) $type_short = 'Merch';
+                    elseif (stripos($type, 'combined') !== false) $type_short = 'Combined';
+                    $type_color = '#64748b';
+                    if (stripos($type, 'job') !== false) $type_color = '#3b82f6';
+                    elseif (stripos($type, 'merchandise') !== false) $type_color = '#10b981';
+                    elseif (stripos($type, 'combined') !== false) $type_color = '#8b5cf6';
+                    ?>
+                    <span style="display:inline-block;padding:2px 4px;background:<?php echo $type_color; ?>1a;color:<?php echo $type_color; ?>;border-radius:3px;font-size:8px;font-weight:700;line-height:1.2;">
+                        <?php echo $type_short; ?>
+                    </span>
+                </td>
+                <td style="font-size:9px;line-height:1.3;">
+                    <?php 
+                    $txn_id   = $v['transaction_id'];
+                    if (!empty($v_fields['voided_items'])) {
+                        foreach ($v_fields['voided_items'] as $item) {
+                            $qty = (float)($item['quantity'] ?? 1);
+                            $sub = (float)($item['subtotal'] ?? 0);
+                            echo '<div style="margin-bottom:2px;padding:2px 4px;border:1px solid #fca5a5;border-radius:3px;background:#fff5f5;font-size:8px;line-height:1.3;">';
+                            echo '<strong>' . htmlspecialchars(substr($item['product_name'] ?? '', 0, 28)) . (strlen($item['product_name'] ?? '') > 28 ? '..' : '') . '</strong><br>';
+                            echo '<span style="color:#64748b;">Qty: ' . $qty . ' | ₱' . number_format($sub, 2) . '</span>';
+                            echo '</div>';
+                        }
+                    } elseif (!empty($void_items_map[$txn_id])) {
+                        foreach ($void_items_map[$txn_id] as $item) {
+                            $qty = (float)($item['quantity'] ?? 1);
+                            $sub = (float)($item['subtotal'] ?? 0);
+                            echo '<div style="margin-bottom:2px;padding:2px 4px;border:1px solid #cbd5e1;border-radius:3px;background:#f8fafc;font-size:8px;line-height:1.3;">';
+                            echo '<strong>' . htmlspecialchars(substr($item['product_name'] ?? '', 0, 28)) . (strlen($item['product_name'] ?? '') > 28 ? '..' : '') . '</strong><br>';
+                            echo '<span style="color:#64748b;">Qty: ' . $qty . ' | ₱' . number_format($sub, 2) . '</span>';
+                            echo '</div>';
+                        }
+                    } elseif (!empty($v['item_names'])) {
+                        echo '<span style="font-size:8px;color:#334155;">' . htmlspecialchars($v['item_names']) . '</span>';
+                    } else {
+                        echo '<span style="font-size:8px;color:#94a3b8;font-style:italic;">— (legacy record)</span>';
+                    }
+                    ?>
+                </td>
+                <td style="font-weight:700;color:#dc2626;">₱<?php echo number_format($v['amount'], 2); ?></td>
+                <td>
+                    <?php 
+                    $payment_short = $payment;
+                    if (stripos($payment, 'cash') !== false) $payment_short = 'Cash';
+                    elseif (stripos($payment, 'credit') !== false || stripos($payment, 'card') !== false) $payment_short = 'Card';
+                    elseif (stripos($payment, 'gcash') !== false) $payment_short = 'GCash';
+                    elseif (stripos($payment, 'online') !== false) $payment_short = 'Online';
+                    
+                    $payment_color = '#64748b';
+                    if (stripos($payment, 'cash') !== false) $payment_color = '#10b981';
+                    elseif (stripos($payment, 'card') !== false || stripos($payment, 'credit') !== false) $payment_color = '#3b82f6';
+                    elseif (stripos($payment, 'gcash') !== false || stripos($payment, 'online') !== false) $payment_color = '#f59e0b';
+                    ?>
+                    <span style="display:inline-block;padding:2px 4px;background:<?php echo $payment_color; ?>1a;color:<?php echo $payment_color; ?>;border-radius:3px;font-size:8px;font-weight:600;line-height:1.2;">
+                        <?php echo htmlspecialchars($payment_short); ?>
+                    </span>
+                </td>
                 <td><?php echo htmlspecialchars($v['void_reason']); ?></td>
                 <td><?php echo htmlspecialchars($v['voided_by_name'] ?? 'Manager'); ?></td>
-                <td><?php echo date('M d, Y h:i A', strtotime($v['void_date'])); ?></td>
+                <td><?php echo date('M d, Y', strtotime($v['void_date'])); ?><br><span style="color:#64748b;font-size:11px;"><?php echo date('h:i A', strtotime($v['void_date'])); ?></span></td>
                 <td>
-                    <button class="flt-btn flt-btn-search" style="height:28px;padding:0 10px;font-size:11px;" onclick="openVoidDetailModal({
-                        voidId: '#<?php echo $v['id']; ?>',
-                        txnId: '<?php echo addslashes(htmlspecialchars($v['transaction_id'])); ?>',
-                        customer: '<?php echo addslashes(htmlspecialchars($v['customer_name'] ?? 'Walk-in Customer')); ?>',
-                        type: '<?php echo addslashes(htmlspecialchars(ucwords(str_replace('_', ' ', $v['transaction_type'])))); ?>',
-                        amount: '₱<?php echo number_format($v['amount'], 2); ?>',
-                        reason: '<?php echo addslashes(htmlspecialchars($v['void_reason'])); ?>',
-                        remarks: '<?php echo addslashes(htmlspecialchars($v['manager_remarks'] ?? '')); ?>',
-                        by: '<?php echo addslashes(htmlspecialchars($v['voided_by_name'] ?? 'Manager')); ?>',
-                        date: '<?php echo date('M d, Y h:i A', strtotime($v['void_date'])); ?>'
-                    })"><i class="fas fa-eye"></i> View</button>
+                    <span style="display:inline-block;padding:2px 4px;background:#fee2e2;color:#dc2626;border-radius:3px;font-size:8px;font-weight:700;line-height:1.2;">
+                        VOID
+                    </span>
+                </td>
+                <td>
+                    <?php
+                    $void_modal_data = [
+                        'voidId'   => 'VOID-' . (int)$v['id'],
+                        'txnId'    => $v['transaction_id'],
+                        'customer' => $v['customer_name'] ?? 'Walk-in Customer',
+                        'type'     => ucwords(str_replace('_',' ',$v['transaction_type'])),
+                        'amount'   => '₱' . number_format($v['amount'],2),
+                        'reason'   => $v['void_reason'],
+                        'remarks'  => $v['manager_remarks'] ?? '',
+                        'by'       => $v['voided_by_name'] ?? 'Manager',
+                        'date'     => date('M d, Y h:i A', strtotime($v['void_date'])),
+                        'payment'  => $payment,
+                        'items'    => $v['item_names'] ?? '—',
+                        'vehicle'  => $plate_disp,
+                        'joNo'     => $jo_disp,
+                        'fields_changed' => !empty($v['fields_changed']) ? json_decode($v['fields_changed'], true) : null
+                    ];
+                    ?>
+                    <button class="flt-btn flt-btn-search" style="height:22px;font-size:8px;padding:0 6px;display:inline-flex;align-items:center;gap:3px;"
+                        onclick="openVoidModal(<?= htmlspecialchars(json_encode($void_modal_data, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>)"><i class="fas fa-eye"></i> View</button>
                 </td>
             </tr>
             <?php endforeach; ?>
             <?php endif; ?>
         </tbody>
     </table>
-</div>
-
-<!-- ACTIVE TRANSACTIONS (For Voiding) -->
-<div id="tab_active" class="card" style="margin-top:0;display:none;">
-    <div class="card-head">
-        <div class="card-title">Active Transactions (Can be voided)</div>
-    </div>
-    <table class="void-table">
-        <thead>
-            <tr>
-                <th>Transaction ID</th>
-                <th>Customer</th>
-                <th>Type</th>
-                <th>Amount</th>
-                <th>Staff</th>
-                <th>Date</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php if (!$active_transactions): ?>
-            <tr><td colspan="7" style="text-align:center;padding:40px;color:#888;">No active transactions</td></tr>
-            <?php else: ?>
-            <?php foreach ($active_transactions as $txn): ?>
-            <tr>
-                <td><strong><?php echo htmlspecialchars($txn['transaction_id']); ?></strong></td>
-                <td><?php echo htmlspecialchars($txn['customer_name'] ?? 'Walk-in Customer'); ?></td>
-                <td><?php echo htmlspecialchars($txn['transaction_type'] ?? 'Merchandise'); ?></td>
-                <td style="font-weight:700;">₱<?php echo number_format($txn['total_amount'], 2); ?></td>
-                <td><?php echo htmlspecialchars($txn['staff_name'] ?? 'Staff'); ?></td>
-                <td><?php echo date('M d, Y', strtotime($txn['txn_date'])); ?></td>
-                <td>
-                    <button class="flt-btn flt-btn-pdf" style="height:28px;padding:0 10px;font-size:11px;" onclick='openVoidModal(<?php echo json_encode($txn, JSON_HEX_APOS | JSON_HEX_QUOT); ?>)'>
-                        <i class="fas fa-ban"></i> Void
-                    </button>
-                </td>
-            </tr>
-            <?php endforeach; ?>
-            <?php endif; ?>
-        </tbody>
-    </table>
-</div>
-
-<!-- VOID MODAL -->
-<div id="voidModal" class="modal">
-    <div class="modal-card">
-        <div class="modal-head">
-            <div class="modal-title">Void Transaction</div>
-            <button class="modal-close" onclick="closeModal()">&times;</button>
-        </div>
-        <form method="POST">
-            <input type="hidden" name="action" value="void_transaction">
-            <input type="hidden" name="transaction_id" id="void_txn_id">
-            <input type="hidden" name="transaction_type" id="void_txn_type">
-            <input type="hidden" name="amount" id="void_amount">
-            <input type="hidden" name="customer_name" id="void_customer">
-            <div class="modal-body">
-                <!-- INFORMATION (Read-Only) -->
-                <div style="background:#fef2f2;padding:12px;border-radius:8px;margin-bottom:20px;border:1px solid #fecaca;">
-                    <h4 style="margin:0 0 10px 0;font-size:13px;color:#dc2626;font-weight:700;">⚠️ Warning: This action cannot be undone</h4>
-                    <div style="font-size:12px;color:#991b1b;">Voiding this transaction will mark it as cancelled and restore any inventory that was deducted.</div>
-                </div>
-                
-                <div style="background:#f8fafc;padding:12px;border-radius:8px;margin-bottom:20px;">
-                    <h4 style="margin:0 0 10px 0;font-size:13px;color:#002F70;font-weight:700;">Transaction Information</h4>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;">
-                        <div><strong>Transaction ID:</strong> <span id="void_display_id"></span></div>
-                        <div><strong>Customer Name:</strong> <span id="void_display_customer"></span></div>
-                        <div><strong>Transaction Type:</strong> <span id="void_display_type"></span></div>
-                        <div><strong>Amount:</strong> <span id="void_display_amt"></span></div>
-                    </div>
-                </div>
-                
-                <!-- REQUIRED FIELDS -->
-                <h4 style="margin:0 0 12px 0;font-size:13px;color:#002F70;font-weight:700;">Required Fields</h4>
-                <div style="margin-bottom:15px;">
-                    <label>Void Reason <span style="color:red;">*</span></label>
-                    <select name="void_reason" class="input" required>
-                        <option value="">Select reason...</option>
-                        <option value="Duplicate Transaction">Duplicate Transaction</option>
-                        <option value="Wrong Customer">Wrong Customer</option>
-                        <option value="Incorrect Amount">Incorrect Amount</option>
-                        <option value="Payment Failed">Payment Failed</option>
-                        <option value="Customer Request">Customer Request</option>
-                        <option value="System Error">System Error</option>
-                        <option value="Other">Other</option>
-                    </select>
-                </div>
-                <div>
-                    <label>Manager Remarks</label>
-                    <textarea name="manager_remarks" class="input" rows="3" placeholder="Additional notes about why this transaction is being voided..."></textarea>
-                </div>
-            </div>
-            <div class="modal-actions">
-                <button type="button" class="flt-btn flt-btn-reset" onclick="closeModal()">Cancel</button>
-                <button type="submit" class="flt-btn flt-btn-solid-danger">Confirm Void</button>
-            </div>
-        </form>
     </div>
 </div>
 
-<!-- Void Detail Modal -->
+<!-- Voided Transaction Detail Modal -->
 <div id="voidDetailModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:16px;width:92%;max-width:580px;box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden;animation:voidModalIn .2s ease;">
-    <div style="background:linear-gradient(135deg,#dc2626,#b91c1c);padding:18px 22px;display:flex;align-items:center;justify-content:space-between;">
-      <span style="color:#fff;font-size:15px;font-weight:700;"><i class="fas fa-ban" style="margin-right:8px;"></i>Voided Transaction Details</span>
-      <button onclick="closeVoidDetailModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;">&times;</button>
+  <div style="background:#fff;border-radius:16px;width:92%;max-width:560px;box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden;animation:voidModalIn .2s ease;">
+    <div style="display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid #e2e8f0;">
+      <div style="width:36px;height:36px;background:#fef2f2;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fas fa-ban" style="color:#dc2626;font-size:15px;"></i>
+      </div>
+      <div>
+        <div style="font-size:14px;font-weight:700;color:#1e293b;">Void Record Details</div>
+      </div>
     </div>
     <div style="padding:22px 24px;">
       <table style="width:100%;border-collapse:collapse;font-size:13px;">
-        <tbody id="voidDetailModalBody"></tbody>
+        <tbody id="voidModalBody"></tbody>
       </table>
     </div>
     <div style="padding:12px 24px 18px;text-align:right;border-top:1px solid #f1f5f9;">
-      <button onclick="closeVoidDetailModal()" class="flt-btn flt-btn-reset" style="height:34px;"><i class="fas fa-times"></i> Close</button>
+      <button onclick="closeVoidModal()" class="flt-btn flt-btn-reset" style="height:34px;"><i class="fas fa-times"></i> Close</button>
     </div>
   </div>
 </div>
 <style>
 @keyframes voidModalIn{from{opacity:0;transform:translateY(-16px)}to{opacity:1;transform:none}}
-#voidDetailModalBody tr{border-bottom:1px solid #f1f5f9;}
-#voidDetailModalBody td{padding:9px 8px;vertical-align:top;}
-#voidDetailModalBody td:first-child{font-weight:700;color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:.4px;width:160px;white-space:nowrap;}
-#voidDetailModalBody td:last-child{color:#1e293b;font-weight:500;}
+#voidModalBody tr{border-bottom:1px solid #f1f5f9;}
+#voidModalBody td{padding:9px 8px;vertical-align:top;}
+#voidModalBody td:first-child{font-weight:700;color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:.4px;width:150px;white-space:nowrap;}
+#voidModalBody td:last-child{color:#1e293b;font-weight:500;}
 </style>
 
 <script>
-function openVoidModal(txn) {
-    document.getElementById('void_txn_id').value = txn.transaction_id;
-    document.getElementById('void_txn_type').value = txn.transaction_type || 'merchandise';
-    document.getElementById('void_amount').value = txn.total_amount;
-    document.getElementById('void_customer').value = txn.customer_name || 'Walk-in Customer';
-    
-    // Display transaction info
-    document.getElementById('void_display_id').textContent = txn.transaction_id;
-    document.getElementById('void_display_customer').textContent = txn.customer_name || 'Walk-in Customer';
-    document.getElementById('void_display_type').textContent = txn.transaction_type || 'Merchandise';
-    document.getElementById('void_display_amt').textContent = '₱' + parseFloat(txn.total_amount).toFixed(2);
-    
-    document.getElementById('voidModal').style.display = 'flex';
-}
+function openVoidModal(d){
+  var pm = d.payment || '—';
+  var itemsHtml = '';
+  if (d.fields_changed) {
+    if (d.fields_changed.payment_method) {
+      pm = '<strong>' + d.fields_changed.payment_method + '</strong> (' + (d.fields_changed.payment_status || 'Paid') + ')';
+    }
+    if (d.fields_changed.voided_items && d.fields_changed.voided_items.length > 0) {
+      itemsHtml = '<div style="margin-top: 6px; border: 1px solid #fca5a5; border-radius: 8px; overflow: hidden; background: #fff5f5;">' +
+        '<table style="width: 100%; border-collapse: collapse; font-size: 11px; text-align: left;">' +
+        '<tr style="background: #fee2e2; border-bottom: 1px solid #fca5a5; color: #991b1b;">' +
+        '<th style="padding: 6px 8px; font-weight: 700;">Item / Service</th>' +
+        '<th style="padding: 6px 8px; font-weight: 700;">Normal / Gipalit</th>' +
+        '<th style="padding: 6px 8px; font-weight: 700;">Gi-Void (Total)</th>' +
+        '</tr>';
+      d.fields_changed.voided_items.forEach(function(item) {
+        itemsHtml += '<tr style="border-bottom: 1px solid #fecaca;">' +
+          '<td style="padding: 6px 8px;"><strong>' + item.product_name + '</strong></td>' +
+          '<td style="padding: 6px 8px; color: #64748b;">' + item.quantity + ' x ₱' + Number(item.unit_price).toFixed(2) + '</td>' +
+          '<td style="padding: 6px 8px; font-weight: bold; color: #dc2626;">₱' + Number(item.subtotal).toFixed(2) + '</td>' +
+          '</tr>';
+      });
+      itemsHtml += '</table></div>';
+    }
+  }
+  
+  if (!itemsHtml) {
+    itemsHtml = d.items ? d.items : '<em style="color: #94a3b8; font-size: 12px;">No items logged or legacy record.</em>';
+  }
 
-function closeModal() {
-    document.getElementById('voidModal').style.display = 'none';
-}
-
-// Close modal on overlay click
-document.getElementById('voidModal').addEventListener('click', function(e) {
-    if (e.target === this) closeModal();
-});
-
-function openVoidDetailModal(d){
   var rows=[
     ['Void ID',          '<strong>'+d.voidId+'</strong>'],
     ['Transaction ID',   d.txnId],
+    ['Job Order No.',    d.joNo || '—'],
     ['Customer',         d.customer],
+    ['Vehicle Plate',    d.vehicle || '—'],
     ['Type',             d.type],
-    ['Amount',           '<strong style="color:#dc2626;font-size:15px;">'+d.amount+'</strong>'],
+    ['Payment Method',   pm],
+    ['Voided Amount',    '<strong style="color:#002F70;font-size:15px;">'+d.amount+'</strong>'],
+    ['Voided Items',     itemsHtml],
     ['Void Reason',      d.reason],
-    ['Remarks / Notes',  d.remarks || '—'],
+    ['Manager Remarks',  d.remarks || '—'],
     ['Voided By',        d.by],
     ['Void Date',        d.date]
   ];
   var html='';
   rows.forEach(function(r){ html+='<tr><td>'+r[0]+'</td><td>'+r[1]+'</td></tr>'; });
-  document.getElementById('voidDetailModalBody').innerHTML=html;
+  document.getElementById('voidModalBody').innerHTML=html;
   document.getElementById('voidDetailModal').style.display='flex';
 }
-function closeVoidDetailModal(){
+function closeVoidModal(){
   document.getElementById('voidDetailModal').style.display='none';
 }
 document.getElementById('voidDetailModal').addEventListener('click',function(e){
-  if(e.target===this) closeVoidDetailModal();
-});
-
-// ── Tab Switching Function ──────────────────────────────────────────────
-function switchTab(tabName) {
-    // Hide all tabs
-    document.getElementById('tab_voided').style.display = 'none';
-    document.getElementById('tab_active').style.display = 'none';
-    
-    // Show selected tab
-    document.getElementById('tab_' + tabName).style.display = 'block';
-    
-    // Update button styles
-    var voidedBtn = document.getElementById('tabBtn_voided');
-    var activeBtn = document.getElementById('tabBtn_active');
-    var pageHeadButtons = document.getElementById('pageHeadButtons');
-    
-    if (tabName === 'voided') {
-        voidedBtn.className = 'flt-btn flt-btn-solid-primary';
-        activeBtn.className = 'flt-btn flt-btn-reset';
-        // Show export buttons for Voided Transactions tab
-        pageHeadButtons.innerHTML = `
-            <a href="?export=excel&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&staff=<?php echo urlencode($filter_staff); ?>" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
-            <a href="?export=csv&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&staff=<?php echo urlencode($filter_staff); ?>" class="flt-btn flt-btn-search"><i class="fas fa-file-csv"></i> CSV</a>
-            <button class="flt-btn flt-btn-pdf" onclick="window.print()"><i class="fas fa-file-pdf"></i> PDF</button>
-        `;
-    } else {
-        voidedBtn.className = 'flt-btn flt-btn-reset';
-        activeBtn.className = 'flt-btn flt-btn-solid-primary';
-        // Show back button for Active Transactions tab
-        pageHeadButtons.innerHTML = `
-            <button onclick="switchTab('voided')" class="flt-btn flt-btn-reset">Back</button>
-        `;
-    }
-}
-
-// Initialize - show voided transactions tab by default
-window.addEventListener('DOMContentLoaded', function() {
-    switchTab('voided');
+  if(e.target===this) closeVoidModal();
 });
 </script>
 

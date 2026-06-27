@@ -2337,11 +2337,19 @@ input[list] {
                     <p style="font-size:14px;color:#666666;margin:3px 0 0;text-transform:uppercase;letter-spacing:0.3px;font-weight:500;">ENCODE DAILY PUMP READINGS AND FUEL TRANSACTIONS FOR MONITORING.</p>
                 </div>
             </div>
-            <div>
+            <div style="display:flex; flex-direction:column; gap:12px; align-items:flex-end;">
                 <button type="button" onclick="window.location.href='staff_dashboard.php'" 
                         class="txn-btn secondary" title="Back to Staff Dashboard">
                     <i class="fas fa-arrow-left"></i> <span>Back</span>
                 </button>
+                <div style="display:inline-flex; align-items:center; gap:8px;">
+                    <button onclick="exportTodayReadings('excel');" class="txn-btn success">
+                        <i class="fas fa-file-excel"></i> Excel
+                    </button>
+                    <button onclick="exportTodayReadings('csv');" class="txn-btn primary">
+                        <i class="fas fa-file-csv"></i> CSV
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -2599,15 +2607,14 @@ input[list] {
                         <tr style="background:#002F70;">
                             <th rowspan="2" style="border:1px solid #001f4d;padding:12px;vertical-align:middle;font-weight:700;font-size:13px;color:#fff;">NAME</th>
                             <th colspan="6" style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:14px;font-weight:700;color:#fff;">METER READING</th>
-                            <th rowspan="2" style="border:1px solid #001f4d;padding:12px;vertical-align:middle;font-weight:700;font-size:11px;color:#fff;">NOTES</th>
                         </tr>
                         <tr style="background:#002F70;">
-                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">BEGINNING</th>
-                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">ENDING</th>
-                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">CAL</th>
-                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">VOLUME LITERS</th>
-                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">PRICE</th>
-                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">AMOUNT</th>
+                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">BEGINNING <span style="color:#f87171;">*</span><br><span style="font-size:9px;font-weight:400;color:#93c5fd;">(Required)</span></th>
+                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">ENDING <span style="color:#f87171;">*</span><br><span style="font-size:9px;font-weight:400;color:#93c5fd;">(Required)</span></th>
+                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">CALIBRATION<br><span style="font-size:9px;font-weight:400;color:#93c5fd;">(Default 0.00)</span></th>
+                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">PRICE / LITER<br><span style="font-size:9px;font-weight:400;color:#93c5fd;">(Auto)</span></th>
+                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">NET VOLUME SOLD<br><span style="font-size:9px;font-weight:400;color:#93c5fd;">(Auto)</span></th>
+                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">TOTAL AMOUNT<br><span style="font-size:9px;font-weight:400;color:#93c5fd;">(Auto)</span></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -2680,6 +2687,7 @@ input[list] {
                                 $pump_prev_reading = 0.00;
                                 try {
                                     // Bulletproof: match pump_id whether it stores tanker_num OR the resolved fuel_pumps PK
+                                    // Get the most recent transaction (by date DESC, then id DESC) regardless of shift
                                     $pump_prev_stmt = $pdo->prepare("
                                         SELECT present_reading FROM fuel_transactions
                                         WHERE station_id = ?
@@ -2714,7 +2722,7 @@ input[list] {
                             <span style="font-weight:700;font-size:12px;color:#1e293b;"><?= $display_name ?></span>
                         </td>
 
-                        <!-- BEGINNING Column — pre-filled from previous shift's Ending reading -->
+                        <!-- BEGINNING Column * — pre-filled from previous shift's Ending reading -->
                         <td style="border:1px solid #e2e8f0;padding:6px;">
                             <input type="text"
                                    form="fuelForm_<?= $ft_id ?>"
@@ -2725,55 +2733,45 @@ input[list] {
                                    placeholder="<?= $pump_prev_reading > 0 ? number_format($pump_prev_reading, 2, '.', ',') : '0.00' ?>"
                                    autocomplete="off"
                                    oninput="formatOnInput(this); updateFuelCalc('<?= $ft_id ?>')"
-                                   onblur="formatOnBlur(this); updateFuelCalc('<?= $ft_id ?>')">
+                                   onblur="formatOnBlur(this); updateFuelCalc('<?= $ft_id ?>')"
+                                   required>
                         </td>
-                        
-                        <!-- ENDING Column -->
+
+                        <!-- ENDING Column * -->
                         <td style="border:1px solid #e2e8f0;padding:6px;">
                             <input type="text"
                                    form="fuelForm_<?= $ft_id ?>"
                                    name="ending_reading"
                                    id="ending_<?= $ft_id ?>"
-                                   style="width:110px;padding:8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px;text-align:right;font-weight:700;"
+                                   style="width:110px;padding:8px;font-size:12px;border:2px solid #3b82f6;border-radius:4px;text-align:right;font-weight:700;"
                                    placeholder="0.00"
                                    required
                                    autocomplete="off"
                                    oninput="formatOnInput(this); updateFuelCalc('<?= $ft_id ?>')"
-                                   onblur="formatOnBlur(this); updateFuelCalc('<?= $ft_id ?>')">
+                                   onblur="formatOnBlur(this); updateFuelCalc('<?= $ft_id ?>')"
+                                   title="Required: Enter the Ending meter reading">
                         </td>
-                        
-                        <!-- CAL (Calibration) Column -->
+
+                        <!-- CALIBRATION Column (Default = 0.00) -->
                         <td style="border:1px solid #e2e8f0;padding:6px;">
                             <input type="text"
                                    form="fuelForm_<?= $ft_id ?>"
                                    name="calibration"
                                    id="cal_<?= $ft_id ?>"
-                                   style="width:80px;padding:8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px;text-align:right;"
+                                   style="width:90px;padding:8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px;text-align:right;"
                                    value="0.00"
                                    placeholder="0.00"
                                    autocomplete="off"
+                                   title="Calibration correction (default 0.00). Cannot exceed Gross Volume."
                                    oninput="formatOnInput(this); updateFuelCalc('<?= $ft_id ?>')"
-                                   onblur="formatOnBlur(this); updateFuelCalc('<?= $ft_id ?>')">
+                                   onblur="formatOnBlur(this); updateFuelCalc('<?= $ft_id ?>')"
+                                   min="0">
                         </td>
-                        
-                        <!-- VOLUME LITERS Column (Auto-calculated: Ending - Beginning - CAL) -->
-                        <td style="border:1px solid #e2e8f0;padding:6px;">
-                            <input type="text"
-                                   id="volume_<?= $ft_id ?>"
-                                   style="width:90px;padding:8px;font-size:12px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:4px;text-align:right;font-weight:700;color:#334155;"
-                                   value="0.00"
-                                   readonly>
-                            <input type="hidden"
-                                   form="fuelForm_<?= $ft_id ?>"
-                                   name="volume_liters"
-                                   id="volume_value_<?= $ft_id ?>"
-                                   value="0.00">
-                        </td>
-                        
-                        <!-- PRICE Column (Fixed — fetched from product config, not editable) -->
+
+                        <!-- PRICE / LITER Column (Auto — read-only, from fuel_inventory) -->
                         <td style="border:1px solid #e2e8f0;padding:6px;background:#f8fafc;">
                             <span id="price_display_<?= $ft_id ?>"
-                                  style="display:block;width:80px;padding:8px;font-size:13px;font-weight:700;color:#334155;text-align:right;">
+                                  style="display:block;width:85px;padding:8px;font-size:13px;font-weight:700;color:#334155;text-align:right;">
                                 ₱<?= number_format($price_per_liter, 2) ?>
                             </span>
                             <input type="hidden"
@@ -2782,32 +2780,35 @@ input[list] {
                                    id="price_<?= $ft_id ?>"
                                    value="<?= number_format($price_per_liter, 2, '.', '') ?>">
                         </td>
-                        
-                        <!-- AMOUNT Column (Auto-calculated: Volume × Price) -->
-                        <td style="border:1px solid #e2e8f0;padding:6px;">
+
+                        <!-- NET VOLUME SOLD Column (Auto-calculated: (Ending - Beginning) - Calibration) -->
+                        <td style="border:1px solid #e2e8f0;padding:6px;background:#f0fdf4;">
+                            <input type="text"
+                                   id="volume_<?= $ft_id ?>"
+                                   style="width:95px;padding:8px;font-size:12px;background:transparent;border:1px solid #86efac;border-radius:4px;text-align:right;font-weight:700;color:#15803d;"
+                                   value="0.00"
+                                   readonly
+                                   title="Net Volume Sold = (Ending - Beginning) - Calibration">
+                            <input type="hidden"
+                                   form="fuelForm_<?= $ft_id ?>"
+                                   name="volume_liters"
+                                   id="volume_value_<?= $ft_id ?>"
+                                   value="0.00">
+                        </td>
+
+                        <!-- TOTAL AMOUNT Column (Auto-calculated: Net Volume × Price/Liter) -->
+                        <td style="border:1px solid #e2e8f0;padding:6px;background:#eff6ff;">
                             <input type="text"
                                    id="amount_<?= $ft_id ?>"
-                                   style="width:110px;padding:8px;font-size:12px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:4px;text-align:right;font-weight:800;color:#0f172a;"
+                                   style="width:115px;padding:8px;font-size:12px;background:transparent;border:1px solid #93c5fd;border-radius:4px;text-align:right;font-weight:800;color:#1d4ed8;"
                                    value="₱0.00"
-                                   readonly>
+                                   readonly
+                                   title="Total Amount = Net Volume Sold × Price per Liter">
                             <input type="hidden"
                                    form="fuelForm_<?= $ft_id ?>"
                                    name="total_amount"
                                    id="amount_value_<?= $ft_id ?>"
                                    value="0.00">
-                        </td>
-
-
-
-                        <!-- NOTES Column -->
-                        <td style="border:1px solid #e2e8f0;padding:6px;">
-                            <input type="text"
-                                   form="fuelForm_<?= $ft_id ?>"
-                                   name="notes"
-                                   style="width:140px;padding:8px;font-size:11px;border:1px solid #cbd5e1;border-radius:4px;"
-                                   placeholder="Remarks…"
-                                   maxlength="255"
-                                   autocomplete="off">
                         </td>
                     </tr>
                     <?php 
@@ -2827,13 +2828,47 @@ input[list] {
                     <i class="fas fa-undo"></i> Reset All
                 </button>
                 <button type="button"
+                        onclick="openGlobalRemarksModal()"
+                        style="background:#0066cc;color:#fff;padding:10px 18px;border:none;border-radius:6px;font-weight:600;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:all 0.2s;box-shadow:0 2px 4px rgba(0,102,204,0.2);"
+                        onmouseover="this.style.background='#0052a3'"
+                        onmouseout="this.style.background='#0066cc'">
+                    <i class="fas fa-comment-alt"></i> <span id="remarksButtonLabel">Add Remarks</span>
+                </button>
+                <button type="button"
                         onclick="submitAllFuelRows()"
                         class="fet-submit-btn">
                     <i class="fas fa-paper-plane"></i> Submit All Readings
                 </button>
             </div>
+            
+            <!-- Hidden field to store global remarks -->
+            <input type="hidden" id="globalFuelRemarks" value="">
 
         </div><!-- /txn-card encodeCard -->
+
+        <!-- Global Remarks Modal -->
+        <div id="globalRemarksModal" class="modal">
+            <div class="modal-card" style="max-width:500px;">
+                <div class="modal-head">
+                    <div style="display:flex;align-items:center;">
+                        <div class="modal-icon"><i class="fas fa-comment-alt"></i></div>
+                        <div>
+                            <div class="modal-title">Shift Remarks</div>
+                            <div class="modal-subtitle">Add notes for this fuel shift (applies to all fuel types)</div>
+                        </div>
+                    </div>
+                    <button class="modal-close" onclick="closeGlobalRemarksModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <label>REMARKS / NOTES</label>
+                    <textarea id="globalRemarksTextarea" class="input" rows="5" placeholder="Enter any remarks or notes for this shift (e.g., 'No sales due to power outage', 'Low customer traffic', etc.)&#10;&#10;This remark will be saved with all fuel transactions for this shift."></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="flt-btn flt-btn-reset" onclick="closeGlobalRemarksModal()"><i class="fas fa-times"></i> Cancel</button>
+                    <button type="button" class="flt-btn flt-btn-solid-primary" onclick="saveGlobalRemarks()"><i class="fas fa-save"></i> Save Remarks</button>
+                </div>
+            </div>
+        </div>
 
         <?php endif; ?>
 
@@ -2842,9 +2877,6 @@ input[list] {
             <div class="txn-card-header" style="background:#fff; border-bottom:1.5px solid #e2e8f0; border-top-left-radius:12px; border-top-right-radius:12px; padding: 16px 20px;">
                 <i class="fas fa-history" style="color:var(--petron-blue); font-size:18px;"></i>
                 <h3 style="font-size:16px; font-weight:700; color:#0f172a; margin:0;">Meter Reading History</h3>
-                <span style="margin-left:auto; font-size:12px; color:#64748b; font-weight:500;">
-                    Per-Shift Reporting & Validation History
-                </span>
             </div>
 
             <!-- Summary Cards Row -->
@@ -2904,22 +2936,6 @@ input[list] {
                         </select>
                     </div>
                 </div>
-
-                <!-- Export Buttons -->
-                <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-start;">
-                    <span style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:0.5px;">
-                        <i class="fas fa-download" style="color:var(--petron-blue); margin-right:4px;"></i>Export Options
-                    </span>
-                    <div style="display:inline-flex; align-items:center; gap:8px;">
-                        <button onclick="exportTodayReadings('excel');" class="txn-btn success">
-                            <i class="fas fa-file-excel"></i> Excel
-                        </button>
-                        <button onclick="exportTodayReadings('csv');" class="txn-btn primary">
-                            <i class="fas fa-file-csv"></i> CSV
-                        </button>
-                    </div>
-                </div>
-            </div>
 
             <!-- Table Body Container -->
             <div id="todayEntriesBody" style="padding:0;">
@@ -3043,20 +3059,30 @@ input[list] {
             if (!beginningEl || !endingEl || !calEl || !priceEl || !volumeEl || !amountEl) return;
             
             const beginning = parseFloat(beginningEl.value.replace(/,/g, '')) || 0;
-            const ending = parseFloat(endingEl.value.replace(/,/g, '')) || 0;
-            const cal = parseFloat(calEl.value.replace(/,/g, '')) || 0;
-            const price = parseFloat(priceEl.value) || 0;
-            
-            // ── Formula: Volume Liters = (Ending - Beginning) - Calibration ──
-            const volume = (ending - beginning) - cal;
+            const ending    = parseFloat(endingEl.value.replace(/,/g, ''))    || 0;
+            const cal       = parseFloat(calEl.value.replace(/,/g, ''))       || 0;
+            const price     = parseFloat(priceEl.value) || 0;
 
-            // ── Formula: Amount = Volume Liters × Price Per Liter ──
-            const amount = volume > 0 ? volume * price : 0;
-            
+            // ── Validation indicators on the CAL field ──
+            const grossVolume = ending - beginning;
+            const calNeg  = cal < 0;
+            const calHigh = cal > grossVolume && grossVolume > 0;
+            calEl.style.borderColor = (calNeg || calHigh) ? '#dc2626' : '#cbd5e1';
+            calEl.title = calNeg  ? 'Calibration must be ≥ 0'
+                        : calHigh ? `Calibration cannot exceed Gross Volume (${grossVolume.toFixed(2)}L)`
+                        : '';
+
+            // ── Formula: Net Volume = (Ending - Beginning) - Calibration ──
+            const netVolume = grossVolume - cal;
+            const volume    = netVolume > 0 ? netVolume : 0;
+
+            // ── Formula: Amount = Net Volume × Price per Liter ──
+            const amount = volume * price;
+
             // Update displays
             volumeEl.value = volume.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
             if (volumeValueEl) volumeValueEl.value = volume.toFixed(2);
-            
+
             amountEl.value = '₱' + amount.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
             if (amountValueEl) amountValueEl.value = amount.toFixed(2);
         }
@@ -3074,6 +3100,10 @@ input[list] {
             // Build FormData from the form
             const formData = new FormData(form);
 
+            // Add global remarks to this fuel transaction
+            const globalRemarks = document.getElementById('globalFuelRemarks').value.trim();
+            formData.set('notes', globalRemarks);
+
             // Validate: ending_reading must be filled (strip commas before parsing)
             const endingRaw = (formData.get('ending_reading') || '').replace(/,/g, '');
             const endingVal = parseFloat(endingRaw);
@@ -3087,13 +3117,29 @@ input[list] {
             formData.set('beginning_reading', beginningRaw);
             const beginningVal = parseFloat(beginningRaw) || 0;
 
-            if (endingVal <= beginningVal) {
-                showRowMsg(msgEl, 'error', 'Invalid Reading: Ending meter reading must be greater than Beginning reading.');
+            // Validation Rule 1: Ending Reading must not be less than Beginning Reading
+            // Note: Ending can equal Beginning (volume = 0), which is valid
+            if (endingVal < beginningVal) {
+                showRowMsg(msgEl, 'error', 'Invalid Reading: Ending meter reading cannot be less than Beginning reading.');
                 return false;
             }
 
             const calibrationRaw = (formData.get('calibration') || '0').replace(/,/g, '');
             formData.set('calibration', calibrationRaw);
+            const calibrationVal = parseFloat(calibrationRaw) || 0;
+
+            // Validation Rule 2: Calibration ≥ 0
+            if (calibrationVal < 0) {
+                showRowMsg(msgEl, 'error', 'Calibration value cannot be negative.');
+                return false;
+            }
+
+            // Validation Rule 3: Calibration cannot exceed Gross Volume
+            const grossVol = endingVal - beginningVal;
+            if (calibrationVal > grossVol && grossVol > 0) {
+                showRowMsg(msgEl, 'error', `Calibration (${calibrationVal.toFixed(2)}L) cannot be greater than Gross Volume (${grossVol.toFixed(2)}L).`);
+                return false;
+            }
 
             // Disable button, show loading
             submitBtn.disabled = true;
@@ -3199,7 +3245,6 @@ input[list] {
         // ── Reset a single row ────────────────────────────────────────────────
         function resetFuelRow(ftId) {
             const msgEl         = document.getElementById('cardMsg_' + ftId);
-            const notesEl       = document.querySelector(`#fuelForm_${ftId} [name="notes"]`);
             const beginningEl   = document.getElementById(`beginning_${ftId}`);
             const endingEl      = document.getElementById(`ending_${ftId}`);
             const calEl         = document.getElementById(`cal_${ftId}`);
@@ -3216,7 +3261,6 @@ input[list] {
             if (volumeValueEl) volumeValueEl.value = '0.00';
             if (amountEl) amountEl.value = '₱0.00';
             if (amountValueEl) amountValueEl.value = '0.00';
-            if (notesEl) notesEl.value = '';
             if (msgEl) showRowMsg(msgEl, '', '');
         }
 
@@ -3231,9 +3275,54 @@ input[list] {
                 const ftId = form.id.replace('fuelForm_', '');
                 resetFuelRow(ftId);
             });
+            
+            // Clear global remarks
+            document.getElementById('globalFuelRemarks').value = '';
+            document.getElementById('globalRemarksTextarea').value = '';
+            document.getElementById('remarksButtonLabel').textContent = 'Add Remarks';
 
             showToast('All fuel readings have been reset.', 'info');
         }
+        
+        // ── Global Remarks Functions ───────────────────────────────────────────
+        function openGlobalRemarksModal() {
+            const currentRemarks = document.getElementById('globalFuelRemarks').value;
+            document.getElementById('globalRemarksTextarea').value = currentRemarks;
+            document.getElementById('globalRemarksModal').style.display = 'flex';
+            document.getElementById('globalRemarksTextarea').focus();
+        }
+        
+        function closeGlobalRemarksModal() {
+            document.getElementById('globalRemarksModal').style.display = 'none';
+        }
+        
+        function saveGlobalRemarks() {
+            const remarks = document.getElementById('globalRemarksTextarea').value.trim();
+            document.getElementById('globalFuelRemarks').value = remarks;
+            
+            // Update button label
+            const buttonLabel = document.getElementById('remarksButtonLabel');
+            if (remarks) {
+                buttonLabel.textContent = 'Edit Remarks ✓';
+                showToast('Remarks saved! They will be applied to all fuel transactions.', 'success');
+            } else {
+                buttonLabel.textContent = 'Add Remarks';
+            }
+            
+            closeGlobalRemarksModal();
+        }
+        
+        // Close modal on ESC
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeGlobalRemarksModal();
+            }
+        });
+        
+        // Close modal on background click
+        document.getElementById('globalRemarksModal')?.addEventListener('click', function(e) {
+            if (e.target === this) closeGlobalRemarksModal();
+        });
 
         // ── Submit ALL fuel rows with data ─────────────────────────────────────
         async function submitAllFuelRows() {
@@ -3241,30 +3330,29 @@ input[list] {
             const formsToSubmit = [];
 
             let validationFailed = false;
-            // Collect forms that have ending reading (required field)
+            // Collect ALL forms (even with 0 readings - valid for no sales shifts)
             allForms.forEach(form => {
                 const ftId = form.id.replace('fuelForm_', '');
                 const endingEl = document.getElementById(`ending_${ftId}`);
+                const beginningEl = document.getElementById(`beginning_${ftId}`);
                 const endingValue = parseFloat((endingEl?.value || '0').replace(/,/g, ''));
-                if (endingValue > 0) {
-                    const beginningEl = document.getElementById(`beginning_${ftId}`);
-                    const beginningValue = parseFloat((beginningEl?.value || '0').replace(/,/g, ''));
-                    if (endingValue <= beginningValue) {
-                        showToast(`Invalid Reading for ${ftId.replace(/_/g, ' ').toUpperCase()}: Ending must be greater than Beginning.`, 'error');
-                        const msgEl = document.getElementById('cardMsg_' + ftId);
-                        if (msgEl) showRowMsg(msgEl, 'error', 'Invalid Reading: Ending must be greater than Beginning.');
-                        validationFailed = true;
-                    }
-                    formsToSubmit.push({ ftId, form });
+                const beginningValue = parseFloat((beginningEl?.value || '0').replace(/,/g, ''));
+                
+                // Validate: ending cannot be less than beginning
+                if (endingValue < beginningValue) {
+                    showToast(`Invalid Reading for ${ftId.replace(/_/g, ' ').toUpperCase()}: Ending cannot be less than Beginning.`, 'error');
+                    const msgEl = document.getElementById('cardMsg_' + ftId);
+                    if (msgEl) showRowMsg(msgEl, 'error', 'Invalid Reading: Ending cannot be less than Beginning.');
+                    validationFailed = true;
                 }
+                
+                // Add ALL forms to submit (including those with 0 readings)
+                formsToSubmit.push({ ftId, form });
             });
 
             if (validationFailed) return;
 
-            if (formsToSubmit.length === 0) {
-                showToast('No fuel readings to submit. Please enter at least one ending reading.', 'warning');
-                return;
-            }
+            // Allow submission even if all readings are 0 (no sales during shift is valid)
 
             // Custom confirm instead of browser confirm()
             const confirmed = await showConfirm(`Submit ${formsToSubmit.length} fuel reading(s) for manager validation?`);
@@ -3274,6 +3362,9 @@ input[list] {
             let errorCount = 0;
             const errors = [];
 
+            // Get global remarks to apply to all fuel transactions
+            const globalRemarks = document.getElementById('globalFuelRemarks').value.trim();
+
             // Submit each form
             for (const {ftId, form} of formsToSubmit) {
                 try {
@@ -3282,6 +3373,8 @@ input[list] {
                     formData.set('ending_reading',   (formData.get('ending_reading')   || '').replace(/,/g, ''));
                     formData.set('beginning_reading', (formData.get('beginning_reading') || '').replace(/,/g, ''));
                     formData.set('calibration',       (formData.get('calibration')       || '0').replace(/,/g, ''));
+                    // Add global remarks to this fuel transaction
+                    formData.set('notes', globalRemarks);
                     const response = await fetch('api_fuel_readings.php', {
                         method: 'POST',
                         body: formData
@@ -3301,7 +3394,6 @@ input[list] {
                         const volumeValEl = document.getElementById(`volume_value_${ftId}`);
                         const amountEl    = document.getElementById(`amount_${ftId}`);
                         const amountValEl = document.getElementById(`amount_value_${ftId}`);
-                        const notesEl     = document.querySelector(`#fuelForm_${ftId} [name="notes"]`);
                         const submittedEnding = parseFloat((endingEl?.value || '0').replace(/,/g, ''));
                         if (beginningEl && submittedEnding > 0) {
                             const fmtEnding = submittedEnding.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
@@ -3316,7 +3408,6 @@ input[list] {
                         if (volumeValEl) volumeValEl.value = '0.00';
                         if (amountEl)    amountEl.value    = '₱0.00';
                         if (amountValEl) amountValEl.value = '0.00';
-                        if (notesEl)     notesEl.value     = '';
                     } else {
                         errorCount++;
                         errors.push(`${ftId}: ${result.message || 'Unknown error'}`);
@@ -3333,6 +3424,11 @@ input[list] {
 
             // Show summary toast
             if (errorCount === 0) {
+                // Clear global remarks after successful submission
+                document.getElementById('globalFuelRemarks').value = '';
+                document.getElementById('globalRemarksTextarea').value = '';
+                document.getElementById('remarksButtonLabel').textContent = 'Add Remarks';
+                
                 showToast('✔ All meter readings for today\'s shift have been recorded.', 'success');
                 // Redirect to manager validation after short delay
                 setTimeout(() => {
@@ -3527,18 +3623,18 @@ input[list] {
             let html = `<div style="overflow-x:hidden; border-bottom:1px solid #e2e8f0; background:#ffffff;">
                 <table id="todayReadingsTable" style="width:100%; border-collapse:collapse; font-size:11px; text-align:left; table-layout:fixed;">
                     <colgroup>
-                        <col style="width: 7%;">  <!-- Date -->
+                        <col style="width: 8%;">  <!-- Date -->
                         <col style="width: 8%;">  <!-- Shift -->
-                        <col style="width: 9%;">  <!-- Pump / Fuel Type -->
-                        <col style="width: 6%;">  <!-- Beginning -->
-                        <col style="width: 6%;">  <!-- Ending -->
-                        <col style="width: 6%;">  <!-- Calibration -->
-                        <col style="width: 7%;">  <!-- Volume (L) -->
-                        <col style="width: 6%;">  <!-- Price/L -->
-                        <col style="width: 8%;">  <!-- Amount -->
-                        <col style="width: 8%;">  <!-- Encoded By -->
-                        <col style="width: 13%;"> <!-- Status -->
-                        <col style="width: 16%;"> <!-- Notes -->
+                        <col style="width: 10%;"> <!-- Pump / Fuel Type -->
+                        <col style="width: 7%;">  <!-- Beginning -->
+                        <col style="width: 7%;">  <!-- Ending -->
+                        <col style="width: 7%;">  <!-- Calibration -->
+                        <col style="width: 8%;">  <!-- Volume (L) -->
+                        <col style="width: 7%;">  <!-- Price/L -->
+                        <col style="width: 9%;">  <!-- Amount -->
+                        <col style="width: 9%;">  <!-- Encoded By -->
+                        <col style="width: 10%;"> <!-- Status -->
+                        <col style="width: 10%;"> <!-- Notes -->
                     </colgroup>
                     <thead>
                         <tr style="background:#002F70; border-bottom:2px solid #001f4d;">
@@ -7887,7 +7983,7 @@ input[list] {
                                 <!-- Row 2: Workflow Actions -->
                                 <?php if ($wf_status === 'Rejected'): ?>
                                     <!-- Rejected: Re-encode - GRAY -->
-                                    <a href="joborder.php" 
+                                    <a href="staff_transactions_hub.php?section=merchandise&active_tab=merchandise" 
                                        class="txn-btn secondary">
                                         <i class="fas fa-redo"></i> Re-encode
                                     </a>

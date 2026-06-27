@@ -486,14 +486,16 @@ require_once __DIR__ . '/../partials/header.php';
 .afto-row-btn-reopen:hover { background:#fff7ed !important; border-color:#ea580c !important; }
 
 /* Summary cards grid (6 columns) */
-.afto-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:18px; }
-.afto-card { background:#fff; border:1px solid #e2e8f0; border-radius:11px; padding:14px; display:flex; align-items:center; gap:12px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
-.afto-card-ico { width:36px; height:36px; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; border-radius:50%; background:#eff6ff; color:#002f6c; }
-.afto-card.c-amber .afto-card-ico { background:#fffbeb; color:#d97706; }
-.afto-card.c-green .afto-card-ico { background:#f0fdf4; color:#16a34a; }
-.afto-card.c-red .afto-card-ico { background:#fef2f2; color:#dc2626; }
-.afto-card-meta h3 { margin:0; font-size:10px; color:#64748b; text-transform:uppercase; letter-spacing:.5px; font-weight:700; }
-.afto-card-meta h2 { margin:2px 0 0; font-size:18px; font-weight:700; color:#00264D; line-height:1.1; }
+.afto-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; margin-bottom:24px; }
+.afto-card { background:#ffffff; border:1px solid #cbd5e1; border-radius:10px; padding:16px; display:flex; align-items:center; justify-content:space-between; box-shadow:0 1px 3px rgba(0,0,0,.05); position:relative; overflow:hidden; }
+.afto-card-info { display:flex; flex-direction:column; }
+.afto-card-lbl { font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px; }
+.afto-card-val { font-size:20px; font-weight:700; color:#1e293b; }
+.afto-card-icon { font-size:24px; opacity:0.8; }
+.afto-card.blue .afto-card-icon { color:#2563eb; }
+.afto-card.yellow .afto-card-icon { color:#d97706; }
+.afto-card.green .afto-card-icon { color:#16a34a; }
+.afto-card.red .afto-card-icon { color:#dc2626; }
 
 /* Filter bar */
 .afto-filter { display:flex; align-items:flex-end; gap:8px; flex-wrap:wrap; background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:12px; margin-bottom:16px; }
@@ -502,17 +504,17 @@ require_once __DIR__ . '/../partials/header.php';
 .afto-fg input, .afto-fg select { height:34px; padding:0 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; color:#1e293b; background:#fff; outline:none; box-sizing:border-box; }
 .afto-fg input:focus, .afto-fg select:focus { border-color:#002F70; }
 
-/* Table — NO horizontal scroll, fixed layout with tight columns */
+/* Table — No horizontal scroll, auto layout */
 .afto-table-card { background:#fff; border:1px solid #e2e8f0; border-radius:11px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.04); width:100%; }
 .afto-table-hd { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid #f1f5f9; flex-wrap:wrap; gap:8px; }
 .afto-table-title { font-size:13px; font-weight:700; color:#00264D; text-transform:uppercase; letter-spacing:.3px; margin:0; }
 .afto-tbl-wrap { width:100%; overflow:hidden; }
 .afto-tbl { width:100%; border-collapse:collapse; table-layout:fixed; font-size:10px; }
 .afto-tbl thead tr { background:#002F70; }
-.afto-tbl thead th { padding:7px 6px; text-align:left; font-size:9px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.3px; border-bottom:2px solid #001a3d; vertical-align:middle; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.afto-tbl thead th { padding:8px 6px; text-align:left; font-size:9px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.3px; border-bottom:2px solid #001a3d; vertical-align:middle; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .afto-tbl tbody tr { border-bottom:1px solid #f1f5f9; transition:background .1s; }
 .afto-tbl tbody tr:hover td { background:#eff6ff; }
-.afto-tbl tbody td { padding:7px 6px; color:#334155; vertical-align:middle; background:#fff; font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:0; }
+.afto-tbl tbody td { padding:8px 6px; color:#334155; vertical-align:middle; background:#fff; font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:0; }
 
 /* Status Badges */
 .afto-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:700; white-space:nowrap; }
@@ -651,53 +653,52 @@ require_once __DIR__ . '/../partials/header.php';
         <button type="button" onclick="aftoExport('excel')" class="ato-btn ato-btn-excel"><i class="fas fa-file-excel"></i> Excel</button>
         <button type="button" onclick="aftoExport('csv')"   class="ato-btn ato-btn-csv"><i class="fas fa-file-csv"></i> CSV</button>
         <button type="button" onclick="aftoExport('pdf')"   class="ato-btn ato-btn-pdf"><i class="fas fa-file-pdf"></i> PDF</button>
-        <a href="admin_dashboard.php" class="ato-btn ato-btn-back"><i class="fas fa-arrow-left"></i> Back</a>
     </div>
 </div>
 
 <!-- Summary Cards (6 Columns) -->
 <div class="afto-cards">
-    <div class="afto-card">
-        <div class="afto-card-ico"><i class="fas fa-list-ol"></i></div>
-        <div class="afto-card-meta">
-            <h3>Total Transactions</h3>
-            <h2><?= number_format($total_txns) ?></h2>
+    <div class="afto-card blue">
+        <div class="afto-card-info">
+            <span class="afto-card-lbl">Total Transactions</span>
+            <span class="afto-card-val"><?= number_format($total_txns) ?></span>
         </div>
+        <div class="afto-card-icon"><i class="fas fa-list-ol"></i></div>
     </div>
-    <div class="afto-card c-amber">
-        <div class="afto-card-ico"><i class="fas fa-clock"></i></div>
-        <div class="afto-card-meta">
-            <h3>Pending Transactions</h3>
-            <h2><?= number_format($pending_txns) ?></h2>
+    <div class="afto-card yellow">
+        <div class="afto-card-info">
+            <span class="afto-card-lbl">Pending Transactions</span>
+            <span class="afto-card-val"><?= number_format($pending_txns) ?></span>
         </div>
+        <div class="afto-card-icon"><i class="fas fa-clock"></i></div>
     </div>
-    <div class="afto-card c-green">
-        <div class="afto-card-ico"><i class="fas fa-check-circle"></i></div>
-        <div class="afto-card-meta">
-            <h3>Validated Transactions</h3>
-            <h2><?= number_format($validated_txns) ?></h2>
+    <div class="afto-card green">
+        <div class="afto-card-info">
+            <span class="afto-card-lbl">Validated Transactions</span>
+            <span class="afto-card-val"><?= number_format($validated_txns) ?></span>
         </div>
+        <div class="afto-card-icon"><i class="fas fa-check-circle"></i></div>
     </div>
-    <div class="afto-card c-red">
-        <div class="afto-card-ico"><i class="fas fa-times-circle"></i></div>
-        <div class="afto-card-meta">
-            <h3>Rejected Transactions</h3>
-            <h2><?= number_format($rejected_txns) ?></h2>
+    <div class="afto-card red">
+        <div class="afto-card-info">
+            <span class="afto-card-lbl">Rejected Transactions</span>
+            <span class="afto-card-val"><?= number_format($rejected_txns) ?></span>
         </div>
+        <div class="afto-card-icon"><i class="fas fa-times-circle"></i></div>
     </div>
-    <div class="afto-card c-green">
-        <div class="afto-card-ico"><i class="fas fa-tint"></i></div>
-        <div class="afto-card-meta">
-            <h3>Total Liters Sold</h3>
-            <h2><?= number_format($total_liters, 2) ?> L</h2>
+    <div class="afto-card green">
+        <div class="afto-card-info">
+            <span class="afto-card-lbl">Total Liters Sold</span>
+            <span class="afto-card-val"><?= number_format($total_liters, 2) ?> L</span>
         </div>
+        <div class="afto-card-icon"><i class="fas fa-tint"></i></div>
     </div>
-    <div class="afto-card">
-        <div class="afto-card-ico"><i class="fas fa-peso-sign"></i></div>
-        <div class="afto-card-meta">
-            <h3>Total Fuel Sales</h3>
-            <h2>₱<?= number_format($total_sales, 2) ?></h2>
+    <div class="afto-card blue">
+        <div class="afto-card-info">
+            <span class="afto-card-lbl">Total Fuel Sales</span>
+            <span class="afto-card-val">₱<?= number_format($total_sales, 2) ?></span>
         </div>
+        <div class="afto-card-icon"><i class="fas fa-peso-sign"></i></div>
     </div>
 </div>
 
@@ -771,33 +772,25 @@ require_once __DIR__ . '/../partials/header.php';
         <h3 class="afto-table-title"><i class="fas fa-table"></i> Fuel Transaction Records</h3>
         <span style="font-size:11px;color:#64748b;"><?= number_format(count($transactions)) ?> record(s) — <?= htmlspecialchars($date_from) ?> to <?= htmlspecialchars($date_to) ?></span>
     </div>
-    <?php if (empty($transactions)): ?>
-    <div class="afto-empty">
-        <i class="fas fa-inbox"></i>
-        <div style="font-size:15px;font-weight:700;color:#64748b;margin-bottom:4px;">No transactions found</div>
-        <div style="font-size:13px;">No fuel transactions for the selected period.</div>
-    </div>
-    <?php else: ?>
     <div class="afto-tbl-wrap">
         <table class="afto-tbl">
             <colgroup>
-                <col style="width:7%">   <!-- Transaction ID -->
+                <col style="width:8%">   <!-- Transaction ID -->
                 <col style="width:6%">   <!-- Date -->
-                <col style="width:5%">   <!-- Shift -->
+                <col style="width:6%">   <!-- Shift -->
                 <col style="width:4%">   <!-- Pump -->
-                <col style="width:6%">   <!-- Fuel Type -->
-                <col style="width:5%">   <!-- Beg Reading -->
-                <col style="width:5%">   <!-- End Reading -->
-                <col style="width:4%">   <!-- Calibration -->
-                <col style="width:5%">   <!-- Volume Liters -->
-                <col style="width:5%">   <!-- Price/Liter -->
-                <col style="width:6%">   <!-- Amount -->
-                <col style="width:6%">   <!-- Staff Encoder -->
-                <col style="width:6%">   <!-- Manager Validator -->
-                <col style="width:5%">   <!-- Status -->
+                <col style="width:7%">   <!-- Fuel Type -->
+                <col style="width:6%">   <!-- Beg Reading -->
+                <col style="width:6%">   <!-- End Reading -->
+                <col style="width:5%">   <!-- Calibration -->
+                <col style="width:6%">   <!-- Volume Liters -->
+                <col style="width:6%">   <!-- Price/Liter -->
+                <col style="width:7%">   <!-- Amount -->
+                <col style="width:7%">   <!-- Staff Encoder -->
+                <col style="width:7%">   <!-- Manager Validator -->
+                <col style="width:6%">   <!-- Status -->
                 <col style="width:7%">   <!-- Validation Date -->
                 <col style="width:6%">   <!-- Remarks -->
-                <col style="width:7%">   <!-- Actions -->
             </colgroup>
             <thead>
                 <tr>
@@ -817,10 +810,18 @@ require_once __DIR__ . '/../partials/header.php';
                     <th>Status</th>
                     <th>Val. Date</th>
                     <th>Remarks</th>
-                    <th style="text-align:center;">Actions</th>
                 </tr>
             </thead>
             <tbody>
+                <?php if (empty($transactions)): ?>
+                <tr>
+                    <td colspan="16" style="text-align:center;padding:60px 20px;">
+                        <i class="fas fa-inbox" style="font-size:48px;color:#cbd5e1;margin-bottom:16px;display:block;"></i>
+                        <div style="font-size:16px;font-weight:700;color:#64748b;margin-bottom:8px;">No transactions found</div>
+                        <div style="font-size:14px;color:#94a3b8;">No fuel transactions for the selected period.</div>
+                    </td>
+                </tr>
+                <?php else: ?>
                 <?php foreach($transactions as $tx):
                     $st = strtolower(trim($tx['status'] ?? ''));
                     if ($st === 'verified') {
@@ -855,26 +856,9 @@ require_once __DIR__ . '/../partials/header.php';
                     <td><span class="afto-badge <?= $badge ?>"><?= $st_label ?></span></td>
                     <td title="<?= $tx['validated_at'] ? date('M d, Y H:i', strtotime($tx['validated_at'])) : '—' ?>"><?= $tx['validated_at'] ? date('M d Y', strtotime($tx['validated_at'])) : '—' ?></td>
                     <td title="<?= htmlspecialchars($remarks) ?>"><?= htmlspecialchars(mb_strimwidth($remarks, 0, 20, '…')) ?></td>
-                    <td style="text-align:center;padding:4px;vertical-align:middle;">
-                        <div class="afto-btn-stack">
-                            <button onclick="viewTxnDetails(<?= $tx['id'] ?>)" class="afto-row-btn afto-row-btn-details">
-                                <i class="fas fa-eye"></i> Details
-                            </button>
-                            <button onclick="viewTxnAudit(<?= $tx['id'] ?>)" class="afto-row-btn afto-row-btn-audit">
-                                <i class="fas fa-history"></i> Audit
-                            </button>
-                            <button onclick="printSingleTxn(<?= $tx['id'] ?>)" class="afto-row-btn afto-row-btn-print">
-                                <i class="fas fa-print"></i> Print
-                            </button>
-                            <?php if ($st !== 'pending validation' && !str_contains($st, 'pending')): ?>
-                            <button onclick="reopenTxn(<?= $tx['id'] ?>, '<?= htmlspecialchars($tx['transaction_id']) ?>')" class="afto-row-btn afto-row-btn-reopen">
-                                <i class="fas fa-undo"></i> Reopen
-                            </button>
-                            <?php endif; ?>
-                        </div>
-                    </td>
                 </tr>
                 <?php endforeach; ?>
+                <?php endif; ?>
             </tbody>
         </table>
     </div>
@@ -903,7 +887,6 @@ require_once __DIR__ . '/../partials/header.php';
             </div>
         </div>
     </div>
-    <?php endif; ?>
 </div>
 
 <!-- Reopen Transaction Form -->

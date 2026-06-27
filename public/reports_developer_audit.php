@@ -1708,7 +1708,7 @@ include __DIR__ . '/../partials/header.php';
     </div><!-- End .rpt-printable -->
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="../assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script>
 // Interactive Tabs Switching Script (Screen Only)
 function switchTab(tabId) {

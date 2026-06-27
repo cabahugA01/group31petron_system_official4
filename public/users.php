@@ -58,6 +58,27 @@ function user_status_label(?string $status): string {
     return $normalized === 'Disabled' ? 'Disabled' : $normalized;
 }
 
+function generateEmployeeID($pdo, $role) {
+    $role = strtolower(trim($role));
+    $prefix = 'STF';
+    if ($role === 'superadmin') $prefix = 'SA';
+    elseif ($role === 'admin') $prefix = 'ADM';
+    elseif ($role === 'manager') $prefix = 'MGR';
+    
+    $stmt = $pdo->prepare("SELECT employee_id FROM users WHERE employee_id LIKE ? ORDER BY employee_id DESC LIMIT 1");
+    $stmt->execute([$prefix . '-%']);
+    $last_id = $stmt->fetchColumn();
+    
+    $num = 1;
+    if ($last_id) {
+        $parts = explode('-', $last_id);
+        $last_num = (int)end($parts);
+        $num = $last_num + 1;
+    }
+    
+    return $prefix . '-' . str_pad($num, 3, '0', STR_PAD_LEFT);
+}
+
 $msg = '';
 
 // Helper function to generate random password
@@ -73,229 +94,153 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         // 1. Add User
         if ($action === 'add_user') {
-            $name           = trim($_POST['full_name'] ?? trim(($_POST['first_name'] ?? '') . ' ' . ($_POST['last_name'] ?? '')));
-            $login_id       = trim($_POST['login_id'] ?? $_POST['email'] ?? '');
-            $role_key_input = $_POST['role'] ?? '';
-            $role           = role_key($role_key_input);
-            $raw_password   = trim($_POST['password_hash'] ?? '');
-            $confirmPassword = trim($_POST['confirm_password'] ?? '');
+            $first_name_input  = trim($_POST['first_name']      ?? '');
+            $last_name_input   = trim($_POST['last_name']       ?? '');
+            $role_key_input    = $_POST['role']                 ?? '';
+            $role              = role_key($role_key_input);
+            $employee_id_input = generateEmployeeID($pdo, $role);
+            $contact_input     = trim($_POST['contact_number']  ?? '');
+            $email_input       = trim($_POST['email']           ?? '');
+            $username_input    = trim($_POST['username']        ?? '');
+            $assigned_shift    = trim($_POST['assigned_shift']  ?? '');
+            $status_input      = trim($_POST['status']          ?? 'Active');
+            $raw_password      = trim($_POST['new_password']    ?? '');
+            $confirm_password  = trim($_POST['confirm_password']?? '');
 
-            // Parse Login ID into email/username (phone support removed)
-            $email    = null;
-            $username = $login_id;
+            // Derive login identity
+            $email    = !empty($email_input)    ? $email_input    : null;
+            $username = !empty($username_input) ? $username_input : $email_input;
 
-            if (strpos($login_id, '@') !== false) {
-                $email = $login_id;
-                if (!filter_var($email, FILTER_VALIDATE_EMAIL)) throw new Exception('Invalid email address format.');
+            // Validate email format
+            if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                throw new Exception('Invalid email address format.');
             }
 
-            // Validate required fields
-            if (empty($name))           throw new Exception('Full Name is required.');
-            if (empty($login_id))       throw new Exception('Login ID is required.');
-            if (empty($role_key_input)) throw new Exception('Role is required.');
+            // Required fields
+            if (empty($first_name_input)) throw new Exception('First Name is required.');
+            if (empty($last_name_input))  throw new Exception('Last Name is required.');
+            if (empty($username))         throw new Exception('Email or Username is required.');
+            if (empty($role_key_input))   throw new Exception('Role is required.');
 
             // Password handling
             if (empty($raw_password)) {
-                // Auto-generate: 12 chars, allowed symbols _ . - ! @ #
                 $password = generateSecurePassword();
             } else {
-                // Manual password validation
-                if ($raw_password !== $confirmPassword) throw new Exception("Passwords do not match.");
-                $allowed_symbol_regex = '/[!@#$%^&*(),.?":{}|<>_\-]/';
-                if (
-                    strlen($raw_password) < 8 ||
+                if ($raw_password !== $confirm_password) throw new Exception('Passwords do not match.');
+                $sym_re = '/[!@#$%^&*(),.?\":{}|<>_\-]/';
+                if (strlen($raw_password) < 8 ||
                     !preg_match('/[A-Z]/', $raw_password) ||
                     !preg_match('/[a-z]/', $raw_password) ||
                     !preg_match('/[0-9]/', $raw_password) ||
-                    !preg_match($allowed_symbol_regex, $raw_password)
-                ) {
-                    throw new Exception("Password must be at least 8 characters and contain at least one uppercase letter, one lowercase letter, one number, and one symbol.");
+                    !preg_match($sym_re, $raw_password)) {
+                    throw new Exception('Password must be ≥8 chars with uppercase, lowercase, number, and symbol.');
                 }
                 $password = $raw_password;
             }
 
-            // Check login_id uniqueness (phone support removed)
-            $dup_sql = 'SELECT id FROM users WHERE username = ?';
+            // Uniqueness check
+            $dup_sql    = 'SELECT id FROM users WHERE username = ?';
             $dup_params = [$username];
             if (!empty($email)) { $dup_sql .= ' OR email = ?'; $dup_params[] = $email; }
-            $stmt = $pdo->prepare($dup_sql);
-            $stmt->execute($dup_params);
-            if ($stmt->fetch()) throw new Exception('Login ID (Email or Username) is already in use.');
+            $chk = $pdo->prepare($dup_sql);
+            $chk->execute($dup_params);
+            if ($chk->fetch()) throw new Exception('Email or Username is already in use by another account.');
 
-            // Handle station assignment based on role and creator
+            // Check Employee ID uniqueness if provided
+            if (!empty($employee_id_input) && in_array('employee_id', $user_cols)) {
+                $chk_emp = $pdo->prepare("SELECT id FROM users WHERE employee_id = ?");
+                $chk_emp->execute([$employee_id_input]);
+                if ($chk_emp->fetch()) throw new Exception('Employee ID is already assigned to another account.');
+            }
+
+            // Station assignment
             $station_target = null;
-            
             if ($my_role === 'superadmin') {
-                // SuperAdmin must select station for all roles
-                if (empty($_POST['station_id'])) {
-                    throw new Exception("Station selection is required for user creation.");
-                }
+                if (empty($_POST['station_id'])) throw new Exception('Station selection is required.');
                 $station_target = (int)$_POST['station_id'];
-                
-                // Validate station exists and is active
                 if (!StationManager::isValidActiveStation($station_target)) {
-                    throw new Exception("Selected station is not valid or inactive.");
+                    throw new Exception('Selected station is not valid or inactive.');
                 }
             } elseif ($my_role === 'admin') {
-                // Admin creating Admin: must select station
-                // Admin creating Staff/Manager: auto-assign to admin's station
                 if ($role === 'admin') {
-                    // Admin creation requires station selection
-                    if (empty($_POST['station_id'])) {
-                        throw new Exception("Station selection is required for Admin creation.");
-                    }
+                    if (empty($_POST['station_id'])) throw new Exception('Station selection required for Admin creation.');
                     $station_target = (int)$_POST['station_id'];
-                    
-                    // Validate station exists and is active
                     if (!StationManager::isValidActiveStation($station_target)) {
-                        throw new Exception("Selected station is not valid or inactive.");
+                        throw new Exception('Selected station is not valid or inactive.');
                     }
                 } else {
-                    // Staff or Manager: auto-assign to admin's station
                     $station_target = $my_station_id;
                 }
             } elseif ($my_role === 'manager') {
-                // Manager can only create Staff: auto-assign to manager's station
                 $station_target = $my_station_id;
             } else {
-                // Staff cannot create users
-                throw new Exception("You do not have permission to create users.");
+                throw new Exception('You do not have permission to create users.');
             }
 
-            // Log station assignment attempt
-            StationManager::logStationAssignmentAttempt(
-                $me['id'],
-                $me['role'],
-                $my_station_id,
-                $station_target,
-                true
-            );
+            StationManager::logStationAssignmentAttempt($me['id'], $me['role'], $my_station_id, $station_target, true);
 
-            // Validate role permissions based on creator
+            // Role & per-station uniqueness rules
             if ($my_role === 'admin') {
-                // Admin can create Staff and Manager
                 if (!in_array($role, ['staff', 'manager'])) {
-                    throw new Exception("As an Admin, you can only create Staff or Manager users.");
+                    throw new Exception('As Admin, you can only create Staff or Manager users.');
                 }
-                
-                // ═══════════════════════════════════════════════════════════
-                // STRICT VALIDATION: One Manager per Station ONLY
-                // ═══════════════════════════════════════════════════════════
                 if ($role === 'manager') {
-                    // Check for ANY existing manager (active OR inactive) at this station
-                    $checkManager = $pdo->prepare("
-                        SELECT COUNT(*) 
-                        FROM users 
-                        WHERE role = 'manager' 
-                          AND station_id = ?
-                    ");
-                    $checkManager->execute([$my_station_id]);
-                    $managerCount = (int)$checkManager->fetchColumn();
-                    
-                    if ($managerCount > 0) {
-                        // Get existing manager name for better error message
-                        $existingMgr = $pdo->prepare("
-                            SELECT name, status 
-                            FROM users 
-                            WHERE role = 'manager' 
-                              AND station_id = ?
-                            LIMIT 1
-                        ");
-                        $existingMgr->execute([$my_station_id]);
-                        $mgrInfo = $existingMgr->fetch(PDO::FETCH_ASSOC);
-                        $mgrName = $mgrInfo['name'] ?? 'Unknown';
-                        $mgrStatus = $mgrInfo['status'] ?? 'active';
-                        
-                        throw new Exception("❌ Cannot create Manager. Your station already has a Manager: {$mgrName} (Status: {$mgrStatus}). Only ONE Manager is allowed per station. Please deactivate the existing Manager first if you need to replace them.");
+                    $cm = $pdo->prepare("SELECT COUNT(*) FROM users WHERE role='manager' AND station_id=?");
+                    $cm->execute([$my_station_id]);
+                    if ((int)$cm->fetchColumn() > 0) {
+                        throw new Exception('Station already has a Manager. Deactivate the existing Manager first.');
                     }
                 }
-                
-                // Note: Staff and Manager auto-assigned to admin's station - no station selection needed
             } elseif ($my_role === 'superadmin') {
-                // Super Admin can create any role
-                if (!in_array($role, ['staff', 'manager', 'admin', 'superadmin'])) {
-                    throw new Exception("Invalid role selected.");
+                if (!in_array($role, ['staff','manager','admin','superadmin'])) {
+                    throw new Exception('Invalid role selected.');
                 }
-                
-                // ═══════════════════════════════════════════════════════════
-                // STRICT VALIDATION: One Admin per Station ONLY
-                // ═══════════════════════════════════════════════════════════
                 if ($role === 'admin') {
-                    $checkAdmin = $pdo->prepare("
-                        SELECT COUNT(*) 
-                        FROM users 
-                        WHERE role = 'admin' 
-                          AND station_id = ?
-                    ");
-                    $checkAdmin->execute([$station_target]);
-                    $adminCount = (int)$checkAdmin->fetchColumn();
-                    
-                    if ($adminCount > 0) {
-                        // Get existing admin name
-                        $existingAdm = $pdo->prepare("
-                            SELECT name, status 
-                            FROM users 
-                            WHERE role = 'admin' 
-                              AND station_id = ?
-                            LIMIT 1
-                        ");
-                        $existingAdm->execute([$station_target]);
-                        $admInfo = $existingAdm->fetch(PDO::FETCH_ASSOC);
-                        $admName = $admInfo['name'] ?? 'Unknown';
-                        $admStatus = $admInfo['status'] ?? 'active';
-                        
-                        throw new Exception("❌ Cannot create Admin. This station already has an Admin: {$admName} (Status: {$admStatus}). Only ONE Admin is allowed per station.");
+                    $ca = $pdo->prepare("SELECT COUNT(*) FROM users WHERE role='admin' AND station_id=?");
+                    $ca->execute([$station_target]);
+                    if ((int)$ca->fetchColumn() > 0) {
+                        throw new Exception('Station already has an Admin.');
                     }
                 }
-                
-                // ═══════════════════════════════════════════════════════════
-                // STRICT VALIDATION: One Manager per Station ONLY
-                // ═══════════════════════════════════════════════════════════
                 if ($role === 'manager') {
-                    $checkManager = $pdo->prepare("
-                        SELECT COUNT(*) 
-                        FROM users 
-                        WHERE role = 'manager' 
-                          AND station_id = ?
-                    ");
-                    $checkManager->execute([$station_target]);
-                    $managerCount = (int)$checkManager->fetchColumn();
-                    
-                    if ($managerCount > 0) {
-                        // Get existing manager name
-                        $existingMgr = $pdo->prepare("
-                            SELECT name, status 
-                            FROM users 
-                            WHERE role = 'manager' 
-                              AND station_id = ?
-                            LIMIT 1
-                        ");
-                        $existingMgr->execute([$station_target]);
-                        $mgrInfo = $existingMgr->fetch(PDO::FETCH_ASSOC);
-                        $mgrName = $mgrInfo['name'] ?? 'Unknown';
-                        $mgrStatus = $mgrInfo['status'] ?? 'active';
-                        
-                        throw new Exception("❌ Cannot create Manager. This station already has a Manager: {$mgrName} (Status: {$mgrStatus}). Only ONE Manager is allowed per station. Please contact system administrator if you need to replace the existing Manager.");
+                    $cm = $pdo->prepare("SELECT COUNT(*) FROM users WHERE role='manager' AND station_id=?");
+                    $cm->execute([$station_target]);
+                    if ((int)$cm->fetchColumn() > 0) {
+                        throw new Exception('Station already has a Manager.');
                     }
                 }
             }
 
             $hashed = password_hash($password, PASSWORD_DEFAULT);
 
-            // Split full name into first_name and last_name for legacy database compatibility
-            $name_parts = explode(' ', trim($name));
-            if (count($name_parts) > 1) {
-                $last_name_val = array_pop($name_parts);
-                $first_name_val = implode(' ', $name_parts);
-            } else {
-                $first_name_val = $name;
-                $last_name_val = '';
+            // Insert user
+            $stmt = $pdo->prepare("INSERT INTO users
+                (first_name, last_name, username, role, email, password_hash, station_id, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())");
+            $stmt->execute([$first_name_input, $last_name_input, $username, $role, $email, $hashed, $station_target, $status_input]);
+            $new_user_id = (int)$pdo->lastInsertId();
+
+            // Optional extra columns
+            $extra_sets = []; $extra_vals = [];
+            if (!empty($employee_id_input) && in_array('employee_id',    $user_cols)) { $extra_sets[] = 'employee_id = ?';    $extra_vals[] = $employee_id_input; }
+            if (!empty($contact_input)     && in_array('phone_number',   $user_cols)) { $extra_sets[] = 'phone_number = ?';   $extra_vals[] = $contact_input; }
+            if (!empty($assigned_shift)    && in_array('assigned_shift', $user_cols)) {
+                $extra_sets[] = 'assigned_shift = ?'; $extra_vals[] = $assigned_shift;
+                // Also sync shift_assignment and shift times for consistency
+                if (in_array('shift_assignment', $user_cols)) { $extra_sets[] = 'shift_assignment = ?'; $extra_vals[] = $assigned_shift; }
+                if (in_array('shift_start_time', $user_cols)) {
+                    $s_start = ($assigned_shift === 'Shift 1') ? '06:00:00' : '14:00:00';
+                    $s_end   = ($assigned_shift === 'Shift 1') ? '14:00:00' : '00:00:00';
+                    $extra_sets[] = 'shift_start_time = ?'; $extra_vals[] = $s_start;
+                    $extra_sets[] = 'shift_end_time = ?';   $extra_vals[] = $s_end;
+                }
+            }
+            if ($extra_sets) {
+                $extra_vals[] = $new_user_id;
+                $pdo->prepare("UPDATE users SET " . implode(', ', $extra_sets) . " WHERE id = ?")->execute($extra_vals);
             }
 
-            $stmt = $pdo->prepare("INSERT INTO users (first_name, last_name, username, role, email, password_hash, station_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'Active', NOW())");
-            $stmt->execute([$first_name_val, $last_name_val, $username, $role, $email, $hashed, $station_target]);
-
-            // Get station name for email
+            // Station name for email
             $station_name_for_email = 'Unknown Station';
             if ($station_target) {
                 $stn = $pdo->prepare("SELECT name FROM stations WHERE id = ?");
@@ -304,22 +249,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($stn_row) $station_name_for_email = $stn_row['name'];
             }
 
-            // Send credentials via email only (SMS support removed)
+            // Send credentials email
+            $full_name_for_email = trim($first_name_input . ' ' . $last_name_input);
             $cred_sent = false;
             if (!empty($email)) {
-                $cred_sent = sendAdminCredentialsEmail($email, $name, $station_name_for_email, $username, $password, $me['role']) ? true : false;
+                $cred_sent = (bool)sendAdminCredentialsEmail(
+                    $email, $full_name_for_email, $station_name_for_email,
+                    $username, $password, $me['role'], $role, $employee_id_input
+                );
             }
 
-            log_activity($pdo, $me['id'], 'Add User', "Created user $username ($role)");
+            log_activity($pdo, $me['id'], 'Add User',
+                "Created user $username ($role)" . ($employee_id_input ? " EmpID:$employee_id_input" : ''));
 
-            if ($cred_sent) {
-                $msg = "✅ User created successfully. Credentials sent to {$email}.";
-            } else {
-                $msg = "✅ User created successfully. Temp Password: {$password} — share manually.";
-            }
+            $msg = $cred_sent
+                ? "✅ User created successfully! Credentials email sent to <strong>{$email}</strong>."
+                : "✅ User created successfully! Temp Password: <strong>{$password}</strong> — share manually (no email provided).";
         }
         
-        // 2. Edit User
         elseif ($action === 'edit_user') {
             $id       = $_POST['user_id'];
             $name     = trim($_POST['full_name'] ?? trim(($_POST['first_name'] ?? '') . ' ' . ($_POST['last_name'] ?? '')));
@@ -547,12 +494,14 @@ $users = [];
 $station_name = '';
 $user_list_columns = "
     u.id,
+    u.employee_id,
     u.first_name,
     u.last_name,
     u.username,
     u.role,
     u.email,
     u.station_id,
+    u.assigned_shift,
     u.status,
     u.created_at,
     u.updated_at,
@@ -656,9 +605,11 @@ include __DIR__ . '/../partials/header.php';
         <table class="table">
             <thead>
                 <tr>
-                    <th>Name / Username</th>
+                    <th>Employee ID</th>
+                    <th>Name</th>
+                    <th>Username</th>
                     <th>Role</th>
-                    <th>Contact Info</th>
+                    <th>Assigned Shift</th>
                     <?php if($my_role === 'superadmin'): ?><th>Station</th><?php endif; ?>
                     <th>Status</th>
                     <th>Actions</th>
@@ -675,13 +626,21 @@ include __DIR__ . '/../partials/header.php';
                     $roleClass = in_array($roleKey, ['manager','admin','superadmin'], true) ? 'primary' : 'secondary';
                 ?>
                 <tr>
+                    <td style="font-family: monospace; font-weight: 700; color: #0f172a;"><?php echo htmlspecialchars($u['employee_id'] ?? '—'); ?></td>
                     <td>
                         <div style="font-weight:bold;"><?php echo htmlspecialchars(isset($u['name']) ? $u['name'] : ($u['username'] ?? 'Unknown')); ?></div>
-                        <div class="muted" style="font-size:0.85em;">@<?php echo htmlspecialchars($u['username'] ?? 'N/A'); ?></div>
+                        <div class="muted" style="font-size:0.8em;"><?php echo htmlspecialchars($u['email'] ?? ''); ?></div>
                     </td>
+                    <td style="font-weight: 500; color: #475569;">@<?php echo htmlspecialchars($u['username'] ?? '—'); ?></td>
                     <td><span class="badge bg-<?php echo $roleClass; ?>"><?php echo htmlspecialchars($roleLabel); ?></span></td>
                     <td>
-                        <div><i class="fas fa-envelope fa-xs"></i> <?php echo htmlspecialchars($u['email'] ?? 'N/A'); ?></div>
+                        <?php if ($roleKey === 'staff'): ?>
+                            <span class="badge" style="background-color: #f1f5f9; color: #1e293b; border: 1px solid #e2e8f0; font-weight: 600;">
+                                <?php echo htmlspecialchars($u['assigned_shift'] ?? 'Unassigned'); ?>
+                            </span>
+                        <?php else: ?>
+                            <span class="muted" style="font-size: 0.85em; color: #94a3b8;">—</span>
+                        <?php endif; ?>
                     </td>
                     <?php if($my_role === 'superadmin'): ?>
                         <td><?php echo htmlspecialchars($u['station_name'] ?? 'Unassigned'); ?></td>
@@ -736,7 +695,7 @@ include __DIR__ . '/../partials/header.php';
                 </tr>
                 <?php endforeach; ?>
                 <?php if(empty($users)): ?>
-                    <tr><td colspan="<?php echo $my_role === 'superadmin' ? 6 : 5; ?>" style="text-align:center; padding:20px;">No users found.</td></tr>
+                    <tr><td colspan="<?php echo $my_role === 'superadmin' ? 8 : 7; ?>" style="text-align:center; padding:20px;">No users found.</td></tr>
                 <?php endif; ?>
             </tbody>
         </table>
@@ -745,49 +704,79 @@ include __DIR__ . '/../partials/header.php';
 
 <!-- MODAL: Add User -->
 <div class="modal" id="addModal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3 class="modal-title">Add New User</h3>
-            <button class="modal-close" onclick="closeModal('addModal')">&times;</button>
+    <div class="modal-content" style="max-width: 620px; border-radius: 8px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.15);">
+        <div class="modal-header" style="background: #ffffff; border-bottom: 1px solid #e8ecf0; padding: 18px 24px;">
+            <div>
+                <h3 class="modal-title" style="color: #0f172a; font-weight: 700; font-size: 16px; margin: 0;">Add New User</h3>
+                <p style="margin: 2px 0 0; font-size: 12px; color: #94a3b8;">Fill in the details below to create a new account.</p>
+            </div>
         </div>
-         <form method="post" onsubmit="return validatePasswords();">
-            <div class="modal-body">
+        <form method="post" onsubmit="return validatePasswords();" autocomplete="off">
+            <div class="modal-body" style="max-height: 68vh; overflow-y: auto; padding: 24px;">
                 <input type="hidden" name="action" value="add_user">
-                
-                <div class="form-group mb-3">
-                    <label class="lbl">Full Name <span style="color:red;">*</span></label>
-                    <input type="text" name="full_name" class="inp full" required placeholder="e.g. Juan Dela Cruz">
+
+                <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; padding-left: 10px; border-left: 3px solid #334155; margin-bottom: 14px;">Personal Details</div>
+
+                <div class="grid-2 gap-3" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                    <div class="form-group">
+                        <label class="lbl">First Name <span style="color:red;">*</span></label>
+                        <input type="text" name="first_name" class="inp full" required placeholder="e.g. Judy">
+                    </div>
+                    <div class="form-group">
+                        <label class="lbl">Last Name <span style="color:red;">*</span></label>
+                        <input type="text" name="last_name" class="inp full" required placeholder="e.g. Lastimosa">
+                    </div>
                 </div>
 
-                <div class="form-group mb-3">
-                    <label class="lbl">Login ID <span style="color:red;">*</span></label>
-                    <input type="text" name="login_id" class="inp full" required placeholder="Email or Username">
-                    <small class="muted">Enter email (e.g. juan@email.com) or a username. Credentials will be sent via email.</small>
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label class="lbl">Contact Number <span class="muted">(optional)</span></label>
+                    <input type="text" name="contact_number" class="inp full" placeholder="e.g. 0917xxxxxxx">
                 </div>
-                
-                <div class="form-group mb-3">
-                    <label class="lbl">Role</label>
-                    <select name="role" id="user_role_add" class="inp full" required onchange="toggleStationField()">
-                        <option value="">Select role</option>
-                        <?php 
-                        // Show only roles that current user can create
-                        if ($my_role === 'superadmin'): ?>
-                            <option value="staff">Staff</option>
-                            <option value="manager">Manager</option>
-                            <option value="admin">Admin</option>
-                            <option value="superadmin">Super Admin</option>
-                        <?php elseif ($my_role === 'admin'): ?>
-                            <option value="staff">Staff</option>
-                            <option value="manager">Manager</option>
-                        <?php elseif ($my_role === 'manager' || $my_role === 'staff'): ?>
-                            <option value="staff">Staff</option>
-                        <?php endif; ?>
-                    </select>
+
+                <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; padding-left: 10px; border-left: 3px solid #334155; margin-bottom: 14px; margin-top: 22px;">Account & Role</div>
+
+                <div class="grid-2 gap-3" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                    <div class="form-group">
+                        <label class="lbl">Email Address <span style="color:red;">*</span></label>
+                        <input type="email" name="email" class="inp full" required placeholder="e.g. judy@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label class="lbl">Username <span class="muted">(optional, defaults to email)</span></label>
+                        <input type="text" name="username" class="inp full" placeholder="e.g. judy.lastimosa">
+                    </div>
                 </div>
-                
+
+                <div class="grid-2 gap-3" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                    <div class="form-group">
+                        <label class="lbl">Role <span style="color:red;">*</span></label>
+                        <select name="role" id="user_role_add" class="inp full" required onchange="toggleStationField()">
+                            <option value="">Select role</option>
+                            <?php if ($my_role === 'superadmin'): ?>
+                                <option value="staff">Staff</option>
+                                <option value="manager">Manager</option>
+                                <option value="admin">Admin</option>
+                                <option value="superadmin">Super Admin</option>
+                            <?php elseif ($my_role === 'admin'): ?>
+                                <option value="staff">Staff</option>
+                                <option value="manager">Manager</option>
+                            <?php elseif ($my_role === 'manager' || $my_role === 'staff'): ?>
+                                <option value="staff">Staff</option>
+                            <?php endif; ?>
+                        </select>
+                    </div>
+                    <div class="form-group" id="shift_field_group" style="display: none;">
+                        <label class="lbl">Assigned Shift <span style="color:red;">*</span></label>
+                        <select name="assigned_shift" id="add_assigned_shift" class="inp full">
+                            <option value="">Select shift</option>
+                            <option value="Shift 1">Shift 1 (6:00 AM – 2:00 PM)</option>
+                            <option value="Shift 2">Shift 2 (2:00 PM – 12:00 AM)</option>
+                        </select>
+                    </div>
+                </div>
+
                 <!-- Station Assignment Field - Only show for SuperAdmin and Admin for any role creation -->
                 <div class="form-group mb-3" id="station_field_group" style="display: none;">
-                    <label class="lbl">Station <span class="required">*</span></label>
+                    <label class="lbl">Station Assignment <span class="required">*</span></label>
                     <?php if($station_ui_config['type'] === 'radio_buttons'): ?>
                         <?php 
                         $stationConfig = UIConfig::getStationSelectorConfig();
@@ -798,7 +787,7 @@ include __DIR__ . '/../partials/header.php';
                                 <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 4px; border-radius: 4px;" 
                                        onmouseover="this.style.background='#e9ecef'" 
                                        onmouseout="this.style.background='transparent'">
-                                    <input type="radio" name="station_id" value="<?php echo $station['id']; ?>" required>
+                                    <input type="radio" name="station_id" value="<?php echo $station['id']; ?>">
                                     <span><?php echo htmlspecialchars($station['name']); ?></span>
                                 </label>
                             <?php endforeach; ?>
@@ -815,37 +804,38 @@ include __DIR__ . '/../partials/header.php';
                         <i class="fas fa-info-circle"></i> <?php echo $station_ui_config['help_text'] ?? 'Station assignment information'; ?>
                     </small>
                 </div>
-                
-                <!-- Hidden auto-assignment for Manager/Staff creation -->
-                <input type="hidden" name="auto_station_id" id="auto_station_id" value="<?php echo $my_station_id; ?>">
-                
 
-                
-                <div class="form-group mb-3">
-                    <label class="lbl">Password</label>
-                    <div style="display:flex; gap:10px; align-items:flex-start;">
-                        <input type="text" name="password_hash" id="new_password" class="inp full" placeholder="Leave empty to auto-generate">
-                        <button type="button" class="btn small ghost" onclick="generateSimplePassword()" title="Generate random password" style="margin-top: 2px; flex-shrink: 0;">
-                            <i class="fas fa-dice"></i>
-                        </button>
+                <div class="grid-2 gap-3" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px; margin-bottom: 15px;">
+                    <div class="form-group">
+                        <label class="lbl">Temporary Password <span class="muted">(optional)</span></label>
+                        <div style="display:flex; gap:10px; align-items:flex-start;">
+                            <input type="text" name="new_password" id="new_password" class="inp full" placeholder="Auto-generate if empty">
+                            <button type="button" class="btn small ghost" onclick="generateSimplePassword()" title="Generate random password" style="margin-top: 2px; flex-shrink: 0;">
+                                <i class="fas fa-dice"></i>
+                            </button>
+                        </div>
                     </div>
-                    <small class="muted" style="margin-top: 4px;">Auto-generates random password if left empty</small>
+                    <div class="form-group">
+                        <label class="lbl">Confirm Password</label>
+                        <input type="password" name="confirm_password" id="confirm_password" class="inp full" placeholder="Re-enter password">
+                    </div>
                 </div>
-                
-                <div class="form-group mb-3">
-                    <label class="lbl">Confirm Password</label>
-                    <input type="password" name="confirm_password" id="confirm_password" class="inp full" placeholder="Re-enter password">
+
+                <div class="form-group">
+                    <label class="lbl">Status</label>
+                    <select name="status" class="inp full">
+                        <option value="Active">Active</option>
+                        <option value="Disabled">Disabled</option>
+                    </select>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn ghost" onclick="closeModal('addModal')">Cancel</button>
-                 <button type="submit" class="btn primary" style="background:linear-gradient(135deg,#003d7a 0%,#0056b3 100%);border:2px solid #003d7a;color:#fff;font-weight:600;">Create User</button>
+            <div class="modal-footer" style="background: #f8fafc; border-top: 1px solid #e8ecf0; padding: 14px 24px; justify-content: flex-end; gap: 8px;">
+                <button type="button" onclick="closeModal('addModal')" style="font-size:11px;font-weight:600;padding:5px 14px;border-radius:4px;cursor:pointer;border:none;background:#dc3545;color:#fff;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-times"></i> Cancel</button>
+                <button type="submit" style="font-size:11px;font-weight:600;padding:5px 14px;border-radius:4px;cursor:pointer;border:none;background:#002F70;color:#fff;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-user-plus"></i> Create User</button>
             </div>
         </form>
     </div>
 </div>
-
-<!-- MODAL: Edit User -->
 <div class="modal" id="editModal">
     <div class="modal-content">
         <div class="modal-header">
@@ -967,8 +957,20 @@ include __DIR__ . '/../partials/header.php';
             <!-- Details grid -->
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                 <div>
+                    <div style="font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Employee ID</div>
+                    <div id="view_employee_id" style="font-size:13px;color:#374151;font-weight:600;"></div>
+                </div>
+                <div>
+                    <div style="font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Assigned Shift</div>
+                    <div id="view_assigned_shift" style="font-size:13px;color:#374151;font-weight:600;"></div>
+                </div>
+                <div>
                     <div style="font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Email</div>
                     <div id="view_email" style="font-size:13px;color:#374151;word-break:break-all;"></div>
+                </div>
+                <div>
+                    <div style="font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Contact Number</div>
+                    <div id="view_contact_number" style="font-size:13px;color:#374151;"></div>
                 </div>
                 <div>
                     <div style="font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Status</div>
@@ -996,6 +998,8 @@ include __DIR__ . '/../partials/header.php';
 function toggleStationField() {
     const roleSelect = document.getElementById('user_role_add');
     const stationFieldGroup = document.getElementById('station_field_group');
+    const shiftFieldGroup = document.getElementById('shift_field_group');
+    const shiftSelect = document.getElementById('add_assigned_shift');
     const selectedRole = roleSelect.value;
     const currentUserRole = '<?php echo $my_role; ?>';
     
@@ -1004,8 +1008,22 @@ function toggleStationField() {
     if ((currentUserRole === 'superadmin' && selectedRole !== '') ||
         (currentUserRole === 'admin' && selectedRole === 'admin')) {
         stationFieldGroup.style.display = 'block';
+        const stationInputs = stationFieldGroup.querySelectorAll('input[type="radio"]');
+        stationInputs.forEach(i => i.required = true);
     } else {
         stationFieldGroup.style.display = 'none';
+        const stationInputs = stationFieldGroup.querySelectorAll('input[type="radio"]');
+        stationInputs.forEach(i => i.required = false);
+    }
+
+    // Shift is required for Staff only
+    if (selectedRole === 'staff') {
+        shiftFieldGroup.style.display = 'block';
+        shiftSelect.required = true;
+    } else {
+        shiftFieldGroup.style.display = 'none';
+        shiftSelect.required = false;
+        shiftSelect.value = '';
     }
 }
 
@@ -1020,18 +1038,6 @@ function validatePasswords() {
         return false;
     }
 
-    // Check if station field is visible and requires selection
-    const stationFieldGroup = document.getElementById('station_field_group');
-    if (stationFieldGroup.style.display !== 'none') {
-        const stationRadios = document.querySelectorAll('input[name="station_id"]');
-        let stationSelected = false;
-        stationRadios.forEach(radio => { if (radio.checked) stationSelected = true; });
-        if (!stationSelected) {
-            alert('Station is required. Please select a station.');
-            return false;
-        }
-    }
-
     // If both empty → auto-generate on server side, just confirm fields match
     if (password === '' && confirmPassword === '') {
         return true; // server will auto-generate
@@ -1044,7 +1050,7 @@ function validatePasswords() {
     }
 
     // Manual password rules: min 8, upper, lower, digit, allowed symbol
-    const symbolRegex = /[_.\-!@#]/;
+    const symbolRegex = /[!@#$%^&*(),.?":{}|<>_\-]/;
     if (
         password.length < 8 ||
         !/[A-Z]/.test(password) ||
@@ -1052,38 +1058,11 @@ function validatePasswords() {
         !/[0-9]/.test(password) ||
         !symbolRegex.test(password)
     ) {
-        alert('Password must be at least 8 characters and contain at least one uppercase letter, one lowercase letter, one number, and one symbol (_ . - ! @ #).');
+        alert('Password must be at least 8 characters and contain at least one uppercase letter, one lowercase letter, one number, and one symbol.');
         return false;
     }
 
     return true;
-}
-
-function generateSimplePassword() {
-    const upper   = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    const lower   = 'abcdefghijklmnopqrstuvwxyz';
-    const digits  = '0123456789';
-    const symbols = '_.-!@#';
-    const all     = upper + lower + digits + symbols;
-
-    // Guarantee one of each required type
-    let pwd = '';
-    pwd += upper[Math.floor(Math.random() * upper.length)];
-    pwd += lower[Math.floor(Math.random() * lower.length)];
-    pwd += digits[Math.floor(Math.random() * digits.length)];
-    pwd += symbols[Math.floor(Math.random() * symbols.length)];
-
-    // Fill to 12 chars
-    for (let i = 4; i < 12; i++) {
-        pwd += all[Math.floor(Math.random() * all.length)];
-    }
-
-    // Shuffle
-    pwd = pwd.split('').sort(() => Math.random() - 0.5).join('');
-
-    document.getElementById('new_password').value = pwd;
-    document.getElementById('confirm_password').value = pwd;
-    alert('Generated password: ' + pwd);
 }
 
 function openViewModal(user) {
@@ -1100,6 +1079,9 @@ function openViewModal(user) {
     document.getElementById('view_username').textContent = '@' + (user.username || user.email || '—');
     document.getElementById('view_email').textContent = user.email || 'N/A';
     document.getElementById('view_role_text').textContent = isManager ? 'Manager' : 'Staff';
+    document.getElementById('view_employee_id').textContent = user.employee_id || '—';
+    document.getElementById('view_assigned_shift').textContent = user.assigned_shift || '—';
+    document.getElementById('view_contact_number').textContent = user.phone_number || '—';
 
     // Role badge
     var badgeColor = isManager ? '#7c3aed' : '#6b7280';

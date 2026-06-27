@@ -150,7 +150,7 @@ foreach ($TANK_CONFIG_17 as $tank) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>17-Tanker Fuel Inventory Estate - Petron Management System</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/vendor/fontawesome/css/all.min.css">
     <link rel="stylesheet" href="../assets/css/style.css">
 </head>
 <body style="background:#f8f9fa;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;margin:0;padding:0;">

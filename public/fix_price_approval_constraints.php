@@ -1,0 +1,357 @@
+<?php
+/**
+ * Fix Price Approval Foreign Key Constraints
+ * This script fixes the foreign key constraint issues
+ */
+
+session_start();
+require_once __DIR__ . '/db_connect.php';
+
+// Check if user is admin
+$user = $_SESSION['user'] ?? null;
+if (!$user || !in_array(strtolower($user['role'] ?? ''), ['admin', 'administrator', 'manager', 'superadmin', 'developer'])) {
+    die('Access Denied: Admin/Manager privileges required');
+}
+
+$messages = [];
+$action = $_GET['action'] ?? '';
+
+if ($action === 'fix') {
+    try {
+        // Step 1: Check if pending_price_approvals table exists
+        $check_table = $pdo->query("SHOW TABLES LIKE 'pending_price_approvals'");
+        
+        if ($check_table->rowCount() > 0) {
+            // Step 2: Drop existing foreign key constraints
+            try {
+                $pdo->exec("ALTER TABLE pending_price_approvals DROP FOREIGN KEY fk_pending_price_approvals_product");
+                $messages[] = ['type' => 'success', 'text' => 'Dropped old foreign key constraint'];
+            } catch (Exception $e) {
+                $messages[] = ['type' => 'info', 'text' => 'No existing foreign key to drop'];
+            }
+            
+            // Step 3: Delete orphaned records (records with invalid product_id)
+            $stmt = $pdo->query("
+                DELETE ppa FROM pending_price_approvals ppa
+                LEFT JOIN inventory_products ip ON ppa.product_id = ip.id
+                WHERE ip.id IS NULL
+            ");
+            $deleted = $stmt->rowCount();
+            if ($deleted > 0) {
+                $messages[] = ['type' => 'success', 'text' => "Deleted $deleted orphaned price approval records"];
+            } else {
+                $messages[] = ['type' => 'info', 'text' => 'No orphaned records found'];
+            }
+            
+            // Step 4: Re-create foreign key with proper settings
+            try {
+                $pdo->exec("
+                    ALTER TABLE pending_price_approvals 
+                    ADD CONSTRAINT fk_pending_price_approvals_product 
+                    FOREIGN KEY (product_id) 
+                    REFERENCES inventory_products(id) 
+                    ON UPDATE CASCADE 
+                    ON DELETE CASCADE
+                ");
+                $messages[] = ['type' => 'success', 'text' => 'Created new foreign key constraint with CASCADE'];
+            } catch (Exception $e) {
+                $messages[] = ['type' => 'error', 'text' => 'Error creating foreign key: ' . $e->getMessage()];
+            }
+            
+            // Step 5: Verify the fix
+            $orphaned_check = $pdo->query("
+                SELECT COUNT(*) FROM pending_price_approvals ppa
+                LEFT JOIN inventory_products ip ON ppa.product_id = ip.id
+                WHERE ip.id IS NULL
+            ")->fetchColumn();
+            
+            if ($orphaned_check == 0) {
+                $messages[] = ['type' => 'success', 'text' => 'Verification passed: All records have valid product references'];
+            } else {
+                $messages[] = ['type' => 'warning', 'text' => "Warning: $orphaned_check records still have invalid product_id"];
+            }
+            
+        } else {
+            $messages[] = ['type' => 'info', 'text' => 'pending_price_approvals table does not exist yet'];
+        }
+        
+        // Step 6: Also check fuel_inventory constraints
+        try {
+            $check_fuel = $pdo->query("SHOW TABLES LIKE 'fuel_inventory'");
+            if ($check_fuel->rowCount() > 0) {
+                // Remove old constraints
+                try {
+                    $pdo->exec("ALTER TABLE fuel_inventory DROP FOREIGN KEY fuel_inventory_ibfk_1");
+                } catch (Exception $e) {}
+                
+                try {
+                    $pdo->exec("ALTER TABLE fuel_inventory DROP FOREIGN KEY fuel_inventory_ibfk_2");
+                } catch (Exception $e) {}
+                
+                // Add proper constraints
+                try {
+                    $pdo->exec("
+                        ALTER TABLE fuel_inventory 
+                        ADD CONSTRAINT fk_fuel_inventory_station 
+                        FOREIGN KEY (station_id) 
+                        REFERENCES stations(id) 
+                        ON UPDATE CASCADE 
+                        ON DELETE CASCADE
+                    ");
+                    $messages[] = ['type' => 'success', 'text' => 'Fixed fuel_inventory station constraint'];
+                } catch (Exception $e) {
+                    $messages[] = ['type' => 'info', 'text' => 'Fuel inventory station constraint already exists'];
+                }
+            }
+        } catch (Exception $e) {
+            $messages[] = ['type' => 'error', 'text' => 'Error fixing fuel_inventory: ' . $e->getMessage()];
+        }
+        
+    } catch (Exception $e) {
+        $messages[] = ['type' => 'error', 'text' => 'Fatal error: ' . $e->getMessage()];
+    }
+}
+
+// Get current status
+$status = [];
+try {
+    // Check pending_price_approvals
+    $stmt = $pdo->query("
+        SELECT COUNT(*) as total,
+               SUM(CASE WHEN ip.id IS NULL THEN 1 ELSE 0 END) as orphaned
+        FROM pending_price_approvals ppa
+        LEFT JOIN inventory_products ip ON ppa.product_id = ip.id
+    ");
+    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    $status['pending_approvals_total'] = $result['total'] ?? 0;
+    $status['pending_approvals_orphaned'] = $result['orphaned'] ?? 0;
+    
+    // Check constraints
+    $constraints = $pdo->query("
+        SELECT CONSTRAINT_NAME, UPDATE_RULE, DELETE_RULE
+        FROM information_schema.KEY_COLUMN_USAGE
+        WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'pending_price_approvals'
+        AND CONSTRAINT_NAME LIKE 'fk_%'
+    ")->fetchAll(PDO::FETCH_ASSOC);
+    
+    $status['constraints'] = $constraints;
+    
+} catch (Exception $e) {
+    $status['error'] = $e->getMessage();
+}
+
+?>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Fix Price Approval Constraints</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px 20px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #dc2626;
+            margin-bottom: 8px;
+            font-size: 28px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .subtitle {
+            color: #64748b;
+            margin-bottom: 32px;
+            font-size: 14px;
+        }
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+        .status-card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+        }
+        .status-card.error {
+            border-color: #fecaca;
+            background: #fef2f2;
+        }
+        .status-card.success {
+            border-color: #bbf7d0;
+            background: #f0fdf4;
+        }
+        .status-label {
+            font-size: 11px;
+            font-weight: 700;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        .status-value {
+            font-size: 32px;
+            font-weight: 800;
+            color: #002F70;
+        }
+        .status-value.error {
+            color: #dc2626;
+        }
+        .status-value.success {
+            color: #16a34a;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 14px 28px;
+            background: linear-gradient(135deg, #dc2626, #b91c1c);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            transition: transform 0.2s;
+        }
+        .btn:hover { transform: translateY(-2px); }
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #475569;
+        }
+        .messages {
+            margin-top: 32px;
+        }
+        .message {
+            padding: 14px 18px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 14px;
+        }
+        .message.success {
+            background: #dcfce7;
+            border-left: 4px solid #16a34a;
+            color: #15803d;
+        }
+        .message.error {
+            background: #fee2e2;
+            border-left: 4px solid #dc2626;
+            color: #b91c1c;
+        }
+        .message.info {
+            background: #dbeafe;
+            border-left: 4px solid #3b82f6;
+            color: #1e40af;
+        }
+        .message.warning {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            color: #b45309;
+        }
+        .actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }
+        .constraint-list {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 24px;
+            font-size: 13px;
+        }
+        .constraint-list h3 {
+            color: #1e293b;
+            margin-bottom: 12px;
+            font-size: 14px;
+        }
+        .constraint-item {
+            padding: 8px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .constraint-item:last-child {
+            border-bottom: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1><i class="fas fa-wrench"></i> Fix Price Approval Constraints</h1>
+        <div class="subtitle">Repair foreign key constraint issues in pending_price_approvals table</div>
+        
+        <div class="status-grid">
+            <div class="status-card <?= ($status['pending_approvals_orphaned'] ?? 0) > 0 ? 'error' : 'success' ?>">
+                <div class="status-label">Total Pending Approvals</div>
+                <div class="status-value"><?= number_format($status['pending_approvals_total'] ?? 0) ?></div>
+            </div>
+            <div class="status-card <?= ($status['pending_approvals_orphaned'] ?? 0) > 0 ? 'error' : 'success' ?>">
+                <div class="status-label">Orphaned Records</div>
+                <div class="status-value <?= ($status['pending_approvals_orphaned'] ?? 0) > 0 ? 'error' : 'success' ?>">
+                    <?= number_format($status['pending_approvals_orphaned'] ?? 0) ?>
+                </div>
+            </div>
+        </div>
+        
+        <?php if (!empty($status['constraints'])): ?>
+        <div class="constraint-list">
+            <h3>Current Constraints:</h3>
+            <?php foreach ($status['constraints'] as $constraint): ?>
+            <div class="constraint-item">
+                <strong><?= htmlspecialchars($constraint['CONSTRAINT_NAME']) ?></strong><br>
+                <small>ON UPDATE: <?= htmlspecialchars($constraint['UPDATE_RULE'] ?? 'N/A') ?> | 
+                       ON DELETE: <?= htmlspecialchars($constraint['DELETE_RULE'] ?? 'N/A') ?></small>
+            </div>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+        
+        <?php if (!empty($messages)): ?>
+        <div class="messages">
+            <?php foreach ($messages as $msg): ?>
+            <div class="message <?= $msg['type'] ?>">
+                <i class="fas fa-<?= $msg['type'] === 'success' ? 'check-circle' : ($msg['type'] === 'error' ? 'times-circle' : ($msg['type'] === 'warning' ? 'exclamation-triangle' : 'info-circle')) ?>"></i>
+                <span><?= htmlspecialchars($msg['text']) ?></span>
+            </div>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+        
+        <div class="actions">
+            <?php if (($status['pending_approvals_orphaned'] ?? 0) > 0 || empty($messages)): ?>
+            <a href="?action=fix" class="btn">
+                <i class="fas fa-tools"></i> Fix Constraints Now
+            </a>
+            <?php else: ?>
+            <a href="?" class="btn btn-secondary">
+                <i class="fas fa-redo"></i> Refresh Status
+            </a>
+            <?php endif; ?>
+            <a href="manager_set_prices.php" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Back to Pricing
+            </a>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,4 +1,9 @@
-﻿<?php
+<?php
+// Force browser to always load fresh — prevents stale CSS/JS cache
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: Thu, 01 Jan 1970 00:00:00 GMT');
+
 $page_id = 'admin_set_prices';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -53,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($action === 'reject_price') {
         $approval_id = (int)$_POST['approval_id'];
         $remarks = trim($_POST['remarks'] ?? '');
-        $stmt = $pdo->prepare("UPDATE pending_price_approvals SET status='rejected', remarks=?, admin_id=?, updated_at=NOW() WHERE id=? AND status='pending'");
+        $stmt = $pdo->prepare("UPDATE pending_price_approvals SET status='rejected', rejection_reason=?, admin_id=?, updated_at=NOW() WHERE id=? AND status='pending'");
         $stmt->execute([$remarks, $me['id'], $approval_id]);
         if ($stmt->rowCount() > 0) {
             log_activity($pdo, $me['id'], 'Reject Price',
@@ -432,9 +437,9 @@ include __DIR__ . '/../partials/header.php';
                                             <input type="hidden" name="action" value="approve_price">
                                             <input type="hidden" name="approval_id" value="<?php echo $f['approval_id']; ?>">
                                             <input type="hidden" name="active_tab" value="fuel">
-                                            <button type="submit" class="btn" style="background:#16a34a;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;display:flex;align-items:center;gap:4px;"><i class="fas fa-check"></i> Approve</button>
+                                            <button type="submit" class="btn" style="background:#fff;color:#475569;border:1px solid #cbd5e1;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;display:flex;align-items:center;gap:4px;transition:all 0.2s;" onmouseover="this.style.background='#f8fafc';this.style.borderColor='#94a3b8'" onmouseout="this.style.background='#fff';this.style.borderColor='#cbd5e1'"><i class="fas fa-check"></i> Approve</button>
                                         </form>
-                                        <button type="button" class="btn" style="background:#dc2626;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;display:flex;align-items:center;gap:4px;" onclick="openRejectModal(<?php echo $f['approval_id']; ?>, 'fuel')"><i class="fas fa-times"></i> Reject</button>
+                                        <button type="button" class="btn" style="background:#fff;color:#475569;border:1px solid #cbd5e1;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;display:flex;align-items:center;gap:4px;transition:all 0.2s;" onclick="openRejectModal(<?php echo $f['approval_id']; ?>, 'fuel')" onmouseover="this.style.background='#f8fafc';this.style.borderColor='#94a3b8'" onmouseout="this.style.background='#fff';this.style.borderColor='#cbd5e1'"><i class="fas fa-times"></i> Reject</button>
                                     </div>
                                 </div>
                             <?php else: ?>
@@ -560,9 +565,9 @@ include __DIR__ . '/../partials/header.php';
                                             <input type="hidden" name="action" value="approve_price">
                                             <input type="hidden" name="approval_id" value="<?php echo $item['approval_id']; ?>">
                                             <input type="hidden" name="active_tab" value="merch">
-                                            <button type="submit" class="btn" style="background:#16a34a;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;"><i class="fas fa-check"></i> Approve</button>
+                                            <button type="submit" class="btn" style="background:#fff;color:#475569;border:1px solid #cbd5e1;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;transition:all 0.2s;" onmouseover="this.style.background='#f8fafc';this.style.borderColor='#94a3b8'" onmouseout="this.style.background='#fff';this.style.borderColor='#cbd5e1'"><i class="fas fa-check"></i> Approve</button>
                                         </form>
-                                        <button type="button" class="btn" style="background:#dc2626;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;" onclick="openRejectModal(<?php echo $item['approval_id']; ?>, 'merch')"><i class="fas fa-times"></i> Reject</button>
+                                        <button type="button" class="btn" style="background:#fff;color:#475569;border:1px solid #cbd5e1;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;transition:all 0.2s;" onclick="openRejectModal(<?php echo $item['approval_id']; ?>, 'merch')" onmouseover="this.style.background='#f8fafc';this.style.borderColor='#94a3b8'" onmouseout="this.style.background='#fff';this.style.borderColor='#cbd5e1'"><i class="fas fa-times"></i> Reject</button>
                                     </div>
                                 </div>
                             <?php else: ?>
@@ -708,11 +713,11 @@ include __DIR__ . '/../partials/header.php';
                                             <input type="hidden" name="action" value="approve_price">
                                             <input type="hidden" name="approval_id" value="<?php echo (int)$svc['approval_id']; ?>">
                                             <input type="hidden" name="active_tab" value="services">
-                                            <button type="submit" class="btn" style="background:#16a34a;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;display:flex;align-items:center;gap:4px;">
+                                            <button type="submit" class="btn" style="background:#fff;color:#475569;border:1px solid #cbd5e1;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;display:flex;align-items:center;gap:4px;transition:all 0.2s;" onmouseover="this.style.background='#f8fafc';this.style.borderColor='#94a3b8'" onmouseout="this.style.background='#fff';this.style.borderColor='#cbd5e1'">
                                                 <i class="fas fa-check"></i> Approve
                                             </button>
                                         </form>
-                                        <button type="button" class="btn" style="background:#dc2626;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;display:flex;align-items:center;gap:4px;" onclick="openRejectModal(<?php echo (int)$svc['approval_id']; ?>, 'services')">
+                                        <button type="button" class="btn" style="background:#fff;color:#475569;border:1px solid #cbd5e1;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;display:flex;align-items:center;gap:4px;transition:all 0.2s;" onclick="openRejectModal(<?php echo (int)$svc['approval_id']; ?>, 'services')" onmouseover="this.style.background='#f8fafc';this.style.borderColor='#94a3b8'" onmouseout="this.style.background='#fff';this.style.borderColor='#cbd5e1'">
                                             <i class="fas fa-times"></i> Reject
                                         </button>
                                     </div>
@@ -731,31 +736,41 @@ include __DIR__ . '/../partials/header.php';
 
 <!-- Rejection Modal -->
 <style>
-.modal { display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,.5); align-items:center; justify-content:center; }
+/* Modal styles matching transaction module design */
+.modal { display:none; position:fixed; z-index:1050; inset:0; background:rgba(0,0,0,.5); align-items:center; justify-content:center; }
 .modal.open { display:flex; }
-.modal-content { background:#fff; border-radius:12px; width:90%; max-width:400px; box-shadow:0 8px 32px rgba(0,0,0,.25); }
-.modal-header { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid #e9ecef; }
-.modal-header h3 { margin:0; font-size:16px; font-weight:700; color:#dc2626; display:flex; align-items:center; gap:8px; }
-.modal-body { padding:20px; }
-.modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:16px 20px; border-top:1px solid #e9ecef; }
+.modal-content { background:#fff; border-radius:12px; width:92%; max-width:640px; box-shadow:0 8px 32px rgba(0,0,0,.18); overflow:hidden; max-height:90vh; display:flex; flex-direction:column; }
+.modal-header { display:flex; justify-content:space-between; align-items:center; padding:18px 24px; background:#fff; border-bottom:1px solid #e9ecef; flex-shrink:0; }
+.modal-header h3 { margin:0; font-size:1.05rem; font-weight:600; color:#1e293b; display:flex; align-items:center; gap:8px; }
+.modal-body { padding:24px; flex:1; overflow-y:auto; }
+.modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:16px 24px; border-top:1px solid #e9ecef; background:#fff; flex-shrink:0; }
+.modal-footer .btn { padding:10px 20px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; transition:all .15s; border:none; }
+.modal-footer .btn-cancel { background:#fff; color:#475569; border:1px solid #cbd5e1; }
+.modal-footer .btn-cancel:hover { background:#f8fafc; border-color:#94a3b8; }
+.modal-footer .btn-reject { background:#dc2626; color:#fff; }
+.modal-footer .btn-reject:hover { background:#b91c1c; }
 </style>
 <div class="modal" id="rejectModal">
   <div class="modal-content">
     <div class="modal-header">
-      <h3><i class="fas fa-times-circle"></i> Reject Price Proposal</h3>
-      <button type="button" style="background:none;border:none;font-size:24px;cursor:pointer;color:#aaa;" onclick="closeRejectModal()">&times;</button>
+      <h3>Reject Price Proposal</h3>
     </div>
     <form method="post" id="rejectForm">
       <div class="modal-body">
           <input type="hidden" name="action" value="reject_price">
           <input type="hidden" name="approval_id" id="rejectApprovalId" value="">
           <input type="hidden" name="active_tab" id="rejectActiveTab" value="fuel">
-          <label style="display:block; margin-bottom:8px; font-weight:600; font-size:13px; color:#374151;">Reason for Rejection <span style="color:#dc2626;">*</span></label>
-          <textarea name="remarks" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-family:inherit; resize:vertical; min-height:80px;" placeholder="Provide remarks for the manager..." required></textarea>
+          <label style="display:block; margin-bottom:8px; font-weight:600; font-size:13px; color:#1e293b;">
+            Reason for Rejection <span style="color:#dc2626;">*</span>
+          </label>
+          <textarea name="remarks" style="width:100%; padding:12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13px; font-family:inherit; resize:vertical; min-height:100px; transition:border-color .15s;" placeholder="Provide detailed remarks for the manager regarding the price rejection..." required onfocus="this.style.borderColor='#002F70';this.style.boxShadow='0 0 0 3px rgba(0,47,112,.1)'" onblur="this.style.borderColor='#cbd5e1';this.style.boxShadow='none'"></textarea>
+          <p style="margin-top:8px; font-size:12px; color:#64748b;">
+            <i class="fas fa-info-circle"></i> This feedback will be sent to the manager who submitted the price change request.
+          </p>
       </div>
       <div class="modal-footer">
-        <button type="button" style="padding:8px 16px; border:1px solid #cbd5e1; background:#fff; border-radius:6px; cursor:pointer; font-weight:600; color:#475569;" onclick="closeRejectModal()">Cancel</button>
-        <button type="submit" style="padding:8px 16px; border:none; background:#dc2626; border-radius:6px; cursor:pointer; font-weight:600; color:#fff;">Reject Proposal</button>
+        <button type="button" class="btn btn-cancel" onclick="closeRejectModal()">Cancel</button>
+        <button type="submit" class="btn btn-reject">Reject Proposal</button>
       </div>
     </form>
   </div>

@@ -122,8 +122,6 @@ html,body{max-width:100vw;overflow-x:hidden}
 /* == KPI Cards == */
 .afao-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:18px}
 .afao-card{background:#fff;border:1px solid #e2e8f0;border-radius:11px;padding:16px;display:flex;align-items:center;gap:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
-.afao-card.c-blue{border-left:4px solid #1e40af}.afao-card.c-red{border-left:4px solid #dc2626}
-.afao-card.c-amber{border-left:4px solid #d97706}.afao-card.c-green{border-left:4px solid #16a34a}
 .afao-card-ico{width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0;color:#002F6C}
 .afao-card-meta h3{margin:0;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;font-weight:700}
 .afao-card-meta h2{margin:2px 0 0;font-size:24px;font-weight:900;color:#00264D;line-height:1}
@@ -157,7 +155,6 @@ html,body{max-width:100vw;overflow-x:hidden}
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <a href="?<?= http_build_query(['date_from'=>$date_from,'date_to'=>$date_to,'station'=>$filter_station,'status'=>$filter_status,'export'=>'excel']) ?>" class="ato-btn ato-btn-excel"><i class="fas fa-file-excel"></i> Export Excel</a>
-        <a href="admin_dashboard.php" class="ato-btn ato-btn-back"><i class="fas fa-arrow-left"></i> Back</a>
     </div>
 </div>
 
@@ -235,7 +232,6 @@ html,body{max-width:100vw;overflow-x:hidden}
         </select>
     </div>
     <button type="submit" class="ato-btn ato-btn-filter"><i class="fas fa-filter"></i> Apply</button>
-    <a href="admin_fuel_reconciliation_oversight.php" class="ato-btn ato-btn-back"><i class="fas fa-times"></i> Reset</a>
 </form>
 
 <!-- Table -->

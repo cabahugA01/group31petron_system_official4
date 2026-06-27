@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Developer Audit Trail - Complete Estate Form
  * System Access, Config Changes, Code/Deployment, Error/Security Tracking, Export & Compliance
@@ -973,7 +973,7 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="../assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script>
 function exportReport(type) {
     if (typeof XLSX === 'undefined') {

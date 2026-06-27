@@ -140,20 +140,51 @@ function resolve_current_shift(PDO $pdo, int $user_id, ?int $posted_shift_id): a
             $shift_id = $shift_id ?: (int)$active['id'];
             $shift_period = $active['shift_period'] ?: null;
             $shift_name = $active['shift_name'] ?: null;
+        } else {
+            // Auto clock-in based on user profile's assigned_shift or time-based fallback
+            $user_stmt = $pdo->prepare("SELECT station_id, assigned_shift FROM users WHERE id = ? LIMIT 1");
+            $user_stmt->execute([$user_id]);
+            $user = $user_stmt->fetch(PDO::FETCH_ASSOC);
+            $station_id = $user['station_id'] ?? 1;
+            
+            $user_assigned_shift = strtolower(trim((string)($user['assigned_shift'] ?? '')));
+            if (strpos($user_assigned_shift, 'shift 1') !== false || strpos($user_assigned_shift, '1') !== false || $user_assigned_shift === 'first') {
+                $auto_shift_key = 'first';
+            } elseif (strpos($user_assigned_shift, 'shift 2') !== false || strpos($user_assigned_shift, '2') !== false || $user_assigned_shift === 'second') {
+                $auto_shift_key = 'second';
+            } else {
+                $login_time = date('H:i:s');
+                $auto_shift_key = ($login_time >= '06:00:00' && $login_time < '14:00:00') ? 'first' : 'second';
+            }
+
+            // Try to load exact DB record for consistent naming
+            $sp = $pdo->prepare("SELECT shift_key, shift_name FROM shift_periods WHERE shift_key = ? AND is_active = 1 LIMIT 1");
+            $sp->execute([$auto_shift_key]);
+            $shift = $sp->fetch(PDO::FETCH_ASSOC);
+
+            // Hard fallback if table is empty or record missing
+            if (!$shift) {
+                $shift = $auto_shift_key === 'first'
+                    ? ['shift_key' => 'first',  'shift_name' => 'First Shift: 6:00 AM – 2:00 PM']
+                    : ['shift_key' => 'second', 'shift_name' => 'Second Shift: 2:00 PM – 12:00 Midnight'];
+            }
+
+            $pdo->prepare(
+                "INSERT INTO labor_sessions (user_id, station_id, start_time, shift_period, shift_name)
+                 VALUES (?, ?, NOW(), ?, ?)"
+            )->execute([$user_id, $station_id, $shift['shift_key'], $shift['shift_name']]);
+            
+            $shift_id = (int)$pdo->lastInsertId();
+            $shift_period = $shift['shift_key'];
+            $shift_name = $shift['shift_name'];
         }
     } catch (Exception $e) {
-        error_log('Shift lookup warning: ' . $e->getMessage());
+        error_log('Shift lookup/auto-clockin warning: ' . $e->getMessage());
     }
 
     if (!$shift_period) {
-        $time = date('H:i:s');
-        if ($time >= '06:00:00' && $time < '14:00:00') {
-            $shift_period = 'shift_1';
-            $shift_name = 'Shift 1';
-        } else {
-            $shift_period = 'shift_2';
-            $shift_name = 'Shift 2';
-        }
+        $shift_period = 'first';
+        $shift_name = 'First Shift: 6:00 AM – 2:00 PM';
     }
 
     return [$shift_id, $shift_period, $shift_name];

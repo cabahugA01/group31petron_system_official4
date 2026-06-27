@@ -55,14 +55,29 @@ try {
         }
     }
 
+    // Ensure correct assigned_shift for staff accounts
+    $pdo->prepare("UPDATE users SET assigned_shift = 'Shift 1' WHERE username = 'Judy'")->execute();
+    echo "  - Set Judy Lastimosa → Shift 1\n";
+    $pdo->prepare("UPDATE users SET assigned_shift = 'Shift 2' WHERE username = 'yyangcabahug@gmail.com'")->execute();
+    echo "  - Set Yyang Cabahug → Shift 2\n";
+
     // Get user IDs
     $judy_id = (int)$pdo->query("SELECT id FROM users WHERE username = 'Judy'")->fetchColumn();
-    
-    // Ensure active shift exists for Judy
+    $yyang_id = (int)$pdo->query("SELECT id FROM users WHERE username = 'yyangcabahug@gmail.com'")->fetchColumn();
+
+    // Ensure active shift labor session exists for Judy
     $pdo->prepare("DELETE FROM labor_sessions WHERE user_id = ? AND end_time IS NULL")->execute([$judy_id]);
     $pdo->prepare("INSERT INTO labor_sessions (user_id, station_id, start_time, shift_name, shift_period) VALUES (?, 1, NOW(), 'Shift 1', 'first')")
         ->execute([$judy_id]);
     echo "  - Created active Shift 1 labor session for Judy\n";
+
+    // Only create Yyang labor session if she exists
+    if ($yyang_id) {
+        $pdo->prepare("DELETE FROM labor_sessions WHERE user_id = ? AND end_time IS NULL")->execute([$yyang_id]);
+        $pdo->prepare("INSERT INTO labor_sessions (user_id, station_id, start_time, shift_name, shift_period) VALUES (?, 1, NOW(), 'Shift 2', 'second')")
+            ->execute([$yyang_id]);
+        echo "  - Created active Shift 2 labor session for Yyang\n";
+    }
 
     // Ensure Products exist in database
     $products = [

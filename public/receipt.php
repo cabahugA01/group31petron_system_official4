@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../backend/lib.php';
 require_login();
 
@@ -567,7 +567,7 @@ $qr_url = 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&ecc=M&data='
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title><?php echo htmlspecialchars($txn_type_label); ?> — <?php echo htmlspecialchars($txn_id); ?></title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="../assets/vendor/fontawesome/css/all.min.css">
 <style>
 /* ── Reset ── */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}

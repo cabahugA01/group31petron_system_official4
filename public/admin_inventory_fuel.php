@@ -489,18 +489,10 @@ body, html { overflow-x:hidden !important; }
           <td style="text-align:center;"><span class="status-pill" style="background:<?= $r['status_color'] ?>18; color:<?= $r['status_color'] ?>; border:1px solid <?= $r['status_color'] ?>40;"><?= htmlspecialchars($r['status']) ?></span></td>
           <td style="text-align:right;"><span class="<?= $var_cls ?>"><?= $var_str ?> L</span></td>
           <td style="color:#64748b; font-size:11px;"><?= $ts_str ?></td>
-          <td>
-            <div style="display:flex; flex-direction:column; gap:4px; width:160px; margin:0 auto;">
-              <button class="int-btn-outline" onclick="viewTankDetails(<?= htmlspecialchars(json_encode($r)) ?>)" title="View Details">
-                <i class="fas fa-eye" style="width:14px;"></i> View Tank Details
-              </button>
-              <button class="int-btn-outline" onclick="viewFuelMovement('<?= htmlspecialchars($r['fuel_type']) ?>', '<?= htmlspecialchars($r['label']) ?>')" title="View Movement">
-                <i class="fas fa-history" style="width:14px;"></i> View Fuel Movement
-              </button>
-              <button class="int-btn-outline" onclick="printTankRecord(<?= htmlspecialchars(json_encode($r)) ?>)" title="Print Report">
-                <i class="fas fa-print" style="width:14px;"></i> Print Tank Report
-              </button>
-            </div>
+          <td style="text-align:center;">
+            <button class="int-btn-outline" onclick="viewTankDetails(<?= htmlspecialchars(json_encode($r)) ?>)" title="View Details" style="padding:6px 16px;">
+              <i class="fas fa-eye"></i> View
+            </button>
           </td>
         </tr>
         <?php endforeach; ?>

@@ -250,21 +250,31 @@ try {
             // Final fallback — shift_period is NOT NULL in DB
             if (empty($shift_period)) $shift_period = 'second';
 
-            // ── Validate: ending must be > beginning ──
-            if ($present <= $previous) {
-                respond(false, "Invalid Reading: Ending meter reading ({$present}) must be greater than Beginning reading ({$previous}).");
+            // ── Validation Rule 1: Ending must be ≥ Beginning ──
+            if ($present < $previous) {
+                respond(false, "Invalid Reading: Ending meter reading ({$present}) cannot be less than Beginning reading ({$previous}).");
             }
 
-            // ── Formula: Volume Liters = (Ending − Beginning) − Calibration ──
-            // Step 1: Compute volume
-            $diff        = round($present - $previous, 4);      // Ending - Beginning
-            $liters_sold = round($diff - $calibration, 4);       // subtract calibration correction
+            // ── Validation Rule 2: Calibration must be ≥ 0 ──
+            if ($calibration < 0) {
+                respond(false, "Calibration cannot be negative. Value entered: {$calibration}.");
+            }
 
-            // Guard: if calibration > diff the result would be negative — flag it but allow 0
-            if ($liters_sold < 0) $liters_sold = 0.0;
+            // ── Compute Gross Volume first ──
+            $gross_volume = round($present - $previous, 4);   // Ending − Beginning
 
-            // Step 2: Compute Amount
+            // ── Validation Rule 3: Calibration cannot exceed Gross Volume ──
+            if ($gross_volume > 0 && $calibration > $gross_volume) {
+                respond(false, "Calibration ({$calibration}L) cannot be greater than Gross Volume ({$gross_volume}L).");
+            }
+
+            // ── Formula: Net Volume = Gross Volume − Calibration ──
+            $liters_sold  = round($gross_volume - $calibration, 4);
+            if ($liters_sold < 0) $liters_sold = 0.0;   // safety floor
+
+            // ── Formula: Total Amount = Net Volume × Price per Liter ──
             $total_amount = round($liters_sold * $price, 2);
+
 
             // ── Generate transaction ID ──
             $txn_id = 'FUEL' . date('Y')

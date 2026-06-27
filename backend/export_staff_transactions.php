@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * EXPORT STAFF TRANSACTIONS
  * 
@@ -256,7 +256,7 @@ if ($format === 'csv') {
     echo '<meta charset="UTF-8">';
     echo '<meta name="viewport" content="width=device-width,initial-scale=1">';
     echo '<title>' . htmlspecialchars($title) . ' | Petron Station Management</title>';
-    echo '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">';
+    echo '<link rel="stylesheet" href="../assets/vendor/fontawesome/css/all.min.css">';
     echo '<style>';
 
     /* ── Base ── */

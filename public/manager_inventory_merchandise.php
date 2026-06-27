@@ -1037,17 +1037,9 @@ include __DIR__ . '/../partials/header.php';
                     </td>
                     <td style="font-size:11px;color:#64748b;"><?php echo $timestamp; ?></td>
                     <td style="text-align:center;">
-                        <div style="display:flex; flex-direction:column; gap:4px; width:160px; margin:0 auto;">
-                            <button class="int-btn-outline" onclick="viewDetails(<?= (int)$item['id'] ?>, 'info')" title="View Details" style="font-size:11px; padding:4px 8px; text-align:left; display:block; width:100%;">
-                                <i class="fas fa-eye" style="width:14px;"></i> View Details
-                            </button>
-                            <button class="int-btn-outline" onclick="viewDetails(<?= (int)$item['id'] ?>, 'movement')" title="View Stock Movement" style="font-size:11px; padding:4px 8px; text-align:left; display:block; width:100%;">
-                                <i class="fas fa-scroll" style="width:14px;"></i> View Stock Movement
-                            </button>
-                            <button class="int-btn-outline" onclick="printProductRecord(<?= (int)$item['id'] ?>)" title="Print Record" style="font-size:11px; padding:4px 8px; text-align:left; display:block; width:100%;">
-                                <i class="fas fa-print" style="width:14px;"></i> Print Record
-                            </button>
-                        </div>
+                        <button class="int-btn-outline" onclick="viewDetails(<?= (int)$item['id'] ?>, 'info')" title="View Details" style="font-size:11px; padding:6px 16px;">
+                            <i class="fas fa-eye"></i> View
+                        </button>
                     </td>
                 </tr>
                 <?php endforeach; ?>
@@ -1138,7 +1130,6 @@ include __DIR__ . '/../partials/header.php';
                     <th style="text-align:right;">Variance</th>
                     <th style="text-align:center;">Alert Type</th>
                     <th>Recommended Action</th>
-                    <th style="text-align:center;">Actions</th>
                 </tr>
             </thead>
             <tbody id="alertTableBody">
@@ -1155,7 +1146,7 @@ include __DIR__ . '/../partials/header.php';
                 }
                 if (empty($cat_alerts)) continue;
             ?>
-                <tr class="cat-header"><td colspan="9"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
+                <tr class="cat-header"><td colspan="8"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
                 <?php foreach ($cat_alerts as $item):
                     $alert_count++;
                     $stock    = (float)($item['stock_level'] ?? 0);
@@ -1209,24 +1200,11 @@ include __DIR__ . '/../partials/header.php';
                             <i class="fas <?php echo $rec_icon; ?>"></i> <?php echo htmlspecialchars($recommended); ?>
                         </span>
                     </td>
-                    <td style="text-align:center;">
-                        <div style="display:flex;flex-direction:column;gap:4px;width:130px;margin:0 auto;">
-                            <button class="int-btn-outline" onclick="viewDetails(<?= (int)$item['id'] ?>, 'info')" style="font-size:11px;padding:4px 8px;text-align:left;display:flex;align-items:center;gap:5px;width:100%;">
-                                <i class="fas fa-eye" style="width:14px;"></i> View Product
-                            </button>
-                            <button class="int-btn-outline" onclick="openCreateStockRequest(<?= (int)$item['id'] ?>, '<?= htmlspecialchars(addslashes($item['name'])) ?>', <?= $stock ?>, <?= $reorder ?>)" style="font-size:11px;padding:4px 8px;text-align:left;display:flex;align-items:center;gap:5px;width:100%;border-color:#002F70;color:#002F70;">
-                                <i class="fas fa-file-alt" style="width:14px;"></i> Stock Request
-                            </button>
-                            <button class="int-btn-outline" onclick="printAlertRow(<?= (int)$item['id'] ?>, '<?= htmlspecialchars(addslashes($item['name'])) ?>', '<?= $st ?>', <?= $stock ?>, <?= $reorder ?>)" style="font-size:11px;padding:4px 8px;text-align:left;display:flex;align-items:center;gap:5px;width:100%;border-color:#6c757d;color:#6c757d;">
-                                <i class="fas fa-print" style="width:14px;"></i> Print Alert
-                            </button>
-                        </div>
-                    </td>
                 </tr>
                 <?php endforeach; ?>
             <?php endforeach; ?>
             <?php if ($alert_count === 0): ?>
-                <tr><td colspan="9" class="empty-state">
+                <tr><td colspan="8" class="empty-state">
                     <i class="fas fa-check-circle" style="color:#28a745;font-size:32px;display:block;margin-bottom:8px;"></i>
                     No stock alerts. All products are at healthy stock levels!
                 </td></tr>
@@ -1332,12 +1310,11 @@ include __DIR__ . '/../partials/header.php';
                     <th style="text-align:right;">New Stock</th>
                     <th>Performed By</th>
                     <th>Reference No.</th>
-                    <th style="text-align:center;">Actions</th>
                 </tr>
             </thead>
             <tbody id="movTableBody">
             <?php if (empty($movement_history)): ?>
-                <tr><td colspan="10" class="empty-state"><i class="fas fa-history"></i>No movement logs recorded yet.</td></tr>
+                <tr><td colspan="9" class="empty-state"><i class="fas fa-history"></i>No movement logs recorded yet.</td></tr>
             <?php else: ?>
                 <?php foreach ($movement_history as $log): 
                     $qty = (float)$log['quantity'];
@@ -1421,16 +1398,6 @@ include __DIR__ . '/../partials/header.php';
                     <td style="text-align:right;font-weight:700;color:#002F70;"><?php echo number_format($log['quantity_after'], 0) . ' ' . htmlspecialchars($log['unit'] ?? 'pcs'); ?></td>
                     <td><strong><?php echo htmlspecialchars($log['user_name'] ?? 'System'); ?></strong></td>
                     <td><code><?php echo htmlspecialchars($ref_no); ?></code></td>
-                    <td style="text-align:center;">
-                        <div style="display:flex;gap:4px;justify-content:center;">
-                            <button class="int-btn-outline" onclick="viewMovLogDetails(this)" title="View Details" style="font-size:10px;padding:3px 6px;">
-                                <i class="fas fa-eye"></i> Details
-                            </button>
-                            <button class="int-btn-outline" onclick="printMovLogRecord(this)" title="Print Record" style="font-size:10px;padding:3px 6px;">
-                                <i class="fas fa-print"></i> Print
-                            </button>
-                        </div>
-                    </td>
                 </tr>
                 <?php endforeach; ?>
             <?php endif; ?>

@@ -106,7 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             log_activity($pdo, $me['id'], 'Fuel Reading Approved', "TXN {$tx['transaction_id']} | {$tx['fuel_type']} | {$tx['liters_sold']} L");
 
             $_SESSION['success'] = "Transaction <strong>{$tx['transaction_id']}</strong> validated successfully.";
-        } 
+        }
         
         elseif ($action === 'reject') {
             if (empty($remarks)) {
@@ -126,6 +126,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $_SESSION['success'] = "Transaction <strong>{$tx['transaction_id']}</strong> rejected and returned to staff.";
         }
+
+        elseif ($action === 'adjust') {
+            if (empty($remarks)) {
+                throw new Exception("Adjustment remarks/reason is required.");
+            }
+            // Guard: must be pending
+            if (!str_contains(strtolower($tx['status']), 'pending')) {
+                throw new Exception("Transaction has already been processed.");
+            }
+
+            // Update status to Adjusted
+            $up = $pdo->prepare("UPDATE fuel_transactions SET status = 'Adjusted', validated_by = ?, validated_at = NOW(), reject_reason = ? WHERE id = ?");
+            $up->execute([$me['id'], $remarks, $tx_id]);
+
+            // Log activity
+            log_activity($pdo, $me['id'], 'Fuel Reading Marked for Adjustment', "TXN {$tx['transaction_id']} | Reason: {$remarks}");
+
+            $_SESSION['success'] = "Transaction <strong>{$tx['transaction_id']}</strong> marked for adjustment.";
+        }
+
 
         $pdo->commit();
     } catch (Exception $e) {
@@ -368,13 +388,16 @@ require_once __DIR__ . '/../partials/header.php';
 <style>
 /* Reset and core alignment */
 * { box-sizing: border-box; }
-html, body { max-width: 100%; width: 100%; overflow-x: hidden !important; position: relative; }
-.mftv-wrap { max-width: 100%; width: 100%; box-sizing: border-box; }
+html, body { max-width: 100vw !important; width: 100%; overflow-x: hidden !important; position: relative; }
+.mftv-wrap { max-width: 100%; width: 100%; box-sizing: border-box; overflow-x: hidden !important; padding: 0 8px; }
+.main-content { max-width: 100% !important; overflow-x: hidden !important; padding: 0 !important; }
 
 /* Petron clean headers */
-.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; margin-top: -12px !important; }
-.int-head h1 { font-size: 22px !important; font-weight: 700 !important; color: #00264D !important; margin: 0 !important; text-transform: uppercase !important; display: flex; align-items: center; gap: 8px; }
-.int-head .sub { font-size: 13px; color: #64748b; margin-top: 4px; }
+.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; margin-top: 8px !important; padding-top: 8px; width: 100%; }
+.int-head > div:first-child { flex: 1; min-width: 280px; max-width: 65%; }
+.int-head > div:last-child { flex-shrink: 0; display: flex; gap: 8px; flex-wrap: wrap; }
+.int-head h1 { font-size: 22px !important; font-weight: 700 !important; color: #00264D !important; margin: 0 !important; text-transform: uppercase !important; display: flex; align-items: center; gap: 8px; line-height: 1.3; }
+.int-head .sub { font-size: 13px; color: #64748b; margin-top: 4px; line-height: 1.4; }
 
 /* Outline buttons */
 .ato-btn {
@@ -394,25 +417,27 @@ html, body { max-width: 100%; width: 100%; overflow-x: hidden !important; positi
 .ato-btn-reset  { color: #475569 !important; border-color: #cbd5e1 !important; }
 .ato-btn-reset:hover  { background: #f1f5f9 !important; }
 
-/* Summary Cards matching standard */
-.afto-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px; }
-.afto-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 11px; padding: 16px; display: flex; align-items: center; gap: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
-.afto-card.c-blue  { border-left: 4px solid #3b82f6; }
-.afto-card.c-green { border-left: 4px solid #10b981; }
-.afto-card.c-red   { border-left: 4px solid #ef4444; }
-.afto-card.c-amber { border-left: 4px solid #f59e0b; }
-.afto-card.c-purple{ border-left: 4px solid #8b5cf6; }
+/* Batch Buttons Styled Properly */
+.ato-btn-batch-approve { color: #16a34a !important; border-color: #16a34a !important; background: white !important; }
+.ato-btn-batch-approve:hover:not(:disabled) { background: #16a34a !important; color: #fff !important; }
+.ato-btn-batch-reject { color: #dc2626 !important; border-color: #dc2626 !important; background: white !important; }
+.ato-btn-batch-reject:hover:not(:disabled) { background: #dc2626 !important; color: #fff !important; }
+.ato-btn-batch-adjust { color: #0ea5e9 !important; border-color: #0ea5e9 !important; background: white !important; }
+.ato-btn-batch-adjust:hover:not(:disabled) { background: #0ea5e9 !important; color: #fff !important; }
 
-.afto-card-ico { width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 19px; flex-shrink: 0; }
-.afto-card.c-blue .afto-card-ico   { background: #eff6ff; color: #3b82f6; }
-.afto-card.c-green .afto-card-ico  { background: #f0fdf4; color: #10b981; }
-.afto-card.c-red .afto-card-ico    { background: #fef2f2; color: #ef4444; }
-.afto-card.c-amber .afto-card-ico { background: #fffbeb; color: #f59e0b; }
-.afto-card.c-purple .afto-card-ico { background: #faf5ff; color: #8b5cf6; }
 
-.afto-card-meta h3 { margin: 0; font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; letter-spacing: .5px; }
-.afto-card-meta h2 { margin: 2px 0 0; font-size: 22px; font-weight: 700; color: #00264D; line-height: 1; }
-.afto-card-meta span { font-size: 11px; color: #94a3b8; display: block; margin-top: 2px; }
+/* Summary Cards matching Adjustments Oversight standard */
+.afto-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.afto-card { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 16px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 3px rgba(0,0,0,.05); position: relative; overflow: hidden; }
+.afto-card-info { display: flex; flex-direction: column; }
+.afto-card-lbl { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.afto-card-val { font-size: 20px; font-weight: 700; color: #1e293b; }
+.afto-card-icon { font-size: 24px; opacity: 0.8; }
+.afto-card.blue .afto-card-icon { color: #2563eb; }
+.afto-card.yellow .afto-card-icon { color: #d97706; }
+.afto-card.green .afto-card-icon { color: #16a34a; }
+.afto-card.red .afto-card-icon { color: #dc2626; }
+.afto-card.purple .afto-card-icon { color: #8b5cf6; }
 
 /* Filter Bar */
 .afto-filter { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; margin-bottom: 20px; }
@@ -422,16 +447,16 @@ html, body { max-width: 100%; width: 100%; overflow-x: hidden !important; positi
 .afto-fg input:focus, .afto-fg select:focus { border-color: #002F70; box-shadow: 0 0 0 3px rgba(0,47,112,.1); }
 
 /* Table Container & Layout */
-.afto-table-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 11px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.04); width: 100%; }
+.afto-table-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 11px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.04); width: 100%; max-width: 100%; }
 .afto-table-hd { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid #f1f5f9; flex-wrap: wrap; gap: 8px; }
 .afto-table-title { font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: .3px; margin: 0; }
-.afto-tbl-wrap { width: 100%; overflow-x: auto; }
-.afto-tbl { width: 100%; border-collapse: collapse; font-size: 11px; }
+.afto-tbl-wrap { width: 100%; max-width: 100%; overflow-x: hidden !important; }
+.afto-tbl { width: 100%; max-width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed; }
 .afto-tbl thead tr { background: #002F70; }
-.afto-tbl thead th { padding: 9px 10px; text-align: left; font-size: 11px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: .4px; border-bottom: 2px solid #001a3d; vertical-align: middle; white-space: nowrap; }
+.afto-tbl thead th { padding: 8px 6px; text-align: left; font-size: 10px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: .3px; border-bottom: 2px solid #001a3d; vertical-align: middle; white-space: nowrap; }
 .afto-tbl tbody tr { border-bottom: 1px solid #f1f5f9; transition: background .1s; }
 .afto-tbl tbody tr:hover td { background: #eff6ff; }
-.afto-tbl tbody td { padding: 9px 10px; color: #334155; vertical-align: middle; white-space: nowrap; background: #fff; font-size: 11px; }
+.afto-tbl tbody td { padding: 8px 6px; color: #334155; vertical-align: middle; background: #fff; font-size: 10px; word-wrap: break-word; overflow: hidden; text-overflow: ellipsis; }
 
 /* Status Badges */
 .afto-badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; white-space: nowrap; text-transform: uppercase; }
@@ -443,11 +468,16 @@ html, body { max-width: 100%; width: 100%; overflow-x: hidden !important; positi
 
 /* Action buttons */
 .row-btn {
-    padding: 0 10px; border-radius: 5px; font-size: 11px; font-weight: 700; border: 1px solid transparent; cursor: pointer;
-    display: inline-flex; align-items: center; justify-content: center; gap: 4px; transition: all .15s; text-transform: uppercase;
-    height: 28px; background: white !important; text-decoration: none;
+    padding: 0 8px; border-radius: 5px; font-size: 9px; font-weight: 700; border: 1px solid transparent; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: 3px; transition: all .15s; text-transform: uppercase;
+    height: 24px; background: white !important; text-decoration: none;
 }
 .row-btn-info    { color: #0284c7 !important; border-color: #0284c7 !important; }
+.row-btn-info:hover { background: #0284c7 !important; color: #fff !important; }
+.row-btn-success { color: #16a34a !important; border-color: #16a34a !important; }
+.row-btn-success:hover { background: #16a34a !important; color: #fff !important; }
+.row-btn-danger  { color: #dc2626 !important; border-color: #dc2626 !important; }
+.row-btn-danger:hover { background: #dc2626 !important; color: #fff !important; }
 .row-btn-info:hover    { background: #0284c7 !important; color: #fff !important; }
 .row-btn-success { color: #16a34a !important; border-color: #16a34a !important; }
 .row-btn-success:hover { background: #16a34a !important; color: #fff !important; }
@@ -455,6 +485,24 @@ html, body { max-width: 100%; width: 100%; overflow-x: hidden !important; positi
 .row-btn-danger:hover  { background: #dc2626 !important; color: #fff !important; }
 .row-btn-print   { color: #4b5563 !important; border-color: #4b5563 !important; }
 .row-btn-print:hover   { background: #4b5563 !important; color: #fff !important; }
+
+/* Batch action buttons disabled state */
+.ato-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* Checkbox styling */
+input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+input[type="checkbox"]:indeterminate {
+    opacity: 0.7;
+}
 
 /* Empty state */
 .afto-empty { text-align: center; padding: 60px 20px; color: #94a3b8; }
@@ -495,54 +543,48 @@ html, body { max-width: 100%; width: 100%; overflow-x: hidden !important; positi
             <h1><i class="fas fa-check-double"></i> Fuel Transaction Validation</h1>
             <div class="sub">Review and validate fuel transactions encoded by staff for accuracy and compliance.</div>
         </div>
-        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end;">
             <button type="button" onclick="mftvExport('excel')" class="ato-btn ato-btn-excel"><i class="fas fa-file-excel"></i> Excel</button>
             <button type="button" onclick="mftvExport('pdf')" class="ato-btn ato-btn-pdf"><i class="fas fa-file-pdf"></i> PDF</button>
-            <a href="manager_dashboard.php" class="ato-btn ato-btn-back"><i class="fas fa-arrow-left"></i> Back</a>
         </div>
     </div>
 
     <!-- Summary Cards -->
     <div class="afto-cards">
-        <div class="afto-card c-blue">
-            <div class="afto-card-ico"><i class="fas fa-clock"></i></div>
-            <div class="afto-card-meta">
-                <h3>Pending Transactions</h3>
-                <h2><?= number_format($pending_count) ?></h2>
-                <span>Awaiting validation</span>
+        <div class="afto-card blue">
+            <div class="afto-card-info">
+                <span class="afto-card-lbl">Pending Transactions</span>
+                <span class="afto-card-val"><?= number_format($pending_count) ?></span>
             </div>
+            <div class="afto-card-icon"><i class="fas fa-clock"></i></div>
         </div>
-        <div class="afto-card c-green">
-            <div class="afto-card-ico"><i class="fas fa-check-circle"></i></div>
-            <div class="afto-card-meta">
-                <h3>Validated</h3>
-                <h2><?= number_format($validated_count) ?></h2>
-                <span>Approved and adjusted</span>
+        <div class="afto-card green">
+            <div class="afto-card-info">
+                <span class="afto-card-lbl">Validated</span>
+                <span class="afto-card-val"><?= number_format($validated_count) ?></span>
             </div>
+            <div class="afto-card-icon"><i class="fas fa-check-circle"></i></div>
         </div>
-        <div class="afto-card c-red">
-            <div class="afto-card-ico"><i class="fas fa-times-circle"></i></div>
-            <div class="afto-card-meta">
-                <h3>Rejected</h3>
-                <h2><?= number_format($rejected_count) ?></h2>
-                <span>Rejected entries</span>
+        <div class="afto-card red">
+            <div class="afto-card-info">
+                <span class="afto-card-lbl">Rejected</span>
+                <span class="afto-card-val"><?= number_format($rejected_count) ?></span>
             </div>
+            <div class="afto-card-icon"><i class="fas fa-times-circle"></i></div>
         </div>
-        <div class="afto-card c-amber">
-            <div class="afto-card-ico"><i class="fas fa-tint"></i></div>
-            <div class="afto-card-meta">
-                <h3>Liters Sold Today</h3>
-                <h2><?= number_format($total_liters_today, 2) ?> L</h2>
-                <span>Validated liters sold</span>
+        <div class="afto-card yellow">
+            <div class="afto-card-info">
+                <span class="afto-card-lbl">Liters Sold Today</span>
+                <span class="afto-card-val"><?= number_format($total_liters_today, 2) ?> L</span>
             </div>
+            <div class="afto-card-icon"><i class="fas fa-tint"></i></div>
         </div>
-        <div class="afto-card c-purple">
-            <div class="afto-card-ico"><i class="fas fa-peso-sign"></i></div>
-            <div class="afto-card-meta">
-                <h3>Sales Amount Today</h3>
-                <h2>₱<?= number_format($total_sales_today, 2) ?></h2>
-                <span>Validated sales amount</span>
+        <div class="afto-card purple">
+            <div class="afto-card-info">
+                <span class="afto-card-lbl">Sales Amount Today</span>
+                <span class="afto-card-val">₱<?= number_format($total_sales_today, 2) ?></span>
             </div>
+            <div class="afto-card-icon"><i class="fas fa-peso-sign"></i></div>
         </div>
     </div>
 
@@ -596,35 +638,45 @@ html, body { max-width: 100%; width: 100%; overflow-x: hidden !important; positi
     <div class="afto-table-card">
         <div class="afto-table-hd">
             <h3 class="afto-table-title"><i class="fas fa-list"></i> Fuel Transaction Log</h3>
-            <span style="font-size: 11px; color: #64748b; font-weight: 600;"><?= number_format(count($transactions)) ?> record(s) found</span>
+            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                <button type="button" id="btnApproveSelected" class="ato-btn ato-btn-batch-approve" style="font-size: 11px; padding: 7px 14px;" onclick="batchValidate()" disabled>
+                    <i class="fas fa-check"></i> Approve
+                </button>
+                <button type="button" id="btnRejectSelected" class="ato-btn ato-btn-batch-reject" style="font-size: 11px; padding: 7px 14px;" onclick="openBatchReject()" disabled>
+                    <i class="fas fa-times"></i> Reject
+                </button>
+                <button type="button" id="btnAdjustSelected" class="ato-btn ato-btn-batch-adjust" style="font-size: 11px; padding: 7px 14px;" onclick="openBatchAdjust()" disabled>
+                    <i class="fas fa-edit"></i> Adjust
+                </button>
+                <span id="selectedCount" style="display:none;">0</span>
+            </div>
         </div>
 
         <div class="afto-tbl-wrap">
             <table class="afto-tbl">
                     <thead>
                         <tr>
-                            <th>Transaction ID</th>
-                            <th>Date</th>
-                            <th>Shift</th>
-                            <th>Pump Name</th>
-                            <th>Fuel Type</th>
-                            <th style="text-align: right;">Beginning Reading</th>
-                            <th style="text-align: right;">Ending Reading</th>
-                            <th style="text-align: right;">Calibration</th>
-                            <th style="text-align: right;">Volume Liters</th>
-                            <th style="text-align: right;">Price/Liter</th>
-                            <th style="text-align: right;">Amount</th>
-                            <th>Staff Encoder</th>
-                            <th>Status</th>
-                            <th>Validation Date</th>
-                            <th>Remarks</th>
-                            <th style="text-align: center; width: 150px;">Actions</th>
+                            <th style="width: 3%;">
+                                <input type="checkbox" id="selectAllCheck" style="cursor: pointer;" onchange="toggleSelectAll(this)">
+                            </th>
+                            <th style="width: 8%;">Transaction ID</th>
+                            <th style="width: 7%;">Date</th>
+                            <th style="width: 5%;">Shift</th>
+                            <th style="width: 6%;">Pump</th>
+                            <th style="width: 7%;">Fuel Type</th>
+                            <th style="text-align: right; width: 7%;">Begin</th>
+                            <th style="text-align: right; width: 7%;">Ending</th>
+                            <th style="text-align: right; width: 5%;">Cal</th>
+                            <th style="text-align: right; width: 7%;">Liters</th>
+                            <th style="text-align: right; width: 8%;">Amount</th>
+                            <th style="width: 8%;">Staff</th>
+                            <th style="width: 7%;">Status</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if (empty($transactions)): ?>
                             <tr>
-                                <td colspan="16">
+                                <td colspan="13">
                                     <div class="afto-empty">
                                         <i class="fas fa-inbox"></i>
                                         <div style="font-size: 15px; font-weight: 700; color: #64748b; margin-bottom: 4px;">No records found</div>
@@ -635,44 +687,28 @@ html, body { max-width: 100%; width: 100%; overflow-x: hidden !important; positi
                         <?php else: ?>
                             <?php foreach ($transactions as $tx): 
                             $pump_display = !empty($tx['pump_number']) ? $tx['pump_number'] : (!empty($tx['pump_id']) ? 'Pump #' . $tx['pump_id'] : '—');
-                            $shift_display = !empty($tx['shift_name']) ? $tx['shift_name'] : (strtolower($tx['shift_period'] ?? '') === 'second' ? 'Second Shift' : ($tx['shift_period'] ?? '—'));
+                            $shift_display = !empty($tx['shift_name']) ? $tx['shift_name'] : (strtolower($tx['shift_period'] ?? '') === 'second' ? 'Shift 2' : 'Shift 1');
                         ?>
-                            <tr id="tx_row_<?= $tx['id'] ?>">
-                                <td style="font-weight: 600; color: #00264D;"><?= htmlspecialchars($tx['transaction_id']) ?></td>
-                                <td><?= date('M d, Y', strtotime($tx['transaction_date'])) ?></td>
-                                <td><?= htmlspecialchars($shift_display) ?></td>
-                                <td style="font-weight: 600;"><?= htmlspecialchars($pump_display) ?></td>
-                                <td><?= htmlspecialchars($tx['fuel_type']) ?></td>
-                                <td style="text-align: right;"><?= number_format($tx['previous_reading'], 2) ?></td>
-                                <td style="text-align: right; font-weight: 600;"><?= number_format($tx['present_reading'], 2) ?></td>
-                                <td style="text-align: right;"><?= number_format($tx['calibration'], 2) ?></td>
-                                <td style="text-align: right; font-weight: 700; color: #1e293b;"><?= number_format($tx['liters_sold'], 2) ?> L</td>
-                                <td style="text-align: right;">₱<?= number_format($tx['price_per_liter'], 2) ?></td>
-                                <td style="text-align: right; font-weight: 800; color: #002F70;">₱<?= number_format($tx['total_amount'], 2) ?></td>
-                                <td><?= htmlspecialchars($tx['staff_name'] ?? '—') ?></td>
+                            <tr id="tx_row_<?= $tx['id'] ?>" data-tx-id="<?= $tx['id'] ?>" data-tx-json='<?= htmlspecialchars(json_encode($tx), ENT_QUOTES, 'UTF-8') ?>'>
+                                <td>
+                                    <?php if (str_contains(strtolower($tx['status'] ?? ''), 'pending')): ?>
+                                        <input type="checkbox" class="tx-checkbox" data-tx-id="<?= $tx['id'] ?>" style="cursor: pointer;" onchange="updateBatchButtons()">
+                                    <?php else: ?>
+                                        <span style="color: #cbd5e1;">—</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td style="font-weight: 600; color: #00264D; font-size: 9px;"><?= htmlspecialchars(substr($tx['transaction_id'], 0, 12)) ?></td>
+                                <td style="font-size: 9px;"><?= date('M d, Y', strtotime($tx['transaction_date'])) ?></td>
+                                <td style="font-size: 9px;"><?= htmlspecialchars($shift_display) ?></td>
+                                <td style="font-weight: 600; font-size: 9px;"><?= htmlspecialchars($pump_display) ?></td>
+                                <td style="font-size: 9px;"><?= htmlspecialchars(substr($tx['fuel_type'], 0, 10)) ?></td>
+                                <td style="text-align: right; font-size: 9px;"><?= number_format($tx['previous_reading'], 2) ?></td>
+                                <td style="text-align: right; font-weight: 600; font-size: 9px;"><?= number_format($tx['present_reading'], 2) ?></td>
+                                <td style="text-align: right; font-size: 9px;"><?= number_format($tx['calibration'], 2) ?></td>
+                                <td style="text-align: right; font-weight: 700; color: #1e293b; font-size: 9px;"><?= number_format($tx['liters_sold'], 2) ?> L</td>
+                                <td style="text-align: right; font-weight: 800; color: #002F70; font-size: 9px;">₱<?= number_format($tx['total_amount'], 2) ?></td>
+                                <td style="font-size: 9px;"><?= htmlspecialchars(substr($tx['staff_name'] ?? '—', 0, 12)) ?></td>
                                 <td><span class="afto-badge <?= getStatusBadgeClass($tx['status'] ?? '') ?>"><?= getStatusLabel($tx['status'] ?? '') ?></span></td>
-                                <td><?= $tx['validated_at'] ? date('M d, Y H:i', strtotime($tx['validated_at'])) : '—' ?></td>
-                                <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="<?= htmlspecialchars($tx['reject_reason'] ?? '—') ?>">
-                                    <?= htmlspecialchars($tx['reject_reason'] ?? '—') ?>
-                                </td>
-                                <td style="text-align: center;">
-                                    <div style="display: inline-flex; gap: 4px;">
-                                        <button type="button" class="row-btn row-btn-info" onclick="viewDetails(<?= htmlspecialchars(json_encode($tx)) ?>)" title="View Details">
-                                            <i class="fas fa-eye"></i>
-                                        </button>
-                                        <?php if (str_contains(strtolower($tx['status'] ?? ''), 'pending')): ?>
-                                            <button type="button" class="row-btn row-btn-success" onclick="openValidate(<?= $tx['id'] ?>, '<?= htmlspecialchars($tx['transaction_id']) ?>')" title="Validate">
-                                                <i class="fas fa-check"></i>
-                                            </button>
-                                            <button type="button" class="row-btn row-btn-danger" onclick="openReject(<?= $tx['id'] ?>, '<?= htmlspecialchars($tx['transaction_id']) ?>')" title="Reject">
-                                                <i class="fas fa-times"></i>
-                                            </button>
-                                        <?php endif; ?>
-                                        <button type="button" class="row-btn row-btn-print" onclick="printSingleTx(<?= htmlspecialchars(json_encode($tx)) ?>)" title="Print Transaction">
-                                            <i class="fas fa-print"></i>
-                                        </button>
-                                    </div>
-                                </td>
                             </tr>
                         <?php endforeach; ?>
                     <?php endif; ?>
@@ -706,8 +742,12 @@ html, body { max-width: 100%; width: 100%; overflow-x: hidden !important; positi
 <div id="viewModal" class="modal">
     <div class="modal-content" style="max-width: 550px;">
         <div class="modal-header">
-            <h3>Transaction Details</h3>
-            <span class="modal-close" onclick="closeModal('viewModal')">&times;</span>
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:36px;height:36px;background:#eff6ff;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-eye" style="color:#0284c7;font-size:15px;"></i>
+                </div>
+                <h3 style="margin:0;">Transaction Details</h3>
+            </div>
         </div>
         <div class="modal-body">
             <div class="details-list">
@@ -791,8 +831,12 @@ html, body { max-width: 100%; width: 100%; overflow-x: hidden !important; positi
 <div id="validateModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
-            <h3>Validate Transaction</h3>
-            <span class="modal-close" onclick="closeModal('validateModal')">&times;</span>
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:36px;height:36px;background:#f0fdf4;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-check" style="color:#16a34a;font-size:15px;"></i>
+                </div>
+                <h3 style="margin:0;">Validate Transaction</h3>
+            </div>
         </div>
         <form method="post" id="validateForm">
             <div class="modal-body">
@@ -816,8 +860,12 @@ html, body { max-width: 100%; width: 100%; overflow-x: hidden !important; positi
 <div id="rejectModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
-            <h3>Reject Transaction</h3>
-            <span class="modal-close" onclick="closeModal('rejectModal')">&times;</span>
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:36px;height:36px;background:#fef2f2;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-times" style="color:#dc2626;font-size:15px;"></i>
+                </div>
+                <h3 style="margin:0;">Reject Transaction</h3>
+            </div>
         </div>
         <form method="post" id="rejectForm">
             <div class="modal-body">
@@ -834,6 +882,124 @@ html, body { max-width: 100%; width: 100%; overflow-x: hidden !important; positi
                 <button type="submit" class="ato-btn" style="background:#dc2626 !important; color:#fff !important; border-color:#dc2626 !important;"><i class="fas fa-times"></i> Reject Transaction</button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- Review Selected Modal (Batch Summary) -->
+<div id="reviewModal" class="modal">
+    <div class="modal-content" style="max-width: 700px;">
+        <div class="modal-header">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:36px;height:36px;background:#eff6ff;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-eye" style="color:#0ea5e9;font-size:15px;"></i>
+                </div>
+                <h3 style="margin:0;">Review Selected Readings</h3>
+            </div>
+            <span class="modal-close" onclick="closeModal('reviewModal')">&times;</span>
+        </div>
+        <div class="modal-body">
+            <!-- Summary Cards -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px;">
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;">
+                    <div style="font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Total Pumps</div>
+                    <div id="revTotalPumps" style="font-size: 20px; font-weight: 700; color: #1e293b;">0</div>
+                </div>
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;">
+                    <div style="font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Total Liters</div>
+                    <div id="revTotalLiters" style="font-size: 20px; font-weight: 700; color: #1e293b;">0 L</div>
+                </div>
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;">
+                    <div style="font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Total Sales</div>
+                    <div id="revTotalSales" style="font-size: 20px; font-weight: 700; color: #16a34a;">₱0.00</div>
+                </div>
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;">
+                    <div style="font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Total Cal</div>
+                    <div id="revTotalCal" style="font-size: 20px; font-weight: 700; color: #1e293b;">0 L</div>
+                </div>
+            </div>
+
+            <!-- Reading List -->
+            <div style="max-height: 400px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+                    <thead style="background: #f8fafc; position: sticky; top: 0;">
+                        <tr>
+                            <th style="padding: 8px; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 10px; color: #64748b;">Pump</th>
+                            <th style="padding: 8px; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 10px; color: #64748b;">Fuel Type</th>
+                            <th style="padding: 8px; text-align: right; border-bottom: 1px solid #e2e8f0; font-size: 10px; color: #64748b;">Liters</th>
+                            <th style="padding: 8px; text-align: right; border-bottom: 1px solid #e2e8f0; font-size: 10px; color: #64748b;">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody id="revReadingsList">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="ato-btn ato-btn-back" onclick="closeModal('reviewModal')">Cancel</button>
+            <button type="button" class="ato-btn" style="background: #dc2626; color: white;" onclick="closeReviewAndReject()">
+                <i class="fas fa-times"></i> Reject
+            </button>
+            <button type="button" class="ato-btn ato-btn-filter" style="background: #16a34a; color: white;" onclick="closeReviewAndValidate()">
+                <i class="fas fa-check"></i> Validate
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Batch Reject Modal -->
+<div id="batchRejectModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:36px;height:36px;background:#fef2f2;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-times" style="color:#dc2626;font-size:15px;"></i>
+                </div>
+                <h3 style="margin:0;">Reject Selected Transactions</h3>
+            </div>
+            <span class="modal-close" onclick="closeModal('batchRejectModal')">&times;</span>
+        </div>
+        <div class="modal-body">
+            <p id="batchRejPrompt" style="font-size: 13px; color: #475569; margin: 0 0 14px; font-weight: 500;"></p>
+            <div class="form-group">
+                <label>Rejection Reason <span style="color:#dc2626;">*</span></label>
+                <textarea id="batchRejectReason" rows="3" required placeholder="Enter reason for rejecting these transactions..."></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="ato-btn ato-btn-back" onclick="closeModal('batchRejectModal')">Cancel</button>
+            <button type="button" class="ato-btn" style="background:#dc2626; color:#fff;" onclick="confirmBatchReject()">
+                <i class="fas fa-times"></i> Reject Selected
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Batch Adjust Modal -->
+<div id="batchAdjustModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:36px;height:36px;background:#eff6ff;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-edit" style="color:#0ea5e9;font-size:15px;"></i>
+                </div>
+                <h3 style="margin:0;">Adjust Selected Transactions</h3>
+            </div>
+            <span class="modal-close" onclick="closeModal('batchAdjustModal')">&times;</span>
+        </div>
+        <div class="modal-body">
+            <p id="batchAdjustPrompt" style="font-size: 13px; color: #475569; margin: 0 0 14px; font-weight: 500;"></p>
+            <div class="form-group">
+                <label>Adjustment Reason <span style="color:#dc2626;">*</span></label>
+                <textarea id="batchAdjustReason" rows="3" required placeholder="Explain why these transactions need adjustment (e.g., 'Incorrect meter reading', 'Price correction needed')..."></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="ato-btn ato-btn-back" onclick="closeModal('batchAdjustModal')">Cancel</button>
+            <button type="button" class="ato-btn" style="background:#0ea5e9; color:#fff;" onclick="confirmBatchAdjust()">
+                <i class="fas fa-edit"></i> Adjust Selected
+            </button>
+        </div>
     </div>
 </div>
 
@@ -1033,6 +1199,377 @@ function printSingleTx(tx) {
 function escapeHtml(text) {
     if (!text) return '';
     return text.toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// BATCH SELECTION & ACTIONS
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Toggle Select All checkbox
+function toggleSelectAll(checkbox) {
+    const checkboxes = document.querySelectorAll('.tx-checkbox');
+    checkboxes.forEach(cb => cb.checked = checkbox.checked);
+    updateBatchButtons();
+}
+
+// Update batch action buttons based on selection
+function updateBatchButtons() {
+    const selected = getSelectedTransactions();
+    const count = selected.length;
+    
+    document.getElementById('selectedCount').textContent = count;
+    document.getElementById('btnApproveSelected').disabled = count === 0;
+    document.getElementById('btnRejectSelected').disabled = count === 0;
+    document.getElementById('btnAdjustSelected').disabled = count === 0;
+    
+    // Update select all checkbox state
+    const allCheckboxes = document.querySelectorAll('.tx-checkbox');
+    const selectAllCheck = document.getElementById('selectAllCheck');
+    if (selectAllCheck && allCheckboxes.length > 0) {
+        selectAllCheck.checked = count === allCheckboxes.length;
+        selectAllCheck.indeterminate = count > 0 && count < allCheckboxes.length;
+    }
+}
+
+// Get all selected transaction IDs and data
+function getSelectedTransactions() {
+    const checkboxes = document.querySelectorAll('.tx-checkbox:checked');
+    const selected = [];
+    checkboxes.forEach(cb => {
+        const txId = cb.dataset.txId;
+        const row = document.querySelector(`tr[data-tx-id="${txId}"]`);
+        if (row) {
+            try {
+                const txData = JSON.parse(row.dataset.txJson);
+                selected.push(txData);
+            } catch (e) {
+                console.error('Failed to parse tx data:', e);
+            }
+        }
+    });
+    return selected;
+}
+
+// Open Review Modal
+function openReviewModal() {
+    const selected = getSelectedTransactions();
+    if (selected.length === 0) {
+        alert('Please select at least one transaction to review.');
+        return;
+    }
+    
+    // Calculate totals
+    let totalLiters = 0;
+    let totalSales = 0;
+    let totalCal = 0;
+    
+    // Build reading list HTML
+    let listHTML = '';
+    selected.forEach(tx => {
+        const pump = tx.pump_number || 'Pump #' + (tx.pump_id || '?');
+        const fuelType = tx.fuel_type || '—';
+        const liters = parseFloat(tx.liters_sold) || 0;
+        const amount = parseFloat(tx.total_amount) || 0;
+        const cal = parseFloat(tx.calibration) || 0;
+        
+        totalLiters += liters;
+        totalSales += amount;
+        totalCal += cal;
+        
+        listHTML += `
+            <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 8px;">${escapeHtml(pump)}</td>
+                <td style="padding: 8px;">${escapeHtml(fuelType)}</td>
+                <td style="padding: 8px; text-align: right; font-weight: 600;">${liters.toFixed(2)} L</td>
+                <td style="padding: 8px; text-align: right; font-weight: 700; color: #16a34a;">₱${amount.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+            </tr>
+        `;
+    });
+    
+    // Update modal content
+    document.getElementById('revTotalPumps').textContent = selected.length;
+    document.getElementById('revTotalLiters').textContent = totalLiters.toFixed(2) + ' L';
+    document.getElementById('revTotalSales').textContent = '₱' + totalSales.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
+    document.getElementById('revTotalCal').textContent = totalCal.toFixed(2) + ' L';
+    document.getElementById('revReadingsList').innerHTML = listHTML;
+    
+    // Show modal
+    document.getElementById('reviewModal').style.display = 'flex';
+}
+
+// Close Review and proceed to Validate
+function closeReviewAndValidate() {
+    closeModal('reviewModal');
+    batchValidate();
+}
+
+// Close Review and proceed to Reject
+function closeReviewAndReject() {
+    closeModal('reviewModal');
+    openBatchReject();
+}
+
+// Batch Validate (Approve) - Direct approval without review modal
+async function batchValidate() {
+    const selected = getSelectedTransactions();
+    if (selected.length === 0) {
+        alert('Please select at least one transaction to approve.');
+        return;
+    }
+    
+    if (!confirm(`Approve ${selected.length} transaction(s)?\n\nThis will validate the readings and deduct fuel stock.`)) {
+        return;
+    }
+    
+    let successCount = 0;
+    let errorCount = 0;
+    const errors = [];
+    
+    for (const tx of selected) {
+        try {
+            const formData = new FormData();
+            formData.append('action', 'validate');
+            formData.append('id', tx.id);
+            formData.append('remarks', 'Batch validation - approved by manager');
+            
+            const response = await fetch('', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (response.ok) {
+                successCount++;
+            } else {
+                errorCount++;
+                errors.push(`${tx.transaction_id}: Server error`);
+            }
+        } catch (error) {
+            errorCount++;
+            errors.push(`${tx.transaction_id}: ${error.message}`);
+        }
+    }
+    
+    if (errorCount === 0) {
+        alert(`✓ Successfully approved ${successCount} transaction(s).`);
+        location.reload();
+    } else {
+        alert(`Completed with ${successCount} success, ${errorCount} failed.\n\n` + errors.join('\n'));
+        location.reload();
+    }
+}
+
+// Open Batch Reject Modal
+function openBatchReject() {
+    const selected = getSelectedTransactions();
+    if (selected.length === 0) {
+        alert('Please select at least one transaction to reject.');
+        return;
+    }
+    
+    document.getElementById('batchRejPrompt').textContent = `You are about to reject ${selected.length} transaction(s). Please provide a reason:`;
+    document.getElementById('batchRejectReason').value = '';
+    document.getElementById('batchRejectModal').style.display = 'flex';
+}
+
+// Confirm Batch Reject
+async function confirmBatchReject() {
+    const reason = document.getElementById('batchRejectReason').value.trim();
+    if (!reason) {
+        alert('Please enter a rejection reason.');
+        return;
+    }
+    
+    const selected = getSelectedTransactions();
+    if (selected.length === 0) return;
+    
+    closeModal('batchRejectModal');
+    
+    let successCount = 0;
+    let errorCount = 0;
+    const errors = [];
+    
+    for (const tx of selected) {
+        try {
+            const formData = new FormData();
+            formData.append('action', 'reject');
+            formData.append('id', tx.id);
+            formData.append('remarks', reason);
+            
+            const response = await fetch('', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (response.ok) {
+                successCount++;
+            } else {
+                errorCount++;
+                errors.push(`${tx.transaction_id}: Server error`);
+            }
+        } catch (error) {
+            errorCount++;
+            errors.push(`${tx.transaction_id}: ${error.message}`);
+        }
+    }
+    
+    if (errorCount === 0) {
+        alert(`✓ Successfully rejected ${successCount} transaction(s).`);
+        location.reload();
+    } else {
+        alert(`Completed with ${successCount} success, ${errorCount} failed.\n\n` + errors.join('\n'));
+        location.reload();
+    }
+}
+
+// Print Selected Transactions
+function printSelected() {
+    const selected = getSelectedTransactions();
+    if (selected.length === 0) {
+        alert('Please select at least one transaction to print.');
+        return;
+    }
+    
+    // Build print content
+    let printHTML = `
+        <html>
+        <head>
+            <title>Fuel Transaction Validation Report</title>
+            <style>
+                body { font-family: Arial, sans-serif; font-size: 11px; margin: 20px; }
+                h1 { font-size: 16px; margin-bottom: 5px; }
+                h2 { font-size: 13px; margin: 15px 0 8px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
+                th { background: #f5f5f5; font-weight: bold; }
+                .text-right { text-align: right; }
+                .summary { margin: 15px 0; padding: 10px; background: #f9f9f9; border: 1px solid #ddd; }
+            </style>
+        </head>
+        <body>
+            <h1>Fuel Transaction Validation Report</h1>
+            <p><strong>Date:</strong> ${new Date().toLocaleString('en-PH')}</p>
+            <p><strong>Total Transactions:</strong> ${selected.length}</p>
+            
+            <div class="summary">
+                <strong>Summary:</strong><br>
+                Total Liters: ${selected.reduce((sum, tx) => sum + (parseFloat(tx.liters_sold) || 0), 0).toFixed(2)} L<br>
+                Total Sales: ₱${selected.reduce((sum, tx) => sum + (parseFloat(tx.total_amount) || 0), 0).toLocaleString('en-PH', {minimumFractionDigits:2})}
+            </div>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>Transaction ID</th>
+                        <th>Date</th>
+                        <th>Pump</th>
+                        <th>Fuel Type</th>
+                        <th class="text-right">Begin</th>
+                        <th class="text-right">Ending</th>
+                        <th class="text-right">Liters</th>
+                        <th class="text-right">Amount</th>
+                        <th>Staff</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    selected.forEach(tx => {
+        const pump = tx.pump_number || 'Pump #' + (tx.pump_id || '?');
+        printHTML += `
+            <tr>
+                <td>${escapeHtml(tx.transaction_id || '—')}</td>
+                <td>${new Date(tx.transaction_date).toLocaleDateString('en-PH')}</td>
+                <td>${escapeHtml(pump)}</td>
+                <td>${escapeHtml(tx.fuel_type || '—')}</td>
+                <td class="text-right">${parseFloat(tx.previous_reading || 0).toFixed(2)}</td>
+                <td class="text-right">${parseFloat(tx.present_reading || 0).toFixed(2)}</td>
+                <td class="text-right">${parseFloat(tx.liters_sold || 0).toFixed(2)} L</td>
+                <td class="text-right">₱${parseFloat(tx.total_amount || 0).toLocaleString('en-PH', {minimumFractionDigits:2})}</td>
+                <td>${escapeHtml(tx.staff_name || '—')}</td>
+            </tr>
+        `;
+    });
+    
+    printHTML += `
+                </tbody>
+            </table>
+        </body>
+        </html>
+    `;
+    
+    // Open print window
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(printHTML);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => printWindow.print(), 250);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// BATCH ADJUST FUNCTIONS
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Open Batch Adjust Modal
+function openBatchAdjust() {
+    const selected = getSelectedTransactions();
+    if (selected.length === 0) {
+        alert('Please select at least one transaction to adjust.');
+        return;
+    }
+    
+    document.getElementById('batchAdjustPrompt').textContent = `You are about to mark ${selected.length} transaction(s) for adjustment. Please provide a reason:`;
+    document.getElementById('batchAdjustReason').value = '';
+    document.getElementById('batchAdjustModal').style.display = 'flex';
+}
+
+// Confirm Batch Adjust
+async function confirmBatchAdjust() {
+    const reason = document.getElementById('batchAdjustReason').value.trim();
+    if (!reason) {
+        alert('Please enter an adjustment reason.');
+        return;
+    }
+    
+    const selected = getSelectedTransactions();
+    if (selected.length === 0) return;
+    
+    closeModal('batchAdjustModal');
+    
+    let successCount = 0;
+    let errorCount = 0;
+    const errors = [];
+    
+    for (const tx of selected) {
+        try {
+            const formData = new FormData();
+            formData.append('action', 'adjust');
+            formData.append('id', tx.id);
+            formData.append('remarks', reason);
+            
+            const response = await fetch('', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (response.ok) {
+                successCount++;
+            } else {
+                errorCount++;
+                errors.push(`${tx.transaction_id}: Server error`);
+            }
+        } catch (error) {
+            errorCount++;
+            errors.push(`${tx.transaction_id}: ${error.message}`);
+        }
+    }
+    
+    if (errorCount === 0) {
+        alert(`✓ Successfully adjusted ${successCount} transaction(s). They have been returned to staff for correction.`);
+        location.reload();
+    } else {
+        alert(`Completed with ${successCount} success, ${errorCount} failed.\n\n` + errors.join('\n'));
+        location.reload();
+    }
 }
 </script>
 

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'dashboard';
 require_once __DIR__ . '/../backend/lib.php';
@@ -2726,7 +2726,7 @@ function buildShiftCharts() {
 </div><!-- .page-content -->
 
 <!-- Chart.js CDN for stock status charts -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script src="../assets/vendor/chart.js/chart.umd.min.js"></script>
 
 <script>
 // ============================================================

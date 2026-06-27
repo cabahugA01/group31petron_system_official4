@@ -159,12 +159,12 @@ body,html{overflow-x:hidden;max-width:100%;}
 .page-head{max-width:100%;overflow:hidden;}
 
 /* ── Summary Cards ── */
-.inv-stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;}
-.inv-stat-card{background:#fff;border-radius:12px;padding:16px 20px;border:1px solid #e9ecef;box-shadow:0 2px 6px rgba(0,0,0,.05);display:flex;align-items:center;gap:14px;}
-.inv-stat-icon{width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
-.inv-stat-info{min-width:0;}
-.inv-stat-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;color:#64748b;margin-bottom:2px;}
-.inv-stat-val{font-size:24px;font-weight:800;line-height:1;}
+.inv-stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:24px;}
+.inv-stat-card{background:#ffffff;border:1px solid #cbd5e1;border-radius:10px;padding:16px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 1px 3px rgba(0,0,0,.05);position:relative;overflow:hidden;}
+.inv-stat-info{display:flex;flex-direction:column;}
+.inv-stat-label{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;}
+.inv-stat-val{font-size:20px;font-weight:700;color:#1e293b;}
+.inv-stat-icon{font-size:24px;opacity:0.8;}
 @media(max-width:768px){.inv-stats-row{grid-template-columns:repeat(2,1fr);}}
 
 /* ── Filter Bar ── */
@@ -299,32 +299,32 @@ body,html{overflow-x:hidden;max-width:100%;}
 <!-- ══ SUMMARY CARDS ══ -->
 <div class="inv-stats-row">
     <div class="inv-stat-card">
-        <div class="inv-stat-icon" style="background:#eff6ff;color:#2563eb;"><i class="fas fa-boxes"></i></div>
         <div class="inv-stat-info">
-            <div class="inv-stat-label">Total Products</div>
-            <div class="inv-stat-val" style="color:#2563eb;"><?php echo $stats['total']; ?></div>
+            <span class="inv-stat-label">Total Products</span>
+            <span class="inv-stat-val"><?php echo $stats['total']; ?></span>
         </div>
+        <div class="inv-stat-icon" style="color:#2563eb;"><i class="fas fa-boxes"></i></div>
     </div>
     <div class="inv-stat-card">
-        <div class="inv-stat-icon" style="background:#f0fdf4;color:#16a34a;"><i class="fas fa-check-circle"></i></div>
         <div class="inv-stat-info">
-            <div class="inv-stat-label">Available Products</div>
-            <div class="inv-stat-val" style="color:#16a34a;"><?php echo $stats['available']; ?></div>
+            <span class="inv-stat-label">Available Products</span>
+            <span class="inv-stat-val"><?php echo $stats['available']; ?></span>
         </div>
+        <div class="inv-stat-icon" style="color:#16a34a;"><i class="fas fa-check-circle"></i></div>
     </div>
     <div class="inv-stat-card">
-        <div class="inv-stat-icon" style="background:#fffbeb;color:#d97706;"><i class="fas fa-exclamation-triangle"></i></div>
         <div class="inv-stat-info">
-            <div class="inv-stat-label">Low Stock Products</div>
-            <div class="inv-stat-val" style="color:#d97706;"><?php echo $stats['low']; ?></div>
+            <span class="inv-stat-label">Low Stock Products</span>
+            <span class="inv-stat-val"><?php echo $stats['low']; ?></span>
         </div>
+        <div class="inv-stat-icon" style="color:#d97706;"><i class="fas fa-exclamation-triangle"></i></div>
     </div>
     <div class="inv-stat-card">
-        <div class="inv-stat-icon" style="background:#fef2f2;color:#dc2626;"><i class="fas fa-times-circle"></i></div>
         <div class="inv-stat-info">
-            <div class="inv-stat-label">Out of Stock Products</div>
-            <div class="inv-stat-val" style="color:#dc2626;"><?php echo $stats['out']; ?></div>
+            <span class="inv-stat-label">Out of Stock Products</span>
+            <span class="inv-stat-val"><?php echo $stats['out']; ?></span>
         </div>
+        <div class="inv-stat-icon" style="color:#dc2626;"><i class="fas fa-times-circle"></i></div>
     </div>
 </div>
 

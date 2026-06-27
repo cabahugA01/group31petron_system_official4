@@ -25,11 +25,11 @@ try {
             if ($shift === 1) {
                 $shift_start = "$today 06:00:00";
                 $shift_end = "$today 14:00:00";
-                $shift_filter = " AND (u.shift_assignment LIKE '%Shift 1%' OR u.shift_assignment LIKE '%First%' OR u.shift_assignment = '1')";
+                $shift_filter = " AND (u.assigned_shift LIKE '%Shift 1%' OR u.assigned_shift = '1')";
             } elseif ($shift === 2) {
                 $shift_start = "$today 14:00:00";
-                $shift_end = "$today 22:00:00";
-                $shift_filter = " AND (u.shift_assignment LIKE '%Shift 2%' OR u.shift_assignment LIKE '%Second%' OR u.shift_assignment = '2')";
+                $shift_end = "$today 23:59:59";
+                $shift_filter = " AND (u.assigned_shift LIKE '%Shift 2%' OR u.assigned_shift = '2')";
             } else {
                 $shift_start = "$today 00:00:00";
                 $shift_end = "$today 23:59:59";
@@ -40,7 +40,8 @@ try {
             $sql = "
                 SELECT 
                     u.id as staff_id,
-                    u.id as emp_id,
+                    u.employee_id as emp_id,
+                    u.assigned_shift,
                     COALESCE(CONCAT(u.first_name, ' ', u.last_name), u.username, 'Unknown') as name,
                     u.username,
                     u.email,
@@ -138,7 +139,7 @@ try {
                     'total_deliveries' => $deliveriesCount
                 ],
                 'shift' => $shift,
-                'shift_period' => $shift === 1 ? '6AM - 2PM' : ($shift === 2 ? '2PM - 10PM' : 'All Day')
+                'shift_period' => $shift === 1 ? '6:00 AM – 2:00 PM' : ($shift === 2 ? '2:00 PM – 12:00 AM' : 'All Day')
             ]);
             break;
 

@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory Permissions Matrix - Visual Reference</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px 20px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: white;
+            border-radius: 16px;
+            padding: 32px;
+            margin-bottom: 32px;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+        
+        .header h1 {
+            font-size: 32px;
+            color: #002F70;
+            margin-bottom: 12px;
+            font-weight: 800;
+        }
+        
+        .header .subtitle {
+            color: #64748b;
+            font-size: 16px;
+            margin-bottom: 24px;
+        }
+        
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: #475569;
+        }
+        
+        .legend-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 14px;
+        }
+        
+        .legend-icon.yes {
+            background: #dcfce7;
+            color: #15803d;
+        }
+        
+        .legend-icon.no {
+            background: #fee2e2;
+            color: #b91c1c;
+        }
+        
+        .legend-icon.partial {
+            background: #fef3c7;
+            color: #a16207;
+        }
+        
+        .matrix-card {
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            margin-bottom: 32px;
+        }
+        
+        .matrix-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .matrix-table thead {
+            background: #002F70;
+            color: white;
+        }
+        
+        .matrix-table thead th {
+            padding: 18px 16px;
+            text-align: center;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-size: 13px;
+            border-right: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .matrix-table thead th:first-child {
+            text-align: left;
+        }
+        
+        .matrix-table thead th:last-child {
+            border-right: none;
+        }
+        
+        .matrix-table tbody tr {
+            border-bottom: 1px solid #e2e8f0;
+            transition: background 0.2s;
+        }
+        
+        .matrix-table tbody tr:hover {
+            background: #f8fafc;
+        }
+        
+        .matrix-table tbody tr:last-child {
+            border-bottom: none;
+        }
+        
+        .matrix-table tbody td {
+            padding: 16px;
+            text-align: center;
+            font-size: 14px;
+        }
+        
+        .matrix-table tbody td:first-child {
+            text-align: left;
+            font-weight: 600;
+            color: #1e293b;
+        }
+        
+        .perm-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 16px;
+        }
+        
+        .perm-yes {
+            background: #dcfce7;
+            color: #15803d;
+        }
+        
+        .perm-no {
+            background: #fee2e2;
+            color: #b91c1c;
+        }
+        
+        .perm-partial {
+            background: #fef3c7;
+            color: #a16207;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 0 8px;
+            white-space: nowrap;
+        }
+        
+        .role-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            gap: 24px;
+            margin-top: 32px;
+        }
+        
+        .role-card {
+            background: white;
+            border-radius: 16px;
+            padding: 28px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+        }
+        
+        .role-card-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        
+        .role-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: white;
+        }
+        
+        .role-icon.staff { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+        .role-icon.manager { background: linear-gradient(135deg, #10b981, #059669); }
+        .role-icon.admin { background: linear-gradient(135deg, #8b5cf6, #7c3aed); }
+        
+        .role-card h3 {
+            font-size: 20px;
+            color: #1e293b;
+            font-weight: 700;
+        }
+        
+        .role-card .role-label {
+            font-size: 12px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+        
+        .role-card .description {
+            color: #64748b;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+        
+        .permissions-list {
+            list-style: none;
+        }
+        
+        .permissions-list li {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 0;
+            border-bottom: 1px solid #f1f5f9;
+            font-size: 13px;
+            color: #475569;
+        }
+        
+        .permissions-list li:last-child {
+            border-bottom: none;
+        }
+        
+        .permissions-list .icon {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            flex-shrink: 0;
+        }
+        
+        .permissions-list .icon.yes {
+            background: #dcfce7;
+            color: #15803d;
+        }
+        
+        .permissions-list .icon.no {
+            background: #fee2e2;
+            color: #b91c1c;
+        }
+        
+        @media (max-width: 768px) {
+            .role-cards {
+                grid-template-columns: 1fr;
+            }
+            
+            .matrix-table {
+                font-size: 12px;
+            }
+            
+            .matrix-table thead th,
+            .matrix-table tbody td {
+                padding: 12px 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🗂️ Complete Inventory Permission Matrix</h1>
+            <div class="subtitle">Role-Based Access Control (RBAC) for Inventory Management</div>
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-icon yes">✓</div>
+                    <span>Full Access</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-icon no">✗</div>
+                    <span>No Access</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-icon partial">👁</div>
+                    <span>View/Monitor Only</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Permission Matrix Table -->
+        <div class="matrix-card">
+            <table class="matrix-table">
+                <thead>
+                    <tr>
+                        <th>Function</th>
+                        <th>Staff</th>
+                        <th>Manager</th>
+                        <th>Admin</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>View Fuel Inventory</td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                    </tr>
+                    <tr>
+                        <td>View Merchandise Inventory</td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                    </tr>
+                    <tr>
+                        <td>Search & Filter</td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                    </tr>
+                    <tr>
+                        <td>View Inventory Details</td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                    </tr>
+                    <tr>
+                        <td>Low Stock Monitoring</td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                    </tr>
+                    <tr>
+                        <td>Submit Stock Request</td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                        <td><span class="perm-icon perm-no">✗</span></td>
+                    </tr>
+                    <tr style="background: #fef3c7;">
+                        <td><strong>Approve Stock Request</strong></td>
+                        <td><span class="perm-icon perm-no">✗</span></td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                        <td><span class="perm-icon perm-no">✗</span></td>
+                    </tr>
+                    <tr style="background: #fef3c7;">
+                        <td><strong>Generate Purchase Order</strong></td>
+                        <td><span class="perm-icon perm-no">✗</span></td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                        <td><span class="perm-icon perm-no">✗</span></td>
+                    </tr>
+                    <tr style="background: #fef3c7;">
+                        <td><strong>Receive Deliveries</strong></td>
+                        <td><span class="perm-icon perm-no">✗</span></td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                        <td><span class="perm-icon perm-no">✗</span></td>
+                    </tr>
+                    <tr style="background: #fef3c7;">
+                        <td><strong>Stock-In Inventory</strong></td>
+                        <td><span class="perm-icon perm-no">✗</span></td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                        <td><span class="perm-icon perm-no">✗</span></td>
+                    </tr>
+                    <tr style="background: #fef3c7;">
+                        <td><strong>Inventory Adjustment</strong></td>
+                        <td><span class="perm-icon perm-no">✗</span></td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                        <td><span class="perm-partial">Monitor/Rollback</span></td>
+                    </tr>
+                    <tr style="background: #fef3c7;">
+                        <td><strong>Inventory Count</strong></td>
+                        <td><span class="perm-icon perm-no">✗</span></td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                        <td><span class="perm-partial">View</span></td>
+                    </tr>
+                    <tr>
+                        <td>Inventory History</td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                    </tr>
+                    <tr>
+                        <td>Inventory Reports</td>
+                        <td><span class="perm-partial">View Only</span></td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                    </tr>
+                    <tr>
+                        <td>Export Reports</td>
+                        <td><span class="perm-icon perm-no">✗</span></td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                    </tr>
+                    <tr style="background: #e0e7ff;">
+                        <td><strong>Audit Trail</strong></td>
+                        <td><span class="perm-icon perm-no">✗</span></td>
+                        <td><span class="perm-icon perm-no">✗</span></td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                    </tr>
+                    <tr style="background: #e0e7ff;">
+                        <td><strong>Backup Inventory</strong></td>
+                        <td><span class="perm-icon perm-no">✗</span></td>
+                        <td><span class="perm-icon perm-no">✗</span></td>
+                        <td><span class="perm-icon perm-yes">✓</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Role Detail Cards -->
+        <div class="role-cards">
+            <!-- Staff Card -->
+            <div class="role-card">
+                <div class="role-card-header">
+                    <div class="role-icon staff">👤</div>
+                    <div>
+                        <div class="role-label">Role</div>
+                        <h3>Staff</h3>
+                    </div>
+                </div>
+                <div class="description">
+                    Staff members are responsible for monitoring inventory levels and submitting stock requests when items are running low.
+                </div>
+                <ul class="permissions-list">
+                    <li><span class="icon yes">✓</span> View fuel & merchandise inventory</li>
+                    <li><span class="icon yes">✓</span> Monitor low stock alerts</li>
+                    <li><span class="icon yes">✓</span> Submit stock requests</li>
+                    <li><span class="icon yes">✓</span> View inventory history</li>
+                    <li><span class="icon yes">✓</span> View reports (read-only)</li>
+                    <li><span class="icon no">✗</span> Cannot approve requests</li>
+                    <li><span class="icon no">✗</span> Cannot adjust inventory</li>
+                    <li><span class="icon no">✗</span> Cannot export reports</li>
+                </ul>
+            </div>
+            
+            <!-- Manager Card -->
+            <div class="role-card">
+                <div class="role-card-header">
+                    <div class="role-icon manager">👔</div>
+                    <div>
+                        <div class="role-label">Role</div>
+                        <h3>Manager</h3>
+                    </div>
+                </div>
+                <div class="description">
+                    Managers have full operational control over inventory management including approvals, deliveries, stock-in, adjustments, and counts.
+                </div>
+                <ul class="permissions-list">
+                    <li><span class="icon yes">✓</span> All Staff permissions</li>
+                    <li><span class="icon yes">✓</span> Approve/reject stock requests</li>
+                    <li><span class="icon yes">✓</span> Generate purchase orders</li>
+                    <li><span class="icon yes">✓</span> Receive & validate deliveries</li>
+                    <li><span class="icon yes">✓</span> Perform stock-in operations</li>
+                    <li><span class="icon yes">✓</span> Make inventory adjustments</li>
+                    <li><span class="icon yes">✓</span> Conduct inventory counts</li>
+                    <li><span class="icon yes">✓</span> Generate & export reports</li>
+                </ul>
+            </div>
+            
+            <!-- Admin Card -->
+            <div class="role-card">
+                <div class="role-card-header">
+                    <div class="role-icon admin">👑</div>
+                    <div>
+                        <div class="role-label">Role</div>
+                        <h3>Admin</h3>
+                    </div>
+                </div>
+                <div class="description">
+                    Admins provide oversight through audit trails, reports, and the ability to rollback incorrect adjustments made by managers.
+                </div>
+                <ul class="permissions-list">
+                    <li><span class="icon yes">✓</span> View all inventory (read-only)</li>
+                    <li><span class="icon yes">✓</span> Monitor all activities</li>
+                    <li><span class="icon yes">✓</span> View inventory count results</li>
+                    <li><span class="icon yes">✓</span> Full audit trail access</li>
+                    <li><span class="icon yes">✓</span> Rollback Manager adjustments</li>
+                    <li><span class="icon yes">✓</span> Generate all reports</li>
+                    <li><span class="icon yes">✓</span> System backup & restore</li>
+                    <li><span class="icon no">✗</span> Cannot perform operations</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

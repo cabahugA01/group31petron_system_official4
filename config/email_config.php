@@ -82,132 +82,132 @@ function sendPasswordResetOTP($to_email, $otp) {
 }
 
 // Function to send admin credentials email
-function sendAdminCredentialsEmail($to_email, $admin_name, $station_name, $username, $password, $created_by_role = 'Admin') {
+function sendAdminCredentialsEmail($to_email, $full_name, $station_name, $username, $password, $created_by_role = 'Admin', $role = 'Staff', $employee_id = '') {
     global $email_config;
 
-    // Normalize creator label for display
     $creator_label = ucfirst(strtolower($created_by_role));
-    if (strtolower($created_by_role) === 'superadmin') {
-        $creator_label = 'Super Admin';
-    }
+    if (strtolower($created_by_role) === 'superadmin') $creator_label = 'Super Admin';
+    $role_display  = ucfirst(strtolower($role));
+    $now           = date('F d, Y \a\t h:i A');
 
     try {
         $mail = new PHPMailer(true);
         $mail->isSMTP();
-        $mail->Host = $email_config['host'];
-        $mail->SMTPAuth = true;
-        $mail->Username = $email_config['username'];
-        $mail->Password = $email_config['password_hash'];
+        $mail->Host       = $email_config['host'];
+        $mail->SMTPAuth   = true;
+        $mail->Username   = $email_config['username'];
+        $mail->Password   = $email_config['password_hash'];
         $mail->SMTPSecure = $email_config['encryption'];
-        $mail->Port = $email_config['port'];
+        $mail->Port       = $email_config['port'];
 
         $mail->setFrom($email_config['from_email'], $email_config['from_name']);
         $mail->addAddress($to_email);
 
         $mail->isHTML(true);
-        $mail->Subject = 'Petron Station Management – Account Credentials';
-        
-        // Embed the Petron logo for credentials email
+        $mail->Subject = 'Petron Station Management System - Your Account Credentials';
+
+        // Embed Petron logo
         $logo_path = __DIR__ . '/../assets/img/Petron Logo.png';
         if (file_exists($logo_path)) {
             $mail->AddEmbeddedImage($logo_path, 'petron_logo_cred', 'Petron Logo.png');
             $logo_src = 'cid:petron_logo_cred';
         } else {
-            // Fallback to base64 if logo file not found
             $logo_src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
         }
-        
+
+        $emp_id_row = !empty($employee_id) ? "
+            <tr>
+                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#64748b;font-size:13px;font-weight:600;width:160px;white-space:nowrap;'>Employee ID</td>
+                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#1e293b;font-size:13px;font-family:monospace;font-weight:700;'>{$employee_id}</td>
+            </tr>" : '';
+
         $mail->Body = "
-            <div style='font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; border: 1px solid #dee2e6; border-radius: 8px; overflow: hidden;'>
-                <!-- Header with Logo -->
-                <div style='background: linear-gradient(135deg, #002F6C 0%, #004a9e 100%); color: white; padding: 40px 30px; text-align: center;'>
-                    <img src='{$logo_src}' alt='Petron Logo' style='height: 80px; margin-bottom: 20px; display: block; margin-left: auto; margin-right: auto;' />
-                    <h1 style='margin: 0; font-size: 28px; font-weight: 700; letter-spacing: 0.5px;'>Station Management System</h1>
-                </div>
-                
-                <!-- Main Content -->
-                <div style='padding: 40px 35px; background-color: #ffffff;'>
-                    <h2 style='color: #002F6C; margin-top: 0; font-size: 26px; font-weight: 600; border-bottom: 3px solid #002F6C; padding-bottom: 12px;'>
-                        🎉 Your Account Has Been Created
-                    </h2>
-                    
-                    <p style='color: #333; line-height: 1.7; font-size: 16px;'>
-                        Dear <strong style='color: #002F6C;'>$admin_name</strong>,
-                    </p>
-                    
-                    <p style='color: #333; line-height: 1.7; font-size: 16px;'>
-                        Your account has been successfully created by the <strong>$creator_label</strong> of <strong style='color: #002F6C;'>$station_name</strong>.
-                    </p>
-                    
-                    <!-- Credentials Box -->
-                    <div style='background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); padding: 30px; border-radius: 10px; margin: 30px 0; border: 2px solid #002F6C; box-shadow: 0 4px 8px rgba(0,47,108,0.1);'>
-                        <h3 style='margin: 0 0 20px 0; color: #002F6C; font-size: 20px; font-weight: 700;'>📋 Your Login Credentials</h3>
-                        
-                        <div style='background-color: white; padding: 15px; border-radius: 6px; margin-bottom: 12px; border-left: 4px solid #28a745;'>
-                            <p style='margin: 0; color: #666; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;'>STATION</p>
-                            <p style='margin: 5px 0 0 0; color: #002F6C; font-size: 18px; font-weight: 700;'>$station_name</p>
-                        </div>
-                        
-                        <div style='background-color: white; padding: 15px; border-radius: 6px; margin-bottom: 12px; border-left: 4px solid #007bff;'>
-                            <p style='margin: 0; color: #666; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;'>USERNAME (EMAIL)</p>
-                            <p style='margin: 5px 0 0 0; color: #002F6C; font-size: 18px; font-weight: 700; word-break: break-all;'>$username</p>
-                        </div>
-                        
-                        <div style='background-color: white; padding: 15px; border-radius: 6px; border-left: 4px solid #ffc107;'>
-                            <p style='margin: 0; color: #666; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;'>TEMPORARY PASSWORD</p>
-                            <p style='margin: 5px 0 0 0; font-family: monospace; font-size: 20px; font-weight: 700; color: #dc3545; letter-spacing: 2px; background-color: #fff3cd; padding: 10px; border-radius: 5px; display: inline-block;'>$password</p>
-                        </div>
-                    </div>
-                    
-                    <!-- Security Notice -->
-                    <div style='background-color: #fff3cd; border-left: 5px solid #ffc107; padding: 20px; border-radius: 8px; margin: 25px 0;'>
-                        <p style='margin: 0; color: #856404; font-weight: 700; font-size: 16px; line-height: 1.6;'>
-                            🔐 <strong>IMPORTANT SECURITY NOTICE:</strong>
-                        </p>
-                        <ul style='margin: 10px 0 0 20px; color: #856404; line-height: 1.7;'>
-                            <li>You <strong>MUST change your password</strong> upon first login</li>
-                            <li>Never share your credentials with anyone</li>
-                            <li>Password must contain: uppercase, lowercase, number, and special character</li>
-                        </ul>
-                    </div>
-                    
-                    <!-- Login Button -->
-                    <div style='text-align: center; margin: 35px 0;'>
-                        <a href='http://localhost/group31petron_system_official4/public/login.php' 
-                           style='background: linear-gradient(135deg, #002F6C 0%, #004a9e 100%); 
-                                  color: white; 
-                                  padding: 16px 40px; 
-                                  text-decoration: none; 
-                                  border-radius: 8px; 
-                                  display: inline-block; 
-                                  font-weight: 700; 
-                                  font-size: 17px;
-                                  box-shadow: 0 4px 8px rgba(0,47,108,0.3);
-                                  text-transform: uppercase;
-                                  letter-spacing: 1px;'>
-                            🚀 Log In to System
-                        </a>
-                    </div>
-                    
-                    <p style='color: #6c757d; font-size: 14px; line-height: 1.7; margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6;'>
-                        If you didn't expect this email or have any questions, please contact your system administrator immediately.
-                    </p>
-                </div>
-                
-                <!-- Footer -->
-                <div style='background-color: #002F6C; color: white; padding: 30px 25px; text-align: center;'>
-                    <p style='margin: 0 0 10px 0; opacity: 0.9; font-size: 14px;'>
-                        This is an automated message from Petron Station Management System
-                    </p>
-                    <p style='margin: 0 0 10px 0; opacity: 0.9; font-size: 13px;'>
-                        Please do not reply to this email
-                    </p>
-                    <p style='margin: 0; font-weight: 700; font-size: 14px;'>
-                        &copy; 2026 Petron Management System. All rights reserved.
-                    </p>
-                </div>
+        <div style='font-family:Inter,Arial,sans-serif;max-width:640px;margin:0 auto;background:#f8fafc;'>
+
+            <!-- HEADER -->
+            <div style='background:linear-gradient(135deg,#002F6C 0%,#004a9e 100%);padding:40px 30px;text-align:center;border-radius:12px 12px 0 0;'>
+                <img src='{$logo_src}' alt='Petron' style='height:72px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto;'>
+                <h1 style='margin:0;font-size:24px;font-weight:800;color:#ffffff;letter-spacing:0.5px;line-height:1.3;'>Station Management System</h1>
+                <p style='margin:8px 0 0;font-size:13px;color:rgba(255,255,255,0.75);'>Account Credentials Notification</p>
             </div>
-        ";
+
+            <!-- BODY -->
+            <div style='background:#ffffff;padding:40px 35px;'>
+
+                <!-- Greeting -->
+                <h2 style='color:#002F6C;font-size:22px;font-weight:700;margin:0 0 8px;'>Hello, {$full_name}! 👋</h2>
+                <p style='color:#475569;font-size:15px;line-height:1.7;margin:0 0 24px;'>
+                    Your account sa <strong style='color:#002F6C;'>Petron Station Management System</strong> kay successful na
+                    ma-create sa {$creator_label} sa <strong>{$station_name}</strong>.<br>
+                    Ania na ang imong credentials — pwede ka na karon mag-login!
+                </p>
+
+                <!-- Credentials Card -->
+                <div style='background:linear-gradient(135deg,#f0f9ff 0%,#e0f2fe 100%);border:2px solid #0ea5e9;border-radius:12px;padding:28px;margin:0 0 28px;'>
+                    <p style='margin:0 0 18px;font-size:14px;font-weight:800;color:#0369a1;text-transform:uppercase;letter-spacing:1px;'>
+                        📋 Your Login Credentials
+                    </p>
+                    <table style='width:100%;border-collapse:collapse;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);'>
+                        <tbody>
+                            {$emp_id_row}
+                            <tr>
+                                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#64748b;font-size:13px;font-weight:600;width:160px;white-space:nowrap;'>Full Name</td>
+                                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#1e293b;font-size:13px;font-weight:700;'>{$full_name}</td>
+                            </tr>
+                            <tr>
+                                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#64748b;font-size:13px;font-weight:600;'>Role</td>
+                                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;'>
+                                    <span style='background:#dbeafe;color:#1d4ed8;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;'>{$role_display}</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#64748b;font-size:13px;font-weight:600;'>Station</td>
+                                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#1e293b;font-size:13px;font-weight:700;'>{$station_name}</td>
+                            </tr>
+                            <tr>
+                                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#64748b;font-size:13px;font-weight:600;'>Username / Email</td>
+                                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#0369a1;font-size:13px;font-weight:700;word-break:break-all;'>{$username}</td>
+                            </tr>
+                            <tr>
+                                <td style='padding:12px 16px;color:#64748b;font-size:13px;font-weight:600;'>Temporary Password</td>
+                                <td style='padding:12px 16px;'>
+                                    <span style='font-family:monospace;font-size:18px;font-weight:800;color:#dc2626;background:#fff1f2;padding:8px 16px;border-radius:8px;letter-spacing:2px;border:1.5px dashed #fca5a5;display:inline-block;'>{$password}</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Warning Notice -->
+                <div style='background:#fffbeb;border-left:5px solid #f59e0b;border-radius:8px;padding:18px 20px;margin:0 0 28px;'>
+                    <p style='margin:0 0 8px;font-size:14px;font-weight:800;color:#92400e;'>⚠️ IMPORTANTE — Security Reminder:</p>
+                    <ul style='margin:0;padding-left:20px;color:#78350f;font-size:13px;line-height:1.9;'>
+                        <li>Kinahanglan nimong <strong>usbon ang imong password</strong> sa imong unang pag-login.</li>
+                        <li>Ayaw ipaambit ang imong password ngadto sa uban.</li>
+                        <li>Ang password kinahanglan og uppercase, lowercase, numero, ug special character.</li>
+                        <li>Kung wala ka mag-request niini, i-contact dayon ang imong Administrator.</li>
+                    </ul>
+                </div>
+
+                <!-- Login Button -->
+                <div style='text-align:center;margin:0 0 32px;'>
+                    <a href='http://localhost/group31petron_system_official4/public/login.php'
+                       style='background:linear-gradient(135deg,#002F6C 0%,#004a9e 100%);color:#ffffff;padding:15px 44px;text-decoration:none;border-radius:10px;display:inline-block;font-weight:800;font-size:16px;letter-spacing:0.5px;box-shadow:0 4px 14px rgba(0,47,108,0.35);'>
+                        🚀 Log In to the System
+                    </a>
+                </div>
+
+                <p style='color:#94a3b8;font-size:12px;text-align:center;margin:0;border-top:1px solid #f1f5f9;padding-top:20px;'>
+                    Account created on {$now} &nbsp;|&nbsp; This is an automated message — do not reply.
+                </p>
+            </div>
+
+            <!-- FOOTER -->
+            <div style='background:#002F6C;color:rgba(255,255,255,0.8);padding:24px 30px;text-align:center;border-radius:0 0 12px 12px;font-size:12px;'>
+                <p style='margin:0 0 6px;font-weight:700;font-size:13px;color:#ffffff;'>© 2026 Petron Station Management System</p>
+                <p style='margin:0;'>All rights reserved. This message was sent automatically — please do not reply.</p>
+            </div>
+        </div>";
 
         return $mail->send();
 
@@ -216,6 +216,7 @@ function sendAdminCredentialsEmail($to_email, $admin_name, $station_name, $usern
         return false;
     }
 }
+
 
 // Function to generate secure random password
 if (!function_exists('generateSecurePassword')) {

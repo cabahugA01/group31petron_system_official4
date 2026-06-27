@@ -1,9 +1,11 @@
 <?php
-// ─── Body HTML: Summary cards + Separate Fuel & Merchandise PO Tables ─────────
+// ─── Body HTML: Summary cards + Tabbed Fuel & Merchandise PO Tables ─────────
 
 // Split $display_pos into fuel and merch
 $merch_pos = array_values(array_filter($display_pos, fn($p) => $p['po_type'] === 'merch'));
 $fuel_pos  = array_values(array_filter($display_pos, fn($p) => $p['po_type'] === 'fuel'));
+
+$active_tab = $_GET['tab'] ?? 'merch'; // default to merch tab
 ?>
 <?php if ($flash_ok): ?><div class="flash-ok"><i class="fas fa-check-circle"></i> <?= htmlspecialchars($flash_ok) ?></div><?php endif; ?>
 <?php if ($flash_err): ?><div class="flash-err"><i class="fas fa-exclamation-circle"></i> <?= htmlspecialchars($flash_err) ?></div><?php endif; ?>
@@ -44,7 +46,8 @@ $fuel_pos  = array_values(array_filter($display_pos, fn($p) => $p['po_type'] ===
 </div>
 
 <!-- FILTER BAR -->
-<form method="GET" class="po-filter-bar">
+<form method="GET" class="po-filter-bar" id="poFilterForm">
+  <input type="hidden" name="tab" id="filterTabInput" value="<?= htmlspecialchars($active_tab) ?>">
   <input type="date" name="filter_date" value="<?= htmlspecialchars($filter_date) ?>" title="Filter by Date">
   <select name="filter_status" onchange="this.form.submit()">
     <option value="">All Statuses</option>
@@ -56,51 +59,60 @@ $fuel_pos  = array_values(array_filter($display_pos, fn($p) => $p['po_type'] ===
   <input type="text" name="search" value="<?= htmlspecialchars($_GET['search'] ?? '') ?>" placeholder="Search PO No. / Item..." style="width:180px;">
   <button type="submit" class="po-ctrl-btn po-btn-exp" style="padding:7px 14px;"><i class="fas fa-search"></i> Search</button>
   <?php if ($filter_date || $filter_status || ($filter_search !== '')): ?>
-    <a href="admin_purchase_orders.php" class="po-ctrl-btn po-btn-back"><i class="fas fa-times"></i> Clear</a>
+    <a href="admin_purchase_orders.php?tab=<?= htmlspecialchars($active_tab) ?>" class="po-ctrl-btn po-btn-back"><i class="fas fa-times"></i> Clear</a>
   <?php endif; ?>
   <div style="flex:1;"></div>
-  <button type="button" class="po-ctrl-btn po-btn-exp" onclick="exportTableToExcel('poTableMerch','merch_po.xls')"><i class="fas fa-file-excel"></i> Excel</button>
-  <button type="button" class="po-ctrl-btn po-btn-exp" onclick="exportTableToPDF('poTableMerch','Merchandise POs')"><i class="fas fa-file-pdf"></i> PDF</button>
+  <button type="button" class="po-ctrl-btn po-btn-exp" onclick="exportCurrentTabTable()"><i class="fas fa-file-excel"></i> Excel</button>
+  <button type="button" class="po-ctrl-btn po-btn-exp" onclick="printCurrentTabTable()"><i class="fas fa-file-pdf"></i> PDF</button>
 </form>
 
+<!-- ── TAB NAVIGATION ─────────────────────────────────────────────────────── -->
+<div class="po-tabs-nav">
+  <button class="po-tab-btn <?= $active_tab === 'merch' ? 'active-merch' : '' ?>"
+          id="tabBtnMerch"
+          onclick="switchTab('merch')">
+    <i class="fas fa-boxes"></i>
+    Merchandise
+    <span class="po-tab-badge"><?= count($merch_pos) ?></span>
+  </button>
+  <button class="po-tab-btn <?= $active_tab === 'fuel' ? 'active-fuel' : '' ?>"
+          id="tabBtnFuel"
+          onclick="switchTab('fuel')">
+    <i class="fas fa-gas-pump"></i>
+    Fuel
+    <span class="po-tab-badge"><?= count($fuel_pos) ?></span>
+  </button>
+</div>
+
+<!-- ── TAB PANES ─────────────────────────────────────────────────────────── -->
 <?php
-// Helper: render one PO table section
-function renderPoSection($pos, $section_label, $section_icon, $section_color, $table_id, $PENDING_ST, $APPROVED_ST, $DELIVERED_ST, $CANCELLED_ST) {
+function renderPoTable($pos, $table_id, $PENDING_ST, $APPROVED_ST, $DELIVERED_ST, $CANCELLED_ST, $is_fuel = false) {
+    $empty_label = $is_fuel ? 'fuel' : 'merchandise';
 ?>
-<!-- ══ <?= $section_label ?> PO SECTION ══ -->
-<div class="po-section-wrap" style="margin-bottom:32px;">
-
-  <!-- Section Header -->
-  <div class="po-section-hd" style="background:<?= $section_color ?>;color:#fff;padding:10px 18px;border-radius:10px 10px 0 0;display:flex;align-items:center;gap:10px;">
-    <i class="<?= $section_icon ?>" style="font-size:16px;"></i>
-    <span style="font-size:14px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;"><?= $section_label ?> Purchase Orders</span>
-    <span style="margin-left:auto;background:rgba(255,255,255,.25);border-radius:20px;padding:2px 12px;font-size:12px;font-weight:700;"><?= count($pos) ?> PO(s)</span>
-  </div>
-
-  <div class="po-table-wrap" style="border-radius:0 0 10px 10px;border-top:none;">
-    <table class="po-table" id="<?= $table_id ?>">
-      <thead>
-        <tr>
-          <th style="text-align:left;padding-left:18px;">PO No.</th>
-          <th>Supplier</th>
-          <th>Date Created</th>
-          <th>Total Items</th>
-          <th>Total Amount</th>
-          <th>Created By</th>
-          <th>Status</th>
-          <th style="width:160px;">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-      <?php if (empty($pos)): ?>
-        <tr class="no-paginate">
-          <td colspan="8" style="text-align:center;padding:36px;color:#94a3b8;">
-            <i class="fas fa-inbox" style="font-size:2rem;display:block;margin-bottom:8px;opacity:.3;"></i>
-            No <?= strtolower($section_label) ?> purchase orders found.
-          </td>
-        </tr>
-      <?php else: ?>
-        <?php foreach ($pos as $po):
+<div class="po-table-wrap">
+  <table class="po-table" id="<?= $table_id ?>">
+    <thead>
+      <tr>
+        <th style="text-align:left;padding-left:18px;">PO No.</th>
+        <th>Supplier</th>
+        <th>Date Created</th>
+        <th>Total Items</th>
+        <th>Total Amount</th>
+        <th>Created By</th>
+        <th>Status</th>
+        <th style="width:160px;">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+    <?php if (empty($pos)): ?>
+      <tr class="no-paginate">
+        <td colspan="8" style="text-align:center;padding:48px;color:#94a3b8;">
+          <i class="fas <?= $is_fuel ? 'fa-gas-pump' : 'fa-boxes' ?>" style="font-size:2.5rem;display:block;margin-bottom:12px;opacity:.2;"></i>
+          No <?= $empty_label ?> purchase orders found.
+        </td>
+      </tr>
+    <?php else: ?>
+      <?php foreach ($pos as $po):
           $st  = strtolower(trim($po['status'] ?? ''));
           $isp = in_array($st, $PENDING_ST);
           $isa = in_array($st, $APPROVED_ST);
@@ -110,7 +122,7 @@ function renderPoSection($pos, $section_label, $section_icon, $section_color, $t
           if ($isd)      { $badgeCls='po-badge-delivered'; $badgeLbl='<i class="fas fa-truck"></i> Delivered'; }
           elseif ($isc)  { $badgeCls='po-badge-cancelled'; $badgeLbl='<i class="fas fa-times-circle"></i> Cancelled'; }
           elseif ($isa)  { $badgeCls='po-badge-approved';  $badgeLbl='<i class="fas fa-check-circle"></i> Approved'; }
-          elseif ($isp)  { $badgeCls='po-badge-pending';   $badgeLbl='<i class="fas fa-hourglass-half"></i> Pending'; }
+          elseif ($isp)  { $badgeCls='po-badge-pending';   $badgeLbl='<i class="fas fa-hourglass-half"></i> Pending Admin Approval'; }
           else           { $badgeCls='po-badge-pending';   $badgeLbl=htmlspecialchars($po['status']); }
 
           $ptype      = $po['po_type'];
@@ -118,14 +130,12 @@ function renderPoSection($pos, $section_label, $section_icon, $section_color, $t
           $group_date = $po['group_date'] ?? ($po['date_created'] ? date('Y-m-d', strtotime($po['date_created'])) : '');
           $date_fmt   = $po['date_created'] ? date('M d, Y h:i A', strtotime($po['date_created'])) : '—';
 
-          // Print URL: prefer batch_id, fall back to date
           if (!empty($batch_id)) {
               $print_url = "print_po_new.php?batch_id=" . urlencode($batch_id) . "&type=" . urlencode($ptype) . "&print=1";
           } else {
               $print_url = "print_po_new.php?date=" . urlencode($group_date) . "&type=" . urlencode($ptype) . "&print=1";
           }
 
-          // JSON for finalize modal
           $json_po = htmlspecialchars(json_encode([
               'po_no'       => $po['po_no'],
               'batch_id'    => $batch_id,
@@ -141,79 +151,111 @@ function renderPoSection($pos, $section_label, $section_icon, $section_color, $t
               'po_type'     => $ptype,
               'detail'      => $po['detail'] ?? '',
           ]), ENT_QUOTES, 'UTF-8');
-        ?>
-        <tr class="po-row">
-          <td style="text-align:left;padding-left:18px;">
-            <code style="font-weight:800;font-size:12px;color:#002F70;"><?= htmlspecialchars($po['po_no']) ?></code>
-          </td>
-          <td style="font-size:12px;"><?= htmlspecialchars($po['supplier']) ?></td>
-          <td style="font-size:12px;white-space:nowrap;"><?= $date_fmt ?></td>
-          <td style="font-weight:700;"><?= (int)$po['total_items'] ?> item(s)</td>
-          <td style="font-weight:700;">&#8369;<?= number_format((float)$po['total_amount'], 2) ?></td>
-          <td style="font-size:12px;"><?= htmlspecialchars(trim($po['created_by']) ?: '—') ?></td>
-          <td><span class="po-badge <?= $badgeCls ?>"><?= $badgeLbl ?></span></td>
-          <td>
-            <div style="display:flex;flex-direction:column;gap:5px;">
-
-              <!-- ONE PRINT PO BUTTON -->
-              <a href="<?= htmlspecialchars($print_url) ?>"
-                 target="_blank"
-                 class="po-ctrl-btn po-btn-exp"
-                 style="font-size:11px;padding:6px 10px;justify-content:center;text-decoration:none;display:flex;"
-                 title="Print all items in this PO as one document">
-                <i class="fas fa-print"></i>&nbsp;Print PO
-              </a>
-
-              <?php if ($isp): ?>
-              <!-- Finalize (pending only) -->
-              <a href="javascript:void(0)"
-                 class="po-ctrl-btn po-btn-fin"
-                 style="font-size:11px;padding:6px 10px;justify-content:center;text-decoration:none;display:flex;"
-                 onclick='openFinalizeSingle(<?= json_encode($group_date) ?>,<?= json_encode($ptype) ?>,<?= $json_po ?>)'
-                 title="Finalize this PO">
-                <i class="fas fa-check"></i>&nbsp;Finalize
-              </a>
-              <!-- Reject (pending only) -->
-              <a href="javascript:void(0)"
-                 class="po-ctrl-btn po-btn-rej"
-                 style="font-size:11px;padding:6px 10px;justify-content:center;text-decoration:none;display:flex;"
-                 onclick="openReject('<?= $ptype ?>','<?= $group_date ?>')"
-                 title="Reject this PO">
-                <i class="fas fa-times"></i>&nbsp;Reject
-              </a>
-              <?php endif; ?>
-
-            </div>
-          </td>
-        </tr>
-        <?php endforeach; ?>
-      <?php endif; ?>
-      </tbody>
-    </table>
-  </div>
+      ?>
+      <tr class="po-row">
+        <td style="text-align:left;padding-left:18px;">
+          <code style="font-weight:800;font-size:12px;color:#002F70;"><?= htmlspecialchars($po['po_no']) ?></code>
+        </td>
+        <td style="font-size:12px;"><?= htmlspecialchars($po['supplier']) ?></td>
+        <td style="font-size:12px;white-space:nowrap;"><?= $date_fmt ?></td>
+        <td style="font-weight:700;"><?= (int)$po['total_items'] ?> item(s)</td>
+        <td style="font-weight:700;">&#8369;<?= number_format((float)$po['total_amount'], 2) ?></td>
+        <td style="font-size:12px;"><?= htmlspecialchars(trim($po['created_by']) ?: '—') ?></td>
+        <td><span class="po-badge <?= $badgeCls ?>"><?= $badgeLbl ?></span></td>
+        <td>
+          <div style="display:flex;flex-direction:column;gap:5px;">
+            <a href="<?= htmlspecialchars($print_url) ?>"
+               target="_blank"
+               class="po-ctrl-btn po-btn-exp"
+               style="font-size:11px;padding:6px 10px;justify-content:center;text-decoration:none;display:flex;"
+               title="Print all items in this PO">
+              <i class="fas fa-print"></i>&nbsp;Print PO
+            </a>
+            <?php if ($isp): ?>
+            <a href="javascript:void(0)"
+               class="po-ctrl-btn po-btn-fin"
+               style="font-size:11px;padding:6px 10px;justify-content:center;text-decoration:none;display:flex;"
+               onclick='openFinalizeSingle(<?= json_encode($group_date) ?>,<?= json_encode($ptype) ?>,<?= $json_po ?>)'
+               title="Finalize this PO">
+              <i class="fas fa-check"></i>&nbsp;Finalize
+            </a>
+            <a href="javascript:void(0)"
+               class="po-ctrl-btn po-btn-rej"
+               style="font-size:11px;padding:6px 10px;justify-content:center;text-decoration:none;display:flex;"
+               onclick="openReject('<?= $ptype ?>','<?= $group_date ?>')"
+               title="Reject this PO">
+              <i class="fas fa-times"></i>&nbsp;Reject
+            </a>
+            <?php endif; ?>
+          </div>
+        </td>
+      </tr>
+      <?php endforeach; ?>
+    <?php endif; ?>
+    </tbody>
+  </table>
 </div>
 <?php
-} // end renderPoSection()
+} // end renderPoTable()
 ?>
 
-<?php
-// ── MERCHANDISE PO SECTION ────────────────────────────────────────────────────
-renderPoSection(
-    $merch_pos,
-    'Merchandise',
-    'fas fa-boxes',
-    '#002F70',
-    'poTableMerch',
-    $PENDING_ST, $APPROVED_ST, $DELIVERED_ST, $CANCELLED_ST
-);
+<!-- MERCHANDISE TAB PANE -->
+<div class="po-tab-pane <?= $active_tab === 'merch' ? 'active' : '' ?>" id="tabPaneMerch">
+<?php renderPoTable($merch_pos, 'poTableMerch', $PENDING_ST, $APPROVED_ST, $DELIVERED_ST, $CANCELLED_ST, false); ?>
+</div>
 
-// ── FUEL PO SECTION ───────────────────────────────────────────────────────────
-renderPoSection(
-    $fuel_pos,
-    'Fuel',
-    'fas fa-gas-pump',
-    '#795548',
-    'poTableFuel',
-    $PENDING_ST, $APPROVED_ST, $DELIVERED_ST, $CANCELLED_ST
-);
-?>
+<!-- FUEL TAB PANE -->
+<div class="po-tab-pane <?= $active_tab === 'fuel' ? 'active' : '' ?>" id="tabPaneFuel">
+<?php renderPoTable($fuel_pos, 'poTableFuel', $PENDING_ST, $APPROVED_ST, $DELIVERED_ST, $CANCELLED_ST, true); ?>
+</div>
+
+<script>
+function switchTab(tab) {
+    // Update pane visibility
+    document.getElementById('tabPaneMerch').classList.toggle('active', tab === 'merch');
+    document.getElementById('tabPaneFuel').classList.toggle('active', tab === 'fuel');
+
+    // Update button active classes
+    var btnMerch = document.getElementById('tabBtnMerch');
+    var btnFuel  = document.getElementById('tabBtnFuel');
+    btnMerch.className = 'po-tab-btn' + (tab === 'merch' ? ' active-merch' : '');
+    btnFuel.className  = 'po-tab-btn' + (tab === 'fuel'  ? ' active-fuel'  : '');
+
+    // Update hidden form input so filter form preserves tab on submit
+    var ti = document.getElementById('filterTabInput');
+    if (ti) ti.value = tab;
+
+    // Update URL without page reload
+    var url = new URL(window.location.href);
+    url.searchParams.set('tab', tab);
+    history.replaceState(null, '', url.toString());
+}
+
+function exportCurrentTabTable() {
+    var tab = document.getElementById('filterTabInput').value;
+    var tableId = (tab === 'fuel') ? 'poTableFuel' : 'poTableMerch';
+    var label   = (tab === 'fuel') ? 'fuel_po.xls' : 'merch_po.xls';
+    if (typeof exportTableToExcel === 'function') exportTableToExcel(tableId, label);
+}
+
+function printCurrentTabTable() {
+    var tab = document.getElementById('filterTabInput').value;
+    var tableId = (tab === 'fuel') ? 'poTableFuel' : 'poTableMerch';
+    var label   = (tab === 'fuel') ? 'Fuel POs' : 'Merchandise POs';
+    if (typeof exportTableToPDF === 'function') exportTableToPDF(tableId, label);
+}
+
+// Auto-dismiss flash messages
+setTimeout(function(){
+    document.querySelectorAll('.flash-ok,.flash-err').forEach(function(el){ el.style.display='none'; });
+}, 5000);
+
+// Run pagination for active table
+if (typeof setupTablePagination === 'function') {
+    setupTablePagination('poTableMerch', null, 'poPaginationMerch', 15);
+    setupTablePagination('poTableFuel',  null, 'poPaginationFuel',  15);
+}
+</script>
+
+<div id="poPaginationMerch" style="padding:6px 0;"></div>
+<div id="poPaginationFuel"  style="padding:6px 0;"></div>

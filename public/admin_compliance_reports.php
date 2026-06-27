@@ -480,7 +480,7 @@ require_once __DIR__ . '/../partials/header.php';
     </div><!-- end cr-content -->
 </div><!-- end rpt-wrapper -->
 
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="../assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script>
 function crTab(key) {
     const url = new URL(window.location.href);

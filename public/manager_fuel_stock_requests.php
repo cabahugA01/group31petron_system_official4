@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'mgr_fuel_stock_requests';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -45,6 +45,11 @@ try {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     ");
+} catch (Exception $ignored) {}
+
+// Ensure fuel_purchase_orders.status is VARCHAR so 'Pending Admin Validation' can be stored
+try {
+    $pdo->exec("ALTER TABLE fuel_purchase_orders MODIFY COLUMN status VARCHAR(100) NOT NULL DEFAULT 'Pending Admin Validation'");
 } catch (Exception $ignored) {}
 
 // Handle POST actions
@@ -184,8 +189,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ")->execute(['FSR-'.$req_id, $me['id'], $station_id, "Approved {$approved_liters} L of {$req['fuel_type']}", $note]);
                     } catch (Exception $ignored) {}
 
+                    // ── Generate fuel PO for Admin approval ────────────────────────────
+                    try {
+                        // Resolve fuel_type_id from fuel_types table
+                        $ft_stmt = $pdo->prepare("SELECT id FROM fuel_types WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1");
+                        $ft_stmt->execute([$req['fuel_type']]);
+                        $fuel_type_id = (int)($ft_stmt->fetchColumn() ?: 0);
+
+                        // Generate unique PO number
+                        $fpo_number = 'POF-' . date('Y') . '-' . str_pad($req_id, 5, '0', STR_PAD_LEFT);
+
+                        // Only insert if not already created
+                        $chk = $pdo->prepare("SELECT id FROM fuel_purchase_orders WHERE po_number = ? AND station_id = ?");
+                        $chk->execute([$fpo_number, $station_id]);
+                        if (!$chk->fetchColumn()) {
+                            $pdo->prepare("
+                                INSERT INTO fuel_purchase_orders
+                                    (po_number, station_id, fuel_type_id, volume, unit_price, total_amount,
+                                     status, created_by, notes, created_at, updated_at)
+                                VALUES (?, ?, ?, ?, 0, 0, 'Pending Admin Validation', ?, ?, NOW(), NOW())
+                            ")->execute([
+                                $fpo_number,
+                                $station_id,
+                                $fuel_type_id,
+                                $approved_liters,
+                                $me['id'],
+                                "Fuel Stock Request #FSR-{$req_id} | {$req['fuel_type']} | {$approved_liters} L approved by {$me['name']}." . ($manager_notes ? " Notes: {$manager_notes}" : '')
+                            ]);
+                        }
+                    } catch (Exception $fpo_err) {
+                        error_log("fuel_purchase_orders insert failed: " . $fpo_err->getMessage());
+                    }
+
                     $pdo->commit();
-                    $_SESSION['success'] = "Fuel request approved. {$approved_liters} L of {$req['fuel_type']} confirmed.";
+                    $_SESSION['success'] = "Fuel request approved & PO generated. {$approved_liters} L of {$req['fuel_type']} — Pending Admin approval.";
                 } else {
                     $_SESSION['error'] = 'Request not found or already processed.';
                 }

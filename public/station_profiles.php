@@ -149,7 +149,7 @@ include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+/* Google Fonts removed - using system font */
 
 .page-container {
     height: calc(100vh - 110px);

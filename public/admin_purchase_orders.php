@@ -42,9 +42,11 @@ foreach ([
     "ALTER TABLE fuel_purchase_orders ADD COLUMN IF NOT EXISTS approved_at DATETIME NULL",
     "ALTER TABLE fuel_purchase_orders ADD COLUMN IF NOT EXISTS batch_id VARCHAR(100) NULL",
     "ALTER TABLE fuel_purchase_orders ADD COLUMN IF NOT EXISTS po_number VARCHAR(100) NULL",
+    "ALTER TABLE fuel_purchase_orders ADD COLUMN IF NOT EXISTS notes TEXT NULL",
+    "ALTER TABLE fuel_purchase_orders ADD COLUMN IF NOT EXISTS updated_at DATETIME NULL",
 ] as $sql) { try { $pdo->exec($sql); } catch (Exception $e) {} }
 
-// Ensure 'Admin Finalized' and 'Rejected by Admin' exist in the ENUM
+// Ensure purchase_orders status ENUM contains all needed values
 try {
     $pdo->exec("ALTER TABLE purchase_orders MODIFY COLUMN status
         ENUM('Draft','Pending Approval','Approved','Rejected','Pending','Confirmed','Received',
@@ -52,9 +54,26 @@ try {
              'Admin Finalized','Rejected by Admin')
         DEFAULT 'Pending Admin Validation'");
 } catch (Exception $e) {}
-// Backfill any empty-status rows that are already admin-finalized
+
+// Ensure fuel_purchase_orders.status is a flexible VARCHAR (not an ENUM)
+// so 'Pending Admin Validation' and other values are always accepted
+try {
+    $pdo->exec("ALTER TABLE fuel_purchase_orders MODIFY COLUMN status VARCHAR(100) NOT NULL DEFAULT 'Pending Admin Validation'");
+} catch (Exception $e) {}
+
+// Backfill purchase_orders empty-status rows
 try {
     $pdo->exec("UPDATE purchase_orders SET status='Admin Finalized' WHERE admin_finalized=1 AND (status='' OR status IS NULL)");
+    $pdo->exec("UPDATE purchase_orders SET status='Pending Admin Validation' WHERE admin_finalized=0 AND (status='' OR status IS NULL OR status='Pending Admin Approval')");
+} catch (Exception $e) {}
+
+// Backfill fuel_purchase_orders: fix old 'forwarded'/'pending' rows created by manager to
+// show as Pending Admin Validation so admin can see and finalize them
+try {
+    $pdo->exec("UPDATE fuel_purchase_orders SET status='Pending Admin Validation'
+        WHERE LOWER(TRIM(status)) IN ('forwarded','pending','pending admin approval','')
+          AND (batch_id IS NULL OR batch_id = '')
+          AND (approved_by IS NULL)");
 } catch (Exception $e) {}
 
 $flash_ok  = $_SESSION['ok']  ?? null; unset($_SESSION['ok']);
@@ -395,7 +414,7 @@ try {
             MIN(fpo.created_at)    AS date_created,
             COUNT(*)               AS total_items,
             SUM(COALESCE(fpo.total_amount,0)) AS total_amount,
-            CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,'')) AS created_by,
+            COALESCE(MAX(u.name), CONCAT(COALESCE(MAX(u.first_name),''), ' ', COALESCE(MAX(u.last_name),''))) AS created_by,
             MAX(fpo.status)        AS status,
             MIN(fpo.id)            AS id,
             0                      AS stock_in_done,
@@ -418,10 +437,10 @@ try {
 usort($all_pos, fn($a,$b) => strtotime($b['date_created'] ?? 0) - strtotime($a['date_created'] ?? 0));
 
 // ── SUMMARY COUNTS ────────────────────────────────────────────────────────────
-$PENDING_ST   = ['pending admin validation','pending','pending approval','draft'];
+$PENDING_ST   = ['pending admin validation','pending','pending approval','draft','forwarded'];
 $APPROVED_ST  = ['admin finalized','approved po','approved','official'];
 $DELIVERED_ST = ['delivered','received','confirmed','stocked in'];
-$CANCELLED_ST = ['rejected by admin','rejected','cancelled','rejected by admin'];
+$CANCELLED_ST = ['rejected by admin','rejected','cancelled'];
 
 $cnt_total     = count($all_pos);
 $cnt_pending   = 0; $cnt_approved = 0; $cnt_delivered = 0; $cnt_cancelled = 0;

@@ -1,10 +1,10 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <title>Select2 Test</title>
     <!-- Select2 CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="../assets/vendor/select2/select2.min.css" rel="stylesheet" />
 </head>
 <body style="padding: 40px; font-family: Arial, sans-serif;">
     <h1>Select2 Test Page</h1>
@@ -29,7 +29,7 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     
     <!-- Select2 -->
-    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script src="../assets/vendor/select2/select2.min.js"></script>
     
     <script>
     $(document).ready(function() {

@@ -317,8 +317,8 @@ $products = $pdo->query("SELECT * FROM inventory_products ORDER BY category, pro
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manager Deliveries Workflow - Petron POS</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+    <link href="../assets/vendor/fontawesome/css/all.min.css" rel="stylesheet">
     <style>
         .delivery-dashboard { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
         .stat-card { background: rgba(255,255,255,0.1); border-radius: 10px; padding: 20px; margin: 10px 0; text-align: center; }

@@ -50,7 +50,45 @@ try {
     $shift_data = $shift_stmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$shift_data) {
-        throw new Exception("No active shift found. Please clock in first.");
+        // Auto clock-in based on user profile's assigned_shift or time-based fallback
+        try {
+            $user_assigned_shift = strtolower(trim((string)($me['assigned_shift'] ?? '')));
+            if (strpos($user_assigned_shift, 'shift 1') !== false || strpos($user_assigned_shift, '1') !== false || $user_assigned_shift === 'first') {
+                $auto_shift_key = 'first';
+            } elseif (strpos($user_assigned_shift, 'shift 2') !== false || strpos($user_assigned_shift, '2') !== false || $user_assigned_shift === 'second') {
+                $auto_shift_key = 'second';
+            } else {
+                $login_time = date('H:i:s');
+                $auto_shift_key = ($login_time >= '06:00:00' && $login_time < '14:00:00') ? 'first' : 'second';
+            }
+
+            // Try to load exact DB record for consistent naming
+            $sp = $pdo->prepare("SELECT shift_key, shift_name FROM shift_periods WHERE shift_key = ? AND is_active = 1 LIMIT 1");
+            $sp->execute([$auto_shift_key]);
+            $shift = $sp->fetch(PDO::FETCH_ASSOC);
+
+            // Hard fallback if table is empty or record missing
+            if (!$shift) {
+                $shift = $auto_shift_key === 'first'
+                    ? ['shift_key' => 'first',  'shift_name' => 'First Shift: 6:00 AM – 2:00 PM']
+                    : ['shift_key' => 'second', 'shift_name' => 'Second Shift: 2:00 PM – 12:00 Midnight'];
+            }
+
+            $pdo->prepare(
+                "INSERT INTO labor_sessions (user_id, station_id, start_time, shift_period, shift_name)
+                 VALUES (?, ?, NOW(), ?, ?)"
+            )->execute([$me['id'], $station_id, $shift['shift_key'], $shift['shift_name']]);
+            
+            $new_session_id = $pdo->lastInsertId();
+            
+            $shift_data = [
+                'shift_period' => $shift['shift_key'],
+                'shift_name' => $shift['shift_name'],
+                'id' => $new_session_id
+            ];
+        } catch (Exception $session_err) {
+            throw new Exception("No active shift found, and auto-clock in failed: " . $session_err->getMessage());
+        }
     }
     
     $shift_period = $shift_data['shift_period'];

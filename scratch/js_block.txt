@@ -1,0 +1,93 @@
+function toggleStationField() {
+    const roleSelect = document.getElementById('user_role_add');
+    const stationFieldGroup = document.getElementById('station_field_group');
+    const selectedRole = roleSelect.value;
+    const currentUserRole = '<?php echo $my_role; ?>';
+    
+    // Superadmin must pick a station for every new user.
+    // Admin/manager accounts use their own station automatically.
+    if ((currentUserRole === 'superadmin' && selectedRole !== '') ||
+        (currentUserRole === 'admin' && selectedRole === 'admin')) {
+        stationFieldGroup.style.display = 'block';
+    } else {
+        stationFieldGroup.style.display = 'none';
+    }
+}
+
+function validatePasswords() {
+    const password = document.getElementById('new_password').value;
+    const confirmPassword = document.getElementById('confirm_password').value;
+    const role = document.getElementById('user_role_add').value;
+
+    // Validate role
+    if (!role) {
+        alert('User role is required. Please select a role.');
+        return false;
+    }
+
+    // Check if station field is visible and requires selection
+    const stationFieldGroup = document.getElementById('station_field_group');
+    if (stationFieldGroup.style.display !== 'none') {
+        const stationRadios = document.querySelectorAll('input[name="station_id"]');
+        let stationSelected = false;
+        stationRadios.forEach(radio => { if (radio.checked) stationSelected = true; });
+        if (!stationSelected) {
+            alert('Station is required. Please select a station.');
+            return false;
+        }
+    }
+
+    // If both empty → auto-generate on server side, just confirm fields match
+    if (password === '' && confirmPassword === '') {
+        return true; // server will auto-generate
+    }
+
+    // If one is filled, both must match
+    if (password !== confirmPassword) {
+        alert('⚠️ Passwords do not match! Please ensure both passwords are identical.');
+        return false;
+    }
+
+    // Manual password rules: min 8, upper, lower, digit, allowed symbol
+    const symbolRegex = /[_.\-!@#]/;
+    if (
+        password.length < 8 ||
+        !/[A-Z]/.test(password) ||
+        !/[a-z]/.test(password) ||
+        !/[0-9]/.test(password) ||
+        !symbolRegex.test(password)
+    ) {
+        alert('Password must be at least 8 characters and contain at least one uppercase letter, one lowercase letter, one number, and one symbol (_ . - ! @ #).');
+        return false;
+    }
+
+    return true;
+}
+
+function generateSimplePassword() {
+    const upper   = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const lower   = 'abcdefghijklmnopqrstuvwxyz';
+    const digits  = '0123456789';
+    const symbols = '_.-!@#';
+    const all     = upper + lower + digits + symbols;
+
+    // Guarantee one of each required type
+    let pwd = '';
+    pwd += upper[Math.floor(Math.random() * upper.length)];
+    pwd += lower[Math.floor(Math.random() * lower.length)];
+    pwd += digits[Math.floor(Math.random() * digits.length)];
+    pwd += symbols[Math.floor(Math.random() * symbols.length)];
+
+    // Fill to 12 chars
+    for (let i = 4; i < 12; i++) {
+        pwd += all[Math.floor(Math.random() * all.length)];
+    }
+
+    // Shuffle
+    pwd = pwd.split('').sort(() => Math.random() - 0.5).join('');
+
+    document.getElementById('new_password').value = pwd;
+    document.getElementById('confirm_password').value = pwd;
+    alert('Generated password: ' + pwd);
+}
+

@@ -894,18 +894,10 @@ require_once __DIR__ . '/../partials/header.php';
                         <td class="align-center"><span class="badge-lbl <?= $badgeCls ?>"><?= $badgeLbl ?></span></td>
                         <td class="align-right <?= $variance < 0 ? 'var-neg' : ($variance > 0 ? 'var-pos' : 'var-zero') ?>"><?= ($variance > 0 ? '+' : '') . number_format($variance, 2) ?></td>
                         <td style="font-size:11px; color:#64748b;"><?= $updated ?></td>
-                        <td>
-                            <div style="display:flex; flex-direction:column; gap:4px; align-items:stretch;">
-                                <button type="button" class="txn-btn txn-btn-info" onclick='viewDetails(<?= json_encode($item, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>)' title="View Details">
-                                    <i class="fas fa-eye"></i> Details
-                                </button>
-                                <button type="button" class="txn-btn txn-btn-secondary" onclick="viewHistory(<?= $item['id'] ?>, '<?= htmlspecialchars(addslashes($item['name'])) ?>')" title="View Movement History">
-                                    <i class="fas fa-history"></i> History
-                                </button>
-                                <button type="button" class="txn-btn txn-btn-adjust" onclick="window.open('admin_inventory_merchandise.php?print_id=<?= $item['id'] ?>', '_blank', 'width=800,height=700')" title="Print Product Inventory">
-                                    <i class="fas fa-print"></i> Print
-                                </button>
-                            </div>
+                        <td style="text-align:center;">
+                            <button type="button" class="txn-btn txn-btn-info" onclick='viewDetails(<?= json_encode($item, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>)' title="View Details">
+                                <i class="fas fa-eye"></i> View
+                            </button>
                         </td>
                     </tr>
                     <?php endforeach; ?>

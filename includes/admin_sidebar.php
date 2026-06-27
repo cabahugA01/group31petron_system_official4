@@ -10,7 +10,7 @@ function getAdminSidebar($current_page = 'transactions') {
         'job_orders' => [
             'icon' => 'fas fa-wrench',
             'title' => 'Job Orders',
-            'url' => 'joborder.php',
+            'url' => 'admin_dashboard.php?tab=job_orders',
             'description' => 'Full transparency view, audit trail, compliance reports'
         ],
         'purchase_orders' => [

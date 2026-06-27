@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * FUEL DELIVERY DASHBOARD
  * 
@@ -174,8 +174,8 @@ if (!empty($deliveries)) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fuel Delivery Dashboard - Petron POS</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+    <link href="../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/vendor/bootstrap-icons/bootstrap-icons.css">
     <style>
         .status-encoded { background: #6c757d; }
         .status-verified { background: #0dcaf0; }
@@ -529,7 +529,7 @@ if (!empty($deliveries)) {
     </div>
     <?php endforeach; ?>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
     
     <script>
         function showAuditTrail(deliveryId) {

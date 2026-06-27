@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'pos_fuel_sync';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -54,8 +54,8 @@ $unsynced = getUnSyncedReconciliations($pdo, $station_id);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>POS Inventory Sync - Fuel Reconciliation</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/vendor/bootstrap/css/bootstrap.min.css">
+    <link rel="stylesheet" href="../assets/vendor/fontawesome/css/all.min.css">
     <style>
         body {
             background-color: #f8f9fa;
@@ -389,6 +389,6 @@ $unsynced = getUnSyncedReconciliations($pdo, $station_id);
     
     <?php include __DIR__ . '/../partials/footer.php'; ?>
     
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

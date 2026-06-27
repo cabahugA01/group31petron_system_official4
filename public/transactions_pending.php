@@ -662,6 +662,6 @@ function exportPending(format) {
 .btn-secondary { padding:9px 20px; background:white; color:#4b5563; border:1px solid #6b7280; border-radius:6px; font-size:0.9rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:all .15s; }
 .btn-secondary:hover { background:#6b7280; color:#fff; }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="../assets/vendor/xlsx/xlsx.full.min.js"></script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

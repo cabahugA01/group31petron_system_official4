@@ -143,10 +143,10 @@ require_once __DIR__ . '/../partials/header.php';
                 <textarea class="inp full" id="staffRemarks" rows="3" placeholder="e.g., Flagged for review..."></textarea>
             </div>
         </div>
-        <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:10px; padding:15px; border-top:1px solid #ddd;">
-            <button type="button" class="btn ghost" onclick="closeModal('remarkModal')">Cancel</button>
-            <button type="button" class="btn primary" onclick="saveRemark()">Save changes</button>
-        </div>
+            <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:8px; padding:14px 20px; border-top:1px solid #e8ecf0; background:#f8fafc;">
+                <button type="button" onclick="closeModal('remarkModal')" style="font-size:11px;font-weight:600;padding:5px 14px;border-radius:4px;cursor:pointer;border:none;background:#dc3545;color:#fff;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-times"></i> Cancel</button>
+                <button type="button" onclick="saveRemark()" style="font-size:11px;font-weight:600;padding:5px 14px;border-radius:4px;cursor:pointer;border:none;background:#002F70;color:#fff;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-save"></i> Save Changes</button>
+            </div>
     </div>
 </div>
 
@@ -197,10 +197,10 @@ require_once __DIR__ . '/../partials/header.php';
                 </div>
             </form>
         </div>
-        <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:10px; padding:15px; border-top:1px solid #ddd;">
-            <button type="button" class="btn ghost" onclick="closeModal('editUserModal')">Cancel</button>
-            <button type="button" class="btn primary" onclick="saveEditUser()">Save changes</button>
-        </div>
+        <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:8px; padding:14px 20px; border-top:1px solid #e8ecf0; background:#f8fafc;">
+                <button type="button" onclick="closeModal('editUserModal')" style="font-size:11px;font-weight:600;padding:5px 14px;border-radius:4px;cursor:pointer;border:none;background:#dc3545;color:#fff;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-times"></i> Cancel</button>
+                <button type="button" onclick="saveEditUser()" style="font-size:11px;font-weight:600;padding:5px 14px;border-radius:4px;cursor:pointer;border:none;background:#002F70;color:#fff;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-save"></i> Save Changes</button>
+            </div>
     </div>
 </div>
 
@@ -215,10 +215,10 @@ require_once __DIR__ . '/../partials/header.php';
             <p>Are you sure you want to deactivate this account?</p>
             <input type="hidden" id="deactivateUserId">
         </div>
-        <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:10px; padding:15px; border-top:1px solid #ddd;">
-            <button type="button" class="btn ghost" onclick="closeModal('deactivateUserModal')">Cancel</button>
-            <button type="button" class="btn warning" style="background:#dc3545; color:#fff;" onclick="confirmDeactivate()">Confirm</button>
-        </div>
+        <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:8px; padding:14px 20px; border-top:1px solid #e8ecf0; background:#f8fafc;">
+                <button type="button" onclick="closeModal('deactivateUserModal')" style="font-size:11px;font-weight:600;padding:5px 14px;border-radius:4px;cursor:pointer;border:none;background:#6b7280;color:#fff;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-times"></i> Cancel</button>
+                <button type="button" onclick="confirmDeactivate()" style="font-size:11px;font-weight:600;padding:5px 14px;border-radius:4px;cursor:pointer;border:none;background:#dc3545;color:#fff;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-user-times"></i> Confirm Deactivate</button>
+            </div>
     </div>
 </div>
 
@@ -300,8 +300,9 @@ function loadShiftData(shiftNumber) {
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
                         <td>
-                            <div class="fw-bold text-dark" style="font-size: 15px;">${staff.name}</div>
-                            <div class="text-muted" style="font-size: 13.5px;">ID: ${staff.emp_id || staff.staff_id}</div>
+                            <div class="fw-bold text-dark" style="font-size: 14px;">${escapeHtml(staff.name)}</div>
+                            <div style="font-size: 12px; font-family: monospace; font-weight: 700; color: #0f172a; margin-top: 2px;">${escapeHtml(staff.emp_id || '—')}</div>
+                            <div style="font-size: 11px; color: #64748b; margin-top: 1px;"><i class="fas fa-clock" style="font-size:10px;"></i> ${escapeHtml(staff.assigned_shift || '—')}</div>
                         </td>
                         <td>${roleLabel}</td>
                         <td>${staff.station_name || 'N/A'}</td>

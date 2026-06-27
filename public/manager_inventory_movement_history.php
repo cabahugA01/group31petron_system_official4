@@ -600,13 +600,12 @@ include __DIR__ . '/../partials/header.php';
                     <th style="text-align:right;">New Stock</th>
                     <th>Performed By</th>
                     <th style="text-align:center;">Status</th>
-                    <th style="text-align:center;width:150px;">Actions</th>
                 </tr>
             </thead>
             <tbody id="movTableBody">
             <?php if (empty($movements_list)): ?>
                 <tr>
-                    <td colspan="11" style="text-align:center;padding:24px;color:#64748b;">
+                    <td colspan="10" style="text-align:center;padding:24px;color:#64748b;">
                         <i class="fas fa-info-circle" style="color:#002F6C;font-size:24px;margin-bottom:8px;display:block;"></i>
                         No inventory movements found.
                     </td>
@@ -669,16 +668,6 @@ include __DIR__ . '/../partials/header.php';
                         <td><?= htmlspecialchars($m['performed_by'] ?? '—') ?></td>
                         <td style="text-align:center;">
                             <span class="badge-approved">Completed</span>
-                        </td>
-                        <td style="text-align:center;">
-                            <div style="display:flex; flex-direction:column; gap:4px; width:130px; margin:0 auto;">
-                                <button class="txn-btn txn-btn-info" onclick="viewMovDetails(<?= htmlspecialchars(json_encode($m)) ?>, '<?= $mov_label ?>')" title="View Details">
-                                    <i class="fas fa-eye"></i> View Details
-                                </button>
-                                <button class="txn-btn txn-btn-secondary" onclick="printMovementSlip(<?= htmlspecialchars(json_encode($m)) ?>, '<?= $mov_label ?>')" title="Print Record">
-                                    <i class="fas fa-print"></i> Print Record
-                                </button>
-                            </div>
                         </td>
                     </tr>
                 <?php endforeach; ?>
@@ -806,13 +795,12 @@ include __DIR__ . '/../partials/header.php';
                     <th style="text-align:right;">New Volume</th>
                     <th>Performed By</th>
                     <th style="text-align:center;">Status</th>
-                    <th style="text-align:center;width:150px;">Actions</th>
                 </tr>
             </thead>
             <tbody id="fuelMovTableBody">
             <?php if (empty($fuel_movements)): ?>
                 <tr>
-                    <td colspan="11" style="text-align:center;padding:24px;color:#64748b;">
+                    <td colspan="10" style="text-align:center;padding:24px;color:#64748b;">
                         <i class="fas fa-info-circle" style="color:#002F6C;font-size:24px;margin-bottom:8px;display:block;"></i>
                         No fuel movements found.
                     </td>
@@ -869,16 +857,6 @@ include __DIR__ . '/../partials/header.php';
                         <td><?= htmlspecialchars($fm['performed_by'] ?? '—') ?></td>
                         <td style="text-align:center;">
                             <span class="badge-approved"><?= htmlspecialchars($fm['status'] ?: 'Completed') ?></span>
-                        </td>
-                        <td style="text-align:center;">
-                            <div style="display:flex; flex-direction:column; gap:4px; width:130px; margin:0 auto;">
-                                <button class="txn-btn txn-btn-info" onclick="viewFuelMovDetails(<?= htmlspecialchars(json_encode($fm)) ?>, '<?= $mov_label ?>')" title="View Details">
-                                    <i class="fas fa-eye"></i> View Details
-                                </button>
-                                <button class="txn-btn txn-btn-secondary" onclick="printFuelMovementSlip(<?= htmlspecialchars(json_encode($fm)) ?>, '<?= $mov_label ?>')" title="Print Record">
-                                    <i class="fas fa-print"></i> Print Record
-                                </button>
-                            </div>
                         </td>
                     </tr>
                 <?php endforeach; ?>

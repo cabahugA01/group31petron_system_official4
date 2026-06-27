@@ -693,9 +693,11 @@ textarea.form-control { resize: vertical; font-family: inherit; }
                         <div class="form-group" style="margin-bottom:0;">
                             <label class="form-label">Category <span style="color:red;">*</span></label>
                             <input type="text" class="form-control category-display" readonly
+                                   value="<?php echo $selected_po && !empty($selected_po['category']) ? htmlspecialchars($selected_po['category']) : ''; ?>"
                                    placeholder="Auto-filled from product"
-                                   style="background:#f8f9fa;cursor:not-allowed;">
-                            <input type="hidden" name="category[]" class="category-hidden" required>
+                                   style="background:<?php echo $selected_po && !empty($selected_po['category']) ? '#e8f4fd' : '#f8f9fa'; ?>;cursor:not-allowed;<?php echo $selected_po && !empty($selected_po['category']) ? 'color:#002F70;font-weight:600;' : ''; ?>">
+                            <input type="hidden" name="category[]" class="category-hidden" 
+                                   value="<?php echo $selected_po && !empty($selected_po['category']) ? htmlspecialchars($selected_po['category']) : ''; ?>" required>
                             <small style="font-size:11px;color:#6c757d;display:block;margin-top:4px;">
                                 <i class="fas fa-info-circle"></i> Auto-fills when product is selected
                             </small>

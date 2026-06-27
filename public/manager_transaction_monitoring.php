@@ -305,8 +305,15 @@ try {
             ta.adjustment_reason,
             ta.manager_remarks,
             ta.adjustment_date,
-            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),' '), u.username, 'Unknown') AS adjusted_by_name
+            ta.fields_changed,
+            mt.job_order_id,
+            mt.job_order_vehicle_plate,
+            mt.payment_method,
+            mt.workflow_status,
+            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),' '), u.username, 'Unknown') AS adjusted_by_name,
+            (SELECT GROUP_CONCAT(product_name SEPARATOR ', ') FROM merchandise_transaction_items WHERE transaction_id = mt.id) AS item_names
         FROM transaction_adjustments ta
+        LEFT JOIN merchandise_transactions mt ON mt.transaction_id COLLATE utf8mb4_unicode_ci = ta.transaction_id COLLATE utf8mb4_unicode_ci
         LEFT JOIN users u ON u.id = ta.adjusted_by
         WHERE " . implode(' AND ', $where_adj) . "
         ORDER BY ta.adjustment_date DESC
@@ -509,16 +516,38 @@ require_once __DIR__ . '/../partials/header.php';
 .adj-table tbody tr:hover td { background:#eff6ff; }
 .adj-table tbody td { padding:9px 10px; color:#334155; vertical-align:middle; background:#fff; font-size:11px; }
 
+.card-table-wrap { width: 100%; overflow: hidden; }
+.t-compact { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.t-compact thead tr { background: #002F70; }
+.t-compact th { padding: 7px 4px !important; font-size: 10.5px !important; font-weight: 700 !important; color: #fff !important; text-transform: uppercase; letter-spacing: .2px; border: none; text-align: left; white-space: nowrap; line-height: 1.2; }
+.t-compact tbody tr { border: none; }
+.t-compact tbody tr:hover td { background: #eff6ff !important; }
+.t-compact td { padding: 7px 4px !important; color: #334155 !important; background: #fff; font-size: 11.5px !important; vertical-align: middle; border: none; border-bottom: 1px solid #f1f5f9; line-height: 1.3; overflow: hidden; }
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;}
+.badge-up{background:#dcfce7;color:#166534;} .badge-dn{background:#fee2e2;color:#991b1b;} .badge-neutral{background:#f1f5f9;color:#475569;}
+
 /* == MODAL == */
-.modal { position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:9999; background:rgba(15,23,42,0.5); }
-.modal-card { position:relative; background:#fff; border-radius:12px; max-width:600px; width:90%; max-height:90vh; overflow:hidden; box-shadow:0 20px 25px -5px rgba(0,0,0,.1); }
-.modal-head { display:flex; justify-content:space-between; align-items:center; padding:14px 18px; background:#002F70; color:#fff; }
-.modal-title { font-weight:700; font-size:15px; }
-.modal-close { background:none; border:none; color:#fff; font-size:20px; cursor:pointer; }
-.modal-body { padding:20px; overflow-y:auto; }
-.modal-body label { font-size:11px; font-weight:600; color:#475569; text-transform:uppercase; display:block; margin-bottom:4px; }
-.modal-body .input { width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; box-sizing:border-box; }
-.modal-actions { display:flex; justify-content:flex-end; gap:8px; padding:12px 18px; background:#f8fafc; border-top:1px solid #e2e8f0; }
+.modal { position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:9999; background:rgba(0,0,0,0.5); backdrop-filter:blur(4px); }
+.modal-card { position:relative; background:#fff; border-radius:16px; max-width:600px; width:90%; max-height:90vh; overflow:hidden; box-shadow:0 24px 64px rgba(0,0,0,.3); animation:modalSlideIn .18s ease; }
+@keyframes modalSlideIn { from{opacity:0;transform:translateY(-10px)} to{opacity:1;transform:translateY(0)} }
+.modal-head { display:flex; justify-content:space-between; align-items:center; padding:15px 20px; background:linear-gradient(135deg,#003d7a,#00264D); color:#fff; }
+.modal-head .modal-icon { width:34px; height:34px; background:rgba(255,255,255,.15); border-radius:8px; display:flex; align-items:center; justify-content:center; margin-right:10px; }
+.modal-head .modal-icon i { color:#fff; font-size:15px; }
+.modal-title { font-weight:700; font-size:14px; color:#fff; }
+.modal-subtitle { font-size:11px; color:#93c5fd; margin-top:1px; }
+.modal-close { background:rgba(255,255,255,.15); border:none; color:#fff; font-size:17px; cursor:pointer; width:28px; height:28px; border-radius:6px; display:flex; align-items:center; justify-content:center; transition:background .15s; }
+.modal-close:hover { background:rgba(255,255,255,.28); }
+.modal-body { padding:20px; overflow-y:auto; max-height:calc(90vh - 140px); }
+.modal-body label { font-size:11px; font-weight:700; color:#374151; text-transform:uppercase; display:block; margin-bottom:4px; letter-spacing:.3px; }
+.modal-body .input { width:100%; padding:9px 12px; border:1.5px solid #d1d5db; border-radius:8px; font-size:13px; box-sizing:border-box; color:#1e293b; background:#fff; outline:none; transition:border-color .15s; }
+.modal-body .input:focus { border-color:#003d7a; }
+.modal-body textarea.input { resize:vertical; font-family:inherit; }
+.modal-body select.input { cursor:pointer; }
+.modal-actions { display:flex; justify-content:flex-end; gap:8px; padding:15px 20px; background:#f8fafc; border-top:1px solid #e2e8f0; }
+.modal-info-box { background:#f0f7ff; border:1px solid #dbeafe; border-radius:8px; padding:12px; margin-bottom:20px; }
+.modal-info-box h4 { margin:0 0 10px 0; font-size:13px; color:#003d7a; font-weight:700; }
+.modal-info-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:12px; }
+.modal-info-grid strong { color:#374151; }
 @media print {
     .action-bar, .sidebar, .main-sidebar, .navbar, .filters, form, .flt-btn, .modal, button, .actions, .page-head.txn-page-head, .card-head div { display:none!important; }
     body { background:#fff; margin:0; padding:10px; }
@@ -602,16 +631,16 @@ require_once __DIR__ . '/../partials/header.php';
 
 <!-- TAB NAVIGATION -->
 <div style="display:flex;gap:10px;margin-top:20px;margin-bottom:12px;">
-    <button onclick="switchTab('transactions')" id="tabBtn_transactions" class="flt-btn flt-btn-solid-primary" style="font-size:12px;padding:8px 16px;">
+    <button onclick="switchTab('transactions')" id="tabBtn_transactions" class="flt-btn flt-btn-reset" style="font-size:12px;padding:8px 16px;">
         <i class="fas fa-list"></i> Transactions (<?php echo count($transactions); ?>)
     </button>
-    <button onclick="switchTab('history')" id="tabBtn_history" class="flt-btn flt-btn-reset" style="font-size:12px;padding:8px 16px;">
+    <button onclick="switchTab('history')" id="tabBtn_history" class="flt-btn flt-btn-solid-primary" style="font-size:12px;padding:8px 16px;">
         <i class="fas fa-history"></i> Adjustment History (<?php echo count($adjustments); ?>)
     </button>
 </div>
 
 <!-- TAB CONTENT: TRANSACTIONS -->
-<div id="tab_transactions" class="card" style="margin-top:0;">
+<div id="tab_transactions" class="card" style="margin-top:0;display:none;">
     <div class="card-head">
         <div class="card-title">Transactions (<?php echo count($transactions); ?>)</div>
     </div>
@@ -656,44 +685,144 @@ require_once __DIR__ . '/../partials/header.php';
 </div>
 
 <!-- ADJUSTMENT HISTORY -->
-<div id="tab_history" class="card" style="margin-top:0;display:none;">
+<div id="tab_history" class="card" style="margin-top:0;">
     <div class="card-head">
         <div class="card-title">Adjustment History (<?php echo count($adjustments); ?>)</div>
     </div>
-    <table class="adj-table">
+    <div class="card-table-wrap">
+    <table class="t-compact">
         <thead>
             <tr>
-                <th style="width:8%;">Adj ID</th>
-                <th style="width:12%;">Transaction ID</th>
-                <th style="width:15%;">Customer</th>
-                <th style="width:10%;">Type</th>
-                <th style="width:10%;">Original</th>
-                <th style="width:10%;">Updated</th>
-                <th style="width:10%;">Difference</th>
-                <th style="width:13%;">Adjusted By</th>
-                <th style="width:12%;">Date</th>
-                <th style="width:10%;">Actions</th>
+                <th style="width: 3.5%;">Adj ID</th>
+                <th style="width: 7%;">Trans ID</th>
+                <th style="width: 3.5%;">JO No.</th>
+                <th style="width: 7.5%;">Customer</th>
+                <th style="width: 4.5%;">Plate</th>
+                <th style="width: 4.5%;">Type</th>
+                <th style="width: 10%;">Items/Service</th>
+                <th style="width: 3.5%; text-align:center;">Orig Qty</th>
+                <th style="width: 3.5%; text-align:center;">Upd Qty</th>
+                <th style="width: 5.5%;">Orig Amt</th>
+                <th style="width: 5.5%;">Upd Amt</th>
+                <th style="width: 5.5%;">Diff</th>
+                <th style="width: 4.5%;">Payment</th>
+                <th style="width: 5.5%;">Adj Type</th>
+                <th style="width: 9.5%;">Reason</th>
+                <th style="width: 5.5%;">By</th>
+                <th style="width: 4.5%; text-align:center;">Status</th>
+                <th style="width: 6.5%;">Date/Time</th>
+                <th style="width: 5.5%; text-align:center;">Action</th>
             </tr>
         </thead>
         <tbody>
             <?php if (!$adjustments): ?>
-            <tr><td colspan="10" style="text-align:center;padding:40px;color:#888;">No adjustments found</td></tr>
+            <tr><td colspan="19" style="text-align:center;padding:40px;color:#888;">No adjustments found</td></tr>
             <?php else: ?>
             <?php foreach ($adjustments as $adj): ?>
+            <?php 
+            $diff = (float)$adj['amount_difference'];
+            $fc = json_decode($adj['fields_changed'], true) ?: [];
+            
+            // Job Order Number
+            $jo_display = !empty($adj['job_order_id']) ? 'JO-' . $adj['job_order_id'] : '—';
+            
+            // Customer Name
+            $customer_display = htmlspecialchars($adj['customer']);
+            
+            // Vehicle Plate
+            $plate_display = !empty($adj['job_order_vehicle_plate']) ? htmlspecialchars($adj['job_order_vehicle_plate']) : '—';
+            
+            // Transaction Type
+            $txn_type_display = htmlspecialchars(ucwords(str_replace('_', ' ', $adj['transaction_type'])));
+            
+            // Items / Service
+            $items_list = [];
+            if (isset($fc['adjusted_items']) && is_array($fc['adjusted_items'])) {
+                foreach ($fc['adjusted_items'] as $it) {
+                    if (!empty($it['product_name'])) {
+                        $items_list[] = $it['product_name'];
+                    }
+                }
+            }
+            if (empty($items_list) && !empty($adj['item_names'])) {
+                $items_list[] = $adj['item_names'];
+            }
+            $items_display = !empty($items_list) ? htmlspecialchars(implode(', ', $items_list)) : '—';
+            
+            // Quantities
+            $old_qty = '—';
+            $new_qty = '—';
+            if (isset($fc['adjusted_items']) && is_array($fc['adjusted_items']) && !empty($fc['adjusted_items'])) {
+                $old_qty = $fc['adjusted_items'][0]['old_qty'] ?? '—';
+                $new_qty = $fc['adjusted_items'][0]['new_qty'] ?? '—';
+            } else {
+                if (isset($fc['quantity'])) {
+                    $new_qty = $fc['quantity'];
+                }
+                if (isset($fc['old_qty'])) {
+                    $old_qty = $fc['old_qty'];
+                }
+            }
+            
+            // Payment Method
+            $payment_display = !empty($adj['payment_method']) ? htmlspecialchars($adj['payment_method']) : '—';
+            
+            // Adjustment Type
+            $adj_type = 'Price Adj';
+            if ($old_qty !== '—' && $new_qty !== '—' && $old_qty != $new_qty) {
+                $adj_type = 'Quantity Adj';
+            }
+            
+            // Status Badge Style
+            $status_text = !empty($adj['workflow_status']) ? htmlspecialchars($adj['workflow_status']) : 'Completed';
+            $badge_class = 'badge-neutral';
+            if (strtolower($status_text) === 'completed') {
+                $badge_class = 'badge-up';
+            } elseif (strtolower($status_text) === 'adjusted') {
+                $badge_class = 'badge-up';
+            } elseif (strtolower($status_text) === 'voided') {
+                $badge_class = 'badge-dn';
+            }
+            ?>
             <tr>
-                <td><strong>#<?php echo $adj['adj_id']; ?></strong></td>
-                <td><?php echo htmlspecialchars($adj['transaction_id']); ?></td>
-                <td><?php echo htmlspecialchars($adj['customer'] ?? 'Walk-in'); ?></td>
-                <td><?php echo htmlspecialchars(ucwords(str_replace('_', ' ', $adj['transaction_type']))); ?></td>
-                <td>₱<?php echo number_format($adj['original_amount'], 2); ?></td>
-                <td style="color:#002F70;font-weight:600;">₱<?php echo number_format($adj['updated_amount'], 2); ?></td>
-                <td style="font-weight:700; color:<?php echo $adj['amount_difference'] >= 0 ? '#16a34a' : '#dc2626'; ?>;">
-                    <?php echo ($adj['amount_difference'] >= 0 ? '+' : '') . '₱' . number_format($adj['amount_difference'], 2); ?>
+                <td style="white-space:nowrap; font-size:11px;"><strong>#<?php echo $adj['adj_id']; ?></strong></td>
+                <td style="white-space:nowrap; line-height:1.2;">
+                    <?php if (str_starts_with($adj['transaction_id'], 'MERCH')): ?>
+                        <span style="font-weight:700; color:#002F70; font-size:11px;">MERCH</span><br><span style="font-size:10px; color:#64748b; font-family:monospace;"><?php echo substr($adj['transaction_id'], 5); ?></span>
+                    <?php elseif (str_starts_with($adj['transaction_id'], 'JO')): ?>
+                        <span style="font-weight:700; color:#d97706; font-size:11px;">JO</span><br><span style="font-size:10px; color:#64748b; font-family:monospace;"><?php echo substr($adj['transaction_id'], 2); ?></span>
+                    <?php else: ?>
+                        <span style="font-size:10.5px; font-family:monospace; color:#334155;"><?php echo htmlspecialchars($adj['transaction_id']); ?></span>
+                    <?php endif; ?>
                 </td>
-                <td><?php echo htmlspecialchars($adj['adjusted_by_name']); ?></td>
-                <td><?php echo date('M d, Y h:i A', strtotime($adj['adjustment_date'])); ?></td>
-                <td>
-                    <button class="flt-btn flt-btn-search" style="height:28px;padding:0 10px;font-size:11px;" onclick="openAdjModal({
+                <td style="white-space:nowrap; font-size:11px;"><?php echo $jo_display; ?></td>
+                <td style="font-size:11.5px; line-height:1.2;"><?php echo $customer_display; ?></td>
+                <td style="white-space:nowrap; font-size:11px;"><?php echo $plate_display; ?></td>
+                <td style="white-space:nowrap;">
+                    <?php if(str_contains(strtolower($adj['transaction_type']),'job')): ?>
+                        <span class="badge" style="background:#fef3c7;color:#b45309;font-size:9.5px;padding:2px 6px;">Job Order</span>
+                    <?php elseif(str_contains(strtolower($adj['transaction_type']),'combined')): ?>
+                        <span class="badge" style="background:#ede9fe;color:#6d28d9;font-size:9.5px;padding:2px 6px;">Combined</span>
+                    <?php else: ?>
+                        <span class="badge" style="background:#dbeafe;color:#1e40af;font-size:9.5px;padding:2px 6px;">Merch</span>
+                    <?php endif; ?>
+                </td>
+                <td style="font-size:11.5px; line-height:1.2;"><?php echo $items_display; ?></td>
+                <td style="text-align:center; font-size:11px;"><?php echo $old_qty; ?></td>
+                <td style="text-align:center; font-size:11px;"><?php echo $new_qty; ?></td>
+                <td style="white-space:nowrap; font-size:11.5px;">₱<?php echo number_format($adj['original_amount'], 2); ?></td>
+                <td style="white-space:nowrap; font-weight:700; font-size:11.5px;">₱<?php echo number_format($adj['updated_amount'], 2); ?></td>
+                <td style="white-space:nowrap; font-weight:700; font-size:11.5px; color:<?php echo $diff >= 0 ? '#16a34a' : '#dc2626'; ?>;">
+                    <?php echo ($diff >= 0 ? '+' : '') . '₱' . number_format($diff, 2); ?>
+                </td>
+                <td style="white-space:nowrap; font-size:11px;"><?php echo $payment_display; ?></td>
+                <td style="white-space:nowrap; font-size:11px;"><?php echo $adj_type; ?></td>
+                <td style="font-size:11.5px; line-height:1.2;"><?php echo htmlspecialchars($adj['adjustment_reason']); ?><?php if($adj['manager_remarks']): ?><br><small style="color:#64748b; font-size:10px;"><?php echo htmlspecialchars($adj['manager_remarks']); ?></small><?php endif; ?></td>
+                <td style="font-size:11px; line-height:1.2;"><?php echo htmlspecialchars($adj['adjusted_by_name']); ?></td>
+                <td style="text-align:center; white-space:nowrap;"><span class="badge <?php echo $badge_class; ?>" style="font-size:9.5px;padding:2px 6px;"><?php echo $status_text; ?></span></td>
+                <td style="white-space:nowrap; font-size:10.5px; line-height:1.2;"><?php echo date('M d, Y', strtotime($adj['adjustment_date'])); ?><br><span style="color:#64748b; font-size:10px;"><?php echo date('h:i A', strtotime($adj['adjustment_date'])); ?></span></td>
+                <td style="text-align:center; white-space:nowrap;">
+                    <button class="flt-btn flt-btn-search" style="height:22px;font-size:9px;padding:0 6px;margin:0;" onclick="openAdjModal({
                         adjId: '#<?php echo $adj['adj_id']; ?>',
                         txnId: '<?php echo addslashes(htmlspecialchars($adj['transaction_id'])); ?>',
                         customer: '<?php echo addslashes(htmlspecialchars($adj['customer'])); ?>',
@@ -712,13 +841,22 @@ require_once __DIR__ . '/../partials/header.php';
             <?php endif; ?>
         </tbody>
     </table>
+    </div>
 </div>
 
 <!-- ADJUSTMENT MODAL -->
 <div id="adjustmentModal" class="modal">
     <div class="modal-card">
         <div class="modal-head">
-            <div class="modal-title">Adjust Transaction</div>
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div class="modal-icon">
+                    <i class="fas fa-edit"></i>
+                </div>
+                <div>
+                    <div class="modal-title">Adjust Transaction</div>
+                    <div class="modal-subtitle" id="adj_display_id_header"></div>
+                </div>
+            </div>
             <button class="modal-close" onclick="closeModal()">&times;</button>
         </div>
         <form method="POST">
@@ -728,9 +866,9 @@ require_once __DIR__ . '/../partials/header.php';
             <input type="hidden" name="original_amount" id="adj_orig_amt">
             <div class="modal-body">
                 <!-- TRANSACTION INFORMATION (Read-Only) -->
-                <div style="background:#f8fafc;padding:12px;border-radius:8px;margin-bottom:20px;">
-                    <h4 style="margin:0 0 10px 0;font-size:13px;color:#002F70;font-weight:700;">Transaction Information</h4>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;">
+                <div class="modal-info-box">
+                    <h4><i class="fas fa-info-circle" style="margin-right:6px;"></i>Transaction Information</h4>
+                    <div class="modal-info-grid">
                         <div><strong>Transaction ID:</strong> <span id="adj_display_id"></span></div>
                         <div><strong>Customer Name:</strong> <span id="adj_display_customer"></span></div>
                         <div><strong>Transaction Type:</strong> <span id="adj_display_type"></span></div>
@@ -739,7 +877,7 @@ require_once __DIR__ . '/../partials/header.php';
                 </div>
                 
                 <!-- EDITABLE FIELDS -->
-                <h4 style="margin:0 0 12px 0;font-size:13px;color:#002F70;font-weight:700;">Editable Fields</h4>
+                <h4 style="margin:0 0 12px 0;font-size:13px;color:#003d7a;font-weight:700;"><i class="fas fa-pencil-alt" style="margin-right:6px;font-size:11px;"></i>Editable Fields</h4>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px;">
                     <div>
                         <label>Quantity <span style="color:red;">*</span></label>
@@ -777,7 +915,7 @@ require_once __DIR__ . '/../partials/header.php';
                 </div>
                 
                 <!-- REQUIRED FIELDS -->
-                <h4 style="margin:20px 0 12px 0;font-size:13px;color:#002F70;font-weight:700;">Required Fields</h4>
+                <h4 style="margin:20px 0 12px 0;font-size:13px;color:#003d7a;font-weight:700;"><i class="fas fa-check-circle" style="margin-right:6px;font-size:11px;"></i>Required Fields</h4>
                 <div style="margin-bottom:15px;">
                     <label>Adjustment Reason <span style="color:red;">*</span></label>
                     <select name="adjustment_reason" class="input" required>
@@ -798,8 +936,8 @@ require_once __DIR__ . '/../partials/header.php';
                 <input type="hidden" name="customer_name" id="adj_customer_name">
             </div>
             <div class="modal-actions">
-                <button type="button" class="flt-btn flt-btn-reset" onclick="closeModal()">Cancel</button>
-                <button type="submit" class="flt-btn flt-btn-solid-primary">Save Adjustment</button>
+                <button type="button" class="flt-btn flt-btn-reset" onclick="closeModal()"><i class="fas fa-times"></i> Cancel</button>
+                <button type="submit" class="flt-btn flt-btn-solid-primary"><i class="fas fa-save"></i> Save Adjustment</button>
             </div>
         </form>
     </div>
@@ -839,6 +977,7 @@ function openAdjustModal(txn) {
     
     // Display transaction info
     document.getElementById('adj_display_id').textContent = txn.transaction_id;
+    document.getElementById('adj_display_id_header').textContent = txn.transaction_id; // For modal header subtitle
     document.getElementById('adj_display_customer').textContent = txn.customer_name || 'Walk-in Customer';
     document.getElementById('adj_display_type').textContent = txn.transaction_type || 'Merchandise';
     document.getElementById('adj_display_amt').textContent = '₱' + parseFloat(txn.total_amount).toFixed(2);
@@ -921,9 +1060,9 @@ function switchTab(tabName) {
     }
 }
 
-// Initialize - show transactions tab by default
+// Initialize - show adjustment history tab by default
 window.addEventListener('DOMContentLoaded', function() {
-    switchTab('transactions');
+    switchTab('history');
 });
 </script>
 

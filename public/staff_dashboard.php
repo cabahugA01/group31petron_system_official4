@@ -111,44 +111,6 @@ function dashboard_shift_by_number(array $shift_periods, int $shift_number): ?ar
     return null;
 }
 
-function dashboard_time_in_shift_condition(string $datetime_expr, string $start_time, string $end_time, array &$params): string {
-    $params[] = $start_time;
-    $params[] = $end_time;
-    $params[] = $start_time;
-    $params[] = $end_time;
-    $params[] = $start_time;
-    $params[] = $end_time;
-    $params[] = $start_time;
-    $params[] = $end_time;
-
-    return "(
-        (? <= ? AND TIME($datetime_expr) >= ? AND TIME($datetime_expr) <= ?)
-        OR
-        (? > ? AND (TIME($datetime_expr) >= ? OR TIME($datetime_expr) <= ?))
-    )";
-}
-
-function dashboard_shift_condition(string $datetime_expr, array $shift_columns, array $shift, int $shift_number, array &$params): string {
-    $start_time = $shift['start_time'] ?? '00:00:00';
-    $end_time = $shift['end_time'] ?? '23:59:59';
-    $aliases = dashboard_shift_aliases($shift, $shift_number);
-    $clauses = [];
-
-    foreach ($shift_columns as $column) {
-        if (!empty($aliases)) {
-            $placeholders = implode(',', array_fill(0, count($aliases), '?'));
-            $clauses[] = "LOWER(TRIM(COALESCE($column, ''))) IN ($placeholders)";
-            foreach ($aliases as $alias) {
-                $params[] = $alias;
-            }
-        }
-    }
-
-    $clauses[] = dashboard_time_in_shift_condition($datetime_expr, $start_time, $end_time, $params);
-
-    return '(' . implode(' OR ', $clauses) . ')';
-}
-
 function dashboard_current_shift(array $shift_periods): ?array {
     $now = date('H:i:s');
     foreach ($shift_periods as $shift) {
@@ -191,38 +153,8 @@ function dashboard_range_label(string $date_from, string $date_to): string {
     return date('F j, Y', strtotime($date_from)) . ' - ' . date('F j, Y', strtotime($date_to));
 }
 
-function dashboard_unique_labels(array ...$label_sets): array {
-    $labels = [];
-    foreach ($label_sets as $label_set) {
-        foreach ($label_set as $label) {
-            $label = trim((string)$label);
-            if ($label !== '' && !array_key_exists($label, $labels)) {
-                $labels[$label] = true;
-            }
-        }
-    }
-
-    return array_keys($labels);
-}
-
-function dashboard_values_for_labels(array $rows, string $label_key, string $value_key, array $labels): array {
-    $totals = [];
-    foreach ($rows as $row) {
-        $label = trim((string)($row[$label_key] ?? ''));
-        if ($label !== '') {
-            $totals[$label] = ($totals[$label] ?? 0.0) + (float)($row[$value_key] ?? 0);
-        }
-    }
-
-    return array_map(fn($label) => $totals[$label] ?? 0.0, $labels);
-}
-
-// SHIFT ASSIGNMENT LOGIC - Account Segregation
-// Determine user's assigned shift from their shift_assignment or last clock-in
+// User assigned shift
 $user_assigned_shift = null;
-$can_view_consolidation = false;
-
-// Check if user has shift_assignment in users table
 try {
     $shift_check = $pdo->prepare("SELECT shift_assignment FROM users WHERE id = ? LIMIT 1");
     $shift_check->execute([$user_id]);
@@ -231,7 +163,6 @@ try {
     $user_assigned_shift = dashboard_shift_number_from_value($shift_assignment, $shift_periods);
 } catch (Exception $e) {}
 
-// Fallback: Determine shift from most recent labor_session
 if (!$user_assigned_shift) {
     try {
         $recent_shift = $pdo->prepare("
@@ -248,20 +179,10 @@ if (!$user_assigned_shift) {
     } catch (Exception $e) {}
 }
 
-// Default to the first active configured shift if no assignment found
 if (!$user_assigned_shift) {
     $user_assigned_shift = (int)($shift_periods[0]['dashboard_number'] ?? 1);
 }
 
-// Only Admin and Manager can view Daily Consolidation
-if (in_array($role, ['admin', 'manager', 'superadmin'])) {
-    $can_view_consolidation = true;
-}
-
-// Get current shift info
-$current_shift = dashboard_current_shift($shift_periods);
-
-// Check if user is clocked in
 $clocked_in = false;
 $clock_in_time = null;
 $clock_in_shift = null;
@@ -279,7 +200,7 @@ try {
 $flash_success = $_SESSION['success'] ?? null; unset($_SESSION['success']);
 $flash_error   = $_SESSION['error']   ?? null; unset($_SESSION['error']);
 
-// Date range for dashboard data. Keep legacy ?date=YYYY-MM-DD links working.
+// Date range filters
 $legacy_date = dashboard_valid_date($_GET['date'] ?? null);
 $date_from = dashboard_valid_date($_GET['date_from'] ?? null) ?? $legacy_date ?? date('Y-m-d');
 $date_to = dashboard_valid_date($_GET['date_to'] ?? null) ?? $legacy_date ?? $date_from;
@@ -289,2391 +210,1413 @@ if ($date_from > $date_to) {
 }
 
 $date_range_label = dashboard_range_label($date_from, $date_to);
-$is_default_range = ($date_from === date('Y-m-d') && $date_to === date('Y-m-d'));
 
-// Helper function to get shift data
-function getShiftData(PDO $pdo, int $station_id, array $shift, int $shift_number, string $date_from, string $date_to): array {
-    $start_time = $shift['start_time'] ?? '00:00:00';
-    $end_time = $shift['end_time'] ?? '23:59:59';
-    $range_start_dt = "$date_from 00:00:00";
-    $range_end_dt = "$date_to 23:59:59";
-    $shift_label = dashboard_shift_label($shift);
-    
-    // Fuel Sales
-    $fuel_params = [$station_id, $date_from, $date_to];
-    $fuel_shift_condition = dashboard_shift_condition('transaction_date', ['shift_period', 'shift_name'], $shift, $shift_number, $fuel_params);
-    $fuel_query = $pdo->prepare("
-        SELECT fuel_type,
-               COALESCE(SUM(liters_sold), 0) AS liters,
-               COALESCE(SUM(total_amount), 0) AS revenue,
-               COALESCE(AVG(price_per_liter), 0) AS avg_price
-        FROM fuel_transactions
-        WHERE station_id = ? 
-        AND DATE(transaction_date) BETWEEN ? AND ?
-        AND $fuel_shift_condition
-        AND liters_sold > 0
-        GROUP BY fuel_type
-        ORDER BY revenue DESC
-    ");
-    $fuel_query->execute($fuel_params);
-    $fuel_data = $fuel_query->fetchAll(PDO::FETCH_ASSOC);
-    
-    // Merchandise Sales (basic totals)
-    $merch_datetime = "COALESCE(NULLIF(transaction_date, '0000-00-00 00:00:00'), created_at)";
-    $merch_params = [$station_id, $date_from, $date_to];
-    $merch_shift_condition = dashboard_shift_condition($merch_datetime, ['shift_period', 'shift_name'], $shift, $shift_number, $merch_params);
-    $merch_query = $pdo->prepare("
-        SELECT COALESCE(SUM(total_amount), 0) AS total,
-               COUNT(*) AS count
-        FROM merchandise_transactions
-        WHERE station_id = ?
-        AND DATE($merch_datetime) BETWEEN ? AND ?
-        AND $merch_shift_condition
-    ");
-    $merch_query->execute($merch_params);
-    $merch_data = $merch_query->fetch(PDO::FETCH_ASSOC);
-    
-    // Service Income from completed job orders
-    $service_params = [$station_id, $date_from, $date_to];
-    $service_shift_condition = dashboard_shift_condition('created_at', [], $shift, $shift_number, $service_params);
-    $service_query = $pdo->prepare("
-        SELECT COALESCE(SUM(total_cost), 0) AS total_service_income,
-               COUNT(*) AS completed_jobs
-        FROM job_orders
-        WHERE station_id = ?
-        AND DATE(created_at) BETWEEN ? AND ?
-        AND $service_shift_condition
-        AND status = 'Completed'
-    ");
-    $service_query->execute($service_params);
-    $service_data = $service_query->fetch(PDO::FETCH_ASSOC);
-    
-    // Payments Summary Aggregator across all streams: Fuel, Merch, Job Orders
-    $payments_summary = [
-        'cash' => 0.0,
-        'card' => 0.0,
-        'ewallet' => 0.0,
-        'efuel' => 0.0,
-        'fleet' => 0.0,
-        'total' => 0.0
-    ];
-    
-    // 1. Fuel transaction payments
-    $fuel_pay_params = [$station_id, $date_from, $date_to];
-    $fuel_pay_shift_condition = dashboard_shift_condition('transaction_date', ['shift_period', 'shift_name'], $shift, $shift_number, $fuel_pay_params);
-    $fuel_pay_q = $pdo->prepare("
-        SELECT COALESCE(payment_method, 'Cash') AS method, COALESCE(SUM(total_amount), 0) AS total
-        FROM fuel_transactions
-        WHERE station_id = ?
-          AND DATE(transaction_date) BETWEEN ? AND ?
-          AND $fuel_pay_shift_condition
-        GROUP BY payment_method
-    ");
-    $fuel_pay_q->execute($fuel_pay_params);
-    $fuel_pays = $fuel_pay_q->fetchAll(PDO::FETCH_ASSOC);
+// ─────────────────────────────────────────────────────────────────────────────
+// METRICS QUERY BLOCK
+// ─────────────────────────────────────────────────────────────────────────────
 
-    // 2. Merchandise transaction payments
-    $merch_pay_params = [$station_id, $date_from, $date_to];
-    $merch_pay_shift_condition = dashboard_shift_condition($merch_datetime, ['shift_period', 'shift_name'], $shift, $shift_number, $merch_pay_params);
-    $merch_pay_q = $pdo->prepare("
-        SELECT COALESCE(payment_method, 'Cash') AS method, COALESCE(SUM(total_amount), 0) AS total
-        FROM merchandise_transactions
-        WHERE station_id = ?
-          AND DATE($merch_datetime) BETWEEN ? AND ?
-          AND $merch_pay_shift_condition
-        GROUP BY payment_method
-    ");
-    $merch_pay_q->execute($merch_pay_params);
-    $merch_pays = $merch_pay_q->fetchAll(PDO::FETCH_ASSOC);
+// 1. Today's Transactions
+$fuel_count = 0; $merch_count = 0; $jo_count = 0;
+try {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM fuel_transactions WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ?");
+    $stmt->execute([$station_id, $date_from, $date_to]);
+    $fuel_count = (int)$stmt->fetchColumn();
+} catch (Exception $e) {}
+try {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions WHERE station_id = ? AND DATE(COALESCE(NULLIF(transaction_date, '0000-00-00 00:00:00'), created_at)) BETWEEN ? AND ?");
+    $stmt->execute([$station_id, $date_from, $date_to]);
+    $merch_count = (int)$stmt->fetchColumn();
+} catch (Exception $e) {}
+try {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?");
+    $stmt->execute([$station_id, $date_from, $date_to]);
+    $jo_count = (int)$stmt->fetchColumn();
+} catch (Exception $e) {}
+$todays_transactions = $fuel_count + $merch_count + $jo_count;
 
-    // 3. Job order payments
-    $jo_pay_params = [$station_id, $date_from, $date_to];
-    $jo_pay_shift_condition = dashboard_shift_condition('created_at', [], $shift, $shift_number, $jo_pay_params);
-    $jo_pay_q = $pdo->prepare("
-        SELECT COALESCE(payment_method, 'Cash') AS method, COALESCE(SUM(total_cost), 0) AS total
-        FROM job_orders
-        WHERE station_id = ?
-          AND status = 'Completed'
-          AND DATE(created_at) BETWEEN ? AND ?
-          AND $jo_pay_shift_condition
-        GROUP BY payment_method
-    ");
-    $jo_pay_q->execute($jo_pay_params);
-    $jo_pays = $jo_pay_q->fetchAll(PDO::FETCH_ASSOC);
+// 2. Today's Sales
+$fuel_sales = 0.0; $merch_sales = 0.0; $service_sales = 0.0;
+try {
+    $stmt = $pdo->prepare("SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ?");
+    $stmt->execute([$station_id, $date_from, $date_to]);
+    $fuel_sales = (float)$stmt->fetchColumn();
+} catch (Exception $e) {}
+try {
+    $stmt = $pdo->prepare("SELECT COALESCE(SUM(total_amount),0) FROM merchandise_transactions WHERE station_id=? AND DATE(COALESCE(NULLIF(transaction_date,'0000-00-00 00:00:00'),created_at)) BETWEEN ? AND ?");
+    $stmt->execute([$station_id, $date_from, $date_to]);
+    $merch_sales = (float)$stmt->fetchColumn();
+} catch (Exception $e) {}
+try {
+    $stmt = $pdo->prepare("SELECT COALESCE(SUM(total_cost),0) FROM job_orders WHERE station_id=? AND DATE(created_at) BETWEEN ? AND ? AND status IN ('Completed','Verified','finalized')");
+    $stmt->execute([$station_id, $date_from, $date_to]);
+    $service_sales = (float)$stmt->fetchColumn();
+} catch (Exception $e) {}
+$todays_sales = $fuel_sales + $merch_sales + $service_sales;
 
-    // Helper to map method name to canonical keys
-    $map_method = function($m) {
-        $m = strtolower(trim($m));
-        if (in_array($m, ['cash'])) return 'cash';
-        if (in_array($m, ['card', 'credit card', 'debit card'])) return 'card';
-        if (in_array($m, ['e-wallet', 'ewallet', 'gcash', 'maya', 'e-wallet'])) return 'ewallet';
-        if (in_array($m, ['e-fuel card', 'fuel card', 'efuel'])) return 'efuel';
-        if (in_array($m, ['fleet card', 'fleet'])) return 'fleet';
-        return 'cash'; // Default fallback
-    };
+// 3. Fuel Sold Today
+$fuel_sold_liters = 0.0;
+try {
+    $stmt = $pdo->prepare("SELECT COALESCE(SUM(liters_sold),0) FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ?");
+    $stmt->execute([$station_id, $date_from, $date_to]);
+    $fuel_sold_liters = (float)$stmt->fetchColumn();
+} catch (Exception $e) {}
 
-    foreach ($fuel_pays as $p) {
-        $payments_summary[$map_method($p['method'])] += (float)$p['total'];
+// 4. Service Queue
+$service_queue_count = 0;
+try {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id=? AND DATE(created_at) BETWEEN ? AND ? AND status IN ('Pending','Reviewed','In Progress','Awaiting Parts')");
+    $stmt->execute([$station_id, $date_from, $date_to]);
+    $service_queue_count = (int)$stmt->fetchColumn();
+} catch (Exception $e) {}
+
+// 5. Fuel Stock Alerts
+$fuel_stock_alerts_count = 0;
+try {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM fuel_inventory WHERE station_id=? AND current_level <= reorder_level");
+    $stmt->execute([$station_id]);
+    $fuel_stock_alerts_count = (int)$stmt->fetchColumn();
+} catch (Exception $e) {}
+
+// 6. Merchandise Stock Alerts
+$merch_stock_alerts_count = 0;
+try {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM station_inventory WHERE station_id=? AND stock_level <= reorder_level AND status='active'");
+    $stmt->execute([$station_id]);
+    $merch_stock_alerts_count = (int)$stmt->fetchColumn();
+} catch (Exception $e) {}
+
+// 7. Pending Stock Requests
+$pending_fuel_requests_count = 0; $pending_merch_requests_count = 0;
+try {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM fuel_stock_requests WHERE staff_id=? AND status='Pending'");
+    $stmt->execute([$user_id]);
+    $pending_fuel_requests_count = (int)$stmt->fetchColumn();
+} catch (Exception $e) {}
+try {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM stock_requests WHERE staff_id=? AND status='Pending'");
+    $stmt->execute([$user_id]);
+    $pending_merch_requests_count = (int)$stmt->fetchColumn();
+} catch (Exception $e) {}
+$pending_stock_requests = $pending_fuel_requests_count + $pending_merch_requests_count;
+
+// 8. Current Shift
+$current_shift_info = dashboard_current_shift($shift_periods);
+$current_shift_label = $current_shift_info ? dashboard_shift_label($current_shift_info) : 'No Active Shift';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CHARTS QUERY BLOCK
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Chart 1: Hourly Transactions (Line Chart)
+$hourly_tx_query = $pdo->prepare("
+    SELECT hr, COUNT(*) AS count FROM (
+        SELECT HOUR(transaction_date) AS hr FROM fuel_transactions 
+        WHERE station_id = ? AND DATE(transaction_date) = CURDATE()
+        UNION ALL
+        SELECT HOUR(COALESCE(NULLIF(transaction_date, '0000-00-00 00:00:00'), created_at)) AS hr FROM merchandise_transactions 
+        WHERE station_id = ? AND DATE(COALESCE(NULLIF(transaction_date, '0000-00-00 00:00:00'), created_at)) = CURDATE()
+        UNION ALL
+        SELECT HOUR(created_at) AS hr FROM job_orders 
+        WHERE station_id = ? AND DATE(created_at) = CURDATE()
+    ) AS combined_txns
+    GROUP BY hr
+    ORDER BY hr
+");
+$hourly_tx_query->execute([$station_id, $station_id, $station_id]);
+$hourly_tx_raw = $hourly_tx_query->fetchAll(PDO::FETCH_ASSOC);
+
+$hourly_map = [];
+for ($i = 0; $i < 24; $i++) {
+    $hr = ($i + 6) % 24; // Start at 6 AM
+    $hourly_map[$hr] = 0;
+}
+foreach ($hourly_tx_raw as $row) {
+    $h = (int)$row['hr'];
+    if (isset($hourly_map[$h])) {
+        $hourly_map[$h] = (int)$row['count'];
     }
-    foreach ($merch_pays as $p) {
-        $payments_summary[$map_method($p['method'])] += (float)$p['total'];
-    }
-    foreach ($jo_pays as $p) {
-        $payments_summary[$map_method($p['method'])] += (float)$p['total'];
-    }
-    $payments_summary['total'] = array_sum(array_slice($payments_summary, 0, 5));
-    
-    // Fuel Tank Levels
-    $fuel_levels_query = $pdo->prepare("
-        SELECT COALESCE(ft.name, fi.fuel_type) AS fuel_type_name,
-               COALESCE(fi.current_level, fi.current_stock, 0) AS current_stock,
-               COALESCE(fi.capacity, 0) AS capacity,
-               CASE
-                   WHEN COALESCE(fi.current_level, fi.current_stock, 0) <= 0 THEN 'Out of Stock'
-                   WHEN COALESCE(fi.capacity, 0) > 0
-                        AND (COALESCE(fi.current_level, fi.current_stock, 0) / COALESCE(fi.capacity, 0)) * 100 <= 10 THEN 'Critical'
-                   WHEN COALESCE(fi.capacity, 0) > 0
-                        AND (COALESCE(fi.current_level, fi.current_stock, 0) / COALESCE(fi.capacity, 0)) * 100 <= 25 THEN 'Low Stock'
-                   ELSE 'Normal'
-               END AS stock_status
-        FROM fuel_inventory fi
-        LEFT JOIN fuel_types ft ON fi.fuel_type_id = ft.id
-        WHERE fi.station_id = ?
-        ORDER BY current_stock ASC
-    ");
-    $fuel_levels_query->execute([$station_id]);
-    $fuel_levels = $fuel_levels_query->fetchAll(PDO::FETCH_ASSOC);
-    
-    // Merchandise Low Stock
-    $merch_low_stock_query = $pdo->prepare("
-        SELECT COALESCE(ip.product_name, CONCAT('Product #', si.product_id)) AS product_name,
-               si.stock_level AS current_stock,
-               COALESCE(si.reorder_level, 10) AS threshold,
-               COALESCE(si.reorder_level, 10) AS reorder_level,
-               COALESCE(ip.category, 'Merchandise') AS category
-        FROM station_inventory si
-        LEFT JOIN inventory_products ip ON ip.id = si.product_id
-        WHERE si.station_id = ? AND LOWER(si.status) = 'active'
-          AND si.stock_level <= COALESCE(si.reorder_level, 10)
-        ORDER BY si.stock_level ASC
-        LIMIT 10
-    ");
-    $merch_low_stock_query->execute([$station_id]);
-    $merch_low_stock = $merch_low_stock_query->fetchAll(PDO::FETCH_ASSOC);
-    
-    // Fallback to inventory table if station_inventory returns empty
-    if (empty($merch_low_stock)) {
-        try {
-            $merch_low_stock_query2 = $pdo->prepare("
-                SELECT COALESCE(ip.product_name, CONCAT('Product #', i.product_id)) AS product_name,
-                       i.stock_level AS current_stock,
-                       COALESCE(i.reorder_level, 10) AS threshold,
-                       COALESCE(i.reorder_level, 10) AS reorder_level,
-                       COALESCE(ip.category, 'Merchandise') AS category
-                FROM inventory i
-                LEFT JOIN inventory_products ip ON ip.id = i.product_id
-                WHERE i.station_id = ?
-                  AND i.stock_level <= COALESCE(i.reorder_level, 10)
-                ORDER BY i.stock_level ASC
-                LIMIT 10
-            ");
-            $merch_low_stock_query2->execute([$station_id]);
-            $merch_low_stock = $merch_low_stock_query2->fetchAll(PDO::FETCH_ASSOC);
-        } catch (Exception $e) {
-            $merch_low_stock = [];
-        }
-    }
-    
-    // Activity Log for this shift - STAFF ONLY (exclude admin/manager)
-    $activity_params = [$station_id, $date_from, $date_to];
-    $activity_shift_condition = dashboard_shift_condition('al.created_at', [], $shift, $shift_number, $activity_params);
-    $activity_query = $pdo->prepare("
-        SELECT al.action_type, al.action_details, al.created_at, u.username, u.role
-        FROM audit_logs al 
-        LEFT JOIN users u ON al.user_id = u.id
-        WHERE u.station_id = ?
-        AND DATE(al.created_at) BETWEEN ? AND ?
-        AND $activity_shift_condition
-        AND u.role IN ('staff', 'cashier', 'pump_attendant')
-        ORDER BY al.created_at DESC 
-        LIMIT 15
-    ");
-    $activity_query->execute($activity_params);
-    $activity_log = $activity_query->fetchAll(PDO::FETCH_ASSOC);
-    
-    // Shift Tracker - Staff clocked in during this shift
-    $shift_tracker_params = [$station_id, $range_end_dt, $range_start_dt];
-    $shift_tracker_condition = dashboard_shift_condition('ls.start_time', ['ls.shift_period', 'ls.shift_name'], $shift, $shift_number, $shift_tracker_params);
-    $shift_tracker_query = $pdo->prepare("
-        SELECT COALESCE(CONCAT(u.first_name, ' ', u.last_name), u.username, 'Unknown') AS full_name, 
-               ls.start_time, 
-               ls.end_time,
-               TIMESTAMPDIFF(MINUTE, ls.start_time, COALESCE(ls.end_time, NOW())) AS duration_min,
-               CASE WHEN ls.end_time IS NULL THEN 'Active' ELSE 'Completed' END AS status
-        FROM labor_sessions ls 
-        LEFT JOIN users u ON ls.user_id = u.id
-        WHERE ls.station_id = ?
-        AND ls.start_time <= ?
-        AND COALESCE(ls.end_time, NOW()) >= ?
-        AND $shift_tracker_condition
-        AND LOWER(COALESCE(u.role, '')) = 'staff'
-        ORDER BY ls.start_time DESC
-        LIMIT 10
-    ");
-    $shift_tracker_query->execute($shift_tracker_params);
-    $shift_tracker = $shift_tracker_query->fetchAll(PDO::FETCH_ASSOC);
-
-    // Merchandise Sales by Category (real data from merchandise_transaction_items)
-    $merch_cat_datetime = "COALESCE(NULLIF(mt.transaction_date, '0000-00-00 00:00:00'), mt.created_at)";
-    $merch_cat_params = [$station_id, $date_from, $date_to];
-    $merch_cat_shift_condition = dashboard_shift_condition($merch_cat_datetime, ['mt.shift_period', 'mt.shift_name'], $shift, $shift_number, $merch_cat_params);
-    $merch_cat_query = $pdo->prepare("
-        SELECT
-            COALESCE(NULLIF(mti.category, ''), 'Others') AS category,
-            COALESCE(SUM(mti.subtotal), 0) AS total
-        FROM merchandise_transaction_items mti
-        INNER JOIN merchandise_transactions mt ON mti.transaction_id = mt.id
-        WHERE mt.station_id = ?
-          AND DATE($merch_cat_datetime) BETWEEN ? AND ?
-          AND $merch_cat_shift_condition
-        GROUP BY category
-        ORDER BY total DESC
-        LIMIT 10
-    ");
-    $merch_cat_query->execute($merch_cat_params);
-    $merch_categories = $merch_cat_query->fetchAll(PDO::FETCH_ASSOC);
-
-    // Job Orders Hourly Trend (real data - count per hour in this shift window)
-    $jo_hourly_params = [$station_id, $date_from, $date_to];
-    $jo_hourly_shift_condition = dashboard_shift_condition('created_at', [], $shift, $shift_number, $jo_hourly_params);
-    $jo_hourly_query = $pdo->prepare("
-        SELECT
-            HOUR(created_at) AS hr,
-            COUNT(*) AS count
-        FROM job_orders
-        WHERE station_id = ?
-          AND DATE(created_at) BETWEEN ? AND ?
-          AND $jo_hourly_shift_condition
-        GROUP BY HOUR(created_at)
-        ORDER BY hr ASC
-    ");
-    $jo_hourly_query->execute($jo_hourly_params);
-    $jo_hourly_rows = $jo_hourly_query->fetchAll(PDO::FETCH_ASSOC);
-    // Build a full slot map for each hour in the shift window
-    $start_hr = (int)substr($start_time, 0, 2);
-    $end_hr   = (int)substr($end_time,   0, 2);
-    $jo_hourly_map = [];
-    $slot = $start_hr;
-    do {
-        $jo_hourly_map[$slot] = 0;
-        $slot = ($slot + 1) % 24;
-    } while ($slot !== (($end_hr + 1) % 24) && count($jo_hourly_map) < 24);
-    if (empty($jo_hourly_map)) {
-        $jo_hourly_map[$start_hr] = 0;
-    }
-    foreach ($jo_hourly_rows as $r) {
-        $h = (int)$r['hr'];
-        if (array_key_exists($h, $jo_hourly_map)) {
-            $jo_hourly_map[$h] = (int)$r['count'];
-        }
-    }
-    $jo_hourly_labels = array_map(function($h) {
-        $suffix = $h < 12 ? 'AM' : 'PM';
-        $disp   = $h > 12 ? $h - 12 : ($h == 0 ? 12 : $h);
-        return "{$disp} {$suffix}";
-    }, array_keys($jo_hourly_map));
-    $jo_hourly_data = array_values($jo_hourly_map);
-
-    // Fuel Variance Alerts (real data per fuel type for this shift)
-    $variance_params = [$station_id, $date_from, $date_to];
-    $variance_shift_condition = dashboard_shift_condition('va.created_at', [], $shift, $shift_number, $variance_params);
-    $variance_query = $pdo->prepare("
-        SELECT
-            va.item_identifier AS fuel_type,
-            COALESCE(SUM(ABS(va.variance_amount)), 0) AS variance
-        FROM variance_alerts va
-        WHERE va.station_id = ?
-          AND va.transaction_type = 'Fuel'
-          AND DATE(va.created_at) BETWEEN ? AND ?
-          AND $variance_shift_condition
-        GROUP BY va.item_identifier
-        ORDER BY variance DESC
-        LIMIT 8
-    ");
-    $variance_query->execute($variance_params);
-    $variance_data = $variance_query->fetchAll(PDO::FETCH_ASSOC);
-
-    // Job orders count by status for this shift
-    $jo_stats = [
-        'Pending' => 0,
-        'In Progress' => 0,
-        'Completed' => 0,
-        'Cancelled' => 0
-    ];
-    $jo_stats_params = [$station_id, $date_from, $date_to];
-    $jo_stats_shift_condition = dashboard_shift_condition('created_at', [], $shift, $shift_number, $jo_stats_params);
-    $jo_q = $pdo->prepare("
-        SELECT status, COUNT(*) as count
-        FROM job_orders
-        WHERE station_id = ?
-          AND DATE(created_at) BETWEEN ? AND ?
-          AND $jo_stats_shift_condition
-        GROUP BY status
-    ");
-    $jo_q->execute($jo_stats_params);
-    foreach ($jo_q->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $status_mapped = $row['status'];
-        if ($status_mapped == 'Reviewed') $status_mapped = 'Pending';
-        if ($status_mapped == 'Awaiting Parts') $status_mapped = 'In Progress';
-        if ($status_mapped == 'Verified' || $status_mapped == 'finalized') $status_mapped = 'Completed';
-        if ($status_mapped == 'Rejected') $status_mapped = 'Cancelled';
-        
-        if (array_key_exists($status_mapped, $jo_stats)) {
-            $jo_stats[$status_mapped] += $row['count'];
-        }
-    }
-
-    // Shift-specific Calendar Tasks: Job Orders + Fuel Deliveries within the selected range
-    $calendar_tasks = [];
-    try {
-        $jo_task_params = [$station_id, $date_from, $date_to];
-        $jo_task_shift_condition = dashboard_shift_condition('created_at', [], $shift, $shift_number, $jo_task_params);
-        $jo_task_q = $pdo->prepare("
-            SELECT 'Job Order' AS task_type,
-                   COALESCE(job_order_number, CONCAT('JO-', id)) AS reference,
-                   status,
-                   created_at AS task_date,
-                   COALESCE(customer_name, 'Walk-in') AS customer,
-                   id AS task_id
-            FROM job_orders
-            WHERE station_id = ?
-              AND DATE(created_at) BETWEEN ? AND ?
-              AND $jo_task_shift_condition
-            ORDER BY created_at DESC
-            LIMIT 15
-        ");
-        $jo_task_q->execute($jo_task_params);
-        $calendar_tasks = $jo_task_q->fetchAll(PDO::FETCH_ASSOC);
-
-        $fd_task_q = $pdo->prepare("
-            SELECT 'Fuel Delivery' AS task_type,
-                   COALESCE(NULLIF(invoice_no, ''), CONCAT('FD-', id)) AS reference,
-                   status,
-                   COALESCE(delivery_date, CURDATE()) AS task_date,
-                   COALESCE(supplier, 'Supplier TBD') AS customer,
-                   id AS task_id
-            FROM fuel_deliveries
-            WHERE station_id = ?
-              AND delivery_date BETWEEN ? AND ?
-            ORDER BY delivery_date ASC
-            LIMIT 10
-        ");
-        $fd_task_q->execute([$station_id, $date_from, $date_to]);
-        $fd_tasks = $fd_task_q->fetchAll(PDO::FETCH_ASSOC);
-        $calendar_tasks = array_merge($calendar_tasks, $fd_tasks);
-
-        usort($calendar_tasks, fn($a, $b) => strtotime($a['task_date']) - strtotime($b['task_date']));
-    } catch (Exception $e) {}
-
-    // New customers added during this shift window
-    $new_customers_count = 0;
-    $credit_customers_list = [];
-    try {
-        $nc_params = [$station_id, $date_from, $date_to];
-        $nc_shift_condition = dashboard_shift_condition('created_at', [], $shift, $shift_number, $nc_params);
-        $nc_q = $pdo->prepare("
-            SELECT COUNT(*) FROM customers
-            WHERE station_id = ?
-              AND DATE(created_at) BETWEEN ? AND ?
-              AND $nc_shift_condition
-        ");
-        $nc_q->execute($nc_params);
-        $new_customers_count = (int)$nc_q->fetchColumn();
-
-        $cc_q = $pdo->prepare("
-            SELECT name, type, COALESCE(current_balance, balance, 0) AS balance,
-                   credit_limit, status
-            FROM customers
-            WHERE station_id = ? AND type = 'credit'
-              AND COALESCE(current_balance, balance, 0) > 0
-            ORDER BY balance DESC
-            LIMIT 10
-        ");
-        $cc_q->execute([$station_id]);
-        $credit_customers_list = $cc_q->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) {}
-
-    return [
-        'fuel'             => $fuel_data,
-        'merch'            => $merch_data,
-        'service'          => $service_data,
-        'payments_summary' => $payments_summary,
-        'fuel_levels'      => $fuel_levels,
-        'merch_low_stock'  => $merch_low_stock,
-        'activity_log'     => $activity_log,
-        'shift_tracker'    => $shift_tracker,
-        'merch_categories' => $merch_categories,
-        'jo_hourly_labels' => $jo_hourly_labels,
-        'jo_hourly_data'   => $jo_hourly_data,
-        'variance_data'    => $variance_data,
-        'jo_stats'         => $jo_stats,
-        'calendar_tasks'   => $calendar_tasks,
-        'new_customers'    => $new_customers_count,
-        'credit_customers' => $credit_customers_list,
-        'shift_number'     => $shift_number,
-        'shift_label'      => $shift_label
-    ];
+}
+$hourly_chart_labels = [];
+$hourly_chart_data = [];
+foreach ($hourly_map as $h => $count) {
+    $suffix = $h < 12 ? 'AM' : 'PM';
+    $disp = $h % 12 === 0 ? 12 : $h % 12;
+    $hourly_chart_labels[] = "{$disp}{$suffix}";
+    $hourly_chart_data[] = $count;
 }
 
-// Get data for shifts based on user access
-// Staff can only see their assigned shift
-// Admin/Manager can see all shifts
-if (in_array($role, ['admin', 'manager', 'superadmin'])) {
-    // Admin/Manager: Load both shifts
-    $shift1_arr  = dashboard_shift_by_number($shift_periods, 1) ?? [];
-    $shift2_arr  = dashboard_shift_by_number($shift_periods, 2) ?? [];
-    $shift1_data = getShiftData($pdo, $station_id, $shift1_arr, 1, $date_from, $date_to);
-    $shift2_data = getShiftData($pdo, $station_id, $shift2_arr, 2, $date_from, $date_to);
+// Chart 2: Fuel Sales by Product (Bar Chart)
+$fuel_sales_query = $pdo->prepare("
+    SELECT fuel_type, COALESCE(SUM(liters_sold), 0) AS total_liters
+    FROM fuel_transactions
+    WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ?
+    GROUP BY fuel_type
+");
+$fuel_sales_query->execute([$station_id, $date_from, $date_to]);
+$raw_fuel_sales = $fuel_sales_query->fetchAll(PDO::FETCH_ASSOC);
+
+$canonical_fuels = [
+    'Diesel' => 0.0,
+    'XCS' => 0.0,
+    'XTRA Unleaded' => 0.0,
+    'Turbo Diesel' => 0.0,
+    'Kerosene' => 0.0
+];
+foreach ($raw_fuel_sales as $row) {
+    $ft = strtolower(trim($row['fuel_type']));
+    if (strpos($ft, 'diesel') !== false && strpos($ft, 'turbo') === false) {
+        $canonical_fuels['Diesel'] += (float)$row['total_liters'];
+    } elseif (strpos($ft, 'turbo') !== false) {
+        $canonical_fuels['Turbo Diesel'] += (float)$row['total_liters'];
+    } elseif (strpos($ft, 'xcs') !== false) {
+        $canonical_fuels['XCS'] += (float)$row['total_liters'];
+    } elseif (strpos($ft, 'xtra') !== false || strpos($ft, 'unl') !== false) {
+        $canonical_fuels['XTRA Unleaded'] += (float)$row['total_liters'];
+    } elseif (strpos($ft, 'kerosene') !== false) {
+        $canonical_fuels['Kerosene'] += (float)$row['total_liters'];
+    }
+}
+$fuel_chart_labels = array_keys($canonical_fuels);
+$fuel_chart_data = array_values($canonical_fuels);
+
+// Chart 3: Merchandise Sales by Category (Bar Chart) — DB-driven, real categories
+$merch_sales_query = $pdo->prepare("
+    SELECT
+        COALESCE(NULLIF(TRIM(mti.category), ''), 'Others') AS category,
+        COALESCE(SUM(mti.subtotal), 0) AS total_sales
+    FROM merchandise_transaction_items mti
+    INNER JOIN merchandise_transactions mt ON mti.transaction_id = mt.id
+    WHERE mt.station_id = ?
+      AND DATE(COALESCE(NULLIF(mt.transaction_date, '0000-00-00 00:00:00'), mt.created_at)) BETWEEN ? AND ?
+    GROUP BY category
+    ORDER BY total_sales DESC
+    LIMIT 6
+");
+$merch_sales_query->execute([$station_id, $date_from, $date_to]);
+$raw_merch_sales = $merch_sales_query->fetchAll(PDO::FETCH_ASSOC);
+
+// Use real categories from DB — no hardcoded mapping
+$merch_chart_labels = [];
+$merch_chart_data = [];
+if (!empty($raw_merch_sales)) {
+    foreach ($raw_merch_sales as $row) {
+        // Shorten long category names for chart readability
+        $label = $row['category'];
+        if (strlen($label) > 22) {
+            $label = substr($label, 0, 20) . '...';
+        }
+        $merch_chart_labels[] = $label;
+        $merch_chart_data[] = round((float)$row['total_sales'], 2);
+    }
 } else {
-    // Staff: Load only their assigned shift
-    if ($user_assigned_shift == 1) {
-        $shift1_arr  = dashboard_shift_by_number($shift_periods, 1) ?? [];
-        $shift1_data = getShiftData($pdo, $station_id, $shift1_arr, 1, $date_from, $date_to);
-        $shift2_data = null; // No access to Shift 2
-    } else {
-        $shift2_arr  = dashboard_shift_by_number($shift_periods, 2) ?? [];
-        $shift1_data = null; // No access to Shift 1
-        $shift2_data = getShiftData($pdo, $station_id, $shift2_arr, 2, $date_from, $date_to);
+    // Fallback — query top categories from inventory_products for this station
+    try {
+        $fallback = $pdo->prepare("
+            SELECT ip.category, 0 AS total_sales
+            FROM inventory_products ip
+            WHERE ip.station_id = ? AND ip.status = 'active'
+            GROUP BY ip.category
+            ORDER BY COUNT(*) DESC
+            LIMIT 6
+        ");
+        $fallback->execute([$station_id]);
+        foreach ($fallback->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $label = $row['category'];
+            if (strlen($label) > 22) $label = substr($label, 0, 20) . '...';
+            $merch_chart_labels[] = $label;
+            $merch_chart_data[] = 0;
+        }
+    } catch (Exception $e) {}
+}
+
+// Chart 4: Service Status Distribution (Doughnut Chart)
+$service_status_query = $pdo->prepare("
+    SELECT status, COUNT(*) AS count
+    FROM job_orders
+    WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?
+    GROUP BY status
+");
+$service_status_query->execute([$station_id, $date_from, $date_to]);
+$raw_statuses = $service_status_query->fetchAll(PDO::FETCH_ASSOC);
+
+$canonical_statuses = [
+    'Pending' => 0,
+    'In Progress' => 0,
+    'Completed' => 0,
+    'Released' => 0
+];
+foreach ($raw_statuses as $row) {
+    $st = strtolower(trim($row['status']));
+    if (in_array($st, ['pending', 'reviewed'])) {
+        $canonical_statuses['Pending'] += (int)$row['count'];
+    } elseif (in_array($st, ['in progress', 'awaiting parts'])) {
+        $canonical_statuses['In Progress'] += (int)$row['count'];
+    } elseif (in_array($st, ['completed', 'verified'])) {
+        $canonical_statuses['Completed'] += (int)$row['count'];
+    } elseif (in_array($st, ['finalized', 'released'])) {
+        $canonical_statuses['Released'] += (int)$row['count'];
     }
 }
+$status_chart_labels = array_keys($canonical_statuses);
+$status_chart_data = array_values($canonical_statuses);
 
-// NOTE: jo_stats, new_customers, credit_customers, calendar_tasks are all
-// fetched per-shift inside getShiftData() and returned as part of $shift1_data / $shift2_data.
-$date_filter_active = (!$is_default_range || isset($_GET['date']) || isset($_GET['date_from']) || isset($_GET['date_to']));
-
-$shift1_label = $shift1_data['shift_label'] ?? dashboard_shift_label(dashboard_shift_by_number($shift_periods, 1) ?? ['shift_name' => 'Shift 1']);
-$shift2_label = $shift2_data['shift_label'] ?? dashboard_shift_label(dashboard_shift_by_number($shift_periods, 2) ?? ['shift_name' => 'Shift 2']);
-
-$report_sales_url = 'staff_reports.php?' . http_build_query([
-    'section' => 'sales',
-    'sub_tab' => 'fuel_sales',
-    'range' => 'custom',
-    'date_from' => $date_from,
-    'date_to' => $date_to,
-    'export' => 'excel',
+// Chart 5: Weekly Transaction Trend (Line Chart)
+$monday = date('Y-m-d', strtotime('monday this week', strtotime($date_from)));
+$sunday = date('Y-m-d', strtotime('sunday this week', strtotime($date_from)));
+$weekly_trend_query = $pdo->prepare("
+    SELECT DAYNAME(dt) AS day_name, COUNT(*) AS count FROM (
+        SELECT DATE(transaction_date) AS dt FROM fuel_transactions 
+        WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ?
+        UNION ALL
+        SELECT DATE(COALESCE(NULLIF(transaction_date, '0000-00-00 00:00:00'), created_at)) AS dt FROM merchandise_transactions 
+        WHERE station_id = ? AND DATE(COALESCE(NULLIF(transaction_date, '0000-00-00 00:00:00'), created_at)) BETWEEN ? AND ?
+        UNION ALL
+        SELECT DATE(created_at) AS dt FROM job_orders 
+        WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?
+    ) AS all_txns
+    GROUP BY day_name
+");
+$weekly_trend_query->execute([
+    $station_id, $monday, $sunday,
+    $station_id, $monday, $sunday,
+    $station_id, $monday, $sunday
 ]);
-$report_activity_url = 'staff_reports.php?' . http_build_query([
-    'section' => 'activity',
-    'sub_tab' => 'staff_activity',
-    'range' => 'custom',
-    'date_from' => $date_from,
-    'date_to' => $date_to,
-    'export' => 'csv',
-]);
-$report_job_orders_url = 'staff_reports.php?' . http_build_query([
-    'section' => 'job_orders',
-    'sub_tab' => 'jo_list',
-    'range' => 'custom',
-    'date_from' => $date_from,
-    'date_to' => $date_to,
-    'export' => 'excel',
-]);
+$raw_weekly = $weekly_trend_query->fetchAll(PDO::FETCH_ASSOC);
 
-$consolidation_fuel_labels = [];
-$consolidation_shift1_fuel_liters = [];
-$consolidation_shift2_fuel_liters = [];
-$consolidation_jo_labels = [];
-$consolidation_jo_data = [];
+$weekly_days = [
+    'Monday' => 0,
+    'Tuesday' => 0,
+    'Wednesday' => 0,
+    'Thursday' => 0,
+    'Friday' => 0,
+    'Saturday' => 0,
+    'Sunday' => 0
+];
+foreach ($raw_weekly as $row) {
+    $day = $row['day_name'];
+    if (isset($weekly_days[$day])) {
+        $weekly_days[$day] = (int)$row['count'];
+    }
+}
+$weekly_chart_labels = array_keys($weekly_days);
+$weekly_chart_data = array_values($weekly_days);
 
-if ($shift1_data && $shift2_data) {
-    $consolidation_fuel_labels = dashboard_unique_labels(
-        array_column($shift1_data['fuel'], 'fuel_type'),
-        array_column($shift2_data['fuel'], 'fuel_type')
-    );
-    $consolidation_shift1_fuel_liters = dashboard_values_for_labels($shift1_data['fuel'], 'fuel_type', 'liters', $consolidation_fuel_labels);
-    $consolidation_shift2_fuel_liters = dashboard_values_for_labels($shift2_data['fuel'], 'fuel_type', 'liters', $consolidation_fuel_labels);
+// Chart 6: Fuel Tank Levels (Progress Bars)
+$tank_levels_query = $pdo->prepare("
+    SELECT fuel_type, SUM(current_level) AS current_stock, SUM(capacity) AS total_capacity
+    FROM fuel_inventory
+    WHERE station_id = ?
+    GROUP BY fuel_type
+");
+$tank_levels_query->execute([$station_id]);
+$tank_levels = $tank_levels_query->fetchAll(PDO::FETCH_ASSOC);
 
-    $consolidation_jo_labels = dashboard_unique_labels(
-        $shift1_data['jo_hourly_labels'],
-        $shift2_data['jo_hourly_labels']
-    );
-    $shift1_jo_data = array_combine($shift1_data['jo_hourly_labels'], $shift1_data['jo_hourly_data']) ?: [];
-    $shift2_jo_data = array_combine($shift2_data['jo_hourly_labels'], $shift2_data['jo_hourly_data']) ?: [];
-    $consolidation_jo_data = array_map(
-        fn($label) => (int)($shift1_jo_data[$label] ?? 0) + (int)($shift2_jo_data[$label] ?? 0),
-        $consolidation_jo_labels
-    );
+foreach ($tank_levels as &$tl) {
+    $current = (float)$tl['current_stock'];
+    $capacity = (float)$tl['total_capacity'];
+    $tl['pct'] = $capacity > 0 ? round(($current / $capacity) * 100, 1) : 0;
+}
+unset($tl);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TABLES QUERY BLOCK
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Table 1: Recent Transactions
+$recent_transactions_query = $pdo->prepare("
+    SELECT time, type, customer, amount, status FROM (
+        SELECT transaction_date AS time, 'Fuel' AS type, 'Walk-in' AS customer, total_amount AS amount, status 
+        FROM fuel_transactions 
+        WHERE station_id = ?
+        UNION ALL
+        SELECT DATE(COALESCE(NULLIF(transaction_date, '0000-00-00 00:00:00'), created_at)) AS time, 'Merchandise' AS type, customer_name AS customer, total_amount AS amount, validation_status AS status 
+        FROM merchandise_transactions 
+        WHERE station_id = ?
+        UNION ALL
+        SELECT created_at AS time, 'Service' AS type, customer_name AS customer, total_cost AS amount, status 
+        FROM job_orders 
+        WHERE station_id = ?
+    ) AS unioned
+    ORDER BY time DESC
+    LIMIT 10
+");
+$recent_transactions_query->execute([$station_id, $station_id, $station_id]);
+$recent_transactions = $recent_transactions_query->fetchAll(PDO::FETCH_ASSOC);
+
+// Table 2: Active Service Queue
+$active_services_query = $pdo->prepare("
+    SELECT job_order_number AS service_no, customer_name AS customer, 
+           CONCAT(vehicle_plate, ' (', vehicle_type, ')') AS vehicle, 
+           service_type AS service, status 
+    FROM job_orders 
+    WHERE station_id = ? AND DATE(created_at) = CURDATE() AND status IN ('Pending', 'Reviewed', 'In Progress', 'Awaiting Parts')
+    ORDER BY created_at DESC
+");
+$active_services_query->execute([$station_id]);
+$active_services = $active_services_query->fetchAll(PDO::FETCH_ASSOC);
+
+// Table 3: Fuel Stock Alerts
+$fuel_stock_alerts_query = $pdo->prepare("
+    SELECT fuel_type, current_level AS current_stock, reorder_level,
+           CASE 
+               WHEN current_level <= critical_level THEN 'Critical'
+               ELSE 'Low'
+           END AS status
+    FROM fuel_inventory 
+    WHERE station_id = ? AND current_level <= reorder_level
+    ORDER BY current_level ASC
+");
+$fuel_stock_alerts_query->execute([$station_id]);
+$fuel_stock_alerts = $fuel_stock_alerts_query->fetchAll(PDO::FETCH_ASSOC);
+
+// Table 4: Merchandise Low Stock
+$merch_low_stock_table_query = $pdo->prepare("
+    SELECT COALESCE(ip.product_name, CONCAT('Product #', si.product_id)) AS product,
+           si.stock_level AS current_qty,
+           si.reorder_level,
+           CASE 
+               WHEN si.stock_level = 0 THEN 'Out of Stock'
+               ELSE 'Low Stock'
+           END AS status
+    FROM station_inventory si
+    LEFT JOIN inventory_products ip ON ip.id = si.product_id
+    WHERE si.station_id = ? AND LOWER(si.status) = 'active'
+      AND si.stock_level <= COALESCE(si.reorder_level, 10)
+    ORDER BY si.stock_level ASC
+");
+$merch_low_stock_table_query->execute([$station_id]);
+$merch_low_stock_table = $merch_low_stock_table_query->fetchAll(PDO::FETCH_ASSOC);
+
+if (empty($merch_low_stock_table)) {
+    try {
+        $merch_low_stock_table_query2 = $pdo->prepare("
+            SELECT COALESCE(ip.product_name, CONCAT('Product #', i.product_id)) AS product,
+                   i.stock_level AS current_qty,
+                   i.reorder_level,
+                   CASE 
+                       WHEN i.stock_level = 0 THEN 'Out of Stock'
+                       ELSE 'Low Stock'
+                   END AS status
+            FROM inventory i
+            LEFT JOIN inventory_products ip ON ip.id = i.product_id
+            WHERE i.station_id = ? AND LOWER(i.status) = 'active'
+              AND i.stock_level <= COALESCE(i.reorder_level, 10)
+            ORDER BY i.stock_level ASC
+        ");
+        $merch_low_stock_table_query2->execute([$station_id]);
+        $merch_low_stock_table = $merch_low_stock_table_query2->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {}
 }
 
-// Include system header with sidebar
+// Table 5: Pending Stock Requests
+$pending_requests_table_query = $pdo->prepare("
+    SELECT CONCAT('SR-', id) AS request_no, item_category AS type, ? AS requested_by, status 
+    FROM stock_requests 
+    WHERE staff_id = ? AND status = 'Pending'
+    UNION ALL
+    SELECT CONCAT('FSR-', id) AS request_no, 'Fuel' AS type, ? AS requested_by, status 
+    FROM fuel_stock_requests 
+    WHERE staff_id = ? AND status = 'Pending'
+    ORDER BY request_no DESC
+");
+$pending_requests_table_query->execute([$display_name, $user_id, $display_name, $user_id]);
+$pending_requests_table = $pending_requests_table_query->fetchAll(PDO::FETCH_ASSOC);
+
+// Include standard header layout
 include __DIR__ . '/../partials/header.php';
 ?>
-<!-- Load Chart.js at the top to prevent ReferenceErrors -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- Include local Chart.js from vendor folder -->
+<script src="../assets/vendor/chart.js/chart.umd.min.js"></script>
 
-<!-- Main Content Area -->
-<div class="main-content">
-    <style>
-        /* Reset potential conflicts */
-        html, body {
-            margin: 0;
-            padding: 0;
-            overflow-x: hidden;
-        }
-        
-        .main-content {
-            margin-left: 0;
-            padding: 0;
-            min-height: auto;
-            width: 100%;
-            position: relative;
-            background: transparent;
-        }
-        
-        @media (max-width: 768px) {
-            .main-content {
-                margin-left: 0;
-                width: 100%;
-            }
-        }
-        
-        /* Dashboard Specific Styles */
-        
-        .dashboard-container {
-            max-width: 100%;
-            margin: 0 auto;
-            position: relative;
-            padding-top: 0; /* Removed large top space */
-        }
-        
-        .header-section {
-            background: white;
-            padding: 20px 30px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            position: relative;
-            z-index: 1;
-        }
-        
-        .header-left h1 {
-            color: #003366;
-            font-size: 28px;
-            margin-bottom: 5px;
-        }
-        
-        .header-left p {
-            color: #666666;
-            font-size: 14px;
-        }
-        
-        .header-right {
-            display: flex;
-            gap: 15px;
-            align-items: center;
-        }
-        
-        .clock-status {
-            padding: 10px 20px;
-            border-radius: 8px;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .clock-status.clocked-in {
-            background: #d4edda;
-            color: #155724;
-        }
-        
-        .clock-status.clocked-out {
-            background: #f8d7da;
-            color: #721c24;
-        }
-        
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            text-decoration: none;
-            display: inline-block;
-        }
-        
-        .btn-primary {
-            background: #003366;
-            color: white;
-        }
-        
-        .btn-primary:hover {
-            background: #002244;
-            transform: translateY(-2px);
-        }
-        
-        .btn-danger {
-            background: #dc3545;
-            color: white;
-        }
-        
-        .btn-danger:hover {
-            background: #c82333;
-            transform: translateY(-2px);
-        }
-        
-        .tabs-container {
-            background: white;
-            padding: 0;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
-        
-        .tabs {
-            display: flex;
-            gap: 10px;
-            padding: 0 4px;
-            border-bottom: none;
-            flex-wrap: wrap;
-            margin-bottom: 12px;
-        }
-        
-        .tab {
-            padding: 7px 16px;
-            background: #ffffff;
-            border: 1px solid #002F6C !important;
-            border-radius: 4px !important;
-            font-size: 11px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.15s ease-in-out;
-            color: #002F6C;
-            flex: unset;
-        }
-        
-        .tab.active {
-            background: #002F6C !important;
-            color: #ffffff;
-        }
-        
-        .tab:hover:not(.active) {
-            background: #002F6C !important;
-            color: #ffffff;
-        }
-        
-        .tab-content {
-            display: none;
-            padding: 20px;
-        }
-        
-        .tab-content.active {
-            display: block;
-        }
-        
-        .cards-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .widget-card {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        
-        .widget-card h3 {
-            color: #003366;
-            margin-bottom: 15px;
-            font-size: 18px;
-        }
-        
-        .stat-card {
-            background: white;
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-            padding: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-            transition: transform 0.25s, box-shadow 0.25s;
-            min-height: 120px;
-            position: relative;
-        }
-        
-        .stat-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 10px 15px rgba(0,0,0,0.1);
-        }
-        
-        .stat-card .details {
-            flex: 1;
-        }
-        
-        .stat-card .details .label {
-            font-size: 13px;
-            color: #64748b;
-            margin: 0 0 6px 0;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            font-weight: 600;
-        }
-        
-        .stat-card .value {
-            font-size: 24px;
-            font-weight: 700;
-            margin: 0;
-            color: #1e293b;
-        }
-        
-        .stat-card small {
-            font-size: 12px;
-            color: #64748b;
-            display: block;
-            margin: 4px 0 0 0;
-        }
-        
-        .stat-card .icon {
-            width: 48px;
-            height: 48px;
-            border-radius: 50%;
-            background: rgba(0,38,77,0.1);
-            color: #00264D;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
-            font-weight: 700;
-            letter-spacing: 0.5px;
-            opacity: 0.85;
-            flex-shrink: 0;
-            margin-left: 16px;
-        }
-        
-        .charts-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .chart-card {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        
-        .chart-card h3 {
-            color: #003366;
-            margin-bottom: 15px;
-            font-size: 18px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .chart-card h3 i {
-            color: #003366;
-        }
-        
-        .calendar-widget {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-        
-        .calendar-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-        
-        .calendar-header h3 {
-            color: #003366;
-            font-size: 20px;
-        }
-        
-        .task-list {
-            max-height: 400px;
-            overflow-y: auto;
-        }
-        
-        .task-item {
-            padding: 15px;
-            border: 1px solid #e2e8f0;
-            background: #f7f7f7;
-            margin-bottom: 10px;
-            border-radius: 5px;
-            transition: all 0.3s;
-        }
-        
-        .task-item:hover {
-            background: #e8e8e8;
-            transform: translateX(5px);
-        }
-        
-        .task-item.today {
-            background: #d4edda;
-        }
-        
-        .task-item .task-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 5px;
-        }
-        
-        .task-item .task-title {
-            font-weight: 600;
-            color: #003366;
-        }
-        
-        .task-item .task-date {
-            font-size: 12px;
-            color: #666666;
-        }
-        
-        .task-item .task-status {
-            display: inline-block;
-            padding: 3px 10px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-            margin-top: 5px;
-        }
-        
-        .quick-actions {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 15px;
-            margin-top: 20px;
-        }
-        
-        .quick-action-btn {
-            padding: 15px;
-            background: #003366;
-            color: white;
-            text-align: center;
-            border-radius: 10px;
-            text-decoration: none;
-            transition: all 0.3s;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        
-        .quick-action-btn:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
-            background: #002244;
-        }
-        
-        .quick-action-btn i {
-            display: none;
-        }
-        
-        .consolidation-panel {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            margin-top: 30px;
-        }
-        
-        .consolidation-header {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        
-        .consolidation-header h2 {
-            color: #003366;
-            font-size: 32px;
-            margin-bottom: 10px;
-        }
-        
-        .consolidation-header p {
-            color: #666666;
-            font-size: 16px;
-        }
-        
-        .alert {
-            padding: 15px 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-        
-        .alert-success {
-            background: #d4edda;
-            color: #155724;
-            border-left: 4px solid #28a745;
-        }
-        
-        .alert-error {
-            background: #f8d7da;
-            color: #721c24;
-            border-left: 4px solid #dc3545;
-        }
-        
-        @media (max-width: 768px) {
-            .header-section {
-                flex-direction: column;
-                gap: 15px;
-            }
-            
-            .charts-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .tabs {
-                flex-direction: column;
-            }
-        }
-    </style>
+<style>
+    /* Rebuilt Premium Petron CSS styling */
+    .dashboard-header-container {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 25px;
+        flex-wrap: wrap;
+        gap: 15px;
+        background: #ffffff;
+        padding: 20px 24px;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        border: 1px solid #e2e8f0;
+    }
+    .welcome-meta h2 {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 800;
+        color: #002F70;
+    }
+    .welcome-meta p {
+        margin: 5px 0 0;
+        color: #64748b;
+        font-size: 14px;
+        font-weight: 500;
+    }
+    .header-filters {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    .date-filter-form {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .date-filter-form input[type="date"] {
+        padding: 8px 12px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        font-size: 13px;
+        color: #334155;
+        outline: none;
+        background: #ffffff;
+    }
+    .btn-filter-submit {
+        background: #002F70 !important;
+        color: #ffffff !important;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    .btn-filter-submit:hover {
+        background: #001f4d !important;
+    }
 
-    <div class="dashboard-container">
-        <!-- Page Title with Welcome -->
-        <div style="margin-bottom: 20px;">
-            <h1 style="margin: 0 0 5px 0; font-size: 28px; font-weight: 700; color: #003366;">
-                Staff Dashboard
-            </h1>
-            <p style="margin: 0 0 8px 0; font-size: 20px; color: #666666;">
-                Welcome, <?= htmlspecialchars($me['first_name'] ?? $display_name) ?>!
-            </p>
-            
-            <!-- Clock Status - Small text below welcome (Read-only display) -->
-            <?php if ($clocked_in): ?>
-                <div style="font-size: 8px; color: #155724; display: flex; align-items: center; gap: 8px;">
-                    <span style="padding: 2px 6px; background: #d4edda; border-radius: 4px; border-left: 2px solid #28a745; font-weight: 600;">
-                        Clocked In - <?= htmlspecialchars(dashboard_shift_label(['shift_name' => $clock_in_shift ?? 'Shift'])) ?> - Since <?= date('h:i A', strtotime($clock_in_time)) ?>
-                    </span>
+    /* Quick Actions Row */
+    .quick-actions-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 15px;
+        margin-bottom: 25px;
+    }
+    .quick-action-button {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 18px 12px;
+        text-decoration: none;
+        color: #334155;
+        font-weight: 700;
+        font-size: 13px;
+        transition: all 0.25s ease;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        cursor: pointer;
+    }
+    .quick-action-button:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        border-color: #002F70;
+        color: #002F70;
+    }
+    .quick-action-button i {
+        font-size: 20px;
+        color: #002F70;
+        transition: transform 0.25s ease;
+    }
+    .quick-action-button:hover i {
+        transform: scale(1.15);
+    }
+
+    /* 8 Summary Cards Grid */
+    .summary-cards-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    @media (max-width: 1024px) {
+        .summary-cards-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+    @media (max-width: 600px) {
+        .summary-cards-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+    .summary-metric-card {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        border: 1px solid #e2e8f0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: all 0.3s ease;
+    }
+    .summary-metric-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 10px 20px -2px rgba(0, 0, 0, 0.08);
+    }
+    .metric-details h4 {
+        margin: 0;
+        font-size: 11px;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .metric-details .metric-value {
+        font-size: 22px;
+        font-weight: 800;
+        color: #0f172a;
+        margin: 6px 0 0;
+        line-height: 1.2;
+    }
+    .metric-icon-box {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+    }
+
+    /* Charts Section */
+    .charts-grid-layout {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    @media (max-width: 992px) {
+        .charts-grid-layout {
+            grid-template-columns: 1fr;
+        }
+    }
+    .chart-panel-card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    }
+    .chart-panel-card h3 {
+        font-size: 15px;
+        font-weight: 800;
+        color: #002F70;
+        margin: 0 0 20px 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border-bottom: 1px solid #f1f5f9;
+        padding-bottom: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .chart-container-inner {
+        position: relative;
+        width: 100%;
+        height: 250px;
+    }
+
+    /* Fuel Progress Bars Styling */
+    .tank-progress-item {
+        margin-bottom: 18px;
+    }
+    .tank-progress-item:last-child {
+        margin-bottom: 0;
+    }
+    .tank-meta-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 6px;
+    }
+    .tank-meta-row span {
+        font-size: 13px;
+        font-weight: 700;
+        color: #1e293b;
+    }
+    .tank-meta-row .volume-text {
+        font-size: 12px;
+        color: #64748b;
+        font-weight: 500;
+    }
+    .progress-bar-outer {
+        width: 100%;
+        height: 10px;
+        background: #e2e8f0;
+        border-radius: 6px;
+        overflow: hidden;
+    }
+    .progress-bar-inner {
+        height: 100%;
+        border-radius: 6px;
+        transition: width 0.4s ease;
+    }
+
+    /* Tabbed Tables Widget — matches manager dashboard exactly */
+    .tables-panel-card {
+        background: white;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        overflow: hidden;
+        margin-bottom: 32px;
+    }
+    .action-tabs {
+        display: flex;
+        background: #f8fafc;
+        border-bottom: 1px solid #e2e8f0;
+        overflow-x: auto;
+    }
+    .action-tab {
+        padding: 16px 24px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #64748b;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        transition: all 0.2s;
+        white-space: nowrap;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border-top: none;
+        border-left: none;
+        border-right: none;
+        background: none;
+        flex-shrink: 0;
+    }
+    .action-tab:hover {
+        color: #002F70;
+        background: rgba(0, 47, 112, 0.02);
+    }
+    .action-tab.active {
+        color: #002F70;
+        border-bottom-color: #002F70;
+        background: white;
+    }
+    .action-tab-badge {
+        background: #fee2e2;
+        color: #dc2626;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 6px;
+        border-radius: 10px;
+        min-width: 18px;
+        text-align: center;
+    }
+    .action-tab-badge.orange {
+        background: #ffedd5;
+        color: #ea580c;
+    }
+    .action-tab-badge.blue {
+        background: #dbeafe;
+        color: #2563eb;
+    }
+    .action-panel-content {
+        padding: 24px;
+    }
+    .action-panel-pane {
+        display: none;
+    }
+    .action-panel-pane.active {
+        display: block;
+    }
+
+    /* Standardized Petron Tables */
+    .standard-petron-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        text-align: left;
+        table-layout: fixed; /* Fixed layout for consistent column widths */
+    }
+    .standard-petron-table th {
+        background: #002F70;
+        color: #ffffff;
+        font-weight: 700;
+        padding: 12px 16px;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        white-space: nowrap; /* Prevent header text wrapping */
+    }
+    .standard-petron-table td {
+        padding: 12px 16px;
+        border-bottom: 1px solid #f1f5f9;
+        color: #334155;
+        overflow: hidden; /* Hide overflow text */
+        text-overflow: ellipsis; /* Show ellipsis for long text */
+    }
+    .standard-petron-table tbody tr:hover {
+        background: #f8fafc;
+    }
+    /* Specific column widths for proper alignment */
+    .standard-petron-table th:nth-child(1),
+    .standard-petron-table td:nth-child(1) {
+        width: 20%; /* Time column */
+    }
+    .standard-petron-table th:nth-child(2),
+    .standard-petron-table td:nth-child(2) {
+        width: 15%; /* Type column */
+    }
+    .standard-petron-table th:nth-child(3),
+    .standard-petron-table td:nth-child(3) {
+        width: 25%; /* Customer/Vehicle column */
+    }
+    .standard-petron-table th:nth-child(4),
+    .standard-petron-table td:nth-child(4) {
+        width: 20%; /* Amount/Service column */
+    }
+    .standard-petron-table th:nth-child(5),
+    .standard-petron-table td:nth-child(5) {
+        width: 20%; /* Status column */
+    }
+    .status-badge-pill {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: capitalize;
+    }
+    .badge-completed, .badge-released, .badge-verified, .badge-available {
+        background: #dcfce7;
+        color: #15803d;
+    }
+    .badge-pending, .badge-low, .badge-inprogress, .badge-reviewed {
+        background: #fef9c3;
+        color: #a16207;
+    }
+    .badge-critical, .badge-critical-stock, .badge-voided, .badge-outofstock {
+        background: #fee2e2;
+        color: #b91c1c;
+    }
+    .badge-info-pill {
+        background: #e0f2fe;
+        color: #0369a1;
+    }
+</style>
+
+<!-- Welcome / Filter Banner -->
+<div class="dashboard-header-container">
+    <div class="welcome-meta">
+        <h2>Welcome, <?= $display_name ?>!</h2>
+        <p><i class="fas fa-tachometer-alt"></i> Staff Dashboard</p>
+    </div>
+    <div class="header-filters">
+        <form method="GET" class="date-filter-form">
+            <input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>" required>
+            <span style="color:#64748b; font-weight:600; font-size:13px;">to</span>
+            <input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>" required>
+            <button type="submit" class="btn-filter-submit"><i class="fas fa-filter"></i> Filter</button>
+            <?php if ($date_from !== date('Y-m-d') || $date_to !== date('Y-m-d')): ?>
+                <a href="staff_dashboard.php" class="btn-filter-submit" style="background:#64748b !important; text-decoration:none; display:inline-flex; align-items:center; height:33px; line-height:33px; padding:0 12px; box-sizing:border-box;"><i class="fas fa-undo"></i> Reset</a>
+            <?php endif; ?>
+        </form>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="quick-actions-row">
+    <a href="staff_transactions_hub.php?section=fuel" class="quick-action-button">
+        <i class="fas fa-gas-pump"></i>
+        <span>New Fuel Transaction</span>
+    </a>
+    <a href="staff_transactions_hub.php?section=merchandise" class="quick-action-button">
+        <i class="fas fa-shopping-cart"></i>
+        <span>New Merchandise</span>
+    </a>
+    <a href="staff_transactions_hub.php?section=merchandise&active_tab=merchandise" class="quick-action-button">
+        <i class="fas fa-tools"></i>
+        <span>New Service Transaction</span>
+    </a>
+    <a href="staff_stock_requests.php" class="quick-action-button">
+        <i class="fas fa-plus-circle"></i>
+        <span>Create Stock Request</span>
+    </a>
+    <a href="staff_transactions_hub.php?section=history" class="quick-action-button">
+        <i class="fas fa-history"></i>
+        <span>Transaction History</span>
+    </a>
+</div>
+
+<!-- 8 Summary Cards Grid -->
+<div class="summary-cards-grid">
+    <!-- Today's Transactions -->
+    <div class="summary-metric-card" style="border-left: 4px solid #002F70;">
+        <div class="metric-details">
+            <h4>Today's Transactions</h4>
+            <div class="metric-value"><?= number_format($todays_transactions) ?></div>
+        </div>
+        <div class="metric-icon-box" style="background: #eff6ff; color: #002F70;">
+            <i class="fas fa-exchange-alt"></i>
+        </div>
+    </div>
+    <!-- Today's Sales -->
+    <div class="summary-metric-card" style="border-left: 4px solid #16a34a;">
+        <div class="metric-details">
+            <h4>Today's Sales</h4>
+            <div class="metric-value">&#8369;<?= number_format($todays_sales, 2) ?></div>
+        </div>
+        <div class="metric-icon-box" style="background: #f0fdf4; color: #16a34a;">
+            <i class="fas fa-money-bill-wave"></i>
+        </div>
+    </div>
+    <!-- Fuel Sold Today (Liters) -->
+    <div class="summary-metric-card" style="border-left: 4px solid #dc2626;">
+        <div class="metric-details">
+            <h4>Fuel Sold Today</h4>
+            <div class="metric-value"><?= number_format($fuel_sold_liters, 2) ?> L</div>
+        </div>
+        <div class="metric-icon-box" style="background: #fef2f2; color: #dc2626;">
+            <i class="fas fa-gas-pump"></i>
+        </div>
+    </div>
+    <!-- Service Queue -->
+    <div class="summary-metric-card" style="border-left: 4px solid #eab308;">
+        <div class="metric-details">
+            <h4>Service Queue</h4>
+            <div class="metric-value"><?= number_format($service_queue_count) ?></div>
+        </div>
+        <div class="metric-icon-box" style="background: #fef9c3; color: #eab308;">
+            <i class="fas fa-wrench"></i>
+        </div>
+    </div>
+    <!-- Fuel Stock Alerts -->
+    <div class="summary-metric-card" style="border-left: 4px solid #b91c1c;">
+        <div class="metric-details">
+            <h4>Fuel Stock Alerts</h4>
+            <div class="metric-value"><?= number_format($fuel_stock_alerts_count) ?></div>
+        </div>
+        <div class="metric-icon-box" style="background: #fee2e2; color: #b91c1c;">
+            <i class="fas fa-exclamation-triangle"></i>
+        </div>
+    </div>
+    <!-- Merchandise Stock Alerts -->
+    <div class="summary-metric-card" style="border-left: 4px solid #ea580c;">
+        <div class="metric-details">
+            <h4>Merch Stock Alerts</h4>
+            <div class="metric-value"><?= number_format($merch_stock_alerts_count) ?></div>
+        </div>
+        <div class="metric-icon-box" style="background: #ffedd5; color: #ea580c;">
+            <i class="fas fa-box-open"></i>
+        </div>
+    </div>
+    <!-- Pending Stock Requests -->
+    <div class="summary-metric-card" style="border-left: 4px solid #0891b2;">
+        <div class="metric-details">
+            <h4>Pending Requests</h4>
+            <div class="metric-value"><?= number_format($pending_stock_requests) ?></div>
+        </div>
+        <div class="metric-icon-box" style="background: #ecfeff; color: #0891b2;">
+            <i class="fas fa-file-import"></i>
+        </div>
+    </div>
+    <!-- Current Shift -->
+    <div class="summary-metric-card" style="border-left: 4px solid #64748b;">
+        <div class="metric-details">
+            <h4>Current Shift</h4>
+            <div class="metric-value" style="font-size: 14px; font-weight: 700; margin-top: 10px;"><?= htmlspecialchars($current_shift_info['shift_name'] ?? 'Active Shift') ?></div>
+        </div>
+        <div class="metric-icon-box" style="background: #f1f5f9; color: #64748b;">
+            <i class="fas fa-clock"></i>
+        </div>
+    </div>
+</div>
+
+<!-- Charts & Visualizations Grid -->
+<div class="charts-grid-layout">
+    <!-- Hourly Transactions -->
+    <div class="chart-panel-card">
+        <h3><i class="fas fa-chart-line"></i> Hourly Transactions</h3>
+        <div class="chart-container-inner">
+            <canvas id="hourlyTransactionsChart"></canvas>
+        </div>
+    </div>
+    
+    <!-- Fuel Sales by Product -->
+    <div class="chart-panel-card">
+        <h3><i class="fas fa-gas-pump"></i> Fuel Sales by Product (Liters)</h3>
+        <div class="chart-container-inner">
+            <canvas id="fuelSalesChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Merchandise Sales by Category -->
+    <div class="chart-panel-card">
+        <h3><i class="fas fa-shopping-basket"></i> Merchandise Sales by Category</h3>
+        <div class="chart-container-inner">
+            <canvas id="merchSalesChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Service Status Distribution -->
+    <div class="chart-panel-card">
+        <h3><i class="fas fa-chart-pie"></i> Service Status Distribution</h3>
+        <div class="chart-container-inner">
+            <canvas id="serviceStatusChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Weekly Transaction Trend -->
+    <div class="chart-panel-card">
+        <h3><i class="fas fa-calendar-week"></i> Weekly Transaction Trend</h3>
+        <div class="chart-container-inner">
+            <canvas id="weeklyTrendChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Fuel Tank Levels Progress Bars -->
+    <div class="chart-panel-card">
+        <h3><i class="fas fa-tachometer-alt"></i> Fuel Tank Levels</h3>
+        <div style="padding: 10px 0;">
+            <?php if (empty($tank_levels)): ?>
+                <div style="text-align:center; padding: 40px 0; color:#64748b;">
+                    <i class="fas fa-gas-pump" style="font-size:32px; margin-bottom:10px; display:block;"></i>
+                    No tank level readings available.
                 </div>
             <?php else: ?>
-                <div style="font-size: 8px; color: #721c24;">
-                    <span style="padding: 2px 6px; background: #f8d7da; border-radius: 4px; border-left: 2px solid #dc3545; font-weight: 600;">
-                        Not Clocked In
-                    </span>
-                </div>
+                <?php foreach ($tank_levels as $tl):
+                    $pct = $tl['pct'];
+                    $color = '#22c55e'; // Green
+                    if ($pct <= 10) {
+                        $color = '#ef4444'; // Red
+                    } elseif ($pct <= 25) {
+                        $color = '#f97316'; // Orange
+                    }
+                ?>
+                    <div class="tank-progress-item">
+                        <div class="tank-meta-row">
+                            <span><?= htmlspecialchars($tl['fuel_type']) ?></span>
+                            <span class="volume-text"><?= number_format($tl['current_stock'], 2) ?> / <?= number_format($tl['total_capacity'], 2) ?> L (<?= $pct ?>%)</span>
+                        </div>
+                        <div class="progress-bar-outer">
+                            <div class="progress-bar-inner" style="width: <?= $pct ?>%; background: <?= $color ?>;"></div>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
             <?php endif; ?>
         </div>
+    </div>
+</div>
 
-        <!-- Date Selector / Status Info -->
-        <div style="margin-bottom: 25px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                <span style="font-weight: 700; color: #003366; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Viewing Data For:</span>
-                <span style="background: #003366; color: white; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 700; box-shadow: 0 2px 4px rgba(0,51,102,0.2);">
-                    <?= htmlspecialchars($date_range_label) ?>
-                </span>
-            </div>
-            <form method="GET" style="display: flex; align-items: center; gap: 8px; margin: 0; flex-wrap: wrap;">
-                <label style="font-size: 12px; font-weight: 700; color: #334155;">From</label>
-                <input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>" style="padding: 7px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; color: #334155; outline: none; background: white; font-weight: 500;">
-                <label style="font-size: 12px; font-weight: 700; color: #334155;">To</label>
-                <input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>" style="padding: 7px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; color: #334155; outline: none; background: white; font-weight: 500;">
-                <button type="submit" style="background: #003366; color: white; border: none; padding: 7px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                    Filter Range
-                </button>
-                <?php if ($date_filter_active): ?>
-                    <a href="staff_dashboard.php" style="background: #64748b; color: white; text-decoration: none; padding: 7px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                        Reset
-                    </a>
-                <?php endif; ?>
-            </form>
+<!-- Operational Tables Tabbed Container -->
+<div class="tables-panel-card">
+    <div class="action-tabs">
+        <button class="action-tab active" onclick="switchTab(event, 'recent-transactions-pane')">
+            <i class="fas fa-history"></i>
+            <span>Recent Transactions</span>
+        </button>
+        <button class="action-tab" onclick="switchTab(event, 'active-service-pane')">
+            <i class="fas fa-tools"></i>
+            <span>Active Service Queue</span>
+            <?php if (count($active_services) > 0): ?>
+            <span class="action-tab-badge blue"><?= count($active_services) ?></span>
+            <?php endif; ?>
+        </button>
+        <button class="action-tab" onclick="switchTab(event, 'fuel-alerts-pane')">
+            <i class="fas fa-exclamation-triangle"></i>
+            <span>Fuel Stock Alerts</span>
+            <?php if ($fuel_stock_alerts_count > 0): ?>
+                <span class="action-tab-badge"><?= $fuel_stock_alerts_count ?></span>
+            <?php endif; ?>
+        </button>
+        <button class="action-tab" onclick="switchTab(event, 'merch-alerts-pane')">
+            <i class="fas fa-box-open"></i>
+            <span>Merchandise Low Stock</span>
+            <?php if ($merch_stock_alerts_count > 0): ?>
+                <span class="action-tab-badge orange"><?= $merch_stock_alerts_count ?></span>
+            <?php endif; ?>
+        </button>
+        <button class="action-tab" onclick="switchTab(event, 'pending-requests-pane')">
+            <i class="fas fa-file-import"></i>
+            <span>Pending Stock Requests</span>
+            <?php if ($pending_stock_requests > 0): ?>
+                <span class="action-tab-badge blue"><?= $pending_stock_requests ?></span>
+            <?php endif; ?>
+        </button>
+    </div>
+    <div class="action-panel-content">
+        <!-- 1. Recent Transactions -->
+        <div id="recent-transactions-pane" class="action-panel-pane active">
+            <table class="standard-petron-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Type</th>
+                        <th>Customer</th>
+                        <th>Amount</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($recent_transactions)): ?>
+                        <tr>
+                            <td colspan="5" style="text-align:center; color:#64748b;">No recent transactions found.</td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($recent_transactions as $rt): ?>
+                            <tr>
+                                <td><?= date('M d, Y h:i A', strtotime($rt['time'])) ?></td>
+                                <td><span class="status-badge-pill badge-info-pill"><?= htmlspecialchars($rt['type']) ?></span></td>
+                                <td><?= htmlspecialchars($rt['customer'] ?: 'Walk-in') ?></td>
+                                <td class="font-bold">&#8369;<?= number_format($rt['amount'], 2) ?></td>
+                                <td>
+                                    <?php 
+                                        $st = strtolower($rt['status'] ?? '');
+                                        $badge_class = 'badge-pending';
+                                        if (in_array($st, ['completed', 'released', 'verified', 'approved'])) {
+                                            $badge_class = 'badge-completed';
+                                        } elseif (in_array($st, ['voided', 'rejected', 'failed'])) {
+                                            $badge_class = 'badge-critical';
+                                        }
+                                    ?>
+                                    <span class="status-badge-pill <?= $badge_class ?>"><?= htmlspecialchars($rt['status'] ?: 'Pending') ?></span>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
         </div>
 
-        <!-- Flash Messages -->
-        <?php if ($flash_success): ?>
-            <div class="alert alert-success">
-                <?= htmlspecialchars($flash_success) ?>
-            </div>
-        <?php endif; ?>
-        
-        <?php if ($flash_error): ?>
-            <div class="alert alert-error">
-                <?= htmlspecialchars($flash_error) ?>
-            </div>
-        <?php endif; ?>
-        
-        <!-- Tabs (Hidden for staff, only shown for admin/manager) -->
-        <?php if ($can_view_consolidation): ?>
-        <div class="tabs-container">
-            <div class="tabs">
-                <?php if ($user_assigned_shift == 1 || $can_view_consolidation): ?>
-                    <button class="tab <?= ($user_assigned_shift == 1 && !$can_view_consolidation) ? 'active' : '' ?>" data-tab="shift1">
-                        <?= htmlspecialchars($shift1_label) ?>
-                    </button>
-                <?php endif; ?>
-                
-                <?php if ($user_assigned_shift == 2 || $can_view_consolidation): ?>
-                    <button class="tab <?= ($user_assigned_shift == 2 && !$can_view_consolidation) ? 'active' : '' ?>" data-tab="shift2">
-                        <?= htmlspecialchars($shift2_label) ?>
-                    </button>
-                <?php endif; ?>
-                
-                <?php if ($can_view_consolidation): ?>
-                    <button class="tab active" data-tab="consolidation">
-                        Consolidation
-                    </button>
-                <?php endif; ?>
-            </div>
-        <?php endif; ?>
-            
-            <!-- SHIFT 1 CONTENT -->
-            <?php if ($shift1_data): ?>
-            <div class="tab-content <?= ($user_assigned_shift == 1 && !$can_view_consolidation) ? 'active' : '' ?>" id="shift1">
-                
-                <!-- Shift Tracker -->
-                <div class="widget-card" style="margin-bottom: 20px;">
-                    <h3 style="color: #003366;">Shift Tracker - Staff Clock In/Out</h3>
-                    <div style="overflow:hidden;">
-                        <table style="width: 100%; border-collapse: collapse;">
-                            <thead>
-                                <tr style="background: #f7f7f7;">
-                                    <th style="padding: 10px; text-align: left; border-bottom: 2px solid #ddd;">Staff Name</th>
-                                    <th style="padding: 10px; text-align: left; border-bottom: 2px solid #ddd;">Clock In</th>
-                                    <th style="padding: 10px; text-align: left; border-bottom: 2px solid #ddd;">Clock Out</th>
-                                    <th style="padding: 10px; text-align: left; border-bottom: 2px solid #ddd;">Duration</th>
-                                    <th style="padding: 10px; text-align: left; border-bottom: 2px solid #ddd;">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php if (!empty($shift1_data['shift_tracker'])): ?>
-                                    <?php foreach ($shift1_data['shift_tracker'] as $tracker): ?>
-                                        <tr>
-                                            <td style="padding: 10px; border-bottom: 1px solid #eee;"><?= htmlspecialchars($tracker['full_name']) ?></td>
-                                            <td style="padding: 10px; border-bottom: 1px solid #eee;"><?= date('g:i A', strtotime($tracker['start_time'])) ?></td>
-                                            <td style="padding: 10px; border-bottom: 1px solid #eee;"><?= $tracker['end_time'] ? date('g:i A', strtotime($tracker['end_time'])) : '-' ?></td>
-                                            <td style="padding: 10px; border-bottom: 1px solid #eee;"><?= floor($tracker['duration_min'] / 60) ?>h <?= $tracker['duration_min'] % 60 ?>m</td>
-                                            <td style="padding: 10px; border-bottom: 1px solid #eee;">
-                                                <span style="padding: 3px 10px; border-radius: 12px; font-size: 11px; background: <?= $tracker['status'] == 'Active' ? '#d4edda' : '#e8e8e8' ?>; color: <?= $tracker['status'] == 'Active' ? '#155724' : '#666666' ?>;">
-                                                    <?= $tracker['status'] ?>
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                <?php else: ?>
-                                    <tr><td colspan="5" style="padding: 20px; text-align: center; color: #666666;">No staff clocked in for this shift</td></tr>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                
-                <!-- Summary Cards -->
-                <div class="cards-grid">
-                    <div class="stat-card">
-                        <div class="details">
-                            <div class="label">Fuel Sales</div>
-                            <div class="value">&#8369;<?= number_format(array_sum(array_column($shift1_data['fuel'], 'revenue')), 2) ?></div>
-                            <small><?= number_format(array_sum(array_column($shift1_data['fuel'], 'liters')), 2) ?> L sold</small>
-                        </div>
-                        <div class="icon"><i class="fas fa-gas-pump"></i></div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="details">
-                            <div class="label">Merchandise Sales</div>
-                            <div class="value">&#8369;<?= number_format($shift1_data['merch']['total'], 2) ?></div>
-                            <small><?= $shift1_data['merch']['count'] ?> transactions</small>
-                        </div>
-                        <div class="icon"><i class="fas fa-shopping-cart"></i></div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="details">
-                            <div class="label">Service Income</div>
-                            <div class="value">&#8369;<?= number_format($shift1_data['service']['total_service_income'], 2) ?></div>
-                            <small><?= $shift1_data['service']['completed_jobs'] ?> completed jobs</small>
-                        </div>
-                        <div class="icon"><i class="fas fa-wrench"></i></div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="details">
-                            <div class="label">Total Payments Collected</div>
-                            <div class="value">&#8369;<?= number_format($shift1_data['payments_summary']['total'], 2) ?></div>
-                            <small>Fuel + Merch + Service</small>
-                        </div>
-                        <div class="icon"><i class="fas fa-money-bill-wave"></i></div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="details">
-                            <div class="label">Job Orders</div>
-                            <div class="value"><?= array_sum($shift1_data['jo_stats']) ?></div>
-                            <small><?= $shift1_data['jo_stats']['Pending'] ?? 0 ?> pending, <?= $shift1_data['jo_stats']['In Progress'] ?? 0 ?> in progress, <?= $shift1_data['jo_stats']['Completed'] ?? 0 ?> done</small>
-                        </div>
-                        <div class="icon"><i class="fas fa-clipboard-list"></i></div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="details">
-                            <div class="label">New Customers</div>
-                            <div class="value"><?= $shift1_data['new_customers'] ?></div>
-                            <small>Added this shift</small>
-                        </div>
-                        <div class="icon"><i class="fas fa-users"></i></div>
-                    </div>
-                </div>
-
-                <!-- Fuel Monitoring -->
-                <div class="widget-card" style="margin:20px 0;">
-                    <h3 style="color:#003366;">Fuel Tank Levels &amp; Monitoring</h3>
-                    <?php if (empty($shift1_data['fuel_levels'])): ?>
-                        <p style="color:#666;padding:20px;text-align:center;">No fuel inventory data available.</p>
+        <!-- 2. Active Service Queue -->
+        <div id="active-service-pane" class="action-panel-pane">
+            <table class="standard-petron-table">
+                <thead>
+                    <tr>
+                        <th>Service No.</th>
+                        <th>Customer</th>
+                        <th>Vehicle</th>
+                        <th>Service</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($active_services)): ?>
+                        <tr>
+                            <td colspan="5" style="text-align:center; color:#64748b;">No active services currently in queue.</td>
+                        </tr>
                     <?php else: ?>
-                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:15px;margin-top:15px;">
-                        <?php foreach ($shift1_data['fuel_levels'] as $fl):
-                            $pct = $fl['capacity'] > 0 ? min(100, ($fl['current_stock'] / $fl['capacity']) * 100) : 0;
-                            $c   = ($fl['stock_status']==='Critical'||$fl['stock_status']==='Out of Stock') ? '#dc3545' : ($fl['stock_status']==='Low Stock' ? '#fd7e14' : '#28a745');
-                        ?>
-                        <div style="background:#f7f7f7;padding:15px;border-radius:8px;border-left:4px solid <?= $c ?>;">
-                            <div style="font-weight:700;color:#003366;margin-bottom:4px;"><?= htmlspecialchars($fl['fuel_type_name']) ?></div>
-                            <div style="font-size:22px;font-weight:700;color:#003366;"><?= number_format($fl['current_stock'],2) ?> L</div>
-                            <div style="font-size:11px;color:#666;">Capacity: <?= number_format($fl['capacity'],2) ?> L</div>
-                            <span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:<?= $c ?>22;color:<?= $c ?>;display:inline-block;margin-top:4px;"><?= $fl['stock_status'] ?></span>
-                            <?php if ($fl['capacity']>0): ?>
-                            <div style="background:#e0e0e0;height:6px;border-radius:3px;margin-top:8px;overflow:hidden;">
-                                <div style="background:<?= $c ?>;height:100%;width:<?= round($pct) ?>%;"></div>
-                            </div>
-                            <div style="font-size:10px;color:#999;margin-top:2px;"><?= round($pct) ?>% full</div>
-                            <?php endif; ?>
-                        </div>
-                        <?php endforeach; ?>
-                    </div>
-                    <?php endif; ?>
-                </div>
-
-                <!-- Fuel Tank Utilization Chart -->
-                <?php if (!empty($shift1_data['fuel_levels'])): ?>
-                <div class="chart-card" style="margin:20px 0;">
-                    <h3><i class="fas fa-gas-pump" style="color:#003366;"></i> Fuel Tank Utilization</h3>
-                    <canvas id="shift1TankChart" height="120"></canvas>
-                </div>
-                <?php endif; ?>
-
-                <!-- Merchandise Inventory - Low Stock Alerts -->
-                <div class="widget-card" style="margin:20px 0;">
-                    <h3 style="color:#003366;">Merchandise Inventory - Low Stock Alerts</h3>
-                    <?php if (!empty($shift1_data['merch_low_stock'])): ?>
-                    <div style="overflow:hidden;margin-top:15px;">
-                        <table style="width:100%;border-collapse:collapse;">
-                            <thead>
-                                <tr style="background:#f7f7f7;">
-                                    <th style="padding:10px;text-align:left;border-bottom:2px solid #ddd;">Product</th>
-                                    <th style="padding:10px;text-align:left;border-bottom:2px solid #ddd;">Current</th>
-                                    <th style="padding:10px;text-align:left;border-bottom:2px solid #ddd;">Reorder</th>
-                                    <th style="padding:10px;text-align:left;border-bottom:2px solid #ddd;">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                            <?php foreach($shift1_data['merch_low_stock'] as $item):
-                                $pct2=max(0,round(($item['current_stock']??0)/max(1,$item['reorder_level']??1)*100));
-                                $sc=$pct2<=25?'#dc3545':($pct2<=50?'#fd7e14':'#ffc107');
-                            ?>
+                        <?php foreach ($active_services as $as): ?>
                             <tr>
-                                <td style="padding:10px;border-bottom:1px solid #eee;"><?=htmlspecialchars($item['product_name'])?></td>
-                                <td style="padding:10px;border-bottom:1px solid #eee;"><?=number_format($item['current_stock']??0)?></td>
-                                <td style="padding:10px;border-bottom:1px solid #eee;"><?=number_format($item['reorder_level']??0)?></td>
-                                <td style="padding:10px;border-bottom:1px solid #eee;"><span style="background:<?=$sc?>22;color:<?=$sc?>;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;"><?=$pct2?>%</span></td>
-                            </tr>
-                            <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                    <!-- Low Stock Bar Chart -->
-                    <div style="margin-top:16px;"><canvas id="shift1MerchStockChart" height="100"></canvas></div>
-                    <?php else: ?>
-                        <p style="text-align: center; color: #666666; padding: 20px;"><i class="fas fa-check-circle" style="color:#28a745;"></i> All merchandise items are adequately stocked</p>
-                    <?php endif; ?>
-                </div>
-                
-                <!-- Charts Grid -->
-                <div class="charts-grid">
-                    <div class="chart-card">
-                        <h3>Fuel Sales by Type (Liters)</h3>
-                        <canvas id="shift1FuelChart"></canvas>
-                    </div>
-                    <div class="chart-card">
-                        <h3>Job Orders Trend (Hourly)</h3>
-                        <canvas id="shift1JobOrderChart"></canvas>
-                    </div>
-                    <div class="chart-card">
-                        <h3>Merchandise Sales by Category</h3>
-                        <canvas id="shift1MerchCategoryChart"></canvas>
-                    </div>
-                    <div class="chart-card">
-                        <h3>Payment Methods Breakdown</h3>
-                        <canvas id="shift1PaymentChart"></canvas>
-                    </div>
-                </div>
-
-                <!-- Job Orders Status Breakdown -->
-                <div class="widget-card" style="margin:20px 0;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
-                        <h3 style="color:#003366;margin:0;">Job Orders - <?= htmlspecialchars($shift1_label) ?></h3>
-                        <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="font-size:13px;color:#003366;text-decoration:none;font-weight:600;">View All</a>
-                    </div>
-                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;">
-                        <?php
-                        $jo_display = [
-                            'Pending'    => ['#fd7e14','#fff3e0'],
-                            'In Progress'=> ['#003366','#e8f0ff'],
-                            'Completed'  => ['#28a745','#d4edda'],
-                            'Cancelled'  => ['#dc3545','#fde8ea'],
-                        ];
-                        foreach ($jo_display as $label => [$fg,$bg]):
-                            $cnt = $shift1_data['jo_stats'][$label] ?? 0;
-                        ?>
-                        <div style="background:<?= $bg ?>;border-radius:10px;padding:15px;text-align:center;border-top:3px solid <?= $fg ?>;">
-                            <div style="font-size:28px;font-weight:700;color:<?= $fg ?>;"><?= $cnt ?></div>
-                            <div style="font-size:12px;color:#555;margin-top:4px;font-weight:600;"><?= $label ?></div>
-                        </div>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
-
-                <!-- Payments Summary -->
-                <div class="widget-card" style="margin:20px 0;">
-                    <h3 style="color:#003366;margin-bottom:15px;">Payments Summary - <?= htmlspecialchars($shift1_label) ?></h3>
-                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px;">
-                        <?php
-                        $pay_modes = [
-                            'Cash'         => ['#28a745', $shift1_data['payments_summary']['cash']],
-                            'Card'         => ['#003366', $shift1_data['payments_summary']['card']],
-                            'E-Wallet'     => ['#17a2b8', $shift1_data['payments_summary']['ewallet']],
-                            'E-Fuel Card'  => ['#fd7e14', $shift1_data['payments_summary']['efuel']],
-                            'Fleet Card'   => ['#6c757d', $shift1_data['payments_summary']['fleet']],
-                        ];
-                        foreach ($pay_modes as $mode => [$col, $amt]):
-                        ?>
-                        <div style="background:#f7f7f7;border-radius:10px;padding:14px;border-left:4px solid <?= $col ?>;">
-                            <div style="font-size:11px;color:#666;font-weight:600;"><?= $mode ?></div>
-                            <div style="font-size:20px;font-weight:700;color:<?= $col ?>;margin-top:4px;">&#8369;<?= number_format($amt,2) ?></div>
-                        </div>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
-
-                <!-- Customers -->
-                <div class="widget-card" style="margin:20px 0;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
-                        <h3 style="color:#003366;margin:0;">Customers</h3>
-                        <a href="staff_customers_report.php" style="font-size:13px;color:#003366;text-decoration:none;font-weight:600;">View All</a>
-                    </div>
-                    <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:15px;">
-                        <div style="background:#d4edda;border-radius:10px;padding:15px 25px;text-align:center;flex:1;">
-                            <div style="font-size:28px;font-weight:700;color:#28a745;"><?= $shift1_data['new_customers'] ?></div>
-                            <div style="font-size:12px;color:#155724;font-weight:600;">New This Shift</div>
-                        </div>
-                        <div style="background:#fff3cd;border-radius:10px;padding:15px 25px;text-align:center;flex:1;">
-                            <div style="font-size:28px;font-weight:700;color:#856404;"><?= count($shift1_data['credit_customers']) ?></div>
-                            <div style="font-size:12px;color:#856404;font-weight:600;">With Balance</div>
-                        </div>
-                    </div>
-                    <?php if (!empty($shift1_data['credit_customers'])): ?>
-                    <table style="width:100%;border-collapse:collapse;font-size:13px;">
-                        <thead>
-                            <tr style="background:#f7f7f7;">
-                                <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #ddd;">Customer</th>
-                                <th style="padding:8px 10px;text-align:right;border-bottom:2px solid #ddd;">Balance</th>
-                                <th style="padding:8px 10px;text-align:right;border-bottom:2px solid #ddd;">Credit Limit</th>
-                                <th style="padding:8px 10px;text-align:center;border-bottom:2px solid #ddd;">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($shift1_data['credit_customers'] as $cc): ?>
-                            <tr>
-                                <td style="padding:8px 10px;border-bottom:1px solid #eee;"><?= htmlspecialchars($cc['name']) ?></td>
-                                <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right;color:#dc3545;font-weight:600;">&#8369;<?= number_format($cc['balance'],2) ?></td>
-                                <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right;">&#8369;<?= number_format($cc['credit_limit'],2) ?></td>
-                                <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center;">
-                                    <span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:<?= $cc['status']==='active'?'#d4edda':'#f8d7da' ?>;color:<?= $cc['status']==='active'?'#155724':'#721c24' ?>;"><?= ucfirst($cc['status']) ?></span>
+                                <td class="font-bold"><?= htmlspecialchars($as['service_no']) ?></td>
+                                <td><?= htmlspecialchars($as['customer'] ?: 'Walk-in') ?></td>
+                                <td><?= htmlspecialchars($as['vehicle']) ?></td>
+                                <td><?= htmlspecialchars($as['service']) ?></td>
+                                <td>
+                                    <?php
+                                        $st = strtolower($as['status'] ?? '');
+                                        $badge_class = 'badge-pending';
+                                        if ($st === 'in progress') {
+                                            $badge_class = 'badge-inprogress';
+                                        } elseif ($st === 'completed') {
+                                            $badge_class = 'badge-completed';
+                                        }
+                                    ?>
+                                    <span class="status-badge-pill <?= $badge_class ?>"><?= htmlspecialchars($as['status']) ?></span>
                                 </td>
                             </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                    <?php else: ?>
-                        <p style="color:#666;text-align:center;padding:10px;">No outstanding credit balances.</p>
-                    <?php endif; ?>
-                </div>
-
-                <!-- Activity Log -->
-                <div class="widget-card" style="margin:20px 0;">
-                    <h3 style="color:#003366;margin-bottom:15px;">Activity Log - <?= htmlspecialchars($shift1_label) ?></h3>
-                    <div style="max-height:350px;overflow-y:auto;">
-                        <?php if (!empty($shift1_data['activity_log'])): ?>
-                            <?php foreach ($shift1_data['activity_log'] as $log): ?>
-                            <div style="padding:10px 12px;border-left:3px solid #003366;background:#f7f7f7;margin-bottom:8px;border-radius:5px;">
-                                <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
-                                    <span style="font-weight:600;color:#003366;font-size:13px;"><?= htmlspecialchars($log['action_type']) ?></span>
-                                    <span style="font-size:11px;color:#999;"><?= date('g:i A', strtotime($log['created_at'])) ?></span>
-                                </div>
-                                <div style="font-size:12px;color:#555;"><?= htmlspecialchars($log['action_details']) ?></div>
-                                <div style="font-size:11px;color:#aaa;margin-top:2px;">by <?= htmlspecialchars($log['username']) ?></div>
-                            </div>
-                            <?php endforeach; ?>
-                        <?php else: ?>
-                            <p style="text-align:center;color:#666;padding:20px;">No activity recorded for this shift.</p>
-                        <?php endif; ?>
-                    </div>
-                </div>
-
-                <!-- Calendar Widget - Tasks for Selected Date Range -->
-                <div class="calendar-widget">
-                    <div class="calendar-header">
-                        <h3>Tasks &amp; Upcoming Schedule</h3>
-                        <span style="color:#666;font-size:14px;"><?= htmlspecialchars($date_range_label) ?></span>
-                    </div>
-                    <div class="task-list">
-                        <?php if (empty($shift1_data['calendar_tasks'])): ?>
-                            <p style="text-align:center;color:#666;padding:20px;">No tasks or deliveries in this date range.</p>
-                        <?php else: ?>
-                            <?php foreach ($shift1_data['calendar_tasks'] as $task):
-                                $isToday = date('Y-m-d', strtotime($task['task_date'])) === date('Y-m-d');
-                                $typeBg  = $task['task_type'] === 'Fuel Delivery' ? '#fff3e0' : '#e8f0ff';
-                                $typeFg  = $task['task_type'] === 'Fuel Delivery' ? '#fd7e14' : '#003366';
-                            ?>
-                            <div class="task-item <?= $isToday ? 'today' : '' ?>">
-                                <div class="task-header">
-                                    <span class="task-title"><?= htmlspecialchars($task['reference']) ?></span>
-                                    <span class="task-date"><?= date('M j, g:i A', strtotime($task['task_date'])) ?></span>
-                                </div>
-                                <div style="font-size:12px;color:#555;margin-top:2px;"><?= htmlspecialchars($task['customer']) ?></div>
-                                <div style="margin-top:5px;display:flex;gap:8px;flex-wrap:wrap;">
-                                    <span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:<?= $typeBg ?>;color:<?= $typeFg ?>;"><?= $task['task_type'] ?></span>
-                                    <span class="task-status" style="background:#e8e8e8;color:#003366;"><?= htmlspecialchars($task['status']) ?></span>
-                                </div>
-                            </div>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </div>
-                </div>
-                <!-- Quick Actions -->
-                <div style="background:#f7f7f7;padding:20px;border-radius:10px;margin-top:20px;">
-                    <h3 style="color:#003366;margin-bottom:15px;">Quick Actions</h3>
-                    <div class="quick-actions">
-                        <a href="staff_transactions_hub.php?section=merchandise" class="quick-action-btn"><div>POS / Merchandise</div></a>
-                        <a href="staff_transactions_hub.php?section=merchandise" class="quick-action-btn"><div>Credit Sale</div></a>
-                        <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker" class="quick-action-btn"><div>Job Orders</div></a>
-                        <a href="staff_transactions_hub.php?section=fuel" class="quick-action-btn"><div>Fuel Transactions</div></a>
-                        <a href="staff_record_delivery.php" class="quick-action-btn"><div>Receive Items</div></a>
-                        <a href="my_shift.php" class="quick-action-btn"><div>My Shift</div></a>
-                    </div>
-                </div>
-            </div>
-            <?php endif; // End Shift 1 Content ?>
-
-            
-            <!-- SHIFT 2 CONTENT -->
-            <?php if ($shift2_data): ?>
-            <div class="tab-content <?= ($user_assigned_shift == 2 && !$can_view_consolidation) ? 'active' : '' ?>" id="shift2">
-                
-                <!-- Shift Tracker -->
-                <div class="widget-card" style="margin-bottom: 20px;">
-                    <h3 style="color: #003366;">Shift Tracker - Staff Clock In/Out</h3>
-                    <div style="overflow:hidden;">
-                        <table style="width: 100%; border-collapse: collapse;">
-                            <thead>
-                                <tr style="background: #f7f7f7;">
-                                    <th style="padding: 10px; text-align: left; border-bottom: 2px solid #ddd;">Staff Name</th>
-                                    <th style="padding: 10px; text-align: left; border-bottom: 2px solid #ddd;">Clock In</th>
-                                    <th style="padding: 10px; text-align: left; border-bottom: 2px solid #ddd;">Clock Out</th>
-                                    <th style="padding: 10px; text-align: left; border-bottom: 2px solid #ddd;">Duration</th>
-                                    <th style="padding: 10px; text-align: left; border-bottom: 2px solid #ddd;">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php if (!empty($shift2_data['shift_tracker'])): ?>
-                                    <?php foreach ($shift2_data['shift_tracker'] as $tracker): ?>
-                                        <tr>
-                                            <td style="padding: 10px; border-bottom: 1px solid #eee;"><?= htmlspecialchars($tracker['full_name']) ?></td>
-                                            <td style="padding: 10px; border-bottom: 1px solid #eee;"><?= date('g:i A', strtotime($tracker['start_time'])) ?></td>
-                                            <td style="padding: 10px; border-bottom: 1px solid #eee;"><?= $tracker['end_time'] ? date('g:i A', strtotime($tracker['end_time'])) : '-' ?></td>
-                                            <td style="padding: 10px; border-bottom: 1px solid #eee;"><?= floor($tracker['duration_min'] / 60) ?>h <?= $tracker['duration_min'] % 60 ?>m</td>
-                                            <td style="padding: 10px; border-bottom: 1px solid #eee;">
-                                                <span style="padding: 3px 10px; border-radius: 12px; font-size: 11px; background: <?= $tracker['status'] == 'Active' ? '#d4edda' : '#e8e8e8' ?>; color: <?= $tracker['status'] == 'Active' ? '#155724' : '#666666' ?>;">
-                                                    <?= $tracker['status'] ?>
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                <?php else: ?>
-                                    <tr><td colspan="5" style="padding: 20px; text-align: center; color: #666666;">No staff clocked in for this shift</td></tr>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                
-                <!-- Summary Cards -->
-                <div class="cards-grid">
-                    <div class="stat-card">
-                        <div class="details">
-                            <div class="label">Fuel Sales</div>
-                            <div class="value">&#8369;<?= number_format(array_sum(array_column($shift2_data['fuel'], 'revenue')), 2) ?></div>
-                            <small><?= number_format(array_sum(array_column($shift2_data['fuel'], 'liters')), 2) ?> L sold</small>
-                        </div>
-                        <div class="icon"><i class="fas fa-gas-pump"></i></div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="details">
-                            <div class="label">Merchandise Sales</div>
-                            <div class="value">&#8369;<?= number_format($shift2_data['merch']['total'], 2) ?></div>
-                            <small><?= $shift2_data['merch']['count'] ?> transactions</small>
-                        </div>
-                        <div class="icon"><i class="fas fa-shopping-cart"></i></div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="details">
-                            <div class="label">Service Income</div>
-                            <div class="value">&#8369;<?= number_format($shift2_data['service']['total_service_income'], 2) ?></div>
-                            <small><?= $shift2_data['service']['completed_jobs'] ?> completed jobs</small>
-                        </div>
-                        <div class="icon"><i class="fas fa-wrench"></i></div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="details">
-                            <div class="label">Total Payments Collected</div>
-                            <div class="value">&#8369;<?= number_format($shift2_data['payments_summary']['total'], 2) ?></div>
-                            <small>Fuel + Merch + Service</small>
-                        </div>
-                        <div class="icon"><i class="fas fa-money-bill-wave"></i></div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="details">
-                            <div class="label">Job Orders</div>
-                            <div class="value"><?= array_sum($shift2_data['jo_stats']) ?></div>
-                            <small><?= $shift2_data['jo_stats']['Pending'] ?? 0 ?> pending, <?= $shift2_data['jo_stats']['In Progress'] ?? 0 ?> in progress, <?= $shift2_data['jo_stats']['Completed'] ?? 0 ?> done</small>
-                        </div>
-                        <div class="icon"><i class="fas fa-clipboard-list"></i></div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="details">
-                            <div class="label">New Customers</div>
-                            <div class="value"><?= $shift2_data['new_customers'] ?></div>
-                            <small>Added this shift</small>
-                        </div>
-                        <div class="icon"><i class="fas fa-users"></i></div>
-                    </div>
-                </div>
-
-                <!-- Fuel Monitoring with Variance -->
-                <div class="widget-card" style="margin:20px 0;">
-                    <h3 style="color:#003366;">Fuel Tank Levels &amp; Variance Alerts</h3>
-                    <?php if (empty($shift2_data['fuel_levels'])): ?>
-                        <p style="color:#666;padding:20px;text-align:center;">No fuel inventory data available.</p>
-                    <?php else: ?>
-                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:15px;margin-top:15px;">
-                        <?php foreach ($shift2_data['fuel_levels'] as $fl):
-                            $pct = $fl['capacity'] > 0 ? min(100, ($fl['current_stock'] / $fl['capacity']) * 100) : 0;
-                            $c   = ($fl['stock_status']==='Critical'||$fl['stock_status']==='Out of Stock') ? '#dc3545' : ($fl['stock_status']==='Low Stock' ? '#fd7e14' : '#28a745');
-                        ?>
-                        <div style="background:#f7f7f7;padding:15px;border-radius:8px;border-left:4px solid <?= $c ?>;">
-                            <div style="font-weight:700;color:#003366;margin-bottom:4px;"><?= htmlspecialchars($fl['fuel_type_name']) ?></div>
-                            <div style="font-size:22px;font-weight:700;color:#003366;"><?= number_format($fl['current_stock'],2) ?> L</div>
-                            <div style="font-size:11px;color:#666;">Capacity: <?= number_format($fl['capacity'],2) ?> L</div>
-                            <span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:<?= $c ?>22;color:<?= $c ?>;display:inline-block;margin-top:4px;"><?= $fl['stock_status'] ?></span>
-                            <?php if ($fl['capacity']>0): ?>
-                            <div style="background:#e0e0e0;height:6px;border-radius:3px;margin-top:8px;overflow:hidden;">
-                                <div style="background:<?= $c ?>;height:100%;width:<?= round($pct) ?>%;"></div>
-                            </div>
-                            <div style="font-size:10px;color:#999;margin-top:2px;"><?= round($pct) ?>% full</div>
-                            <?php endif; ?>
-                        </div>
                         <?php endforeach; ?>
-                    </div>
                     <?php endif; ?>
-                </div>
+                </tbody>
+            </table>
+        </div>
 
-                <!-- Fuel Tank Utilization Chart Shift 2 -->
-                <?php if (!empty($shift2_data['fuel_levels'])): ?>
-                <div class="chart-card" style="margin:20px 0;">
-                    <h3><i class="fas fa-gas-pump" style="color:#003366;"></i> Fuel Tank Utilization</h3>
-                    <canvas id="shift2TankChart" height="120"></canvas>
-                </div>
-                <?php endif; ?>
-
-                <!-- Merchandise Inventory - Low Stock Alerts -->
-                <div class="widget-card" style="margin:20px 0;">
-                    <h3 style="color:#003366;">Merchandise Inventory - Low Stock Alerts</h3>
-                    <?php if (!empty($shift2_data['merch_low_stock'])): ?>
-                    <div style="overflow:hidden;margin-top:15px;">
-                        <table style="width:100%;border-collapse:collapse;">
-                            <thead>
-                                <tr style="background:#f7f7f7;">
-                                    <th style="padding:10px;text-align:left;border-bottom:2px solid #ddd;">Product</th>
-                                    <th style="padding:10px;text-align:left;border-bottom:2px solid #ddd;">Category</th>
-                                    <th style="padding:10px;text-align:center;border-bottom:2px solid #ddd;">Stock</th>
-                                    <th style="padding:10px;text-align:center;border-bottom:2px solid #ddd;">Reorder Level</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($shift2_data['merch_low_stock'] as $item): ?>
-                                <tr>
-                                    <td style="padding:10px;border-bottom:1px solid #eee;"><?= htmlspecialchars($item['product_name']) ?></td>
-                                    <td style="padding:10px;border-bottom:1px solid #eee;"><?= htmlspecialchars($item['category']) ?></td>
-                                    <td style="padding:10px;border-bottom:1px solid #eee;text-align:center;"><span style="color:<?= $item['current_stock']<=0?'#dc3545':'#fd7e14' ?>;font-weight:700;"><?= $item['current_stock'] ?></span></td>
-                                    <td style="padding:10px;border-bottom:1px solid #eee;text-align:center;"><?= $item['threshold'] ?></td>
-                                </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                    <!-- Low Stock Bar Chart -->
-                    <div style="margin-top:16px;"><canvas id="shift2MerchStockChart" height="100"></canvas></div>
+        <!-- 3. Fuel Stock Alerts -->
+        <div id="fuel-alerts-pane" class="action-panel-pane">
+            <table class="standard-petron-table">
+                <thead>
+                    <tr>
+                        <th>Fuel Type</th>
+                        <th>Current Stock</th>
+                        <th>Reorder Level</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($fuel_stock_alerts)): ?>
+                        <tr>
+                            <td colspan="4" style="text-align:center; color:#64748b;">All fuel tanks are at safe operating levels.</td>
+                        </tr>
                     <?php else: ?>
-                        <p style="text-align:center;color:#28a745;padding:20px;font-weight:600;">All merchandise items are adequately stocked.</p>
-                    <?php endif; ?>
-                </div>
-
-                <!-- Charts Grid -->
-                <div class="charts-grid">
-                    <div class="chart-card">
-                        <h3>Fuel Sales by Type (Liters)</h3>
-                        <canvas id="shift2FuelChart"></canvas>
-                    </div>
-                    <div class="chart-card">
-                        <h3>Job Orders Trend (Hourly)</h3>
-                        <canvas id="shift2JobOrderChart"></canvas>
-                    </div>
-                    <div class="chart-card">
-                        <h3>Merchandise Sales by Category</h3>
-                        <canvas id="shift2MerchCategoryChart"></canvas>
-                    </div>
-                    <div class="chart-card">
-                        <h3>Payment Methods Breakdown</h3>
-                        <canvas id="shift2PaymentChart"></canvas>
-                    </div>
-                    <div class="chart-card">
-                        <h3>Variance Alerts</h3>
-                        <canvas id="shift2VarianceChart"></canvas>
-                    </div>
-                </div>
-
-                <!-- Job Orders Status Breakdown -->
-                <div class="widget-card" style="margin:20px 0;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
-                        <h3 style="color:#003366;margin:0;">Job Orders - <?= htmlspecialchars($shift2_label) ?></h3>
-                        <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="font-size:13px;color:#003366;text-decoration:none;font-weight:600;">View All</a>
-                    </div>
-                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;">
-                        <?php
-                        $jo_display2 = [
-                            'Pending'    => ['#fd7e14','#fff3e0'],
-                            'In Progress'=> ['#003366','#e8f0ff'],
-                            'Completed'  => ['#28a745','#d4edda'],
-                            'Cancelled'  => ['#dc3545','#fde8ea'],
-                        ];
-                        foreach ($jo_display2 as $label => [$fg,$bg]):
-                            $cnt = $shift2_data['jo_stats'][$label] ?? 0;
-                        ?>
-                        <div style="background:<?= $bg ?>;border-radius:10px;padding:15px;text-align:center;border-top:3px solid <?= $fg ?>;">
-                            <div style="font-size:28px;font-weight:700;color:<?= $fg ?>;"><?= $cnt ?></div>
-                            <div style="font-size:12px;color:#555;margin-top:4px;font-weight:600;"><?= $label ?></div>
-                        </div>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
-
-                <!-- Payments Summary -->
-                <div class="widget-card" style="margin:20px 0;">
-                    <h3 style="color:#003366;margin-bottom:15px;">Payments Summary - <?= htmlspecialchars($shift2_label) ?></h3>
-                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px;">
-                        <?php
-                        $pay_modes2 = [
-                            'Cash'         => ['#28a745', $shift2_data['payments_summary']['cash']],
-                            'Card'         => ['#003366', $shift2_data['payments_summary']['card']],
-                            'E-Wallet'     => ['#17a2b8', $shift2_data['payments_summary']['ewallet']],
-                            'E-Fuel Card'  => ['#fd7e14', $shift2_data['payments_summary']['efuel']],
-                            'Fleet Card'   => ['#6c757d', $shift2_data['payments_summary']['fleet']],
-                        ];
-                        foreach ($pay_modes2 as $mode => [$col, $amt]):
-                        ?>
-                        <div style="background:#f7f7f7;border-radius:10px;padding:14px;border-left:4px solid <?= $col ?>;">
-                            <div style="font-size:11px;color:#666;font-weight:600;"><?= $mode ?></div>
-                            <div style="font-size:20px;font-weight:700;color:<?= $col ?>;margin-top:4px;">&#8369;<?= number_format($amt,2) ?></div>
-                        </div>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
-
-                <!-- Customers -->
-                <div class="widget-card" style="margin:20px 0;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
-                        <h3 style="color:#003366;margin:0;">Customers</h3>
-                        <a href="staff_customers_report.php" style="font-size:13px;color:#003366;text-decoration:none;font-weight:600;">View All</a>
-                    </div>
-                    <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:15px;">
-                        <div style="background:#d4edda;border-radius:10px;padding:15px 25px;text-align:center;flex:1;">
-                            <div style="font-size:28px;font-weight:700;color:#28a745;"><?= $shift2_data['new_customers'] ?></div>
-                            <div style="font-size:12px;color:#155724;font-weight:600;">New This Shift</div>
-                        </div>
-                        <div style="background:#fff3cd;border-radius:10px;padding:15px 25px;text-align:center;flex:1;">
-                            <div style="font-size:28px;font-weight:700;color:#856404;"><?= count($shift2_data['credit_customers']) ?></div>
-                            <div style="font-size:12px;color:#856404;font-weight:600;">With Balance</div>
-                        </div>
-                    </div>
-                    <?php if (!empty($shift2_data['credit_customers'])): ?>
-                    <table style="width:100%;border-collapse:collapse;font-size:13px;">
-                        <thead>
-                            <tr style="background:#f7f7f7;">
-                                <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #ddd;">Customer</th>
-                                <th style="padding:8px 10px;text-align:right;border-bottom:2px solid #ddd;">Balance</th>
-                                <th style="padding:8px 10px;text-align:right;border-bottom:2px solid #ddd;">Credit Limit</th>
-                                <th style="padding:8px 10px;text-align:center;border-bottom:2px solid #ddd;">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($shift2_data['credit_customers'] as $cc): ?>
+                        <?php foreach ($fuel_stock_alerts as $fa): ?>
                             <tr>
-                                <td style="padding:8px 10px;border-bottom:1px solid #eee;"><?= htmlspecialchars($cc['name']) ?></td>
-                                <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right;color:#dc3545;font-weight:600;">&#8369;<?= number_format($cc['balance'],2) ?></td>
-                                <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right;">&#8369;<?= number_format($cc['credit_limit'],2) ?></td>
-                                <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center;">
-                                    <span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:<?= $cc['status']==='active'?'#d4edda':'#f8d7da' ?>;color:<?= $cc['status']==='active'?'#155724':'#721c24' ?>;"><?= ucfirst($cc['status']) ?></span>
+                                <td class="font-bold"><?= htmlspecialchars($fa['fuel_type']) ?></td>
+                                <td><?= number_format($fa['current_stock'], 2) ?> L</td>
+                                <td><?= number_format($fa['reorder_level'], 2) ?> L</td>
+                                <td>
+                                    <?php
+                                        $st = strtolower($fa['status'] ?? '');
+                                        $badge_class = 'badge-critical';
+                                        if ($st === 'low') {
+                                            $badge_class = 'badge-low';
+                                        }
+                                    ?>
+                                    <span class="status-badge-pill <?= $badge_class ?>"><?= htmlspecialchars($fa['status']) ?></span>
                                 </td>
                             </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                    <?php else: ?>
-                        <p style="color:#666;text-align:center;padding:10px;">No outstanding credit balances.</p>
+                        <?php endforeach; ?>
                     <?php endif; ?>
-                </div>
+                </tbody>
+            </table>
+        </div>
 
-                <!-- Activity Log -->
-                <div class="widget-card" style="margin:20px 0;">
-                    <h3 style="color:#003366;margin-bottom:15px;">Activity Log - <?= htmlspecialchars($shift2_label) ?></h3>
-                    <div style="max-height:350px;overflow-y:auto;">
-                        <?php if (!empty($shift2_data['activity_log'])): ?>
-                            <?php foreach ($shift2_data['activity_log'] as $log): ?>
-                            <div style="padding:10px 12px;border-left:3px solid #dc3545;background:#f7f7f7;margin-bottom:8px;border-radius:5px;">
-                                <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
-                                    <span style="font-weight:600;color:#003366;font-size:13px;"><?= htmlspecialchars($log['action_type']) ?></span>
-                                    <span style="font-size:11px;color:#999;"><?= date('g:i A', strtotime($log['created_at'])) ?></span>
-                                </div>
-                                <div style="font-size:12px;color:#555;"><?= htmlspecialchars($log['action_details']) ?></div>
-                                <div style="font-size:11px;color:#aaa;margin-top:2px;">by <?= htmlspecialchars($log['username']) ?></div>
-                            </div>
-                            <?php endforeach; ?>
-                        <?php else: ?>
-                            <p style="text-align:center;color:#666;padding:20px;">No activity recorded for this shift.</p>
-                        <?php endif; ?>
-                    </div>
-                </div>
+        <!-- 4. Merchandise Low Stock -->
+        <div id="merch-alerts-pane" class="action-panel-pane">
+            <table class="standard-petron-table">
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th>Current Qty</th>
+                        <th>Reorder Level</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($merch_low_stock_table)): ?>
+                        <tr>
+                            <td colspan="4" style="text-align:center; color:#64748b;">All merchandise items have healthy stock levels.</td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($merch_low_stock_table as $ml): ?>
+                            <tr>
+                                <td class="font-bold"><?= htmlspecialchars($ml['product']) ?></td>
+                                <td><?= number_format($ml['current_qty']) ?></td>
+                                <td><?= number_format($ml['reorder_level']) ?></td>
+                                <td>
+                                    <?php
+                                        $st = strtolower($ml['status'] ?? '');
+                                        $badge_class = 'badge-critical';
+                                        if ($st === 'low stock') {
+                                            $badge_class = 'badge-low';
+                                        }
+                                    ?>
+                                    <span class="status-badge-pill <?= $badge_class ?>"><?= htmlspecialchars($ml['status']) ?></span>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
 
-                <!-- Calendar Widget - Tasks for Selected Date Range -->
-                <div class="calendar-widget">
-                    <div class="calendar-header">
-                        <h3>Tasks &amp; Upcoming Schedule</h3>
-                        <span style="color:#666;font-size:14px;"><?= htmlspecialchars($date_range_label) ?></span>
-                    </div>
-                    <div class="task-list">
-                        <?php if (empty($shift2_data['calendar_tasks'])): ?>
-                            <p style="text-align:center;color:#666;padding:20px;">No tasks or deliveries in this date range.</p>
-                        <?php else: ?>
-                            <?php foreach ($shift2_data['calendar_tasks'] as $task):
-                                $isToday = date('Y-m-d', strtotime($task['task_date'])) === date('Y-m-d');
-                                $typeBg  = $task['task_type'] === 'Fuel Delivery' ? '#fff3e0' : '#e8f0ff';
-                                $typeFg  = $task['task_type'] === 'Fuel Delivery' ? '#fd7e14' : '#003366';
-                            ?>
-                            <div class="task-item <?= $isToday ? 'today' : '' ?>">
-                                <div class="task-header">
-                                    <span class="task-title"><?= htmlspecialchars($task['reference']) ?></span>
-                                    <span class="task-date"><?= date('M j, g:i A', strtotime($task['task_date'])) ?></span>
-                                </div>
-                                <div style="font-size:12px;color:#555;margin-top:2px;"><?= htmlspecialchars($task['customer']) ?></div>
-                                <div style="margin-top:5px;display:flex;gap:8px;flex-wrap:wrap;">
-                                    <span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:<?= $typeBg ?>;color:<?= $typeFg ?>;"><?= $task['task_type'] ?></span>
-                                    <span class="task-status" style="background:#e8e8e8;color:#003366;"><?= htmlspecialchars($task['status']) ?></span>
-                                </div>
-                            </div>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </div>
-                </div>
+        <!-- 5. Pending Stock Requests -->
+        <div id="pending-requests-pane" class="action-panel-pane">
+            <table class="standard-petron-table">
+                <thead>
+                    <tr>
+                        <th>Request No.</th>
+                        <th>Type</th>
+                        <th>Requested By</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($pending_requests_table)): ?>
+                        <tr>
+                            <td colspan="4" style="text-align:center; color:#64748b;">You have no pending stock requests.</td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($pending_requests_table as $pr): ?>
+                            <tr>
+                                <td class="font-bold"><?= htmlspecialchars($pr['request_no']) ?></td>
+                                <td><span class="status-badge-pill badge-info-pill"><?= htmlspecialchars($pr['type']) ?></span></td>
+                                <td><?= htmlspecialchars($pr['requested_by']) ?></td>
+                                <td>
+                                    <span class="status-badge-pill badge-pending"><?= htmlspecialchars($pr['status']) ?></span>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 
-                <!-- Quick Actions -->
-                <div style="background:#f7f7f7;padding:20px;border-radius:10px;margin-top:20px;">
-                    <h3 style="color:#003366;margin-bottom:15px;">Quick Actions</h3>
-                    <div class="quick-actions">
-                        <a href="staff_transactions_hub.php?section=merchandise" class="quick-action-btn"><div>POS / Merchandise</div></a>
-                        <a href="staff_transactions_hub.php?section=merchandise" class="quick-action-btn"><div>Credit Sale</div></a>
-                        <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker" class="quick-action-btn"><div>Job Orders</div></a>
-                        <a href="staff_transactions_hub.php?section=fuel" class="quick-action-btn"><div>Fuel Transactions</div></a>
-                        <a href="staff_record_delivery.php" class="quick-action-btn"><div>Receive Items</div></a>
-                        <a href="my_shift.php" class="quick-action-btn"><div>My Shift</div></a>
-                    </div>
-                </div>
-            </div>
-            <?php endif; // End Shift 2 Content ?>
-            
-            <!-- DAILY CONSOLIDATION CONTENT -->
-            <?php if ($can_view_consolidation && $shift1_data && $shift2_data): ?>
-            <div class="tab-content <?= $can_view_consolidation ? 'active' : '' ?>" id="consolidation">
-                <div class="consolidation-header">
-                    <h2>Consolidated Report</h2>
-                    <p><?= htmlspecialchars($date_range_label) ?> - Combined <?= htmlspecialchars($shift1_label) ?> + <?= htmlspecialchars($shift2_label) ?></p>
-                </div>
-                
-                <!-- Overall Summary Cards -->
-                <div class="cards-grid">
-                    <div class="stat-card">
-                        <div class="details">
-                            <div class="label">Total Revenue</div>
-                            <div class="value">&#8369;<?php
-                                $total_fuel = array_sum(array_column($shift1_data['fuel'], 'revenue')) + array_sum(array_column($shift2_data['fuel'], 'revenue'));
-                                $total_merch = $shift1_data['merch']['total'] + $shift2_data['merch']['total'];
-                                $total_service = $shift1_data['service']['total_service_income'] + $shift2_data['service']['total_service_income'];
-                                echo number_format($total_fuel + $total_merch + $total_service, 2);
-                            ?></div>
-                            <small>All Sources</small>
-                        </div>
-                        <div class="icon"><i class="fas fa-chart-line"></i></div>
-                    </div>
-                    
-                    <div class="stat-card">
-                        <div class="details">
-                            <div class="label">Fuel Sales (Both Shifts)</div>
-                            <div class="value">&#8369;<?= number_format($total_fuel, 2) ?></div>
-                            <small><?= number_format(array_sum(array_column($shift1_data['fuel'], 'liters')) + array_sum(array_column($shift2_data['fuel'], 'liters')), 2) ?> L</small>
-                        </div>
-                        <div class="icon"><i class="fas fa-gas-pump"></i></div>
-                    </div>
-                    
-                    <div class="stat-card">
-                        <div class="details">
-                            <div class="label">Merchandise Sales (Both Shifts)</div>
-                            <div class="value">&#8369;<?= number_format($total_merch, 2) ?></div>
-                            <small><?= $shift1_data['merch']['count'] + $shift2_data['merch']['count'] ?> transactions</small>
-                        </div>
-                        <div class="icon"><i class="fas fa-shopping-cart"></i></div>
-                    </div>
-                    
-                    <div class="stat-card">
-                        <div class="details">
-                            <div class="label">Service Income (Both Shifts)</div>
-                            <div class="value">&#8369;<?= number_format($total_service, 2) ?></div>
-                            <small><?= $shift1_data['service']['completed_jobs'] + $shift2_data['service']['completed_jobs'] ?> completed jobs</small>
-                        </div>
-                        <div class="icon"><i class="fas fa-wrench"></i></div>
-                    </div>
-                    
-                    <div class="stat-card">
-                        <div class="details">
-                            <div class="label">Total Job Orders</div>
-                            <div class="value"><?= array_sum($shift1_data['jo_stats']) + array_sum($shift2_data['jo_stats']) ?></div>
-                            <small><?= ($shift1_data['jo_stats']['Completed'] ?? 0) + ($shift2_data['jo_stats']['Completed'] ?? 0) ?> completed</small>
-                        </div>
-                        <div class="icon"><i class="fas fa-clipboard-list"></i></div>
-                    </div>
-                    
-                    <div class="stat-card">
-                        <div class="details">
-                            <div class="label">New Customers</div>
-                            <div class="value"><?= $shift1_data['new_customers'] + $shift2_data['new_customers'] ?></div>
-                            <small>Selected Range</small>
-                        </div>
-                        <div class="icon"><i class="fas fa-users"></i></div>
-                    </div>
-                </div>
-                
-                <!-- Combined Charts -->
-                <div class="charts-grid">
-                    <div class="chart-card">
-                        <h3>Fuel Sales - Selected Range Comparison</h3>
-                        <canvas id="consolidationFuelChart"></canvas>
-                    </div>
-                    
-                    <div class="chart-card">
-                        <h3>Merchandise Category Distribution</h3>
-                        <canvas id="consolidationMerchChart"></canvas>
-                    </div>
-                    
-                    <div class="chart-card">
-                        <h3>Job Orders - Selected Range Summary</h3>
-                        <canvas id="consolidationJobOrderChart"></canvas>
-                    </div>
-                    
-                    <div class="chart-card">
-                        <h3>Payment Methods - Selected Range Total</h3>
-                        <canvas id="consolidationPaymentChart"></canvas>
-                    </div>
-                </div>
-                
-                <!-- Consolidated Calendar -->
-                <div class="calendar-widget">
-                    <div class="calendar-header">
-                        <h3>Complete Schedule</h3>
-                        <span style="color: #666666; font-size: 14px;">All Tasks & Deliveries</span>
-                    </div>
-                    <div class="task-list">
-                        <?php
-                        $all_tasks = array_merge(
-                            $shift1_data['calendar_tasks'] ?? [],
-                            $shift2_data['calendar_tasks'] ?? []
-                        );
-                        usort($all_tasks, fn($a,$b) => strtotime($a['task_date']) - strtotime($b['task_date']));
-                        ?>
-                        <?php if (empty($all_tasks)): ?>
-                            <p style="text-align: center; color: #666666; padding: 20px;">
-                                No scheduled tasks
-                            </p>
-                        <?php else: ?>
-                            <?php foreach ($all_tasks as $task): ?>
-                                <div class="task-item <?= date('Y-m-d', strtotime($task['task_date'])) === date('Y-m-d') ? 'today' : '' ?>">
-                                    <div class="task-header">
-                                        <span class="task-title">
-                                            <?= htmlspecialchars($task['reference']) ?>
-                                        </span>
-                                        <span class="task-date"><?= date('M j, g:i A', strtotime($task['task_date'])) ?></span>
-                                    </div>
-                                    <div style="font-size: 14px; color: #666666; margin-top: 5px;">
-                                        Customer: <?= htmlspecialchars($task['customer']) ?>
-                                    </div>
-                                    <span class="task-status" style="background: #d4edda; color: #155724;">
-                                        <?= htmlspecialchars($task['status']) ?>
-                                    </span>
-                                </div>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </div>
-                </div>
-                
-                <!-- Audit Trail Export -->
-                <div style="background: #f7f7f7; padding: 20px; border-radius: 10px; margin-top: 20px; text-align: center;">
-                    <h3 style="color: #003366; margin-bottom: 15px;">
-                        Export Options
-                    </h3>
-                    <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-                        <a href="<?= htmlspecialchars($report_sales_url) ?>" class="txn-btn primary">
-                            <i class="fa-solid fa-file-lines"></i> Export Sales Report
-                        </a>
-                        <a href="<?= htmlspecialchars($report_activity_url) ?>" class="txn-btn secondary">
-                            <i class="fa-solid fa-list-check"></i> Export Audit Trail
-                        </a>
-                        <a href="<?= htmlspecialchars($report_job_orders_url) ?>" class="txn-btn success">
-                            <i class="fa-solid fa-file-excel"></i> Export to Excel
-                        </a>
-                    </div>
-                </div>
-            </div>
-            <?php endif; // End Daily Consolidation Content ?>
-        <?php if ($can_view_consolidation): ?>
-        </div><!-- /tabs-container -->
-        <?php endif; ?>
-    </div><!-- /dashboard-container -->
+<!-- Chart Script Logic -->
+<script>
+    // Tab switching function
+    function switchTab(evt, paneId) {
+        const tabs = document.getElementsByClassName('action-tab');
+        for (let i = 0; i < tabs.length; i++) {
+            tabs[i].classList.remove('active');
+        }
+        const panes = document.getElementsByClassName('action-panel-pane');
+        for (let i = 0; i < panes.length; i++) {
+            panes[i].classList.remove('active');
+        }
+        evt.currentTarget.classList.add('active');
+        document.getElementById(paneId).classList.add('active');
+    }
 
-    <script>
-        // Tab switching functionality
-        document.querySelectorAll('.tab').forEach(tab => {
-            tab.addEventListener('click', () => {
-                // Remove active class from all tabs and contents
-                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-                
-                // Add active class to clicked tab and corresponding content
-                tab.classList.add('active');
-                const tabId = tab.getAttribute('data-tab');
-                document.getElementById(tabId).classList.add('active');
-            });
-        });
-        
-        <?php if ($shift1_data): ?>
-        // Shift 1 - Fuel Sales Chart
-        const shift1FuelCtx = document.getElementById('shift1FuelChart')?.getContext('2d');
-        if (shift1FuelCtx) {
-            new Chart(shift1FuelCtx, {
-                type: 'bar',
-                data: {
-                    labels: <?= json_encode(array_column($shift1_data['fuel'], 'fuel_type')) ?>,
-                    datasets: [{
-                        label: 'Liters Sold',
-                        data: <?= json_encode(array_column($shift1_data['fuel'], 'liters')) ?>,
-                        backgroundColor: 'rgba(0, 51, 102, 0.8)',
-                        borderColor: 'rgba(0, 51, 102, 1)',
-                        borderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: {
-                                callback: function(value) {
-                                    return value.toLocaleString() + ' L';
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        }
-        
-        // Shift 1 - Payment Methods Chart
-        const shift1PaymentCtx = document.getElementById('shift1PaymentChart')?.getContext('2d');
-        if (shift1PaymentCtx) {
-            new Chart(shift1PaymentCtx, {
-                type: 'pie',
-                data: {
-                    labels: ['Cash', 'Card', 'E-Wallet', 'E-Fuel Card', 'Fleet Card'],
-                    datasets: [{
-                        data: [
-                            <?= floatval($shift1_data['payments_summary']['cash']) ?>,
-                            <?= floatval($shift1_data['payments_summary']['card']) ?>,
-                            <?= floatval($shift1_data['payments_summary']['ewallet']) ?>,
-                            <?= floatval($shift1_data['payments_summary']['efuel']) ?>,
-                            <?= floatval($shift1_data['payments_summary']['fleet']) ?>
-                        ],
-                        backgroundColor: [
-                            '#28a745',
-                            '#003366',
-                            '#6c757d',
-                            '#dc3545',
-                            '#999999'
-                        ]
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true
-                }
-            });
-        }
-        
-        // Shift 1 - Job Orders Hourly Trend Chart (LIVE DB DATA)
-        const shift1JobOrderCtx = document.getElementById('shift1JobOrderChart')?.getContext('2d');
-        if (shift1JobOrderCtx) {
-            new Chart(shift1JobOrderCtx, {
-                type: 'line',
-                data: {
-                    labels: <?= json_encode($shift1_data['jo_hourly_labels']) ?>,
-                    datasets: [{
-                        label: 'Job Orders Created',
-                        data: <?= json_encode($shift1_data['jo_hourly_data']) ?>,
-                        borderColor: '#003366',
-                        backgroundColor: 'rgba(0,51,102,0.1)',
-                        tension: 0.4,
-                        fill: true,
-                        borderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
-                }
-            });
-        }
-        
-        // Shift 1 - Merchandise Sales by Category Chart (LIVE DB DATA)
-        const shift1MerchCategoryCtx = document.getElementById('shift1MerchCategoryChart')?.getContext('2d');
-        if (shift1MerchCategoryCtx) {
-            const s1MerchLabels = <?= json_encode(array_column($shift1_data['merch_categories'], 'category')) ?>;
-            const s1MerchData   = <?= json_encode(array_map('floatval', array_column($shift1_data['merch_categories'], 'total'))) ?>;
-            const s1Colors = ['#003366','#28a745','#dc3545','#6c757d','#f0a500','#0099cc','#9b59b6','#e67e22','#1abc9c','#95a5a6'];
-            new Chart(shift1MerchCategoryCtx, {
-                type: 'pie',
-                data: {
-                    labels: s1MerchLabels.length ? s1MerchLabels : ['No Sales Yet'],
-                    datasets: [{
-                        data: s1MerchData.length ? s1MerchData : [1],
-                        backgroundColor: s1Colors.slice(0, Math.max(s1MerchLabels.length, 1))
-                    }]
-                },
-                options: { responsive: true, maintainAspectRatio: true }
-            });
-        }
-        <?php endif; // End Shift 1 Charts ?>
-        
-        // Shift 1 - Fuel Tank Utilization Chart
-        <?php if ($shift1_data && !empty($shift1_data['fuel_levels'])): ?>
-        const s1TankCtx = document.getElementById('shift1TankChart')?.getContext('2d');
-        if (s1TankCtx) {
-            const s1TankLabels = <?= json_encode(array_column($shift1_data['fuel_levels'], 'fuel_type_name')) ?>;
-            const s1TankCurrent = <?= json_encode(array_map('floatval', array_column($shift1_data['fuel_levels'], 'current_stock'))) ?>;
-            const s1TankCapacity = <?= json_encode(array_map('floatval', array_column($shift1_data['fuel_levels'], 'capacity'))) ?>;
-            const s1TankColors = s1TankCurrent.map((v,i) => {
-                const pct = s1TankCapacity[i] > 0 ? (v/s1TankCapacity[i])*100 : 0;
-                return pct < 25 ? '#dc3545' : pct < 50 ? '#fd7e14' : '#28a745';
-            });
-            new Chart(s1TankCtx, {
-                type: 'bar',
-                data: {
-                    labels: s1TankLabels,
-                    datasets: [
-                        { label: 'Current (L)', data: s1TankCurrent, backgroundColor: s1TankColors, borderRadius: 4 },
-                        { label: 'Capacity (L)', data: s1TankCapacity, backgroundColor: 'rgba(0,38,77,0.08)', borderRadius: 4 }
-                    ]
-                },
-                options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } }, scales: { y: { beginAtZero: true, ticks: { callback: v => v.toLocaleString() + ' L' } } } }
-            });
-        }
-        <?php endif; ?>
+    // Chart.js global theme configurations
+    Chart.defaults.font.family = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
+    Chart.defaults.font.size = 12;
+    Chart.defaults.color = '#475569';
 
-        // Shift 1 - Merchandise Low Stock Chart
-        <?php if ($shift1_data && !empty($shift1_data['merch_low_stock'])): ?>
-        const s1MerchStockCtx = document.getElementById('shift1MerchStockChart')?.getContext('2d');
-        if (s1MerchStockCtx) {
-            const s1MsLabels = <?= json_encode(array_column($shift1_data['merch_low_stock'], 'product_name')) ?>;
-            const s1MsCurrent = <?= json_encode(array_map('floatval', array_column($shift1_data['merch_low_stock'], 'current_stock'))) ?>;
-            const s1MsReorder = <?= json_encode(array_map('floatval', array_column($shift1_data['merch_low_stock'], 'reorder_level'))) ?>;
-            new Chart(s1MerchStockCtx, {
-                type: 'bar',
-                indexAxis: 'y',
-                data: {
-                    labels: s1MsLabels,
-                    datasets: [
-                        { label: 'Current Stock', data: s1MsCurrent, backgroundColor: '#dc354588', borderRadius: 4 },
-                        { label: 'Reorder Level', data: s1MsReorder, backgroundColor: '#fd7e1488', borderRadius: 4 }
-                    ]
-                },
-                options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } }, scales: { x: { beginAtZero: true } } }
-            });
-        }
-        <?php endif; ?>
-        
-        <?php if ($shift2_data): ?>
-        // Shift 2 - Fuel Sales Chart
-        const shift2FuelCtx = document.getElementById('shift2FuelChart')?.getContext('2d');
-        if (shift2FuelCtx) {
-            new Chart(shift2FuelCtx, {
-                type: 'bar',
-                data: {
-                    labels: <?= json_encode(array_column($shift2_data['fuel'], 'fuel_type')) ?>,
-                    datasets: [{
-                        label: 'Liters Sold',
-                        data: <?= json_encode(array_column($shift2_data['fuel'], 'liters')) ?>,
-                        backgroundColor: 'rgba(220, 53, 69, 0.8)',
-                        borderColor: 'rgba(220, 53, 69, 1)',
-                        borderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: {
-                                callback: function(value) {
-                                    return value.toLocaleString() + ' L';
-                                }
-                            }
-                        }
-                    }
+    // Chart 1: Hourly Transactions Line Chart
+    const hourlyCtx = document.getElementById('hourlyTransactionsChart').getContext('2d');
+    new Chart(hourlyCtx, {
+        type: 'line',
+        data: {
+            labels: <?= json_encode($hourly_chart_labels) ?>,
+            datasets: [{
+                label: 'Transactions count',
+                data: <?= json_encode($hourly_chart_data) ?>,
+                borderColor: '#002F70',
+                backgroundColor: 'rgba(0, 47, 112, 0.1)',
+                tension: 0.3,
+                fill: true,
+                borderWidth: 2,
+                pointBackgroundColor: '#002F70'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { stepSize: 1 }
                 }
-            });
-        }
-        
-        // Shift 2 - Payment Methods Chart
-        const shift2PaymentCtx = document.getElementById('shift2PaymentChart')?.getContext('2d');
-        if (shift2PaymentCtx) {
-            new Chart(shift2PaymentCtx, {
-                type: 'pie',
-                data: {
-                    labels: ['Cash', 'Card', 'E-Wallet', 'E-Fuel Card', 'Fleet Card'],
-                    datasets: [{
-                        data: [
-                            <?= floatval($shift2_data['payments_summary']['cash']) ?>,
-                            <?= floatval($shift2_data['payments_summary']['card']) ?>,
-                            <?= floatval($shift2_data['payments_summary']['ewallet']) ?>,
-                            <?= floatval($shift2_data['payments_summary']['efuel']) ?>,
-                            <?= floatval($shift2_data['payments_summary']['fleet']) ?>
-                        ],
-                        backgroundColor: [
-                            '#28a745',
-                            '#003366',
-                            '#6c757d',
-                            '#dc3545',
-                            '#999999'
-                        ]
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true
-                }
-            });
-        }
-        
-        // Shift 2 - Job Orders Hourly Trend Chart (LIVE DB DATA)
-        const shift2JobOrderCtx = document.getElementById('shift2JobOrderChart')?.getContext('2d');
-        if (shift2JobOrderCtx) {
-            new Chart(shift2JobOrderCtx, {
-                type: 'line',
-                data: {
-                    labels: <?= json_encode($shift2_data['jo_hourly_labels']) ?>,
-                    datasets: [{
-                        label: 'Job Orders Created',
-                        data: <?= json_encode($shift2_data['jo_hourly_data']) ?>,
-                        borderColor: '#dc3545',
-                        backgroundColor: 'rgba(220,53,69,0.1)',
-                        tension: 0.4,
-                        fill: true,
-                        borderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
-                }
-            });
-        }
-
-        // Shift 2 - Merchandise Sales by Category Chart (LIVE DB DATA)
-        const shift2MerchCategoryCtx = document.getElementById('shift2MerchCategoryChart')?.getContext('2d');
-        if (shift2MerchCategoryCtx) {
-            const s2MerchLabels = <?= json_encode(array_column($shift2_data['merch_categories'], 'category')) ?>;
-            const s2MerchData   = <?= json_encode(array_map('floatval', array_column($shift2_data['merch_categories'], 'total'))) ?>;
-            const s2Colors = ['#dc3545','#003366','#28a745','#6c757d','#f0a500','#0099cc','#9b59b6','#e67e22','#1abc9c','#95a5a6'];
-            new Chart(shift2MerchCategoryCtx, {
-                type: 'pie',
-                data: {
-                    labels: s2MerchLabels.length ? s2MerchLabels : ['No Sales Yet'],
-                    datasets: [{
-                        data: s2MerchData.length ? s2MerchData : [1],
-                        backgroundColor: s2Colors.slice(0, Math.max(s2MerchLabels.length, 1))
-                    }]
-                },
-                options: { responsive: true, maintainAspectRatio: true }
-            });
-        }
-        
-        // Shift 2 - Variance Alerts Chart (LIVE DB DATA)
-        const shift2VarianceCtx = document.getElementById('shift2VarianceChart')?.getContext('2d');
-        if (shift2VarianceCtx) {
-            const s2VarLabels = <?= json_encode(array_column($shift2_data['variance_data'], 'fuel_type')) ?>;
-            const s2VarData   = <?= json_encode(array_map('floatval', array_column($shift2_data['variance_data'], 'variance'))) ?>;
-            new Chart(shift2VarianceCtx, {
-                type: 'bar',
-                data: {
-                    labels: s2VarLabels.length ? s2VarLabels : ['No Variances'],
-                    datasets: [{
-                        label: 'Variance (Liters)',
-                        data: s2VarData.length ? s2VarData : [0],
-                        backgroundColor: s2VarLabels.map((_, i) => i === 0 ? '#dc3545' : '#28a745')
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    scales: { y: { beginAtZero: true } }
-                }
-            });
-        }
-        <?php endif; // End Shift 2 Charts ?>
-        
-        // Shift 2 - Fuel Tank Utilization Chart
-        <?php if ($shift2_data && !empty($shift2_data['fuel_levels'])): ?>
-        const s2TankCtx = document.getElementById('shift2TankChart')?.getContext('2d');
-        if (s2TankCtx) {
-            const s2TankLabels = <?= json_encode(array_column($shift2_data['fuel_levels'], 'fuel_type_name')) ?>;
-            const s2TankCurrent = <?= json_encode(array_map('floatval', array_column($shift2_data['fuel_levels'], 'current_stock'))) ?>;
-            const s2TankCapacity = <?= json_encode(array_map('floatval', array_column($shift2_data['fuel_levels'], 'capacity'))) ?>;
-            const s2TankColors = s2TankCurrent.map((v,i) => {
-                const pct = s2TankCapacity[i] > 0 ? (v/s2TankCapacity[i])*100 : 0;
-                return pct < 25 ? '#dc3545' : pct < 50 ? '#fd7e14' : '#28a745';
-            });
-            new Chart(s2TankCtx, {
-                type: 'bar',
-                data: {
-                    labels: s2TankLabels,
-                    datasets: [
-                        { label: 'Current (L)', data: s2TankCurrent, backgroundColor: s2TankColors, borderRadius: 4 },
-                        { label: 'Capacity (L)', data: s2TankCapacity, backgroundColor: 'rgba(0,38,77,0.08)', borderRadius: 4 }
-                    ]
-                },
-                options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } }, scales: { y: { beginAtZero: true, ticks: { callback: v => v.toLocaleString() + ' L' } } } }
-            });
-        }
-        <?php endif; ?>
-
-        // Shift 2 - Merchandise Low Stock Chart
-        <?php if ($shift2_data && !empty($shift2_data['merch_low_stock'])): ?>
-        const s2MerchStockCtx = document.getElementById('shift2MerchStockChart')?.getContext('2d');
-        if (s2MerchStockCtx) {
-            const s2MsLabels = <?= json_encode(array_column($shift2_data['merch_low_stock'], 'product_name')) ?>;
-            const s2MsCurrent = <?= json_encode(array_map('floatval', array_column($shift2_data['merch_low_stock'], 'current_stock'))) ?>;
-            const s2MsReorder = <?= json_encode(array_map(function($i){ return isset($i['reorder_level']) ? (float)$i['reorder_level'] : (float)($i['threshold']??0); }, $shift2_data['merch_low_stock'])) ?>;
-            new Chart(s2MerchStockCtx, {
-                type: 'bar',
-                indexAxis: 'y',
-                data: {
-                    labels: s2MsLabels,
-                    datasets: [
-                        { label: 'Current Stock', data: s2MsCurrent, backgroundColor: '#dc354588', borderRadius: 4 },
-                        { label: 'Reorder Level', data: s2MsReorder, backgroundColor: '#fd7e1488', borderRadius: 4 }
-                    ]
-                },
-                options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } }, scales: { x: { beginAtZero: true } } }
-            });
-        }
-        <?php endif; ?>
-        
-        <?php if ($can_view_consolidation && $shift1_data && $shift2_data): ?>
-        // Consolidation - Fuel Sales Comparison Chart
-        const consolidationFuelCtx = document.getElementById('consolidationFuelChart')?.getContext('2d');
-        if (consolidationFuelCtx) {
-            new Chart(consolidationFuelCtx, {
-                type: 'bar',
-                data: {
-                    labels: <?= json_encode($consolidation_fuel_labels) ?>,
-                    datasets: [
-                        {
-                            label: <?= json_encode($shift1_label) ?>,
-                            data: <?= json_encode($consolidation_shift1_fuel_liters) ?>,
-                            backgroundColor: 'rgba(0, 51, 102, 0.8)'
-                        },
-                        {
-                            label: <?= json_encode($shift2_label) ?>,
-                            data: <?= json_encode($consolidation_shift2_fuel_liters) ?>,
-                            backgroundColor: 'rgba(220, 53, 69, 0.8)'
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: {
-                                callback: function(value) {
-                                    return value.toLocaleString() + ' L';
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        }
-        
-        // Consolidation - Merchandise Category Chart (LIVE DB DATA - both shifts combined)
-        const consolidationMerchCtx = document.getElementById('consolidationMerchChart')?.getContext('2d');
-        if (consolidationMerchCtx) {
-            <?php
-            // Merge merch_categories from both shifts
-            $combined_cats = [];
-            foreach (array_merge($shift1_data['merch_categories'], $shift2_data['merch_categories']) as $row) {
-                $cat = $row['category'];
-                $combined_cats[$cat] = ($combined_cats[$cat] ?? 0) + (float)$row['total'];
             }
-            arsort($combined_cats);
-            ?>
-            const consolidMerchLabels = <?= json_encode(array_keys($combined_cats)) ?>;
-            const consolidMerchData   = <?= json_encode(array_values($combined_cats)) ?>;
-            const consolidColors = ['#003366','#28a745','#dc3545','#6c757d','#f0a500','#0099cc','#9b59b6','#e67e22','#1abc9c','#95a5a6'];
-            new Chart(consolidationMerchCtx, {
-                type: 'pie',
-                data: {
-                    labels: consolidMerchLabels.length ? consolidMerchLabels : ['No Sales Yet'],
-                    datasets: [{
-                        data: consolidMerchData.length ? consolidMerchData : [1],
-                        backgroundColor: consolidColors.slice(0, Math.max(consolidMerchLabels.length, 1))
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    plugins: { legend: { position: 'bottom' } }
-                }
-            });
         }
-        
-        // Consolidation - Job Orders Summary Chart
-        const consolidationJobOrderCtx = document.getElementById('consolidationJobOrderChart')?.getContext('2d');
-        if (consolidationJobOrderCtx) {
-            new Chart(consolidationJobOrderCtx, {
-                type: 'line',
-                data: {
-                    labels: <?= json_encode($consolidation_jo_labels) ?>,
-                    datasets: [{
-                        label: 'Job Orders Created',
-                        data: <?= json_encode($consolidation_jo_data) ?>,
-                        borderColor: '#003366',
-                        backgroundColor: 'rgba(0, 51, 102, 0.1)',
-                        tension: 0.4,
-                        fill: true,
-                        borderWidth: 3
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    scales: {
-                        y: {
-                            beginAtZero: true
-                        }
-                    }
+    });
+
+    // Chart 2: Fuel Sales by Product Bar Chart
+    const fuelCtx = document.getElementById('fuelSalesChart').getContext('2d');
+    new Chart(fuelCtx, {
+        type: 'bar',
+        data: {
+            labels: <?= json_encode($fuel_chart_labels) ?>,
+            datasets: [{
+                label: 'Liters Sold',
+                data: <?= json_encode($fuel_chart_data) ?>,
+                backgroundColor: [
+                    '#3b82f6', // Diesel - Blue
+                    '#ef4444', // XCS - Red
+                    '#eab308', // XTRA Unleaded - Yellow
+                    '#8b5cf6', // Turbo Diesel - Purple
+                    '#64748b'  // Kerosene - Slate
+                ],
+                borderRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true
                 }
-            });
+            }
         }
-        
-        // Consolidation - Payment Methods Total Chart
-        const consolidationPaymentCtx = document.getElementById('consolidationPaymentChart')?.getContext('2d');
-        if (consolidationPaymentCtx) {
-            new Chart(consolidationPaymentCtx, {
+    });
+
+    // Chart 3: Merchandise Sales by Category Bar Chart
+    const merchLabels = <?= json_encode($merch_chart_labels) ?>;
+    const merchData   = <?= json_encode($merch_chart_data) ?>;
+    const merchCtx = document.getElementById('merchSalesChart').getContext('2d');
+    const hasAnySales = merchData.some(v => v > 0);
+    if (!hasAnySales) {
+        const el = document.getElementById('merchSalesChart').parentElement;
+        el.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#94a3b8;"><i class="fas fa-shopping-basket" style="font-size:32px;margin-bottom:10px;"></i><span style="font-size:13px;font-weight:600;">No merchandise sales for this period</span></div>';
+    } else {
+        const barColors = ['#16a34a','#2563eb','#ea580c','#8b5cf6','#0891b2','#eab308'];
+        new Chart(merchCtx, {
             type: 'bar',
             data: {
-                labels: ['Cash', 'Card', 'E-Wallet', 'E-Fuel Card', 'Fleet Card'],
-                datasets: [
-                    {
-                        label: <?= json_encode($shift1_label) ?>,
-                        data: [
-                            <?= floatval($shift1_data['payments_summary']['cash']) ?>,
-                            <?= floatval($shift1_data['payments_summary']['card']) ?>,
-                            <?= floatval($shift1_data['payments_summary']['ewallet']) ?>,
-                            <?= floatval($shift1_data['payments_summary']['efuel']) ?>,
-                            <?= floatval($shift1_data['payments_summary']['fleet']) ?>
-                        ],
-                        backgroundColor: 'rgba(0, 51, 102, 0.8)'
-                    },
-                    {
-                        label: <?= json_encode($shift2_label) ?>,
-                        data: [
-                            <?= floatval($shift2_data['payments_summary']['cash']) ?>,
-                            <?= floatval($shift2_data['payments_summary']['card']) ?>,
-                            <?= floatval($shift2_data['payments_summary']['ewallet']) ?>,
-                            <?= floatval($shift2_data['payments_summary']['efuel']) ?>,
-                            <?= floatval($shift2_data['payments_summary']['fleet']) ?>
-                        ],
-                        backgroundColor: 'rgba(220, 53, 69, 0.8)'
-                    }
-                ]
+                labels: merchLabels,
+                datasets: [{
+                    label: 'Sales (₱)',
+                    data: merchData,
+                    backgroundColor: merchLabels.map((_,i) => barColors[i % barColors.length]),
+                    borderRadius: 6
+                }]
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: true,
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            callback: function(value) {
-                                return '\u20B1' + value.toLocaleString();
-                            }
-                        }
-                    }
-                }
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true } }
             }
         });
+    }
+
+    // Chart 4: Service Status Distribution Doughnut Chart
+    const svcData   = <?= json_encode($status_chart_data) ?>;
+    const svcLabels = <?= json_encode($status_chart_labels) ?>;
+    const serviceCtx = document.getElementById('serviceStatusChart').getContext('2d');
+    if (svcData.every(v => v === 0)) {
+        const el2 = document.getElementById('serviceStatusChart').parentElement;
+        el2.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#94a3b8;"><i class="fas fa-tools" style="font-size:32px;margin-bottom:10px;"></i><span style="font-size:13px;font-weight:600;">No service orders for this period</span></div>';
+    } else {
+        new Chart(serviceCtx, {
+            type: 'doughnut',
+            data: {
+                labels: svcLabels,
+                datasets: [{
+                    data: svcData,
+                    backgroundColor: ['#eab308','#3b82f6','#16a34a','#64748b'],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'right', labels: { boxWidth: 12 } } }
+            }
+        });
+    }
+
+    // Chart 5: Weekly Transaction Trend Line Chart
+    const weeklyCtx = document.getElementById('weeklyTrendChart').getContext('2d');
+    new Chart(weeklyCtx, {
+        type: 'line',
+        data: {
+            labels: <?= json_encode($weekly_chart_labels) ?>,
+            datasets: [{
+                label: 'Transactions count',
+                data: <?= json_encode($weekly_chart_data) ?>,
+                borderColor: '#16a34a',
+                backgroundColor: 'rgba(22, 163, 74, 0.05)',
+                tension: 0.3,
+                fill: true,
+                borderWidth: 2,
+                pointBackgroundColor: '#16a34a'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { stepSize: 1 }
+                }
+            }
         }
-        <?php endif; // End Consolidation Charts ?>
-        
-        // Auto-refresh every 30 seconds
-        setInterval(() => {
-            location.reload();
-        }, 30000);
-    </script>
-</div><!-- /main-content -->
+    });
+</script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

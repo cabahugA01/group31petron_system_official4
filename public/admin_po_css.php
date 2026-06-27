@@ -109,4 +109,69 @@
     color:#fff !important;
 }
 @keyframes sda{from{top:-60px;opacity:0}to{top:24px;opacity:1}}
+
+/* ── PO Tabs ─────────────────────────────────────────────────────────── */
+.po-tabs-nav {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    background: transparent;
+    border-radius: 0;
+    overflow: visible;
+    box-shadow: none;
+    border-bottom: none;
+}
+.po-tab-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all .2s;
+    text-transform: none;
+    letter-spacing: normal;
+    box-shadow: none;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #475569;
+}
+.po-tab-btn:hover {
+    background: #f8fafc;
+    color: #0f172a;
+    border-color: #94a3b8;
+}
+.po-tab-btn.active-merch {
+    background: #002F6C !important;
+    color: #fff !important;
+    border-color: #002F6C !important;
+}
+.po-tab-btn.active-fuel {
+    background: #002F6C !important;
+    color: #fff !important;
+    border-color: #002F6C !important;
+}
+.po-tab-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    font-size: 10px;
+    font-weight: 800;
+    background: #e2e8f0;
+    color: #475569;
+}
+.po-tab-btn.active-merch .po-tab-badge,
+.po-tab-btn.active-fuel .po-tab-badge {
+    background: rgba(255, 255, 255, 0.2) !important;
+    color: #fff !important;
+}
+.po-tab-pane { display: none; }
+.po-tab-pane.active { display: block; }
 </style>
