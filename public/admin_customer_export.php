@@ -1,0 +1,611 @@
+<?php
+/**
+ * ADMIN CUSTOMER OVERSIGHT EXPORT UTILITY
+ * Strictly view-only, with complete auditing.
+ */
+
+ob_start();
+require_once __DIR__ . '/../backend/lib.php';
+require_once __DIR__ . '/db_connect.php';
+ob_end_clean();
+
+require_login();
+$me         = current_user();
+$role       = role_key($me['role'] ?? '');
+$station_id = user_station_id();
+
+if (!in_array($role, ['admin', 'superadmin', 'developer'])) {
+    die('Unauthorized');
+}
+
+$format       = strtolower(trim($_GET['format'] ?? 'excel'));
+$search       = trim($_GET['search'] ?? '');
+$type         = trim($_GET['type'] ?? '');
+$status       = trim($_GET['status'] ?? '');
+$registeredBy = trim($_GET['registered_by'] ?? '');
+$dateRegFrom  = trim($_GET['date_reg_from'] ?? '');
+$dateRegTo    = trim($_GET['date_reg_to'] ?? '');
+$dateTxFrom   = trim($_GET['date_tx_from'] ?? '');
+$dateTxTo     = trim($_GET['date_tx_to'] ?? '');
+
+$profileId    = (int)($_GET['profile_id'] ?? 0);
+$exportType   = trim($_GET['export_type'] ?? 'list'); // 'list' or 'history'
+
+// Station details
+$station_name = '';
+try {
+    $sn = $pdo->prepare("SELECT name FROM stations WHERE id = ?");
+    $sn->execute([$station_id]);
+    $station_name = $sn->fetchColumn() ?: 'Petron Station';
+} catch (Exception $e) {}
+
+// ─────────────────────────────────────────────────────────────────────
+// 1. SINGLE PROFILE / SINGLE CUSTOMER HISTORY EXPORT
+// ─────────────────────────────────────────────────────────────────────
+if ($profileId > 0) {
+    if ($exportType === 'history') {
+        exportSingleHistory($profileId, $format, $station_name);
+    } else {
+        exportSingleProfilePdf($profileId, $station_name);
+    }
+    exit;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 2. EXPORT CUSTOMER REGISTRY LIST (WITH ACTIVE FILTERS)
+// ─────────────────────────────────────────────────────────────────────
+$where  = ['c.station_id = ?'];
+$params = [$station_id];
+
+if ($search !== '') {
+    $where[] = "(c.customer_id LIKE ? OR c.first_name LIKE ? OR c.last_name LIKE ? OR c.name LIKE ? OR c.contact_number LIKE ? OR c.company_name LIKE ?)";
+    $s = "%$search%";
+    array_push($params, $s, $s, $s, $s, $s, $s);
+}
+if ($type !== '') {
+    $where[] = "c.customer_type = ?";
+    $params[] = $type;
+}
+if ($status !== '') {
+    $where[] = "c.status = ?";
+    $params[] = $status;
+}
+if ($registeredBy !== '') {
+    $where[] = "c.registered_by = ?";
+    $params[] = (int)$registeredBy;
+}
+if ($dateRegFrom !== '') {
+    $where[] = "DATE(COALESCE(c.registered_at, c.created_at)) >= ?";
+    $params[] = $dateRegFrom;
+}
+if ($dateRegTo !== '') {
+    $where[] = "DATE(COALESCE(c.registered_at, c.created_at)) <= ?";
+    $params[] = $dateRegTo;
+}
+
+$whereClause = implode(' AND ', $where);
+
+$stmt = $pdo->prepare("
+    SELECT c.id, c.customer_id,
+           COALESCE(NULLIF(CONCAT(TRIM(COALESCE(c.first_name,'')), ' ', TRIM(COALESCE(c.middle_name,'')), ' ', TRIM(COALESCE(c.last_name,''))), '  '), c.name, '') AS display_name,
+           c.contact_number, c.customer_type, c.status,
+           COALESCE(c.registered_at, c.created_at) AS registered_at,
+           CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,'')) AS registered_by_name
+    FROM customers c
+    LEFT JOIN users u ON c.registered_by = u.id
+    WHERE $whereClause
+    ORDER BY COALESCE(c.registered_at, c.created_at) DESC
+");
+$stmt->execute($params);
+$rawCustomers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Date Last Transaction PHP Filter
+$filteredCustomers = [];
+foreach ($rawCustomers as $c) {
+    $lastTxDate = null;
+    try {
+        $q = $pdo->prepare("SELECT MAX(transaction_date) FROM fuel_transactions WHERE customer_id = ? AND station_id = ?");
+        $q->execute([$c['id'], $station_id]);
+        $d = $q->fetchColumn();
+        if ($d) $lastTxDate = $d;
+    } catch (Exception $e) {}
+    try {
+        $q = $pdo->prepare("SELECT MAX(transaction_date) FROM merchandise_transactions WHERE customer_id = ? AND station_id = ?");
+        $q->execute([$c['id'], $station_id]);
+        $d = $q->fetchColumn();
+        if ($d) $lastTxDate = $lastTxDate ? max($lastTxDate, $d) : $d;
+    } catch (Exception $e) {}
+    try {
+        $q = $pdo->prepare("SELECT MAX(created_at) FROM job_orders WHERE customer_id = ? AND station_id = ?");
+        $q->execute([$c['id'], $station_id]);
+        $d = $q->fetchColumn();
+        if ($d) $lastTxDate = $lastTxDate ? max($lastTxDate, $d) : $d;
+    } catch (Exception $e) {}
+
+    if ($lastTxDate) {
+        $txDateOnly = date('Y-m-d', strtotime($lastTxDate));
+        if ($dateTxFrom !== '' && $txDateOnly < $dateTxFrom) continue;
+        if ($dateTxTo !== '' && $txDateOnly > $dateTxTo) continue;
+    } else {
+        if ($dateTxFrom !== '' || $dateTxTo !== '') continue;
+    }
+
+    $c['last_transaction_date'] = $lastTxDate;
+    $filteredCustomers[] = $c;
+}
+
+$filename = 'admin_customer_registry_' . date('Y-m-d_His');
+
+// Audit Log entry
+try { write_audit_log($pdo, 'Export', "Admin exported customer registry list ($format)", 'customers', 0, 'report'); } catch(Exception $e){}
+
+// CSV Export
+if ($format === 'csv') {
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment; filename="' . $filename . '.csv"');
+    $out = fopen('php://output', 'w');
+    fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF));
+    fputcsv($out, ['Customer ID', 'Customer Name', 'Type', 'Contact Number', 'Registered By', 'Date Registered', 'Last Transaction', 'Status']);
+    foreach ($filteredCustomers as $c) {
+        fputcsv($out, [
+            $c['customer_id'],
+            $c['display_name'],
+            ucfirst($c['customer_type']),
+            $c['contact_number'],
+            $c['registered_by_name'] ?: 'System',
+            date('M d, Y', strtotime($c['registered_at'])),
+            $c['last_transaction_date'] ? date('M d, Y', strtotime($c['last_transaction_date'])) : 'N/A',
+            ucfirst($c['status'])
+        ]);
+    }
+    fclose($out);
+    exit;
+}
+
+// Excel Export
+if ($format === 'excel') {
+    header('Content-Type: application/vnd.ms-excel');
+    header('Content-Disposition: attachment; filename="' . $filename . '.xls"');
+    echo '<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8">
+    <style>th{background:#002F70;color:#fff;font-weight:bold;padding:5px;}td,th{border:1px solid #ccc;}</style>
+    </head><body>';
+    echo '<h3>Customer Registry Report — ' . htmlspecialchars($station_name) . '</h3>';
+    echo '<p>Generated: ' . date('M d, Y g:i A') . '</p>';
+    echo '<table><thead><tr>
+        <th>Customer ID</th><th>Customer Name</th><th>Type</th><th>Contact Number</th><th>Registered By</th><th>Date Registered</th><th>Last Transaction</th><th>Status</th>
+    </tr></thead><tbody>';
+    foreach ($filteredCustomers as $c) {
+        echo '<tr>';
+        echo '<td>' . htmlspecialchars($c['customer_id']) . '</td>';
+        echo '<td>' . htmlspecialchars($c['display_name']) . '</td>';
+        echo '<td>' . ucfirst($c['customer_type']) . '</td>';
+        echo '<td>' . htmlspecialchars($c['contact_number']) . '</td>';
+        echo '<td>' . htmlspecialchars($c['registered_by_name'] ?: 'System') . '</td>';
+        echo '<td>' . date('Y-m-d', strtotime($c['registered_at'])) . '</td>';
+        echo '<td>' . ($c['last_transaction_date'] ? date('Y-m-d', strtotime($c['last_transaction_date'])) : 'N/A') . '</td>';
+        echo '<td>' . ucfirst($c['status']) . '</td>';
+        echo '</tr>';
+    }
+    echo '</tbody></table></body></html>';
+    exit;
+}
+
+// PDF (HTML Print Mode)
+header('Content-Type: text/html; charset=utf-8');
+?>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Customer Registry Oversight Report</title>
+    <style>
+        body { font-family: Arial, sans-serif; font-size: 11px; color: #111; margin: 20px; }
+        .hdr { border-bottom: 2px solid #002F70; padding-bottom: 8px; margin-bottom: 14px; display: flex; justify-content: space-between; }
+        h1 { font-size: 16px; color: #002F70; margin: 0; }
+        .sub { font-size: 10px; color: #555; margin-top: 3px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+        th { background: #002F70; color: #fff; padding: 6px 8px; font-size: 10px; text-align: left; border: 1px solid #ddd; }
+        td { padding: 5px 8px; border: 1px solid #ddd; font-size: 10px; }
+        tr:nth-child(even) td { background: #f8fafc; }
+        .no-print { margin-bottom: 14px; }
+        .btn { padding: 6px 14px; background: #002F70; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        @media print { .no-print { display: none; } }
+    </style>
+</head>
+<body onload="window.print()">
+<div class="no-print">
+    <button onclick="window.print()" class="btn">Print / Save as PDF</button>
+    <button onclick="window.close()" class="btn" style="background:#64748b;margin-left:8px;">Close</button>
+</div>
+<div class="hdr">
+    <div>
+        <h1>CUSTOMER REGISTRY REPORT (ADMIN OVERSIGHT)</h1>
+        <div class="sub">Station: <?php echo htmlspecialchars($station_name); ?> &nbsp;|&nbsp; Generated: <?php echo date('M d, Y g:i A'); ?></div>
+    </div>
+</div>
+<table>
+    <thead>
+        <tr>
+            <th>Customer ID</th>
+            <th>Customer Name</th>
+            <th>Type</th>
+            <th>Contact Number</th>
+            <th>Registered By</th>
+            <th>Date Registered</th>
+            <th>Last Transaction</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+    <?php if (empty($filteredCustomers)): ?>
+        <tr><td colspan="8" style="text-align:center;color:#94a3b8;">No records found.</td></tr>
+    <?php else: ?>
+        <?php foreach ($filteredCustomers as $c): ?>
+        <tr>
+            <td><strong><?php echo htmlspecialchars($c['customer_id']); ?></strong></td>
+            <td><?php echo htmlspecialchars($c['display_name']); ?></td>
+            <td><?php echo ucfirst($c['customer_type']); ?></td>
+            <td><?php echo htmlspecialchars($c['contact_number']); ?></td>
+            <td><?php echo htmlspecialchars($c['registered_by_name'] ?: 'System'); ?></td>
+            <td><?php echo date('M d, Y', strtotime($c['registered_at'])); ?></td>
+            <td><?php echo $c['last_transaction_date'] ? date('M d, Y', strtotime($c['last_transaction_date'])) : '—'; ?></td>
+            <td><?php echo ucfirst($c['status']); ?></td>
+        </tr>
+        <?php endforeach; ?>
+    <?php endif; ?>
+    </tbody>
+</table>
+</body>
+</html>
+<?php
+
+
+// ─────────────────────────────────────────────────────────────────────
+// 3. EXPORT SINGLE PROFILE PDF
+// ─────────────────────────────────────────────────────────────────────
+function exportSingleProfilePdf($id, $station_name) {
+    global $pdo, $station_id;
+
+    $stmt = $pdo->prepare("
+        SELECT c.*,
+               CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,'')) AS registered_by_name
+        FROM customers c
+        LEFT JOIN users u ON c.registered_by = u.id
+        WHERE c.id = ? AND c.station_id = ?
+    ");
+    $stmt->execute([$id, $station_id]);
+    $c = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$c) {
+        die('Customer not found');
+    }
+
+    $fullName = trim(implode(' ', array_filter([$c['first_name'], $c['middle_name'], $c['last_name']])) ?: $c['name']);
+
+    // Total counts and spend calculations
+    $merchSpent = 0.0; $merchCount = 0;
+    $joSpent = 0.0; $joCount = 0;
+    $fuelSpent = 0.0; $fuelCount = 0;
+    $lastTxDate = null;
+
+    try {
+        $q = $pdo->prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(total_amount), 0) as tot, MAX(transaction_date) as last_d FROM merchandise_transactions WHERE customer_id = ?");
+        $q->execute([$id]);
+        $r = $q->fetch(PDO::FETCH_ASSOC);
+        if ($r) { $merchCount = $r['cnt']; $merchSpent = $r['tot']; if ($r['last_d']) $lastTxDate = $r['last_d']; }
+    } catch(Exception $e){}
+
+    try {
+        $q = $pdo->prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(total_cost), 0) as tot, MAX(created_at) as last_d FROM job_orders WHERE customer_id = ?");
+        $q->execute([$id]);
+        $r = $q->fetch(PDO::FETCH_ASSOC);
+        if ($r) { $joCount = $r['cnt']; $joSpent = $r['tot']; if ($r['last_d']) $lastTxDate = $lastTxDate ? max($lastTxDate, $r['last_d']) : $r['last_d']; }
+    } catch(Exception $e){}
+
+    try {
+        $q = $pdo->prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(total_amount), 0) as tot, MAX(transaction_date) as last_d FROM fuel_transactions WHERE customer_id = ?");
+        $q->execute([$id]);
+        $r = $q->fetch(PDO::FETCH_ASSOC);
+        if ($r) { $fuelCount = $r['cnt']; $fuelSpent = $r['tot']; if ($r['last_d']) $lastTxDate = $lastTxDate ? max($lastTxDate, $r['last_d']) : $r['last_d']; }
+    } catch(Exception $e){}
+
+    $totalAmountSpent = $merchSpent + $joSpent + $fuelSpent;
+
+    // Audit Log entry
+    try { write_audit_log($pdo, 'Export', "Admin exported single customer profile PDF: $fullName ({$c['customer_id']})", 'customers', $id, 'customer'); } catch(Exception $e){}
+
+    header('Content-Type: text/html; charset=utf-8');
+    ?>
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Customer Profile Oversight — <?php echo htmlspecialchars($fullName); ?></title>
+        <style>
+            body { font-family: Arial, sans-serif; font-size: 11px; color: #111; margin: 20px; }
+            .hdr { background: #002F70; color: #fff; padding: 16px 20px; border-radius: 6px; margin-bottom: 16px; }
+            .hdr h1 { margin: 0; font-size: 16px; }
+            .hdr .sub { font-size: 10px; opacity: .8; margin-top: 3px; }
+            .section { margin-bottom: 14px; }
+            h2 { font-size: 12px; color: #002F70; border-bottom: 1px solid #002F70; padding-bottom: 4px; margin-bottom: 8px; }
+            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+            table { width: 100%; border-collapse: collapse; }
+            th { background: #f1f5f9; padding: 5px 8px; font-size: 10px; text-align: left; border: 1px solid #ddd; }
+            td { padding: 5px 8px; border: 1px solid #ddd; font-size: 10px; }
+            .footer { margin-top: 20px; border-top: 1px solid #ddd; padding-top: 8px; font-size: 9px; color: #666; }
+            .no-print { margin-bottom: 12px; }
+            .btn { padding: 5px 12px; background: #002F70; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; }
+            @media print { .no-print { display: none; } }
+        </style>
+    </head>
+    <body onload="window.print()">
+    <div class="no-print">
+        <button onclick="window.print()" class="btn">Print Profile</button>
+        <button onclick="window.close()" class="btn" style="background:#64748b;margin-left:8px;">Close</button>
+    </div>
+    <div class="hdr">
+        <h1>CUSTOMER PROFILE (ADMIN OVERSIGHT) — <?php echo htmlspecialchars($fullName); ?></h1>
+        <div class="sub"><?php echo htmlspecialchars($c['customer_id']); ?> &nbsp;|&nbsp; <?php echo htmlspecialchars($station_name); ?> &nbsp;|&nbsp; Generated: <?php echo date('M d, Y g:i A'); ?></div>
+    </div>
+    <div class="grid">
+        <div class="section">
+            <h2>Customer Information</h2>
+            <table>
+                <tr><th>Customer ID</th><td><?php echo htmlspecialchars($c['customer_id']); ?></td></tr>
+                <tr><th>Full Name</th><td><?php echo htmlspecialchars($fullName); ?></td></tr>
+                <tr><th>Contact Number</th><td><?php echo htmlspecialchars($c['contact_number']); ?></td></tr>
+                <tr><th>Address</th><td><?php echo htmlspecialchars($c['address'] ?? '—'); ?></td></tr>
+                <tr><th>Customer Type</th><td><?php echo ucfirst($c['customer_type']); ?></td></tr>
+                <tr><th>Date Registered</th><td><?php echo date('M d, Y', strtotime($c['registered_at'] ?? $c['created_at'])); ?></td></tr>
+                <tr><th>Registered By</th><td><?php echo htmlspecialchars($c['registered_by_name'] ?: 'System'); ?></td></tr>
+                <tr><th>Status</th><td><?php echo ucfirst($c['status']); ?></td></tr>
+            </table>
+        </div>
+        <div class="section">
+            <h2>Activity & Spend Summary</h2>
+            <table>
+                <tr><th>Total Amount Spent</th><td><strong>₱<?php echo number_format($totalAmountSpent, 2); ?></strong></td></tr>
+                <tr><th>Merchandise Purchases</th><td><?php echo $merchCount; ?> txn(s) (₱<?php echo number_format($merchSpent, 2); ?>)</td></tr>
+                <tr><th>Fuel Purchases</th><td><?php echo $fuelCount; ?> txn(s) (₱<?php echo number_format($fuelSpent, 2); ?>)</td></tr>
+                <tr><th>Job Orders / Services</th><td><?php echo $joCount; ?> order(s) (₱<?php echo number_format($joSpent, 2); ?>)</td></tr>
+                <tr><th>Last Transaction Date</th><td><?php echo $lastTxDate ? date('M d, Y g:i A', strtotime($lastTxDate)) : 'No Transactions'; ?></td></tr>
+                <tr><th>Outstanding Balance</th><td>₱<?php echo number_format($c['outstanding_balance'] ?? 0, 2); ?></td></tr>
+            </table>
+        </div>
+    </div>
+    <?php if ($c['customer_type'] === 'fleet' && $c['company_name']): ?>
+    <div class="section">
+        <h2>Fleet / Company Information</h2>
+        <table>
+            <tr><th>Company Name</th><td><?php echo htmlspecialchars($c['company_name']); ?></td></tr>
+            <tr><th>Company Address</th><td><?php echo htmlspecialchars($c['company_address'] ?? '—'); ?></td></tr>
+            <tr><th>Contact Person</th><td><?php echo htmlspecialchars($c['company_contact_person'] ?? '—'); ?></td></tr>
+            <tr><th>Company Contact</th><td><?php echo htmlspecialchars($c['company_contact_number'] ?? '—'); ?></td></tr>
+        </table>
+    </div>
+    <?php endif; ?>
+    <div class="section">
+        <h2>Submitted Documents Verification</h2>
+        <table>
+            <tr><th>Government ID Type</th><td><?php echo htmlspecialchars($c['gov_id_type'] ?? 'None'); ?></td></tr>
+            <tr><th>Verification Status</th><td><?php echo ucfirst($c['verification_status']); ?></td></tr>
+            <tr><th>Remarks</th><td><?php echo htmlspecialchars($c['verification_remarks'] ?? '—'); ?></td></tr>
+        </table>
+    </div>
+    <div class="footer">
+        Printed by: <?php echo htmlspecialchars($GLOBALS['me']['name'] ?? 'Admin'); ?> &nbsp;|&nbsp;
+        System Generated — Petron Management System
+    </div>
+    </body>
+    </html>
+    <?php
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 4. EXPORT SINGLE CUSTOMER HISTORY TABLE
+// ─────────────────────────────────────────────────────────────────────
+function exportSingleHistory($id, $format, $station_name) {
+    global $pdo;
+
+    $stmt = $pdo->prepare("SELECT customer_id, first_name, last_name, name FROM customers WHERE id = ?");
+    $stmt->execute([$id]);
+    $c = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$c) die('Customer not found');
+    $fullName = trim(implode(' ', array_filter([$c['first_name'], $c['last_name']])) ?: $c['name']);
+
+    $search   = trim($_GET['search'] ?? '');
+    $module   = trim($_GET['module'] ?? '');
+    $status   = trim($_GET['status'] ?? '');
+    $dateFrom = trim($_GET['date_from'] ?? '');
+    $dateTo   = trim($_GET['date_to'] ?? '');
+
+    $allTx = [];
+
+    // Fuel
+    if ($module === '' || $module === 'Fuel') {
+        $where = ['ft.customer_id = ?']; $params = [$id];
+        if ($search !== '') { $where[] = "ft.transaction_id LIKE ?"; $params[] = "%$search%"; }
+        if ($status !== '') { $where[] = "ft.status = ?"; $params[] = $status; }
+        if ($dateFrom !== '') { $where[] = "DATE(ft.transaction_date) >= ?"; $params[] = $dateFrom; }
+        if ($dateTo !== '') { $where[] = "DATE(ft.transaction_date) <= ?"; $params[] = $dateTo; }
+        try {
+            $sql = "
+                SELECT ft.transaction_date AS txn_date, ft.transaction_id AS reference_no, 'Fuel' AS module,
+                       CONCAT(ft.fuel_type, ' — ', ft.liters_sold, 'L') AS description, ft.total_amount AS amount,
+                       COALESCE(ft.status, 'Completed') AS status, COALESCE(u.name, 'System') AS processed_by
+                FROM fuel_transactions ft 
+                LEFT JOIN users u ON ft.staff_id = u.id 
+                WHERE " . implode(' AND ', $where);
+            $q = $pdo->prepare($sql);
+            $q->execute($params);
+            $allTx = array_merge($allTx, $q->fetchAll(PDO::FETCH_ASSOC));
+        } catch (Exception $e) {}
+    }
+
+    // Merchandise
+    if ($module === '' || $module === 'Merchandise') {
+        $where = ['mt.customer_id = ?']; $params = [$id];
+        if ($search !== '') { $where[] = "mt.transaction_id LIKE ?"; $params[] = "%$search%"; }
+        if ($status !== '') { $where[] = "mt.validation_status = ?"; $params[] = $status; }
+        if ($dateFrom !== '') { $where[] = "DATE(mt.transaction_date) >= ?"; $params[] = $dateFrom; }
+        if ($dateTo !== '') { $where[] = "DATE(mt.transaction_date) <= ?"; $params[] = $dateTo; }
+        try {
+            $sql = "
+                SELECT mt.transaction_date AS txn_date, mt.transaction_id AS reference_no, 'Merchandise' AS module,
+                       CONCAT('Sale — ₱', FORMAT(mt.total_amount,2)) AS description, mt.total_amount AS amount,
+                       COALESCE(mt.validation_status, 'Completed') AS status, COALESCE(u.name, 'System') AS processed_by
+                FROM merchandise_transactions mt 
+                LEFT JOIN users u ON mt.staff_id = u.id 
+                WHERE " . implode(' AND ', $where);
+            $q = $pdo->prepare($sql);
+            $q->execute($params);
+            $allTx = array_merge($allTx, $q->fetchAll(PDO::FETCH_ASSOC));
+        } catch (Exception $e) {}
+    }
+
+    // Job Orders
+    if ($module === '' || $module === 'Job Order') {
+        $where = ['jo.customer_id = ?']; $params = [$id];
+        if ($search !== '') { $where[] = "(jo.job_order_id LIKE ? OR jo.job_order_number LIKE ?)"; $params[] = "%$search%"; $params[] = "%$search%"; }
+        if ($status !== '') { $where[] = "jo.status = ?"; $params[] = $status; }
+        if ($dateFrom !== '') { $where[] = "DATE(jo.created_at) >= ?"; $params[] = $dateFrom; }
+        if ($dateTo !== '') { $where[] = "DATE(jo.created_at) <= ?"; $params[] = $dateTo; }
+        try {
+            $sql = "
+                SELECT jo.created_at AS txn_date, COALESCE(jo.job_order_id, jo.job_order_number, CONCAT('JO-', jo.id)) AS reference_no,
+                       'Job Order' AS module, COALESCE(jo.service_type, 'Auto Service') AS description, jo.total_cost AS amount,
+                       COALESCE(jo.status, 'Pending') AS status, COALESCE(u.name, 'System') AS processed_by
+                FROM job_orders jo 
+                LEFT JOIN users u ON jo.created_by = u.id 
+                WHERE " . implode(' AND ', $where);
+            $q = $pdo->prepare($sql);
+            $q->execute($params);
+            $allTx = array_merge($allTx, $q->fetchAll(PDO::FETCH_ASSOC));
+        } catch (Exception $e) {}
+    }
+
+    // Sort combined records descending by date
+    usort($allTx, function($a, $b) {
+        return strtotime($b['txn_date']) - strtotime($a['txn_date']);
+    });
+
+    $filename = 'customer_history_' . $c['customer_id'] . '_' . date('Ymd_His');
+
+    // Audit Log entry
+    try { write_audit_log($pdo, 'Export', "Admin exported transaction history table for customer {$c['customer_id']} ($format)", 'customers', $id, 'customer'); } catch(Exception $e){}
+
+    if ($format === 'csv') {
+        header('Content-Type: text/csv');
+        header('Content-Disposition: attachment; filename="' . $filename . '.csv"');
+        $out = fopen('php://output', 'w');
+        fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF));
+        fputcsv($out, ['Date', 'Reference No.', 'Module', 'Description', 'Amount', 'Status', 'Processed By']);
+        foreach ($allTx as $t) {
+            fputcsv($out, [
+                date('Y-m-d H:i:s', strtotime($t['txn_date'])),
+                $t['reference_no'],
+                $t['module'],
+                $t['description'],
+                number_format($t['amount'], 2, '.', ''),
+                $t['status'],
+                $t['processed_by']
+            ]);
+        }
+        fclose($out);
+        exit;
+    }
+
+    if ($format === 'excel') {
+        header('Content-Type: application/vnd.ms-excel');
+        header('Content-Disposition: attachment; filename="' . $filename . '.xls"');
+        echo '<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8">
+        <style>th{background:#002F70;color:#fff;font-weight:bold;padding:5px;}td,th{border:1px solid #ccc;}</style>
+        </head><body>';
+        echo '<h3>Transaction History — ' . htmlspecialchars($fullName) . ' (' . htmlspecialchars($c['customer_id']) . ')</h3>';
+        echo '<p>Station: ' . htmlspecialchars($station_name) . ' | Generated: ' . date('M d, Y g:i A') . '</p>';
+        echo '<table><thead><tr>
+            <th>Date</th><th>Reference No.</th><th>Module</th><th>Description</th><th>Amount</th><th>Status</th><th>Processed By</th>
+        </tr></thead><tbody>';
+        foreach ($allTx as $t) {
+            echo '<tr>';
+            echo '<td>' . date('Y-m-d H:i:s', strtotime($t['txn_date'])) . '</td>';
+            echo '<td>' . htmlspecialchars($t['reference_no']) . '</td>';
+            echo '<td>' . htmlspecialchars($t['module']) . '</td>';
+            echo '<td>' . htmlspecialchars($t['description']) . '</td>';
+            echo '<td>' . number_format($t['amount'], 2, '.', '') . '</td>';
+            echo '<td>' . htmlspecialchars($t['status']) . '</td>';
+            echo '<td>' . htmlspecialchars($t['processed_by']) . '</td>';
+            echo '</tr>';
+        }
+        echo '</tbody></table></body></html>';
+        exit;
+    }
+
+    // PDF (HTML Printable Format)
+    header('Content-Type: text/html; charset=utf-8');
+    ?>
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Transaction History — <?php echo htmlspecialchars($fullName); ?></title>
+        <style>
+            body { font-family: Arial, sans-serif; font-size: 11px; color: #111; margin: 20px; }
+            .hdr { border-bottom: 2px solid #002F70; padding-bottom: 8px; margin-bottom: 14px; display: flex; justify-content: space-between; }
+            h1 { font-size: 15px; color: #002F70; margin: 0; }
+            .sub { font-size: 10px; color: #555; margin-top: 3px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+            th { background: #002F70; color: #fff; padding: 6px 8px; font-size: 10px; text-align: left; border: 1px solid #ddd; }
+            td { padding: 5px 8px; border: 1px solid #ddd; font-size: 10px; }
+            tr:nth-child(even) td { background: #f8fafc; }
+            .no-print { margin-bottom: 14px; }
+            .btn { padding: 6px 14px; background: #002F70; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
+            @media print { .no-print { display: none; } }
+        </style>
+    </head>
+    <body onload="window.print()">
+    <div class="no-print">
+        <button onclick="window.print()" class="btn">Print Table</button>
+        <button onclick="window.close()" class="btn" style="background:#64748b;margin-left:8px;">Close</button>
+    </div>
+    <div class="hdr">
+        <div>
+            <h1>TRANSACTION HISTORY — <?php echo htmlspecialchars($fullName); ?> (<?php echo htmlspecialchars($c['customer_id']); ?>)</h1>
+            <div class="sub">Station: <?php echo htmlspecialchars($station_name); ?> &nbsp;|&nbsp; Generated: <?php echo date('M d, Y g:i A'); ?></div>
+        </div>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Reference No.</th>
+                <th>Module</th>
+                <th>Description</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th>Processed By</th>
+            </tr>
+        </thead>
+        <tbody>
+        <?php if (empty($allTx)): ?>
+            <tr><td colspan="7" style="text-align:center;color:#94a3b8;">No transactions found matching the parameters.</td></tr>
+        <?php else: ?>
+            <?php foreach ($allTx as $t): ?>
+            <tr>
+                <td><?php echo date('M d, Y g:i A', strtotime($t['txn_date'])); ?></td>
+                <td><strong><?php echo htmlspecialchars($t['reference_no']); ?></strong></td>
+                <td><?php echo htmlspecialchars($t['module']); ?></td>
+                <td><?php echo htmlspecialchars($t['description']); ?></td>
+                <td>₱<?php echo number_format($t['amount'], 2); ?></td>
+                <td><?php echo ucfirst($t['status']); ?></td>
+                <td><?php echo htmlspecialchars($t['processed_by']); ?></td>
+            </tr>
+            <?php endforeach; ?>
+        <?php endif; ?>
+        </tbody>
+    </table>
+    </body>
+    </html>
+    <?php
+}
+?>

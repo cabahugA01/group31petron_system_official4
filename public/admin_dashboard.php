@@ -172,7 +172,14 @@ $todays_profit = 0; // Placeholder - implement cost tracking if needed
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Fuel Sales by Product
-$fuel_products = ['Diesel', 'XCS', 'Turbo Diesel', 'XTRA Unleaded', 'Kerosene'];
+$fuel_products = [];
+try {
+    $stmt = $pdo->prepare("SELECT DISTINCT fuel_type FROM fuel_inventory WHERE station_id = ? AND COALESCE(fuel_type, '') <> '' ORDER BY fuel_type");
+    $stmt->execute([$station_id]);
+    $fuel_products = array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'fuel_type');
+} catch (Exception $e) {
+    $fuel_products = [];
+}
 $fuel_sales_data = [];
 foreach ($fuel_products as $product) {
     try {
@@ -196,8 +203,8 @@ try {
         $merch_sales_by_cat[] = (float)$row['total'];
     }
 } catch (Exception $e) {
-    $merch_categories = ['Lubricants', 'Drinks', 'Snacks', 'Accessories', 'Engine Oil'];
-    $merch_sales_by_cat = [0, 0, 0, 0, 0];
+    $merch_categories = [];
+    $merch_sales_by_cat = [];
 }
 
 // Weekly Sales Trend (Last 7 days)
@@ -1142,7 +1149,7 @@ include __DIR__ . '/../partials/header.php';
             new Chart(fuelSalesCtx, {
                 type: 'bar',
                 data: {
-                    labels: ['Diesel', 'XCS', 'Turbo Diesel', 'XTRA Unleaded', 'Kerosene'],
+                    labels: <?= json_encode($fuel_products) ?>,
                     datasets: [{
                         label: 'Liters',
                         data: <?= json_encode($fuel_sales_data) ?>,

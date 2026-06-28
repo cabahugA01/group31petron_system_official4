@@ -372,10 +372,10 @@ try {
             try {
                 $s = $pdo->prepare("
                     SELECT name AS customer_name,
-                           COALESCE(balance, 0) AS outstanding_balance
+                           COALESCE(outstanding_balance, balance, 0) AS outstanding_balance
                     FROM customers
-                    WHERE station_id = ? AND (type = 'credit' OR COALESCE(balance,0) > 0)
-                    ORDER BY balance DESC
+                    WHERE station_id = ? AND (type = 'credit' OR COALESCE(outstanding_balance, balance, 0) > 0)
+                    ORDER BY outstanding_balance DESC
                 ");
                 $s->execute([$station_id]);
                 $ar_summary = $s->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -854,7 +854,8 @@ try {
                     try {
                         $ft_tables = $pdo->query("SHOW TABLES LIKE 'fuel_types'")->fetchAll();
                         if (!empty($ft_tables)) {
-                            $fuel_type_join = "LEFT JOIN fuel_types ft ON fd.fuel_type = ft.id";
+                            // fuel_deliveries.fuel_type is VARCHAR matching fuel_types.name
+                            $fuel_type_join = "LEFT JOIN fuel_types ft ON fd.fuel_type = ft.name";
                             $fuel_type_col = "COALESCE(ft.name, fd.fuel_type, 'Unknown')";
                         }
                     } catch (Exception $e) {
@@ -1025,8 +1026,9 @@ try {
                     try {
                         $pump_tables = $pdo->query("SHOW TABLES LIKE 'fuel_pumps'")->fetchAll();
                         if (!empty($pump_tables)) {
-                            $pump_join = "LEFT JOIN fuel_pumps p ON r.pump_number = p.id";
-                            $pump_col = "COALESCE(p.pump_name, CONCAT('Pump ', r.pump_number))";
+                            // fuel_readings.pump_number is VARCHAR matching fuel_pumps.pump_number
+                            $pump_join = "LEFT JOIN fuel_pumps p ON r.pump_number = p.pump_number";
+                            $pump_col = "COALESCE(CONCAT('Pump ', p.pump_number), CONCAT('Pump ', r.pump_number))";
                         }
                     } catch (Exception $e) {
                         $pump_join = "";

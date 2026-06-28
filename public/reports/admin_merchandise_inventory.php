@@ -55,7 +55,10 @@ try {
     $q = $pdo->prepare("SELECT si.*, ip.product_name, ip.sku, ip.category, ip.unit
         FROM station_inventory si
         LEFT JOIN inventory_products ip ON ip.id = si.product_id
-        WHERE si.station_id = ? AND si.status = 'active'
+        WHERE si.station_id = ?
+          AND LOWER(COALESCE(si.status, 'active')) = 'active'
+          AND LOWER(COALESCE(ip.status, 'active')) <> 'inactive'
+          AND LOWER(COALESCE(ip.category, '')) <> 'fuel'
         ORDER BY ip.category, ip.product_name");
     $q->execute([$station_id]);
     $products = $q->fetchAll(PDO::FETCH_ASSOC);

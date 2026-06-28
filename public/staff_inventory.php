@@ -23,15 +23,14 @@ $msg             = '';
 try {
     // Fuel inventory
     $stmt = $pdo->prepare("
-        SELECT ip.product_name AS name,
-               COALESCE(fi.price_per_liter, ip.unit_cost) AS price,
-               COALESCE(fi.current_level, fi.current_stock, ip.stock, 0) AS stock_level,
-               COALESCE(fi.capacity, 20000.00)            AS capacity
-        FROM inventory_products ip
-        LEFT JOIN fuel_inventory fi
-               ON ip.product_name = fi.fuel_type AND fi.station_id = ?
-        WHERE ip.category = 'Fuel'
-        ORDER BY ip.product_name
+        SELECT fuel_type AS name,
+               price_per_liter AS price,
+               COALESCE(current_level, current_stock, 0) AS stock_level,
+               COALESCE(capacity, 0) AS capacity
+        FROM fuel_inventory
+        WHERE station_id = ?
+          AND COALESCE(fuel_type, '') <> ''
+        ORDER BY fuel_type
     ");
     $stmt->execute([$station_id]);
     $fuel_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -49,7 +48,9 @@ try {
         FROM inventory_products ip
         LEFT JOIN station_inventory si
                ON si.product_id = ip.id AND si.station_id = ?
-        WHERE ip.category NOT IN ('Fuel') AND ip.status = 'Active'
+        WHERE LOWER(COALESCE(ip.category, '')) <> 'fuel'
+          AND LOWER(COALESCE(ip.status, 'active')) <> 'inactive'
+          AND LOWER(COALESCE(si.status, 'active')) = 'active'
         ORDER BY ip.category, ip.product_name
     ");
     $stmt->execute([$station_id]);

@@ -61,30 +61,61 @@ function recordStockMovement($pdo, $station_id, $fuel_type_id, $quantity, $trans
             ];
         }
 
-        // Look up the matching product by name (fuel_types.name == products.name)
-        // where products.type_id points to the 'fuel' product_type
+        $source_reference_type = $reference_type;
+        $source_reference_id = $reference_id;
+        $transaction_reference_id = null;
+        if ($reference_type && $reference_id && in_array(strtolower((string)$reference_type), ['purchase_order', 'purchase_orders'], true)) {
+            $stmt = $pdo->prepare("SELECT id FROM purchase_orders WHERE id = ? LIMIT 1");
+            $stmt->execute([$reference_id]);
+            $transaction_reference_id = $stmt->fetchColumn() ? (int)$reference_id : null;
+        }
+
+        $transaction_notes = $notes;
+        if ($source_reference_type && $source_reference_id && $transaction_reference_id === null) {
+            $source_note = "Source reference: {$source_reference_type}#{$source_reference_id}";
+            $transaction_notes = trim($transaction_notes ? "{$transaction_notes} | {$source_note}" : $source_note);
+        }
+
+        // inventory_transactions.product_id references inventory_products.id.
         $stmt = $pdo->prepare("
-            SELECT p.id 
-            FROM products p 
-            WHERE p.name = ? AND p.type_id = (SELECT id FROM product_types WHERE name = 'fuel')
+            SELECT id
+            FROM inventory_products
+            WHERE LOWER(TRIM(product_name)) = LOWER(TRIM(?))
+              AND LOWER(COALESCE(category, '')) = 'fuel'
+            ORDER BY CASE WHEN station_id = ? THEN 0 ELSE 1 END, id
+            LIMIT 1
         ");
-        $stmt->execute([$fuel_type['name']]);
+        $stmt->execute([$fuel_type['name'], $station_id]);
         $product_id = $stmt->fetchColumn();
 
         if (!$product_id) {
-            return [
-                'success' => false,
-                'message' => 'Fuel product not configured in products table for: ' . $fuel_type['name']
-            ];
+            $sku_base = preg_replace('/[^A-Z0-9]+/', '-', strtoupper($fuel_type['name']));
+            $sku = 'FUEL-' . trim($sku_base, '-') . '-' . $station_id . '-' . $fuel_type_id;
+            $stmt = $pdo->prepare("
+                INSERT INTO inventory_products
+                    (category, product_name, sku, unit, unit_cost, unit_price, stock_quantity, stock,
+                     created_at, status, min_stock, max_stock, updated_at, station_id)
+                VALUES ('Fuel', ?, ?, 'liters', 0, 0, 0, 0, NOW(), 'active', 0, 0, NOW(), ?)
+            ");
+            $stmt->execute([$fuel_type['name'], $sku, $station_id]);
+            $product_id = $pdo->lastInsertId();
         }
 
         // Check for duplicate transaction (prevent double-deducting same reading)
-        if ($reference_type && $reference_id) {
-            $stmt = $pdo->prepare("
-                SELECT id FROM inventory_transactions 
-                WHERE reference_type = ? AND reference_id = ? AND transaction_type = ?
-            ");
-            $stmt->execute([$reference_type, $reference_id, $transaction_type]);
+        if ($source_reference_type && $source_reference_id) {
+            if ($transaction_reference_id !== null) {
+                $stmt = $pdo->prepare("
+                    SELECT id FROM inventory_transactions
+                    WHERE reference_type = ? AND reference_id = ? AND transaction_type = ?
+                ");
+                $stmt->execute([$reference_type, $transaction_reference_id, $transaction_type]);
+            } else {
+                $stmt = $pdo->prepare("
+                    SELECT id FROM inventory_transactions
+                    WHERE reference_type = ? AND transaction_type = ? AND notes LIKE ?
+                ");
+                $stmt->execute([$reference_type, $transaction_type, "%Source reference: {$source_reference_type}#{$source_reference_id}%"]);
+            }
             if ($stmt->fetch()) {
                 return [
                     'success' => false,
@@ -93,27 +124,48 @@ function recordStockMovement($pdo, $station_id, $fuel_type_id, $quantity, $trans
             }
         }
 
-        // Get or create inventory record for this fuel product at this station
+        // Fuel inventory is the source of truth for fuel reports and dashboards.
         $stmt = $pdo->prepare("
-            SELECT si.id as inventory_id, si.stock_level
-            FROM station_inventory si
-            WHERE si.station_id = ? AND si.product_id = ?
+            SELECT id, current_level, current_stock
+            FROM fuel_inventory
+            WHERE station_id = ?
+              AND (fuel_type_id = ? OR LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)))
+            LIMIT 1
         ");
-        $stmt->execute([$station_id, $product_id]);
-        $inventory = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stmt->execute([$station_id, $fuel_type_id, $fuel_type['name']]);
+        $fuel_inventory = $stmt->fetch(PDO::FETCH_ASSOC);
         
-        if (!$inventory) {
-            // Create inventory record
+        if (!$fuel_inventory) {
             $stmt = $pdo->prepare("
-                INSERT INTO station_inventory (station_id, product_id, stock_level, unit, status)
-                VALUES (?, ?, 0, 'liters', 'active')
+                INSERT INTO fuel_inventory
+                    (station_id, fuel_type_id, current_stock, fuel_type, current_level, capacity,
+                     reorder_level, critical_level, price_per_liter, latest_calibration, status, last_updated, updated_by)
+                VALUES (?, ?, 0, ?, 0, 0, 500, 200, 0, 0, 'Normal', NOW(), ?)
             ");
-            $stmt->execute([$station_id, $product_id]);
-            $inventory_id = $pdo->lastInsertId();
+            $stmt->execute([$station_id, $fuel_type_id, $fuel_type['name'], $user_id]);
+            $fuel_inventory_id = $pdo->lastInsertId();
             $stock_before = 0.0;
         } else {
-            $inventory_id = $inventory['inventory_id'];
-            $stock_before = (float)$inventory['stock_level'];
+            $fuel_inventory_id = (int)$fuel_inventory['id'];
+            $stock_before = (float)($fuel_inventory['current_level'] ?? $fuel_inventory['current_stock'] ?? 0);
+        }
+
+        // Keep station_inventory in sync for legacy modules that still read it.
+        $stmt = $pdo->prepare("
+            SELECT id
+            FROM station_inventory
+            WHERE station_id = ? AND product_id = ?
+        ");
+        $stmt->execute([$station_id, $product_id]);
+        $inventory_id = $stmt->fetchColumn();
+
+        if (!$inventory_id) {
+            $stmt = $pdo->prepare("
+                INSERT INTO station_inventory (station_id, product_id, stock_level, unit, status, last_updated)
+                VALUES (?, ?, ?, 'liters', 'active', NOW())
+            ");
+            $stmt->execute([$station_id, $product_id, $stock_before]);
+            $inventory_id = $pdo->lastInsertId();
         }
         
         // Calculate new stock
@@ -130,11 +182,29 @@ function recordStockMovement($pdo, $station_id, $fuel_type_id, $quantity, $trans
             ];
         }
         
-        // Begin transaction
-        $pdo->beginTransaction();
+        $started_transaction = !$pdo->inTransaction();
+        if ($started_transaction) {
+            $pdo->beginTransaction();
+        }
         
         try {
-            // Update inventory stock level
+            // Update fuel_inventory first; this table feeds fuel reports and dashboards.
+            $stmt = $pdo->prepare("
+                UPDATE fuel_inventory
+                SET current_level = ?,
+                    current_stock = ?,
+                    status = CASE
+                        WHEN ? <= 0 THEN 'Low Stock'
+                        WHEN reorder_level > 0 AND ? <= reorder_level THEN 'Low Stock'
+                        ELSE 'Normal'
+                    END,
+                    last_updated = NOW(),
+                    updated_by = ?
+                WHERE id = ?
+            ");
+            $stmt->execute([$stock_after, $stock_after, $stock_after, $stock_after, $user_id, $fuel_inventory_id]);
+
+            // Keep legacy station inventory stock in sync.
             $stmt = $pdo->prepare("
                 UPDATE station_inventory 
                 SET stock_level = ?,
@@ -155,12 +225,41 @@ function recordStockMovement($pdo, $station_id, $fuel_type_id, $quantity, $trans
                 $transaction_type,
                 $quantity,
                 $reference_type,
-                $reference_id,
-                $notes,
+                $transaction_reference_id,
+                $transaction_notes,
                 $user_id
             ]);
             
             $transaction_id = $pdo->lastInsertId();
+
+            try {
+                $pdo->prepare("
+                    INSERT INTO audit_logs
+                        (user_id, log_type, action_type, action_details, entity_type, entity_id,
+                         old_values, new_values, status, ip_address, user_agent, created_at)
+                    VALUES (?, 'inventory', ?, ?, 'inventory_transactions', ?, ?, ?, 'Success', ?, ?, NOW())
+                ")->execute([
+                    $user_id,
+                    $transaction_type,
+                    "{$transaction_type}: {$fuel_type['name']} {$quantity} L. Stock {$stock_before}L -> {$stock_after}L",
+                    $transaction_id,
+                    json_encode(['stock_level' => $stock_before, 'fuel_type' => $fuel_type['name']]),
+                    json_encode([
+                        'stock_level' => $stock_after,
+                        'fuel_type' => $fuel_type['name'],
+                        'quantity' => $quantity,
+                        'reference_type' => $reference_type,
+                        'reference_id' => $transaction_reference_id,
+                        'source_reference_type' => $source_reference_type,
+                        'source_reference_id' => $source_reference_id,
+                        'notes' => $transaction_notes
+                    ]),
+                    $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0',
+                    $_SERVER['HTTP_USER_AGENT'] ?? 'CLI'
+                ]);
+            } catch (Exception $e) {
+                error_log('recordStockMovement audit_logs warning: ' . $e->getMessage());
+            }
             
             // Generate activity description
             $action_descriptions = [
@@ -181,12 +280,13 @@ function recordStockMovement($pdo, $station_id, $fuel_type_id, $quantity, $trans
                 $user_id,
                 $action,
                 "{$action}: {$fuel_type['name']} {$quantity_text} L. Stock: {$stock_before}L -> {$stock_after}L" . 
-                ($notes ? ". Notes: {$notes}" : ''),
+                ($transaction_notes ? ". Notes: {$transaction_notes}" : ''),
                 'fuel_management'
             );
             
-            // Commit transaction
-            $pdo->commit();
+            if ($started_transaction) {
+                $pdo->commit();
+            }
             
             return [
                 'success' => true,
@@ -200,7 +300,9 @@ function recordStockMovement($pdo, $station_id, $fuel_type_id, $quantity, $trans
             ];
             
         } catch (PDOException $e) {
-            $pdo->rollBack();
+            if ($started_transaction && $pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             throw $e;
         }
         
@@ -247,16 +349,15 @@ function getCurrentStock($pdo, $station_id, $fuel_type_id) {
             ];
         }
         
-        // Get inventory record
+        // Fuel inventory is the reporting source of truth for fuel levels.
         $stmt = $pdo->prepare("
-            SELECT si.id as inventory_id, si.stock_level
-            FROM station_inventory si
-            INNER JOIN products p ON si.product_id = p.id
-            WHERE si.station_id = ? 
-              AND p.name = ? 
-              AND p.type_id = (SELECT id FROM product_types WHERE name = 'fuel')
+            SELECT id AS inventory_id, COALESCE(current_level, current_stock, 0) AS stock_level
+            FROM fuel_inventory
+            WHERE station_id = ?
+              AND (fuel_type_id = ? OR LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)))
+            LIMIT 1
         ");
-        $stmt->execute([$station_id, $fuel_type_name]);
+        $stmt->execute([$station_id, $fuel_type_id, $fuel_type_name]);
         $inventory = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($inventory) {
@@ -315,23 +416,60 @@ function recordDailyClosingStock($pdo, $station_id, $fuel_type_id, $closing_stoc
             ];
         }
         
-        // Get inventory record by matching product name to fuel type name
+        // Find the station_inventory mirror row used for shift closing metadata.
         $stmt = $pdo->prepare("
             SELECT si.id as inventory_id
             FROM station_inventory si
-            INNER JOIN products p ON si.product_id = p.id
-            WHERE si.station_id = ? 
-              AND p.name = ? 
-              AND p.type_id = (SELECT id FROM product_types WHERE name = 'fuel')
+            INNER JOIN inventory_products ip ON si.product_id = ip.id
+            WHERE si.station_id = ?
+              AND LOWER(TRIM(ip.product_name)) = LOWER(TRIM(?))
+              AND LOWER(COALESCE(ip.category, '')) = 'fuel'
+            LIMIT 1
         ");
         $stmt->execute([$station_id, $fuel_type_name]);
         $inventory = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$inventory) {
-            return [
-                'success' => false,
-                'message' => 'Inventory record not found for fuel type: ' . $fuel_type_name
-            ];
+            $stmt = $pdo->prepare("
+                SELECT id
+                FROM inventory_products
+                WHERE LOWER(TRIM(product_name)) = LOWER(TRIM(?))
+                  AND LOWER(COALESCE(category, '')) = 'fuel'
+                ORDER BY CASE WHEN station_id = ? THEN 0 ELSE 1 END, id
+                LIMIT 1
+            ");
+            $stmt->execute([$fuel_type_name, $station_id]);
+            $product_id = $stmt->fetchColumn();
+
+            if (!$product_id) {
+                $sku_base = preg_replace('/[^A-Z0-9]+/', '-', strtoupper($fuel_type_name));
+                $sku = 'FUEL-' . trim($sku_base, '-') . '-' . $station_id . '-' . $fuel_type_id;
+                $stmt = $pdo->prepare("
+                    INSERT INTO inventory_products
+                        (category, product_name, sku, unit, unit_cost, unit_price, stock_quantity, stock,
+                         created_at, status, min_stock, max_stock, updated_at, station_id)
+                    VALUES ('Fuel', ?, ?, 'liters', 0, 0, 0, 0, NOW(), 'active', 0, 0, NOW(), ?)
+                ");
+                $stmt->execute([$fuel_type_name, $sku, $station_id]);
+                $product_id = $pdo->lastInsertId();
+            }
+
+            $stmt = $pdo->prepare("
+                SELECT COALESCE(current_level, current_stock, 0)
+                FROM fuel_inventory
+                WHERE station_id = ?
+                  AND (fuel_type_id = ? OR LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)))
+                LIMIT 1
+            ");
+            $stmt->execute([$station_id, $fuel_type_id, $fuel_type_name]);
+            $current_level = (float)$stmt->fetchColumn();
+
+            $stmt = $pdo->prepare("
+                INSERT INTO station_inventory (station_id, product_id, stock_level, unit, status, last_updated)
+                VALUES (?, ?, ?, 'liters', 'active', NOW())
+            ");
+            $stmt->execute([$station_id, $product_id, $current_level]);
+            $inventory = ['inventory_id' => $pdo->lastInsertId()];
         }
         
         // Update closing stock
@@ -404,11 +542,12 @@ function getOpeningStockForDay($pdo, $station_id, $fuel_type_id, $date) {
         $stmt = $pdo->prepare("
             SELECT si.closing_stock, si.closing_shift
             FROM station_inventory si
-            INNER JOIN products p ON si.product_id = p.id
+            INNER JOIN inventory_products ip ON si.product_id = ip.id
             WHERE si.station_id = ? 
-              AND p.name = ? 
-              AND p.type_id = (SELECT id FROM product_types WHERE name = 'fuel')
+              AND LOWER(TRIM(ip.product_name)) = LOWER(TRIM(?))
+              AND LOWER(COALESCE(ip.category, '')) = 'fuel'
               AND si.closing_date = ?
+            LIMIT 1
         ");
         $stmt->execute([$station_id, $fuel_type_name, $previous_day]);
         $previous_closing = $stmt->fetch(PDO::FETCH_ASSOC);

@@ -1,0 +1,174 @@
+═══════════════════════════════════════════════════════════════════════
+MANAGER CUSTOMER MODULE - BUTTON DISPLAY FIX INSTRUCTIONS
+═══════════════════════════════════════════════════════════════════════
+
+STATUS: Code has been updated with enhanced inline styles and !important flags
+
+WHAT WAS CHANGED:
+-----------------
+✓ Updated header button layout to match staff customer module
+✓ Export buttons (PDF, Excel, CSV) positioned on RIGHT SIDE, aligned with title
+✓ Add Customer button positioned BELOW export buttons
+✓ All buttons use solid colors with white text
+✓ Added !important flags to force styles to apply
+✓ Added full inline style declarations for all properties
+✓ Added cache-buster comment to force browser refresh
+
+BUTTON LAYOUT:
+--------------
+CUSTOMER MANAGEMENT                          [PDF] [Excel] [CSV]
+Subtitle text here...                        [  Add Customer  ]
+
+BUTTON COLORS:
+--------------
+• PDF Export: Red solid (#dc2626)
+• Excel Export: Green solid (#16a34a)
+• CSV Export: Grey solid (#6b7280)
+• Add Customer: Blue solid (#3b82f6)
+
+ACTION BUTTONS (in table):
+---------------------------
+✓ View: Blue solid (#3b82f6)
+✓ Edit: Orange solid (#f59e0b)
+✓ Verify: Green solid (#16a34a)
+✓ Print: Grey solid (#6b7280)
+✓ All buttons display VERTICALLY (tagsa-tagsa) with text labels
+
+FILE MODIFIED:
+--------------
+• public/manager_customers.php (lines 153-169)
+
+═══════════════════════════════════════════════════════════════════════
+TROUBLESHOOTING STEPS - FOLLOW IN ORDER:
+═══════════════════════════════════════════════════════════════════════
+
+STEP 1: CLEAR BROWSER CACHE (HARD REFRESH)
+--------------------------------------------
+Windows/Chrome/Edge:   Press Ctrl + Shift + R
+Windows/Firefox:       Press Ctrl + F5
+Alternative:           Press Ctrl + Shift + Delete → Clear Cache
+
+STEP 2: VERIFY CORRECT FILE IS LOADED
+--------------------------------------
+1. Open the page in browser: http://localhost/group31petron_system_official4/public/manager_customers.php
+2. Right-click on page → "View Page Source"
+3. Search for "CACHE BUSTER v2.0" in the source code
+4. If you DON'T see this text, the server is not loading the updated file
+
+STEP 3: RESTART APACHE SERVER
+------------------------------
+1. Open XAMPP Control Panel
+2. Click "Stop" on Apache
+3. Wait 3 seconds
+4. Click "Start" on Apache
+5. Reload the page in browser with Ctrl + Shift + R
+
+STEP 4: CHECK PHP OPCACHE (if steps 1-3 don't work)
+----------------------------------------------------
+1. Create a new file: c:\xampp\htdocs\group31petron_system_official4\clear_cache.php
+2. Add this code:
+<?php
+if (function_exists('opcache_reset')) {
+    opcache_reset();
+    echo "PHP OPcache cleared!";
+} else {
+    echo "OPcache not enabled";
+}
+?>
+3. Open in browser: http://localhost/group31petron_system_official4/clear_cache.php
+4. Reload manager_customers.php with Ctrl + Shift + R
+
+STEP 5: VERIFY BUTTONS ARE IN THE CODE
+---------------------------------------
+1. Open file: public/manager_customers.php
+2. Go to line 153
+3. You should see: <!-- CACHE BUSTER v2.0 - BUTTON LAYOUT UPDATE -->
+4. Lines 154-169 should contain the export and add customer buttons
+
+STEP 6: CHECK BROWSER CONSOLE FOR ERRORS
+-----------------------------------------
+1. Open manager_customers.php in browser
+2. Press F12 to open Developer Tools
+3. Click "Console" tab
+4. Look for any red error messages
+5. Take a screenshot if errors exist
+
+STEP 7: CHECK IF BUTTONS ARE HIDDEN BY CSS
+-------------------------------------------
+1. Open manager_customers.php in browser
+2. Press F12 to open Developer Tools
+3. Click "Elements" or "Inspector" tab
+4. Press Ctrl + F to search in HTML
+5. Search for "Export Buttons Row"
+6. Check if the div is visible in the DOM
+7. Click on the div to see computed styles
+8. Look for display:none or visibility:hidden
+
+═══════════════════════════════════════════════════════════════════════
+QUICK TEST PAGE
+═══════════════════════════════════════════════════════════════════════
+Create a new file: c:\xampp\htdocs\group31petron_system_official4\test_buttons.html
+
+Copy this code:
+<!DOCTYPE html>
+<html>
+<head>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+<style>
+body { font-family: Arial; padding: 20px; background: #f8fafc; }
+</style>
+</head>
+<body>
+<h1>Button Display Test</h1>
+<div style="display: flex !important; justify-content: space-between !important; align-items: flex-start !important; background: white; padding: 20px; border-radius: 10px;">
+    <div>
+        <h1>Customer Management</h1>
+        <div>Subtitle text here</div>
+    </div>
+    <div style="display: flex !important; flex-direction: column !important; gap: 8px !important; align-items: flex-end !important;">
+        <div style="display: flex !important; gap: 8px !important;">
+            <a style="background:#dc2626 !important;border:none !important;color:white !important;padding:0 14px;height:34px;display:inline-flex;align-items:center;gap:6px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;"><i class="fas fa-file-pdf"></i> PDF</a>
+            <a style="background:#16a34a !important;border:none !important;color:white !important;padding:0 14px;height:34px;display:inline-flex;align-items:center;gap:6px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;"><i class="fas fa-file-excel"></i> Excel</a>
+            <a style="background:#6b7280 !important;border:none !important;color:white !important;padding:0 14px;height:34px;display:inline-flex;align-items:center;gap:6px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;"><i class="fas fa-file-csv"></i> CSV</a>
+        </div>
+        <button style="width: 100% !important;background:#3b82f6 !important;border:none !important;color:white !important;padding:0 14px;height:34px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;"><i class="fas fa-plus"></i> Add Customer</button>
+    </div>
+</div>
+
+<p style="margin-top: 20px; color: #16a34a; font-weight: bold;">
+✓ If you can see the buttons above, your browser can display the styles correctly.
+</p>
+<p style="color: #dc2626; font-weight: bold;">
+✗ If you CANNOT see the buttons, there's a browser or system issue.
+</p>
+</body>
+</html>
+
+Then open: http://localhost/group31petron_system_official4/test_buttons.html
+
+If you see the buttons here but NOT in manager_customers.php, it's a caching issue.
+
+═══════════════════════════════════════════════════════════════════════
+CONFIRMATION CHECKLIST
+═══════════════════════════════════════════════════════════════════════
+□ Hard refresh attempted (Ctrl + Shift + R)
+□ Browser cache cleared completely
+□ Apache server restarted
+□ "CACHE BUSTER v2.0" appears in page source
+□ Test page (test_buttons.html) created and checked
+□ No console errors in F12 Developer Tools
+□ Buttons visible in DOM (Elements tab)
+
+═══════════════════════════════════════════════════════════════════════
+ADDITIONAL NOTES
+═══════════════════════════════════════════════════════════════════════
+• All button functions are verified and working:
+  - passFiltersToExport() for export buttons
+  - openAddModal() for add customer button
+  - viewProfile(), openEditModal(), openVerifyModal(), printCustomer() for action buttons
+  
+• Action buttons in table already display correctly with vertical layout
+
+• Staff customer module is NOT modified (as requested)
+
+═══════════════════════════════════════════════════════════════════════

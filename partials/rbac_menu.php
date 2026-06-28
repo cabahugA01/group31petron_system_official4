@@ -50,21 +50,8 @@ $master_menu = [
         ['id'=>'mgr_prod_prices',     'label'=>'Approve Prices',      'href'=>'manager_approve_prices.php',     'permissions'=>['approve_transactions','manage_job_orders']],
     ]],
 
-    // Customers - Staff access
-    ['id'=>'customers','label'=>'Customers','ico'=>'fas fa-users','href'=>'customers.php','permissions'=>['create_transactions','view_transactions'],'station_specific'=>true,'sub_items'=>[
-        ['id'=>'customer_add',     'label'=>'Add New Customer',  'href'=>'customers.php?section=add',     'permissions'=>['create_transactions']],
-        ['id'=>'customer_list',    'label'=>'Customer List',     'href'=>'customers.php?section=list',    'permissions'=>['create_transactions']],
-        ['id'=>'customer_history', 'label'=>'Customer History',  'href'=>'customers.php?section=history', 'permissions'=>['create_transactions']],
-    ]],
-
-    // Customers - Manager access (separate page with approval/oversight)
-    ['id'=>'mgr_customers','label'=>'Customers','ico'=>'fas fa-users','href'=>'manager_customers.php','permissions'=>['approve_transactions','view_transactions','manage_job_orders'],'station_specific'=>true,'sub_items'=>[
-        ['id'=>'mgr_cust_add',     'label'=>'Add New Customer',  'href'=>'manager_customers.php?section=add',      'permissions'=>['approve_transactions','manage_job_orders']],
-        ['id'=>'mgr_cust_list',    'label'=>'Customer List',     'href'=>'manager_customers.php?section=records',  'permissions'=>['approve_transactions','view_transactions']],
-        ['id'=>'mgr_cust_balances','label'=>'Customer Balances', 'href'=>'manager_customers.php?section=balances', 'permissions'=>['approve_transactions','manage_job_orders']],
-        ['id'=>'mgr_cust_history', 'label'=>'Customer History',  'href'=>'manager_customers.php?section=history',  'permissions'=>['view_transactions','manage_job_orders']],
-        ['id'=>'mgr_cust_validation','label'=>'Pending Approvals','href'=>'manager_customers.php?section=validation','permissions'=>['approve_transactions','manage_job_orders']],
-    ]],
+    // Customers - Staff access (single page with all functionality)
+    ['id'=>'customers','label'=>'Customers','ico'=>'fas fa-users','href'=>'staff_customer_list.php','permissions'=>['create_transactions','view_transactions'],'station_specific'=>true],
 
     // Calendar - Staff & Manager
     ['id'=>'calendar','label'=>'Calendar','ico'=>'fas fa-calendar-alt','href'=>'staff_calendar.php','permissions'=>['view_dashboard','create_transactions','encode_fuel','manage_job_orders','create_job_orders','approve_transactions'],'station_specific'=>true],
@@ -127,9 +114,9 @@ function filter_menu_by_permissions($menu_items, $user_role) {
     $staff_hidden_parent_items = ['staff', 'users', 'inventory_manager', 'admin_oversight', 'mgr_customers', 'manager_deliveries', 'product_management'];
     $staff_hidden_sub_items    = ['job_create', 'customer_linkage'];
     $admin_hidden_parent_items = ['stations', 'transactions', 'job_orders', 'fuel', 'customers', 'mgr_customers', 'inventory', 'inventory_manager', 'purchase_orders'];
+    $manager_hidden_parent_items = ['purchase_orders', 'customers']; // Hide staff customers from manager - Manager now has Reports
     $admin_hidden_sub_items = ['stock_requests']; // Hide staff stock requests from admin (staff_stock_in removed from all staff menus)
     $manager_hidden_sub_items = ['stock_requests', 'fuel_variance_report', 'fuel_reading_tracker', 'fuel_calibration_logs', 'fuel_stock_levels', 'fuel_variance_reports']; // Hide old fuel items from manager (replaced by new sub-menu)
-    $manager_hidden_parent_items = ['purchase_orders', 'customers']; // Hide staff customers from manager - Manager now has Reports
     // Hide manager-only items from staff/admin
     // Audit Trail is a standalone top-level item injected after Reports for manager role
     
@@ -218,6 +205,15 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                     ['id' => 'admin_inventory_history', 'label' => 'Inventory History', 'href' => 'admin_inventory_history.php', 'ico' => 'fas fa-history', 'permissions' => ['view_all_reports'], 'desc' => 'Full audit log of all fuel and merchandise inventory movements.'],
                 ],
             ],
+            // 7.5. Customers Oversight — Admin Oversight Module
+            [
+                'id' => 'admin_customers',
+                'label' => 'Customers',
+                'ico' => 'fas fa-users',
+                'href' => 'admin_customers.php',
+                'permissions' => ['view_all_reports', 'view_dashboard'],
+                'station_specific' => true,
+            ],
             // 8. Product & Pricing Management — Standalone Admin Module
             [
                 'id'          => 'admin_product_pricing',
@@ -227,46 +223,6 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 'permissions' => ['manage_system_settings', 'view_all_reports'],
                 'station_specific' => true,
                 'desc'        => 'Consolidated product list, current prices, price change validation, inventory snapshot.',
-            ],
-            // 9. Customers — Admin Oversight Module
-            [
-                'id'               => 'admin_customers',
-                'label'            => 'Customers',
-                'ico'              => 'fas fa-users',
-                'href'             => 'admin_customer_management.php',
-                'permissions'      => ['view_all_reports', 'view_dashboard'],
-                'station_specific' => true,
-                'sub_items'        => [
-                    [
-                        'id'          => 'adm_cust_list',
-                        'label'       => 'Customer List',
-                        'href'        => 'admin_customer_management.php?section=list',
-                        'permissions' => ['view_all_reports'],
-                        'desc'        => 'View and manage customer profiles within assigned station.',
-                    ],
-                    [
-                        'id'          => 'adm_cust_balances',
-                        'label'       => 'Customer Balances',
-                        'href'        => 'admin_customer_management.php?section=balances',
-                        'permissions' => ['view_all_reports'],
-                        'desc'        => 'Monitor receivables and outstanding balances within assigned station.',
-                    ],
-                    [
-                        'id'          => 'adm_cust_history',
-                        'label'       => 'Customer History',
-                        'href'        => 'admin_customer_management.php?section=history',
-                        'permissions' => ['view_all_reports'],
-                        'desc'        => 'View transaction history within assigned station.',
-                    ],
-                    // Customer Oversight - Admin & SuperAdmin
-                    [
-                        'id'          => 'adm_cust_oversight',
-                        'label'       => 'Customer Oversight',
-                        'href'        => 'admin_customer_management.php?section=oversight',
-                        'permissions' => ['view_all_reports'],
-                        'desc'        => 'Manage customer records, assign/re-map across stations, delete/archive.',
-                    ],
-                ],
             ],
             // 9. Calendar
             [
@@ -483,6 +439,17 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                     'permissions' => ['approve_transactions', 'manage_job_orders'],
                     'station_specific' => true,
                     'desc' => 'Review and approve staff requests for new vehicle types, service types, and products.'
+                ];
+                
+                // Add standalone Customers after Master Data Requests
+                $filtered_menu[] = [
+                    'id' => 'mgr_customers',
+                    'label' => 'Customers',
+                    'ico' => 'fas fa-users',
+                    'href' => 'manager_customers.php',
+                    'permissions' => ['approve_transactions', 'manage_job_orders'],
+                    'station_specific' => true,
+                    'desc' => 'Manage and verify customer accounts and review outstanding balances.'
                 ];
                 continue;
             }

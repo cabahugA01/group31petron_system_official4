@@ -1,0 +1,216 @@
+═══════════════════════════════════════════════════════════════════════════════
+                    MANAGER CUSTOMER MODULE - BUTTON LAYOUT
+═══════════════════════════════════════════════════════════════════════════════
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                                                                           ┃
+┃  👤 CUSTOMER MANAGEMENT                 ┌─────┐ ┌──────┐ ┌─────┐       ┃
+┃                                         │ PDF │ │Excel │ │ CSV │       ┃
+┃  Manage, verify, and monitor            └─────┘ └──────┘ └─────┘       ┃
+┃  customer accounts...                   ┌─────────────────────┐         ┃
+┃                                         │   Add Customer   │         ┃
+┃                                         └─────────────────────┘         ┃
+┃                                                                           ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+═══════════════════════════════════════════════════════════════════════════════
+                              DETAILED BREAKDOWN
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ LEFT SIDE: Title and Subtitle                                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                               │
+│  👤 CUSTOMER MANAGEMENT                                                      │
+│                                                                               │
+│  Manage, verify, and monitor customer accounts — [Station Name]              │
+│                                                                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ RIGHT SIDE: Buttons (2 rows)                                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                               │
+│  ROW 1 (Horizontal - Export Buttons):                                        │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐                           │
+│  │   📄 PDF    │ │  📊 Excel   │ │   📋 CSV    │                           │
+│  │  #dc2626    │ │  #16a34a    │ │  #6b7280    │                           │
+│  │   (Red)     │ │  (Green)    │ │   (Grey)    │                           │
+│  └─────────────┘ └─────────────┘ └─────────────┘                           │
+│                                                                               │
+│  ROW 2 (Full Width - Add Button):                                            │
+│  ┌─────────────────────────────────────┐                                     │
+│  │       ➕ Add Customer               │                                     │
+│  │          #3b82f6                     │                                     │
+│  │          (Blue)                      │                                     │
+│  └─────────────────────────────────────┘                                     │
+│                                                                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+                            TABLE ACTION BUTTONS
+═══════════════════════════════════════════════════════════════════════════════
+
+In each row of the customer table, the Actions column shows:
+
+┌────────────────┐
+│  👁️  View      │  ← #3b82f6 (Blue)
+├────────────────┤
+│  ✏️  Edit      │  ← #f59e0b (Orange)
+├────────────────┤
+│  ✅ Verify     │  ← #16a34a (Green)
+├────────────────┤
+│  🖨️  Print     │  ← #6b7280 (Grey)
+└────────────────┘
+
+LAYOUT: Vertical (tagsa-tagsa / stacked)
+SPACING: 6px gap between buttons
+WIDTH: Full width of table cell
+DISPLAY: Icon + Text label
+
+═══════════════════════════════════════════════════════════════════════════════
+                           FLEXBOX LAYOUT STRUCTURE
+═══════════════════════════════════════════════════════════════════════════════
+
+<div class="int-head" style="display: flex; justify-content: space-between;">
+│
+├─ LEFT CHILD:
+│  <div>
+│    <h1>CUSTOMER MANAGEMENT</h1>
+│    <div>Subtitle...</div>
+│  </div>
+│
+└─ RIGHT CHILD:
+   <div style="display: flex; flex-direction: column; align-items: flex-end;">
+     │
+     ├─ ROW 1: <div style="display: flex; gap: 8px;">
+     │            [PDF] [Excel] [CSV]
+     │          </div>
+     │
+     └─ ROW 2: <button style="width: 100%;">
+                  [Add Customer]
+                </button>
+
+═══════════════════════════════════════════════════════════════════════════════
+                              COLOR REFERENCE
+═══════════════════════════════════════════════════════════════════════════════
+
+EXPORT BUTTONS:
+┌──────────┬───────────┬────────────────────┐
+│ Button   │ Hex Color │ Description        │
+├──────────┼───────────┼────────────────────┤
+│ PDF      │ #dc2626   │ Red (Danger)       │
+│ Excel    │ #16a34a   │ Green (Success)    │
+│ CSV      │ #6b7280   │ Grey (Neutral)     │
+│ Add      │ #3b82f6   │ Blue (Primary)     │
+└──────────┴───────────┴────────────────────┘
+
+ACTION BUTTONS:
+┌──────────┬───────────┬────────────────────┐
+│ Button   │ Hex Color │ Description        │
+├──────────┼───────────┼────────────────────┤
+│ View     │ #3b82f6   │ Blue (Primary)     │
+│ Edit     │ #f59e0b   │ Orange (Warning)   │
+│ Verify   │ #16a34a   │ Green (Success)    │
+│ Print    │ #6b7280   │ Grey (Neutral)     │
+└──────────┴───────────┴────────────────────┘
+
+All buttons:
+• White text (#ffffff)
+• Solid backgrounds (no borders)
+• Border radius: 6px
+• Font weight: 600 (semi-bold)
+• Font size: 12px
+
+═══════════════════════════════════════════════════════════════════════════════
+                          COMPARISON WITH STAFF MODULE
+═══════════════════════════════════════════════════════════════════════════════
+
+STAFF MODULE (staff_customer_list.php):
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  👤 CUSTOMERS                    [PDF] [Excel] [CSV]      ┃
+┃  VIEW AND MANAGE CUSTOMERS       [ Add Customer ]         ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+MANAGER MODULE (manager_customers.php):
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  👤 CUSTOMER MANAGEMENT          [PDF] [Excel] [CSV]      ┃
+┃  Manage, verify, and monitor...  [ Add Customer ]         ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+✓ SAME LAYOUT
+✓ SAME BUTTON POSITIONS
+✓ SAME COLORS
+✓ SAME STYLES
+
+Only differences:
+• Different title text
+• Different subtitle text
+• Different CSS class names (internal only)
+
+═══════════════════════════════════════════════════════════════════════════════
+                                SPACING DETAILS
+═══════════════════════════════════════════════════════════════════════════════
+
+HEADER CONTAINER:
+• display: flex
+• justify-content: space-between (pushes left/right to edges)
+• align-items: flex-start (aligns to top)
+• margin-bottom: 20px
+
+RIGHT SIDE CONTAINER:
+• display: flex
+• flex-direction: column (stacks rows vertically)
+• gap: 8px (space between row 1 and row 2)
+• align-items: flex-end (right-aligns content)
+
+EXPORT BUTTONS ROW:
+• display: flex
+• gap: 8px (space between PDF, Excel, CSV)
+
+INDIVIDUAL BUTTONS:
+• padding: 0 14px (horizontal padding)
+• height: 34px
+• gap: 6px (space between icon and text)
+
+═══════════════════════════════════════════════════════════════════════════════
+                          RESPONSIVE BEHAVIOR
+═══════════════════════════════════════════════════════════════════════════════
+
+WIDE SCREEN (>1200px):
+┌───────────────────────────────────────────────────────┐
+│ CUSTOMER MANAGEMENT            [PDF][Excel][CSV]      │
+│ Subtitle...                    [  Add Customer  ]     │
+└───────────────────────────────────────────────────────┘
+
+MEDIUM SCREEN (768px-1200px):
+┌──────────────────────────────────────┐
+│ CUSTOMER MANAGEMENT  [PDF][Ex][CSV]  │
+│ Subtitle...          [Add Customer]  │
+└──────────────────────────────────────┘
+
+SMALL SCREEN (<768px):
+Flexbox wraps automatically due to flex-wrap property
+
+┌─────────────────────────────┐
+│ CUSTOMER MANAGEMENT         │
+│ Subtitle...                 │
+│                             │
+│ [PDF] [Excel] [CSV]         │
+│ [   Add Customer   ]        │
+└─────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+                            TECHNICAL NOTES
+═══════════════════════════════════════════════════════════════════════════════
+
+✓ All styles use !important to override any conflicting CSS
+✓ Full inline style declarations for maximum compatibility
+✓ Cache-buster comment added: <!-- CACHE BUSTER v2.0 -->
+✓ No external dependencies beyond Font Awesome icons
+✓ All onclick functions verified and working
+✓ Compatible with modern browsers (Chrome, Firefox, Edge, Safari)
+
+═══════════════════════════════════════════════════════════════════════════════

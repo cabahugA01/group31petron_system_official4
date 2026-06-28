@@ -147,7 +147,14 @@ for ($h = 6; $h <= 23; $h++) {
 }
 
 // Chart 2: Fuel Sales by Product
-$fuel_products = ['Diesel', 'XCS', 'Turbo Diesel', 'XTRA Unleaded', 'Kerosene'];
+$fuel_products = [];
+try {
+    $stmt = $pdo->prepare("SELECT DISTINCT fuel_type FROM fuel_inventory WHERE station_id = ? AND COALESCE(fuel_type, '') <> '' ORDER BY fuel_type");
+    $stmt->execute([$station_id]);
+    $fuel_products = array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'fuel_type');
+} catch (Exception $e) {
+    $fuel_products = [];
+}
 $fuel_sales_data = [];
 foreach ($fuel_products as $product) {
     $stmt = $pdo->prepare("SELECT COALESCE(SUM(liters_sold), 0) FROM fuel_transactions WHERE station_id = ? AND DATE(transaction_date) = ? AND fuel_type LIKE ?");
@@ -156,7 +163,25 @@ foreach ($fuel_products as $product) {
 }
 
 // Chart 3: Merchandise Sales by Category
-$merch_categories = ['Lubricants', 'Drinks', 'Snacks', 'Accessories', 'Engine Oil'];
+$merch_categories = [];
+try {
+    $stmt = $pdo->prepare("
+        SELECT DISTINCT ip.category
+        FROM station_inventory si
+        INNER JOIN inventory_products ip ON ip.id = si.product_id
+        WHERE si.station_id = ?
+          AND LOWER(si.status) = 'active'
+          AND LOWER(COALESCE(ip.status, 'active')) <> 'inactive'
+          AND LOWER(COALESCE(ip.category, '')) <> 'fuel'
+          AND COALESCE(ip.category, '') <> ''
+        ORDER BY ip.category
+        LIMIT 5
+    ");
+    $stmt->execute([$station_id]);
+    $merch_categories = array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'category');
+} catch (Exception $e) {
+    $merch_categories = [];
+}
 $merch_sales_data = [];
 foreach ($merch_categories as $category) {
     $stmt = $pdo->prepare("

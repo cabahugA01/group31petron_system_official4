@@ -25,16 +25,24 @@ try {
     $pending_sr = (int)$s_sr->fetchColumn();
 } catch (Exception $e) {}
 try {
-    $s_srf = $pdo->prepare("SELECT COUNT(*) FROM fuel_stock_requests WHERE status = 'Pending'");
-    $s_srf->execute([]);
+    $s_srf = $pdo->prepare("SELECT COUNT(*) FROM fuel_stock_requests WHERE station_id = ? AND status = 'Pending'");
+    $s_srf->execute([$station_id]);
     $pending_sr += (int)$s_srf->fetchColumn();
 } catch (Exception $e) {}
 
 // 3. Total Active Products
 $active_products = 0;
 try {
-    $s_ap = $pdo->prepare("SELECT COUNT(*) FROM inventory_products WHERE status = 'Active' AND category != 'Fuel'");
-    $s_ap->execute([]);
+    $s_ap = $pdo->prepare("
+        SELECT COUNT(DISTINCT ip.id)
+        FROM station_inventory si
+        JOIN inventory_products ip ON ip.id = si.product_id
+        WHERE si.station_id = ?
+          AND LOWER(COALESCE(si.status, 'active')) = 'active'
+          AND LOWER(COALESCE(ip.status, 'active')) <> 'inactive'
+          AND LOWER(COALESCE(ip.category, '')) <> 'fuel'
+    ");
+    $s_ap->execute([$station_id]);
     $active_products = (int)$s_ap->fetchColumn();
 } catch (Exception $e) {}
 
@@ -45,7 +53,9 @@ try {
         SELECT COUNT(*) 
         FROM inventory_products ip
         LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
-        WHERE ip.category != 'Fuel' AND ip.status = 'Active'
+        WHERE LOWER(COALESCE(ip.category, '')) <> 'fuel'
+          AND LOWER(COALESCE(ip.status, 'active')) <> 'inactive'
+          AND LOWER(COALESCE(si.status, 'active')) = 'active'
           AND COALESCE(si.stock_level, ip.stock, 0) > 0 
           AND COALESCE(si.stock_level, ip.stock, 0) <= COALESCE(si.reorder_level, 10)
     ");
@@ -60,7 +70,9 @@ try {
         SELECT COUNT(*) 
         FROM inventory_products ip
         LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
-        WHERE ip.category != 'Fuel' AND ip.status = 'Active'
+        WHERE LOWER(COALESCE(ip.category, '')) <> 'fuel'
+          AND LOWER(COALESCE(ip.status, 'active')) <> 'inactive'
+          AND LOWER(COALESCE(si.status, 'active')) = 'active'
           AND COALESCE(si.stock_level, ip.stock, 0) <= 0
     ");
     $s_oos->execute([$station_id]);

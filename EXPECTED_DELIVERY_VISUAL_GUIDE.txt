@@ -1,0 +1,369 @@
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                  EXPECTED DELIVERY LINK FEATURE - VISUAL GUIDE                ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+═══════════════════════════════════════════════════════════════════════════════
+  BEFORE: OLD WORKFLOW (Manual Entry Only)
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ STAFF RECORD DELIVERY FORM                                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                               │
+│  Supplier Name:  [Petron Corporation                     ]  (readonly)       │
+│                                                                               │
+│  Delivery Date:  [2026-06-28     ]   DR Number: [_________________]         │
+│                                                                               │
+│  Item Name:      [_________________]                                         │
+│  Category:       [_________________]                                         │
+│  Unit:           [pcs ▼]   Quantity: [_________________]                     │
+│                                                                               │
+│  [Reset]  [Save Delivery Record]                                            │
+│                                                                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+PROBLEMS:
+❌ Staff must manually type everything
+❌ No link to expected PO
+❌ Creates duplicate record (PO still in expected deliveries)
+❌ No automatic variance detection
+❌ Manual comparison required
+
+RESULT:
+- Expected Delivery: PO-001 | Brake Fluid | Qty: 50 | Status: Expected Delivery
+- New Record:       MDR-001 | Brake Fluid | Qty: 55 | Status: Pending Verification
+- 🔴 TWO RECORDS for same delivery!
+
+═══════════════════════════════════════════════════════════════════════════════
+  AFTER: NEW WORKFLOW (With Expected Delivery Link)
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ STAFF RECORD DELIVERY FORM                                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                               │
+│  ┌──────────────────── 🔗 LINK TO EXPECTED DELIVERY ─────────────────────┐  │
+│  │                                                                         │  │
+│  │  Select Expected Delivery (Optional):                                  │  │
+│  │  ┌────────────────────────────────────────────────────────────────┐   │  │
+│  │  │ PO-20260628-001 - Brake Fluid DOT 4 (50.00 bottles)      ▼    │   │  │
+│  │  ├────────────────────────────────────────────────────────────────┤   │  │
+│  │  │ -- None - Manual Entry --                                      │   │  │
+│  │  │ PO-20260628-001 - Brake Fluid DOT 4 (50.00 bottles)          │   │  │
+│  │  │ PO-20260625-999 - Engine Oil 5W-30 (100.00 L)                │   │  │
+│  │  └────────────────────────────────────────────────────────────────┘   │  │
+│  │                                                                         │  │
+│  │  ℹ How it works: Select an expected delivery to auto-fill the form.   │  │
+│  │    When saved, the system will update that PO record and remove it     │  │
+│  │    from expected deliveries. If you don't select one, a new manual     │  │
+│  │    entry will be created.                                              │  │
+│  │                                                                         │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+│                                                                               │
+│  Supplier Name:  [Petron Corporation                     ]  (auto-filled)    │
+│                                                                               │
+│  Delivery Date:  [2026-06-28     ]   DR Number: [DR-20260628-001]           │
+│                                                                               │
+│  Item Name:      [Brake Fluid DOT 4                      ]  (auto-filled)    │
+│  Category:       [Car Care                               ]  (auto-filled)    │
+│  Unit:           [bottles ▼]   Quantity: [55.00          ]  (user enters)    │
+│                  Expected: 50.00 bottles (from PO: PO-20260628-001)         │
+│                                                                               │
+│  ┌────────────── ⚠ VARIANCE DETECTED! ──────────────────────────────┐       │
+│  │ Expected: 50.00 bottles, but you entered: 55.00 bottles.          │       │
+│  │ Variance: 5.00 bottles.                                            │       │
+│  │ This will be flagged for Manager review as a Discrepancy.          │       │
+│  └────────────────────────────────────────────────────────────────────┘       │
+│                                                                               │
+│  [Reset]  [Save Delivery Record]                                            │
+│                                                                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+BENEFITS:
+✅ Staff selects from dropdown
+✅ Form auto-fills (supplier, product, category, unit, qty)
+✅ Real-time variance detection
+✅ Updates existing PO record (no duplicate)
+✅ Automatic discrepancy flagging
+✅ PO removed from expected deliveries list
+
+RESULT:
+- PO-001 | Brake Fluid | Qty: 55 | Status: Discrepancy | Note: "Variance: +5"
+- ✅ ONE RECORD updated!
+
+═══════════════════════════════════════════════════════════════════════════════
+  COMPARISON: TWO MODES SIDE BY SIDE
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────┬─────────────────────────────────────┐
+│ MODE A: LINKED TO EXPECTED DELIVERY │ MODE B: MANUAL ENTRY (No Selection) │
+├─────────────────────────────────────┼─────────────────────────────────────┤
+│                                     │                                     │
+│ Dropdown: PO-001 selected           │ Dropdown: "-- None - Manual --"    │
+│ Auto-fill: ✅ All fields populated  │ Auto-fill: ❌ Empty fields         │
+│ Expected Info: ✅ Shows expected    │ Expected Info: ❌ Hidden            │
+│ Variance Check: ✅ Active           │ Variance Check: ❌ Not applicable   │
+│ On Submit: UPDATE PO record         │ On Submit: CREATE new record        │
+│ Batch ID: From PO                   │ Batch ID: Auto-generated            │
+│ Status: Pending Verification        │ Status: Pending Verification        │
+│         OR Discrepancy (variance)   │                                     │
+│ Result: PO removed from list        │ Result: New manual delivery added   │
+│                                     │                                     │
+└─────────────────────────────────────┴─────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+  WORKFLOW DIAGRAM
+═══════════════════════════════════════════════════════════════════════════════
+
+                    ┌───────────────────────────┐
+                    │  Admin Finalizes PO       │
+                    │  PO-001 | Brake Fluid     │
+                    │  Expected: 50 bottles     │
+                    └─────────────┬─────────────┘
+                                  │
+                                  ▼
+                    ┌───────────────────────────┐
+                    │  deliveries_oversight     │
+                    │  Status: Expected Delivery│
+                    │  quantity: 50.00          │
+                    │  encoded_by: NULL         │
+                    └─────────────┬─────────────┘
+                                  │
+                                  ▼
+                    ┌───────────────────────────┐
+                    │  Staff Opens Form         │
+                    │  Sees PO in Dropdown      │
+                    └─────────────┬─────────────┘
+                                  │
+                ┌─────────────────┴─────────────────┐
+                │                                   │
+                ▼                                   ▼
+   ┌──────────────────────────┐    ┌──────────────────────────┐
+   │ OPTION A: Select PO      │    │ OPTION B: Manual Entry   │
+   │ from Dropdown            │    │ (No Selection)           │
+   └──────────┬───────────────┘    └──────────┬───────────────┘
+              │                               │
+              ▼                               ▼
+   ┌──────────────────────────┐    ┌──────────────────────────┐
+   │ Form Auto-Fills          │    │ Staff Types Everything   │
+   │ - Supplier               │    │ Manually                 │
+   │ - Product                │    │                          │
+   │ - Category               │    │                          │
+   │ - Unit                   │    │                          │
+   │ - Expected Qty           │    │                          │
+   └──────────┬───────────────┘    └──────────┬───────────────┘
+              │                               │
+              ▼                               ▼
+   ┌──────────────────────────┐    ┌──────────────────────────┐
+   │ Staff Enters Actual Qty  │    │ Staff Enters Qty         │
+   │ Actual: 55.00 bottles    │    │                          │
+   └──────────┬───────────────┘    └──────────┬───────────────┘
+              │                               │
+              ▼                               ▼
+   ┌──────────────────────────┐    ┌──────────────────────────┐
+   │ System Detects Variance  │    │ No Variance Check        │
+   │ Expected: 50             │    │                          │
+   │ Actual: 55               │    │                          │
+   │ Variance: +5             │    │                          │
+   └──────────┬───────────────┘    └──────────┬───────────────┘
+              │                               │
+              ▼                               ▼
+   ┌──────────────────────────┐    ┌──────────────────────────┐
+   │ ⚠ Variance Warning Shows │    │ (No Warning)             │
+   └──────────┬───────────────┘    └──────────┬───────────────┘
+              │                               │
+              ▼                               ▼
+   ┌──────────────────────────┐    ┌──────────────────────────┐
+   │ Staff Clicks Save        │    │ Staff Clicks Save        │
+   └──────────┬───────────────┘    └──────────┬───────────────┘
+              │                               │
+              ▼                               ▼
+   ┌──────────────────────────┐    ┌──────────────────────────┐
+   │ UPDATE Existing Record   │    │ CREATE New Record        │
+   │ - quantity: 55.00        │    │ - New batch_id           │
+   │ - status: Discrepancy    │    │ - New delivery_ref       │
+   │ - admin_notes: Variance  │    │ - status: Pending        │
+   │ - encoded_by: staff_id   │    │   Verification           │
+   │ - dr_number: DR-001      │    │                          │
+   └──────────┬───────────────┘    └──────────┬───────────────┘
+              │                               │
+              ▼                               ▼
+   ┌──────────────────────────┐    ┌──────────────────────────┐
+   │ PO Removed from          │    │ New Manual Delivery      │
+   │ Expected Deliveries List │    │ Added to System          │
+   └──────────┬───────────────┘    └──────────┬───────────────┘
+              │                               │
+              └───────────────┬───────────────┘
+                              │
+                              ▼
+                ┌───────────────────────────┐
+                │  Manager Sees in          │
+                │  Validation Queue         │
+                │  (with Discrepancy flag   │
+                │   if variance detected)   │
+                └───────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+  VARIANCE DETECTION EXAMPLES
+═══════════════════════════════════════════════════════════════════════════════
+
+EXAMPLE 1: NO VARIANCE (Exact Match)
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Expected: 50.00 bottles                                                     │
+│ Actual:   50.00 bottles                                                     │
+│ Variance: 0.00 bottles                                                      │
+│ Status:   ✅ Pending Verification                                           │
+│ Warning:  ❌ No variance warning shown                                      │
+│ Note:     (none)                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+EXAMPLE 2: OVER-DELIVERY (Positive Variance)
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Expected: 50.00 bottles                                                     │
+│ Actual:   55.00 bottles                                                     │
+│ Variance: +5.00 bottles (MORE than expected)                                │
+│ Status:   ⚠ Discrepancy                                                     │
+│ Warning:  ✅ "Variance Detected! Expected 50.00 bottles, but you entered   │
+│               55.00 bottles. Variance: 5.00 bottles."                       │
+│ Note:     "System Flag: Expected 50.00 bottles, but received 55.00         │
+│            bottles. Variance: 5.00 bottles."                                │
+└────────────────────────────────────────────────────────────────────────────┘
+
+EXAMPLE 3: UNDER-DELIVERY (Negative Variance)
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Expected: 50.00 bottles                                                     │
+│ Actual:   45.00 bottles                                                     │
+│ Variance: -5.00 bottles (LESS than expected)                                │
+│ Status:   ⚠ Discrepancy                                                     │
+│ Warning:  ✅ "Variance Detected! Expected 50.00 bottles, but you entered   │
+│               45.00 bottles. Variance: -5.00 bottles."                      │
+│ Note:     "System Flag: Expected 50.00 bottles, but received 45.00         │
+│            bottles. Variance: -5.00 bottles."                               │
+└────────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+  DATABASE RECORD CHANGES
+═══════════════════════════════════════════════════════════════════════════════
+
+BEFORE STAFF ENCODING (Expected Delivery):
+┌────────────────────────────────────────────────────────────────────────────┐
+│ id:              4                                                          │
+│ delivery_type:   merchandise                                                │
+│ delivery_ref:    PO-20260628-001                                            │
+│ source_ref:      PO-20260628-001                                            │
+│ supplier:        Petron Corporation                                         │
+│ product:         Brake Fluid DOT 4                                          │
+│ quantity:        50.000                                                     │
+│ unit:            bottles                                                    │
+│ category:        Car Care                                                   │
+│ status:          Expected Delivery  ◄── Admin finalized PO                 │
+│ encoded_by:      NULL               ◄── Not yet encoded by staff           │
+│ delivery_date:   NULL               ◄── Not yet received                   │
+│ dr_number:       NULL                                                       │
+│ admin_notes:     NULL                                                       │
+└────────────────────────────────────────────────────────────────────────────┘
+
+AFTER STAFF ENCODING (With Variance):
+┌────────────────────────────────────────────────────────────────────────────┐
+│ id:              4                  ◄── SAME RECORD (UPDATED, NOT NEW)     │
+│ delivery_type:   merchandise                                                │
+│ delivery_ref:    PO-20260628-001    ◄── Unchanged                          │
+│ source_ref:      PO-20260628-001    ◄── Unchanged                          │
+│ supplier:        Petron Corporation                                         │
+│ product:         Brake Fluid DOT 4                                          │
+│ quantity:        55.000             ◄── UPDATED (actual received)          │
+│ unit:            bottles                                                    │
+│ category:        Car Care                                                   │
+│ status:          Discrepancy        ◄── UPDATED (variance detected)        │
+│ encoded_by:      5                  ◄── UPDATED (staff user ID)            │
+│ delivery_date:   2026-06-28         ◄── UPDATED (actual date)              │
+│ dr_number:       DR-20260628-001    ◄── UPDATED (from staff)               │
+│ admin_notes:     System Flag: Expected 50.00 bottles, but received 55.00   │
+│                  bottles. Variance: 5.00 bottles.   ◄── UPDATED            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+RESULT: ✅ Same record ID, just fields updated - NO DUPLICATE!
+
+═══════════════════════════════════════════════════════════════════════════════
+  KEY FEATURES SUMMARY
+═══════════════════════════════════════════════════════════════════════════════
+
+🔗 LINKING
+   - Dropdown shows all expected deliveries for current station
+   - Format: "PO Number - Product Name (Expected Qty Unit)"
+   - Optional - staff can skip and do manual entry
+
+⚡ AUTO-FILL
+   - Selects all PO details automatically
+   - Fields: Supplier, Product, Category, Unit, Expected Qty
+   - Saves staff typing time
+
+⚠ VARIANCE DETECTION
+   - Real-time comparison: Expected vs Actual
+   - Triggers on quantity input change
+   - Shows warning before submit
+   - Tolerance: 0.001 (floating point safe)
+
+🎯 SMART UPDATE
+   - Updates existing PO record (not creates new)
+   - Sets status based on variance:
+     * No variance → Pending Verification
+     * Variance → Discrepancy
+   - Adds variance note to admin_notes
+   - Removes from expected deliveries list
+
+📊 DUAL MODE
+   - Mode A: Linked (select from dropdown)
+   - Mode B: Manual (traditional entry)
+   - Both modes work simultaneously
+   - Staff chooses which to use
+
+═══════════════════════════════════════════════════════════════════════════════
+  TESTING SCENARIOS
+═══════════════════════════════════════════════════════════════════════════════
+
+SCENARIO 1: Perfect Delivery (No Variance)
+  1. Select PO from dropdown
+  2. Form auto-fills with PO details
+  3. Actual qty = expected qty (50.00)
+  4. No variance warning
+  5. Click Save
+  6. Status: Pending Verification
+  7. PO removed from expected list
+  ✅ PASS
+
+SCENARIO 2: Over-Delivery (Positive Variance)
+  1. Select PO from dropdown
+  2. Form auto-fills
+  3. Actual qty > expected qty (55.00 vs 50.00)
+  4. Variance warning shows (+5.00)
+  5. Click Save
+  6. Status: Discrepancy
+  7. Admin notes: "Variance: 5.00 bottles"
+  8. PO removed from expected list
+  ✅ PASS
+
+SCENARIO 3: Under-Delivery (Negative Variance)
+  1. Select PO from dropdown
+  2. Form auto-fills
+  3. Actual qty < expected qty (45.00 vs 50.00)
+  4. Variance warning shows (-5.00)
+  5. Click Save
+  6. Status: Discrepancy
+  7. Admin notes: "Variance: -5.00 bottles"
+  ✅ PASS
+
+SCENARIO 4: Manual Entry (No PO Link)
+  1. Leave dropdown at "-- None - Manual Entry --"
+  2. Manually fill all fields
+  3. Click Save
+  4. NEW record created (not update)
+  5. Status: Pending Verification
+  6. Traditional flow works
+  ✅ PASS
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Last Updated: June 28, 2026
+Feature Status: ✅ Implementation Complete
+File: EXPECTED_DELIVERY_VISUAL_GUIDE.txt

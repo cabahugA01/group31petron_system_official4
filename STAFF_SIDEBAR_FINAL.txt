@@ -1,0 +1,234 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    STAFF SIDEBAR NAVIGATION - FINAL STRUCTURE                ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ STAFF ROLE - Complete Sidebar Menu                                          │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+📊 Dashboard
+   └─ staff_dashboard.php
+
+💱 Transactions
+   ├─ 📝 New Transaction → staff_transactions_hub.php?section=merchandise&active_tab=merchandise
+   ├─ 📜 Transaction History → staff_transactions_hub.php?section=history
+   └─ 🧾 Receipts → receipts.php
+
+⛽ Fuel Management
+   ├─ 🚛 Record Fuel Delivery → staff_fuel_deliveries.php
+   ├─ 📋 Fuel Deliveries History → staff_fuel_deliveries_history.php
+   └─ ⛽ Fuel Transactions (pump readings) → staff_transactions_hub.php?section=fuel
+
+📦 Merchandise Deliveries
+   ├─ 📥 Record Delivery Receipt → staff_record_delivery.php
+   └─ 📋 Merchandise Deliveries History → staff_delivery_history.php
+
+🏪 Inventory
+   ├─ 📦 Merchandise Inventory → staff_inventory_merchandise.php
+   ├─ ⛽ Fuel Inventory → staff_inventory_fuel.php
+   ├─ 📋 Stock Request → staff_stock_requests.php
+   └─ 📜 Inventory History → staff_inventory_history.php
+
+👥 Customers ← ✨ NEWLY ADDED ✨
+   └─ staff_customer_list.php
+      (All features in one page: Add, View, Edit, Print, Export)
+
+📅 Calendar
+   └─ staff_calendar.php
+
+📊 Reports
+   ├─ 💰 Sales Reports → staff_fuel_sales_summary.php
+   ├─ 🔧 Job Orders Reports → staff_job_orders_report.php
+   ├─ 🚚 Deliveries Reports → staff_deliveries_report.php
+   ├─ 💳 Payments Reports → staff_payments_report.php
+   ├─ 👥 Customer Reports → staff_customers_report.php
+   └─ 📊 Activity Reports → staff_activity_report.php
+
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ CUSTOMER MODULE DETAILS - staff_customer_list.php                           │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ 📊 SUMMARY CARDS ──────────────────────────────────────────────────────────┐
+│                                                                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
+│  │ 👥 Total     │  │ 🆕 New Today │  │ ⭐ Regular   │  │ 🏢 Fleet     │  │
+│  │    XXX       │  │    XX        │  │    XX        │  │    XX        │  │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘  │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ 🔍 FILTERS ────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│  Search: [______________]  Type: [___________]  Status: [_________]         │
+│  Date From: [__________]   Date To: [__________]                            │
+│                                                                              │
+│  [🔄 Reset]  [🔍 Search]  [➕ Add New Customer]                             │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ 📋 CUSTOMER TABLE ─────────────────────────────────────────────────────────┐
+│                                                                              │
+│  Export: [📄 PDF] [📊 Excel] [📑 CSV]                                       │
+│                                                                              │
+│  ┌────────────┬─────────────┬────────────┬──────────┬───────────┬────────┐ │
+│  │ Customer   │ Name        │ Contact    │ Type     │ Last Visit│ Actions│ │
+│  │ ID         │             │            │          │           │        │ │
+│  ├────────────┼─────────────┼────────────┼──────────┼───────────┼────────┤ │
+│  │ CUST-...   │ Juan Cruz   │ 0917-XXX   │ 🚶 Walk  │ Today     │ 👁✏️🖨│ │
+│  │ CUST-...   │ Maria Lopez │ 0918-XXX   │ ⭐ Reg   │ Yesterday │ 👁✏️🖨│ │
+│  │ CUST-...   │ ABC Corp    │ 0919-XXX   │ 🏢 Fleet│ 2 days ago│ 👁✏️🖨│ │
+│  └────────────┴─────────────┴────────────┴──────────┴───────────┴────────┘ │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ 🔘 ACTION BUTTONS ─────────────────────────────────────────────────────────┐
+│                                                                              │
+│  👁 View Profile    → staff_customer_profile.php?id=X                       │
+│  ✏️ Edit Customer   → staff_customer_edit.php?id=X                          │
+│  🖨 Print Info      → staff_customer_print.php?id=X                         │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ ADD NEW CUSTOMER - staff_customer_add.php                                    │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ 📝 BASIC INFORMATION ──────────────────────────────────────────────────────┐
+│                                                                              │
+│  First Name*: [____________]  Middle Name: [___________]                     │
+│  Last Name*:  [____________]                                                 │
+│  Contact*:    [____________]                                                 │
+│  Address*:    [________________________________________________]             │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ 👤 CUSTOMER TYPE* ─────────────────────────────────────────────────────────┐
+│                                                                              │
+│    ⬜ 🚶 Walk-in       ⬜ ⭐ Regular       ⬜ 🏢 Fleet/Company               │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ 📎 OPTIONAL UPLOADS ───────────────────────────────────────────────────────┐
+│                                                                              │
+│  Gov ID Type: [___________▼]      Gov ID Image: [Choose File]               │
+│  CR Document: [Choose File]       Notes: [___________]                       │
+│                                                                              │
+│  ⚠️ Note: Staff can upload but CANNOT view/download after saving            │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ 🔘 ACTIONS ────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│              [❌ Cancel]  [🔄 Reset]  [💾 Save Customer]                    │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ VIEW CUSTOMER PROFILE - staff_customer_profile.php                           │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ 📋 BASIC INFORMATION ──────────────────────────────────────────────────────┐
+│                                                                              │
+│  Customer ID:      CUST-20260628-0001                                        │
+│  Full Name:        Juan Santos Dela Cruz                                    │
+│  Contact Number:   0917-123-4567                                             │
+│  Address:          123 Main Street, Manila, Philippines                      │
+│  Customer Type:    ⭐ Regular                                                │
+│  Date Registered:  June 28, 2026                                             │
+│  Status:           🟢 Active                                                 │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ 📊 TRANSACTION SUMMARY ────────────────────────────────────────────────────┐
+│                                                                              │
+│  Total Fuel Transactions:         15 transactions  │  ₱ 25,000.00           │
+│  Total Merchandise Transactions:   8 transactions  │  ₱  5,500.00           │
+│  Total Service Transactions:       3 transactions  │  ₱  3,200.00           │
+│  Last Transaction Date:            June 27, 2026                             │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ 📜 RECENT TRANSACTIONS (Last 10) ──────────────────────────────────────────┐
+│                                                                              │
+│  Date       │ Transaction No. │ Module       │ Amount      │ Status          │
+│  ──────────┼─────────────────┼──────────────┼─────────────┼────────────────│
+│  Jun 27    │ TXN-20260627-01 │ Fuel         │ ₱ 1,500.00  │ ✅ Completed   │
+│  Jun 26    │ TXN-20260626-12 │ Merchandise  │ ₱   850.00  │ ✅ Completed   │
+│  Jun 25    │ TXN-20260625-08 │ Service      │ ₱ 1,200.00  │ ✅ Completed   │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ 🔘 ACTIONS ────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│              [🖨 Print Profile]         [🔙 Close]                           │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                               KEY FEATURES                                   ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+✅ Single-page design (no sidebar submenu clutter)
+✅ Summary cards with real-time stats
+✅ Advanced filtering (search, type, status, date range)
+✅ Multiple export options (PDF, Excel, CSV)
+✅ Add customer with document upload
+✅ View customer profile with transaction history
+✅ Edit customer basic information
+✅ Print customer information
+✅ Station-specific data isolation
+✅ Role-based access control
+✅ Activity logging for audit trail
+✅ Document upload security (staff can upload, cannot view after)
+✅ Clean, modern, professional UI
+✅ Fully functional with database backend
+✅ No pre-coded data - 100% dynamic
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                            IMPLEMENTATION STATUS                             ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+✅ Navigation added to sidebar (partials/rbac_menu.php)
+✅ Role-based filtering configured
+✅ Customer list page (staff_customer_list.php) - EXISTS
+✅ Add customer page (staff_customer_add.php) - EXISTS
+✅ Customer operations backend (staff_customer_operations.php) - EXISTS
+✅ Customer profile page (staff_customer_profile.php) - EXISTS
+✅ Customer edit page (staff_customer_edit.php) - EXISTS
+✅ Database tables configured
+✅ Permissions configured
+✅ Security implemented
+✅ Activity logging enabled
+
+🎉 READY TO USE! Customer module is fully functional for Staff role! 🚀
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                          ROLE VISIBILITY MATRIX                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌────────────────┬─────────────┬──────────────────────────────────────────────┐
+│ Role           │ Visible?    │ Menu Item & Description                      │
+├────────────────┼─────────────┼──────────────────────────────────────────────┤
+│ Staff          │ ✅ YES      │ "Customers" → staff_customer_list.php        │
+│                │             │ Full customer management                     │
+├────────────────┼─────────────┼──────────────────────────────────────────────┤
+│ Manager        │ ❌ NO       │ Has separate "Customers" menu                │
+│                │             │ (mgr_customers → manager_customers.php)      │
+├────────────────┼─────────────┼──────────────────────────────────────────────┤
+│ Admin          │ ❌ NO       │ Has separate "Customers" menu                │
+│                │             │ (admin_customers → admin_customer_mgmt.php)  │
+├────────────────┼─────────────┼──────────────────────────────────────────────┤
+│ SuperAdmin     │ ❌ NO       │ Not applicable (system-level role)           │
+│ Developer      │ ❌ NO       │ Not applicable (system-level role)           │
+└────────────────┴─────────────┴──────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                           🎉 IMPLEMENTATION COMPLETE! 🎉
+═══════════════════════════════════════════════════════════════════════════════

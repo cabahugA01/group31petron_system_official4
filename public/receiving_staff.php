@@ -129,12 +129,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     if ($item_name && $quantity > 0) {
                         // Check if product exists in inventory_products
-                        $stmt_product = $pdo->prepare("SELECT product_name, category FROM inventory_products WHERE product_name = ? LIMIT 1");
+                        $stmt_product = $pdo->prepare("SELECT product_name, category, unit_cost FROM inventory_products WHERE product_name = ? LIMIT 1");
                         $stmt_product->execute([$item_name]);
                         $product = $stmt_product->fetch(PDO::FETCH_ASSOC);
                         
                         $product_id = crc32($item_name); // Generate consistent ID
                         $unit = 'pieces';
+                        $category = $product['category'] ?? 'Others';
+                        $unit_cost = $product['unit_cost'] ?? 0.00;
                         
                         if (!$product) {
                             // Add to inventory_products if not exists
@@ -152,6 +154,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $delivery_date,
                             $me['id'],
                             $notes
+                        ]);
+                        
+                        // ═══ CRITICAL FIX: Insert into deliveries_oversight for manager validation ═══
+                        // Generate unique delivery reference
+                        $date_ref = date('Ymd', strtotime($delivery_date));
+                        $stmt_count = $pdo->prepare("SELECT COUNT(*) + 1 FROM deliveries_oversight WHERE station_id = ? AND DATE(delivery_date) = ?");
+                        $stmt_count->execute([$station_id, $delivery_date]);
+                        $seq = str_pad($stmt_count->fetchColumn(), 4, '0', STR_PAD_LEFT);
+                        $delivery_ref = "MDR-{$date_ref}-{$seq}";
+                        
+                        // Insert into deliveries_oversight so manager can validate
+                        $stmt_oversight = $pdo->prepare("
+                            INSERT INTO deliveries_oversight (
+                                delivery_type, delivery_ref, batch_id, supplier, product, quantity, unit,
+                                delivery_date, encoded_by, station_id, status, created_at, category, unit_cost,
+                                received_by_name
+                            ) VALUES (
+                                'merchandise', ?, ?, ?, ?, ?, ?,
+                                ?, ?, ?, 'Pending Manager Approval', NOW(), ?, ?,
+                                ?
+                            )
+                        ");
+                        $stmt_oversight->execute([
+                            $delivery_ref,
+                            $batch_number,
+                            $supplier,
+                            $item_name,
+                            $quantity,
+                            $unit,
+                            $delivery_date,
+                            $me['id'],
+                            $station_id,
+                            $category,
+                            $unit_cost,
+                            $me['name'] ?? 'Staff'
                         ]);
                     }
                 }

@@ -158,18 +158,39 @@ function ensure_fuel_stock_requests_table($pdo) {
 // HANDLERS
 // ─────────────────────────────────────────────────────────────────────────────
 
+function write_fuel_request_audit_log($pdo, $user_id, $action_type, $detail, $request_id, $old_values = null, $new_values = null) {
+    try {
+        $pdo->prepare("
+            INSERT INTO audit_logs
+                (user_id, log_type, action_type, action_details, entity_type, entity_id,
+                 old_values, new_values, status, ip_address, user_agent, created_at)
+            VALUES (?, 'inventory', ?, ?, 'fuel_stock_requests', ?, ?, ?, 'Success', ?, ?, NOW())
+        ")->execute([
+            $user_id,
+            $action_type,
+            $detail,
+            $request_id,
+            $old_values ? json_encode($old_values) : null,
+            $new_values ? json_encode($new_values) : null,
+            $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0',
+            $_SERVER['HTTP_USER_AGENT'] ?? ''
+        ]);
+    } catch (Exception $e) {
+        error_log('fuel_stock_request audit_logs warning: ' . $e->getMessage());
+    }
+}
+
 function handle_get_low_stock($pdo, $station_id) {
     // Return all fuel types with their current status for this station
     $stmt = $pdo->prepare("
         SELECT
-            ip.product_name                                          AS fuel_type,
-            COALESCE(fi.current_level, fi.current_stock, ip.stock, 0) AS current_level,
-            COALESCE(fi.capacity, 20000.00)                          AS capacity
-        FROM inventory_products ip
-        LEFT JOIN fuel_inventory fi
-               ON ip.product_name = fi.fuel_type AND fi.station_id = ?
-        WHERE ip.category = 'Fuel'
-        ORDER BY ip.product_name
+            fuel_type,
+            COALESCE(current_level, current_stock, 0) AS current_level,
+            COALESCE(capacity, 0) AS capacity
+        FROM fuel_inventory
+        WHERE station_id = ?
+          AND COALESCE(fuel_type, '') <> ''
+        ORDER BY fuel_type
     ");
     $stmt->execute([$station_id]);
     $fuels = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -251,6 +272,23 @@ function handle_create($pdo, $me, $role, $station_id) {
             $request_id, $me['id'], $role,
             "Staff {$me['name']} requested {$fuel_type} (Status: {$stock_status}) — qty to be set by manager"
         ]);
+
+        write_fuel_request_audit_log(
+            $pdo,
+            $me['id'],
+            'Create',
+            "Fuel stock request created | Fuel: {$fuel_type} | Status: {$stock_status}",
+            $request_id,
+            null,
+            [
+                'fuel_type' => $fuel_type,
+                'current_level' => $current_level,
+                'capacity' => $capacity,
+                'stock_status' => $stock_status,
+                'requested_liters' => $requested_liters,
+                'remarks' => $remarks
+            ]
+        );
 
         // General activity log
         if (function_exists('log_activity')) {
@@ -374,6 +412,16 @@ function handle_approve($pdo, $me, $role, $station_id) {
             VALUES (?, 'Approved', ?, ?, 'Pending', 'Approved', ?)
         ")->execute([$request_id, $me['id'], $role, $audit_note]);
 
+        write_fuel_request_audit_log(
+            $pdo,
+            $me['id'],
+            'Approve',
+            "Fuel stock request approved | Fuel: {$req['fuel_type']} | Approved: {$approved_liters} L",
+            $request_id,
+            ['status' => 'Pending', 'requested_liters' => (float)$req['requested_liters']],
+            ['status' => 'Approved', 'approved_liters' => $approved_liters, 'manager_notes' => $manager_notes]
+        );
+
         // Log to main audit_trail table for manager_audit_trail.php visibility
         try {
             $pdo->prepare("
@@ -456,6 +504,16 @@ function handle_reject($pdo, $me, $role, $station_id) {
                  old_status, new_status, notes)
             VALUES (?, 'Rejected', ?, ?, 'Pending', 'Rejected', ?)
         ")->execute([$request_id, $me['id'], $role, $audit_note]);
+
+        write_fuel_request_audit_log(
+            $pdo,
+            $me['id'],
+            'Reject',
+            "Fuel stock request rejected | Fuel: {$req['fuel_type']} | Reason: {$manager_notes}",
+            $request_id,
+            ['status' => 'Pending', 'requested_liters' => (float)$req['requested_liters']],
+            ['status' => 'Rejected', 'manager_notes' => $manager_notes]
+        );
 
         // Log to main audit_trail table
         try {

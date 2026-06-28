@@ -1,6 +1,7 @@
 <?php
 $page_id = 'mgr_inv_fuel';
 require_once __DIR__ . '/../backend/lib.php';
+require_once __DIR__ . '/../backend/inventory_data.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
 
@@ -18,26 +19,8 @@ if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
     exit;
 }
 
-// ── 17-Tanker Configuration ──────────────────────────────────────────
-$TANK_CONFIG_17 = [
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 1',     'tank'=>'Underground Tank #1',  'tanker_num'=>1,  'capacity'=>50000],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 2',     'tank'=>'Underground Tank #2',  'tanker_num'=>2,  'capacity'=>50000],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 3',     'tank'=>'Underground Tank #3',  'tanker_num'=>3,  'capacity'=>50000],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 4',     'tank'=>'Underground Tank #4',  'tanker_num'=>4,  'capacity'=>50000],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 5',     'tank'=>'Underground Tank #5',  'tanker_num'=>5,  'capacity'=>50000],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 6',     'tank'=>'Underground Tank #6',  'tanker_num'=>6,  'capacity'=>50000],
-    ['fuel_type'=>'Kerosene',     'label'=>'KEROSENE - 1',     'tank'=>'Underground Tank #7',  'tanker_num'=>7,  'capacity'=>20000],
-    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 1', 'tank'=>'Underground Tank #8',  'tanker_num'=>8,  'capacity'=>45000],
-    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 2', 'tank'=>'Underground Tank #9',  'tanker_num'=>9,  'capacity'=>45000],
-    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 1',     'tank'=>'Underground Tank #10', 'tanker_num'=>10, 'capacity'=>20000],
-    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 2',     'tank'=>'Underground Tank #11', 'tanker_num'=>11, 'capacity'=>20000],
-    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 3',     'tank'=>'Underground Tank #12', 'tanker_num'=>12, 'capacity'=>20000],
-    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 4',     'tank'=>'Underground Tank #13', 'tanker_num'=>13, 'capacity'=>20000],
-    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 1',  'tank'=>'Underground Tank #14', 'tanker_num'=>14, 'capacity'=>20000],
-    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 2',  'tank'=>'Underground Tank #15', 'tanker_num'=>15, 'capacity'=>20000],
-    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 3',  'tank'=>'Underground Tank #16', 'tanker_num'=>16, 'capacity'=>20000],
-    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 4',  'tank'=>'Underground Tank #17', 'tanker_num'=>17, 'capacity'=>20000],
-];
+// ── DB-driven fuel tank configuration ────────────────────────────────
+$TANK_CONFIG_17 = inventory_get_fuel_tank_config($pdo, (int)$station_id);
 
 // ── AJAX Handler ─────────────────────────────────────────────────────
 if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_fuel_details') {
@@ -78,16 +61,30 @@ try {
 
 $del_lookup = [];
 try {
-    $s = $pdo->prepare("SELECT tank_assigned, fuel_type, SUM(delivery_liters) AS total_del FROM fuel_deliveries WHERE station_id = ? AND DATE(delivery_date) = CURDATE() AND status = 'Verified' GROUP BY tank_assigned, fuel_type");
+    $s = $pdo->prepare("
+        SELECT fuel_type, SUM(delivery_liters) AS total_del
+        FROM fuel_deliveries
+        WHERE station_id = ?
+          AND DATE(delivery_date) = CURDATE()
+          AND LOWER(status) IN ('verified','finalized','approved','completed','received')
+        GROUP BY fuel_type
+    ");
     $s->execute([$station_id]);
     foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $del_lookup[strtolower(trim($row['tank_assigned']))] = (float)$row['total_del'];
+        $del_lookup[strtolower(trim($row['fuel_type']))] = (float)$row['total_del'];
     }
 } catch (Exception $e) {}
 
 $sales_lookup = [];
 try {
-    $s = $pdo->prepare("SELECT fuel_type, SUM(liters_sold) AS total_sales FROM fuel_transactions WHERE station_id = ? AND DATE(transaction_date) = CURDATE() AND status = 'Verified' GROUP BY fuel_type");
+    $s = $pdo->prepare("
+        SELECT fuel_type, SUM(liters_sold) AS total_sales
+        FROM fuel_transactions
+        WHERE station_id = ?
+          AND DATE(transaction_date) = CURDATE()
+          AND LOWER(status) IN ('verified','approved','completed')
+        GROUP BY fuel_type
+    ");
     $s->execute([$station_id]);
     foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $sales_lookup[strtolower(trim($row['fuel_type']))] = (float)$row['total_sales'];
@@ -119,23 +116,21 @@ $total_fuel_volume = 0;
 
 foreach ($TANK_CONFIG_17 as $tc) {
     $ft_key   = strtolower(trim($tc['fuel_type']));
-    $tank_key = strtolower(trim($tc['tank']));
     $inv      = $fi_lookup[$ft_key] ?? null;
 
     $capacity  = (float)$tc['capacity'];
     $cur_level = $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0;
 
-    $same_type_count = count(array_filter($TANK_CONFIG_17, fn($t) => strtolower($t['fuel_type']) === $ft_key));
-    $purchases = $del_lookup[$tank_key] ?? 0;
+    $purchases = $del_lookup[$ft_key] ?? 0;
 
     $sales_total = $sales_lookup[$ft_key] ?? 0;
     $adj_total   = $adj_lookup[$ft_key] ?? 0;
-    $sales       = $same_type_count > 0 ? round($sales_total / $same_type_count, 2) : 0;
-    $calibration = $same_type_count > 0 ? round($adj_total / $same_type_count, 2) : 0;
+    $sales       = round($sales_total, 2);
+    $calibration = round($adj_total, 2);
 
-    $beginning = $same_type_count > 0 ? round($cur_level / $same_type_count, 2) : 0;
+    $ending_system = $cur_level;
+    $beginning = max(0, round($ending_system - $purchases + $sales + $calibration, 2));
     $total_available = $beginning + $purchases;
-    $ending_system   = max(0, $total_available - $sales - $calibration);
 
     $remaining_capacity = max(0, $capacity - $ending_system);
     $total_fuel_volume += $ending_system;
@@ -218,6 +213,7 @@ $alert_low_tanks = count(array_filter($rows, fn($r) => $r['status'] === 'Low'));
 $alert_critical_tanks = count(array_filter($rows, fn($r) => $r['status'] === 'Critical'));
 $alert_empty_tanks = count(array_filter($rows, fn($r) => $r['status'] === 'Out of Stock' || $r['current_volume'] <= 0));
 $alert_needing_delivery = $alert_low_tanks + $alert_critical_tanks + $alert_empty_tanks;
+$fuel_type_options = inventory_fuel_type_options($rows);
 
 // ── Fuel Movement History Data (only fetched when on movement tab) ─────
 $mov_rows          = [];
@@ -613,11 +609,9 @@ include __DIR__ . '/../partials/header.php';
             
             <select id="fuelTypeFilter" onchange="filterFuelTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
                 <option value="">All Fuel Types</option>
-                <option value="diesel">Diesel</option>
-                <option value="kerosene">Kerosene</option>
-                <option value="turbo diesel">Turbo Diesel</option>
-                <option value="xcs plus">XCS Plus</option>
-                <option value="xtra unl">XTRA UNL</option>
+                <?php foreach ($fuel_type_options as $fuel_type_option): ?>
+                    <option value="<?= htmlspecialchars(strtolower($fuel_type_option)) ?>"><?= htmlspecialchars($fuel_type_option) ?></option>
+                <?php endforeach; ?>
             </select>
 
             <select id="fuelStatusFilter" onchange="filterFuelTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
@@ -735,11 +729,9 @@ include __DIR__ . '/../partials/header.php';
             
             <select id="alertTypeFilter" onchange="filterAlertTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
                 <option value="">All Fuel Types</option>
-                <option value="diesel">Diesel</option>
-                <option value="kerosene">Kerosene</option>
-                <option value="turbo diesel">Turbo Diesel</option>
-                <option value="xcs plus">XCS Plus</option>
-                <option value="xtra unl">XTRA UNL</option>
+                <?php foreach ($fuel_type_options as $fuel_type_option): ?>
+                    <option value="<?= htmlspecialchars(strtolower($fuel_type_option)) ?>"><?= htmlspecialchars($fuel_type_option) ?></option>
+                <?php endforeach; ?>
             </select>
 
             <select id="alertSeverityFilter" onchange="filterAlertTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
@@ -855,11 +847,9 @@ include __DIR__ . '/../partials/header.php';
             <input type="text" id="movSearch" placeholder="Search..." oninput="filterMovTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;width:160px;">
             <select id="movFuelFilter" onchange="filterMovTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
                 <option value="">All Fuel Types</option>
-                <option value="diesel">Diesel</option>
-                <option value="kerosene">Kerosene</option>
-                <option value="turbo diesel">Turbo Diesel</option>
-                <option value="xcs plus">XCS Plus</option>
-                <option value="xtra unl">XTRA UNL</option>
+                <?php foreach ($fuel_type_options as $fuel_type_option): ?>
+                    <option value="<?= htmlspecialchars(strtolower($fuel_type_option)) ?>"><?= htmlspecialchars($fuel_type_option) ?></option>
+                <?php endforeach; ?>
             </select>
             <select id="movTypeFilter" onchange="filterMovTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
                 <option value="">All Movement Types</option>

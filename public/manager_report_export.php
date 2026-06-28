@@ -374,9 +374,11 @@ if ($section === 'meter_readings') {
 if ($section === 'inventory') {
     $inventory_rows = q($pdo,"SELECT * FROM fuel_inventory WHERE station_id = ? ORDER BY fuel_type ASC", [$station_id]);
     $datasets['fuel_inv'] = ['title'=>'Fuel Inventory','headers'=>['Fuel Type','Tank ID','Capacity','Current Level','Fill %'],'rows'=>$inventory_rows,'map'=>function($r){$pct=$r['capacity']>0?($r['current_level']/$r['capacity'])*100:0; return [$r['fuel_type'],$r['tank_id']?:'—',number_format($r['capacity'],2).' L',number_format($r['current_level'],2).' L',number_format($pct,1).'%'];}];
-    
-    $inventory_merch_rows = q($pdo,"SELECT si.*, p.product_name, p.category, p.unit_price FROM station_inventory si JOIN inventory_products p ON si.catalog_product_id = p.id WHERE si.station_id = ? ORDER BY p.product_name ASC", [$station_id]);
-    $datasets['merch_inv'] = ['title'=>'Merchandise Inventory','headers'=>['Product','Category','Unit Price (PHP)','Stock Quantity'],'rows'=>$inventory_merch_rows,'map'=>function($r){return [$r['product_name'],$r['category'],number_format($r['unit_price'],2),$r['stock_quantity']];}];
+
+    $datasets['fuel_inv'] = ['title'=>'Fuel Inventory','headers'=>['Fuel Type','Inventory ID','Capacity','Current Level','Fill %'],'rows'=>$inventory_rows,'map'=>function($r){$level=(float)($r['current_level'] ?? $r['current_stock'] ?? 0); $cap=(float)($r['capacity'] ?? 0); $pct=$cap>0?($level/$cap)*100:0; return [$r['fuel_type'],'FI-'.$r['id'],number_format($cap,2).' L',number_format($level,2).' L',number_format($pct,1).'%'];}];
+
+    $inventory_merch_rows = q($pdo,"SELECT si.*, p.product_name, p.category, COALESCE(si.price, p.unit_price, 0) AS unit_price FROM station_inventory si JOIN inventory_products p ON si.product_id = p.id WHERE si.station_id = ? AND LOWER(COALESCE(si.status, 'active')) = 'active' AND LOWER(COALESCE(p.status, 'active')) <> 'inactive' AND LOWER(COALESCE(p.category, '')) <> 'fuel' ORDER BY p.product_name ASC", [$station_id]);
+    $datasets['merch_inv'] = ['title'=>'Merchandise Inventory','headers'=>['Product','Category','Unit Price (PHP)','Stock Quantity'],'rows'=>$inventory_merch_rows,'map'=>function($r){return [$r['product_name'],$r['category'],number_format((float)$r['unit_price'],2),number_format((float)$r['stock_level'],2)];}];
 }
 
 if ($section === 'price_logs') {

@@ -22,8 +22,16 @@ try {
 // 3. Total Active Products
 $admin_active_products = 0;
 try {
-    $s = $pdo->prepare("SELECT COUNT(*) FROM inventory_products WHERE status = 'Active' AND category != 'Fuel'");
-    $s->execute([]); $admin_active_products = (int)$s->fetchColumn();
+    $s = $pdo->prepare("
+        SELECT COUNT(DISTINCT ip.id)
+        FROM station_inventory si
+        JOIN inventory_products ip ON ip.id = si.product_id
+        WHERE si.station_id = ?
+          AND LOWER(COALESCE(si.status, 'active')) = 'active'
+          AND LOWER(COALESCE(ip.status, 'active')) <> 'inactive'
+          AND LOWER(COALESCE(ip.category, '')) <> 'fuel'
+    ");
+    $s->execute([$station_id]); $admin_active_products = (int)$s->fetchColumn();
 } catch (Exception $e) {}
 
 // 4. Low Stock Items
@@ -32,7 +40,9 @@ try {
     $s = $pdo->prepare("
         SELECT COUNT(*) FROM inventory_products ip
         LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
-        WHERE ip.category != 'Fuel' AND ip.status = 'Active'
+        WHERE LOWER(COALESCE(ip.category, '')) <> 'fuel'
+          AND LOWER(COALESCE(ip.status, 'active')) <> 'inactive'
+          AND LOWER(COALESCE(si.status, 'active')) = 'active'
           AND COALESCE(si.stock_level, ip.stock, 0) > 0
           AND COALESCE(si.stock_level, ip.stock, 0) <= COALESCE(si.reorder_level, 10)
     ");
@@ -45,7 +55,9 @@ try {
     $s = $pdo->prepare("
         SELECT COUNT(*) FROM inventory_products ip
         LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
-        WHERE ip.category != 'Fuel' AND ip.status = 'Active'
+        WHERE LOWER(COALESCE(ip.category, '')) <> 'fuel'
+          AND LOWER(COALESCE(ip.status, 'active')) <> 'inactive'
+          AND LOWER(COALESCE(si.status, 'active')) = 'active'
           AND COALESCE(si.stock_level, ip.stock, 0) <= 0
     ");
     $s->execute([$station_id]); $admin_out_of_stock = (int)$s->fetchColumn();

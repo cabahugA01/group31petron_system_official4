@@ -42,11 +42,17 @@ try {
 
 // Date handling
 $today = date('Y-m-d');
-// Default to most recent date with fuel data for this station (fallback to today)
+// Default to most recent date with either fuel or merchandise data for this station (fallback to today)
 $default_date = $today;
 try {
-    $dr = $pdo->prepare("SELECT DATE(transaction_date) AS d FROM fuel_transactions WHERE station_id=? ORDER BY transaction_date DESC LIMIT 1");
-    $dr->execute([$station_id]);
+    $dr = $pdo->prepare("
+        SELECT MAX(d) AS d FROM (
+            SELECT DATE(transaction_date) AS d FROM fuel_transactions WHERE station_id = ?
+            UNION
+            SELECT DATE(transaction_date) AS d FROM merchandise_transactions WHERE station_id = ?
+        ) AS combined_dates
+    ");
+    $dr->execute([$station_id, $station_id]);
     $dr_row = $dr->fetch(PDO::FETCH_ASSOC);
     if ($dr_row && $dr_row['d']) $default_date = $dr_row['d'];
 } catch (Exception $e) {}
@@ -108,6 +114,7 @@ $tank_sales = [];
 $shift1_summary = [
     'fuel_sales' => 0,
     'merchandise_sales' => 0,
+    'service_income' => 0,
     'total_sales' => 0,
     'cash' => 0,
     'card' => 0,
@@ -117,6 +124,7 @@ $shift1_summary = [
 $shift2_summary = [
     'fuel_sales' => 0,
     'merchandise_sales' => 0,
+    'service_income' => 0,
     'total_sales' => 0,
     'cash' => 0,
     'card' => 0,
@@ -305,45 +313,142 @@ try {
         }
     }
     
-    // Get merchandise sales by shift
-    if ($has_merchandise_transactions) {
-        $stmt = $pdo->prepare("
-            SELECT 
-                COALESCE(shift_period, 'Shift 1') AS shift_period,
-                SUM(total_amount) AS total_amount,
-                payment_method,
-                COUNT(*) AS transaction_count
-            FROM merchandise_transactions
-            WHERE station_id = ? AND DATE(created_at) = ?
-            GROUP BY shift_period, payment_method
-        ");
-        $stmt->execute([$station_id, $report_date]);
-        $merch_by_shift = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        foreach ($merch_by_shift as $row) {
-            $amount  = (float)$row['total_amount'];
-            $payment = strtolower($row['payment_method'] ?? 'cash');
-            $is_s1   = is_shift1($row['shift_period'] ?? '');
+    // Get merchandise and service sales by shift and process transaction items
+    $processed_merch = [];
+    $processed_services = [];
+    $total_merch_amount = 0;
+    $total_service_amount = 0;
+    
+    // Add service_income key to shift summaries
+    $shift1_summary['service_income'] = 0;
+    $shift2_summary['service_income'] = 0;
 
-            if ($is_s1) {
-                $shift1_summary['merchandise_sales'] += $amount;
-                if (in_array($payment, ['cash','cash payment'])) $shift1_summary['cash'] += $amount;
-                elseif (in_array($payment, ['card','credit card','debit card'])) $shift1_summary['card'] += $amount;
-                elseif (in_array($payment, ['gcash','maya','e-wallet','ewallet'])) $shift1_summary['ewallet'] += $amount;
-                else $shift1_summary['credit'] += $amount;
-            } else {
-                $shift2_summary['merchandise_sales'] += $amount;
-                if (in_array($payment, ['cash','cash payment'])) $shift2_summary['cash'] += $amount;
-                elseif (in_array($payment, ['card','credit card','debit card'])) $shift2_summary['card'] += $amount;
-                elseif (in_array($payment, ['gcash','maya','e-wallet','ewallet'])) $shift2_summary['ewallet'] += $amount;
-                else $shift2_summary['credit'] += $amount;
+    if ($has_merchandise_transactions) {
+        try {
+            $stmt = $pdo->prepare("
+                SELECT 
+                    mt.id AS transaction_db_id,
+                    mt.transaction_id,
+                    mt.payment_method,
+                    mt.shift_period,
+                    mt.total_amount AS tx_total_amount,
+                    mti.id AS item_db_id,
+                    COALESCE(mti.category, 'General') AS category,
+                    COALESCE(mti.product_name, mt.item_sku, 'Item') AS product_name,
+                    COALESCE(mti.quantity, mt.quantity) AS stock_out,
+                    COALESCE(mti.unit_price, mt.unit_price) AS unit_price,
+                    COALESCE(mti.subtotal, mt.total_amount) AS item_subtotal,
+                    COALESCE(mti.item_type, CASE WHEN COALESCE(mti.category, '') = 'Service Fee' THEN 'service' ELSE 'merchandise' END) AS item_type,
+                    u.username AS encoder,
+                    mt.transaction_date,
+                    mt.created_at
+                FROM merchandise_transactions mt
+                LEFT JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id
+                LEFT JOIN users u ON mt.staff_id = u.id
+                WHERE mt.station_id = ? AND DATE(mt.transaction_date) = ?
+                ORDER BY mti.category, mt.transaction_date
+            ");
+            $stmt->execute([$station_id, $report_date]);
+            $raw_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Group items by transaction to compute scaling factor (for VAT inclusion)
+            $tx_subtotals = [];
+            foreach ($raw_items as $item) {
+                $tx_id = $item['transaction_db_id'];
+                if (!isset($tx_subtotals[$tx_id])) {
+                    $tx_subtotals[$tx_id] = 0;
+                }
+                $tx_subtotals[$tx_id] += (float)$item['item_subtotal'];
             }
+
+            foreach ($raw_items as $item) {
+                $tx_id = $item['transaction_db_id'];
+                $subtotal_sum = $tx_subtotals[$tx_id];
+                $tx_total = (float)$item['tx_total_amount'];
+                
+                $factor = 1.0;
+                if ($subtotal_sum > 0) {
+                    $factor = $tx_total / $subtotal_sum;
+                }
+
+                // Scale price and amount to be VAT-inclusive
+                $scaled_unit_price = (float)$item['unit_price'] * $factor;
+                $scaled_amount = (float)$item['item_subtotal'] * $factor;
+
+                $processed_item = [
+                    'id' => $item['item_db_id'] ?? $item['transaction_db_id'],
+                    'transaction_id' => $item['transaction_id'],
+                    'category' => $item['category'],
+                    'product_name' => $item['product_name'],
+                    'service_type' => $item['product_name'],
+                    'stock_out' => (float)$item['stock_out'],
+                    'unit_price' => $scaled_unit_price,
+                    'labor_fee' => $scaled_unit_price,
+                    'total_amount' => $scaled_amount,
+                    'shift' => $item['shift_period'] ?? 'Shift 1',
+                    'encoder' => $item['encoder'] ?? 'N/A',
+                    'payment_method' => $item['payment_method'],
+                    'created_at' => $item['created_at']
+                ];
+
+                if ($item['item_type'] === 'service') {
+                    // Find parts used (any merchandise items in the same transaction)
+                    $parts = [];
+                    foreach ($raw_items as $other) {
+                        if ($other['transaction_db_id'] === $tx_id && $other['item_type'] === 'merchandise') {
+                            $parts[] = $other['product_name'] . ' (x' . number_format((float)$other['stock_out'], 0) . ')';
+                        }
+                    }
+                    $processed_item['parts_used'] = count($parts) > 0 ? implode(', ', $parts) : '—';
+                    $processed_services[] = $processed_item;
+                    $total_service_amount += $scaled_amount;
+                    
+                    // Add to shift summaries
+                    $payment = strtolower($item['payment_method'] ?? 'cash');
+                    $is_s1 = is_shift1($item['shift_period'] ?? '');
+                    if ($is_s1) {
+                        $shift1_summary['service_income'] += $scaled_amount;
+                        if (in_array($payment, ['cash','cash payment'])) $shift1_summary['cash'] += $scaled_amount;
+                        elseif (in_array($payment, ['card','credit card','debit card'])) $shift1_summary['card'] += $scaled_amount;
+                        elseif (in_array($payment, ['gcash','maya','e-wallet','ewallet'])) $shift1_summary['ewallet'] += $scaled_amount;
+                        else $shift1_summary['credit'] += $scaled_amount;
+                    } else {
+                        $shift2_summary['service_income'] += $scaled_amount;
+                        if (in_array($payment, ['cash','cash payment'])) $shift2_summary['cash'] += $scaled_amount;
+                        elseif (in_array($payment, ['card','credit card','debit card'])) $shift2_summary['card'] += $scaled_amount;
+                        elseif (in_array($payment, ['gcash','maya','e-wallet','ewallet'])) $shift2_summary['ewallet'] += $scaled_amount;
+                        else $shift2_summary['credit'] += $scaled_amount;
+                    }
+                } else {
+                    $processed_merch[] = $processed_item;
+                    $total_merch_amount += $scaled_amount;
+                    
+                    // Add to shift summaries
+                    $payment = strtolower($item['payment_method'] ?? 'cash');
+                    $is_s1 = is_shift1($item['shift_period'] ?? '');
+                    if ($is_s1) {
+                        $shift1_summary['merchandise_sales'] += $scaled_amount;
+                        if (in_array($payment, ['cash','cash payment'])) $shift1_summary['cash'] += $scaled_amount;
+                        elseif (in_array($payment, ['card','credit card','debit card'])) $shift1_summary['card'] += $scaled_amount;
+                        elseif (in_array($payment, ['gcash','maya','e-wallet','ewallet'])) $shift1_summary['ewallet'] += $scaled_amount;
+                        else $shift1_summary['credit'] += $scaled_amount;
+                    } else {
+                        $shift2_summary['merchandise_sales'] += $scaled_amount;
+                        if (in_array($payment, ['cash','cash payment'])) $shift2_summary['cash'] += $scaled_amount;
+                        elseif (in_array($payment, ['card','credit card','debit card'])) $shift2_summary['card'] += $scaled_amount;
+                        elseif (in_array($payment, ['gcash','maya','e-wallet','ewallet'])) $shift2_summary['ewallet'] += $scaled_amount;
+                        else $shift2_summary['credit'] += $scaled_amount;
+                    }
+                }
+            }
+        } catch (Exception $e) {
+            $error_message = "Error fetching merchandise transactions: " . $e->getMessage();
         }
     }
     
     // Calculate totals
-    $shift1_summary['total_sales'] = $shift1_summary['fuel_sales'] + $shift1_summary['merchandise_sales'];
-    $shift2_summary['total_sales'] = $shift2_summary['fuel_sales'] + $shift2_summary['merchandise_sales'];
+    $shift1_summary['total_sales'] = $shift1_summary['fuel_sales'] + $shift1_summary['merchandise_sales'] + $shift1_summary['service_income'];
+    $shift2_summary['total_sales'] = $shift2_summary['fuel_sales'] + $shift2_summary['merchandise_sales'] + $shift2_summary['service_income'];
     
 } catch (Exception $e) {
     $error_message = "Error calculating shift summaries: " . $e->getMessage();
@@ -404,9 +509,11 @@ try {
 // ============================================================
 $overall_summary['total_fuel_sales'] = $shift1_summary['fuel_sales'] + $shift2_summary['fuel_sales'];
 $overall_summary['total_merchandise_sales'] = $shift1_summary['merchandise_sales'] + $shift2_summary['merchandise_sales'];
+$overall_summary['total_service_income'] = $shift1_summary['service_income'] + $shift2_summary['service_income'];
 $overall_summary['total_liters'] = array_sum(array_column($volume_sales, 'total_liters'));
 $overall_summary['total_cash'] = $shift1_summary['cash'] + $shift2_summary['cash'];
 $overall_summary['total_deposits'] = 0; // Would come from deposits table if available
+$total_service_amount = $overall_summary['total_service_income'];
 
 // Ensure fuel transactions total matches
 if (isset($fuel_transactions) && is_array($fuel_transactions) && count($fuel_transactions) > 0) {
@@ -480,31 +587,8 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         echo '<p><strong>Date:</strong> ' . date('F d, Y', strtotime($report_date)) . '</p>';
         echo '<br/>';
         
-        // Fetch merchandise transactions
-        $merch_transactions = [];
-        if ($has_merchandise_transactions) {
-            try {
-                $stmt = $pdo->prepare("
-                    SELECT 
-                        mt.id,
-                        COALESCE(mti.category, 'General') AS category,
-                        COALESCE(mti.product_name, mt.item_sku, 'Item') AS product_name,
-                        COALESCE(mti.quantity, mt.quantity) AS stock_out,
-                        mt.unit_price,
-                        mt.total_amount,
-                        mt.shift_period AS shift,
-                        u.username AS encoder,
-                        mt.created_at
-                    FROM merchandise_transactions mt
-                    LEFT JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id
-                    LEFT JOIN users u ON mt.staff_id = u.id
-                    WHERE mt.station_id = ? AND DATE(mt.created_at) = ?
-                    ORDER BY mti.category, mt.created_at
-                ");
-                $stmt->execute([$station_id, $report_date]);
-                $merch_transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            } catch (Exception $e) {}
-        }
+        // Use pre-processed merchandise transactions
+        $merch_transactions = $processed_merch;
         
         // MERCHANDISE SALES TABLE
         echo '<h2>MERCHANDISE SALES TABLE</h2>';
@@ -553,30 +637,8 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         echo '</table>';
         echo '<br/>';
         
-        // SERVICE INCOME TABLE
-        $service_transactions = [];
-        $has_services = table_exists($pdo, 'service_transactions');
-        if ($has_services) {
-            try {
-                $stmt = $pdo->prepare("
-                    SELECT 
-                        st.id,
-                        st.service_type,
-                        st.labor_fee,
-                        st.parts_used,
-                        st.total_amount,
-                        st.shift,
-                        u.username AS encoder,
-                        st.created_at
-                    FROM service_transactions st
-                    LEFT JOIN users u ON st.user_id = u.id
-                    WHERE st.station_id = ? AND DATE(st.created_at) = ?
-                    ORDER BY st.created_at
-                ");
-                $stmt->execute([$station_id, $report_date]);
-                $service_transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            } catch (Exception $e) {}
-        }
+        // Use pre-processed service transactions
+        $service_transactions = $processed_services;
         
         echo '<h2>SERVICE INCOME TABLE</h2>';
         echo '<table border="1" cellpadding="5" cellspacing="0">';
@@ -621,7 +683,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
         echo '<tbody>';
         echo '<tr><td class="font-bold">Merchandise Sales:</td><td class="text-right font-bold">₱' . number_format($shift1_summary['merchandise_sales'], 2) . '</td></tr>';
-        echo '<tr><td class="font-bold">Service Income:</td><td class="text-right font-bold">₱0.00</td></tr>';
+        echo '<tr><td class="font-bold">Service Income:</td><td class="text-right font-bold">₱' . number_format($shift1_summary['service_income'], 2) . '</td></tr>';
         echo '<tr><td colspan="2">&nbsp;</td></tr>';
         echo '<tr><td colspan="2" class="font-bold">Payment Breakdown</td></tr>';
         echo '<tr><td>Cash:</td><td class="text-right">₱' . number_format($shift1_summary['cash'], 2) . '</td></tr>';
@@ -636,7 +698,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
         echo '<tbody>';
         echo '<tr><td class="font-bold">Merchandise Sales:</td><td class="text-right font-bold">₱' . number_format($shift2_summary['merchandise_sales'], 2) . '</td></tr>';
-        echo '<tr><td class="font-bold">Service Income:</td><td class="text-right font-bold">₱0.00</td></tr>';
+        echo '<tr><td class="font-bold">Service Income:</td><td class="text-right font-bold">₱' . number_format($shift2_summary['service_income'], 2) . '</td></tr>';
         echo '<tr><td colspan="2">&nbsp;</td></tr>';
         echo '<tr><td colspan="2" class="font-bold">Payment Breakdown</td></tr>';
         echo '<tr><td>Cash:</td><td class="text-right">₱' . number_format($shift2_summary['cash'], 2) . '</td></tr>';
@@ -2058,32 +2120,8 @@ require_once __DIR__ . '/../partials/header.php';
                         <tbody>
                             <?php 
                             // Fetch merchandise transactions for the day
-                            $merch_transactions = [];
+                            $merch_transactions = $processed_merch;
                             $total_merch_amount = 0;
-                            
-                            if ($has_merchandise_transactions) {
-                                try {
-                                    $stmt = $pdo->prepare("
-                                        SELECT 
-                                            mt.id,
-                                            COALESCE(mti.category, 'General') AS category,
-                                            COALESCE(mti.product_name, mt.item_sku, 'Item') AS product_name,
-                                            COALESCE(mti.quantity, mt.quantity) AS stock_out,
-                                            mt.unit_price,
-                                            mt.total_amount,
-                                            mt.shift_period AS shift,
-                                            u.username AS encoder,
-                                            mt.created_at
-                                        FROM merchandise_transactions mt
-                                        LEFT JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id
-                                        LEFT JOIN users u ON mt.staff_id = u.id
-                                        WHERE mt.station_id = ? AND DATE(mt.created_at) = ?
-                                        ORDER BY mti.category, mt.created_at
-                                    ");
-                                    $stmt->execute([$station_id, $report_date]);
-                                    $merch_transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                                } catch (Exception $e) {}
-                            }
                             
                             if (count($merch_transactions) > 0):
                                 foreach ($merch_transactions as $trans): 
@@ -2139,33 +2177,8 @@ require_once __DIR__ . '/../partials/header.php';
                         <tbody>
                             <?php 
                             // Fetch service transactions for the day
-                            $service_transactions = [];
+                            $service_transactions = $processed_services;
                             $total_service_amount = 0;
-                            
-                            // Check if services table exists
-                            $has_services = table_exists($pdo, 'service_transactions');
-                            
-                            if ($has_services) {
-                                try {
-                                    $stmt = $pdo->prepare("
-                                        SELECT 
-                                            st.id,
-                                            st.service_type,
-                                            st.labor_fee,
-                                            st.parts_used,
-                                            st.total_amount,
-                                            st.shift,
-                                            u.username AS encoder,
-                                            st.created_at
-                                        FROM service_transactions st
-                                        LEFT JOIN users u ON st.user_id = u.id
-                                        WHERE st.station_id = ? AND DATE(st.created_at) = ?
-                                        ORDER BY st.created_at
-                                    ");
-                                    $stmt->execute([$station_id, $report_date]);
-                                    $service_transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                                } catch (Exception $e) {}
-                            }
                             
                             if (count($service_transactions) > 0):
                                 foreach ($service_transactions as $trans): 
@@ -2215,7 +2228,7 @@ require_once __DIR__ . '/../partials/header.php';
                                 </tr>
                                 <tr>
                                     <td class="font-bold">Service Income:</td>
-                                    <td class="text-right font-bold">₱0.00</td>
+                                    <td class="text-right font-bold">₱<?= number_format($shift1_summary['service_income'], 2) ?></td>
                                 </tr>
                                 <tr><td colspan="2" style="height: 10px;"></td></tr>
                                 <tr>
@@ -2252,7 +2265,7 @@ require_once __DIR__ . '/../partials/header.php';
                                 </tr>
                                 <tr>
                                     <td class="font-bold">Service Income:</td>
-                                    <td class="text-right font-bold">₱0.00</td>
+                                    <td class="text-right font-bold">₱<?= number_format($shift2_summary['service_income'], 2) ?></td>
                                 </tr>
                                 <tr><td colspan="2" style="height: 10px;"></td></tr>
                                 <tr>

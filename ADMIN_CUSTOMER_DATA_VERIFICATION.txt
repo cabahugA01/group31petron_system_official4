@@ -1,0 +1,305 @@
+═══════════════════════════════════════════════════════════════════════════════
+             ADMIN CUSTOMER MODULE - DATA VERIFICATION GUIDE
+═══════════════════════════════════════════════════════════════════════════════
+
+STATUS: ✅ BACKEND API IS WORKING - READY TO FETCH DATA
+ISSUE: Kung walay data sa customers table, dili mo-display
+
+═══════════════════════════════════════════════════════════════════════════════
+                        HOW TO VERIFY DATA EXISTS
+═══════════════════════════════════════════════════════════════════════════════
+
+METHOD 1: CHECK VIA phpMyAdmin
+──────────────────────────────────────────────────────────────────────────────
+
+1. Open phpMyAdmin: http://localhost/phpmyadmin
+2. Select your database (e.g., "petron_db")
+3. Click "customers" table
+4. Check if naa bay records
+
+EXPECTED COLUMNS:
+- id
+- station_id
+- customer_id
+- first_name
+- last_name
+- contact_number
+- customer_type (walk-in, regular, fleet)
+- status (active, inactive, suspended)
+- registered_by
+- registered_at
+- created_at
+
+═══════════════════════════════════════════════════════════════════════════════
+                        QUICK CHECK QUERIES
+═══════════════════════════════════════════════════════════════════════════════
+
+Run these sa phpMyAdmin SQL tab:
+
+1. COUNT TOTAL CUSTOMERS:
+   ──────────────────────────────────────────────────────────────
+   SELECT COUNT(*) AS total FROM customers;
+   ──────────────────────────────────────────────────────────────
+
+2. CHECK BY STATION:
+   ──────────────────────────────────────────────────────────────
+   SELECT station_id, COUNT(*) AS count 
+   FROM customers 
+   GROUP BY station_id;
+   ──────────────────────────────────────────────────────────────
+
+3. VIEW SAMPLE DATA:
+   ──────────────────────────────────────────────────────────────
+   SELECT * FROM customers LIMIT 10;
+   ──────────────────────────────────────────────────────────────
+
+═══════════════════════════════════════════════════════════════════════════════
+                    IF WALAY DATA - INSERT SAMPLE
+═══════════════════════════════════════════════════════════════════════════════
+
+FILE CREATED: CHECK_CUSTOMER_DATA.sql
+
+STEPS:
+1. Open file: CHECK_CUSTOMER_DATA.sql
+2. Copy the INSERT statements
+3. **IMPORTANT:** Update these values:
+   - station_id (your actual station ID)
+   - registered_by (actual user ID)
+4. Run sa phpMyAdmin SQL tab
+5. Refresh admin_customers.php page
+
+SAMPLE DATA INCLUDED:
+- 3 Walk-in customers
+- 3 Regular customers
+- 2 Fleet customers
+= TOTAL: 8 sample customers
+
+═══════════════════════════════════════════════════════════════════════════════
+                        BACKEND API VERIFICATION
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ BACKEND FILE: admin_customer_operations.php
+
+API ENDPOINTS:
+1. action=list             → Fetch all customers with filters
+2. action=view             → Get single customer profile
+3. action=transaction_history → Get paginated history
+4. action=get_staff_list   → Get staff for dropdown
+5. action=log_document_access → Log document views
+
+FEATURES:
+✅ SQL injection prevention (prepared statements)
+✅ Station scope filtering
+✅ Role-based access control
+✅ Dynamic statistics calculation
+✅ Transaction history from 3 tables (fuel, merchandise, job_orders)
+
+═══════════════════════════════════════════════════════════════════════════════
+                        FRONTEND DATA LOADING
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ JAVASCRIPT FUNCTION: loadCustomers()
+
+LOCATION: admin_customers.php (around line 500)
+
+WHAT IT DOES:
+1. Fetches data from: admin_customer_operations.php?action=list
+2. Updates summary cards with stats
+3. Renders customer table with data
+4. Handles empty state if no customers
+
+TEST IN BROWSER CONSOLE:
+──────────────────────────────────────────────────────────────────────────────
+// Open browser console (F12)
+// Type this:
+fetch('admin_customer_operations.php?action=list')
+  .then(r => r.json())
+  .then(d => console.log(d));
+
+// Expected response:
+{
+  "success": true,
+  "customers": [...],  // Array of customer objects
+  "stats": {
+    "total_customers": 8,
+    "new_registered": 0,
+    "regular_customers": 3,
+    "fleet_accounts": 2,
+    "active_customers": 8,
+    "inactive_customers": 0
+  }
+}
+──────────────────────────────────────────────────────────────────────────────
+
+═══════════════════════════════════════════════════════════════════════════════
+                        TROUBLESHOOTING CHECKLIST
+═══════════════════════════════════════════════════════════════════════════════
+
+SYMPTOM: Summary cards show "0"
+CAUSE: Walay customers sa database OR wrong station_id
+FIX: 
+   □ Check customers table in phpMyAdmin
+   □ Verify station_id sa user session
+   □ Insert sample data kung empty
+
+──────────────────────────────────────────────────────────────────────────────
+
+SYMPTOM: Table shows "No customers found"
+CAUSE: Filters nag-exclude sa tanan OR walay match sa search
+FIX:
+   □ Click "Reset" button to clear filters
+   □ Check if station_id is correct
+   □ Verify customers.station_id matches user's station
+
+──────────────────────────────────────────────────────────────────────────────
+
+SYMPTOM: JavaScript console error
+CAUSE: API error OR database connection issue
+FIX:
+   □ Check browser console (F12)
+   □ Test API directly: admin_customer_operations.php?action=list
+   □ Check PHP error logs
+
+──────────────────────────────────────────────────────────────────────────────
+
+SYMPTOM: "Unauthorized access"
+CAUSE: User role is not Admin/SuperAdmin/Developer
+FIX:
+   □ Verify user role in database
+   □ Check roles table for correct permissions
+   □ Ensure user is logged in as Admin
+
+═══════════════════════════════════════════════════════════════════════════════
+                        EXPECTED BEHAVIOR (WITH DATA)
+═══════════════════════════════════════════════════════════════════════════════
+
+PAGE LOAD:
+1. ✅ Summary cards populate with real counts
+   - Total: 8
+   - New Today: 0
+   - Regular: 3
+   - Fleet: 2
+   - Active: 8
+   - Inactive: 0
+
+2. ✅ Filter panel displays
+   - Search field (empty)
+   - Dropdowns populated
+   - Date pickers (empty)
+   - Buttons visible
+
+3. ✅ Customer table displays
+   - 8 rows of customer data
+   - Customer ID, Name, Contact, Type, etc.
+   - View and Print buttons per row
+   - "8 records found" at bottom
+
+CLICK VIEW BUTTON:
+1. ✅ Profile overlay opens
+2. ✅ Customer information displays
+3. ✅ Transaction summary shows counts
+4. ✅ Document section visible
+5. ✅ Transaction history table loads
+
+═══════════════════════════════════════════════════════════════════════════════
+                        DATABASE REQUIREMENTS
+═══════════════════════════════════════════════════════════════════════════════
+
+TABLES NEEDED:
+✅ customers              (Main customer records)
+✅ users                  (For registered_by staff names)
+✅ stations               (For station filtering)
+✅ fuel_transactions      (For transaction history)
+✅ merchandise_transactions (For transaction history)
+✅ job_orders             (For transaction history)
+
+RELATIONSHIPS:
+- customers.station_id → stations.id
+- customers.registered_by → users.id
+- fuel_transactions.customer_id → customers.id
+- merchandise_transactions.customer_id → customers.id
+- job_orders.customer_id → customers.id
+
+═══════════════════════════════════════════════════════════════════════════════
+                        QUICK START STEPS
+═══════════════════════════════════════════════════════════════════════════════
+
+STEP 1: CHECK DATA EXISTS
+   □ Open phpMyAdmin
+   □ Run: SELECT COUNT(*) FROM customers;
+   □ If 0, go to Step 2
+   □ If > 0, go to Step 3
+
+STEP 2: INSERT SAMPLE DATA
+   □ Open: CHECK_CUSTOMER_DATA.sql
+   □ Update station_id and registered_by
+   □ Run INSERT statements in phpMyAdmin
+   □ Verify: SELECT * FROM customers;
+
+STEP 3: TEST THE MODULE
+   □ Login as Admin user
+   □ Navigate to Customers in sidebar
+   □ Page should load with data
+   □ Summary cards show numbers
+   □ Table shows customer rows
+
+STEP 4: VERIFY FUNCTIONALITY
+   □ Try search filter
+   □ Try dropdown filters
+   □ Click "Apply Filters" button
+   □ Click "View" button on a customer
+   □ Verify profile overlay opens
+   □ Check transaction history loads
+
+═══════════════════════════════════════════════════════════════════════════════
+                        SAMPLE DATA STRUCTURE
+═══════════════════════════════════════════════════════════════════════════════
+
+CUSTOMER RECORD EXAMPLE:
+{
+  "id": 1,
+  "station_id": 1,
+  "customer_id": "C-001",
+  "first_name": "Juan",
+  "last_name": "Dela Cruz",
+  "contact_number": "09171234567",
+  "customer_type": "walk-in",
+  "status": "active",
+  "registered_by": 1,
+  "registered_at": "2024-06-29 10:30:00",
+  "display_name": "Juan Dela Cruz",
+  "registered_by_name": "Staff Name",
+  "last_transaction_date": null
+}
+
+═══════════════════════════════════════════════════════════════════════════════
+                        FINAL CHECKLIST
+═══════════════════════════════════════════════════════════════════════════════
+
+BEFORE TESTING:
+□ Customers table has data
+□ Station_id matches user's station
+□ User role is Admin/SuperAdmin/Developer
+□ Apache/MySQL running
+□ Browser cache cleared (Ctrl + Shift + R)
+
+AFTER TESTING:
+□ Summary cards show numbers
+□ Filter panel displays correctly
+□ Customer table has rows
+□ View button opens profile
+□ Export buttons work
+□ No JavaScript console errors
+
+═══════════════════════════════════════════════════════════════════════════════
+
+STATUS: ✅ BACKEND IS READY - JUST NEED DATA IN DATABASE!
+
+FILES TO USE:
+1. CHECK_CUSTOMER_DATA.sql - Run this to check/insert data
+2. admin_customer_operations.php - Backend API (already working)
+3. admin_customers.php - Frontend UI (already updated)
+
+WALAY PROBLEMA SA CODE - NAGA-FETCH RA NI UG DATA!
+
+═══════════════════════════════════════════════════════════════════════════════

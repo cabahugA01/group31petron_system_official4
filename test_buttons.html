@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Button Display Test</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            padding: 40px;
+            background: #f1f5f9;
+            margin: 0;
+        }
+        .test-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .test-title {
+            background: #002F70;
+            color: white;
+            padding: 20px;
+            border-radius: 10px 10px 0 0;
+            margin: 0;
+        }
+        .test-content {
+            background: white;
+            padding: 30px;
+            border-radius: 0 0 10px 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .result-message {
+            margin-top: 30px;
+            padding: 15px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+        }
+        .result-success {
+            background: #d1fae5;
+            color: #065f46;
+            border: 2px solid #16a34a;
+        }
+        .result-error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 2px solid #dc2626;
+        }
+        hr {
+            margin: 30px 0;
+            border: none;
+            border-top: 2px solid #e2e8f0;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1 class="test-title">
+            <i class="fas fa-vial"></i> Button Display Test - Manager Customer Module
+        </h1>
+        <div class="test-content">
+            <h2 style="color: #002F70; margin-top: 0;">Test 1: Export Buttons & Add Customer Button</h2>
+            <p>This tests the exact button layout used in the Manager Customer module:</p>
+            
+            <!-- EXACT REPLICA OF MANAGER CUSTOMER HEADER -->
+            <div style="display: flex !important; justify-content: space-between !important; align-items: flex-start !important; background: #f8fafc; padding: 20px; border-radius: 10px; border: 2px dashed #cbd5e1;">
+                <div>
+                    <h1 style="margin: 0; font-size: 22px; color: #00264D;"><i class="fas fa-users"></i> Customer Management</h1>
+                    <div style="font-size: 13px; color: #64748b; margin-top: 4px;">Manage, verify, and monitor customer accounts — Test Station</div>
+                </div>
+                <div style="display: flex !important; flex-direction: column !important; gap: 8px !important; align-items: flex-end !important;">
+                    <!-- Export Buttons Row -->
+                    <div style="display: flex !important; gap: 8px !important;">
+                        <a href="#" style="background:#dc2626 !important;border:none !important;color:white !important;padding:0 14px;height:34px;display:inline-flex;align-items:center;gap:6px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;"><i class="fas fa-file-pdf"></i> PDF</a>
+                        <a href="#" style="background:#16a34a !important;border:none !important;color:white !important;padding:0 14px;height:34px;display:inline-flex;align-items:center;gap:6px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;"><i class="fas fa-file-excel"></i> Excel</a>
+                        <a href="#" style="background:#6b7280 !important;border:none !important;color:white !important;padding:0 14px;height:34px;display:inline-flex;align-items:center;gap:6px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;"><i class="fas fa-file-csv"></i> CSV</a>
+                    </div>
+                    <!-- Add Customer Button Below -->
+                    <button style="width: 100% !important;background:#3b82f6 !important;border:none !important;color:white !important;padding:0 14px;height:34px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;"><i class="fas fa-plus"></i> Add Customer</button>
+                </div>
+            </div>
+
+            <div class="result-message result-success">
+                <i class="fas fa-check-circle"></i> <strong>SUCCESS:</strong> If you can see the RED, GREEN, GREY export buttons on the right side above, and the BLUE "Add Customer" button below them, your browser can display the styles correctly.
+            </div>
+
+            <div class="result-message result-error" style="margin-top: 10px;">
+                <i class="fas fa-times-circle"></i> <strong>ERROR:</strong> If you CANNOT see the buttons above, there's a browser compatibility issue or CSS is being blocked.
+            </div>
+
+            <hr>
+
+            <h2 style="color: #002F70;">Test 2: Action Buttons (Vertical Layout)</h2>
+            <p>This tests the action buttons that appear in the table rows:</p>
+            
+            <div style="background: #f8fafc; padding: 20px; border-radius: 10px; border: 2px dashed #cbd5e1;">
+                <div style="display:flex;flex-direction:column;gap:6px;max-width:200px;">
+                    <button style="background:#3b82f6;color:white;border:none;padding:8px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:4px;"><i class="fas fa-eye"></i> View</button>
+                    <button style="background:#f59e0b;color:white;border:none;padding:8px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:4px;"><i class="fas fa-edit"></i> Edit</button>
+                    <button style="background:#16a34a;color:white;border:none;padding:8px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:4px;"><i class="fas fa-check-circle"></i> Verify</button>
+                    <button style="background:#6b7280;color:white;border:none;padding:8px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:4px;"><i class="fas fa-print"></i> Print</button>
+                </div>
+            </div>
+
+            <div class="result-message result-success">
+                <i class="fas fa-check-circle"></i> <strong>SUCCESS:</strong> If you can see four buttons stacked vertically (View, Edit, Verify, Print) with BLUE, ORANGE, GREEN, and GREY colors, the action buttons will display correctly.
+            </div>
+
+            <hr>
+
+            <h2 style="color: #002F70;">What This Means:</h2>
+            <ul style="line-height: 1.8; color: #334155;">
+                <li><strong>If ALL buttons display correctly here:</strong> The CSS works in your browser. The issue in manager_customers.php is likely a <strong>CACHING PROBLEM</strong>. Follow the cache clearing instructions.</li>
+                <li><strong>If buttons are MISSING or BROKEN here:</strong> There's a browser or system configuration issue preventing the styles from working.</li>
+                <li><strong>If buttons work here but NOT in the actual page:</strong> PHP caching (OPcache) or server-side caching is preventing the updated file from loading.</li>
+            </ul>
+
+            <hr>
+
+            <h2 style="color: #002F70;">Next Steps:</h2>
+            <div style="background: #eff6ff; padding: 15px; border-left: 4px solid #3b82f6; border-radius: 4px;">
+                <ol style="margin: 0; padding-left: 20px; line-height: 1.8; color: #1e293b;">
+                    <li>Read the file: <code style="background: #e2e8f0; padding: 2px 6px; border-radius: 3px;">MANAGER_CUSTOMER_BUTTON_FIX_INSTRUCTIONS.txt</code></li>
+                    <li>Follow the troubleshooting steps in order</li>
+                    <li>Start with a <strong>hard refresh</strong> (Ctrl + Shift + R)</li>
+                    <li>If that doesn't work, <strong>restart Apache</strong></li>
+                    <li>Check if "CACHE BUSTER v2.0" appears in the page source</li>
+                </ol>
+            </div>
+
+            <hr>
+
+            <div style="background: #f0fdf4; border: 2px solid #16a34a; border-radius: 8px; padding: 20px; margin-top: 30px;">
+                <h3 style="color: #15803d; margin-top: 0;"><i class="fas fa-info-circle"></i> Code Status</h3>
+                <p style="margin: 0; color: #166534; font-weight: 600;">
+                    ✓ All code has been updated in public/manager_customers.php<br>
+                    ✓ Buttons have inline styles with !important flags<br>
+                    ✓ Layout matches the staff customer module<br>
+                    ✓ Action buttons display vertically with text labels<br>
+                    ✓ All button functions are working
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

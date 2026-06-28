@@ -197,9 +197,7 @@ define('MODULE_MENU_MAP', [
         'mgr_report_audit'
     ],
     'customers'             => [
-        'customers', 'mgr_customers', 'admin_customers', 'customer_add', 'customer_list',
-        'customer_history', 'mgr_cust_add', 'mgr_cust_list', 'mgr_cust_balances', 'mgr_cust_history',
-        'mgr_cust_validation', 'adm_cust_list', 'adm_cust_balances', 'adm_cust_history', 'adm_cust_oversight'
+        'customers', 'customer_add', 'customer_list', 'customer_history'
     ],
     'payments'              => [
         // Payments module controls payment method related items in Transactions
@@ -445,9 +443,6 @@ function get_user_permissions($role) {
                 // Inventory - view only
                 'view_inventory',
 
-                // Customers - view only
-                'manage_customers_basic',
-
                 // Station-related
                 'manage_stations',
                 'manage_users_station',
@@ -481,9 +476,6 @@ function get_user_permissions($role) {
                 // Inventory oversight
                 'view_inventory',
                 'manage_inventory',
-
-                // Customer management
-                'manage_customers_basic',
 
                 // Staff management
                 'manage_staff',

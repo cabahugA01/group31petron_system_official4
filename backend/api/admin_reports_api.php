@@ -95,35 +95,44 @@ try {
         // FUEL INVENTORY - Beginning vs Ending meter readings
         // ============================================================
         case 'get_fuel_inventory':
-            $sql = "SELECT 
-                    ft.fuel_type_name,
-                    fp.pump_number,
-                    fr1.reading_end as beginning_reading,
-                    fr1.reading_date as beginning_date,
-                    fr2.reading_end as ending_reading,
-                    fr2.reading_date as ending_date,
-                    (fr2.reading_end - fr1.reading_end) as variance,
-                    ft.price_per_liter,
-                    ((fr2.reading_end - fr1.reading_end) * ft.price_per_liter) as variance_amount,
-                    fi.current_stock,
-                    fi.reorder_point,
-                    CASE 
-                        WHEN fi.current_stock <= fi.reorder_point THEN 'Low Stock'
+            $sql = "SELECT
+                    COALESCE(fi.fuel_type, ft.name, 'Unknown') AS fuel_type_name,
+                    COALESCE(pumps.pump_numbers, '') AS pump_number,
+                    COALESCE(readings.beginning_reading, 0) AS beginning_reading,
+                    ? AS beginning_date,
+                    COALESCE(readings.ending_reading, 0) AS ending_reading,
+                    ? AS ending_date,
+                    COALESCE(readings.variance, 0) AS variance,
+                    COALESCE(fi.price_per_liter, ft.price_per_liter, 0) AS price_per_liter,
+                    COALESCE(readings.variance, 0) * COALESCE(fi.price_per_liter, ft.price_per_liter, 0) AS variance_amount,
+                    COALESCE(fi.current_level, fi.current_stock, 0) AS current_stock,
+                    COALESCE(fi.reorder_level, 0) AS reorder_point,
+                    CASE
+                        WHEN COALESCE(fi.current_level, fi.current_stock, 0) <= 0 THEN 'Out of Stock'
+                        WHEN COALESCE(fi.current_level, fi.current_stock, 0) <= COALESCE(fi.reorder_level, 0) THEN 'Low Stock'
                         ELSE 'Adequate'
-                    END as stock_status
-                FROM fuel_pumps fp
-                LEFT JOIN fuel_types ft ON fp.fuel_type_id = ft.id
-                LEFT JOIN fuel_readings fr1 ON fp.id = fr1.pump_id 
-                    AND fr1.reading_date = ?
-                LEFT JOIN fuel_readings fr2 ON fp.id = fr2.pump_id 
-                    AND fr2.reading_date = ?
-                LEFT JOIN fuel_inventory fi ON ft.id = fi.fuel_type_id 
-                    AND fi.station_id = ?
-                WHERE fp.station_id = ?
-                ORDER BY ft.fuel_type_name, fp.pump_number";
+                    END AS stock_status
+                FROM fuel_inventory fi
+                LEFT JOIN fuel_types ft ON ft.id = fi.fuel_type_id
+                LEFT JOIN (
+                    SELECT fuel_type, MIN(previous_reading) AS beginning_reading,
+                           MAX(present_reading) AS ending_reading,
+                           COALESCE(SUM(difference), 0) AS variance
+                    FROM fuel_readings
+                    WHERE station_id = ? AND DATE(encoded_at) BETWEEN ? AND ?
+                    GROUP BY fuel_type
+                ) readings ON LOWER(TRIM(readings.fuel_type)) = LOWER(TRIM(fi.fuel_type))
+                LEFT JOIN (
+                    SELECT fuel_type_id, GROUP_CONCAT(pump_number ORDER BY pump_number SEPARATOR ', ') AS pump_numbers
+                    FROM fuel_pumps
+                    WHERE station_id = ?
+                    GROUP BY fuel_type_id
+                ) pumps ON pumps.fuel_type_id = fi.fuel_type_id
+                WHERE fi.station_id = ?
+                ORDER BY fuel_type_name";
             
             $stmt = $pdo->prepare($sql);
-            $stmt->execute([$date_start, $date_end, $station_id, $station_id]);
+            $stmt->execute([$date_start, $date_end, $station_id, $date_start, $date_end, $station_id, $station_id]);
             $fuel_inv = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             json_response(['success' => true, 'data' => $fuel_inv]);
@@ -133,45 +142,59 @@ try {
         // MERCHANDISE INVENTORY - Deliveries, sales, balances
         // ============================================================
         case 'get_merchandise_inventory':
-            $sql = "SELECT 
-                    p.id, p.product_name, p.sku, p.category,
-                    i.quantity_on_hand, i.reorder_point, i.reorder_quantity,
-                    COALESCE(deliveries.delivered_qty, 0) as delivered_qty,
-                    COALESCE(sales.sold_qty, 0) as sold_qty,
-                    (i.quantity_on_hand - COALESCE(sales.sold_qty, 0) + COALESCE(deliveries.delivered_qty, 0)) as calculated_balance,
-                    CASE 
-                        WHEN i.quantity_on_hand <= i.reorder_point THEN 'Reorder Required'
-                        WHEN i.quantity_on_hand <= (i.reorder_point * 1.5) THEN 'Low Stock'
+            $sql = "SELECT
+                    ip.id,
+                    ip.product_name,
+                    ip.sku,
+                    ip.category,
+                    COALESCE(si.stock_level, 0) AS quantity_on_hand,
+                    COALESCE(si.reorder_level, ip.min_stock, 10) AS reorder_point,
+                    COALESCE(ip.max_stock, 0) AS reorder_quantity,
+                    COALESCE(deliveries.delivered_qty, 0) AS delivered_qty,
+                    COALESCE(sales.sold_qty, 0) AS sold_qty,
+                    COALESCE(si.stock_level, 0) AS calculated_balance,
+                    CASE
+                        WHEN COALESCE(si.stock_level, 0) <= 0 THEN 'Out of Stock'
+                        WHEN COALESCE(si.stock_level, 0) <= COALESCE(si.reorder_level, ip.min_stock, 10) THEN 'Reorder Required'
+                        WHEN COALESCE(si.stock_level, 0) <= (COALESCE(si.reorder_level, ip.min_stock, 10) * 1.5) THEN 'Low Stock'
                         ELSE 'Adequate'
-                    END as stock_status
-                FROM products p
-                LEFT JOIN inventory i ON p.id = i.product_id AND i.station_id = ?
+                    END AS stock_status
+                FROM station_inventory si
+                INNER JOIN inventory_products ip ON ip.id = si.product_id
                 LEFT JOIN (
-                    SELECT product_id, SUM(quantity) as delivered_qty
-                    FROM stock_in
-                    WHERE station_id = ? AND DATE(received_date) BETWEEN ? AND ?
+                    SELECT product_id, COALESCE(SUM(quantity_change), 0) AS delivered_qty
+                    FROM inventory_logs
+                    WHERE station_id = ?
+                      AND action = 'Stock-In'
+                      AND DATE(created_at) BETWEEN ? AND ?
                     GROUP BY product_id
-                ) deliveries ON p.id = deliveries.product_id
+                ) deliveries ON ip.id = deliveries.product_id
                 LEFT JOIN (
-                    SELECT product_id, SUM(quantity) as sold_qty
-                    FROM merchandise_transactions
-                    WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ?
-                    GROUP BY product_id
-                ) sales ON p.id = sales.product_id
-                WHERE p.category = 'Merchandise'
-                ORDER BY 
-                    CASE 
-                        WHEN i.quantity_on_hand <= i.reorder_point THEN 1
-                        WHEN i.quantity_on_hand <= (i.reorder_point * 1.5) THEN 2
-                        ELSE 3
+                    SELECT mti.product_id, COALESCE(SUM(mti.quantity), 0) AS sold_qty
+                    FROM merchandise_transaction_items mti
+                    INNER JOIN merchandise_transactions mt ON mt.id = mti.transaction_id
+                    WHERE mt.station_id = ?
+                      AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
+                    GROUP BY mti.product_id
+                ) sales ON ip.id = sales.product_id
+                WHERE si.station_id = ?
+                  AND LOWER(COALESCE(si.status, 'active')) = 'active'
+                  AND LOWER(COALESCE(ip.status, 'active')) <> 'inactive'
+                  AND LOWER(COALESCE(ip.category, '')) <> 'fuel'
+                ORDER BY
+                    CASE
+                        WHEN COALESCE(si.stock_level, 0) <= 0 THEN 1
+                        WHEN COALESCE(si.stock_level, 0) <= COALESCE(si.reorder_level, ip.min_stock, 10) THEN 2
+                        WHEN COALESCE(si.stock_level, 0) <= (COALESCE(si.reorder_level, ip.min_stock, 10) * 1.5) THEN 3
+                        ELSE 4
                     END,
-                    p.product_name";
+                    ip.product_name";
             
             $stmt = $pdo->prepare($sql);
             $stmt->execute([
-                $station_id, 
                 $station_id, $date_start, $date_end,
-                $station_id, $date_start, $date_end
+                $station_id, $date_start, $date_end,
+                $station_id
             ]);
             $merch_inv = $stmt->fetchAll(PDO::FETCH_ASSOC);
             

@@ -70,28 +70,6 @@ function getStaffSidebar($current_page = 'dashboard') {
                 ],
             ],
         ],
-        'customers' => [
-            'icon'  => 'fas fa-users',
-            'title' => 'Customers',
-            'url'   => 'customers.php',
-            'submenu' => [
-                'customer_add' => [
-                    'icon'  => 'fas fa-user-plus',
-                    'title' => 'Add New Customer',
-                    'url'   => 'customers.php?section=add',
-                ],
-                'customer_list' => [
-                    'icon'  => 'fas fa-list',
-                    'title' => 'Customer List (basic info only)',
-                    'url'   => 'customers.php?section=list',
-                ],
-                'customer_history' => [
-                    'icon'  => 'fas fa-history',
-                    'title' => 'Customer History (own transactions)',
-                    'url'   => 'customers.php?section=history',
-                ],
-            ],
-        ],
         'staff_deliveries' => [
             'icon'  => 'fas fa-boxes',
             'title' => 'Merchandise Deliveries',

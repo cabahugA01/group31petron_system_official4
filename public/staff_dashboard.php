@@ -355,29 +355,34 @@ $fuel_sales_query = $pdo->prepare("
 $fuel_sales_query->execute([$station_id, $date_from, $date_to]);
 $raw_fuel_sales = $fuel_sales_query->fetchAll(PDO::FETCH_ASSOC);
 
-$canonical_fuels = [
-    'Diesel' => 0.0,
-    'XCS' => 0.0,
-    'XTRA Unleaded' => 0.0,
-    'Turbo Diesel' => 0.0,
-    'Kerosene' => 0.0
-];
-foreach ($raw_fuel_sales as $row) {
-    $ft = strtolower(trim($row['fuel_type']));
-    if (strpos($ft, 'diesel') !== false && strpos($ft, 'turbo') === false) {
-        $canonical_fuels['Diesel'] += (float)$row['total_liters'];
-    } elseif (strpos($ft, 'turbo') !== false) {
-        $canonical_fuels['Turbo Diesel'] += (float)$row['total_liters'];
-    } elseif (strpos($ft, 'xcs') !== false) {
-        $canonical_fuels['XCS'] += (float)$row['total_liters'];
-    } elseif (strpos($ft, 'xtra') !== false || strpos($ft, 'unl') !== false) {
-        $canonical_fuels['XTRA Unleaded'] += (float)$row['total_liters'];
-    } elseif (strpos($ft, 'kerosene') !== false) {
-        $canonical_fuels['Kerosene'] += (float)$row['total_liters'];
+$fuel_chart_map = [];
+try {
+    $fuel_types_query = $pdo->prepare("
+        SELECT DISTINCT fuel_type
+        FROM fuel_inventory
+        WHERE station_id = ?
+          AND COALESCE(fuel_type, '') <> ''
+        ORDER BY fuel_type
+    ");
+    $fuel_types_query->execute([$station_id]);
+    foreach ($fuel_types_query->fetchAll(PDO::FETCH_COLUMN) as $fuel_type) {
+        $fuel_chart_map[$fuel_type] = 0.0;
     }
+} catch (Exception $e) {
+    $fuel_chart_map = [];
 }
-$fuel_chart_labels = array_keys($canonical_fuels);
-$fuel_chart_data = array_values($canonical_fuels);
+foreach ($raw_fuel_sales as $row) {
+    $fuel_type = trim((string)($row['fuel_type'] ?? ''));
+    if ($fuel_type === '') {
+        continue;
+    }
+    if (!array_key_exists($fuel_type, $fuel_chart_map)) {
+        $fuel_chart_map[$fuel_type] = 0.0;
+    }
+    $fuel_chart_map[$fuel_type] += (float)$row['total_liters'];
+}
+$fuel_chart_labels = array_keys($fuel_chart_map);
+$fuel_chart_data = array_values($fuel_chart_map);
 
 // Chart 3: Merchandise Sales by Category (Bar Chart) — DB-driven, real categories
 $merch_sales_query = $pdo->prepare("
@@ -1506,13 +1511,7 @@ include __DIR__ . '/../partials/header.php';
             datasets: [{
                 label: 'Liters Sold',
                 data: <?= json_encode($fuel_chart_data) ?>,
-                backgroundColor: [
-                    '#3b82f6', // Diesel - Blue
-                    '#ef4444', // XCS - Red
-                    '#eab308', // XTRA Unleaded - Yellow
-                    '#8b5cf6', // Turbo Diesel - Purple
-                    '#64748b'  // Kerosene - Slate
-                ],
+                backgroundColor: '#3b82f6',
                 borderRadius: 6
             }]
         },
