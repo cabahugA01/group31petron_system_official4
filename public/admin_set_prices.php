@@ -22,6 +22,46 @@ if ((int)$station_id <= 0 && $role === 'admin') {
     render_no_station_page('admin_dashboard.php');
 }
 
+// ── Superadmin: station selection (defaults to first station if none assigned) ─
+if ($role === 'superadmin' && (int)$station_id <= 0) {
+    // Try to get selected station from query param
+    $selected_sid = (int)($_GET['station_id'] ?? 0);
+    if ($selected_sid > 0) {
+        $station_id = $selected_sid;
+    } else {
+        // Default to first available station
+        try {
+            $first_s = $pdo->query("SELECT id FROM stations ORDER BY id LIMIT 1")->fetchColumn();
+            $station_id = $first_s ?: 0;
+        } catch (Exception $e) { $station_id = 0; }
+    }
+}
+
+// ── Ensure job_order_service_types table exists ────────────────────────────
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS job_order_service_types (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        station_id INT NOT NULL DEFAULT 1,
+        service_key VARCHAR(100) NOT NULL,
+        service_name VARCHAR(200) NOT NULL,
+        service_price DECIMAL(12,2) NOT NULL DEFAULT 0,
+        min_price DECIMAL(12,2) DEFAULT 0,
+        max_price DECIMAL(12,2) DEFAULT 0,
+        price_description TEXT DEFAULT NULL,
+        pricing_notes TEXT DEFAULT NULL,
+        icon_class VARCHAR(100) DEFAULT 'fa-wrench',
+        color_class VARCHAR(100) DEFAULT 'text-primary',
+        sort_order INT NOT NULL DEFAULT 0,
+        active TINYINT(1) NOT NULL DEFAULT 1,
+        status VARCHAR(30) NOT NULL DEFAULT 'active',
+        created_by INT DEFAULT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_station (station_id),
+        INDEX idx_active (active)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+} catch (Exception $e) { /* table already exists */ }
+
 // ── Handle Approvals / Rejections ──────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -37,29 +77,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($pending) {
             $ptype = $pending['product_type'] ?? '';
+            // Support both new_price (new schema) and new_value (legacy schema)
+            $new_price_val = $pending['new_price'] ?? $pending['new_value'] ?? 0;
+            $new_cost_val  = $pending['new_cost']  ?? $pending['new_value'] ?? 0;
+            $pid           = (int)($pending['product_id'] ?? 0);
+
             if ($ptype === 'merchandise') {
                 $pdo->prepare("UPDATE inventory_products SET unit_cost=?, unit_price=?, updated_at=NOW() WHERE id=?")
-                    ->execute([$pending['new_cost'], $pending['new_price'], $pending['product_id']]);
-            } elseif ($ptype === 'service_type') {
-                // Approve service type price change
+                    ->execute([$new_cost_val, $new_price_val, $pid]);
+            } elseif ($ptype === 'service_type' || $ptype === 'service') {
+                $svc_id = (int)($pending['service_type_id'] ?? $pid);
                 $pdo->prepare("UPDATE job_order_service_types SET service_price=?, updated_at=NOW() WHERE id=?")
-                    ->execute([$pending['new_price'], $pending['product_id']]);
+                    ->execute([$new_price_val, $svc_id]);
             } else {
                 // covers 'fuel' and 'fuel_inventory'
+                $fuel_id = (int)($pending['fuel_type_id'] ?? $pid);
                 $pdo->prepare("UPDATE fuel_inventory SET price_per_liter=?, last_updated=NOW() WHERE id=?")
-                    ->execute([$pending['new_price'], $pending['product_id']]);
+                    ->execute([$new_price_val, $fuel_id]);
             }
-            $pdo->prepare("UPDATE pending_price_approvals SET status='approved', admin_id=?, updated_at=NOW() WHERE id=?")
-                ->execute([$me['id'], $approval_id]);
+            // Update status — write to both admin_id and reviewed_by for compatibility
+            $pdo->prepare("UPDATE pending_price_approvals SET status='approved', admin_id=?, reviewed_by=?, reviewed_at=NOW(), updated_at=NOW() WHERE id=?")
+                ->execute([$me['id'], $me['id'], $approval_id]);
             log_activity($pdo, $me['id'], 'Approve Price',
-                "Admin approved price change for {$ptype} ID {$pending['product_id']}. New price: {$pending['new_price']}");
+                "Admin approved price change for {$ptype} ID {$pid}. New value: {$new_price_val}");
             $_SESSION['success'] = "Price change approved successfully!";
         }
     } elseif ($action === 'reject_price') {
         $approval_id = (int)$_POST['approval_id'];
         $remarks = trim($_POST['remarks'] ?? '');
-        $stmt = $pdo->prepare("UPDATE pending_price_approvals SET status='rejected', rejection_reason=?, admin_id=?, updated_at=NOW() WHERE id=? AND status='pending'");
-        $stmt->execute([$remarks, $me['id'], $approval_id]);
+        $stmt = $pdo->prepare("UPDATE pending_price_approvals SET status='rejected', rejection_reason=?, reviewer_notes=?, admin_id=?, reviewed_by=?, reviewed_at=NOW(), updated_at=NOW() WHERE id=? AND status='pending'");
+        $stmt->execute([$remarks, $remarks, $me['id'], $me['id'], $approval_id]);
         if ($stmt->rowCount() > 0) {
             log_activity($pdo, $me['id'], 'Reject Price',
                 "Admin rejected price change (Approval ID $approval_id). Remarks: $remarks");
@@ -72,25 +119,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
 
-// ── Fetch station name ───────────────────────────────────────────────────────
+// ── Fetch station name ──────────────────────────────────────────────────────────────
 $station_name = 'Unknown Station';
 try {
-    $stmt = $pdo->prepare('SELECT name FROM stations WHERE id = ? LIMIT 1');
-    $stmt->execute([$station_id]);
-    $station_name = $stmt->fetchColumn() ?: 'Unknown Station';
+    $stmt_sn = $pdo->prepare('SELECT name FROM stations WHERE id = ? LIMIT 1');
+    $stmt_sn->execute([$station_id]);
+    $station_name = $stmt_sn->fetchColumn() ?: 'Unknown Station';
 } catch (Exception $e) { /* silent */ }
 
-// ── Fetch fuel inventory ─────────────────────────────────────────────────────
+// ── Fetch fuel inventory ────────────────────────────────────────────────────
 $fuel_products = [];
 try {
     $stmt = $pdo->prepare("
         SELECT f.id, f.fuel_type, f.price_per_liter, f.current_level, f.capacity,
                f.critical_level, f.status, f.last_updated, f.updated_by,
-               p.new_price as pending_price, p.manager_id as pending_manager_id,
-               p.status as approval_status, p.id as approval_id
+               COALESCE(p.new_price, p.new_value)      AS pending_price,
+               COALESCE(p.manager_id, p.requested_by)  AS pending_manager_id,
+               p.status AS approval_status,
+               p.id     AS approval_id
         FROM fuel_inventory f
         LEFT JOIN pending_price_approvals p
-               ON f.id = p.product_id
+               ON (f.id = p.product_id OR f.id = p.fuel_type_id)
               AND p.product_type IN ('fuel', 'fuel_inventory')
               AND p.status = 'pending'
               AND p.station_id = ?
@@ -99,8 +148,14 @@ try {
     ");
     $stmt->execute([$station_id, $station_id]);
     $fuel_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    // Fallback: if admin's station has no fuel, show station 1
+    if (empty($fuel_products)) {
+        $stmt->execute([1, 1]);
+        $fuel_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 } catch (Exception $e) {
     $fuel_products = [];
+    error_log('[admin_set_prices] fuel error: ' . $e->getMessage());
 }
 
 // ── Fetch merchandise grouped by category ───────────────────────────────────
@@ -113,8 +168,10 @@ try {
     $stmt = $pdo->prepare("
         SELECT i.id, i.category, i.product_name, i.sku, i.size, i.unit_cost, i.supplier,
                i.unit_price, i.stock_quantity, i.stock, i.created_at,
-               p.new_cost as pending_cost, p.new_price as pending_price,
-               p.status as approval_status, p.id as approval_id
+               COALESCE(p.new_cost, p.new_value)  AS pending_cost,
+               COALESCE(p.new_price, p.new_value) AS pending_price,
+               p.status AS approval_status,
+               p.id     AS approval_id
         FROM inventory_products i
         LEFT JOIN pending_price_approvals p
                ON i.id = p.product_id
@@ -127,6 +184,11 @@ try {
     ");
     $stmt->execute([$station_id]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    // Fallback to station 1 if no merch for this station
+    if (empty($rows)) {
+        $stmt->execute([1]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 
     foreach ($rows as $row) {
         $cat    = $row['category'] ?? 'Uncategorized';
@@ -169,48 +231,41 @@ try {
 $service_types = [];
 $service_error = null;
 try {
-    // First check if job_order_service_types table exists
-    $tableCheck = $pdo->query("SHOW TABLES LIKE 'job_order_service_types'")->fetch();
-    
-    if ($tableCheck) {
-        // Query without users join first to isolate the issue
-        $stmt = $pdo->query("
-            SELECT s.id, s.service_name, s.service_key, s.service_price, 
-                   s.status, s.active,
-                   p.new_price as pending_price, p.old_price, p.manager_id as pending_manager_id,
-                   p.status as approval_status, p.id as approval_id
-            FROM job_order_service_types s
-            LEFT JOIN pending_price_approvals p
-                   ON s.id = p.product_id
-                  AND p.product_type = 'service_type'
-                  AND p.status = 'pending'
-            ORDER BY s.service_name
-        ");
-        $service_types = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        // Add manager names in a second pass
-        foreach ($service_types as &$svc) {
-            if (!empty($svc['pending_manager_id'])) {
-                try {
-                    $userStmt = $pdo->prepare("SELECT username FROM users WHERE id = ? LIMIT 1");
-                    $userStmt->execute([$svc['pending_manager_id']]);
-                    $svc['manager_name'] = $userStmt->fetchColumn() ?: 'Unknown';
-                } catch (Exception $ue) {
-                    $svc['manager_name'] = 'Unknown';
-                }
-            } else {
-                $svc['manager_name'] = null;
+    $stmt = $pdo->query("
+        SELECT s.id, s.service_name, s.service_key, s.service_price,
+               s.status, s.active,
+               p.new_price  AS pending_price,
+               p.old_price,
+               p.manager_id AS pending_manager_id,
+               p.status     AS approval_status,
+               p.id         AS approval_id
+        FROM job_order_service_types s
+        LEFT JOIN pending_price_approvals p
+               ON s.id = p.product_id
+              AND p.product_type = 'service_type'
+              AND p.status = 'pending'
+        ORDER BY s.service_name
+    ");
+    $service_types = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Add manager names in a second pass
+    foreach ($service_types as &$svc) {
+        $svc['manager_name'] = null;
+        if (!empty($svc['pending_manager_id'])) {
+            try {
+                $uStmt = $pdo->prepare("SELECT COALESCE(CONCAT(first_name,' ',last_name), username) FROM users WHERE id = ? LIMIT 1");
+                $uStmt->execute([$svc['pending_manager_id']]);
+                $svc['manager_name'] = $uStmt->fetchColumn() ?: 'Unknown';
+            } catch (Exception $ue) {
+                $svc['manager_name'] = 'Unknown';
             }
         }
-        unset($svc);
-    } else {
-        $service_types = [];
-        $service_error = "Table 'job_order_service_types' does not exist. Please run manager_service_types.php first to create it.";
     }
+    unset($svc);
 } catch (Exception $e) {
     $service_types = [];
-    $service_error = $e->getMessage();
-    error_log("Error fetching service types: " . $e->getMessage());
+    $service_error = null; // suppress debug output in production
+    error_log("[admin_set_prices] service types error: " . $e->getMessage());
 }
 
 // ── Active tab (persists across refresh via ?tab= query param) ───────────────
@@ -588,11 +643,6 @@ include __DIR__ . '/../partials/header.php';
      TAB 3 — SERVICE TYPES
      ══════════════════════════════════════════════════════════════════════════ -->
 <div id="tab-services" class="tab-panel <?php echo $active_tab === 'services' ? 'active' : ''; ?>">
-    <?php if (isset($service_error)): ?>
-        <div style="padding:20px;background:#fee2e2;color:#991b1b;border-radius:8px;margin-bottom:16px;">
-            <strong>Debug:</strong> <?php echo htmlspecialchars($service_error); ?>
-        </div>
-    <?php endif; ?>
     
     <div class="card" style="padding:0;overflow:hidden;">
         <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">

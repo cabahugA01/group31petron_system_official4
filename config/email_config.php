@@ -117,8 +117,8 @@ function sendAdminCredentialsEmail($to_email, $full_name, $station_name, $userna
 
         $emp_id_row = !empty($employee_id) ? "
             <tr>
-                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#64748b;font-size:13px;font-weight:600;width:160px;white-space:nowrap;'>Employee ID</td>
-                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#1e293b;font-size:13px;font-family:monospace;font-weight:700;'>{$employee_id}</td>
+                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#64748b;font-size:13px;font-weight:600;width:30%;min-width:120px;word-break:break-word;'>Employee ID</td>
+                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#1e293b;font-size:13px;font-family:monospace;font-weight:700;width:70%;word-break:break-word;'>{$employee_id}</td>
             </tr>" : '';
 
         $mail->Body = "
@@ -137,9 +137,9 @@ function sendAdminCredentialsEmail($to_email, $full_name, $station_name, $userna
                 <!-- Greeting -->
                 <h2 style='color:#002F6C;font-size:22px;font-weight:700;margin:0 0 8px;'>Hello, {$full_name}! 👋</h2>
                 <p style='color:#475569;font-size:15px;line-height:1.7;margin:0 0 24px;'>
-                    Your account sa <strong style='color:#002F6C;'>Petron Station Management System</strong> kay successful na
-                    ma-create sa {$creator_label} sa <strong>{$station_name}</strong>.<br>
-                    Ania na ang imong credentials — pwede ka na karon mag-login!
+                    Your account on the <strong style='color:#002F6C;'>Petron Station Management System</strong> has been successfully
+                    created by the {$creator_label} for <strong>{$station_name}</strong>.<br>
+                    Please find your temporary login credentials below. You can now use them to log in to the system.
                 </p>
 
                 <!-- Credentials Card -->
@@ -151,27 +151,27 @@ function sendAdminCredentialsEmail($to_email, $full_name, $station_name, $userna
                         <tbody>
                             {$emp_id_row}
                             <tr>
-                                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#64748b;font-size:13px;font-weight:600;width:160px;white-space:nowrap;'>Full Name</td>
-                                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#1e293b;font-size:13px;font-weight:700;'>{$full_name}</td>
+                                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#64748b;font-size:13px;font-weight:600;width:30%;min-width:120px;word-break:break-word;'>Full Name</td>
+                                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#1e293b;font-size:13px;font-weight:700;width:70%;word-break:break-word;'>{$full_name}</td>
                             </tr>
                             <tr>
-                                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#64748b;font-size:13px;font-weight:600;'>Role</td>
-                                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;'>
+                                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#64748b;font-size:13px;font-weight:600;width:30%;min-width:120px;word-break:break-word;'>Role</td>
+                                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;width:70%;word-break:break-word;'>
                                     <span style='background:#dbeafe;color:#1d4ed8;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;'>{$role_display}</span>
                                 </td>
                             </tr>
                             <tr>
-                                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#64748b;font-size:13px;font-weight:600;'>Station</td>
-                                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#1e293b;font-size:13px;font-weight:700;'>{$station_name}</td>
+                                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#64748b;font-size:13px;font-weight:600;width:30%;min-width:120px;word-break:break-word;'>Station</td>
+                                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#1e293b;font-size:13px;font-weight:700;width:70%;word-break:break-word;'>{$station_name}</td>
                             </tr>
                             <tr>
-                                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#64748b;font-size:13px;font-weight:600;'>Username / Email</td>
-                                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#0369a1;font-size:13px;font-weight:700;word-break:break-all;'>{$username}</td>
+                                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#64748b;font-size:13px;font-weight:600;width:30%;min-width:120px;word-break:break-word;'>Username / Email</td>
+                                <td style='padding:12px 16px;border-bottom:1px solid #f1f5f9;color:#0369a1;font-size:13px;font-weight:700;width:70%;word-break:break-all;'>{$username}</td>
                             </tr>
                             <tr>
-                                <td style='padding:12px 16px;color:#64748b;font-size:13px;font-weight:600;'>Temporary Password</td>
-                                <td style='padding:12px 16px;'>
-                                    <span style='font-family:monospace;font-size:18px;font-weight:800;color:#dc2626;background:#fff1f2;padding:8px 16px;border-radius:8px;letter-spacing:2px;border:1.5px dashed #fca5a5;display:inline-block;'>{$password}</span>
+                                <td style='padding:12px 16px;color:#64748b;font-size:13px;font-weight:600;width:30%;min-width:120px;word-break:break-word;'>Temporary Password</td>
+                                <td style='padding:12px 16px;width:70%;'>
+                                    <span style='font-family:monospace;font-size:16px;font-weight:800;color:#dc2626;background:#fff1f2;padding:6px 12px;border-radius:8px;letter-spacing:1px;border:1.5px dashed #fca5a5;display:inline-block;word-break:break-all;'>{$password}</span>
                                 </td>
                             </tr>
                         </tbody>
@@ -180,12 +180,12 @@ function sendAdminCredentialsEmail($to_email, $full_name, $station_name, $userna
 
                 <!-- Warning Notice -->
                 <div style='background:#fffbeb;border-left:5px solid #f59e0b;border-radius:8px;padding:18px 20px;margin:0 0 28px;'>
-                    <p style='margin:0 0 8px;font-size:14px;font-weight:800;color:#92400e;'>⚠️ IMPORTANTE — Security Reminder:</p>
+                    <p style='margin:0 0 8px;font-size:14px;font-weight:800;color:#92400e;'>⚠️ IMPORTANT — Security Reminder:</p>
                     <ul style='margin:0;padding-left:20px;color:#78350f;font-size:13px;line-height:1.9;'>
-                        <li>Kinahanglan nimong <strong>usbon ang imong password</strong> sa imong unang pag-login.</li>
-                        <li>Ayaw ipaambit ang imong password ngadto sa uban.</li>
-                        <li>Ang password kinahanglan og uppercase, lowercase, numero, ug special character.</li>
-                        <li>Kung wala ka mag-request niini, i-contact dayon ang imong Administrator.</li>
+                        <li>You are required to <strong>change your password</strong> upon your first login.</li>
+                        <li>Do not share your password with anyone.</li>
+                        <li>Your password must contain an uppercase letter, lowercase letter, number, and special character.</li>
+                        <li>If you did not request this account, please contact your Administrator immediately.</li>
                     </ul>
                 </div>
 

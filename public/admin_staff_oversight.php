@@ -6,7 +6,7 @@ require_once __DIR__ . '/../public/db_connect.php';
 require_login();
 
 $user = current_user();
-$role = role_key($user['role'] ?? ''); // use canonical role_key(), not raw strtolower
+$role = role_key($user['role'] ?? '');
 
 if (!in_array($role, ['admin', 'superadmin'])) {
     $_SESSION['error'] = 'Access denied. Admin privileges required.';
@@ -19,122 +19,166 @@ if ((int)$station_id <= 0 && $role === 'admin') {
     render_no_station_page('admin_dashboard.php');
 }
 
-// Header included AFTER auth is confirmed
 require_once __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-    .action-btn { font-size:11px; padding:5px 10px; border-radius:4px; cursor:pointer; display:inline-flex; align-items:center; gap:5px; transition:all .2s; font-weight:600; text-decoration:none; justify-content:center; width:100px; background:white !important; border:1px solid transparent; }
-    .action-btn:hover { filter:none; transform:none; }
-    .btn-view    { color:#16a34a !important; border-color:#16a34a !important; }
-    .btn-view:hover { background:#16a34a !important; color:#fff !important; }
-    .btn-edit    { color:#00264D !important; border-color:#00264D !important; }
-    .btn-edit:hover { background:#00264D !important; color:#fff !important; }
-    .btn-reset   { color:#d97706 !important; border-color:#d97706 !important; }
-    .btn-reset:hover { background:#d97706 !important; color:#fff !important; }
-    .btn-danger  { color:#dc2626 !important; border-color:#dc2626 !important; }
-    .btn-danger:hover { background:#dc2626 !important; color:#fff !important; }
-    .btn-success { color:#16a34a !important; border-color:#16a34a !important; }
-    .btn-success:hover { background:#16a34a !important; color:#fff !important; }
-    
-    /* Modal scroll fix to prevent bottom from being covered */
-    .modal { align-items: flex-start !important; overflow-y: auto !important; padding: 20px !important; }
-    .modal-content { margin: 30px auto !important; max-height: calc(100vh - 60px) !important; display: flex !important; flex-direction: column !important; }
+    /* ── Action Buttons ── */
+    .action-btn {
+        font-size: 13px;
+        padding: 6px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        transition: all .2s;
+        font-weight: 600;
+        text-decoration: none;
+        justify-content: center;
+        width: 110px;
+        background: white !important;
+        border: 1px solid transparent;
+    }
+    .action-btn:hover { filter: none; transform: none; }
+    .btn-edit    { color: #00264D !important; border-color: #00264D !important; }
+    .btn-edit:hover { background: #00264D !important; color: #fff !important; }
+    .btn-danger  { color: #dc2626 !important; border-color: #dc2626 !important; }
+    .btn-danger:hover { background: #dc2626 !important; color: #fff !important; }
+    .btn-success { color: #16a34a !important; border-color: #16a34a !important; }
+    .btn-success:hover { background: #16a34a !important; color: #fff !important; }
+
+    /* ── Shift Tab Navigation ── */
+    .shift-tabs {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+    .shift-tab-btn {
+        font-size: 13px;
+        padding: 8px 20px;
+        border-radius: 4px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        transition: all .2s;
+        font-weight: 600;
+        text-decoration: none;
+        justify-content: center;
+        background: #ffffff !important;
+        color: #00264D !important;
+        border: 1px solid #00264D !important;
+    }
+    .shift-tab-btn:hover {
+        background: #00264D !important;
+        color: #ffffff !important;
+    }
+    .shift-tab-btn.active {
+        background: #00264D !important;
+        color: #ffffff !important;
+        border-color: #00264D !important;
+    }
+    .shift-panel { display: none; }
+    .shift-panel.active { display: block; }
+
+    /* ── Modal centering & scroll fix ── */
+    .modal { align-items: center !important; justify-content: center !important; overflow-y: auto !important; padding: 20px !important; z-index: 99999 !important; }
+    .modal-content { margin: auto !important; max-height: calc(100vh - 40px) !important; display: flex !important; flex-direction: column !important; overflow: hidden !important; }
     .modal-body { overflow-y: auto !important; }
-    
-    /* Make table header sticky */
-    .table-responsive thead th {
+
+    /* ── Sticky table headers ── */
+    .staff-table-wrap { overflow-x: auto; }
+    .staff-table-wrap thead th {
         position: sticky;
         top: 0;
-        z-index: 1;
-        background-color: #f8f9fa;
+        z-index: 2;
+        background: #002F70;
+        color: #fff;
+        white-space: nowrap;
     }
+
+    /* ── Loading state ── */
+    .loading-row td { text-align: center; padding: 32px; color: #64748b; }
 </style>
 
+<div class="page-head">
+    <div>
+        <h1 class="h1">STAFF OVERSIGHT – ADMIN VIEW</h1>
+        <div class="sub">Monitor and manage staff accounts, activity, and performance metrics.</div>
+    </div>
+</div>
 
-<div class="container-fluid">
-    <div class="row">
-        <div class="col-12">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; width: 100%;">
-                <h2 style="margin: 0; text-transform: uppercase;"><i class="fas fa-users-cog me-2"></i>Staff Oversight – Admin View</h2>
-            </div>
+<div class="card" style="padding: 20px;">
+    <!-- Shift Tab Buttons -->
+    <div class="shift-tabs">
+        <button class="shift-tab-btn active" id="tabBtn1" onclick="switchShift(1)">
+            <i class="fas fa-sun"></i> Shift 1 (6:00 AM – 2:00 PM)
+        </button>
+        <button class="shift-tab-btn" id="tabBtn2" onclick="switchShift(2)">
+            <i class="fas fa-moon"></i> Shift 2 (2:00 PM – 12:00 AM)
+        </button>
+    </div>
 
-            <!-- Tab Content -->
-            <div class="tab-content" id="shiftTabContent">
-                <!-- Shift 1 Content -->
-                <div class="tab-pane fade show active" id="shift1" role="tabpanel">
-                    <div class="card">
-                        <div class="card-header bg-white">
-                            <h5 class="mb-0">Staff Activity & Oversight</h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="table-responsive" style="max-height: calc(100vh - 350px); overflow-y: auto;">
-                                <table class="table table-hover table-striped align-middle">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th>Account ID / Name</th>
-                                            <th>Assigned Role</th>
-                                            <th>Station / Branch</th>
-                                            <th>Account Status</th>
-                                            <th>Clock-in/out Logs</th>
-                                            <th>Activity Summary</th>
-                                            <th>Recent Actions</th>
-                                            <th>Performance Metrics</th>
-                                            <th>Remarks</th>
-                                            <th class="text-end">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="shift1StaffBody">
-                                        <!-- Data will be loaded via AJAX -->
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+    <!-- Shift 1 Panel -->
+    <div class="shift-panel active" id="panel1">
+        <div class="staff-table-wrap">
+            <table class="table table-hover table-striped align-middle" style="width:100%;border-collapse:separate;border-spacing:0 6px;">
+                <thead>
+                    <tr>
+                        <th>Account ID / Name</th>
+                        <th>Assigned Role</th>
+                        <th>Station / Branch</th>
+                        <th>Account Status</th>
+                        <th>Clock-in/out Logs</th>
+                        <th>Activity Summary</th>
+                        <th>Recent Actions</th>
+                        <th>Performance Metrics</th>
+                        <th>Remarks</th>
+                        <th style="text-align:right;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="shift1StaffBody">
+                    <tr class="loading-row"><td colspan="10"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
 
-                <!-- Shift 2 Content -->
-                <div class="tab-pane fade" id="shift2" role="tabpanel">
-                    <div class="card">
-                        <div class="card-header bg-white">
-                            <h5 class="mb-0">Staff Activity & Oversight</h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="table-responsive" style="max-height: calc(100vh - 350px); overflow-y: auto;">
-                                <table class="table table-hover table-striped align-middle">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th>Account ID / Name</th>
-                                            <th>Assigned Role</th>
-                                            <th>Station / Branch</th>
-                                            <th>Account Status</th>
-                                            <th>Clock-in/out Logs</th>
-                                            <th>Activity Summary</th>
-                                            <th>Recent Actions</th>
-                                            <th>Performance Metrics</th>
-                                            <th>Remarks</th>
-                                            <th class="text-end">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="shift2StaffBody">
-                                        <!-- Data will be loaded via AJAX -->
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+    <!-- Shift 2 Panel -->
+    <div class="shift-panel" id="panel2">
+        <div class="staff-table-wrap">
+            <table class="table table-hover table-striped align-middle" style="width:100%;border-collapse:separate;border-spacing:0 6px;">
+                <thead>
+                    <tr>
+                        <th>Account ID / Name</th>
+                        <th>Assigned Role</th>
+                        <th>Station / Branch</th>
+                        <th>Account Status</th>
+                        <th>Clock-in/out Logs</th>
+                        <th>Activity Summary</th>
+                        <th>Recent Actions</th>
+                        <th>Performance Metrics</th>
+                        <th>Remarks</th>
+                        <th style="text-align:right;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="shift2StaffBody">
+                    <tr class="loading-row"><td colspan="10"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
 
-<!-- Edit Remark Modal -->
+<!-- Edit Remarks Modal -->
 <div class="modal" id="remarkModal">
-    <div class="modal-content" style="max-width: 500px;">
-        <div class="modal-header">
-            <h3 class="modal-title">Edit Remarks</h3>
-            <button class="modal-close" onclick="closeModal('remarkModal')">&times;</button>
+    <div class="modal-content" style="max-width:500px;">
+        <div class="modal-header" style="background: #ffffff; border-bottom: 1px solid #e8ecf0; padding: 18px 24px;">
+            <div>
+                <h3 class="modal-title" style="color: #0f172a; font-weight: 700; font-size: 16px; margin: 0;">Edit Remarks</h3>
+                <p style="margin: 2px 0 0; font-size: 12px; color: #94a3b8;">Modify the performance or status remarks for this staff member.</p>
+            </div>
         </div>
         <div class="modal-body">
             <input type="hidden" id="remarkStaffId">
@@ -143,36 +187,39 @@ require_once __DIR__ . '/../partials/header.php';
                 <textarea class="inp full" id="staffRemarks" rows="3" placeholder="e.g., Flagged for review..."></textarea>
             </div>
         </div>
-            <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:8px; padding:14px 20px; border-top:1px solid #e8ecf0; background:#f8fafc;">
-                <button type="button" onclick="closeModal('remarkModal')" style="font-size:11px;font-weight:600;padding:5px 14px;border-radius:4px;cursor:pointer;border:none;background:#dc3545;color:#fff;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-times"></i> Cancel</button>
-                <button type="button" onclick="saveRemark()" style="font-size:11px;font-weight:600;padding:5px 14px;border-radius:4px;cursor:pointer;border:none;background:#002F70;color:#fff;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-save"></i> Save Changes</button>
-            </div>
+        <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid #e8ecf0;background:#f8fafc;">
+            <button type="button" onclick="closeModal('remarkModal')" style="font-size:13px;font-weight:600;padding:6px 16px;border-radius:4px;cursor:pointer;border:none;background:#6b7280;color:#fff;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-times"></i> Cancel</button>
+            <button type="button" onclick="saveRemark()" style="font-size:13px;font-weight:600;padding:6px 16px;border-radius:4px;cursor:pointer;border:none;background:#002F70;color:#fff;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-save"></i> Save Changes</button>
+        </div>
     </div>
 </div>
 
-<!-- Edit User Modal -->
+<!-- Edit Account Modal -->
 <div class="modal" id="editUserModal">
-    <div class="modal-content" style="max-width: 650px;">
-        <div class="modal-header">
-            <h3 class="modal-title">Edit Account</h3>
-            <button class="modal-close" onclick="closeModal('editUserModal')">&times;</button>
+    <div class="modal-content" style="max-width:620px;">
+        <div class="modal-header" style="background: #ffffff; border-bottom: 1px solid #e8ecf0; padding: 18px 24px;">
+            <div>
+                <h3 class="modal-title" style="color: #0f172a; font-weight: 700; font-size: 16px; margin: 0;">Edit Account</h3>
+                <p style="margin: 2px 0 0; font-size: 12px; color: #94a3b8;">Update user credentials, role, or station assignment.</p>
+            </div>
         </div>
         <div class="modal-body">
             <form id="editUserForm">
                 <input type="hidden" id="editUserId" name="staff_id">
                 <input type="hidden" name="action" value="edit_user">
-                
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
                     <div class="form-group mb-3">
-                        <label class="lbl">Name</label>
-                        <input type="text" class="inp full" id="editUserName" name="name" required>
+                        <label class="lbl">First Name</label>
+                        <input type="text" class="inp full" id="editFirstName" name="first_name" required>
                     </div>
-                    
+                    <div class="form-group mb-3">
+                        <label class="lbl">Last Name</label>
+                        <input type="text" class="inp full" id="editLastName" name="last_name" required>
+                    </div>
                     <div class="form-group mb-3">
                         <label class="lbl">Email</label>
                         <input type="email" class="inp full" id="editUserEmail" name="email" required>
                     </div>
-                    
                     <div class="form-group mb-3">
                         <label class="lbl">Role</label>
                         <select class="inp full" id="editUserRole" name="role" required>
@@ -180,282 +227,212 @@ require_once __DIR__ . '/../partials/header.php';
                             <option value="manager">Manager</option>
                         </select>
                     </div>
-                    
                     <div class="form-group mb-3">
                         <label class="lbl">Station Assignment</label>
-                        <input type="text" class="inp full bg-light" id="editUserStation" readonly>
+                        <input type="text" class="inp full" id="editUserStation" readonly style="background:#f3f4f6;">
                     </div>
-                </div>
-                
-                <div class="form-group mb-3" style="margin-top: 15px;">
-                    <label class="lbl">Account Status</label>
-                    <select class="inp full" id="editUserStatus" name="status" required>
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                    </select>
-                    <small class="text-muted">Note: "Suspended" status will be available after database update.</small>
+                    <div class="form-group mb-3">
+                        <label class="lbl">Account Status</label>
+                        <select class="inp full" id="editUserStatus" name="status" required>
+                            <option value="Active">Active</option>
+                            <option value="Disabled">Disabled</option>
+                        </select>
+                    </div>
                 </div>
             </form>
         </div>
-        <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:8px; padding:14px 20px; border-top:1px solid #e8ecf0; background:#f8fafc;">
-                <button type="button" onclick="closeModal('editUserModal')" style="font-size:11px;font-weight:600;padding:5px 14px;border-radius:4px;cursor:pointer;border:none;background:#dc3545;color:#fff;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-times"></i> Cancel</button>
-                <button type="button" onclick="saveEditUser()" style="font-size:11px;font-weight:600;padding:5px 14px;border-radius:4px;cursor:pointer;border:none;background:#002F70;color:#fff;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-save"></i> Save Changes</button>
-            </div>
+        <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid #e8ecf0;background:#f8fafc;">
+            <button type="button" onclick="closeModal('editUserModal')" style="font-size:13px;font-weight:600;padding:6px 16px;border-radius:4px;cursor:pointer;border:none;background:#6b7280;color:#fff;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-times"></i> Cancel</button>
+            <button type="button" onclick="saveEditUser()" style="font-size:13px;font-weight:600;padding:6px 16px;border-radius:4px;cursor:pointer;border:none;background:#002F70;color:#fff;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-save"></i> Save Changes</button>
+        </div>
     </div>
 </div>
 
-<!-- Deactivate User Modal -->
+<!-- Deactivate Confirmation Modal -->
 <div class="modal" id="deactivateUserModal">
-    <div class="modal-content" style="max-width: 400px;">
-        <div class="modal-header">
-            <h3 class="modal-title" style="color:#dc3545;"><i class="fas fa-exclamation-triangle me-2"></i>Deactivate Account</h3>
-            <button class="modal-close" onclick="closeModal('deactivateUserModal')">&times;</button>
+    <div class="modal-content" style="max-width:400px;">
+        <div class="modal-header" style="background: #ffffff; border-bottom: 1px solid #e8ecf0; padding: 18px 24px;">
+            <div>
+                <h3 class="modal-title" style="color: #dc2626; font-weight: 700; font-size: 16px; margin: 0;">Deactivate Account</h3>
+                <p style="margin: 2px 0 0; font-size: 12px; color: #94a3b8;">Confirm the deactivation of this staff account.</p>
+            </div>
         </div>
         <div class="modal-body">
-            <p>Are you sure you want to deactivate this account?</p>
+            <p>Are you sure you want to deactivate this account? The staff member will no longer be able to log in.</p>
             <input type="hidden" id="deactivateUserId">
         </div>
-        <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:8px; padding:14px 20px; border-top:1px solid #e8ecf0; background:#f8fafc;">
-                <button type="button" onclick="closeModal('deactivateUserModal')" style="font-size:11px;font-weight:600;padding:5px 14px;border-radius:4px;cursor:pointer;border:none;background:#6b7280;color:#fff;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-times"></i> Cancel</button>
-                <button type="button" onclick="confirmDeactivate()" style="font-size:11px;font-weight:600;padding:5px 14px;border-radius:4px;cursor:pointer;border:none;background:#dc3545;color:#fff;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-user-times"></i> Confirm Deactivate</button>
-            </div>
+        <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid #e8ecf0;background:#f8fafc;">
+            <button type="button" onclick="closeModal('deactivateUserModal')" style="font-size:13px;font-weight:600;padding:6px 16px;border-radius:4px;cursor:pointer;border:none;background:#6b7280;color:#fff;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-times"></i> Cancel</button>
+            <button type="button" onclick="confirmDeactivate()" style="font-size:13px;font-weight:600;padding:6px 16px;border-radius:4px;cursor:pointer;border:none;background:#dc2626;color:#fff;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-user-times"></i> Confirm Deactivate</button>
+        </div>
     </div>
 </div>
 
 <script>
-// ── HTML Escaping Function (XSS Protection) ──────────────────────────────────
+// ── XSS protection ──────────────────────────────────────────────────────────
 function escapeHtml(text) {
-    if (!text) return '';
+    if (text === null || text === undefined) return '';
     const div = document.createElement('div');
-    div.textContent = text;
+    div.textContent = String(text);
     return div.innerHTML;
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-    loadStaffOversight();
-});
+// ── Shift tab switching ─────────────────────────────────────────────────────
+let loadedShifts = {};
 
-function loadStaffOversight() {
-    // Load both shifts
-    loadShiftData(1);
-    loadShiftData(2);
+function switchShift(shiftNum) {
+    document.querySelectorAll('.shift-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.shift-tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('panel' + shiftNum).classList.add('active');
+    document.getElementById('tabBtn' + shiftNum).classList.add('active');
+
+    if (!loadedShifts[shiftNum]) {
+        loadShiftData(shiftNum);
+    }
 }
 
-function loadShiftData(shiftNumber) {
-    const targetBody = shiftNumber === 1 ? 'shift1StaffBody' : 'shift2StaffBody';
-    
-    fetch(`../backend/api/admin_staff_oversight_api.php?action=fetch_staff_oversight&shift=${shiftNumber}`)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            return response.json();
+// ── Initial load ────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function () {
+    loadShiftData(1); // load shift 1 on page load
+});
+
+// ── Fetch and render shift data ─────────────────────────────────────────────
+function loadShiftData(shiftNum) {
+    const tbody = document.getElementById('shift' + shiftNum + 'StaffBody');
+    tbody.innerHTML = '<tr class="loading-row"><td colspan="10"><i class="fas fa-spinner fa-spin"></i> Loading shift ' + shiftNum + ' data...</td></tr>';
+
+    fetch('../backend/api/admin_staff_oversight_api.php?action=fetch_staff_oversight&shift=' + shiftNum)
+        .then(r => {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
         })
         .then(data => {
-            if (data.success) {
-                const tbody = document.getElementById(targetBody);
-                tbody.innerHTML = '';
-                
-                if (data.data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">No staff records found for this shift.</td></tr>';
-                    return;
-                }
-                
-                data.data.forEach(staff => {
-
-                    const statusBadgeClass = {
-                        'active': 'bg-success',
-                        'inactive': 'bg-secondary',
-                        'suspended': 'bg-danger'
-                    }[staff.account_status] || 'bg-secondary';
-                    
-                    const isManager = staff.assigned_role.toLowerCase() === 'manager';
-                    const roleLabel = isManager ? 'Manager' : 'Staff';
-                    
-                    // Clock-in/out logs (today's shift)
-                    const clockInTime = staff.clock_in_time ? new Date(staff.clock_in_time).toLocaleTimeString() : 'Not clocked in';
-                    const clockOutTime = staff.clock_out_time ? new Date(staff.clock_out_time).toLocaleTimeString() : (staff.clock_in_time ? 'Still active' : '-');
-                    const duration = staff.shift_duration ? staff.shift_duration : '-';
-                    
-                    // Recent actions (encodes, validations, exports)
-                    const lastTxnDate = isManager ? staff.last_validated_transaction : staff.last_encoded_transaction;
-                    const lastTxnLabel = isManager ? 'Validated' : 'Encoded';
-                    const lastTxn = lastTxnDate ? new Date(lastTxnDate).toLocaleString() : 'None';
-                    
-                    // Activity summary
-                    const reqCount = staff.shift_requests_count || 0;
-                    const delCount = staff.shift_deliveries_count || 0;
-                    const jobCount = staff.shift_jobs_count || 0;
-                    
-                    // Performance metrics
-                    const salesTotal = staff.shift_sales_total ? '₱' + parseFloat(staff.shift_sales_total).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '₱0.00';
-                    const serviceIncome = staff.shift_service_income ? '₱' + parseFloat(staff.shift_service_income).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '₱0.00';
-                    
-                    // XSS Protection: Escape HTML in remarks before displaying
-                    const remarks = staff.remarks 
-                        ? escapeHtml(staff.remarks)
-                        : '<span class="text-muted fst-italic">No remarks</span>';
-                    const staffJson = encodeURIComponent(JSON.stringify(staff)).replace(/'/g, "%27");
-                    
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td>
-                            <div class="fw-bold text-dark" style="font-size: 14px;">${escapeHtml(staff.name)}</div>
-                            <div style="font-size: 12px; font-family: monospace; font-weight: 700; color: #0f172a; margin-top: 2px;">${escapeHtml(staff.emp_id || '—')}</div>
-                            <div style="font-size: 11px; color: #64748b; margin-top: 1px;"><i class="fas fa-clock" style="font-size:10px;"></i> ${escapeHtml(staff.assigned_shift || '—')}</div>
-                        </td>
-                        <td>${roleLabel}</td>
-                        <td>${staff.station_name || 'N/A'}</td>
-                        <td>
-                            <span class="badge ${statusBadgeClass} px-3 py-2">${staff.account_status.toUpperCase()}</span>
-                        </td>
-                        <td>
-                            <div class="small"><strong>In:</strong> ${clockInTime}</div>
-                            <div class="small"><strong>Out:</strong> ${clockOutTime}</div>
-                            <div class="small text-muted"><strong>Duration:</strong> ${duration}</div>
-                        </td>
-                        <td>
-                            <span class="badge bg-info me-1" title="Requests">${reqCount} Requests</span>
-                            <span class="badge bg-primary me-1" title="Deliveries">${delCount} Deliveries</span>
-                            <span class="badge bg-warning" title="Job Orders">${jobCount} Jobs</span>
-                        </td>
-                        <td>
-                            <div class="small"><strong>${lastTxnLabel}:</strong> ${lastTxn}</div>
-                        </td>
-                        <td>
-                            <div class="small"><strong>Sales:</strong> ${salesTotal}</div>
-                            <div class="small"><strong>Service:</strong> ${serviceIncome}</div>
-                        </td>
-                        <td>
-                            <div class="d-flex align-items-center">
-                                <span class="me-2 remarks-text">${remarks}</span>
-                                <button style="background:none;border:none;color:#64748b;cursor:pointer;padding:2px 4px;font-size:12px;line-height:1;" onclick="openRemarkModal(${staff.staff_id}, \`${staff.remarks || ''}\`)">
-                                    <i class="fas fa-edit"></i>
-                                </button>
-                            </div>
-                        </td>
-                        <td class="text-end">
-                            <div style="display:flex; flex-direction:column; gap:5px; align-items:flex-end;">
-                                <button class="action-btn btn-edit" onclick="openEditModal('${staffJson}')" title="Edit Account">
-                                    <i class="fas fa-edit"></i> Edit
-                                </button>
-                                ${staff.account_status === 'active' ? 
-                                    `<button class="action-btn btn-danger" onclick="openDeactivateModal(${staff.staff_id})" title="Deactivate">
-                                        <i class="fas fa-times"></i> Deactivate
-                                    </button>` : 
-                                    `<button class="action-btn btn-success" onclick="toggleStatus(${staff.staff_id}, 'active')" title="Activate">
-                                        <i class="fas fa-check"></i> Activate
-                                    </button>`
-                                }
-                            </div>
-                        </td>
-                    `;
-                    tbody.appendChild(tr);
-                });
-            } else {
-                alert('Error loading staff oversight data: ' + data.error);
-            }
+            if (!data.success) throw new Error(data.error || 'Unknown error');
+            loadedShifts[shiftNum] = true;
+            renderStaffRows(tbody, data.data);
         })
         .catch(err => {
-            console.error('Fetch error:', err);
-            const tbody = document.getElementById(targetBody);
-            tbody.innerHTML = '<tr><td colspan="10" class="text-center text-danger py-4">Error loading data: ' + err.message + '</td></tr>';
+            console.error('Shift ' + shiftNum + ' load error:', err);
+            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#dc2626;padding:24px;">Error loading data: ' + escapeHtml(err.message) + '</td></tr>';
         });
 }
 
-function toggleStatus(staffId, newStatus) {
-    // Get the button that triggered this action
-    const btn = event.target.closest('button');
-    if (!btn) return;
-    
-    // Disable button and show loading state
-    btn.disabled = true;
-    const originalHtml = btn.innerHTML;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ...';
-    
-    const formData = new FormData();
-    formData.append('action', 'update_status');
-    formData.append('staff_id', staffId);
-    formData.append('status', newStatus);
-    
-    fetch('../backend/api/admin_staff_oversight_api.php', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.json();
-    })
-    .then(data => {
-        if (data.success) {
-            loadStaffOversight();
-        } else {
-            alert('Failed to update status: ' + data.error);
-            btn.disabled = false;
-            btn.innerHTML = originalHtml;
-        }
-    })
-    .catch(err => {
-        console.error(err);
-        alert('Network error while updating status: ' + err.message);
-        btn.disabled = false;
-        btn.innerHTML = originalHtml;
-    });
-}
-
-function openModal(id) {
-    document.getElementById(id).style.display = 'flex';
-}
-
-function closeModal(id) {
-    document.getElementById(id).style.display = 'none';
-}
-
-function openEditModal(staffJson) {
-    const staff = JSON.parse(decodeURIComponent(staffJson));
-    document.getElementById('editUserId').value = staff.staff_id;
-    document.getElementById('editUserName').value = staff.name;
-    document.getElementById('editUserEmail').value = staff.email || '';
-    document.getElementById('editUserRole').value = staff.assigned_role.toLowerCase();
-    document.getElementById('editUserStation').value = staff.station_name || 'N/A';
-    document.getElementById('editUserStatus').value = staff.account_status.toLowerCase();
-    
-    openModal('editUserModal');
-}
-
-function saveEditUser() {
-    const form = document.getElementById('editUserForm');
-    if (!form.checkValidity()) {
-        form.reportValidity();
+function renderStaffRows(tbody, staffList) {
+    tbody.innerHTML = '';
+    if (!staffList || staffList.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#64748b;padding:24px;">No staff records found for this shift.</td></tr>';
         return;
     }
-    
-    const formData = new FormData(form);
-    
-    fetch('../backend/api/admin_staff_oversight_api.php', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.json();
-    })
-    .then(data => {
-        if (data.success) {
-            closeModal('editUserModal');
-            loadStaffOversight();
-        } else {
-            alert('Failed to update user: ' + data.error);
-        }
-    })
-    .catch(err => {
-        console.error(err);
-        alert('Network error while saving user: ' + err.message);
+
+    staffList.forEach(staff => {
+        // Status badge — match actual DB values (Active / Disabled)
+        const statusVal = (staff.account_status || '').toLowerCase();
+        const statusColor = { 'active': '#16a34a', 'disabled': '#dc2626', 'inactive': '#6b7280' }[statusVal] || '#6b7280';
+        const statusLabel = (staff.account_status || 'Unknown').toUpperCase();
+
+        const isManager = (staff.assigned_role || '').toLowerCase() === 'manager';
+        const roleLabel = isManager ? 'Manager' : 'Staff';
+
+        // Clock-in/out
+        const clockIn  = staff.clock_in_time  ? new Date(staff.clock_in_time).toLocaleTimeString()  : 'Not clocked in';
+        const clockOut = staff.clock_out_time ? new Date(staff.clock_out_time).toLocaleTimeString() : (staff.clock_in_time ? 'Still active' : '—');
+        const duration = staff.shift_duration || '—';
+
+        // Recent action
+        const lastActionDate = isManager ? staff.last_validated_transaction : staff.last_encoded_transaction;
+        const lastActionLabel = isManager ? 'Validated' : 'Encoded';
+        const lastAction = lastActionDate ? new Date(lastActionDate).toLocaleString() : 'None';
+
+        // Activity counts
+        const reqCount = staff.shift_requests_count  || 0;
+        const delCount = staff.shift_deliveries_count || 0;
+        const jobCount = staff.shift_jobs_count       || 0;
+
+        // Performance
+        const sales   = staff.shift_sales_total    ? '₱' + parseFloat(staff.shift_sales_total).toLocaleString('en-US', {minimumFractionDigits:2}) : '₱0.00';
+        const service = staff.shift_service_income  ? '₱' + parseFloat(staff.shift_service_income).toLocaleString('en-US', {minimumFractionDigits:2}) : '₱0.00';
+
+        // Remarks
+        const remarksHtml = staff.remarks
+            ? '<span>' + escapeHtml(staff.remarks) + '</span>'
+            : '<span style="color:#94a3b8;font-style:italic;">No remarks</span>';
+
+        // Activate / Deactivate button
+        const isActive = statusVal === 'active';
+        const toggleBtn = isActive
+            ? `<button class="action-btn btn-danger" onclick="openDeactivateModal(${staff.staff_id})" title="Deactivate"><i class="fas fa-times"></i> Deactivate</button>`
+            : `<button class="action-btn btn-success" onclick="setStatus(${staff.staff_id}, 'Active')" title="Activate"><i class="fas fa-check"></i> Activate</button>`;
+
+        // Safe JSON for edit modal
+        const safeJson = encodeURIComponent(JSON.stringify(staff));
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>
+                <div style="font-weight:700;font-size:14px;color:#0f172a;">${escapeHtml(staff.name)}</div>
+                <div style="font-size:12px;font-family:monospace;font-weight:700;color:#475569;margin-top:2px;">${escapeHtml(staff.emp_id || '—')}</div>
+                <div style="font-size:11px;color:#64748b;margin-top:1px;"><i class="fas fa-clock" style="font-size:10px;"></i> ${escapeHtml(staff.assigned_shift || '—')}</div>
+            </td>
+            <td><span style="font-weight:600;">${escapeHtml(roleLabel)}</span></td>
+            <td style="font-size:13px;">${escapeHtml(staff.station_name || 'N/A')}</td>
+            <td>
+                <span style="display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;color:#fff;background:${statusColor};">${statusLabel}</span>
+            </td>
+            <td style="font-size:13px;">
+                <div><strong>In:</strong> ${escapeHtml(clockIn)}</div>
+                <div><strong>Out:</strong> ${escapeHtml(clockOut)}</div>
+                <div style="color:#64748b;"><strong>Duration:</strong> ${escapeHtml(duration)}</div>
+            </td>
+            <td style="font-size:13px;">
+                <div>${reqCount} Requests</div>
+                <div>${delCount} Deliveries</div>
+                <div>${jobCount} Jobs</div>
+            </td>
+            <td style="font-size:13px;">
+                <div><strong>${escapeHtml(lastActionLabel)}:</strong></div>
+                <div style="color:#475569;">${escapeHtml(lastAction)}</div>
+            </td>
+            <td style="font-size:13px;">
+                <div><strong>Sales:</strong> ${sales}</div>
+                <div><strong>Service:</strong> ${service}</div>
+            </td>
+            <td style="font-size:13px;">
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <span>${remarksHtml}</span>
+                    <button onclick="openRemarkModal(${staff.staff_id}, '${escapeHtml((staff.remarks||'').replace(/'/g,"\\'"))}')" style="background:none;border:none;color:#64748b;cursor:pointer;padding:2px 4px;font-size:12px;" title="Edit Remarks"><i class="fas fa-edit"></i></button>
+                </div>
+            </td>
+            <td style="text-align:right;">
+                <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;">
+                    <button class="action-btn btn-edit" onclick="openEditModal('${safeJson}')" title="Edit Account"><i class="fas fa-edit"></i> Edit</button>
+                    ${toggleBtn}
+                </div>
+            </td>
+        `;
+        tbody.appendChild(tr);
     });
+}
+
+// ── Status toggle ───────────────────────────────────────────────────────────
+function setStatus(staffId, newStatus) {
+    const fd = new FormData();
+    fd.append('action', 'update_status');
+    fd.append('staff_id', staffId);
+    fd.append('status', newStatus);
+
+    fetch('../backend/api/admin_staff_oversight_api.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                loadedShifts = {}; // reset cache
+                const active = document.querySelector('.shift-tab-btn.active');
+                const shiftNum = active ? (active.id === 'tabBtn1' ? 1 : 2) : 1;
+                loadShiftData(shiftNum);
+            } else {
+                alert('Failed to update status: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => alert('Network error: ' + err.message));
 }
 
 function openDeactivateModal(staffId) {
@@ -465,101 +442,78 @@ function openDeactivateModal(staffId) {
 
 function confirmDeactivate() {
     const staffId = document.getElementById('deactivateUserId').value;
-    
-    const formData = new FormData();
-    formData.append('action', 'update_status');
-    formData.append('staff_id', staffId);
-    formData.append('status', 'inactive');
-    
-    fetch('../backend/api/admin_staff_oversight_api.php', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.json();
-    })
-    .then(data => {
-        if (data.success) {
-            closeModal('deactivateUserModal');
-            loadStaffOversight();
-        } else {
-            alert('Failed to deactivate user: ' + data.error);
-        }
-    })
-    .catch(err => {
-        console.error(err);
-        alert('Network error while deactivating user: ' + err.message);
-    });
+    closeModal('deactivateUserModal');
+    setStatus(staffId, 'Disabled');
 }
 
+// ── Edit modal ──────────────────────────────────────────────────────────────
+function openEditModal(encodedJson) {
+    const staff = JSON.parse(decodeURIComponent(encodedJson));
+    document.getElementById('editUserId').value      = staff.staff_id;
+    // Split name into first/last for separate fields
+    const nameParts = (staff.name || '').trim().split(/\s+/);
+    document.getElementById('editFirstName').value   = nameParts[0] || '';
+    document.getElementById('editLastName').value    = nameParts.slice(1).join(' ') || '';
+    document.getElementById('editUserEmail').value   = staff.email || '';
+    document.getElementById('editUserRole').value    = (staff.assigned_role || 'staff').toLowerCase();
+    document.getElementById('editUserStation').value = staff.station_name || 'N/A';
+    document.getElementById('editUserStatus').value  = staff.account_status || 'Active';
+    openModal('editUserModal');
+}
+
+function saveEditUser() {
+    const form = document.getElementById('editUserForm');
+    if (!form.checkValidity()) { form.reportValidity(); return; }
+    const fd = new FormData(form);
+
+    fetch('../backend/api/admin_staff_oversight_api.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                closeModal('editUserModal');
+                loadedShifts = {};
+                const active = document.querySelector('.shift-tab-btn.active');
+                const shiftNum = active ? (active.id === 'tabBtn1' ? 1 : 2) : 1;
+                loadShiftData(shiftNum);
+            } else {
+                alert('Failed to save: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => alert('Network error: ' + err.message));
+}
+
+// ── Remarks ─────────────────────────────────────────────────────────────────
 function openRemarkModal(staffId, currentRemarks) {
     document.getElementById('remarkStaffId').value = staffId;
-    document.getElementById('staffRemarks').value = currentRemarks;
+    document.getElementById('staffRemarks').value  = currentRemarks || '';
     openModal('remarkModal');
 }
 
 function saveRemark() {
-    const staffId = document.getElementById('remarkStaffId').value;
-    const remarks = document.getElementById('staffRemarks').value;
-    
-    const formData = new FormData();
-    formData.append('action', 'update_remark');
-    formData.append('staff_id', staffId);
-    formData.append('remarks', remarks);
-    
-    fetch('../backend/api/admin_staff_oversight_api.php', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.json();
-    })
-    .then(data => {
-        if (data.success) {
-            closeModal('remarkModal');
-            loadStaffOversight();
-        } else {
-            alert('Failed to update remarks: ' + data.error);
-        }
-    })
-    .catch(err => {
-        console.error(err);
-        alert('Network error while saving remarks: ' + err.message);
-    });
+    const fd = new FormData();
+    fd.append('action',   'update_remark');
+    fd.append('staff_id', document.getElementById('remarkStaffId').value);
+    fd.append('remarks',  document.getElementById('staffRemarks').value);
+
+    fetch('../backend/api/admin_staff_oversight_api.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                closeModal('remarkModal');
+                loadedShifts = {};
+                const active = document.querySelector('.shift-tab-btn.active');
+                const shiftNum = active ? (active.id === 'tabBtn1' ? 1 : 2) : 1;
+                loadShiftData(shiftNum);
+            } else {
+                alert('Failed to save remarks: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => alert('Network error: ' + err.message));
 }
 
-function exportStaffList() {
-    let table = document.getElementById("staffOversightTable");
-    let cloneTable = table.cloneNode(true);
-    
-    // Remove the last column (Actions) from header and body rows
-    let rows = cloneTable.rows;
-    for (let i = 0; i < rows.length; i++) {
-        if (rows[i].cells.length > 0) {
-            rows[i].deleteCell(-1);
-        }
-    }
-
-    let uri = 'data:application/vnd.ms-excel;base64,';
-    let template = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>{worksheet}</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--><meta charset="UTF-8"></head><body><table>{table}</table></body></html>';
-    let base64 = function(s) { return window.btoa(unescape(encodeURIComponent(s))) };
-    let format = function(s, c) { return s.replace(/{(\w+)}/g, function(m, p) { return c[p]; }) };
-
-    let ctx = { worksheet: 'Staff Activity', table: cloneTable.innerHTML };
-    
-    let link = document.createElement("a");
-    link.download = "staff_activity_export_" + new Date().toISOString().slice(0,10) + ".xls";
-    link.href = uri + base64(format(template, ctx));
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-}
+// ── Modal helpers ───────────────────────────────────────────────────────────
+function openModal(id)  { document.getElementById(id).style.display = 'flex'; }
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

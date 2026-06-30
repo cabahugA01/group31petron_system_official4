@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 ob_start();
 session_start();
 
@@ -487,7 +487,7 @@ $footer_text = "&copy; {$current_year} {$system_name}. All Rights Reserved.";
 
         <!-- Secondary Links -->
         <div class="links-wrap">
-            <a href="login.php" class="forgot-link"><i class="fas fa-arrow-left"></i> Back to Login</a>
+            <a href="login_new.php" class="forgot-link"><i class="fas fa-arrow-left"></i> Back to Login</a>
         </div>
     </div>
 

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ── Auth & role gate MUST run before any output ──────────────────────────────
 $page_id = 'manager_staff_oversight';
 require_once __DIR__ . '/../backend/lib.php';
@@ -22,155 +22,211 @@ require_once __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-    .action-btn { font-size:12px; padding:5px 8px; border:none; border-radius:4px; cursor:pointer; display:inline-flex; align-items:center; gap:5px; transition:all .15s; font-weight:600; }
-    .action-btn:hover { filter:brightness(.9); transform:translateY(-1px); }
-    .btn-view    { background:#28a745; color:#fff; }
-    .btn-edit    { background:#002F70; color:#fff; }
-    .btn-reset   { background:#002F70; color:#fff; }
-    .btn-danger  { background:#dc3545; color:#fff; }
-    .btn-success { background:#28a745; color:#fff; }
+    /* ── Unified Outline Buttons ── */
+    .action-btn {
+        font-size: 13px;
+        padding: 6px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        transition: all .2s;
+        font-weight: 600;
+        text-decoration: none;
+        justify-content: center;
+        width: 110px;
+        background: white !important;
+        border: 1px solid transparent;
+    }
+    .action-btn:hover { filter: none; transform: none; }
+    .btn-view    { color: #16a34a !important; border-color: #16a34a !important; }
+    .btn-view:hover { background: #16a34a !important; color: #fff !important; }
+    .btn-edit    { color: #00264D !important; border-color: #00264D !important; }
+    .btn-edit:hover { background: #00264D !important; color: #fff !important; }
+    .btn-reset   { color: #6b7280 !important; border-color: #6b7280 !important; }
+    .btn-reset:hover { background: #6b7280 !important; color: #fff !important; }
+    .btn-danger  { color: #dc2626 !important; border-color: #dc2626 !important; }
+    .btn-danger:hover { background: #dc2626 !important; color: #fff !important; }
+    .btn-success { color: #16a34a !important; border-color: #16a34a !important; }
+    .btn-success:hover { background: #16a34a !important; color: #fff !important; }
+
+    /* Custom Table header styling for DataTable consistency */
+    .table thead th {
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+    }
+    .table tbody td {
+        font-size: 14px;
+    }
+
+    /* ── Tab Styling matching Action Outline Design ── */
+    .tabs.pills {
+        display: flex;
+        gap: 10px;
+        background: transparent !important;
+        border: none !important;
+        padding: 0 !important;
+        margin-bottom: 20px;
+    }
+    .tabs.pills .tab {
+        font-size: 13px;
+        padding: 8px 20px;
+        border-radius: 4px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        transition: all .2s;
+        font-weight: 600;
+        text-decoration: none;
+        justify-content: center;
+        background: #ffffff !important;
+        color: #00264D !important;
+        border: 1px solid #00264D !important;
+        flex: none;
+    }
+    .tabs.pills .tab:hover {
+        background: #00264D !important;
+        color: #ffffff !important;
+    }
+    .tabs.pills .tab.active {
+        background: #00264D !important;
+        color: #ffffff !important;
+        border-color: #00264D !important;
+    }
+
+    /* ── Modal centering & scroll fix ── */
+    .modal { align-items: center !important; justify-content: center !important; overflow-y: auto !important; padding: 20px !important; z-index: 99999 !important; }
+    .modal-content { margin: auto !important; max-height: calc(100vh - 40px) !important; display: flex !important; flex-direction: column !important; overflow: hidden !important; }
+    .modal-body { overflow-y: auto !important; }
 </style>
 
-<div class="container-fluid">
-    <div class="row">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h2><i class="fas fa-eye me-2"></i>Staff Oversight</h2>
-                <div>
-                    <button class="btn btn-primary" onclick="loadLogs()">
-                        <i class="fas fa-sync-alt"></i> Refresh
-                    </button>
-                </div>
+<div class="page-head">
+    <div>
+        <h1 class="h1">STAFF OVERSIGHT</h1>
+        <div class="sub">Track staff activities, shift summaries, and daily performance metrics.</div>
+    </div>
+    <div class="actions">
+        <button class="action-btn btn-edit" style="width: auto; padding: 8px 16px;" onclick="loadLogs(); loadShifts(); loadPerformance(); loadFlags();">
+            <i class="fas fa-sync-alt"></i> Refresh Data
+        </button>
+    </div>
+</div>
+
+<div class="card" style="padding: 20px;">
+    <!-- Tabs Interface -->
+    <div class="tabs pills" style="margin-bottom: 20px;">
+        <button class="tab active" id="tab-logs" onclick="switchTab('logs')">
+            <i class="fas fa-history"></i> Recent Logs
+        </button>
+        <button class="tab" id="tab-shifts" onclick="switchTab('shifts')">
+            <i class="fas fa-calendar-alt"></i> Shift Summaries
+        </button>
+        <button class="tab" id="tab-performance" onclick="switchTab('performance')">
+            <i class="fas fa-chart-line"></i> Performance
+        </button>
+        <button class="tab" id="tab-flags" onclick="switchTab('flags')">
+            <i class="fas fa-exclamation-triangle"></i> Flagged Items
+        </button>
+    </div>
+
+    <!-- Tab Contents -->
+    <div id="tabContent-logs" class="tab-content active">
+        <div class="d-flex justify-content-between align-items-center mb-3" style="flex-wrap: wrap; gap: 10px;">
+            <h3 style="margin: 0; font-size: 16px; font-weight: 700;">Activity History</h3>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <input type="date" id="dateFrom" class="inp" style="padding: 6px 12px; font-size: 13px;">
+                <input type="date" id="dateTo" class="inp" style="padding: 6px 12px; font-size: 13px;">
+                <select id="staffFilter" class="inp" style="padding: 6px 12px; font-size: 13px;">
+                    <option value="">All Staff</option>
+                </select>
             </div>
+        </div>
+        <div class="table-wrap">
+            <table id="logsTable" class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Staff Name</th>
+                        <th>Action</th>
+                        <th>Date/Time</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+            </table>
+        </div>
+    </div>
 
-            <!-- Tabs -->
-            <ul class="nav nav-tabs mb-4" id="oversightTabs" role="tablist">
-                <li class="nav-item">
-                    <a class="nav-link active" id="logs-tab" data-bs-toggle="tab" href="#logs" role="tab">Recent Logs</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" id="shifts-tab" data-bs-toggle="tab" href="#shifts" role="tab">Shift Summaries</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" id="performance-tab" data-bs-toggle="tab" href="#performance" role="tab">Performance</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" id="flags-tab" data-bs-toggle="tab" href="#flags" role="tab">Flagged Items</a>
-                </li>
-            </ul>
-
-            <div class="tab-content" id="oversightTabContent">
-                <!-- Recent Logs -->
-                <div class="tab-pane fade show active" id="logs" role="tabpanel">
-                    <div class="card">
-                        <div class="card-header d-flex justify-content-between">
-                            <h5>Staff Activity Logs</h5>
-                            <div>
-                                <input type="date" id="dateFrom" class="form-control d-inline w-auto me-2">
-                                <input type="date" id="dateTo" class="form-control d-inline w-auto me-2">
-                                <select id="staffFilter" class="form-select d-inline w-auto">
-                                    <option value="">All Staff</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="card-body">
-                            <table id="logsTable" class="table table-striped">
-                                <thead>
-                                    <tr>
-                                        <th>Staff</th>
-                                        <th>Action</th>
-                                        <th>Date/Time</th>
-                                        <th>Details</th>
-                                    </tr>
-                                </thead>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Shift Summaries -->
-                <div class="tab-pane fade" id="shifts" role="tabpanel">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5>Shift Summaries</h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="row mb-3">
-                                <div class="col-md-3">
-                                    <select id="shiftType" class="form-select">
-                                        <option value="">All Shifts</option>
-                                        <option value="first">First Shift (6:00 AM - 2:00 PM)</option>
+    <div id="tabContent-shifts" class="tab-content" style="display: none;">
+        <div class="d-flex justify-content-between align-items-center mb-3" style="flex-wrap: wrap; gap: 10px;">
+            <h3 style="margin: 0; font-size: 16px; font-weight: 700;">Daily Shifts Summary</h3>
+            <select id="shiftType" class="inp" style="padding: 6px 12px; font-size: 13px;">
+                <option value="">All Shifts</option>
+                <option value="first">First Shift (6:00 AM - 2:00 PM)</option>
                 <option value="second">Second Shift (2:00 PM - 12:00 Midnight)</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <table id="shiftsTable" class="table table-striped">
-                                <thead>
-                                    <tr>
-                                        <th>Pump/Shift</th>
-                                        <th>Fuel Type</th>
-                                        <th>Sales (L)</th>
-                                        <th>Stock Change</th>
-                                        <th>Status</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                            </table>
-                        </div>
-                    </div>
-                </div>
+            </select>
+        </div>
+        <div class="table-wrap">
+            <table id="shiftsTable" class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Pump / Shift</th>
+                        <th>Fuel Type</th>
+                        <th>Sales (L)</th>
+                        <th>Stock Change</th>
+                        <th>Status</th>
+                        <th style="text-align: right;">Actions</th>
+                    </tr>
+                </thead>
+            </table>
+        </div>
+    </div>
 
-                <!-- Performance -->
-                <div class="tab-pane fade" id="performance" role="tabpanel">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5>Team Performance</h5>
-                            <select id="perfPeriod" class="form-select d-inline w-auto">
-                                <option value="week">Last Week</option>
-                                <option value="month">Last Month</option>
-                            </select>
-                        </div>
-                        <div class="card-body">
-                            <canvas id="perfChart" height="400"></canvas>
-                            <table id="perfTable" class="table table-striped mt-3">
-                                <thead>
-                                    <tr>
-                                        <th>Staff Name</th>
-                                        <th>Completed Job Orders</th>
-                                        <th>Avg JO Amount</th>
-                                        <th>Fuel Readings</th>
-                                        <th>Total Liters Sold</th>
-                                    </tr>
-                                </thead>
-                            </table>
-                        </div>
-                    </div>
-                </div>
+    <div id="tabContent-performance" class="tab-content" style="display: none;">
+        <div class="d-flex justify-content-between align-items-center mb-3" style="flex-wrap: wrap; gap: 10px;">
+            <h3 style="margin: 0; font-size: 16px; font-weight: 700;">Team Performance Metrics</h3>
+            <select id="perfPeriod" class="inp" style="padding: 6px 12px; font-size: 13px;">
+                <option value="week">Last Week</option>
+                <option value="month">Last Month</option>
+            </select>
+        </div>
+        <div style="max-width: 100%; overflow: hidden; margin-bottom: 24px; background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0;">
+            <canvas id="perfChart" style="max-height: 320px; width: 100%;"></canvas>
+        </div>
+        <div class="table-wrap">
+            <table id="perfTable" class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Staff Name</th>
+                        <th>Completed Job Orders</th>
+                        <th>Avg JO Amount</th>
+                        <th>Fuel Readings</th>
+                        <th>Total Liters Sold</th>
+                    </tr>
+                </thead>
+            </table>
+        </div>
+    </div>
 
-                <!-- Flagged Items -->
-                <div class="tab-pane fade" id="flags" role="tabpanel">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5>Flagged/Suspicious Entries</h5>
-                        </div>
-                        <div class="card-body">
-                            <table id="flagsTable" class="table table-striped">
-                                <thead>
-                                    <tr>
-                                        <th>Type</th>
-                                        <th>ID</th>
-                                        <th>Staff</th>
-                                        <th>Date</th>
-                                        <th>Note/Flag</th>
-                                        <th>Status</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
+    <div id="tabContent-flags" class="tab-content" style="display: none;">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h3 style="margin: 0; font-size: 16px; font-weight: 700;">Flagged Entries</h3>
+        </div>
+        <div class="table-wrap">
+            <table id="flagsTable" class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>ID</th>
+                        <th>Staff</th>
+                        <th>Date</th>
+                        <th>Note / Flag</th>
+                        <th>Status</th>
+                        <th style="text-align: right;">Actions</th>
+                    </tr>
+                </thead>
+            </table>
         </div>
     </div>
 </div>
@@ -190,6 +246,15 @@ $(document).ready(function() {
     loadFlags();
     loadStaffFilter();
 });
+
+// Custom Tab Switcher
+function switchTab(tabId) {
+    document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    
+    document.getElementById('tabContent-' + tabId).style.display = 'block';
+    document.getElementById('tab-' + tabId).classList.add('active');
+}
 
 function initTables() {
     logsTable = $('#logsTable').DataTable({
@@ -213,9 +278,11 @@ function initTables() {
             {
                 data: null,
                 render: data => `
-                    <button class="action-btn btn-danger" onclick="flagEntry('fuel_daily_readings', ${data.id}, 'Suspicious Shift')">
-                        <i class="fas fa-times"></i> Flag
-                    </button>
+                    <div style="text-align:right;">
+                        <button class="action-btn btn-danger" onclick="flagEntry('fuel_daily_readings', ${data.id}, 'Suspicious Shift')">
+                            <i class="fas fa-flag"></i> Flag
+                        </button>
+                    </div>
                 `
             }
         ]
@@ -226,9 +293,9 @@ function initTables() {
         columns: [
             { data: 'name' },
             { data: 'completed' },
-            { data: 'avg_amount', render: data => '₱' + parseFloat(data || 0).toFixed(2) },
+            { data: 'avg_amount', render: data => '₱' + parseFloat(data || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) },
             { data: 'readings' },
-            { data: 'total_liters', render: data => parseFloat(data || 0).toFixed(2) + ' L' }
+            { data: 'total_liters', render: data => parseFloat(data || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L' }
         ]
     });
 
@@ -244,9 +311,11 @@ function initTables() {
             {
                 data: null,
                 render: data => `
-                    <button class="action-btn btn-success validate-btn" onclick="validateEntry('${data.table}', ${data.id})">
-                        <i class="fas fa-check"></i> Validate
-                    </button>
+                    <div style="text-align:right;">
+                        <button class="action-btn btn-success" onclick="validateEntry('${data.table}', ${data.id})">
+                            <i class="fas fa-check"></i> Validate
+                        </button>
+                    </div>
                 `
             }
         ]
@@ -296,8 +365,16 @@ function loadPerformance() {
                     datasets: [{
                         label: 'Total Completed Jobs',
                         data: data.data.map(row => row.completed || 0),
-                        backgroundColor: '#3498db'
+                        backgroundColor: '#002F70',
+                        borderRadius: 6
                     }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    }
                 }
             });
             perfTable.clear().rows.add(data.data).draw();
@@ -367,4 +444,3 @@ $('#perfPeriod').on('change', loadPerformance);
 </script>
 
 <?php require_once '../partials/footer.php'; ?>
-

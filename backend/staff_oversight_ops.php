@@ -42,7 +42,9 @@ class StaffOversightOps {
 
         $stmt = $this->pdo->prepare("
             SELECT 
-                u.id as staff_id, u.name, u.username,
+                u.id as staff_id, 
+                COALESCE(CONCAT(u.first_name, ' ', u.last_name), u.username, 'Unknown') as name, 
+                u.username,
                 l.action, l.details, l.created_at,
                 COUNT(fdr.id) as fuel_readings,
                 COUNT(jo.id) as job_orders,
@@ -165,10 +167,12 @@ class StaffOversightOps {
         $days = match($period) {
             'week' => 7, 'month' => 30, default => 7
         };
+        $params[] = $days;
 
         $stmt = $this->pdo->prepare("
             SELECT 
-                u.id, u.name,
+                u.id, 
+                COALESCE(CONCAT(u.first_name, ' ', u.last_name), u.username, 'Unknown') as name,
                 COUNT(jo.id) as total_jo,
                 SUM(CASE WHEN jo.status = 'Completed' THEN 1 ELSE 0 END) as completed,
                 AVG(jo.total_amount) as avg_amount,
@@ -214,7 +218,7 @@ class StaffOversightOps {
         } catch(Exception $e) {}
 
         foreach ($items as &$item) {
-            $u = $this->pdo->prepare("SELECT name FROM users WHERE user_id = ?");
+            $u = $this->pdo->prepare("SELECT COALESCE(CONCAT(first_name, ' ', last_name), username, 'Unknown') FROM users WHERE id = ?");
             $u->execute([$item['staff_id']]);
             $item['staff'] = $u->fetchColumn() ?: 'Unknown';
             $item['status'] = 'Flagged';
@@ -267,7 +271,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 echo json_encode(['success' => true, 'data' => $result]);
                 break;
             case 'staff_list':
-                $stmt = $pdo->prepare("SELECT `user_id`, name FROM users WHERE station_id = ? AND role IN ('staff', 'cashier', 'mechanic')");
+                $stmt = $pdo->prepare("SELECT id, COALESCE(CONCAT(first_name, ' ', last_name), username, 'Unknown') as name FROM users WHERE station_id = ? AND role IN ('staff', 'cashier', 'mechanic', 'Staff', 'Manager', 'manager')");
                 $stmt->execute([$station_id]);
                 echo json_encode(['success' => true, 'data' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
                 break;
@@ -280,4 +284,3 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 ?>
-

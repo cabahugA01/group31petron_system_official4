@@ -25,31 +25,40 @@ if ((int)$station_id <= 0) {
 // ── Fetch station name ───────────────────────────────────────────────────────
 $station_name = 'Unknown Station';
 try {
-    $stmt = $pdo->prepare('SELECT name FROM stations WHERE id = ? LIMIT 1');
-    $stmt->execute([$station_id]);
-    $station_name = $stmt->fetchColumn() ?: 'Unknown Station';
+    $stmt2 = $pdo->prepare('SELECT name FROM stations WHERE id = ? LIMIT 1');
+    $stmt2->execute([$station_id]);
+    $station_name = $stmt2->fetchColumn() ?: 'Unknown Station';
 } catch (Exception $e) { /* silent */ }
 
 // ── Fetch fuel inventory ─────────────────────────────────────────────────────
 $fuel_products = [];
 $fuel_stats = ['total' => 0, 'active' => 0, 'inactive' => 0, 'last_updated' => null, 'updates_today' => 0];
 try {
+    // Get fuel for this station; if none, fall back to station 1
     $stmt = $pdo->prepare("
         SELECT f.id, f.fuel_type, f.price_per_liter, f.current_level, f.capacity,
                f.critical_level, f.status, f.last_updated, f.updated_by,
-               p.new_price as pending_price, p.status as approval_status, p.id as approval_id
+               p.new_value  AS pending_price,
+               p.status     AS approval_status,
+               p.id         AS approval_id
         FROM fuel_inventory f
         LEFT JOIN pending_price_approvals p
-               ON f.id = p.product_id
+               ON p.fuel_type_id = f.id
               AND p.product_type IN ('fuel', 'fuel_inventory')
               AND p.status = 'pending'
-              AND p.station_id = ?
+              AND p.station_id = f.station_id
         WHERE f.station_id = ?
         ORDER BY f.fuel_type
     ");
-    $stmt->execute([$station_id, $station_id]);
+    $stmt->execute([$station_id]);
     $fuel_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
+
+    // If no records for this station, try station 1 (CDO)
+    if (empty($fuel_products)) {
+        $stmt->execute([1]);
+        $fuel_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
     // Calculate stats
     $fuel_stats['total'] = count($fuel_products);
     foreach ($fuel_products as $f) {
@@ -58,36 +67,36 @@ try {
         } else {
             $fuel_stats['inactive']++;
         }
-        
-        // Track most recent update
         if ($f['last_updated'] && (!$fuel_stats['last_updated'] || $f['last_updated'] > $fuel_stats['last_updated'])) {
             $fuel_stats['last_updated'] = $f['last_updated'];
         }
-        
-        // Count updates today
         if ($f['last_updated'] && date('Y-m-d', strtotime($f['last_updated'])) === date('Y-m-d')) {
             $fuel_stats['updates_today']++;
         }
     }
 } catch (Exception $e) {
     $fuel_products = [];
+    error_log('[manager_set_prices] fuel error: ' . $e->getMessage());
 }
 
-// ── Fetch merchandise grouped by category ───────────────────────────────────
+// ── Fetch merchandise grouped by category ───────────────────────────────────────
 $merch_by_cat   = [];
 $merch_all      = [];
 $merch_stats    = ['total' => 0, 'valid_price' => 0, 'below_cost' => 0, 'unpriced' => 0];
 $all_categories = [];
 
 try {
+    // Try manager's station first
+    $sid_merch = $station_id;
     $stmt = $pdo->prepare("
         SELECT i.id, i.category, i.product_name, i.sku, i.size, i.unit_cost, i.supplier,
                i.unit_price, i.stock_quantity, i.stock, i.created_at,
-               p.new_cost as pending_cost, p.new_price as pending_price,
-               p.status as approval_status, p.id as approval_id
+               p.new_value  AS pending_price,
+               p.status     AS approval_status,
+               p.id         AS approval_id
         FROM inventory_products i
         LEFT JOIN pending_price_approvals p
-               ON i.id = p.product_id
+               ON p.product_id = i.id
               AND p.product_type = 'merchandise'
               AND p.status = 'pending'
               AND p.station_id = ?
@@ -95,8 +104,15 @@ try {
           AND LOWER(COALESCE(i.status,'active')) != 'inactive'
         ORDER BY i.category, i.product_name
     ");
-    $stmt->execute([$station_id]);
+    $stmt->execute([$sid_merch]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // If empty, try station 1
+    if (empty($rows)) {
+        $sid_merch = 1;
+        $stmt->execute([$sid_merch]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 
     foreach ($rows as $row) {
         $cat    = $row['category'] ?? 'Uncategorized';
@@ -124,40 +140,58 @@ try {
     }
 } catch (Exception $e) {
     $merch_by_cat = [];
+    error_log('[manager_set_prices] merch error: ' . $e->getMessage());
 }
 
 $all_categories = array_keys($all_categories);
 sort($all_categories);
 
-// ── Fetch service types ─────────────────────────────────────────────────────
+// ── Ensure job_order_service_types table exists & fetch service types ──────
 $service_types = [];
 $service_error = null;
 try {
-    $tableCheck = $pdo->query("SHOW TABLES LIKE 'job_order_service_types'")->fetch();
-    
-    if ($tableCheck) {
-        $stmt = $pdo->prepare("
-            SELECT s.id, s.service_name, s.service_key, s.service_price, 
-                   s.status, s.active,
-                   p.new_price as pending_price, p.status as approval_status, p.id as approval_id
-            FROM job_order_service_types s
-            LEFT JOIN pending_price_approvals p
-                   ON s.id = p.product_id
-                  AND p.product_type = 'service_type'
-                  AND p.status = 'pending'
-                  AND p.station_id = ?
-            ORDER BY s.service_name
-        ");
-        $stmt->execute([$station_id]);
-        $service_types = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } else {
-        $service_types = [];
-        $service_error = "Table 'job_order_service_types' does not exist.";
-    }
+    $pdo->exec("CREATE TABLE IF NOT EXISTS job_order_service_types (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        station_id INT NOT NULL DEFAULT 1,
+        service_key VARCHAR(100) NOT NULL,
+        service_name VARCHAR(200) NOT NULL,
+        service_price DECIMAL(12,2) NOT NULL DEFAULT 0,
+        min_price DECIMAL(12,2) DEFAULT 0,
+        max_price DECIMAL(12,2) DEFAULT 0,
+        price_description TEXT DEFAULT NULL,
+        pricing_notes TEXT DEFAULT NULL,
+        icon_class VARCHAR(100) DEFAULT 'fa-wrench',
+        color_class VARCHAR(100) DEFAULT 'text-primary',
+        sort_order INT NOT NULL DEFAULT 0,
+        active TINYINT(1) NOT NULL DEFAULT 1,
+        status VARCHAR(30) NOT NULL DEFAULT 'active',
+        created_by INT DEFAULT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_station (station_id),
+        INDEX idx_active (active)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $stmt = $pdo->prepare("
+        SELECT s.id, s.service_name, s.service_key, s.service_price,
+               s.status, s.active,
+               p.new_price AS pending_price,
+               p.status    AS approval_status,
+               p.id        AS approval_id
+        FROM job_order_service_types s
+        LEFT JOIN pending_price_approvals p
+               ON s.id = p.product_id
+              AND p.product_type = 'service_type'
+              AND p.status = 'pending'
+              AND p.station_id = ?
+        ORDER BY s.service_name
+    ");
+    $stmt->execute([$station_id]);
+    $service_types = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     $service_types = [];
-    $service_error = $e->getMessage();
-    error_log("Error fetching service types: " . $e->getMessage());
+    $service_error = null; // suppress in production
+    error_log("[manager_set_prices] service types error: " . $e->getMessage());
 }
 
 // ── Log page view ────────────────────────────────────────────────────────────

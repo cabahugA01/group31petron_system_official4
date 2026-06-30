@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'manager_fuel_management';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -1058,7 +1058,7 @@ function adjustColor($hex,$pct) {
 .mfm-wrap { max-width:1400px; margin:0 auto; padding:10px; padding-bottom:120px; }
 
 /* Page Header - matches transaction module standard */
-.page-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:-12px !important; }
+.page-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; }
 .page-head h1, .page-head .h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
 .page-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
 

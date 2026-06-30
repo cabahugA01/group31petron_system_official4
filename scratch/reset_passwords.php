@@ -1,6 +1,6 @@
 <?php
-require_once __DIR__ . '/../public/db_connect.php';
-$password_hash = password_hash('password', PASSWORD_DEFAULT);
-$stmt = $pdo->prepare('UPDATE users SET password_hash = ?');
-$stmt->execute([$password_hash]);
-echo "Updated all user passwords to 'password'\n";
+include 'public/db_connect.php';
+$new_hash = password_hash('password123', PASSWORD_BCRYPT);
+$pdo->prepare("UPDATE users SET password_hash = ? WHERE id = ?")->execute([$new_hash, 3]);
+$pdo->prepare("UPDATE users SET password_hash = ? WHERE id = ?")->execute([$new_hash, 1]);
+echo "Passwords updated successfully to: password123\n";

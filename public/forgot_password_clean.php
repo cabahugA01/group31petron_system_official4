@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 ob_start();
 session_start();
 
@@ -453,7 +453,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <!-- Secondary Links -->
         <div class="links-wrap">
-            <a href="login.php" class="forgot-link">
+            <a href="login_new.php" class="forgot-link">
                 <i class="fas fa-arrow-left"></i> Back to Login
             </a>
         </div>

@@ -107,9 +107,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $raw_password      = trim($_POST['new_password']    ?? '');
             $confirm_password  = trim($_POST['confirm_password']?? '');
 
-            // Derive login identity
-            $email    = !empty($email_input)    ? $email_input    : null;
-            $username = !empty($username_input) ? $username_input : $email_input;
+            // Derive login identity: email goes in email column, username is explicit or derived from email local part
+            $email    = !empty($email_input) ? $email_input : null;
+            if (!empty($username_input)) {
+                $username = $username_input;
+            } elseif (!empty($email_input)) {
+                // Use local part of email as default username (before the @), truncated to 50 chars
+                $username = substr(explode('@', $email_input)[0], 0, 50);
+            } else {
+                $username = '';
+            }
 
             // Validate email format
             if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -369,8 +376,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute($dup_params);
             if ($stmt->fetch()) throw new Exception('This Login ID is already registered to another account.');
 
-            // Split full name into first_name and last_name for legacy database compatibility
-            $name_parts_edit = explode(' ', trim($name));
+            // Split full name into first_name and last_name for database storage
+            // 'Edgar Eslit' → first='Edgar', last='Eslit'
+            // 'Judy Lastimosa' → first='Judy', last='Lastimosa'
+            $name_parts_edit = array_filter(explode(' ', trim($name)));
+            $name_parts_edit = array_values($name_parts_edit);
             if (count($name_parts_edit) > 1) {
                 $last_name_edit  = array_pop($name_parts_edit);
                 $first_name_edit = implode(' ', $name_parts_edit);
@@ -379,8 +389,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $last_name_edit  = '';
             }
 
-            // Update user details (phone support removed)
-            $stmt = $pdo->prepare("UPDATE users SET first_name = ?, last_name = ?, role = ?, username = ?, email = ? WHERE id = ?");
+            // Update user details including updated_at
+            $stmt = $pdo->prepare("UPDATE users SET first_name = ?, last_name = ?, role = ?, username = ?, email = ?, updated_at = NOW() WHERE id = ?");
             $stmt->execute([$first_name_edit, $last_name_edit, $role, $username, $email, $id]);
             
              // Update password if checkbox is checked
@@ -407,7 +417,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // 3. Reset Password
         elseif ($action === 'reset_password') {
             $id = $_POST['user_id'];
-            $new_pass = $_POST['new_password'] ?? generateSecurePassword();
+            $new_pass = trim($_POST['new_password'] ?? '');
+            if (empty($new_pass)) {
+                $new_pass = generateSecurePassword();
+            }
 
             if ($my_role !== 'superadmin') {
                 $chk = $pdo->prepare("SELECT id, role FROM users WHERE id = ? AND station_id = ?");
@@ -420,7 +433,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             
             $hashed = password_hash($new_pass, PASSWORD_DEFAULT);
-            $stmt = $pdo->prepare("UPDATE users SET password_hash = ? WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?");
             $stmt->execute([$hashed, $id]);
             
             log_activity($pdo, $me['id'], 'Reset Password', "Reset password for user #$id");
@@ -477,11 +490,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
             
-            $stmt = $pdo->prepare("UPDATE users SET status = ? WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE users SET status = ?, updated_at = NOW() WHERE id = ?");
             $stmt->execute([$new_status, $id]);
             
             log_activity($pdo, $me['id'], 'Change Status', "Changed user #$id status to $new_status");
             $msg = "User status updated to $new_status.";
+        }
+
+        // 5. Delete User (disabled by system policy)
+        elseif ($action === 'delete_user') {
+            throw new Exception('User deletion is permanently disabled to maintain database integrity.');
         }
         
     } catch (Exception $e) {
@@ -497,6 +515,7 @@ $user_list_columns = "
     u.employee_id,
     u.first_name,
     u.last_name,
+    CONCAT(u.first_name, ' ', u.last_name) AS name,
     u.username,
     u.role,
     u.email,
@@ -582,7 +601,7 @@ include __DIR__ . '/../partials/header.php';
     <?php if($my_role !== 'staff'): ?>
     <div class="actions">
         <button onclick="openAddModal()"
-                style="display:inline-flex !important;align-items:center;gap:6px;padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid #00264D !important;background:white !important;color:#00264D !important;transition:all .2s;"
+                style="display:inline-flex !important;align-items:center;gap:6px;padding:8px 16px;border-radius:4px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid #00264D !important;background:white !important;color:#00264D !important;transition:all .2s;"
                 onmouseover="this.style.background='#00264D';this.style.color='#fff'"
                 onmouseout="this.style.background='white';this.style.color='#00264D'">
             <i class="fas fa-user-plus"></i> Add User
@@ -627,7 +646,7 @@ include __DIR__ . '/../partials/header.php';
                     <td style="font-family: monospace; font-weight: 700; color: #0f172a;"><?php echo htmlspecialchars($u['employee_id'] ?? '—'); ?></td>
                     <td>
                         <div style="font-weight:bold;"><?php echo htmlspecialchars(isset($u['name']) ? $u['name'] : ($u['username'] ?? 'Unknown')); ?></div>
-                        <div class="muted" style="font-size:0.8em;"><?php echo htmlspecialchars($u['email'] ?? ''); ?></div>
+                        <div class="muted" style="font-size:0.85em;"><?php echo htmlspecialchars($u['email'] ?? ''); ?></div>
                     </td>
                     <td style="font-weight: 500; color: #475569;">@<?php echo htmlspecialchars($u['username'] ?? '—'); ?></td>
                     <td><span class="badge bg-<?php echo $roleClass; ?>"><?php echo htmlspecialchars($roleLabel); ?></span></td>
@@ -665,7 +684,7 @@ include __DIR__ . '/../partials/header.php';
                                 <?php endif; ?>
 
                             <?php else: ?>
-                                <!-- Staff: View, Edit, Reset, Deactivate/Activate -->
+                                <!-- Staff: View, Edit, Reset, Deactivate/Activate, Delete -->
                                 <button class="action-btn btn-view" onclick="openViewModal(<?php echo htmlspecialchars(json_encode($u)); ?>)" title="View Staff Profile">
                                     <i class="fas fa-eye"></i> View
                                 </button>
@@ -685,6 +704,7 @@ include __DIR__ . '/../partials/header.php';
                                             <i class="fas fa-check"></i> Activate
                                         </button>
                                     <?php endif; ?>
+                                    <?php // Deletion is permanently disabled to protect database integrity. Users can only be deactivated. ?>
                                 <?php endif; ?>
                             <?php endif; ?>
 
@@ -914,7 +934,12 @@ include __DIR__ . '/../partials/header.php';
                 <p>Reset password for <strong id="reset_username"></strong>?</p>
                 <div class="form-group mt-3">
                     <label class="lbl">New Password</label>
-                    <input type="password" name="new_password" class="inp full" placeholder="Enter new password or leave empty to auto-generate">
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <input type="text" name="new_password" id="reset_password_field" class="inp full" placeholder="Enter password or generate">
+                        <button type="button" class="btn small ghost" onclick="generateResetPassword()" title="Generate random password" style="flex-shrink:0;">
+                            <i class="fas fa-dice"></i> Generate
+                        </button>
+                    </div>
                     <small class="muted">Leave empty for auto-generated secure password</small>
                 </div>
             </div>
@@ -992,6 +1017,8 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
+<!-- MODAL: Delete Confirmation permanently removed -->
+
 <script>
 function toggleStationField() {
     const roleSelect = document.getElementById('user_role_add');
@@ -1017,13 +1044,14 @@ function toggleStationField() {
     // Shift is required for Staff only
     if (selectedRole === 'staff') {
         shiftFieldGroup.style.display = 'block';
-        shiftSelect.required = true;
+        if (shiftSelect) shiftSelect.required = true;
     } else {
         shiftFieldGroup.style.display = 'none';
-        shiftSelect.required = false;
-        shiftSelect.value = '';
+        if (shiftSelect) shiftSelect.required = false;
     }
 }
+
+// openDeleteModal permanently removed
 
 function validatePasswords() {
     const password = document.getElementById('new_password').value;
@@ -1067,13 +1095,21 @@ function openViewModal(user) {
     var roleKey = (user.role || '').toLowerCase().trim();
     var isManager = roleKey === 'manager';
 
+    var fullName = (user.name || '').trim();
+    if (!fullName) {
+        fullName = ((user.first_name || '') + ' ' + (user.last_name || '')).trim();
+    }
+    if (!fullName) {
+        fullName = user.username || '—';
+    }
+
     // Avatar initials
-    var initials = (user.name || '?').split(' ').map(function(w){ return w[0]; }).slice(0,2).join('').toUpperCase();
+    var initials = (fullName || '?').split(' ').filter(Boolean).map(function(w){ return w[0]; }).slice(0,2).join('').toUpperCase();
     document.getElementById('view_avatar').textContent = initials;
     document.getElementById('view_avatar').style.background = isManager ? '#7c3aed' : '#002F6C';
 
     document.getElementById('view_modal_title').textContent = isManager ? 'Manager Profile' : 'Staff Profile';
-    document.getElementById('view_name').textContent = user.name || '—';
+    document.getElementById('view_name').textContent = fullName;
     document.getElementById('view_username').textContent = '@' + (user.username || user.email || '—');
     document.getElementById('view_email').textContent = user.email || 'N/A';
     document.getElementById('view_role_text').textContent = isManager ? 'Manager' : 'Staff';
@@ -1108,7 +1144,11 @@ function openEditModal(user) {
     document.getElementById('edit_user_id').value = user.id;
 
     // Full name
-    document.getElementById('edit_full_name').value = (user.name || '').trim();
+    var fullName = (user.name || '').trim();
+    if (!fullName) {
+        fullName = ((user.first_name || '') + ' ' + (user.last_name || '')).trim();
+    }
+    document.getElementById('edit_full_name').value = fullName;
 
     // Login ID: prefer email, then username (phone support removed)
     var loginId = user.email || user.username || '';
@@ -1130,6 +1170,7 @@ function openEditModal(user) {
 function openResetModal(id, username) {
     document.getElementById('reset_user_id').value = id;
     document.getElementById('reset_username').innerText = username;
+    document.getElementById('reset_password_field').value = '';
     openModal('resetModal');
 }
 
@@ -1169,14 +1210,46 @@ function togglePasswordField() {
     }
 }
 
-function generatePassword() {
-    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+function generateCompliantPassword() {
+    const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const lower = 'abcdefghijklmnopqrstuvwxyz';
+    const digits = '0123456789';
+    const symbols = '_.-!@#';
+    const all = upper + lower + digits + symbols;
+
+    // Guarantee at least one of each required type
     let password = '';
-    for (let i = 0; i < 8; i++) {
-        password += chars.charAt(Math.floor(Math.random() * chars.length));
+    password += upper.charAt(Math.floor(Math.random() * upper.length));
+    password += lower.charAt(Math.floor(Math.random() * lower.length));
+    password += digits.charAt(Math.floor(Math.random() * digits.length));
+    password += symbols.charAt(Math.floor(Math.random() * symbols.length));
+
+    // Fill remaining characters
+    for (let i = 4; i < 12; i++) {
+        password += all.charAt(Math.floor(Math.random() * all.length));
     }
-    document.getElementById('edit_password').value = password;
-    alert('Generated password: ' + password);
+
+    // Shuffle characters
+    return password.split('').sort(() => 0.5 - Math.random()).join('');
+}
+
+function generateSimplePassword() {
+    const pwd = generateCompliantPassword();
+    document.getElementById('new_password').value = pwd;
+    document.getElementById('confirm_password').value = pwd;
+    alert('Generated password: ' + pwd);
+}
+
+function generatePassword() {
+    const pwd = generateCompliantPassword();
+    document.getElementById('edit_password').value = pwd;
+    alert('Generated password: ' + pwd);
+}
+
+function generateResetPassword() {
+    const pwd = generateCompliantPassword();
+    document.getElementById('reset_password_field').value = pwd;
+    alert('Generated password: ' + pwd);
 }
 
 function setupStationSelection() {
@@ -1195,7 +1268,7 @@ document.addEventListener('DOMContentLoaded', function () {
 </script>
 
 <style>
-    .badge { padding: 4px 8px; border-radius: 4px; font-size: 0.8em; color: white; }
+    .badge { padding: 5px 10px; border-radius: 4px; font-size: 0.9em; color: white; font-weight: 600; }
     .bg-primary { background: #007bff; }
     .bg-secondary { background: #6c757d; }
     .bg-success { background: #28a745; }
@@ -1206,32 +1279,39 @@ document.addEventListener('DOMContentLoaded', function () {
     .mb-3 { margin-bottom: 1rem; }
     .mt-3 { margin-top: 1rem; }
     
-    .action-btn { font-size:11px; padding:5px 10px; border-radius:4px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:5px; transition:all .2s; font-weight:600; width:100px; text-decoration:none; background:white !important; border:1px solid transparent; }
+    .action-btn { font-size:13px; padding:6px 12px; border-radius:4px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:5px; transition:all .2s; font-weight:600; width:110px; text-decoration:none; background:white !important; border:1px solid transparent; }
     .action-btn:hover { transform:none; filter:none; }
     .btn-view    { color:#16a34a !important; border-color:#16a34a !important; }
     .btn-view:hover { background:#16a34a !important; color:#fff !important; }
     .btn-edit    { color:#00264D !important; border-color:#00264D !important; }
     .btn-edit:hover { background:#00264D !important; color:#fff !important; }
-    .btn-reset   { color:#d97706 !important; border-color:#d97706 !important; }
-    .btn-reset:hover { background:#d97706 !important; color:#fff !important; }
+    .btn-reset   { color:#6b7280 !important; border-color:#6b7280 !important; }
+    .btn-reset:hover { background:#6b7280 !important; color:#fff !important; }
     .btn-danger  { color:#dc2626 !important; border-color:#dc2626 !important; }
     .btn-danger:hover { background:#dc2626 !important; color:#fff !important; }
     .btn-success { color:#16a34a !important; border-color:#16a34a !important; }
     .btn-success:hover { background:#16a34a !important; color:#fff !important; }
+    /* .btn-delete styles permanently removed */
 
     /* Modal improvements - Database-driven configuration */
+    .modal {
+        z-index: 99999 !important;
+    }
     #addModal .modal-content,
     #editModal .modal-content,
     #resetModal .modal-content,
     #viewModal .modal-content {
         max-width: <?php echo UIConfig::getWithUnit('modal_max_width', 'px', '600'); ?>;
         width: min(<?php echo UIConfig::get('modal_max_width', '600'); ?>px, 95vw);
-        max-height: calc(100vh - 60px) !important;
-        margin: 30px auto !important;
-        overflow-y: auto;
+        max-height: calc(100vh - 40px) !important;
+        margin: auto !important;
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
     }
     
     .modal-body {
+        overflow-y: auto !important;
         padding: <?php echo UIConfig::get('modal_body_padding', '24px 20px'); ?>;
     }
     

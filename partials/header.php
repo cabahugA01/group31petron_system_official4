@@ -1025,7 +1025,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
             bottom: 0;
             overflow-y: auto;
             overflow-x: hidden;
-            padding: 20px 20px 60px 20px;
+            padding: 12px 24px 60px 24px;
             background: #f8f9fa;
             transition: left 0.3s ease;
         }
@@ -1051,6 +1051,89 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         }
     }
 
+    /* ── Mobile Layout (screens < 992px) ── */
+    @media (max-width: 991px) {
+        body { overflow-x: hidden; }
+
+        /* Top header sticks to top on mobile */
+        .top-header {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%;
+            height: 60px;
+            z-index: 1002;
+            background-color: var(--header-bg, #ffffff);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+        }
+
+        /* Main content pushed down by header height */
+        .main {
+            position: fixed !important;
+            top: 60px !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
+            padding: 20px 16px 60px 16px !important;
+            background: var(--bg-main, #f8f9fa);
+        }
+
+        /* Sidebar hidden off-screen by default */
+        .sidebar {
+            position: fixed !important;
+            top: 60px !important;
+            left: -260px !important;
+            bottom: 0 !important;
+            width: 250px !important;
+            z-index: 1100 !important;
+            overflow-y: auto !important;
+            transition: left 0.3s ease !important;
+            background: var(--sidebar-bg, #002F70) !important;
+            box-shadow: 4px 0 16px rgba(0,0,0,0.25) !important;
+        }
+
+        /* Sidebar open state (toggled via JS) */
+        .sidebar.mobile-open {
+            left: 0 !important;
+        }
+
+        /* Backdrop overlay when sidebar is open */
+        .mobile-sidebar-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+            z-index: 1099;
+        }
+        .mobile-sidebar-backdrop.active {
+            display: block;
+        }
+
+        /* Show hamburger button visibly on mobile */
+        .sidebar-collapse-btn {
+            display: flex !important;
+            width: 36px !important;
+            height: 36px !important;
+            font-size: 0 !important;
+        }
+        .sidebar-collapse-btn i {
+            font-size: 18px !important;
+            color: var(--petron-blue, #002F70) !important;
+        }
+
+        /* Hide search bar on very small screens */
+        .header-center { display: none !important; }
+
+        /* Shrink brand text on mobile */
+        .brand-title { font-size: 0.95em !important; }
+        .brand-mark { width: 30px !important; height: 30px !important; }
+    }
+
     .brand-title { color: var(--petron-blue) !important; font-weight: bold; font-size: 1.3em; line-height: 1.1; }
     .brand-mark {
         width: 40px; height: 40px;
@@ -1060,7 +1143,8 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
 
     /* Page Header Styles - UPPERCASE for All Roles (Super Admin, Admin, Manager, Staff) */
     .page-head, .page-header {
-        margin-bottom: 20px;
+        margin-top: 0 !important;
+        margin-bottom: 24px !important;
     }
     
     .page-head h1, .page-header h1,
@@ -2426,6 +2510,9 @@ require_once __DIR__ . '/rbac_menu.php';
 
   </aside>
 
+  <!-- Mobile Sidebar Backdrop (shown only on mobile when sidebar is open) -->
+  <div class="mobile-sidebar-backdrop" id="mobileSidebarBackdrop"></div>
+
   <main class="main">
 
     <!-- GLOBAL TOP HEADER -->
@@ -2938,74 +3025,89 @@ require_once __DIR__ . '/rbac_menu.php';
             });
         })();
 
-        // Sidebar Collapse Functionality
+        // ── Sidebar Toggle (Desktop: collapse/expand | Mobile: overlay slide-in) ──
         const sidebarCollapseBtn = document.getElementById('sidebarCollapseBtn');
-        const sidebarToggleIcon = document.getElementById('sidebarToggleIcon');
-        const mainSidebar = document.getElementById('mainSidebar');
-        
-        if (sidebarCollapseBtn && sidebarToggleIcon && mainSidebar) {
-            // Load saved state from localStorage
-            const savedState = localStorage.getItem('sidebarState');
+        const sidebarToggleIcon  = document.getElementById('sidebarToggleIcon');
+        const mainSidebar        = document.getElementById('mainSidebar');
+        const mobileBackdrop     = document.getElementById('mobileSidebarBackdrop');
+
+        const isMobile = () => window.innerWidth < 992;
+
+        // ── Mobile sidebar helpers ────────────────────────────────────────────
+        function openMobileSidebar() {
+            if (!mainSidebar) return;
+            mainSidebar.classList.add('mobile-open');
+            if (mobileBackdrop) mobileBackdrop.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+        function closeMobileSidebar() {
+            if (!mainSidebar) return;
+            mainSidebar.classList.remove('mobile-open');
+            if (mobileBackdrop) mobileBackdrop.classList.remove('active');
+            document.body.style.overflow = '';
+        }
+
+        // ── Desktop sidebar helpers ───────────────────────────────────────────
+        function applyDesktopState(collapsed) {
             const mainContent = document.querySelector('.main');
-            
-            if (savedState === 'collapsed') {
+            if (collapsed) {
                 mainSidebar.classList.add('collapsed');
-                sidebarToggleIcon.className = 'fas fa-chevron-right';
-                
+                if (sidebarToggleIcon) sidebarToggleIcon.className = 'fas fa-chevron-right';
                 if (mainContent) {
                     mainContent.style.left = '70px';
-                    mainContent.style.marginLeft = '';
                     mainContent.classList.add('sidebar-collapsed');
                     document.body.classList.add('sidebar-collapsed');
                     document.body.classList.remove('sidebar-expanded');
                 }
             } else {
-                sidebarToggleIcon.className = 'fas fa-bars';
-                
+                mainSidebar.classList.remove('collapsed');
+                if (sidebarToggleIcon) sidebarToggleIcon.className = 'fas fa-bars';
                 if (mainContent) {
                     mainContent.style.left = '250px';
-                    mainContent.style.marginLeft = '';
                     mainContent.classList.remove('sidebar-collapsed');
                     document.body.classList.add('sidebar-expanded');
                     document.body.classList.remove('sidebar-collapsed');
                 }
             }
-            
-            // Function to toggle sidebar collapse
-            function toggleSidebar() {
-                const isCollapsed = mainSidebar.classList.contains('collapsed');
-                const mainContent = document.querySelector('.main');
-                
-                if (isCollapsed) {
-                    // Expand sidebar
-                    mainSidebar.classList.remove('collapsed');
-                    sidebarToggleIcon.className = 'fas fa-bars';
-                    localStorage.setItem('sidebarState', 'expanded');
-                    
-                    if (mainContent) {
-                        mainContent.style.left = '250px';
-                        mainContent.style.marginLeft = '';
-                        mainContent.classList.remove('sidebar-collapsed');
-                        document.body.classList.add('sidebar-expanded');
-                        document.body.classList.remove('sidebar-collapsed');
-                    }
+        }
+
+        function toggleSidebar() {
+            if (isMobile()) {
+                // Mobile: slide-in overlay
+                const isOpen = mainSidebar && mainSidebar.classList.contains('mobile-open');
+                if (isOpen) {
+                    closeMobileSidebar();
                 } else {
-                    // Collapse sidebar
-                    mainSidebar.classList.add('collapsed');
-                    sidebarToggleIcon.className = 'fas fa-chevron-right';
-                    localStorage.setItem('sidebarState', 'collapsed');
-                    
-                    if (mainContent) {
-                        mainContent.style.left = '70px';
-                        mainContent.style.marginLeft = '';
-                        mainContent.classList.add('sidebar-collapsed');
-                        document.body.classList.add('sidebar-collapsed');
-                        document.body.classList.remove('sidebar-expanded');
-                    }
+                    openMobileSidebar();
                 }
+                return;
             }
-            
-            // Add click event listener
+            // Desktop: collapse/expand
+            const isCollapsed = mainSidebar && mainSidebar.classList.contains('collapsed');
+            const newState = !isCollapsed;
+            applyDesktopState(newState);
+            localStorage.setItem('sidebarState', newState ? 'collapsed' : 'expanded');
+        }
+
+        // Init desktop state from localStorage (only on desktop)
+        if (!isMobile() && mainSidebar) {
+            const savedState = localStorage.getItem('sidebarState');
+            applyDesktopState(savedState === 'collapsed');
+        }
+
+        // Backdrop click closes mobile sidebar
+        if (mobileBackdrop) {
+            mobileBackdrop.addEventListener('click', closeMobileSidebar);
+        }
+
+        // Close mobile sidebar on window resize to desktop
+        window.addEventListener('resize', function() {
+            if (!isMobile()) {
+                closeMobileSidebar();
+            }
+        });
+
+        if (sidebarCollapseBtn) {
             sidebarCollapseBtn.addEventListener('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -3014,6 +3116,8 @@ require_once __DIR__ . '/rbac_menu.php';
         }
 
             });
+
+
 
                 
                 
